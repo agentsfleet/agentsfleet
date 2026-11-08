@@ -1,0 +1,106 @@
+[package]
+name = "afd_cron"
+description = "Fleet schedules: the stored intent, the external scheduler it is reconciled against, and the signed fire that wakes a fleet."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+# M-TEST-UTIL. Unlocks the direct `Schedule` constructor the sibling crate's
+# route suites drive their cases through; the production door stays the row
+# reader, which is the one that VALIDATES. It also unlocks `one_of_each_kind`,
+# which needs the same seam in the crates whose errors this one wraps — most of
+# these kinds cannot be provoked on demand, and a pool does not exhaust itself
+# politely.
+test-util = ["afd_admission/test-util", "af_core/test-util", "afd_db/test-util"]
+
+[dependencies]
+# Where a verified fire is accepted before anything is queued. Its unique
+# index is the at-most-once guarantee the Lua claim key used to be.
+afd_admission.workspace = true
+afd_events.workspace = true
+afd_dragonfly.workspace = true
+# Identifiers, the instant a row is stamped with, and the registry codes.
+af_core.workspace = true
+af_observability.workspace = true
+# The Postgres pool every statement here runs on.
+afd_db.workspace = true
+# Where a new schedule's identifier comes from — see `store::Schedules::mint`.
+af_crypto.workspace = true
+# The event type and stream field names a fire is appended under.
+afd_api_wire.workspace = true
+af_wire.workspace = true
+# A refusal sentence names the bound it enforces, derived from the constant.
+const_format.workspace = true
+# Resolving a zone name against the system timezone database, so a schedule
+# carrying one the scheduler would reject is refused here instead.
+jiff.workspace = true
+# The `TIMESTAMPTZ` bridge for those instants: a row's stamps decode through it
+# and a one-off's fire instant binds through it.
+jiff-sqlx.workspace = true
+# The constant-time comparison a body claim is checked with — the same
+# primitive `af_crypto::mac` compares a tag through (RULE CTM).
+subtle.workspace = true
+# Parsing the deployment url a callback destination is built from, so a query
+# or fragment is found by a parser rather than by a substring search.
+url.workspace = true
+# The digest a fire token binds its body with, and the base64url rendering the
+# scheduler emits it in. Compared as text against the claim — see `verifier`.
+base64.workspace = true
+sha2.workspace = true
+# The QStash JWT verifier. Pinned to an explicit `Validation` — see `verifier`
+# on why every default this crate does not want is turned off by name.
+jsonwebtoken.workspace = true
+# The retry loop and jittered schedule a transient scheduler failure is sent
+# again on, the same crate and curve `afd_outbound` delivers through.
+backon.workspace = true
+# The QStash management calls. Both published SDK crates are unmaintained and
+# force older transitive versions; a typed outcome classification is the
+# deliverable and this is the client the rest of the workspace already uses.
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tracing.workspace = true
+# A schedule's fields are bounded on `validate::Fields` before the parser and
+# the timezone lookup read them; the report maps back to `Invalid` through a
+# path table.
+af_validate.workspace = true
+garde.workspace = true
+# The cron grammar. Zero dependencies, std-only. This crate PARSES; `validate`
+# adds only the three refusals recorded in the spec's Prior-Art table for
+# expressions it accepts and the external scheduler will not honour as written.
+philiprehberger-cron-parser = "0.3.0"
+
+[dev-dependencies]
+# The lane connects a live queue to build the admission ledger every fire
+# writes through; the crate's own code reaches the queue only through
+# `afd_admission`, so this is a test-side dependency and not a second door.
+afd_dragonfly = { workspace = true, features = ["test-util"] }
+afd_admission = { workspace = true, features = ["test-util"] }
+# The lane fixture and the fleet seed its rows go in through. A dev-dependency
+# feature only.
+afd_db = { workspace = true, features = ["test-util"] }
+# The fire-token suite MINTS tokens to prove the wall refuses them: a fixture
+# string could only ever assert one shape, and every negative case here is a
+# token that differs from a good one in exactly one claim.
+base64.workspace = true
+jsonwebtoken.workspace = true
+serde.workspace = true
+sha2.workspace = true
+# `net` for the retry suite's hung-scheduler listener; `test-util` for its
+# paused clock.
+tokio = { workspace = true, features = ["net", "test-util"] }
+# The `tracing` capture `integration_fire.rs` reads the fire's log line back
+# through.
+af_core = { workspace = true, features = ["test-util"] }
+
+[lints]
+workspace = true

@@ -2,7 +2,7 @@
 // writepath. The CLI reads these for renderStatus (color/glyph mapping)
 // and for terminal-status detection in the steer round-trip.
 //
-// Server-side analog: rustd/crates/afd_core/src/event.rs, module `status`
+// Server-side analog: rustd/crates/foundation/af_core/src/event.rs, module `status`
 //   - GATE_BLOCKED ("gate_blocked"): writepath blocked the event
 //     before execution (e.g. tenant balance < est_total).
 //   - The "processed" and "fleet_error" terminal statuses are set by

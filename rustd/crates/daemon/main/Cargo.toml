@@ -1,0 +1,241 @@
+[package]
+name = "agentsfleetd"
+# One aggregated test binary; see tests/daemon_suite.rs for why.
+autotests = false
+description = "The daemon: subcommand parsing, boot choreography, and the task supervisor."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+# A library beside the binary, so the choreography is reachable from a test.
+# `main.rs` is the thin part: everything a test would want to drive — boot
+# order, the supervisor, the shutdown sequence — lives in the library, because
+# a binary crate's internals cannot be linked by an integration suite.
+[lib]
+name = "agentsfleetd"
+path = "src/lib.rs"
+
+[[bin]]
+name = "agentsfleetd"
+path = "src/main.rs"
+
+[features]
+# M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
+test-util = [
+    "afd_api/test-util",
+    "afd_auth/test-util",
+    "afd_connector/test-util",
+    "af_core/test-util",
+    "af_crypto/test-util",
+    "afd_db/test-util",
+    "afd_dragonfly/test-util",
+]
+
+# The document emitter. NOT default, and NOT reachable from the shipped binary:
+# `cargo build --profile dist` names no feature, so an operator cannot ask a
+# running daemon what it serves. CI builds with this to regenerate the artifact.
+openapi = ["afd_api/openapi"]
+
+[dependencies]
+garde.workspace = true
+serde_json.workspace = true
+af_inference.workspace = true
+afd_admin.workspace = true
+# The one admission ledger every producer in this process shares.
+afd_admission.workspace = true
+# The client every credential exchange is posted through. Built here rather than
+# inside the broker because a connection pool and a deadline are composition-root
+# decisions, and one client per process is what a pool IS.
+# The schedules plane the composition root assembles: the store, the scheduler
+# client, and the verifier the fire ingress crosses.
+afd_cron.workspace = true
+reqwest.workspace = true
+# `url::Host`: whether a Slack base names a loopback host, read off the host the
+# parser already classified. reqwest re-exports `Url` but not `Host`.
+url.workspace = true
+afd_api.workspace = true
+afd_billing.workspace = true
+afd_credential.workspace = true
+# `signal::shutdown`, the stop `serve` waits on.
+af_core = { workspace = true, features = ["signal"] }
+afd_events.workspace = true
+# The instant `Services::now` hands every handler.
+jiff.workspace = true
+# The composition root: this crate is the one that names which directory,
+# capability provider and verifier the generic HTTP shell is served through.
+# The operator's approval queue. Its own crate, not an `afd_fleet` module:
+# showing a person what a fleet wants to do must not pull in leases, money,
+# policy and the sweepers.
+afd_approval.workspace = true
+afd_auth.workspace = true
+afd_authoring.workspace = true
+# The Postgres credential directory the shell authenticates against.
+# The live-stream surface the plane hands the router: the pub/sub hub and the
+# instance's concurrent-stream ceiling, composed once at boot.
+# The product events this daemon reports, and the client behind them.
+# The connector answer-delivery worker this process supervises — see
+# `crate::outbound`.
+afd_outbound.workspace = true
+af_observability.workspace = true
+# The transport both binaries build through, and the two bridges that feed it
+# this daemon's existing spans and log records. The pipelines are `af_otlp`'s;
+# which knobs this daemon reads and that it bridges its log records are
+# decided here, at the composition root.
+af_otlp.workspace = true
+opentelemetry.workspace = true
+opentelemetry-appender-tracing.workspace = true
+tracing-opentelemetry.workspace = true
+afd_sse.workspace = true
+afd_state.workspace = true
+# The runner control plane behind the `/v1/runners` verbs.
+afd_fleet.workspace = true
+# Fleet memory, held once and shared by the lease plane and both route families.
+afd_memory.workspace = true
+afd_gate.workspace = true
+# The signed-ingress plane the webhook and App ingress routes resolve through.
+afd_ingress.workspace = true
+# The connect flow the connector routes act through, assembled here because its
+# two vault halves read different workspaces — see `plane/platform.rs`.
+afd_connector.workspace = true
+# The workspace fleets surface's store, handed to the router as one service.
+afd_fleet_lifecycle.workspace = true
+# Read-only operator projections are kept off the runner execution crate.
+afd_fleet_ops.workspace = true
+# The tenant plane: api-keys, command-line credentials, the device-flow login
+# surface, and the workspace-ownership resolver the shared layer asks.
+afd_tenant.workspace = true
+# The workspace secret surface's store, handed to the router as one service.
+afd_vault.workspace = true
+# The invite email the serving plane sends through.
+afd_mail.workspace = true
+# The identity provider's side of authentication: the capability claim and the
+# key set. Optional at RUNTIME, not at build time — an unconfigured deployment
+# holds the refusing variants rather than a different binary.
+afd_identity.workspace = true
+# The command line. Subcommands, `--port`, `--help` and `--version` are all
+# derived from `cli::Cli`; nothing in this crate reads `std::env::args` itself.
+clap.workspace = true
+
+# Preflight resolves the master key here rather than in the crypto crate:
+# `af_crypto` takes hex, deliberately, because it is the layer that must not
+# know where a key came from.
+af_crypto.workspace = true
+# The pool and client settings boot resolves BEFORE it opens either.
+afd_db.workspace = true
+afd_dragonfly.workspace = true
+afd_runner.workspace = true
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# The cancellation token every supervised task stops on.
+tokio-util.workspace = true
+# The accept loop drives hyper directly: `axum::serve` cannot bound the header
+# buffer, and Dimension 5.3 is a bound on the header buffer.
+axum.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+tower.workspace = true
+# The boot-failure enum composes foreign errors by `From`, so `?` lifts them
+# and the source chain survives for the fatal renderer to walk.
+thiserror.workspace = true
+tracing.workspace = true
+# The subscriber every `tracing` emit in this process needs: without one
+# installed the macros are no-ops that do not evaluate their fields.
+tracing-subscriber.workspace = true
+
+[build-dependencies]
+# `build.rs` reads the tail lane's committed baseline so the stream-ceiling
+# test can hold `SSE_MAX_STREAMS_DEFAULT` to a measured rung.
+serde_json.workspace = true
+
+[dev-dependencies]
+af_webhook = { workspace = true, features = ["test-util"] }
+# The overlap scenario wraps the unsandboxed engine to stall its prepare.
+async-trait.workspace = true
+# Checkpoint refusal tests inspect the shared error and repository diagnostics.
+af_context.workspace = true
+# The `tracing` capture the suites read their log lines back through
+# (`af_core::test_util::trace`). A dev-dependency feature only.
+af_core = { workspace = true, features = ["test-util"] }
+# The fleet rows the suites seed (`afd_db::test_util::FleetSeed`).
+afd_db = { workspace = true, features = ["test-util"] }
+# Instants a seed binds, encoded the way the store binds them.
+jiff-sqlx.workspace = true
+# `test-util` is what makes an assertion about JOIN_TIMEOUT affordable: with
+# time paused and every task parked, the runtime advances to the next deadline
+# itself, so the ten-second timeout costs no wall clock in the unit lane.
+tokio = { workspace = true, features = [
+    "rt-multi-thread",
+    "macros",
+    "time",
+    "sync",
+    "io-util",
+    "net",
+    "test-util",
+] }
+# The accept-fault suite names `CancellationToken` and builds a bare Router.
+tokio-util.workspace = true
+axum.workspace = true
+# §7's end-to-end suite only. It seeds and reads rows through the pool the
+# BOOTED daemon opened, so it needs the driver directly rather than through a
+# store verb — no verb in this workspace creates a fleet or a wallet, and
+# inventing one to serve a test would put a write path nothing ships into a
+# shipping crate.
+sqlx.workspace = true
+# The same suite builds request bodies and reads answers as JSON: it speaks to
+# the daemon over a socket, so it holds bytes rather than the wire types, and
+# `af_wire` rides in as the SHAPE those bodies are written against.
+serde_json.workspace = true
+af_wire.workspace = true
+# Seeded fleets select a native definition through the setup authority's own
+# parser and digest; the setup corpus is read into one once, as fixture data.
+af_fleet_runtime.workspace = true
+# The Rust runner, driven end to end against this daemon: its supervisor, the
+# test-only unsandboxed engine, the scripted agent engine and the executor's
+# process request. Dev-only, and only in this direction — the runner itself
+# links nothing from the daemon but the wire and the value layer.
+afr_agent = { workspace = true, features = ["test-util"] }
+afr_executor.workspace = true
+afr_sandbox.workspace = true
+# The code-running fleet's runner fetches its bound repository from a
+# fixture origin over `file://`, not from GitHub.
+afr_supervisor = { workspace = true, features = ["test-util"] }
+# Section 6's corpus suite: the real loop over the hosted catalog, a scripted
+# model behind the provider seam, and the egress client routed to HTTPS fakes
+# that rcgen's test CA signs and hyper serves.
+af_egress = { workspace = true, features = ["test-util"] }
+af_providers = { workspace = true, features = ["test-util"] }
+afr_tools.workspace = true
+futures-util.workspace = true
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+# A storage home and a sandbox base the run leaves behind for the test to read.
+tempfile.workspace = true
+# The runner's export, driven end to end against this daemon on a thread of
+# its own.
+afr_telemetry.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "daemon_suite"
+path = "tests/daemon_suite.rs"
+
+# A binary of its own: its one test writes the process environment, which is
+# sound only while no other test runs beside it.
+[[test]]
+name = "schedule_proxy"
+path = "tests/schedule_proxy.rs"
+required-features = ["test-util"]
+
+# Owns the global tracing subscriber, like a real daemon boot.
+[[test]]
+name = "telemetry_boot"
+path = "tests/telemetry_boot.rs"
+required-features = ["test-util"]

@@ -12,7 +12,7 @@
  *
  * Auth boundary worth knowing before adding a bearer-swap test here: an
  * `agt_a…` fleet key is NOT a control-plane credential. The tenant plane
- * (`rustd/crates/afd_auth/src/plane.rs`, whose `accepts` table is fed by the
+ * (`rustd/crates/daemon/afd_auth/src/plane.rs`, whose `accepts` table is fed by the
  * prefix table in `credential.rs`) admits only an OpenID Connect (OIDC) JSON
  * Web Token (JWT), a tenant `agt_t` key or an `afc_` CLI credential, and
  * answers 401 otherwise; `agt_a` is not a class the daemon knows at all — it

@@ -29,7 +29,7 @@ invalid:
   - |
     let span = millis_between(a, b);
   - |
-    let at = afd_core::clock::from_millis(raw);
+    let at = af_core::clock::from_millis(raw);
   - |
     impl Lease {
         pub(crate) const RENEW_MS: usize = 500;

@@ -1,0 +1,229 @@
+//! `/v1/tenants/me/models` — the registry a tenant picks its provider from.
+//!
+//! Four verbs over one store. [`super::provider`] holds the selection; this
+//! holds the list it is chosen from, and the two share a page in the dashboard.
+//!
+//! # The refusals are answered from values, not from failures
+//!
+//! Every way a client is told no arrives as an outcome variant the store
+//! decided from a row it already held — a credential nobody stored, a pair the
+//! tenant already has, an id that does not resolve, an entry that is the active
+//! selection. So this crate keeps no error type, the shape
+//! `RUST_ERROR_STANDARD` records for every plane crate, and each registry code
+//! is chosen where the fact is known. Each match is exhaustive, so a variant
+//! added to an outcome fails to compile until this says what a client is told.
+//!
+//! # The cursor is bound to the query that issued it
+//!
+//! A registry token carries the tenant and the page size it was minted under,
+//! and a token naming either differently is refused as `UZ-LIBRARY-002` rather
+//! than silently answered. Nothing is trusted FROM the cursor except the sort
+//! boundary: the tenant a page reads is always the authenticated one.
+//!
+//! That is two distinct refusals on purpose. A token that will not decode is
+//! `UZ-LIBRARY-001` — the client did not send something this endpoint issued.
+//! One that decodes but names another tenant is `UZ-LIBRARY-002`, and folding
+//! them would hide a cross-tenant replay attempt inside the same signal as a
+//! truncated URL.
+//!
+//! # Input is refused before the tenant is resolved
+//!
+//! [`tenant_of`] is a READ, so resolving the tenant first would spend a pool
+//! connection to reject `?limit=0`. The refusals below that need no tenant
+//! therefore run first.
+//!
+//! The order is observable in one state: an authenticated principal that
+//! resolves to NO tenant row, sending a malformed request, is answered 400
+//! rather than 403. Resolving first would cost a datastore round trip on every
+//! malformed request AND would make the input bounds unprovable at router tier
+//! — the suite beside this file proves them with no Postgres precisely because
+//! they are decided before one is touched.
+
+use std::sync::Arc;
+use std::time::Instant;
+
+use af_observability::metrics::label::library::{ReadOutcome, Stage, Surface};
+use af_observability::producers::library;
+
+use af_core::paging::struct_cursor::StructCursor;
+/// Named only by the `body =` clause of this module's `utoipa::path`
+/// annotations, which the default build compiles away — so the import has to
+/// go with them or the feature-off build fails on an unused name.
+#[cfg(feature = "openapi")]
+use afd_api_wire::tenant_model_entry::ModelEntriesResponse;
+use axum::Json;
+use axum::extract::{RawQuery, State};
+use axum::response::{IntoResponse as _, Response};
+use serde::{Deserialize, Serialize};
+
+use crate::auth::PersonIdentity;
+use crate::handler::Refusal;
+use crate::services::{Services, TenantModelEntries as _};
+
+// A query string this daemon cannot decode has no refusal on this surface:
+// `RawQuery` hands over the raw text and `parameter` cannot fail. One fewer
+// refusal than the catalogue page: a token with a stray `%` is simply not a
+// cursor this endpoint issued.
+use super::tenant_of;
+
+/// The scoped events each verb's failures are logged under.
+const EVENT_LIST: &str = "model_entries_list_failed";
+const EVENT_CREATE: &str = "model_entry_create_failed";
+const EVENT_UPDATE: &str = "model_entry_update_failed";
+const EVENT_DELETE: &str = "model_entry_delete_failed";
+const EVENT_TENANT: &str = "model_entry_tenant_unresolved";
+
+/// The refusal a real cursor for a different walk earns.
+///
+/// Its own sentence rather than the catalogue's: that page binds a token to the
+/// FILTERS it was issued under, this one binds it to the TENANT, and a client
+/// told the wrong thing looks for the wrong mistake.
+pub const DETAIL_CURSOR_MISMATCH: &str =
+    "starting_after was issued for a different tenant or page size";
+
+/// The refusal a path segment that is not an identifier earns.
+pub const DETAIL_ENTRY_ID: &str = "id must be a valid UUIDv7";
+
+/// The refusal a body naming no model earns.
+pub const DETAIL_MODEL_ID_REQUIRED: &str = "model_id is required";
+
+/// The refusal a model name past its bound earns.
+pub const DETAIL_MODEL_ID_TOO_LONG: &str = "model_id must be at most 256 chars";
+
+/// The refusal a body naming no credential earns.
+///
+/// Its own sentence rather than the provider surface's: that one names the
+/// MODE the field is required under, and this verb has no modes.
+pub const DETAIL_SECRET_REF_REQUIRED: &str = "secret_ref is required";
+
+/// The refusal a credential the vault does not hold earns.
+pub const DETAIL_SECRET_REF_UNKNOWN: &str =
+    "secret_ref does not name a vault secret in this tenant's workspace";
+
+/// The refusal a pair the tenant already registered earns.
+pub const DETAIL_DUPLICATE_ENTRY: &str = "An entry with this model and secret already exists";
+
+/// The refusal an id that resolves to nothing earns.
+pub const DETAIL_ENTRY_NOT_FOUND: &str = "Model entry not found";
+
+/// The refusal removing the tenant's current selection earns.
+pub const DETAIL_DELETE_ACTIVE: &str =
+    "This entry is the tenant's active selection; switch to another entry first";
+
+/// This page's cursor payload, in a fixed key order.
+///
+/// `tenant_uuid` and `limit` ride beside the sort key because a cursor is bound
+/// to the walk that produced it. Field ORDER is the canonical key order — see
+/// [`struct_cursor`] — so reordering this declaration invalidates every token
+/// already in flight.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(super) struct Cursor {
+    /// The payload generation this cursor was issued under.
+    v: u8,
+    /// The boundary row's creation instant.
+    #[serde(with = "af_wire::instant")]
+    created_at: jiff::Timestamp,
+    /// The boundary row's id, breaking ties within a millisecond.
+    id: String,
+    /// The tenant the walk was issued for.
+    tenant_uuid: String,
+    /// The page size the walk was issued under.
+    limit: u32,
+}
+
+impl StructCursor for Cursor {
+    fn generation(&self) -> u8 {
+        self.v
+    }
+}
+
+/// `GET /v1/tenants/me/models` — one page of the registry.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get,
+    path = "/v1/tenants/me/models",
+    tag = afd_http::openapi::tag::TENANT,
+    operation_id = "list_tenant_model_entries",
+    summary = "List configured account models",
+    description = concat!(
+        "Lists configured models newest first, with provider details and whether each is ",
+        "active. API keys are never returned. Several entries may share a `secret_ref`.\n\n",
+        "Pass `next_cursor` as `starting_after`; null means the last page. Keep `limit` ",
+        "unchanged while paging, or restart from the first page.",
+    ),
+    params(
+        afd_http::openapi::query::TenantPage,
+    ),
+    responses(
+        (status = 200, description = afd_http::openapi::OK, body = ModelEntriesResponse<'_>),
+        (status = 400, description = afd_http::openapi::BAD_REQUEST),
+        (status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE),
+    ),
+))]
+pub(crate) async fn list<D: Services>(
+    State(services): State<Arc<D>>,
+    identity: PersonIdentity,
+    RawQuery(query): RawQuery,
+) -> Result<Response, Refusal> {
+    let read = read_registry(&services, &identity, query).await;
+    library::read_finished(
+        SURFACE,
+        read.as_ref()
+            .map_or_else(afd_http::handler::library_outcome, |_served| {
+                ReadOutcome::Ok
+            }),
+    );
+    read
+}
+
+/// The surface this read serves, in the census's own spelling.
+const SURFACE: Surface = Surface::TenantModels;
+
+/// [`list`] without the outcome recording, so there is one place the answer is
+/// produced and one place it is classified.
+async fn read_registry<D: Services>(
+    services: &Arc<D>,
+    identity: &PersonIdentity,
+    query: Option<String>,
+) -> Result<Response, Refusal> {
+    let raw = query.unwrap_or_default();
+    let limit = requested_limit(&raw)?;
+    let tenant = tenant_of(
+        services,
+        identity.person(),
+        super::DETAIL_TENANT_REQUIRED,
+        EVENT_TENANT,
+    )
+    .await?;
+    let after = resume_from(&raw, &tenant, limit)?;
+
+    let page = library::timed(
+        SURFACE,
+        Stage::Sql,
+        services
+            .tenant_providers()
+            .registry_page(&tenant, limit, after.as_ref()),
+    )
+    .await
+    .map_err(Refusal::at(EVENT_LIST))?;
+
+    let rows = u64::try_from(page.rows.len()).unwrap_or(u64::MAX);
+    let serializing = Instant::now();
+    let body = Json(rendered(&page, &tenant, limit)).into_response();
+    library::stage_observed(SURFACE, Stage::Serialize, serializing.elapsed());
+    library::read_served(SURFACE, rows);
+
+    Ok(body)
+}
+
+mod input;
+mod render;
+pub(crate) mod write;
+
+use self::input::resume_from;
+use self::render::rendered;
+use crate::handler::paging::requested_limit;

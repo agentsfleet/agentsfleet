@@ -1,0 +1,228 @@
+//! The tenant plane's payloads: api-keys, and the credentials beside them.
+//!
+//! # The mint reply is the only place a secret appears
+//!
+//! [`MintedApiKeyResponse`] carries `key`; nothing else in this module has a
+//! field that could. That is structural rather than careful — a list shape with
+//! no secret field cannot leak one however the statement behind it changes —
+//! and it is half of what "revealed exactly once" means. The other half is
+//! `afd_auth::minted::Minted`, which zeroes the plaintext when the
+//! response holding it is done.
+
+use std::borrow::Cow;
+
+use serde::{Deserialize, Serialize};
+
+/// Request to create an account API key.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MintApiKeyRequest<'a> {
+    /// What the key will be called. Unique per tenant.
+    #[serde(borrow)]
+    pub key_name: Cow<'a, str>,
+    /// Free text beside it, for whoever reads the list in six months.
+    #[serde(borrow, default)]
+    pub description: Option<Cow<'a, str>>,
+}
+
+/// The one response that reveals a key's plaintext.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct MintedApiKeyResponse<'a> {
+    /// The key's identifier, which every later call addresses it by.
+    pub id: Cow<'a, str>,
+    /// What it is called.
+    pub key_name: Cow<'a, str>,
+    /// The credential itself. Shown once and never stored in this shape.
+    pub key: Cow<'a, str>,
+    /// When it was minted.
+    #[serde(with = "af_wire::instant")]
+    pub created_at: jiff::Timestamp,
+}
+
+/// Request to create this machine's command-line credential.
+//
+// Unknown fields are refused with a 400, as on [`MintApiKeyRequest`] beside it:
+// a field this daemon does not read is a client believing something about the
+// mint that is not true.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MintCliCredentialRequest<'a> {
+    /// The terminal's own label, as an operator will read it back.
+    #[serde(borrow)]
+    pub machine_name: Cow<'a, str>,
+}
+
+// Carries `credential` for the reason [`MintedApiKeyResponse`] carries `key`,
+// and nothing else on this surface has a field that could: there is no list
+// verb here at all, so the mint reply is the whole of the exposure.
+/// The only response that returns a command-line credential in plaintext.
+///
+/// Save the value when you receive it. No later call returns it again.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Clone, PartialEq, Eq, Serialize)]
+pub struct MintedCliCredentialResponse<'a> {
+    /// The credential row's identifier, which the revoke addresses it by.
+    pub id: Cow<'a, str>,
+    /// The credential itself. Shown once and never stored in this shape.
+    pub credential: Cow<'a, str>,
+    /// The terminal's label, echoed back as it was stored.
+    pub machine_name: Cow<'a, str>,
+    /// Deployment that issued this credential, assigned by the server.
+    pub deployment: Cow<'a, str>,
+}
+
+/// `PATCH /v1/api-keys/{id}` — the only mutation, and only downward.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PatchApiKeyRequest {
+    /// Must be `false`. A revoked key is never brought back.
+    pub active: bool,
+}
+
+/// What revoking answers with.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RevokedApiKeyResponse<'a> {
+    /// The key's identifier.
+    pub id: Cow<'a, str>,
+    /// Always `false` — the field is present so a client can write the reply
+    /// straight into whatever it was holding.
+    pub active: bool,
+    /// When the row records it stopped working.
+    #[serde(with = "af_wire::instant")]
+    pub revoked_at: jiff::Timestamp,
+}
+
+/// One key as a list shows it: metadata, never a secret.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ApiKeySummary<'a> {
+    /// The key's identifier.
+    pub id: Cow<'a, str>,
+    /// What it is called.
+    pub key_name: Cow<'a, str>,
+    /// Whether it still authenticates.
+    pub active: bool,
+    /// When it was minted.
+    #[serde(with = "af_wire::instant")]
+    pub created_at: jiff::Timestamp,
+    /// When the key was revoked, or null while active.
+    #[serde(with = "af_wire::instant::option", default)]
+    pub revoked_at: Option<jiff::Timestamp>,
+}
+
+/// `GET /v1/tenants/me/billing` — the wallet snapshot.
+//
+// `is_exhausted` restates `exhausted_at` as a boolean, and both travel so a
+// dashboard can branch without a null-check. `updated_at` and `exhausted_at`
+// are instants in milliseconds; the `_ms` suffix the domain types carry stops
+// at the wire because these field names are the published format.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct BillingResponse {
+    /// What remains, in nanos — one thousand-millionth of a dollar.
+    ///
+    /// Negative while the tenant owes a debt. A settlement takes its whole charge, and the
+    /// next grant repays the debt before any of it is spendable.
+    #[serde(with = "af_wire::nanos::signed")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::signed::SignedDecimal))]
+    pub balance_nanos: i64,
+    /// When the balance last moved.
+    #[serde(with = "af_wire::instant")]
+    pub updated_at: jiff::Timestamp,
+    /// Whether the balance has reached zero or gone below it.
+    pub is_exhausted: bool,
+    /// When it did, or `null` while money remains — emitted either way, for
+    /// the module's null rule.
+    #[serde(with = "af_wire::instant::option", default)]
+    pub exhausted_at: Option<jiff::Timestamp>,
+}
+
+/// One runtime charge or settled setup-chat cost.
+///
+/// Field order is wire order — the struct is serialized straight to JSON, so
+/// the row IS the wire shape.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ChargeSummary<'a> {
+    /// The runtime ledger row's or setup settlement's identifier.
+    pub id: Cow<'a, str>,
+    /// Whose charge it is.
+    pub tenant_id: Cow<'a, str>,
+    /// The workspace it was incurred in. It survives that workspace's
+    /// deletion, because a charge outlives what it was incurred on.
+    pub workspace_id: Cow<'a, str>,
+    /// Fleet charged for this work. Run charges retain the identifier after deletion. Setup
+    /// chats use the saved fleet's identifier, or null before saving.
+    pub fleet_id: Option<Cow<'a, str>>,
+    /// Fleet name captured when a run charge was recorded; later renames do not change it.
+    ///
+    /// A value equal to `fleet_id` means no name was captured. Setup chats show the saved
+    /// fleet's current name, or null before saving.
+    pub fleet_name: Option<Cow<'a, str>>,
+    /// The event that triggered the work, or `null` for a setup chat.
+    pub event_id: Option<Cow<'a, str>>,
+    /// The setup attempt, or `null` for a fleet run. Identifies the charge
+    /// without exposing the chat's content or depending on its retention.
+    pub authoring_attempt_id: Option<Cow<'a, str>>,
+    /// `receive`, `stage`, or `authoring` (a settled setup-chat attempt).
+    pub charge_type: Cow<'a, str>,
+    /// Whose model bill the tokens landed on.
+    pub posture: Cow<'a, str>,
+    /// The model used by the run or setup chat.
+    pub model: Cow<'a, str>,
+    /// What this row drained, in nanos.
+    #[serde(with = "af_wire::nanos")]
+    #[cfg_attr(feature = "openapi", schema(value_type = af_wire::nanos::Decimal))]
+    pub credit_deducted_nanos: i64,
+    /// Recorded input tokens for a run or settled setup chat.
+    pub token_count_input: Option<i64>,
+    /// Tokens out, likewise.
+    pub token_count_output: Option<i64>,
+    /// Recorded runtime in milliseconds.
+    pub wall_ms: Option<i64>,
+    /// When the row was written — the walk's sort key, and what its cursor
+    /// half is rendered from.
+    #[serde(with = "af_wire::instant")]
+    pub recorded_at: jiff::Timestamp,
+}
+
+/// `GET /v1/tenants/me/billing/charges` — one page of the ledger.
+//
+// Two keys, not [`PageResponse`]'s three: the ledger walk answers
+// `{items, next_cursor}` with no `total`, and the ABSENCE is pinned the same
+// way a presence is. Folding this into the shared envelope would add a key to
+// a published shape.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ChargesResponse<'a> {
+    /// The rows on this page, newest first.
+    pub items: Vec<ChargeSummary<'a>>,
+    /// Where the next page resumes, or `null` on the last page — emitted
+    /// either way, for the module's null rule.
+    pub next_cursor: Option<Cow<'a, str>>,
+}
+
+// Generic over the item, because the envelope is the same for every paged
+// resource on these planes and a per-resource copy is a per-resource chance
+// for the keys to drift apart. The three keys are pinned by the integration
+// test that counts them.
+/// One result page with `items`, `total`, and `next_cursor`. A null `next_cursor` means the
+/// last page.
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct PageResponse<'a, T> {
+    /// The rows on this page, in the requested order.
+    pub items: Vec<T>,
+    /// Total matching records across all pages. Use `next_cursor` to determine whether
+    /// another page exists.
+    pub total: i64,
+    /// Where the next page resumes, or `null` on the last page.
+    ///
+    /// Always emitted, never omitted, for the module's null rule.
+    pub next_cursor: Option<Cow<'a, str>>,
+}

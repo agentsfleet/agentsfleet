@@ -1,0 +1,404 @@
+//! One error hull; private kinds preserve their causes and safe public meaning.
+
+use af_core::error_code::{self, ErrorCode};
+
+pub(crate) mod raise;
+#[cfg(test)]
+mod tests;
+
+af_core::error_shell!(
+    /// A private-setup refusal or a failure to reach its durable store.
+    pub struct Error(ErrorKind);
+);
+
+/// The result every fallible authoring operation returns.
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ErrorKind {
+    #[error("the conversation working context could not be prepared")]
+    Context {
+        #[source]
+        source: af_context::Error,
+    },
+    #[error("inherited schedule update failed")]
+    Cron {
+        #[source]
+        source: afd_cron::Error,
+    },
+    #[error("the setup resource is unavailable")]
+    Hidden,
+    #[error("the shared fleet is unavailable")]
+    FleetMissing,
+    #[error("the instance name already exists in this workspace")]
+    NameExists,
+    #[error("the native setup policy needs a fresh review")]
+    Policy,
+    #[error("the authoring attempt cannot publish")]
+    Fence,
+    #[error("the setup state {current} prevents the mutation")]
+    State { current: &'static str },
+    #[error("the setup resource version changed")]
+    Stale { etag: String },
+    #[error("the setup mutation omitted its version")]
+    Precondition,
+    #[error("the operation key belongs to another normalized request")]
+    Replay,
+    #[error("the effective setup requires a fresh human review")]
+    Review { digest: String },
+    #[error("the accepted setup resource was purged")]
+    Gone,
+    #[error("the workspace owner's selected model is unavailable")]
+    Model,
+    #[error("the owner wallet cannot cover the authoring bound")]
+    Balance,
+    #[error("the authoring host could not be guarded")]
+    Runner {
+        #[from]
+        source: afd_runner::Error,
+    },
+    #[error("the initial runtime admission could not be recorded")]
+    Admission {
+        #[from]
+        source: afd_admission::Error,
+    },
+    #[error("the setup approval request could not be recorded")]
+    Approval {
+        #[from]
+        source: afd_approval::Error,
+    },
+    #[error("the assembled authoring context exceeds its bound")]
+    Token,
+    #[error("the provider failed with known usage")]
+    Provider,
+    #[error("the provider obligation remains unresolved")]
+    Unknown,
+    #[error("the setup edit decision could not complete")]
+    Decision {
+        #[source]
+        source: af_providers::Error,
+    },
+    #[error("the configured model settings are invalid")]
+    Inference {
+        #[source]
+        source: af_inference::Error,
+    },
+    #[error("the model SDK could not complete the dispatch")]
+    Sdk {
+        #[source]
+        source: rig_core::ProviderError,
+    },
+    #[error("the authoring transport could not complete")]
+    Transport {
+        #[from]
+        source: reqwest::Error,
+    },
+    #[error("the private preview could not be published")]
+    Preview {
+        #[source]
+        source: afd_dragonfly::Error,
+    },
+    #[error("the private setup cursor does not match its query")]
+    Cursor,
+    #[error("the setup request is invalid")]
+    Invalid { detail: &'static str },
+    #[error("the authoring store could not {context}")]
+    Query {
+        context: &'static str,
+        #[source]
+        source: sqlx::Error,
+    },
+    #[error("the authoring store holds unreadable JSON")]
+    Stored {
+        /// serde's position and expected type; never the private text it read.
+        #[source]
+        source: af_core::json::Unreadable,
+    },
+    #[error("the authoring request violates a declared bound")]
+    Validation {
+        #[from]
+        source: garde::Report,
+    },
+    #[error("the native setup is invalid")]
+    Definition {
+        #[from]
+        source: af_fleet_runtime::Error,
+    },
+    #[error("the owner model could not be resolved")]
+    Credential {
+        #[from]
+        source: afd_credential::Error,
+    },
+    #[error("the authoring datastore is unavailable")]
+    Datastore {
+        #[from]
+        source: afd_db::Error,
+    },
+    #[error("an authoring identifier could not be minted")]
+    Identifier {
+        #[from]
+        source: af_core::error::Error,
+    },
+    #[error("authoring entropy is unavailable")]
+    Entropy {
+        #[from]
+        source: af_crypto::error::Error,
+    },
+    /// The biller answered with a fault its outage policy did not absorb.
+    #[error("the setup chat's biller refused the request")]
+    Billing {
+        #[from]
+        source: afd_billing::Error,
+    },
+}
+
+af_core::error_lifts!(Error, ErrorKind:
+    af_providers::Error => Decision,
+    afd_cron::Error => Cron,
+    af_context::Error => Context,
+    afd_db::Error => Datastore,
+    afd_credential::Error => Credential,
+    af_fleet_runtime::Error => Definition,
+    af_crypto::error::Error => Entropy,
+    af_core::error::Error => Identifier,
+    garde::Report => Validation,
+    reqwest::Error => Transport,
+    af_inference::Error => Inference,
+    rig_core::ProviderError => Sdk,
+    afd_runner::Error => Runner,
+    afd_admission::Error => Admission,
+    afd_approval::Error => Approval,
+    afd_billing::Error => Billing,
+);
+
+impl Error {
+    /// Stable registry classification; foreign failures retain their own codes.
+    #[must_use]
+    pub fn code(&self) -> ErrorCode {
+        match self.kind() {
+            ErrorKind::Cron { source } => source.code(),
+            ErrorKind::Hidden => error_code::AUTHORING_NOT_FOUND,
+            ErrorKind::FleetMissing => error_code::AGENTSFLEET_NOT_FOUND,
+            ErrorKind::NameExists => error_code::AGENTSFLEET_NAME_EXISTS,
+            ErrorKind::Policy => error_code::AUTHORING_POLICY,
+            ErrorKind::Fence => error_code::AUTHORING_FENCE,
+            ErrorKind::State { .. } => error_code::AUTHORING_STATE,
+            ErrorKind::Stale { .. } => error_code::AUTHORING_STALE,
+            ErrorKind::Precondition => error_code::AUTHORING_PRECONDITION,
+            ErrorKind::Replay => error_code::AUTHORING_REPLAY,
+            ErrorKind::Review { .. } => error_code::AUTHORING_REVIEW,
+            ErrorKind::Gone => error_code::AUTHORING_GONE,
+            ErrorKind::Model | ErrorKind::Inference { .. } => error_code::AUTHORING_MODEL,
+            ErrorKind::Balance => error_code::AUTHORING_BALANCE,
+            ErrorKind::Token => error_code::AUTHORING_TOKEN,
+            ErrorKind::Context { source } if source.is_window() => error_code::AUTHORING_TOKEN,
+            ErrorKind::Context { source } => source.code(),
+            ErrorKind::Provider => error_code::AUTHORING_PROVIDER,
+            ErrorKind::Unknown
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Decision { .. } => error_code::AUTHORING_UNKNOWN,
+            ErrorKind::Cursor => error_code::AUTHORING_CURSOR,
+            ErrorKind::Validation { .. }
+            | ErrorKind::Definition { .. }
+            | ErrorKind::Invalid { .. } => error_code::INVALID_REQUEST,
+            ErrorKind::Query { .. } | ErrorKind::Stored { .. } => error_code::INTERNAL_DB_QUERY,
+            ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            ErrorKind::Credential { source } => source.code(),
+            ErrorKind::Runner { source } => source.code(),
+            ErrorKind::Admission { source } => source.code(),
+            ErrorKind::Approval { source } => source.code(),
+            ErrorKind::Billing { source } => source.code(),
+            ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Preview { .. } => error_code::INTERNAL_OPERATION_FAILED,
+        }
+    }
+
+    /// A bounded sentence that never includes a request value or cause text.
+    #[must_use]
+    pub fn detail(&self) -> &'static str {
+        match self.kind() {
+            ErrorKind::Cron { source } => source.detail(),
+            ErrorKind::Invalid { detail } => detail,
+            ErrorKind::Validation { .. } | ErrorKind::Definition { .. } => {
+                "Setup input violates the supported shape or bounds"
+            }
+            ErrorKind::Context { .. }
+            | ErrorKind::Hidden
+            | ErrorKind::FleetMissing
+            | ErrorKind::NameExists
+            | ErrorKind::Policy
+            | ErrorKind::Fence
+            | ErrorKind::State { .. }
+            | ErrorKind::Stale { .. }
+            | ErrorKind::Precondition
+            | ErrorKind::Replay
+            | ErrorKind::Review { .. }
+            | ErrorKind::Gone
+            | ErrorKind::Model
+            | ErrorKind::Balance
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::Approval { .. }
+            | ErrorKind::Token
+            | ErrorKind::Provider
+            | ErrorKind::Unknown
+            | ErrorKind::Decision { .. }
+            | ErrorKind::Inference { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Preview { .. }
+            | ErrorKind::Cursor
+            | ErrorKind::Query { .. }
+            | ErrorKind::Stored { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Billing { .. } => af_core::problem::Problem::of(self.code()).title(),
+        }
+    }
+
+    /// The current tag required on a precondition refusal.
+    #[must_use]
+    pub fn etag(&self) -> Option<&str> {
+        match self.kind() {
+            ErrorKind::Cron { source } => source.etag(),
+            ErrorKind::Stale { etag } => Some(etag),
+            ErrorKind::Context { .. }
+            | ErrorKind::Hidden
+            | ErrorKind::FleetMissing
+            | ErrorKind::NameExists
+            | ErrorKind::Policy
+            | ErrorKind::Fence
+            | ErrorKind::State { .. }
+            | ErrorKind::Precondition
+            | ErrorKind::Replay
+            | ErrorKind::Review { .. }
+            | ErrorKind::Gone
+            | ErrorKind::Model
+            | ErrorKind::Balance
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::Approval { .. }
+            | ErrorKind::Token
+            | ErrorKind::Provider
+            | ErrorKind::Unknown
+            | ErrorKind::Decision { .. }
+            | ErrorKind::Inference { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Preview { .. }
+            | ErrorKind::Cursor
+            | ErrorKind::Invalid { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Stored { .. }
+            | ErrorKind::Validation { .. }
+            | ErrorKind::Definition { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Billing { .. } => None,
+        }
+    }
+
+    /// Fresh daemon-computed digest, carried only by a stale-review refusal.
+    #[must_use]
+    pub fn review_digest(&self) -> Option<&str> {
+        match self.kind() {
+            ErrorKind::Review { digest } => Some(digest),
+            ErrorKind::Context { .. }
+            | ErrorKind::Cron { .. }
+            | ErrorKind::Hidden
+            | ErrorKind::FleetMissing
+            | ErrorKind::NameExists
+            | ErrorKind::Policy
+            | ErrorKind::Fence
+            | ErrorKind::State { .. }
+            | ErrorKind::Stale { .. }
+            | ErrorKind::Precondition
+            | ErrorKind::Replay
+            | ErrorKind::Gone
+            | ErrorKind::Model
+            | ErrorKind::Balance
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::Approval { .. }
+            | ErrorKind::Token
+            | ErrorKind::Provider
+            | ErrorKind::Unknown
+            | ErrorKind::Decision { .. }
+            | ErrorKind::Inference { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Preview { .. }
+            | ErrorKind::Cursor
+            | ErrorKind::Invalid { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Stored { .. }
+            | ErrorKind::Validation { .. }
+            | ErrorKind::Definition { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Billing { .. } => None,
+        }
+    }
+
+    /// The bounded state required on a lifecycle conflict.
+    #[must_use]
+    pub const fn current_state(&self) -> Option<&'static str> {
+        match self.kind() {
+            ErrorKind::Cron { source } => source.current_state(),
+            ErrorKind::State { current } => Some(current),
+            ErrorKind::Replay => Some("accepted"),
+            ErrorKind::Review { .. } | ErrorKind::Policy => Some("review_required"),
+            ErrorKind::NameExists => Some("name_exists"),
+            ErrorKind::Model | ErrorKind::Inference { .. } => Some("unavailable"),
+            ErrorKind::Fence => Some("fenced"),
+            ErrorKind::Unknown
+            | ErrorKind::Transport { .. }
+            | ErrorKind::Sdk { .. }
+            | ErrorKind::Decision { .. } => Some("awaiting_accounting"),
+            ErrorKind::Context { .. }
+            | ErrorKind::Hidden
+            | ErrorKind::FleetMissing
+            | ErrorKind::Stale { .. }
+            | ErrorKind::Precondition
+            | ErrorKind::Gone
+            | ErrorKind::Balance
+            | ErrorKind::Runner { .. }
+            | ErrorKind::Admission { .. }
+            | ErrorKind::Approval { .. }
+            | ErrorKind::Token
+            | ErrorKind::Provider
+            | ErrorKind::Preview { .. }
+            | ErrorKind::Cursor
+            | ErrorKind::Invalid { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Stored { .. }
+            | ErrorKind::Validation { .. }
+            | ErrorKind::Definition { .. }
+            | ErrorKind::Credential { .. }
+            | ErrorKind::Datastore { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Entropy { .. }
+            | ErrorKind::Billing { .. } => None,
+        }
+    }
+
+    /// Whether a server-side bound ended a statement (`afd_db::login`): the
+    /// datastore said "not now", which a retry may get past.
+    pub(crate) fn is_bound_reached(&self) -> bool {
+        matches!(self.kind(), ErrorKind::Query { source, .. } if afd_db::error::is_bound_reached(source))
+    }
+
+    /// Whether retrying after a datastore outage may succeed.
+    #[must_use]
+    pub fn is_datastore_unavailable(&self) -> bool {
+        self.code() == error_code::INTERNAL_DB_UNAVAILABLE
+    }
+}

@@ -1,0 +1,306 @@
+//! Measure admission latency, database cost and unsettled backlog under concurrent producers.
+
+use core::time::Duration;
+use std::sync::Arc;
+use std::time::Instant;
+
+use afd_events::Steer;
+use tokio_util::sync::CancellationToken;
+
+use crate::abort::Abort;
+use af_crypto::entropy::Entropy;
+use afd_admission::Admissions;
+
+use crate::datastores::{Datastores, dragonfly_calls};
+use crate::error::Result;
+use crate::fixture::{FixtureLedger, RunPrefix};
+use crate::lane::joined;
+use crate::lane::lease::seed::{
+    self, BENCH_ACTOR, BENCH_REQUEST_JSON, ROWS_PER_FLEET, SEEDED_AT, SeededFleet,
+};
+use crate::lane::outcomes::Outcomes;
+use crate::profile::{Parameter, Profile};
+use crate::report::{
+    DatastoreCost, DatastoreCosts, Fixture, Lane, Provenance, Report, count, ratio,
+};
+use crate::statements::{self, StatementCost};
+
+/// Measurement key: how many steers the window appended in total.
+const ACCEPTED: &str = "accepted";
+
+/// Measurement key: appends the path refused.
+const FAILURES: &str = "failures";
+
+/// Measurement key: the fraction of everything tried that the path refused.
+const ERROR_RATE: &str = "error_rate";
+
+/// Measurement key: Dragonfly commands each accepted steer cost.
+const DRAGONFLY_CALLS_PER_STEER: &str = "dragonfly_calls_per_steer";
+
+/// Measurement key: Postgres commits per accepted steer, including amortized sampling.
+const POSTGRES_TRANSACTIONS_PER_STEER: &str = "postgres_transactions_per_steer";
+
+/// Measurement key: Postgres statements each accepted steer executed,
+/// transaction control left out.
+const POSTGRES_STATEMENTS_PER_STEER: &str = "postgres_statements_per_steer";
+
+/// The task role a lost depth sampler is reported under.
+const SAMPLER_ROLE: &str = "backlog sampler";
+
+/// Series key: unsettled admission count, sampled through the run.
+const BACKLOG_DEPTH: &str = "admission_backlog";
+
+/// How often the admission backlog is sampled.
+const DEPTH_SAMPLE_INTERVAL: Duration = Duration::from_millis(250);
+
+/// What the caller asked this lane to measure.
+#[derive(Debug, Clone, Copy)]
+pub struct Parameters {
+    /// Distinct fleets steers are spread across.
+    pub fleets: u64,
+    /// Submitters appending at once.
+    pub concurrency: u64,
+    /// The longest the window may run.
+    pub window: Duration,
+}
+
+impl Parameters {
+    /// Refuse anything outside the profile's bounds, before a connection opens.
+    ///
+    /// # Errors
+    ///
+    /// A cap, a floor, or a window under the warmup floor, each named.
+    pub fn admit(self, profile: Profile) -> Result<()> {
+        profile.check(Parameter::Fleets, self.fleets)?;
+        profile.check(Parameter::Concurrency, self.concurrency)?;
+        profile.check_window(self.window)
+    }
+}
+
+/// Run the lane and return the report it measured.
+///
+/// # Errors
+///
+/// A cap refusal, a datastore that would not answer, or a lost task.
+pub async fn run(
+    profile: Profile,
+    provenance: Provenance,
+    parameters: Parameters,
+    stores: &Datastores,
+    prefix: &RunPrefix,
+) -> Result<Report> {
+    parameters.admit(profile)?;
+    let abort = Arc::new(Abort::new(profile.caps().abort_error_rate));
+    let tag = seed::placement_tag(prefix);
+    let mut ledger = FixtureLedger::new();
+
+    let mut fleets = Vec::new();
+    for index in 0..parameters.fleets {
+        fleets.push(seed::empty_fleet(&stores.database, prefix, &tag, index, SEEDED_AT).await?);
+        ledger.created(ROWS_PER_FLEET);
+    }
+    statements::install(&stores.database).await?;
+
+    let measured = submit(stores, &fleets, parameters, &abort).await?;
+
+    let mut report = Report::new(Lane::Steer, profile, provenance);
+    report.created = true;
+    report.parameter(Parameter::Fleets.name(), parameters.fleets);
+    report.parameter(Parameter::Concurrency.name(), parameters.concurrency);
+    measured.record(&mut report);
+    report.abort = abort.recorded();
+    report.fixture = Fixture::of(prefix, ledger);
+    Ok(report)
+}
+
+/// One window of concurrent appends, with the cost either side of it.
+struct Submitted {
+    outcomes: Outcomes,
+    length: Duration,
+    dragonfly_calls: u64,
+    postgres: StatementCost,
+    depth: Vec<f64>,
+}
+
+/// Each submitter's slice of the population: fleet id and the workspace that
+/// owns it, so an appended entry carries the workspace of its own fleet.
+type Slice = Vec<(String, String)>;
+
+/// Drive every submitter concurrently, sampling the index while they run.
+async fn submit(
+    stores: &Datastores,
+    fleets: &[SeededFleet],
+    parameters: Parameters,
+    abort: &Arc<Abort>,
+) -> Result<Submitted> {
+    // Every slice is built BEFORE the window opens, so partitioning the
+    // population is not charged to the rate and every submitter starts on
+    // the same instant rather than as its slice finishes.
+    let slices = partition(fleets, parameters.concurrency);
+    let stop = CancellationToken::new();
+    let sampler = tokio::spawn(sample_depth(
+        Admissions::new(
+            stores.database.clone(),
+            stores.queue.clone(),
+            Entropy::new(),
+        ),
+        stop.clone(),
+    ));
+    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
+    let postgres_before = statements::read(&stores.database).await?;
+    let started = Instant::now();
+    let outcomes = append_all(stores, slices, started + parameters.window, abort).await?;
+    // The window is the submitters', measured the instant they are all back.
+    let length = started.elapsed();
+    let dragonfly_calls = dragonfly_calls(&stores.queue)
+        .await?
+        .saturating_sub(dragonfly_before);
+    let postgres = statements::read(&stores.database)
+        .await?
+        .since(postgres_before);
+    stop.cancel();
+    let depth = joined(sampler.await, SAMPLER_ROLE)?;
+
+    Ok(Submitted {
+        outcomes,
+        length,
+        dragonfly_calls,
+        postgres,
+        depth,
+    })
+}
+
+/// One submitter per slice, all appending at once, answering what they did
+/// together once the last of them is back.
+async fn append_all(
+    stores: &Datastores,
+    slices: Vec<Slice>,
+    deadline: Instant,
+    abort: &Arc<Abort>,
+) -> Result<Outcomes> {
+    let mut tasks = Vec::with_capacity(slices.len());
+    for mine in slices {
+        let steer = Steer::new(Admissions::new(
+            stores.database.clone(),
+            stores.queue.clone(),
+            Entropy::new(),
+        ));
+        let abort = Arc::clone(abort);
+        tasks.push(tokio::spawn(async move {
+            append_until(&steer, &mine, deadline, &abort).await
+        }));
+    }
+    let mut outcomes = Outcomes::new()?;
+    for task in tasks {
+        let theirs = joined(task.await, "submitter")??;
+        outcomes.absorb(&theirs)?;
+    }
+    Ok(outcomes)
+}
+
+/// Deal the population out to `concurrency` submitters, round-robin.
+fn partition(fleets: &[SeededFleet], concurrency: u64) -> Vec<Slice> {
+    let lanes = usize::try_from(concurrency).unwrap_or(1).max(1);
+    let mut slices: Vec<Slice> = vec![Vec::new(); lanes];
+    for (index, fleet) in fleets.iter().enumerate() {
+        if let Some(slice) = slices.get_mut(index % lanes) {
+            slice.push((fleet.fleet.clone(), fleet.workspace.clone()));
+        }
+    }
+    slices
+        .into_iter()
+        .filter(|slice| !slice.is_empty())
+        .collect()
+}
+
+/// Append to each fleet in turn until the deadline or the monitor fires.
+async fn append_until(
+    steer: &Steer,
+    fleets: &[(String, String)],
+    deadline: Instant,
+    abort: &Abort,
+) -> Result<Outcomes> {
+    let mut outcomes = Outcomes::new()?;
+    let token = abort.token();
+    // A slice is never empty (`partition` drops empty ones), so cycling it
+    // always yields; the deadline and the token are what end the loop.
+    for (fleet, workspace) in fleets.iter().cycle() {
+        if Instant::now() >= deadline || token.is_cancelled() {
+            break;
+        }
+        let started = Instant::now();
+        match steer
+            .append(fleet, workspace, BENCH_ACTOR, BENCH_REQUEST_JSON, None)
+            .await
+        {
+            Ok(_id) => {
+                outcomes.succeeded(started.elapsed())?;
+                abort.record(true);
+            }
+            Err(_refused) => {
+                outcomes.failed();
+                abort.record(false);
+            }
+        }
+    }
+    Ok(outcomes)
+}
+
+/// Sample the admission backlog until told to stop.
+///
+/// A separate task rather than a reading taken by each submitter: the depth is
+/// a property of the index over TIME, and a sample taken inside an append loop
+/// would be a sample taken at whatever rate that loop happened to run. It
+/// stops on the lane's signal, not on the deadline, so an aborted window does
+/// not leave it running alone.
+async fn sample_depth(admissions: Admissions, stop: CancellationToken) -> Vec<f64> {
+    let mut series = Vec::new();
+    while !stop.is_cancelled() {
+        if let Ok(backlog) = admissions.backlog().await {
+            series.push(count(backlog.rows));
+        }
+        tokio::select! {
+            () = stop.cancelled() => break,
+            () = tokio::time::sleep(DEPTH_SAMPLE_INTERVAL) => {}
+        }
+    }
+    series
+}
+
+impl Submitted {
+    /// Write this window's numbers into the report.
+    fn record(&self, report: &mut Report) {
+        report.latency(self.length.as_secs_f64(), &self.outcomes.latency);
+        report.measurement(ACCEPTED, count(self.outcomes.successes));
+        report.measurement(FAILURES, count(self.outcomes.failures));
+        report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
+        report.measurement(
+            DRAGONFLY_CALLS_PER_STEER,
+            ratio(self.dragonfly_calls, self.outcomes.successes),
+        );
+        report.measurement(
+            POSTGRES_TRANSACTIONS_PER_STEER,
+            ratio(self.postgres.commits, self.outcomes.successes),
+        );
+        report.measurement(
+            POSTGRES_STATEMENTS_PER_STEER,
+            ratio(self.postgres.statements, self.outcomes.successes),
+        );
+        report
+            .series
+            .insert(BACKLOG_DEPTH.to_owned(), self.depth.clone());
+        report.datastores = DatastoreCosts {
+            dragonfly: DatastoreCost {
+                operations: self.dragonfly_calls,
+                time_ms: None,
+            },
+            postgres: DatastoreCost {
+                operations: self.postgres.commits,
+                time_ms: None,
+            },
+        };
+    }
+}
+
+#[cfg(test)]
+mod tests;

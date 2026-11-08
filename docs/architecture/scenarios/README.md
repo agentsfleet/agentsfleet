@@ -26,7 +26,7 @@ that owns it; these are pointers, not second copies.
 
 | Invariant | Canonical home |
 |---|---|
-| The model library is the one source for a model's context cap and token rates | [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §"10. The model library — catalogue table + authenticated read" |
+| The model library is the one source for a model's context cap and token rates | [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §"10. The model library: catalogue table + authenticated read" |
 | A fleet runs the owner model reference pinned with its setup revision, resolved at lease time | [`../user_flow.md`](../user_flow.md) §"§8.7 Model and context-cap origin (platform vs. self-managed)" |
 | One credit pool drains under both postures; only the per-run rate differs | [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §"1. The two postures" |
 | The provider `api_key` never reaches a user-facing surface | [`../billing_and_provider_keys.md`](../billing_and_provider_keys.md) §"8. The self-managed credential and the api_key visibility boundary" |

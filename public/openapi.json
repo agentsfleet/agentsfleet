@@ -5548,6 +5548,134 @@
         ]
       }
     },
+    "/v1/runners/me/leases/{lease_id}/folds": {
+      "post": {
+        "tags": [
+          "Runners"
+        ],
+        "summary": "Claim the messages the fleet received while the run works",
+        "description": "Claims, for the held lease's run, the messages its fleet received after `after_sequence`, oldest first. It stops at the first parked or task-bound message, and at 32. Each message read by a completed model call is answered by the run's report. A lease that is not live answers no message. The same cursor answers the same messages, so a claim may be sent again.",
+        "operationId": "runner_claim_folds",
+        "parameters": [
+          {
+            "name": "lease_id",
+            "in": "path",
+            "description": "Lease identifier (version 7 universally unique identifier, or UUID).",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FoldRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FoldResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The request is invalid",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You do not have permission for this action",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The resource was not found or is not accessible to you",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The request body exceeds this endpoint's size limit",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "A request or capacity limit has been reached",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "An internal server error occurred",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A required service is unavailable",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemBody"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "RunnerBearerAuth": []
+          }
+        ]
+      }
+    },
     "/v1/runners/me/leases/{lease_id}/messages": {
       "post": {
         "tags": [
@@ -21397,7 +21525,7 @@
               "string",
               "null"
             ],
-            "description": "Continue with starting_after, or null at the end of this catalogue snapshot."
+            "description": "Continue with `starting_after`, or null at the end of this catalogue snapshot."
           },
           "request_id": {
             "type": "string",
@@ -28280,6 +28408,74 @@
           }
         }
       },
+      "FoldRequest": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/leases/{lease_id}/folds` request.",
+        "required": [
+          "fencing_token",
+          "after_sequence"
+        ],
+        "properties": {
+          "after_sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The last message's sequence this run already read; 0 before the first."
+          },
+          "fencing_token": {
+            "type": "integer",
+            "format": "int64",
+            "description": "The lease's fencing token; a holder the fleet has superseded claims\nnothing.",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "FoldResponse": {
+        "type": "object",
+        "description": "`POST /v1/runners/me/leases/{lease_id}/folds` reply: the messages claimed\nfor the run, oldest first, at most [`FOLDS_PER_CLAIM_MAX`].",
+        "required": [
+          "inputs"
+        ],
+        "properties": {
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FoldedInput"
+            },
+            "description": "The messages, oldest first. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          }
+        },
+        "additionalProperties": false
+      },
+      "FoldedInput": {
+        "type": "object",
+        "description": "One message the fleet received, claimed for the run, whatever sent it: a\nsteer, a webhook, a chat mention or a schedule fire.",
+        "required": [
+          "event_id",
+          "sequence",
+          "text"
+        ],
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "description": "The message's event id; its own reply lands on that event. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
+          "sequence": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Its place in the fleet's order. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
+          "text": {
+            "type": "string",
+            "description": "The message's text. It is the request's `message` string when it has\none. Otherwise it is the whole request, so a payload with no `message`\nstill reaches the run verbatim. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          }
+        },
+        "additionalProperties": false
+      },
       "GoalDecisionPolicy": {
         "type": "object",
         "description": "Reviewed goal-template revision and acceptance thresholds.",
@@ -31949,6 +32145,14 @@
             "description": "Monotonic guard, verified against the fleet's live sequence.",
             "minimum": 0
           },
+          "folded_through_sequence": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "The last folded message a completed model call read, by sequence:\nevery message the run claimed up to it settles with this report's\nanswer. Absent when the run folded nothing, and ignored unless the run\nsucceeded."
+          },
           "held_until": {
             "type": [
               "string",
@@ -33766,12 +33970,30 @@
         "required": [
           "status",
           "event_id",
-          "replayed"
+          "replayed",
+          "disposition"
         ],
         "properties": {
+          "disposition": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SteerDisposition"
+              }
+            ],
+            "description": "Where the message went. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
+          },
           "event_id": {
             "type": "string",
             "description": "The canonical event id the steer became."
+          },
+          "folded_into_event_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The run the message joined, when `disposition` is `folded`. Beta: this field may change shape before it is stable.",
+            "x-stability": "beta"
           },
           "replayed": {
             "type": "boolean",
@@ -33782,6 +34004,15 @@
             "description": "Always `accepted`."
           }
         }
+      },
+      "SteerDisposition": {
+        "type": "string",
+        "description": "Where an accepted steer went.\n\n`started`: nothing was waiting and no run was live, so it starts a run.\n`folded`: the fleet's live run takes it at its next safe boundary.\n`queued`: it runs after the work ahead of it.",
+        "enum": [
+          "started",
+          "folded",
+          "queued"
+        ]
       },
       "SteerRequest": {
         "type": "object",

@@ -7,7 +7,7 @@
 ```text
  Private setup chat                  Fleet execution
         |                                   |
-        +----------- afd_context -----------+
+        +----------- af_context -----------+
                      |       |
                summarize     checkpoint
                      |       |
@@ -23,7 +23,7 @@ Preparation measures the serialized provider request. This covers request fields
 Finite output, money, physical-call, runtime and cancellation limits still apply.
 No independent 32,768-token input allowance or lifetime 64-message refusal remains.
 
-`afd_context` owns history selection, summary format, checkpoint validation and restoration.
+`af_context` owns history selection, summary format, checkpoint validation and restoration.
 `HistorySource`, `TokenEstimator`, `Summarizer` and `CheckpointStore` adapt effects.
 Known adapters use generics; selected runtime effects use object-safe trait objects.
 
@@ -55,7 +55,7 @@ The planner measures the summary request separately, including its reserved outp
 An oversized request repeatedly halves the selected prefix until it fits; material beyond that prefix remains in original history for subsequent preparation.
 If no complete group fits, preparation returns a window error and sends no summary request.
 
-The selected conversation model receives one tools-disabled request with fixed instructions from `afd_context/src/summary.rs`.
+The selected conversation model receives one tools-disabled request with fixed instructions from `af_context`'s summary module.
 The input quotes the previous summary and selected complete conversation groups as JSON.
 The instructions request the goal, constraints, decisions, completed work, remaining work and exact references, preserving uncertainty and unresolved failures.
 
@@ -67,10 +67,10 @@ An incomplete response, tool call, malformed summary or missing usage cannot pub
 
 Validation proves the document's shape and source identity; it cannot prove that the model preserved every relevant fact.
 
-Token measurement uses `tiktoken-rs` through `afd_inference/src/budget.rs` for recognized model encodings.
+Token measurement uses `tiktoken-rs` through `af_inference`'s budget module for recognized model encodings.
 Other models get the `o200k_base` count plus a quarter, rounded up (`PROXY_HEADROOM_PERCENT`).
 
-That headroom is provisional. The `model_input_calibration` trace records each call's estimate beside the provider's reported input, and per-model ratios read from it replace the single number.
+That headroom is temporary. The `model_input_calibration` trace records each call's estimate beside the provider's reported input. Per-model ratios read from it replace the single number.
 
 Measurement covers the serialized provider request, including tools and replay data, plus 32 tokens per history message.
 
@@ -100,7 +100,7 @@ A new runtime lease does not inherit another lease's conversation checkpoint.
 
 ## User-visible progress
 
-The engine offers `Read`, `Summarizing` and `Committed` observations in `afd_context/src/compact.rs`.
+The engine offers `Read`, `Summarizing` and `Committed` observations in `af_context`'s compact module.
 Setup sends `context.progress` through its creator-private stream; fleet runs send `context_progress` through the authenticated activity stream.
 Each notice contains a generation and a closed state: `summarizing`, `resuming` or `interrupted`.
 
@@ -111,11 +111,11 @@ Runtime child summaries remain private; root summaries announce progress without
 Setup notices recheck the current creator, membership, lease and message before publication and forwarding.
 The browser accepts notices only for a known running message, rejects older generations and clears visible hints on reconnect, cancellation or completion.
 
-Ordinary reply text replaces the provisional status. Saved history remains authoritative.
+Ordinary reply text replaces the interim status. Saved history remains authoritative.
 
 ## Operational traces
 
-`afd_context::Trace` creates a `context.compact` span around a physical summary and its guarded publication.
+`af_context::Trace` creates a `context.compact` span around a physical summary and its guarded publication.
 The paired events are `context_compaction_started`, `context_compaction_completed` and `context_compaction_failed`.
 Dropping unfinished work records failure; completion is recorded only after the durable commit succeeds.
 
@@ -171,20 +171,22 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 
 ## Implementation scope
 
-| Area | Files |
-|---|---|
-| Shared engine | `rustd/crates/afd_context/Cargo.toml`, `src/{lib,error,window,ports,plan,compact,checkpoint,summary,trace}.rs`, tests and daemon repository modules |
-| Registration and storage | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `schema/2160_memory_context_checkpoints.sql`, `rustd/crates/afd_db/src/migration.rs` and migration tests |
-| Authoring admission and accounting | `rustd/crates/afd_authoring/Cargo.toml`, `src/lease/claim/{context,issue/payload}.rs`, claim history SQL, `src/model/budget.rs`, report usage and model preparation/receipt/continuation modules and new context adapters |
-| Runner protocol | `rustd/crates/afd_wire/src/authoring/{model,meter,lease}.rs`, shared context payloads/paths, runner route declarations and generated `public/openapi.json` |
-| Runtime | `rustd/crates/afr_agent/Cargo.toml`, context and loop modules, provider request estimation, `rustd/crates/afd_gate/src/policy/context.rs`, checkpoint adapter on `AgentRun` |
-| Trusted transport | `rustd/crates/afd_http/src/services/leasing` and its manifests, `rustd/crates/afd_api_runner` context handlers, `rustd/crates/afd_fleet` fenced context methods, `rustd/crates/afr_supervisor` authoring turn, client and context adapter modules, related manifests |
-| Status and traces | `afd_context/src/trace.rs`, `afd_authoring/src/model/{dispatch,progress}`, tenant private-stream forwarding, shared activity payloads, runtime/supervisor activity handling, app draft/fleet stream reducers, projections, accessible status components and their tests |
-| Behavior and evidence | Host unit/integration tests, existing unchanged continuity acceptance, `docs/architecture/{README,capabilities,runner_fleet,api_resources,billing_and_provider_keys}.md`, active M230 spec and relevant published guidance |
+The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
+The checkpoint table is `schema/2160_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
+
+Authoring admission and accounting live in `afd_authoring` (lease claim, model budget, dispatch, progress and receipt).
+The runner protocol lives in `af_wire` (authoring model, meter and lease payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.
+
+Runtime use lives in `afr_agent` (context and loop modules, provider request estimation) and `afd_gate`'s context policy.
+Trusted transport lives in `afd_http`'s leasing services and `afd_api_runner`'s context handlers. It also lives in `afd_fleet`'s fenced context methods and `afr_supervisor`'s authoring turn and context adapters.
+
+Status and traces reach the browser through tenant private-stream forwarding and shared activity payloads.
+The app's draft and fleet stream reducers, projections and accessible status components render them.
+Evidence lives in host unit and integration tests, the unchanged continuity acceptance, and the architecture pages this one links.
 
 ## Required proof
 
-Run the original unchanged `make acceptance-local` after integration. Its single-fleet continuity scenario must continue past the former turn-42 failure and retain its original 181-message and four-save assertions. Record that result separately from focused proofs that force repeated compactions in each host. 
+Run the original unchanged `make acceptance-local` after integration. Its single-fleet continuity scenario must continue past the former turn-42 failure and retain its original 181-message and four-save assertions. Record that result separately from focused proofs that force repeated compactions in each host.
 
 Retain the historical failed run.
 
@@ -236,19 +238,20 @@ Database writes retain generation checks and live-lease fencing. Cancellation an
 
 **Quality ceiling:** Measure work with deterministic counters before claiming throughput improvements. The full browser scenario and real storage races remain required. A native guest engine informed by SPACE needs its own implementation and real-backend evidence.
 
-**Files:** `afd_context` planner, ports and tests; authoring preparation/funding adapters; runtime context index/estimator; affected workspace manifests; architecture and this spec. Existing executor and sandbox interfaces provide part of the backend boundary; repository preparation still requires a host-visible path.
+**Files**: the `af_context` planner, ports and tests; authoring preparation and funding adapters. The files also include the runtime context index and estimator, affected workspace manifests and this page. Existing in-sandbox server and sandbox interfaces provide part of the backend boundary.
+
+Repository preparation still requires a host-visible path.
 
 A new checkpoint-storage crate is conditional on a demonstrated dependency benefit. No acceptance limits or gate implementation changes.
 
-
 ## Proposed DT handoff and steering
 
-M236 adds an authorized cross-lease handoff through [Durable Task manifests](durable_tasks.md).
+M236 adds an authorized cross-lease handoff through [Durable Task (DT) manifests](durable_tasks.md).
 The manifest binds conversation coverage, source digest, file/Git generation and confirmed effects together.
 Keep current lease-scoped validation until that explicit handoff succeeds.
 
-A new chat lease currently carries up to eight finished question/answer turns, bounded by 65,536 bytes overall and 16,384 bytes per text.
-See `afd_fleet/src/lease/history.rs` and `afd_wire/src/lease/payload.rs`.
+A new chat lease currently carries up to eight finished question/answer turns. They are bounded by 65,536 bytes overall and 16,384 bytes per text. See `afd_fleet`'s lease history and `af_wire`'s lease payload.
+
 That window does not replay every previous tool record or inherit another lease's summary.
 
 ```text
@@ -266,9 +269,13 @@ That transport shortcut preserves logical context and does not establish hidden 
 Its `compact.rs` replaces and saves working history through an explicit compaction path.
 These observations come from source inspection, not a captured request from Indy's desktop session.
 
-M236 consumes steering between complete action groups through one native input claim.
-The runner-assigned decision model classifies the input; native receipts prevent replay through later queued admission.
-The next request carries accepted questions, DT state, compatible history, current tools and accepted input beyond the checkpoint cursor.
+A message sent while its fleet's run is live now folds into that run.
+The send answers disposition `folded` with `folded_into_event_id`, and the running lease claims the fold at its next model call (`POST /v1/runners/me/leases/{lease_id}/folds`).
+The folded message's own event receives the run's reply when the run reports succeeded.
+
+Dispositions are `started`, `folded` and `queued`.
+M236 proposes that the runner-assigned decision model classifies folded input and that native receipts prevent replay through later queued admission.
+The next request would carry accepted questions, DT state, compatible history, current tools and accepted input beyond the checkpoint cursor.
 
 Removing a steer from the queue does not mark its meaning or effects checkpointed.
 Recovery replays accepted input and reconciles recorded effects before another action.

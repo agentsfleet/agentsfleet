@@ -2,7 +2,7 @@
 
 /** What became of an invite's most recent email. Mirrors `EMAIL_STATUS_SENT`,
  * `EMAIL_STATUS_FAILED` and `EMAIL_STATUS_UNCONFIGURED` in
- * `rustd/crates/afd_tenant/src/team/invitation/mail_status.rs`. */
+ * `rustd/crates/daemon/afd_tenant/src/team/invitation/mail_status.rs`. */
 export const EMAIL_STATUS = {
   sent: "sent",
   failed: "failed",

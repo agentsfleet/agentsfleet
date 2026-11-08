@@ -62,7 +62,7 @@ ignore:
   # crate to measure bench and no where used in production". The lane's own
   # grade excludes the same path through RUSTD_COVERAGE_IGNORE in
   # make/test-integration-rustd.mk, so the two gates read one denominator.
-  - "rustd/crates/afd_bench/**"
+  - "rustd/crates/daemon/afd_bench/**"
   - "**/*.test.ts"
   - "**/*.test.tsx"
   - "**/*.spec.ts"

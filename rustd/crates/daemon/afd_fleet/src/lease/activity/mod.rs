@@ -1,0 +1,300 @@
+//! The activity verb: live-tail frames a runner forwards while its child works.
+//!
+//! A runner holds no Dragonfly, so it ships progress frames here and the daemon
+//! publishes them to `fleet:{id}:activity` for the dashboard's live tail.
+//!
+//! # Best-effort, and what that actually licenses
+//!
+//! A dropped frame is cosmetic — the durable record is the report — so a
+//! publish that fails is logged and the verb still answers. What is NOT
+//! best-effort is authorization: the lease must resolve and belong to the
+//! presenting runner, because without that check a runner could publish onto a
+//! fleet it holds no lease on and write into somebody else's live tail.
+//!
+//! Ordinary cosmetic frames remain available after supersession. Durable task
+//! progress additionally checks and locks current slot and lease ownership in
+//! its write statement before assigning daemon observation sequences. The fence
+//! also scopes call ids a lease publishes (`activity/published.rs`).
+//!
+//! # The vocabulary bridge
+//!
+//! This is the one seam where the runner's frame names become the dashboard's.
+//! They are NOT the same vocabulary: `fleet_response_chunk` on the wire is
+//! `chunk` on the channel, and that single rename is the whole reason a
+//! translation type exists rather than the wire frame being re-serialized.
+//! `Published::of` is total over [`ActivityFrame`], so a new frame variant
+//! fails the build until somebody decides what the dashboard calls it.
+
+use af_core::error_code::{Coded as _, Logged};
+use af_core::id::Uuid7;
+use af_observability::metrics::label::fleet::DeliveryStage;
+use af_observability::producers;
+use af_wire::activity::ActivityFrame;
+use jiff::Timestamp;
+
+use self::published::Published;
+use crate::error::{Result, query, row_malformed};
+use crate::lease::sql;
+use crate::lease::store::Leases;
+
+mod history;
+mod published;
+#[cfg(feature = "test-util")]
+mod vocabulary;
+
+#[cfg(feature = "test-util")]
+pub use self::vocabulary::{ACTIVITY_VARIANTS, RenderedFrame, rendered_frames};
+
+/// Statement name, for the context a query failure carries.
+const CONTEXT_TARGET: &str = "activity lease load";
+
+/// A frame could not be published; the tail loses it and the run does not care.
+const EVENT_DROPPED: &str = "activity_frame_dropped";
+
+/// Match the public history window; keep JSON overhead below the stored row cap.
+const TASK_HISTORY_FACTS: i64 = 128;
+const TASK_HISTORY_BYTES: i64 = 120_000;
+
+/// What one publish needs: whose channel, and which event the frames belong to.
+#[derive(Debug, Clone)]
+pub struct Target {
+    /// The fleet whose channel carries the tail.
+    pub fleet_id: Uuid7,
+    /// The event the frames describe.
+    pub event_id: String,
+    /// Both instants are stamped by the control plane, so their differences
+    /// from activity receipt do not compare clocks across hosts.
+    pub lease_created_at: Timestamp,
+    /// Producer event timestamp in epoch milliseconds.
+    pub event_created_at: Timestamp,
+    /// Expired or superseded holders can publish cosmetic frames but cannot
+    /// contribute a latency sample to the active-lease histogram.
+    pub timing_eligible: bool,
+    /// The lease's fencing token, distinct per claim of the fleet. Kept as the
+    /// column's own `i64`: it only scopes a cosmetic id, so a value this daemon
+    /// never writes is no reason to refuse the tail.
+    pub fence: i64,
+}
+
+impl Leases {
+    /// Retain task observations only while the supplied lease still owns its slot.
+    /// Returns no history when ownership changed or a competing transaction holds it.
+    ///
+    /// # Errors
+    /// Reports database failures while saving bounded progress.
+    pub async fn retain_task_activity(
+        &self,
+        target: &Target,
+        runner_id: &Uuid7,
+        lease_id: &str,
+        records: &[af_wire::activity::TaskActivityRecord],
+    ) -> Result<Option<af_wire::activity::TaskActivityHistory>> {
+        let mut connection = self.pool().acquire().await?;
+        let history: Option<sqlx::types::Json<af_wire::activity::TaskActivityHistory>> =
+            sqlx::query_scalar(include_str!("task_history.sql"))
+                .bind(target.fleet_id.as_str())
+                .bind(&target.event_id)
+                .bind(sqlx::types::Json(records))
+                .bind(lease_id)
+                .bind(runner_id.as_str())
+                .bind(target.fence)
+                .bind(sql::LEASE_STATUS_ACTIVE)
+                .bind(TASK_HISTORY_FACTS)
+                .bind(TASK_HISTORY_BYTES)
+                .fetch_optional(&mut *connection)
+                .await
+                .map_err(query(
+                    "retain bounded task progress before live publication",
+                ))?;
+        Ok(history.map(|value| value.0))
+    }
+
+    /// Publish one batch of frames to `target`'s channel.
+    ///
+    /// Never fails the verb. Each frame is encoded independently so one
+    /// unencodable frame does not silence the rest of the batch. The encodable
+    /// frames are published together in order; a Dragonfly outage costs the
+    /// tail rather than the run.
+    pub async fn publish_activity(&self, target: &Target, frames: &[ActivityFrame<'_>]) {
+        let fleet = target.fleet_id.as_str();
+        let streams = self.streams();
+        let mut payloads = Vec::with_capacity(frames.len());
+        for frame in frames {
+            // `args_redacted` arrives as a STRING holding JSON. Parsing it into
+            // a tree only to splice it back out would build and drop a whole
+            // value per tool call. `RawValue` says "these bytes are already
+            // JSON": it validates the syntax and keeps the bytes, so the frame
+            // is checked without ever being materialised.
+            let owned;
+            let published = match Published::of(target, frame) {
+                Ok(value) => {
+                    owned = value;
+                    &owned
+                }
+                Err(malformed) => {
+                    tracing::debug!(
+                        fleet_id = fleet,
+                        reason = %malformed,
+                        event = EVENT_DROPPED,
+                        "a frame carried arguments that are not JSON; the tail loses it"
+                    );
+                    continue;
+                }
+            };
+            // Strings, integers, flags and JSON `Published::of` already
+            // validated: serializing that to a `String` cannot fail, so there is
+            // no drop arm to take.
+            payloads.extend(serde_json::to_string(published).ok());
+        }
+        if let Err(unreachable_queue) = streams.publish_tail_batch(fleet, &payloads).await {
+            let Logged { error_code, reason } = unreachable_queue.logged();
+            tracing::debug!(
+                error_code,
+                fleet_id = fleet,
+                reason,
+                event = EVENT_DROPPED,
+                "the queue would not take a live-tail batch; the run is unaffected"
+            );
+        }
+    }
+
+    /// The lease `lease_id` names, if it belongs to `runner_id`.
+    ///
+    /// No `status` predicate: an expired lease still resolves, because a
+    /// superseded holder's cosmetic frames are harmless and refusing them would
+    /// cut the tail off exactly when a run is being reclaimed — the moment an
+    /// operator is most likely to be watching it.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, and a `fleet_id` that is not
+    /// an identifier.
+    pub async fn load_activity_target(
+        &self,
+        lease_id: &str,
+        runner_id: &Uuid7,
+    ) -> Result<Option<Target>> {
+        let mut connection = self.pool().acquire().await?;
+        let found: Option<LeaseTarget> = sqlx::query_as(sql::activity::SELECT_LEASE_TARGET)
+            .bind(lease_id)
+            .bind(runner_id.as_str())
+            .bind(sql::LEASE_STATUS_ACTIVE)
+            .fetch_optional(&mut *connection)
+            .await
+            .map_err(query(CONTEXT_TARGET))?;
+        let Some(found) = found else {
+            return Ok(None);
+        };
+        Ok(Some(Target {
+            fleet_id: Uuid7::parse(&found.fleet_id)
+                .map_err(row_malformed("runner.leases", "fleet_id"))?,
+            event_id: found.event_id,
+            lease_created_at: found.created_at,
+            event_created_at: found.event_created_at,
+            timing_eligible: found.live,
+            fence: found.fencing_token,
+        }))
+    }
+}
+
+/// What [`sql::activity::SELECT_LEASE_TARGET`] answers for one lease.
+#[derive(sqlx::FromRow)]
+struct LeaseTarget {
+    fleet_id: String,
+    event_id: String,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    created_at: Timestamp,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    event_created_at: Timestamp,
+    fencing_token: i64,
+    live: bool,
+}
+
+impl crate::lease::pull::Plane {
+    /// Forward one batch of live-tail frames for a lease this runner holds.
+    ///
+    /// # Errors
+    /// Refuses a lease that is not this runner's, and reports a datastore that
+    /// would not answer. A queue that will not take a frame is NOT an error —
+    /// see [`Leases::publish_activity`].
+    pub async fn activity(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: &str,
+        frames: &[ActivityFrame<'_>],
+    ) -> Result<()> {
+        let Some(target) = self
+            .leases
+            .load_activity_target(lease_id, runner_id)
+            .await?
+        else {
+            return Err(crate::error::lease_not_found());
+        };
+        let retained: Vec<_> = frames
+            .iter()
+            .filter_map(ActivityFrame::task_activity)
+            .collect();
+        let published = if retained.is_empty() {
+            frames.to_vec()
+        } else if target.timing_eligible {
+            let history = self
+                .leases
+                .retain_task_activity(&target, runner_id, lease_id, &retained)
+                .await?;
+            history::canonical(frames, &history.unwrap_or_default())
+        } else {
+            // A superseded worker cannot attach unsequenced task progress to a live event.
+            frames
+                .iter()
+                .filter(|frame| frame.task_activity().is_none())
+                .cloned()
+                .collect()
+        };
+        record_first_chunk(&target, frames);
+        self.leases.publish_activity(&target, &published).await;
+        Ok(())
+    }
+}
+
+/// The first chunk carries the runner's agent-relative duration once; all later
+/// chunks carry none. The two daemon-side samples come from one clock read and
+/// are skipped if the clock moved back.
+fn record_first_chunk(target: &Target, frames: &[ActivityFrame<'_>]) {
+    if !target.timing_eligible {
+        return;
+    }
+    let Some(first_ms) = first_visible_candidate_ms(frames) else {
+        return;
+    };
+    let received_at = af_core::clock::now();
+    for (stage, since) in [
+        (DeliveryStage::LeaseToFirstChunk, target.lease_created_at),
+        (DeliveryStage::EventToFirstChunk, target.event_created_at),
+    ] {
+        producers::fleet::delivery_stage(stage, af_core::clock::elapsed(since, received_at));
+    }
+    producers::fleet::delivery_stage(
+        DeliveryStage::ZombieToFirstChunk,
+        core::time::Duration::from_millis(first_ms),
+    );
+}
+
+fn first_visible_candidate_ms(frames: &[ActivityFrame<'_>]) -> Option<u64> {
+    frames.iter().find_map(|frame| match frame {
+        ActivityFrame::FleetResponseChunk(body)
+            if body.stream_start && body.stream_contiguous && body.stream_seq == 0 =>
+        {
+            body.first_chunk_after_ms
+        }
+        ActivityFrame::TaskDecisionStarted(_)
+        | ActivityFrame::TaskDecisionCompleted(_)
+        | ActivityFrame::TaskTransferProgress(_)
+        | ActivityFrame::ContextProgress(_)
+        | ActivityFrame::ToolCallStarted(_)
+        | ActivityFrame::FleetResponseChunk(_)
+        | ActivityFrame::ToolCallCompleted(_)
+        | ActivityFrame::ToolCallProgress(_) => None,
+    })
+}
+
+#[cfg(test)]
+mod tests;

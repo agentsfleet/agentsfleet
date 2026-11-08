@@ -56,7 +56,7 @@ export type EventDetail = EventRow & {
   task_activity?: unknown;
 };
 
-/** `afd_wire::tool_trace::ToolTrace`: the calls in order, and how many the
+/** `af_wire::tool_trace::ToolTrace`: the calls in order, and how many the
  * runner dropped to stay inside the trace's bounds. */
 export type SavedToolTrace = {
   calls: SavedToolCall[];

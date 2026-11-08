@@ -33,7 +33,7 @@ export function applyEventAdmitted(prev: FleetEvent[], frame: AdmittedFrame): Fl
 export function receivedUpdate(existing: FleetEvent, frame: ReceivedFrame): FleetEvent | null {
   const message = text(frame.message);
   const fillsText = existing.text.length === 0 && message.length > 0;
-  const starts = existing.status === AGENTSFLEET_EVENT_STATUS.QUEUED;
+  const starts = awaitsOwnRun(existing);
   if (!fillsText && !starts) return null;
   return {
     ...existing,
@@ -50,7 +50,7 @@ export function receivedUpdate(existing: FleetEvent, frame: ReceivedFrame): Flee
 /** A waiting row a recovered "received" history row starts: the received frame
  * fell in a gap. Any other row is returned as it is. */
 export function startWaiting(event: FleetEvent): FleetEvent {
-  if (event.status !== AGENTSFLEET_EVENT_STATUS.QUEUED) return event;
+  if (!awaitsOwnRun(event)) return event;
   return {
     ...event,
     status: AGENTSFLEET_EVENT_STATUS.RECEIVED,
@@ -59,6 +59,14 @@ export function startWaiting(event: FleetEvent): FleetEvent {
 }
 
 // ── internals ────────────────────────────────────────────────────────────
+
+// A row that has not begun its own run: queued, or labelled folded by a 202
+// whose live run then ended without claiming it. The daemon runs such a
+// message like any queued one, so its received frame must start it; left
+// labelled, the row would read "Added to the current run" through its own run.
+function awaitsOwnRun(event: FleetEvent): boolean {
+  return event.status === AGENTSFLEET_EVENT_STATUS.QUEUED || event.status === AGENTSFLEET_EVENT_STATUS.FOLDED;
+}
 
 function waitingRow(frame: AdmittedFrame, message: string): FleetEvent {
   const createdAt = instantMs(frame.created_at);

@@ -1,0 +1,217 @@
+//! The runner's memory verbs: what a run is seeded with, what it learned, and
+//! what it asks for past its window.
+//!
+//! # They authorize differently
+//!
+//! Hydrate asks "does this runner hold a live lease on this fleet, and has no
+//! reclaim moved the fleet past it" — a read of a fleet's own memory by the
+//! runner currently running it.
+//!
+//! Capture and recall ask more. The body names the lease, exactly as a report
+//! does; the statement cross-checks that lease against the path's fleet, so a
+//! runner cannot reach one fleet's memory holding another's lease; and the
+//! token is fenced by the rule report and renew apply — it must be the lease's
+//! own, and the lease must still hold the fleet — so a holder a reclaim has
+//! already superseded reads and writes nothing, whatever token it presents.
+//!
+//! The fence statements in [`crate::lease::fence`] scope the lease to this
+//! runner and fleet; `Fence::current` and `Fence::holds` then apply the
+//! supersession and own-token rule report and renew share. Past the fence,
+//! memory is `afd_memory`'s: the grants, the store and the window are decided
+//! there.
+//!
+//! # The residual race, stated
+//!
+//! The fence is read, then memory is read or written, as two statements on
+//! two connections; report and renew instead fence inside the write. A reclaim
+//! that commits between the two lets a superseded request through, and a
+//! capture there can overwrite an entry the new holder wrote under the same
+//! key. It is bounded to the requests in flight when the reclaim commits.
+//! `crate::lease::write_fence` is the shape that would close it: the fence
+//! proved inside the write's own transaction.
+
+use af_core::id::Uuid7;
+use af_wire::memory::{
+    MemoryDelta, MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest,
+    MemoryRecallResponse,
+};
+use afd_memory::Captured;
+use jiff::Timestamp;
+
+use crate::error::{Result, lease_not_found, stale_fence};
+use crate::lease::fence::Fence;
+use crate::lease::pull::Plane;
+
+/// The lease a memory write is fenced on, by its four names.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Holder<'a> {
+    pub(crate) runner_id: &'a Uuid7,
+    pub(crate) fleet_id: &'a Uuid7,
+    pub(crate) lease_id: &'a str,
+    pub(crate) fencing_token: u64,
+}
+
+/// A run's memory was persisted.
+const EVENT_CAPTURED: &str = "memory_captured";
+
+/// A memory verb was fenced out — a superseded lease, or a token not the
+/// lease's own — and nothing was read or written.
+const EVENT_FENCED: &str = "memory_verb_fenced";
+
+impl Plane {
+    /// The memory window that seeds one run.
+    ///
+    /// # Errors
+    /// Refuses a runner holding no live lease on `fleet_id`, and one whose lease
+    /// the fleet has moved past. Reports a memory store that would not answer.
+    pub async fn hydrate(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+    ) -> Result<MemoryHydrateResponse<'static>> {
+        let Some(fence) = self
+            .leases
+            .live_fence_for_fleet(runner_id, fleet_id)
+            .await?
+        else {
+            return Err(lease_not_found());
+        };
+        if !fence.current() {
+            return Err(superseded(fleet_id, None, fence));
+        }
+        Ok(self.memories.hydrate(fleet_id).await?)
+    }
+
+    /// Persist what one run learned.
+    ///
+    /// # Errors
+    /// Refuses a lease that is not this runner's or not this fleet's, and a
+    /// holder the fleet has superseded. Reports a store that would not answer.
+    /// A delta refused for its shape, or a share from a fleet that may not
+    /// publish, is COUNTED, not an error — one such entry must not lose a
+    /// run's whole memory.
+    pub async fn capture(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+        request: &MemoryPushRequest<'_>,
+        now: Timestamp,
+    ) -> Result<Captured> {
+        let holder = Holder {
+            runner_id,
+            fleet_id,
+            lease_id: &request.lease_id,
+            fencing_token: request.fencing_token,
+        };
+        self.capture_for(holder, &request.memory, now).await
+    }
+
+    /// [`Plane::capture`]'s fence and write, for a caller holding the parts
+    /// rather than a push body: the report verb, whose body carries the run's
+    /// memory beside its result.
+    pub(crate) async fn capture_for(
+        &self,
+        holder: Holder<'_>,
+        memory: &[MemoryDelta<'_>],
+        now: Timestamp,
+    ) -> Result<Captured> {
+        let Holder {
+            runner_id,
+            fleet_id,
+            lease_id,
+            fencing_token,
+        } = holder;
+        self.fenced(runner_id, fleet_id, lease_id, fencing_token)
+            .await?;
+        let counted = self.memories.capture(fleet_id, memory, now).await?;
+
+        // The CONTENT is never logged — only the tallies and the scope.
+        let fleet = fleet_id.as_str();
+        let Captured {
+            stored,
+            skipped,
+            truncated,
+            unpublished,
+            swept,
+            evicted,
+        } = counted;
+        tracing::debug!(
+            fleet_id = fleet,
+            stored,
+            skipped,
+            truncated,
+            unpublished,
+            swept,
+            evicted,
+            event = EVENT_CAPTURED,
+            "a run's memory was persisted"
+        );
+        Ok(counted)
+    }
+
+    /// The fleet's entries holding the request's query, and — for a fleet
+    /// granted to read shared memory — the workspace's shared ones.
+    ///
+    /// # Errors
+    /// As [`Plane::capture`]'s fence, and a store that would not answer.
+    pub async fn recall(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+        request: &MemoryRecallRequest<'_>,
+    ) -> Result<MemoryRecallResponse<'static>> {
+        self.fenced(
+            runner_id,
+            fleet_id,
+            &request.lease_id,
+            request.fencing_token,
+        )
+        .await?;
+        Ok(self
+            .memories
+            .recall(fleet_id, &request.query, request.limit)
+            .await?)
+    }
+
+    /// Proves `lease_id` is this runner's live lease on `fleet_id`, that the
+    /// fleet has not moved past it, and that `token` is its own.
+    async fn fenced(
+        &self,
+        runner_id: &Uuid7,
+        fleet_id: &Uuid7,
+        lease_id: &str,
+        token: u64,
+    ) -> Result<()> {
+        let Some(fence) = self
+            .leases
+            .live_fence_for_lease(runner_id, lease_id, fleet_id)
+            .await?
+        else {
+            return Err(lease_not_found());
+        };
+        if !fence.holds(token) {
+            return Err(superseded(fleet_id, Some(token), fence));
+        }
+        Ok(())
+    }
+}
+
+/// The refusal a fenced memory verb answers, logged once for every caller.
+///
+/// `token` is what the request presented; a hydrate presents none. `own`
+/// beside it tells a superseded lease (`own` below `live_seq`) from a token
+/// that is not the lease's.
+fn superseded(fleet_id: &Uuid7, token: Option<u64>, fence: Fence) -> crate::Error {
+    let fleet = fleet_id.as_str();
+    let own = fence.own();
+    let live_seq = fence.live_seq();
+    tracing::debug!(
+        fleet_id = fleet,
+        fencing_token = token,
+        own,
+        live_seq,
+        event = EVENT_FENCED,
+        "a superseded lease, or a token not its own, reached memory; nothing was read or stored"
+    );
+    stale_fence()
+}

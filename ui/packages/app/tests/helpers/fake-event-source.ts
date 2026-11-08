@@ -104,7 +104,7 @@ export class FakeEventSource {
   }
 
   // The daemon's last frame to a caller who lost access, as
-  // rustd/crates/afd_sse/src/frame/mod.rs `Frame::access_revoked` writes it.
+  // rustd/crates/daemon/afd_sse/src/frame/mod.rs `Frame::access_revoked` writes it.
   revokeAccess(): void {
     const ev = { data: JSON.stringify({ kind: FRAME_KIND.ACCESS_REVOKED, error_code: ERROR_CODE.AUTH_FORBIDDEN }) } as MessageEvent;
     for (const fn of this.listeners.get(FRAME_KIND.ACCESS_REVOKED) ?? []) fn(ev);

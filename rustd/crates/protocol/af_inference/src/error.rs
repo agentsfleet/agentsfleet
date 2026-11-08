@@ -1,0 +1,148 @@
+//! Configuration errors carry no endpoint or credential bytes.
+
+/// Result of validating a persisted inference configuration.
+pub type Result<T, E = Error> = core::result::Result<T, E>;
+
+af_core::error_shell!(
+    /// A model's persisted inference settings are unusable.
+    pub struct Error(ErrorKind);
+);
+
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum ErrorKind {
+    #[error("the provider document cannot be decoded")]
+    Document {
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("inference request cannot be encoded")]
+    Encode {
+        #[source]
+        source: rig_core::error::EncodeError,
+    },
+    #[error("inference request is unsupported")]
+    Request {
+        #[source]
+        source: rig_core::ProviderError,
+    },
+    #[error("inference settings exceed their declared bounds")]
+    Bounds {
+        #[source]
+        source: garde::Report,
+    },
+    #[error("inference endpoint is not a valid URL")]
+    Url {
+        #[source]
+        source: url::ParseError,
+    },
+    #[error("inference endpoint must be HTTPS without userinfo, query or fragment")]
+    Endpoint,
+    #[error("active decision settings require Noul and Choice capabilities")]
+    DecisionCapabilities,
+    #[error("inference dialect is not supported for the configured API")]
+    Dialect,
+    #[error("inference request must contain JSON bytes")]
+    Body,
+    #[error("model output limit exceeds its context window")]
+    OutputLimit,
+    #[error("the model provider response exceeds its byte bound")]
+    ReplyTooLarge,
+    #[error("the model provider response deadline expired")]
+    StreamDeadline,
+    #[error("the model turn was cancelled")]
+    StreamCancelled,
+    #[error("the model transport does not upload multipart bodies")]
+    Multipart,
+    #[error("complete inference input exhausts the model context window")]
+    ContextLimit,
+    #[error("the input count belongs to a different prepared request or route")]
+    CountStale,
+    #[error("the provider count endpoint does not support this prepared input")]
+    CountUnsupported,
+    #[error("the provider input count is missing or invalid")]
+    CountReply,
+    #[error("the provider input count cannot be decoded")]
+    CountDocument {
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("the provider input count failed with HTTP status {status}")]
+    CountStatus { status: u16 },
+    #[error("the provider input count transport failed")]
+    CountTransport {
+        #[source]
+        source: rig_core::http_client::Error,
+    },
+    #[error("the model API key is not a valid header value")]
+    KeyHeader {
+        #[source]
+        source: http::header::InvalidHeaderValue,
+    },
+    #[error("the Gemini request line does not parse once its key is lifted out")]
+    KeyPath {
+        #[source]
+        source: http::uri::InvalidUri,
+    },
+    #[error("the Gemini request URI does not reassemble once its key is lifted out")]
+    KeyUri {
+        #[source]
+        source: http::uri::InvalidUriParts,
+    },
+}
+
+af_core::error_lifts!(Error, ErrorKind:
+    serde_json::Error => Document,
+    rig_core::error::EncodeError => Encode,
+    rig_core::ProviderError => Request,
+    garde::Report => Bounds,
+    url::ParseError => Url,
+    http::header::InvalidHeaderValue => KeyHeader,
+    http::uri::InvalidUri => KeyPath,
+    http::uri::InvalidUriParts => KeyUri,
+    rig_core::http_client::Error => CountTransport,
+);
+
+impl Error {
+    /// Whether the shared transport stopped an oversized response.
+    #[must_use]
+    pub const fn is_oversize(&self) -> bool {
+        matches!(self.kind(), ErrorKind::ReplyTooLarge)
+    }
+
+    /// Invalid configuration is a caller error, independent of provider availability.
+    #[must_use]
+    pub const fn code(&self) -> af_core::error_code::ErrorCode {
+        match self.kind() {
+            ErrorKind::ReplyTooLarge
+            | ErrorKind::StreamDeadline
+            | ErrorKind::StreamCancelled
+            | ErrorKind::CountReply
+            | ErrorKind::CountDocument { .. }
+            | ErrorKind::CountStatus { .. }
+            | ErrorKind::CountTransport { .. } => af_core::error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Document { .. }
+            | ErrorKind::Encode { .. }
+            | ErrorKind::Request { .. }
+            | ErrorKind::Bounds { .. }
+            | ErrorKind::Url { .. }
+            | ErrorKind::Endpoint
+            | ErrorKind::DecisionCapabilities
+            | ErrorKind::Dialect
+            | ErrorKind::Body
+            | ErrorKind::OutputLimit
+            | ErrorKind::Multipart
+            | ErrorKind::ContextLimit
+            | ErrorKind::CountStale
+            | ErrorKind::CountUnsupported
+            | ErrorKind::KeyHeader { .. }
+            | ErrorKind::KeyPath { .. }
+            | ErrorKind::KeyUri { .. } => af_core::error_code::INVALID_REQUEST,
+        }
+    }
+}
+
+impl From<Error> for rig_core::ProviderError {
+    fn from(source: Error) -> Self {
+        Self::from_transport_error(rig_core::http_client::Error::instance(source))
+    }
+}

@@ -49,7 +49,7 @@ runs:
       env:
         OUTPUT_DIR: ${{ inputs.output-dir }}
         DIGEST: ${{ steps.identity.outputs.digest }}
-        RUNNER_KEY_SOURCE: rustd/crates/afr_sandbox/src/toolbox/manifest/mod.rs
+        RUNNER_KEY_SOURCE: rustd/crates/runner/afr_sandbox/src/toolbox/manifest/mod.rs
       run: |
         set -euo pipefail
         out="$PWD/$OUTPUT_DIR"

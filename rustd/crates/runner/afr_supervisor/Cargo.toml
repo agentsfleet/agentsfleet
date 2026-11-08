@@ -1,0 +1,122 @@
+[package]
+name = "afr_supervisor"
+description = "The runner's supervisor: the daemon-facing duties a lease relies on, outside every sandbox."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# The daemon's integration lane runs the supervisor against fixture
+# repositories served over `file://` (`run_fetching_from`); a fake daemon
+# serves on `test_util::Listener`.
+test-util = ["dep:axum"]
+
+[dependencies]
+af_context = { workspace = true }
+# Proves a lease's sandbox size within the wire's declared bounds before the
+# engine builds it.
+garde.workspace = true
+# The runner's own families: sandbox start, dropped frames, failed pushes.
+afr_telemetry.workspace = true
+# The span vocabulary every runner span is written in, beside the daemon's.
+af_observability.workspace = true
+# Identifiers, the lease clock, worker-count clamps, the environment seam and
+# the registry codes a failure is logged under.
+af_core.workspace = true
+# Per-report content keys, authenticated metadata and encrypted private spool bytes.
+af_crypto.workspace = true
+# No-follow, nonblocking opens keep private spool reads on regular files.
+libc.workspace = true
+cap-std.workspace = true
+rustix.workspace = true
+# The one wire: every verb's request and reply, spelled once.
+af_wire.workspace = true
+# The instants a lease, a renewal and a held sandbox carry; the runner reads
+# them off the injected clock and waits on the span left until each.
+jiff.workspace = true
+afr_agent.workspace = true
+# Physical decisions reuse the existing guarded provider protocols.
+af_providers.workspace = true
+afr_executor.workspace = true
+# The memory seed a run starts from, and the recall seam past its window.
+afr_memory.workspace = true
+afr_sandbox.workspace = true
+# Which bound repositories a lease checks out, read from its tool policy.
+afr_tools.workspace = true
+# The runner token and every minted credential are held as one `Secret`.
+af_secrets.workspace = true
+# The mint seam a lease's egress guard mints through, which the supervisor
+# implements over its control plane.
+af_egress.workspace = true
+# `RunnerApi` is `dyn`: production holds the HTTP client, tests a fake.
+async-trait.workspace = true
+# Bounded exponential retry for the calls that may be retried, with a predicate
+# that refuses to retry a 4xx.
+backon.workspace = true
+# The basic credentials a repository fetch presents its token in.
+base64.workspace = true
+bytes.workspace = true
+# The fleet's repository, fetched into a host-side mirror over HTTPS and
+# checked out into the lease's workspace.
+gix = { workspace = true, features = ["blocking-network-client", "blocking-http-transport-reqwest-rust-tls", "worktree-mutation"] }
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+# The report spool writes through a temporary file that is
+# persisted only once complete, so a crash never leaves half a report.
+tempfile.workspace = true
+thiserror.workspace = true
+# The daemon's address, parsed once at boot; every route joins under it.
+url.workspace = true
+# The runner token and minted credentials are wiped from memory when dropped.
+zeroize.workspace = true
+# `fs` for the report spool's one-step renames and removals; the executor
+# links it already. `net` for the host resolver an egress allowlist is
+# resolved through.
+tokio = { workspace = true, features = ["fs", "rt", "sync", "time", "macros", "net"] }
+# The token that stops a run when its lease is refused, and stops the pool at
+# shutdown.
+tokio-util.workspace = true
+# `test_util::Listener`: the loopback listener a fake daemon serves on.
+axum = { workspace = true, optional = true }
+tracing.workspace = true
+# `catch_unwind` around an agent run, so a panicking engine still has its
+# sandbox torn down.
+futures-util.workspace = true
+
+[dev-dependencies]
+# Verified local HTTPS object storage boundary for recovery transfer tests.
+rcgen.workspace = true
+rustls.workspace = true
+tokio-rustls.workspace = true
+hyper.workspace = true
+hyper-util.workspace = true
+# The recorder a suite reads its own measurements back through.
+afr_telemetry = { workspace = true, features = ["test-util"] }
+# `FakeResolver`: the egress suites resolve through the one fake the guarded
+# client's suites use.
+af_egress = { workspace = true, features = ["test-util"] }
+# Stub handlers, so the lease suites admit through a real catalog: a
+# sandbox-side tool starts a sandbox, a supervisor-side one does not.
+afr_tools = { workspace = true, features = ["test-util"] }
+# The fake engine's `Behaviour::Break` answers an executor failure, and the
+# lift from `afr_executor::Error` into `afr_agent::Error` exists only under
+# this feature; named here so the tests build when this crate is selected
+# alone.
+afr_agent = { workspace = true, features = ["test-util"] }
+# The daemon side of `HttpRunnerApi`'s tests: a real listener, so a status code
+# and a header are proven on the socket rather than assumed by a mock.
+axum = { workspace = true, features = ["json"] }
+af_core = { workspace = true, features = ["test-util"] }
+# The subscriber a lease's spans are exported through in the telemetry suite.
+tracing-subscriber.workspace = true
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "test-util"] }
