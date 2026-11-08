@@ -21,7 +21,7 @@ CREATE TABLE fleet.obligations (
     event_id        UUID   NOT NULL,
     answer          TEXT   NOT NULL,
     receipt         TEXT,
-    claim_expires_at   TIMESTAMPTZ(3) NOT NULL,
+    claim_expires_at TIMESTAMPTZ(3) NOT NULL,
     next_attempt_at TIMESTAMPTZ(3),
     delivered_at    TIMESTAMPTZ(3),
     attempt_count   BIGINT NOT NULL,

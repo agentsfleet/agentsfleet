@@ -61,6 +61,7 @@ pub struct Worker<S> {
     posters: Posters<S>,
     entropy: Entropy,
     pass: Duration,
+    renew: Duration,
 }
 
 impl<S: Deliver + 'static> Worker<S> {
@@ -73,6 +74,7 @@ impl<S: Deliver + 'static> Worker<S> {
             posters,
             entropy,
             pass: CLAIM_PASS,
+            renew: obligation::CLAIM_RENEW,
         }
     }
 
@@ -84,6 +86,14 @@ impl<S: Deliver + 'static> Worker<S> {
         self
     }
 
+    /// Replaces how often a delivery renews its claim; keep it well inside
+    /// [`obligation::CLAIM_TTL`].
+    #[must_use]
+    pub const fn with_claim_renew(mut self, renew: Duration) -> Self {
+        self.renew = renew;
+        self
+    }
+
     /// Claims and delivers until `token` is cancelled, then drains the lanes.
     pub async fn run(self, token: CancellationToken) {
         let Self {
@@ -92,9 +102,10 @@ impl<S: Deliver + 'static> Worker<S> {
             posters,
             entropy,
             pass,
+            renew,
         } = self;
         let mut wake = bus.subscribe(&Subject::OutboundWake).await.ok();
-        let lanes = Lanes::new(posters, database.clone(), token.clone());
+        let lanes = Lanes::renewing_every(posters, database.clone(), token.clone(), renew);
         let mut via = Via::Scan;
         while !token.is_cancelled() {
             let claimed = claim_once(&database, &entropy, &lanes, via).await;

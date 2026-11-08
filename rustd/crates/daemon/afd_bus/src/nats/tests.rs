@@ -26,6 +26,11 @@ fn each_subject_has_its_documented_spelling() -> TestResult {
     assert_eq!(spelling(&Subject::Wake(15)), "af.wake.15");
     assert_eq!(spelling(&Subject::OutboundWake), "af.outbound.wake");
     assert_eq!(
+        Subject::OutboundWake.kind(),
+        "outbound_wake",
+        "its telemetry label"
+    );
+    assert_eq!(
         spelling(&Subject::RunnerCommand(id)),
         format!("af.runner.{ID}.cmd")
     );

@@ -2,8 +2,10 @@
 
 use std::time::Duration;
 
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use af_core::id::Uuid7;
-use afd_bus::Subject;
+use afd_bus::{Bus, Handle, Subject, Subscription};
 use futures_util::StreamExt as _;
 
 use super::Resubscribe;
@@ -97,5 +99,131 @@ async fn a_failed_subscribe_is_announced_once_then_retried_quietly() -> TestResu
     }
     let quiet = tokio::time::timeout(Duration::from_secs(60), tail.next()).await;
     assert!(quiet.is_err(), "retries stay quiet: {quiet:?}");
+    Ok(())
+}
+
+/// A bus that refuses its first `refusals` subscribes, then serves from `live`.
+#[derive(Debug)]
+struct Flaky {
+    refusals: AtomicUsize,
+    closed: Handle,
+    live: Handle,
+}
+
+#[async_trait::async_trait]
+impl Bus for Flaky {
+    async fn publish(&self, subject: &Subject, payload: &str) -> afd_bus::Result<()> {
+        self.live.publish(subject, payload).await
+    }
+
+    async fn publish_batch(&self, subject: &Subject, payloads: &[String]) -> afd_bus::Result<()> {
+        self.live.publish_batch(subject, payloads).await
+    }
+
+    async fn subscribe(&self, subject: &Subject) -> afd_bus::Result<Subscription> {
+        let refusing = self
+            .refusals
+            .try_update(Ordering::AcqRel, Ordering::Acquire, |left| {
+                left.checked_sub(1)
+            })
+            .is_ok();
+        if refusing {
+            self.closed.subscribe(subject).await
+        } else {
+            self.live.subscribe(subject).await
+        }
+    }
+
+    async fn shutdown(&self) -> afd_bus::Result<()> {
+        self.live.shutdown().await
+    }
+}
+
+#[tokio::test]
+async fn a_tail_that_failed_to_subscribe_recovers_with_catching_up() -> TestResult {
+    let (closed, _closed_server) = afd_bus::test_util::detached()?;
+    closed.shutdown().await?;
+    let (live_bus, server) = afd_bus::test_util::detached()?;
+    let flaky = Handle::new(Flaky {
+        refusals: AtomicUsize::new(3),
+        closed,
+        live: live_bus,
+    });
+    let fleet = Uuid7::parse(FLEET)?;
+    let fast = Resubscribe {
+        first: Duration::from_millis(1),
+        ceiling: Duration::from_millis(4),
+    };
+    let live = Live::new(flaky, Ceiling::new(4)).with_resubscribe(fast);
+    let mut tail = live.tail_of(&fleet).await;
+    for expected in ["hello", "catching_up"] {
+        let frame = tail.next().await.ok_or("the opening")?;
+        assert_eq!(kind(&frame), expected);
+    }
+
+    let recovered = tokio::time::timeout(Duration::from_secs(1), tail.next())
+        .await?
+        .ok_or("the recovery")?;
+    assert_eq!(
+        kind(&recovered),
+        "catching_up",
+        "the viewer backfills the outage"
+    );
+    server.publish(&Subject::FleetTail(fleet), r#"{"kind":"event_admitted"}"#);
+    let admitted = tail.next().await.ok_or("the published frame")?;
+    assert!(admitted.data.to_string().contains("event_admitted"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_gap_in_the_tail_is_announced() -> TestResult {
+    let (bus, server) = afd_bus::test_util::detached()?;
+    let fleet = Uuid7::parse(FLEET)?;
+    let live = Live::new(bus, Ceiling::new(4));
+    let mut tail = live.tail_of(&fleet).await;
+    for _ in 0..2 {
+        tail.next().await.ok_or("the opening")?;
+    }
+    // The first confirmation is the subscription's own; a repeat is a gap.
+    server.confirm(&Subject::FleetTail(fleet.clone()));
+    server.confirm(&Subject::FleetTail(fleet));
+    let gap = tokio::time::timeout(Duration::from_secs(1), tail.next())
+        .await?
+        .ok_or("the gap")?;
+    assert_eq!(kind(&gap), "catching_up");
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_lagging_viewer_is_told_how_much_it_missed() -> TestResult {
+    let (bus, server) = afd_bus::test_util::detached()?;
+    let fleet = Uuid7::parse(FLEET)?;
+    let live = Live::new(bus, Ceiling::new(4));
+    let mut tail = live.tail_of(&fleet).await;
+    for _ in 0..2 {
+        tail.next().await.ok_or("the opening")?;
+    }
+    // Far past any reader's buffer, published before the viewer reads.
+    for n in 0..20_000 {
+        server.publish(
+            &Subject::FleetTail(fleet.clone()),
+            &format!(r#"{{"n":{n}}}"#),
+        );
+    }
+    let mut lagged = None;
+    while lagged.is_none() {
+        let frame = tokio::time::timeout(Duration::from_secs(1), tail.next())
+            .await?
+            .ok_or("the tail")?;
+        if kind(&frame) == "catching_up" {
+            lagged = Some(frame);
+        }
+    }
+    let lagged = lagged.ok_or("a lag frame")?;
+    assert!(
+        !lagged.data.to_string().contains(r#""dropped":0"#),
+        "a lag names what it dropped: {}",
+        lagged.data
+    );
     Ok(())
 }

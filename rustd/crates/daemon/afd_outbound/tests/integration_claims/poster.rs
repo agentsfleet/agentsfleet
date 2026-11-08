@@ -15,11 +15,29 @@ struct Log {
     most: HashMap<Uuid7, usize>,
 }
 
-/// Records every attempt; refuses one event retryably, if told to.
-#[derive(Debug, Clone, Default)]
+/// Long enough that two workers would overlap on one lane if the claim let
+/// them.
+const OVERLAP: Duration = Duration::from_millis(5);
+
+/// Records every attempt; refuses one event retryably, and one for good, if
+/// told to.
+#[derive(Debug, Clone)]
 pub(crate) struct Recorder {
     log: Arc<Mutex<Log>>,
     failing: Option<Uuid7>,
+    refusing: Option<Uuid7>,
+    slow: Duration,
+}
+
+impl Default for Recorder {
+    fn default() -> Self {
+        Self {
+            log: Arc::default(),
+            failing: None,
+            refusing: None,
+            slow: OVERLAP,
+        }
+    }
 }
 
 impl Recorder {
@@ -28,6 +46,28 @@ impl Recorder {
             failing: Some(event),
             ..Self::default()
         }
+    }
+
+    pub(crate) fn refusing(event: Uuid7) -> Self {
+        Self {
+            refusing: Some(event),
+            ..Self::default()
+        }
+    }
+
+    /// Every attempt takes `slow` before it answers.
+    pub(crate) const fn with_slow(mut self, slow: Duration) -> Self {
+        self.slow = slow;
+        self
+    }
+
+    /// How many attempts `event` has started.
+    pub(crate) fn attempts_of(&self, event: &Uuid7) -> usize {
+        self.log()
+            .attempted
+            .iter()
+            .filter(|tried| *tried == event)
+            .count()
     }
 
     fn log(&self) -> std::sync::MutexGuard<'_, Log> {
@@ -66,18 +106,20 @@ impl Deliver for Recorder {
     fn deliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
         let (workspace, event) = (job.workspace_id.clone(), job.event_id.clone());
         let failing = self.failing.as_ref() == Some(&event);
-        let log = Arc::clone(&self.log);
+        let refusing = self.refusing.as_ref() == Some(&event);
+        let (log, slow) = (Arc::clone(&self.log), self.slow);
         async move {
             started(&log, &workspace, &event);
-            // Long enough that two workers would overlap on one lane if the
-            // claim let them.
-            tokio::time::sleep(Duration::from_millis(5)).await;
+            tokio::time::sleep(slow).await;
             let mut log = log.lock().unwrap_or_else(PoisonError::into_inner);
             if let Some(held) = log.in_flight.get_mut(&workspace) {
                 *held -= 1;
             }
             if failing {
                 return Verdict::Retryable;
+            }
+            if refusing {
+                return Verdict::Permanent;
             }
             log.delivered.entry(workspace).or_default().push(event);
             Verdict::Delivered
