@@ -1,11 +1,12 @@
 //! Exact-head mutation through the real native allocation, issue and receipt path.
 use super::{
-    super::fixture::{Case, exercise},
+    super::fixture::{Case, exercise, id},
     fixture::Decisions,
     github_authority,
     github_server::Server,
     publication_refusal::{endpoint, prepared},
 };
+use af_core::id::Uuid7;
 use af_wire::task::TaskEffectState;
 use afd_fleet::task::TaskLifecycle as _;
 use base64::{Engine as _, prelude::BASE64_STANDARD};
@@ -39,13 +40,13 @@ async fn publish(case: &Case) {
         .expect("same effect replay");
     assert!(replayed);
     assert_eq!(again, receipt);
-    counts(case, &input.task.task_id).await;
+    counts(case, &id(&input.task.task_id)).await;
     server.finish().await;
     fixture.model.finish().await.expect("fixture cleanup");
 }
 
-async fn counts(case: &Case, task: &str) {
-    let row: (i32, i64, String, i64) = sqlx::query_as("SELECT used_publications,confirmed_effect_watermark,target->>'head',(SELECT count(*) FROM fleet.task_effect_recovery r JOIN fleet.task_effects e ON e.id=r.task_effect_id WHERE e.task_id=t.id) FROM fleet.tasks t WHERE id=$1::uuid")
+async fn counts(case: &Case, task: &Uuid7) {
+    let row: (i32, i64, String, i64) = sqlx::query_as("SELECT used_publications,confirmed_effect_watermark,target->>'head',(SELECT count(*) FROM fleet.task_effect_recovery r JOIN fleet.task_effects e ON e.id=r.task_effect_id WHERE e.task_id=t.id) FROM fleet.tasks t WHERE id=$1")
         .bind(task).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("observer")).await.expect("native receipt counters");
     assert_eq!(row, (1, 1, "3".repeat(40), 0));
 }

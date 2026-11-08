@@ -6,6 +6,8 @@
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
+use af_core::id::Uuid7;
+
 use super::ScheduleRow;
 use crate::model::{DesiredStatus, Source, SyncStatus};
 
@@ -20,11 +22,16 @@ const SCHEDULE_ID: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb010";
 /// A canonical fleet id.
 const FLEET_ID: &str = "0195b4ba-8d3a-7f13-8abc-2b3e1e0bb011";
 
+/// `text` as the identifier a stored row carries.
+fn id(text: &str) -> Uuid7 {
+    Uuid7::parse(text).expect("a canonical UUIDv7")
+}
+
 /// A row every field of which a build can read.
 fn row() -> ScheduleRow {
     ScheduleRow {
-        id: SCHEDULE_ID.to_owned(),
-        fleet_id: FLEET_ID.to_owned(),
+        id: id(SCHEDULE_ID),
+        fleet_id: id(FLEET_ID),
         source: Source::Fleet.as_str().to_owned(),
         provider_schedule_id: SCHEDULE_ID.to_owned(),
         cron_expression: "5 9 15 3 *".to_owned(),
@@ -53,14 +60,6 @@ fn a_readable_row_keeps_its_instants() {
     assert_eq!(schedule.sync_lease_expires_at, Some(UPDATED));
     assert_eq!(schedule.fire_at, Some(FIRE_AT));
     assert_eq!(schedule.provider_schedule_id, SCHEDULE_ID);
-}
-
-#[test]
-fn an_id_that_is_not_canonical_is_refused_on_its_column() {
-    let mut stored = row();
-    stored.id = "not-a-uuid".to_owned();
-    let refused = stored.parse().expect_err("a non-canonical id");
-    assert!(refused.to_string().contains("id"), "{refused}");
 }
 
 #[test]

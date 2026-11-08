@@ -1,7 +1,7 @@
 WITH current_state AS (
   SELECT id, status AS from_status
   FROM runner.runners
-  WHERE id = $1::uuid
+  WHERE id = $1
   FOR UPDATE
 ), updated AS (
   UPDATE runner.runners r
@@ -13,7 +13,7 @@ WITH current_state AS (
   RETURNING r.id
 ), event AS (
   INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
-  SELECT $5::uuid, id, $6::text,
+  SELECT $5, id, $6::text,
          jsonb_build_object($7::text, from_status, $8::text, $2::text, $9::text, $10::text),
          NULL, now()
   FROM current_state

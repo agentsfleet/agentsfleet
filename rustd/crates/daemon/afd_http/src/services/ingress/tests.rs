@@ -171,7 +171,6 @@ fn notice<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> NoticeOwed<'a> {
         owner: fleet,
         workspace,
         provider: Provider::Slack,
-        key: "TSEAM:EvSeam:notice",
         address: EMPTY_OBJECT,
         text: "notice",
     }

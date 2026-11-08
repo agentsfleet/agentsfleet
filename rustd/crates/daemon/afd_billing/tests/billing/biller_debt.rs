@@ -11,7 +11,7 @@ use afd_billing::Nanos;
 use afd_billing::biller::conformance;
 use afd_billing::biller::{Account, Ask, Biller, Funds, WorkKey};
 use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
-use afd_db::test_util::mint_uuid7;
+use afd_db::test_util::mint_id;
 use jiff::Timestamp;
 
 use crate::biller::{LINE, funded_lane, ledger, rated, settlement};
@@ -27,9 +27,9 @@ async fn a_settlement_past_the_balance_leaves_a_debt() {
 /// Raises the lane's wallet by `nanos`, as a credit grant would.
 async fn top_up(lane: &Lane, nanos: i64) {
     sqlx::query(
-        "UPDATE billing.wallets SET balance_nanos = balance_nanos + $2 WHERE tenant_id = $1::uuid",
+        "UPDATE billing.wallets SET balance_nanos = balance_nanos + $2 WHERE tenant_id = $1",
     )
-    .bind(lane.tenant.as_str())
+    .bind(&lane.tenant)
     .bind(nanos)
     .execute(&mut *lane.pool.acquire().await.expect("the lane answers"))
     .await
@@ -50,7 +50,7 @@ async fn one_line_lane() -> (Lane, Account) {
 /// A check of `next` for a fresh piece of work.
 fn ask(payer: &Account, next: Nanos) -> Ask {
     Ask {
-        work: WorkKey::FleetLease(mint_uuid7()),
+        work: WorkKey::FleetLease(mint_id()),
         payer: payer.clone(),
         next,
     }
@@ -59,7 +59,7 @@ fn ask(payer: &Account, next: Nanos) -> Ask {
 /// Settles one line that drains the balance to zero, then one that takes it
 /// a line below.
 async fn drain_into_debt(biller: &dyn Biller, lane: &Lane, payer: &Account) {
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
     biller
         .settle(&settlement(lane, payer, &work, vec![rated(0)]))
         .await
@@ -127,7 +127,7 @@ async fn a_debt_refuses_checks_until_a_top_up_repays_it() {
 async fn exhaustion_follows_the_balance_through_a_top_up() {
     let (lane, payer) = one_line_lane().await;
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
     let exhausted = |balance: afd_billing::biller::Balance| balance.exhausted_at.is_some();
 
     biller
@@ -168,7 +168,7 @@ async fn a_tenant_without_a_wallet_settles_with_nothing_taken() {
         workspace: lane.workspace.clone(),
     };
     let biller = ledger(&lane);
-    let work = WorkKey::FleetLease(mint_uuid7());
+    let work = WorkKey::FleetLease(mint_id());
 
     let capture = af_core::test_util::trace::Capture::install();
     let receipt = biller
@@ -252,7 +252,7 @@ async fn parallel_runs_overdraw_by_at_most_a_slice_each_then_stop() {
     };
     let biller = ledger(&lane);
     let works: Vec<WorkKey> = (0..PARALLEL_RUNS)
-        .map(|_| WorkKey::FleetLease(mint_uuid7()))
+        .map(|_| WorkKey::FleetLease(mint_id()))
         .collect();
 
     let starts = start_together(&biller, &payer, &works).await;

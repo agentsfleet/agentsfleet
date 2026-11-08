@@ -99,11 +99,11 @@ async fn test_approval_resolution_leases_next_poll() {
         ),
     )
     .resolve(
-        &action,
+        action.as_str(),
         Decision::Approved,
         REVIEWER,
         "",
-        Some(&seeded.fleet),
+        Some(seeded.fleet.as_str()),
     )
     .await
     .expect("the resolve must not fault");
@@ -143,8 +143,8 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     fixtures
         .queue()
         .spend_key(&afd_gate::gate::key::event_ref(
-            &seeded.fleet,
-            &seeded.event_id,
+            seeded.fleet.as_str(),
+            seeded.event_id.as_str(),
         ))
         .await
         .expect("simulate the reference expiring before recovery");
@@ -163,8 +163,8 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     fixtures.cleanup().await;
 }
 
-async fn assert_expired_settlement(fixtures: &Fixtures, event: &str, action: &str) {
-    let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NOT NULL, g.resolved_at IS NULL FROM fleet.admissions a JOIN fleet.approval_gates g ON g.fleet_id=a.fleet_id WHERE a.id=$1::uuid AND g.action_id=$2")
+async fn assert_expired_settlement(fixtures: &Fixtures, event: &Uuid7, action: &Uuid7) {
+    let state: (bool, bool) = sqlx::query_as("SELECT a.settled_at IS NOT NULL, g.resolved_at IS NULL FROM fleet.admissions a JOIN fleet.approval_gates g ON g.fleet_id=a.fleet_id WHERE a.id=$1 AND g.action_id=$2")
         .bind(event).bind(action)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("settlement observer"))
         .await.expect("settled admission and answerable approval");
@@ -172,7 +172,7 @@ async fn assert_expired_settlement(fixtures: &Fixtures, event: &str, action: &st
 }
 
 /// Ingress for one event of `event_type`, marking the fleet as ingress does.
-async fn send(fixtures: &Fixtures, fleet: &str, workspace: &str, event_type: &str) -> String {
+async fn send(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7, event_type: &str) -> Uuid7 {
     crate::queue::enqueue(
         &fixtures.database,
         fleet,
@@ -185,9 +185,9 @@ async fn send(fixtures: &Fixtures, fleet: &str, workspace: &str, event_type: &st
     .await
 }
 
-async fn parked(fixtures: &Fixtures, event: &str) -> bool {
+async fn parked(fixtures: &Fixtures, event: &Uuid7) -> bool {
     let mut connection = fixtures.database.acquire().await.expect("database");
-    sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id = $1::uuid")
+    sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
         .bind(event)
         .fetch_one(&mut *connection)
         .await

@@ -11,6 +11,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_billing::limits::SELECT_FLEET_SPEND;
 use afd_db::config::DbRole;
 use sqlx::Row as _;
@@ -53,20 +54,20 @@ const HISTORY_DAYS: i32 = 365;
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_fleet_spend_read_is_served_by_its_index() {
     let held = held().await;
-    let workspace: String = {
+    let workspace: Uuid7 = {
         let mut connection = held
             .fixtures
             .database
             .acquire()
             .await
             .expect("a pooled connection");
-        sqlx::query("SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid")
+        sqlx::query("SELECT workspace_id FROM fleet.fleets WHERE id = $1")
             .bind(&held.fleet)
             .fetch_one(&mut *connection)
             .await
             .expect("the fixture fleet is readable")
             .try_get(0)
-            .expect("workspace_id decodes as text")
+            .expect("workspace_id decodes as a uuid")
     };
     let owner = held.fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("an owner connection");
@@ -83,10 +84,10 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
             updated_at)
          SELECT ('0199c900-0000-7000-8000-' || lpad(to_hex(g), 12, '0'))::uuid, $4,
                 ('0199c902-0000-7000-8000-' || lpad(to_hex(g), 12, '0'))::uuid, 0,
-                $1::uuid, $2::uuid,
-                CASE WHEN g <= $7 THEN $6::uuid
+                $1, $2,
+                CASE WHEN g <= $7 THEN $6
                      ELSE ('0199c901-0000-7000-8000-' || lpad(to_hex(g % $3), 12, '0'))::uuid END,
-                'decoy', 'spend-probe-' || g, 'anthropic', 'claude-opus-5', 'platform', now(),
+                'decoy', uuidv7(), 'anthropic', 'claude-opus-5', 'platform', now(),
                 0, 0, 0, 0, 0, 0, 0, 0, 0, now() - make_interval(days => g % $7), now()
          FROM generate_series(1, $5 + $7) g",
     )

@@ -14,6 +14,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use sqlx::{AssertSqlSafe, Row as _};
 
 use crate::e2e::Scenario;
@@ -29,7 +30,7 @@ pub(crate) async fn assert_shape(
     run: &Scenario,
     table: &str,
     predicate: &str,
-    bind: &str,
+    bind: &Uuid7,
     recorded: &[&str],
 ) {
     let (schema, name) = table.split_once('.').expect("a qualified table name");
@@ -79,7 +80,7 @@ async fn matching_row(
     columns: &[String],
     table: &str,
     predicate: &str,
-    bind: &str,
+    bind: &Uuid7,
 ) -> sqlx::postgres::PgRow {
     let projection = columns
         .iter()
@@ -113,7 +114,7 @@ fn populated_columns<'a>(columns: &'a [String], row: &sqlx::postgres::PgRow) -> 
 /// One column of a lease row, as text.
 pub(crate) async fn lease_column(run: &Scenario, lease: &str, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM runner.leases WHERE id = $1::uuid"
+        "SELECT {column}::text FROM runner.leases WHERE id = $1"
     ));
     let mut connection = run
         .booted
@@ -121,8 +122,9 @@ pub(crate) async fn lease_column(run: &Scenario, lease: &str, column: &str) -> O
         .acquire()
         .await
         .expect("a pooled connection");
+    let lease = Uuid7::parse(lease).expect("a lease id the daemon answered is a canonical UUIDv7");
     sqlx::query(statement)
-        .bind(lease)
+        .bind(&lease)
         .fetch_optional(&mut *connection)
         .await
         .expect("the lease read must run")
@@ -130,7 +132,7 @@ pub(crate) async fn lease_column(run: &Scenario, lease: &str, column: &str) -> O
 }
 
 /// One column of the scenario fleet's event row, as text.
-pub(crate) async fn event_column(run: &Scenario, event: &str, column: &str) -> Option<String> {
+pub(crate) async fn event_column(run: &Scenario, event: &Uuid7, column: &str) -> Option<String> {
     event_column_of(run, &run.fleet, event, column).await
 }
 
@@ -141,13 +143,13 @@ pub(crate) async fn event_column(run: &Scenario, event: &str, column: &str) -> O
 /// refuse, and the row proving that refusal is the neighbour's.
 pub(crate) async fn event_column_of(
     run: &Scenario,
-    fleet: &str,
-    event: &str,
+    fleet: &Uuid7,
+    event: &Uuid7,
     column: &str,
 ) -> Option<String> {
     let statement = AssertSqlSafe(format!(
         "SELECT {column}::text FROM fleet.events \
-         WHERE fleet_id = $1::uuid AND event_id = $2"
+         WHERE fleet_id = $1 AND event_id = $2"
     ));
     let mut connection = run
         .booted
@@ -172,7 +174,7 @@ pub(crate) async fn balance(run: &Scenario) -> Option<i64> {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
+    sqlx::query("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1")
         .bind(&run.tenant)
         .fetch_optional(&mut *connection)
         .await
@@ -233,7 +235,7 @@ async fn count_lines(run: &Scenario, statement: &'static str) -> i64 {
 /// One column of the scenario runner's lifetime counters, as text.
 pub(crate) async fn counter_column(run: &Scenario, column: &str) -> Option<String> {
     let statement = AssertSqlSafe(format!(
-        "SELECT {column}::text FROM runner.lifetime_counters WHERE runner_id = $1::uuid"
+        "SELECT {column}::text FROM runner.lifetime_counters WHERE runner_id = $1"
     ));
     let mut connection = run
         .booted
@@ -242,7 +244,7 @@ pub(crate) async fn counter_column(run: &Scenario, column: &str) -> Option<Strin
         .await
         .expect("a pooled connection");
     sqlx::query_scalar(statement)
-        .bind(run.runner_id.as_str())
+        .bind(&run.runner_id)
         .fetch_optional(&mut *connection)
         .await
         .expect("the counter read must run")
@@ -263,16 +265,14 @@ pub(crate) async fn lease_rows(run: &Scenario) -> i64 {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query(
-        "SELECT count(*) FROM runner.leases WHERE runner_id = $1::uuid AND fleet_id = $2::uuid",
-    )
-    .bind(run.runner_id.as_str())
-    .bind(&run.fleet)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the lease count must run")
-    .try_get(0)
-    .expect("a count is a bigint")
+    sqlx::query("SELECT count(*) FROM runner.leases WHERE runner_id = $1 AND fleet_id = $2")
+        .bind(&run.runner_id)
+        .bind(&run.fleet)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the lease count must run")
+        .try_get(0)
+        .expect("a count is a bigint")
 }
 
 /// How long a test waits for the daemon's billing relay to settle a report's

@@ -7,6 +7,7 @@
 
 mod seed;
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
@@ -71,20 +72,20 @@ async fn liveness_and_retention_converge_real_runner_rows() {
 struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
-    workspace: String,
-    stale: String,
-    draining: String,
-    cordoned: String,
-    unknown: String,
-    stale_fleet: String,
-    cordoned_fleet: String,
-    unknown_fleet: String,
-    stale_lease: String,
-    cordoned_lease: String,
-    unknown_lease: String,
-    reported_lease: String,
-    old_event: String,
+    tenant: Uuid7,
+    workspace: Uuid7,
+    stale: Uuid7,
+    draining: Uuid7,
+    cordoned: Uuid7,
+    unknown: Uuid7,
+    stale_fleet: Uuid7,
+    cordoned_fleet: Uuid7,
+    unknown_fleet: Uuid7,
+    stale_lease: Uuid7,
+    cordoned_lease: Uuid7,
+    unknown_lease: Uuid7,
+    reported_lease: Uuid7,
+    old_event: Uuid7,
 }
 
 impl Fixture {
@@ -110,7 +111,7 @@ impl Fixture {
         }
     }
 
-    async fn scalar<T>(&self, query: &'static str, value: &str) -> T
+    async fn scalar<T>(&self, query: &'static str, value: &Uuid7) -> T
     where
         T: for<'row> sqlx::Decode<'row, sqlx::Postgres> + sqlx::Type<sqlx::Postgres> + Send + Unpin,
     {
@@ -122,17 +123,14 @@ impl Fixture {
             .expect("the scoped assertion reads")
     }
 
-    async fn runner_state(&self, runner: &str) -> String {
-        self.scalar(
-            "SELECT status FROM runner.runners WHERE id = $1::uuid",
-            runner,
-        )
-        .await
+    async fn runner_state(&self, runner: &Uuid7) -> String {
+        self.scalar("SELECT status FROM runner.runners WHERE id = $1", runner)
+            .await
     }
 
-    async fn slot_is_expired(&self, fleet: &str) -> bool {
+    async fn slot_is_expired(&self, fleet: &Uuid7) -> bool {
         self.scalar(
-            "SELECT lease_expires_at < statement_timestamp() FROM runner.fleet_slots WHERE fleet_id = $1::uuid",
+            "SELECT lease_expires_at < statement_timestamp() FROM runner.fleet_slots WHERE fleet_id = $1",
             fleet,
         )
         .await
@@ -140,37 +138,34 @@ impl Fixture {
 
     async fn offline_events(&self) -> i64 {
         self.scalar(
-            "SELECT count(*) FROM runner.events WHERE runner_id = $1::uuid AND event_type = 'runner_offline'",
+            "SELECT count(*) FROM runner.events WHERE runner_id = $1 AND event_type = 'runner_offline'",
             &self.stale,
         ).await
     }
 
     async fn offline_last_seen(&self) -> String {
         self.scalar(
-            "SELECT metadata->>'last_seen_at' FROM runner.events WHERE runner_id = $1::uuid AND event_type = 'runner_offline'",
+            "SELECT metadata->>'last_seen_at' FROM runner.events WHERE runner_id = $1 AND event_type = 'runner_offline'",
             &self.stale,
         ).await
     }
 
-    async fn lease_exists(&self, lease: &str) -> bool {
+    async fn lease_exists(&self, lease: &Uuid7) -> bool {
         self.scalar(
-            "SELECT EXISTS(SELECT 1 FROM runner.leases WHERE id = $1::uuid)",
+            "SELECT EXISTS(SELECT 1 FROM runner.leases WHERE id = $1)",
             lease,
         )
         .await
     }
 
-    async fn lease_state(&self, lease: &str) -> String {
-        self.scalar(
-            "SELECT status FROM runner.leases WHERE id = $1::uuid",
-            lease,
-        )
-        .await
+    async fn lease_state(&self, lease: &Uuid7) -> String {
+        self.scalar("SELECT status FROM runner.leases WHERE id = $1", lease)
+            .await
     }
 
-    async fn runner_event_exists(&self, event: &str) -> bool {
+    async fn runner_event_exists(&self, event: &Uuid7) -> bool {
         self.scalar(
-            "SELECT EXISTS(SELECT 1 FROM runner.events WHERE id = $1::uuid)",
+            "SELECT EXISTS(SELECT 1 FROM runner.events WHERE id = $1)",
             event,
         )
         .await
@@ -178,14 +173,14 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
             .expect("the scoped fixture cleans up");
         // Runners belong to no tenant, so they go by their own ids.
-        sqlx::query("DELETE FROM runner.runners WHERE id = ANY($1::uuid[])")
-            .bind([&self.stale, &self.draining, &self.cordoned, &self.unknown])
+        sqlx::query("DELETE FROM runner.runners WHERE id = ANY($1)")
+            .bind(&[&self.stale, &self.draining, &self.cordoned, &self.unknown][..])
             .execute(&mut *connection)
             .await
             .expect("the scoped runners clean up");
@@ -226,7 +221,7 @@ async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
     .expect("the runner row seeds");
     sqlx::query(
         "INSERT INTO runner.events (id, runner_id, event_type, metadata, created_at) \
-         SELECT uuidv7(), $1::uuid, 'lease_acquired', '{}', $2::timestamptz \
+         SELECT uuidv7(), $1, 'lease_acquired', '{}', $2::timestamptz \
          FROM generate_series(1, $3::bigint)",
     )
     .bind(&fixture.stale)
@@ -256,7 +251,7 @@ async fn a_backlog_past_one_cycle_brings_the_next_cycle_forward() {
     assert_eq!(
         fixture
             .scalar::<i64>(
-                "SELECT count(*) FROM runner.events WHERE runner_id = $1::uuid",
+                "SELECT count(*) FROM runner.events WHERE runner_id = $1",
                 &fixture.stale,
             )
             .await,

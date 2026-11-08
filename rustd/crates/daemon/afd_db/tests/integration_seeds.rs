@@ -12,6 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
@@ -38,14 +39,14 @@ const OUTPUT_NANOS_PER_MTOK: i64 = 11;
 struct Scene {
     database: Db,
     provider: String,
-    tenant: String,
-    workspace: String,
+    tenant: Uuid7,
+    workspace: Uuid7,
 }
 
 impl Scene {
     async fn seed() -> Self {
         let database = TestDatabase::shared().open(DbRole::Api, &[]).await;
-        let id = mint_id().replace('-', "");
+        let id = mint_id().to_string().replace('-', "");
         let scene = Self {
             database,
             provider: format!("seed{}", &id[id.len() - 12..]),
@@ -74,7 +75,10 @@ impl Scene {
         }
     }
 
-    async fn count(&self, statement: &'static str, key: &str) -> i64 {
+    async fn count<K>(&self, statement: &'static str, key: K) -> i64
+    where
+        K: for<'q> sqlx::Encode<'q, sqlx::Postgres> + sqlx::Type<sqlx::Postgres> + Send,
+    {
         let mut connection = self.database.acquire().await.expect("a connection");
         sqlx::query_scalar(statement)
             .bind(key)
@@ -96,7 +100,7 @@ async fn a_wallet_seed_holds_the_balance_it_was_given() {
         .expect("the wallet seed");
 
     let balance: i64 =
-        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
+        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1")
             .bind(&scene.tenant)
             .fetch_one(&mut *connection)
             .await
@@ -143,8 +147,8 @@ async fn a_claimed_default_names_the_priced_row_and_both_are_removable() {
             .expect("the claim runs"),
         "a provider holds one default, so the second claim answers that it wrote nothing"
     );
-    let named: String = sqlx::query_scalar(
-        "SELECT platform_model_id::text FROM model.platform_defaults WHERE provider = $1",
+    let named: Uuid7 = sqlx::query_scalar(
+        "SELECT platform_model_id FROM model.platform_defaults WHERE provider = $1",
     )
     .bind(&scene.provider)
     .fetch_one(&mut *connection)
@@ -156,7 +160,7 @@ async fn a_claimed_default_names_the_priced_row_and_both_are_removable() {
     );
     let output: i64 = sqlx::query_scalar(
         "SELECT output_nanos_per_mtok FROM model.platform_model_prices \
-         WHERE platform_model_id = $1::uuid",
+         WHERE platform_model_id = $1",
     )
     .bind(&model_row)
     .fetch_one(&mut *connection)
@@ -172,7 +176,7 @@ async fn a_claimed_default_names_the_priced_row_and_both_are_removable() {
         .expect("the priced row removes once nothing names it");
     drop(connection);
     let defaults = "SELECT count(*) FROM model.platform_defaults WHERE provider = $1";
-    let models = "SELECT count(*) FROM model.platform_models WHERE id = $1::uuid";
+    let models = "SELECT count(*) FROM model.platform_models WHERE id = $1";
     assert_eq!(scene.count(defaults, &scene.provider).await, 0);
     assert_eq!(scene.count(models, &model_row).await, 0);
 }
@@ -201,13 +205,13 @@ async fn the_optional_builders_write_the_column_they_name() {
     let scene = Scene::seed().await;
     let (fleet, user, runner) = (mint_id(), mint_id(), mint_id());
     let mut owned = OwnedRows::new(&TestDatabase::shared());
-    owned.record("DELETE FROM runner.runners WHERE id = $1::uuid", &runner);
+    owned.record("DELETE FROM runner.runners WHERE id = $1", &runner);
     owned.record(
-        "DELETE FROM connector.integration_grants WHERE fleet_id = $1::uuid",
+        "DELETE FROM connector.integration_grants WHERE fleet_id = $1",
         &fleet,
     );
-    owned.record("DELETE FROM identity.users WHERE id = $1::uuid", &user);
-    owned.record("DELETE FROM fleet.fleets WHERE id = $1::uuid", &fleet);
+    owned.record("DELETE FROM identity.users WHERE id = $1", &user);
+    owned.record("DELETE FROM fleet.fleets WHERE id = $1", &fleet);
     let mut connection = scene.database.acquire().await.expect("a connection");
     FleetSeed::new(&fleet, &scene.workspace, &scene.tenant, ACTIVE)
         .insert(&mut *connection)
@@ -218,7 +222,7 @@ async fn the_optional_builders_write_the_column_they_name() {
         .insert(&mut *connection)
         .await
         .expect("the grant seed");
-    UserSeed::new(&user, &scene.tenant, &user, "seed@example.test")
+    UserSeed::new(&user, &scene.tenant, user.as_str(), "seed@example.test")
         .at(SEEDED_AT)
         .insert(&mut *connection)
         .await
@@ -229,21 +233,20 @@ async fn the_optional_builders_write_the_column_they_name() {
         .await
         .expect("the runner seed");
 
-    let revoked: Option<jiff_sqlx::Timestamp> = sqlx::query_scalar(
-        "SELECT revoked_at FROM connector.integration_grants WHERE id = $1::uuid",
-    )
-    .bind(&grant)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the grant reads back");
+    let revoked: Option<jiff_sqlx::Timestamp> =
+        sqlx::query_scalar("SELECT revoked_at FROM connector.integration_grants WHERE id = $1")
+            .bind(&grant)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the grant reads back");
     let joined: jiff_sqlx::Timestamp =
-        sqlx::query_scalar("SELECT created_at FROM identity.users WHERE id = $1::uuid")
+        sqlx::query_scalar("SELECT created_at FROM identity.users WHERE id = $1")
             .bind(&user)
             .fetch_one(&mut *connection)
             .await
             .expect("the person reads back");
     let reason: Option<String> =
-        sqlx::query_scalar("SELECT degraded_reason FROM runner.runners WHERE id = $1::uuid")
+        sqlx::query_scalar("SELECT degraded_reason FROM runner.runners WHERE id = $1")
             .bind(&runner)
             .fetch_one(&mut *connection)
             .await

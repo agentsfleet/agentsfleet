@@ -11,7 +11,7 @@ use afd_auth::principal::Person;
 use super::access::{ROLE_OWNER, Role};
 use super::{HeldRow, Workspaces, reads_user_row};
 use crate::sql::workspace as sql;
-use crate::{Result, error, stored};
+use crate::{Result, error};
 
 /// The context a failed account read reports under.
 const CONTEXT_ACCOUNTS: &str = "list held accounts";
@@ -41,11 +41,8 @@ impl Accounts {
     /// The tenants to walk, in the order they were read, borrowed for the
     /// page statement's array bind.
     #[must_use]
-    pub fn tenants(&self) -> Vec<&str> {
-        self.held
-            .iter()
-            .map(|account| account.tenant.as_str())
-            .collect()
+    pub fn tenants(&self) -> Vec<&Uuid7> {
+        self.held.iter().map(|account| &account.tenant).collect()
     }
 
     /// The held account `tenant` names, when it is one of them.
@@ -87,7 +84,7 @@ impl Workspaces {
         let Some(first) = rows.first() else {
             return Ok(None);
         };
-        let home = stored::tenant(&first.home_tenant_id)?;
+        let home = first.home_tenant_id.clone();
         let held = rows
             .into_iter()
             .map(AccountRow::parse)
@@ -99,7 +96,7 @@ impl Workspaces {
     async fn claimed_account(&self, person: &Person) -> Result<Accounts> {
         let mut connection = self.database.acquire().await?;
         let rows: Vec<AccountRow> = sqlx::query_as(sql::SELECT_TENANT_ACCOUNT)
-            .bind(person.tenant().as_str())
+            .bind(person.tenant())
             .bind(ROLE_OWNER)
             .fetch_all(connection.as_mut())
             .await
@@ -122,7 +119,7 @@ struct AccountRow {
     #[sqlx(flatten)]
     held: HeldRow,
     owner_name: String,
-    home_tenant_id: String,
+    home_tenant_id: Uuid7,
 }
 
 impl AccountRow {

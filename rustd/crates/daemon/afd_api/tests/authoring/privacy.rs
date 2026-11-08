@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 /// The owner's account admitting a person of another account as a member.
 const MEMBERSHIP: &str = "\
 INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at)
-VALUES ($1::uuid,$2::uuid,$3::uuid,'member',now())";
+VALUES ($1,$2,$3,'member',now())";
 
 pub(super) struct Member {
     pub(super) id: Uuid7,
@@ -29,32 +29,27 @@ pub(super) async fn member(f: &mut Fixture) -> Member {
     let token = format!("agt_t{}{}", mint(), mint()).replace('-', "");
     let digest = Digest::of(&Presented::new(&token).expect("member token"));
     let mut connection = f.db.acquire().await.expect("seed connection");
-    TenantSeed::new(tenant.as_str())
+    TenantSeed::new(&tenant)
         .name("authoring-member")
         .insert(&mut *connection)
         .await
         .expect("the member's own account seeds");
-    UserSeed::new(id.as_str(), tenant.as_str(), id.as_str(), id.as_str())
+    UserSeed::new(&id, &tenant, id.as_str(), id.as_str())
         .insert(&mut *connection)
         .await
         .expect("the member seeds");
     sqlx::query(MEMBERSHIP)
-        .bind(mint().as_str())
-        .bind(f.tenant.as_str())
-        .bind(id.as_str())
+        .bind(mint())
+        .bind(&f.tenant)
+        .bind(&id)
         .execute(&mut *connection)
         .await
         .expect("the member joins the owner's account");
-    ApiKeySeed::new(
-        mint().as_str(),
-        tenant.as_str(),
-        digest.as_str(),
-        id.as_str(),
-    )
-    .name("member")
-    .insert(&mut *connection)
-    .await
-    .expect("the member's real key seeds");
+    ApiKeySeed::new(&mint(), &tenant, digest.as_str(), id.as_str())
+        .name("member")
+        .insert(&mut *connection)
+        .await
+        .expect("the member's real key seeds");
     Member { id, token }
 }
 
@@ -184,9 +179,9 @@ async fn revoked_member_loses_their_own_draft_on_the_next_request() {
     let (item, tag) = create(&router, &f, &member.token).await;
     let before = send(&router, Method::GET, &item, Some(&member.token), "").await;
     assert_eq!(before.status(), StatusCode::OK);
-    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
-        .bind(f.tenant.as_str())
-        .bind(member.id.as_str())
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1 AND user_id=$2")
+        .bind(&f.tenant)
+        .bind(&member.id)
         .execute(&mut *f.db.acquire().await.expect("revocation connection"))
         .await
         .expect("commit membership revocation");
@@ -218,8 +213,8 @@ async fn revoked_member_loses_their_own_draft_on_the_next_request() {
         "no new private state either"
     );
     let kept: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1::uuid")
-            .bind(f.workspace.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1")
+            .bind(&f.workspace)
             .fetch_one(&mut *f.db.acquire().await.expect("count connection"))
             .await
             .expect("owned drafts");

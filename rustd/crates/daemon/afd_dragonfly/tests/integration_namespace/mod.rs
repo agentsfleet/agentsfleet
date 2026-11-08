@@ -6,7 +6,7 @@
     reason = "integration assertions must fail loudly"
 )]
 
-use crate::support::DragonflyHarness;
+use crate::support::{DragonflyHarness, mint_id};
 use afd_dragonfly::hub::{Received, Subscription};
 use afd_dragonfly::session::{AbortReason, SessionState};
 use afd_dragonfly::{
@@ -124,13 +124,14 @@ async fn outbound_isolation(ca: DragonflyConfig, a: Dragonfly, cb: DragonflyConf
     let qb = OutboundQueue::new(b);
     qa.ensure_group().await.expect("outbound group a");
     qb.ensure_group().await.expect("outbound group b");
+    let (workspace, fleet, event) = (mint_id(), mint_id(), mint_id());
     let id = qa
         .enqueue(OutboundJob {
             provider: "test",
             destination: "test",
-            workspace_id: "same",
-            fleet_id: "same-fleet",
-            event_id: "same-event",
+            workspace_id: &workspace,
+            fleet_id: &fleet,
+            event_id: &event,
             answer: "only-a",
         })
         .await

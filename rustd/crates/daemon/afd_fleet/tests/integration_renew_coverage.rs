@@ -39,7 +39,7 @@ async fn remove_wallet(held: &Held) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1::uuid")
+    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1")
         .bind(&held.tenant)
         .execute(&mut *connection)
         .await
@@ -62,12 +62,12 @@ async fn exhaust_fleet_budget(held: &Held) {
             cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
             cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
             charged_nanos, created_at, updated_at) \
-         SELECT $1::uuid, $2, $1::uuid, 0, f.tenant_id, f.workspace_id, f.id, f.name, $3, \
+         SELECT $1, $2, $1, 0, f.tenant_id, f.workspace_id, f.id, f.name, $3, \
                 'anthropic', 'claude-fixture', 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, 2, \
                 now(), now() \
-           FROM fleet.fleets f WHERE f.id = $4::uuid",
+           FROM fleet.fleets f WHERE f.id = $4",
     )
-    .bind(afd_db::test_util::mint_uuid7().as_str())
+    .bind(afd_db::test_util::mint_id())
     .bind(afd_billing::sql::work::FLEET_LEASE)
     .bind(&held.event_id)
     .bind(&held.fleet)
@@ -87,7 +87,7 @@ async fn kill_fleet(held: &Held) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1")
         .bind(&held.fleet)
         .bind(FLEET_KILLED)
         .execute(&mut *connection)
@@ -100,7 +100,7 @@ async fn kill_fleet(held: &Held) {
 async fn missing_wallet_admits_while_exhausted_and_unreadable_budgets_refuse() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
 
     // The wallet and fleet ceiling are independent gates. Give the latter
     // explicit room so this assertion can prove only the absent-wallet arm;
@@ -140,7 +140,7 @@ async fn missing_wallet_admits_while_exhausted_and_unreadable_budgets_refuse() {
 async fn a_fleet_killed_mid_run_keeps_its_breached_ceiling() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
 
     exhaust_fleet_budget(&held).await;
     let refused = plane
@@ -166,7 +166,7 @@ async fn a_fleet_killed_mid_run_keeps_its_breached_ceiling() {
 async fn a_fleet_killed_mid_run_with_room_still_renews() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
 
     held.fixtures.seed_wallet(&held.tenant, DEEP_POOL).await;
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
@@ -316,7 +316,7 @@ async fn token_charge(held: &Held, plane: &Plane, seq: u32, input_tokens: u32) -
     let (_, charged) = plane
         .renew(
             &held.runner,
-            held.issued.lease_id.as_str(),
+            &held.issued.lease_id,
             reported(held, seq, input_tokens),
             held.now,
         )
@@ -330,7 +330,7 @@ async fn token_charge(held: &Held, plane: &Plane, seq: u32, input_tokens: u32) -
 /// the renewal charged the runtime it measured and no token, and said itself
 /// that it logged those tokens unpriced, not only the pricing helper it calls.
 async fn renew_through_a_catalogue_fault(held: &Held, plane: &Plane, request: RenewRequest) {
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
     held.fixtures.set_catalogue_readable(false).await;
     let log = Capture::install();
     let metered_from = held.fixtures.metered_since(&held.fleet).await;
@@ -342,7 +342,7 @@ async fn renew_through_a_catalogue_fault(held: &Held, plane: &Plane, request: Re
     // that instant as the meter's next start.
     let metered_to = held.fixtures.metered_since(&held.fleet).await;
     let warned = log.only("lease_tokens_unpriced");
-    assert_eq!(warned.field("lease_id"), Some(lease_id));
+    assert_eq!(warned.field("lease_id"), Some(lease_id.as_str()));
     drop(log);
     assert_eq!(
         unpriced,

@@ -11,6 +11,7 @@
 //! above this crate, in `afd_state::sql`. This crate owns the table's columns,
 //! not the values the product compares against.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
@@ -81,9 +82,9 @@ pub struct SetupRevision<'a> {
 #[derive(Debug, Clone)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct FleetSeed<'a> {
-    id: &'a str,
-    workspace_id: &'a str,
-    tenant_id: &'a str,
+    id: &'a Uuid7,
+    workspace_id: &'a Uuid7,
+    tenant_id: &'a Uuid7,
     status: &'a str,
     name: &'a str,
     required_tags: &'a [&'a str],
@@ -100,10 +101,10 @@ impl<'a> FleetSeed<'a> {
     /// A fleet named after its own id, which keeps the name unique within its
     /// workspace without the caller minting one. No setup, no tags, no
     /// memory grants, no setup counters, stamped by the database's `now()`.
-    pub const fn new(
-        id: &'a str,
-        workspace_id: &'a str,
-        tenant_id: &'a str,
+    pub fn new(
+        id: &'a Uuid7,
+        workspace_id: &'a Uuid7,
+        tenant_id: &'a Uuid7,
         status: &'a str,
     ) -> Self {
         Self {
@@ -111,7 +112,7 @@ impl<'a> FleetSeed<'a> {
             workspace_id,
             tenant_id,
             status,
-            name: id,
+            name: id.as_str(),
             required_tags: &[],
             memory_reads_workspace: false,
             memory_publishes_workspace: false,

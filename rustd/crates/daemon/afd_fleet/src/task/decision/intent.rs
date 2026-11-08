@@ -35,7 +35,9 @@ impl Intent<'_> {
         self.payload(connection).await?;
         if let Some(goal) = self.goal() {
             sqlx::query(sql::RESERVE_TASK)
-                .bind(goal.snapshot.context.task_id.as_ref())
+                .bind(crate::task::guard::wire(
+                    goal.snapshot.context.task_id.as_ref(),
+                )?)
                 .bind(&self.prepared.current.fleet_id)
                 .bind(&self.prepared.current.workspace_id)
                 .bind(budget::CALL_NANOS)
@@ -55,7 +57,7 @@ impl Intent<'_> {
 
     async fn sequence(&self, connection: &mut PgConnection) -> Result<i64> {
         let sequence = sqlx::query_scalar(sql::SEQUENCE)
-            .bind(self.lease.lease_id.as_str())
+            .bind(self.lease.lease_id)
             .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
             .fetch_one(connection)
             .await
@@ -72,25 +74,27 @@ impl Intent<'_> {
         let attempt = self.attempt;
         let generation = self.goal().map(|task| task.generation);
         sqlx::query(sql::INSERT_CALL)
-            .bind(self.id.as_str())
-            .bind(self.lease.runner_id.as_str())
-            .bind(self.lease.lease_id.as_str())
+            .bind(self.id)
+            .bind(self.lease.runner_id)
+            .bind(self.lease.lease_id)
             .bind(&prepared.context.source_admission_id)
             .bind(&prepared.current.fleet_id)
             .bind(&prepared.current.workspace_id)
             .bind(&prepared.current.tenant_id)
             .bind(
                 self.goal()
-                    .map(|task| task.snapshot.context.task_id.as_ref()),
+                    .map(|task| task.snapshot.context.task_id.as_ref())
+                    .map(crate::task::guard::wire)
+                    .transpose()?,
             )
             .bind(generation)
             .bind(prepared.current.fence)
-            .bind(&self.input.operation_id)
+            .bind(crate::task::guard::wire(&self.input.operation_id)?)
             .bind(self.digest)
             .bind(attempt.assessment_id())
             .bind(self.key)
             .bind(attempt.number())
-            .bind(attempt.parent().map(|parent| parent.id.as_str()))
+            .bind(attempt.parent().map(|parent| &parent.id))
             .bind(
                 attempt
                     .parent()
@@ -109,6 +113,10 @@ impl Intent<'_> {
             })))
             .bind(sequence)
             .bind(budget::CALL_NANOS)
+            .bind(crate::task::guard::wire(
+                &prepared.assignment.profile.model_id,
+            )?)
+            .bind(crate::task::guard::wire(&prepared.assignment.revision_id)?)
             .execute(connection)
             .await
             .map_err(query("save immutable physical decision intent"))?;
@@ -117,13 +125,15 @@ impl Intent<'_> {
 
     async fn payload(&self, connection: &mut PgConnection) -> Result<()> {
         sqlx::query(sql::INSERT_PAYLOAD)
-            .bind(self.id.as_str())
+            .bind(self.id)
             .bind(&self.prepared.current.fleet_id)
             .bind(&self.prepared.current.workspace_id)
             .bind(&self.prepared.current.tenant_id)
             .bind(
                 self.goal()
-                    .map(|task| task.snapshot.context.task_id.as_ref()),
+                    .map(|task| task.snapshot.context.task_id.as_ref())
+                    .map(crate::task::guard::wire)
+                    .transpose()?,
             )
             .bind(Json(self.attempt.request(&self.prepared.request)))
             .execute(connection)

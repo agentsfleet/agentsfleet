@@ -23,7 +23,7 @@ use crate::lease::envelope::Acquired;
 struct Held {
     fleet_id: Uuid7,
     fence: Fence,
-    event_id: String,
+    event_id: Uuid7,
 }
 
 impl Plane {

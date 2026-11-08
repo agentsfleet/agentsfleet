@@ -23,7 +23,7 @@ test-util = ["af_core/test-util", "afd_db/test-util", "afd_dragonfly/test-util",
 
 [dependencies]
 # Identifiers, the instant a row is stamped with, and the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The Postgres pool the install rows are written on.
 afd_db.workspace = true
 # The HMAC a state is signed with, and the entropy its nonce is drawn from.

@@ -82,19 +82,19 @@ pub(crate) async fn resolve<D: Services>(
     let resolution = services
         .approvals()
         .resolve(
-            &gate.action_id,
+            gate.action_id.as_str(),
             outcome,
             person.subject(),
             reason.as_ref(),
-            Some(&gate.fleet_id),
+            Some(gate.fleet_id.as_str()),
         )
         .await
         .map_err(Refusal::at(EVENT_RESOLVE))?;
 
     match resolution {
         Resolution::Resolved(row) => Ok(Json(ResolvedResponse {
-            gate_id: Cow::Owned(row.gate_id),
-            action_id: Cow::Owned(row.action_id),
+            gate_id: Cow::Owned(row.gate_id.into()),
+            action_id: Cow::Owned(row.action_id.into()),
             outcome: Cow::Owned(row.status),
             resolved_at: row.resolved_at,
             resolved_by: Cow::Owned(row.resolved_by),
@@ -110,8 +110,8 @@ pub(crate) async fn resolve<D: Services>(
             error_code::APPROVAL_ALREADY_RESOLVED,
             DETAIL_ALREADY_RESOLVED,
             envelope::Resolution {
-                gate_id: row.gate_id,
-                action_id: row.action_id,
+                gate_id: row.gate_id.into(),
+                action_id: row.action_id.into(),
                 outcome: row.status,
                 resolved_at: row.resolved_at,
                 resolved_by: row.resolved_by,

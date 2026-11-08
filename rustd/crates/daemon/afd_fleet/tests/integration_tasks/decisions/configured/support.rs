@@ -1,5 +1,5 @@
 //! Policy edits use the native runner API; fixture time advances expose the next poll.
-use super::super::super::fixture::{Case, id};
+use super::super::super::fixture::Case;
 use afd_fleet::lease::{Acquired, Billed, Issued};
 use sqlx::Connection as _;
 
@@ -32,10 +32,10 @@ pub(super) async fn expire(case: &Case) {
         .acquire()
         .await
         .expect("fixture clock");
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1::uuid")
+    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
         .bind(&case.held.fleet).execute(&mut *connection).await.expect("slot elapsed");
-    sqlx::query("UPDATE runner.leases SET status='expired' WHERE id=$1::uuid")
-        .bind(case.held.lease_key.as_str())
+    sqlx::query("UPDATE runner.leases SET status='expired' WHERE id=$1")
+        .bind(&case.held.lease_key)
         .execute(&mut *connection)
         .await
         .expect("prior lease expired");
@@ -57,7 +57,7 @@ pub(super) async fn issue(case: &Case, acquired: &Acquired) -> Option<Issued> {
             &case.held.runner,
             acquired,
             Billed {
-                tenant_id: &id(&case.held.tenant),
+                tenant_id: &case.held.tenant,
                 posture: crate::seed::POSTURE,
                 provider: crate::seed::PROVIDER,
                 model: crate::seed::MODEL,
@@ -79,7 +79,7 @@ pub(super) async fn claimable(case: &Case) -> bool {
     let mut tx = connection.begin().await.expect("rollback-only claim probe");
     let claim = sqlx::query(afd_fleet::lease::sql::queue::CLAIM_HEAD)
         .bind(&case.held.fleet)
-        .bind(case.held.runner.as_str())
+        .bind(&case.held.runner)
         .bind(std::time::Duration::from_secs(60))
         .bind(std::time::Duration::from_secs(30))
         .bind("active")

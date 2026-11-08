@@ -29,7 +29,8 @@ fn row(index: i64, status: &str, message: &str, answer: Option<&str>) -> EventDe
         Timestamp::UNIX_EPOCH,
         std::time::Duration::from_millis(index.unsigned_abs()),
     );
-    let mut row = EventDetailRow::fixture(&format!("e{index}"), at, String::new());
+    let event = Uuid7::parse(&format!("0199a0b0-0000-7000-8000-{index:012x}")).unwrap();
+    let mut row = EventDetailRow::fixture(&event, at, String::new());
     status.clone_into(&mut row.row.status);
     row.request_json = serde_json::json!({ "message": message }).to_string();
     row.response_text = answer.map(str::to_owned);
@@ -93,7 +94,7 @@ async fn turns_for(thread: &Fake, event_type: EventType) -> Vec<Turn<'static>> {
             Timestamp::UNIX_EPOCH,
             std::time::Duration::from_millis(100),
         ),
-        event_id: EVENT.to_owned(),
+        event_id: Uuid7::parse(EVENT).unwrap(),
     };
     let workspace = Uuid7::parse(WORKSPACE).unwrap();
     let fleet = Uuid7::parse(FLEET).unwrap();

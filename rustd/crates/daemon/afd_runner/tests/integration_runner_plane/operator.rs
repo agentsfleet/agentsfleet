@@ -23,7 +23,7 @@ const RESERVED_NANOS: i64 = 4_200;
 /// Whether an attempt still names a runner, and what it reserved.
 const READ_ATTEMPT: &str = "\
 SELECT runner_id IS NULL AS runner_gone, reserved_nanos
-FROM authoring.attempts WHERE id = $1::uuid";
+FROM authoring.attempts WHERE id = $1";
 
 /// A bind the sandbox validator accepts.
 const BIND_PATH: &str = "/srv/models";
@@ -211,7 +211,7 @@ async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations
     let mut connection = fixture.owner.acquire().await.expect("a seed connection");
     let attempt = rows::attempt(
         &mut connection,
-        (runner.as_str(), &mint_id(), &mint_id()),
+        (&runner, &mint_id(), &mint_id()),
         AttemptRow {
             status: afd_runner::sql::LEASE_STATUS_EXPIRED,
             lease_expires_at: clock::now(),
@@ -238,7 +238,7 @@ async fn test_retiring_a_runner_keeps_the_attempts_it_ran_and_their_reservations
         .expect("the attempt outlives its runner");
     assert!(runner_gone, "the attempt names no runner once it retires");
     assert_eq!(reserved, RESERVED_NANOS, "its reservation is untouched");
-    sqlx::query("DELETE FROM authoring.attempts WHERE id = $1::uuid")
+    sqlx::query("DELETE FROM authoring.attempts WHERE id = $1")
         .bind(&attempt)
         .execute(&mut *connection)
         .await

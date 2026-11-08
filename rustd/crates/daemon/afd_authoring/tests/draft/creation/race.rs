@@ -22,10 +22,9 @@ use tokio::task::JoinHandle;
 const BOUND: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(20);
 /// The wallet row activation locks after its unlocked readiness reads.
-const HOLD_WALLET: &str =
-    "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid FOR UPDATE";
+const HOLD_WALLET: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1 FOR UPDATE";
 /// The linked draft row activation closes while it holds the fleet row.
-const HOLD_DRAFT: &str = "SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR NO KEY UPDATE";
+const HOLD_DRAFT: &str = "SELECT id FROM authoring.drafts WHERE id=$1 FOR NO KEY UPDATE";
 /// One backend waiting directly or transitively on a holder while running a
 /// statement that starts with the given text. Fixture table locks may intervene.
 const WAITER: &str = "WITH RECURSIVE blocked(pid) AS ( \
@@ -48,7 +47,7 @@ struct Hold {
 }
 
 impl Hold {
-    async fn take(url: &str, statement: &'static str, row: &str) -> Self {
+    async fn take(url: &str, statement: &'static str, row: &Uuid7) -> Self {
         let mut connection = PgConnection::connect(url).await.expect("holder connects");
         let pid = sqlx::query_scalar("SELECT pg_backend_pid()")
             .fetch_one(&mut connection)
@@ -177,7 +176,7 @@ async fn a_kill_committed_while_activation_waits_refuses_that_activation() {
         tag,
         draft,
     } = Installing::save(&c, "kill-first").await;
-    let wallet = Hold::take(&c.base.owner_url(), HOLD_WALLET, c.base.tenant.as_str()).await;
+    let wallet = Hold::take(&c.base.owner_url(), HOLD_WALLET, &c.base.tenant).await;
     let activation = activate(&c, key, request);
     blocked(&c, &[wallet.pid], AT_WALLET).await;
     let killed = bounded(
@@ -249,7 +248,7 @@ async fn an_activation_committed_first_makes_the_concurrent_kill_stale() {
         tag,
         draft,
     } = Installing::save(&c, "activation-first").await;
-    let linked = Hold::take(&c.base.owner_url(), HOLD_DRAFT, draft.as_str()).await;
+    let linked = Hold::take(&c.base.owner_url(), HOLD_DRAFT, &draft).await;
     let activation = activate(&c, key, request);
     let activating = blocked(&c, &[linked.pid], AT_CLOSE).await;
     let kill = kill_after_table_lock(&c, &fleet, tag, activating).await;

@@ -4,6 +4,7 @@ use super::{
     Dragonfly, DragonflyHarness, Duration, FleetStreams, OutboundJob, OutboundQueue, SessionStore,
     SubscriptionHub, deliver, session,
 };
+use crate::support::mint_id;
 use afd_dragonfly::session::{AbortOutcome, AbortReason, Approval, ApproveOutcome, SessionStatus};
 use afd_dragonfly::{Dedicated, OUTBOUND_STREAM_KEY, OutboundReader};
 use std::collections::BTreeSet;
@@ -119,13 +120,16 @@ async fn write_outbound(
 ) {
     let queue = OutboundQueue::new(redis.clone());
     queue.ensure_group().await.expect("outbound group");
+    // The job's identifiers must be UUIDv7s, so the fleet is a fresh one the
+    // unscoped stream cannot already hold rather than the marker itself.
+    let (workspace, fleet, event) = (mint_id(), mint_id(), mint_id());
     let id = queue
         .enqueue(OutboundJob {
             provider: marker,
             destination: payload,
-            workspace_id: marker,
-            fleet_id: marker,
-            event_id: marker,
+            workspace_id: &workspace,
+            fleet_id: &fleet,
+            event_id: &event,
             answer: payload,
         })
         .await
@@ -141,7 +145,7 @@ async fn write_outbound(
         unscoped
             .ids
             .iter()
-            .all(|entry| entry.get::<String>("fleet_id").as_deref() != Some(marker))
+            .all(|entry| entry.get::<String>("fleet_id").as_deref() != Some(fleet.as_str()))
     );
     let connection = Dedicated::connect(config, Duration::from_millis(10))
         .await

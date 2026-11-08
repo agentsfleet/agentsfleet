@@ -58,8 +58,8 @@ async fn late_reply(delete: bool) {
             error_code::AUTHORING_FENCE
         }
     );
-    let saved: (bool,String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid")
-        .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("late accounting receipt");
+    let saved: (bool,String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
+        .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("late accounting receipt");
     assert_eq!(saved, (true, "known".into()));
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
     assert_eq!(f.counts().await, if delete { (0, 0, 0) } else { (1, 0, 1) });

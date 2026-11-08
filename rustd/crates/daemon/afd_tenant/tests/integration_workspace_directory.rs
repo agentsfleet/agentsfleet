@@ -9,6 +9,7 @@
 
 use af_core::error_code;
 use af_core::id::ENTROPY_LEN as ID_ENTROPY_LEN;
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_tenant::workspace::Workspaces;
 use afd_tenant::workspace::directory::After;
@@ -39,7 +40,7 @@ async fn should_walk_keyset_across_held_accounts() {
             .expect("a plain name")
             .expect("a chosen name");
         workspaces
-            .create(&id(tenant), Some(name), LATER)
+            .create(tenant, Some(name), LATER)
             .await
             .expect("the shared name lands in each account");
     }
@@ -70,7 +71,7 @@ async fn should_walk_keyset_across_held_accounts() {
 
 /// Every row the walk holds, one row per page, each page resumed from the
 /// last one's boundary.
-async fn walk_one_row_at_a_time(workspaces: &Workspaces, tenants: &[&str]) -> Vec<String> {
+async fn walk_one_row_at_a_time(workspaces: &Workspaces, tenants: &[&Uuid7]) -> Vec<String> {
     let mut walked = Vec::new();
     let mut after: Option<After> = None;
     loop {
@@ -96,19 +97,15 @@ async fn walk_one_row_at_a_time(workspaces: &Workspaces, tenants: &[&str]) -> Ve
 async fn the_shared_name_comes_back_once_per_account(
     fixture: &Fixture,
     workspaces: &Workspaces,
-    tenants: &[&str],
+    tenants: &[&Uuid7],
 ) {
     let named = workspaces
         .page(tenants, Some(SHARED_NAME), None, 50)
         .await
         .expect("the name filter reads");
-    let mut owners: Vec<&str> = named
-        .rows
-        .iter()
-        .map(|row| row.tenant_id.as_str())
-        .collect();
+    let mut owners: Vec<&Uuid7> = named.rows.iter().map(|row| &row.tenant_id).collect();
     owners.sort_unstable();
-    let mut expected = vec![fixture.john.tenant.as_str(), fixture.bob.tenant.as_str()];
+    let mut expected = vec![&fixture.john.tenant, &fixture.bob.tenant];
     expected.sort_unstable();
     assert_eq!(owners, expected, "the shared name once per account");
 
@@ -127,8 +124,8 @@ async fn the_shared_name_comes_back_once_per_account(
         .expect("the resumed named page reads");
     assert!(first.more && !rest.more, "two named rows, one per page");
     assert_ne!(
-        rest.rows.first().map(|row| row.tenant_id.as_str()),
-        Some(boundary.tenant_id.as_str()),
+        rest.rows.first().map(|row| &row.tenant_id),
+        Some(&boundary.tenant_id),
         "the resumed page is the other account's"
     );
 }
@@ -140,7 +137,7 @@ async fn the_shared_name_comes_back_once_per_account(
 async fn should_refuse_chosen_workspace_name_when_account_already_uses_it() {
     let fixture = Fixture::create().await;
     let workspaces = Workspaces::new(fixture.database.clone(), Entropy::new());
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let chosen = || {
         Chosen::parse(SHARED_NAME)
             .expect("a plain name")
@@ -167,7 +164,7 @@ async fn should_draw_again_when_a_generated_name_collides() {
     let fixture = Fixture::create().await;
     let (entropy, draws) = Entropy::new_mocked();
     let workspaces = Workspaces::new(fixture.database.clone(), entropy);
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let taken = [1_u8; NAME_ENTROPY_LEN];
     let fresh = [2_u8; NAME_ENTROPY_LEN];
     let now = af_core::clock::now();
@@ -229,7 +226,7 @@ async fn should_report_a_chosen_name_insert_that_fails_off_the_name_index() {
     let fixture = Fixture::create().await;
     let (entropy, draws) = Entropy::new_mocked();
     let workspaces = Workspaces::new(fixture.database.clone(), entropy);
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let now = af_core::clock::now();
     let chosen = |name: &str| {
         Chosen::parse(name)

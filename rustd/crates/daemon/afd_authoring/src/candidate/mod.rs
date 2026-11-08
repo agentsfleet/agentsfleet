@@ -21,7 +21,7 @@ const CONTEXT: &str = "read or append immutable candidate";
 /// [`crate::sql::candidate::READ`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct Stored {
-    id: String,
+    id: Uuid7,
     revision: i64,
     definition: String,
     canonical_digest: String,
@@ -34,13 +34,13 @@ pub(crate) async fn read(
     id: &Uuid7,
 ) -> Result<Candidate> {
     let row: Stored = sqlx::query_as(crate::sql::candidate::READ)
-        .bind(id.as_str())
-        .bind(draft.as_str())
+        .bind(id)
+        .bind(draft)
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT))?;
     Ok(Candidate {
-        id: Uuid7::parse(&row.id)?,
+        id: row.id,
         revision: row.revision.to_string(),
         definition: serde_json::from_str(&row.definition).map_err(stored)?,
         canonical_digest: row.canonical_digest,
@@ -68,8 +68,8 @@ pub(crate) async fn append(
     let digest = canonical_digest(definition)?;
     let value = serde_json::to_string(definition).map_err(stored)?;
     sqlx::query(crate::sql::candidate::INSERT)
-        .bind(id.as_str())
-        .bind(draft.as_str())
+        .bind(id)
+        .bind(draft)
         .bind(revision)
         .bind(value)
         .bind(&digest)
@@ -78,8 +78,8 @@ pub(crate) async fn append(
         .await
         .map_err(query(CONTEXT))?;
     sqlx::query(crate::sql::candidate::SELECT_HEAD)
-        .bind(draft.as_str())
-        .bind(id.as_str())
+        .bind(draft)
+        .bind(id)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

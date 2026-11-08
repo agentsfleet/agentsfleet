@@ -32,6 +32,7 @@
 //! The poster escapes every text it sends (`crate::slack`), so a line is handed
 //! over as the fleet wrote it and escaped exactly once.
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_connector::slack::Part;
 use afd_dragonfly::OutboundDelivery;
@@ -62,13 +63,13 @@ pub struct Interim {
     /// Where that connector posts it, as the event's producer recorded it.
     pub destination: String,
     /// The workspace whose grant pays for it.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// The fleet that is speaking.
-    pub fleet_id: String,
+    pub fleet_id: Uuid7,
     /// The event whose thread it lands in.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// The lease that said it, whose count `part` is.
-    pub lease_id: String,
+    pub lease_id: Uuid7,
     /// What to say, already scrubbed of the fleet's secret values.
     pub text: String,
     /// Which line of the run this is, from one.
@@ -118,7 +119,7 @@ impl Interjector {
             slack: Line {
                 slack: &self.slack,
                 part: Part {
-                    lease_id,
+                    lease_id: lease_id.into(),
                     line: part,
                 },
             },

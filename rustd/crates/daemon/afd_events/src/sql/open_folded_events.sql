@@ -8,11 +8,11 @@
 INSERT INTO fleet.events
   (fleet_id, event_id, workspace_id, actor, event_type,
    status, request_json, resumes_event_id, created_at, updated_at)
-SELECT a.fleet_id, a.id::text, a.workspace_id, a.actor, a.event_type,
+SELECT a.fleet_id, a.id, a.workspace_id, a.actor, a.event_type,
        $4, a.request_json::jsonb, $3,
        CASE WHEN a.delivered_at IS NULL THEN a.created_at ELSE now() END, now()
 FROM fleet.admissions a
-WHERE a.fleet_id = $1::uuid AND a.id = ANY($2::uuid[])
-ON CONFLICT (fleet_id, event_id) DO UPDATE SET
+WHERE a.fleet_id = $1 AND a.id = ANY($2)
+ON CONFLICT (event_id) DO UPDATE SET
     resumes_event_id = COALESCE(fleet.events.resumes_event_id,
                                 EXCLUDED.resumes_event_id)

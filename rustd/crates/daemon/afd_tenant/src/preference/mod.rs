@@ -165,7 +165,7 @@ impl Preferences {
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
-    pub async fn resolve_user(&self, subject: &str) -> Result<Option<String>> {
+    pub async fn resolve_user(&self, subject: &str) -> Result<Option<Uuid7>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_scalar(sql::SELECT_USER_ID_BY_SUBJECT)
             .bind(subject)
@@ -181,11 +181,11 @@ impl Preferences {
     ///
     /// # Errors
     /// Reports a datastore that would not answer.
-    pub async fn bag(&self, user: &str, workspace: &Uuid7) -> Result<Vec<Pref>> {
+    pub async fn bag(&self, user: &Uuid7, workspace: &Uuid7) -> Result<Vec<Pref>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as(sql::SELECT_BAG)
             .bind(user)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .fetch_all(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_BAG))
@@ -201,7 +201,7 @@ impl Preferences {
     /// draw.
     pub async fn upsert(
         &self,
-        user: &str,
+        user: &Uuid7,
         workspace: &Uuid7,
         key: PrefKey,
         value: &str,
@@ -209,9 +209,9 @@ impl Preferences {
     ) -> Result<()> {
         let mut connection = self.database.acquire().await?;
         sqlx::query(sql::UPSERT_PREF)
-            .bind(self.entropy.uuid7(now)?.as_str())
+            .bind(self.entropy.uuid7(now)?)
             .bind(user)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(key.as_str())
             .bind(value)
             .execute(&mut *connection)
@@ -232,9 +232,9 @@ impl Preferences {
     pub async fn signals(&self, workspace: &Uuid7, tenant: &Uuid7) -> Result<Signals> {
         let mut connection = self.database.acquire().await?;
         let row: SignalsRow = sqlx::query_as(sql::SELECT_SIGNALS)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(STEER_ACTOR_LIKE)
-            .bind(tenant.as_str())
+            .bind(tenant)
             .fetch_one(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_SIGNALS))?;

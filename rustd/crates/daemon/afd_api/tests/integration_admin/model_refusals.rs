@@ -50,6 +50,6 @@ pub(super) async fn in_use(router: &axum::Router, fixture: &Fixture) {
     assert!(contains_id(
         &json_body(retained).await,
         "models",
-        &fixture.platform_model_row
+        fixture.platform_model_row.as_str()
     ));
 }

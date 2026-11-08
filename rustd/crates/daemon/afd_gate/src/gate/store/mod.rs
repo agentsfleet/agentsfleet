@@ -131,24 +131,22 @@ impl Gates {
     /// # Errors
     /// Reports an unreadable queue, database or stored identifier. The caller
     /// must not treat an unreadable reference as an event with no prior gate.
-    pub async fn recorded(&self, fleet_id: &Uuid7, event_id: &str) -> Result<Option<GateRef>> {
+    pub async fn recorded(&self, fleet_id: &Uuid7, event_id: &Uuid7) -> Result<Option<GateRef>> {
         let stored = self
             .queue
-            .get_string(&key::event_ref(fleet_id.as_str(), event_id))
+            .get_string(&key::event_ref(fleet_id.as_str(), event_id.as_str()))
             .await?;
         if let Some(reference) = stored.and_then(|raw| serde_json::from_str(&raw).ok()) {
             return Ok(Some(reference));
         }
         let mut connection = self.database.acquire().await?;
-        let action: Option<String> = sqlx::query_scalar(sql::SELECT_EVENT_GATE)
-            .bind(fleet_id.as_str())
+        let action: Option<Uuid7> = sqlx::query_scalar(sql::SELECT_EVENT_GATE)
+            .bind(fleet_id)
             .bind(event_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_REFERENCE))?;
-        action
-            .map(|id| Uuid7::parse(&id).map(GateRef::new).map_err(Into::into))
-            .transpose()
+        Ok(action.map(GateRef::new))
     }
 
     /// Record that `event_id` is waiting on `reference`, for long enough to
@@ -189,8 +187,11 @@ impl Gates {
     /// # Errors
     /// Reports a queue or datastore that would not answer.
     pub async fn evaluate(&self, reference: &GateRef) -> Result<Evaluation> {
-        let action = reference.action_id().as_str();
-        let mirrored = self.queue.get_string(&key::response(action)).await?;
+        let action = reference.action_id();
+        let mirrored = self
+            .queue
+            .get_string(&key::response(action.as_str()))
+            .await?;
         if let Some(answer) = mirrored.as_deref().and_then(Answer::parse) {
             return Ok(evaluate(Some(answer), false));
         }
@@ -210,8 +211,8 @@ impl Gates {
             // Hoisted: see the `tracing` note in the workspace Cargo.toml.
             let outcome = answer.as_str();
             tracing::info!(
-                event = EVENT_DB_FALLBACK,
-                action_id = action,
+                event = %EVENT_DB_FALLBACK,
+                action_id = %action,
                 outcome,
                 "the decision mirror was absent and the durable row answered"
             );
@@ -220,7 +221,7 @@ impl Gates {
     }
 
     /// Where `action_id`'s newest gate stands, or nothing if it has no row.
-    async fn standing(&self, action_id: &str) -> Result<Option<Standing>> {
+    async fn standing(&self, action_id: &Uuid7) -> Result<Option<Standing>> {
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query_as::<_, StoredStanding>(sql::SELECT_GATE_STATUS)
             .bind(action_id)

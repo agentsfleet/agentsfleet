@@ -57,7 +57,7 @@ impl Leases {
             let mut connection = self.pool().acquire().await?;
             sqlx::query_as::<_, RunTokens>(SELECT_RUN_TOKENS)
                 .bind(afd_billing::sql::work::FLEET_LEASE)
-                .bind(lease.as_str())
+                .bind(lease)
                 .fetch_one(&mut *connection)
                 .await
                 .map_err(crate::error::query(EVENT_RUN_TOKENS_UNREAD))

@@ -1,4 +1,4 @@
-SELECT t.tenant_model_id::text AS tenant_model_id,
+SELECT t.tenant_model_id AS tenant_model_id,
        m.model_name,
        m.secret_ref,
        s.meta_provider AS provider,
@@ -20,4 +20,4 @@ SELECT t.tenant_model_id::text AS tenant_model_id,
          WHERE p.model_name = m.model_name
            AND (s.meta_provider = $2 OR p.provider = s.meta_provider)
        ) c ON true
- WHERE t.tenant_id = $1::uuid
+ WHERE t.tenant_id = $1

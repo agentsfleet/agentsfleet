@@ -94,7 +94,7 @@ pub(super) async fn prepare(
     Ok(Some(PreparedReport {
         tasks: tasks.clone(),
         lease_id: lease.lease_id.clone(),
-        runner_id: lease.runner_id.to_string(),
+        runner_id: lease.runner_id.clone(),
         scope: owned.scope,
         snapshot: owned.snapshot,
         input: input.clone(),
@@ -117,29 +117,24 @@ async fn snapshot(
     let mut tx = transaction::begin(&mut connection).await?;
     let owned = execution::load(&mut tx, lease, &input.task).await?;
     decision::goal(&mut tx, lease, input, &owned.snapshot.context).await?;
-    let source = guard::id(&owned.current.source_admission_id, "source_admission_id")?;
+    let source = owned.current.source_admission_id.clone();
     let target = if matches!(owned.snapshot.context.target, TaskTarget::ApiOnly) {
         None
     } else {
         let target: sqlx::types::Json<crate::task::github::BoundPr> =
             sqlx::query_scalar(include_str!("../sql/native_target.sql"))
-                .bind(&input.task.task_id)
-                .bind(owned.scope.fleet_id.as_str())
-                .bind(owned.scope.workspace_id.as_str())
+                .bind(crate::task::guard::wire(&input.task.task_id)?)
+                .bind(&owned.scope.fleet_id)
+                .bind(&owned.scope.workspace_id)
                 .fetch_one(&mut *tx)
                 .await
                 .map_err(query("read native report target"))?;
-        for revision in [
-            Some(owned.snapshot.context.accepted_revision_id.as_ref()),
-            None,
-        ] {
-            let config = crate::lease::Leases::stored_config_on(
-                &mut tx,
-                owned.scope.fleet_id.as_str(),
-                revision,
-            )
-            .await?
-            .ok_or(crate::task::TaskRefusal::InvalidTarget)?;
+        let accepted = crate::task::guard::wire(&owned.snapshot.context.accepted_revision_id)?;
+        for revision in [Some(&accepted), None] {
+            let config =
+                crate::lease::Leases::stored_config_on(&mut tx, &owned.scope.fleet_id, revision)
+                    .await?
+                    .ok_or(crate::task::TaskRefusal::InvalidTarget)?;
             target.within(&config)?;
         }
         crate::task::Github::hold_authority(&mut tx, &owned.scope, target.installation_id).await?;

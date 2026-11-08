@@ -53,7 +53,7 @@ const PROBE: &str = r#"{"kind":"probe"}"#;
 /// A seeded fleet whose narrative log this test opens and then leaves parked.
 struct Parked {
     fixtures: Fixtures,
-    fleet: String,
+    fleet: Uuid7,
     held: Acquired,
     tail: Subscription,
     counters: FleetCounters,
@@ -72,8 +72,8 @@ async fn parked() -> Parked {
     let hub = SubscriptionHub::start(queue::config())
         .await
         .expect("a live hub");
-    let tail = hub.subscribe(&fleet_activity_channel(&fleet));
-    await_subscribed(&fixtures, &fleet).await;
+    let tail = hub.subscribe(&fleet_activity_channel(fleet.as_str()));
+    await_subscribed(&fixtures, fleet.as_str()).await;
 
     let now = fixtures.enrolled_at();
     let leases = fixtures.leases();
@@ -186,7 +186,7 @@ async fn a_parked_event_still_reports_its_event_count() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_parked_event_moves_no_budget() {
     let run = parked().await;
-    let fleet = Uuid7::parse(&run.fleet).expect("the seeded fleet id is well formed");
+    let fleet = run.fleet.clone();
     let mut connection = run
         .fixtures
         .database
@@ -195,8 +195,8 @@ async fn a_parked_event_moves_no_budget() {
         .expect("a pooled connection");
 
     let ledger_rows: i64 =
-        sqlx::query_scalar("SELECT COUNT(*) FROM billing.usage_lines WHERE fleet_id = $1::uuid")
-            .bind(fleet.as_str())
+        sqlx::query_scalar("SELECT COUNT(*) FROM billing.usage_lines WHERE fleet_id = $1")
+            .bind(&fleet)
             .fetch_one(&mut *connection)
             .await
             .expect("the ledger answers a count");
@@ -212,9 +212,9 @@ async fn a_parked_event_moves_no_budget() {
     assert_eq!(after, run.counters, "nothing moved since the receive");
 
     let status: String = sqlx::query(
-        "SELECT status FROM fleet.events WHERE fleet_id = $1::uuid ORDER BY created_at DESC LIMIT 1",
+        "SELECT status FROM fleet.events WHERE fleet_id = $1 ORDER BY created_at DESC LIMIT 1",
     )
-    .bind(fleet.as_str())
+    .bind(&fleet)
     .fetch_one(&mut *connection)
     .await
     .expect("the event row reads")

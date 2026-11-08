@@ -7,10 +7,10 @@ use super::capture::*;
 use super::*;
 
 /// One owed answer, addressed.
-pub(super) const fn delivery(event_id: &str) -> Delivery<'_> {
+pub(super) fn delivery(event_id: &Uuid7) -> Delivery<'_> {
     Delivery {
-        fleet_id: FLEET,
-        workspace_id: WORKSPACE,
+        fleet_id: &FLEET,
+        workspace_id: &WORKSPACE,
         provider: Provider::Slack,
         destination: DESTINATION,
         event_id,
@@ -43,7 +43,7 @@ pub(super) async fn ready() -> OutboundHarness {
 ///
 /// Answers the entry id the queue minted, which is what a job carries as its
 /// `id` and what the lanes acknowledge by.
-pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &str) -> EventId {
+pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &Uuid7) -> EventId {
     use sqlx::Acquire as _;
 
     let mut connection = harness
@@ -69,8 +69,8 @@ pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &st
         .enqueue(OutboundJob {
             provider: PROVIDER,
             destination: DESTINATION,
-            workspace_id: WORKSPACE,
-            fleet_id: FLEET,
+            workspace_id: &WORKSPACE,
+            fleet_id: &FLEET,
             event_id: event,
             answer: ANSWER,
         })
@@ -88,7 +88,7 @@ pub(super) async fn owe_and_queue(harness: &OutboundHarness, nth: u8, event: &st
 /// The row as the ledger holds it: `(attempt_count, delivered_at, updated_at)`.
 pub(super) async fn row(
     harness: &OutboundHarness,
-    event: &str,
+    event: &Uuid7,
 ) -> (i64, Option<jiff::Timestamp>, jiff::Timestamp) {
     let mut connection = harness
         .database
@@ -101,9 +101,9 @@ pub(super) async fn row(
         jiff_sqlx::Timestamp,
     ) = sqlx::query_as(
         "SELECT attempt_count, delivered_at, updated_at FROM fleet.obligations
-          WHERE fleet_id = $1::uuid AND event_id = $2::text",
+          WHERE fleet_id = $1 AND event_id = $2",
     )
-    .bind(FLEET)
+    .bind(&*FLEET)
     .bind(event)
     .fetch_one(&mut *connection)
     .await
@@ -117,13 +117,13 @@ pub(super) async fn row(
 
 /// The event ids the recovery scan would re-offer now, at the producer's own
 /// [`LOST_AFTER`].
-pub(super) async fn reoffered(harness: &OutboundHarness) -> Vec<String> {
+pub(super) async fn reoffered(harness: &OutboundHarness) -> Vec<Uuid7> {
     obligation::undelivered(&harness.database, LOST_AFTER, AMPLE)
         .await
         .expect("the scan answers")
         .into_iter()
         // Deployment-wide scan, this suite's own fleet (ISO-1).
-        .filter(|owed| owed.fleet_id == FLEET)
+        .filter(|owed| owed.fleet_id == *FLEET)
         .map(|owed| owed.event_id)
         .collect()
 }

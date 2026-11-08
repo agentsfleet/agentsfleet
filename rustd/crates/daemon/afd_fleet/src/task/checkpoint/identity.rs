@@ -3,7 +3,7 @@
 use crate::{
     Result,
     error::query,
-    task::{Tasks, guard, storage::R2CheckpointStore},
+    task::{Tasks, storage::R2CheckpointStore},
 };
 use af_core::{clock, id::Uuid7};
 use af_crypto::{aad::Aad, envelope::Sealer, mac::HmacSha256Tag, secret::SecretBytes};
@@ -18,7 +18,7 @@ pub(super) struct Identity {
 
 #[derive(sqlx::FromRow)]
 struct Stored {
-    id: String,
+    id: Uuid7,
     key_version: i32,
     #[sqlx(flatten)]
     envelope: StoredEnvelope,
@@ -39,8 +39,8 @@ impl Identity {
     }
 }
 
-pub(super) async fn quota(connection: &mut PgConnection, workspace: &str) -> Result<()> {
-    sqlx::query_scalar::<_, String>(include_str!("sql/quota.sql"))
+pub(super) async fn quota(connection: &mut PgConnection, workspace: &Uuid7) -> Result<()> {
+    sqlx::query_scalar::<_, Uuid7>(include_str!("sql/quota.sql"))
         .bind(workspace)
         .fetch_one(connection)
         .await
@@ -56,13 +56,13 @@ pub(super) async fn load(
     repository: &str,
 ) -> Result<Identity> {
     let stored: Option<Stored> = sqlx::query_as(include_str!("sql/identity.sql"))
-        .bind(workspace.as_str())
+        .bind(workspace)
         .bind(repository)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query("lock active repository identity key"))?;
     if let Some(stored) = stored {
-        let id = guard::id(&stored.id, "identity_key_id")?;
+        let id = stored.id.clone();
         let envelope = stored.envelope.into_envelope()?;
         let key = envelope.open(
             &storage.master,
@@ -78,7 +78,7 @@ pub(super) async fn load(
     }
     let id = tasks.leases.entropy().uuid7(clock::now())?;
     let key_version: i32 = sqlx::query_scalar(include_str!("sql/identity_version.sql"))
-        .bind(workspace.as_str())
+        .bind(workspace)
         .bind(repository)
         .fetch_one(&mut *connection)
         .await
@@ -97,8 +97,8 @@ pub(super) async fn load(
         material.as_slice(),
     )?;
     sqlx::query(include_str!("sql/identity_insert.sql"))
-        .bind(id.as_str())
-        .bind(workspace.as_str())
+        .bind(&id)
+        .bind(workspace)
         .bind(repository)
         .bind(key_version)
         .bind(envelope.wrapped_dek())

@@ -12,7 +12,7 @@ use sqlx::Connection as _;
 fn request(lane: &Lane) -> Admission<'_> {
     Admission {
         producer: Producer::Steer,
-        key: Key::Repeated(&lane.fleet),
+        key: Key::Repeated(lane.fleet.as_str()),
         fleet: &lane.fleet,
         workspace: &lane.workspace,
         actor: "fixture:staged",
@@ -33,11 +33,10 @@ async fn rollback_removes_staged_admission_without_a_notification() -> Fallible 
     admissions.stage(&mut tx, prepared).await?;
     tx.rollback().await?;
     drop(connection);
-    let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid")
-            .bind(&lane.fleet)
-            .fetch_one(&mut *lane.database.acquire().await?)
-            .await?;
+    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1")
+        .bind(&lane.fleet)
+        .fetch_one(&mut *lane.database.acquire().await?)
+        .await?;
     assert_eq!(count, 0);
     assert!(
         !server
@@ -46,7 +45,9 @@ async fn rollback_removes_staged_admission_without_a_notification() -> Fallible 
             .any(|line| line.starts_with("SPUBLISH"))
     );
     assert_eq!(
-        admissions.confirm(Producer::Steer, &lane.fleet).await?,
+        admissions
+            .confirm(Producer::Steer, lane.fleet.as_str())
+            .await?,
         None
     );
     lane.cleanup().await;
@@ -111,7 +112,7 @@ async fn an_unrepeatable_stage_is_keyed_by_its_own_row() -> Fallible {
     assert_ne!(staged.first(), staged.last(), "two stages, two rows");
     for id in &staged {
         let key: String =
-            sqlx::query_scalar("SELECT producer_key FROM fleet.admissions WHERE id = $1::uuid")
+            sqlx::query_scalar("SELECT producer_key FROM fleet.admissions WHERE id = $1")
                 .bind(id)
                 .fetch_one(&mut *lane.database.acquire().await?)
                 .await?;

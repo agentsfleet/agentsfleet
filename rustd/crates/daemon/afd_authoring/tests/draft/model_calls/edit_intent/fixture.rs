@@ -60,20 +60,18 @@ impl Case {
             },
         )
         .await;
-        sqlx::query("UPDATE authoring.messages SET user_text=$2 WHERE draft_id=$1::uuid")
-            .bind(attempt.draft.id.as_str())
+        sqlx::query("UPDATE authoring.messages SET user_text=$2 WHERE draft_id=$1")
+            .bind(&attempt.draft.id)
             .bind(text)
             .execute(&mut *f.connection().await)
             .await
             .expect("accepted newest message");
-        sqlx::query(
-            "UPDATE runner.runners SET decision_platform_model_id=$2::uuid WHERE id=$1::uuid",
-        )
-        .bind(f.runner.as_str())
-        .bind(model.model.id.as_str())
-        .execute(&mut *f.connection().await)
-        .await
-        .expect("configured decision model");
+        sqlx::query("UPDATE runner.runners SET decision_platform_model_id=$2 WHERE id=$1")
+            .bind(&f.runner)
+            .bind(&model.model.id)
+            .execute(&mut *f.connection().await)
+            .await
+            .expect("configured decision model");
         credential(&f).await;
         let mut stub = Provider::known();
         let base = attempt.draft.candidate.as_ref().expect("source candidate");
@@ -98,13 +96,13 @@ impl Case {
     }
 
     pub(super) async fn journal(&self) -> (String, Option<i64>, bool) {
-        sqlx::query_as("SELECT disposition, charged_nanos, accounted_at IS NOT NULL FROM authoring.edit_decisions WHERE attempt_id=$1::uuid")
-            .bind(self.attempt.id.as_str()).fetch_one(&mut *self.f.connection().await).await.expect("persisted decision")
+        sqlx::query_as("SELECT disposition, charged_nanos, accounted_at IS NOT NULL FROM authoring.edit_decisions WHERE attempt_id=$1")
+            .bind(&self.attempt.id).fetch_one(&mut *self.f.connection().await).await.expect("persisted decision")
     }
 
     pub(super) async fn finish(self) {
-        sqlx::query("UPDATE runner.runners SET decision_platform_model_id=NULL WHERE id=$1::uuid")
-            .bind(self.f.runner.as_str())
+        sqlx::query("UPDATE runner.runners SET decision_platform_model_id=NULL WHERE id=$1")
+            .bind(&self.f.runner)
             .execute(&mut *self.f.connection().await)
             .await
             .expect("remove fixture assignment");

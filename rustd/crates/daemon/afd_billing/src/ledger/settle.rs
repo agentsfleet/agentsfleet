@@ -29,7 +29,7 @@ pub(super) async fn charge(
         .collect();
     let charged: Vec<i64> = sqlx::query_scalar(SETTLE_LINES)
         .bind(work.work_type())
-        .bind(work.id().as_str())
+        .bind(work.id())
         .bind(seqs)
         .fetch_all(&mut *connection)
         .await
@@ -50,7 +50,7 @@ pub(super) async fn charge(
     // to debit, and its lines settle all the same so the relay's oldest-first
     // scan never stalls behind them.
     let debited = sqlx::query(DEBIT_WALLET)
-        .bind(tenant.as_str())
+        .bind(tenant)
         .bind(total)
         .execute(&mut *connection)
         .await

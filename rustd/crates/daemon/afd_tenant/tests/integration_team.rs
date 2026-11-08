@@ -17,7 +17,7 @@ use afd_tenant::team::Removal;
 use jiff::Timestamp;
 use sqlx::PgConnection;
 
-use crate::access_lane::{Fixture, id};
+use crate::access_lane::Fixture;
 
 /// Now, for every call a case makes.
 const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
@@ -31,7 +31,7 @@ const LAPSED: std::time::Duration = std::time::Duration::from_millis(1);
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_owner_manages_invites() {
     let fixture = Fixture::create().await;
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let upper = fixture.carol.email.to_uppercase();
 
     let invite = fixture
@@ -95,7 +95,7 @@ async fn test_invitee_accepts_once() {
         first, second,
         "a concurrent accept answers exactly as the first"
     );
-    assert!(first.workspaces.contains(&id(&fixture.john.workspace)));
+    assert!(first.workspaces.contains(&fixture.john.workspace));
     let replay = fixture
         .team
         .accept(&invite, &carol, NOW)
@@ -104,8 +104,8 @@ async fn test_invitee_accepts_once() {
     assert_eq!(replay, first);
     assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
 
-    let tenant = id(&fixture.john.tenant);
-    let removed = fixture.team.remove(&tenant, &fixture.carol.user_id).await;
+    let tenant = fixture.john.tenant.clone();
+    let removed = fixture.team.remove(&tenant, &fixture.carol.user).await;
     assert_eq!(removed.expect("John removes Carol"), Removal::Removed);
     let rejoin = fixture
         .team
@@ -122,7 +122,7 @@ async fn test_invitee_accepts_once() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_accept_refusals() {
     let fixture = Fixture::create().await;
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let invite = fixture
         .invite(&fixture.carol.email, NOW)
         .await
@@ -160,7 +160,7 @@ async fn test_accept_refusals() {
     assert_eq!(expired.code(), error_code::INVITE_NOT_FOUND);
     let unknown = fixture
         .team
-        .accept(&id(&mint_id()), &fixture.carol.invitee(), NOW)
+        .accept(&mint_id(), &fixture.carol.invitee(), NOW)
         .await
         .expect_err("never issued");
     assert_eq!(unknown.code(), error_code::INVITE_NOT_FOUND);
@@ -210,14 +210,14 @@ async fn test_invite_and_member_conflicts() {
 /// John cannot remove himself, the account's last owner; Bob is removed, and
 /// removing him again is quiet.
 async fn the_last_owner_stays_and_a_member_goes_once(fixture: &Fixture) {
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let last = fixture
         .team
-        .remove(&tenant, &fixture.john.user_id)
+        .remove(&tenant, &fixture.john.user)
         .await
         .expect_err("the last owner stays");
     assert_eq!(last.code(), error_code::MEMBER_LAST_OWNER);
-    let bob = &fixture.bob.user_id;
+    let bob = &fixture.bob.user;
     assert_eq!(
         fixture
             .team
@@ -248,7 +248,10 @@ async fn an_accept_whose_second_write_fails_leaves_no_membership() {
         .await
         .expect("John invites Carol");
     let migrator = fixture.lane.open(DbRole::Migrator, &[]).await;
-    let name = format!("fixture_refuse_accept_{}", mint_id().replace('-', ""));
+    let name = format!(
+        "fixture_refuse_accept_{}",
+        mint_id().to_string().replace('-', "")
+    );
     let mut connection = migrator.acquire().await.expect("a migrator connection");
     let install = [
         format!(

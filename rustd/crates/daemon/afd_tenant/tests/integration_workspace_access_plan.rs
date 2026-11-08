@@ -207,7 +207,7 @@ async fn test_access_check_plans_as_index_probes() {
     let seeded = Seeded::open().await;
     let probe = Probe {
         statement: AUTHORIZE_WORKSPACE,
-        types: "text, text, text",
+        types: "uuid, text, uuid",
         arguments: format!("{}, 'user_plan_{}_1', NULL", seeded.row(4), seeded.prefix),
     };
     seeded
@@ -227,7 +227,7 @@ async fn test_team_reads_plan_as_index_probes() {
         (
             "pending invitations",
             SELECT_TENANT_PENDING,
-            "text",
+            "uuid",
             seeded.row(1),
             &["invites"][..],
         ),
@@ -241,7 +241,7 @@ async fn test_team_reads_plan_as_index_probes() {
         (
             "members",
             SELECT_MEMBERS,
-            "text",
+            "uuid",
             seeded.row(1),
             &["memberships", "users"][..],
         ),
@@ -255,7 +255,7 @@ async fn test_team_reads_plan_as_index_probes() {
         (
             "the accept lock",
             LOCK_INVITE,
-            "text",
+            "uuid",
             seeded.row(5),
             &["invites"][..],
         ),

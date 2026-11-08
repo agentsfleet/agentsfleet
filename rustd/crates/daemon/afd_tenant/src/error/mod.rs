@@ -158,7 +158,6 @@ impl Error {
             | ErrorKind::Queue { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RoleUnknown { .. }
-            | ErrorKind::RowMalformed { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::SessionFieldInvalid { .. }
             | ErrorKind::SessionMissing
@@ -187,6 +186,7 @@ impl Error {
             | ErrorKind::InviteEmailMismatch
             | ErrorKind::MemberLastOwner
             | ErrorKind::EmailInvalid
+            | ErrorKind::CursorInvalid
             | ErrorKind::LibraryPageUnavailable { .. } => None,
         }
     }
@@ -202,9 +202,9 @@ impl Error {
             ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => {
                 error_code::INTERNAL_DB_UNAVAILABLE
             }
-            ErrorKind::Query { .. }
-            | ErrorKind::RowMalformed { .. }
-            | ErrorKind::RoleUnknown { .. } => error_code::INTERNAL_DB_QUERY,
+            ErrorKind::Query { .. } | ErrorKind::RoleUnknown { .. } => {
+                error_code::INTERNAL_DB_QUERY
+            }
             // One internal code for two failures the caller shares an
             // inability to correct. One is this instance's own: a
             // cryptographic step — a draw, an identifier, a key — that failed.
@@ -239,7 +239,8 @@ impl Error {
             | ErrorKind::CliCredentialMachineNameInvalid
             | ErrorKind::WorkspaceNameInvalid
             | ErrorKind::WorkspaceNameTooLong
-            | ErrorKind::EmailInvalid => error_code::INVALID_REQUEST,
+            | ErrorKind::EmailInvalid
+            | ErrorKind::CursorInvalid => error_code::INVALID_REQUEST,
             ErrorKind::WorkspaceNameExists => error_code::WORKSPACE_NAME_EXISTS,
             // A 401 and not a 403: the session's tenant is GONE, so the
             // credential itself is stale and re-authenticating is the remedy.
@@ -279,7 +280,6 @@ impl Error {
             // which would be leaking the cause to whoever provoked it. The
             // cause is in the log beside the request id.
             ErrorKind::Query { .. }
-            | ErrorKind::RowMalformed { .. }
             | ErrorKind::RoleUnknown { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::CliCredentialMachineCollision => DETAIL_DATABASE_ERROR,
@@ -323,6 +323,7 @@ impl Error {
             },
             ErrorKind::MemberLastOwner => DETAIL_MEMBER_LAST_OWNER,
             ErrorKind::EmailInvalid => DETAIL_INVITE_EMAIL_INVALID,
+            ErrorKind::CursorInvalid => DETAIL_CHARGES_CURSOR_INVALID,
         }
     }
 }

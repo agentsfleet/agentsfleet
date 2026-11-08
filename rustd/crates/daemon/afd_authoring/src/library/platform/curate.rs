@@ -47,7 +47,7 @@ impl Setup {
             .transpose()
             .map_err(stored)?;
         sqlx::query(sql::CURATE)
-            .bind(entry.id.as_str())
+            .bind(entry.id)
             .bind(&request.name)
             .bind(&request.description)
             .bind(reasons)

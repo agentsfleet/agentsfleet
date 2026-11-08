@@ -46,12 +46,12 @@ impl PgStore {
     pub async fn window(&self, owner: Owner<'_>, reads: bool) -> Result<Vec<Record>> {
         let failure = Failure::Runner(CONTEXT_LIST);
         self.as_memory_role(failure, async |connection| {
-            let own = sqlx::query(sql::SELECT_ALL_FOR_FLEET).bind(owner.fleet.as_str());
+            let own = sqlx::query(sql::SELECT_ALL_FOR_FLEET).bind(owner.fleet);
             let mut rows = fetch(connection, own, failure).await?;
             if reads {
                 let shared = sqlx::query(sql::SELECT_SHARED_IN_WORKSPACE)
-                    .bind(owner.workspace.as_str())
-                    .bind(owner.fleet.as_str())
+                    .bind(owner.workspace)
+                    .bind(owner.fleet)
                     .bind(shared_scan_limit());
                 rows.extend(fetch(connection, shared, failure).await?);
             }
@@ -78,14 +78,14 @@ impl PgStore {
         let limit = i64::try_from(limit).unwrap_or(i64::MAX);
         self.as_memory_role(failure, async |connection| {
             let own = sqlx::query(sql::SEARCH_OWN)
-                .bind(owner.fleet.as_str())
+                .bind(owner.fleet)
                 .bind(pattern.as_str())
                 .bind(limit);
             let mut rows = fetch(connection, own, failure).await?;
             if reads {
                 let shared = sqlx::query(sql::SEARCH_SHARED)
-                    .bind(owner.workspace.as_str())
-                    .bind(owner.fleet.as_str())
+                    .bind(owner.workspace)
+                    .bind(owner.fleet)
                     .bind(pattern.as_str())
                     .bind(limit);
                 rows.extend(fetch(connection, shared, failure).await?);
@@ -112,10 +112,10 @@ impl PgStore {
         // Built before the pipeline so the pattern outlives every borrow the
         // statement holds.
         let filter = page::filter(view);
-        let shared = reads.then_some(owner.workspace.as_str());
+        let shared = reads.then_some(owner.workspace);
         self.as_memory_role(failure, async |connection| {
             let mut statement = sqlx::query(page::statement(view, after.is_some()))
-                .bind(owner.fleet.as_str())
+                .bind(owner.fleet)
                 .bind(shared);
             if let Some(value) = filter.as_deref() {
                 statement = statement.bind(value);
@@ -124,7 +124,7 @@ impl PgStore {
                 statement = statement
                     .bind(jiff_sqlx::ToSqlx::to_sqlx(boundary.created_at))
                     .bind(boundary.key)
-                    .bind(boundary.fleet.as_str());
+                    .bind(boundary.fleet);
             }
             fetch(connection, statement.bind(limit), failure).await
         })

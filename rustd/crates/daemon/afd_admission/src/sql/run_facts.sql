@@ -18,22 +18,18 @@
 WITH message AS MATERIALIZED (
     SELECT a.fleet_id, a.sequence
     FROM fleet.admissions a
-    WHERE a.id = $2::uuid AND a.fleet_id = $1::uuid
+    WHERE a.id = $2 AND a.fleet_id = $1
 ), live_run AS MATERIALIZED (
     SELECT l.task_id IS NOT NULL AS durable_task,
            head.sequence AS head_sequence,
            head.reply_provider IS NULL AND head.reply_address IS NULL AS unaddressed,
-           e.event_id AS run_event_id
+           l.event_id AS run_event_id
     FROM message m
     JOIN runner.fleet_slots s ON s.fleet_id = m.fleet_id
     JOIN runner.leases l
       ON l.fleet_id = s.fleet_id AND l.runner_id = s.last_runner_id
      AND l.fencing_token = s.fencing_token AND l.status = $3
-    JOIN fleet.events e ON e.id = l.fleet_event_id
-    -- Internal setup events have non-UUID keys; only admissions have a head.
-    JOIN fleet.admissions head ON head.id = CASE
-        WHEN pg_input_is_valid(e.event_id, 'uuid') THEN e.event_id::uuid
-    END
+    JOIN fleet.admissions head ON head.id = l.event_id
     WHERE s.lease_expires_at > statement_timestamp()
 )
 SELECT r.run_event_id,

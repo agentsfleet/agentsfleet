@@ -13,6 +13,7 @@
 )]
 
 use af_core::env::{EnvSource as _, ProcessEnv};
+use af_core::id::Uuid7;
 use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 
 /// The lane's Dragonfly URL.
@@ -65,17 +66,18 @@ pub(crate) async fn connect() -> Dragonfly {
 /// Place a durable admission with the fixture's deterministic event clock.
 pub(crate) async fn enqueue(
     database: &afd_db::Db,
-    fleet: &str,
-    workspace: &str,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
     actor: &str,
     event_type: &str,
     request_json: &str,
     created_at: jiff::Timestamp,
-) -> String {
+) -> Uuid7 {
     use jiff_sqlx::ToSqlx as _;
     let event = afd_db::test_util::mint_id();
-    sqlx::query("INSERT INTO fleet.admissions (id,fleet_id,workspace_id,producer,producer_key,payload_digest,actor,event_type,request_json,event_created_at,created_at,updated_at) VALUES ($1::uuid,$2::uuid,$3::uuid,'steer',$1,'fixture',$4,$5,$6,$7,$7,$7)")
-        .bind(&event).bind(fleet).bind(workspace).bind(actor).bind(event_type)
+    sqlx::query("INSERT INTO fleet.admissions (id,fleet_id,workspace_id,producer,producer_key,payload_digest,actor,event_type,request_json,event_created_at,created_at,updated_at) VALUES ($1,$2,$3,'steer',$1,'fixture',$4,$5,$6,$7,$7,$7)")
+        .bind(&event).bind(fleet)
+        .bind(workspace).bind(actor).bind(event_type)
         .bind(request_json).bind(created_at.to_sqlx())
         .execute(&mut *database.acquire().await.expect("runtime connection"))
         .await.expect("durable admission");

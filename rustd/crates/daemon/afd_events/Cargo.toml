@@ -22,7 +22,7 @@ serde.workspace = true
 # acceptance and the identity; this crate owns the table a runner then writes.
 afd_admission.workspace = true
 # Identifiers, the clock a row is stamped with, and the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # The live tail subscribes through the process's one pub/sub connection, and a

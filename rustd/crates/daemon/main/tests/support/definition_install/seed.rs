@@ -34,8 +34,8 @@ pub(super) fn fresh_installation() -> String {
 /// The tenant and workspace rows the installed fleet belongs to.
 pub(super) async fn seed_workspace(
     booted: &agentsfleetd::serve::Booted,
-    workspace: &str,
-    tenant: &str,
+    workspace: &Uuid7,
+    tenant: &Uuid7,
     now: Timestamp,
 ) {
     let mut connection = booted
@@ -68,7 +68,7 @@ pub(super) async fn seed_workspace(
 /// The routing row the GitHub connect flow lands beside its handle.
 pub(super) async fn seed_install(
     booted: &agentsfleetd::serve::Booted,
-    workspace: &str,
+    workspace: &Uuid7,
     installation: &str,
     now: Timestamp,
 ) {

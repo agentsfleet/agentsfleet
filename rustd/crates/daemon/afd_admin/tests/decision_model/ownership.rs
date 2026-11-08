@@ -1,5 +1,6 @@
 //! Deferred ownership follows final rows while immutable-table grants stay narrow.
 
+use af_core::id::Uuid7;
 use afd_admin::DeleteModel;
 use afd_db::test_util::mint_id;
 use sqlx::{Acquire as _, PgConnection};
@@ -13,14 +14,9 @@ async fn deferred_owner_checks_allow_clearing_or_deleting_an_intermediate_select
     let second = Scenario::create(None).await;
     let mut connection = first.database.acquire().await.expect("API connection");
     let mut transaction = connection.begin().await.expect("deferred changes");
-    point_at_other_model(
-        &mut transaction,
-        first.model.id.as_str(),
-        second.model.id.as_str(),
-    )
-    .await;
-    sqlx::query("UPDATE model.platform_models SET decision_revision_id=NULL,decision_enabled=false WHERE id=$1::uuid")
-        .bind(first.model.id.as_str()).execute(&mut *transaction).await.expect("clear intermediate selection");
+    point_at_other_model(&mut transaction, &first.model.id, &second.model.id).await;
+    sqlx::query("UPDATE model.platform_models SET decision_revision_id=NULL,decision_enabled=false WHERE id=$1")
+        .bind(&first.model.id).execute(&mut *transaction).await.expect("clear intermediate selection");
     transaction
         .commit()
         .await
@@ -28,14 +24,9 @@ async fn deferred_owner_checks_allow_clearing_or_deleting_an_intermediate_select
     let cleared = read(&first.models, &first.model.id).await;
     assert!(cleared.details.decision.is_none());
     let mut transaction = connection.begin().await.expect("deferred deletion");
-    point_at_other_model(
-        &mut transaction,
-        first.model.id.as_str(),
-        second.model.id.as_str(),
-    )
-    .await;
-    sqlx::query("DELETE FROM model.platform_models WHERE id=$1::uuid")
-        .bind(first.model.id.as_str())
+    point_at_other_model(&mut transaction, &first.model.id, &second.model.id).await;
+    sqlx::query("DELETE FROM model.platform_models WHERE id=$1")
+        .bind(&first.model.id)
         .execute(&mut *transaction)
         .await
         .expect("delete model and owned revisions");
@@ -81,14 +72,13 @@ async fn immediate_checks_refuse_missing_revisions_without_widening_api_privileg
         .execute(&mut *transaction)
         .await
         .expect("immediate mode");
-    let rejected = sqlx::query(
-        "UPDATE model.platform_models SET decision_revision_id=$2::uuid WHERE id=$1::uuid",
-    )
-    .bind(scenario.model.id.as_str())
-    .bind(mint_id())
-    .execute(&mut *transaction)
-    .await
-    .expect_err("missing revision is rejected at the statement");
+    let rejected =
+        sqlx::query("UPDATE model.platform_models SET decision_revision_id=$2 WHERE id=$1")
+            .bind(&scenario.model.id)
+            .bind(mint_id())
+            .execute(&mut *transaction)
+            .await
+            .expect_err("missing revision is rejected at the statement");
     assert!(afd_db::constraint::violates_foreign_key(
         &rejected,
         "fk_platform_models_decision_revision_owner"
@@ -102,7 +92,7 @@ async fn immediate_checks_refuse_missing_revisions_without_widening_api_privileg
     scenario.finish().await;
 }
 
-async fn point_at_other_model(connection: &mut PgConnection, model: &str, other: &str) {
-    sqlx::query("UPDATE model.platform_models SET decision_revision_id=(SELECT decision_revision_id FROM model.platform_models WHERE id=$2::uuid) WHERE id=$1::uuid")
+async fn point_at_other_model(connection: &mut PgConnection, model: &Uuid7, other: &Uuid7) {
+    sqlx::query("UPDATE model.platform_models SET decision_revision_id=(SELECT decision_revision_id FROM model.platform_models WHERE id=$2) WHERE id=$1")
         .bind(model).bind(other).execute(connection).await.expect("deferred intermediate pointer");
 }

@@ -9,6 +9,7 @@
 //! them fills `BATCH_LIMIT` and starves every answer queued behind it. Both
 //! stamp the row here, so no scan offers it again.
 
+use af_core::id::Uuid7;
 use afd_db::Db;
 use afd_dragonfly::OutboundDelivery;
 
@@ -53,14 +54,14 @@ pub(crate) async fn row(database: &Db, owed: &Owed, reason: AbandonReason) {
 async fn stamp(
     database: &Db,
     provider: &str,
-    fleet_id: &str,
-    event_id: &str,
+    fleet_id: &Uuid7,
+    event_id: &Uuid7,
     reason: AbandonReason,
 ) {
     match obligation::abandon(database, fleet_id, event_id, reason).await {
         Ok(Some(attempt_count)) => Abandoned {
             provider,
-            fleet_id,
+            fleet_id: fleet_id.as_str(),
             reason: reason.as_str(),
             attempt_count,
         }
@@ -120,15 +121,15 @@ mod tests {
             id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
             provider: "slack".to_owned(),
             destination: r#"{"channel_id":"C0SECRET","thread_ts":"1700000000.000100"}"#.to_owned(),
-            workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
-            fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-            event_id: "1700000000000-0".to_owned(),
+            workspace_id: afd_db::test_util::mint_id(),
+            fleet_id: afd_db::test_util::mint_id(),
+            event_id: afd_db::test_util::mint_id(),
             answer: "the private answer text".to_owned(),
         };
 
         let announced = Abandoned {
             provider: &job.provider,
-            fleet_id: &job.fleet_id,
+            fleet_id: job.fleet_id.as_str(),
             reason: AbandonReason::CyclesExhausted.as_str(),
             attempt_count: 12,
         };

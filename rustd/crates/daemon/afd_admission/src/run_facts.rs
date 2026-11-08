@@ -1,6 +1,7 @@
 //! The facts a steer's disposition is named from, read after its admission
 //! committed. See `sql/run_facts.sql`.
 
+use af_core::id::Uuid7;
 use af_wire::fold::FOLDS_PER_CLAIM_MAX;
 
 use crate::error::{Result, query};
@@ -15,7 +16,7 @@ const CLAIMS_LOOKED_AT: i64 = 2;
 /// The statement's one row.
 #[derive(Debug, sqlx::FromRow)]
 struct FactsRow {
-    run_event_id: Option<String>,
+    run_event_id: Option<Uuid7>,
     run_durable_task: bool,
     same_conversation: bool,
     earlier_waiting: bool,
@@ -41,8 +42,8 @@ impl Admissions {
     /// Reports a datastore that would not answer.
     pub async fn run_facts(
         &self,
-        fleet: &str,
-        admission: &str,
+        fleet: &Uuid7,
+        admission: &Uuid7,
         person: PersonSteer<'_>,
     ) -> Result<RunFacts> {
         let mut connection = self.database.acquire().await?;
@@ -59,7 +60,7 @@ impl Admissions {
             .map_err(query(CONTEXT_RUN_FACTS))?;
         Ok(row.map_or_else(RunFacts::default, |row| RunFacts {
             live_run: row.run_event_id.map(|event_id| LiveRun {
-                event_id,
+                event_id: event_id.into(),
                 durable_task: row.run_durable_task,
                 same_conversation: row.same_conversation,
             }),

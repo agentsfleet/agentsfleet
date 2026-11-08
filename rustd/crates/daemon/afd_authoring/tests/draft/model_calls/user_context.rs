@@ -26,8 +26,8 @@ async fn every_configured_api_preserves_user_context_without_baked_in_instructio
             dialect: None,
             max_output_tokens: 8192,
         };
-        sqlx::query("UPDATE model.platform_models SET inference=$2 WHERE id=$1::uuid")
-            .bind(f.catalogue.first().expect("owned catalogue").as_str())
+        sqlx::query("UPDATE model.platform_models SET inference=$2 WHERE id=$1")
+            .bind(f.catalogue.first().expect("owned catalogue"))
             .bind(sqlx::types::Json(settings))
             .execute(&mut *f.connection().await)
             .await

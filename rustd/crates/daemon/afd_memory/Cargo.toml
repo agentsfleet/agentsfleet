@@ -20,7 +20,7 @@ afd_dragonfly.workspace = true
 jiff.workspace = true
 jiff-sqlx.workspace = true
 # Identifiers, the clock, the error hull and the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The entropy a new entry's identifier is drawn from.
 af_crypto.workspace = true
 # The pool the Postgres store and the grant reads run on.

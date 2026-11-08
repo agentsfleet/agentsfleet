@@ -35,7 +35,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
+use afd_db::test_util::mint_id;
 use afd_dragonfly::{Dragonfly, OutboundJob};
 use std::time::Duration;
 
@@ -95,14 +97,14 @@ async fn a_result_committed_without_its_append_is_still_owed() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
     let redis = datastore().await;
-    let event = "1700000000-0";
+    let event = mint_id();
 
-    assert!(owe_committed(&harness, &obligation_id(1), event).await);
+    assert!(owe_committed(&harness, &obligation_id(1), &event).await);
 
     assert_eq!(entries_on(&redis).await, 0, "the append never ran");
     assert_eq!(
         awaiting_append(&harness).await,
-        vec![event.to_owned()],
+        vec![event.clone()],
         "the committed result is exactly what the producer's unreceipted scan \
          exists to find"
     );
@@ -113,9 +115,9 @@ async fn a_result_committed_without_its_append_is_still_owed() {
         .enqueue(OutboundJob {
             provider: PROVIDER,
             destination: DESTINATION,
-            workspace_id: WORKSPACE,
-            fleet_id: FLEET,
-            event_id: event,
+            workspace_id: &WORKSPACE,
+            fleet_id: &FLEET,
+            event_id: &event,
             answer: ANSWER,
         })
         .await
@@ -143,10 +145,10 @@ async fn two_replicas_reporting_one_answer_owe_one_delivery() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
     let redis = datastore().await;
-    let event = "1700000000-1";
+    let event = mint_id();
 
-    let first = owe_committed(&harness, &obligation_id(2), event).await;
-    let second = owe_committed(&harness, &obligation_id(3), event).await;
+    let first = owe_committed(&harness, &obligation_id(2), &event).await;
+    let second = owe_committed(&harness, &obligation_id(3), &event).await;
     assert!(first, "the first replica creates the row");
     assert!(!second, "the second is told it wrote nothing");
 
@@ -158,9 +160,9 @@ async fn two_replicas_reporting_one_answer_owe_one_delivery() {
                 .enqueue(OutboundJob {
                     provider: PROVIDER,
                     destination: DESTINATION,
-                    workspace_id: WORKSPACE,
-                    fleet_id: FLEET,
-                    event_id: event,
+                    workspace_id: &WORKSPACE,
+                    fleet_id: &FLEET,
+                    event_id: &event,
                     answer: ANSWER,
                 })
                 .await
@@ -195,14 +197,14 @@ async fn two_replicas_reporting_one_answer_owe_one_delivery() {
 async fn a_destination_that_accepted_an_answer_is_stamped_once() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
-    let event = "1700000000-2";
-    owe_and_queue(&harness, 4, event).await;
+    let event = mint_id();
+    owe_and_queue(&harness, 4, &event).await;
 
-    obligation::stamp_delivered(&harness.database, FLEET, event)
+    obligation::stamp_delivered(&harness.database, &FLEET, &event)
         .await
         .expect("stamping the delivery");
-    let (accepted_at, _) = stamped(&harness, event).await;
-    obligation::stamp_delivered(&harness.database, FLEET, event)
+    let (accepted_at, _) = stamped(&harness, &event).await;
+    obligation::stamp_delivered(&harness.database, &FLEET, &event)
         .await
         .expect("a retried stamp asks and is refused");
 
@@ -211,7 +213,7 @@ async fn a_destination_that_accepted_an_answer_is_stamped_once() {
         "a stamped answer owes nothing further"
     );
 
-    let (delivered_at, attempts) = stamped(&harness, event).await;
+    let (delivered_at, attempts) = stamped(&harness, &event).await;
     assert_eq!(
         delivered_at, accepted_at,
         "the instant the destination first took it, not the retry's"
@@ -223,7 +225,7 @@ async fn a_destination_that_accepted_an_answer_is_stamped_once() {
 }
 
 /// The fixture row's `(delivered_at, attempt_count)`.
-async fn stamped(harness: &OutboundHarness, event: &str) -> (Option<jiff::Timestamp>, i64) {
+async fn stamped(harness: &OutboundHarness, event: &Uuid7) -> (Option<jiff::Timestamp>, i64) {
     let mut connection = harness
         .database
         .acquire()
@@ -231,9 +233,9 @@ async fn stamped(harness: &OutboundHarness, event: &str) -> (Option<jiff::Timest
         .expect("the ledger answers");
     let (delivered_at, attempts): (Option<jiff_sqlx::Timestamp>, i64) = sqlx::query_as(
         "SELECT delivered_at, attempt_count FROM fleet.obligations
-          WHERE fleet_id = $1::uuid AND event_id = $2::text",
+          WHERE fleet_id = $1 AND event_id = $2",
     )
-    .bind(FLEET)
+    .bind(&*FLEET)
     .bind(event)
     .fetch_one(&mut *connection)
     .await

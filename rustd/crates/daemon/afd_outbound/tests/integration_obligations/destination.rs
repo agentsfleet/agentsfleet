@@ -29,9 +29,9 @@ async fn the_daemon_producer_appends_an_owed_answer_and_receipts_it() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
     let redis = datastore().await;
-    let event = "1700000000-6";
+    let event = mint_id();
 
-    assert!(owe_committed(&harness, &obligation_id(8), event).await);
+    assert!(owe_committed(&harness, &obligation_id(8), &event).await);
     assert_eq!(entries_on(&redis).await, 0, "nothing has appended it yet");
 
     let appended = producer_until(&harness, async || entries_on(&redis).await > 0).await;
@@ -41,7 +41,7 @@ async fn the_daemon_producer_appends_an_owed_answer_and_receipts_it() {
          Dimensions 4.2 and 4.3 never reached `OutboundQueue::enqueue`"
     );
     assert_eq!(
-        entries_naming(&redis, event).await,
+        entries_naming(&redis, &event).await,
         1,
         "the owed answer was appended exactly once — asked about THIS event \
          rather than about the stream, which the producer also fills with every \
@@ -63,13 +63,14 @@ async fn requeued_obligation_keeps_its_destination() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
     let redis = datastore().await;
-    let event = "1700000000-7";
+    let event = mint_id();
 
-    assert!(owe_committed(&harness, &obligation_id(9), event).await);
-    let appended = producer_until(&harness, async || entries_naming(&redis, event).await > 0).await;
+    assert!(owe_committed(&harness, &obligation_id(9), &event).await);
+    let appended =
+        producer_until(&harness, async || entries_naming(&redis, &event).await > 0).await;
     assert!(appended, "the producer's pass appended the owed answer");
     assert_eq!(
-        destinations_naming(&redis, event).await,
+        destinations_naming(&redis, &event).await,
         vec![DESTINATION.to_owned()],
         "the re-appended job carries the destination the row stored"
     );
@@ -84,14 +85,14 @@ async fn an_unaddressable_row_is_abandoned_not_requeued() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
     let redis = datastore().await;
-    let event = "1700000000-8";
+    let event = mint_id();
     // What a connector removed from the catalogue leaves behind: a row naming
     // a destination and a connector nobody answers to.
     seed_owed_row(
         &harness.owner,
         OwedRow {
             nth: 10,
-            event,
+            event: &event,
             provider: UNKNOWN_CONNECTOR,
             destination: DESTINATION,
             receipt: None,
@@ -101,16 +102,16 @@ async fn an_unaddressable_row_is_abandoned_not_requeued() {
     .await;
 
     let abandoned = producer_until(&harness, async || {
-        abandonment(&harness.database, event).await.1.is_some()
+        abandonment(&harness.database, &event).await.1.is_some()
     })
     .await;
     assert!(abandoned, "the producer's pass abandoned the row");
     assert_eq!(
-        abandonment(&harness.database, event).await.1.as_deref(),
+        abandonment(&harness.database, &event).await.1.as_deref(),
         Some(AbandonReason::Unaddressable.as_str())
     );
     assert_eq!(
-        entries_naming(&redis, event).await,
+        entries_naming(&redis, &event).await,
         0,
         "nothing was appended for an answer no poster could take"
     );
@@ -129,30 +130,31 @@ async fn a_reappend_whose_receipt_is_refused_stays_owed() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
     let redis = datastore().await;
-    let event = "1700000000-9";
-    assert!(owe_committed(&harness, &obligation_id(11), event).await);
-    refuse_receipts(&harness, Some(event)).await;
+    let event = mint_id();
+    assert!(owe_committed(&harness, &obligation_id(11), &event).await);
+    refuse_receipts(&harness, Some(&event)).await;
 
-    let appended = producer_until(&harness, async || entries_naming(&redis, event).await > 0).await;
+    let appended =
+        producer_until(&harness, async || entries_naming(&redis, &event).await > 0).await;
     refuse_receipts(&harness, None).await;
 
     assert!(appended, "the append itself went through");
     assert_eq!(
         awaiting_append(&harness).await,
-        vec![event.to_owned()],
+        vec![event.clone()],
         "the refused receipt leaves the row for the next pass"
     );
 }
 
 /// Installs, for `event`, or removes, for `None`, a trigger refusing every
 /// receipt written to that event's row.
-async fn refuse_receipts(harness: &OutboundHarness, event: Option<&str>) {
+async fn refuse_receipts(harness: &OutboundHarness, event: Option<&Uuid7>) {
     let mut connection = harness.owner.acquire().await.expect("the ledger answers");
     let mut statements = vec![
         format!("DROP TRIGGER IF EXISTS {RECEIPT_REFUSAL} ON fleet.obligations"),
         format!("DROP FUNCTION IF EXISTS public.{RECEIPT_REFUSAL}()"),
     ];
-    // The event is this suite's own constant, never input.
+    // The event is an identifier this suite minted, never input.
     if let Some(event) = event {
         statements.push(format!(
             "CREATE FUNCTION public.{RECEIPT_REFUSAL}() RETURNS trigger LANGUAGE plpgsql AS $$ \

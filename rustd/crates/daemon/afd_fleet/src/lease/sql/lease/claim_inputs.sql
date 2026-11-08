@@ -27,12 +27,9 @@ WITH run AS MATERIALIZED (
     JOIN runner.fleet_slots s
       ON s.fleet_id = l.fleet_id AND s.last_runner_id = l.runner_id
      AND s.fencing_token = l.fencing_token
-    JOIN fleet.events e ON e.id = l.fleet_event_id AND e.fleet_id = l.fleet_id
     JOIN fleet.admissions head
-      ON head.id = CASE
-          WHEN pg_input_is_valid(e.event_id, 'uuid') THEN e.event_id::uuid
-      END AND head.fleet_id = l.fleet_id
-    WHERE l.id = $1::uuid AND l.runner_id = $2::uuid
+      ON head.id = l.event_id AND head.fleet_id = l.fleet_id
+    WHERE l.id = $1 AND l.runner_id = $2
       AND l.fencing_token = $3 AND l.status = $4
       AND l.task_id IS NULL
       AND l.lease_expires_at > clock_timestamp()
@@ -75,10 +72,10 @@ WITH run AS MATERIALIZED (
     ) f
 ), claimed AS (
     UPDATE fleet.admissions a
-    SET input_claim_lease_id = $1::uuid, input_claim_fence = $3, updated_at = now()
+    SET input_claim_lease_id = $1, input_claim_fence = $3, updated_at = now()
     FROM judged
     WHERE a.id = judged.id AND judged.clear AND a.settled_at IS NULL
       AND (a.input_claim_fence IS NULL OR a.input_claim_fence <= $3)
     RETURNING a.id, a.sequence, a.request_json
 )
-SELECT id::text AS id, sequence, request_json FROM claimed ORDER BY sequence
+SELECT id, sequence, request_json FROM claimed ORDER BY sequence

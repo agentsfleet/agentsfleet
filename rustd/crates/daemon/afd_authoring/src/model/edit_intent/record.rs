@@ -61,7 +61,7 @@ impl ModelCalls {
             })
         });
         let sequence: i64 = sqlx::query_scalar(include_str!("sql/sequence.sql"))
-            .bind(&prepared.request.call_id)
+            .bind(Uuid7::parse(&prepared.request.call_id)?)
             .fetch_one(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
@@ -71,7 +71,7 @@ impl ModelCalls {
             .and_then(|bill| bill.lines.first())
             .map(|line| line.charged.as_i64());
         sqlx::query(include_str!("sql/record.sql"))
-            .bind(&prepared.request.call_id)
+            .bind(Uuid7::parse(&prepared.request.call_id)?)
             .bind(disposition.as_str())
             .bind(usage.map(sqlx::types::Json))
             .bind(charged)

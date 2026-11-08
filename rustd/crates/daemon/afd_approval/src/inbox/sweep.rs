@@ -23,6 +23,7 @@
 //! clock of its own, so a daemon whose host clock drifts cannot expire a gate
 //! early or hold one past its window.
 
+use af_core::id::Uuid7;
 use std::collections::BTreeMap;
 
 use afd_api_wire::approval::status;
@@ -50,16 +51,16 @@ const CONTEXT_EXPIRE: &str = "gate.inbox.expire";
 /// is: a gate raised on a standing grant rather than on a run parks no event.
 #[derive(Debug, sqlx::FromRow)]
 struct Swept {
-    gate: String,
-    fleet: String,
-    event: Option<String>,
+    gate: Uuid7,
+    fleet: Uuid7,
+    event: Option<Uuid7>,
     pending: i64,
 }
 
 /// One swept row as a test hands it to [`Inbox::serve_swept`]:
 /// `(gate, fleet, event, pending)`.
 #[cfg(feature = "test-util")]
-pub type SweptParts = (String, String, Option<String>, i64);
+pub type SweptParts = (Uuid7, Uuid7, Option<Uuid7>, i64);
 
 impl Inbox {
     /// Expires every gate whose deadline has passed, reporting how many.
@@ -96,7 +97,7 @@ impl Inbox {
     /// step, and every later one is that same cause again.
     async fn serve(&self, rows: impl IntoIterator<Item = Result<Swept>>) -> Result<()> {
         let mut undecodable = None;
-        let mut read: BTreeMap<String, Option<FleetCounters>> = BTreeMap::new();
+        let mut read: BTreeMap<Uuid7, Option<FleetCounters>> = BTreeMap::new();
         for row in rows {
             match row {
                 Ok(swept) => self.serve_one(&swept, &mut read).await,
@@ -109,20 +110,20 @@ impl Inbox {
     }
 
     /// Wakes one swept gate's fleet, once per fleet, and announces the gate.
-    async fn serve_one(&self, swept: &Swept, read: &mut BTreeMap<String, Option<FleetCounters>>) {
+    async fn serve_one(&self, swept: &Swept, read: &mut BTreeMap<Uuid7, Option<FleetCounters>>) {
         let counters = if let Some(counters) = read.get(&swept.fleet) {
             *counters
         } else {
-            self.wake_parked_delivery(&swept.fleet).await;
+            self.wake_parked_delivery(swept.fleet.as_str()).await;
             let counters =
                 afd_events::fleet_counters_best_effort(&self.database, &swept.fleet).await;
             read.insert(swept.fleet.clone(), counters);
             counters
         };
         self.announce(Answer {
-            fleet_id: &swept.fleet,
-            gate_id: &swept.gate,
-            event_id: swept.event.as_deref(),
+            fleet_id: swept.fleet.as_str(),
+            gate_id: swept.gate.as_str(),
+            event_id: swept.event.as_ref().map(Uuid7::as_str),
             status: status::TIMED_OUT,
             resolved_by: SWEEPER,
             pending_approvals: swept.pending,

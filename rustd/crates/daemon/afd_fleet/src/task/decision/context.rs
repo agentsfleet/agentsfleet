@@ -1,5 +1,6 @@
 //! Semantic identity excludes worker ownership and changing accounting counters.
 
+use af_core::id::Uuid7;
 use af_wire::task::{DecisionAssessment, TaskContext};
 use serde::{Deserialize, Serialize};
 
@@ -7,12 +8,12 @@ use crate::Result;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, sqlx::FromRow)]
 pub(super) struct TaskStamp {
-    pub task_id: String,
+    pub task_id: Uuid7,
     #[sqlx(try_from = "i64")]
     pub generation: u64,
     #[sqlx(try_from = "i64")]
     pub stop_generation: u64,
-    pub accepted_revision_id: String,
+    pub accepted_revision_id: Uuid7,
     pub goal_digest: String,
     pub state: String,
     #[sqlx(try_from = "i64")]
@@ -24,27 +25,29 @@ pub(super) struct TaskStamp {
 }
 
 impl TaskStamp {
-    pub(super) fn of(task: &TaskContext<'_>) -> Self {
-        Self {
-            task_id: task.task_id.to_string(),
+    /// The stamp `task` carries, or `None` when its identifiers are not
+    /// `UUIDv7s` and so can match no stored stamp.
+    pub(super) fn of(task: &TaskContext<'_>) -> Option<Self> {
+        Some(Self {
+            task_id: Uuid7::parse(&task.task_id).ok()?,
             generation: task.generation,
             stop_generation: task.stop_generation,
-            accepted_revision_id: task.accepted_revision_id.to_string(),
+            accepted_revision_id: Uuid7::parse(&task.accepted_revision_id).ok()?,
             goal_digest: task.goal_digest.to_string(),
             state: task.state.as_str().to_owned(),
             covered_input_sequence: task.covered_input_sequence,
             effect_cursor: task.effect_cursor,
             confirmed_effect_watermark: task.confirmed_effect_watermark,
-        }
+        })
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(super) struct AssessedContext {
-    pub source_admission_id: String,
+    pub source_admission_id: Uuid7,
     pub assessment: DecisionAssessment,
-    pub accepted_revision_id: String,
-    pub profile_revision_id: String,
+    pub accepted_revision_id: Uuid7,
+    pub profile_revision_id: Uuid7,
     pub questions_digest: String,
     pub execution: Option<TaskStamp>,
     pub candidates: Vec<TaskStamp>,
@@ -61,7 +64,7 @@ enum Subject<'a> {
 impl AssessedContext {
     pub(super) fn subject(&self) -> Result<String> {
         subject(
-            &self.source_admission_id,
+            self.source_admission_id.as_str(),
             &self.assessment,
             self.execution
                 .as_ref()

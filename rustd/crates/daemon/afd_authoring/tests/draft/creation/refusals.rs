@@ -136,8 +136,8 @@ async fn only_a_saved_cron_trigger_files_a_schedule() {
     request.review_digest = reviewed.review.expect("live review").review_digest;
     let saved = c.save(&mint(), request).await;
     let schedules: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.schedules WHERE fleet_id=$1::uuid")
-            .bind(saved.id.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM fleet.schedules WHERE fleet_id=$1")
+            .bind(saved.id)
             .fetch_one(&mut *c.base.connection().await)
             .await
             .expect("the fleet's schedules");

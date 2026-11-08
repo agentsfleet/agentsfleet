@@ -188,13 +188,12 @@ async fn deleted_schedule_owners_ignore_late_results_without_touching_live_histo
     let pending = create(&removed, &token).await;
     let unaffected = registered(&live).await;
     let history = receipts(&live).await;
-    let deleted =
-        sqlx::query("DELETE FROM fleet.fleets WHERE id=$1::uuid AND workspace_id=$2::uuid")
-            .bind(removed.fleet.as_str())
-            .bind(removed.workspace.as_str())
-            .execute(&mut *removed.connection().await)
-            .await
-            .expect("delete only this fixture's parent");
+    let deleted = sqlx::query("DELETE FROM fleet.fleets WHERE id=$1 AND workspace_id=$2")
+        .bind(&removed.fleet)
+        .bind(&removed.workspace)
+        .execute(&mut *removed.connection().await)
+        .await
+        .expect("delete only this fixture's parent");
     assert_eq!(deleted.rows_affected(), 1);
     assert_eq!(
         removed

@@ -85,7 +85,7 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
     fn renew(
         &self,
         runner_id: &Uuid7,
-        lease_id: &str,
+        lease_id: &Uuid7,
         request: RenewRequest,
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Timestamp>> + Send;

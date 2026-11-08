@@ -1,1 +1,1 @@
-SELECT status FROM fleet.fleets WHERE id = $1::uuid AND workspace_id = $2::uuid FOR UPDATE
+SELECT status FROM fleet.fleets WHERE id = $1 AND workspace_id = $2 FOR UPDATE

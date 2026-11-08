@@ -29,11 +29,7 @@ impl<'a> From<Reply<'a>> for ReplyBinds<'a> {
         let (connector, address, inherited) = match reply {
             Reply::None => (None, None, None),
             Reply::To { connector, address } => (Some(connector), Some(address), None),
-            // An id that is not a row id names no row, so it copies none —
-            // the same answer as an event recorded without a destination.
-            // Parsed here so text that is not a UUID never reaches the
-            // statement's `::uuid` cast as a refusal.
-            Reply::Inherit { event_id } => (None, None, Uuid7::parse(event_id).ok()),
+            Reply::Inherit { event_id } => (None, None, Some(event_id.clone())),
         };
         Self {
             connector,
@@ -112,12 +108,12 @@ impl Admissions {
             tracing::warn!(
                 error_code = code,
                 producer,
-                fleet_id = admission.fleet,
+                fleet_id = %admission.fleet,
                 event_id,
                 event = "admission_payload_drifted",
             );
         }
-        self.wake(&ledger.stored.fleet).await;
+        self.wake(ledger.stored.fleet.as_str()).await;
         metrics::admitted(if ledger.inserted {
             AdmissionOutcome::Accepted
         } else {
@@ -126,7 +122,7 @@ impl Admissions {
         let replayed = !ledger.inserted;
         tracing::debug!(
             producer,
-            fleet_id = admission.fleet,
+            fleet_id = %admission.fleet,
             event_id,
             event = "admission_committed",
             replayed
@@ -196,7 +192,7 @@ fn count_refusal(refused: &Error, admission: &Admission<'_>) {
     tracing::warn!(
         error_code,
         producer,
-        fleet_id = admission.fleet,
+        fleet_id = %admission.fleet,
         reason,
         event,
     );

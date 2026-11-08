@@ -13,7 +13,7 @@ const SCOPE: &str = "UPDATE fleet.approval_gates SET event_id=$2 WHERE action_id
 const EXPIRE: &str = "UPDATE fleet.approval_gates \
     SET expires_at=clock_timestamp()-interval '1 second' WHERE action_id=$1";
 const PENDING: &str = "SELECT count(*) FROM fleet.approval_gates \
-    WHERE fleet_id=$1::uuid AND resolved_at IS NULL";
+    WHERE fleet_id=$1 AND resolved_at IS NULL";
 
 // Value: protects=deadline recovery and the last live matching blocker;
 // fails_when=any expired gate admits a head still held by a live gate, or expired
@@ -70,7 +70,7 @@ async fn deadline_case(first_gate_first: bool) {
     fixtures.cleanup().await;
 }
 
-async fn assert_answerable(fixtures: &Fixtures, fleet: &str, specific: &str) {
+async fn assert_answerable(fixtures: &Fixtures, fleet: &Uuid7, specific: &Uuid7) {
     let count: i64 = sqlx::query_scalar(PENDING)
         .bind(fleet)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
@@ -80,7 +80,7 @@ async fn assert_answerable(fixtures: &Fixtures, fleet: &str, specific: &str) {
     approve(fixtures, specific).await;
 }
 
-async fn approve(fixtures: &Fixtures, action: &str) {
+async fn approve(fixtures: &Fixtures, action: &Uuid7) {
     let queue = crate::queue::unreachable();
     let inbox = Inbox::new(
         fixtures.database.clone(),
@@ -89,7 +89,13 @@ async fn approve(fixtures: &Fixtures, action: &str) {
     );
     assert!(matches!(
         inbox
-            .resolve(action, Decision::Approved, "fixture:human", "", None)
+            .resolve(
+                action.as_str(),
+                Decision::Approved,
+                "fixture:human",
+                "",
+                None
+            )
             .await
             .expect("late answer"),
         Resolution::Resolved(_)
@@ -130,7 +136,12 @@ async fn standing_access_waits_for_an_answer_after_its_card_deadline() {
     fixtures.cleanup().await;
 }
 
-async fn scoped_gate(fixtures: &Fixtures, fleet: &str, workspace: &str, event: &str) -> String {
+async fn scoped_gate(
+    fixtures: &Fixtures,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+    event: &Uuid7,
+) -> Uuid7 {
     let action = seed_gate(fixtures, fleet, workspace).await;
     sqlx::query(SCOPE)
         .bind(&action)
@@ -141,7 +152,7 @@ async fn scoped_gate(fixtures: &Fixtures, fleet: &str, workspace: &str, event: &
     action
 }
 
-async fn lapse(fixtures: &Fixtures, action: &str) {
+async fn lapse(fixtures: &Fixtures, action: &Uuid7) {
     sqlx::query(EXPIRE)
         .bind(action)
         .execute(&mut *fixtures.database.acquire().await.expect("gate clock"))
@@ -149,10 +160,10 @@ async fn lapse(fixtures: &Fixtures, action: &str) {
         .expect("deadline in the past");
 }
 
-async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &str, runner: &Uuid7) {
+async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &Uuid7, runner: &Uuid7) {
     let mut connection = fixtures.database.acquire().await.expect("claim connection");
     let before: i64 =
-        sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id=$1::uuid")
+        sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id=$1")
             .bind(fleet)
             .fetch_one(&mut *connection)
             .await
@@ -160,7 +171,7 @@ async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &str, runner: &Uuid7) 
     let mut tx = connection.begin().await.expect("direct claim transaction");
     let row = sqlx::query(CLAIM_HEAD)
         .bind(fleet)
-        .bind(runner.as_str())
+        .bind(runner)
         .bind(af_core::timing::LEASE_TTL)
         .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
         .bind(sql::RUNNER_STATUS_ACTIVE)
@@ -178,7 +189,7 @@ async fn assert_blocked_claim(fixtures: &Fixtures, fleet: &str, runner: &Uuid7) 
         .await
         .expect("empty claim rolls back the slot");
     let after: i64 =
-        sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id=$1::uuid")
+        sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id=$1")
             .bind(fleet)
             .fetch_one(&mut *connection)
             .await

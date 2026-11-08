@@ -36,7 +36,7 @@ const RUNTIME_LINE: &str = "2147483648";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_writes_row_parity() {
     let held = held().await;
-    let lease = held.issued.lease_id.as_str();
+    let lease = &held.issued.lease_id;
     // At least one second of runtime, at one nano per millisecond.
     let from = held.run_a_slice().await;
     let settled_at = held.now;
@@ -94,14 +94,14 @@ async fn test_report_writes_row_parity() {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Counters(held.runner.as_str()), "succeeded_count")
+            .text(Row::Counters(&held.runner), "succeeded_count")
             .await,
         Some("1".to_owned()),
         "a clean run bumps the succeeded column and not the other one"
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Counters(held.runner.as_str()), "failed_count")
+            .text(Row::Counters(&held.runner), "failed_count")
             .await,
         Some("0".to_owned()),
         "the tally picks ONE column; both moving would mean the CASE arms disagree"
@@ -121,7 +121,7 @@ async fn test_report_writes_row_parity() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_stale_fence_rejected() {
     let held = held().await;
-    let lease = held.issued.lease_id.as_str();
+    let lease = &held.issued.lease_id;
 
     // The holder dies and its work is taken back, which bumps the fleet's
     // fencing sequence past the token the first lease carries.
@@ -169,14 +169,14 @@ async fn test_report_stale_fence_rejected() {
     // whichever arm the `succeeded` flag steered it to.
     assert_eq!(
         held.fixtures
-            .text(Row::Counters(held.runner.as_str()), "succeeded_count")
+            .text(Row::Counters(&held.runner), "succeeded_count")
             .await,
         Some("0".to_owned()),
         "the tally is gated FROM claim, so a report that claimed nothing counts nothing"
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Counters(held.runner.as_str()), "failed_count")
+            .text(Row::Counters(&held.runner), "failed_count")
             .await,
         Some("0".to_owned()),
         "and it counts nothing on the failure arm either, not merely the one this report named"
@@ -202,7 +202,7 @@ async fn test_report_stale_fence_rejected() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_dedup_idempotent() {
     let held = held().await;
-    let lease = held.issued.lease_id.as_str();
+    let lease = &held.issued.lease_id;
     let settled_at = held.now;
 
     let first = held

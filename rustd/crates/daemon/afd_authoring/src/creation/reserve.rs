@@ -200,8 +200,8 @@ impl Creations {
         );
         if let Some(draft) = &captured.draft {
             sqlx::query(sql::LINK)
-                .bind(draft.id.as_str())
-                .bind(id.as_str())
+                .bind(&draft.id)
+                .bind(id)
                 .bind(DraftState::Saving.as_str())
                 .execute(connection)
                 .await
@@ -229,8 +229,8 @@ pub(super) async fn insert_revision(
     head: Head<'_>,
 ) -> Result<afd_events::activity::Announcement> {
     sqlx::query(sql::REVISION)
-        .bind(head.id.as_str())
-        .bind(fleet.as_str())
+        .bind(head.id)
+        .bind(fleet)
         .bind(head.number)
         .bind(serde_json::to_string(definition).map_err(stored)?)
         .bind(&head.accepted.canonical_digest)
@@ -238,17 +238,15 @@ pub(super) async fn insert_revision(
         .bind(head.model)
         .bind(&head.accepted.review_digest)
         .bind(head.accepted.frozen()?)
-        .bind(head.accepted.candidate_id.as_str())
+        .bind(&head.accepted.candidate_id)
         .execute(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
     let number = head.number.to_string();
-    let identity = format!("setup_saved:{}", head.id);
     let announcement = afd_events::activity::record_on(
         connection,
         &head.accepted.context.workspace_id,
         fleet,
-        &identity,
         afd_api_wire::activity::FleetActivity::SetupSaved {
             revision: number.as_str().into(),
             origin: head.origin.map(|origin| origin.as_str().into()),
@@ -269,12 +267,12 @@ async fn insert_fleet(
     instance: &Instance<'_>,
 ) -> Result<()> {
     sqlx::query(sql::INSERT)
-        .bind(id.as_str())
-        .bind(captured.context.workspace_id.as_str())
-        .bind(captured.context.tenant_id.as_str())
+        .bind(id)
+        .bind(&captured.context.workspace_id)
+        .bind(&captured.context.tenant_id)
         .bind(instance.name)
         .bind(INSTALLING)
-        .bind(head.as_str())
+        .bind(head)
         .bind(NO_TAGS)
         .bind(serde_json::to_string(&InitialStart::new(instance.start.clone())).map_err(stored)?)
         .bind(INITIAL_VERSION)

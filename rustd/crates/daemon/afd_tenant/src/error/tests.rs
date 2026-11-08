@@ -164,24 +164,15 @@ fn field_names_render_as_the_wire_spells_them() {
 }
 
 #[test]
-fn contextual_database_failures_keep_their_classification_and_cause() -> Result<(), &'static str> {
+fn contextual_database_failures_keep_their_classification_and_cause() {
     let query = super::query("tenant coverage query")(sqlx::Error::PoolClosed);
     assert_eq!(query.code(), error_code::INTERNAL_DB_QUERY);
     assert!(query.source().is_some());
-
-    let malformed_id = af_core::id::Uuid7::parse("not-an-id")
-        .err()
-        .ok_or("malformed fixture unexpectedly parsed")?;
-    let row = super::row_malformed("workspaces", "tenant_id")(malformed_id);
-    assert_eq!(row.code(), error_code::INTERNAL_DB_QUERY);
-    assert!(row.to_string().contains("workspaces"));
-    assert!(row.source().is_some());
 
     let page = super::library_page_unavailable(sqlx::Error::PoolClosed);
     assert_eq!(page.code(), error_code::LIBRARY_DB_UNAVAILABLE);
     assert!(page.is_datastore_unavailable());
     assert!(page.source().is_some());
-    Ok(())
 }
 
 #[test]
@@ -191,8 +182,7 @@ fn a_machine_collision_is_detectable_only_inside_the_tenant_crate() {
     assert_eq!(collision.code(), error_code::INTERNAL_OPERATION_FAILED);
 }
 
-/// A cryptographic failure lifts through `From`, and an identifier a stored
-/// row holds malformed reports as that row; both keep their cause.
+/// A cryptographic failure lifts through `From` and keeps its cause.
 ///
 /// The lift exists so `?` can carry a foreign error across this crate's
 /// boundary without a `map_err` at every call site — the shape
@@ -202,21 +192,14 @@ fn a_machine_collision_is_detectable_only_inside_the_tenant_crate() {
 fn foreign_failures_keep_their_cause() -> Result<(), &'static str> {
     use std::error::Error as _;
 
-    let malformed = super::row_malformed("identity.users", "id")(
-        af_core::id::Uuid7::parse("not-an-id")
-            .err()
-            .ok_or("a malformed identifier unexpectedly parsed")?,
-    );
     let drawn: Error = af_crypto::secret::Kek::from_hex("zz")
         .err()
         .ok_or("a two-character non-hex string unexpectedly parsed as a KEK")?
         .into();
 
-    for (label, failure) in [("row", &malformed), ("crypto", &drawn)] {
-        assert!(failure.source().is_some(), "{label} keeps its cause");
-        assert!(!failure.to_string().is_empty(), "{label}");
-        assert!(!failure.code().as_str().is_empty(), "{label}");
-    }
+    assert!(drawn.source().is_some(), "crypto keeps its cause");
+    assert_ne!(drawn.to_string(), "");
+    assert_ne!(drawn.code().as_str(), "");
     // A key that is not hex mints nothing, so the sentence must not claim an
     // identifier failed: it names the step every `af_crypto` failure shares.
     let said = drawn.to_string();

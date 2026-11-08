@@ -32,7 +32,7 @@ const CONTEXT_COMMIT: &str = "report commit";
 #[derive(Debug)]
 pub struct TerminalReport<'a> {
     /// The lease being reported on.
-    pub lease_id: &'a str,
+    pub lease_id: &'a Uuid7,
     /// The runner presenting the report — the ownership scope of every
     /// statement below.
     pub runner_id: &'a Uuid7,
@@ -48,7 +48,7 @@ pub struct TerminalReport<'a> {
     /// The run's ending, as the event row will carry it.
     pub outcome: Terminal<'a>,
     /// The event the fleet's next run resumes after.
-    pub last_event_id: &'a str,
+    pub last_event_id: &'a Uuid7,
     /// The answer that run resumes from.
     pub last_response: &'a str,
     /// When the sandbox the run left held for the fleet's next event lapses;
@@ -283,7 +283,7 @@ impl Leases {
         now: Timestamp,
     ) -> Result<Option<Owing>> {
         let destination =
-            Self::reply_destination(connection, lease.fleet_id.as_str(), &lease.event_id).await?;
+            Self::reply_destination(connection, &lease.fleet_id, lease.event_id.as_str()).await?;
         let owed = match &destination {
             Some(reply) => self
                 .owe_delivery(connection, reply.delivery(lease, answer), now)

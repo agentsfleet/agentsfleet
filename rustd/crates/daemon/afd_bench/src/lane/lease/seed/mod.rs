@@ -80,11 +80,11 @@ const KIND_FLEET: u32 = 3;
 #[derive(Debug, Clone)]
 pub struct SeededFleet {
     /// The fleet a poll can lease.
-    pub fleet: String,
+    pub fleet: Uuid7,
     /// Its workspace.
-    pub workspace: String,
+    pub workspace: Uuid7,
     /// Its billing tenant.
-    pub tenant: String,
+    pub tenant: Uuid7,
 }
 
 /// An identifier the schema's `uuidv7` CHECK accepts.
@@ -92,11 +92,11 @@ pub struct SeededFleet {
 /// The character after the second dash must be `7`. Process id plus index in
 /// the final group gives four billion distinct fleets per process, which is
 /// past anything the cardinality ladder climbs to.
-pub(crate) fn identifier(kind: u32, index: u64) -> String {
-    format!(
+pub(crate) fn identifier(kind: u32, index: u64) -> Result<Uuid7> {
+    Ok(Uuid7::parse(&format!(
         "0195b4ba-8d3a-7{kind:03x}-8abc-{:04x}{index:08x}",
         std::process::id() & 0xffff
-    )
+    ))?)
 }
 
 /// The tag that keeps this run's fleets placeable only by this run's runners.
@@ -117,7 +117,7 @@ pub async fn empty_fleet(
     index: u64,
     now: Timestamp,
 ) -> Result<SeededFleet> {
-    let seeded = identities(index);
+    let seeded = identities(index)?;
     rows(database, prefix, &seeded, tag, now).await?;
     Ok(seeded)
 }
@@ -135,19 +135,19 @@ pub async fn ready_fleet(
     index: u64,
     now: Timestamp,
 ) -> Result<SeededFleet> {
-    let seeded = identities(index);
+    let seeded = identities(index)?;
     rows(database, prefix, &seeded, tag, now).await?;
     enqueue(database, queue, &seeded, EVENT_TYPE).await?;
     Ok(seeded)
 }
 
 /// The three identifiers one index yields.
-pub(crate) fn identities(index: u64) -> SeededFleet {
-    SeededFleet {
-        fleet: identifier(KIND_FLEET, index),
-        workspace: identifier(KIND_WORKSPACE, index),
-        tenant: identifier(KIND_TENANT, index),
-    }
+pub(crate) fn identities(index: u64) -> Result<SeededFleet> {
+    Ok(SeededFleet {
+        fleet: identifier(KIND_FLEET, index)?,
+        workspace: identifier(KIND_WORKSPACE, index)?,
+        tenant: identifier(KIND_TENANT, index)?,
+    })
 }
 
 /// The tenant, workspace and fleet rows, in the order the keys require.

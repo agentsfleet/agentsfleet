@@ -42,8 +42,8 @@ fn accounting(request: &Report) -> Report {
 }
 
 async fn balance(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid")
-        .bind(f.tenant.as_str())
+    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1")
+        .bind(&f.tenant)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("owned wallet")
@@ -51,11 +51,11 @@ async fn balance(f: &Fixture) -> i64 {
 
 async fn counts(f: &Fixture, a: &Attempt) -> (i64, i64, i64) {
     sqlx::query_as(
-        "SELECT (SELECT count(*) FROM authoring.attempts WHERE id=$1::uuid AND outcome IS NOT NULL), \
-        (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1::uuid), \
-        (SELECT count(*) FROM authoring.answer_receipts WHERE attempt_id=$1::uuid)",
+        "SELECT (SELECT count(*) FROM authoring.attempts WHERE id=$1 AND outcome IS NOT NULL), \
+        (SELECT count(*) FROM billing.authoring_report_receipts WHERE attempt_id=$1), \
+        (SELECT count(*) FROM authoring.answer_receipts WHERE attempt_id=$1)",
     )
-    .bind(a.id.as_str())
+    .bind(&a.id)
     .fetch_one(&mut *f.connection().await)
     .await
     .expect("accounting and private receipts")

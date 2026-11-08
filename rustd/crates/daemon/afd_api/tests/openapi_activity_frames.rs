@@ -30,7 +30,8 @@ fn target() -> Target {
     Target {
         fleet_id: Uuid7::encode(Timestamp::UNIX_EPOCH, [0; ENTROPY_LEN])
             .expect("a fixed identifier encodes"),
-        event_id: String::new(),
+        event_id: Uuid7::encode(Timestamp::UNIX_EPOCH, [1; ENTROPY_LEN])
+            .expect("a fixed identifier encodes"),
         lease_created_at: Timestamp::UNIX_EPOCH,
         event_created_at: Timestamp::UNIX_EPOCH,
         timing_eligible: true,

@@ -11,7 +11,7 @@ use af_core::id::Uuid7;
 use af_fleet_runtime::config::{Access, FleetConfig};
 use afd_fleet_lifecycle::FleetStatus;
 
-use crate::error::{self, Result, stored_fleet};
+use crate::error::{self, Result};
 use crate::{Ingress, sql};
 
 mod admit;
@@ -24,7 +24,7 @@ pub use self::admit::MentionAdmission;
 pub use self::message::{
     Composed, MESSAGE_CAP, THREAD_CAP, THREAD_HEADING, THREAD_UNAVAILABLE, compose,
 };
-pub use self::notice::{NoticeOwed, notice_key, notice_text};
+pub use self::notice::{NoticeOwed, notice_text};
 pub use self::notice_owner::{KIND_NOTICE_OWNER, NoticeOwner};
 pub use self::route::{Notice, Route, route};
 /// The channel type used by mention routing and notice ownership.
@@ -75,7 +75,7 @@ impl Ingress {
         let statuses: Vec<&str> = READABLE.iter().map(|status| status.as_str()).collect();
         let mut connection = self.database.acquire().await?;
         let rows: Vec<CandidateRow> = sqlx::query_as(sql::SELECT_MENTION_CANDIDATES)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(&statuses)
             .fetch_all(connection.as_mut())
             .await
@@ -85,7 +85,7 @@ impl Ingress {
         rows.iter()
             .map(|row| {
                 subscribed(
-                    stored_fleet(&row.fleet_id)?,
+                    row.fleet_id.clone(),
                     &row.status,
                     &row.document,
                     provider,
@@ -101,7 +101,7 @@ impl Ingress {
 #[derive(Debug, sqlx::FromRow)]
 struct CandidateRow {
     /// The fleet, as text.
-    fleet_id: String,
+    fleet_id: Uuid7,
     /// The stored status word.
     status: String,
     /// The head revision's configuration, as JSON text.

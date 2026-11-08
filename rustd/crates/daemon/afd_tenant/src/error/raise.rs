@@ -7,20 +7,6 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| Error::new(ErrorKind::Query { context, source })
 }
 
-/// Reports a column whose stored value is not a shape this daemon can read.
-pub(crate) fn row_malformed(
-    table: &'static str,
-    column: &'static str,
-) -> impl Fn(af_core::error::Error) -> Error {
-    move |source| {
-        Error::new(ErrorKind::RowMalformed {
-            table,
-            column,
-            source,
-        })
-    }
-}
-
 /// Reports a membership row whose role this build does not know.
 pub(crate) fn role_unknown(stored: &str) -> Error {
     Error::new(ErrorKind::RoleUnknown {
@@ -176,4 +162,9 @@ pub(crate) fn member_last_owner() -> Error {
 /// Reports an invite address that is not one.
 pub(crate) fn email_invalid() -> Error {
     Error::new(ErrorKind::EmailInvalid)
+}
+
+/// A paging cursor whose row identifier is not one this daemon minted.
+pub(crate) fn cursor_invalid() -> Error {
+    Error::new(ErrorKind::CursorInvalid)
 }

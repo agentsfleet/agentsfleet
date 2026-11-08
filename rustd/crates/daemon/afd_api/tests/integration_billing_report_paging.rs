@@ -26,10 +26,15 @@ async fn an_empty_report_has_no_activity_or_continuation() {
 async fn equal_spending_uses_stable_fleet_and_model_ordering() {
     let members = Members::create().await;
     let ids = seed(&members, &members.john, 4, 17).await;
-    sqlx::query("UPDATE billing.usage_lines SET fleet_id=$2::uuid,fleet_name='Fleet',model=$3 WHERE id=ANY($1::uuid[])")
-        .bind(ids.get(..2).expect("four settled charges")).bind(members.fleet.as_str()).bind("second-report-model")
-        .execute(&mut *members.database.acquire().await.expect("a connection"))
-        .await.expect("second attribution bucket");
+    sqlx::query(
+        "UPDATE billing.usage_lines SET fleet_id=$2,fleet_name='Fleet',model=$3 WHERE id=ANY($1)",
+    )
+    .bind(ids.get(..2).expect("four settled charges"))
+    .bind(&members.fleet)
+    .bind("second-report-model")
+    .execute(&mut *members.database.acquire().await.expect("a connection"))
+    .await
+    .expect("second attribution bucket");
     let response = get(&members, &members.john, REPORT).await;
     assert_eq!(response.status(), StatusCode::OK);
     let body = harness::json_body(response).await;
@@ -73,10 +78,15 @@ async fn detail_continuations_visit_every_charge_once_and_bind_their_scope() {
     let ids = seed(&members, &members.john, 3, 17).await;
     let work = ids.first().expect("seeded work");
     for (sequence, id) in ids.iter().enumerate() {
-        sqlx::query("UPDATE billing.usage_lines SET work_id=$2::uuid,authoring_attempt_id=$2::uuid,seq=$3 WHERE id=$1::uuid")
-            .bind(id).bind(work).bind(i64::try_from(sequence).expect("bounded sequence"))
-            .execute(&mut *members.database.acquire().await.expect("a connection"))
-            .await.expect("one activity with three physical charges");
+        sqlx::query(
+            "UPDATE billing.usage_lines SET work_id=$2,authoring_attempt_id=$2,seq=$3 WHERE id=$1",
+        )
+        .bind(id)
+        .bind(work)
+        .bind(i64::try_from(sequence).expect("bounded sequence"))
+        .execute(&mut *members.database.acquire().await.expect("a connection"))
+        .await
+        .expect("one activity with three physical charges");
     }
     let base =
         format!("/v1/tenants/me/billing/activities/{work}/charges?activity_type=setup&limit=1");
@@ -131,9 +141,13 @@ async fn assert_refused_cursor(members: &Members, base: &str, cursor: &str) {
 async fn unreadable_stored_work_is_refused_without_disclosing_or_changing_it() {
     let members = Members::create().await;
     let ids = seed(&members, &members.john, 1, 17).await;
-    sqlx::query("UPDATE billing.usage_lines SET work_type='unreadable-private-work' WHERE id=ANY($1::uuid[])")
-        .bind(&ids).execute(&mut *members.database.acquire().await.expect("a connection"))
-        .await.expect("controlled stored-row failure");
+    sqlx::query(
+        "UPDATE billing.usage_lines SET work_type='unreadable-private-work' WHERE id=ANY($1)",
+    )
+    .bind(&ids)
+    .execute(&mut *members.database.acquire().await.expect("a connection"))
+    .await
+    .expect("controlled stored-row failure");
     let response = get(&members, &members.john, REPORT).await;
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     let problem = harness::json_body(response).await;

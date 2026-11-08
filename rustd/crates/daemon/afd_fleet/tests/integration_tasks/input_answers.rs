@@ -10,7 +10,7 @@ use afd_connector::Provider;
 use afd_fleet::task::{TaskBinding, TaskLifecycle as _};
 use serde_json::{Value, json};
 
-use super::fixture::{Case, GOALS, exercise, id};
+use super::fixture::{Case, GOALS, exercise};
 
 const THREAD: &str =
     r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
@@ -86,9 +86,9 @@ async fn source(case: &Case, reply: Reply<'_>) -> Uuid7 {
         .admissions
         .admit(Admission {
             producer: Producer::Steer,
-            key: Key::Repeated(&key),
-            fleet: case.scope.fleet_id.as_str(),
-            workspace: case.scope.workspace_id.as_str(),
+            key: Key::Repeated(key.as_str()),
+            fleet: &case.scope.fleet_id,
+            workspace: &case.scope.workspace_id,
             actor: &actor,
             event_type: EventType::Chat,
             request_json: &request,
@@ -96,7 +96,7 @@ async fn source(case: &Case, reply: Reply<'_>) -> Uuid7 {
         })
         .await
         .expect("separate human source with original reply destination");
-    let source = id(&admitted.stored.id);
+    let source = admitted.stored.id.clone();
     assert_ne!(source.as_str(), case.held.event_id);
     case.claim(&source).await;
     source
@@ -121,7 +121,7 @@ fn receipt(
     };
     garde::Unvalidated::new(TaskInputReceiptInput {
         fencing_token: case.lease().fencing_token,
-        operation_id: afd_db::test_util::mint_id(),
+        operation_id: afd_db::test_util::mint_id().into(),
         source_admission_id: source.to_string(),
         plan_digest: "a".repeat(64),
         item_id: item.item_id.to_string(),
@@ -145,8 +145,8 @@ async fn assert_pending(case: &Case, source: &Uuid7) {
         .await
         .expect("completion observer");
     let state: (bool, i64, i64) = sqlx::query_as(
-        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM fleet.events WHERE fleet_id=$2::uuid AND event_id=$1), (SELECT count(*) FROM fleet.obligations WHERE fleet_id=$2::uuid AND event_id=$1) FROM fleet.admissions WHERE id=$1::uuid"
-    ).bind(source.as_str()).bind(case.scope.fleet_id.as_str()).fetch_one(&mut *connection).await.expect("incomplete source");
+        "SELECT settled_at IS NOT NULL, (SELECT count(*) FROM fleet.events WHERE fleet_id=$2 AND event_id=$1), (SELECT count(*) FROM fleet.obligations WHERE fleet_id=$2 AND event_id=$1) FROM fleet.admissions WHERE id=$1"
+    ).bind(source).bind(&case.scope.fleet_id).fetch_one(&mut *connection).await.expect("incomplete source");
     assert_eq!(
         state,
         (false, 0, 0),
@@ -163,21 +163,26 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
         .await
         .expect("completed source observer");
     let events: Vec<Value> = sqlx::query_scalar(
-        "SELECT to_jsonb(e) FROM fleet.events e WHERE fleet_id=$1::uuid AND event_id=$2",
+        "SELECT to_jsonb(e) FROM fleet.events e WHERE fleet_id=$1 AND event_id=$2",
     )
-    .bind(case.scope.fleet_id.as_str())
-    .bind(source.as_str())
+    .bind(&case.scope.fleet_id)
+    .bind(source)
     .fetch_all(&mut *connection)
     .await
     .expect("original event");
     assert_eq!(events.len(), 1);
     let event = events.first().expect("one completed event");
     assert_event(event);
-    let settled: bool = sqlx::query_scalar("SELECT settled_at IS NOT NULL AND parked_at IS NULL FROM fleet.admissions WHERE id=$1::uuid")
-        .bind(source.as_str()).fetch_one(&mut *connection).await.expect("settled original source");
+    let settled: bool = sqlx::query_scalar(
+        "SELECT settled_at IS NOT NULL AND parked_at IS NULL FROM fleet.admissions WHERE id=$1",
+    )
+    .bind(source)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("settled original source");
     assert!(settled);
-    let obligations: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT provider,destination,answer FROM fleet.obligations WHERE fleet_id=$1::uuid AND event_id=$2")
-        .bind(case.scope.fleet_id.as_str()).bind(source.as_str()).fetch_all(&mut *connection).await.expect("original reply obligations");
+    let obligations: Vec<(String, Option<String>, String)> = sqlx::query_as("SELECT provider,destination,answer FROM fleet.obligations WHERE fleet_id=$1 AND event_id=$2")
+        .bind(&case.scope.fleet_id).bind(source).fetch_all(&mut *connection).await.expect("original reply obligations");
     let expected = match reply {
         Reply::To { connector, address } => vec![(
             connector.to_owned(),
@@ -191,8 +196,8 @@ async fn assert_completed(case: &Case, source: &Uuid7, reply: Reply<'_>) -> Valu
 }
 
 async fn lease(case: &Case) -> Value {
-    sqlx::query_scalar("SELECT to_jsonb(l) FROM runner.leases l WHERE id=$1::uuid")
-        .bind(case.held.lease_key.as_str())
+    sqlx::query_scalar("SELECT to_jsonb(l) FROM runner.leases l WHERE id=$1")
+        .bind(&case.held.lease_key)
         .fetch_one(
             &mut *case
                 .held
@@ -208,7 +213,7 @@ async fn lease(case: &Case) -> Value {
 
 async fn refuse_replacement(case: &Case, original: &TaskInputReceiptInput) {
     let mut replacement = original.clone();
-    replacement.operation_id = afd_db::test_util::mint_id();
+    replacement.operation_id = afd_db::test_util::mint_id().into();
     replacement.response_text =
         Some("Replacement must not reach the original conversation".to_owned());
     let replacement = garde::Unvalidated::new(replacement)
@@ -261,8 +266,8 @@ fn assert_event(event: &Value) {
 async fn interpreted(case: &Case, source: &Uuid7) {
     // PreparedPlan::from_parts supplies accepted meaning without a paid model call.
     // Its original source must also carry the persisted interpretation boundary.
-    let updated = sqlx::query("UPDATE fleet.admissions SET interpreted_at=clock_timestamp() WHERE id=$1::uuid AND input_claim_lease_id=$2::uuid AND interpreted_at IS NULL")
-        .bind(source.as_str()).bind(case.held.lease_key.as_str())
+    let updated = sqlx::query("UPDATE fleet.admissions SET interpreted_at=clock_timestamp() WHERE id=$1 AND input_claim_lease_id=$2 AND interpreted_at IS NULL")
+        .bind(source).bind(&case.held.lease_key)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("accepted interpretation fixture"))
         .await.expect("accepted source interpretation boundary");
     assert_eq!(updated.rows_affected(), 1);

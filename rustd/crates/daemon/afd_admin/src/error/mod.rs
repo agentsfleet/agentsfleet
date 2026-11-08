@@ -53,13 +53,6 @@ enum ErrorKind {
         #[source]
         source: sqlx::Error,
     },
-    #[error("a {table} row holds an unreadable {column}")]
-    Row {
-        table: &'static str,
-        column: &'static str,
-        #[source]
-        source: af_core::error::Error,
-    },
     #[error("could not mint a model identifier")]
     Entropy {
         #[source]
@@ -78,7 +71,7 @@ impl Error {
             | ErrorKind::DecisionRevision
             | ErrorKind::CodingPrices => error_code::INVALID_REQUEST,
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::Row { .. } => error_code::INTERNAL_DB_QUERY,
+            ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             #[cfg(not(feature = "test-util"))]
             ErrorKind::Entropy { .. } => error_code::INTERNAL_OPERATION_FAILED,
             #[cfg(feature = "test-util")]
@@ -108,7 +101,7 @@ impl Error {
                 "Inference settings must specify a supported API, safe HTTPS base URL and output limit within the model context"
             }
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::Row { .. } => DETAIL_DATABASE_ERROR,
+            ErrorKind::Query { .. } => DETAIL_DATABASE_ERROR,
             ErrorKind::Entropy { .. } => "Internal operation failed",
             #[cfg(feature = "test-util")]
             ErrorKind::Fixture { .. } | ErrorKind::FixtureDefinition { .. } => {
@@ -144,19 +137,6 @@ pub(super) fn decision_settings(source: af_inference::Error) -> Error {
 
 pub(super) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
     move |source| Error::from(ErrorKind::Query { context, source })
-}
-
-pub(super) fn row(
-    table: &'static str,
-    column: &'static str,
-) -> impl Fn(af_core::error::Error) -> Error {
-    move |source| {
-        Error::from(ErrorKind::Row {
-            table,
-            column,
-            source,
-        })
-    }
 }
 
 #[cfg(test)]

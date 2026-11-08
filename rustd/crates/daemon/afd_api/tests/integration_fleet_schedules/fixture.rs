@@ -17,11 +17,11 @@ pub(super) struct Fixture {
     lane: TestDatabase,
     pub(super) database: Db,
     subject: &'static str,
-    tenant: String,
+    tenant: Uuid7,
     pub(super) workspace: Uuid7,
     pub(super) fleet: Uuid7,
-    user: String,
-    key: String,
+    user: Uuid7,
+    key: Uuid7,
     pub(super) token: String,
 }
 
@@ -33,8 +33,8 @@ impl Fixture {
             database: lane.open(DbRole::Api, &[]).await,
             subject,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
-            fleet: Uuid7::parse(&mint_id()).expect("a minted fleet is canonical"),
+            workspace: mint_id(),
+            fleet: mint_id(),
             user: mint_id(),
             key: mint_id(),
             token: format!("agt_t{token_bits}"),
@@ -62,7 +62,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("schedules")
             .insert(&mut *connection)
             .await
@@ -82,8 +82,8 @@ impl Fixture {
             .expect("its API key seeds");
 
         FleetSeed::new(
-            self.fleet.as_str(),
-            self.workspace.as_str(),
+            &self.fleet,
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -117,11 +117,11 @@ impl Fixture {
                    (id, fleet_id, source, provider_schedule_id, cron_expression, timezone, \
                     message, once, desired_status, sync_status, resource_version, \
                     created_at, updated_at) \
-                 VALUES ($1::uuid, $2::uuid, 'api', $3, $4, 'UTC', 'seeded', false, \
+                 VALUES ($1, $2, 'api', $3, $4, 'UTC', 'seeded', false, \
                          'active', 'failed', 1, now(), now())",
             )
             .bind(mint_id())
-            .bind(self.fleet.as_str())
+            .bind(&self.fleet)
             .bind(format!("seeded-{slot}"))
             .bind(NIGHTLY)
             .execute(&mut *connection)
@@ -132,7 +132,7 @@ impl Fixture {
 
     pub(super) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

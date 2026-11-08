@@ -22,7 +22,7 @@ pub(super) async fn insert(
     sqlx::query(include_str!("sql/pin_replace.sql"))
         .bind(&plan.id)
         .bind(kind)
-        .bind(lease.lease_id.as_str())
+        .bind(lease.lease_id)
         .bind(owned.current.fence)
         .execute(&mut *connection)
         .await
@@ -41,13 +41,13 @@ pub(super) async fn insert(
     }
     let id = tasks.leases.entropy().uuid7(clock::now())?;
     sqlx::query(include_str!("sql/pin_insert.sql"))
-        .bind(id.as_str())
+        .bind(&id)
         .bind(&plan.id)
         .bind(&plan.task_id)
         .bind(&plan.fleet_id)
         .bind(&plan.workspace_id)
         .bind(kind)
-        .bind(lease.lease_id.as_str())
+        .bind(lease.lease_id)
         .bind(owned.current.fence)
         .bind(
             i64::try_from(owned.snapshot.context.generation)
@@ -64,7 +64,7 @@ pub(super) async fn insert(
         .await
         .map_err(query("acquire bounded checkpoint operation pin"))?;
     sqlx::query_as(include_str!("sql/pin.sql"))
-        .bind(id.as_str())
+        .bind(&id)
         .bind(&plan.id)
         .fetch_one(connection)
         .await
@@ -81,10 +81,19 @@ pub(in crate::task) async fn renew(
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let owned = execution::load(&mut tx, lease, &input.task).await?;
-    let plan = Plan::load(&mut tx, checkpoint, &input.task.task_id).await?;
+    let plan = Plan::load(
+        &mut tx,
+        checkpoint,
+        owned
+            .current
+            .task_id
+            .as_ref()
+            .ok_or(TaskRefusal::NotFound)?,
+    )
+    .await?;
     let current: Pin = sqlx::query_as(include_str!("sql/pin.sql"))
-        .bind(pin.as_str())
-        .bind(checkpoint.as_str())
+        .bind(pin)
+        .bind(checkpoint)
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("lock pin renewal"))?
@@ -111,14 +120,14 @@ pub(in crate::task) async fn renew(
         return Err(TaskRefusal::StaleState.into());
     }
     sqlx::query(include_str!("sql/pin_renew.sql"))
-        .bind(pin.as_str())
+        .bind(pin)
         .bind(super::PIN_SECONDS)
         .execute(&mut *tx)
         .await
         .map_err(query("renew pin within original operation deadline"))?;
     let current: Pin = sqlx::query_as(include_str!("sql/pin.sql"))
-        .bind(pin.as_str())
-        .bind(checkpoint.as_str())
+        .bind(pin)
+        .bind(checkpoint)
         .fetch_one(&mut *tx)
         .await
         .map_err(query("read renewed recovery pin"))?;

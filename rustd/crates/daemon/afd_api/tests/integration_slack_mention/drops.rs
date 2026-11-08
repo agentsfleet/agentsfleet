@@ -155,8 +155,8 @@ async fn a_mapped_team_with_no_bot_grant_is_dropped_as_unmapped() {
         )
         .await;
     let mut connection = fixture.database().acquire().await.expect("a connection");
-    sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2")
-        .bind(fixture.workspace().as_str())
+    sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2")
+        .bind(fixture.workspace())
         .bind(PROVIDER.grant_key())
         .execute(&mut *connection)
         .await
@@ -213,8 +213,8 @@ async fn a_connected_long_team_identity_does_not_create_an_implicit_fleet() {
 }
 
 async fn unconfigured_state(fixture: &Fixture) -> (i64, i64, i64, i64) {
-    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid), (SELECT count(*) FROM fleet.revisions r JOIN fleet.fleets f ON f.id=r.fleet_id WHERE f.workspace_id=$1::uuid), (SELECT count(*) FROM connector.channels WHERE provider=$2 AND external_account_id=$3), (SELECT count(*) FROM fleet.obligations WHERE workspace_id=$1::uuid)")
-        .bind(fixture.workspace().as_str()).bind(PROVIDER.id()).bind(&fixture.team)
+    sqlx::query_as("SELECT (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1), (SELECT count(*) FROM fleet.revisions r JOIN fleet.fleets f ON f.id=r.fleet_id WHERE f.workspace_id=$1), (SELECT count(*) FROM connector.channels WHERE provider=$2 AND external_account_id=$3), (SELECT count(*) FROM fleet.obligations WHERE workspace_id=$1)")
+        .bind(fixture.workspace()).bind(PROVIDER.id()).bind(&fixture.team)
         .fetch_one(&mut *fixture.database().acquire().await.expect("side effect observer"))
         .await.expect("fleets, revisions, channel bindings and obligations")
 }

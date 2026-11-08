@@ -134,8 +134,8 @@ async fn a_wallet_in_debt_refuses_admission_until_it_is_repaid() {
 async fn differently_priced_turns_dispatch_and_settle_concurrently_at_their_own_rates() {
     let f = funded(2).await;
     let dear = f.catalogue.get(1).expect("second owned model");
-    sqlx::query("UPDATE model.platform_model_prices SET input_nanos_per_mtok=$2,output_nanos_per_mtok=$3 WHERE platform_model_id=$1::uuid")
-        .bind(dear.as_str()).bind(DEAR_INPUT).bind(DEAR_OUTPUT)
+    sqlx::query("UPDATE model.platform_model_prices SET input_nanos_per_mtok=$2,output_nanos_per_mtok=$3 WHERE platform_model_id=$1")
+        .bind(dear).bind(DEAR_INPUT).bind(DEAR_OUTPUT)
         .execute(&mut *f.connection().await).await.expect("the second model costs three times as much");
     let cheap = queue(&f, "Cheap turn").await;
     let mut request = f.request(mint(), Some("Dear turn"));
@@ -241,14 +241,12 @@ async fn dispatch(f: &super::Fixture, calls: &ModelCalls, lease: &Claimed) -> Mo
 const AGE: std::time::Duration = std::time::Duration::from_secs(1);
 
 async fn settle(f: &super::Fixture, lease: &Claimed) -> af_wire::authoring::Reported {
-    sqlx::query(
-        "UPDATE authoring.attempts SET created_at=created_at-$2::interval WHERE id=$1::uuid",
-    )
-    .bind(lease.attempt_id.as_str())
-    .bind(AGE)
-    .execute(&mut *f.connection().await)
-    .await
-    .expect("a second of elapsed runtime covers the reported millisecond");
+    sqlx::query("UPDATE authoring.attempts SET created_at=created_at-$2::interval WHERE id=$1")
+        .bind(id(&lease.attempt_id))
+        .bind(AGE)
+        .execute(&mut *f.connection().await)
+        .await
+        .expect("a second of elapsed runtime covers the reported millisecond");
     let report = Report::Accounting {
         accounting: Accounting {
             fence: lease.fence.clone(),
@@ -287,8 +285,8 @@ fn id(raw: &str) -> Uuid7 {
 }
 
 async fn fixture_balance(f: &super::Fixture) -> i64 {
-    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid")
-        .bind(f.tenant.as_str())
+    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1")
+        .bind(&f.tenant)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("owned wallet")

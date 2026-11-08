@@ -19,7 +19,7 @@ workspace = true
 [dependencies]
 # Identifiers, the clock, the registry codes, and the keyset cursor the list
 # walk resumes from.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # The counter snapshot the live wall's `hello` carries.

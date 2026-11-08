@@ -1,11 +1,12 @@
 //! The immutable ceiling shared by lease delivery and task binding receipts.
 
 use crate::error::{Result, query};
+use af_core::id::Uuid7;
 
 /// Called only inside the transaction already holding this lease's ownership locks.
 pub(crate) async fn read(
     connection: &mut sqlx::PgConnection,
-    lease_id: &str,
+    lease_id: &Uuid7,
 ) -> Result<jiff::Timestamp> {
     let deadline: jiff_sqlx::Timestamp =
         sqlx::query_scalar(include_str!("sql/execution_deadline.sql"))

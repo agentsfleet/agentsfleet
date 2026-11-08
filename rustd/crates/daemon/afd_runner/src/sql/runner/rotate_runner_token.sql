@@ -1,5 +1,5 @@
 WITH current_runner AS (
-  SELECT id, status FROM runner.runners WHERE id = $1::uuid FOR UPDATE
+  SELECT id, status FROM runner.runners WHERE id = $1 FOR UPDATE
 ), updated AS (
   UPDATE runner.runners r
   SET token_hash = $2::text, updated_at = now()
@@ -8,7 +8,7 @@ WITH current_runner AS (
   RETURNING r.id
 ), event AS (
   INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
-  SELECT $4::uuid, id, $5::text, jsonb_build_object($6::text, $7::text), NULL, now()
+  SELECT $4, id, $5::text, jsonb_build_object($6::text, $7::text), NULL, now()
   FROM updated
   RETURNING id
 )

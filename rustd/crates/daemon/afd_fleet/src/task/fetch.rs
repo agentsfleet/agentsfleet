@@ -31,8 +31,8 @@ where
         let mut transaction = connection.begin().await.map_err(query(context))?;
         if let Some(scope) = fleet {
             let owned: bool = sqlx::query_scalar(include_str!("sql/read_scope.sql"))
-                .bind(scope.fleet_id.as_str())
-                .bind(scope.workspace_id.as_str())
+                .bind(&scope.fleet_id)
+                .bind(&scope.workspace_id)
                 .fetch_one(&mut *transaction)
                 .await
                 .map_err(query(context))?;

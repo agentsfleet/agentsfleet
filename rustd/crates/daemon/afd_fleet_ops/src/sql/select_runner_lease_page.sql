@@ -1,13 +1,13 @@
 -- LEFT JOINs: a settled lease outlives its fleet and its event (runner.leases
 -- holds no foreign key to either), so a purged fleet's history still lists,
 -- with the fleet and event columns null.
-SELECT l.id::text AS id,
-       l.fleet_id::text AS fleet_id,
+SELECT l.id,
+       l.fleet_id,
        f.name AS fleet_name,
        f.id IS NOT NULL AS fleet_exists,
-       l.workspace_id::text AS workspace_id,
-       l.tenant_id::text AS tenant_id,
-       COALESCE(e.event_id, l.fleet_event_id::text) AS event_id,
+       l.workspace_id,
+       l.tenant_id,
+       l.event_id,
        e.event_type,
        e.actor,
        l.status AS lease_status,
@@ -26,12 +26,12 @@ SELECT l.id::text AS id,
        e.wall_ms,
        EXISTS (
            SELECT 1 FROM runner.leases p
-           WHERE p.fleet_event_id = l.fleet_event_id
+           WHERE p.event_id = l.event_id
              AND p.fencing_token < l.fencing_token
        ) AS is_reclaim
 FROM runner.leases l
 LEFT JOIN fleet.fleets f ON f.id = l.fleet_id
-LEFT JOIN fleet.events e ON e.id = l.fleet_event_id
+LEFT JOIN fleet.events e ON e.event_id = l.event_id
 -- The tokens the lease's usage lines record: one index range per lease row.
 LEFT JOIN LATERAL (
     SELECT sum(input_token_count) AS input_tokens,
@@ -40,9 +40,9 @@ LEFT JOIN LATERAL (
     FROM billing.usage_lines
     WHERE work_type = $7 AND work_id = l.id
 ) u ON true
-WHERE l.runner_id = $1::uuid
-  AND ($2::uuid IS NULL OR l.workspace_id = $2::uuid)
-  AND ($3::text IS NULL OR l.fleet_id::text = $3::text OR lower(f.name) = lower($3::text))
-  AND (l.created_at, l.id) < (COALESCE($5::timestamptz, 'infinity'::timestamptz), $6::uuid)
+WHERE l.runner_id = $1
+  AND (l.workspace_id = $2 OR $2 IS NULL)
+  AND ($3::text IS NULL OR l.fleet_id = $8 OR lower(f.name) = lower($3::text))
+  AND (l.created_at, l.id) < (COALESCE($5::timestamptz, 'infinity'::timestamptz), $6)
 ORDER BY l.created_at DESC, l.id DESC
 LIMIT $4

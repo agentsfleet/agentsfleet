@@ -59,7 +59,7 @@ struct Assignment<'a> {
 /// [`sql::runner_admin::SELECT_RUNNER_PATCH_STATE`]'s row.
 #[derive(Debug, sqlx::FromRow)]
 struct PatchState {
-    decision_model_id: Option<String>,
+    decision_model_id: Option<Uuid7>,
     status: String,
     capability_report: Option<String>,
 }
@@ -106,7 +106,7 @@ impl Runners {
         )
         .await?;
         let row = sqlx::query_as::<_, PatchState>(sql::runner_admin::SELECT_RUNNER_PATCH_STATE)
-            .bind(runner.as_str())
+            .bind(runner)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_EDIT))?
@@ -116,12 +116,12 @@ impl Runners {
             if status == AdminState::Revoked {
                 return Err(rejected(DETAIL_REVOKED_NO_POLICY));
             }
-            selected.allow_change_from(row.decision_model_id.as_deref())?;
+            selected.allow_change_from(row.decision_model_id.as_ref().map(Uuid7::as_str))?;
             assign(&mut transaction, runner, assignment, row.capability_report).await?;
         }
         if let Some(labels_json) = labels_json {
             sqlx::query(sql::runner_admin::REPLACE_RUNNER_LABELS)
-                .bind(runner.as_str())
+                .bind(runner)
                 .bind(labels_json)
                 .execute(&mut *transaction)
                 .await
@@ -170,14 +170,14 @@ async fn assign(
     let capability = policy::capability(capability_json.as_deref());
     let verdict = reconcile(stored, capability.as_ref());
     sqlx::query(sql::runner_admin::PATCH_RUNNER_ASSIGNED_POLICY)
-        .bind(runner.as_str())
+        .bind(runner)
         .bind(tier_wire(stored.sandbox_tier))
         .bind(policy_wire(stored.network_policy))
         .bind(&assignment.registry_json)
         // `assignment` clamped this into 1..=64, so the signed form is exact
         // and matches the existing enrolment binder.
         .bind(stored.worker_count.cast_signed())
-        .bind(assignment.event_id.as_str())
+        .bind(&assignment.event_id)
         .bind(EVENT_POLICY_ASSIGNED)
         .bind(sql::meta::SANDBOX_TIER)
         .bind(sql::meta::NETWORK_POLICY)
@@ -185,7 +185,7 @@ async fn assign(
         .bind(sql::meta::WORKER_COUNT)
         .bind(verdict.reason())
         .bind(&assignment.sandbox_config_json)
-        .bind(assignment.decision_model_id.as_ref().map(Uuid7::as_str))
+        .bind(assignment.decision_model_id.as_ref())
         .bind(sql::meta::DECISION_MODEL_ID)
         .bind(stored.durable_tasks_enabled)
         .bind(sql::meta::DURABLE_TASKS_ENABLED)

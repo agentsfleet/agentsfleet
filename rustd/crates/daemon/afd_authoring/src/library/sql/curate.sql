@@ -5,7 +5,7 @@ UPDATE authoring.library_entries
        visibility = COALESCE($5, visibility),
        resource_version = resource_version + 1,
        updated_at = now()
- WHERE id = $1::uuid
+ WHERE id = $1
    AND (name IS DISTINCT FROM COALESCE($2, name)
         OR description IS DISTINCT FROM COALESCE($3, description)
         OR credential_reasons IS DISTINCT FROM COALESCE($4::jsonb, credential_reasons)

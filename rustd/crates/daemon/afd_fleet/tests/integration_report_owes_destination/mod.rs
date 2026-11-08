@@ -21,6 +21,7 @@ use std::borrow::Cow;
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
+use afd_db::test_util::mint_id;
 use afd_fleet::lease::Committed;
 
 use crate::report_commit::{
@@ -199,9 +200,6 @@ async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
 /// edit made out of band would record it.
 const UNKNOWN_CONNECTOR: &str = "carrier-pigeon";
 
-/// An event id the admission ledger never minted.
-const PRE_LEDGER_EVENT: &str = "evt_predates_the_ledger";
-
 /// A recorded connector no connector answers to owes nothing: the report reads
 /// it, cannot parse it, and settles without an obligation.
 #[tokio::test(flavor = "multi_thread")]
@@ -247,7 +245,8 @@ async fn an_event_the_ledger_never_minted_owes_nothing() {
         .await;
     let now = stage.fixtures.enrolled_at();
     let (lease_id, mut lease) = stage.lease_next(now).await;
-    lease.event_id = PRE_LEDGER_EVENT.to_owned();
+    // An event id the admission ledger never minted.
+    lease.event_id = mint_id();
 
     let committed = stage
         .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
@@ -281,8 +280,8 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
     let request = ReportRequest {
         folded_through_sequence: None,
         task: None,
-        lease_id: Cow::Borrowed(&lease_id),
-        event_id: Cow::Borrowed(&lease.event_id),
+        lease_id: Cow::Borrowed(lease_id.as_str()),
+        event_id: Cow::Borrowed(lease.event_id.as_str()),
         fencing_token: lease.fence.as_u64(),
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -327,7 +326,7 @@ async fn the_plane_appends_and_receipts_what_it_owed() {
         .expect("a pooled connection");
     let receipt: Option<String> = sqlx::query_scalar(
         "SELECT receipt FROM fleet.obligations
-          WHERE fleet_id = $1::uuid AND event_id = $2",
+          WHERE fleet_id = $1 AND event_id = $2",
     )
     .bind(&stage.fleet)
     .bind(&event_id)

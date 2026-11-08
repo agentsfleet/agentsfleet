@@ -10,7 +10,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::id::Uuid7;
 use afd_db::Precondition as _;
 use afd_fleet::lease::write_fence::WriteFence;
 use agentsfleetd::supervisor::Supervisor;
@@ -25,7 +24,7 @@ async fn test_a_write_fence_holds_only_for_the_live_holder() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
     let leased = Leased::boot(&mut supervisor, &qstash).await;
-    let lease = Uuid7::parse(&leased.lease_id).expect("a lease id");
+    let lease = leased.lease_id.clone();
     let runner = leased.run.runner_id.clone();
     let held = WriteFence::new(runner.clone(), lease.clone(), leased.fence);
     let stale = WriteFence::new(runner, lease, leased.fence + 1);
@@ -48,7 +47,7 @@ async fn test_a_write_fence_holds_only_for_the_live_holder() {
 
     // A reclaim moves the fleet's live sequence past the old holder's token.
     sqlx::query(
-        "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1::uuid",
+        "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
     )
     .bind(&leased.run.fleet)
     .execute(&mut *connection)

@@ -1,5 +1,6 @@
 //! Queue polling must not scan a fleet's unrelated approval history.
 
+use af_core::id::Uuid7;
 use afd_db::config::DbRole;
 use sqlx::Connection as _;
 
@@ -7,7 +8,6 @@ use super::{Fixtures, prepared, relation_scans, run};
 
 /// A dense existence check may choose a scan, but must stay within a few pages
 /// as unrelated history doubles. This also catches the former bitmap build.
-const DENSE_GATE_BUFFER_BUDGET: f64 = 16.0;
 
 // Mix resolved gates, expired matching gates and live gates for other events.
 const HISTORY: &str = "INSERT INTO fleet.approval_gates \
@@ -15,11 +15,11 @@ const HISTORY: &str = "INSERT INTO fleet.approval_gates \
      proposed_action,evidence,blast_radius,expires_at,status,detail,resolved_at, \
      created_at,updated_at) \
     SELECT uuidv7(),a.fleet_id,a.workspace_id, \
-      CASE WHEN n%3=0 THEN 'unrelated-'||n ELSE a.id::text END, \
-      'history-'||n,'git','push','repository_write','fixture','{}','fixture', \
+      CASE WHEN n%3=0 THEN uuidv7() ELSE a.id END, \
+      uuidv7(),'git','push','repository_write','fixture','{}','fixture', \
       clock_timestamp()+CASE WHEN n%3=1 THEN interval '-1 hour' ELSE interval '1 hour' END, \
       $4,'',CASE WHEN n%3=2 THEN now() END,now(),now() \
-    FROM fleet.admissions a,generate_series($2::int,$3::int) n WHERE a.id=$1::uuid";
+    FROM fleet.admissions a,generate_series($2::int,$3::int) n WHERE a.id=$1";
 
 // Value: protects=approval work stays bounded as history grows; fails_when=a gate
 // probe filters unrelated or expired rows; why_new=parked-head deadline lookup;
@@ -34,7 +34,7 @@ async fn parked_head_probes_skip_unrelated_and_expired_approval_history() {
     let mut connection = owner.acquire().await.expect("plan owner");
     let mut tx = connection.begin().await.expect("isolated plan transaction");
     prepared::prepare(&mut tx).await;
-    sqlx::query("UPDATE fleet.admissions SET parked_at=now() WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.admissions SET parked_at=now() WHERE id=$1")
         .bind(&seeded.event_id)
         .execute(&mut *tx)
         .await
@@ -50,11 +50,11 @@ async fn parked_head_probes_skip_unrelated_and_expired_approval_history() {
             .await
             .expect("grow approval history");
         run(&mut tx, "ANALYZE fleet.approval_gates").await;
-        probe_plans(&mut tx, &seeded.fleet, runner.as_str(), size).await;
+        probe_plans(&mut tx, &seeded.fleet, runner, size).await;
         previous = size;
     }
-    assert_dense_matches(&mut tx, &seeded.event_id, &seeded.fleet, runner.as_str()).await;
-    assert_other_fleet_history(&mut tx, &seeded, runner.as_str()).await;
+    assert_dense_matches(&mut tx, &seeded.event_id, &seeded.fleet, runner).await;
+    assert_other_fleet_history(&mut tx, &seeded, runner).await;
     prepared::release(&mut tx).await;
     tx.rollback().await.expect("discard history");
     drop(connection);
@@ -62,7 +62,12 @@ async fn parked_head_probes_skip_unrelated_and_expired_approval_history() {
     fixtures.cleanup().await;
 }
 
-async fn probe_plans(connection: &mut sqlx::PgConnection, fleet: &str, runner: &str, size: i32) {
+async fn probe_plans(
+    connection: &mut sqlx::PgConnection,
+    fleet: &Uuid7,
+    runner: &Uuid7,
+    size: i32,
+) {
     for mode in ["force_custom_plan", "force_generic_plan"] {
         run(connection, &format!("SET LOCAL plan_cache_mode={mode}")).await;
         let discovery = prepared::candidates(connection, runner).await;
@@ -91,11 +96,11 @@ async fn probe_plans(connection: &mut sqlx::PgConnection, fleet: &str, runner: &
 
 async fn assert_dense_matches(
     connection: &mut sqlx::PgConnection,
-    event: &str,
-    fleet: &str,
-    runner: &str,
+    event: &Uuid7,
+    fleet: &Uuid7,
+    runner: &Uuid7,
 ) {
-    sqlx::query("UPDATE fleet.approval_gates SET event_id=$1, expires_at=clock_timestamp()+interval '1 hour' WHERE fleet_id=$2::uuid AND resolved_at IS NULL")
+    sqlx::query("UPDATE fleet.approval_gates SET event_id=$1, expires_at=clock_timestamp()+interval '1 hour' WHERE fleet_id=$2 AND resolved_at IS NULL")
         .bind(event).bind(fleet).execute(&mut *connection).await.expect("many live matching gates");
     run(connection, "ANALYZE fleet.approval_gates").await;
     let live = prepared::candidates(connection, runner).await;
@@ -118,9 +123,12 @@ fn assert_dense_work(plan: &serde_json::Value) {
             "{scan}"
         );
         assert_bounded_rows(scan);
-        let buffers = scan["Shared Hit Blocks"].as_f64().unwrap_or_default()
-            + scan["Shared Read Blocks"].as_f64().unwrap_or_default();
-        assert!(buffers <= DENSE_GATE_BUFFER_BUDGET, "{scan}");
+        // The block budget for a dense pile-up is deferred to M243, which
+        // replaces the per-second poll with ring-driven claim passes. With
+        // honest uuid statistics the planner walks the `expires_at` index past
+        // this fixture's dead row versions (Indy, Nov 08, 2026: "There is a
+        // spec that is working to remove the 1 second poll, M243 ... If not i
+        // would like to defer this").
     }
 }
 
@@ -159,27 +167,26 @@ fn assert_gate_work(plan: &serde_json::Value) {
 async fn assert_other_fleet_history(
     connection: &mut sqlx::PgConnection,
     seeded: &crate::seed::Seeded<1>,
-    runner: &str,
+    runner: &Uuid7,
 ) {
     let other = afd_db::test_util::mint_id();
-    let workspace: String =
-        sqlx::query_scalar("SELECT workspace_id::text FROM fleet.fleets WHERE id=$1::uuid")
-            .bind(&seeded.fleet)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("workspace");
+    let workspace: Uuid7 = sqlx::query_scalar("SELECT workspace_id FROM fleet.fleets WHERE id=$1")
+        .bind(&seeded.fleet)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("workspace");
     afd_db::test_util::FleetSeed::new(
         &other,
         &workspace,
         &seeded.tenant,
         afd_fleet::lease::sql::FLEET_STATUS_ACTIVE,
     )
-    .name(&other)
+    .name(other.as_str())
     .insert(&mut *connection)
     .await
     .expect("unrelated fleet");
     for copies in [1_i32, 1, 2] {
-        sqlx::query("INSERT INTO fleet.approval_gates SELECT (jsonb_populate_record(NULL::fleet.approval_gates,to_jsonb(g)||jsonb_build_object('id',uuidv7(),'fleet_id',$2::uuid,'event_id','unrelated','expires_at',clock_timestamp()+interval '30 minutes'))).* FROM fleet.approval_gates g,generate_series(1,$3) WHERE g.fleet_id=$1::uuid AND g.resolved_at IS NULL")
+        sqlx::query("INSERT INTO fleet.approval_gates SELECT (jsonb_populate_record(NULL::fleet.approval_gates,to_jsonb(g)||jsonb_build_object('id',uuidv7(),'fleet_id',$2,'event_id',uuidv7(),'expires_at',clock_timestamp()+interval '30 minutes'))).* FROM fleet.approval_gates g,generate_series(1,$3) WHERE g.fleet_id=$1 AND g.resolved_at IS NULL")
             .bind(&seeded.fleet).bind(&other).bind(copies).execute(&mut *connection).await.expect("unrelated earlier deadlines");
         run(connection, "ANALYZE fleet.approval_gates").await;
         let plan = prepared::candidates(connection, runner).await;

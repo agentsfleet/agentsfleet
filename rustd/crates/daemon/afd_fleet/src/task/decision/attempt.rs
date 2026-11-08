@@ -16,7 +16,7 @@ use crate::{Result, task::TaskRefusal};
 
 pub(super) enum Attempt {
     Original {
-        assessment_id: String,
+        assessment_id: Uuid7,
     },
     Retry {
         parent: Box<Call>,
@@ -28,11 +28,11 @@ impl Attempt {
     pub(super) async fn resolve(
         connection: &mut PgConnection,
         prepared: &Prepared,
-        parent: Option<&str>,
+        parent: Option<&Uuid7>,
         key: &str,
         digest: &str,
         call: &Uuid7,
-        assessment_id: String,
+        assessment_id: Uuid7,
     ) -> Result<Self> {
         let Some(parent) = parent else {
             return Ok(Self::Original { assessment_id });
@@ -83,7 +83,7 @@ impl Attempt {
         }
     }
 
-    pub(super) fn assessment_id(&self) -> &str {
+    pub(super) fn assessment_id(&self) -> &Uuid7 {
         match self {
             Self::Original { assessment_id } => assessment_id,
             Self::Retry { parent, .. } => &parent.assessment_id,

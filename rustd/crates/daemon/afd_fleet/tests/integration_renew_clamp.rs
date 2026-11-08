@@ -29,7 +29,7 @@ use crate::seed::{MODEL, PROVIDER};
 /// One renewal of `lease`, reporting no tokens.
 async fn extend(
     leases: &Leases,
-    lease: &str,
+    lease: &Uuid7,
     runner: &Uuid7,
     priced: (&Uuid7, &Pricing),
     now: Timestamp,
@@ -71,7 +71,7 @@ async fn test_renew_clamps_to_the_hard_ceiling() {
         pricing,
         ..
     } = held().await;
-    let lease = issued.lease_id.as_str();
+    let lease = &issued.lease_id;
 
     // An ordinary renewal, well inside the ceiling: the TTL arm wins. Renewal
     // reads the database clock and stamps that instant as the meter's next
@@ -167,7 +167,7 @@ async fn test_renew_after_reclaim_is_lost() {
         pricing,
         ..
     } = held().await;
-    let lease = issued.lease_id.as_str();
+    let lease = &issued.lease_id;
 
     // The holder stalls past its TTL and the work is taken back.
     fixtures
@@ -219,7 +219,7 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
     // covers zero, and the CREDITS gate admits — leaving the BUDGET gate to
     // refuse and this test asserting the wrong code for the right outcome.
     fixtures.seed_model_rate(PROVIDER, MODEL).await;
-    let lease = issued.lease_id.as_str();
+    let lease = &issued.lease_id;
     let original = fixtures
         .instant(Row::Lease(lease), "lease_expires_at")
         .await

@@ -10,8 +10,8 @@ async fn foreign_forged_and_expired_attempts_cannot_publish() {
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let request = a.initialize(1);
     refuse_foreign_and_forged(&f, &a, &request).await;
-    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1::uuid")
-        .bind(a.id.as_str())
+    sqlx::query("UPDATE authoring.attempts SET lease_expires_at='epoch' WHERE id=$1")
+        .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("expire owned attempt");
@@ -96,9 +96,9 @@ async fn membership_revocation_is_checked_before_proposal_receipt_replay() {
         .activity(&f.runner, &a.lease, request.clone())
         .await
         .expect("member proposal");
-    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
-        .bind(f.tenant.as_str())
-        .bind(f.member.as_str())
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1 AND user_id=$2")
+        .bind(&f.tenant)
+        .bind(&f.member)
         .execute(&mut *f.connection().await)
         .await
         .expect("revoke current membership");
@@ -136,8 +136,8 @@ async fn a_progress_hint_commits_no_candidate_and_unknown_usage_fences_the_next_
         .await
         .expect("the same hint replays");
     assert!(replayed.replayed);
-    sqlx::query("UPDATE authoring.attempts SET usage_unknown=true WHERE id=$1::uuid")
-        .bind(a.id.as_str())
+    sqlx::query("UPDATE authoring.attempts SET usage_unknown=true WHERE id=$1")
+        .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("a dispatch left usage unknown");
@@ -161,9 +161,9 @@ async fn a_model_the_catalogue_changed_fences_the_attempt_that_pinned_it() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     sqlx::query(
-        "UPDATE model.platform_models SET context_cap_tokens=context_cap_tokens-1 WHERE id=$1::uuid",
+        "UPDATE model.platform_models SET context_cap_tokens=context_cap_tokens-1 WHERE id=$1",
     )
-    .bind(f.catalogue[0].as_str())
+    .bind(&f.catalogue[0])
     .execute(&mut *f.connection().await)
     .await
     .expect("the catalogue re-verifies the model's context window");

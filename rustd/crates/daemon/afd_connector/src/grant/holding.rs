@@ -194,7 +194,7 @@ impl Grants {
         };
         sqlx::query(sql::DELETE_WORKSPACE_INSTALLS)
             .bind(provider.id())
-            .bind(workspace.as_str())
+            .bind(workspace)
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_FORGET))?;

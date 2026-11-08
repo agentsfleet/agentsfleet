@@ -23,7 +23,7 @@ use sqlx::FromRow;
 use sqlx::postgres::PgRow;
 
 use crate::Nanos;
-use crate::error::{Result, query, row_malformed};
+use crate::error::{Result, query};
 use crate::sql;
 use crate::store::Accounts;
 
@@ -32,12 +32,6 @@ const CONTEXT_PAYER: &str = "tenant for workspace";
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_BALANCE: &str = "tenant balance";
-
-/// The table a malformed identifier is reported against.
-const TABLE_WORKSPACES: &str = "identity.workspaces";
-
-/// The column a malformed identifier is reported against.
-const COLUMN_TENANT_ID: &str = "tenant_id";
 
 /// A tenant's credit pool, as the `billing.wallets` row holds it.
 ///
@@ -94,19 +88,14 @@ impl Accounts {
     /// ends the event rather than retrying it.
     ///
     /// # Errors
-    /// Reports a datastore that would not answer, and a `tenant_id` column
-    /// holding something this daemon cannot read as an identifier.
+    /// Reports a datastore that would not answer, and a row it cannot decode.
     pub async fn payer(&self, workspace_id: &Uuid7) -> Result<Option<Uuid7>> {
         let mut connection = self.pool().acquire().await?;
-        let found: Option<String> = sqlx::query_scalar(sql::SELECT_TENANT_FOR_WORKSPACE)
-            .bind(workspace_id.as_str())
+        sqlx::query_scalar(sql::SELECT_TENANT_FOR_WORKSPACE)
+            .bind(workspace_id)
             .fetch_optional(&mut *connection)
             .await
-            .map_err(query(CONTEXT_PAYER))?;
-
-        found
-            .map(|id| Uuid7::parse(&id).map_err(row_malformed(TABLE_WORKSPACES, COLUMN_TENANT_ID)))
-            .transpose()
+            .map_err(query(CONTEXT_PAYER))
     }
 
     /// `tenant_id`'s credit pool.
@@ -122,7 +111,7 @@ impl Accounts {
     pub async fn wallet(&self, tenant_id: &Uuid7) -> Result<Option<Wallet>> {
         let mut connection = self.pool().acquire().await?;
         sqlx::query_as(sql::SELECT_WALLET)
-            .bind(tenant_id.as_str())
+            .bind(tenant_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_BALANCE))

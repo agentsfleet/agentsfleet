@@ -6,6 +6,7 @@
 )]
 
 use crate::harness;
+use af_core::id::Uuid7;
 
 use af_core::paging::DEFAULT_LIMIT;
 use afd_auth::credential::Presented;
@@ -189,7 +190,7 @@ async fn assert_terminal_and_missing(router: &axum::Router, fixture: &Fixture, r
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
 
-async fn enrol(router: &axum::Router, token: &str) -> String {
+async fn enrol(router: &axum::Router, token: &str) -> Uuid7 {
     let enrolled = send(
         router,
         Method::POST,
@@ -213,7 +214,8 @@ async fn enrol(router: &axum::Router, token: &str) -> String {
     .await;
     assert_eq!(enrolled.status(), StatusCode::CREATED);
     let enrolled = json_body(enrolled).await;
-    let enrolled_runner = text(&enrolled, "runner_id").to_owned();
+    let enrolled_runner =
+        Uuid7::parse(text(&enrolled, "runner_id")).expect("enrolment answers a runner id");
     assert!(text(&enrolled, "runner_token").starts_with("agt_r"));
     assert_eq!(
         enrolled
@@ -281,9 +283,9 @@ pub(crate) fn text<'value>(document: &'value Value, field: &str) -> &'value str 
 pub(crate) struct Fixture {
     lane: TestDatabase,
     pub(crate) database: Db,
-    tenant: String,
-    key: String,
-    pub(crate) runner: String,
+    tenant: Uuid7,
+    key: Uuid7,
+    pub(crate) runner: Uuid7,
     pub(crate) token: String,
 }
 
@@ -331,14 +333,14 @@ impl Fixture {
         .expect("the operator and runner seed");
     }
 
-    pub(crate) async fn cleanup(self, enrolled_runner: &str) {
+    pub(crate) async fn cleanup(self, enrolled_runner: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM runner.runners WHERE id = ANY($1::uuid[])")
-            .bind(vec![self.runner.as_str(), enrolled_runner])
+        sqlx::query("DELETE FROM runner.runners WHERE id = ANY($1)")
+            .bind(vec![&self.runner, enrolled_runner])
             .execute(&mut *connection)
             .await
             .expect("the scoped runners clean up");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

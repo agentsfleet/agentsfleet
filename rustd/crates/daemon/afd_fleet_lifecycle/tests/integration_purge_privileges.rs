@@ -41,7 +41,7 @@ use crate::integration_purge_ledger_identity::{
 use crate::support::{Lane, mint};
 
 /// A delete on memory, which `api_runtime` must be refused outright.
-const MEMORY_DELETE: &str = "DELETE FROM memory.entries WHERE fleet_id = $1::uuid";
+const MEMORY_DELETE: &str = "DELETE FROM memory.entries WHERE fleet_id = $1";
 
 /// Takes the runtime role, so what follows meets the grants a request meets.
 async fn as_api_runtime(connection: &mut sqlx::PgConnection) {
@@ -71,8 +71,8 @@ async fn the_purge_statements_all_run_as_api_runtime() {
     as_api_runtime(&mut connection).await;
 
     let locked = sqlx::query(statements::LOCK_FLEET)
-        .bind(fleet.as_str())
-        .bind(lane.workspace.as_str())
+        .bind(&fleet)
+        .bind(&lane.workspace)
         .execute(&mut *connection)
         .await;
     assert!(
@@ -81,8 +81,8 @@ async fn the_purge_statements_all_run_as_api_runtime() {
         locked.err()
     );
     let deleted = sqlx::query(statements::DELETE_FLEET_IN_STATUS)
-        .bind(fleet.as_str())
-        .bind(lane.workspace.as_str())
+        .bind(fleet)
+        .bind(&lane.workspace)
         .bind(FleetStatus::Killed.as_str())
         .execute(&mut *connection)
         .await;
@@ -118,7 +118,7 @@ async fn memory_stays_out_of_reach_until_the_role_is_assumed() {
     as_api_runtime(&mut connection).await;
 
     let refused = sqlx::query(MEMORY_DELETE)
-        .bind(fleet.as_str())
+        .bind(fleet)
         .execute(&mut *connection)
         .await;
 

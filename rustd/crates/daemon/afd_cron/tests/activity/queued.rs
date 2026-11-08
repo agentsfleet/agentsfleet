@@ -1,6 +1,7 @@
 //! Queued fires reload before leasing and promote under their original identity.
 
 use af_core::event::status;
+use af_core::id::Uuid7;
 use afd_cron::{Change, Fire};
 use serde_json::{Value, json};
 
@@ -9,9 +10,9 @@ use crate::support::CronLane;
 
 const DELIVER: &str = "WITH landed AS (INSERT INTO fleet.events \
     (fleet_id,workspace_id,event_id,actor,event_type,status,request_json,created_at,updated_at) \
-    SELECT fleet_id,workspace_id,id::text,actor,event_type,$2,request_json::jsonb,event_created_at,now() \
-    FROM fleet.admissions WHERE id=$1::uuid RETURNING event_id) \
-    UPDATE fleet.admissions SET delivered_at=now() WHERE id::text IN (SELECT event_id FROM landed)";
+    SELECT fleet_id,workspace_id,id,actor,event_type,$2,request_json::jsonb,event_created_at,now() \
+    FROM fleet.admissions WHERE id=$1 RETURNING event_id) \
+    UPDATE fleet.admissions SET delivered_at=now() WHERE id IN (SELECT event_id FROM landed)";
 
 // Value: protects=one accepted fire is readable offline and remains one row after delivery;
 // fails_when=queued history excludes schedule_fire or retry rewrites its first payload;
@@ -52,8 +53,9 @@ async fn queued_schedule_fire_history_survives_reload_and_single_row_promotion()
         .expect("replay");
     assert_eq!(repeated.event_id, accepted.event_id);
     assert!(repeated.replayed);
+    let event = Uuid7::parse(&accepted.event_id).expect("a fire answers a minted event id");
     sqlx::query(DELIVER)
-        .bind(&accepted.event_id)
+        .bind(&event)
         .bind(status::RECEIVED)
         .execute(&mut *lane.connection().await)
         .await

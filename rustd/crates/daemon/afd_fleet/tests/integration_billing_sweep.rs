@@ -32,7 +32,7 @@ const RUNTIME_MS: u32 = 400;
 
 /// Ages both of a row's stamps past the sweeper's grace.
 const AGED: &str = "UPDATE {table} SET created_at = created_at - $2::interval, \
-                    updated_at = updated_at - $2::interval WHERE {key} = $1::uuid";
+                    updated_at = updated_at - $2::interval WHERE {key} = $1";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -192,7 +192,7 @@ async fn renew_runtime(held: &Held, biller: &LedgerBiller) -> i64 {
         .leases
         .extend(
             Metering {
-                lease_id: held.issued.lease_id.as_str(),
+                lease_id: &held.issued.lease_id,
                 runner_id: &held.runner,
                 requests: &[],
             },
@@ -237,7 +237,7 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
     let swept = sweep(database, &biller, &entropy, held.now, None);
     let reported = held.fixtures.settle_alone(
         &held.leases,
-        held.issued.lease_id.as_str(),
+        &held.issued.lease_id,
         &held.runner,
         &[],
         true,
@@ -259,7 +259,7 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
 /// both pushed back past the sweeper's grace, with three seconds of run time
 /// between them that no renewal billed. Answers that tail in milliseconds.
 pub(crate) async fn abandon(held: &Held) -> i64 {
-    let lease = held.issued.lease_id.as_str();
+    let lease = &held.issued.lease_id;
     let mut connection = held
         .fixtures
         .database
@@ -268,7 +268,7 @@ pub(crate) async fn abandon(held: &Held) -> i64 {
         .expect("a pooled connection");
     sqlx::query(
         "UPDATE runner.leases SET lease_expires_at = now() - $2::interval, \
-         last_metered_at = now() - $2::interval - $3::interval WHERE id = $1::uuid",
+         last_metered_at = now() - $2::interval - $3::interval WHERE id = $1",
     )
     .bind(lease)
     .bind(GRACE.saturating_mul(2))
@@ -286,9 +286,9 @@ const TAIL: Duration = Duration::from_secs(3);
 async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     sqlx::query_as(
         "SELECT seq, runtime_ms FROM billing.usage_lines \
-         WHERE work_id = $1::uuid AND seq >= $2 AND seq < $3 ORDER BY seq",
+         WHERE work_id = $1 AND seq >= $2 AND seq < $3 ORDER BY seq",
     )
-    .bind(held.lease_key.as_str())
+    .bind(&held.lease_key)
     .bind(i64::from(DAEMON_SEQ_BASE))
     .bind(i64::from(DECISION_SEQ_BASE))
     .fetch_all(
@@ -319,8 +319,8 @@ pub(crate) async fn orphan(held: &Held) {
     .expect("the line is logged");
 
     let mut connection = database.acquire().await.expect("a pooled connection");
-    sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1::uuid")
-        .bind(held.lease_key.as_str())
+    sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1")
+        .bind(&held.lease_key)
         .bind(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)
         .execute(&mut *connection)
         .await
@@ -329,7 +329,7 @@ pub(crate) async fn orphan(held: &Held) {
         sqlx::query(sqlx::AssertSqlSafe(
             AGED.replace("{table}", table).replace("{key}", key),
         ))
-        .bind(held.lease_key.as_str())
+        .bind(&held.lease_key)
         .bind(GRACE.saturating_mul(2))
         .execute(&mut *connection)
         .await
@@ -339,8 +339,8 @@ pub(crate) async fn orphan(held: &Held) {
 
 /// One runtime-only line of `held`'s lease, attributed to its fleet.
 pub(crate) async fn settlement(held: &Held) -> Settlement {
-    let workspace: String =
-        sqlx::query_scalar("SELECT workspace_id::text FROM fleet.fleets WHERE id = $1::uuid")
+    let workspace: Uuid7 =
+        sqlx::query_scalar("SELECT workspace_id FROM fleet.fleets WHERE id = $1")
             .bind(&held.fleet)
             .fetch_one(
                 &mut *held
@@ -355,12 +355,12 @@ pub(crate) async fn settlement(held: &Held) -> Settlement {
     Settlement {
         work: WorkKey::FleetLease(held.lease_key.clone()),
         payer: Account {
-            tenant: Uuid7::parse(&held.tenant).expect("a v7 tenant"),
-            workspace: Uuid7::parse(&workspace).expect("a v7 workspace"),
+            tenant: held.tenant.clone(),
+            workspace,
         },
         attribution: Attribution::Fleet {
-            fleet: Uuid7::parse(&held.fleet).expect("a v7 fleet"),
-            fleet_name: held.fleet.clone(),
+            fleet: held.fleet.clone(),
+            fleet_name: held.fleet.clone().into(),
             event_id: held.event_id.clone(),
         },
         provider: crate::seed::PROVIDER.to_owned(),

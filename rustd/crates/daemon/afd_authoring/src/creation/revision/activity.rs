@@ -25,13 +25,13 @@ pub(super) async fn record(
         "setup_revision": number.to_string(),
     });
     sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
-        .bind(row.id.as_str())
-        .bind(revision.as_str())
-        .bind(row.workspace_id.as_str())
+        .bind(&row.id)
+        .bind(revision)
+        .bind(&row.workspace_id)
         .bind(ACTOR)
         .bind(MODEL_CHANGED)
         .bind(sqlx::types::Json(payload))
-        .bind(None::<&str>)
+        .bind(None::<&Uuid7>)
         .bind(af_core::event::status::PROCESSED)
         .execute(connection)
         .await

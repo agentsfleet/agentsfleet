@@ -1,6 +1,7 @@
 //! A run folds only its own conversation: a message from another thread is
 //! never claimed, never in the way, and never sent this run's answer.
 
+use af_core::id::Uuid7;
 use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
 use afd_fleet::lease::Verdict;
@@ -127,7 +128,7 @@ async fn test_a_slack_thread_run_folds_its_threads_linked_people_only() -> Check
         thread(THREAD_A),
     )
     .await?;
-    let claimed: Vec<String> = claim_as_holder(&held, 0)
+    let claimed: Vec<Uuid7> = claim_as_holder(&held, 0)
         .await?
         .into_iter()
         .map(|message| message.id)

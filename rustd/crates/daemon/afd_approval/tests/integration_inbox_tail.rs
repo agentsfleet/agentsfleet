@@ -43,7 +43,7 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     let answered = lane.seed_gate(Window::Open).await;
     let _still_waiting = lane.seed_gate(Window::Open).await;
     lane.inbox
-        .resolve(&answered, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(answered.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -90,7 +90,7 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     assert_eq!(swept.get("kind"), Some(&json!("gate_resolved")));
     assert_eq!(swept.get("status"), Some(&json!("timed_out")));
     assert_eq!(swept.get("resolved_by"), Some(&json!(SWEEPER)));
-    let counters = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
+    let counters = afd_events::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read back");
     assert_eq!(
@@ -137,7 +137,7 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
     lane.seed_gate_for(&re_raised, Window::Open).await;
     let _sibling = lane.seed_gate(Window::Open).await;
     lane.inbox
-        .resolve(&re_raised, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(re_raised.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -170,7 +170,7 @@ async fn a_queue_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let action = lane.seed_gate(Window::Open).await;
 
     let outcome = inbox
-        .resolve(&action, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the decision stands whatever the queue does");
     assert!(

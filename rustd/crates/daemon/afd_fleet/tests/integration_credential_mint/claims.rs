@@ -72,7 +72,7 @@ fn zoho_handle(accounts_base: &str) -> String {
 }
 
 /// Writes the routing row the GitHub connect flow lands beside its handle.
-async fn seed_install(fixtures: &Fixtures, workspace: &str, installation: &str) {
+async fn seed_install(fixtures: &Fixtures, workspace: &Uuid7, installation: &str) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -81,7 +81,7 @@ async fn seed_install(fixtures: &Fixtures, workspace: &str, installation: &str) 
     sqlx::query(
         "INSERT INTO connector.installs
            (id, provider, external_account_id, workspace_id, scopes, created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, $4::uuid, '{}', now(), now())",
+         VALUES ($1, $2, $3, $4, '{}', now(), now())",
     )
     .bind(mint_id())
     .bind(CONNECTOR_GITHUB)
@@ -133,7 +133,7 @@ async fn mint(
     let answer = plane
         .mint(
             &who.runner,
-            &requests::mint(&who.lease, integration),
+            &requests::mint(who.lease.as_str(), integration),
             fixtures.enrolled_at(),
         )
         .await

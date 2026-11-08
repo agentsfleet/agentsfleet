@@ -123,7 +123,7 @@ pub(crate) async fn list<D: Services>(
             &owned.workspace,
             Filter {
                 status: asked.status,
-                fleet_id: asked.fleet_id.as_deref(),
+                fleet_id: asked.fleet_id.as_ref(),
                 gate_type: asked.gate_type.as_deref(),
             },
             resume,
@@ -151,7 +151,7 @@ fn next_cursor(gates: &[GateRow], limit: i64) -> Option<String> {
     (i64::try_from(gates.len()).is_ok_and(|read| read == limit)).then(|| {
         CoreCursor::Timestamp {
             at: last.created_at,
-            id: last.gate_id.clone(),
+            id: last.gate_id.clone().into(),
         }
         .to_string()
     })
@@ -209,11 +209,11 @@ pub(super) async fn read_gate<D: Services>(
 /// One stored gate, as the wire shows it.
 fn summary(gate: &GateRow) -> ApprovalSummary<'_> {
     ApprovalSummary {
-        gate_id: Cow::Borrowed(&gate.gate_id),
-        fleet_id: Cow::Borrowed(&gate.fleet_id),
+        gate_id: Cow::Borrowed(gate.gate_id.as_str()),
+        fleet_id: Cow::Borrowed(gate.fleet_id.as_str()),
         fleet_name: Cow::Borrowed(&gate.fleet_name),
-        workspace_id: Cow::Borrowed(&gate.workspace_id),
-        action_id: Cow::Borrowed(&gate.action_id),
+        workspace_id: Cow::Borrowed(gate.workspace_id.as_str()),
+        action_id: Cow::Borrowed(gate.action_id.as_str()),
         tool_name: Cow::Borrowed(&gate.tool_name),
         action_name: Cow::Borrowed(&gate.action_name),
         gate_type: Cow::Borrowed(&gate.gate_type),

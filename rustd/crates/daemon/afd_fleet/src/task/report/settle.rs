@@ -2,25 +2,26 @@
 
 use super::TaskSettlement;
 use crate::{Result, error::query, task::waits};
+use af_core::id::Uuid7;
 use af_wire::task::{TaskDisposition, TaskEffectState, TaskState};
 use sqlx::{Connection as _, PgConnection};
 
 #[derive(sqlx::FromRow)]
 struct Current {
-    task_id: String,
+    task_id: Uuid7,
     status: String,
     generation: i64,
     stop_generation: i64,
     task_generation: Option<i64>,
     task_stop_generation: Option<i64>,
-    accepted_revision_id: String,
+    accepted_revision_id: Uuid7,
     goal_digest: String,
     covered_input_sequence: i64,
     input_sequence: i64,
     effect_cursor: i64,
     confirmed_effect_watermark: i64,
     #[sqlx(rename = "task_checkpoint_id")]
-    checkpoint_id: Option<String>,
+    checkpoint_id: Option<Uuid7>,
     within_limits: bool,
     effects_resolved: bool,
     can_resume: bool,
@@ -34,8 +35,8 @@ pub(crate) async fn apply(
     settlement: Option<TaskSettlement<'_>>,
 ) -> Result<Option<&'static str>> {
     let current: Option<Current> = sqlx::query_as(include_str!("row.sql"))
-        .bind(lease.as_str())
-        .bind(runner.as_str())
+        .bind(lease)
+        .bind(runner)
         .bind(TaskEffectState::Confirmed.as_str())
         .bind(TaskEffectState::Refused.as_str())
         .fetch_optional(&mut *connection)
@@ -151,9 +152,9 @@ async fn action(
 ) -> Result<Option<(TaskState, Option<&'static str>)>> {
     let plan = settlement.plan;
     if let Some(call) = &plan.input.decision_call_id {
-        let active: Option<String> = sqlx::query_scalar(include_str!("profile.sql"))
-            .bind(call)
-            .bind(plan.lease_id.as_str())
+        let active: Option<Uuid7> = sqlx::query_scalar(include_str!("profile.sql"))
+            .bind(crate::task::guard::wire(call)?)
+            .bind(&plan.lease_id)
             .bind(&plan.runner_id)
             .bind(crate::lease::sql::RUNNER_STATUS_ACTIVE)
             .bind(crate::lease::sql::FLEET_STATUS_ACTIVE)
@@ -166,8 +167,7 @@ async fn action(
     }
     if let Some(target) = &plan.target {
         let Some(config) =
-            crate::lease::Leases::stored_config_on(connection, plan.scope.fleet_id.as_str(), None)
-                .await?
+            crate::lease::Leases::stored_config_on(connection, &plan.scope.fleet_id, None).await?
         else {
             return Ok(None);
         };
@@ -205,13 +205,13 @@ async fn action(
                 .is_some_and(|(status, target)| status.green(target)))
         .then_some((TaskState::Done, None))),
         TaskDisposition::Continue | TaskDisposition::Waiting => {
-            if input.checkpoint_id != current.checkpoint_id {
+            if input.checkpoint_id.as_deref() != current.checkpoint_id.as_ref().map(Uuid7::as_str) {
                 return Ok(None);
             }
             let saved = super::checkpoint::CheckpointGuard {
                 checkpoint_id: input.checkpoint_id.as_deref(),
                 task_id: &current.task_id,
-                lease_id: plan.lease_id.as_str(),
+                lease_id: &plan.lease_id,
                 generation: current.generation,
                 stop_generation: current.stop_generation,
                 revision_id: &current.accepted_revision_id,

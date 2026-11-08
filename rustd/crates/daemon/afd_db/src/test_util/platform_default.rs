@@ -15,6 +15,7 @@
 //! or another process, is never touched. While the delete runs, a new holder
 //! waits for it rather than reusing a row that is about to go.
 
+use af_core::id::Uuid7;
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -48,7 +49,7 @@ pub struct DefaultSeed<'a> {
     /// The provider the row is keyed by.
     pub provider: &'a str,
     /// The workspace whose vault holds the provider key.
-    pub source_workspace_id: &'a str,
+    pub source_workspace_id: &'a Uuid7,
     /// The priced model the default names.
     pub model: &'a str,
     /// The context ceiling the default carries.
@@ -89,7 +90,7 @@ impl DefaultSeed<'_> {
     pub async fn release<'e>(
         executor: impl sqlx::PgExecutor<'e>,
         provider: &str,
-        source_workspace_id: &str,
+        source_workspace_id: &Uuid7,
     ) -> crate::Result<()> {
         sqlx::query(DELETE_DEFAULT)
             .bind(provider)
@@ -108,7 +109,7 @@ const CLAIM_CONTEXT: &str = "claiming a platform default";
 #[derive(Debug, Clone)]
 struct Created {
     url: String,
-    workspace: String,
+    workspace: Uuid7,
 }
 
 /// One provider's holders in this process, and its row when this process made it.
@@ -162,7 +163,7 @@ impl PlatformDefault {
 
     /// Holds a default the test created through the product rather than by
     /// insert, so it is removed even when the test fails before its cleanup.
-    pub async fn adopt(database: &Db, provider: &str, source_workspace_id: &str) -> Self {
+    pub async fn adopt(database: &Db, provider: &str, source_workspace_id: &Uuid7) -> Self {
         let hold = Self::enter(provider).await;
         let mut connection = acquired(database).await;
         hold.record(&mut connection, source_workspace_id).await;
@@ -170,7 +171,7 @@ impl PlatformDefault {
     }
 
     /// Notes that this process owns the row, and which database holds it.
-    async fn record(&self, connection: &mut sqlx::PgConnection, workspace: &str) {
+    async fn record(&self, connection: &mut sqlx::PgConnection, workspace: &Uuid7) {
         let database: String = sqlx::query_scalar(CURRENT_DATABASE)
             .fetch_one(&mut *connection)
             .await

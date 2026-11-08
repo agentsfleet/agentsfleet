@@ -4,7 +4,7 @@
 //! The row is written by the park, and the resolve is the tenant plane's.
 //!
 //! A gate is PENDING while `resolved_at` is NULL — the schema's one marker
-//! (`schema/1730_fleet_approval_gates.sql`) — and every instant on it is the
+//! (`schema/20261108122600_fleet_approval_gates.sql`) — and every instant on it is the
 //! database's: the row is stamped `now()`, its deadline is `now()` plus the
 //! rule's timeout, and whether that deadline has passed is read against
 //! `statement_timestamp()`.
@@ -101,7 +101,7 @@ pub struct PendingRow<'a> {
     /// What the fleet's model claims — bounded and card-safe by construction.
     pub claim: &'a Claim,
     /// The event this question is about.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// The approved reach, as the mint will read it back.
     pub stated_binding: Option<&'a str>,
 }
@@ -115,10 +115,10 @@ impl<'a> PendingRow<'a> {
     /// value could write a gate already resolved.
     pub fn bind(&'a self) -> QueryScalar<'a, sqlx::Postgres, i64, PgArguments> {
         sqlx::query_scalar(INSERT_GATE)
-            .bind(self.gate_id.as_str())
-            .bind(self.fleet_id.as_str())
-            .bind(self.workspace_id.as_str())
-            .bind(self.action_id.as_str())
+            .bind(self.gate_id)
+            .bind(self.fleet_id)
+            .bind(self.workspace_id)
+            .bind(self.action_id)
             .bind(self.stated.tool)
             .bind(self.stated.action)
             .bind(self.stated.kind)

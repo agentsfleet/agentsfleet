@@ -20,6 +20,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_approval::{Decision, Filter, Resolution};
 
 use crate::lane::{Lane, Window, sweeper_exclusive};
@@ -44,9 +45,14 @@ async fn two_operators_answering_one_gate_resolve_to_one_decision() {
     // Both run the same statement at the same instant. Postgres decides.
     let (left, right) = tokio::join!(
         lane.inbox
-            .resolve(&action, Decision::Approved, OPERATOR, NOTE, None),
-        lane.inbox
-            .resolve(&action, Decision::Denied, OTHER_OPERATOR, NOTE, None),
+            .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None),
+        lane.inbox.resolve(
+            action.as_str(),
+            Decision::Denied,
+            OTHER_OPERATOR,
+            NOTE,
+            None
+        ),
     );
     let left = left.expect("the resolve must not fault");
     let right = right.expect("the resolve must not fault");
@@ -78,14 +84,20 @@ async fn a_settled_gate_keeps_its_first_answer() {
 
     let first = lane
         .inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     assert!(matches!(first, Resolution::Resolved(_)));
 
     let second = lane
         .inbox
-        .resolve(&action, Decision::Denied, OTHER_OPERATOR, NOTE, None)
+        .resolve(
+            action.as_str(),
+            Decision::Denied,
+            OTHER_OPERATOR,
+            NOTE,
+            None,
+        )
         .await
         .expect("the resolve must not fault");
 
@@ -111,7 +123,13 @@ async fn a_decision_scoped_to_another_fleet_resolves_nothing() {
 
     let outcome = lane
         .inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, Some(&stranger))
+        .resolve(
+            action.as_str(),
+            Decision::Approved,
+            OPERATOR,
+            NOTE,
+            Some(stranger.as_str()),
+        )
         .await
         .expect("the resolve must not fault");
 
@@ -167,8 +185,14 @@ async fn a_gate_id_from_another_workspace_is_indistinguishable_from_absent() {
         .page(&theirs.workspace, Filter::default(), None, 1)
         .await
         .expect("the queue read must not fault");
-    let gate = af_core::id::Uuid7::parse(&their_gate.first().expect("one seeded gate").gate_id)
-        .expect("a gate id parses");
+    let gate = Uuid7::parse(
+        their_gate
+            .first()
+            .expect("one seeded gate")
+            .gate_id
+            .as_str(),
+    )
+    .expect("a gate id parses");
 
     let found = mine
         .inbox
@@ -238,7 +262,7 @@ async fn a_gate_answered_before_the_deadline_is_not_swept() {
     let action = lane.seed_gate(Window::Lapsed).await;
 
     lane.inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     lane.inbox.expire().await.expect("the sweep must not fault");

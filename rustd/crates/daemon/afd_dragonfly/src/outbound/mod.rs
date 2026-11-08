@@ -40,6 +40,7 @@
 use crate::client::Dragonfly;
 use crate::error::{self, Result};
 use crate::streams::{ACKNOWLEDGED_HISTORY, EventId, Trimmed, retain};
+use af_core::id::Uuid7;
 
 /// The commands this module issues, named once each (RULE UFS).
 const CMD_XADD: &str = "XADD";
@@ -170,11 +171,11 @@ pub struct OutboundJob<'a> {
     /// here, read only by that connector's poster.
     pub destination: &'a str,
     /// The workspace whose grant pays for the delivery.
-    pub workspace_id: &'a str,
+    pub workspace_id: &'a Uuid7,
     /// The fleet that produced the answer.
-    pub fleet_id: &'a str,
+    pub fleet_id: &'a Uuid7,
     /// The event the question arrived on, which is where the answer is threaded.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// What to say.
     pub answer: &'a str,
 }
@@ -189,11 +190,11 @@ pub struct OutboundDelivery {
     /// See [`OutboundJob::destination`].
     pub destination: String,
     /// See [`OutboundJob::workspace_id`].
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// See [`OutboundJob::fleet_id`].
-    pub fleet_id: String,
+    pub fleet_id: Uuid7,
     /// See [`OutboundJob::event_id`].
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// See [`OutboundJob::answer`].
     pub answer: String,
 }
@@ -274,11 +275,11 @@ impl OutboundQueue {
             .arg(FIELD_DESTINATION)
             .arg(job.destination)
             .arg(FIELD_WORKSPACE_ID)
-            .arg(job.workspace_id)
+            .arg(job.workspace_id.as_str())
             .arg(FIELD_FLEET_ID)
-            .arg(job.fleet_id)
+            .arg(job.fleet_id.as_str())
             .arg(FIELD_EVENT_ID)
-            .arg(job.event_id)
+            .arg(job.event_id.as_str())
             .arg(FIELD_ANSWER)
             .arg(job.answer);
 
@@ -294,7 +295,7 @@ impl OutboundQueue {
         let fleet_id = job.fleet_id;
         tracing::debug!(
             provider,
-            fleet_id,
+            fleet_id = %fleet_id,
             entry_id = %id,
             event = "outbound_enqueued"
         );

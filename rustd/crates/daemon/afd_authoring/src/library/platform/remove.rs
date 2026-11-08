@@ -27,7 +27,7 @@ impl Setup {
             .into());
         }
         sqlx::query(sql::REMOVE)
-            .bind(entry.id.as_str())
+            .bind(&entry.id)
             .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;

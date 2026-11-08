@@ -11,7 +11,7 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
@@ -61,6 +61,16 @@ pub(crate) const SLICE: std::time::Duration =
 /// are checking; [`run_fee`] rounds a partial nano up, as the rater does.
 pub(crate) const SLICE_NANOS: i64 = SLICE_MS * RUN_NANOS_PER_SEC / MS_PER_SEC;
 
+/// [`RESUME_EVENT_ID`](crate::report_commit::RESUME_EVENT_ID) as the
+/// identifier a terminal report carries, parsed once.
+pub(crate) fn resume_event() -> &'static Uuid7 {
+    static RESUME: LazyLock<Uuid7> = LazyLock::new(|| {
+        Uuid7::parse(crate::report_commit::RESUME_EVENT_ID)
+            .expect("the resume event id is a canonical UUIDv7")
+    });
+    &RESUME
+}
+
 /// One issued, active lease with a funded tenant behind it.
 ///
 /// Every test here starts from the same precondition — §2 has already run —
@@ -80,9 +90,9 @@ pub(crate) struct Held {
     /// The token the issued lease carries — what a later reclaim must outrank
     /// for Dimension 3.2 to be testing anything.
     pub(crate) fence: Fence,
-    pub(crate) fleet: String,
-    pub(crate) tenant: String,
-    pub(crate) event_id: String,
+    pub(crate) fleet: Uuid7,
+    pub(crate) tenant: Uuid7,
+    pub(crate) event_id: Uuid7,
     /// When the lease was issued, by the database clock.
     pub(crate) now: Timestamp,
 }
@@ -122,13 +132,12 @@ pub(crate) async fn held_admission(fixtures: Fixtures, actor: &str, request_json
         Delivery::First,
         "a newly leased event has no row yet"
     );
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     let issued = leases
         .issue(
             &runner,
             &acquired,
             Billed {
-                tenant_id: &tenant_id,
+                tenant_id: &tenant,
                 posture: POSTURE,
                 provider: PROVIDER,
                 model: MODEL,
@@ -140,7 +149,7 @@ pub(crate) async fn held_admission(fixtures: Fixtures, actor: &str, request_json
         .expect("the claim is still held");
     let event_id = acquired.event_id.clone();
     let lease_key = issued.lease_id.clone();
-    let pricing = fixtures.pricing(issued.lease_id.as_str()).await;
+    let pricing = fixtures.pricing(&issued.lease_id).await;
     // The issue instant, which issue stamps from the database clock; a slice
     // the suites report is measured from it, as the report's charge is.
     let now = fixtures.metered_since(&fleet).await;
@@ -194,7 +203,7 @@ impl Held {
             .expect("a pooled connection");
         let live: i64 = sqlx::query_scalar(
             "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1
-             WHERE fleet_id = $1::uuid RETURNING fencing_token",
+             WHERE fleet_id = $1 RETURNING fencing_token",
         )
         .bind(&self.fleet)
         .fetch_one(&mut *connection)
@@ -215,7 +224,7 @@ impl Held {
     pub(crate) async fn run_a_slice(&self) -> Timestamp {
         self.fixtures
             .age(
-                Row::Lease(self.issued.lease_id.as_str()),
+                Row::Lease(&self.issued.lease_id),
                 crate::lease_reads::COLUMN_LAST_METERED,
                 SLICE,
             )
@@ -265,14 +274,13 @@ impl Fixtures {
     pub(crate) async fn settle_alone(
         &self,
         leases: &Leases,
-        lease_id: &str,
+        lease_id: &Uuid7,
         runner: &Uuid7,
         requests: &[af_wire::usage::RequestUsage],
         succeeded: bool,
         at: Timestamp,
     ) -> Settled {
         let pricing = self.pricing(lease_id).await;
-        let lease_key = Uuid7::parse(lease_id).expect("a lease id is a v7 spelling");
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         leases
             .claim_and_settle(
@@ -282,7 +290,7 @@ impl Fixtures {
                     runner_id: runner,
                     requests,
                 },
-                &lease_key,
+                lease_id,
                 &pricing,
                 succeeded,
                 at,
@@ -293,8 +301,15 @@ impl Fixtures {
 
     /// What the seeded fleet's lease is priced against: its posture, provider
     /// and model, read from the catalogue as the lease path reads them.
-    pub(crate) async fn pricing(&self, lease_id: &str) -> Pricing {
-        Pricing::load(&self.database, Posture::Platform, PROVIDER, MODEL, lease_id).await
+    pub(crate) async fn pricing(&self, lease_id: &Uuid7) -> Pricing {
+        Pricing::load(
+            &self.database,
+            Posture::Platform,
+            PROVIDER,
+            MODEL,
+            lease_id.as_str(),
+        )
+        .await
     }
 
     #[expect(

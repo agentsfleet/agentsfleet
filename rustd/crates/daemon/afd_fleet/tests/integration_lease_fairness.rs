@@ -14,7 +14,7 @@ const HOT_FLEETS: usize = 96;
 const PLACEABLE: usize = 3;
 const HOT_TAG: &str = "fixture:nobody-carries-this";
 
-async fn enqueue(fixtures: &Fixtures, fleet: &str, workspace: &str) {
+async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) {
     queue::enqueue(
         &fixtures.database,
         fleet,
@@ -27,7 +27,7 @@ async fn enqueue(fixtures: &Fixtures, fleet: &str, workspace: &str) {
     .await;
 }
 
-fn enrolment(fleet: &str) -> RegisterRequest<'static> {
+fn enrolment(fleet: &Uuid7) -> RegisterRequest<'static> {
     requests::enrolment_tagged(
         SandboxTier::LandlockFull,
         NetworkPolicy::AllowListEgress,
@@ -73,7 +73,7 @@ async fn test_ineligible_work_cannot_hide_eligible_fleets() {
             cost.candidates_scanned <= u64::try_from(remaining).expect("small count"),
             "{cost:?}"
         );
-        found.insert(acquired.fleet_id.as_str().to_owned());
+        found.insert(acquired.fleet_id);
     }
     assert_eq!(found, expected);
     fixtures.cleanup().await;
@@ -99,7 +99,7 @@ async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
         .expect("runner")
         .runner_id;
     let bell = Doorbell::new();
-    bell.ring(Uuid7::parse(&second).expect("fleet"));
+    bell.ring(second.clone());
     let leases = fixtures.leases().with_doorbell(bell);
     assert_eq!(
         leases
@@ -107,8 +107,7 @@ async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
             .await
             .expect("poll")
             .expect("rung fleet")
-            .fleet_id
-            .as_str(),
+            .fleet_id,
         second
     );
     assert_eq!(
@@ -117,8 +116,7 @@ async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
             .await
             .expect("poll")
             .expect("unnotified fleet")
-            .fleet_id
-            .as_str(),
+            .fleet_id,
         first
     );
     fixtures.cleanup().await;

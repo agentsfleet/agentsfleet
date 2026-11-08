@@ -55,7 +55,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
         .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
 
     for (offset, report) in [
         (ONE_BEAT, capable()),
@@ -116,9 +116,9 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
         .expect("a pooled connection");
     sqlx::query(
         "UPDATE runner.runners SET capability_report = $2::jsonb, \
-         degraded_reason = 'stale fixture' WHERE id = $1::uuid",
+         degraded_reason = 'stale fixture' WHERE id = $1",
     )
-    .bind(enrolled.runner_id.as_str())
+    .bind(&enrolled.runner_id)
     .bind(report)
     .execute(&mut *connection)
     .await
@@ -139,7 +139,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
     assert_eq!(answered.verdict, Verdict::Healthy);
     assert_eq!(
         fixtures
-            .text(Row::Runner(enrolled.runner_id.as_str()), "degraded_reason")
+            .text(Row::Runner(&enrolled.runner_id), "degraded_reason")
             .await,
         None,
         "a healthy verdict clears the reason"
@@ -201,7 +201,7 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
         .expect("enrolment must succeed");
     let runner = &enrolled.runner_id;
     let fleet = mint_id();
-    let working = beats_holding(&fixtures, runner, &fleet, fixtures.after(ONE_BEAT)).await;
+    let working = beats_holding(&fixtures, runner, fleet.as_str(), fixtures.after(ONE_BEAT)).await;
     // Renaming a table is the owner's right; the beat under test keeps the
     // api pool.
     let owner = fixtures.open(DbRole::Migrator).await;
@@ -214,7 +214,13 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
     owner.close().await;
 
     let log = Capture::install();
-    let failed = beats_holding(&fixtures, runner, &fleet, fixtures.after(ONE_BEAT * 2)).await;
+    let failed = beats_holding(
+        &fixtures,
+        runner,
+        fleet.as_str(),
+        fixtures.after(ONE_BEAT * 2),
+    )
+    .await;
     let warned = log.only(HOLDS_RECONCILE_FAILED).fields;
     drop(log);
 

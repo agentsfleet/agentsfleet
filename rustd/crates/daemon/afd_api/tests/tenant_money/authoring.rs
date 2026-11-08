@@ -54,7 +54,11 @@ fn assert_scoped_history(rows: &[Value], owner: &Fixture) {
         2
     );
     for row in rows {
-        assert_eq!(row["tenant_id"], owner.tenant, "foreign costs never leak");
+        assert_eq!(
+            row["tenant_id"],
+            owner.tenant.as_str(),
+            "foreign costs never leak"
+        );
         assert!(!row.as_object().expect("charge object").keys().any(|k| {
             ["title", "content", "answer", "model_snapshot", "usage"].contains(&k.as_str())
         }));
@@ -94,9 +98,9 @@ async fn setup_costs_use_public_fleet_names_and_survive_private_chat_deletion() 
     let before = walk(&router, &owner).await;
     let row = before
         .iter()
-        .find(|r| r["id"] == setup.settlements[0])
+        .find(|r| r["id"] == setup.settlements[0].as_str())
         .expect("linked cost");
-    assert_eq!(row["fleet_id"], fleet);
+    assert_eq!(row["fleet_id"], fleet.as_str());
     assert_eq!(row["fleet_name"], "saved-setup");
     assert!(
         !serde_json::to_string(&before)
@@ -113,9 +117,9 @@ async fn setup_costs_use_public_fleet_names_and_survive_private_chat_deletion() 
 fn assert_setup_row(rows: &[Value], setup: &Setup) {
     let row = rows
         .iter()
-        .find(|r| r["id"] == setup.settlements[0])
+        .find(|r| r["id"] == setup.settlements[0].as_str())
         .expect("settled setup row");
-    assert_eq!(row["authoring_attempt_id"], setup.attempts[0]);
+    assert_eq!(row["authoring_attempt_id"], setup.attempts[0].as_str());
     assert_eq!(
         row["fleet_id"],
         Value::Null,

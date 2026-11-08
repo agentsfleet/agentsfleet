@@ -33,6 +33,7 @@
 pub mod poster;
 mod record;
 
+use af_core::id::Uuid7;
 use core::time::Duration;
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
@@ -128,7 +129,7 @@ pub async fn run(
     let queue = OutboundQueue::new(stores.queue.clone());
     queue.ensure_group().await?;
 
-    let behaviours = script(prefix, parameters);
+    let behaviours = script(prefix, parameters)?;
     let poster = Scripted::new(behaviours.clone(), FAST_ANSWER, SLOW_ANSWER);
     let destinations: Vec<&String> = behaviours.keys().collect();
 
@@ -165,20 +166,23 @@ pub async fn run(
 /// id was queued and counting each in the fixture ledger.
 async fn enqueue(
     queue: &OutboundQueue,
-    prefix: &RunPrefix,
+    _prefix: &RunPrefix,
     destinations: &[&String],
     jobs: u64,
 ) -> Result<(FixtureLedger, HashMap<String, Instant>)> {
     let mut ledger = FixtureLedger::new();
     let mut queued_at = HashMap::new();
+    let payer = crate::lane::lease::seed::identifier(KIND_PAYER, 0)?;
     for (index, destination) in (0..jobs).zip(destinations.iter().cycle()) {
+        let fleet = Uuid7::parse(destination)?;
+        let event = crate::lane::lease::seed::identifier(KIND_ANSWERED, index)?;
         let id = queue
             .enqueue(OutboundJob {
                 provider: PROVIDER,
                 destination: REPLY_ADDRESS,
-                workspace_id: prefix.as_str(),
-                fleet_id: destination,
-                event_id: &prefix.name(&format!("event-{index}")),
+                workspace_id: &payer,
+                fleet_id: &fleet,
+                event_id: &event,
                 answer: ANSWER,
             })
             .await?;
@@ -193,7 +197,16 @@ async fn enqueue(
 /// A `BTreeMap`, so the order jobs are dealt to destinations — and therefore
 /// which position in each cycle the slow one occupies — is a function of the
 /// parameters and not of a hash seed that changes per process.
-pub(crate) fn script(prefix: &RunPrefix, parameters: Parameters) -> BTreeMap<String, Behaviour> {
+/// The identifier kinds this lane mints: a destination fleet, the paying
+/// workspace, and an answered event. Distinct from the lease seeds' kinds.
+const KIND_DESTINATION: u32 = 0x0d1;
+const KIND_PAYER: u32 = 0x0d2;
+const KIND_ANSWERED: u32 = 0x0d3;
+
+pub(crate) fn script(
+    _prefix: &RunPrefix,
+    parameters: Parameters,
+) -> Result<BTreeMap<String, Behaviour>> {
     let slow = fraction_of(DESTINATIONS, parameters.slow_fraction);
     let retryable = fraction_of(DESTINATIONS, parameters.retryable_fraction);
     (0..DESTINATIONS)
@@ -205,7 +218,10 @@ pub(crate) fn script(prefix: &RunPrefix, parameters: Parameters) -> BTreeMap<Str
             } else {
                 Behaviour::Fast
             };
-            (prefix.name(&format!("destination-{index:02}")), behaviour)
+            Ok((
+                crate::lane::lease::seed::identifier(KIND_DESTINATION, index)?.to_string(),
+                behaviour,
+            ))
         })
         .collect()
 }

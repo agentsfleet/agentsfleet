@@ -10,9 +10,9 @@ const READ_CALLS: &str = "SELECT COALESCE(sum(calls),0)::bigint FROM pg_stat_sta
       AND query ILIKE '%fleet.%'";
 const DELIVER: &str = "WITH landed AS (INSERT INTO fleet.events \
     (fleet_id,workspace_id,event_id,actor,event_type,status,request_json,created_at,updated_at) \
-    SELECT fleet_id,workspace_id,id::text,actor,event_type,$2,request_json::jsonb,event_created_at,now() \
-    FROM fleet.admissions WHERE id=$1::uuid RETURNING event_id) \
-    UPDATE fleet.admissions SET delivered_at=now() WHERE id::text IN (SELECT event_id FROM landed)";
+    SELECT fleet_id,workspace_id,id,actor,event_type,$2,request_json::jsonb,event_created_at,now() \
+    FROM fleet.admissions WHERE id=$1 RETURNING event_id) \
+    UPDATE fleet.admissions SET delivered_at=now() WHERE id IN (SELECT event_id FROM landed)";
 
 // Value: protects=one snapshot per page; fails_when=history assembles two reads;
 // why_new=sequential identity tests miss split snapshots; seam=none;
@@ -37,12 +37,14 @@ async fn thread_pages_use_one_statement_snapshot_before_and_after_delivery() {
         .execute(&mut *owner)
         .await
         .expect("one queued head");
-    let (workspace, fleet, event): (String,String,String) = sqlx::query_as(
-        "SELECT workspace_id::text,fleet_id::text,id::text FROM fleet.admissions WHERE delivered_at IS NULL")
-        .fetch_one(&mut *owner).await.expect("queued identity");
+    let (workspace, fleet, event): (Uuid7, Uuid7, Uuid7) = sqlx::query_as(
+        "SELECT workspace_id,fleet_id,id FROM fleet.admissions WHERE delivered_at IS NULL",
+    )
+    .fetch_one(&mut *owner)
+    .await
+    .expect("queued identity");
     let runtime = database.open(DbRole::Api, &[]).await;
     let history = History::new(runtime.clone());
-    let (workspace, fleet) = (uuid(&workspace), uuid(&fleet));
     let queued = one_read(&history, &mut owner, &workspace, &fleet, None).await;
     assert_eq!(queued.len(), 1);
     let first = queued.first().expect("queued row");

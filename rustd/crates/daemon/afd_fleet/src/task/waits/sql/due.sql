@@ -1,4 +1,4 @@
-SELECT w.id::text, w.task_id::text, w.fleet_id::text, w.workspace_id::text
+SELECT w.id, w.task_id, w.fleet_id, w.workspace_id
 FROM fleet.task_waits w JOIN fleet.tasks t ON t.id = w.task_id
 WHERE w.consumed_at IS NULL AND w.cancelled_at IS NULL
   AND (w.claim_id IS NULL OR w.claim_expires_at <= statement_timestamp())

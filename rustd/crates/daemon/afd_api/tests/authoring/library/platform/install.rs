@@ -3,6 +3,7 @@
 //! revisions and leaves the fleet's setup intact (spec Dimension 4.3).
 
 use super::*;
+use af_core::id::Uuid7;
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -12,10 +13,12 @@ async fn reviewed_slug_save_copies_content_and_withdrawal_preserves_the_installe
     let library = json_body(case.inner.get(&case.tenant_path()).await).await;
     let (path, saved) = save_from_slug(&case, &library).await;
     assert_eq!(saved["definition"], library["head"]["definition"]);
-    let revision = case.staged["revision_id"]
-        .as_str()
-        .expect("accepted revision")
-        .to_owned();
+    let revision = Uuid7::parse(
+        case.staged["revision_id"]
+            .as_str()
+            .expect("accepted revision"),
+    )
+    .expect("the accepted revision id is a UUIDv7");
     assert!(snapshot_exists(&case, &revision).await);
     case.curate(&json!({"published":false})).await;
     assert_eq!(case.withdraw().await.status(), StatusCode::NO_CONTENT);
@@ -55,8 +58,8 @@ async fn save_from_slug(case: &Case, library: &Value) -> (String, Value) {
 }
 
 /// Whether the Library revision row `revision` still exists.
-async fn snapshot_exists(case: &Case, revision: &str) -> bool {
-    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM authoring.library_revisions WHERE id=$1::uuid)")
+async fn snapshot_exists(case: &Case, revision: &Uuid7) -> bool {
+    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM authoring.library_revisions WHERE id=$1)")
         .bind(revision)
         .fetch_one(
             &mut *case

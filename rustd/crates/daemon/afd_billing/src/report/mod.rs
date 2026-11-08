@@ -40,10 +40,12 @@ pub(crate) async fn read(database: &Db, tenant: &Uuid7, request: &Request) -> Re
         .execute(&mut *transaction)
         .await
         .map_err(error::query(CONTEXT_READ))?;
-    let aggregates = queries::aggregates(|statement| statement, tenant, request)
-        .fetch_all(&mut *transaction)
-        .await
-        .map_err(error::query(CONTEXT_READ))?;
+    let aggregates: Vec<types::AggregateRow> =
+        queries::aggregates(|statement| statement, tenant, request)
+            .fetch_all(&mut *transaction)
+            .await
+            .map_err(error::query(CONTEXT_READ))?;
+    let aggregates = aggregates.into_iter().map(Aggregate::from).collect();
     let activities = queries::activities(|statement| statement, tenant, request)
         .fetch_all(&mut *transaction)
         .await

@@ -43,13 +43,6 @@ use afd_vault::Descriptor;
 use jiff::Timestamp;
 
 use super::selection::{PlatformDefault, Selection};
-use crate::error::{Result, row_malformed};
-
-/// The table an unreadable identifier is reported against.
-const TABLE_ENTRIES: &str = "model.tenant_models";
-
-/// The column an unreadable identifier is reported against.
-const COLUMN_ID: &str = "id";
 
 /// One `model.tenant_models` row, as every verb here answers with it.
 ///
@@ -71,7 +64,7 @@ pub struct Entry {
 /// One registry row as every statement in [`sql`] names its columns.
 #[derive(Debug, sqlx::FromRow)]
 struct EntryRow {
-    id: String,
+    id: Uuid7,
     model_name: String,
     secret_ref: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -80,16 +73,13 @@ struct EntryRow {
 
 impl EntryRow {
     /// The row, typed.
-    ///
-    /// # Errors
-    /// Reports an `id` that is not an identifier.
-    fn into_entry(self) -> Result<Entry> {
-        Ok(Entry {
-            id: Uuid7::parse(&self.id).map_err(row_malformed(TABLE_ENTRIES, COLUMN_ID))?,
+    fn into_entry(self) -> Entry {
+        Entry {
+            id: self.id.clone(),
             model_name: self.model_name.into_boxed_str(),
             secret_ref: self.secret_ref.into_boxed_str(),
             created_at: self.created_at,
-        })
+        }
     }
 }
 
@@ -236,7 +226,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{Entry, EntryRow, is_active};
+    use super::{Entry, is_active};
     use crate::provider::selection::{OwnModel, Selection};
     use af_core::id::Uuid7;
     use jiff::Timestamp;
@@ -293,17 +283,5 @@ mod tests {
         let row = entry(ENTRY_ID);
         assert!(!is_active(&row, Some(&Selection::Platform)));
         assert!(!is_active(&row, None));
-    }
-
-    #[test]
-    fn a_stored_row_that_is_not_an_identifier_is_refused() {
-        let row = EntryRow {
-            id: "not-a-uuid".to_owned(),
-            model_name: "claude-opus-5".to_owned(),
-            secret_ref: "anthropic-prod".to_owned(),
-            created_at: CREATED,
-        };
-        row.into_entry()
-            .expect_err("a malformed id is a fault, not an entry");
     }
 }

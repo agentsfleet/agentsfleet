@@ -12,9 +12,9 @@ INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user
 draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
 lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
 reported_runtime_ms,last_activity_sequence,created_at,updated_at)
-SELECT $1::uuid,$2::uuid,$3::uuid,f.workspace_id,f.tenant_id,$1::uuid,$1::uuid,1,1,$1,'{}',
+SELECT $1,$2,$3,f.workspace_id,f.tenant_id,$1,$1,1,1,$1,'{}',
 $5,now() + $6::interval,now() + $6::interval,0,false,0,0,0,0,now(),now()
-FROM fleet.fleets f WHERE f.id=$4::uuid";
+FROM fleet.fleets f WHERE f.id=$4";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
@@ -38,7 +38,7 @@ async fn test_an_authoring_lease_has_no_credential_mint_rights() {
     let refused = plane
         .mint(
             &owner.runner,
-            &requests::mint(&authoring, CONNECTOR_STATIC),
+            &requests::mint(authoring.as_str(), CONNECTOR_STATIC),
             now,
         )
         .await
@@ -61,7 +61,7 @@ async fn test_an_authoring_lease_has_no_credential_mint_rights() {
     let minted = plane
         .mint(
             &owner.runner,
-            &requests::mint(&owner.lease, CONNECTOR_STATIC),
+            &requests::mint(owner.lease.as_str(), CONNECTOR_STATIC),
             now,
         )
         .await
@@ -72,7 +72,7 @@ async fn test_an_authoring_lease_has_no_credential_mint_rights() {
     fixtures.cleanup().await;
 }
 
-async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &str, lease: &str) {
+async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &Uuid7, lease: &Uuid7) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -81,7 +81,7 @@ async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &str, lease
     let inserted = sqlx::query(AUTHORING)
         .bind(attempt)
         .bind(lease)
-        .bind(owner.runner.as_str())
+        .bind(&owner.runner)
         .bind(&owner.fleet)
         .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
         .bind(LEASE_WINDOW)
@@ -93,10 +93,10 @@ async fn seed_authoring(fixtures: &Fixtures, owner: &Bound, attempt: &str, lease
 
 /// Cleanup through the lane's owner: `api_runtime` never deletes an attempt,
 /// and the fixture must not borrow a right production does not have.
-async fn remove_authoring(fixtures: &Fixtures, attempt: &str) {
+async fn remove_authoring(fixtures: &Fixtures, attempt: &Uuid7) {
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("an owner connection");
-    sqlx::query("DELETE FROM authoring.attempts WHERE id = $1::uuid")
+    sqlx::query("DELETE FROM authoring.attempts WHERE id = $1")
         .bind(attempt)
         .execute(&mut *connection)
         .await

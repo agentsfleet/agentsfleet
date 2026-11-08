@@ -2,7 +2,7 @@
 #![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "test assertions")]
 
-use crate::support::DragonflyHarness;
+use crate::support::{DragonflyHarness, mint_id};
 use afd_dragonfly::streams::{ACKNOWLEDGED_HISTORY, EventId, TRIM_SLACK};
 use afd_dragonfly::{
     Dragonfly, OUTBOUND_CONSUMER_GROUP, OUTBOUND_STREAM_KEY, OutboundJob, OutboundQueue,
@@ -21,15 +21,17 @@ async fn isolated() -> (Dragonfly, OutboundQueue) {
 
 async fn append_many(queue: &OutboundQueue, count: usize) -> Vec<EventId> {
     let mut ids = Vec::with_capacity(count);
-    for index in 0..count {
+    let (workspace, fleet) = (mint_id(), mint_id());
+    for _ in 0..count {
+        let event = mint_id();
         ids.push(
             queue
                 .enqueue(OutboundJob {
                     provider: "fixture",
                     destination: "destination",
-                    workspace_id: "workspace",
-                    fleet_id: "fleet",
-                    event_id: &index.to_string(),
+                    workspace_id: &workspace,
+                    fleet_id: &fleet,
+                    event_id: &event,
                     answer: "answer",
                 })
                 .await

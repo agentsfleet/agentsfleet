@@ -84,7 +84,7 @@ pub struct Reconciled {
     /// The lease's copy, never the request's. A runner names an event in its
     /// report and this is the one the lease was issued for; where they could
     /// differ, the row is the authority.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// The billing posture the lease was issued under, in the stored spelling.
     pub posture: String,
     /// The provider resolved at issue, as configured.
@@ -136,12 +136,12 @@ impl Plane {
         request: &ReportRequest<'_>,
         now: Timestamp,
     ) -> Result<Reconciled> {
-        let lease_id = request.lease_id.as_ref();
+        let lease_id = &crate::error::wire_lease(request.lease_id.as_ref())?;
         let Some(lease) = self.leases.load_for_report(lease_id, runner_id).await? else {
             return Err(lease_not_found());
         };
 
-        let lease_key = Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
+        let lease_key = Uuid7::parse(lease_id.as_str()).map_err(|_malformed| lease_not_found())?;
         let task_plan = match &self.task_reports {
             Some(owner) => {
                 owner
@@ -167,12 +167,15 @@ impl Plane {
             posture_of(&lease),
             &lease.provider,
             &lease.model,
-            lease_id,
+            lease_id.as_str(),
         )
         .await;
+        let last_event = Uuid7::parse(request.checkpoint.last_event_id.as_ref())
+            .unwrap_or_else(|_text| lease.event_id.clone());
         let mut report = terminal(
             Subject {
                 id: lease_id,
+                last_event: &last_event,
                 key: &lease_key,
                 runner: runner_id,
                 row: &lease,
@@ -190,7 +193,7 @@ impl Plane {
         match self.leases.commit_report(report).await? {
             Committed::Fenced { .. } => Err(stale_fence()),
             Committed::AlreadySettled => {
-                Self::record_repeat(&lease, lease_id);
+                Self::record_repeat(&lease, lease_id.as_str());
                 Ok(reconciled(
                     lease,
                     Nanos::ZERO,
@@ -225,7 +228,8 @@ impl Plane {
                 if let Some(owing) = owed {
                     self.queue_owed_answer(&owing, &lease, answer).await;
                 }
-                self.announce_folds(&lease, lease_id, folds, answer).await;
+                self.announce_folds(&lease, lease_id.as_str(), folds, answer)
+                    .await;
                 let tokens = self.leases.run_tokens(&lease_key).await;
                 Ok(reconciled(lease, charged, false, tokens, completed_at))
             }
@@ -236,7 +240,10 @@ impl Plane {
 /// The lease a report is about, by its three names and its row.
 #[derive(Clone, Copy)]
 struct Subject<'a> {
-    id: &'a str,
+    id: &'a Uuid7,
+    /// The event the run's checkpoint names: the runner's, or the lease's own
+    /// when the runner's text is not a `UUIDv7`.
+    last_event: &'a Uuid7,
     key: &'a Uuid7,
     runner: &'a Uuid7,
     row: &'a Reported,
@@ -274,7 +281,7 @@ fn terminal<'a>(
             wall_ms: i64::try_from(request.telemetry.wall_ms).unwrap_or(i64::MAX),
             tool_calls,
         },
-        last_event_id: request.checkpoint.last_event_id.as_ref(),
+        last_event_id: lease.last_event,
         last_response: request.checkpoint.last_response.as_ref(),
         held_until: request.held_until,
         task_settlement: None,
@@ -286,7 +293,7 @@ fn terminal<'a>(
 /// The run's tool trace as the event row stores it, fenced to `lease`.
 fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Option<String> {
     let owner = TraceOwner {
-        fleet_id: lease.fleet_id.as_str(),
+        fleet_id: &lease.fleet_id,
         event_id: &lease.event_id,
         fence: lease.fence.as_i64(),
     };

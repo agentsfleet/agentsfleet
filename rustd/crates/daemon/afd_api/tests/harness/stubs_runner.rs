@@ -108,7 +108,7 @@ impl Leasing for NoWork {
             fleet_id: fixture_id(),
             workspace_id: fixture_id(),
             tenant_id: fixture_id(),
-            event_id: String::new(),
+            event_id: fixture_id(),
             posture: String::new(),
             provider: String::new(),
             model: String::new(),
@@ -235,7 +235,7 @@ impl Leasing for NoWork {
     fn renew(
         &self,
         _runner_id: &Uuid7,
-        _lease_id: &str,
+        _lease_id: &Uuid7,
         _request: af_wire::report::RenewRequest,
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Timestamp>> + Send {

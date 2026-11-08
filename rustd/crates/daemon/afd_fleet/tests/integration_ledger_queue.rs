@@ -27,16 +27,16 @@ const WITHIN: Duration = Duration::from_secs(10);
 const INSERT: &str = "INSERT INTO fleet.admissions \
     (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor, event_type, \
      request_json, event_created_at, created_at, updated_at) \
-    VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $1, 'fixture-digest', 'fixture:steer', \
+    VALUES ($1, $2, $3, $4, $1, 'fixture-digest', 'fixture:steer', \
             $5, '{\"prompt\":\"fixture\"}', $6, $6, $6)";
 const PARK: &str = "UPDATE fleet.admissions SET parked_at = CASE WHEN $2 THEN now() END \
-    WHERE id = $1::uuid";
-const FINISH: &str = "UPDATE fleet.admissions SET settled_at = now() WHERE id = $1::uuid";
+    WHERE id = $1";
+const FINISH: &str = "UPDATE fleet.admissions SET settled_at = now() WHERE id = $1";
 const STAMPS: &str = "SELECT a.lease_fence, s.fencing_token FROM fleet.admissions a \
-    LEFT JOIN runner.fleet_slots s ON s.fleet_id = a.fleet_id WHERE a.id = $1::uuid";
-const LOCK: &str = "SELECT id::text FROM fleet.admissions WHERE id = $1::uuid FOR UPDATE";
+    LEFT JOIN runner.fleet_slots s ON s.fleet_id = a.fleet_id WHERE a.id = $1";
+const LOCK: &str = "SELECT id FROM fleet.admissions WHERE id = $1 FOR UPDATE";
 
-async fn enqueue(fixtures: &Fixtures, fleet: &str, workspace: &str) -> String {
+async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) -> Uuid7 {
     let id = afd_db::test_util::mint_id();
     sqlx::query(INSERT)
         .bind(&id)
@@ -57,7 +57,7 @@ async fn enqueue(fixtures: &Fixtures, fleet: &str, workspace: &str) -> String {
     id
 }
 
-async fn stamps(fixtures: &Fixtures, event: &str) -> (Option<i64>, Option<i64>) {
+async fn stamps(fixtures: &Fixtures, event: &Uuid7) -> (Option<i64>, Option<i64>) {
     sqlx::query_as(STAMPS)
         .bind(event)
         .fetch_one(
@@ -190,7 +190,7 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
         .acquire()
         .await
         .expect("runtime connection");
-    sqlx::query("UPDATE fleet.admissions SET event_created_at = 'infinity' WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.admissions SET event_created_at = 'infinity' WHERE id = $1")
         .bind(&event)
         .execute(&mut *connection)
         .await
@@ -205,7 +205,7 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
         "{refused}"
     );
     assert_eq!(stamps(&fixtures, &event).await, (None, None));
-    sqlx::query("UPDATE fleet.admissions SET event_created_at = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.admissions SET event_created_at = $2 WHERE id = $1")
         .bind(&event)
         .bind(fixtures.enrolled_at().to_sqlx())
         .execute(&mut *connection)
@@ -230,10 +230,10 @@ async fn a_locked_slot_is_skipped_without_changing_the_admission() {
     let leases = fixtures.leases_with_dead_queue();
     let first = next(&leases, &runner).await.expect("first claim");
     let mut connection = fixtures.database.acquire().await.expect("database");
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at = now()-interval '1 second' WHERE fleet_id=$1::uuid")
+    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at = now()-interval '1 second' WHERE fleet_id=$1")
         .bind(&fleet).execute(&mut *connection).await.expect("expire slot");
     let mut lock = connection.begin().await.expect("lock transaction");
-    sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1::uuid FOR UPDATE")
+    sqlx::query("SELECT fleet_id FROM runner.fleet_slots WHERE fleet_id=$1 FOR UPDATE")
         .bind(&fleet)
         .execute(&mut *lock)
         .await

@@ -8,7 +8,7 @@ mod write;
 
 #[derive(sqlx::FromRow)]
 struct Stored {
-    id: String,
+    id: Uuid7,
     slot: i64,
     recipe: Option<String>,
     desired_status: String,

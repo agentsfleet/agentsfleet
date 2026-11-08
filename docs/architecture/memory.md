@@ -16,9 +16,9 @@ A fleet holding the read grant then loads and recalls such a row, naming the wri
 
 | Fact | Where it's enforced |
 |---|---|
-| Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique constraint `(fleet_id, key)` | `schema/2100_memory_entries.sql` |
+| Store columns are `fleet_id`, `workspace_id` and `workspace_visible`; the upsert key is the unique constraint `(fleet_id, key)` | `schema/20261108124700_memory_entries.sql` |
 | Every read and write goes through one store, scoped `WHERE fleet_id = $1`, plus the workspace's shared rows only for a granted reader | `afd_memory`: `Memories`, the Postgres store (`PgStore`), and the grants |
-| The grants are read and set as the api role on `fleet.fleets`, never by the store | `schema/1500_fleet_fleets.sql` and `afd_memory`'s access module |
+| The grants are read and set as the api role on `fleet.fleets`, never by the store | `schema/20261108121900_fleet_fleets.sql` and `afd_memory`'s access module |
 | `fleet_id` is **server-derived from the lease**, never client-supplied (Insecure-Direct-Object-Reference guard) | `afd_api_runner`'s runner memory handler hands the path's fleet to `afd_fleet`'s `Plane::hydrate` / `Plane::capture`, which refuse a runner holding no live lease on that fleet |
 | Private rows remain writer-scoped; granted readers can read other fleets' workspace-visible rows, but cannot overwrite or forget them | shared-memory grants + workspace predicate + the `(key, fleet_id)` key |
 
@@ -27,11 +27,11 @@ A fleet holding the read grant then loads and recalls such a row, naming the wri
 
 ## 2. Isolation: a Postgres role, not the workspace
 
-Memory lives in its own `memory` schema behind the `memory_runtime` Postgres role, with zero grants outside that schema (`schema/1010_roles_and_privileges.sql`).
+Memory lives in its own `memory` schema behind the `memory_runtime` Postgres role, with zero grants outside that schema (`schema/20261108120100_roles_and_privileges.sql`).
 `api_runtime` takes it with `SET LOCAL ROLE memory_runtime` inside each memory transaction.
 Postgres restores the role at commit or rollback (`afd_memory`'s Postgres store).
 
-`fleet_id` references `fleet.fleets` with `ON DELETE CASCADE`, so deleting a fleet erases its memory (`schema/2100_memory_entries.sql`).
+`fleet_id` references `fleet.fleets` with `ON DELETE CASCADE`, so deleting a fleet erases its memory (`schema/20261108124700_memory_entries.sql`).
 Postgres checks the foreign key and cascade with the table owner's authority.
 That grants `memory_runtime` no access to `fleet.fleets`.
 
@@ -97,7 +97,7 @@ See [conversation compaction](context_lifecycle.md) for summary generation, toke
 
 | Concern | Owner |
 |---|---|
-| Schema (table, `(fleet_id, key)` unique constraint, role grants, `fleet_id` foreign key + cascade) | `schema/2100_memory_entries.sql` |
+| Schema (table, `(fleet_id, key)` unique constraint, role grants, `fleet_id` foreign key + cascade) | `schema/20261108124700_memory_entries.sql` |
 | The only write/read adapter (`WHERE fleet_id = $1`, `ON CONFLICT (key, fleet_id)`) | `afd_memory`'s Postgres store and its SQL statements |
 | Runner load/capture endpoints (lease-derived `fleet_id`, fencing) | `afd_api_runner`'s runner memory handler |
 | Tenant read and forget (ownership-gated) | `afd_api_tenant`'s fleet memory handler |

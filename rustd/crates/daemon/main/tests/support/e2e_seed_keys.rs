@@ -10,6 +10,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_crypto::aad::Aad;
 use af_crypto::envelope::Sealer;
 use af_crypto::secret::Kek;
@@ -29,7 +30,7 @@ use crate::e2e::{GOOD_KEK, PROVIDER};
 /// shared constant would drop the second scenario's key and leave it resolving
 /// against a workspace that has none. `mint_id` shapes it so
 /// `ck_vault_secrets_id_uuidv7` passes.
-fn vault_row() -> String {
+fn vault_row() -> Uuid7 {
     afd_db::test_util::mint_id()
 }
 
@@ -61,12 +62,12 @@ fn provider_key_body() -> String {
 /// a fixture that wrote the ciphertext columns by hand would decrypt to a tag
 /// failure and look like a corrupt vault. The KEK is the one the daemon booted
 /// under, which is why [`GOOD_KEK`] is a constant both halves read.
-pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Timestamp) {
+pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &Uuid7, now: Timestamp) {
     let kek = Kek::from_hex(GOOD_KEK).expect("the lane key is well formed");
     let envelope = Sealer::new()
         .seal(
             &kek,
-            &Aad::new(workspace, PROVIDER),
+            &Aad::new(workspace.as_str(), PROVIDER),
             provider_key_body().as_bytes(),
         )
         .expect("the fixture credential seals");
@@ -82,7 +83,7 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &str, now: Tim
             dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag,
             created_at, updated_at,
             meta_kind, meta_provider, meta_has_key)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
                  $12, $3, TRUE)
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
@@ -115,7 +116,7 @@ const TENANT_KEY_NAME: &str = "e2e-tenant-plane";
 /// the daemon's directory authenticates by digest lookup, so a seeded PLAIN
 /// token would prove a path nothing ships. The token itself never touches the
 /// database — the caller presents it over HTTP and the daemon re-digests it.
-pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &str, token: &str, now: Timestamp) {
+pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &Uuid7, token: &str, now: Timestamp) {
     let presented =
         afd_auth::credential::Presented::new(token).expect("the fixture token is well formed");
     let digest = afd_auth::directory::Digest::of(&presented);
@@ -128,7 +129,7 @@ pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &str, token: &str, 
         "INSERT INTO identity.api_keys
            (id, tenant_id, name, description, key_hash, created_by_subject,
             revoked_at, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, '', $4, 'e2e', NULL, $5, $5)",
+         VALUES ($1, $2, $3, '', $4, 'e2e', NULL, $5, $5)",
     )
     .bind(afd_db::test_util::mint_id())
     .bind(tenant)
@@ -143,23 +144,23 @@ pub(crate) async fn seed_tenant_key(booted: &Booted, tenant: &str, token: &str, 
 /// Seals a credential the ACTIVATION ladder admits, under `name`: the same
 /// body and projection [`seed_provider_key`] writes, under a name of the
 /// caller's own.
-pub(crate) async fn seed_activatable_key(booted: &Booted, workspace: &str, name: &str) {
+pub(crate) async fn seed_activatable_key(booted: &Booted, workspace: &Uuid7, name: &str) {
     seal_named(booted, workspace, name, Some(PROVIDER_KEY_KIND)).await;
 }
 
 /// Seals the same body under `name` with NO projection, as a row written
 /// before the vault recorded what it holds: the metadata gate refuses it
 /// before any decrypt (`UZ-PROVIDER-003`).
-pub(crate) async fn seed_unprojected_key(booted: &Booted, workspace: &str, name: &str) {
+pub(crate) async fn seed_unprojected_key(booted: &Booted, workspace: &Uuid7, name: &str) {
     seal_named(booted, workspace, name, None).await;
 }
 
-async fn seal_named(booted: &Booted, workspace: &str, name: &str, kind: Option<&str>) {
+async fn seal_named(booted: &Booted, workspace: &Uuid7, name: &str, kind: Option<&str>) {
     let kek = Kek::from_hex(GOOD_KEK).expect("the lane key is well formed");
     let envelope = Sealer::new()
         .seal(
             &kek,
-            &Aad::new(workspace, name),
+            &Aad::new(workspace.as_str(), name),
             provider_key_body().as_bytes(),
         )
         .expect("the walk credential seals");
@@ -176,7 +177,7 @@ async fn seal_named(booted: &Booted, workspace: &str, name: &str, kind: Option<&
             dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag,
             created_at, updated_at,
             meta_kind, meta_provider, meta_has_key)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
                  $12, $13, $14)",
     )
     .bind(vault_row())

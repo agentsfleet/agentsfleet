@@ -80,8 +80,8 @@ async fn a_replayed_create_whose_draft_row_is_unreadable_surfaces_the_stored_fau
         .create(f.access(), f.request(operation.clone(), None), now())
         .await
         .expect("the first create");
-    sqlx::query("UPDATE authoring.drafts SET status='archived' WHERE id=$1::uuid")
-        .bind(created.draft.id.as_str())
+    sqlx::query("UPDATE authoring.drafts SET status='archived' WHERE id=$1")
+        .bind(created.draft.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("another writer's state word");

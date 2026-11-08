@@ -26,7 +26,7 @@ const POLLS: usize = 100;
 const RACER: &str = "\
 INSERT INTO authoring.replay_receipts
  (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at)
-VALUES ($1::uuid,$2::uuid,$5::uuid,$3,$4::uuid,'racer',$6::uuid,now())";
+VALUES ($1,$2,$5,$3,$4,'racer',$6,now())";
 
 /// Backends waiting on a lock held by backend `$1`.
 const BLOCKED: &str = "SELECT count(*) FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
@@ -38,8 +38,8 @@ async fn draft_with_message(f: &Fixture, key: &Uuid7) -> Uuid7 {
 }
 
 async fn messages(f: &Fixture, draft: &Uuid7) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1::uuid")
-        .bind(draft.as_str())
+    sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1")
+        .bind(draft)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("message census")
@@ -51,8 +51,8 @@ async fn a_send_to_a_draft_being_saved_replays_its_accepted_key_and_refuses_a_ne
     let f = Fixture::create().await;
     let key = mint();
     let draft = draft_with_message(&f, &key).await;
-    sqlx::query("UPDATE authoring.drafts SET status=$2 WHERE id=$1::uuid")
-        .bind(draft.as_str())
+    sqlx::query("UPDATE authoring.drafts SET status=$2 WHERE id=$1")
+        .bind(&draft)
         .bind(DraftState::Saving.as_str())
         .execute(&mut *f.connection().await)
         .await
@@ -87,13 +87,12 @@ async fn a_key_a_racing_writer_files_first_refuses_the_send_and_writes_nothing()
     let f = Fixture::create().await;
     let draft = draft_with_message(&f, &mint()).await;
     let first = message_id(&f, &draft, 1).await;
-    let scope: String = sqlx::query_scalar(
-        "SELECT scope FROM authoring.replay_receipts WHERE resource_id=$1::uuid",
-    )
-    .bind(&first)
-    .fetch_one(&mut *f.connection().await)
-    .await
-    .expect("the draft's message scope");
+    let scope: String =
+        sqlx::query_scalar("SELECT scope FROM authoring.replay_receipts WHERE resource_id=$1")
+            .bind(&first)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("the draft's message scope");
     let key = mint();
     let racer = Transaction::begin(f.connection().await, None).await;
     let mut racer = racer.expect("racing writer begins");
@@ -102,12 +101,12 @@ async fn a_key_a_racing_writer_files_first_refuses_the_send_and_writes_nothing()
         .await
         .expect("racing writer's backend");
     sqlx::query(RACER)
-        .bind(mint().as_str())
-        .bind(f.workspace.as_str())
+        .bind(mint())
+        .bind(&f.workspace)
         .bind(&scope)
-        .bind(key.as_str())
-        .bind(f.owner.as_str())
-        .bind(mint().as_str())
+        .bind(&key)
+        .bind(&f.owner)
+        .bind(mint())
         .execute(&mut *racer)
         .await
         .expect("racing writer files the key, uncommitted");

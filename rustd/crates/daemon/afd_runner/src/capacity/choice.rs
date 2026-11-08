@@ -41,7 +41,7 @@ impl Runners {
         accepted: AcceptedKinds,
     ) -> Result<Option<Ticket>> {
         let row: Option<(i64, Option<String>)> = sqlx::query_as(sql::CHOICE)
-            .bind(runner.as_str())
+            .bind(runner)
             .fetch_optional(&mut *self.pool().acquire().await?)
             .await
             .map_err(query(sql::CONTEXT))?;
@@ -68,7 +68,7 @@ pub async fn record(
     kind: LeaseKind,
 ) -> Result<bool> {
     let result = sqlx::query(sql::RECORD_CHOICE)
-        .bind(runner.as_str())
+        .bind(runner)
         .bind(capacity.lease_version)
         .bind(kind.as_str())
         .execute(&mut **transaction)

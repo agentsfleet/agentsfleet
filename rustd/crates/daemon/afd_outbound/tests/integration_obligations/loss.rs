@@ -21,8 +21,8 @@ async fn test_outbound_obligations_survive_worker_replacement() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
     let redis = datastore().await;
-    let event = "1700000000-3";
-    owe_and_queue(&harness, 5, event).await;
+    let event = mint_id();
+    owe_and_queue(&harness, 5, &event).await;
 
     let host_that_died = take_and_die().await;
     assert_eq!(host_that_died, event, "the host took this fixture's answer");
@@ -35,7 +35,7 @@ async fn test_outbound_obligations_survive_worker_replacement() {
 
     assert_eq!(
         awaiting_delivery(&harness).await,
-        vec![event.to_owned()],
+        vec![event.clone()],
         "the queue cannot deliver it and the ledger still owes it — which is \
          the whole claim: the obligation outlives the entry"
     );
@@ -44,7 +44,7 @@ async fn test_outbound_obligations_survive_worker_replacement() {
     // the answer twice — which is why `delivered_at` is stamped by the poster
     // and not by the acknowledgement: a row leaves this set only when somebody
     // actually got it.
-    reappend_and_deliver(&harness, 5, event).await;
+    reappend_and_deliver(&harness, 5, &event).await;
 
     assert!(
         awaiting_delivery(&harness).await.is_empty(),
@@ -58,7 +58,7 @@ async fn test_outbound_obligations_survive_worker_replacement() {
 
 /// The host that dies: it reads the entry into its own pending list and is
 /// dropped. Answers the event it took.
-async fn take_and_die() -> String {
+async fn take_and_die() -> Uuid7 {
     let mut departed = reader_named(&OutboundHarness::config(), "host-that-died").await;
     let taken = departed
         .read_blocking(BLOCK)
@@ -94,14 +94,14 @@ async fn assert_replacement_reaches_nothing() {
 
 /// The producer's recovery, by hand: re-append the answer, record the new
 /// entry as the `nth` obligation's receipt, and deliver it.
-async fn reappend_and_deliver(harness: &OutboundHarness, nth: u8, event: &str) {
+async fn reappend_and_deliver(harness: &OutboundHarness, nth: u8, event: &Uuid7) {
     let again = harness
         .queue
         .enqueue(OutboundJob {
             provider: PROVIDER,
             destination: DESTINATION,
-            workspace_id: WORKSPACE,
-            fleet_id: FLEET,
+            workspace_id: &WORKSPACE,
+            fleet_id: &FLEET,
             event_id: event,
             answer: ANSWER,
         })
@@ -110,7 +110,7 @@ async fn reappend_and_deliver(harness: &OutboundHarness, nth: u8, event: &str) {
     obligation::record_reappended(&harness.database, &obligation_id(nth), again.as_str())
         .await
         .expect("recording the re-append");
-    obligation::stamp_delivered(&harness.database, FLEET, event)
+    obligation::stamp_delivered(&harness.database, &FLEET, event)
         .await
         .expect("the re-appended answer is delivered");
 }
@@ -127,8 +127,8 @@ async fn a_lost_consumer_group_leaves_the_answer_owed() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
     let redis = datastore().await;
-    let event = "1700000000-4";
-    owe_and_queue(&harness, 6, event).await;
+    let event = mint_id();
+    owe_and_queue(&harness, 6, &event).await;
 
     forget_group(&redis).await;
 
@@ -139,7 +139,7 @@ async fn a_lost_consumer_group_leaves_the_answer_owed() {
     );
     assert_eq!(
         awaiting_delivery(&harness).await,
-        vec![event.to_owned()],
+        vec![event.clone()],
         "queued and unreachable reads, to the ledger, as still owed"
     );
 }
@@ -155,15 +155,15 @@ async fn a_wholly_lost_stream_leaves_the_answer_owed() {
     let _lane = OUTBOUND_LANE.lock().await;
     let harness = ready().await;
     let redis = datastore().await;
-    let event = "1700000000-5";
-    owe_and_queue(&harness, 7, event).await;
+    let event = mint_id();
+    owe_and_queue(&harness, 7, &event).await;
 
     forget_stream(&redis).await;
 
     assert_eq!(entries_on(&redis).await, 0, "nothing of the queue survives");
     assert_eq!(
         awaiting_delivery(&harness).await,
-        vec![event.to_owned()],
+        vec![event.clone()],
         "losing the cache entirely erases no obligation"
     );
 }

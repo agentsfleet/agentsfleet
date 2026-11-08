@@ -6,6 +6,7 @@
 //! [`super::TenantSeed`] seeds the tenant it hangs from, and the column list
 //! changes here alone.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
@@ -22,14 +23,14 @@ const CONTEXT: &str = "seed a wallet";
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct WalletSeed<'a> {
-    tenant_id: &'a str,
+    tenant_id: &'a Uuid7,
     balance_nanos: i64,
     created_at: Option<Timestamp>,
 }
 
 impl<'a> WalletSeed<'a> {
     /// A wallet under `tenant_id` holding `balance_nanos`.
-    pub const fn new(tenant_id: &'a str, balance_nanos: i64) -> Self {
+    pub const fn new(tenant_id: &'a Uuid7, balance_nanos: i64) -> Self {
         Self {
             tenant_id,
             balance_nanos,
@@ -66,7 +67,8 @@ mod tests {
 
     #[test]
     fn a_seed_stamps_nothing_until_the_suite_backdates_it() {
-        let seed = WalletSeed::new("tenant", 1);
+        let tenant = crate::test_util::mint_id();
+        let seed = WalletSeed::new(&tenant, 1);
 
         assert_eq!((seed.balance_nanos, seed.created_at), (1, None));
     }

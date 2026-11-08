@@ -60,8 +60,8 @@ async fn revoked(revoke: Revoke) {
 }
 
 async fn settled_without_private_copy(f: &Fixture, attempt: &Attempt) {
-    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid")
-        .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("accounting without private copy");
+    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
+        .bind(&attempt.id).fetch_one(&mut *f.connection().await).await.expect("accounting without private copy");
     assert_eq!(receipt, (true, "known".into()));
     assert_eq!(
         model_calls::fixture::receipts(f, attempt).await,
@@ -84,14 +84,12 @@ async fn mutate(f: &Fixture, attempt: &Attempt, revoke: Revoke) {
                 .expect("delete");
         }
         Revoke::Membership => {
-            sqlx::query(
-                "DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid",
-            )
-            .bind(f.tenant.as_str())
-            .bind(f.member.as_str())
-            .execute(&mut *f.connection().await)
-            .await
-            .expect("revoke membership");
+            sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1 AND user_id=$2")
+                .bind(&f.tenant)
+                .bind(&f.member)
+                .execute(&mut *f.connection().await)
+                .await
+                .expect("revoke membership");
         }
     }
 }

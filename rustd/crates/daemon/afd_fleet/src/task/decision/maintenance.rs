@@ -1,5 +1,6 @@
 //! Fair bounded recovery retains progress across contention and cancellation.
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use af_observability::{metrics::label::task::DecisionRecoveryOutcome as Outcome, producers};
@@ -25,7 +26,7 @@ const PASS_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[derive(sqlx::FromRow)]
 struct Candidate {
-    id: String,
+    id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     expires_at: jiff::Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -97,7 +98,7 @@ async fn scan(tasks: &Tasks, cursor: &DecisionMaintenanceCursor) -> Result<Vec<C
                     .as_ref()
                     .map(|(at, _)| jiff_sqlx::Timestamp::from(*at)),
             )
-            .bind(cursor.after.as_ref().map(|(_, id)| id.as_str()))
+            .bind(cursor.after.as_ref().map(|(_, id)| id))
             .bind(cursor.cutoff.map(jiff_sqlx::Timestamp::from)),
         None,
         "read bounded expired decision reservations",
@@ -107,7 +108,7 @@ async fn scan(tasks: &Tasks, cursor: &DecisionMaintenanceCursor) -> Result<Vec<C
 
 async fn process(
     tasks: &Tasks,
-    id: &str,
+    id: &Uuid7,
     receipt: &DecisionReceipt,
     digest: &str,
     swept: &mut DecisionMaintenance,
@@ -131,7 +132,7 @@ async fn process(
 
 fn failure(
     fault: Error,
-    id: &str,
+    id: &Uuid7,
     swept: &mut DecisionMaintenance,
     first_failure: &mut Option<af_core::error_code::ErrorCode>,
 ) -> Result<Outcome> {
@@ -149,7 +150,7 @@ fn failure(
     };
     let outcome_label = outcome.as_str();
     let error_code = fault.code();
-    tracing::debug!(event = "dt_decision_recovery_deferred", decision_call_id = id,
+    tracing::debug!(event = "dt_decision_recovery_deferred", decision_call_id = %id,
         outcome = outcome_label, %error_code, reason);
     Ok(outcome)
 }
@@ -184,7 +185,7 @@ fn completed(swept: &DecisionMaintenance, first_failure: Option<af_core::error_c
 
 async fn expire(
     tasks: &Tasks,
-    id: &str,
+    id: &Uuid7,
     receipt: &DecisionReceipt,
     digest: &str,
 ) -> Result<Option<Written>> {

@@ -85,11 +85,11 @@ impl Runners {
         let event_id = self.admin_event_id(now)?;
         let mut connection = self.pool().acquire().await?;
         let row = sqlx::query_as::<_, Transitioned>(sql::runner_admin::TRANSITION_RUNNER_STATUS)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(state_wire(target))
             .bind(target == AdminState::Revoked)
             .bind(state_wire(AdminState::Revoked))
-            .bind(event_id.as_str())
+            .bind(event_id)
             .bind(event)
             .bind(sql::meta::FROM_STATUS)
             .bind(sql::meta::TO_STATUS)
@@ -115,7 +115,7 @@ impl Runners {
     pub async fn delete_revoked(&self, runner: &Uuid7) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
         let row = sqlx::query_as::<_, Retired>(sql::runner_admin::DELETE_RUNNER_IF_IN_STATE)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(state_wire(AdminState::Revoked))
             .bind(sql::LEASE_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
@@ -140,7 +140,7 @@ impl Runners {
     pub async fn request_selftest(&self, runner: &Uuid7) -> Result<SelftestRequested> {
         let mut connection = self.pool().acquire().await?;
         let row = sqlx::query_as::<_, Requested>(sql::runner_admin::PATCH_RUNNER_SELFTEST_REQUEST)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(state_wire(AdminState::Revoked))
             .fetch_optional(&mut *connection)
             .await

@@ -16,6 +16,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
@@ -113,9 +114,9 @@ async fn profile_answers_the_joined_person_and_refuses_an_unknown_subject() {
 pub(crate) struct Fixture {
     lane: TestDatabase,
     pub(crate) database: afd_db::Db,
-    pub(crate) tenant: String,
-    pub(crate) user: String,
-    anonymous_user: String,
+    pub(crate) tenant: Uuid7,
+    pub(crate) user: Uuid7,
+    anonymous_user: Uuid7,
 }
 
 impl Fixture {
@@ -135,12 +136,12 @@ impl Fixture {
         sqlx::query(
             "WITH tenant AS ( \
                INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, $2, now(), now()) \
+               VALUES ($1, $2, now(), now()) \
              ) \
              INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-             VALUES ($3::uuid, $1::uuid, $4, $5, $6, now(), now()), \
-                    ($7::uuid, $1::uuid, $8, $9, NULL, now(), now())",
+             VALUES ($3, $1, $4, $5, $6, now(), now()), \
+                    ($7, $1, $8, $9, NULL, now(), now())",
         )
         .bind(&self.tenant)
         .bind(TENANT_NAME)
@@ -164,7 +165,7 @@ impl Fixture {
     async fn users_in_tenant(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let (count,): (i64,) =
-            sqlx::query_as("SELECT count(*) FROM identity.users WHERE tenant_id = $1::uuid")
+            sqlx::query_as("SELECT count(*) FROM identity.users WHERE tenant_id = $1")
                 .bind(&self.tenant)
                 .fetch_one(&mut *connection)
                 .await
@@ -174,7 +175,7 @@ impl Fixture {
 
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

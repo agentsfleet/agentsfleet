@@ -38,7 +38,7 @@ async fn live(caller: &str) -> (Fleet, Db) {
 /// runs: `KEEP_TEST_STATE=1` is a supported inner loop, and a fixed subject
 /// would make the second run fail as a replay of the first.
 fn minted() -> (String, String) {
-    let subject = format!("user_{}", mint_id().replace('-', ""));
+    let subject = format!("user_{}", mint_id().as_str().replace('-', ""));
     let address = format!("{subject}@example.test");
     (subject, address)
 }
@@ -273,7 +273,7 @@ async fn a_subject_that_is_only_whitespace_opens_the_account_but_is_not_written_
     // The subject is fixed — it is the whole point — and the address is minted,
     // so a `KEEP_TEST_STATE=1` rerun replays the same account rather than
     // colliding on a second one. The replay path reaches the same write.
-    let address = format!("blank-{}@example.test", mint_id().replace('-', ""));
+    let address = format!("blank-{}@example.test", mint_id().as_str().replace('-', ""));
     let body = created("   ", &address, json!({}));
 
     let answer = deliver(&router, &body).await;

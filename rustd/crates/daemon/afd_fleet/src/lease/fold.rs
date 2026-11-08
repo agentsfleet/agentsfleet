@@ -36,7 +36,7 @@ const EVENT_SETTLED: &str = "folds_settled";
 /// One claimed message, as the claim reads it.
 #[derive(Debug, sqlx::FromRow)]
 struct ClaimedRow {
-    id: String,
+    id: Uuid7,
     sequence: i64,
     request_json: String,
 }
@@ -117,8 +117,8 @@ impl Leases {
         let fence = i64::try_from(fencing_token).unwrap_or(i64::MAX);
         let mut connection = self.pool().acquire().await?;
         let rows: Vec<ClaimedRow> = sqlx::query_as(sql::lease::CLAIM_INPUTS)
-            .bind(lease_id.as_str())
-            .bind(runner_id.as_str())
+            .bind(lease_id)
+            .bind(runner_id)
             .bind(fence)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .bind(after_sequence)
@@ -165,15 +165,15 @@ impl Leases {
         &self,
         connection: &mut PgConnection,
         lease: &Reported,
-        lease_id: &str,
+        lease_id: &Uuid7,
         read_through: Option<i64>,
         answer: &str,
     ) -> Result<Folds> {
         let Some(read_through) = read_through else {
             return Ok(Folds::default());
         };
-        let settled: Vec<String> = sqlx::query_scalar(sql::lease::SETTLE_FOLDS)
-            .bind(lease.fleet_id.as_str())
+        let settled: Vec<Uuid7> = sqlx::query_scalar(sql::lease::SETTLE_FOLDS)
+            .bind(&lease.fleet_id)
             .bind(lease_id)
             .bind(lease.fence.as_i64())
             .bind(read_through)
@@ -187,7 +187,7 @@ impl Leases {
             });
         }
         sqlx::query(afd_events::sql::OPEN_FOLDED_EVENTS)
-            .bind(lease.fleet_id.as_str())
+            .bind(&lease.fleet_id)
             .bind(&settled)
             .bind(&lease.event_id)
             .bind(af_core::event::status::RECEIVED)

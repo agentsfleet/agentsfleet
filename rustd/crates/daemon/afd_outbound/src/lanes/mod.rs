@@ -92,7 +92,7 @@ impl Destination {
     pub fn of(job: &OutboundDelivery) -> Self {
         Self {
             provider: job.provider.clone(),
-            workspace_id: job.workspace_id.clone(),
+            workspace_id: job.workspace_id.clone().into(),
         }
     }
 }
@@ -266,13 +266,7 @@ impl<S: Deliver + 'static> Inner<S> {
     /// anybody. The telemetry then under-reports, which it says by carrying no
     /// count rather than by carrying a wrong one.
     async fn count_cycle(&self, job: &OutboundDelivery) -> Option<i64> {
-        match crate::obligation::count_attempt(
-            &self.database,
-            job.fleet_id.as_str(),
-            job.event_id.as_str(),
-        )
-        .await
-        {
+        match crate::obligation::count_attempt(&self.database, &job.fleet_id, &job.event_id).await {
             Ok(counted) => counted,
             Err(failure) => {
                 crate::worker::report(EVENT_ATTEMPT_COUNT_FAILED, &failure);
@@ -293,12 +287,8 @@ impl<S: Deliver + 'static> Inner<S> {
     /// costs a duplicate message in a thread; the opposite error — marking
     /// delivered what was not — loses the answer silently.
     async fn stamp_delivered(&self, job: &OutboundDelivery, attempts: Option<i64>) {
-        if let Err(failure) = crate::obligation::stamp_delivered(
-            &self.database,
-            job.fleet_id.as_str(),
-            job.event_id.as_str(),
-        )
-        .await
+        if let Err(failure) =
+            crate::obligation::stamp_delivered(&self.database, &job.fleet_id, &job.event_id).await
         {
             crate::worker::report(EVENT_STAMP_FAILED, &failure);
             return;

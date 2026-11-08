@@ -15,8 +15,8 @@ impl Fixture {
             "../integration_fleet_tasks/fixtures/seed_item.sql"
         ))
         .bind(&item)
-        .bind(self.fleet.as_str())
-        .bind(self.workspace.as_str())
+        .bind(&self.fleet)
+        .bind(&self.workspace)
         .bind(mint_id())
         .bind(0_i32)
         .bind(&task)
@@ -27,7 +27,7 @@ impl Fixture {
             "../integration_fleet_tasks/fixtures/seed_task.sql"
         ))
         .bind(&task)
-        .bind(self.fleet.as_str())
+        .bind(&self.fleet)
         .bind(&item)
         .bind("Deployment repair")
         .bind(
@@ -49,7 +49,7 @@ impl Fixture {
         .execute(&mut *tx)
         .await
         .expect("unfinished native task");
-        sqlx::query("UPDATE fleet.tasks SET target = $2 WHERE id = $1::uuid")
+        sqlx::query("UPDATE fleet.tasks SET target = $2 WHERE id = $1")
             .bind(&task)
             .bind(sqlx::types::Json(serde_json::json!({
                 "repository": "example/platform",
@@ -75,14 +75,14 @@ impl Fixture {
         sqlx::query_scalar(
             "SELECT count(*) FROM fleet.task_completions c \
              JOIN fleet.task_completion_fanout f ON f.task_completion_id = c.id \
-             WHERE c.workspace_id = $1::uuid AND c.scope_fleet_id IS NULL \
+             WHERE c.workspace_id = $1 AND c.scope_fleet_id IS NULL \
                AND c.installation_id = $2 AND c.body_digest = $3 \
                AND c.repository_id = 65_432_109 AND c.workflow_id = 87_654_321 \
                AND c.run_id = 9842731401 AND c.run_number = 412 \
                AND c.run_attempt = 2 AND c.conclusion = 'failure' \
                AND c.head_oid = 'f1d2c3b4a5968778695a4b3c2d1e0f9a8b7c6d5e'",
         )
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(
             self.installation
                 .parse::<i64>()

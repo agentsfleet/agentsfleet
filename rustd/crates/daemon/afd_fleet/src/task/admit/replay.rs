@@ -1,5 +1,6 @@
 //! A plan is replayed as a whole; changed count or meaning cannot append work.
 
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 use super::super::{
@@ -11,8 +12,8 @@ use crate::error::{Result, query};
 
 #[derive(sqlx::FromRow)]
 struct Existing {
-    item_id: String,
-    task_id: Option<String>,
+    item_id: Uuid7,
+    task_id: Option<Uuid7>,
     plan_digest: String,
     action: String,
     task_state: Option<String>,
@@ -26,7 +27,7 @@ pub(super) async fn read(
     plan: &PreparedPlan,
 ) -> Result<Option<TaskBindings>> {
     let rows: Vec<Existing> = sqlx::query_as(sql::REPLAY)
-        .bind(plan.source_admission_id.as_str())
+        .bind(&plan.source_admission_id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_all(&mut *connection)
@@ -52,14 +53,11 @@ pub(super) async fn read(
                 crate::error::Error::from(crate::error::ErrorKind::TaskState { source })
             })?;
             Ok(TaskBinding {
-                item_id: guard::id(&row.item_id, "item_id")?,
+                item_id: row.item_id.clone(),
                 applies_here: row.task_id == current.task_id
                     && row.task_state.as_deref()
                         == Some(af_wire::task::TaskState::Running.as_str()),
-                task_id: row
-                    .task_id
-                    .map(|task_id| guard::id(&task_id, "id"))
-                    .transpose()?,
+                task_id: row.task_id,
                 task_generation: row
                     .task_generation
                     .map(|generation| super::super::row::counter(generation, "generation"))

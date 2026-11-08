@@ -61,9 +61,9 @@ pub(crate) struct CronLane {
     lane: TestDatabase,
     pub(crate) database: Db,
     pub(crate) store: Schedules,
-    pub(crate) tenant: String,
-    pub(crate) workspace: String,
-    pub(crate) fleet: String,
+    pub(crate) tenant: Uuid7,
+    pub(crate) workspace: Uuid7,
+    pub(crate) fleet: Uuid7,
 }
 
 impl CronLane {
@@ -85,17 +85,17 @@ impl CronLane {
 
     /// This lane's fleet, as the store takes it.
     pub(crate) fn fleet_id(&self) -> Uuid7 {
-        Uuid7::parse(&self.fleet).expect("the minted fleet id is canonical")
+        self.fleet.clone()
     }
 
     /// This lane's workspace, as the store takes it.
     pub(crate) fn workspace_id(&self) -> Uuid7 {
-        Uuid7::parse(&self.workspace).expect("the minted workspace id is canonical")
+        self.workspace.clone()
     }
 
     /// A fresh syncer token, which is just a minted identifier.
     pub(crate) fn token() -> Uuid7 {
-        Uuid7::parse(&mint_id()).expect("a minted token is canonical")
+        mint_id()
     }
 
     /// Creates one schedule on this lane's fleet, expecting it to be admitted.
@@ -223,9 +223,9 @@ impl CronLane {
         sqlx::query(
             "UPDATE fleet.schedules \
              SET sync_lease_expires_at = clock_timestamp() - interval '1 millisecond' \
-             WHERE id = $1::uuid",
+             WHERE id = $1",
         )
-        .bind(schedule.as_str())
+        .bind(schedule)
         .execute(&mut *connection)
         .await
         .expect("expiring a lease");
@@ -240,9 +240,9 @@ impl CronLane {
         let mut connection = self.connection().await;
         sqlx::query(
             "UPDATE fleet.schedules SET fire_at = updated_at - interval '1 minute' \
-             WHERE id = $1::uuid",
+             WHERE id = $1",
         )
-        .bind(schedule.as_str())
+        .bind(schedule)
         .execute(&mut *connection)
         .await
         .expect("backdating a fire instant");
@@ -251,13 +251,11 @@ impl CronLane {
     /// The rows this lane's fleet currently holds.
     pub(crate) async fn count(&self) -> i64 {
         let mut connection = self.connection().await;
-        sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1::uuid",
-        )
-        .bind(self.fleet.as_str())
-        .fetch_one(&mut *connection)
-        .await
-        .expect("counting this fleet's schedules")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1")
+            .bind(&self.fleet)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("counting this fleet's schedules")
     }
 
     async fn seed_fleet(&self) {

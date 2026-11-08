@@ -17,7 +17,7 @@ impl crate::Drafts {
 /// and an attempt awaiting accounting no longer holds the draft.
 pub(crate) async fn running(connection: &mut PgConnection, draft: &Locked) -> Result<bool> {
     let running: Option<bool> = sqlx::query_scalar(sql::PENDING)
-        .bind(draft.id.as_str())
+        .bind(&draft.id)
         .bind(&FINISHED[..])
         .bind(draft.cancelled_through_sequence)
         .fetch_optional(connection)

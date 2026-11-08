@@ -3,6 +3,9 @@
 //! against.
 
 use std::collections::BTreeSet;
+use std::sync::LazyLock;
+
+use af_core::id::Uuid7;
 
 use af_wire::event::EventType;
 
@@ -25,13 +28,21 @@ const EVERY_PRODUCER: [Producer; 7] = [
     Producer::SlackMention,
 ];
 
+/// Fixed, because [`reply`]'s digest test pins a digest over these.
+static FLEET: LazyLock<Uuid7> =
+    LazyLock::new(|| afd_db::test_util::fixed_id("019feca5-bc9b-72e8-b71f-e2714f6b0120"));
+static WORKSPACE: LazyLock<Uuid7> =
+    LazyLock::new(|| afd_db::test_util::fixed_id("019feca5-bc9b-72e8-b71f-e2714f6b0121"));
+static OTHER_WORKSPACE: LazyLock<Uuid7> =
+    LazyLock::new(|| afd_db::test_util::fixed_id("019feca5-bc9b-72e8-b71f-e2714f6b0999"));
+
 /// An admission whose fields a test then varies one at a time.
 fn sample() -> Admission<'static> {
     Admission {
         producer: Producer::Webhook,
         key: Key::Repeated("fleet-1:delivery-9"),
-        fleet: "019feca5-bc9b-72e8-b71f-e2714f6b0120",
-        workspace: "019feca5-bc9b-72e8-b71f-e2714f6b0121",
+        fleet: &FLEET,
+        workspace: &WORKSPACE,
         actor: "steer:user_1",
         event_type: EventType::Webhook,
         request_json: r#"{"message":"hello"}"#,
@@ -87,7 +98,7 @@ fn every_digested_field_changes_the_digest() {
             ..sample()
         },
         Admission {
-            workspace: "019feca5-bc9b-72e8-b71f-e2714f6b0999",
+            workspace: &OTHER_WORKSPACE,
             ..sample()
         },
         Admission {
@@ -106,19 +117,24 @@ fn every_digested_field_changes_the_digest() {
 
 /// Fields cannot slide into each other and hash alike.
 ///
-/// The separator's whole job. Without it `actor="ab", workspace="c"` and
-/// `actor="a", workspace="bc"` feed the hasher identical bytes, and a
-/// redelivery whose actor gained a character would read as the same payload.
+/// The separator's whole job. Without it `connector="ab", address="c"` and
+/// `connector="a", address="bc"` feed the hasher identical bytes, and a
+/// redelivery whose connector gained a character would read as the same
+/// payload.
 #[test]
 fn two_fields_cannot_slide_into_each_other() {
     let left = Admission {
-        actor: "ab",
-        workspace: "c",
+        reply: Reply::To {
+            connector: "ab",
+            address: "c",
+        },
         ..sample()
     };
     let right = Admission {
-        actor: "a",
-        workspace: "bc",
+        reply: Reply::To {
+            connector: "a",
+            address: "bc",
+        },
         ..sample()
     };
     assert_ne!(

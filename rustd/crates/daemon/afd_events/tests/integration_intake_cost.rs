@@ -6,6 +6,7 @@
 //! parallel suite's calls on the shared lane would land in the count.
 #![cfg(feature = "test-util")]
 
+use af_core::id::Uuid7;
 use std::error::Error;
 
 use afd_db::config::DbRole;
@@ -48,8 +49,8 @@ struct Private {
     owner: afd_db::Db,
     runtime: afd_db::Db,
     steer: Steer,
-    workspace: String,
-    fleet: String,
+    workspace: Uuid7,
+    fleet: Uuid7,
 }
 
 impl Private {
@@ -103,7 +104,7 @@ impl Private {
 
     async fn rows(&self) -> Result<i64, Box<dyn Error>> {
         Ok(
-            sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1::uuid")
+            sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
                 .bind(&self.fleet)
                 .fetch_one(&mut *self.owner.acquire().await?)
                 .await?,

@@ -190,9 +190,9 @@ async fn a_tenant_without_its_bootstrap_workspace_is_refused_by_name() {
 struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
+    tenant: Uuid7,
     workspace: Uuid7,
-    key: String,
+    key: Uuid7,
     token: String,
 }
 
@@ -203,7 +203,7 @@ impl Fixture {
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted id is a Uuid7"),
+            workspace: mint_id(),
             key: mint_id(),
             token: format!("agt_t{token_bits}"),
             lane,
@@ -226,7 +226,7 @@ impl Fixture {
     async fn seed(&self) {
         self.seed_tenant().await;
         let mut connection = self.database.acquire().await.expect("an API connection");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("tenant-provider")
             .insert(&mut *connection)
             .await

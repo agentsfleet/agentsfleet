@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use af_core::env::{EnvSource, ProcessEnv};
+use af_core::id::{ENTROPY_LEN, Uuid7};
 use afd_dragonfly::Dragonfly;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
@@ -22,6 +23,9 @@ const TLS_URL_KNOB: &str = "TEST_DRAGONFLY_TLS_URL";
 
 /// Distinguishes keys minted by one process.
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
+
+/// Distinguishes identifiers minted by one process.
+static ID_SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
 /// The lane's Dragonfly, plus a name nothing else in the suite uses.
 pub(crate) struct DragonflyHarness {
@@ -88,4 +92,19 @@ impl DragonflyHarness {
     pub(crate) fn name(&self, suffix: &str) -> String {
         format!("{}_{suffix}", self.prefix)
     }
+}
+
+/// A fresh `UUIDv7`, the only identifier shape an outbound job carries.
+///
+/// Stamped with the current instant, with this process and a per-process
+/// counter as its random half, so two binaries of one lane never share one and
+/// a later run never reuses one an earlier run left in a shared stream. Entropy
+/// bytes 0 and 2 lose bits to the version and variant, so the distinguishing
+/// values sit after them.
+pub(crate) fn mint_id() -> Uuid7 {
+    let mut entropy = [0_u8; ENTROPY_LEN];
+    entropy[3..7].copy_from_slice(&std::process::id().to_be_bytes());
+    let sequence = ID_SEQUENCE.fetch_add(1, Ordering::Relaxed).to_be_bytes();
+    entropy[7..].copy_from_slice(&sequence[1..]);
+    Uuid7::encode(jiff::Timestamp::now(), entropy).expect("the clock reads after the Unix epoch")
 }

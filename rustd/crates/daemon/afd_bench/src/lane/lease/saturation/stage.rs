@@ -124,7 +124,7 @@ pub(super) async fn stage(
         runners: Vec::new(),
     };
     for index in 0..TENANTS {
-        let tenant = seed::identities(INDEX_BASE + index);
+        let tenant = seed::identities(INDEX_BASE + index)?;
         seed::rows(&stores.database, prefix, &tenant, &tag, SEEDED_AT).await?;
         ledger.created(ROWS_PER_CHAT_TENANT);
         owner(stores, &tenant, index).await?;
@@ -135,7 +135,7 @@ pub(super) async fn stage(
         staged.messages += queue(drafts, tenant, index).await?;
     }
     for index in 0..parameters.fleets {
-        let fleet = seed::identities(INDEX_BASE + TENANTS + index);
+        let fleet = seed::identities(INDEX_BASE + TENANTS + index)?;
         seed::rows(&stores.database, prefix, &fleet, &tag, SEEDED_AT).await?;
         fund(stores, &fleet).await?;
         seed::enqueue(&stores.database, &stores.queue, &fleet, EventType::Chat).await?;
@@ -154,9 +154,9 @@ pub(super) async fn stage(
 /// The chat tenant's owner, whose subject the drafts are created under, and
 /// its wallet.
 async fn owner(stores: &Datastores, tenant: &SeededFleet, index: u64) -> Result<()> {
-    let user = subject(index);
+    let user = subject(index)?;
     let mut connection = stores.database.acquire().await?;
-    UserSeed::new(&user, &tenant.tenant, &user, &user)
+    UserSeed::new(&user, &tenant.tenant, user.as_str(), user.as_str())
         .insert(&mut *connection)
         .await
         .map_err(seed_refused)?;
@@ -177,8 +177,8 @@ async fn fund(stores: &Datastores, tenant: &SeededFleet) -> Result<()> {
 /// Queue [`DRAFTS_PER_TENANT`] first messages for one chat tenant, through
 /// the route's own create verb, answering how many were queued.
 async fn queue(drafts: &Drafts, tenant: &SeededFleet, index: u64) -> Result<u64> {
-    let workspace = Uuid7::parse(&tenant.workspace)?;
-    let user = subject(index);
+    let workspace = tenant.workspace.clone();
+    let user = subject(index)?.to_string();
     let access = Access {
         workspace: &workspace,
         subject: &user,
@@ -198,6 +198,6 @@ async fn queue(drafts: &Drafts, tenant: &SeededFleet, index: u64) -> Result<u64>
 }
 
 /// The owner's id, which is also the subject and address it signs in with.
-fn subject(index: u64) -> String {
+fn subject(index: u64) -> Result<Uuid7> {
     seed::identifier(KIND_USER, INDEX_BASE + index)
 }

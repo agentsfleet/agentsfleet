@@ -97,8 +97,8 @@ async fn advance(
     let (library, revision) = (next.library, next.id);
     persist::append(tx, next, draft, candidate).await?;
     sqlx::query(sql::ADVANCE)
-        .bind(library.as_str())
-        .bind(revision.as_str())
+        .bind(library)
+        .bind(revision)
         .execute(&mut *tx)
         .await
         .map_err(query(CONTEXT))?;

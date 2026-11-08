@@ -18,9 +18,12 @@
               which row it was"
 )]
 
+use std::sync::LazyLock;
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
+use afd_db::test_util::mint_id;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_dragonfly::streams::{ACKNOWLEDGED_HISTORY, TRIM_SLACK};
 use afd_dragonfly::{Dragonfly, OutboundJob, OutboundQueue};
@@ -47,10 +50,8 @@ use support::{OUTBOUND_LANE, OutboundHarness};
 const PROVIDER: &str = Provider::Slack.id();
 
 const ANSWER: &str = "Aurora is healthy.";
-const EVENT_ID: &str = "1760000000001-0";
-/// The stem the trim proof numbers its answers off, so every entry it appends
-/// is its own logical event rather than one event appended many times.
-const EVENT_ID_STEM: &str = "1760000000002-";
+/// The one event every owed row here answers.
+static EVENT_ID: LazyLock<Uuid7> = LazyLock::new(mint_id);
 /// Entries appended ABOVE the retained bound and its slack, so the trim
 /// reaches its floor calculation instead of returning early on a short stream.
 const ABOVE_THE_BOUND: usize = TRIM_SLACK + 50;
@@ -68,7 +69,7 @@ fn unreachable_queue() -> OutboundQueue {
 }
 
 /// Owes one delivery the way the report does — in a transaction that commits.
-async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bool {
+async fn owe_committed(harness: &OutboundHarness, row: &Uuid7, answer: &str) -> bool {
     use sqlx::Acquire as _;
 
     let mut connection = harness
@@ -84,11 +85,11 @@ async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bo
         &mut transaction,
         row,
         Delivery {
-            fleet_id: FLEET,
-            workspace_id: WORKSPACE,
+            fleet_id: &FLEET,
+            workspace_id: &WORKSPACE,
             provider: Provider::Slack,
             destination: DESTINATION,
-            event_id: EVENT_ID,
+            event_id: &EVENT_ID,
             answer,
         },
     )
@@ -99,7 +100,7 @@ async fn owe_committed(harness: &OutboundHarness, row: &str, answer: &str) -> bo
         .await
         .expect("the report's transaction commits");
     // Past `MIN_AGE`, so the producer's own pass takes the row.
-    age(&harness.owner, EVENT_ID).await;
+    age(&harness.owner, &EVENT_ID).await;
     written
 }
 
@@ -203,15 +204,17 @@ async fn a_trim_keeps_the_answers_the_group_has_not_taken() {
     let harness = OutboundHarness::reset().await;
 
     let appended = ACKNOWLEDGED_HISTORY + ABOVE_THE_BOUND;
-    for nth in 0..appended {
-        let event_id = format!("{EVENT_ID_STEM}{nth}");
+    // Each entry is its own logical event rather than one event appended many
+    // times.
+    for _ in 0..appended {
+        let event_id = mint_id();
         harness
             .queue
             .enqueue(OutboundJob {
                 provider: PROVIDER,
                 destination: DESTINATION,
-                workspace_id: WORKSPACE,
-                fleet_id: FLEET,
+                workspace_id: &WORKSPACE,
+                fleet_id: &FLEET,
                 event_id: &event_id,
                 answer: ANSWER,
             })

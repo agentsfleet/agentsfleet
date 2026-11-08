@@ -30,14 +30,6 @@ pub(crate) enum ErrorKind {
         stored: Box<str>,
     },
 
-    #[error("a {table} row holds a value this daemon cannot read: {column}")]
-    RowMalformed {
-        table: &'static str,
-        column: &'static str,
-        #[source]
-        source: af_core::error::Error,
-    },
-
     /// Every `af_crypto` failure lands here: a draw from the entropy source,
     /// an identifier minted from it, or a key or tag it was handed. The source
     /// says which.
@@ -130,6 +122,9 @@ pub(crate) enum ErrorKind {
 
     #[error("an invite address was refused")]
     EmailInvalid,
+
+    #[error("a paging cursor named a row identifier this daemon never issued")]
+    CursorInvalid,
 
     #[error("the catalogue page statement would not answer")]
     LibraryPageUnavailable {

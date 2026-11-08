@@ -18,12 +18,12 @@ pub(super) async fn entry(
     candidate: &Candidate,
 ) -> Result<()> {
     sqlx::query(sql::INSERT)
-        .bind(library.as_str())
-        .bind(owner.as_str())
+        .bind(library)
+        .bind(owner)
         .bind(TENANT)
         .bind(label)
         .bind(candidate.definition.description())
-        .bind(revision.as_str())
+        .bind(revision)
         .bind(1_i64)
         .execute(connection)
         .await
@@ -44,8 +44,8 @@ pub(super) async fn append(
     candidate: &Candidate,
 ) -> Result<()> {
     sqlx::query(sql::APPEND)
-        .bind(revision.id.as_str())
-        .bind(revision.library.as_str())
+        .bind(revision.id)
+        .bind(revision.library)
         .bind(revision.number)
         .bind(serde_json::to_string(&candidate.definition).map_err(stored)?)
         .bind(&candidate.canonical_digest)
@@ -54,8 +54,8 @@ pub(super) async fn append(
         .await
         .map_err(query(CONTEXT))?;
     sqlx::query(sql::RECEIPT)
-        .bind(draft.as_str())
-        .bind(revision.id.as_str())
+        .bind(draft)
+        .bind(revision.id)
         .execute(connection)
         .await
         .map_err(query(CONTEXT))?;

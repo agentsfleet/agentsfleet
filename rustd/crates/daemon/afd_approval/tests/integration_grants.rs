@@ -69,10 +69,10 @@ async fn seed_grant(lane: &Lane, service: &str, state: &str, created_at: Timesta
         "INSERT INTO connector.integration_grants
            (id, fleet_id, service, status, requested_reason,
             approved_at, revoked_at, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $8)",
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)",
     )
-    .bind(id.as_str())
-    .bind(lane.fleet.as_str())
+    .bind(&id)
+    .bind(&lane.fleet)
     .bind(service)
     .bind(state)
     .bind(REASON)
@@ -89,10 +89,10 @@ async fn seed_grant(lane: &Lane, service: &str, state: &str, created_at: Timesta
 async fn column_of(lane: &Lane, grant: &Uuid7, column: &str) -> Option<String> {
     // The column name is a literal from this suite, never input.
     let statement = sqlx::AssertSqlSafe(format!(
-        "SELECT {column}::text FROM connector.integration_grants WHERE id = $1::uuid"
+        "SELECT {column}::text FROM connector.integration_grants WHERE id = $1"
     ));
     sqlx::query_scalar(statement)
-        .bind(grant.as_str())
+        .bind(grant)
         .fetch_one(&mut *lane.pool.acquire().await.expect("the lane must answer"))
         .await
         .expect("the grant column must be readable as text")
@@ -102,10 +102,10 @@ async fn column_of(lane: &Lane, grant: &Uuid7, column: &str) -> Option<String> {
 async fn instant_of(lane: &Lane, grant: &Uuid7, column: &str) -> Option<Timestamp> {
     // The column name is a literal from this suite, never input.
     let statement = sqlx::AssertSqlSafe(format!(
-        "SELECT {column} FROM connector.integration_grants WHERE id = $1::uuid"
+        "SELECT {column} FROM connector.integration_grants WHERE id = $1"
     ));
     sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(statement)
-        .bind(grant.as_str())
+        .bind(grant)
         .fetch_one(&mut *lane.pool.acquire().await.expect("the lane must answer"))
         .await
         .expect("the grant instant must be readable")
@@ -138,7 +138,7 @@ async fn a_fleet_with_no_grants_is_not_a_fleet_that_is_not_there() {
         "a fleet declaring no mintable credential holds no grants and still exists"
     );
 
-    let absent = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a minted id is well formed");
+    let absent = afd_db::test_util::mint_id();
     let missing = store
         .page(&lane.workspace, &absent)
         .await

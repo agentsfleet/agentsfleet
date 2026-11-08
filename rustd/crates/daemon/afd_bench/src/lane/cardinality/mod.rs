@@ -13,6 +13,7 @@ use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
 use crate::profile::{Parameter, Profile, Target};
 use crate::report::{Fixture, Lane, Provenance, Report, count, ratio};
+use af_core::id::Uuid7;
 
 /// Series key: the fleet population at each rung.
 const LADDER: &str = "ladder_fleets";
@@ -173,7 +174,7 @@ async fn seed_rung(
             SEEDED_AT,
         )
         .await?;
-        *last_fleet = fleet.fleet;
+        *last_fleet = fleet.fleet.into();
         ledger.created(ROWS_PER_FLEET);
     }
     Ok(())
@@ -194,12 +195,12 @@ async fn measure_rung(
     push(
         report,
         CANDIDATE_MS,
-        candidate_ms(&stores.database, runner).await?,
+        candidate_ms(&stores.database, &Uuid7::parse(runner)?).await?,
     );
     push(
         report,
         ADMISSION_READ_MS,
-        admission_read_ms(&stores.database, last_fleet).await?,
+        admission_read_ms(&stores.database, &Uuid7::parse(last_fleet)?).await?,
     );
     Ok(())
 }

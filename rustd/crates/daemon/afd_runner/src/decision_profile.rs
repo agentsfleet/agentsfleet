@@ -7,10 +7,10 @@ use sqlx::{PgConnection, types::Json};
 
 #[derive(sqlx::FromRow)]
 struct Selected {
-    model_id: String,
+    model_id: Uuid7,
     model_name: String,
     provider: String,
-    revision_id: String,
+    revision_id: Uuid7,
     definition: Json<DecisionModelSettings>,
 }
 
@@ -20,9 +20,9 @@ impl Selected {
         DecisionSelection {
             provider: self.provider,
             assignment: Box::new(DecisionAssignment {
-                revision_id: self.revision_id,
+                revision_id: self.revision_id.into(),
                 profile: DecisionProfile {
-                    model_id: self.model_id,
+                    model_id: self.model_id.into(),
                     revision: settings.revision,
                     api: settings.api,
                     endpoint: settings.endpoint,
@@ -57,7 +57,7 @@ pub async fn decision_assignment_on(
 ) -> Result<Option<DecisionSelection>> {
     let selected: Option<Selected> =
         sqlx::query_as(include_str!("sql/runner/select_decision_profile.sql"))
-            .bind(runner.as_str())
+            .bind(runner)
             .fetch_optional(connection)
             .await
             .map_err(query("read runner decision selection"))?;

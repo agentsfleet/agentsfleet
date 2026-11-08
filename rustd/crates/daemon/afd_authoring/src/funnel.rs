@@ -81,7 +81,7 @@ impl Owed {
         state: &'static str,
     ) -> Result<()> {
         let subject: Option<String> = sqlx::query_scalar(crate::sql::access::SUBJECT)
-            .bind(message.creator.as_str())
+            .bind(message.creator)
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT))?;

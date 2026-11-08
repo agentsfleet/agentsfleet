@@ -5,6 +5,7 @@ use crate::{
     DesiredStatus, Refused, Result, Schedule,
     error::{self, ErrorKind},
 };
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 
 const CONTEXT: &str = "lock a schedule edit";
@@ -13,9 +14,9 @@ pub(super) async fn lock(
     connection: &mut PgConnection,
     request: &EditRequest<'_>,
 ) -> Result<Schedule> {
-    let owned: Option<String> = sqlx::query_scalar(crate::sql::LOCK_FLEET_IN_WORKSPACE)
-        .bind(request.fleet.as_str())
-        .bind(request.workspace.as_str())
+    let owned: Option<Uuid7> = sqlx::query_scalar(crate::sql::LOCK_FLEET_IN_WORKSPACE)
+        .bind(request.fleet)
+        .bind(request.workspace)
         .fetch_optional(&mut *connection)
         .await
         .map_err(error::query(CONTEXT))?;
@@ -26,8 +27,8 @@ pub(super) async fn lock(
         .into());
     }
     let row = sqlx::query_as::<_, Schedule>(crate::sql::LOCK_ONE)
-        .bind(request.schedule.as_str())
-        .bind(request.fleet.as_str())
+        .bind(request.schedule)
+        .bind(request.fleet)
         .fetch_optional(&mut *connection)
         .await
         .map_err(error::query(CONTEXT))?
@@ -45,7 +46,7 @@ async fn available(
     row: &Schedule,
 ) -> Result<()> {
     let held: bool = sqlx::query_scalar(sql::HELD)
-        .bind(request.schedule.as_str())
+        .bind(request.schedule)
         .fetch_one(&mut *connection)
         .await
         .map_err(error::query(CONTEXT))?;

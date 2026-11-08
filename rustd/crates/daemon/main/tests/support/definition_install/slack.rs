@@ -47,12 +47,15 @@ impl Producer {
             None,
             &[
                 (SLACK_API_URL_KNOB, &slack.api_base()),
-                (PLATFORM_ADMIN_WORKSPACE_KNOB, &admin),
+                (PLATFORM_ADMIN_WORKSPACE_KNOB, admin.as_str()),
             ],
             Some(CHANNEL),
         )
         .await;
-        let team = format!("T{}", run.workspace.replace('-', "").to_ascii_uppercase());
+        let team = format!(
+            "T{}",
+            run.workspace.as_str().replace('-', "").to_ascii_uppercase()
+        );
         seed(&run, &admin, &team).await;
         let timestamp = af_core::clock::now().as_second().to_string();
         let body = json!({"type": "event_callback", "team_id": team, "event_id": "EvSameSignedRepair",
@@ -90,21 +93,21 @@ impl Producer {
         response.json().await.expect("the producer receipt is JSON")
     }
 
-    pub(crate) async fn assert_admission(&self, run: &Scenario, event: &str) {
+    pub(crate) async fn assert_admission(&self, run: &Scenario, event: &Uuid7) {
         let mut connection = run
             .booted
             .database
             .acquire()
             .await
             .expect("the scoped pool");
-        let rows: Vec<(String, String, String, String)> = sqlx::query_as(
-            "SELECT id::text, fleet_id::text, workspace_id::text, request_json FROM fleet.admissions WHERE producer=$1 AND producer_key=$2")
+        let rows: Vec<(Uuid7, Uuid7, Uuid7, String)> = sqlx::query_as(
+            "SELECT id, fleet_id, workspace_id, request_json FROM fleet.admissions WHERE producer=$1 AND producer_key=$2")
             .bind(afd_admission::Producer::SlackMention.as_str()).bind(format!("{}:EvSameSignedRepair", self.team))
             .fetch_all(&mut *connection).await.expect("the admission reads");
         assert_eq!(rows.len(), 1);
         assert_eq!(
             (&rows[0].0, &rows[0].1, &rows[0].2),
-            (&event.to_owned(), &run.fleet, &run.workspace)
+            (event, &run.fleet, &run.workspace)
         );
         let request: Value = serde_json::from_str(&rows[0].3).expect("the native request is JSON");
         assert_eq!(request["route"]["verdict"], "addressed");
@@ -114,7 +117,7 @@ impl Producer {
     }
 }
 
-async fn seed(run: &Scenario, admin: &str, team: &str) {
+async fn seed(run: &Scenario, admin: &Uuid7, team: &str) {
     let mut connection = run
         .booted
         .database
@@ -134,17 +137,15 @@ async fn seed(run: &Scenario, admin: &str, team: &str) {
         .await
         .expect("the Slack routing row seeds");
     drop(connection);
-    let admin = Uuid7::parse(admin).expect("the app workspace id");
-    let workspace = Uuid7::parse(&run.workspace).expect("the fixture workspace id");
     seal(
         &run.booted,
-        &admin,
+        admin,
         &Provider::Slack.app_key(),
         &json!({"client_id": "fixture", "signing_secret": str::from_utf8(SECRET).expect("text")})
             .to_string(),
         run.seeded_at,
     )
     .await;
-    seal(&run.booted, &workspace, Provider::Slack.grant_key(),
+    seal(&run.booted, &run.workspace, Provider::Slack.grant_key(),
         &json!({"integration": "slack", "bot_token": "xoxb-fixture", "bot_user_id": BOT, "team_id": team}).to_string(), run.seeded_at).await;
 }

@@ -15,7 +15,7 @@ categories.workspace = true
 test-util = ["af_core/test-util", "afd_db/test-util"]
 
 [dependencies]
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 afd_db.workspace = true
 afd_api_wire.workspace = true
 # The usage lines' work-type spelling, which a lease's token sum filters on.

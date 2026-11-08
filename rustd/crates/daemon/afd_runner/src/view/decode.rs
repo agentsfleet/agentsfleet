@@ -17,22 +17,20 @@ use afd_api_wire::admin::{RunnerEventItem, RunnerEventType};
 use jiff::Timestamp;
 use serde_json::Value;
 
-use crate::error::{Result, admin_state_malformed, row_malformed, stored_json};
+use crate::error::{Result, admin_state_malformed, stored_json};
 use crate::policy::{self, AssignmentColumns};
 use crate::sql;
 use crate::view::{RunnerDetail, RunnerItem};
 
 const TABLE_RUNNERS: &str = "runner.runners";
 const TABLE_EVENTS: &str = "runner.events";
-const COLUMN_ID: &str = "id";
-const COLUMN_RUNNER_ID: &str = "runner_id";
 
 /// The columns every runner read selects, by name.
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct ItemRow {
     durable_tasks_enabled: bool,
-    decision_model_id: Option<String>,
-    id: String,
+    decision_model_id: Option<Uuid7>,
+    id: Uuid7,
     host_id: String,
     sandbox_tier: String,
     status: String,
@@ -73,8 +71,8 @@ pub(super) struct DetailRow {
 /// One history row, by name.
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct EventRow {
-    id: String,
-    runner_id: String,
+    id: Uuid7,
+    runner_id: Uuid7,
     event_type: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
@@ -86,7 +84,7 @@ impl ItemRow {
     pub(super) fn parse(self) -> Result<RunnerItem> {
         let columns = AssignmentColumns {
             durable_tasks_enabled: self.durable_tasks_enabled,
-            decision_model_id: self.decision_model_id,
+            decision_model_id: self.decision_model_id.map(String::from),
             sandbox_tier: self.sandbox_tier,
             network_policy: self.network_policy,
             registry_allowlist_json: self.registry_allowlist,
@@ -94,7 +92,7 @@ impl ItemRow {
             sandbox_config_json: self.sandbox_config,
         };
         Ok(RunnerItem {
-            id: Uuid7::parse(&self.id).map_err(row_malformed(TABLE_RUNNERS, COLUMN_ID))?,
+            id: self.id.clone(),
             host_id: self.host_id,
             sandbox_tier: columns.sandbox_tier.clone(),
             status: af_core::spelling::from_spelling(&self.status)
@@ -141,13 +139,11 @@ impl DetailRow {
 impl EventRow {
     /// The history item, its identifiers, type and metadata proven.
     pub(super) fn parse(self) -> Result<RunnerEventItem<'static>> {
-        Uuid7::parse(&self.id).map_err(row_malformed(TABLE_EVENTS, COLUMN_ID))?;
-        Uuid7::parse(&self.runner_id).map_err(row_malformed(TABLE_EVENTS, COLUMN_RUNNER_ID))?;
         let event_type = serde_json::from_value::<RunnerEventType>(Value::String(self.event_type))
             .map_err(stored_json(TABLE_EVENTS, "event_type"))?;
         Ok(RunnerEventItem {
-            id: Cow::Owned(self.id),
-            runner_id: Cow::Owned(self.runner_id),
+            id: Cow::Owned(self.id.into()),
+            runner_id: Cow::Owned(self.runner_id.into()),
             event_type,
             occurred_at: self.created_at,
             metadata: serde_json::from_str(&self.metadata)

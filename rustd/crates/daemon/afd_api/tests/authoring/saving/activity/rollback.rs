@@ -20,12 +20,11 @@ async fn refused_setup_saved_receipt_rolls_back_allocation_and_retries_once() {
     let refused = case.save(key.as_str(), &request).await;
     assert_receipt_refused(refused).await;
     fault.assert_fired_once().await;
-    let rows: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid")
-            .bind(case.base.workspace.as_str())
-            .fetch_one(&mut *case.base.db.acquire().await.expect("allocation connection"))
-            .await
-            .expect("allocation count");
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1")
+        .bind(&case.base.workspace)
+        .fetch_one(&mut *case.base.db.acquire().await.expect("allocation connection"))
+        .await
+        .expect("allocation count");
     assert_eq!(rows, 0);
     let reopened = send(
         &case.router,
@@ -44,9 +43,9 @@ async fn refused_setup_saved_receipt_rolls_back_allocation_and_retries_once() {
     assert_eq!(replay.status(), StatusCode::CREATED);
     assert_eq!(json_body(replay).await["id"], first["id"]);
     let receipts: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.events WHERE workspace_id=$1::uuid AND event_type='activity'",
+        "SELECT count(*) FROM fleet.events WHERE workspace_id=$1 AND event_type='activity'",
     )
-    .bind(case.base.workspace.as_str())
+    .bind(&case.base.workspace)
     .fetch_one(&mut *case.base.db.acquire().await.expect("receipt connection"))
     .await
     .expect("receipt count");

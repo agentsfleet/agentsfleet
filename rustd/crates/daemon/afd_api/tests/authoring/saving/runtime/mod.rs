@@ -18,15 +18,14 @@ use axum::Router;
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
-/// The completed event every runtime case reads back.
-const EVENT: &str = "1760000000000-0";
-
 /// One saved, active fleet and a router that also admits messages.
 struct Saved {
     case: Case,
     router: Router,
     workspace: String,
     fleet: Uuid7,
+    /// The completed event every runtime case reads back.
+    event: Uuid7,
     item: String,
     thread: String,
 }
@@ -59,6 +58,7 @@ impl Saved {
             router,
             workspace,
             fleet,
+            event: mint(),
             item,
             thread,
         }
@@ -122,13 +122,13 @@ impl Saved {
         sqlx::query(
             "INSERT INTO fleet.events (fleet_id, workspace_id, event_id, actor, event_type, \
              status, request_json, response_text, token_count, wall_ms, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, 'steer:api', 'chat', 'completed', \
+             VALUES ($1, $2, $3, 'steer:api', 'chat', 'completed', \
              '{\"prompt\":\"ship\"}', 'done', 7, 12, \
              '1970-01-01T00:00:00.010Z', '1970-01-01T00:00:00.011Z')",
         )
-        .bind(self.fleet.as_str())
-        .bind(self.case.base.workspace.as_str())
-        .bind(EVENT)
+        .bind(&self.fleet)
+        .bind(&self.case.base.workspace)
+        .bind(&self.event)
         .execute(&mut *connection)
         .await
         .expect("the completed event seeds");
@@ -136,12 +136,12 @@ impl Saved {
             "INSERT INTO connector.integration_grants \
              (id, fleet_id, service, status, requested_reason, approved_at, created_at, \
               updated_at) \
-             VALUES ($1::uuid, $2::uuid, 'github', 'approved', 'fixture', \
+             VALUES ($1, $2, 'github', 'approved', 'fixture', \
              '1970-01-01T00:00:00.010Z', '1970-01-01T00:00:00.009Z', \
              '1970-01-01T00:00:00.010Z')",
         )
-        .bind(grant.as_str())
-        .bind(self.fleet.as_str())
+        .bind(grant)
+        .bind(&self.fleet)
         .execute(&mut *connection)
         .await
         .expect("the approved grant seeds");
@@ -174,7 +174,7 @@ async fn assert_thread_lists_the_event_and_admits_a_message(saved: &Saved) -> Ve
         1,
         "one seeded runtime event beside the exact receipt pair"
     );
-    assert_eq!(runtime[0]["event_id"], json!(EVENT));
+    assert_eq!(runtime[0]["event_id"], json!(saved.event));
     let (status, steered) = saved
         .steer(&saved.thread, mint().as_str(), "ship the next change")
         .await;
@@ -210,7 +210,7 @@ async fn assert_history_serves_the_event(saved: &Saved, identities: &[String]) {
     let (status, page) = saved.get(&format!("{events}?actor_prefix=steer")).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(page["items"].as_array().map(Vec::len), Some(1));
-    let (status, detail) = saved.get(&format!("{events}/{EVENT}")).await;
+    let (status, detail) = saved.get(&format!("{events}/{}", saved.event)).await;
     assert_eq!(status, StatusCode::OK);
     let request = detail["request_json"]
         .as_str()

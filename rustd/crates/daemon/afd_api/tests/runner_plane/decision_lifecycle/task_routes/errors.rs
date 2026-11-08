@@ -1,9 +1,9 @@
 //! Transport rejects malformed mutations and queries before native work.
 use super::*;
 pub(super) async fn refuse_malformed_requests(fixture: &Fixture) {
-    let checkpoint = format!("checkpoints/{}", mint_uuid7());
-    let page = format!("{checkpoint}/pages/{}", mint_uuid7());
-    let pin = format!("{checkpoint}/pins/{}", mint_uuid7());
+    let checkpoint = format!("checkpoints/{}", mint_id());
+    let page = format!("{checkpoint}/pages/{}", mint_id());
+    let pin = format!("{checkpoint}/pins/{}", mint_id());
     // Each mutating public route must reject untyped JSON before native work.
     for (method, resource) in [
         (Method::POST, "bindings".to_owned()),
@@ -35,7 +35,7 @@ async fn refuse_malformed_reads(fixture: &Fixture, checkpoint: &str, page: &str)
     for resource in [
         "inputs".to_owned(),
         "effects".to_owned(),
-        format!("effects/{}", mint_uuid7()),
+        format!("effects/{}", mint_id()),
         page.to_owned(),
         format!("{checkpoint}/objects"),
     ] {

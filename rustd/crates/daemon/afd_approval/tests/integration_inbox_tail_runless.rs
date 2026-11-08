@@ -42,12 +42,12 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
     let runless = lane.seed_runless_gate(Window::Open).await;
     let outcome = lane
         .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(runless.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let continued = match outcome {
         Resolution::Resolved(resolved) => resolved.continuation_event_id,
-        Resolution::AlreadyResolved(_) | Resolution::NotFound => Some(String::new()),
+        Resolution::AlreadyResolved(_) | Resolution::NotFound => Some(afd_db::test_util::mint_id()),
     };
     assert_eq!(continued, None, "nothing to continue, and nothing invented");
 
@@ -77,7 +77,7 @@ async fn an_already_resolved_runless_gate_keeps_its_delivery_unparked() {
 
     let first = lane
         .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(runless.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the first answer resolves the gate");
     assert!(matches!(first, Resolution::Resolved(_)));
@@ -89,7 +89,7 @@ async fn an_already_resolved_runless_gate_keeps_its_delivery_unparked() {
 
     let second = lane
         .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(runless.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the repeated answer reads the standing decision");
     assert!(matches!(second, Resolution::AlreadyResolved(_)));
@@ -115,7 +115,7 @@ async fn an_already_denied_gate_keeps_its_delivery_unparked() {
 
     let first = lane
         .inbox
-        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(gate.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the first answer resolves the gate");
     assert!(matches!(first, Resolution::Resolved(_)));
@@ -128,7 +128,7 @@ async fn an_already_denied_gate_keeps_its_delivery_unparked() {
 
     let second = lane
         .inbox
-        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(gate.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the retry reads the standing decision");
     assert!(matches!(second, Resolution::AlreadyResolved(_)));
@@ -152,7 +152,7 @@ async fn a_runless_gate_with_a_lost_notification_still_resolves() {
     let runless = lane.seed_runless_gate(Window::Open).await;
 
     let outcome = inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(runless.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("a lost notification does not reject the answer");
     assert!(matches!(outcome, Resolution::Resolved(_)));

@@ -5,6 +5,7 @@
 mod fixture;
 
 use af_crypto::entropy::Entropy;
+use afd_db::test_util::mint_id;
 use afd_gate::gate::{Gates, Refused, Trigger, Verdict, Waiting};
 
 use self::fixture::{Fixture, NOW, config, config_gates, connect_redis};
@@ -34,21 +35,15 @@ async fn test_m202_001_write_fleet_and_its_continuations_pass_without_a_card() {
 
     // 2.1 — the first encounter.
     assert_eq!(
-        gates
-            .check(fixture.check("event-write-first", &writing), NOW)
-            .await,
+        gates.check(fixture.check(&mint_id(), &writing), NOW).await,
         Verdict::Pass
     );
     // 2.2 — the turns after it. Each carries its own event identifier, which is
     // exactly why the retired park re-asked: it read no `resumes_event_id` and
     // saw every turn as a first encounter.
-    for turn in [
-        "event-write-turn-2",
-        "event-write-turn-3",
-        "event-write-turn-4",
-    ] {
+    for turn in [mint_id(), mint_id(), mint_id()] {
         assert_eq!(
-            gates.check(fixture.check(turn, &writing), NOW).await,
+            gates.check(fixture.check(&turn, &writing), NOW).await,
             Verdict::Pass,
             "{turn} raised a card"
         );
@@ -77,18 +72,19 @@ async fn test_m202_001_rule_gated_fleet_still_parks() {
         Entropy::new(),
     );
     let ruled = config_gates(APPROVE_EVERY_CHAT);
+    let event = mint_id();
 
     assert_eq!(
-        gates.check(fixture.check("event-ruled", &ruled), NOW).await,
+        gates.check(fixture.check(&event, &ruled), NOW).await,
         Verdict::Await(Waiting::Parked)
     );
     assert_eq!(
-        gates.check(fixture.check("event-ruled", &ruled), NOW).await,
+        gates.check(fixture.check(&event, &ruled), NOW).await,
         Verdict::Await(Waiting::Pending)
     );
-    fixture.resolve("event-ruled", "approved").await;
+    fixture.resolve(&event, "approved").await;
     assert_eq!(
-        gates.check(fixture.check("event-ruled", &ruled), NOW).await,
+        gates.check(fixture.check(&event, &ruled), NOW).await,
         Verdict::Pass
     );
 
@@ -113,7 +109,7 @@ async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
         Entropy::new(),
     );
     let ruled = config_gates(APPROVE_EVERY_CHAT);
-    let event = "event-lapsing";
+    let event = &mint_id();
     assert_eq!(
         gates.check(fixture.check(event, &ruled), NOW).await,
         Verdict::Await(Waiting::Parked)
@@ -150,10 +146,9 @@ async fn recorded_gate_decides_after_the_config_stops_asking() {
         Entropy::new(),
     );
     let ruled = config_gates(APPROVE_EVERY_CHAT);
+    let event = mint_id();
     assert_eq!(
-        gates
-            .check(fixture.check("event-in-flight", &ruled), NOW)
-            .await,
+        gates.check(fixture.check(&event, &ruled), NOW).await,
         Verdict::Await(Waiting::Parked)
     );
 
@@ -161,16 +156,12 @@ async fn recorded_gate_decides_after_the_config_stops_asking() {
     // decides anyway, so the in-flight run is not released before its answer.
     let writing = config(true);
     assert_eq!(
-        gates
-            .check(fixture.check("event-in-flight", &writing), NOW)
-            .await,
+        gates.check(fixture.check(&event, &writing), NOW).await,
         Verdict::Await(Waiting::Pending)
     );
-    fixture.resolve("event-in-flight", "approved").await;
+    fixture.resolve(&event, "approved").await;
     assert_eq!(
-        gates
-            .check(fixture.check("event-in-flight", &writing), NOW)
-            .await,
+        gates.check(fixture.check(&event, &writing), NOW).await,
         Verdict::Pass
     );
 
@@ -192,9 +183,7 @@ async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route(
         r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#,
     );
     assert_eq!(
-        gates
-            .check(fixture.check("event-rule-approval", &approval), NOW)
-            .await,
+        gates.check(fixture.check(&mint_id(), &approval), NOW).await,
         Verdict::Await(Waiting::Parked)
     );
 
@@ -203,7 +192,7 @@ async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route(
     );
     assert_eq!(
         gates
-            .check(fixture.check("event-policy-kill", &policy_kill), NOW)
+            .check(fixture.check(&mint_id(), &policy_kill), NOW)
             .await,
         Verdict::Killed(Trigger::Policy)
     );
@@ -213,15 +202,11 @@ async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route(
         r#"{"anomaly_rules":[{"pattern":"same_action","threshold_count":2,"threshold_window_s":60}]}"#,
     );
     assert_eq!(
-        gates
-            .check(fixture.check("event-anomaly-first", &anomaly), NOW)
-            .await,
+        gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
         Verdict::Pass
     );
     assert_eq!(
-        gates
-            .check(fixture.check("event-anomaly-second", &anomaly), NOW)
-            .await,
+        gates.check(fixture.check(&mint_id(), &anomaly), NOW).await,
         Verdict::Killed(Trigger::Anomaly)
     );
 
@@ -240,7 +225,7 @@ async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
     assert_eq!(
         gates
             .check(
-                fixture.check("event-entropy-failure", &config_gates(APPROVE_EVERY_CHAT)),
+                fixture.check(&mint_id(), &config_gates(APPROVE_EVERY_CHAT)),
                 NOW,
             )
             .await,

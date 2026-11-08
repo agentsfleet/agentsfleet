@@ -82,8 +82,8 @@ async fn a_revoked_profile_makes_the_inflight_answer_stale_but_retains_usage() {
         af_core::error_code::AUTHORING_MODEL
     );
     assert_eq!(case.journal().await, ("stale".into(), Some(112), true));
-    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1::uuid")
-        .bind(case.attempt.id.as_str()).fetch_one(&mut *case.f.connection().await).await.expect("revoked result retains only accounting");
+    let receipt: (bool, String) = sqlx::query_as("SELECT result IS NULL AND native_reply IS NULL,usage->>'knowledge' FROM authoring.dispatches WHERE attempt_id=$1")
+        .bind(&case.attempt.id).fetch_one(&mut *case.f.connection().await).await.expect("revoked result retains only accounting");
     assert_eq!(receipt, (true, "known".into()));
     case.finish().await;
 }
@@ -93,8 +93,8 @@ async fn a_revoked_profile_makes_the_inflight_answer_stale_but_retains_usage() {
 async fn missing_decision_configuration_preserves_the_existing_chat_path() {
     let server = Server::start(reply(0.01)).await;
     let case = Case::create(&server, SOAK).await;
-    sqlx::query("UPDATE runner.runners SET decision_platform_model_id=NULL WHERE id=$1::uuid")
-        .bind(case.f.runner.as_str())
+    sqlx::query("UPDATE runner.runners SET decision_platform_model_id=NULL WHERE id=$1")
+        .bind(&case.f.runner)
         .execute(&mut *case.f.connection().await)
         .await
         .expect("unconfigured runner");

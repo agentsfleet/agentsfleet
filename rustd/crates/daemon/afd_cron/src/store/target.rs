@@ -1,7 +1,7 @@
 //! A signed callback resolves its schedule and fleet together.
 
 use super::{CONTEXT_READ, FireTarget, Schedules};
-use crate::error::{self, COLUMN_DESIRED_STATUS, COLUMN_FLEET, COLUMN_WORKSPACE};
+use crate::error::{self, COLUMN_DESIRED_STATUS};
 use crate::{DesiredStatus, Result, sql};
 use af_core::id::Uuid7;
 
@@ -11,9 +11,9 @@ use af_core::id::Uuid7;
 struct FireRow {
     scheduled_at: Option<jiff_sqlx::Timestamp>,
     /// The fleet to wake, as text.
-    fleet_id: String,
+    fleet_id: Uuid7,
     /// The fleet's workspace, as text.
-    workspace_id: String,
+    workspace_id: Uuid7,
     /// What the fleet is asked to do.
     message: String,
     cron_expression: String,
@@ -31,10 +31,8 @@ impl FireRow {
     fn parse(self) -> Result<FireTarget> {
         Ok(FireTarget {
             scheduled_at: self.scheduled_at.map(jiff_sqlx::Timestamp::to_jiff),
-            fleet: Uuid7::parse(&self.fleet_id)
-                .map_err(|_shape| error::row_unreadable(COLUMN_FLEET))?,
-            workspace: Uuid7::parse(&self.workspace_id)
-                .map_err(|_shape| error::row_unreadable(COLUMN_WORKSPACE))?,
+            fleet: self.fleet_id.clone(),
+            workspace: self.workspace_id.clone(),
             message: self.message,
             description: crate::run::describe(&self.cron_expression, &self.timezone),
             once: self.once,
@@ -58,7 +56,7 @@ impl Schedules {
     pub async fn fire_target(&self, schedule: &Uuid7) -> Result<Option<FireTarget>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as::<_, FireRow>(sql::FIRE_TARGET)
-            .bind(schedule.as_str())
+            .bind(schedule)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_READ))?

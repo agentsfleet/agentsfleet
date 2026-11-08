@@ -4,6 +4,8 @@
 //! caller hands in and what it gets back — and they are read by callers that
 //! never run a bootstrap.
 
+use af_core::id::Uuid7;
+
 /// Who is being provisioned.
 ///
 /// A struct rather than three positional `&str`s, which would be mutually
@@ -23,11 +25,11 @@ pub struct NewAccount<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bootstrapped {
     /// The person.
-    pub user_id: String,
+    pub user_id: Uuid7,
     /// Their tenant.
-    pub tenant_id: String,
+    pub tenant_id: Uuid7,
     /// Their default workspace.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// What that workspace is called.
     pub workspace_name: String,
     /// `true` on a fresh bootstrap, `false` on an idempotent replay.

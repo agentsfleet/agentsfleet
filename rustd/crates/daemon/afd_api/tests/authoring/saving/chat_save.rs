@@ -173,7 +173,7 @@ async fn finish_request(case: &mut Case, draft: &Value) -> (String, String, Valu
         &case.base,
         &runner,
         &lease,
-        draft["id"].as_str().expect("draft"),
+        &crate::authoring::id_field(&draft["id"]),
         digest.as_str(),
     )
     .await;

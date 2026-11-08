@@ -106,7 +106,7 @@ impl Manifest<'_> {
             .write_checkpoint_page(
                 case.lease(),
                 &checkpoint,
-                &id(&afd_db::test_util::mint_id()),
+                &afd_db::test_util::mint_id(),
                 &valid(good.clone()),
             )
             .await
@@ -221,7 +221,7 @@ fn invalid_pages() -> [CheckpointPage; 5] {
         CheckpointPage {
             page_number: 0,
             entries: vec![],
-            history_objects: vec![afd_db::test_util::mint_id()],
+            history_objects: vec![afd_db::test_util::mint_id().into()],
         },
     ]
 }

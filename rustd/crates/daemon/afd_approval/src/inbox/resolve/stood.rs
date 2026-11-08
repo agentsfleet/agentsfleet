@@ -6,6 +6,7 @@
 //! wake or the continuation once, and a retry redoes whichever the first
 //! call may have lost.
 
+use af_core::id::Uuid7;
 use afd_api_wire::approval::status;
 
 use super::super::{Inbox, Resolved};
@@ -24,8 +25,11 @@ impl Inbox {
     /// Reports a ledger that would not answer, and a continuation that would
     /// not land.
     pub(super) async fn stood(&self, mut resolved: Resolved) -> Result<Resolved> {
-        if leaves_delivery_parked(&resolved.status, resolved.event_id.as_deref()) {
-            self.wake_parked_delivery(&resolved.fleet_id).await;
+        if leaves_delivery_parked(
+            &resolved.status,
+            resolved.event_id.as_ref().map(Uuid7::as_str),
+        ) {
+            self.wake_parked_delivery(resolved.fleet_id.as_str()).await;
             return Ok(resolved);
         }
         if resolved.status == status::APPROVED
@@ -46,13 +50,13 @@ impl Inbox {
     async fn owed_continuation(
         &self,
         resolved: &Resolved,
-        event_id: &str,
-    ) -> Result<Option<String>> {
+        event_id: &Uuid7,
+    ) -> Result<Option<Uuid7>> {
         let landed = self
             .admissions
             .find_repeated(
                 afd_admission::Producer::GateContinuation,
-                &resolved.action_id,
+                resolved.action_id.as_str(),
             )
             .await?;
         match landed {

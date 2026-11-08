@@ -10,6 +10,7 @@ use super::{
     Case, Fixture, Method, StatusCode, Value, header, json, json_body, mint, send,
     send_with_headers,
 };
+use af_core::id::Uuid7;
 
 /// The installed fleet's name, which is also the card's recipe name.
 const NAME: &str = "card-install";
@@ -17,24 +18,27 @@ const NAME: &str = "card-install";
 /// The two draft columns that point at a Library revision.
 #[derive(Debug, PartialEq, Eq, sqlx::FromRow)]
 struct LibraryReferences {
-    library_revision_id: Option<String>,
-    source_library_revision_id: Option<String>,
+    library_revision_id: Option<Uuid7>,
+    source_library_revision_id: Option<Uuid7>,
 }
 
 /// The last path segment of a resource location: its id.
-fn id_of(location: &str) -> &str {
-    location
-        .rsplit('/')
-        .next()
-        .expect("a location names its id")
+fn id_of(location: &str) -> Uuid7 {
+    Uuid7::parse(
+        location
+            .rsplit('/')
+            .next()
+            .expect("a location names its id"),
+    )
+    .expect("a location's id is a UUIDv7")
 }
 
 /// The Library references the draft `id` holds, or `None` if it is gone.
-async fn references(case: &Case, id: &str) -> Option<LibraryReferences> {
+async fn references(case: &Case, id: &Uuid7) -> Option<LibraryReferences> {
     sqlx::query_as(
-        "SELECT library_revision_id::text AS library_revision_id,
-                source_library_revision_id::text AS source_library_revision_id
-           FROM authoring.drafts WHERE id = $1::uuid",
+        "SELECT library_revision_id AS library_revision_id,
+                source_library_revision_id AS source_library_revision_id
+           FROM authoring.drafts WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(&mut *case.base.db.acquire().await.expect("draft connection"))
@@ -43,10 +47,10 @@ async fn references(case: &Case, id: &str) -> Option<LibraryReferences> {
 }
 
 /// The card's entry and revision rows still stored.
-async fn stored(case: &Case, library: &str) -> (i64, i64) {
+async fn stored(case: &Case, library: &Uuid7) -> (i64, i64) {
     sqlx::query_as(
-        "SELECT (SELECT count(*) FROM authoring.library_entries WHERE id = $1::uuid),
-                (SELECT count(*) FROM authoring.library_revisions WHERE library_entry_id = $1::uuid)",
+        "SELECT (SELECT count(*) FROM authoring.library_entries WHERE id = $1),
+                (SELECT count(*) FROM authoring.library_revisions WHERE library_entry_id = $1)",
     )
     .bind(library)
     .fetch_one(&mut *case.base.db.acquire().await.expect("card connection"))
@@ -132,19 +136,15 @@ async fn test_library_delete_cascades_revisions() {
         .expect("Library location")
         .to_owned();
     let published = json_body(published).await;
-    let id = published["library_id"]
-        .as_str()
-        .expect("Library id")
-        .to_owned();
-    let revision = published["revision_id"]
-        .as_str()
-        .expect("revision id")
-        .to_owned();
+    let id = Uuid7::parse(published["library_id"].as_str().expect("Library id"))
+        .expect("the Library id is a UUIDv7");
+    let revision = Uuid7::parse(published["revision_id"].as_str().expect("revision id"))
+        .expect("the revision id is a UUIDv7");
     let source = json!({"kind":"library","library_id":id,"revision_id":revision});
     let card = json_body(case.get(&library).await).await;
     let started = start_from(&case, &source).await;
     let (fleet, saved) = install(&case, &source, &card).await;
-    let (origin, offshoot) = (id_of(&case.draft).to_owned(), id_of(&started).to_owned());
+    let (origin, offshoot) = (id_of(&case.draft), id_of(&started));
     assert_eq!(
         references(&case, &origin)
             .await

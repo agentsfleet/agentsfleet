@@ -113,10 +113,10 @@ impl Fleets {
         let fetch = i64::from(limit).saturating_add(1);
         let mut connection = self.database.acquire().await?;
         let mut rows = sqlx::query_as::<_, PageRow>(sql::SELECT_FLEET_PAGE)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(fetch)
             .bind(after.map(|boundary| boundary.created_at.to_sqlx()))
-            .bind(after.map(|boundary| boundary.id.as_str()))
+            .bind(after.map(|boundary| &boundary.id))
             .fetch_all(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_PAGE))?
@@ -148,8 +148,8 @@ impl Fleets {
     ) -> Result<Option<FleetStatus>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_scalar::<_, String>(sql::SELECT_FLEET_STATUS)
-            .bind(fleet.as_str())
-            .bind(workspace.as_str())
+            .bind(fleet)
+            .bind(workspace)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_INGRESS))?
@@ -161,7 +161,7 @@ impl Fleets {
 /// One page row, by the names [`sql::SELECT_FLEET_PAGE`] gives its columns.
 #[derive(Debug, sqlx::FromRow)]
 struct PageRow {
-    id: String,
+    id: Uuid7,
     name: String,
     status: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -183,7 +183,7 @@ impl TryFrom<PageRow> for FleetRow {
     fn try_from(row: PageRow) -> Result<Self> {
         Ok(Self {
             status: parse_status(&row.status)?,
-            id: row.id,
+            id: row.id.into(),
             name: row.name,
             created_at: row.created_at,
             updated_at: row.updated_at,

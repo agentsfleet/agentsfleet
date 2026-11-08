@@ -75,9 +75,9 @@ pub(super) async fn balance(
     let event = request.event_id;
     let floor_nanos = floor.as_i64();
     tracing::debug!(
-        event = EVENT_BALANCE_EXHAUSTED,
-        fleet_id = fleet,
-        agentsfleet_event_id = event,
+        event = %EVENT_BALANCE_EXHAUSTED,
+        fleet_id = %fleet,
+        agentsfleet_event_id = %event,
         estimate_nanos = floor_nanos,
         "the tenant's credit pool cannot cover this run's floor cost"
     );
@@ -107,9 +107,9 @@ pub(super) async fn fleet_budget(accounts: &Accounts, request: &Request<'_>) -> 
     let which = verdict.as_str();
     tracing::debug!(
         error_code = code,
-        event = EVENT_BUDGET_BREACH,
-        fleet_id = fleet,
-        agentsfleet_event_id = event,
+        event = %EVENT_BUDGET_BREACH,
+        fleet_id = %fleet,
+        agentsfleet_event_id = %event,
         verdict = which,
         "the fleet has reached a ceiling its author declared"
     );

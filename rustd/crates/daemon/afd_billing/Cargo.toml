@@ -18,7 +18,7 @@ workspace = true
 # The clock a window opens against, and the registry codes.
 # The charges cursor is base64url on the wire.
 base64.workspace = true
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
 # The random half of a ledger row's UUIDv7.

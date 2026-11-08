@@ -125,7 +125,7 @@ impl Plane {
     ) -> Result<Minted> {
         let mut scope = self
             .leases
-            .mint_scope(runner_id, &request.lease_id)
+            .mint_scope(runner_id, &crate::error::wire_lease(&request.lease_id)?)
             .await?
             .ok_or_else(lease_not_found)?;
         if purpose == Purpose::TaskPublish

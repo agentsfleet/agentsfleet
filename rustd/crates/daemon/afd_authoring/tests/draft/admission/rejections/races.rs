@@ -43,8 +43,8 @@ async fn interrupt(f: &Fixture, draft: &Uuid7, interruption: &Interruption) {
                 .expect("Stop commits");
         }
         Interruption::RevokeModel => {
-            sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
-                .bind(f.model.as_str())
+            sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
+                .bind(&f.model)
                 .execute(&mut *f.connection().await)
                 .await
                 .expect("revoke the owned model");

@@ -16,7 +16,7 @@
 /// `workspace_id` is cast, and the cast is NOT optional. `sqlx` binds a `&str`
 /// as `text` rather than leaving the parameter untyped for Postgres to infer,
 /// and `vault.secrets.workspace_id` is `UUID NOT NULL`
-/// (`schema/1200_vault_secrets.sql`). Without the cast the comparison arrives
+/// (`schema/20261108121000_vault_secrets.sql`). Without the cast the comparison arrives
 /// as `uuid = text`, Postgres finds no operator, and EVERY vault read fails at
 /// runtime with a query error. An earlier revision omitted it and failed in
 /// exactly the way this crate is most exposed to: the unit lane never opens a

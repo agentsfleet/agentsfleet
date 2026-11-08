@@ -15,17 +15,17 @@ const RUNTIME_DEBIT_NANOS: i64 = 100;
 async fn obligations(f: &Fixture, draft: &Draft) -> (i64, i64) {
     sqlx::query_as(
         "SELECT count(*), COALESCE(sum(reserved_nanos),0)::bigint FROM authoring.attempts \
-         WHERE draft_id=$1::uuid AND status='active'",
+         WHERE draft_id=$1 AND status='active'",
     )
-    .bind(draft.id.as_str())
+    .bind(&draft.id)
     .fetch_one(&mut *f.connection().await)
     .await
     .expect("owned obligations")
 }
 
 async fn balance(f: &Fixture) -> i64 {
-    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid")
-        .bind(f.tenant.as_str())
+    sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1")
+        .bind(&f.tenant)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("owned wallet")

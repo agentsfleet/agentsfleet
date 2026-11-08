@@ -92,10 +92,10 @@ fn assert_original_park_error(failure: &afd_fleet::Error) {
     assert_eq!(cause.message(), "injected park failure");
 }
 
-async fn admission_state(fixtures: &Fixtures, event: &str) -> (bool, bool, Option<i64>) {
+async fn admission_state(fixtures: &Fixtures, event: &Uuid7) -> (bool, bool, Option<i64>) {
     sqlx::query_as(
         "SELECT parked_at IS NOT NULL, settled_at IS NOT NULL, lease_fence \
-        FROM fleet.admissions WHERE id = $1::uuid",
+        FROM fleet.admissions WHERE id = $1",
     )
     .bind(event)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
@@ -103,7 +103,7 @@ async fn admission_state(fixtures: &Fixtures, event: &str) -> (bool, bool, Optio
     .expect("admission after rollback")
 }
 
-async fn approve(fixtures: &Fixtures, seeded: &Ready, action: &str) {
+async fn approve(fixtures: &Fixtures, seeded: &Ready, action: &Uuid7) {
     let resolved = Inbox::new(
         fixtures.database.clone(),
         fixtures.queue().clone(),
@@ -114,11 +114,11 @@ async fn approve(fixtures: &Fixtures, seeded: &Ready, action: &str) {
         ),
     )
     .resolve(
-        action,
+        action.as_str(),
         Decision::Approved,
         "fixture:human",
         "",
-        Some(&seeded.fleet),
+        Some(seeded.fleet.as_str()),
     )
     .await
     .expect("answer approval after the failed park");

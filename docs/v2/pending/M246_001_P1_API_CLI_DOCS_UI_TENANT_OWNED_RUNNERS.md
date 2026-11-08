@@ -152,7 +152,7 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 - **Reference:** GitLab's runner scopes (https://docs.gitlab.com/ci/runners/runners_scope/) — project runners serve only their project while instance runners serve everyone, which is the one-way widening here; `runner_fleet.md:227` already follows GitLab's "create runner, then token" enrolment. Divergence: the tenant chooses whether platform hosts may take its work.
 - **Reference:** `afd_runner::Runners::register` and `afd_api_runner/.../enrolment.rs` — the mint, the digest-only row and the reveal-once response; divergence: an owner, and an `Idempotency-Key` receipt.
 - **Reference:** `afd_authoring/src/model/capability.rs` and the authoring model-call route — a lease-bound capability checked in constant time; divergence: the runtime turn streams chunk frames instead of one bounded result, and meters runtime usage.
-- **Reference:** `schema/1340_model_tenant_selections.sql` — a per-tenant row keyed by `tenant_id`, where a missing row means the default.
+- **Reference:** `schema/20261108121600_model_tenant_selections.sql` — a per-tenant row keyed by `tenant_id`, where a missing row means the default.
 - **Reference:** `cli/src/commands/api_key.ts` — the CLI follows all six practices: command, handler and error layers apart; handlers that neither print nor exit; one rendering layer; structured JSON errors with suggestion and retry fields; handler, in-process and subprocess tests; JSON by default when stdout is not a terminal.
 
 ## Sections (implementation slices)
@@ -389,7 +389,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
 
 - **Consults** — Source review on `main` `14539a73e`, Nov 06, 2026:
   - Placement checks only `required_tags <@ labels` (`select_ledger_candidates.sql`, the `eligible` step); the claim re-checks neither labels nor owner (`claim_admission_head.sql`); issue checks capacity and the ticket after `capacity::lock` (`afd_fleet/src/lease/issue.rs`); `lock_host.sql` already reads the runner row `FOR UPDATE`.
-  - `runner.runners` has no tenant column (`schema/1800_runner_runners.sql`); the token lookup returns id, status and degraded (`select_runner_token.sql`); `Principal::Runner` holds no tenant (`afd_auth/src/principal.rs`).
+  - `runner.runners` has no tenant column (`schema/20261108123100_runner_runners.sql`); the token lookup returns id, status and degraded (`select_runner_token.sql`); `Principal::Runner` holds no tenant (`afd_auth/src/principal.rs`).
   - Rotation overwrites `token_hash` (`rotate_runner_token.sql`, `afd_runner/src/rotate.rs`); the runner sets its bearer once into default headers (`afr_supervisor/src/client/http.rs`).
   - The lease carries the resolved key (`afd_gate/src/policy/build/mod.rs`, `ExecutionPolicy.api_key` in `af_wire/src/policy/mod.rs`), and the runner dials with it (`af_providers/src/connect/mod.rs`, `turn.rs`). Authoring already keeps its key in the daemon behind a capability (`afd_authoring/src/model/capability.rs`, `AUTH.md:762`).
   - Rule interpretation: HTTP-IDEMKEY asks a replay to return the first response, and AUTH-SECRET forbids keeping the token that response revealed. The receipt answers a replay with `409`, which keeps the retry from enrolling twice; the operator enrolment and API-key create take no key today and stay as they are.

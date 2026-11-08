@@ -53,7 +53,7 @@ impl Providers {
         let body = stored
             .into_envelope()
             .map_err(vault_open)?
-            .open(self.vault_key(), &Aad::new(&workspace, &name))
+            .open(self.vault_key(), &Aad::new(workspace.as_str(), &name))
             .map_err(vault_open)?;
         let key: Key = credential(body.expose(), FIELD_API_KEY)?;
         if key.api_key.is_empty() {

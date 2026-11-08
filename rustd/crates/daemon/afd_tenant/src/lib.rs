@@ -39,8 +39,6 @@ pub mod sql;
 pub mod team;
 pub mod workspace;
 
-mod stored;
-
 // The rows a suite seeds an account with, shared by this crate's suites and
 // `afd_api`'s. Behind `test-util` so no shipped build carries them.
 #[cfg(feature = "test-util")]

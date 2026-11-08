@@ -35,7 +35,7 @@ async fn connect_and_declare(run: &Scenario) {
     .expect("handle JSON");
     vault
         .create(
-            &Uuid7::parse(&run.workspace).expect("workspace"),
+            &run.workspace,
             &SecretName::parse(SERVICE).expect("secret name"),
             &SecretBody::parse(&raw).expect("handle body"),
             run.seeded_at,
@@ -48,7 +48,7 @@ async fn connect_and_declare(run: &Scenario) {
     let mut connection = run.booted.database.acquire().await.expect("connection");
     let mut config: serde_json::Value = sqlx::query_scalar::<_, String>(
         "SELECT (r.definition -> 'config')::text FROM fleet.fleets f \
-         JOIN fleet.revisions r ON r.id = f.head_revision_id WHERE f.id = $1::uuid",
+         JOIN fleet.revisions r ON r.id = f.head_revision_id WHERE f.id = $1",
     )
     .bind(&run.fleet)
     .fetch_one(&mut *connection)
@@ -70,11 +70,7 @@ async fn connect_and_declare(run: &Scenario) {
         run.booted.queue.clone(),
         Entropy::new(),
     )
-    .claim(
-        &Uuid7::parse(&run.fleet).expect("fleet"),
-        &run.runner_id,
-        std::time::Duration::ZERO,
-    )
+    .claim(&run.fleet, &run.runner_id, std::time::Duration::ZERO)
     .await
     .expect("initial affinity claim")
     .expect("new fleet is unclaimed");
@@ -82,7 +78,7 @@ async fn connect_and_declare(run: &Scenario) {
 
 /// How many approval cards this fixture's fleet has raised.
 async fn gate_cards(run: &Scenario) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM fleet.approval_gates WHERE fleet_id = $1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM fleet.approval_gates WHERE fleet_id = $1")
         .bind(&run.fleet)
         .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
         .await
@@ -99,7 +95,7 @@ where
     for _poll in 0..POLL_LIMIT {
         sqlx::query(
             "UPDATE runner.fleet_slots SET lease_expires_at = clock_timestamp() - interval '1 millisecond' \
-             WHERE fleet_id = $1::uuid",
+             WHERE fleet_id = $1",
         )
         .bind(&run.fleet)
             .execute(&mut *run.booted.database.acquire().await.expect("connection"))
@@ -130,7 +126,7 @@ where
 /// observable meaning "the daemon looked here" — as opposed to the rows the
 /// callers assert on, which say what it decided once it did.
 async fn fencing_token(run: &Scenario) -> i64 {
-    sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id = $1::uuid")
+    sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id = $1")
         .bind(&run.fleet)
         .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
         .await
@@ -155,8 +151,8 @@ async fn poll_until_reached(http: &reqwest::Client, run: &Scenario, awaited: &st
 }
 
 async fn deny(run: &Scenario) {
-    let actions: Vec<String> =
-        sqlx::query_scalar("SELECT action_id FROM fleet.approval_gates WHERE fleet_id = $1::uuid")
+    let actions: Vec<Uuid7> =
+        sqlx::query_scalar("SELECT action_id FROM fleet.approval_gates WHERE fleet_id = $1")
             .bind(&run.fleet)
             .fetch_all(&mut *run.booted.database.acquire().await.expect("connection"))
             .await
@@ -172,11 +168,11 @@ async fn deny(run: &Scenario) {
         afd_admission::Admissions::for_tests(run.booted.database.clone(), run.booted.queue.clone()),
     )
     .resolve(
-        actions.first().expect("card"),
+        actions.first().expect("card").as_str(),
         Decision::Denied,
         "fixture",
         "",
-        Some(&run.fleet),
+        Some(run.fleet.as_str()),
     )
     .await
     .expect("denial");
@@ -204,7 +200,7 @@ async fn refusal_drains(preended: bool) {
     deny(&run).await;
     if preended {
         // A pre-existing terminal narrative must settle the queue without executing.
-        sqlx::query("UPDATE fleet.events SET status = $3, failure_reason = $4 WHERE fleet_id = $1::uuid AND event_id = $2")
+        sqlx::query("UPDATE fleet.events SET status = $3, failure_reason = $4 WHERE fleet_id = $1 AND event_id = $2")
             .bind(&run.fleet).bind(&run.event_id)
             .bind(af_core::event::status::GATE_BLOCKED)
             .bind(af_core::event::label::GRANT_DENIED)
@@ -213,13 +209,12 @@ async fn refusal_drains(preended: bool) {
     }
     poll_until_reached(&http, &run, "no poll revisited the denied event").await;
     let first_label = event_column(&run, &run.event_id, LABEL).await;
-    let settled: bool = sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1::uuid",
-    )
-    .bind(&run.event_id)
-    .fetch_one(&mut *run.booted.database.acquire().await.expect("database"))
-    .await
-    .expect("queue state");
+    let settled: bool =
+        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
+            .bind(&run.event_id)
+            .fetch_one(&mut *run.booted.database.acquire().await.expect("database"))
+            .await
+            .expect("queue state");
     let second = run.enqueue_event(EventType::Chat).await;
     poll_until_reached(&http, &run, "no poll reached the fleet's next event").await;
     let second_label = event_column(&run, &second, LABEL).await;

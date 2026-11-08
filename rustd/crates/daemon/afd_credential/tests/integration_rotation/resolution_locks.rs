@@ -45,11 +45,11 @@ const PROVIDER: &str = "openai";
 const CONTEXT: i32 = 64_000;
 
 /// Share-locks one catalogue row: the gate before an admin delete.
-const SHARE_MODEL: &str = "SELECT 1 FROM model.platform_models WHERE id = $1::uuid FOR SHARE";
+const SHARE_MODEL: &str = "SELECT 1 FROM model.platform_models WHERE id = $1 FOR SHARE";
 
 /// Share-locks one registry entry: the gate before a removal or a credential
 /// delete.
-const SHARE_ENTRY: &str = "SELECT 1 FROM model.tenant_models WHERE id = $1::uuid FOR SHARE";
+const SHARE_ENTRY: &str = "SELECT 1 FROM model.tenant_models WHERE id = $1 FOR SHARE";
 
 /// Whether any session waits behind `$1`.
 const BLOCKS: &str =
@@ -67,7 +67,7 @@ const POLLS: u32 = 1_000;
 /// One seeded entry over a priced catalogue row, and the row's id.
 struct Seeded {
     entry: Entry,
-    model_id: String,
+    model_id: Uuid7,
 }
 
 async fn seeded(fixture: &Fixture) -> Seeded {
@@ -155,7 +155,7 @@ async fn release_after(fixture: &Fixture, gate: sqlx::Transaction<'_, Postgres>,
 async fn a_catalogue_delete_and_a_registered_read_both_finish() {
     let fixture = Fixture::create().await;
     let seeded = seeded(&fixture).await;
-    let model = Uuid7::parse(&seeded.model_id).expect("the minted model id is UUIDv7");
+    let model = seeded.model_id.clone();
     let models = Models::new(fixture.database.clone(), Entropy::new());
     let (mut gate_session, gate_pid) = session(&fixture).await;
     let mut gate = gate_session.begin().await.expect("the gate opens");
@@ -194,7 +194,7 @@ async fn an_entry_removal_and_a_registered_read_both_finish() {
     let (mut gate_session, gate_pid) = session(&fixture).await;
     let mut gate = gate_session.begin().await.expect("the gate opens");
     sqlx::query(SHARE_ENTRY)
-        .bind(seeded.entry.id.as_str())
+        .bind(&seeded.entry.id)
         .fetch_one(&mut *gate)
         .await
         .expect("the gate holds the entry");
@@ -229,7 +229,7 @@ async fn a_credential_delete_and_a_registered_read_both_finish() {
     let (mut gate_session, gate_pid) = session(&fixture).await;
     let mut gate = gate_session.begin().await.expect("the gate opens");
     sqlx::query(SHARE_ENTRY)
-        .bind(seeded.entry.id.as_str())
+        .bind(&seeded.entry.id)
         .fetch_one(&mut *gate)
         .await
         .expect("the gate holds the entry");

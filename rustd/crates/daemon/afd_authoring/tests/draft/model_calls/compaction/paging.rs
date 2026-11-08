@@ -22,14 +22,14 @@ async fn complete_history_at_and_around_full_pages_dispatches_once_without_losin
         assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));
         assert_eq!(provider.0.lock().expect("record requests").len(), 1);
         let checkpoints: i64 = sqlx::query_scalar(CHECKPOINT_COUNT)
-            .bind(attempt.draft.id.as_str())
+            .bind(&attempt.draft.id)
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("working notes census");
         assert_eq!(checkpoints, 0);
         let messages: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1::uuid")
-                .bind(attempt.draft.id.as_str())
+            sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1")
+                .bind(attempt.draft.id)
                 .fetch_one(&mut *f.connection().await)
                 .await
                 .expect("original history census");
@@ -42,8 +42,8 @@ async fn complete_history_at_and_around_full_pages_dispatches_once_without_losin
 #[ignore = "requires live Postgres"]
 async fn an_older_runner_cannot_pay_for_a_summary_it_cannot_resume() {
     let f = Fixture::create().await;
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1::uuid")
-        .bind(f.catalogue.first().expect("owned model").as_str())
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1")
+        .bind(f.catalogue.first().expect("owned model"))
         .execute(&mut *f.connection().await)
         .await
         .expect("force summary preparation");
@@ -65,7 +65,7 @@ async fn an_older_runner_cannot_pay_for_a_summary_it_cannot_resume() {
     assert!(provider.0.lock().expect("record requests").is_empty());
     assert_eq!(financial_state(&f).await, before);
     let checkpoints: i64 = sqlx::query_scalar(CHECKPOINT_COUNT)
-        .bind(attempt.draft.id.as_str())
+        .bind(attempt.draft.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("no unsupported summary");
@@ -74,8 +74,8 @@ async fn an_older_runner_cannot_pay_for_a_summary_it_cannot_resume() {
 }
 
 async fn financial_state(f: &Fixture) -> (i64, i64, i64) {
-    sqlx::query_as("SELECT balance_nanos,(SELECT count(*) FROM billing.usage_lines WHERE tenant_id=$1::uuid),(SELECT COALESCE(sum(charged_nanos),0)::bigint FROM billing.usage_lines WHERE tenant_id=$1::uuid) FROM billing.wallets WHERE tenant_id=$1::uuid")
-        .bind(f.tenant.as_str()).fetch_one(&mut *f.connection().await).await
+    sqlx::query_as("SELECT balance_nanos,(SELECT count(*) FROM billing.usage_lines WHERE tenant_id=$1),(SELECT COALESCE(sum(charged_nanos),0)::bigint FROM billing.usage_lines WHERE tenant_id=$1) FROM billing.wallets WHERE tenant_id=$1")
+        .bind(&f.tenant).fetch_one(&mut *f.connection().await).await
         .expect("wallet balance, line count and logged charges")
 }
 
@@ -83,8 +83,8 @@ async fn financial_state(f: &Fixture) -> (i64, i64, i64) {
 #[ignore = "requires live Postgres"]
 async fn a_summary_receipt_cannot_be_replayed_without_the_original_runner_capability() {
     let f = Fixture::create().await;
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1::uuid")
-        .bind(f.catalogue.first().expect("owned model").as_str())
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1")
+        .bind(f.catalogue.first().expect("owned model"))
         .execute(&mut *f.connection().await)
         .await
         .expect("force compaction");

@@ -19,7 +19,7 @@ async fn erased(case: &Case) {
     let task = fixture.bind_goal().await;
     let input = fixture.reservation(
         DecisionAssessment::Goal {
-            action_group_id: afd_db::test_util::mint_id(),
+            action_group_id: afd_db::test_util::mint_id().into(),
         },
         Some(task),
     );
@@ -41,7 +41,7 @@ async fn erased(case: &Case) {
         .get("call_id")
         .and_then(Value::as_str)
         .expect("native call");
-    sqlx::query("DELETE FROM fleet.fleets WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM fleet.fleets WHERE id=$1")
         .bind(&case.held.fleet)
         .execute(
             &mut *case

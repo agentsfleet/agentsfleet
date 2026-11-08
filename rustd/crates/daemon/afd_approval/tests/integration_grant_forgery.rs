@@ -42,6 +42,7 @@ use afd_api_wire::grant::status;
 use afd_approval::{Decision, IntegrationGrants, KIND_INTEGRATION_GRANT, Origin, Wanted};
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 
 use crate::lane::{Lane, NOW, mint};
@@ -70,7 +71,7 @@ INSERT INTO fleet.approval_gates
    gate_type, proposed_action, evidence, blast_radius, expires_at,
    status, detail, created_at, updated_at, event_id, stated_binding,
    spend_count, spend_ceiling)
-VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6,
+VALUES ($1, $2, $3, $4, $5, $6,
         $7, $8, $9::jsonb, $10, now() + $11::interval,
         $12, '', now(), now(), $13, NULL, NULL, NULL)";
 
@@ -97,11 +98,12 @@ async fn raise_honest_grant(lane: &Lane) {
 /// Straight into the table on purpose. The point is not whether the rules path
 /// can be driven from here, it is whether the RESOLVE would honour such a row —
 /// so the row is written in its most favourable form and the resolve is asked.
-async fn insert_forged_card(lane: &Lane, action: &str) {
+async fn insert_forged_card(lane: &Lane, action: &Uuid7) {
+    let forged_event = Uuid7::parse(FORGED_EVENT).expect("the forged event id is a UUIDv7");
     sqlx::query(FORGED_CARD)
-        .bind(mint().as_str())
-        .bind(lane.fleet.as_str())
-        .bind(lane.workspace.as_str())
+        .bind(mint())
+        .bind(&lane.fleet)
+        .bind(&lane.workspace)
         .bind(action)
         .bind("shell")
         .bind("run")
@@ -111,7 +113,7 @@ async fn insert_forged_card(lane: &Lane, action: &str) {
         .bind("this repository")
         .bind(FORGED_WINDOW)
         .bind(gate_status::PENDING)
-        .bind(FORGED_EVENT)
+        .bind(&forged_event)
         .execute(&mut *lane.pool.acquire().await.expect("the lane must answer"))
         .await
         .expect("the forged card is an ordinary gate row");
@@ -123,9 +125,9 @@ async fn sweep_honest_card(lane: &Lane) {
         "UPDATE fleet.approval_gates
             SET status = $2, active_grant_id = NULL, resolved_by = 'system:fixture',
                 resolved_at = now(), updated_at = now()
-          WHERE fleet_id = $1::uuid AND gate_type = $3 AND resolved_at IS NULL",
+          WHERE fleet_id = $1 AND gate_type = $3 AND resolved_at IS NULL",
     )
-    .bind(lane.fleet.as_str())
+    .bind(&lane.fleet)
     .bind(gate_status::TIMED_OUT)
     .bind(KIND_INTEGRATION_GRANT)
     .execute(&mut *lane.pool.acquire().await.expect("the lane must answer"))
@@ -135,8 +137,8 @@ async fn sweep_honest_card(lane: &Lane) {
 
 /// The grant's status, or nothing when the fleet holds none.
 async fn grant_status(lane: &Lane) -> Option<String> {
-    sqlx::query_scalar("SELECT status FROM connector.integration_grants WHERE fleet_id = $1::uuid")
-        .bind(lane.fleet.as_str())
+    sqlx::query_scalar("SELECT status FROM connector.integration_grants WHERE fleet_id = $1")
+        .bind(&lane.fleet)
         .fetch_optional(&mut *lane.pool.acquire().await.expect("the lane must answer"))
         .await
         .expect("the grant row is readable")
@@ -153,12 +155,12 @@ async fn approving_a_card_that_carries_an_event_moves_no_grant() {
     let lane = Lane::isolated().await;
     raise_honest_grant(&lane).await;
     sweep_honest_card(&lane).await;
-    let forged = mint().as_str().to_owned();
+    let forged = mint();
     insert_forged_card(&lane, &forged).await;
 
     lane.inbox
         .resolve(
-            &forged,
+            forged.as_str(),
             Decision::Approved,
             REVIEWER,
             "",
@@ -185,12 +187,12 @@ async fn denying_a_card_that_carries_an_event_revokes_no_grant() {
     let lane = Lane::isolated().await;
     raise_honest_grant(&lane).await;
     sweep_honest_card(&lane).await;
-    let forged = mint().as_str().to_owned();
+    let forged = mint();
     insert_forged_card(&lane, &forged).await;
 
     lane.inbox
         .resolve(
-            &forged,
+            forged.as_str(),
             Decision::Denied,
             REVIEWER,
             "",
@@ -213,11 +215,11 @@ async fn denying_a_card_that_carries_an_event_revokes_no_grant() {
 async fn a_forged_approval_cannot_move_a_grant_with_an_open_honest_card() {
     let lane = Lane::isolated().await;
     raise_honest_grant(&lane).await;
-    let forged = mint().as_str().to_owned();
+    let forged = mint();
     insert_forged_card(&lane, &forged).await;
     lane.inbox
         .resolve(
-            &forged,
+            forged.as_str(),
             Decision::Approved,
             REVIEWER,
             "",

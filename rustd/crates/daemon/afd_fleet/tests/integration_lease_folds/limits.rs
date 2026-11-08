@@ -21,7 +21,7 @@ async fn test_a_lease_past_its_deadline_claims_nothing() -> Checked {
     let workspace = workspace_of(&held).await?;
     let sent = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert_eq!(claim_as_holder(&held, 0).await?, [sent.claimed(STEER_TEXT)]);
-    let lease = Row::Lease(held.issued.lease_id.as_str());
+    let lease = Row::Lease(&held.issued.lease_id);
     held.fixtures.age(lease, COLUMN_LEASED_UNTIL, LAPSE).await;
     assert_eq!(claim_as_holder(&held, 0).await?, Vec::new());
     held.fixtures.cleanup().await;

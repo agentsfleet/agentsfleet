@@ -75,9 +75,9 @@ pub(in crate::lane::lease) async fn stage(
     kek: &Arc<Kek>,
     base: u64,
 ) -> Result<()> {
-    let workspace = source_workspace(base);
+    let workspace = source_workspace(base)?;
     let mut connection = stores.database.acquire().await?;
-    ModelSeed::new(&model_row(base), PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
+    ModelSeed::new(&model_row(base)?, PROVIDER, MODEL, CONTEXT_CAP_TOKENS)
         .rates(
             INPUT_NANOS_PER_MTOK,
             CACHED_INPUT_NANOS_PER_MTOK,
@@ -88,7 +88,7 @@ pub(in crate::lane::lease) async fn stage(
         .await
         .map_err(seed_refused)?;
     drop(connection);
-    seal_credential(stores, kek, &workspace).await?;
+    seal_credential(stores, kek, workspace.as_str()).await?;
     let mut connection = stores.database.acquire().await?;
     let claimed = DefaultSeed {
         provider: PROVIDER,
@@ -136,10 +136,10 @@ async fn seal_credential(stores: &Datastores, kek: &Arc<Kek>, workspace: &str) -
 /// Whatever Postgres refused.
 pub(in crate::lane::lease) async fn release(stores: &Datastores, base: u64) -> Result<()> {
     let mut connection = stores.database.acquire().await?;
-    DefaultSeed::release(&mut *connection, PROVIDER, &source_workspace(base))
+    DefaultSeed::release(&mut *connection, PROVIDER, &source_workspace(base)?)
         .await
         .map_err(seed_refused)?;
-    ModelSeed::remove(&mut *connection, &model_row(base))
+    ModelSeed::remove(&mut *connection, &model_row(base)?)
         .await
         .map_err(seed_refused)?;
     Ok(())
@@ -149,11 +149,11 @@ pub(in crate::lane::lease) async fn release(stores: &Datastores, base: u64) -> R
 ///
 /// Derived from the index rather than carried from staging, so a staging that
 /// failed halfway can still be released.
-fn source_workspace(base: u64) -> String {
-    seed::identities(base).workspace
+fn source_workspace(base: u64) -> Result<Uuid7> {
+    Ok(seed::identities(base)?.workspace)
 }
 
 /// The catalogue row's identifier, derived for the same reason.
-fn model_row(base: u64) -> String {
+fn model_row(base: u64) -> Result<Uuid7> {
     seed::identifier(KIND_MODEL, base)
 }

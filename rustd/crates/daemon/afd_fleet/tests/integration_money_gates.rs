@@ -31,6 +31,8 @@ use afd_billing::ledger::LedgerBiller;
 use afd_billing::{Accounts, Posture};
 use afd_fleet::lease::admit::{Admission, Request, money_gates};
 
+use afd_db::test_util::mint_id;
+
 use crate::seed::unique_ids;
 use crate::support::Fixtures;
 
@@ -83,7 +85,7 @@ pub(crate) fn budgeted(daily_nanos: &str) -> FleetConfig {
 pub(crate) const fn request<'a>(
     workspace: &'a Uuid7,
     fleet: &'a Uuid7,
-    event: &'a str,
+    event: &'a Uuid7,
     config: &FleetConfig,
 ) -> Request<'a> {
     Request {
@@ -106,11 +108,6 @@ pub(crate) fn biller(fixtures: &Fixtures) -> LedgerBiller {
     )
 }
 
-/// An identifier the seeds minted, as a `Uuid7`.
-pub(crate) fn id(raw: &str) -> Uuid7 {
-    Uuid7::parse(raw).expect("the seeded identifiers are canonical")
-}
-
 /// A workspace that resolves to no tenant ends the event, and is not charged.
 ///
 /// A broken foreign key: waiting does not repair it, and running work nobody
@@ -126,12 +123,13 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
     let (fleet, workspace, _tenant) = unique_ids();
     // Deliberately NOT seeded: this is the missing row under test.
     let config = budgeted(ORPHAN_DAILY_NANOS);
+    let event = mint_id();
 
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&id(&workspace)).await,
-        request(&id(&workspace), &id(&fleet), "event-unowned", &config),
+        accounts.payer(&workspace).await,
+        request(&workspace, &fleet, &event, &config),
         fixtures.enrolled_at(),
     )
     .await
@@ -163,12 +161,13 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
         .await;
     seed_spend(&fixtures, &tenant, &workspace, &fleet, SPENT_NANOS).await;
     let config = budgeted(TINY_DAILY_NANOS);
+    let event = mint_id();
 
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&id(&workspace)).await,
-        request(&id(&workspace), &id(&fleet), "event-over-budget", &config),
+        accounts.payer(&workspace).await,
+        request(&workspace, &fleet, &event, &config),
         fixtures.enrolled_at(),
     )
     .await
@@ -199,12 +198,13 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
         .await;
     seed_spend(&fixtures, &tenant, &workspace, &fleet, SPENT_NANOS).await;
     let config = budgeted(AMPLE_DAILY_NANOS);
+    let event = mint_id();
 
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&id(&workspace)).await,
-        request(&id(&workspace), &id(&fleet), "event-inside-budget", &config),
+        accounts.payer(&workspace).await,
+        request(&workspace, &fleet, &event, &config),
         fixtures.enrolled_at(),
     )
     .await
@@ -214,8 +214,7 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
         panic!("a fleet inside its ceiling must be admitted, got {decided:?}");
     };
     assert_eq!(
-        admitted.tenant_id.as_str(),
-        tenant,
+        admitted.tenant_id, tenant,
         "the run is billed to the tenant the workspace resolves to"
     );
     assert_eq!(&*admitted.model, MODEL, "and against the model it will run");
@@ -236,12 +235,13 @@ async fn an_admitted_run_is_charged_nothing_at_admission() {
         .seed_fleet(&fleet, &workspace, &tenant, "money-gates")
         .await;
     let config = budgeted(AMPLE_DAILY_NANOS);
+    let event = mint_id();
 
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&id(&workspace)).await,
-        request(&id(&workspace), &id(&fleet), "event-admitted", &config),
+        accounts.payer(&workspace).await,
+        request(&workspace, &fleet, &event, &config),
         fixtures.enrolled_at(),
     )
     .await
@@ -261,7 +261,13 @@ async fn an_admitted_run_is_charged_nothing_at_admission() {
 }
 
 /// Seeds one settled ledger row draining `nanos` for `fleet`.
-async fn seed_spend(fixtures: &Fixtures, tenant: &str, workspace: &str, fleet: &str, nanos: i64) {
+async fn seed_spend(
+    fixtures: &Fixtures,
+    tenant: &Uuid7,
+    workspace: &Uuid7,
+    fleet: &Uuid7,
+    nanos: i64,
+) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -274,15 +280,15 @@ async fn seed_spend(fixtures: &Fixtures, tenant: &str, workspace: &str, fleet: &
             cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
             output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, \
             updated_at) \
-         VALUES ($1::uuid, $2, $1::uuid, 0, $3::uuid, $4::uuid, $5::uuid, $5, $6, $7, $8, \
+         VALUES ($1, $2, $1, 0, $3, $4, $5, $5, $6, $7, $8, \
                  'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $9, now(), now())",
     )
-    .bind(ledger_id(fleet))
+    .bind(mint_id())
     .bind(afd_billing::sql::work::FLEET_LEASE)
     .bind(tenant)
     .bind(workspace)
     .bind(fleet)
-    .bind(format!("event-already-spent-{fleet}"))
+    .bind(mint_id())
     .bind(PROVIDER)
     .bind(MODEL)
     .bind(nanos)
@@ -291,19 +297,14 @@ async fn seed_spend(fixtures: &Fixtures, tenant: &str, workspace: &str, fleet: &
     .expect("the spend seeds");
 }
 
-fn ledger_id(fleet: &str) -> String {
-    let (head, _slot) = fleet.split_at(fleet.len() - 4);
-    format!("{head}9999")
-}
-
 /// How many ledger rows this fleet holds.
-async fn usage_lines(fixtures: &Fixtures, fleet: &str) -> i64 {
+async fn usage_lines(fixtures: &Fixtures, fleet: &Uuid7) -> i64 {
     let mut connection = fixtures
         .database
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query_scalar("SELECT COUNT(*) FROM billing.usage_lines WHERE fleet_id = $1::uuid")
+    sqlx::query_scalar("SELECT COUNT(*) FROM billing.usage_lines WHERE fleet_id = $1")
         .bind(fleet)
         .fetch_one(&mut *connection)
         .await

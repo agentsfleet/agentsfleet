@@ -21,8 +21,8 @@ impl Pricing {
         }
         let slice: Option<SliceColumns> =
             sqlx::query_as(include_str!("../sql/original_request_owner.sql"))
-                .bind(lease.as_str())
-                .bind(runner.as_str())
+                .bind(lease)
+                .bind(runner)
                 .fetch_optional(connection)
                 .await
                 .map_err(query("read original known request accounting scope"))?;

@@ -50,12 +50,12 @@ async fn refuse_and_retry(at_commit: bool) {
 async fn counts(case: &Case) -> (i64, i64, i64) {
     sqlx::query_as(
         "SELECT
-        (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid),
-        (SELECT count(*) FROM fleet.events WHERE workspace_id=$1::uuid),
+        (SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1),
+        (SELECT count(*) FROM fleet.events WHERE workspace_id=$1),
         (SELECT count(*) FROM billing.authoring_report_receipts r
-          JOIN authoring.attempts a ON a.id=r.attempt_id WHERE a.workspace_id=$1::uuid)",
+          JOIN authoring.attempts a ON a.id=r.attempt_id WHERE a.workspace_id=$1)",
     )
-    .bind(case.base.workspace.as_str())
+    .bind(&case.base.workspace)
     .fetch_one(
         &mut *case
             .base

@@ -3,34 +3,33 @@
 use super::super::{
     TaskScope,
     github::{BoundPr, status::Check},
-    guard,
 };
-use crate::Result;
+use af_core::id::Uuid7;
 use sqlx::types::Json;
 
 #[derive(sqlx::FromRow)]
 pub(super) struct Candidate {
-    pub id: String,
-    pub task_id: String,
-    pub fleet_id: String,
-    pub workspace_id: String,
+    pub id: Uuid7,
+    pub task_id: Uuid7,
+    pub fleet_id: Uuid7,
+    pub workspace_id: Uuid7,
 }
 
 impl Candidate {
-    pub(super) fn scope(&self) -> Result<TaskScope> {
-        Ok(TaskScope {
-            fleet_id: guard::id(&self.fleet_id, "fleet_id")?,
-            workspace_id: guard::id(&self.workspace_id, "workspace_id")?,
-        })
+    pub(super) fn scope(&self) -> TaskScope {
+        TaskScope {
+            fleet_id: self.fleet_id.clone(),
+            workspace_id: self.workspace_id.clone(),
+        }
     }
 }
 
 #[derive(sqlx::FromRow)]
 pub(super) struct Wait {
-    pub id: String,
-    pub task_id: String,
-    pub fleet_id: String,
-    pub workspace_id: String,
+    pub id: Uuid7,
+    pub task_id: Uuid7,
+    pub fleet_id: Uuid7,
+    pub workspace_id: Uuid7,
     pub task_generation: i64,
     pub stop_generation: i64,
     pub installation_id: i64,
@@ -42,7 +41,7 @@ pub(super) struct Wait {
     pub fallback_count: i32,
     pub initial_read_at: Option<jiff_sqlx::Timestamp>,
     pub signalled_at: Option<jiff_sqlx::Timestamp>,
-    pub claim_id: Option<String>,
+    pub claim_id: Option<Uuid7>,
     pub claim_valid: Option<bool>,
     pub signal_sequence: i64,
     pub observed_signal_sequence: i64,
@@ -51,13 +50,13 @@ pub(super) struct Wait {
     pub status: String,
     pub live_generation: i64,
     pub live_stop_generation: i64,
-    pub accepted_revision_id: String,
+    pub accepted_revision_id: Uuid7,
     pub target: Json<BoundPr>,
     pub used_fallback_reads: i32,
     pub max_fallback_reads: i32,
     pub reply_provider: Option<String>,
     pub reply_address: Option<String>,
-    pub source_admission_id: String,
+    pub source_admission_id: Uuid7,
     pub within_limits: bool,
     pub due: bool,
 }

@@ -18,8 +18,6 @@ use sqlx::Connection as _;
 use sqlx::pool::PoolConnection;
 use std::sync::{Arc, LazyLock};
 
-mod upgrade;
-
 /// One recorder for every fixture in the suite.
 ///
 /// A maintenance pass expires and finishes every lane's stale work, so a step
@@ -149,17 +147,16 @@ impl Fixture {
     pub(super) async fn retire_head(&self, draft: &Uuid7) -> Uuid7 {
         const RETIRED: &str = "INSERT INTO authoring.candidates \
              (id,draft_id,revision,definition,canonical_digest,policy_semantics,created_at) \
-             SELECT $2::uuid,c.draft_id,c.revision+1,c.definition,c.canonical_digest,'retired',now() \
+             SELECT $2,c.draft_id,c.revision+1,c.definition,c.canonical_digest,'retired',now() \
              FROM authoring.candidates c JOIN authoring.drafts d ON d.head_candidate_id=c.id \
-             WHERE d.id=$1::uuid";
-        const HEAD: &str =
-            "UPDATE authoring.drafts SET head_candidate_id=$2::uuid WHERE id=$1::uuid";
+             WHERE d.id=$1";
+        const HEAD: &str = "UPDATE authoring.drafts SET head_candidate_id=$2 WHERE id=$1";
         let retired = mint();
         let mut connection = self.connection().await;
         for statement in [RETIRED, HEAD] {
             let written = sqlx::query(statement)
-                .bind(draft.as_str())
-                .bind(retired.as_str())
+                .bind(draft)
+                .bind(&retired)
                 .execute(&mut *connection)
                 .await
                 .expect("an older daemon's candidate");
@@ -185,15 +182,15 @@ impl Fixture {
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
         let mut connection = self.connection().await;
         let mut tx = connection.begin().await.expect("counts transaction");
-        sqlx::query("SELECT id FROM authoring.drafts WHERE workspace_id=$1::uuid FOR UPDATE")
-            .bind(self.workspace.as_str())
+        sqlx::query("SELECT id FROM authoring.drafts WHERE workspace_id=$1 FOR UPDATE")
+            .bind(&self.workspace)
             .fetch_all(&mut *tx)
             .await
             .expect("wait out a concurrent purge");
-        let counts = sqlx::query_as("SELECT (SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1::uuid), \
-            (SELECT count(*) FROM authoring.candidates c JOIN authoring.drafts d ON d.id=c.draft_id WHERE d.workspace_id=$1::uuid), \
-            (SELECT count(*) FROM authoring.messages m JOIN authoring.drafts d ON d.id=m.draft_id WHERE d.workspace_id=$1::uuid)")
-            .bind(self.workspace.as_str()).fetch_one(&mut *tx)
+        let counts = sqlx::query_as("SELECT (SELECT count(*) FROM authoring.drafts WHERE workspace_id=$1), \
+            (SELECT count(*) FROM authoring.candidates c JOIN authoring.drafts d ON d.id=c.draft_id WHERE d.workspace_id=$1), \
+            (SELECT count(*) FROM authoring.messages m JOIN authoring.drafts d ON d.id=m.draft_id WHERE d.workspace_id=$1)")
+            .bind(&self.workspace).fetch_one(&mut *tx)
             .await.expect("scoped durable counts");
         tx.commit().await.expect("counts commit");
         counts
@@ -207,45 +204,37 @@ impl Fixture {
         // Postgres broke that cycle as a deadlock in this cleanup. Messages,
         // candidates and answer receipts cascade from the draft.
         self.cleanup.record(
-            "DELETE FROM authoring.drafts WHERE workspace_id=$1::uuid",
-            self.workspace.as_str(),
+            "DELETE FROM authoring.drafts WHERE workspace_id=$1",
+            &self.workspace,
         );
         self.cleanup.record(
-            "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1::uuid",
-            self.workspace.as_str(),
+            "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1",
+            &self.workspace,
         );
         // Attempts carry no foreign key to the workspace (money outlives it),
         // so no cascade removes them; their dispatches, receipts and
         // settlements go with them.
         self.cleanup.record(
-            "DELETE FROM authoring.attempts WHERE workspace_id=$1::uuid",
-            self.workspace.as_str(),
+            "DELETE FROM authoring.attempts WHERE workspace_id=$1",
+            &self.workspace,
         );
-        self.cleanup.record(
-            "DELETE FROM fleet.fleets WHERE tenant_id=$1::uuid",
-            self.tenant.as_str(),
-        );
+        self.cleanup
+            .record("DELETE FROM fleet.fleets WHERE tenant_id=$1", &self.tenant);
         // A platform default holds its source workspace without a cascade, so
         // it goes before the tenant whose workspace it names.
         self.cleanup.record(
-            "DELETE FROM model.platform_defaults WHERE source_workspace_id=$1::uuid",
-            self.workspace.as_str(),
+            "DELETE FROM model.platform_defaults WHERE source_workspace_id=$1",
+            &self.workspace,
         );
         for tenant in [&self.tenant, &self.member_tenant] {
-            self.cleanup.record(
-                "DELETE FROM identity.tenants WHERE id=$1::uuid",
-                tenant.as_str(),
-            );
+            self.cleanup
+                .record("DELETE FROM identity.tenants WHERE id=$1", tenant);
         }
-        self.cleanup.record(
-            "DELETE FROM runner.runners WHERE id=$1::uuid",
-            self.runner.as_str(),
-        );
+        self.cleanup
+            .record("DELETE FROM runner.runners WHERE id=$1", &self.runner);
         for id in &self.catalogue {
-            self.cleanup.record(
-                "DELETE FROM model.platform_models WHERE id=$1::uuid",
-                id.as_str(),
-            );
+            self.cleanup
+                .record("DELETE FROM model.platform_models WHERE id=$1", id);
         }
     }
 
@@ -262,7 +251,7 @@ impl Fixture {
     /// Removes the platform entry staged under `slug` at cleanup: platform
     /// entries belong to no tenant, so no fixture cascade reaches them.
     pub(super) fn own_platform_library(&mut self, slug: &str) {
-        self.cleanup.record(
+        self.cleanup.record_text(
             "DELETE FROM authoring.library_entries WHERE platform_slug=$1",
             slug,
         );
@@ -270,8 +259,8 @@ impl Fixture {
 
     pub(super) fn own_library(&mut self, library: &str) {
         self.cleanup.record(
-            "DELETE FROM authoring.library_entries WHERE id=$1::uuid",
-            library,
+            "DELETE FROM authoring.library_entries WHERE id=$1",
+            &Uuid7::parse(library).expect("a tenant library is addressed by its id"),
         );
     }
 }

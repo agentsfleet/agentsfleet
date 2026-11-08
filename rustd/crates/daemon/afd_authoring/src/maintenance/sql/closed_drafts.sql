@@ -1,4 +1,4 @@
-SELECT d.id::text
+SELECT d.id
   FROM authoring.drafts d
  WHERE d.status = $1
    AND d.expires_at <= statement_timestamp()

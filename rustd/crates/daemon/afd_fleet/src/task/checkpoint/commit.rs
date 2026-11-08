@@ -20,12 +20,12 @@ use sqlx::PgConnection;
 
 struct Manifest {
     pages: Vec<(String, String)>,
-    history: Vec<String>,
+    history: Vec<Uuid7>,
 }
 
 #[derive(sqlx::FromRow)]
 struct History {
-    id: String,
+    id: Uuid7,
     plaintext_digest: String,
     plaintext_size: i64,
 }
@@ -39,10 +39,12 @@ pub(in crate::task) async fn publish(
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let current = task_guard::lease(&mut tx, lease).await?;
-    if current.task_id.as_deref() != Some(input.task.task_id.as_str()) {
-        return Err(TaskRefusal::NotFound.into());
-    }
-    let previous = Plan::load(&mut tx, checkpoint, &input.task.task_id).await?;
+    let task = current
+        .task_id
+        .clone()
+        .filter(|task| *task == input.task.task_id)
+        .ok_or(TaskRefusal::NotFound)?;
+    let previous = Plan::load(&mut tx, checkpoint, &task).await?;
     if previous.ready {
         if previous.manifest_root.as_deref() != Some(input.manifest_root.as_str())
             || previous.history_digest.as_deref() != Some(input.history_digest.as_str())
@@ -54,8 +56,8 @@ pub(in crate::task) async fn publish(
             return Err(TaskRefusal::ReplayConflict.into());
         }
         let pin: Pin = sqlx::query_as(include_str!("sql/pin.sql"))
-            .bind(&input.pin_id)
-            .bind(checkpoint.as_str())
+            .bind(task_guard::wire(&input.pin_id)?)
+            .bind(checkpoint)
             .fetch_one(&mut *tx)
             .await
             .map_err(query("read committed checkpoint pin receipt"))?;
@@ -115,7 +117,7 @@ pub(in crate::task) async fn publish(
         .map_err(query(
             "convert live writer pin to durable manifest references",
         ))?;
-    let plan = Plan::load(&mut tx, checkpoint, &input.task.task_id).await?;
+    let plan = Plan::load(&mut tx, checkpoint, &task).await?;
     let response = plan.wire(&pin, false)?;
     tx.commit()
         .await
@@ -125,7 +127,7 @@ pub(in crate::task) async fn publish(
         tasks
             .publish_changed(
                 &owned.scope,
-                &task_guard::id(&plan.task_id, "task_id")?,
+                &plan.task_id,
                 owned.snapshot.resource_version.saturating_add(1),
             )
             .await;
@@ -211,7 +213,7 @@ async fn scan_pages(
     connection: &mut PgConnection,
     plan: &Plan,
     base: bool,
-    ids: &[String],
+    ids: &[Uuid7],
     tree: &mut super::effective::Tree,
     manifest_bytes: &mut usize,
 ) -> Result<Manifest> {
@@ -263,8 +265,12 @@ async fn scan_pages(
             last_path = Some(entry.path().to_owned());
             tree.apply(entry)?;
         }
-        manifest.pages.push((page.id, digest));
-        manifest.history.extend(contents.history_objects);
+        manifest.pages.push((page.id.into(), digest));
+        for object in &contents.history_objects {
+            manifest
+                .history
+                .push(Uuid7::parse(object).map_err(|_text| TaskRefusal::CheckpointIncompatible)?);
+        }
     }
     if manifest.pages.len() != ids.len() {
         return Err(TaskRefusal::CheckpointIncompatible.into());
@@ -272,7 +278,7 @@ async fn scan_pages(
     Ok(manifest)
 }
 
-async fn history(connection: &mut PgConnection, plan: &Plan, ids: &[String]) -> Result<String> {
+async fn history(connection: &mut PgConnection, plan: &Plan, ids: &[Uuid7]) -> Result<String> {
     let rows: Vec<History> = sqlx::query_as(include_str!("sql/history.sql"))
         .bind(ids)
         .bind(&plan.workspace_id)

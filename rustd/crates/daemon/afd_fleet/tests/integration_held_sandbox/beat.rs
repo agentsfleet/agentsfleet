@@ -44,7 +44,7 @@ async fn test_a_beat_clears_only_its_own_runners_holds() {
     assert_eq!(slot(&fixtures, &others_fleet).await.0, None, "its own");
     assert_eq!(
         slot(&fixtures, &fleet).await,
-        (Some(until(&fixtures)), Some(holder.as_str().to_owned())),
+        (Some(until(&fixtures)), Some(holder.clone())),
         "the holder's hold is not the other runner's to clear"
     );
     fixtures.cleanup().await;
@@ -66,7 +66,7 @@ async fn test_a_hold_that_is_no_identifier_is_dropped_alone() {
     let not_an_id = "x".repeat(FLEET_ID_TEXT_BYTES);
     settle(&fixtures, &[&kept, &dropped]).await;
 
-    let answered = beats(&fixtures, &holder, &beat(&[&kept, &not_an_id])).await;
+    let answered = beats(&fixtures, &holder, &beat(&[kept.as_str(), &not_an_id])).await;
 
     assert!(answered.release_holds.is_empty(), "{answered:?}");
     assert_eq!(slot(&fixtures, &kept).await.0, Some(until(&fixtures)));

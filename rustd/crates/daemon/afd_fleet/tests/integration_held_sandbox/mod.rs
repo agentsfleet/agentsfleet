@@ -44,15 +44,11 @@ use crate::support::Fixtures;
 /// A fleet status other than active: what an owner's stop leaves.
 const STOPPED: &str = "stopped";
 
-fn id(text: &str) -> Uuid7 {
-    Uuid7::parse(text).expect("a seeded identifier")
-}
-
 /// The slot's hold and its last runner, as stored.
-async fn slot(fixtures: &Fixtures, fleet: &str) -> (Option<Timestamp>, Option<String>) {
+async fn slot(fixtures: &Fixtures, fleet: &Uuid7) -> (Option<Timestamp>, Option<Uuid7>) {
     (
         fixtures.instant(Row::Slot(fleet), "hold_expires_at").await,
-        fixtures.text(Row::Slot(fleet), "last_runner_id").await,
+        fixtures.value(Row::Slot(fleet), "last_runner_id").await,
     )
 }
 
@@ -86,22 +82,28 @@ async fn beats_at(
 
 /// `runner` claims `fleet`, and its report releases the slot holding the
 /// sandbox until `until`.
-async fn hold(leases: &Leases, fixtures: &Fixtures, fleet: &str, runner: &Uuid7, until: Timestamp) {
+async fn hold(
+    leases: &Leases,
+    fixtures: &Fixtures,
+    fleet: &Uuid7,
+    runner: &Uuid7,
+    until: Timestamp,
+) {
     let claimed = leases
-        .claim(&id(fleet), runner, LEASE_TTL)
+        .claim(fleet, runner, LEASE_TTL)
         .await
         .expect("the claim answers")
         .expect("a free slot is won");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     leases
-        .release_through(&mut connection, &id(fleet), claimed.fence, Some(until))
+        .release_through(&mut connection, fleet, claimed.fence, Some(until))
         .await
         .expect("the report's release lands");
 }
 
 /// Ages each of `fleets`' slots a full beat interval, as if their holds were
 /// reported that long ago: a beat may then clear a hold its list leaves out.
-async fn settle(fixtures: &Fixtures, fleets: &[&str]) {
+async fn settle(fixtures: &Fixtures, fleets: &[&Uuid7]) {
     for fleet in fleets {
         fixtures
             .age(Row::Slot(fleet), "updated_at", HEARTBEAT_INTERVAL)
@@ -109,6 +111,8 @@ async fn settle(fixtures: &Fixtures, fleets: &[&str]) {
     }
 }
 
+/// A beat listing `holds` as the runner spells them on the wire: text, so a
+/// test can list an entry that is no identifier.
 fn beat<'a>(holds: &'a [&'a str]) -> HeartbeatRequest<'a> {
     HeartbeatRequest {
         capability_report: None,
@@ -128,33 +132,33 @@ async fn test_report_stores_hold_under_fencing() {
     let until = fixtures.after(SANDBOX_HOLD_IDLE);
 
     let first = leases
-        .claim(&id(&fleet), &runner, LEASE_TTL)
+        .claim(&fleet, &runner, LEASE_TTL)
         .await
         .expect("answers")
         .expect("won");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     leases
-        .release_through(&mut connection, &id(&fleet), first.fence, Some(until))
+        .release_through(&mut connection, &fleet, first.fence, Some(until))
         .await
         .expect("lands");
     let stored = slot(&fixtures, &fleet).await;
     let second = leases
-        .claim(&id(&fleet), &runner, LEASE_TTL)
+        .claim(&fleet, &runner, LEASE_TTL)
         .await
         .expect("answers")
         .expect("the runner wins its own fleet again");
     leases
-        .release_through(&mut connection, &id(&fleet), first.fence, None)
+        .release_through(&mut connection, &fleet, first.fence, None)
         .await
         .expect("a stale release is a no-op, not an error");
     let after_stale = slot(&fixtures, &fleet).await;
     leases
-        .release_through(&mut connection, &id(&fleet), second.fence, None)
+        .release_through(&mut connection, &fleet, second.fence, None)
         .await
         .expect("lands");
     drop(connection);
 
-    assert_eq!(stored, (Some(until), Some(runner.as_str().to_owned())));
+    assert_eq!(stored, (Some(until), Some(runner.clone())));
     assert_eq!(after_stale.0, Some(until), "a stale fence records nothing");
     assert_eq!(
         slot(&fixtures, &fleet).await.0,
@@ -178,8 +182,14 @@ async fn test_heartbeat_clears_dropped_holds() {
     settle(&fixtures, &[&kept, &dropped]).await;
     let now = fixtures.after(HEARTBEAT_INTERVAL);
 
-    let both = beats_at(&fixtures, &runner, &beat(&[&kept, &dropped]), now).await;
-    let one = beats_at(&fixtures, &runner, &beat(&[&kept]), now).await;
+    let both = beats_at(
+        &fixtures,
+        &runner,
+        &beat(&[kept.as_str(), dropped.as_str()]),
+        now,
+    )
+    .await;
+    let one = beats_at(&fixtures, &runner, &beat(&[kept.as_str()]), now).await;
 
     assert!(both.release_holds.is_empty() && one.release_holds.is_empty());
     assert_eq!(slot(&fixtures, &kept).await.0, Some(until));
@@ -204,7 +214,7 @@ async fn test_inactive_fleet_hold_destroyed() {
     )
     .await;
     let mut connection = fixtures.database.acquire().await.expect("a connection");
-    sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET status = $2 WHERE id = $1")
         .bind(&fleet)
         .bind(STOPPED)
         .execute(&mut *connection)
@@ -213,8 +223,8 @@ async fn test_inactive_fleet_hold_destroyed() {
     drop(connection);
     let now = fixtures.after(std::time::Duration::from_millis(1));
 
-    let stopped = beats_at(&fixtures, &runner, &beat(&[&fleet]), now).await;
-    let stranger = beats_at(&fixtures, &other, &beat(&[&foreign]), now).await;
+    let stopped = beats_at(&fixtures, &runner, &beat(&[fleet.as_str()]), now).await;
+    let stranger = beats_at(&fixtures, &other, &beat(&[foreign.as_str()]), now).await;
 
     assert_eq!(stopped.release_holds, [fleet]);
     assert_eq!(

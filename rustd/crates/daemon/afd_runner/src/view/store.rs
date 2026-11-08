@@ -36,26 +36,27 @@ impl Runners {
             || {
                 sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_FIRST)
                     .bind(sql::LEASE_STATUS_ACTIVE)
-                    .bind(i64::from(limit))
+                    .bind(past_page(limit))
             },
             |boundary| {
                 sqlx::query_as::<_, ItemRow>(sql::runner_view::LIST_RUNNERS_AFTER)
                     .bind(sql::LEASE_STATUS_ACTIVE)
                     .bind(boundary.created_at().to_sqlx())
-                    .bind(boundary.id().as_str())
-                    .bind(i64::from(limit))
+                    .bind(boundary.id())
+                    .bind(past_page(limit))
             },
         );
-        let rows = statement
+        let mut rows = statement
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_RUNNER_LIST))?;
+        let more = trim_to_page(&mut rows, limit);
         let items = rows
             .into_iter()
             .map(ItemRow::parse)
             .collect::<Result<Vec<_>>>()?;
         Ok(RunnerPage {
-            next_cursor: page_cursor(&items, limit),
+            next_cursor: page_cursor(&items, more),
             items,
             total,
         })
@@ -68,7 +69,7 @@ impl Runners {
     pub async fn runner_detail(&self, runner: &Uuid7) -> Result<RunnerDetail> {
         let mut connection = self.pool().acquire().await?;
         sqlx::query_as::<_, DetailRow>(sql::runner_view::RUNNER_DETAIL)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
@@ -90,7 +91,7 @@ impl Runners {
     ) -> Result<RunnerEventPage> {
         let mut connection = self.pool().acquire().await?;
         let exists = sqlx::query(sql::runner_view::RUNNER_EXISTS)
-            .bind(runner.as_str())
+            .bind(runner)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_RUNNER_EXISTS))?;
@@ -99,32 +100,47 @@ impl Runners {
         }
         let event_types = filter.event_type_names();
         let total = sqlx::query_scalar(sql::runner_view::COUNT_EVENTS)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(event_types.clone())
             .bind(filter.since().map(Timestamp::to_sqlx))
             .bind(filter.until().map(Timestamp::to_sqlx))
             .fetch_one(&mut *connection)
             .await
             .map_err(query(CONTEXT_EVENT_COUNT))?;
-        let rows = events::statement(runner, filter, event_types, cursor, limit)
+        let mut rows = events::statement(runner, filter, event_types, cursor, limit)
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_EVENT_LIST))?;
+        let more = trim_to_page(&mut rows, limit);
         let items = rows
             .into_iter()
             .map(EventRow::parse)
             .collect::<Result<Vec<_>>>()?;
         Ok(RunnerEventPage {
-            next_cursor: events::cursor(&items, limit)?,
+            next_cursor: events::cursor(&items, more)?,
             items,
             total,
         })
     }
 }
 
-fn page_cursor(items: &[RunnerItem], limit: u32) -> Option<KeysetCursor> {
-    (items.len() == usize::try_from(limit).unwrap_or(usize::MAX))
-        .then(|| items.last())
+/// The row count a page reads: one past `limit`, so the extra row can prove
+/// that another page follows. A full page alone does not prove it, because the
+/// stream may end exactly on it.
+pub(super) fn past_page(limit: u32) -> i64 {
+    i64::from(limit) + 1
+}
+
+/// Cuts `rows` back to `limit` and answers whether a row lay past it.
+fn trim_to_page<T>(rows: &mut Vec<T>, limit: u32) -> bool {
+    let page = usize::try_from(limit).unwrap_or(usize::MAX);
+    let more = rows.len() > page;
+    rows.truncate(page);
+    more
+}
+
+fn page_cursor(items: &[RunnerItem], more: bool) -> Option<KeysetCursor> {
+    more.then(|| items.last())
         .flatten()
         .map(|item| KeysetCursor::new(item.created_at, item.id.clone()))
 }

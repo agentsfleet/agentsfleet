@@ -56,8 +56,8 @@ impl Creations {
                 requested
             };
             sqlx::query(sql::UPDATE)
-                .bind(fleet.as_str())
-                .bind(access.workspace.as_str())
+                .bind(fleet)
+                .bind(access.workspace)
                 .bind(written)
                 .bind(name.unwrap_or(&row.name))
                 .execute(&mut *tx)
@@ -85,7 +85,7 @@ impl Creations {
     async fn cancel(&self, connection: &mut PgConnection, fleet: &Uuid7) -> Result<()> {
         self.grants.cancel_setup_on(connection, fleet).await?;
         sqlx::query(sql::RESTORE)
-            .bind(fleet.as_str())
+            .bind(fleet)
             .bind(DraftState::Editing.as_str())
             .bind(DraftState::Saving.as_str())
             .execute(connection)

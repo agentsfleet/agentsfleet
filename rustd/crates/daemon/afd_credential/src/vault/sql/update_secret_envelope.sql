@@ -7,4 +7,4 @@ UPDATE vault.secrets
        secret_tag = $8,
        kek_version = $9,
        updated_at = now()
- WHERE workspace_id = $1::uuid AND key_name = $2
+ WHERE workspace_id = $1 AND key_name = $2

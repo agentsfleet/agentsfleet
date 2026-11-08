@@ -5,6 +5,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_dragonfly::test_util::fake_redis;
 
 use std::time::Duration;
@@ -34,9 +35,9 @@ const PUBLISH_TAKEN: &str = ":0\r\n";
 struct Seeded {
     handle: TestDatabase,
     database: Db,
-    tenant: String,
-    workspace: String,
-    fleet: String,
+    tenant: Uuid7,
+    workspace: Uuid7,
+    fleet: Uuid7,
 }
 
 impl Seeded {
@@ -106,15 +107,12 @@ impl Seeded {
 
     async fn cleanup(self) {
         for (statement, id) in [
-            ("DELETE FROM fleet.fleets WHERE id = $1::uuid", &self.fleet),
+            ("DELETE FROM fleet.fleets WHERE id = $1", &self.fleet),
             (
-                "DELETE FROM identity.workspaces WHERE id = $1::uuid",
+                "DELETE FROM identity.workspaces WHERE id = $1",
                 &self.workspace,
             ),
-            (
-                "DELETE FROM identity.tenants WHERE id = $1::uuid",
-                &self.tenant,
-            ),
+            ("DELETE FROM identity.tenants WHERE id = $1", &self.tenant),
         ] {
             let _removed = sqlx::query(statement)
                 .bind(id)
@@ -155,11 +153,11 @@ async fn a_retry_republishes_a_lost_notification_for_the_same_admission() {
     let admissions = Admissions::for_tests(fleet.database.clone(), queue);
     let key = mint_id();
 
-    let first = fleet.admit(&admissions, &key).await;
+    let first = fleet.admit(&admissions, key.as_str()).await;
     assert!(!first.replayed, "the first call inserts the row");
     assert_eq!(rings(&server), 1, "the first notification was attempted");
     server.set_reply(CMD_SPUBLISH, Reply::Raw(PUBLISH_TAKEN));
-    let resent = fleet.admit(&admissions, &key).await;
+    let resent = fleet.admit(&admissions, key.as_str()).await;
     assert!(resent.replayed, "the resend replays the key");
     assert_eq!(
         resent.stored.id, first.stored.id,

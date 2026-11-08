@@ -71,14 +71,14 @@ impl Schedules {
             return Ok(Ok(None));
         };
         let claimed = sqlx::query_as::<_, Schedule>(sql::CLAIM_MUTATION)
-            .bind(schedule.as_str())
-            .bind(fleet.as_str())
+            .bind(schedule)
+            .bind(fleet)
             .bind(change.cron)
             .bind(change.timezone)
             .bind(change.message)
             .bind(change.desired_status.map(DesiredStatus::as_str))
             .bind(SyncStatus::Syncing.as_str())
-            .bind(token.as_str())
+            .bind(token)
             .bind(SYNC_LEASE)
             .fetch_optional(transaction.as_mut())
             .await
@@ -96,7 +96,6 @@ impl Schedules {
         };
         let announcement = Receipt {
             schedule: &claimed,
-            operation: token.as_str(),
             fact: Fact::mutation(change.desired_status),
         }
         .record_on(transaction, workspace)
@@ -120,10 +119,10 @@ impl Schedules {
     ) -> Result<Option<Schedule>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as::<_, Schedule>(sql::CLAIM_CURRENT)
-            .bind(schedule.as_str())
-            .bind(fleet.as_str())
+            .bind(schedule)
+            .bind(fleet)
             .bind(SyncStatus::Syncing.as_str())
-            .bind(token.as_str())
+            .bind(token)
             .bind(SYNC_LEASE)
             .fetch_optional(connection.as_mut())
             .await
@@ -140,9 +139,9 @@ impl Schedules {
     pub async fn holds_fence(&self, held: &Schedule, token: &Uuid7) -> Result<bool> {
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query(sql::HOLDS_FENCE)
-            .bind(held.schedule_id.as_str())
+            .bind(&held.schedule_id)
             .bind(held.resource_version)
-            .bind(token.as_str())
+            .bind(token)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_CLAIM))?;

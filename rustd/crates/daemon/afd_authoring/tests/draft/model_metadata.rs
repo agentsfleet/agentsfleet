@@ -11,8 +11,8 @@ use std::sync::Arc;
 async fn an_unconfigured_row_keeps_usable_choices_visible_without_an_invented_output_limit() {
     use afd_authoring::types::{ModelPurpose, ModelsQuery};
     let f = Fixture::create().await;
-    sqlx::query("UPDATE model.platform_models SET inference=NULL WHERE id=$1::uuid")
-        .bind(f.catalogue.first().expect("first catalogue model").as_str())
+    sqlx::query("UPDATE model.platform_models SET inference=NULL WHERE id=$1")
+        .bind(f.catalogue.first().expect("first catalogue model"))
         .execute(&mut *f.connection().await)
         .await
         .expect("unconfigure one model");
@@ -86,8 +86,13 @@ async fn rotating_with_the_same_timestamp_changes_resolution_generation() {
             .is_none(),
         "a creator's own account never supplies the owner's reference"
     );
-    let timestamp: jiff_sqlx::Timestamp = sqlx::query_scalar("SELECT updated_at FROM vault.secrets WHERE workspace_id=$1::uuid AND key_name='authoring-model'")
-        .bind(f.workspace.as_str()).fetch_one(&mut *connection).await.expect("original timestamp");
+    let timestamp: jiff_sqlx::Timestamp = sqlx::query_scalar(
+        "SELECT updated_at FROM vault.secrets WHERE workspace_id=$1 AND key_name='authoring-model'",
+    )
+    .bind(&f.workspace)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("original timestamp");
     drop(connection);
     rotate(&f).await;
     let after = registered_model(&mut *f.connection().await, &f.tenant, f.model.as_str())

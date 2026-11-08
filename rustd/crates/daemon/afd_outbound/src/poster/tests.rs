@@ -1,6 +1,7 @@
 //! Which poster a job reaches, and which attempt it reaches it as.
 
 use super::*;
+use afd_db::test_util::mint_id;
 use std::sync::atomic::AtomicUsize;
 
 /// The thread an owed answer is addressed to, as a Slack producer records it.
@@ -24,9 +25,9 @@ fn job(provider: &str) -> OutboundDelivery {
         id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
         provider: provider.to_owned(),
         destination: DESTINATION.to_owned(),
-        workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
-        fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-        event_id: "1700000000000-0".to_owned(),
+        workspace_id: mint_id(),
+        fleet_id: mint_id(),
+        event_id: mint_id(),
         answer: "Aurora is healthy.".to_owned(),
     }
 }
