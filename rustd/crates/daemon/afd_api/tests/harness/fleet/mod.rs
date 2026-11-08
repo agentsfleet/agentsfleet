@@ -85,7 +85,7 @@ impl Fleet {
             logins: logins(&queue),
             fleets: clients::fleets(&database),
             secrets: vault(database.clone()),
-            connectors: connectors(&database, &queue),
+            connectors: connectors(&database),
             interjector: interjector(&database),
             signup_writeback: RecordingWriteback::accepting(),
             ingress: clients::ingress(&database, &ledger),

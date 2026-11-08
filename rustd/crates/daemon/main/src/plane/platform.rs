@@ -45,7 +45,7 @@ pub(super) fn connect_flow(
         ),
         afd_connector::Exchange::new(vendor_client.clone()),
         vendor_client,
-        queue.clone(),
+        database.clone(),
         Entropy::new(),
     )
 }

@@ -96,13 +96,13 @@ impl Fleet {
             )),
             Grants::new(
                 SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new())
-                    .with_activity_streams(afd_dragonfly::FleetStreams::new(queue.clone())),
-                database,
+                    .with_activity_streams(afd_dragonfly::FleetStreams::new(queue)),
+                database.clone(),
                 Entropy::new(),
             ),
             Exchange::new(reqwest::Client::new()).pointed_at(vendor),
             reqwest::Client::new(),
-            queue,
+            database,
             Entropy::new(),
         );
         self

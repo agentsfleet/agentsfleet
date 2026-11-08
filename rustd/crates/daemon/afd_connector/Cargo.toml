@@ -19,7 +19,7 @@ categories.workspace = true
 # already going wrong. It also unlocks `test_util::FakeSlack`, the one loopback
 # Slack this crate's thread reader, `afd_outbound`'s poster and `afd_api`'s
 # mention suites are proven against.
-test-util = ["af_core/test-util", "afd_db/test-util", "afd_dragonfly/test-util", "afd_vault/test-util", "dep:axum"]
+test-util = ["af_core/test-util", "afd_db/test-util", "afd_vault/test-util", "dep:axum"]
 
 [dependencies]
 # Identifiers, the instant a row is stamped with, and the registry codes.
@@ -31,7 +31,6 @@ afd_db.workspace = true
 # operator-supplied string rather than a fixed-width key.
 af_crypto.workspace = true
 # Where the single-use nonce lives for as long as a connect round-trip does.
-afd_dragonfly.workspace = true
 # Where a grant is sealed. The KEY-holding half: the platform app credentials
 # have to be opened to spend them at the vendor.
 afd_vault.workspace = true
@@ -70,6 +69,8 @@ url.workspace = true
 axum = { workspace = true, features = ["form"], optional = true }
 # Lower-case hex for a state's nonce, rather than a hand-written render.
 hex.workspace = true
+# The stored form of a connect nonce is its SHA-256, never the nonce.
+sha2.workspace = true
 
 [dev-dependencies]
 # The caller-driven entropy a nonce's rendering is pinned against.
