@@ -80,7 +80,7 @@ const LUCIDE_ICONS = [
   "AlertTriangleIcon", "CheckIcon", "CopyIcon", "DownloadIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
   "KeyRoundIcon", "KeyIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "ArrowRightIcon", "SettingsIcon",
   "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "BrainCircuitIcon", "BoxesIcon",
-  "SlidersHorizontalIcon", "PencilIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
+  "SlidersHorizontalIcon", "PencilIcon", "PanelRightIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
   "BotIcon", "PlugIcon", "UnplugIcon", "CheckCircle2Icon", "CircleCheckIcon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
   "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
   "BrainIcon", "LayoutDashboardIcon", "PanelsTopLeftIcon", "CpuIcon", "ChartNoAxesCombinedIcon", "LibraryBigIcon",

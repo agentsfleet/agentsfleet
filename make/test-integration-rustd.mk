@@ -288,7 +288,9 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 #              so on the shared lane it was offered every fleet the other
 #              scenarios had left behind; on its own datastores it is offered its own.
 #   daemon     `agentsfleetd`, every target, minus the runner's modules.
-#   substrate  every other crate: the workspace minus the two above.
+#   api        the API and fleet crates, whose live-service suites dominate
+#              the remaining test time when they share substrate's runner.
+#   substrate  every other crate: the workspace minus the three above.
 #
 # The partition is total by construction. `substrate` is defined by exclusion,
 # so a crate added later lands there without an edit, and `daemon` skips exactly
@@ -303,8 +305,9 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 # partial union is the failure this layout exists to rule out.
 RUSTD_RUNNER_PACKAGES := afr_agent afr_executor afr_sandbox afr_supervisor agentsfleet_runner
 RUSTD_DAEMON_PACKAGES := agentsfleetd
+RUSTD_API_PACKAGES := afd_api afd_fleet
 RUSTD_RUNNER_IN_DAEMON := integration_rust_runner::
-RUSTD_SHARDS := runner daemon substrate
+RUSTD_SHARDS := runner daemon api substrate
 RUSTD_SHARD ?= $(RUSTD_SHARDS)
 # Every report the floor is graded over: the shards, and the kernel lane's
 # (`test-coverage-runner-kernel`, make/test-unit.mk), which needs root and a
@@ -313,7 +316,7 @@ RUSTD_COVERAGE_REPORTS := $(RUSTD_SHARDS) kernel
 
 _RUSTD_COVER := cargo llvm-cov --no-report --all-features
 _rustd_packages = $(foreach package,$(1),-p $(package))
-_RUSTD_SUBSTRATE := --workspace $(foreach package,afd_bench $(RUSTD_RUNNER_PACKAGES) $(RUSTD_DAEMON_PACKAGES),--exclude $(package))
+_RUSTD_SUBSTRATE := --workspace $(foreach package,afd_bench $(RUSTD_RUNNER_PACKAGES) $(RUSTD_DAEMON_PACKAGES) $(RUSTD_API_PACKAGES),--exclude $(package))
 _RUSTD_SHARD_UNKNOWN := $(filter-out $(RUSTD_SHARDS),$(RUSTD_SHARD))
 _RUSTD_SHARD_ALL := $(if $(filter-out $(RUSTD_SHARD),$(RUSTD_SHARDS)),,yes)
 _RUSTD_SHARD_ONE := $(if $(filter 1,$(words $(RUSTD_SHARD))),yes,)
@@ -368,8 +371,12 @@ ifneq ($(filter daemon,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard daemon: agentsfleetd without the runner's modules..."; \
 	$(call _rust_lane,rustd-coverage-daemon.log,[rustd] coverage: daemon,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_DAEMON_PACKAGES)) -- --include-ignored --skip $(RUSTD_RUNNER_IN_DAEMON))
 endif
+ifneq ($(filter api,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard api: the API and fleet suites..."; \
+	$(call _rust_lane,rustd-coverage-api.log,[rustd] coverage: API and fleet,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_API_PACKAGES)) -- --include-ignored)
+endif
 ifneq ($(filter substrate,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard substrate: every other crate, then the suites that need the cluster alone..."; \
+	@echo "→ [rustd] Shard substrate: the remaining crates, then the suites that need the cluster alone..."; \
 	$(call _rust_lane,rustd-coverage-substrate.log,[rustd] coverage: substrate,$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --skip $(EXCLUSIVE_FILTER)); \
 	$(call _rust_lane,rustd-coverage-substrate-exclusive.log,[rustd] coverage: substrate (exclusive),$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 endif

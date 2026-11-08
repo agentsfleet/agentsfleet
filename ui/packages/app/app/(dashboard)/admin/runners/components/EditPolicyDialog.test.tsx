@@ -94,7 +94,7 @@ describe("EditPolicyDialog", () => {
     render(<EditPolicyDialog runnerId="r-edit-1" current={CURRENT} onSaved={onSaved} />);
 
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
-    expect((screen.getByLabelText(/package download sites/i) as HTMLInputElement).value).toBe("pypi.org");
+    expect(screen.getByText("1 domain")).toBeTruthy();
     expect((screen.getByLabelText("Workers") as HTMLInputElement).value).toBe("2");
 
     fireEvent.change(screen.getByLabelText("Workers"), { target: { value: "4" } });
@@ -138,8 +138,8 @@ describe("EditPolicyDialog", () => {
     const onSaved = vi.fn();
     render(<EditPolicyDialog runnerId="r-edit-3" current={CURRENT} onSaved={onSaved} />);
     fireEvent.click(screen.getByRole("button", { name: EDIT_POLICY_LABEL }));
-    fireEvent.click(screen.getByRole("radio", {name: /^Approved destinations only/}));
-    fireEvent.change(screen.getByLabelText(/package download sites/i), {
+    fireEvent.click(screen.getByRole("button", {name: "Edit additional allowed domains"}));
+    fireEvent.change(screen.getByRole("textbox", {name: "Additional allowed domains"}), {
       target: { value: "http://not a host" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -283,21 +283,17 @@ it("saves disabling durable tasks and reopens the stored disabled assignment", a
   expect(screen.getByRole("switch", {name: "Durable tasks"}).getAttribute("aria-checked")).toBe("false");
 });
 
-it.each([
-  {label: "Public internet access", policy: "allow_all"},
-  {label: "No internet access", policy: "deny_all_egress"},
-  {label: "Approved destinations only", policy: "allow_list_egress"},
-])("saves each supported network policy: $policy", async ({label, policy}) => {
+it.each(["allow_all", "deny_all_egress", "allow_list_egress"])("saves supported network policy through switches: %s", async policy => {
   updateRunnerActionMock.mockResolvedValue({ok: true});
   const saved = vi.fn();
-  render(<EditPolicyDialog runnerId="network" current={CURRENT} onSaved={saved} />);
+  render(<EditPolicyDialog runnerId="network" current={{...CURRENT, registry_allowlist: []}} onSaved={saved} />);
   fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
-  await userEvent.setup().click(screen.getByRole("radio", {name: new RegExp(`^${label}`)}));
-  expect(screen.getByLabelText(/package download sites/i)).toHaveProperty("disabled", false);
+  if (policy !== "allow_all") fireEvent.click(screen.getByRole("switch", {name: "Enable all public internet access"}));
+  if (policy === "allow_list_egress") fireEvent.click(screen.getByRole("switch", {name: "Enable package manager domains"}));
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
   await waitFor(() => expect(saved).toHaveBeenCalledOnce());
   expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("network", {
-    assigned_policy: {...CURRENT, network_policy: policy},
+    assigned_policy: {...CURRENT, registry_allowlist: [], network_policy: policy},
   });
 });
 
@@ -332,18 +328,89 @@ it("cannot save an unassigned decision model until its configured default resolv
   await waitFor(() => expect(saved).toHaveBeenCalledOnce());
   expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("runner", {assigned_policy: CURRENT});
 });
-it("keeps invalid package sites editable after leaving approved destinations", async () => {
+it("keeps invalid domains editable in the popup and preserves corrected hosts across network changes", async () => {
   updateRunnerActionMock.mockResolvedValue({ok: true});
   const saved = vi.fn();
   render(<EditPolicyDialog runnerId="network" current={CURRENT} onSaved={saved} />);
   fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
-  fireEvent.click(screen.getByRole("radio", {name: /^Approved destinations only/}));
-  const sites = screen.getByLabelText(/package download sites/i);
-  fireEvent.change(sites, {target: {value: "https://registry.npmjs.org"}});
-  fireEvent.click(screen.getByRole("radio", {name: /^Public internet access/}));
-  expect(sites).toHaveProperty("disabled", false);
-  fireEvent.change(sites, {target: {value: "registry.npmjs.org"}});
+  fireEvent.click(screen.getByRole("button", {name: "Edit additional allowed domains"}));
+  const domains = screen.getByRole("textbox", {name: "Additional allowed domains"});
+  fireEvent.change(domains, {target: {value: "https://registry.npmjs.org"}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  expect(screen.getByRole("alert").textContent).toContain("must be a host name");
+  expect(updateRunnerActionMock).not.toHaveBeenCalled();
+  fireEvent.change(domains, {target: {value: "registry.npmjs.org"}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  fireEvent.click(screen.getByRole("switch", {name: "Enable all public internet access"}));
+  fireEvent.click(screen.getByRole("switch", {name: "Enable all public internet access"}));
   fireEvent.click(screen.getByRole("button", {name: "Save"}));
   await waitFor(() => expect(saved).toHaveBeenCalledOnce());
   expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("network", {assigned_policy: {...CURRENT, registry_allowlist: ["registry.npmjs.org"]}});
+});
+
+it("keeps the domains popup open when the package preset would exceed the native host limit", async () => {
+  render(<EditPolicyDialog runnerId="network-limit" current={{...CURRENT, registry_allowlist: []}} onSaved={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  fireEvent.click(screen.getByRole("switch", {name: "Enable all public internet access"}));
+  fireEvent.click(screen.getByRole("switch", {name: "Enable package manager domains"}));
+  fireEvent.click(screen.getByRole("button", {name: "Edit additional allowed domains"}));
+  fireEvent.change(screen.getByRole("textbox", {name: "Additional allowed domains"}), {target: {value: Array.from({length: 25}, (_, i) => `host-${i}.example`).join("\n")}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  expect(screen.getByRole("alert").textContent).toContain("At most 32 domains");
+  expect(updateRunnerActionMock).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+  expect(screen.getByRole("switch", {name: "Enable package manager domains"}).getAttribute("aria-checked")).toBe("true");
+  expect(screen.getByText("No additional domains")).toBeTruthy();
+});
+
+it("does not enable dormant domains when their popup is saved without changes", async () => {
+  const dormant: AssignedPolicy = {...CURRENT, network_policy: "deny_all_egress", registry_allowlist: ["internal.example"]};
+  updateRunnerActionMock.mockResolvedValue({ok: true});
+  render(<EditPolicyDialog runnerId="dormant" current={dormant} onSaved={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  expect(screen.getByText(/Saved domains are inactive/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "Edit additional allowed domains"}));
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await waitFor(() => expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("dormant", {assigned_policy: dormant}));
+});
+
+it("refuses an over-limit package toggle without losing existing custom domains", async () => {
+  const hosts = Array.from({length: 25}, (_, i) => `host-${i}.example`);
+  const current: AssignedPolicy = {...CURRENT, network_policy: "allow_list_egress", registry_allowlist: hosts};
+  updateRunnerActionMock.mockResolvedValue({ok: true});
+  render(<EditPolicyDialog runnerId="many-domains" current={current} onSaved={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  fireEvent.click(screen.getByRole("switch", {name: "Enable package manager domains"}));
+  expect(screen.getByRole("alert").textContent).toContain("At most 32 domains");
+  expect(screen.getByRole("switch", {name: "Enable package manager domains"}).getAttribute("aria-checked")).toBe("false");
+  fireEvent.click(screen.getByRole("button", {name: "Edit additional allowed domains"}));
+  expect(screen.getByRole("textbox", {name: "Additional allowed domains"})).toHaveProperty("value", hosts.join("\n"));
+  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await waitFor(() => expect(updateRunnerActionMock).toHaveBeenCalledExactlyOnceWith("many-domains", {assigned_policy: current}));
+});
+
+it("refuses malformed stored hosts instead of sending an invalid replacement assignment", async () => {
+  render(<EditPolicyDialog runnerId="malformed-policy" current={{...CURRENT, registry_allowlist: ["https://invalid.example"]}} onSaved={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  fireEvent.change(screen.getByLabelText("Workers"), {target: {value: "3"}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  expect((await screen.findByRole("alert")).textContent).toContain("must be a host name");
+  expect(updateRunnerActionMock).not.toHaveBeenCalled();
+});
+
+it("Escape cancels a domain edit without closing the runner editor or applying the invalid input", async () => {
+  render(<EditPolicyDialog runnerId="cancel-domains" current={CURRENT} onSaved={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", {name: EDIT_POLICY_LABEL}));
+  fireEvent.click(screen.getByRole("button", {name: "Edit additional allowed domains"}));
+  fireEvent.change(screen.getByRole("textbox", {name: "Additional allowed domains"}), {target: {value: "https://invalid.example"}});
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  expect(screen.getByRole("alert")).toBeTruthy();
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog", {name: "Additional allowed domains"})).toBeNull();
+  expect(screen.getByRole("dialog", {name: "Edit runner"})).toBeTruthy();
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.getByText("1 domain")).toBeTruthy();
+  expect(updateRunnerActionMock).not.toHaveBeenCalled();
 });

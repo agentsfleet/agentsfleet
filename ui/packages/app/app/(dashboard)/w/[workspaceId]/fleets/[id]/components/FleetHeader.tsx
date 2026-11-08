@@ -6,6 +6,7 @@ import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetConfig from "./FleetConfig";
 import KillSwitch from "./KillSwitch";
 import { EditSetupButton } from "@/components/domain/chat/FleetSetupWorkspace";
+import { ChatSummaryToggle } from "@/components/domain/chat/ChatSummary";
 import { MemoryMenu } from "./MemoryMenu";
 
 export function FleetHeader({
@@ -21,7 +22,7 @@ export function FleetHeader({
 }) {
   return (
     <div className="fleet-chat-heading flex shrink-0 items-center justify-between gap-md px-xl pb-sm pt-5 sm:px-chat-inset">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <PageTitle size="chat" className="truncate">{fleet.name}</PageTitle>
         <p className="mt-xs truncate text-eyebrow text-muted-foreground">{agentDisplayName(fleet.id)}</p>
       </div>
@@ -33,6 +34,7 @@ export function FleetHeader({
           <ExhaustionBadge exhaustedAt={exhaustedAt} />
         ) : null}
         <EditSetupButton workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} />
+        <ChatSummaryToggle />
         {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
           <FleetConfig
             workspaceId={workspaceId}

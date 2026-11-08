@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { z } from "zod";
-import { Button, SignalSpinner } from "@agentsfleet/design-system";
+import { Button } from "@agentsfleet/design-system";
 import { adoptTaskGoal, type TaskDetail } from "@/lib/api/tasks";
 import { setupRequest } from "@/lib/api/draft-request";
 import { readDecisionPolicy, type DecisionPolicy } from "@/lib/api/decision-policy";
@@ -55,7 +55,7 @@ export function TaskGoalAdoption({workspaceId, fleetId, detail, enabled, onChang
   return <div className="space-y-sm" aria-label="Update success criteria">
     <Button variant="ghost" size="sm" disabled={!enabled || state.kind === "reading" || state.kind === "applying"}
       onClick={() => {void review();}}>Review latest saved criteria</Button>
-    {state.kind === "reading" ? <output className="inline-flex items-center gap-xs text-eyebrow text-muted-foreground"><SignalSpinner aria-hidden="true" />Reading saved criteria…</output> : null}
+    {state.kind === "reading" ? <output data-chat-loading="true" className="inline-flex items-center gap-xs text-eyebrow text-muted-foreground">Reading saved criteria…</output> : null}
     {state.kind === "notice" ? <output className="block text-eyebrow text-muted-foreground">{state.text}</output> : null}
     {preview ? <div className="space-y-sm rounded-md border border-border p-sm">
       <p className="font-medium">Success criteria from setup v{preview.revision}</p>
