@@ -27,12 +27,14 @@ facts.
   `verify.integration`, and `verify.version` (`make lint-all`,
   `make test-unit-all`, `make test-integration-rustd`, `make check-version`).
   REVIEW remains a separate lifecycle stage.
-- **One lane needs live datastores, and only one.** The Zig integration and
+- **Two lanes need live datastores, and only two.** The Zig integration and
   memory-leak lanes went with the rest of the Zig gating; `make/test-infra.mk`
   survived them, and M176 built `make test-integration-rustd` on it — docker
-  compose Postgres and Dragonfly, schemas reset per run. Nothing else a developer
-  runs needs either: `make test-unit-all` stays datastore-free, because every
-  Rust test that needs one is `#[ignore]`d and runs only in that lane.
+  compose Postgres and Dragonfly, schemas reset per run. `make test-coverage-rustd`
+  is the second: it runs the same `#[ignore]`d tests under the coverage
+  instrument with `--include-ignored`. Nothing else a developer runs needs
+  either: `make test-unit-all` stays datastore-free, because every Rust test
+  that needs one is `#[ignore]`d and runs only in those two lanes.
   `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never sets it.
 - **Make targets are the only repository claims — never hand-roll their
   equivalents.** lint → `make lint-all`
