@@ -71,7 +71,7 @@ fn field_kinds() -> Vec<(&'static str, Error)> {
 
 /// The team failures, each with the wire code the routes and the dashboard
 /// branch on: one table, read by both tests below.
-fn team_kinds() -> [(&'static str, Error, ErrorCode); 6] {
+fn team_kinds() -> [(&'static str, Error, ErrorCode); 7] {
     [
         (
             "invite not found",
@@ -101,6 +101,11 @@ fn team_kinds() -> [(&'static str, Error, ErrorCode); 6] {
         (
             "email invalid",
             super::email_invalid(),
+            error_code::INVALID_REQUEST,
+        ),
+        (
+            "cursor invalid",
+            super::cursor_invalid(),
             error_code::INVALID_REQUEST,
         ),
     ]
@@ -134,7 +139,7 @@ fn an_invite_conflict_says_which_one() {
 #[test]
 fn every_data_only_failure_has_a_registered_public_contract() {
     let kinds = data_only_kinds();
-    assert_eq!(kinds.len(), 34, "the table must grow with the enum");
+    assert_eq!(kinds.len(), 35, "the table must grow with the enum");
 
     for (label, failure) in kinds {
         assert!(!failure.code().as_str().is_empty(), "{label}: code");

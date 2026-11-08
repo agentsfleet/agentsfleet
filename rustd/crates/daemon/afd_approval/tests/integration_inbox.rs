@@ -136,6 +136,15 @@ async fn a_decision_scoped_to_another_fleet_resolves_nothing() {
     // Not found rather than resolved: an actor holding a signature for one
     // fleet must not be able to answer another's gate by guessing an action id.
     assert_eq!(outcome, Resolution::NotFound);
+    // An action or a fleet that is not a `UUIDv7` names no gate either.
+    for (action, fleet) in [("not-an-id", None), (action.as_str(), Some("not-an-id"))] {
+        let outcome = lane
+            .inbox
+            .resolve(action, Decision::Approved, OPERATOR, NOTE, fleet)
+            .await
+            .expect("a malformed id must not fault");
+        assert_eq!(outcome, Resolution::NotFound);
+    }
     assert_eq!(
         lane.status_of(&action).await,
         "pending",
