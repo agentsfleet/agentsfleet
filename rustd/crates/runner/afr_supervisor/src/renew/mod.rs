@@ -1,7 +1,7 @@
 //! Renewal: a held lease bought more time, tick by tick, until the daemon says
 //! no or the time it granted runs out.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use af_core::clock::Clock;
 use af_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_RENEW_BODY_MALFORMED};
@@ -70,7 +70,7 @@ impl<'a> Renewal<'a> {
             .plane
             .stream
             .renewing
-            .register(self.lease_id, self.meter.clone())
+            .register(self.lease_id, Arc::clone(self.meter))
         {
             Ok(registration) => registration,
             Err(error) => return self.terminated(&error),

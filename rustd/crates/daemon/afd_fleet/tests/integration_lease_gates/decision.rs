@@ -98,7 +98,7 @@ async fn profile_snapshot_does_not_reverse_model_then_runner_lock_order() {
     let answer = tokio::time::timeout(ISSUE_TIMEOUT, drive(&fixtures, &case, acquired))
         .await
         .expect("lease issue never waits for the model row after locking runner");
-    let issued = decode(&answer);
+    let issued = decode(answer.as_ref());
     writer.rollback().await.expect("release model writer");
     assert_eq!(
         issued
@@ -152,17 +152,19 @@ async fn issue(fixtures: &Fixtures, case: &Ready) -> Issued {
     let _default = prepare(fixtures, case).await;
     let acquired = claim(fixtures, case).await;
     let answer = drive(fixtures, case, acquired).await;
-    decode(&answer)
+    decode(answer.as_ref())
 }
 
-fn decode(answer: &Option<serde_json::Value>) -> Issued {
-    let body = answer.as_ref().expect("fleet work was issued").to_string();
-    match serde_json::from_str::<TaggedLease<'_>>(&body).expect("typed issued lease") {
-        TaggedLease::Fleet(lease) => Issued {
-            id: Uuid7::parse(&lease.lease_id).expect("the lease names a UUIDv7"),
-            decision: lease.decision,
-        },
-        TaggedLease::Authoring(_) => panic!("the selected admission grants fleet work"),
+fn decode(answer: Option<&serde_json::Value>) -> Issued {
+    let body = answer.expect("fleet work was issued").to_string();
+    let lease = match serde_json::from_str::<TaggedLease<'_>>(&body).expect("typed issued lease") {
+        TaggedLease::Fleet(lease) => Some(lease),
+        TaggedLease::Authoring(_) => None,
+    }
+    .expect("the selected admission grants fleet work");
+    Issued {
+        id: Uuid7::parse(&lease.lease_id).expect("the lease names a UUIDv7"),
+        decision: lease.decision,
     }
 }
 

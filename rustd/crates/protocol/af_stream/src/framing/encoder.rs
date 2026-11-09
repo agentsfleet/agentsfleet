@@ -51,8 +51,8 @@ impl Encoder {
 }
 
 impl std::io::Write for Encoder {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        std::io::Write::write(&mut self.buffer, bytes)
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        std::io::Write::write(&mut self.buffer, buf)
     }
 
     fn flush(&mut self) -> std::io::Result<()> {

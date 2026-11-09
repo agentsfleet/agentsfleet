@@ -51,7 +51,7 @@ impl std::fmt::Debug for Renewals {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Renewals")
             .field("leases", &self.leases.len())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -63,7 +63,7 @@ impl Renewals {
     ) -> Result<Registration> {
         let slot = Arc::clone(&self.slots)
             .try_acquire_owned()
-            .map_err(|_| ErrorKind::StreamProtocol)?;
+            .map_err(crate::error::stream_protocol)?;
         let (updates, watching) = watch::channel(None);
         match self.leases.entry(lease.clone()) {
             Entry::Occupied(_) => return Err(ErrorKind::StreamProtocol.into()),

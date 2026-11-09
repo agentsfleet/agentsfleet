@@ -90,7 +90,7 @@ pub(crate) async fn wait_for_seeded_offer(run: &Scenario) -> (String, u64) {
 
 /// Wait for the requested event without issuing another lease request.
 pub(crate) async fn wait_for_offer(run: &Scenario, event_id: &Uuid7) -> (String, u64) {
-    let client = crate::support::runner_stream::client(run).await;
+    let client = run.native_session().await;
     let reading = async {
         let mut elsewhere = Vec::new();
         loop {
@@ -120,8 +120,9 @@ pub(crate) async fn wait_for_offer(run: &Scenario, event_id: &Uuid7) -> (String,
 
 /// Record capability and policy through the native heartbeat command.
 pub(crate) async fn heartbeat(run: &Scenario, body: &Value) -> Value {
-    let request = serde_json::from_value(body.clone()).expect("the heartbeat fixture is current");
-    crate::support::runner_stream::client(run)
+    let bytes = serde_json::to_vec(body).expect("the heartbeat fixture encodes");
+    let request = serde_json::from_slice(&bytes).expect("the heartbeat fixture is current");
+    run.native_session()
         .await
         .heartbeat(&request)
         .await
@@ -131,10 +132,7 @@ pub(crate) async fn heartbeat(run: &Scenario, body: &Value) -> Value {
 /// Preserve the native report response or the daemon's coded refusal.
 pub(crate) async fn report(run: &Scenario, body: &Value) -> afr_supervisor::Result<Value> {
     let bytes = serde_json::to_vec(body).expect("the report fixture encodes");
-    let response = crate::support::runner_stream::client(run)
-        .await
-        .report(&bytes)
-        .await?;
+    let response = run.native_session().await.report(&bytes).await?;
     Ok(serde_json::to_value(response).expect("the report response encodes"))
 }
 
@@ -164,7 +162,7 @@ where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    let client = crate::support::runner_stream::client(run).await;
+    let client = run.native_session().await;
     let waiting = async {
         loop {
             if ended().await {

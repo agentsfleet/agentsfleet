@@ -143,7 +143,7 @@ fn a_heartbeat_names_its_holds_and_refuses_an_unknown_field() {
     let body = format!(r#"{{"holds":["{FLEET}"],"closing":false}}"#);
     let beat: HeartbeatRequest<'_> = serde_json::from_str(&body).unwrap();
     assert_eq!(beat.holds, held(1, FLEET));
-    beat.validate().unwrap();
+    beat.holds.validate().unwrap();
     let _ = serde_json::from_str::<HeartbeatRequest<'_>>(r#"{"future":1}"#).unwrap_err();
 }
 

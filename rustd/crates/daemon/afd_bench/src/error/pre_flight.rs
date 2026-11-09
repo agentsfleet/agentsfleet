@@ -21,7 +21,8 @@ impl Error {
         // distinction the code does not make. What decides this is whether a
         // connection was open when the failure was raised.
         match self.kind() {
-            ErrorKind::UnknownProfile { .. }
+            ErrorKind::ConcurrencyUnrepresentable { .. }
+            | ErrorKind::UnknownProfile { .. }
             | ErrorKind::CapExceeded { .. }
             | ErrorKind::AcknowledgementMissing { .. }
             | ErrorKind::TargetMissing { .. }

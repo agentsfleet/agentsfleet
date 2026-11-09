@@ -24,7 +24,7 @@ async fn real_decision_client_preflight_is_receipted_before_root_can_use_it() {
 }
 
 async fn exercise(mode: &'static str) {
-    let server = server::Server::start(mode).await;
+    let mut server = server::Server::start(mode).await;
     let host = Host::new();
     let lease_id = af_core::id::Uuid7::parse(LEASE_ID).unwrap();
     let verbs = FencedVerbs::new(&server.plane, &lease_id, FENCING, &host.halt, &host.stop);
@@ -39,7 +39,7 @@ async fn exercise(mode: &'static str) {
     };
     let output = execute(&engine, &lease, &prepared, &verbs, &host).await;
     assert_stopped(&output, &model);
-    server.assert_calls();
+    server.assert_calls().await;
     server.stop();
 }
 

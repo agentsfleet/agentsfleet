@@ -7,7 +7,7 @@ use af_wire::{
     protocol::{Renewal, RenewalAnswer},
     report::RenewResponse,
 };
-use futures_util::{StreamExt as _, stream};
+use futures_util::{StreamExt as _, stream::FuturesUnordered};
 use garde::Validate as _;
 use std::num::NonZeroU64;
 use tokio::time::Instant;
@@ -20,11 +20,22 @@ impl SessionServices {
         leases: Vec<Renewal<'_>>,
     ) -> Result<()> {
         let deadline = Instant::now() + STREAM_ANSWER_TIMEOUT;
-        let replies = stream::iter(leases)
-            .map(|renewal| self.renew_one(renewal, deadline))
-            .buffer_unordered(8)
-            .collect()
-            .await;
+        let mut waiting = leases.into_iter();
+        let mut active = FuturesUnordered::new();
+        for renewal in waiting.by_ref().take(8) {
+            active.push(self.renew_one(renewal, deadline));
+        }
+        let mut replies = Vec::new();
+        loop {
+            let completed = active.next().await;
+            let Some(reply) = completed else {
+                break;
+            };
+            replies.push(reply);
+            if let Some(renewal) = waiting.next() {
+                active.push(self.renew_one(renewal, deadline));
+            }
+        }
         self.send(&Message::Renewed {
             request_id,
             leases: replies,
@@ -58,10 +69,10 @@ impl SessionServices {
                 }),
             )
             .await;
-        if result.as_ref().is_err_and(|error| !error.retryable()) {
-            if let Ok(id) = Uuid7::parse(&lease_id) {
-                self.cache.forget(&id);
-            }
+        if result.as_ref().is_err_and(|error| !error.retryable())
+            && let Ok(id) = Uuid7::parse(&lease_id)
+        {
+            self.cache.forget(&id);
         }
         RenewalAnswer {
             lease_id,

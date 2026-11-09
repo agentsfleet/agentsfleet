@@ -37,11 +37,12 @@ An unavailable daemon, database or network can still stop work.
 Indy rejected completed-report files and all backward-format retries.
 His selected answer was: "Remove runner disk storage; retry from memory".
 Postgres owns saved completion and billing records; runner memory holds only unacknowledged results.
+
 Task-decision receipts also remain in the calling task until the daemon acknowledges them.
 Process loss can lose uncommitted results and usage; no file recovery or trace-based billing is promised.
 
 The [owner feedback audit](owner-feedback-audit.md) records each supplied comment, its source evidence and unfinished work.
-Changes after checkpoint `a0a8cf3b7` remain unverified.
+Full milestone verification remains incomplete; the handoff records current results.
 Historical test results below do not verify the current source.
 
 ## Why it exists
@@ -61,15 +62,18 @@ The original decision to retain four authoring HTTP calls is superseded.
 Model calls, proposals, authoring renewals and final authoring reports now belong to M243's transport migration.
 
 Wire variants, runner commands, daemon dispatch and connection-authority checks are written.
-The four authoring HTTP routes are removed; fixture migration and native integration evidence remain unfinished.
-Compilation still fails in kernel examples referencing removed report routes; this checkpoint is not ready to undraft.
+The four authoring HTTP routes are removed; native integration evidence remains due.
+
+Kernel examples now compile through native fixtures.
+The handoff records remaining checks; this checkpoint is not ready to undraft.
 
 Read the [current handoff](session-handoff.md) and [resume prompt](resume-prompt.md) before continuing in a new session.
 The [owner feedback audit](owner-feedback-audit.md) maps supplied comments to source changes and remaining evidence.
-Indy subsequently authorized compilation, formatting, lint and tests. The handoff records actual passing checks and compiler failures.
+
+Indy subsequently authorized compilation, formatting, lint and tests. The handoff records actual passing checks and remaining verification.
 
 M246 extends M243's authentication, recheck and revocation interface.
-Independent tenant-management work can prepare separately; final integration still requires the completed M243 contract.
+Independent tenant-management work can prepare separately; final integration still requires the completed M243 interface.
 The [parallel preparation prompt](m246-parallel-prompt.md) preserves M246's unresolved owner decisions.
 
 ### Historical evidence before this context save

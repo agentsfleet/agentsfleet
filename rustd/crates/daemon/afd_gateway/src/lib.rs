@@ -30,6 +30,8 @@ pub use operation::Operation;
 
 /// Boot-selected handles; no service opens another pool or broker connection here.
 pub struct GatewayDependencies {
+    /// Existing shared pool for gateway-owned recovery, cache and session registration SQL.
+    pub database: afd_db::Db,
     /// Host policy, liveness and guarded connection ownership.
     pub runners: Runners,
     /// Existing fleet placement, billing, activity and report owner.
@@ -139,7 +141,7 @@ impl afd_http::services::RunnerStreams for Gateway {
         match session::open(self, runner, request).await {
             Ok(response) => response,
             Err(error) => {
-                self.observe(&error, Operation::Opening);
+                Self::observe(&error, Operation::Opening);
                 error.response()
             }
         }

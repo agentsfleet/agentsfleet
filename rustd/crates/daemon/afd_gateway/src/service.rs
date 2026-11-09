@@ -11,6 +11,7 @@ use crate::{ConnectionContext, Gateway};
 
 impl Gateway {
     /// Construct once per physical connection, then share its context across request streams.
+    #[must_use]
     pub fn connection_service(
         router: Router,
         info: ConnectionInfo,

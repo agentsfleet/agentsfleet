@@ -18,10 +18,12 @@ impl LeaseService {
         runner_id: &Uuid7,
         now: Timestamp,
     ) -> Result<Option<serde_json::Value>> {
-        let mut encode = |lease, _metadata| {
+        let mut encode = |lease: af_wire::lease::LeasePayload<'_>,
+                          _metadata: crate::lease::Offered| {
             serde_json::to_value(af_wire::lease::TaggedLease::<serde_json::Value>::Fleet(
                 Box::new(lease),
             ))
+            .map_err(af_core::json::Unreadable::from)
         };
         match self
             .run_claimed_with(

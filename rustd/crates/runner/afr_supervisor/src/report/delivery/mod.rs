@@ -15,7 +15,7 @@ where
     loop {
         let answer = tokio::select! {
             biased;
-            () = halt.running().cancelled() => return Err(ErrorKind::Disconnected.into()),
+            () = halt.stopped().cancelled() => return Err(ErrorKind::Disconnected.into()),
             answer = call() => answer,
         };
         match answer {
@@ -37,7 +37,7 @@ where
         let pause = pauses.next().ok_or(ErrorKind::StreamProtocol)?;
         tokio::select! {
             biased;
-            () = halt.running().cancelled() => return Err(ErrorKind::Disconnected.into()),
+            () = halt.stopped().cancelled() => return Err(ErrorKind::Disconnected.into()),
             () = tokio::time::sleep(pause) => {},
         }
     }

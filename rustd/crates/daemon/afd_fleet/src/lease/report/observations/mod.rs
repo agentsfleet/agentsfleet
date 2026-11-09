@@ -15,6 +15,9 @@ use jiff::Timestamp;
 use std::time::{Duration, SystemTime};
 
 /// Describe one saved result; a replay acknowledges success without counting the run again.
+///
+/// # Errors
+/// Preserves invalid saved usage counts before publishing any completion observations.
 #[expect(
     clippy::disallowed_methods,
     reason = "delivery spans end at full SystemTime precision"

@@ -74,14 +74,14 @@ impl TryFrom<&str> for Proxy {
         let uri = format!("http://{authority}/").parse()?;
         Ok(Self {
             uri,
-            authorization: authorization(&url)?,
+            authorization: authorization(&url),
         })
     }
 }
 
-fn authorization(url: &url::Url) -> Result<Option<Zeroizing<String>>> {
+fn authorization(url: &url::Url) -> Option<Zeroizing<String>> {
     if url.username().is_empty() && url.password().is_none() {
-        return Ok(None);
+        return None;
     }
     let mut credentials =
         Zeroizing::new(percent_encoding::percent_decode_str(url.username()).collect::<Vec<_>>());
@@ -92,7 +92,7 @@ fn authorization(url: &url::Url) -> Result<Option<Zeroizing<String>>> {
     credentials.push(b':');
     credentials.extend_from_slice(&password);
     let encoded = Zeroizing::new(STANDARD.encode(&credentials));
-    Ok(Some(Zeroizing::new(format!("Basic {}", &*encoded))))
+    Some(Zeroizing::new(format!("Basic {}", *encoded)))
 }
 
 #[derive(garde::Validate)]
@@ -167,7 +167,7 @@ pub(crate) async fn socket(endpoint: &Endpoint) -> Result<TcpStream> {
     driver.await??;
     let parts = upgraded
         .downcast::<TokioIo<TcpStream>>()
-        .map_err(|_| ErrorKind::Protocol)?;
+        .map_err(|_unrecognized_io| ErrorKind::Protocol)?;
     // No TLS ClientHello has been sent, so preloaded server bytes are a protocol violation.
     if !parts.read_buf.is_empty() {
         return Err(ErrorKind::Protocol.into());

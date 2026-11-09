@@ -1,7 +1,6 @@
 //! A shared daemon seam, with routing, retry and real transport behavior separate.
 #![expect(clippy::unwrap_used, reason = "test fixtures must fail loudly")]
 
-mod authoring;
 mod retry;
 mod routing;
 mod task;

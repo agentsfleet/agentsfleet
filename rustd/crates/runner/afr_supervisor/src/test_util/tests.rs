@@ -177,3 +177,37 @@ async fn lease_context_restores_and_commits_through_the_native_client() {
     assert_eq!(body.get("expected_generation"), Some(&serde_json::json!(0)));
     assert_eq!(body.get("checkpoint"), Some(&document));
 }
+
+/// The shared test issuer authenticates the same hybrid-only native transports as the runner.
+#[tokio::test]
+async fn the_native_fixture_authenticates_both_transports()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let mut daemon = super::NativeDaemon::serve(
+        healthy(),
+        serde_json::from_str(super::LEASE_JSON)?,
+        |_frame| async {},
+    )
+    .await?;
+    let endpoint = af_stream::Endpoint::parse(&daemon.url)?;
+    let trust = af_stream::tls::Trust::with_roots(daemon.root());
+    let stop = tokio_util::sync::CancellationToken::new();
+    for transport in [af_stream::Transport::H3, af_stream::Transport::H2] {
+        let connection = af_stream::Connection::connect(
+            transport,
+            &endpoint,
+            &trust,
+            &stop,
+            tokio::time::Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT,
+        )
+        .await?;
+        assert_eq!(
+            connection.key_exchange(),
+            Some(af_stream::tls::KeyExchange::X25519MlKem768)
+        );
+        connection
+            .close(tokio::time::Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT)
+            .await?;
+    }
+    daemon.close().await?;
+    Ok(())
+}

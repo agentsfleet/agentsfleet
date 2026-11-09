@@ -87,7 +87,7 @@ impl SecondaryRequest {
                     .attachments
                     .send(attachment)
                     .await
-                    .map_err(|_| ErrorKind::Closed.into())
+                    .map_err(crate::error::closed_send)
             },
         )
         .await?;

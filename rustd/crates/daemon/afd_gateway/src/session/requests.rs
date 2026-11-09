@@ -86,13 +86,17 @@ mod tests {
 
     /// Every return path releases identity, including an aborted worker unwinding its future.
     #[test]
-    fn request_identity_is_exclusive_until_its_registration_drops() {
+    fn request_identity_is_exclusive_until_its_registration_drops() -> crate::Result<()> {
         let tracker = Arc::new(RequestTracker::default());
-        let first = tracker.register(Some(NonZeroU64::MIN));
-        assert!(first.is_ok());
-        assert!(tracker.register(Some(NonZeroU64::MIN)).is_err());
+        let first = tracker.register(Some(NonZeroU64::MIN))?;
+        let failure = tracker
+            .register(Some(NonZeroU64::MIN))
+            .err()
+            .ok_or(crate::error::ErrorKind::Protocol)?;
+        assert_eq!(failure.code(), af_core::error_code::INVALID_REQUEST);
         drop(first);
-        assert!(tracker.register(Some(NonZeroU64::MIN)).is_ok());
+        let _reused = tracker.register(Some(NonZeroU64::MIN))?;
+        Ok(())
     }
 
     /// Cosmetic work cannot spend the capacity reserved for heartbeat and renewal handling.

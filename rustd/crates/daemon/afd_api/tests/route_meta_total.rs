@@ -95,6 +95,8 @@ const DURABLE_TASK_ADDITIONS: usize = 16;
 const FOLD_ADDITIONS: usize = 1;
 /// Native runner sessions replace the polling routes as the runtime wiring completes.
 const RUNNER_STREAM_ADDITIONS: usize = 1;
+/// Six polling and lease-update routes plus four authoring routes now use native frames.
+const RETIRED_RUNNER_HTTP_ROUTES: usize = 10;
 
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
@@ -107,7 +109,8 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + DURABLE_TASK_ADDITIONS
     + FOLD_ADDITIONS
     + RUNNER_STREAM_ADDITIONS
-    - RETIRED_WEBHOOK_ROUTES;
+    - RETIRED_WEBHOOK_ROUTES
+    - RETIRED_RUNNER_HTTP_ROUTES;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.

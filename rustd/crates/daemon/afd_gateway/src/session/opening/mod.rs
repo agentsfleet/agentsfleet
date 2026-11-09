@@ -21,11 +21,10 @@ pub(super) async fn open(gateway: &Gateway, runner: Runner, request: Request) ->
             let preparation = gateway.inner.tasks.token();
             let (opening, body) = ControlOpening::new(gateway, runner, request)?;
             let opening = opening.prepare().await?;
-            let observer = gateway.clone();
             gateway.inner.tasks.spawn(async move {
                 let _preparation = preparation;
                 if let Err(error) = opening.run().await {
-                    observer.observe(&error, Operation::Opening);
+                    crate::Gateway::observe(&error, Operation::Opening);
                 }
             });
             response(body)
@@ -55,5 +54,5 @@ pub(super) fn allowed<T>(decision: Decision<T>) -> Result<T> {
 
 /// One source defines the heartbeat cadence advertised in welcome and policy replies.
 pub(super) fn interval_millis() -> Result<u32> {
-    u32::try_from(HEARTBEAT_INTERVAL.as_millis()).map_err(|_| ErrorKind::Protocol.into())
+    Ok(u32::try_from(HEARTBEAT_INTERVAL.as_millis())?)
 }

@@ -321,7 +321,11 @@ async fn an_invalid_release_identifier_refuses_the_assignment() {
     let probe = probe();
     let holds = idle_holds();
     let mut heartbeat = Heartbeat::new(&plane, &probe, &holds);
-    assert!(heartbeat.beat().await.is_err());
+    let failure = heartbeat.beat().await.unwrap_err();
+    assert_eq!(
+        failure.code(),
+        af_core::error_code::INTERNAL_OPERATION_FAILED
+    );
     assert!(!heartbeat.last.takes_work(0));
     holds.shutdown().await;
 }

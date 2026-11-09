@@ -35,8 +35,7 @@ pub(crate) fn lease() -> Lease<Value> {
         "model": {"ref":"owned", "provider":"openai", "model":"gpt-4.1",
             "pricing":{"input_nanos_per_million":"1",
                 "output_nanos_per_million":"1", "runtime_nanos_per_second":"1"}},
-        "model_access":{"token":"a".repeat(43),"expires_at":GRANTED_UNTIL,
-            "invocation_path":"https://untrusted.invalid/never-follow-this"},
+        "model_access":{"token":"a".repeat(43),"expires_at":GRANTED_UNTIL},
         "messages":[{"role":"user","text":"Investigate checkout"}],
         "limits":{"input_per_call":32768,"output_per_turn":8192,"max_calls":8,
             "wall_seconds":300,"provider_timeout_seconds":30}

@@ -13,6 +13,10 @@ fn shutdown_stops_serving_and_leasing_but_not_running_leases() {
 
     assert!(halt.serving().is_cancelled() && halt.leasing().is_cancelled());
     assert!(
+        !halt.stopped().is_cancelled(),
+        "shutdown still permits final delivery"
+    );
+    assert!(
         !halt.running().is_cancelled(),
         "leases in flight run to their reports"
     );
@@ -46,4 +50,5 @@ fn a_refused_token_stops_everything_and_other_failures_do_not() {
     assert!(halt.token_refused());
     assert!(halt.running().is_cancelled() && halt.serving().is_cancelled());
     assert!(halt.leasing().is_cancelled());
+    assert!(halt.stopped().is_cancelled());
 }

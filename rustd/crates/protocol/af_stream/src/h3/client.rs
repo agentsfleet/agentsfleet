@@ -59,14 +59,10 @@ pub(crate) async fn connect(
     tokio_quiche::InitialQuicConnection::<UdpSocket, _>::resume(running);
     within(&stop, deadline, Stage::Handshake, async {
         while key_exchange.borrow().is_none() {
-            key_exchange
-                .changed()
-                .await
-                .map_err(|_| ErrorKind::Closed {
-                    stage: Stage::Handshake,
-                })?;
+            key_exchange.changed().await?;
         }
-        match *key_exchange.borrow() {
+        let negotiated = *key_exchange.borrow();
+        match negotiated {
             Some(crate::tls::KeyExchange::X25519MlKem768) => Ok(()),
             Some(negotiated) => Err(ErrorKind::KeyExchangeRefused { negotiated }.into()),
             None => Err(ErrorKind::Closed {

@@ -38,14 +38,14 @@ async fn an_unreachable_daemon_is_retried_until_shutdown() {
         };
 
         let (served, ()) = tokio::join!(
-            run(
+            Box::pin(run(
                 &config,
                 home,
                 Box::new(FakeEngine::default()),
                 Box::new(FakeAgent::new(Behaviour::Answer)),
                 probe(),
                 shutdown.clone()
-            ),
+            )),
             stopping
         );
 

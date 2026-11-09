@@ -3,7 +3,7 @@
 use crate::{Error, Gateway, Operation};
 
 impl Gateway {
-    pub(crate) fn observe(&self, error: &Error, operation: Operation) {
+    pub(crate) fn observe(error: &Error, operation: Operation) {
         let error_code = error.code().as_str();
         let reason = error.reason();
         let detail = error.detail();

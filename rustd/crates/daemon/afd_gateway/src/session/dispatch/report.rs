@@ -31,7 +31,7 @@ impl SessionServices {
                     self.handle.runner.as_str(),
                     received,
                 ) {
-                    self.gateway.observe(&error.into(), Operation::Report);
+                    crate::Gateway::observe(&error.into(), Operation::Report);
                 }
                 self.cache.forget(&id);
                 Ok(ReportResponse { ok: true })

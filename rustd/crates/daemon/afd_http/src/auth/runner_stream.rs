@@ -64,7 +64,9 @@ pub enum ConnectionCredentials {
     Bearer,
     /// A secondary stream belongs to the connection's already proved runner.
     Session {
+        /// Runner already authenticated on this physical connection.
         runner: Runner,
+        /// Secondary stream and session checked by its connection owner.
         kind: AuthenticatedRunnerStream,
     },
 }
@@ -75,6 +77,9 @@ pub type ConnectionAuthenticationResult = core::result::Result<ConnectionCredent
 /// Implemented by the native connection owner, independent of HTTP route dispatch.
 pub trait RunnerConnectionAuthentication: Send + Sync + std::fmt::Debug + 'static {
     /// Prove a secondary stream or request initial bearer authentication.
+    ///
+    /// # Errors
+    /// Returns the coded HTTP refusal for invalid connection or stream metadata.
     fn credentials(&self, headers: &HeaderMap) -> ConnectionAuthenticationResult;
 }
 
@@ -150,7 +155,7 @@ impl<D: Services> RunnerStreamAuthentication<D> {
                 tracing::debug!(event = "runner_credential_header_unreadable", reason = %source);
                 refuse()
             })?;
-            let presented = Presented::from_authorization(header).map_err(|_| refuse())?;
+            let presented = Presented::from_authorization(header).map_err(|_blank| refuse())?;
             parts
                 .extensions
                 .insert(AuthenticatedRunnerCredential(Digest::of(&presented)));

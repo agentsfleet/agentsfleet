@@ -73,7 +73,7 @@ impl Queues {
             biased;
             () = stop.cancelled() => Err(ErrorKind::Disconnected.into()),
             sent = tokio::time::timeout_at(deadline, queue.send(message)) => {
-                sent?.map_err(|_| ErrorKind::Disconnected.into())
+                sent?.map_err(crate::error::stream_disconnected)
             }
         }
     }

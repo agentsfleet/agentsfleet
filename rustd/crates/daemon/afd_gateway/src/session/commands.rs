@@ -10,11 +10,12 @@ use crate::{Gateway, Operation, Result};
 
 /// Announce committed ownership with a bounded best-effort publish.
 pub(super) async fn announce(gateway: &Gateway, runner: &af_core::id::Uuid7) -> Result<()> {
+    let subject = Subject::RunnerCommand(runner.clone());
     let publish = gateway
         .inner
         .dependencies
         .bus
-        .publish_frame(&Subject::RunnerCommand(runner.clone()), &Command::Recheck);
+        .publish_frame(&subject, &Command::Recheck);
     tokio::time::timeout(READY_WAKE_DEADLINE, publish)
         .await
         .map_err(|source| crate::error::ErrorKind::Timeout {
@@ -49,7 +50,7 @@ pub(super) async fn listen(services: Arc<SessionServices>) -> Result<()> {
             retry = std::time::Duration::from_millis(100);
             match receive(&services.handle, &mut subscription).await {
                 Ok(()) => return Ok(()),
-                Err(error) => services.gateway.observe(&error, Operation::Recheck),
+                Err(error) => crate::Gateway::observe(&error, Operation::Recheck),
             }
         }
         if !lost {
@@ -80,12 +81,11 @@ async fn receive(handle: &SessionHandle, subscription: &mut afd_bus::Subscriptio
             () = handle.stop.cancelled() => return Ok(()),
             next = subscription.recv() => match next {
                 Ok(Received::Message(message)) => {
-                    match serde_json::from_str::<Command>(&message.payload) {
-                        Ok(command) => handle.command(command),
-                        Err(_) => {
-                            tracing::warn!(event = "runner_stream_command_invalid");
-                            handle.command(Command::Recheck);
-                        }
+                    if let Ok(command) = serde_json::from_str::<Command>(&message.payload) {
+                        handle.command(command);
+                    } else {
+                        tracing::warn!(event = "runner_stream_command_invalid");
+                        handle.command(Command::Recheck);
                     }
                 }
                 Ok(Received::Gap | Received::Lagged(_)) => handle.command(Command::Recheck),
@@ -113,7 +113,7 @@ impl SessionServices {
                     ))
                     .bind(lease)
                     .bind(&self.handle.runner)
-                    .fetch_optional(&mut *self.leases.leases.pool().acquire().await?)
+                    .fetch_optional(&mut *self.gateway.inner.dependencies.database.acquire().await?)
                     .await?,
                 )
             })

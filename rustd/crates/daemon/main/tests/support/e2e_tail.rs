@@ -49,7 +49,7 @@ pub(crate) const SILENCE_WINDOW: Duration = Duration::from_millis(750);
 /// Both tests need the same three requests before they can forward anything,
 /// and the beat is not optional — a runner that has not proven its capabilities
 /// reads degraded and the poll correctly answers no-work.
-pub(crate) async fn lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
+pub(crate) async fn lease(run: &Scenario) -> (String, u64) {
     let beat = crate::wire::heartbeat(run, &capable_beat()).await;
     assert!(
         beat.get("assigned_policy").is_some(),

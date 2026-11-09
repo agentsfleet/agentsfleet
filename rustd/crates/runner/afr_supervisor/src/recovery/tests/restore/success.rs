@@ -29,7 +29,7 @@ async fn restore_verifies_base_and_overlay_before_writing_a_fresh_workspace() ->
     );
     assert_restored_files(&destination)?;
     assert_eq!(restored.plan.pin.resource_version, 2);
-    let requests = drain(&mut calls);
+    let requests = drain(&mut calls).await;
     assert_eq!(
         requests
             .iter()
@@ -72,7 +72,7 @@ async fn retained_base_inspection_returns_verified_paths_without_restoring_histo
     .base_paths(&base)
     .await?;
     assert_eq!(paths, ["kept"]);
-    let requests = drain(&mut calls);
+    let requests = crate::test_support::drain(&mut calls);
     assert_eq!(
         requests.iter().map(|call| call.verb).collect::<Vec<_>>(),
         [Verb::TaskCheckpointAuthorizations, Verb::TaskCheckpointPage]

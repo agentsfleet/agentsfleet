@@ -98,7 +98,7 @@ impl LeaseSnapshot {
             sqlx::query_as::<_, LiveLeaseRow>(include_str!("../sql/select_runner_live_leases.sql"))
                 .bind(runner)
                 .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
-                .bind(i64::try_from(LEASES_MAX + 1).map_err(|_| ErrorKind::Protocol)?)
+                .bind(i64::try_from(LEASES_MAX + 1)?)
                 .fetch_all(&mut *database.acquire().await?)
                 .await?;
         rows.try_into()

@@ -38,8 +38,11 @@ impl Session {
     pub async fn connect(config: &Config) -> Result<Self> {
         let (stream, downlink, offers) = Downlink::new(config)?;
         let halt = Arc::new(Halt::new(CancellationToken::new()));
-        let owned = Arc::clone(&halt);
-        let owner = AbortOnDropHandle::new(tokio::spawn(async move { downlink.run(&owned).await }));
+        let serving_halt = Arc::clone(&halt);
+        let owner =
+            AbortOnDropHandle::new(tokio::spawn(
+                async move { downlink.run(&serving_halt).await },
+            ));
         let session = Self {
             plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?), stream),
             offers: tokio::sync::Mutex::new(offers),

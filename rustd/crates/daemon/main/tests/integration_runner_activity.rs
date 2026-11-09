@@ -72,7 +72,7 @@ impl Tailed {
             reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
         )]
         let http = reqwest::Client::new();
-        let (lease_id, fence) = lease(&http, &run).await;
+        let (lease_id, fence) = lease(&run).await;
         let hub = SubscriptionHub::start(dragonfly_config())
             .await
             .expect("the lane's Dragonfly accepts a subscriber");

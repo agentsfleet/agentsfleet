@@ -23,7 +23,7 @@ pub trait RequestAuthentication: Clone + Send + Sync + std::fmt::Debug + 'static
     ) -> impl Future<Output = AuthenticationResult> + Send;
 }
 
-/// Used by the API router and by RunnerStreamAuthentication before a native session is bound.
+/// Used by the API router and by `RunnerStreamAuthentication` before a native session is bound.
 /// It proves the credential class and identity; the common middleware checks route permissions.
 #[derive(Debug)]
 pub struct BearerAuthentication<D> {

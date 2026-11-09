@@ -90,7 +90,7 @@ pub struct LeaseRow<'a> {
     pub decision_snapshot: Option<&'a DecisionAssignment>,
 }
 
-impl<'a> LeaseRow<'a> {
+impl LeaseRow<'_> {
     /// Return the actual stored creation time, or None when the guarded insert lost its claim.
     ///
     /// # Errors
@@ -128,6 +128,6 @@ impl<'a> LeaseRow<'a> {
             .map_err(query(
                 "write the fenced lease and return its saved creation time",
             ))?;
-        Ok(created_at.map(|created| created.to_jiff()))
+        Ok(created_at.map(jiff_sqlx::Timestamp::to_jiff))
     }
 }

@@ -32,14 +32,14 @@ impl ConfirmedSession {
             .inner
             .registry
             .register_current(
-                Arc::clone(&handle),
+                &handle,
                 &self.authority,
-                self.gateway.inner.dependencies.leases.leases.pool(),
+                &self.gateway.inner.dependencies.database,
             )
             .await?;
         if let Err(error) = commands::announce(&self.gateway, &handle.runner).await {
             // Ownership already committed; heartbeat and grant checks still fence the previous process.
-            self.gateway.observe(&error, crate::Operation::Recheck);
+            crate::Gateway::observe(&error, crate::Operation::Recheck);
         }
         self.welcome().await?;
         let setup = StreamSetup {

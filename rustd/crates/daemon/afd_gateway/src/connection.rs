@@ -85,7 +85,7 @@ impl ConnectionContext {
     pub(crate) fn bind(&self, binding: Binding) -> Result<()> {
         self.binding
             .set(binding)
-            .map_err(|_| ErrorKind::Binding.into())
+            .map_err(|_already_bound| ErrorKind::Binding.into())
     }
 
     pub(crate) fn reserve(&self, kind: StreamKind) -> Result<()> {

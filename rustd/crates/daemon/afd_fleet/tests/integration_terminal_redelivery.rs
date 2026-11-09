@@ -88,7 +88,10 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
         .claim_selected(run.acquired.clone(), &run.runner, run.now)
         .await
         .expect("stale terminal completion is harmless");
-    assert!(answer.contains("\"lease\":null"));
+    assert!(
+        answer.is_none(),
+        "the terminal event is never reissued: {answer:?}"
+    );
     assert_superseded_claim_retained(&run).await;
     sqlx::raw_sql("DROP TRIGGER supersede_delivered_claim ON fleet.admissions; DROP FUNCTION fleet.supersede_delivered_claim()")
         .execute(&mut *connection).await.expect("remove fault");
@@ -103,10 +106,22 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
     let answer = run
         .fixtures
         .plane()
-        .lease(&run.spare, std::slice::from_ref(&run.fleet), false, run.now)
+        .poll_with(
+            afd_fleet::lease::OfferRequest {
+                runner: &run.spare,
+                held: std::slice::from_ref(&run.fleet),
+                degraded: false,
+                now: run.now,
+            },
+            None,
+            |_lease, _metadata| (),
+        )
         .await
         .expect("current claimant suppresses the terminal event");
-    assert!(answer.contains("\"lease\":null"));
+    assert!(
+        matches!(answer, afd_fleet::lease::pull::Polled::Empty),
+        "the terminal event is never reissued: {answer:?}"
+    );
     assert!(run.fixtures.admission_settled(&run.event_id).await);
     run.fixtures.cleanup().await;
 }

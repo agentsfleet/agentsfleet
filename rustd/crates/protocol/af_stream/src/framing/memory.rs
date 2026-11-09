@@ -112,22 +112,38 @@ mod tests {
 
     /// Too little memory would wait forever for a reservation larger than its entire pool.
     #[test]
-    fn impossible_or_excessive_memory_settings_are_refused() {
+    fn impossible_or_excessive_memory_settings_are_refused() -> crate::Result<()> {
         for value in [0, 11, 513, usize::MAX] {
-            assert!(
-                MemoryLimits::try_from(MemorySettings {
-                    control_mib: value,
-                    data_mib: 48
-                })
-                .is_err()
-            );
-            assert!(
-                MemoryLimits::try_from(MemorySettings {
-                    control_mib: 16,
-                    data_mib: value
-                })
-                .is_err()
-            );
+            for (settings, field) in [
+                (
+                    MemorySettings {
+                        control_mib: value,
+                        data_mib: 48,
+                    },
+                    "control_mib",
+                ),
+                (
+                    MemorySettings {
+                        control_mib: 16,
+                        data_mib: value,
+                    },
+                    "data_mib",
+                ),
+            ] {
+                let failure = MemoryLimits::try_from(settings)
+                    .err()
+                    .ok_or(crate::error::ErrorKind::Protocol)?;
+                assert_eq!(failure.reason(), crate::Reason::Protocol);
+                assert_eq!(
+                    failure.code(),
+                    af_core::error_code::INTERNAL_OPERATION_FAILED
+                );
+                let bounds = std::error::Error::source(&failure)
+                    .and_then(|source| source.downcast_ref::<garde::Report>())
+                    .ok_or(crate::error::ErrorKind::Protocol)?;
+                assert!(bounds.iter().any(|(path, _)| path.to_string() == field));
+            }
         }
+        Ok(())
     }
 }

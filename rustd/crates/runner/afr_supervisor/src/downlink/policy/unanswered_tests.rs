@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 use super::closing_tests::closing;
 use super::tests::{KEEP_GOING, probe, releasing};
 use super::{Assignment, EVENT_LAST_FAILED, Heartbeat, LAST_BEAT_TIMEOUT};
-use crate::client::{ControlPlane, Verb};
+use crate::client::ControlPlane;
 use crate::halt::Halt;
 use crate::holds::Holds;
 use crate::test_support::{Answer, clock, drain, plane};
@@ -87,6 +87,6 @@ async fn test_an_unanswered_last_beat_is_given_up_after_its_bound() {
     assert_eq!(started.elapsed(), LAST_BEAT_TIMEOUT);
     assert_eq!(drain(&mut calls).len(), 1, "the last beat alone");
     let failed = capture.only(EVENT_LAST_FAILED);
-    let code = Verb::Heartbeat.code().as_str();
+    let code = af_core::error_code::RUN_PROTOCOL_UNSUPPORTED.as_str();
     assert_eq!(failed.field("error_code"), Some(code));
 }

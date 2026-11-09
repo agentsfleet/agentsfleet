@@ -143,12 +143,12 @@ impl Worker {
                         &egress,
                         offer.registration.stop.clone(),
                     )
-                    .await?
+                    .await?;
             }
             TaggedLease::Authoring(lease) => {
                 self.lessee
                     .author(&lease, offer.registration.stop.clone())
-                    .await?
+                    .await?;
             }
         }
         Ok(true)

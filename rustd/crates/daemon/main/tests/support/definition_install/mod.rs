@@ -126,6 +126,7 @@ pub(super) async fn install_with(
         event_id,
         runner_id: enrolled.0,
         token: enrolled.1,
+        native: tokio::sync::OnceCell::new(),
         seeded_at: now,
         booted,
         _default: default,

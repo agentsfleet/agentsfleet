@@ -34,7 +34,7 @@ mod resolver;
 mod rig;
 mod sandbox;
 
-pub(crate) use self::daemon::{Calls, bounded, drain, plane, plane_with_http};
+pub(crate) use self::daemon::{Calls, activities, bounded, drain, plane, plane_with_http};
 pub(crate) use self::fixtures::{healthy, lease, report_body};
 pub(crate) use self::git_fixture::{FIRST_README, FIXTURE_BRANCH, commit, git, head, repository};
 pub(crate) use self::resolver::{Stalled, assigned};

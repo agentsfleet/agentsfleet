@@ -35,7 +35,7 @@ pub(super) fn spawn(
     let failed_scheduler = failed.clone();
     supervisor.spawn("runner_stream_scheduler", async move |abort| {
         let result = scheduler.run(abort.child_token()).await;
-        finished(result, "scheduler", &abort, &failed_scheduler);
+        finished(&result, "scheduler", &abort, &failed_scheduler);
     });
     supervisor.spawn("runner_stream_listener", async move |abort| {
         let _closed = signals.closed.drop_guard();
@@ -65,12 +65,12 @@ pub(super) fn spawn(
                 serving.await
             }
         };
-        finished(result, "listener", &accepting, &failed);
+        finished(&result, "listener", &accepting, &failed);
     });
 }
 
 fn finished<E>(
-    result: Result<(), E>,
+    result: &Result<(), E>,
     component: &'static str,
     stop: &CancellationToken,
     failed: &CancellationToken,

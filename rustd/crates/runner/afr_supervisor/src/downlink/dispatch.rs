@@ -55,7 +55,7 @@ impl Dispatch<'_> {
                 // Credits already reserve space. Overflow is a protocol failure, never a dropped grant.
                 self.offers
                     .try_send(offer)
-                    .map_err(|_| ErrorKind::StreamProtocol)?;
+                    .map_err(crate::error::stream_protocol)?;
             }
             Down::Cancel { lease_id, .. } => {
                 let id = Uuid7::parse(&lease_id)?;
@@ -81,7 +81,8 @@ impl Dispatch<'_> {
                 return Err(ErrorKind::StreamProtocol.into());
             }
             _ => {
-                if let Some(reply) = self.requests.reply(&message)? {
+                let pending_reply = self.requests.reply(&message)?;
+                if let Some(reply) = pending_reply {
                     reply.send(frame);
                 }
             }

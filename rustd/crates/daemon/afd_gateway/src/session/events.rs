@@ -21,6 +21,7 @@ pub(super) enum SessionEvent {
     Disconnected,
 }
 
+#[derive(Clone, Copy)]
 pub(super) enum OperationCompletion {
     Request,
     Offer,
@@ -82,6 +83,5 @@ pub(super) fn join_result<T>(
     joined: Option<std::result::Result<Result<T>, JoinError>>,
 ) -> Result<T> {
     let task = joined.ok_or(ErrorKind::Closed)?;
-    let operation = task?;
-    operation
+    task?
 }

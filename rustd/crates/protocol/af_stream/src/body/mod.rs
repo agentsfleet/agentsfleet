@@ -108,9 +108,9 @@ impl tokio::io::AsyncRead for IncomingReader {
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
-        output: &mut tokio::io::ReadBuf<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        Pin::new(&mut self.0).poll_read(cx, output)
+        Pin::new(&mut self.0).poll_read(cx, buf)
     }
 }
 
@@ -143,6 +143,7 @@ impl Incoming {
     }
 
     /// Adapt to the bounded application frame reader without collecting the body.
+    #[must_use]
     pub fn reader(self) -> IncomingReader {
         let failed: fn(Error) -> std::io::Error = std::io::Error::other;
         IncomingReader(StreamReader::new(BodyDataStream::new(self).map_err(failed)))

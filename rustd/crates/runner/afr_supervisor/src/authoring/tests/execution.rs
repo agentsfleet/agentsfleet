@@ -24,7 +24,7 @@ async fn saved_output_allowances_above_eight_thousand_reach_the_daemon() {
 }
 
 #[tokio::test]
-async fn a_plain_answer_uses_only_the_canonical_scoped_route_and_private_report() {
+async fn a_plain_answer_uses_only_the_native_session_and_private_report() {
     let mut rig = rig(|call| match call.verb {
         Verb::AuthoringModel => result(call, &json!([]), false),
         Verb::AuthoringReport => ack(),
@@ -32,12 +32,10 @@ async fn a_plain_answer_uses_only_the_canonical_scoped_route_and_private_report(
     });
     let (calls, report) = run(&mut rig, lease()).await;
     assert_eq!(calls.len(), 2);
-    assert_eq!(
-        calls[0].path,
-        format!(
-            "/v1/runners/me/authoring-leases/{}/model-calls",
-            super::LEASE
-        )
+    assert!(
+        calls
+            .iter()
+            .all(|call| call.path == af_wire::paths::RUNNER_STREAM)
     );
     assert_eq!(report["answer"], "Private result");
     assert_eq!(report["usage"]["calls"], 1);
@@ -98,7 +96,7 @@ async fn a_refused_proposal_is_repaired_without_skipping_its_activity_sequence()
                 crate::test_support::Answer::Fail(crate::error::refused(
                     Verb::AuthoringActivity,
                     422,
-                    None,
+                    Some(af_core::error_code::INVALID_REQUEST),
                 ))
             } else {
                 super::json(&json!({"accepted":true,"replayed":false}))

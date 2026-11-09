@@ -25,10 +25,11 @@ static PATHS: LazyLock<[String; 2]> = LazyLock::new(|| {
 });
 
 pub(crate) fn environment() -> [(&'static str, &'static str); 3] {
+    let [certificate, key] = &*PATHS;
     [
         (LISTEN_ADDR, "[::1]:0"),
-        (TLS_CERT_FILE, PATHS[0].as_str()),
-        (TLS_KEY_FILE, PATHS[1].as_str()),
+        (TLS_CERT_FILE, certificate.as_str()),
+        (TLS_KEY_FILE, key.as_str()),
     ]
 }
 
@@ -38,29 +39,4 @@ pub(crate) fn trust() -> af_stream::tls::Trust {
 
 pub(crate) fn root_file() -> std::path::PathBuf {
     IDENTITY.root()
-}
-
-pub(crate) async fn client(run: &crate::e2e::Scenario) -> &afr_supervisor::test_util::Session {
-    run.native
-        .get_or_init(|| async {
-            let origin = format!(
-                "https://localhost:{}",
-                run.booted.runner_stream_address.port()
-            );
-            let root = root_file().to_string_lossy().into_owned();
-            let env = af_core::env::MapEnv::from_pairs([
-                (afr_supervisor::config::ENV_API_URL, run.base.as_str()),
-                (afr_supervisor::config::ENV_RUNNER_TOKEN, run.token.as_str()),
-                (afr_supervisor::config::ENV_STREAM_URL, origin.as_str()),
-                (afr_supervisor::config::ENV_STREAM_CA, root.as_str()),
-            ]);
-            let config = afr_supervisor::config::Config::from_env(&env)
-                .expect("the native fixture configuration is valid");
-            let session = afr_supervisor::test_util::Session::connect(&config)
-                .await
-                .expect("the native fixture connects");
-            session.capacity(1);
-            session
-        })
-        .await
 }

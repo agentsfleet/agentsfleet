@@ -156,7 +156,7 @@ impl Chat {
         assert!(answer.is_some(), "the lease was refused: {answer:?}");
         let body = answer.expect("an issued lease").to_string();
         let TaggedLease::Fleet(lease) =
-            serde_json::from_str(&body).expect("the issued fleet payload")
+            serde_json::from_str::<TaggedLease<'_>>(&body).expect("the issued fleet payload")
         else {
             panic!("the fleet plane grants fleet work");
         };

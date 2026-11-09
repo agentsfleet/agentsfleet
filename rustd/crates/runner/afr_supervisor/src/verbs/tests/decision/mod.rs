@@ -73,15 +73,26 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
     let result = verbs.task_decision(input()).await.unwrap();
     assert_eq!(result.state, DecisionCallState::NotSent);
     assert!(result.recorded.is_none());
-    let requests = drain(&mut calls);
+    let mut requests = drain(&mut calls);
+    crate::test_support::bounded("native decision progress", async {
+        while requests
+            .iter()
+            .filter(|call| call.verb == Verb::Activity)
+            .count()
+            < 2
+        {
+            requests.push(calls.recv().await.unwrap());
+        }
+    })
+    .await;
+    let authorities: Vec<_> = requests
+        .iter()
+        .filter(|call| call.verb != Verb::Activity)
+        .map(|call| call.verb)
+        .collect();
     assert_eq!(
-        requests.iter().map(|call| call.verb).collect::<Vec<_>>(),
-        vec![
-            Verb::TaskDecisionReserve,
-            Verb::Activity,
-            Verb::TaskDecisionRecord,
-            Verb::Activity
-        ]
+        authorities,
+        [Verb::TaskDecisionReserve, Verb::TaskDecisionRecord]
     );
     let progress: Vec<serde_json::Value> = requests
         .iter()
@@ -166,7 +177,7 @@ async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_disp
             }
         }
         Verb::Activity => json(&serde_json::json!({})),
-        _ => panic!("unexpected decision request"),
+        _ => Answer::Fail(crate::error::config("unexpected decision request")),
     });
     let host = Host::new();
     host.stop.cancel();
@@ -179,7 +190,7 @@ async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_disp
     assert_eq!(reservations.load(Ordering::SeqCst), 1);
     let bodies = bodies.lock().unwrap();
     assert_eq!(bodies.len(), 2);
-    assert_eq!(bodies[0], bodies[1]);
+    assert_eq!(bodies.first().unwrap(), bodies.last().unwrap());
     assert_eq!(
         drain(&mut calls)
             .iter()

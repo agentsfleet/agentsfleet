@@ -60,7 +60,7 @@ impl SessionServices {
                 request,
             } => {
                 self.authoring_model(request_id, &lease_id, request.into_owned())
-                    .await?
+                    .await?;
             }
             Up::AuthoringActivity {
                 request_id,
@@ -68,7 +68,7 @@ impl SessionServices {
                 request,
             } => {
                 self.authoring_activity(request_id, &lease_id, request.into_owned())
-                    .await?
+                    .await?;
             }
             Up::AuthoringRenew {
                 request_id,
@@ -81,7 +81,7 @@ impl SessionServices {
                 request,
             } => {
                 self.authoring_report(request_id, &lease_id, request.into_owned())
-                    .await?
+                    .await?;
             }
             Up::Hello { .. } | Up::Confirm { .. } => return Err(ErrorKind::Protocol.into()),
         }

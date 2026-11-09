@@ -9,7 +9,7 @@ use std::{
 };
 
 use af_observability::test_util::Capture;
-use af_stream::{Budget, Connection, Outgoing, Reader, Reason, Transport};
+use af_stream::{Budget, Connection, Endpoint, Outgoing, Reader, Reason, Transport};
 use af_wire::protocol::StreamKind;
 use http::Request;
 use serde::Deserialize;
@@ -103,17 +103,23 @@ async fn exercise_observations(secret: &str, token: &str) -> Result {
 }
 
 async fn fallback_and_redaction(secret: &str, token: &str) -> Result {
-    let fixture = Fixture::new(vec!["localhost".to_owned()], false)?;
+    let fixture = Fixture::new(vec!["localhost".to_owned(), "::1".to_owned()], false)?;
     let host = fixture.serve().await?;
     let proxy = Blackhole::start(&host).await?;
-    let selected =
-        Connection::preferred(&proxy.endpoint, &fixture.trust, &host.stop, deadline()).await?;
+    // One literal address makes one physical timeout independent of the host's DNS address count.
+    let port = proxy
+        .endpoint
+        .uri()
+        .port_u16()
+        .ok_or("proxy port missing")?;
+    let endpoint = Endpoint::parse(&format!("https://[::1]:{port}"))?;
+    let selected = Connection::preferred(&endpoint, &fixture.trust, &host.stop, deadline()).await?;
     assert_eq!(selected.connection.transport(), Transport::H2);
     let mut connection = selected.connection;
     let (mut writer, body) = Outgoing::pipe();
     let request = Request::builder()
         .method("POST")
-        .uri(proxy.endpoint.uri().clone())
+        .uri(endpoint.uri().clone())
         .header(http::header::AUTHORIZATION, token)
         .body(body)?;
     let response = connection.open(request, deadline()).await?;

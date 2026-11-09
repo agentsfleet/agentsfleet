@@ -104,10 +104,18 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
     // one-token policy cannot hold those schemas and its pinned instructions.
     leased.policy.model_context_tokens = 32_768;
     leased.policy.context.context_cap_tokens = 32_768;
-    lessee
-        .run(&turns, &leased, &Egress::closed())
-        .await
-        .unwrap();
+    crate::test_support::bounded("telemetry native lease", async {
+        lessee
+            .run(
+                &turns,
+                &leased,
+                &Egress::closed(),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+    })
+    .await;
     drop(guard);
     tokio::task::spawn_blocking(move || telemetry.flush())
         .await

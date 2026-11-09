@@ -31,11 +31,10 @@ use crate::e2e_seed::enrolment;
 use crate::e2e_seed_keys::seed_tenant_key;
 use crate::integration_tenant_registry::mint_tenant_token;
 use crate::integration_tool_call_details::{execute, leased, post_records, record, rows};
-use crate::integration_tool_trace::{REPORTS, report_with, stored_trace, tenant_reader, trace};
+use crate::integration_tool_trace::{report_with, stored_trace, tenant_reader, trace};
 use crate::reads::event_column;
 use crate::tail::lease;
 use crate::wire::json as body_of;
-use crate::wire::post;
 
 /// Posts `calls` to `lease_id` under `fence`, presenting `token`.
 async fn post_as(
@@ -92,8 +91,10 @@ async fn test_tool_call_details_refused_for_a_lease_not_held() {
     let report = report_with(unknown.as_str(), &run, fence, trace(1));
     let refused = crate::wire::report(&run, &report).await;
     assert_eq!(
-        refused.status().as_u16(),
-        404,
+        refused
+            .expect_err("an unknown lease is refused")
+            .refusal_code(),
+        Some(af_core::error_code::RUN_LEASE_NOT_FOUND),
         "and its report, trace and all, is refused before anything is read"
     );
 
@@ -139,7 +140,7 @@ async fn test_tool_call_detail_repost_replaces_its_record() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let claimed = (lease_id.as_str(), fence);
 
     // `{}` arguments make each record exactly 64 KiB; sixteen fill the event.
@@ -182,7 +183,7 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
     let mut supervisor = Supervisor::new();
     let (run, _owner) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(3, "secret")]).await;
     assert_eq!(status, 200);
 
@@ -228,8 +229,7 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
 async fn test_nul_tool_trace_dropped_report_settles() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
 
     let mut sent = trace(1);
     sent["calls"][0]["output_head"] = json!("bin\u{0}ary");

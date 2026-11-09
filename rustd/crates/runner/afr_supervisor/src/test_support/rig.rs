@@ -234,6 +234,7 @@ pub(crate) fn daemon(
         Verb::Me,
         Verb::Activity,
         Verb::Report,
+        Verb::Folds,
         Verb::ContextLoad,
         Verb::ContextCommit,
     ]

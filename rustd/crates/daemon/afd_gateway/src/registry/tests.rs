@@ -26,14 +26,20 @@ fn dropping_an_old_registration_cannot_remove_its_replacement() -> TestResult {
         runner,
         Uuid7::parse("019f0000-0000-7000-8000-000000000003")?,
     );
-    let first = registry.register(Arc::clone(&a))?;
-    let second = registry.register(Arc::clone(&b))?;
+    let first = registry.register(&a)?;
+    let second = registry.register(&b)?;
     drop(first);
     assert!(a.is_superseded());
     assert!(!b.is_superseded());
-    assert_eq!(registry.candidates(&Default::default()).len(), 1);
+    assert_eq!(
+        registry.candidates(&std::collections::HashSet::new()).len(),
+        1
+    );
     drop(second);
-    assert!(registry.candidates(&Default::default()).is_empty());
+    assert_eq!(
+        registry.candidates(&std::collections::HashSet::new()).len(),
+        0
+    );
     Ok(())
 }
 
@@ -72,16 +78,20 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
     )?;
     let registry = Arc::new(Registry::default());
     let current = SessionHandle::fixture(runner.clone(), b.connection().clone());
-    let registration = registry
-        .register_current(Arc::clone(&current), &b, &database)
-        .await?;
+    let registration = registry.register_current(&current, &b, &database).await?;
     let delayed = SessionHandle::fixture(runner.clone(), a.connection().clone());
-    let refused = registry.register_current(delayed, &a, &database).await;
+    let refused = registry.register_current(&delayed, &a, &database).await;
     assert!(refused.is_err_and(|error| error.code() == af_core::error_code::RUN_STREAM_SUPERSEDED));
     assert!(!current.is_superseded());
-    let candidates = registry.candidates(&Default::default());
+    let candidates = registry.candidates(&std::collections::HashSet::new());
     assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].connection, *b.connection());
+    assert_eq!(
+        candidates
+            .first()
+            .ok_or("the current owner is a candidate")?
+            .connection,
+        *b.connection()
+    );
     drop(registration);
     sqlx::query("DELETE FROM runner.runners WHERE id = $1")
         .bind(runner)

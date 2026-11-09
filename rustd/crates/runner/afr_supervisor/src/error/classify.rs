@@ -15,6 +15,7 @@ impl Error {
             ),
             ErrorKind::StreamRefused { retryable, .. } => *retryable,
             ErrorKind::Disconnected
+            | ErrorKind::StreamDisconnected { .. }
             | ErrorKind::StreamTimeout { .. }
             | ErrorKind::Transport { .. }
             | ErrorKind::Unavailable { .. } => true,
@@ -28,12 +29,14 @@ impl Error {
     pub const fn refusal_code(&self) -> Option<ErrorCode> {
         match self.kind() {
             ErrorKind::StreamRefused { code, .. } => Some(*code),
+            ErrorKind::Refused { code, .. } => *code,
             ErrorKind::Stream { .. }
             | ErrorKind::Disconnected
+            | ErrorKind::StreamDisconnected { .. }
             | ErrorKind::StreamProtocol
-            | ErrorKind::StreamTimeout { .. } => None,
-            ErrorKind::Refused { code, .. } => *code,
-            ErrorKind::Io { .. }
+            | ErrorKind::StreamProtocolSource { .. }
+            | ErrorKind::StreamTimeout { .. }
+            | ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::Config { .. }
             | ErrorKind::Boundary { .. }
@@ -60,13 +63,15 @@ impl Error {
     #[must_use]
     pub const fn refusal_status(&self) -> Option<u16> {
         match self.kind() {
+            ErrorKind::Refused { status, .. } => Some(*status),
             ErrorKind::StreamRefused { .. }
             | ErrorKind::Stream { .. }
             | ErrorKind::Disconnected
+            | ErrorKind::StreamDisconnected { .. }
             | ErrorKind::StreamProtocol
-            | ErrorKind::StreamTimeout { .. } => None,
-            ErrorKind::Refused { status, .. } => Some(*status),
-            ErrorKind::Io { .. }
+            | ErrorKind::StreamProtocolSource { .. }
+            | ErrorKind::StreamTimeout { .. }
+            | ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::Config { .. }
             | ErrorKind::Boundary { .. }
@@ -112,13 +117,16 @@ impl Error {
         match self.kind() {
             ErrorKind::Stream { .. }
             | ErrorKind::Disconnected
+            | ErrorKind::StreamDisconnected { .. }
+            | ErrorKind::Transport { .. }
             | ErrorKind::StreamTimeout { .. } => PushFailure::Transport,
-            ErrorKind::StreamRefused { .. } => PushFailure::Refused,
-            ErrorKind::StreamProtocol => PushFailure::Internal,
             ErrorKind::Unavailable { .. } => PushFailure::Upstream,
-            ErrorKind::Refused { .. } | ErrorKind::TokenRefused => PushFailure::Refused,
-            ErrorKind::Transport { .. } => PushFailure::Transport,
-            ErrorKind::Io { .. }
+            ErrorKind::StreamRefused { .. }
+            | ErrorKind::Refused { .. }
+            | ErrorKind::TokenRefused => PushFailure::Refused,
+            ErrorKind::StreamProtocol
+            | ErrorKind::StreamProtocolSource { .. }
+            | ErrorKind::Io { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::Config { .. }
             | ErrorKind::Boundary { .. }
@@ -150,13 +158,15 @@ impl Error {
     pub const fn code(&self) -> ErrorCode {
         match self.kind() {
             ErrorKind::Stream { source } => source.code(),
-            ErrorKind::StreamRefused { code, .. } => *code,
-            ErrorKind::Disconnected
-            | ErrorKind::StreamTimeout { .. }
-            | ErrorKind::StreamProtocol => error_code::RUN_PROTOCOL_UNSUPPORTED,
-            ErrorKind::Refused {
+            ErrorKind::StreamRefused { code, .. }
+            | ErrorKind::Refused {
                 code: Some(code), ..
             } => *code,
+            ErrorKind::Disconnected
+            | ErrorKind::StreamTimeout { .. }
+            | ErrorKind::StreamDisconnected { .. }
+            | ErrorKind::StreamProtocolSource { .. }
+            | ErrorKind::StreamProtocol => error_code::RUN_PROTOCOL_UNSUPPORTED,
             ErrorKind::Refused {
                 status: UNAUTHORIZED,
                 ..

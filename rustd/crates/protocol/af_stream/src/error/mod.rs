@@ -136,6 +136,11 @@ pub(crate) enum ErrorKind {
         #[source]
         source: tokio::sync::oneshot::error::RecvError,
     },
+    #[error("The key exchange observation owner disappeared.")]
+    KeyExchangeObservation {
+        #[source]
+        source: tokio::sync::watch::error::RecvError,
+    },
     #[error("The outgoing stream is closed.")]
     Send {
         #[source]
@@ -203,6 +208,7 @@ af_core::error_lifts!(Error, ErrorKind:
     tokio_quiche::http3::driver::H3ConnectionError => H3Driver,
     http::uri::InvalidUriParts => UriParts,
     tokio::sync::oneshot::error::RecvError => Reply,
+    tokio::sync::watch::error::RecvError => KeyExchangeObservation,
     tokio_util::sync::PollSendError<tokio_quiche::http3::driver::OutboundFrame> => Send,
     std::io::Error => Io,
     garde::Report => Bounds,
@@ -243,9 +249,6 @@ impl Error {
     #[must_use]
     pub fn reason(&self) -> Reason {
         match self.kind() {
-            ErrorKind::MemorySetting { .. }
-            | ErrorKind::ProxyPolicy { .. }
-            | ErrorKind::ProxyInput { .. } => Reason::Protocol,
             ErrorKind::ProxyRefused { status } => {
                 if status.is_server_error() || *status == http::StatusCode::TOO_MANY_REQUESTS {
                     Reason::Network
@@ -259,6 +262,7 @@ impl Error {
             ErrorKind::Closed { .. }
             | ErrorKind::Budget { .. }
             | ErrorKind::Reply { .. }
+            | ErrorKind::KeyExchangeObservation { .. }
             | ErrorKind::Send { .. } => Reason::Closed,
             ErrorKind::Worker { .. } => Reason::Worker,
             ErrorKind::Tls { .. }
@@ -297,6 +301,9 @@ impl Error {
                 Reason::Worker
             }
             ErrorKind::Protocol
+            | ErrorKind::MemorySetting { .. }
+            | ErrorKind::ProxyPolicy { .. }
+            | ErrorKind::ProxyInput { .. }
             | ErrorKind::Bounds { .. }
             | ErrorKind::Json { .. }
             | ErrorKind::Length { .. }

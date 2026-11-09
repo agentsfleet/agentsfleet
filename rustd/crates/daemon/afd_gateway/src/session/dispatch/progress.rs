@@ -35,7 +35,7 @@ impl SessionServices {
             })
             .await
         {
-            self.gateway.observe(&error, Operation::Activity);
+            crate::Gateway::observe(&error, Operation::Activity);
         }
         Ok(())
     }

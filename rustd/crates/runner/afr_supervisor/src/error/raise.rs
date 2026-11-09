@@ -153,3 +153,23 @@ pub(crate) fn boundary(
     }
     .into()
 }
+
+/// Preserve a native channel failure without changing its retry classification.
+pub(crate) fn stream_disconnected(
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> super::Error {
+    super::ErrorKind::StreamDisconnected {
+        source: Box::new(source),
+    }
+    .into()
+}
+
+/// Preserve the cause of a refused native capacity or delivery invariant.
+pub(crate) fn stream_protocol(
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> super::Error {
+    super::ErrorKind::StreamProtocolSource {
+        source: Box::new(source),
+    }
+    .into()
+}

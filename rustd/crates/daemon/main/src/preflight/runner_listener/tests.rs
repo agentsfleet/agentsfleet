@@ -33,7 +33,7 @@ fn address_defaults_to_the_private_native_port() {
         (TLS_KEY_FILE, "/run/runner/leaf.pem"),
     ]);
     let config = read(&env, &mut faults);
-    assert!(faults.is_empty());
+    assert!(faults.is_empty(), "unexpected faults: {faults:?}");
     assert_eq!(
         config.map(|value| value.address.to_string()).as_deref(),
         Some("[::]:4443")
@@ -49,7 +49,7 @@ fn port_zero_is_retained_for_a_bound_fixture_listener() {
         (TLS_KEY_FILE, "/run/runner/leaf.pem"),
     ]);
     let config = read(&env, &mut faults);
-    assert!(faults.is_empty());
+    assert!(faults.is_empty(), "unexpected faults: {faults:?}");
     assert_eq!(
         config.map(|value| value.address.to_string()).as_deref(),
         Some("127.0.0.1:0")
