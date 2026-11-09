@@ -707,7 +707,12 @@ hyper-util = { version = "0.1.21", default-features = false, features = [
 # tokio-rustls. All three on aws-lc-rs, the provider rustls already builds
 # with here, so no second crypto backend arrives.
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
-rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+# `prefer-post-quantum` is a rustls default that `default-features = false`
+# drops: without it every client offers classical X25519 first and the hybrid
+# X25519MLKEM768 last. With it, every rustls connection (sqlx, reqwest,
+# async-nats, lettre, object_store) offers the hybrid first, as `af_stream`
+# does on BoringSSL (Indy, M244, Nov 09, 2026).
+rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "prefer-post-quantum", "std", "tls12"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["aws_lc_rs", "tls12"] }
 # The HTTP vocabulary types, shared with axum rather than re-exported through
 # it: `route_meta` names methods and statuses and has no business depending on
