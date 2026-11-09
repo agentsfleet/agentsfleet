@@ -91,6 +91,7 @@ impl Harness {
             requests: &peer.sender.requests,
             running: &self.running,
             offers: &self.offers,
+            offer_budget: &Budget::default(),
             assignments: &self.assignments,
             stop: &peer.sender.stop,
             early_cancel: HashSet::new(),

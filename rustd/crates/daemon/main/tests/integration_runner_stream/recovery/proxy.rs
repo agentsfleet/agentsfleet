@@ -67,7 +67,7 @@ impl FaultProxy {
             Ok(())
         });
         Self {
-            origin: format!("https://[::1]:{}", address.port()),
+            origin: format!("https://localhost:{}", address.port()),
             state,
             stop,
             task: AbortOnDropHandle::new(task),

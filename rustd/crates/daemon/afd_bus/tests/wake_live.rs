@@ -1,4 +1,5 @@
 //! The live adapter delivers shard notifications to independent replica queues.
+#![cfg(feature = "test-util")]
 
 use std::{collections::BTreeSet, time::Duration};
 
@@ -12,10 +13,13 @@ use afd_dragonfly::{
 };
 use tokio_util::sync::CancellationToken;
 
-use super::{SHARDS, Wake, publish};
-use crate::{Subject, dragonfly, test_util::physical_channel};
+use afd_bus::{
+    Subject, dragonfly,
+    test_util::physical_channel,
+    wake::{SHARDS, Wake, publish},
+};
 
-type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
+type TestResult<T = ()> = afd_bus::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 const BOUND: Duration = Duration::from_secs(5);
 
 fn config() -> TestResult<DragonflyConfig> {

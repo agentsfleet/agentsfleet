@@ -207,7 +207,7 @@ async fn deliver_live(lane: &EventsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
         .await
         .expect("the hub starts");
 
-    prime_subscription(&publisher, &hub, &activity).await;
+    let _primer = prime_subscription(&publisher, &hub, &activity).await;
 
     let mut stream = Box::pin(tail(
         afd_bus::test_util::fleet_subscription(hub.subscribe(&activity))
@@ -297,7 +297,11 @@ async fn page_since(lane: &EventsLane, since: Since) -> BTreeSet<Uuid7> {
         .collect()
 }
 
-async fn prime_subscription(publisher: &FleetStreams, hub: &SubscriptionHub, activity: &str) {
+async fn prime_subscription(
+    publisher: &FleetStreams,
+    hub: &SubscriptionHub,
+    activity: &str,
+) -> afd_dragonfly::Subscription {
     // A primer, so the server-side SUBSCRIBE is known live before anything the
     // test counts is published. `subscribe` queues the command and the pump
     // issues it, so the registration is asynchronous by construction.
@@ -324,4 +328,5 @@ async fn prime_subscription(publisher: &FleetStreams, hub: &SubscriptionHub, act
             "the subscription never went live on {activity}"
         );
     }
+    primer
 }

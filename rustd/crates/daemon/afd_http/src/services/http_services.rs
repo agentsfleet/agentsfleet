@@ -43,6 +43,9 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// The runner control plane's store.
     fn runners(&self) -> &Runners;
 
+    /// The process-wide publisher retained even when live subscriptions are unavailable.
+    fn runner_commands(&self) -> &afd_bus::Handle;
+
     /// What the lease verb acts through.
     ///
     /// An associated type for the reason [`Services::Auth`] is one: the

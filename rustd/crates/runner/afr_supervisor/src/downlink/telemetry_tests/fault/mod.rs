@@ -11,7 +11,7 @@ use crate::{
     halt::Halt,
     uplink::StreamHandle,
 };
-use af_core::env::MapEnv;
+use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use observe::Observer;
 use relay::Relay;
 use std::time::Duration;
@@ -23,6 +23,24 @@ type Failure = Box<dyn std::error::Error + Send + Sync>;
 
 #[tokio::test]
 async fn stream_failures_and_recovery_emit_correlated_telemetry() -> Result<(), Failure> {
+    if ProcessEnv.get("AFR_STREAM_TELEMETRY_TEST_CHILD").is_some() {
+        return observed_recovery().await;
+    }
+    // The production telemetry recorder belongs to one pipeline per process.
+    let mut child = tokio::process::Command::new(std::env::current_exe()?);
+    child.args(["--exact", "downlink::telemetry_tests::fault::stream_failures_and_recovery_emit_correlated_telemetry", "--nocapture"])
+        .env("AFR_STREAM_TELEMETRY_TEST_CHILD", "1").kill_on_drop(true);
+    let output = tokio::time::timeout(Duration::from_secs(40), child.output()).await??;
+    assert!(
+        output.status.success(),
+        "isolated recovery proof failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    Ok(())
+}
+
+async fn observed_recovery() -> Result<(), Failure> {
     let observer = Observer::start().await?;
     let mut daemon =
         crate::test_util::NativeDaemon::serve_idle(crate::test_support::healthy(), |_| async {})

@@ -161,20 +161,26 @@ impl Body for Incoming {
         if self.native.is_none() {
             return Poll::Ready(None);
         }
+        let Some(native) = self.native.as_mut() else {
+            return Poll::Ready(None);
+        };
+        // Carrier completion may cancel the token after its final application frame was queued.
+        if let Poll::Ready(answer) = Pin::new(native).poll_frame(cx) {
+            if answer.is_none() || matches!(answer, Some(Err(_))) {
+                self.native = None;
+            }
+            return Poll::Ready(answer);
+        }
         if self.cancelled.as_mut().poll(cx).is_ready() {
             self.native = None;
             return Poll::Ready(Some(Err(ErrorKind::Cancelled.into())));
         }
-        let Some(native) = self.native.as_mut() else {
-            return Poll::Ready(None);
-        };
-        let answer = std::task::ready!(Pin::new(native).poll_frame(cx));
-        if answer.is_none() || matches!(answer, Some(Err(_))) {
-            self.native = None;
-        }
-        Poll::Ready(answer)
+        Poll::Pending
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 impl Body for Native {
     type Data = Bytes;

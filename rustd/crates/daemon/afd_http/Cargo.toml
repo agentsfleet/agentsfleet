@@ -19,6 +19,7 @@ categories.workspace = true
 openapi = ["dep:utoipa"]
 
 [dependencies]
+afd_bus.workspace = true
 percent-encoding.workspace = true
 # A request id is its entropy in lowercase hex.
 hex.workspace = true

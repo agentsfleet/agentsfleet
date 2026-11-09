@@ -37,10 +37,8 @@ impl Fleet {
         hub: afd_dragonfly::SubscriptionHub,
         capacity: usize,
     ) -> Self {
-        self.live = Live::new(
-            afd_bus::test_util::with_hub(hub).expect("fixture bus"),
-            StreamLimit::new(capacity),
-        );
+        self.runner_commands = afd_bus::test_util::with_hub(hub).expect("fixture bus");
+        self.live = Live::new(self.runner_commands.clone(), StreamLimit::new(capacity));
         self
     }
 
@@ -67,6 +65,7 @@ impl Fleet {
             capabilities,
             authenticator,
             runners: Runners::new(database.clone(), Entropy::new()),
+            runner_commands: afd_bus::dragonfly::publisher(queue.clone()),
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),

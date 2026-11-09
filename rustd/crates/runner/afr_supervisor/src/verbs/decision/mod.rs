@@ -50,7 +50,7 @@ impl FencedVerbs<'_> {
                 return Ok(evaluated);
             };
             if expires_at <= af_core::clock::now()
-                || delay >= crate::deadline::left(af_core::clock::now(), expires_at)
+                || delay >= af_core::clock::elapsed(af_core::clock::now(), expires_at)
             {
                 return Ok(evaluated);
             }
@@ -227,7 +227,7 @@ async fn physical(
     let result = tokio::select! {
         biased;
         () = stop.cancelled() => return DecisionReceipt::Unknown { cause: DecisionUnavailableCause::Transport },
-        result = tokio::time::timeout(crate::deadline::left(now, dispatch.expires_at), client.evaluate(&request)) => result,
+        result = tokio::time::timeout(af_core::clock::elapsed(now, dispatch.expires_at), client.evaluate(&request)) => result,
     };
     match result {
         Ok(Ok(result)) => DecisionReceipt::Provider { result },

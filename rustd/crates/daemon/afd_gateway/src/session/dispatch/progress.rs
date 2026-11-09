@@ -18,6 +18,9 @@ impl SessionServices {
         let id = Uuid7::parse(lease)?;
         for frame in &request.frames {
             frame.validate()?;
+            if !frame.outcome_usable() {
+                return Err(crate::error::ErrorKind::Protocol.into());
+            }
         }
         let Some(target) = self
             .cache

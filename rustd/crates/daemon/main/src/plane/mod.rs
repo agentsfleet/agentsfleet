@@ -64,6 +64,7 @@ pub struct ServingPlane {
     runners: Runners,
     leases: LeaseService,
     runner_streams: afd_gateway::Gateway,
+    runner_commands: afd_bus::Handle,
     tasks: afd_fleet::task::Tasks,
     /// What a signup event from the identity provider is verified against.
     identity_webhook_secret: Option<SecretBytes>,
@@ -192,6 +193,7 @@ impl ServingPlane {
             authenticator: authenticator(database, parts.capabilities, parts.sessions),
             runners: native.runners,
             runner_streams: native.streams,
+            runner_commands: activity_streams,
             leases: native.leases,
             tasks: native.tasks,
             identity_webhook_secret: parts.identity_webhook_secret,

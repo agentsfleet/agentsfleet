@@ -186,8 +186,18 @@ fn assert_one_lease_trace(posted: &[Posted], event_id: &str) {
             "no `{kind}` span arrived: {spans:?}"
         );
     }
-    let traces: std::collections::BTreeSet<&str> =
-        spans.iter().map(|span| span.trace.as_str()).collect();
+    assert!(
+        spans
+            .iter()
+            .all(|span| SPAN_KINDS.contains(&span.name.as_str())
+                || span.name == "runner_stream_operation"),
+        "unexpected exported span: {spans:?}"
+    );
+    let traces: std::collections::BTreeSet<&str> = spans
+        .iter()
+        .filter(|span| SPAN_KINDS.contains(&span.name.as_str()))
+        .map(|span| span.trace.as_str())
+        .collect();
     assert_eq!(traces.len(), 1, "one lease is one trace: {spans:?}");
     let root = spans
         .iter()

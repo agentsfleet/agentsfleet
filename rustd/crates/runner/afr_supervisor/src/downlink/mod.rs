@@ -6,13 +6,15 @@ mod io;
 mod observation;
 pub(crate) mod pending;
 pub(crate) mod policy;
+#[cfg(test)]
+mod pressure_tests;
 mod reconnect;
 pub(crate) mod running;
 
 use std::{collections::HashSet, sync::Arc};
 
 use af_stream::{Budget, OwnedFrame};
-use af_wire::protocol::StreamKind;
+use af_wire::protocol::{LEASES_MAX, MESSAGE_BYTES_MAX, StreamKind};
 use http::header::HeaderValue;
 use tokio::{
     sync::{mpsc, watch},
@@ -49,6 +51,7 @@ pub(crate) struct Downlink {
     current: watch::Sender<Option<Arc<SessionSender>>>,
     running: Arc<Running>,
     offers: mpsc::Sender<Offered>,
+    offer_budget: Budget,
     assignments: watch::Sender<Option<Arc<OwnedFrame>>>,
 }
 
@@ -76,6 +79,7 @@ impl Downlink {
                 current,
                 running,
                 offers,
+                offer_budget: Budget::new(0, LEASES_MAX * MESSAGE_BYTES_MAX)?,
                 assignments,
             },
             offered,
@@ -234,6 +238,7 @@ impl Downlink {
             requests: &requests,
             running: &self.running,
             offers: &self.offers,
+            offer_budget: &self.offer_budget,
             assignments: &self.assignments,
             stop: &stop,
             early_cancel: HashSet::new(),
@@ -338,3 +343,5 @@ impl Downlink {
 
 #[cfg(all(test, feature = "test-util"))]
 mod telemetry_tests;
+#[cfg(all(test, feature = "test-util"))]
+mod terminal_tests;

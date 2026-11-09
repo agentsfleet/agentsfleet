@@ -144,8 +144,8 @@ async fn settle_report(run: &Scenario, lease_id: &str, fence: u64) {
 /// The side-channel verbs operate on the same live lease and identity.
 async fn prove_live_lease_satellites(http: &reqwest::Client, run: &Scenario, lease_id: &str) {
     assert_memory_hydrates(http, run).await;
-    assert_lease_renews(http, run, lease_id).await;
-    assert_activity_degrades_gracefully(http, run, lease_id).await;
+    assert_lease_renews(run, lease_id).await;
+    assert_activity_degrades_gracefully(run, lease_id).await;
     refusals::assert_credential_and_duplicate_refusals(http, run, lease_id).await;
 }
 
@@ -157,20 +157,23 @@ async fn assert_memory_hydrates(http: &reqwest::Client, run: &Scenario) {
     assert_eq!(json(hydrated).await, json!({"memory": []}));
 }
 
-async fn assert_lease_renews(http: &reqwest::Client, run: &Scenario, lease_id: &str) {
-    let renewed = post(
-        http,
-        run,
-        &format!("/v1/runners/me/leases/{lease_id}/renew"),
-        &json!({"requests": [{
-            "seq": 0, "at": af_core::clock::now().to_string(),
-            "input_tokens": 10, "cached_input_tokens": 2, "cache_write_tokens": 0,
-            "cache_write_5m_tokens": 0, "cache_write_1h_tokens": 0, "output_tokens": 3,
-        }]}),
-    )
-    .await;
-    assert_eq!(renewed.status().as_u16(), 200);
-    let renewed = json(renewed).await;
+async fn assert_lease_renews(run: &Scenario, lease_id: &str) {
+    let body = json!({"requests": [{
+        "seq": 0, "at": af_core::clock::now().to_string(),
+        "input_tokens": 10, "cached_input_tokens": 2, "cache_write_tokens": 0,
+        "cache_write_5m_tokens": 0, "cache_write_1h_tokens": 0, "output_tokens": 3,
+    }]});
+    let request = serde_json::from_value(body).expect("current renewal fixture");
+    let renewed = run
+        .native_session()
+        .await
+        .renew(
+            &af_core::id::Uuid7::parse(lease_id).expect("issued lease"),
+            &request,
+        )
+        .await
+        .expect("native renewal acknowledged");
+    let renewed = serde_json::to_value(renewed).expect("renewal response");
     assert_eq!(
         field(&renewed, "recorded_through"),
         &json!(0),
@@ -185,30 +188,23 @@ async fn assert_lease_renews(http: &reqwest::Client, run: &Scenario, lease_id: &
     );
 }
 
-async fn assert_activity_degrades_gracefully(
-    http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
-) {
-    let activity = post(
-        http,
-        run,
-        &format!("/v1/runners/me/leases/{lease_id}/activity"),
-        &json!({
-            "frames": [
-                {"tool_call_started": {"name": "search", "args_redacted": "not-json", "call_id": "1"}},
-                {"tool_call_progress": {"name": "search", "elapsed_ms": 10, "call_id": "1"}},
-                {"fleet_response_chunk": {"text": "working", "text_kind": "answer"}},
-                {"tool_call_completed": {"name": "search", "ms": 20, "call_id": "1", "status": "succeeded"}}
-            ]
-        }),
-    )
-    .await;
-    assert_eq!(
-        activity.status().as_u16(),
-        202,
-        "an invalid cosmetic frame is dropped without failing the live run"
-    );
+async fn assert_activity_degrades_gracefully(run: &Scenario, lease_id: &str) {
+    let body = json!({"frames": [
+        {"tool_call_started": {"name": "search", "args_redacted": "not-json", "call_id": "1"}},
+        {"tool_call_progress": {"name": "search", "elapsed_ms": 10, "call_id": "1"}},
+        {"fleet_response_chunk": {"text": "working", "text_kind": "answer"}},
+        {"tool_call_completed": {"name": "search", "ms": 20, "call_id": "1", "status": "succeeded"}}
+    ]});
+    let bytes = serde_json::to_vec(&body).expect("activity fixture encodes");
+    let request = serde_json::from_slice(&bytes).expect("current activity fixture");
+    run.native_session()
+        .await
+        .activity(
+            &af_core::id::Uuid7::parse(lease_id).expect("issued lease"),
+            &request,
+        )
+        .await
+        .expect("cosmetic malformed arguments do not stop native activity");
 }
 
 /// Dimension 7.2 — the statements fill the columns they are supposed to.

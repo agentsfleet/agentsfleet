@@ -86,6 +86,10 @@ impl Services for ServingPlane {
         &self.runners
     }
 
+    fn runner_commands(&self) -> &afd_bus::Handle {
+        &self.runner_commands
+    }
+
     fn leases(&self) -> &LeaseService {
         &self.leases
     }

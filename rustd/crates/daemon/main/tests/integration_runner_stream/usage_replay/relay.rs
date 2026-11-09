@@ -37,8 +37,11 @@ pub(super) struct Relay {
 
 impl Relay {
     pub(super) async fn start(backend: SocketAddr) -> Self {
-        let identity = af_stream::test_util::IdentityFixture::new(vec!["::1".to_owned()])
-            .expect("relay identity");
+        let identity = af_stream::test_util::IdentityFixture::new(vec![
+            "localhost".to_owned(),
+            "::1".to_owned(),
+        ])
+        .expect("relay identity");
         let listener = Listener::bind(
             "[::1]:0".parse().expect("relay address"),
             identity.identity(),
@@ -46,7 +49,7 @@ impl Relay {
         .await
         .expect("native relay binds");
         let address = listener.local_addr().expect("relay address");
-        let endpoint = Endpoint::parse(&format!("https://[::1]:{}", backend.port()))
+        let endpoint = Endpoint::parse(&format!("https://localhost:{}", backend.port()))
             .expect("daemon native origin");
         let answers = Arc::new(Answers::default());
         let jobs = Arc::new(Mutex::new(JoinSet::new()));
