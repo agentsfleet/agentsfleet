@@ -138,6 +138,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/main/tests/integration_runner_stream/**` | CREATE | §4–§6: reconnect, kill across replicas, revocation, rotation, supersede, blackhole, chat statements |
 | `rustd/crates/daemon/main/tests/integration_runner_e2e/**`, `integration_rust_runner*.rs`, `integration_runner_activity*.rs`, `integration_runner_messages*.rs`, `integration_runner_shapes.rs` | EDIT | §6: drive leases over the stream |
 | `rustd/crates/daemon/main/tests/telemetry_boot.rs`, `rustd/crates/daemon/afd_fleet/tests/integration_report_owes_destination/{mod,stage}.rs` | EDIT | Native identity in the boot fixture; split receipt assertions from fixture construction and preserve its external text identifier |
+| `rustd/crates/daemon/afd_fleet/tests/support/fleet_fixtures.rs` | EDIT | Describe fixture lifetime through the shared lease constant |
 | `rustd/crates/daemon/afd_api/tests/route_inventory.rs`, `route_meta_total.rs`, `harness/stubs_runner.rs`, `afd_api/src/openapi/stability/mod.rs` | EDIT | §4, §7: one route in, six out |
 | `rustd/crates/daemon/afd_api/tests/runner_plane/native_opening.rs`, `runner_plane/decision_lifecycle/fixture.rs`, `runner_plane/decision_lifecycle/fixture/native_report.rs` | CREATE, EDIT | Native protocol/capacity refusals and acknowledged reports retain their completion-analytics proof |
 | `rustd/crates/runner/afr_supervisor/src/downlink/**`, `uplink/**` | CREATE | §6: connect, hello, reconnect, dispatch; the prioritised writer |

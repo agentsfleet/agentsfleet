@@ -37,7 +37,7 @@ async fn republishing_the_same_connection_does_not_start_an_extra_renewal() -> c
     let renewing = registry.run(&handle, stop.clone());
     tokio::pin!(renewing);
     assert!(poll!(&mut renewing).is_pending());
-    peer._current.send_replace(Some(Arc::clone(&peer.sender)));
+    peer.current.send_replace(Some(Arc::clone(&peer.sender)));
     assert!(poll!(&mut renewing).is_pending());
     assert!(matches!(
         peer.outgoing.priority.try_recv(),
@@ -78,10 +78,10 @@ async fn recovered(connected: Duration, answer_delay: Duration) -> crate::Result
     assert!(poll!(&mut renewing).is_pending());
     let started = Instant::now();
     lose_first_renewal(renewing.as_mut(), &mut old).await?;
-    tokio::time::advance(connected - started.elapsed()).await;
+    tokio::time::advance(connected.saturating_sub(started.elapsed())).await;
     assert!(poll!(&mut renewing).is_pending());
     let (_, mut replacement) = RenewalPeer::new();
-    old._current
+    old.current
         .send_replace(Some(Arc::clone(&replacement.sender)));
     assert!(poll!(&mut renewing).is_pending());
     let immediate = replacement.outgoing.priority.try_recv();
@@ -131,7 +131,7 @@ async fn lose_first_renewal(
     assert!(poll!(&mut renewing).is_pending());
     old.sender.stop.cancel();
     old.sender.requests.close();
-    old._current.send_replace(None);
+    old.current.send_replace(None);
     Ok(())
 }
 
