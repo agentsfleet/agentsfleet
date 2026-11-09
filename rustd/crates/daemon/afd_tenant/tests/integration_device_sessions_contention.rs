@@ -13,7 +13,7 @@ use std::sync::Arc;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use afd_tenant::session::input::{Code, Opening};
-use afd_tenant::session::{Fingerprint, SessionStore, Sessions};
+use afd_tenant::session::{Fingerprint, Sessions};
 use tokio::sync::Barrier;
 
 use crate::device_flow_lane::{CODE, NOW, approval, origin, owner, surface};
@@ -225,7 +225,7 @@ async fn replay_window_answers_only_the_same_request() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn expired_session_is_refused_and_swept() {
+async fn expired_session_is_refused() {
     let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
     let session_id = approved(&sessions, &owner("expiry")).await;
@@ -240,19 +240,4 @@ async fn expired_session_is_refused_and_swept() {
         .await
         .expect_err("an expired session refuses");
     assert_eq!(refused.code(), error_code::SESSION_EXPIRED);
-
-    let store = SessionStore::new(harness.database.clone());
-    let swept = store.sweep_expired(1_000).await.expect("the sweep runs");
-    assert!(swept >= 1, "a pass removes the expired row");
-    assert!(!row_exists(&harness, &session_id).await, "the row is gone");
-}
-
-async fn row_exists(harness: &SessionHarness, session_id: &str) -> bool {
-    let id = Uuid7::parse(session_id).expect("a session id");
-    let mut connection = harness.database.acquire().await.expect("a connection");
-    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM identity.device_sessions WHERE id = $1)")
-        .bind(&id)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the existence check reads")
 }

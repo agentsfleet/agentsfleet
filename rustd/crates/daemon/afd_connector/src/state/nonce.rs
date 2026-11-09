@@ -40,7 +40,6 @@ const NONCE_BYTES: usize = 16;
 
 const CONTEXT_REMEMBER: &str = "remember a connect nonce";
 const CONTEXT_SPEND: &str = "spend a connect nonce";
-const CONTEXT_SWEEP: &str = "sweep expired connect nonces";
 
 /// A fresh nonce, as the lower-case hex a state carries.
 ///
@@ -101,20 +100,6 @@ pub async fn consume(database: &Db, provider: Provider, nonce: &str) -> Result<b
         .await
         .map_err(query(CONTEXT_SPEND))?;
     Ok(spent.is_some())
-}
-
-/// Deletes up to `limit` expired nonces; answers how many went.
-///
-/// # Errors
-/// Reports a store that would not answer; the next pass retries.
-pub async fn sweep_expired(database: &Db, limit: i64) -> Result<u64> {
-    let mut connection = database.acquire().await?;
-    let swept = sqlx::query(sql::DELETE_EXPIRED_OAUTH_NONCES)
-        .bind(limit)
-        .execute(&mut *connection)
-        .await
-        .map_err(query(CONTEXT_SWEEP))?;
-    Ok(swept.rows_affected())
 }
 
 #[cfg(test)]
