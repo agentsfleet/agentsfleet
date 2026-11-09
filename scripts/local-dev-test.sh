@@ -302,13 +302,22 @@ class LauncherTests(unittest.TestCase):
         fallback = subprocess.check_output(["bash", "-c", command], cwd=self.repos[0],
                                           env=dict(self.env, XDG_STATE_HOME="", HOME=str(self.base)), text=True).strip()
         self.assertTrue(Path(fallback).is_relative_to(self.base / ".local/state/agentsfleet"))
-    def test_stack_teardown_refuses_live_worktrees(self):
-        self.run_dev("up", infra=True)
-        self.run_dev("up", 1, infra=True)
+    def test_stack_teardown_refuses_while_a_daemon_runs(self):
+        self.run_dev("up")
+        self.run_dev("up", 1)
         self.run_dev("down")
         result = self.run_dev("down", infra=True, expected=1)
-        for root in self.repos: self.assertIn(str(root), result.stderr)
+        self.assertIn(str(self.repos[1]), result.stderr)
+        self.assertNotIn(str(self.repos[0]), result.stderr)
         self.assertNotIn("down", (self.shared() / "docker-calls").read_text().splitlines())
+    def test_stack_teardown_proceeds_once_no_daemon_runs(self):
+        self.run_dev("up")
+        self.run_dev("up", 1)
+        self.run_dev("down")
+        self.run_dev("down", 1)
+        self.run_dev("down", infra=True)
+        self.assertIn("down", (self.shared() / "docker-calls").read_text().splitlines())
+        self.assertFalse((self.shared() / "infrastructure").exists(), "the next up rebuilds the snapshot")
     def test_stack_teardown_removes_gone_worktrees(self):
         self.run_dev("up", infra=True)
         owner = self.shared() / "worktrees/gone"
