@@ -152,7 +152,9 @@ A runner that stops renewing loses its slot at the database deadline.
 
 A native renewal batch extends active leases every five seconds. Each lease carries the provider-request usage the daemon has not yet recorded.
 
-The runner starts stopping nine seconds before its last confirmed deadline, allowing engine cancellation, process termination and reaping before another runner may reclaim the work. Renewal atomically extends **both** the lease row and the affinity slot under a fence and the hard cap:
+The runner asks engines to stop nine seconds before its last confirmed deadline.
+This leaves time to stop and reap their processes before another runner can reclaim work.
+Renewal atomically extends **both** the lease row and the affinity slot under a fence and the hard cap:
 
 ```text
  lease issued                                every RENEWAL_TICK (5 s) tick
