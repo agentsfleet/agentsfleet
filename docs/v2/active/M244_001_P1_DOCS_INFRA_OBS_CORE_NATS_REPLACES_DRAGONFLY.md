@@ -180,8 +180,8 @@ This Section carries M241's old §6 and §7 as its own, on this milestone's star
 - **Dimension 1.3** — TRANSFERRED to M243 — a late ring is missed, not delivered → Test `wake_past_deadline_counts_missed` (unit): a ring taken after 1 s counts in `wake_missed_hubs_1` and not in p99.
 - **Dimension 1.4** — TRANSFERRED to M243 — the ringer never passes the hint cap → Test `wake_ringer_waits_at_window` (unit, paused time): with 64 untaken rings, the 65th waits.
 - **Dimension 1.5** — TRANSFERRED to M243 — a live wake ladder delivers → Test `make bench-tail PROFILE=rig` (integration): the result holds `wake_p99_ms_hubs_4` and `wake_missed_hubs_4` 0.
-- **Dimension 1.6** — the drill is recorded, frozen tail included → Test `broker_kill_drill_recorded` (manual): §Baselines holds "Dragonfly kill drill, run 1" and "run 2" with viewer outcomes, accepted steers, recovery seconds and commands. If no viewer receives `catching_up`, that is recorded as the defect §6 closes.
-- **Dimension 1.7** — Indy approves the bar before NATS runs → Test `broker_pass_bar_approved` (manual): his reply to `### Broker pass bar` is quoted in the Pull Request Session Notes.
+- **Dimension 1.6** — DONE — the drill is recorded, frozen tail included → Test `broker_kill_drill_recorded` (manual): §Baselines holds "Dragonfly kill drill, run 1" and "run 2" with viewer outcomes, accepted steers, recovery seconds and commands. If no viewer receives `catching_up`, that is recorded as the defect §6 closes.
+- **Dimension 1.7** — DONE — Indy approves the bar before NATS runs → Test `broker_pass_bar_approved` (manual): his reply to `### Broker pass bar` is quoted in the Pull Request Session Notes.
 
 ### §2 — Core NATS behind the Bus, and three nodes in compose
 
@@ -204,8 +204,8 @@ Three interleaved pairs of `bench-tail`, Dragonfly then NATS, run on Indy's lapt
 
 - **Dimension 3.1** — DONE — a killed node gaps its viewers, who resume → Test `node_kill_gaps_viewers_and_resumes` (integration, exclusive): subscribers on all three nodes; `nats-2` stops; its subscriber receives `Gap` within 10 s and the next frame.
 - **Dimension 3.2** — DONE — no frame is lost without a gap → Test `every_lost_frame_follows_a_gap` (integration, exclusive): 1,000 numbered frames across a node stop; every hole in each subscriber's sequence is preceded by `Gap`.
-- **Dimension 3.3** — NATS meets the bar → Test `broker_ab_meets_the_bar` (manual): §Baselines holds the three pairs' medians per rung and `Verdict: NATS passes` or the failing rung.
-- **Dimension 3.4** — the NATS drill is recorded → Test `nats_kill_drill_recorded` (manual): two runs, each viewer's `catching_up` and resume seconds; any viewer over 10 s fails the bar.
+- **Dimension 3.3** — DONE — NATS meets the bar → Test `broker_ab_meets_the_bar` (manual): §Baselines holds the three pairs' medians per rung and `Verdict: NATS passes` or the failing rung.
+- **Dimension 3.4** — DONE — the NATS drill is recorded → Test `nats_kill_drill_recorded` (manual): two runs, each viewer's `catching_up` and resume seconds; any viewer over 10 s fails the bar.
 
 ### §4 — Outbound claiming moves to Postgres
 
@@ -409,7 +409,7 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
   > Indy (Nov 09, 2026: 10:32 AM): "I would accept the 1 bench miss and signoff NATS." — context: 15 of 16 rungs pass the bar; the miss is 1 viewer at 64 KiB, NATS p99 2.76 ms against a bar of 1.46 ms. A size sweep ruled out the client's 65,535-byte read buffer; the cause is open.
   - Bench: 3 interleaved Dragonfly-then-NATS pairs of `make bench-tail PROFILE=rig` on Indy's laptop, medians, on this branch with M243 `0b87ec9ca` merged and the uncommitted lane edits above (`BENCH_BUS`, p99 series, `WINDOW` 1, concurrent stream burst). 1,024 streams: Dragonfly 4.18 ms, NATS 2.26 ms; 4,096: 20.83 ms against 9.83 ms. No frame undelivered and no lag on either bus.
   - Kill drills, two runs per bus, local daemon (`make up`), 2 viewers on one fleet, a steer every 10 s through a 60 s stop. Dragonfly: heartbeats only during the outage, `catching_up` 2.8 to 3.0 s after the container restarted. NATS (daemon switched to NATS locally, reverted; the stopped node was the daemon's own, `nats-3` then `nats-2`): `catching_up` 0.25 to 0.3 s after the stop, and all 6 outage steers delivered live. Every steer of all four runs reached `fleet.admissions` (19 per run). Viewers signed in as a dev Clerk drill user created by the acceptance fixtures and deleted afterwards.
-  - `push_scheduler.md` §Baselines receives these numbers once #819 lands, because both milestones edit that page.
+  - `push_scheduler.md` §Baselines holds these numbers under "M244: Dragonfly against NATS".
 - **Post-quantum TLS on rustls (Nov 09, 2026)** — the workspace pinned rustls with `default-features = false`, which drops its `prefer-post-quantum` default, so every rustls client (sqlx, reqwest, async-nats, lettre, object_store) offered classical X25519 first. `rustd/Cargo.toml` now enables the feature; `tls_posture::rustls_negotiates_the_hybrid_post_quantum_key_exchange` proves a handshake picks X25519MLKEM768 and fails as X25519 without it. BoringSSL stays in `af_stream` because tokio-quiche requires it.
   > Indy (Nov 09, 2026): "You said its a 1 line change - rustls prefer-post-quantum inside M244 so why need a spec?" — context: folded into M244 rather than a separate spec.
   > Indy (Nov 09, 2026): "Yes i would keep boringssl in runner and migrate later to 1 crate" — context: one TLS library is later work; sqlx, reqwest and async-nats have no BoringSSL backend, so the supported single-library route is rustls on AWS-LC with quinn for QUIC.
