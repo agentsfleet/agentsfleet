@@ -2,8 +2,8 @@
   "lane": "outbound",
   "profile": "rig",
   "provenance": {
-    "revision": "774f99cbd",
-    "datastore_image": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0",
+    "revision": "2bea47c3d",
+    "datastore_image": "nats:2.15.2-alpine",
     "owned": true
   },
   "created": true,
@@ -15,24 +15,24 @@
   "measurements": {
     "delivered": 200.0,
     "foreign_entries": 0.0,
-    "max_ms": 4030.463,
-    "others_p95_ms": 3751.935,
-    "p95_ms": 3751.935,
-    "p99_ms": 4024.319,
-    "rate_per_second": 49.61944521552717,
+    "max_ms": 5763.071,
+    "others_p95_ms": 5386.239,
+    "p95_ms": 5386.239,
+    "p99_ms": 5730.303,
+    "rate_per_second": 34.71790960688824,
     "retry_occupancy": 0.0,
     "slow_destinations": 1.0,
-    "slow_p95_ms": 3758.079,
+    "slow_p95_ms": 5419.007,
     "unsettled": 0.0
   },
   "datastores": {
     "postgres": {
-      "operations": 103
+      "operations": 767
     }
   },
   "fixture": {
-    "run_prefix": "bench-1790660119695-10828",
+    "run_prefix": "bench-1794249533432-93781",
     "created": 200,
-    "swept": 200
+    "swept": 218
   }
 }

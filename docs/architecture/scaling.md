@@ -337,6 +337,33 @@ The older rows above sent only the lease and its report.
 PR #803 also added six durable-task reads per lease.
 So statements per lease rose from 50.0 to 115.0, and leases per second fell from 172 to 82.5.
 
+### Core NATS baselines (M244)
+
+M244 re-measured every lane on core NATS at `2bea47c3d`, on Nov 10, 2026, with `make bench-<lane> PROFILE=rig`.
+Outbound and cardinality each ran three times, and the committed file is the median run.
+The lease shapes and steer ran once.
+
+| Lane | Number | Before M244 | On core NATS |
+| --- | --- | --- | --- |
+| Outbound, 200 jobs over 16 destinations | delivered per second | 49.6 | 34.7 |
+| Outbound | p95 / p99 | 3,752 / 4,024 ms | 5,386 / 5,730 ms |
+| Cardinality, 10,000 fleets | candidate query | 0.54 ms with no ledger rows | 25.45 ms with 10,000 unsettled admissions |
+| Steer | Postgres statements per steer | 1.003 | 2.002 |
+| Steer | accepted per second, p95 | 2,191, 9.52 ms | 2,868, 4.33 ms |
+| Lease drain | statements per chat, lease p95 | 115.0, 44.1 ms | 114.3, 57.9 ms |
+| Lease saturation | lease p95 | 3,207 ms | 550 ms |
+| Lease burst | pickup p95 | 491.5 ms | 494.6 ms |
+
+Outbound delivers about 30% slower than the stream reader it replaced.
+The likely cause is unmeasured. The worker claims only lane heads from `fleet.obligations`, so each busy-lane delivery may wait one claim round trip.
+
+Counting `agentsfleet_outbound_claims_total{via="scan"}` against deliveries in one run would settle it.
+
+The cardinality row measures a different workload.
+The new seed admits one event per fleet, so the candidate query scans every unsettled admission.
+
+Steer now costs two Postgres statements where it cost one, and the second statement is not yet identified.
+
 ### Admissions ledger measurements
 
 The `0.65.0` production ledger path was measured with `BENCH_FLEETS=<n> BENCH_RUNNERS=8 make bench-lease PROFILE=rig KEEP_TEST_STATE=1`.

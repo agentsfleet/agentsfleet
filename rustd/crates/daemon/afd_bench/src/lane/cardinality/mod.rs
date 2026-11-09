@@ -124,7 +124,7 @@ async fn climb(
         measure_rung(stores, report, rung, &last_fleet, runner.as_str()).await?;
     }
     capacity::record(stores, report).await?;
-    postgres_at_population(stores, &runner.to_string(), report).await
+    postgres_at_population(stores, &runner, report).await
 }
 
 /// Seed the fleets `indices` names, ready to lease, noting the last one
