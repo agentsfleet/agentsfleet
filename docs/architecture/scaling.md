@@ -145,6 +145,7 @@ The gateway reacts to wake notifications and increased capacity.
 A separate daemon recovery timer queries Postgres once every five seconds per replica (`OFFER_FALLBACK_TICK`), even when no work is waiting.
 The probe is one statement, `select_waiting_admission.sql` (`afd_gateway/src/scheduler/recovery/mod.rs`).
 For `R` replicas, that is `R / 5` discovery statements per second.
+
 This backstop repairs missed disposable notifications; it remains database polling.
 A probe that finds pending work starts an offer pass. Wake traffic never resets the probe's timer.
 
@@ -158,7 +159,9 @@ See the [runner guide](runner_protocol.md) for connection ownership, cancellatio
 Prod runs three replicas, so an idle prod makes 36 probe statements a minute however many runner hosts connect.
 
 Claim cost still depends on eligible fleet population and indexed admission heads.
-An empty ledger skips fleet scans. When unsettled admissions exist, server work grows with eligible active fleet population, including when all heads are parked.
+An empty ledger skips fleet scans.
+
+When unsettled admissions exist, server work grows with eligible active fleet population, including when all heads are parked.
 Measure that cost separately from the number of statements.
 
 ### Candidate and claim bounds
