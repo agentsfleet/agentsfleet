@@ -267,7 +267,7 @@ csv = "1.4.0"
 serde_json = { version = "1.0.154", default-features = false, features = ["std", "preserve_order", "raw_value"] }
 # Test-only Rust tokenization and literal decoding for the compiled-prompt guard.
 proc-macro2 = "=1.0.107"
-syn = { version = "=3.0.9", default-features = false, features = ["parsing"] }
+syn = { version = "=3.0.10", default-features = false, features = ["parsing"] }
 # A tool's parameters are the JSON Schema of the type its arguments parse into,
 # derived from that type so the two cannot drift. rig-core already builds it.
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
@@ -359,7 +359,7 @@ url = { version = "2.5.8", default-features = false }
 # Return completed SQL sessions to the pool; detach cancelled task transactions.
 scopeguard = "1.2.0"
 
-uuid = { version = "1.29.1", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.29.2", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -416,7 +416,7 @@ jiff = { version = "0.2.40", default-features = false, features = [
 # every crate here from implementing sqlx's traits for jiff's type, so row
 # fields decode through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]` and binds go
 # through `ToSqlx`. Postgres only; its sqlite half stays off.
-jiff-sqlx = { version = "0.2.1", default-features = false, features = ["postgres"] }
+jiff-sqlx = { version = "0.2.2", default-features = false, features = ["postgres"] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:
