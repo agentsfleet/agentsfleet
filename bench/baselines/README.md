@@ -31,8 +31,6 @@ by hand; a baseline that moves takes that row with it in the same commit.
 No baseline exists for the `prod` profile and none should: that profile is
 built as a refusal and never runs.
 
-`tail.rig.json` is the median NATS run from the M244 comparison.
-`outbound.rig.json` and `cardinality.rig.json` are rerun on NATS in M244 §7.
-The three lease shapes and `steer.rig.json` are the latest runs of lanes that mostly measure Postgres.
-
-Each file's provenance still names the image its run drove.
+Every file is a core NATS run: `tail.rig.json` from the M244 broker comparison, the rest re-measured at `2bea47c3d`.
+`outbound.rig.json` and `cardinality.rig.json` are the median of three runs; the lease shapes and `steer.rig.json` ran once.
+[Scaling](../../docs/architecture/scaling.md#core-nats-baselines-m244) lists what moved.

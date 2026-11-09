@@ -2,8 +2,8 @@
   "lane": "cardinality",
   "profile": "rig",
   "provenance": {
-    "revision": "774f99cbd",
-    "datastore_image": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0",
+    "revision": "2bea47c3d",
+    "datastore_image": "nats:2.15.2-alpine",
     "owned": true
   },
   "created": true,
@@ -11,13 +11,25 @@
     "BENCH_FLEETS": 10000
   },
   "measurements": {
-    "candidate_plan_ms": 0.63,
-    "candidate_query_ms": 0.542,
-    "ledger_backlog_oldest_age_ms": 0.0,
-    "ledger_backlog_rows": 0.0,
-    "postgres_fleets_table_bytes": 5554176.0
+    "candidate_plan_ms": 0.537,
+    "candidate_query_ms": 25.451,
+    "ledger_backlog_oldest_age_ms": 48224.0,
+    "ledger_backlog_rows": 10000.0,
+    "postgres_fleets_table_bytes": 6160384.0
   },
   "series": {
+    "admission_read_ms": [
+      0.164,
+      0.17066699999999999,
+      0.087542,
+      0.146625
+    ],
+    "candidate_ms": [
+      0.308375,
+      0.606625,
+      3.114417,
+      22.837417
+    ],
     "ladder_fleets": [
       10.0,
       100.0,
@@ -31,7 +43,7 @@
     }
   },
   "fixture": {
-    "run_prefix": "bench-1790660141554-11141",
+    "run_prefix": "bench-1794253126299-45886",
     "created": 30001,
     "swept": 30001
   }
