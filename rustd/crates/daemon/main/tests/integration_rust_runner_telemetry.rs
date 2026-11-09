@@ -207,12 +207,14 @@ fn assert_lease_trace(received: &Received, event_id: &str) {
         .map(|span| span.name.as_str())
         .collect();
     assert_eq!(kinds, BTreeSet::from(SPAN_KINDS), "one trace, four kinds");
+    let unreviewed: BTreeSet<&str> = spans
+        .iter()
+        .map(|span| span.name.as_str())
+        .filter(|name| !SPAN_KINDS.contains(name) && *name != "runner_stream_operation")
+        .collect();
     assert!(
-        spans
-            .iter()
-            .all(|span| SPAN_KINDS.contains(&span.name.as_str())
-                || span.name == "runner_stream_operation"),
-        "only reviewed span kinds are exported"
+        unreviewed.is_empty(),
+        "only reviewed span kinds are exported; also saw {unreviewed:?}"
     );
     let roots = spans
         .iter()
