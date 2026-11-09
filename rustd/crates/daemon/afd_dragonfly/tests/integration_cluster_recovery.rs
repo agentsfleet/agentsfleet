@@ -52,81 +52,9 @@ async fn test_cluster_connections_recover_without_missing_scoped_state() {
     let harness = DragonflyHarness::connect().await;
     let mut raw = cluster.connect().await;
 
-    // ── the subscription ────────────────────────────────────────────────
-    let fleet = harness.name("recovered");
-    let channel = fleet_activity_channel(&fleet);
-    let hub = SubscriptionHub::start(DragonflyHarness::config())
-        .await
-        .expect("the hub opens on the lane's cluster");
-    let mut reader = hub.subscribe(&channel);
-    let streams = FleetStreams::new(harness.redis.clone());
-    // Before the move, so the failure of the assertion after it is the move
-    // and not a subscription that never worked.
-    deliver(&streams, &fleet, "before", &mut reader).await;
-
-    let channel_slot = ClusterHarness::keyslot(&mut raw, &channel).await;
-    let channel_owner = ClusterHarness::canonical_primary(channel_slot);
-    cluster
-        .move_slot(
-            channel_slot,
-            channel_owner,
-            ClusterHarness::other_primary(channel_owner),
-        )
-        .await;
-    deliver(&streams, &fleet, "after", &mut reader).await;
-    assert_eq!(
-        hub.connections_opened(),
-        1,
-        "a slot moving must not cost a second connection: the hub re-subscribes on the one it has"
-    );
-
-    // ── the scan ────────────────────────────────────────────────────────
-    let prefix = harness.name("scanned");
-    let mut written = BTreeSet::new();
-    for n in 0..SCANNED_KEYS {
-        let key = format!("{prefix}:{n}");
-        harness
-            .redis
-            .set_for(&key, "v", KEY_TTL_SECONDS)
-            .await
-            .expect("the key is written");
-        written.insert(key);
-    }
-    let glob = format!("{prefix}:*");
-    let before: BTreeSet<String> = harness
-        .redis
-        .scan_keys(&glob, 100)
-        .await
-        .expect("the scan answers")
-        .into_iter()
-        .collect();
-    assert_eq!(
-        before, written,
-        "a scan finds every key across the primaries"
-    );
-
-    // The keys are spread over slots by their names, so moving one range
-    // relocates some of them and leaves the rest where they were.
-    let moved_slot = ClusterHarness::keyslot(&mut raw, &format!("{prefix}:0")).await;
-    let moved_owner = ClusterHarness::canonical_primary(moved_slot);
-    cluster
-        .move_slot(
-            moved_slot,
-            moved_owner,
-            ClusterHarness::other_primary(moved_owner),
-        )
-        .await;
-    let after: BTreeSet<String> = harness
-        .redis
-        .scan_keys(&glob, 100)
-        .await
-        .expect("the scan answers after the move")
-        .into_iter()
-        .collect();
-    assert_eq!(
-        after, written,
-        "a scan still finds every key once a slot has moved: it walks the live topology"
-    );
+    let (hub, reader, channel_slot, channel_owner) =
+        recover_subscription(&cluster, &harness, &mut raw).await;
+    let (written, moved_slot, moved_owner) = recover_scan(&cluster, &harness, &mut raw).await;
 
     a_parked_read_never_stalls_the_shared_connection(&harness).await;
 
@@ -209,4 +137,99 @@ async fn deliver(streams: &FleetStreams, fleet: &str, payload: &str, reader: &mu
     })
     .await;
     assert!(seen.is_ok(), "the reader never saw {payload}");
+}
+
+async fn recover_subscription(
+    cluster: &ClusterHarness,
+    harness: &DragonflyHarness,
+    raw: &mut redis::cluster_async::ClusterConnection,
+) -> (SubscriptionHub, Subscription, u16, u8) {
+    // ── the subscription ────────────────────────────────────────────────
+    let fleet = harness.name("recovered");
+    let channel = fleet_activity_channel(&fleet);
+    let hub = SubscriptionHub::start(DragonflyHarness::config())
+        .await
+        .expect("the hub opens on the lane's cluster");
+    let mut reader = hub.subscribe(&channel);
+    let streams = FleetStreams::new(harness.redis.clone());
+    // Before the move, so the failure of the assertion after it is the move
+    // and not a subscription that never worked.
+    deliver(&streams, &fleet, "before", &mut reader).await;
+
+    let channel_slot = ClusterHarness::keyslot(raw, &channel).await;
+    let channel_owner = ClusterHarness::canonical_primary(channel_slot);
+    cluster
+        .move_slot(
+            channel_slot,
+            channel_owner,
+            ClusterHarness::other_primary(channel_owner),
+        )
+        .await;
+    deliver(&streams, &fleet, "after", &mut reader).await;
+    assert_eq!(
+        hub.connections_opened(),
+        1,
+        "a slot moving must not cost a second connection: the hub re-subscribes on the one it has"
+    );
+    (hub, reader, channel_slot, channel_owner)
+}
+
+async fn recover_scan(
+    cluster: &ClusterHarness,
+    harness: &DragonflyHarness,
+    raw: &mut redis::cluster_async::ClusterConnection,
+) -> (BTreeSet<String>, u16, u8) {
+    // ── the scan ────────────────────────────────────────────────────────
+    let prefix = harness.name("scanned");
+    let written = seed_scan_keys(harness, &prefix).await;
+    let glob = format!("{prefix}:*");
+    let before: BTreeSet<String> = harness
+        .redis
+        .scan_keys(&glob, 100)
+        .await
+        .expect("the scan answers")
+        .into_iter()
+        .collect();
+    assert_eq!(
+        before, written,
+        "a scan finds every key across the primaries"
+    );
+
+    // The keys are spread over slots by their names, so moving one range
+    // relocates some of them and leaves the rest where they were.
+    let moved_slot = ClusterHarness::keyslot(raw, &format!("{prefix}:0")).await;
+    let moved_owner = ClusterHarness::canonical_primary(moved_slot);
+    cluster
+        .move_slot(
+            moved_slot,
+            moved_owner,
+            ClusterHarness::other_primary(moved_owner),
+        )
+        .await;
+    let after: BTreeSet<String> = harness
+        .redis
+        .scan_keys(&glob, 100)
+        .await
+        .expect("the scan answers after the move")
+        .into_iter()
+        .collect();
+    assert_eq!(
+        after, written,
+        "a scan still finds every key once a slot has moved: it walks the live topology"
+    );
+    (written, moved_slot, moved_owner)
+}
+
+async fn seed_scan_keys(harness: &DragonflyHarness, prefix: &str) -> BTreeSet<String> {
+    let mut written = BTreeSet::new();
+    for n in 0..SCANNED_KEYS {
+        let key = format!("{prefix}:{n}");
+        harness
+            .redis
+            .set_for(&key, "v", KEY_TTL_SECONDS)
+            .await
+            .expect("the key is written");
+        written.insert(key);
+    }
+    written
 }

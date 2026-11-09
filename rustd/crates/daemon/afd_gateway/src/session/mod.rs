@@ -5,7 +5,10 @@ mod commands;
 mod context;
 mod dispatch;
 mod events;
+#[cfg(feature = "test-util")]
+pub(crate) mod in_process;
 mod io;
+mod liveness;
 mod offer;
 mod offers;
 mod opening;
@@ -100,6 +103,7 @@ pub(crate) struct SessionHandle {
     pub(crate) snapshot: Mutex<SchedulingState>,
     pub(crate) stop: CancellationToken,
     pub(crate) drain: CancellationToken,
+    liveness: liveness::Liveness,
     superseded: CancellationToken,
     offers: Notify,
     claims: mpsc::Sender<oneshot::Sender<bool>>,
@@ -108,6 +112,18 @@ pub(crate) struct SessionHandle {
 }
 
 impl SessionHandle {
+    fn apply_policy(&self, degraded: bool) {
+        let recovered = {
+            let mut state = self.snapshot.lock();
+            let recovered = state.degraded && !degraded;
+            state.degraded = degraded;
+            recovered
+        };
+        if recovered {
+            self.request_offer();
+        }
+    }
+
     /// A full command queue becomes a complete durable recheck; it never silently loses authority changes.
     fn command(&self, command: afd_bus::Command) {
         if self.commands.try_send(command).is_err() {
@@ -215,6 +231,7 @@ impl SessionHandle {
             }),
             stop: CancellationToken::new(),
             drain: CancellationToken::new(),
+            liveness: liveness::Liveness::default(),
             superseded: CancellationToken::new(),
             offers: Notify::new(),
             claims,

@@ -9,6 +9,7 @@
 mod confirmation;
 mod context;
 mod corrections;
+mod delivery;
 mod execution;
 mod failures;
 mod renewal;

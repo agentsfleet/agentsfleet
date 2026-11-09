@@ -115,6 +115,24 @@ impl Session {
         self.plane.renew(lease, request).await
     }
 
+    /// Keep a real lease meter registered with the host renewal ticker until cancellation.
+    pub async fn keep_usage(
+        &self,
+        lease: &Uuid7,
+        expires: jiff::Timestamp,
+        meter: &Arc<afr_agent::Meter>,
+    ) -> af_wire::report::FailureClass {
+        crate::renew::Renewal::new(
+            &self.plane,
+            lease,
+            expires,
+            &af_core::clock::SystemClock,
+            meter,
+        )
+        .keep()
+        .await
+    }
+
     /// Publish bounded activity over its independent stream.
     ///
     /// # Errors

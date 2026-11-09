@@ -157,7 +157,8 @@ check-gh-actions-valid:  ## Validate .github/workflows/ — actionlint (YAML + r
 # invokes this target with none of them set (.github/workflows/lint.yml), so the
 # scrub changes nothing there; it makes a developer's run match it.
 PLAYBOOK_TEST_SCRUB = -u ENV -u STAGE -u ACTION -u PUSH -u REVISION \
-  -u VAULT -u VAULT_DEV -u VAULT_PROD -u RUNNER_ITEM -u AGENTSFLEET_API_URL
+  -u VAULT -u VAULT_DEV -u VAULT_PROD -u RUNNER_ITEM -u AGENTSFLEET_API_URL \
+  -u RUNNER_STREAM_CA_CERTIFICATE -u RUNNER_STREAM_SERVER_NAME -u RUNNER_STREAM_WIREGUARD_CONFIG
 
 # Split by what a change can actually break. The reference-integrity half is a
 # cheap grep over the tree and is the ONLY thing a Makefile or workflow edit can

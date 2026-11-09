@@ -48,9 +48,8 @@ use crate::reads::{
     unsettled_lines,
 };
 use crate::wire::{
-    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN,
-    assert_no_lease_for_fleet_under_test, capable_beat, field, fleet_poll, get, json, post,
-    report_body, wait_for_seeded_offer, wait_without_offer,
+    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN, capable_beat, field, get, json,
+    post, report_body, wait_for_seeded_offer, wait_without_offer,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -95,25 +94,12 @@ async fn prove_runner_ready(http: &reqwest::Client, run: &Scenario) {
         field(&beat, "degraded"),
         &json!(false),
         "and the proven capabilities clear the degraded verdict, which is what \
-         makes the poll below leasable rather than fail-closed"
+         allows the session to receive work"
     );
 }
 
 async fn claim_seeded_lease(run: &Scenario) -> (String, u64) {
-    // One caller, one poller. There used to be a bare POST here to prove the
-    // STATUS before the loop proved the EVENT, on the reading that a poll which
-    // misses this fleet's partition costs nothing — and about fifteen times in
-    // sixteen that is true. The sixteenth is the bug: that throwaway request
-    // WINS the lease, its body is dropped on the floor, and the lease is now
-    // held. `runner.fleet_slots` then refuses to re-issue it while
-    // `lease_expires_at` is in the future, so every one of the 128 polls below
-    // correctly answers `lease: null` and the test panics saying the event was
-    // never offered. Measured at 2 failures in 15 local runs, and it is the red
-    // `test-integration-rustd` lane on Pull Request #693.
-    //
-    // `wait_for_offer` already asserts the status on EVERY turn and its doc
-    // comment names this exact caller as the hazard, so the separate request
-    // proved nothing the loop does not prove and cost a lease to do it.
+    // Receiving once retains the worker registration until report acknowledgement.
     wait_for_seeded_offer(run).await
 }
 

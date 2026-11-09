@@ -1,11 +1,10 @@
 //! Authoring shares the confirmed connection and the existing accounting owners.
 
 use super::super::{Message, SessionServices, context::answer};
-use crate::{Operation, Result, error::within};
+use crate::{Operation, Result, error::ErrorKind};
 use af_core::id::Uuid7;
 use af_wire::authoring::{Renew, Report};
 use std::num::NonZeroU64;
-use tokio::time::Instant;
 
 impl SessionServices {
     pub(in super::super) async fn authoring_model(
@@ -14,19 +13,16 @@ impl SessionServices {
         lease: &str,
         request: afd_authoring::ModelCallInput,
     ) -> Result<()> {
-        let result = within(
-            &self.gateway.inner.accounting_stop,
-            Instant::now() + af_core::timing::AUTHORING_MODEL_ANSWER_TIMEOUT,
-            Operation::Model,
-            Box::pin(async {
+        // The runner bounds its answer wait. This tracked work still owns its frame,
+        // slot and registration until known provider usage reaches the receipt.
+        let result = tokio::select! {
+            biased;
+            () = self.gateway.inner.accounting_stop.cancelled() => Err(ErrorKind::Closed.into()),
+            result = async {
                 let lease = Uuid7::parse(lease)?;
-                Ok(self
-                    .models
-                    .call(&self.handle.runner, &lease, request)
-                    .await?)
-            }),
-        )
-        .await;
+                Ok(self.models.call(&self.handle.runner, &lease, request).await?)
+            } => result,
+        };
         if let Err(error) = &result {
             crate::Gateway::observe(error, Operation::Model);
         }

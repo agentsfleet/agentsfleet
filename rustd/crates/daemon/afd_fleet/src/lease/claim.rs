@@ -1,9 +1,9 @@
-//! One poll selects between independently authorized placement domains.
+//! One native claim selects between independently authorized placement domains.
 
 use af_core::id::Uuid7;
 use af_wire::lease::{AcceptedKinds, LeaseKind, TaggedLease};
 
-use super::{LeaseService, pull::Polled};
+use super::LeaseService;
 use super::{OfferRequest, Offered};
 use crate::Result;
 
@@ -48,8 +48,8 @@ impl LeaseService {
                     }
                 }
                 LeaseKind::Fleet => {
-                    if let Polled::Lease(body) = self
-                        .poll_with(request, Some(ticket), |lease, metadata| {
+                    if let Some(body) = self
+                        .claim_fleet_with(request, Some(ticket), |lease, metadata| {
                             emit(TaggedLease::Fleet(Box::new(lease)), metadata)
                         })
                         .await?

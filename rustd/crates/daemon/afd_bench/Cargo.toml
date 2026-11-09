@@ -13,6 +13,9 @@ categories.workspace = true
 
 [dependencies]
 afd_bus.workspace = true
+afd_auth.workspace = true
+af_stream.workspace = true
+afd_gateway = { workspace = true, features = ["test-util"] }
 # THE dependency that makes this a measurement rather than a model: the lanes
 # drive `Leases::select`, the real assignment pass, not a copy of it. A
 # reimplementation would not compile against these signatures (Invariant 2).

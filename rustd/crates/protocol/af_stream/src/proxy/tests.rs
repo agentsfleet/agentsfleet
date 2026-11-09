@@ -146,3 +146,27 @@ async fn a_transient_connect_refusal_can_retry_but_proxy_authentication_is_termi
     tokio::time::timeout(std::time::Duration::from_secs(5), server).await???;
     Ok(())
 }
+
+#[test]
+fn proxy_credentials_preserve_both_decoded_parts_when_the_password_exceeds_the_username()
+-> Result<()> {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    let password = "fixture-password-".repeat(80);
+    let raw = format!("http://fixture%20user:{password}@proxy.test:8080");
+    let proxy = super::Proxy::try_from(raw.as_str())?;
+    let authorization = proxy
+        .authorization
+        .as_ref()
+        .ok_or(crate::error::ErrorKind::Protocol)?;
+    let encoded = authorization
+        .strip_prefix("Basic ")
+        .ok_or(crate::error::ErrorKind::Protocol)?;
+    let decoded = STANDARD
+        .decode(encoded)
+        .map_err(|source| crate::error::ErrorKind::Body {
+            source: Box::new(source),
+        })?;
+    assert_eq!(decoded, format!("fixture user:{password}").as_bytes());
+    assert!(!format!("{proxy:?}").contains("fixture"));
+    Ok(())
+}

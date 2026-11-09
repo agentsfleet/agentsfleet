@@ -1,19 +1,16 @@
-//! One simulated host under saturation: poll, renew what it holds, never
+//! One simulated host under saturation: offer, renew what it holds, never
 //! report.
 //!
 //! # What one iteration is
 //!
-//! One [`Host::poll`] — in production `Plane::claim`, the verb the runner
+//! One [`Host::offer`] — in production `Plane::claim`, the verb the runner
 //! route serves, which tries a setup chat and a fleet lease in the order the
-//! host's ticket names — timed end to end. Every [`RENEW_EVERY`] polls the host
+//! host's ticket names — timed end to end. Every [`RENEW_EVERY`] claims the host
 //! renews each chat lease it holds, so renewals compete for the pool the way a
 //! host mid-conversation makes them compete.
 //!
-//! # A refusal is counted, never propagated
-//!
-//! As in the other windows: a datastore that would not answer is an outcome
-//! to count and hand to the abort monitor. Under saturation, an acquire that
-//! timed out is exactly that outcome.
+//! Offer failures end the measurement with their cause. Renewal refusals are
+//! counted and observed by the load generator before the final correctness check.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -25,7 +22,7 @@ use crate::abort::Abort;
 use crate::error::Result;
 use crate::report::Latency;
 
-/// Polls between one host's renewal rounds.
+/// Successful offer rounds between eager renewal rounds.
 const RENEW_EVERY: u64 = 4;
 
 /// A chat lease a host holds, as its renewal names it.
@@ -35,12 +32,10 @@ pub(super) struct Held {
     pub(super) fence: String,
 }
 
-/// What one poll answered.
+/// What one offer answered.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) enum Polled {
-    /// The path would not answer; counted, never propagated.
-    Refused,
-    /// No work this poll.
+pub(super) enum Offered {
+    /// No work this offer.
     Nothing,
     /// A setup chat lease, held until the window ends.
     Chat(Held),
@@ -54,11 +49,16 @@ pub(super) trait Host: Sync {
     ///
     /// # Errors
     ///
-    /// Only an answer that would not parse; a refusal is [`Polled::Refused`].
-    fn poll(&self, runner: &Uuid7) -> impl Future<Output = Result<Polled>> + Send;
+    /// Preserves gateway, decoding and domain refusal failures.
+    fn offer(&self, runner: &Uuid7) -> impl Future<Output = Result<Offered>> + Send;
 
     /// Renew one held chat lease, answering whether the path accepted it.
-    fn renew(&self, runner: &Uuid7, held: &Held) -> impl Future<Output = bool> + Send;
+    fn renew(&self, runner: &Uuid7, held: &Held) -> impl Future<Output = Result<()>> + Send;
+
+    /// Wait for a new scheduling notification after an empty offer pass.
+    fn wait(&self, _runner: &Uuid7) -> impl Future<Output = Result<()>> + Send {
+        async { Ok(()) }
+    }
 }
 
 /// What every requester shares: when to stop, and how far they have got.
@@ -72,6 +72,7 @@ pub(super) struct Shared {
     pub(super) population: u64,
     /// The monitor every outcome is reported to.
     pub(super) abort: Arc<Abort>,
+    pub(super) done: tokio_util::sync::CancellationToken,
 }
 
 impl Shared {
@@ -87,7 +88,7 @@ impl Shared {
 #[derive(Debug)]
 pub(super) struct Tally {
     /// Polls made, lease or not.
-    pub(super) polls: u64,
+    pub(super) claims: u64,
     /// Setup chat leases issued to this host.
     pub(super) chat: u64,
     /// Fleet leases issued to this host.
@@ -96,9 +97,9 @@ pub(super) struct Tally {
     pub(super) failures: u64,
     /// Renewals the path accepted.
     pub(super) renewals: u64,
-    /// How long a poll that issued a lease of either kind took.
+    /// How long a offer that issued a lease of either kind took.
     pub(super) lease_latency: Latency,
-    /// How long a poll that issued a setup chat lease took: the tail a claim
+    /// How long a offer that issued a setup chat lease took: the tail a claim
     /// waiting on a locked draft shows in.
     pub(super) chat_latency: Latency,
 }
@@ -107,7 +108,7 @@ impl Tally {
     /// An empty tally.
     pub(super) fn new() -> Result<Self> {
         Ok(Self {
-            polls: 0,
+            claims: 0,
             chat: 0,
             fleet: 0,
             failures: 0,
@@ -123,7 +124,7 @@ impl Tally {
     ///
     /// When the two latency distributions will not merge.
     pub(super) fn absorb(&mut self, other: &Self) -> Result<()> {
-        self.polls += other.polls;
+        self.claims += other.claims;
         self.chat += other.chat;
         self.fleet += other.fleet;
         self.failures += other.failures;
@@ -141,40 +142,93 @@ impl Tally {
     }
 }
 
-/// Poll and renew until the window closes, answering what this host did.
+/// Process offers and renew held work until the window closes.
 ///
 /// # Errors
 ///
 /// A latency the histogram would not hold, or an answer that does not parse.
 pub(super) async fn drive<H: Host>(host: &H, runner: &Uuid7, shared: &Shared) -> Result<Tally> {
     let mut tally = Tally::new()?;
+    let stop = shared.abort.token();
     let mut held = Vec::new();
     while shared.open() {
-        tally.polls += 1;
-        if tally.polls % RENEW_EVERY == 0 {
+        tally.claims += 1;
+        if tally.claims % RENEW_EVERY == 0 {
             for lease in &held {
-                let renewed = host.renew(runner, lease).await;
+                let renewed = renewal(host.renew(runner, lease).await);
                 tally.renewals += u64::from(renewed);
                 tally.outcome(renewed, shared);
             }
         }
         let started = Instant::now();
-        let polled = host.poll(runner).await?;
+        let offered = tokio::select! {
+            () = stop.cancelled() => break,
+            () = shared.done.cancelled() => break,
+            () = tokio::time::sleep_until(shared.deadline.into()) => break,
+            result = host.offer(runner) => result?,
+        };
         let took = started.elapsed();
-        tally.outcome(polled != Polled::Refused, shared);
-        match polled {
-            Polled::Refused | Polled::Nothing => continue,
-            Polled::Chat(lease) => {
+        tally.outcome(true, shared);
+        match offered {
+            Offered::Nothing => {
+                wait(host, runner, &held, &mut tally, shared).await?;
+                continue;
+            }
+            Offered::Chat(lease) => {
                 tally.chat += 1;
                 tally.chat_latency.record(took)?;
                 held.push(lease);
             }
-            Polled::Fleet => tally.fleet += 1,
+            Offered::Fleet => tally.fleet += 1,
         }
         tally.lease_latency.record(took)?;
-        shared.leased.fetch_add(1, Ordering::Relaxed);
+        let leased = shared.leased.fetch_add(1, Ordering::Relaxed) + 1;
+        if leased >= shared.population {
+            shared.done.cancel();
+        }
     }
     Ok(tally)
+}
+
+/// Renewal failures remain visible before the load generator records their outcome.
+fn renewal(result: Result<()>) -> bool {
+    match result {
+        Ok(()) => true,
+        Err(error) => {
+            eprintln!("native saturation renewal refused: {error}");
+            false
+        }
+    }
+}
+
+/// Idle capacity sends no repeated claim; held authoring work still renews on its clock.
+async fn wait<H: Host>(
+    host: &H,
+    runner: &Uuid7,
+    held: &[Held],
+    tally: &mut Tally,
+    shared: &Shared,
+) -> Result<()> {
+    let stop = shared.abort.token();
+    let notified = host.wait(runner);
+    tokio::pin!(notified);
+    let mut renew = tokio::time::interval(af_core::timing::RENEWAL_TICK);
+    renew.tick().await;
+    loop {
+        tokio::select! {
+            () = stop.cancelled() => return Ok(()),
+            () = shared.done.cancelled() => return Ok(()),
+            () = tokio::time::sleep_until(shared.deadline.into()) => return Ok(()),
+            result = &mut notified => return result,
+            _ = renew.tick(), if !held.is_empty() => {
+                for lease in held {
+                    let accepted = renewal(host.renew(runner, lease).await);
+                    tally.renewals += u64::from(accepted);
+                    tally.outcome(accepted, shared);
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

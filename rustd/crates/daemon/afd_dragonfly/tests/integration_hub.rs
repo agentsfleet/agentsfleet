@@ -74,7 +74,6 @@ async fn test_hub_refcount_single_connection() {
     let harness = DragonflyHarness::connect().await;
     let publisher = FleetStreams::new(harness.redis.clone());
     let channel = harness.name("channel");
-
     let hub = SubscriptionHub::start(DragonflyHarness::config())
         .await
         .expect("hub starts");
@@ -100,17 +99,7 @@ async fn test_hub_refcount_single_connection() {
 
     // Every reader receives the same message.
     publish_until_delivered(&publisher, &channel, "hello", &mut readers[0]).await;
-    for reader in &mut readers[1..] {
-        let received = tokio::time::timeout(DELIVERY_BUDGET, reader.recv())
-            .await
-            .expect("delivery within budget")
-            .expect("the hub is live");
-        let Received::Message(message) = received else {
-            panic!("a message, not a lag notice");
-        };
-        assert_eq!(message.payload.as_str(), "hello");
-        assert_eq!(message.channel, channel);
-    }
+    assert_other_readers(&mut readers[1..], &channel).await;
 
     // Dropping all but one keeps the subscription; dropping the last releases it.
     readers.truncate(1);
@@ -248,22 +237,7 @@ async fn test_a_lagging_reader_is_told_and_a_stopped_hub_closes() {
             .expect("publish");
     }
 
-    // Somewhere in there the reader is told it lagged rather than handed a
-    // message that silently skipped its predecessors.
-    let mut lagged = false;
-    for _ in 0..600_u16 {
-        match tokio::time::timeout(Duration::from_millis(200), reader.recv()).await {
-            Ok(Ok(Received::Lagged(missed))) => {
-                assert!(missed > 0, "a lag notice reports how many were dropped");
-                lagged = true;
-                break;
-            }
-            Ok(Ok(Received::Message(_) | Received::Gap)) => {}
-            Ok(Err(failure)) => panic!("the hub closed early: {failure}"),
-            Err(_elapsed) => break,
-        }
-    }
-    assert!(lagged, "a reader {} messages behind was never told", 600);
+    assert_lagged(&mut reader).await;
 
     // Stopping the hub closes what readers are waiting on. What is already
     // buffered is delivered first — a closed channel still hands over what it
@@ -311,4 +285,37 @@ async fn test_shutdown_joins_workers_while_subscribers_retain_handles() {
     tokio::time::timeout(DELIVERY_BUDGET, hub.stopped())
         .await
         .expect("shutdown remains idempotent");
+}
+
+async fn assert_other_readers(readers: &mut [afd_dragonfly::Subscription], channel: &str) {
+    for reader in readers {
+        let received = tokio::time::timeout(DELIVERY_BUDGET, reader.recv())
+            .await
+            .expect("delivery within budget")
+            .expect("the hub is live");
+        let Received::Message(message) = received else {
+            panic!("a message, not a lag notice");
+        };
+        assert_eq!(message.payload.as_str(), "hello");
+        assert_eq!(message.channel, channel);
+    }
+}
+
+async fn assert_lagged(reader: &mut afd_dragonfly::Subscription) {
+    // Somewhere in there the reader is told it lagged rather than handed a
+    // message that silently skipped its predecessors.
+    let mut lagged = false;
+    for _ in 0..600_u16 {
+        match tokio::time::timeout(Duration::from_millis(200), reader.recv()).await {
+            Ok(Ok(Received::Lagged(missed))) => {
+                assert!(missed > 0, "a lag notice reports how many were dropped");
+                lagged = true;
+                break;
+            }
+            Ok(Ok(Received::Message(_) | Received::Gap)) => {}
+            Ok(Err(failure)) => panic!("the hub closed early: {failure}"),
+            Err(_elapsed) => break,
+        }
+    }
+    assert!(lagged, "a reader {} messages behind was never told", 600);
 }

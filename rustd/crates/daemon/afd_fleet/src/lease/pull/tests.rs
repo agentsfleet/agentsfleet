@@ -13,7 +13,7 @@ use crate::lease::test_dead;
 async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
     let mut issued = 0;
     let answer = test_dead::plane()
-        .poll_with(
+        .claim_fleet_with(
             crate::lease::OfferRequest {
                 runner: &test_dead::id(9),
                 held: &[],
@@ -27,7 +27,7 @@ async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
         )
         .await
         .expect("a degraded runner is a decision, not a datastore read");
-    assert!(matches!(answer, super::Polled::<()>::Empty));
+    assert!(answer.is_none());
     assert_eq!(issued, 0, "a degraded runner cannot receive an offer");
 }
 

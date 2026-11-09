@@ -286,3 +286,32 @@ async fn a_line_a_renewal_recorded_is_not_sent_again() {
     );
     assert_eq!(meter.backlog(), 0);
 }
+
+#[tokio::test(start_paused = true)]
+async fn reconnect_uses_the_live_fleet_deadline_and_recovers_freely_after_expiry() {
+    let (plane, _calls) = plane(|_call| Answer::Stall);
+    let id = Uuid7::parse(LEASE_ID).unwrap();
+    let meter = Arc::new(Meter::default());
+    let wall = clock();
+    let renewal = Renewal::new(&plane, &id, Timestamp::constant(3, 0), &wall, &meter);
+    let started = Instant::now();
+    let observe = async {
+        assert_eq!(
+            plane
+                .stream
+                .renewing
+                .recovery_deadline(started + Duration::from_secs(7)),
+            started + Duration::from_secs(1)
+        );
+    };
+    let (ended, ()) = tokio::join!(renewal.keep(), observe);
+    assert_eq!(ended, FailureClass::RenewalTerminate);
+    assert_eq!(started.elapsed(), Duration::from_secs(1));
+    assert_eq!(
+        plane
+            .stream
+            .renewing
+            .recovery_deadline(Instant::now() + Duration::from_secs(7)),
+        started + Duration::from_secs(8)
+    );
+}

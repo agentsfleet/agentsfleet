@@ -35,9 +35,19 @@ pub(crate) trait Command: Send + Sync {
 
 impl StreamHandle {
     pub(crate) async fn compute<C: Command>(&self, command: C) -> Result<C::Output> {
+        let deadline = tokio::time::Instant::now() + command.timeout();
+        self.compute_until(command, deadline).await
+    }
+
+    /// Partitioned host work shares its original absolute answer deadline.
+    pub(crate) async fn compute_until<C: Command>(
+        &self,
+        command: C,
+        deadline: tokio::time::Instant,
+    ) -> Result<C::Output> {
         let verb = C::VERB.map_or("ping", Verb::as_str);
         tracing::debug!(event = "runner_command_started", verb);
-        let deadline = tokio::time::Instant::now() + command.timeout();
+        let deadline = deadline.min(tokio::time::Instant::now() + command.timeout());
         let result = async {
             let frame = self
                 .request(command.expected(), |id| command.outgoing(id), deadline)
@@ -116,10 +126,8 @@ impl ControlPlane {
         lease_id: &Uuid7,
         request: &ActivityRequest<'_>,
     ) -> Result<()> {
-        tracing::debug!(
-            event = "runner_activity_queued",
-            verb = Verb::Activity.as_str()
-        );
+        let verb = Verb::Activity.as_str();
+        tracing::debug!(event = "runner_activity_queued", verb);
         self.stream
             .send(&Up::Activity {
                 lease_id: lease_id.as_str().into(),

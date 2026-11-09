@@ -46,11 +46,18 @@ Each environment's vault holds one `agentsfleet-runner-stream` item.
 The CA signing key sits beside runtime material, where the Continuous Integration (CI) service account can read it.
 Indy accepted this access on Nov 09, 2026.
 
+The DEV item also holds concealed `wireguard-config`, used only to restore the runner host's private route.
+PROD has no tunnel configuration or machines yet.
+
 Certificate files use Privacy-Enhanced Mail (PEM) encoding.
 The issuer is a certificate authority (CA).
 
 The application reads file paths, never 1Password references, for certificate material.
-The deployment must deliver the selected vault values to those protected files before starting the binaries.
+The development and release workflows load these fields through `op://<vault>/agentsfleet-runner-stream/<field>` references.
+They stage the daemon chain and leaf key as Fly file secrets before deployment; Fly writes them under `/etc/agentsfleet/runner-stream/` at boot.
+
+The runner bootstrap installs public trust at `/etc/agentsfleet/runner-stream-trust.pem` and sets the stream URL in its existing protected environment file.
+No deployment reads `ca-private-key`.
 
 | Process | Setting | Effect and default |
 |---|---|---|
@@ -82,9 +89,12 @@ User Datagram Protocol (UDP) carries HTTP/3 through QUIC.
 Transmission Control Protocol (TCP) carries HTTP/2.
 The port above is the default; both listeners use the configured address.
 
-Private Fly routing is the supported hosted path.
-An external runner needs a route to that private network, working name resolution and at least one permitted transport.
-Enabling HTTP/3 or HTTP/2 alone does not create private network access.
+The DEV OVH runner reaches Fly through `wg-quick@fly-dev`.
+Preparation installs WireGuard; deployment restores `/etc/wireguard/fly-dev.conf` from the DEV vault through SSH input, with root ownership and mode `0600`.
+
+The tunnel carries only the Fly organization prefix; split DNS sends `*.internal` lookups to Fly.
+An external runner needs equivalent routing, name resolution and permitted TCP/UDP traffic.
+Certificate delivery alone creates no route.
 
 Permit both transports to allow HTTP/2 fallback when UDP is unavailable.
 Any intermediary must pass duplex streaming and retain native connection ownership across packets.
@@ -121,7 +131,7 @@ A reconnect or report retry cannot extend that deadline.
 | Replica work probe | Every 5 seconds | Finds work after a lost notification |
 
 [Timing constants](../../rustd/crates/foundation/af_core/src/timing.rs) assert the renewal and recovery relationship.
-Repeated outages can exceed the recovery window; confirmed lease expiry remains the limit on execution.
+Repeated outages can exceed the recovery window; confirmed lease expiry still stops the running lease.
 
 A kill saves cancellation before sending its notification.
 Renewal and reconnect read that saved decision if the notification is lost.
@@ -153,6 +163,10 @@ The older process receives UZ-RUN-021 and halts; stop the duplicate process befo
 
 Postgres owns saved results, acknowledgements and billing records.
 Workers retry unacknowledged reports and task-decision receipts from memory using their original identities.
+Caller shutdown allows accepted work and result delivery thirty seconds, then stops remaining work.
+
+Workers receive the existing five-second cleanup grace before forced cancellation and joining.
+Process exit after that grace can lose reports or usage that the daemon has not acknowledged.
 A lost acknowledgement does not authorize another charge or physical provider call.
 
 An unacknowledged result occupies its worker until acknowledgement or a terminal refusal.
@@ -175,8 +189,21 @@ The session authenticates once, then binds four independently bounded streams to
 Control stays available while reports, model results or activity are waiting.
 Wrong-stream messages, unknown fields and conflicting session bindings are refused.
 
-The [native protocol reference](../reviews/m243/native-protocol-reference.md) owns framing, messages, correlation, cache and source-map details.
-This page owns connection setup, trust, durable authority and recovery behavior.
+Each stream is a duplex `POST /v1/runners/me/stream` on the same physical connection.
+The control stream authenticates and confirms ownership; secondary streams bind to that confirmed session.
+
+| Kind | Carries |
+|---|---|
+| `control` | Opening, credits, heartbeat, ping, renewals, cancellation and drain |
+| `work` | Offers, folded input, authoring model calls and proposals |
+| `reports` | Fleet and authoring completion with matching acknowledgements |
+| `activity` | Fleet progress without application acknowledgements |
+
+Messages use a four-byte big-endian length followed by UTF-8 JSON.
+Session-local request identifiers correlate answers; cancellation and disconnect remove waiting callers, so late answers cannot reach another request.
+
+The [wire types](../../rustd/crates/protocol/af_wire/src/protocol/mod.rs) define messages and bounds.
+The [gateway](../../rustd/crates/daemon/afd_gateway/src/session/mod.rs) and [runner](../../rustd/crates/runner/afr_supervisor/src/downlink/mod.rs) own task cleanup and session state.
 
 #### Memory configuration
 
@@ -198,14 +225,11 @@ Metric labels remain finite; tokens, private keys, payloads and tenant text neve
 
 ## Limits
 
-These settings and behaviors are checked against source.
-The [current handoff](../reviews/m243/session-handoff.md) records which runtime and repository checks have completed.
-Private routing, certificate delivery and hosted rollout need their own deployment evidence.
+Repository tests cover native behavior; they cannot prove the deployed Fly route.
+After deployment, the DEV runner gate checks private DNS, private API readiness, separate HTTP/2 and HTTP/3 TLS connections, and a recent native heartbeat.
 
 ## Related pages
 
 - [Generate and store listener certificates](../../playbooks/operations/runner_stream_tls/001_playbook.md)
-- [Native protocol reference](../reviews/m243/native-protocol-reference.md)
 - [Authentication rules](../AUTH.md)
-- [Failure and observability design](../reviews/m243/failure-and-observability.md)
-- [Transport study and recorded probes](../reviews/m243/transport-and-toon-research.md)
+- [Work scheduling](push_scheduler.md)

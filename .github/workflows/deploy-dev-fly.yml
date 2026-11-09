@@ -58,6 +58,8 @@ jobs:
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_DEV }}/planetscale-dev/migrator-connection-string
           DRAGONFLY_URL: op://${{ vars.VAULT_DEV }}/dragonfly-dev/api-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_DEV }}/encryption-master-key/credential
+          RUNNER_STREAM_CERTIFICATE_CHAIN: op://${{ vars.VAULT_DEV }}/agentsfleet-runner-stream/certificate-chain
+          RUNNER_STREAM_PRIVATE_KEY: op://${{ vars.VAULT_DEV }}/agentsfleet-runner-stream/private-key
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
           APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_DEV }}/approval-signing-secret/credential
           POSTHOG_API_KEY: op://${{ vars.VAULT_DEV }}/posthog-dev/credential
@@ -147,12 +149,18 @@ jobs:
           # encoding of it.
           otlp_ingest="$(printf '%s:%s' "$GRAFANA_OTLP_INSTANCE_ID" "$GRAFANA_OTLP_API_KEY" | base64 | tr -d '\n')"
           echo "::add-mask::$otlp_ingest"
+          stream_chain="$(printf '%s' "$RUNNER_STREAM_CERTIFICATE_CHAIN" | base64 | tr -d '\n')"
+          stream_key="$(printf '%s' "$RUNNER_STREAM_PRIVATE_KEY" | base64 | tr -d '\n')"
+          echo "::add-mask::$stream_chain"
+          echo "::add-mask::$stream_key"
           flyctl secrets set \
             AGENTSFLEET_LOG_LEVEL="info" \
             DATABASE_URL_API="$DATABASE_URL_API" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             DRAGONFLY_URL="$DRAGONFLY_URL" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
+            RUNNER_STREAM_TLS_CERT_BASE64="$stream_chain" \
+            RUNNER_STREAM_TLS_KEY_BASE64="$stream_key" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
             APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET" \
             POSTHOG_API_KEY="$POSTHOG_API_KEY" \

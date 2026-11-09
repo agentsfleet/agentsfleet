@@ -182,16 +182,7 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
     let held = held().await;
     let lease_id = &held.issued.lease_id;
     execute(&held, CURSOR_AHEAD, &[Bind::Id(lease_id)]).await;
-    execute(
-        &held,
-        FINISH_EVENT,
-        &[
-            Bind::Id(&held.fleet),
-            Bind::Id(&held.event_id),
-            Bind::Text(PROCESSED),
-        ],
-    )
-    .await;
+    finish_reported_event(&held).await;
     execute(
         &held,
         OVERFLOWING_LINES,
@@ -277,4 +268,17 @@ async fn test_a_runner_with_no_lease_or_no_host_row_gets_no_work() {
     assert!(answer.is_none(), "{answer:?}");
     drop(plane);
     held.fixtures.cleanup().await;
+}
+
+async fn finish_reported_event(held: &Held) {
+    execute(
+        held,
+        FINISH_EVENT,
+        &[
+            Bind::Id(&held.fleet),
+            Bind::Id(&held.event_id),
+            Bind::Text(PROCESSED),
+        ],
+    )
+    .await;
 }

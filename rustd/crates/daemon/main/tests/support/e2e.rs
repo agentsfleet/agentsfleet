@@ -209,13 +209,7 @@ pub(crate) async fn scenario_with(
     // apiece, and on the ready stream by the guard above.
     let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
 
-    let booted = boot(
-        &daemon_environment(&database_url, provider_base, extra),
-        EPHEMERAL,
-        supervisor,
-    )
-    .await
-    .expect("the lane's Postgres and Dragonfly are up");
+    let booted = scenario_boot(&database_url, provider_base, extra, supervisor).await;
     let base = format!("http://{}", booted.address);
     let now = af_core::clock::now();
 
@@ -229,13 +223,7 @@ pub(crate) async fn scenario_with(
     let default = seed_platform_default(&booted, &workspace, now).await;
     seed_provider_key(&booted, &workspace, now).await;
 
-    // Through the production verb, not an INSERT: enrolment mints the token
-    // and stores only its digest, and a seeded row would let the suite present
-    // a credential the daemon's own minting never produced.
-    let enrolled = Runners::new(booted.database.clone(), Entropy::new())
-        .register(&scenario_enrolment(&fleet), now)
-        .await
-        .expect("enrolment must succeed");
+    let (runner_id, token) = enrolled_runner(&booted, &fleet, now).await;
 
     let event_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE).await;
 
@@ -245,8 +233,8 @@ pub(crate) async fn scenario_with(
         workspace,
         tenant,
         event_id,
-        runner_id: enrolled.runner_id,
-        token: enrolled.token.expose().to_owned(),
+        runner_id,
+        token,
         native: tokio::sync::OnceCell::new(),
         seeded_at: now,
         booted,
@@ -327,4 +315,31 @@ impl Scenario {
         retire_fleet(&booted, &fleet).await;
         drop(booted);
     }
+}
+
+async fn enrolled_runner(booted: &Booted, fleet: &Uuid7, now: jiff::Timestamp) -> (Uuid7, String) {
+    // Through the production verb, not an INSERT: enrolment mints the token
+    // and stores only its digest, and a seeded row would let the suite present
+    // a credential the daemon's own minting never produced.
+    let enrolled = Runners::new(booted.database.clone(), Entropy::new())
+        .register(&scenario_enrolment(fleet), now)
+        .await
+        .expect("enrolment must succeed");
+
+    (enrolled.runner_id, enrolled.token.expose().to_owned())
+}
+
+async fn scenario_boot(
+    database_url: &str,
+    provider_base: Option<&str>,
+    extra: &[(&str, &str)],
+    supervisor: &mut Supervisor,
+) -> Booted {
+    boot(
+        &daemon_environment(database_url, provider_base, extra),
+        EPHEMERAL,
+        supervisor,
+    )
+    .await
+    .expect("the lane's Postgres and Dragonfly are up")
 }

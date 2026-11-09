@@ -250,6 +250,27 @@ pub async fn runner_with(
     workers: u32,
     now: Timestamp,
 ) -> Result<Uuid7> {
+    Ok(runner_identity(database, host, tag, workers, now).await?.id)
+}
+
+/// Enrolled identity retained by an in-process gateway session.
+#[derive(Debug, Clone)]
+pub(in crate::lane::lease) struct RunnerIdentity {
+    pub(in crate::lane::lease) id: Uuid7,
+    pub(in crate::lane::lease) digest: afd_auth::directory::Digest,
+}
+
+/// Enrol once while retaining the credential digest for guarded native ownership.
+///
+/// # Errors
+/// Preserves enrollment and initial capability failures.
+pub(in crate::lane::lease) async fn runner_identity(
+    database: &Db,
+    host: &str,
+    tag: &str,
+    workers: u32,
+    now: Timestamp,
+) -> Result<RunnerIdentity> {
     let runners = Runners::new(database.clone(), Entropy::new());
     let request = RegisterRequest {
         host_id: host.into(),
@@ -267,7 +288,9 @@ pub async fn runner_with(
         // still match and a runner missing this one never will.
         labels: vec![tag.into()],
     };
-    let runner = runners.register(&request, now).await?.runner_id;
+    let enrolled = runners.register(&request, now).await?;
+    let digest = enrolled.token.digest().clone();
+    let runner = enrolled.runner_id;
     // The first beat a real host sends before it polls. A host that has never
     // reported reads degraded and may claim nothing, so without it every poll
     // would be refused for a reason this lane is not about.
@@ -281,7 +304,7 @@ pub async fn runner_with(
     runners
         .heartbeat(&runner, &beat, held.as_ref(), now)
         .await?;
-    Ok(runner)
+    Ok(RunnerIdentity { id: runner, digest })
 }
 
 /// A host that proves every confinement the enrolment asks for.

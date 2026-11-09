@@ -9,6 +9,8 @@ use af_wire::{
 };
 use afr_agent::Meter;
 use dashmap::{DashMap, mapref::entry::Entry};
+use futures_util::{StreamExt as _, stream::FuturesUnordered};
+use parking_lot::Mutex;
 use tokio::{
     sync::{OwnedSemaphorePermit, Semaphore, watch},
     time::{Instant, MissedTickBehavior},
@@ -16,11 +18,9 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use super::StreamHandle;
-use crate::{
-    Result,
-    client::stream::{Outcome, RenewalBatch},
-    error::ErrorKind,
-};
+use crate::{Result, client::stream::Outcome, error::ErrorKind};
+
+mod batches;
 
 #[derive(Clone, Debug)]
 pub(crate) enum Renewed {
@@ -28,9 +28,17 @@ pub(crate) enum Renewed {
     Refused(ErrorCode),
 }
 
+enum Duty {
+    Fleet {
+        meter: Arc<Meter>,
+        updates: watch::Sender<Option<Renewed>>,
+    },
+    Authoring,
+}
+
 struct Lease {
-    meter: Arc<Meter>,
-    updates: watch::Sender<Option<Renewed>>,
+    deadline: Arc<Mutex<Instant>>,
+    duty: Duty,
 }
 
 pub(crate) struct Renewals {
@@ -60,23 +68,58 @@ impl Renewals {
         self: &Arc<Self>,
         lease: &Uuid7,
         meter: Arc<Meter>,
+        deadline: Instant,
     ) -> Result<Registration> {
+        let (updates, watching) = watch::channel(None);
+        let lifetime = self.insert(lease, deadline, Duty::Fleet { meter, updates })?;
+        Ok(Registration {
+            lifetime,
+            updates: watching,
+        })
+    }
+
+    pub(crate) fn authoring(
+        self: &Arc<Self>,
+        lease: &Uuid7,
+        deadline: Instant,
+    ) -> Result<Lifetime> {
+        self.insert(lease, deadline, Duty::Authoring)
+    }
+
+    fn insert(self: &Arc<Self>, lease: &Uuid7, deadline: Instant, duty: Duty) -> Result<Lifetime> {
         let slot = Arc::clone(&self.slots)
             .try_acquire_owned()
             .map_err(crate::error::stream_protocol)?;
-        let (updates, watching) = watch::channel(None);
+        let deadline = Arc::new(Mutex::new(deadline));
         match self.leases.entry(lease.clone()) {
             Entry::Occupied(_) => return Err(ErrorKind::StreamProtocol.into()),
             Entry::Vacant(entry) => {
-                entry.insert(Arc::new(Lease { meter, updates }));
+                entry.insert(Arc::new(Lease {
+                    deadline: Arc::clone(&deadline),
+                    duty,
+                }));
             }
         }
-        Ok(Registration {
+        Ok(Lifetime {
             registry: Arc::clone(self),
             lease: lease.clone(),
-            updates: watching,
+            deadline,
             _slot: slot,
         })
+    }
+
+    /// Renewal owners and recovery read the same confirmed monotonic deadline.
+    pub(crate) fn recovery_deadline(&self, budget: Instant) -> Instant {
+        let deadlines: Vec<_> = self
+            .leases
+            .iter()
+            .map(|entry| Arc::clone(&entry.deadline))
+            .collect();
+        deadlines
+            .into_iter()
+            .map(|deadline| *deadline.lock())
+            .min()
+            .map_or(budget, |deadline| budget.min(deadline))
     }
 
     pub(crate) async fn run(&self, handle: &StreamHandle, stop: CancellationToken) -> Result<()> {
@@ -100,15 +143,20 @@ impl Renewals {
     }
 
     async fn batch(&self, handle: &StreamHandle) -> Result<()> {
-        let (ids, leases) = self.snapshot();
-        if leases.is_empty() {
-            return Ok(());
+        let deadline = Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT;
+        let mut active = FuturesUnordered::new();
+        for batch in batches::split(self.snapshot())? {
+            active.push(handle.compute_until(batch, deadline));
         }
-        self.record(handle.compute(RenewalBatch { ids, leases }).await?);
+        // At most LEASES_MAX partitions share the existing queue and request bounds.
+        // Concurrent answers preserve one tick's budget and each lease's own cursor.
+        while let Some(answer) = active.next().await {
+            self.record(answer?);
+        }
         Ok(())
     }
 
-    fn snapshot(&self) -> (Vec<Uuid7>, Vec<Renewal<'static>>) {
+    fn snapshot(&self) -> Vec<(Uuid7, Renewal<'static>)> {
         // Clone identities and handles first. Meter locks never nest under a map shard.
         let leases: Vec<_> = self
             .leases
@@ -117,17 +165,20 @@ impl Renewals {
             .collect();
         leases
             .into_iter()
-            .map(|(id, lease)| {
+            .filter_map(|(id, lease)| {
+                let Duty::Fleet { meter, .. } = &lease.duty else {
+                    return None;
+                };
                 let request = af_wire::report::RenewRequest {
-                    requests: lease.meter.unrecorded(),
+                    requests: meter.unrecorded(),
                 };
                 let renewal = Renewal {
                     lease_id: id.to_string().into(),
                     request,
                 };
-                (id, renewal)
+                Some((id, renewal))
             })
-            .unzip()
+            .collect()
     }
 
     fn record(&self, leases: Vec<(Uuid7, Outcome<RenewResponse>)>) {
@@ -136,18 +187,19 @@ impl Renewals {
             let Some(lease) = lease else {
                 continue;
             };
+            let Duty::Fleet { updates, .. } = &lease.duty else {
+                continue;
+            };
             // Releasing the shard before watch notification permits concurrent retirements.
             match answer {
                 Outcome::Accepted(response) => {
-                    lease
-                        .updates
-                        .send_replace(Some(Renewed::Confirmed(response)));
+                    updates.send_replace(Some(Renewed::Confirmed(response)));
                 }
                 Outcome::Refused {
                     code,
                     retryable: false,
                 } => {
-                    lease.updates.send_replace(Some(Renewed::Refused(code)));
+                    updates.send_replace(Some(Renewed::Refused(code)));
                 }
                 Outcome::Refused {
                     code,
@@ -162,14 +214,32 @@ impl Renewals {
 }
 
 pub(crate) struct Registration {
+    pub(crate) lifetime: Lifetime,
+    pub(crate) updates: watch::Receiver<Option<Renewed>>,
+}
+
+/// One live lease's authoritative deadline, released when renewal ownership ends.
+pub(crate) struct Lifetime {
     registry: Arc<Renewals>,
     lease: Uuid7,
-    pub(crate) updates: watch::Receiver<Option<Renewed>>,
+    deadline: Arc<Mutex<Instant>>,
     _slot: OwnedSemaphorePermit,
 }
 
-impl Drop for Registration {
+impl Lifetime {
+    pub(crate) fn deadline(&self) -> Instant {
+        *self.deadline.lock()
+    }
+    pub(crate) fn extend(&self, deadline: Instant) {
+        *self.deadline.lock() = deadline;
+    }
+}
+
+impl Drop for Lifetime {
     fn drop(&mut self) {
         self.registry.leases.remove(&self.lease);
     }
 }
+
+#[cfg(test)]
+mod tests;

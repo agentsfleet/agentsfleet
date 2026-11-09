@@ -115,6 +115,10 @@ fn assert_native_samples(captured: &Capture) {
         ),
         0
     );
+    assert_native_counters(captured);
+}
+
+fn assert_native_counters(captured: &Capture) {
     for (outcome, value) in [("sent", 100), ("lost", 3), ("retransmitted", 2)] {
         assert_eq!(
             captured.sum(

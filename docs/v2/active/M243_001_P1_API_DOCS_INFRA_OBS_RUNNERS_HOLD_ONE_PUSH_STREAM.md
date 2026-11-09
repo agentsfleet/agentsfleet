@@ -133,7 +133,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/afd_fleet/src/task/lease.rs`, `task/sql.rs`, `task/sql/lock_issue_scope.sql`, `afd_fleet/tests/issue_lifecycle.rs` | EDIT, CREATE | §5: issuance rechecks active fleet state after waiting behind Kill; reports retain their settlement path |
 | `rustd/crates/daemon/afd_api_operator/src/handler/operator/runner_patch.rs`, `runner_delete.rs` | EDIT | §5: publish `Recheck` after every runner-row write |
 | `rustd/crates/protocol/af_observability/src/metrics/declared/fleet.rs`, `rustd/crates/protocol/af_observability/src/metrics/label/fleet.rs`, `rustd/crates/protocol/af_observability/src/producers/fleet/mod.rs`, `rustd/crates/protocol/af_observability/src/producers/fleet/runner/stream.rs` | EDIT, CREATE | §4, §6, §7: stream health, carrier fallback, recovery, queue pressure and offer outcomes; wake answers out |
-| `rustd/crates/daemon/main/src/plane/mod.rs`, `serve/mod.rs`, `serve/runtime.rs`, `serve/optional.rs`, `serve/drain/mod.rs`, `serve/drain/tests.rs` | EDIT | §2, §4: build the bus and gateway once; `go_away` on drain; the doorbell close goes |
+| `rustd/crates/daemon/main/src/plane/mod.rs`, `serve/mod.rs`, `serve/runtime/mod.rs`, `serve/optional.rs`, `serve/drain/mod.rs`, `serve/drain/tests.rs` | EDIT | §2, §4: build the bus and gateway once; `go_away` on drain; the doorbell close goes |
 | `rustd/crates/daemon/main/tests/integration_runner_stream/**` | CREATE | §4–§6: reconnect, kill across replicas, revocation, rotation, supersede, blackhole, chat statements |
 | `rustd/crates/daemon/main/tests/integration_runner_e2e/**`, `integration_rust_runner*.rs`, `integration_runner_activity*.rs`, `integration_runner_messages*.rs`, `integration_runner_shapes.rs` | EDIT | §6: drive leases over the stream |
 | `rustd/crates/daemon/afd_api/tests/route_inventory.rs`, `route_meta_total.rs`, `harness/stubs_runner.rs`, `afd_api/src/openapi/stability/mod.rs` | EDIT | §4, §7: one route in, six out |
@@ -148,7 +148,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/afd_fleet/src/lease/{offer,deliver/issue,report/observations}.rs`, `report/observations/tests.rs`, `src/error/{kind,lift,classify,permanence}.rs` | CREATE, EDIT | Typed offer metadata and observation errors preserve saved timestamps and usage failures |
 | `rustd/crates/daemon/main/src/preflight/{config,mod,read}.rs`, `plane/{config,services,tests}.rs` | EDIT | Resolve wake and memory settings before startup; invalid values remain absent until admission |
 | `rustd/crates/daemon/afd_bench/src/error/{kind,mod,accessors}.rs` | EDIT | Preserve failed concurrency conversion rather than substituting a maximum value |
-| `deploy/fly/agentsfleetd-dev/fly.toml`, `deploy/fly/agentsfleetd-prod/fly.toml` | PROPOSE only; edit after Indy's approval | private runner listener and certificate delivery; public ingress is outside this milestone |
+| `deploy/fly/agentsfleetd-dev/fly.toml`, `deploy/fly/agentsfleetd-prod/fly.toml` | Approved Nov 09 by Indy | private runner listener and certificate delivery; public ingress is outside this milestone |
 | `~/Projects/docs` branch `chore/m243-runner-stream-changelog`: `runners.mdx`, `runners/install.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx`, `changelog.mdx` | EDIT | §7: direct endpoint and network prerequisites, carrier fallback, kill behaviour and errors; API pages after merge |
 
 ## Applicable Rules
@@ -664,3 +664,29 @@ The current M245 plan changes database cost, M246 adds tenant-owned runners and 
 Model invocation keeps its existing long provider budget and physical dispatch identifier; disconnect never automatically repeats a model dispatch. Control ping, renewal and cancellation progress while a model call is pending. The daemon retains provider credentials, existing authoring validators, Postgres settlement and the shared Bus. Completed reports remain only in runner memory until acknowledgement. No report file or backward-format path is added. Transport latency remains unmeasured.
 
 The M246 implementation must use the current authoring model-call stream boundary as its reference after M243 merges. Its tenant ownership and runtime provider-proxy work remain M246 scope.
+
+### Nov 09 managed deployment completion
+
+Indy corrected the deployment boundary: "deployment is part of this PR. since when merged runner that is working must work."
+He directed reuse of the existing vault-reference delivery pattern and confirmed: "Already provisioned; use the private Fly names".
+Daemon development and production workflows load only the leaf chain/key, stage Fly file secrets and declare their paths in the application configuration.
+Runner deployments load only public CA trust and server-name, install trust and write the native origin in the existing protected environment file.
+The same deployment verifies a recent native heartbeat; read-only HTTP authentication alone is insufficient.
+Claude is checking the actual host routing on coordination issue 818; no deployment, vault read or key generation is authorized for this verification session.
+
+The two environments each hold one `agentsfleet-runner-stream` vault item.
+Indy accepted the CA signing key beside runtime material, readable by the CI service account, on Nov 09, 2026.
+Neither runtime nor deployment jobs load that signing field.
+Both issuer and listener use the approved ten-year lifetime and renew together.
+
+### Nov 09 recovery probe clarification
+
+M243 removes runner lease polling. Its daemon still queries Postgres once per replica every five seconds to recover missed disposable notifications.
+The stream itself does not make the admission commit and broker publication atomic.
+
+Owner (Indy, Nov 09, 2026): "Okay i think would do this in another milestone" followed by "continue with the pending work".
+This defers replacing the periodic recovery probe; M243 retains Dimension 4.5 and must describe that database polling accurately.
+A later design must cover publication crashes, listener gaps, capacity changes and lease expiry before removing the backstop.
+
+Owner confirmation (Indy, Nov 09, 2026): "Okay for the above case i am ok with the recovery poll. That is fine. So keep going with yours".
+The accepted failure example is a daemon crash after admission commit and before wake publication.

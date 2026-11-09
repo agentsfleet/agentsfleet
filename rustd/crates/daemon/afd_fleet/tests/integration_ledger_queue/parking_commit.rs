@@ -40,20 +40,7 @@ async fn resolve_during_park(expire: bool) {
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut blocker = owner.acquire().await.expect("owner");
-    sqlx::raw_sql(PAUSE_PARK)
-        .execute(&mut *blocker)
-        .await
-        .expect("pause trigger");
-    // The advisory key is the fleet id's text, as the trigger hashes it.
-    sqlx::query(LOCK)
-        .bind(fleet.as_str())
-        .execute(&mut *blocker)
-        .await
-        .expect("hold pause");
-    let blocker_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
-        .fetch_one(&mut *blocker)
-        .await
-        .expect("pause owner");
+    let blocker_pid = hold_park(&mut blocker, &fleet).await;
     let parking_event = event.clone();
     let parking = tokio::spawn(async move {
         leases
@@ -156,4 +143,22 @@ async fn waiter(
     })
     .await
     .expect("operation reaches lock boundary")
+}
+
+async fn hold_park(blocker: &mut sqlx::PgConnection, fleet: &Uuid7) -> i32 {
+    sqlx::raw_sql(PAUSE_PARK)
+        .execute(&mut *blocker)
+        .await
+        .expect("pause trigger");
+    // The advisory key is the fleet id's text, as the trigger hashes it.
+    sqlx::query(LOCK)
+        .bind(fleet.as_str())
+        .execute(&mut *blocker)
+        .await
+        .expect("hold pause");
+    let blocker_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *blocker)
+        .await
+        .expect("pause owner");
+    blocker_pid
 }

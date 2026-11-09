@@ -10,6 +10,7 @@ use af_stream::{OwnedFrame, Reader};
 use af_wire::protocol::StreamKind;
 use tokio::{sync::mpsc, task::JoinSet, time::Instant};
 use tokio_util::sync::CancellationToken;
+use tracing::{Instrument as _, instrument::WithSubscriber as _};
 
 pub(super) fn spawn(
     connected: Connected,
@@ -26,6 +27,43 @@ pub(super) fn spawn(
         reports,
         activity,
     } = connected;
+    write_pipes(
+        control.writer,
+        work.writer,
+        reports.writer,
+        activity.writer,
+        receivers,
+        stop,
+        workers,
+    );
+    track(
+        workers,
+        read(
+            control.reader,
+            StreamKind::Control,
+            control_frames,
+            stop.clone(),
+        ),
+    );
+    for (kind, pipe) in [
+        (StreamKind::Work, work.reader),
+        (StreamKind::Reports, reports.reader),
+        (StreamKind::Activity, activity.reader),
+    ] {
+        track(workers, read(pipe, kind, frames.clone(), stop.clone()));
+    }
+    connection
+}
+
+fn write_pipes(
+    control: tokio::io::DuplexStream,
+    work: tokio::io::DuplexStream,
+    reports: tokio::io::DuplexStream,
+    activity: tokio::io::DuplexStream,
+    receivers: Receivers,
+    stop: &CancellationToken,
+    workers: &mut JoinSet<Result<()>>,
+) {
     let Receivers {
         priority,
         control: ordinary,
@@ -33,29 +71,13 @@ pub(super) fn spawn(
         reports: reports_rx,
         activity: activity_rx,
     } = receivers;
-    workers.spawn(writer::control(
-        control.writer,
-        priority,
-        ordinary,
-        stop.clone(),
-    ));
-    workers.spawn(writer::run(work.writer, work_rx, stop.clone()));
-    workers.spawn(writer::run(reports.writer, reports_rx, stop.clone()));
-    workers.spawn(writer::run(activity.writer, activity_rx, stop.clone()));
-    workers.spawn(read(
-        control.reader,
-        StreamKind::Control,
-        control_frames,
-        stop.clone(),
-    ));
-    for (kind, pipe) in [
-        (StreamKind::Work, work.reader),
-        (StreamKind::Reports, reports.reader),
-        (StreamKind::Activity, activity.reader),
-    ] {
-        workers.spawn(read(pipe, kind, frames.clone(), stop.clone()));
-    }
-    connection
+    track(
+        workers,
+        writer::control(control, priority, ordinary, stop.clone()),
+    );
+    track(workers, writer::run(work, work_rx, stop.clone()));
+    track(workers, writer::run(reports, reports_rx, stop.clone()));
+    track(workers, writer::run(activity, activity_rx, stop.clone()));
 }
 
 async fn read(
@@ -84,4 +106,12 @@ pub(super) async fn ping(handle: StreamHandle, stop: CancellationToken) -> Resul
         tokio::select! { () = stop.cancelled() => return Ok(()), _ = ticks.tick() => {} }
         handle.compute(crate::client::stream::Ping).await?;
     }
+}
+
+/// Native codec tasks carry their connection's correlation and scoped subscriber.
+pub(super) fn track(
+    workers: &mut JoinSet<Result<()>>,
+    task: impl Future<Output = Result<()>> + Send + 'static,
+) {
+    workers.spawn(task.in_current_span().with_current_subscriber());
 }

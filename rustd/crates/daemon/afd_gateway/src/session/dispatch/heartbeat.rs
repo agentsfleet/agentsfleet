@@ -16,6 +16,7 @@ impl SessionServices {
     ) -> Result<()> {
         let held = garde::Unvalidated::new(std::mem::take(&mut request.holds)).validate()?;
         let listed = holds::fleets(&held);
+        self.handle.liveness.received();
         let result = self
             .operation(Operation::Heartbeat, async {
                 allowed(
@@ -35,13 +36,8 @@ impl SessionServices {
             .await;
         match result {
             Ok(beat) => {
-                let recovered = {
-                    let mut state = self.handle.snapshot.lock();
-                    let recovered = state.degraded && !beat.verdict.is_degraded();
-                    state.held = listed;
-                    state.degraded = beat.verdict.is_degraded();
-                    recovered
-                };
+                self.handle.snapshot.lock().held = listed;
+                self.apply_policy(&beat);
                 self.send(&Message::Heartbeat {
                     request_id,
                     answer: Answer::Ok {
@@ -50,9 +46,6 @@ impl SessionServices {
                 })
                 .await?;
                 self.refresh_cancellations().await?;
-                if recovered {
-                    self.handle.request_offer();
-                }
             }
             Err(error) => {
                 let terminal = !error.retryable();

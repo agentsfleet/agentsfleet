@@ -66,17 +66,16 @@ impl<'a> Renewal<'a> {
     /// granted deadline, less [`EXPIRY_MARGIN`], has passed: past it the daemon
     /// may already have given the event to another runner.
     pub(crate) async fn keep(self) -> FailureClass {
-        let mut registration = match self
-            .plane
-            .stream
-            .renewing
-            .register(self.lease_id, Arc::clone(self.meter))
-        {
+        let mut registration = match self.plane.stream.renewing.register(
+            self.lease_id,
+            Arc::clone(self.meter),
+            self.deadline(self.expires_at),
+        ) {
             Ok(registration) => registration,
             Err(error) => return self.terminated(&error),
         };
-        let mut deadline = self.deadline(self.expires_at);
         loop {
+            let deadline = registration.lifetime.deadline();
             tokio::select! {
                 biased;
                 () = tokio::time::sleep_until(deadline) => return self.expired(),
@@ -87,7 +86,9 @@ impl<'a> Renewal<'a> {
             let response = registration.updates.borrow_and_update().clone();
             match response {
                 Some(crate::uplink::renewals::Renewed::Confirmed(response)) => {
-                    deadline = self.deadline(response.lease_expires_at);
+                    registration
+                        .lifetime
+                        .extend(self.deadline(response.lease_expires_at));
                     if let Some(sequence) = response.recorded_through {
                         self.meter.recorded_through(sequence);
                     }

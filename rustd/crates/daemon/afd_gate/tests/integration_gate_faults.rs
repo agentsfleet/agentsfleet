@@ -171,14 +171,7 @@ async fn a_mirrored_answer_decides_without_reading_the_durable_row() {
         )
         .await
         .expect("the live queue holds the reference");
-    queue
-        .set_for(
-            &afd_gate::gate::key::response(action.as_str()),
-            MIRRORED_APPROVE,
-            MIRROR_TTL_SECONDS,
-        )
-        .await
-        .expect("the live queue holds the mirrored answer");
+    mirror_approval(&queue, &action).await;
     let config = config(false);
 
     let verdict = gates
@@ -280,4 +273,15 @@ async fn a_park_whose_reference_cannot_be_written_fails_closed_after_the_row() {
         "the durable row survives the failed reference write"
     );
     fixture.cleanup().await;
+}
+
+async fn mirror_approval(queue: &Dragonfly, action: &af_core::id::Uuid7) {
+    queue
+        .set_for(
+            &afd_gate::gate::key::response(action.as_str()),
+            MIRRORED_APPROVE,
+            MIRROR_TTL_SECONDS,
+        )
+        .await
+        .expect("the live queue holds the mirrored answer");
 }

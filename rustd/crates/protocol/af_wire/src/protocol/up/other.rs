@@ -82,93 +82,65 @@ pub(super) enum Other<
     },
 }
 
+// Both enums carry the same fields; forwarding stays exhaustive as variants change.
+macro_rules! forward {
+    ($value:expr, $($variant:ident { $($field:ident),* }),+ $(,)?) => {
+        match $value { $(Other::$variant { $($field),* } => Self::$variant { $($field),* }),+ }
+    };
+}
+
 impl<'a, D: Clone, O: Clone, I: Clone> From<Other<'a, D, O, I>> for Up<'a, D, O, I> {
     fn from(value: Other<'a, D, O, I>) -> Self {
-        match value {
-            Other::Hello {
+        forward!(
+            value,
+            Hello {
                 request_id,
                 accepted_kinds,
                 running,
                 credits,
-                unconfirmed_connection_id,
-            } => Self::Hello {
-                request_id,
-                accepted_kinds,
-                running,
-                credits,
-                unconfirmed_connection_id,
+                unconfirmed_connection_id
             },
-            Other::Confirm {
+            Confirm {
                 request_id,
-                connection_id,
-            } => Self::Confirm {
-                request_id,
-                connection_id,
+                connection_id
             },
-            Other::Ready {
+            Ready {
                 credits,
                 revision,
-                observed_offers,
-            } => Self::Ready {
-                credits,
-                revision,
-                observed_offers,
+                observed_offers
             },
-            Other::Heartbeat {
+            Heartbeat {
                 request_id,
-                request,
-            } => Self::Heartbeat {
-                request_id,
-                request,
+                request
             },
-            Other::Ping { request_id } => Self::Ping { request_id },
-            Other::RenewBatch { request_id, leases } => Self::RenewBatch { request_id, leases },
-            Other::AuthoringModel {
+            Ping { request_id },
+            RenewBatch { request_id, leases },
+            AuthoringModel {
                 request_id,
                 lease_id,
-                request,
-            } => Self::AuthoringModel {
-                request_id,
-                lease_id,
-                request,
+                request
             },
-            Other::AuthoringActivity {
+            AuthoringActivity {
                 request_id,
                 lease_id,
-                request,
-            } => Self::AuthoringActivity {
-                request_id,
-                lease_id,
-                request,
+                request
             },
-            Other::AuthoringRenew {
+            AuthoringRenew {
                 request_id,
                 lease_id,
-                request,
-            } => Self::AuthoringRenew {
-                request_id,
-                lease_id,
-                request,
+                request
             },
-            Other::AuthoringReport {
+            AuthoringReport {
                 request_id,
                 lease_id,
-                request,
-            } => Self::AuthoringReport {
-                request_id,
-                lease_id,
-                request,
+                request
             },
-            Other::Activity { lease_id, request } => Self::Activity { lease_id, request },
-            Other::Folds {
+            Activity { lease_id, request },
+            Folds {
                 request_id,
                 lease_id,
-                request,
-            } => Self::Folds {
-                request_id,
-                lease_id,
-                request,
+                request
             },
-        }
+        )
     }
 }

@@ -50,19 +50,7 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
     let database = lane.open(DbRole::Api, &[]).await;
     let owner = lane.open(DbRole::Migrator, &[]).await;
     let runners = Runners::new(database.clone(), Entropy::new());
-    let request = RegisterRequest {
-        host_id: "registry-registration.test".into(),
-        labels: Vec::new(),
-        assigned_policy: AssignedPolicy {
-            durable_tasks_enabled: true,
-            decision_model_id: None,
-            sandbox_tier: SandboxTier::DevNone,
-            network_policy: NetworkPolicy::AllowAll,
-            registry_allowlist: Vec::new(),
-            worker_count: 1,
-            extra_binds: Vec::new(),
-        },
-    };
+    let request = registration();
     let enrolled = runners.register(&request, clock::now()).await?;
     let runner = &enrolled.runner_id;
     let a = allowed(
@@ -101,6 +89,22 @@ async fn a_delayed_old_owner_cannot_register_over_the_new_owner() -> TestResult 
     owner.close().await;
     lane.cleanup().await;
     Ok(())
+}
+
+fn registration() -> RegisterRequest<'static> {
+    RegisterRequest {
+        host_id: "registry-registration.test".into(),
+        labels: Vec::new(),
+        assigned_policy: AssignedPolicy {
+            durable_tasks_enabled: true,
+            decision_model_id: None,
+            sandbox_tier: SandboxTier::DevNone,
+            network_policy: NetworkPolicy::AllowAll,
+            registry_allowlist: Vec::new(),
+            worker_count: 1,
+            extra_binds: Vec::new(),
+        },
+    }
 }
 
 fn allowed(

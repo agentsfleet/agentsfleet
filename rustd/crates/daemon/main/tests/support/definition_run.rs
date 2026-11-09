@@ -15,7 +15,9 @@ use af_core::id::Uuid7;
 use std::sync::Arc;
 use std::time::Duration;
 
-use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
+use afr_supervisor::config::{
+    ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME, ENV_STREAM_CA, ENV_STREAM_URL,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::definition_install::MINTED_TOKEN;
@@ -140,8 +142,17 @@ pub(crate) fn runner(
     shutdown: CancellationToken,
 ) -> impl Future<Output = afr_supervisor::Result<()>> + use<> {
     let home = home.to_string_lossy().into_owned();
+    let stream_origin = format!(
+        "https://localhost:{}",
+        run.booted.runner_stream_address.port()
+    );
+    let root = crate::support::runner_stream::root_file()
+        .to_string_lossy()
+        .into_owned();
     let env = af_core::env::MapEnv::from_pairs([
         (ENV_API_URL, run.base.as_str()),
+        (ENV_STREAM_URL, stream_origin.as_str()),
+        (ENV_STREAM_CA, root.as_str()),
         (ENV_RUNNER_TOKEN, run.token.as_str()),
         (ENV_STORAGE_HOME, home.as_str()),
     ]);

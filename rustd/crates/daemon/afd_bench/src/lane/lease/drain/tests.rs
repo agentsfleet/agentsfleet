@@ -1,7 +1,7 @@
 use core::time::Duration;
 
 use super::turn::Turn;
-use super::{IDLE_COMMITS_PER_POLL, IDLE_STATEMENTS_PER_POLL, UNSETTLED_ROWS, summary};
+use super::{IDLE_COMMITS, IDLE_STATEMENTS, UNSETTLED_ROWS, summary};
 use crate::profile::Profile;
 use crate::report::{Lane, Provenance, Report};
 
@@ -13,13 +13,13 @@ fn report() -> Report {
 #[test]
 fn the_summary_prints_each_measured_key_as_the_rubric_greps_it() {
     let mut report = report();
-    report.measurement(IDLE_STATEMENTS_PER_POLL, 14.5);
-    report.measurement(IDLE_COMMITS_PER_POLL, 3.0);
+    report.measurement(IDLE_STATEMENTS, 14.5);
+    report.measurement(IDLE_COMMITS, 3.0);
     report.measurement(UNSETTLED_ROWS, 200.0);
 
     assert_eq!(
         summary(&report),
-        "idle_statements_per_poll=14.5 idle_commits_per_poll=3 drain_unsettled_rows=200"
+        "drain_idle_statements=14.5 drain_idle_commits=3 drain_unsettled_rows=200"
     );
 }
 
@@ -29,15 +29,15 @@ fn a_zero_prints_as_a_bare_zero() {
     // render as `0.0`, which it would still match, or be dropped, which it
     // would not.
     let mut report = report();
-    report.measurement(IDLE_STATEMENTS_PER_POLL, 0.0);
+    report.measurement(IDLE_STATEMENTS, 0.0);
 
-    assert_eq!(summary(&report), "idle_statements_per_poll=0");
+    assert_eq!(summary(&report), "drain_idle_statements=0");
 }
 
 #[test]
 fn a_key_the_run_never_measured_is_left_out_rather_than_printed_as_zero() {
     // An aborted drain writes no idle window. Printing its absent cost as zero
-    // would pass the rubric on a run that never polled.
+    // would pass the rubric on a run with no complete idle window.
     assert_eq!(summary(&report()), "");
 }
 

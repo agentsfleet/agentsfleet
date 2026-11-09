@@ -10,6 +10,8 @@ pub(super) struct WakeQueue {
     queue: VecDeque<Uuid7>,
     members: HashSet<Uuid7>,
     capacity: usize,
+    recovery_generation: u64,
+    recovery_pending: bool,
 }
 
 impl WakeQueue {
@@ -18,6 +20,24 @@ impl WakeQueue {
             queue: VecDeque::with_capacity(capacity),
             members: HashSet::with_capacity(capacity),
             capacity,
+            recovery_generation: 0,
+            recovery_pending: false,
+        }
+    }
+
+    pub(super) fn recheck(&mut self) {
+        self.recovery_generation = self.recovery_generation.wrapping_add(1);
+        self.recovery_pending = true;
+    }
+
+    pub(super) fn recovery(&self) -> Option<super::Recovery> {
+        self.recovery_pending
+            .then_some(super::Recovery(self.recovery_generation))
+    }
+
+    pub(super) fn recovered(&mut self, recovery: super::Recovery) {
+        if recovery.0 == self.recovery_generation {
+            self.recovery_pending = false;
         }
     }
 

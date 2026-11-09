@@ -40,9 +40,7 @@ const SERVICE: &str = "github";
 /// matched could not tell a swapped pair apart.
 const CREDENTIAL: &str = "gh";
 
-/// How many consecutive polls stand in for a parked delivery redelivering.
-///
-/// Ten, which at `NO_WORK_RETRY_AFTER` is ten seconds of a parked event.
+/// Repeated grant requests prove parked redelivery reuses its approval card.
 const POLLS: usize = 10;
 
 /// Who the fixture records as answering a card.

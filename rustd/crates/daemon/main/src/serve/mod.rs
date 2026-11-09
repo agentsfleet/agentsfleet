@@ -3,7 +3,7 @@
 //! The order carries meaning — pools before Dragonfly before the router, and
 //! nothing listening until all of them answered. Teardown ordering lives in
 //! types rather than in declaration order: [`Supervisor::shutdown`] consumes
-//! itself, so nothing borrowed can be dropped early, and [`Daemon::run`] tears
+//! itself, so nothing borrowed can be dropped early, and [`crate::daemon::Daemon::run`] tears
 //! down on every path out.
 //!
 //! # Why hyper directly rather than `axum::serve`
@@ -27,6 +27,8 @@ mod exporting;
 mod listen;
 mod observations;
 mod optional;
+mod process;
+pub use process::run;
 mod runner_stream;
 mod runtime;
 #[cfg(feature = "test-util")]
@@ -53,7 +55,6 @@ use self::listen::listen;
 pub use self::listen::{ACCEPT_LOOP, dual_stack_listener};
 use self::optional::open_analytics;
 use self::runtime::{Runtime, open_runtime, spawn_background};
-use crate::daemon::{Daemon, Outcome};
 #[doc(inline)]
 pub use crate::error::BootFailure;
 use crate::preflight::{BootConfig, preflight};
@@ -212,42 +213,20 @@ async fn serve_plane(
     let gateway = runtime.plane.runner_streams().clone();
     let native = runner_stream::Signals::default();
     let serving_failed = tokio_util::sync::CancellationToken::new();
-    let task_owner = runtime.plane.task_owner();
-    let router = afd_api::router::build(runtime.plane, admission);
-    // The sweepers read through pools that are open by now. Starting them
-    // after the socket would leave a window where the plane serves while
-    // nothing is noticing dead runners. They take the analytics because the
-    // authoring sweeper finishes interrupted chat messages, a funnel step.
-    crate::sweepers::spawn(supervisor, &runtime.database, &analytics, task_owner);
-    spawn_background(
-        supervisor,
-        config,
-        &runtime.database,
-        &runtime.queue,
-        &runtime.kek,
-        runtime.bus,
-        runtime.outbound_client,
-    )
-    .await;
-    report_workers(supervisor, &analytics);
-    let drain = Drain::new().with_runner_streams(
-        gateway.clone(),
-        native.stop.clone(),
-        native.closed.clone(),
-    );
-    runner_stream::spawn(
+    let router = afd_api::router::build(std::sync::Arc::clone(&runtime.plane), admission);
+    start_workers(supervisor, config, &analytics, &runtime).await;
+    let drain = runner_drain(&gateway, &native);
+    serve_runner(
         listener,
-        router.clone(),
+        &router,
         gateway,
-        drain.clone(),
+        &drain,
         native,
-        serving_failed.clone(),
+        &serving_failed,
         supervisor,
     );
-    tracing::info!(
-        event = "runner_stream_listener_started",
-        port = runner_stream_address.port()
-    );
+    let stream_port = runner_stream_address.port();
+    tracing::info!(event = "runner_stream_listener_started", port = stream_port);
     let address = listen(port, router, supervisor, drain.clone()).await?;
     announce_started(supervisor, analytics, address);
     Ok(Booted {
@@ -258,6 +237,56 @@ async fn serve_plane(
         queue: runtime.queue,
         drain,
     })
+}
+
+fn runner_drain(gateway: &afd_gateway::Gateway, native: &runner_stream::Signals) -> Drain {
+    Drain::new().with_runner_streams(gateway.clone(), native.stop.clone(), native.closed.clone())
+}
+
+fn serve_runner(
+    listener: af_stream::Listener,
+    router: &axum::Router,
+    gateway: afd_gateway::Gateway,
+    drain: &Drain,
+    native: runner_stream::Signals,
+    serving_failed: &tokio_util::sync::CancellationToken,
+    supervisor: &mut Supervisor,
+) {
+    runner_stream::spawn(
+        listener,
+        router.clone(),
+        gateway,
+        drain.clone(),
+        native,
+        serving_failed.clone(),
+        supervisor,
+    );
+}
+
+/// Start maintenance before either listener can answer through the assembled router.
+async fn start_workers(
+    supervisor: &mut Supervisor,
+    config: &BootConfig,
+    analytics: &Analytics,
+    runtime: &Runtime,
+) {
+    crate::sweepers::spawn(
+        supervisor,
+        &runtime.database,
+        analytics,
+        runtime.plane.task_owner(),
+    );
+    spawn_background(
+        supervisor,
+        config,
+        &runtime.database,
+        &runtime.queue,
+        &runtime.kek,
+        runtime.bus.clone(),
+        runtime.outbound_client.clone(),
+    )
+    .await;
+    report_workers(supervisor, analytics);
 }
 
 /// Reports the serving port, then hands `analytics` to a supervised flush that
@@ -278,90 +307,4 @@ fn report_workers(supervisor: &Supervisor, analytics: &Analytics) {
     analytics.report(&Telemetry::WorkerStarted {
         concurrency: supervised,
     });
-}
-
-/// Runs the daemon to completion, then drops what it borrowed.
-///
-/// The last line is the point: `booted` — the pools — is dropped only after
-/// `Daemon::run` has cancelled and JOINED every task, which is invariant C2
-/// expressed as the order of two statements the compiler will not let you swap.
-///
-/// `port` is already resolved — [`crate::cli`] took it from `--port`, the
-/// `PORT` fallback, or [`DEFAULT_PORT`], and rejected anything unusable before
-/// this was called. Nothing here re-reads the environment for it.
-///
-/// # Errors
-/// Returns the boot stage that could not complete: an environment naming every
-/// fault at once, a datastore that would not answer, or a port that would not
-/// bind. Serving never starts in any of those cases.
-pub async fn run<E: EnvSource + ?Sized + Sync, F>(
-    env: &E,
-    port: u16,
-    signal: F,
-) -> Result<Outcome, BootFailure>
-where
-    F: Future<Output = ()> + Send,
-{
-    let (supervisor, booted) = boot_supervised(env, port).await?;
-    show_banner(&booted);
-
-    // A failed native listener must stop the process rather than leave a healthy public API
-    // advertising a runner service that no longer has a listener or scheduler.
-    let outcome = Daemon::new(supervisor)
-        .draining(booted.drain.clone())
-        .run(booted.serving_failed.cancelled(), signal)
-        .await;
-
-    // C2, as two statements the compiler will not let you swap: the pools are
-    // dropped only after a shutdown that joined every task reading through them.
-    drop(booted);
-    Ok(outcome)
-}
-
-/// Boots under a fresh supervisor, shutting it down if boot fails.
-///
-/// # Errors
-/// Returns the boot failure, after the supervisor holding whatever boot had
-/// already spawned has been shut down.
-async fn boot_supervised<E: EnvSource + ?Sized + Sync>(
-    env: &E,
-    port: u16,
-) -> Result<(Supervisor, Booted), BootFailure> {
-    let mut supervisor = Supervisor::new();
-    // Not `?`, for [`open`]'s reason one stage later. Once `open_telemetry` has
-    // handed the exporters over, the thing that delivers them is a supervised
-    // task waiting on the cancellation token — and a supervisor that is dropped
-    // rather than shut down never cancels it. A bind that fails after that
-    // handoff would take the whole boot's records with it, silently.
-    //
-    // `shutdown` consumes the supervisor, which is why this is a match: the
-    // borrow `boot` held has to end before the move.
-    let booted = match boot(env, port, &mut supervisor).await {
-        Ok(booted) => booted,
-        Err(failure) => {
-            let report = supervisor.shutdown().await;
-            if !report.is_clean() {
-                tracing::warn!(
-                    event = "boot_teardown_unclean",
-                    "a task did not stop cleanly while tearing down a failed boot"
-                );
-            }
-            return Err(failure);
-        }
-    };
-    Ok((supervisor, booted))
-}
-
-/// Prints the startup banner: where this daemon listens and which datastore
-/// roles it opened.
-fn show_banner(booted: &Booted) {
-    crate::banner::show(
-        env!("CARGO_PKG_VERSION"),
-        &[
-            format!("listening {}", booted.address),
-            format!("postgres:{}", booted.database.role().tag()),
-            format!("redis:{}", booted.queue.role().tag()),
-        ],
-        std::process::id(),
-    );
 }

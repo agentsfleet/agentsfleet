@@ -44,6 +44,9 @@ af_core::error_shell!(
 
 af_core::error_lifts!(Error, ErrorKind:
     std::num::TryFromIntError => ConcurrencyUnrepresentable,
+    afd_gateway::Error => StreamFaulted,
+    tokio::sync::watch::error::RecvError => WakeClosed,
+    reqwest::Error => ProviderTransportFaulted,
     afd_db::Error => DatabaseUnavailable,
     afd_dragonfly::Error => QueueUnavailable,
     afd_bus::Error => BusUnavailable,

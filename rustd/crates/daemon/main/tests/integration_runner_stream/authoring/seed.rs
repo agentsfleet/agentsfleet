@@ -19,11 +19,11 @@ pub(super) struct Rows {
 }
 
 impl Rows {
-    pub(super) async fn seed(db: &Db) -> Self {
+    pub(super) async fn seed(db: &Db, workspace: Option<Uuid7>) -> Self {
         let rows = Self {
             tenant: mint_id(),
             user: mint_id(),
-            workspace: mint_id(),
+            workspace: workspace.unwrap_or_else(mint_id),
             model: mint_id(),
             catalogue: mint_id(),
         };

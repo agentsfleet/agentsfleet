@@ -135,21 +135,13 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
         Up::Report {
             request_id,
             request,
-        } => json!({"type":"report_ack", "request_id":request_id,
-            "lease_id":request.lease_id, "answer":answer(api, Verb::Report, &request).await?}),
+        } => report_reply(api, request_id, &request).await?,
         Up::Folds {
             request_id,
             lease_id,
             request,
-        } => json!({"type":"folded", "request_id":request_id,
-            "lease_id":lease_id, "answer":answer(api, Verb::Folds, &request).await?}),
-        Up::RenewBatch { request_id, leases } => {
-            let mut answers = Vec::new();
-            for lease in leases {
-                answers.push(json!({"lease_id":lease.lease_id, "answer":answer(api, Verb::Renew, &lease).await?}));
-            }
-            json!({"type":"renewed", "request_id":request_id, "leases":answers})
-        }
+        } => folds_reply(api, request_id, &lease_id, &request).await?,
+        Up::RenewBatch { request_id, leases } => renewals(api, request_id, leases).await?,
         Up::AuthoringModel {
             request_id,
             lease_id,
@@ -175,10 +167,7 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
         } => json!({"type":"authoring_report_ack", "request_id":request_id,
             "lease_id":lease_id, "answer":answer(api, Verb::AuthoringReport, &request).await?}),
         Up::Ping { request_id } => json!({"type":"pong", "request_id":request_id}),
-        Up::Activity { request, .. } => {
-            answer(api, Verb::Activity, &request).await?;
-            return Ok(None);
-        }
+        Up::Activity { request, .. } => return activity_reply(api, &request).await,
         Up::Ready { .. } => return Ok(None),
         Up::Hello { .. } | Up::Confirm { .. } => {
             panic!("opening is tested by the native connection fixtures")
@@ -206,4 +195,45 @@ async fn answer(api: &dyn RunnerApi, verb: Verb, request: &impl Serialize) -> Re
             "detail":"scripted daemon refusal", "retryable":failure.is_retryable()}),
         ),
     }
+}
+
+async fn activity_reply(
+    api: &dyn RunnerApi,
+    request: &af_wire::activity::ActivityRequest<'_>,
+) -> Result<Option<Value>> {
+    answer(api, Verb::Activity, request).await?;
+    Ok(None)
+}
+
+async fn renewals(
+    api: &dyn RunnerApi,
+    request_id: std::num::NonZeroU64,
+    leases: Vec<af_wire::protocol::Renewal<'_>>,
+) -> Result<Value> {
+    let mut answers = Vec::new();
+    for lease in leases {
+        answers.push(
+            json!({"lease_id":lease.lease_id, "answer":answer(api, Verb::Renew, &lease).await?}),
+        );
+    }
+    Ok(json!({"type":"renewed", "request_id":request_id, "leases":answers}))
+}
+
+async fn report_reply(
+    api: &dyn RunnerApi,
+    request_id: std::num::NonZeroU64,
+    request: &af_wire::report::ReportRequest<'_>,
+) -> Result<Value> {
+    Ok(json!({"type":"report_ack", "request_id":request_id,
+        "lease_id":request.lease_id, "answer":answer(api, Verb::Report, request).await?}))
+}
+
+async fn folds_reply(
+    api: &dyn RunnerApi,
+    request_id: std::num::NonZeroU64,
+    lease_id: &str,
+    request: &af_wire::fold::FoldRequest,
+) -> Result<Value> {
+    Ok(json!({"type":"folded", "request_id":request_id,
+        "lease_id":lease_id, "answer":answer(api, Verb::Folds, request).await?}))
 }

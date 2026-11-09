@@ -74,6 +74,7 @@ impl Fixture {
         )
         .at(af_core::clock::now())
         .with_owned_workspace(self.workspace.clone())
+        .with_native_authoring(self.db.clone())
     }
 
     pub(super) fn router(&self) -> Router {

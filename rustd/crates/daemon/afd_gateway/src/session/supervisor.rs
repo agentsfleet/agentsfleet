@@ -19,6 +19,7 @@ use afd_bus::Command;
 use std::{ops::ControlFlow, sync::Arc};
 use tokio::{task::JoinSet, time::Instant};
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument as _;
 
 /// Busy flags represent the only two coalesced background operations.
 /// Request identity and capacity are instead held by drop-owned guards.
@@ -29,10 +30,14 @@ pub(super) struct SessionSupervisor {
     pub(super) offer_running: bool,
     pub(super) command_running: bool,
     requests: Arc<RequestTracker>,
+    span: tracing::Span,
 }
 
 impl SessionSupervisor {
     pub(super) fn new(services: Arc<SessionServices>) -> Self {
+        let runner_id = services.handle.runner.as_str();
+        let connection_id = services.handle.connection.as_str();
+        let span = tracing::debug_span!("runner_session", runner_id, connection_id);
         Self {
             services,
             jobs: JoinSet::new(),
@@ -40,6 +45,7 @@ impl SessionSupervisor {
             offer_running: false,
             command_running: false,
             requests: Arc::new(RequestTracker::default()),
+            span,
         }
     }
 
@@ -56,7 +62,7 @@ impl SessionSupervisor {
                 break reason;
             }
         };
-        self.close(reason, read_stop).await
+        self.close(reason, read_stop, &mut events.frames).await
     }
 
     fn request(&mut self, frame: IncomingFrame) -> Result<()> {
@@ -78,7 +84,8 @@ impl SessionSupervisor {
             let _permit = permit;
             services.dispatch(frame, &requests).await?;
             Ok(OperationCompletion::Request)
-        };
+        }
+        .instrument(self.span.clone());
         if work {
             // A physical provider call must finish its receipt after the session closes.
             // The tracked request retains its frame charge, slot and request registration.
@@ -93,38 +100,44 @@ impl SessionSupervisor {
     fn offer(&mut self, trigger: OfferTrigger) {
         self.offer_running = true;
         let services = Arc::clone(&self.services);
-        self.jobs.spawn(async move {
-            let abandoned = matches!(&trigger, OfferTrigger::Pass(reply) if reply.is_closed());
-            let issued = !abandoned && services.offer().await?;
-            match trigger {
-                OfferTrigger::Ready if issued => services.handle.request_offer(),
-                OfferTrigger::Ready => {}
-                OfferTrigger::Pass(reply) => {
-                    if reply.send(issued).is_err() {
-                        tracing::debug!(event = "runner_offer_pass_abandoned", issued);
+        self.jobs.spawn(
+            async move {
+                let abandoned = matches!(&trigger, OfferTrigger::Pass(reply) if reply.is_closed());
+                let issued = !abandoned && services.offer().await?;
+                match trigger {
+                    OfferTrigger::Ready if issued => services.handle.request_offer(),
+                    OfferTrigger::Ready => {}
+                    OfferTrigger::Pass(reply) => {
+                        if reply.send(issued).is_err() {
+                            tracing::debug!(event = "runner_offer_pass_abandoned", issued);
+                        }
                     }
                 }
+                Ok(OperationCompletion::Offer)
             }
-            Ok(OperationCompletion::Offer)
-        });
+            .instrument(self.span.clone()),
+        );
     }
 
     fn command(&mut self, command: Command) {
         self.command_running = true;
         let services = Arc::clone(&self.services);
-        self.jobs.spawn(async move {
-            if let Err(error) = services.command(command).await
-                && !error.retryable()
-            {
-                services
-                    .send(&Message::GoAway {
-                        error_code: Some(error.code().as_str().into()),
-                    })
-                    .await?;
-                services.handle.stop.cancel();
+        self.jobs.spawn(
+            async move {
+                if let Err(error) = services.command(command).await
+                    && !error.retryable()
+                {
+                    services
+                        .send(&Message::GoAway {
+                            error_code: Some(error.code().as_str().into()),
+                        })
+                        .await?;
+                    services.handle.stop.cancel();
+                }
+                Ok(OperationCompletion::Command)
             }
-            Ok(OperationCompletion::Command)
-        });
+            .instrument(self.span.clone()),
+        );
     }
 
     fn completed(&mut self, completion: OperationCompletion) {
@@ -135,9 +148,18 @@ impl SessionSupervisor {
         }
     }
 
-    async fn close(&mut self, reason: ShutdownReason, read_stop: &CancellationToken) -> Result<()> {
+    async fn close(
+        &mut self,
+        reason: ShutdownReason,
+        read_stop: &CancellationToken,
+        frames: &mut super::streams::StreamReceivers,
+    ) -> Result<()> {
         match reason {
             ShutdownReason::Disconnected => Ok(()),
+            ShutdownReason::Silent => {
+                tracing::info!(event = "runner_stream_completed", reason = "silent");
+                Ok(())
+            }
             ShutdownReason::Superseded => {
                 self.services
                     .send(&Message::GoAway {
@@ -145,12 +167,16 @@ impl SessionSupervisor {
                     })
                     .await
             }
-            ShutdownReason::Drain => self.drain(read_stop).await,
+            ShutdownReason::Drain => self.drain(read_stop, frames).await,
         }
     }
 
     /// Stop taking frames, observe accepted operations and their flushed answers, then send `go_away`.
-    async fn drain(&mut self, read_stop: &CancellationToken) -> Result<()> {
+    async fn drain(
+        &mut self,
+        read_stop: &CancellationToken,
+        frames: &mut super::streams::StreamReceivers,
+    ) -> Result<()> {
         read_stop.cancel();
         let stop = self.services.handle.stop.clone();
         within(
@@ -158,8 +184,18 @@ impl SessionSupervisor {
             Instant::now() + STREAM_ANSWER_TIMEOUT,
             Operation::Drain,
             async {
-                while let Some(done) = self.jobs.join_next().await {
-                    self.completed(join_result(Some(done))?);
+                while !frames.drained() || !self.jobs.is_empty() {
+                    tokio::select! {
+                        biased;
+                        done = self.jobs.join_next(), if !self.jobs.is_empty() => {
+                            self.completed(join_result(done)?);
+                        }
+                        frame = frames.next(&self.slots), if !frames.drained() => {
+                            if let Some(frame) = frame {
+                                self.request(frame)?;
+                            }
+                        }
+                    }
                 }
                 self.services
                     .send(&Message::GoAway { error_code: None })
@@ -182,6 +218,7 @@ impl EventHandler for SessionSupervisor {
             SessionEvent::Disconnected => {
                 return Ok(ControlFlow::Break(ShutdownReason::Disconnected));
             }
+            SessionEvent::Silent => return Ok(ControlFlow::Break(ShutdownReason::Silent)),
         }
         Ok(ControlFlow::Continue(()))
     }

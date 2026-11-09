@@ -13,17 +13,12 @@ async fn test_completed_event_redelivery_does_not_execute() {
     run.fixtures
         .end_event(&run.fleet, &run.event_id, af_core::event::status::PROCESSED)
         .await;
-    run.fixtures
-        .age(Row::Lease(&run.issued.lease_id), "lease_expires_at", LAPSE)
-        .await;
-    run.fixtures
-        .age(Row::Slot(&run.fleet), "lease_expires_at", LAPSE)
-        .await;
+    age_original_claim(&run).await;
     let fleet = run.fleet.clone();
     let answer = run
         .fixtures
         .plane()
-        .poll_with(
+        .claim_fleet_with(
             afd_fleet::lease::OfferRequest {
                 runner: &run.spare,
                 held: &[fleet],
@@ -35,10 +30,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
         )
         .await
         .expect("poll");
-    assert!(
-        matches!(answer, afd_fleet::lease::pull::Polled::Empty),
-        "{answer:?}"
-    );
+    assert!(answer.is_none(), "{answer:?}");
     let mut connection = run.fixtures.database.acquire().await.expect("database");
     let settled: bool =
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
@@ -103,23 +95,9 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
     run.fixtures
         .age(Row::Slot(&run.fleet), "lease_expires_at", LAPSE)
         .await;
-    let answer = run
-        .fixtures
-        .plane()
-        .poll_with(
-            afd_fleet::lease::OfferRequest {
-                runner: &run.spare,
-                held: std::slice::from_ref(&run.fleet),
-                degraded: false,
-                now: run.now,
-            },
-            None,
-            |_lease, _metadata| (),
-        )
-        .await
-        .expect("current claimant suppresses the terminal event");
+    let answer = reclaim_terminal(&run).await;
     assert!(
-        matches!(answer, afd_fleet::lease::pull::Polled::Empty),
+        answer.is_none(),
         "the terminal event is never reissued: {answer:?}"
     );
     assert!(run.fixtures.admission_settled(&run.event_id).await);
@@ -140,4 +118,30 @@ async fn assert_superseded_claim_retained(run: &Held) {
     .expect("superseded claim still exists");
     let fence = run.fence.as_i64() + 1;
     assert_eq!(state, (false, Some(fence), fence, 1));
+}
+
+async fn age_original_claim(run: &Held) {
+    run.fixtures
+        .age(Row::Lease(&run.issued.lease_id), "lease_expires_at", LAPSE)
+        .await;
+    run.fixtures
+        .age(Row::Slot(&run.fleet), "lease_expires_at", LAPSE)
+        .await;
+}
+
+async fn reclaim_terminal(run: &Held) -> Option<()> {
+    run.fixtures
+        .plane()
+        .claim_fleet_with(
+            afd_fleet::lease::OfferRequest {
+                runner: &run.spare,
+                held: std::slice::from_ref(&run.fleet),
+                degraded: false,
+                now: run.now,
+            },
+            None,
+            |_lease, _metadata| (),
+        )
+        .await
+        .expect("current claimant suppresses the terminal event")
 }

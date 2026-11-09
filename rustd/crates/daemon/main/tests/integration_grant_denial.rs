@@ -19,24 +19,7 @@ const SERVICE: &str = "github";
 const LABEL: &str = "COALESCE(failure_reason, '')";
 
 async fn connect_and_declare(run: &Scenario) {
-    let vault = Vault::new(
-        run.booted.database.clone(),
-        Arc::new(Kek::from_hex(GOOD_KEK).expect("fixture key")),
-        Entropy::new(),
-    );
-    let raw = serde_json::value::RawValue::from_string(
-        json!({"integration": SERVICE, "app_id": "7", "installation_id": "42"}).to_string(),
-    )
-    .expect("handle JSON");
-    vault
-        .create(
-            &run.workspace,
-            &SecretName::parse(SERVICE).expect("secret name"),
-            &SecretBody::parse(&raw).expect("handle body"),
-            run.seeded_at,
-        )
-        .await
-        .expect("existing connection");
+    connect_credential(run).await;
     // Declared the way a person declares it: an Apply selecting a setup that
     // names the credential. The lease reads the selected revision, never a
     // copy on the fleet row.
@@ -98,40 +81,15 @@ where
         .execute(&mut *run.booted.database.acquire().await.expect("connection"))
         .await
         .expect("expire the previous no-work claim");
+        afd_bus::wake::publish(
+            &afd_bus::dragonfly::publisher(run.booted.queue.clone()),
+            run.fleet.clone(),
+        ).await;
         reached.await
         }
     })
     .await;
     assert!(observed, "{awaited}; inspect AFD_TEST_LOG=1");
-}
-
-/// The fleet's monotonic claim counter.
-///
-/// `CLAIM_FLEET_SLOT` bumps it on every won claim, and this suite expires
-/// the deadline before each poll, so a poll that reaches this fleet's partition
-/// always wins the claim and always moves this number. That makes it the one
-/// observable meaning "the daemon looked here" — as opposed to the rows the
-/// callers assert on, which say what it decided once it did.
-async fn fencing_token(run: &Scenario) -> i64 {
-    sqlx::query_scalar("SELECT fencing_token FROM runner.fleet_slots WHERE fleet_id = $1")
-        .bind(&run.fleet)
-        .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
-        .await
-        .expect("the affinity row exists: `connect_and_declare` claimed it")
-}
-
-/// Polls until the daemon has claimed this fleet once more.
-///
-/// Every call site asserts on what a poll DECIDED, and each of those outcomes
-/// can already be true when the wait begins: a card is raised once and then
-/// resolved rather than removed, and the pre-ended arm writes the terminal row
-/// itself before polling at all. A wait keyed on any of them returns on its
-/// first iteration — which usually sampled some other partition — and the
-/// assertion then reads a row no poll revisited. The claim counter cannot be
-/// true in advance, because the caller reads it first.
-async fn wait_without_offer_reached(run: &Scenario, awaited: &str) {
-    let before = fencing_token(run).await;
-    wait_without_offer(run, awaited, || async { fencing_token(run).await > before }).await;
 }
 
 async fn deny(run: &Scenario) {
@@ -171,25 +129,27 @@ async fn refusal_drains(preended: bool) {
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
-    wait_without_offer_reached(&run, "the gate never saw this fleet").await;
-    // Asserted rather than waited on: the wait above proves a poll reached the
-    // fleet, and THIS is what that poll had to do once it did.
+    wait_without_offer(&run, "the gate never saw this fleet", || async {
+        gate_cards(&run).await == 1
+    })
+    .await;
     assert_eq!(
         gate_cards(&run).await,
         1,
-        "the poll that reached the fleet raised its approval card"
+        "the session claim raised its approval card"
     );
     deny(&run).await;
-    if preended {
-        // A pre-existing terminal narrative must settle the queue without executing.
-        sqlx::query("UPDATE fleet.events SET status = $3, failure_reason = $4 WHERE fleet_id = $1 AND event_id = $2")
-            .bind(&run.fleet).bind(&run.event_id)
-            .bind(af_core::event::status::GATE_BLOCKED)
-            .bind(af_core::event::label::GRANT_DENIED)
-            .execute(&mut *run.booted.database.acquire().await.expect("database"))
-            .await.expect("terminal narrative");
-    }
-    wait_without_offer_reached(&run, "no poll revisited the denied event").await;
+    preend(&run, preended).await;
+    wait_without_offer(&run, "the denied admission never settled", || async {
+        sqlx::query_scalar::<_, bool>(
+            "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1",
+        )
+        .bind(&run.event_id)
+        .fetch_one(&mut *run.booted.database.acquire().await.expect("connection"))
+        .await
+        .expect("admission settlement reads")
+    })
+    .await;
     let first_label = event_column(&run, &run.event_id, LABEL).await;
     let settled: bool =
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
@@ -198,20 +158,15 @@ async fn refusal_drains(preended: bool) {
             .await
             .expect("queue state");
     let second = run.enqueue_event(EventType::Chat).await;
-    wait_without_offer_reached(&run, "no poll reached the fleet's next event").await;
+    wait_without_offer(&run, "the next denied event never settled", || async {
+        event_column(&run, &second, LABEL).await.as_deref()
+            == Some(af_core::event::label::GRANT_DENIED)
+    })
+    .await;
     let second_label = event_column(&run, &second, LABEL).await;
     supervisor.shutdown().await;
     run.cleanup().await;
-    assert_eq!(
-        first_label.as_deref(),
-        Some(af_core::event::label::GRANT_DENIED)
-    );
-    assert!(settled, "a terminal refusal must settle its admission");
-    assert_eq!(
-        second_label.as_deref(),
-        Some(af_core::event::label::GRANT_DENIED),
-        "the next event must be reached after the denied one"
-    );
+    assert_denied_labels(first_label.as_deref(), settled, second_label.as_deref());
 }
 
 #[tokio::test]
@@ -224,4 +179,47 @@ async fn a_denied_grant_does_not_block_later_events() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn terminal_history_is_settled_without_blocking_later_events() {
     refusal_drains(true).await;
+}
+
+async fn connect_credential(run: &Scenario) {
+    let vault = Vault::new(
+        run.booted.database.clone(),
+        Arc::new(Kek::from_hex(GOOD_KEK).expect("fixture key")),
+        Entropy::new(),
+    );
+    let raw = serde_json::value::RawValue::from_string(
+        json!({"integration": SERVICE, "app_id": "7", "installation_id": "42"}).to_string(),
+    )
+    .expect("handle JSON");
+    vault
+        .create(
+            &run.workspace,
+            &SecretName::parse(SERVICE).expect("secret name"),
+            &SecretBody::parse(&raw).expect("handle body"),
+            run.seeded_at,
+        )
+        .await
+        .expect("existing connection");
+}
+
+async fn preend(run: &Scenario, preended: bool) {
+    if preended {
+        // A pre-existing terminal narrative must settle the queue without executing.
+        sqlx::query("UPDATE fleet.events SET status = $3, failure_reason = $4 WHERE fleet_id = $1 AND event_id = $2")
+            .bind(&run.fleet).bind(&run.event_id)
+            .bind(af_core::event::status::GATE_BLOCKED)
+            .bind(af_core::event::label::GRANT_DENIED)
+            .execute(&mut *run.booted.database.acquire().await.expect("database"))
+            .await.expect("terminal narrative");
+    }
+}
+
+fn assert_denied_labels(first_label: Option<&str>, settled: bool, second_label: Option<&str>) {
+    assert_eq!(first_label, Some(af_core::event::label::GRANT_DENIED));
+    assert!(settled, "a terminal refusal must settle its admission");
+    assert_eq!(
+        second_label,
+        Some(af_core::event::label::GRANT_DENIED),
+        "the next event must be reached after the denied one"
+    );
 }

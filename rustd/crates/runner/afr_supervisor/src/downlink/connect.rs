@@ -37,6 +37,7 @@ pub(crate) struct Connected {
     pub(crate) activity: Pipe,
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct Opening<'a> {
     pub(crate) config: &'a StreamConfig,
     pub(crate) authorization: &'a HeaderValue,
@@ -56,7 +57,7 @@ impl Opening<'_> {
         let mut connection = preference
             .connect(self.config, self.stop, self.deadline)
             .await?;
-        let result = self.streams(&mut connection, resume).await;
+        let result = self.attach(&mut connection, resume).await;
         match result {
             Ok((control, work, reports, activity)) => Ok(Connected {
                 connection,
@@ -66,9 +67,7 @@ impl Opening<'_> {
                 activity,
             }),
             Err(error) => {
-                let closed = connection
-                    .close(Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT)
-                    .await;
+                let closed = connection.close(self.deadline).await;
                 if let Err(close) = closed {
                     let error_code = close.code().as_str();
                     let reason = close.reason().as_str();
@@ -77,6 +76,20 @@ impl Opening<'_> {
                 Err(error)
             }
         }
+    }
+
+    async fn attach(
+        &self,
+        connection: &mut Connection,
+        resume: &mut Resume,
+    ) -> Result<(Pipe, Pipe, Pipe, Pipe)> {
+        let streams = Self {
+            deadline: self
+                .deadline
+                .min(Instant::now() + af_core::timing::STREAM_OPEN_TIMEOUT),
+            ..*self
+        };
+        streams.streams(connection, resume).await
     }
 
     async fn streams(
@@ -198,6 +211,7 @@ impl Opening<'_> {
         if request_id != NonZeroU64::MIN || connection_id != proposed.as_str() {
             return Err(ErrorKind::StreamProtocol.into());
         }
+        tracing::Span::current().record("connection_id", proposed.as_str());
         *resume = Resume::Confirmed(proposed.clone());
         Ok(proposed)
     }
@@ -260,3 +274,7 @@ impl Opening<'_> {
         ))
     }
 }
+
+#[cfg(all(test, feature = "test-util"))]
+#[path = "connect_tests.rs"]
+mod tests;

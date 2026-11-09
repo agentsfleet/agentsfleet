@@ -175,3 +175,7 @@ impl Drop for Registration {
         self.requests.entries.lock().remove(&self.id);
     }
 }
+
+#[cfg(test)]
+#[path = "pending_tests.rs"]
+mod tests;

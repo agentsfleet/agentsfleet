@@ -2,6 +2,8 @@
 
 use std::sync::Arc;
 
+use af_core::error_code::{Coded, Logged};
+
 use af_stream::Listener;
 use afd_gateway::Gateway;
 use tokio_util::sync::CancellationToken;
@@ -75,23 +77,32 @@ fn finished<E>(
     stop: &CancellationToken,
     failed: &CancellationToken,
 ) where
-    E: std::error::Error,
+    E: Coded,
 {
     if stop.is_cancelled() {
         tracing::info!(event = "runner_stream_component_stopped", component);
         return;
     }
-    let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-    let outcome = if result.is_err() {
-        "failed"
-    } else {
-        "unexpected_return"
+    let (outcome, Logged { error_code, reason }) = match result {
+        Err(error) => ("failed", error.logged()),
+        Ok(()) => (
+            "unexpected_return",
+            Logged {
+                error_code: af_core::error_code::INTERNAL_OPERATION_FAILED.as_str(),
+                reason: "the native component returned before shutdown".to_owned(),
+            },
+        ),
     };
     tracing::error!(
         event = "runner_stream_component_failed",
         error_code,
         component,
-        outcome
+        outcome,
+        reason,
     );
     failed.cancel();
 }
+
+#[cfg(test)]
+#[path = "runner_stream_tests.rs"]
+mod tests;

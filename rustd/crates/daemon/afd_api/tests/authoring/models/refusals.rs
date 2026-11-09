@@ -1,8 +1,8 @@
 //! Invalid authority and provider/system overrides cannot reach the physical transport.
 
-use super::super::{json_body, send};
+use super::super::json_body;
 use super::fixture::Model;
-use http::{Method, StatusCode};
+use http::StatusCode;
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
 
@@ -14,10 +14,9 @@ async fn person_credentials_forged_capabilities_and_provider_overrides_leave_no_
     refuse_person(&model).await;
     let mut forged = model.request.clone();
     *forged.get_mut("capability_token").expect("capability") = Value::String("b".repeat(43));
-    let response = send(
+    let response = crate::harness::native::send(
         &r.router,
-        Method::POST,
-        &model.path,
+        &model.operation,
         Some(&r.token),
         &forged.to_string(),
     )
@@ -42,15 +41,13 @@ async fn person_credentials_forged_capabilities_and_provider_overrides_leave_no_
             .as_object_mut()
             .expect("model body")
             .insert(field.into(), value);
-        let response = send(
+        crate::harness::native::assert_closed(
             &r.router,
-            Method::POST,
-            &model.path,
+            &model.operation,
             Some(&r.token),
             &invalid.to_string(),
         )
         .await;
-        assert_eq!(response.status(), StatusCode::BAD_REQUEST, "{field}");
     }
     assert_eq!(model.provider.effects.load(Ordering::SeqCst), 0);
     assert_eq!(model.receipts().await, 0);
@@ -59,10 +56,9 @@ async fn person_credentials_forged_capabilities_and_provider_overrides_leave_no_
 
 async fn refuse_person(model: &Model) {
     let r = &model.running;
-    let response = send(
+    let response = crate::harness::native::send(
         &r.router,
-        Method::POST,
-        &model.path,
+        &model.operation,
         Some(&r.f.token),
         &model.request.to_string(),
     )
