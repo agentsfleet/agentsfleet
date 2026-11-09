@@ -162,7 +162,7 @@ Hits kept as records, apart from the table: `docs/v2/**`, `docs/reviews/**`, `pl
 
 ### §1 — Measure Dragonfly first, and write the pass bar
 
-This Section carries M241's old §6 and §7 as its own, on this milestone's starting code. The viewer ladder records p99 beside p95 per rung, as flat keys `p99_ms_<rung>`. A wake ladder publishes rings through the Bus for distinct fleets while 1, 2 and 4 hubs each run a doorbell listener, as M243 leaves it. It keeps at most 64 rings outstanding, the doorbell's hint cap, and counts a ring missed when no hub takes it within 1 s. Results are `wake_p50_ms_hubs_<n>`, `wake_p99_ms_hubs_<n>` and `wake_missed_hubs_<n>`. **Implementation default:** the wake ladder lives in the tail lane, because both time one broker hop and the A/B compares both.
+This Section carries M241's old §6 and §7 as its own, on this milestone's starting code. The viewer ladder records p99 beside p95 per rung, in the `receive_p99_ms` and `stream_receive_p99_ms` series beside the p95 ones. A wake ladder publishes rings through the Bus for distinct fleets while 1, 2 and 4 hubs each run a doorbell listener, as M243 leaves it. It keeps at most 64 rings outstanding, the doorbell's hint cap, and counts a ring missed when no hub takes it within 1 s. Results are `wake_p50_ms_hubs_<n>`, `wake_p99_ms_hubs_<n>` and `wake_missed_hubs_<n>`. **Implementation default:** the wake ladder lives in the tail lane, because both time one broker hop and the A/B compares both.
 
 `bench-tail` runs three times on Indy's laptop after a reset rig; the median run is recorded in `push_scheduler.md` §Baselines with the other two beside it. The kill drill runs on the dev stack twice:
 1. `make up` starts `compose.dev-infra.yml` and this worktree's native daemon, so stopping a datastore container leaves the daemon's network alone.
@@ -175,8 +175,8 @@ This Section carries M241's old §6 and §7 as its own, on this milestone's star
 - after one of three NATS nodes is killed, every viewer receives `catching_up` and resumes within 10 s with no person acting;
 - no lost frame passes without a gap signal.
 
-- **Dimension 1.1** — the summary carries p99 → Test `tail_summary_reports_p99` (unit): latencies 1..100 ms report p95 95 and p99 99.
-- **Dimension 1.2** — a rung with nothing timed reports no figure → Test `rung_without_frames_reports_no_p99` (unit): an empty rung writes no `p99_ms_` key, never 0.
+- **Dimension 1.1** — DONE — the summary carries p99 → Test `tail_summary_reports_p99` (unit): latencies 1..100 ms report p95 95 and p99 99.
+- **Dimension 1.2** — DONE — a rung with nothing timed reports no figure → Test `rung_without_frames_reports_no_p99` (unit): an empty rung writes no `p99_ms_` key, never 0.
 - **Dimension 1.3** — a late ring is missed, not delivered → Test `wake_past_deadline_counts_missed` (unit): a ring taken after 1 s counts in `wake_missed_hubs_1` and not in p99.
 - **Dimension 1.4** — the ringer never passes the hint cap → Test `wake_ringer_waits_at_window` (unit, paused time): with 64 untaken rings, the 65th waits.
 - **Dimension 1.5** — a live wake ladder delivers → Test `make bench-tail PROFILE=rig` (integration): the result holds `wake_p99_ms_hubs_4` and `wake_missed_hubs_4` 0.
