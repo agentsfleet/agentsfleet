@@ -1,6 +1,9 @@
 WITH heads AS (
     SELECT o.id
       FROM fleet.obligations o
+      -- Only the lanes this transaction locked.
+      JOIN unnest($4::text[], $5::uuid[]) AS lane (provider, workspace_id)
+        ON lane.provider = o.provider AND lane.workspace_id = o.workspace_id
      WHERE o.delivered_at IS NULL AND o.abandoned_at IS NULL
        AND o.claim_expires_at <= statement_timestamp()
        AND (o.next_attempt_at IS NULL OR o.next_attempt_at <= statement_timestamp())

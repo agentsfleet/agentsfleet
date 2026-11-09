@@ -1,5 +1,6 @@
 //! Client events become gaps: a reconnect or a slow consumer gaps every local
-//! subscription, and a reconnect pays the publish debt as markers.
+//! subscription, and a reconnect pays the publish debt as markers. A publish
+//! that fails on a live link is paid at once, since no reconnect may follow.
 //!
 //! The client's event callback only sets flags and wakes the watcher, so a
 //! burst of events coalesces into one gap per cause, and the callback never
@@ -36,6 +37,8 @@ pub(super) struct Signals {
     /// Disconnects seen, so a payer can tell a later one overtook it.
     disconnects: AtomicU64,
     slow: AtomicBool,
+    /// A publish failed while the link was up, so no reconnect will pay it.
+    owing: AtomicBool,
     wake: Notify,
     debt: Mutex<Debt>,
 }
@@ -49,6 +52,7 @@ impl Signals {
             reconnected: AtomicBool::new(false),
             disconnects: AtomicU64::new(0),
             slow: AtomicBool::new(false),
+            owing: AtomicBool::new(false),
             wake: Notify::new(),
             debt: Mutex::new(Debt::new(tuning.debt_window(), tuning.debt_subjects_max)),
         }
@@ -108,7 +112,10 @@ impl Signals {
     /// of the gap it is owed.
     pub(super) fn unblock_if_settled(&self, before: u64) -> bool {
         let debt = self.debt();
-        let settled = debt.is_settled() && self.disconnects() == before;
+        // A disconnect stores `down` under this lock, so a payment that began
+        // after one never lifts the block before its reconnect.
+        let settled =
+            debt.is_settled() && self.disconnects() == before && !self.down.load(Ordering::Acquire);
         if settled {
             self.blocked.store(false, Ordering::Release);
         }
@@ -125,9 +132,22 @@ impl Signals {
         let mut debt = self.debt();
         if delivered {
             debt.published(physical, now);
-        } else {
-            debt.failed(physical);
+            return;
         }
+        debt.failed(physical);
+        // A blocked client's reconnect pays this. A live one may never
+        // reconnect while later frames flow, so the watcher pays it now.
+        // Read under the lock that lifting the block takes, so a failure
+        // landing as the block lifts is paid by one or the other.
+        if !self.blocked() {
+            self.owing.store(true, Ordering::Release);
+            self.wake.notify_one();
+        }
+    }
+
+    /// Whether a live-link failure is owed since the last call.
+    fn owing(&self) -> bool {
+        self.owing.swap(false, Ordering::AcqRel)
     }
 
     /// Take the causes raised since the last call, in the order they apply.
@@ -221,13 +241,17 @@ fn mark_failed(failure: &crate::Error) {
     tracing::debug!(event = "bus_gap_mark_failed", error_code, reason);
 }
 
-/// Pay what a reconnect owes and lift the block if nothing overtook it;
-/// answers when to try again, or `None` once settled.
+/// Pay what is owed and lift the block if nothing overtook it; answers when
+/// to try again, or `None` once settled or while the link is down, whose
+/// reconnect pays instead.
 async fn settle(
     client: &Client,
     signals: &Signals,
     everyone: &str,
 ) -> Option<tokio::time::Instant> {
+    if signals.down.load(Ordering::Acquire) {
+        return None;
+    }
     let before = signals.disconnects();
     pay(client, signals, everyone).await;
     (!signals.unblock_if_settled(before)).then(|| tokio::time::Instant::now() + signals.deadline)
@@ -250,6 +274,10 @@ pub(super) async fn watch(
                     if cause == Cause::Reconnect {
                         retry = settle(&client, &signals, &everyone_subject).await;
                     }
+                }
+                // A scheduled retry pays it with the rest.
+                if signals.owing() && retry.is_none() {
+                    retry = settle(&client, &signals, &everyone_subject).await;
                 }
             }
             () = sleep_until_some(retry) => {

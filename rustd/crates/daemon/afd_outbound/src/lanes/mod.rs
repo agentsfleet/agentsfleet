@@ -30,11 +30,22 @@
 //! A lane holds at most [`LANE_DEPTH`] jobs in memory, and Postgres claims at
 //! most one head per lane at a time, so a lane rarely holds more than one.
 //!
+//! # A job never waits for a delivery slot
+//!
+//! A claimed job renews nothing until its delivery starts, so a job left
+//! waiting for one of the [`IN_FLIGHT_DELIVERIES`] slots past
+//! [`CLAIM_TTL`](crate::obligation::CLAIM_TTL) could lapse to another
+//! replica. The worker therefore claims only into [`Lanes::room`]: every job
+//! the lanes hold has a slot, and a row this replica cannot start stays free
+//! for one that can.
+//!
 //! # A holder renews, and a lapsed holder stops
 //!
-//! A delivery renews its claim every [`CLAIM_RENEW`] while it runs. A renewal
-//! that finds the claim gone means another holder may own the row, so the
-//! delivery is abandoned unfinished rather than posting twice.
+//! A delivery's opening count extends its claim, and finds none when another
+//! holder took the row, in which case nothing is posted. While the delivery
+//! runs it renews its claim every [`CLAIM_RENEW`]. A renewal that finds the
+//! claim gone means another holder may own the row, so the delivery is
+//! abandoned unfinished rather than posting twice.
 //!
 //! # Cancellation gives the claim back
 //!
@@ -45,6 +56,7 @@
 //! [`CLAIM_TTL`](crate::obligation::CLAIM_TTL) lapses.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_db::Db;
 use dashmap::DashMap;
@@ -141,6 +153,8 @@ struct Inner<S> {
     renew: Duration,
     /// Rung after every finished job: a lane's next row may now be claimable.
     finished: Notify,
+    /// Jobs dispatched and not yet finished, which [`Lanes::room`] reads.
+    held: AtomicUsize,
 }
 
 impl<S: Deliver + 'static> Lanes<S> {
@@ -169,6 +183,7 @@ impl<S: Deliver + 'static> Lanes<S> {
                 token,
                 renew,
                 finished: Notify::new(),
+                held: AtomicUsize::new(0),
             }),
         }
     }
@@ -176,6 +191,13 @@ impl<S: Deliver + 'static> Lanes<S> {
     /// Resolves after the next job finishes, however it ended.
     pub async fn finished(&self) {
         self.inner.finished.notified().await;
+    }
+
+    /// How many more jobs the lanes can start at once: the delivery slots
+    /// no dispatched, unfinished job holds.
+    #[must_use]
+    pub fn room(&self) -> usize {
+        IN_FLIGHT_DELIVERIES.saturating_sub(self.inner.held.load(Ordering::Acquire))
     }
 
     /// How many lanes currently hold work.
@@ -212,7 +234,14 @@ impl<S: Deliver + 'static> Inner<S> {
         }
     }
 
-    /// One delivery cycle of a claimed job; the worker hears when it ends.
+    /// A job a lane took has ended, however it ended: its slot is free again,
+    /// then the worker hears, so the room it reads already counts the slot.
+    fn done(&self) {
+        self.held.fetch_sub(1, Ordering::AcqRel);
+        self.finished.notify_one();
+    }
+
+    /// One delivery cycle of a claimed job.
     ///
     /// # The cycle is counted before it is run
     ///
@@ -222,18 +251,27 @@ impl<S: Deliver + 'static> Inner<S> {
     /// of successes: the destination that refuses an answer forever is the row
     /// worth finding, and it is the one a success counter never records.
     async fn deliver(&self, job: &Claimed) {
-        self.deliver_once(job).await;
-        self.finished.notify_one();
-    }
-
-    /// One delivery cycle of a claimed job, renewing the claim while it runs.
-    async fn deliver_once(&self, job: &Claimed) {
         // A row naming no connector this build knows has no poster to try.
         if afd_connector::Provider::parse(&job.outgoing.provider).is_none() {
             crate::abandon::delivery(&self.database, job, AbandonReason::Unaddressable).await;
             return;
         }
-        let attempts = self.count_cycle(job).await;
+        let attempts = match crate::obligation::count_attempt(&self.database, job).await {
+            Ok(Some(counted)) => Some(counted),
+            // Another holder took the row: posting it now would send the
+            // answer twice, or beside a later answer to the same workspace.
+            Ok(None) => {
+                Self::lapsed(job, "count");
+                return;
+            }
+            // The answer is owed to a person and the count is bookkeeping, so
+            // an unanswered count is reported and the delivery goes ahead;
+            // the renewals below still stop it before its claim can lapse.
+            Err(failure) => {
+                crate::worker::report(EVENT_ATTEMPT_COUNT_FAILED, &failure);
+                None
+            }
+        };
         let opening = Attempt::opening(attempts);
         let verdict = tokio::select! {
             verdict = deliver_with_retry(&self.posters, &job.outgoing, &self.token, opening) => Ok(verdict),
@@ -253,16 +291,6 @@ impl<S: Deliver + 'static> Inner<S> {
                 crate::abandon::delivery(&self.database, job, AbandonReason::Refused).await;
             }
             Verdict::Retryable => self.retry_later(job, attempts).await,
-        }
-    }
-
-    async fn count_cycle(&self, job: &Claimed) -> Option<i64> {
-        match crate::obligation::count_attempt(&self.database, job).await {
-            Ok(counted) => counted,
-            Err(failure) => {
-                crate::worker::report(EVENT_ATTEMPT_COUNT_FAILED, &failure);
-                None
-            }
         }
     }
 

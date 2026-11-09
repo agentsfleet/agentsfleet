@@ -12,6 +12,7 @@ use tokio::sync::mpsc::error::TryRecvError;
 use dashmap::mapref::entry::Entry;
 
 use super::{Destination, Inner, Job};
+use crate::obligation::Claimed;
 use crate::poster::Deliver;
 
 impl<S: Deliver + 'static> Inner<S> {
@@ -23,27 +24,37 @@ impl<S: Deliver + 'static> Inner<S> {
         mut jobs: mpsc::Receiver<Job>,
     ) {
         while let Some(job) = self.take_or_retire(&destination, &mut jobs) {
-            // Between jobs, and before a permit is waited for: a job taken
-            // here and not delivered gives its claim back due at once, so
-            // another replica takes it on its next claim pass.
-            if self.token.is_cancelled() {
-                self.release(&job, Duration::ZERO).await;
+            let stop = self.run_job(&job).await;
+            self.done();
+            if stop {
                 return;
             }
-            let permit = tokio::select! {
-                biased;
-                () = self.token.cancelled() => {
-                    self.release(&job, Duration::ZERO).await;
-                    return;
-                }
-                permit = self.permits.acquire() => permit,
-            };
-            // The semaphore is never closed, so this is the permit; a closed
-            // one would mean the ceiling itself is gone, and stopping is the
-            // only honest response to that.
-            let Ok(_permit) = permit else { return };
-            self.deliver(&job).await;
         }
+    }
+
+    /// Delivers one taken job; `true` when the lane must stop.
+    async fn run_job(&self, job: &Claimed) -> bool {
+        // Between jobs, and before a permit is waited for: a job taken here
+        // and not delivered gives its claim back due at once, so another
+        // replica takes it on its next claim pass.
+        if self.token.is_cancelled() {
+            self.release(job, Duration::ZERO).await;
+            return true;
+        }
+        let permit = tokio::select! {
+            biased;
+            () = self.token.cancelled() => {
+                self.release(job, Duration::ZERO).await;
+                return true;
+            }
+            permit = self.permits.acquire() => permit,
+        };
+        // The semaphore is never closed, so this is the permit; a closed one
+        // would mean the ceiling itself is gone, and stopping is the only
+        // honest response to that.
+        let Ok(_permit) = permit else { return true };
+        self.deliver(job).await;
+        false
     }
 
     /// The next queued job, or `None` after retiring the lane.

@@ -55,6 +55,8 @@ pub use self::error::{Error, Result};
 /// Statements a suite reads plans of, bound rather than re-exported (RS-TESTCONST).
 #[cfg(feature = "test-util")]
 pub mod test_util {
+    /// The lane locks a claim takes first, for their query-plan test.
+    pub const LOCK_LANES: &str = crate::obligation::sql::LOCK_LANES;
     /// The lane-head claim, for its query-plan test.
     pub const CLAIM_HEADS: &str = crate::obligation::sql::CLAIM_HEADS;
 }

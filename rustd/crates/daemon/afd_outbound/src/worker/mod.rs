@@ -11,14 +11,17 @@
 //! # A lost ping costs only latency
 //!
 //! The ping is at-most-once. A replica that misses it claims the row on its
-//! next pass, at most [`CLAIM_PASS`] later; a full batch claims again at once,
-//! so a backlog drains without waiting for passes.
+//! next pass, at most [`CLAIM_PASS`] later; a full batch claims again as soon
+//! as the lanes have room, and every finished job rings the loop, so a backlog
+//! drains without waiting for passes.
 //!
 //! # The claim is the ordering, and the lanes are the concurrency
 //!
 //! Postgres hands out at most one held row per (provider, workspace) lane, so
 //! two answers to one thread cannot be in flight together on any replica. The
-//! lanes bound how many vendor calls this replica runs at once.
+//! lanes bound how many vendor calls this replica runs at once, and a claim
+//! takes no more rows than they can start: a claimed row left waiting for a
+//! slot renews nothing, and its claim could lapse to another replica.
 
 use std::time::Duration;
 
@@ -28,19 +31,12 @@ use afd_bus::{Handle, Subject, Subscription};
 use afd_db::Db;
 use tokio_util::sync::CancellationToken;
 
-use crate::lanes::{IN_FLIGHT_DELIVERIES, Lanes};
+use crate::lanes::Lanes;
 use crate::obligation;
 use crate::poster::{Deliver, Posters};
 
 /// How often a replica claims without being pinged, by default.
 pub const CLAIM_PASS: Duration = Duration::from_secs(30);
-
-/// Rows one claim takes: as many as the lanes deliver at once.
-const CLAIM_BATCH: i64 = 8;
-const _: () = assert!(
-    IN_FLIGHT_DELIVERIES == 8,
-    "a claim fills the lanes and no more"
-);
 
 /// Logged around each claim. A claim polls Postgres every pass, so both halves
 /// sit at `debug`.
@@ -121,14 +117,18 @@ impl<S: Deliver + 'static> Worker<S> {
         let lanes = Lanes::renewing_every(posters, database.clone(), token.clone(), renew);
         let mut via = Via::Scan;
         while !token.is_cancelled() {
-            match claim_once(&database, &entropy, &lanes, via).await {
-                Ok(CLAIM_BATCH) => {
-                    via = Via::Scan;
-                    continue;
+            // With no room, the next finished job rings the loop.
+            let room = lanes.room();
+            if room > 0 {
+                match claim_once(&database, &entropy, &lanes, via, room).await {
+                    Ok(claimed) if claimed == room => {
+                        via = Via::Scan;
+                        continue;
+                    }
+                    Ok(_partial) => {}
+                    // The next ping or pass claims again.
+                    Err(failure) => report(EVENT_CLAIM_FAILED, &failure),
                 }
-                Ok(_partial) => {}
-                // The next ping or pass claims again.
-                Err(failure) => report(EVENT_CLAIM_FAILED, &failure),
             }
             via = tokio::select! {
                 biased;
@@ -143,7 +143,7 @@ impl<S: Deliver + 'static> Worker<S> {
     }
 }
 
-/// Claims one batch and dispatches it; answers how many rows it took.
+/// Claims at most `room` rows and dispatches them; answers how many it took.
 ///
 /// # Errors
 /// The claim token could not be drawn, or the ledger would not answer or
@@ -153,19 +153,25 @@ async fn claim_once<S: Deliver + 'static>(
     entropy: &Entropy,
     lanes: &Lanes<S>,
     via: Via,
-) -> crate::Result<i64> {
+    room: usize,
+) -> crate::Result<usize> {
     let via_label = via.label().as_str();
     tracing::debug!(via = via_label, event = EVENT_CLAIM_STARTED);
     let token = entropy.uuid7(af_core::clock::now())?;
-    let claimed = obligation::claim(database, CLAIM_BATCH, &token).await?;
-    let count = i64::try_from(claimed.len()).unwrap_or(CLAIM_BATCH);
+    // The room is at most the lanes' ceiling, a handful.
+    let limit = i64::try_from(room).unwrap_or(i64::MAX);
+    let claimed = obligation::claim(database, limit, &token).await?;
+    let count = claimed.len();
     tracing::debug!(
         via = via_label,
         claimed = count,
         event = EVENT_CLAIM_COMPLETED
     );
     if count > 0 {
-        af_observability::producers::outbound::claims(via.label(), count.unsigned_abs());
+        af_observability::producers::outbound::claims(
+            via.label(),
+            u64::try_from(count).unwrap_or(u64::MAX),
+        );
     }
     for job in claimed {
         lanes.dispatch(Box::new(job)).await;

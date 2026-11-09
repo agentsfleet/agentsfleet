@@ -48,12 +48,14 @@ impl AbandonReason {
     }
 }
 
-/// Record that this holder has taken the obligation for a delivery cycle.
+/// Record that this holder has taken the obligation for a delivery cycle,
+/// and hold the claim for a fresh [`CLAIM_TTL`](super::CLAIM_TTL) from now.
 ///
 /// Answers the count this call produced, or `None` when the row was already
-/// delivered or the claim lapsed and nothing was counted.
+/// delivered or another holder has it and nothing was counted.
 ///
-/// Called at the START of the cycle, so the number survives the cycle failing.
+/// Called at the START of the cycle, so the number survives the cycle failing,
+/// and so the post that follows runs under a claim this call just proved.
 ///
 /// # Errors
 /// Reports a database that would not answer. A caller must log that and DELIVER
@@ -63,6 +65,7 @@ pub async fn count_attempt(database: &Db, job: &Claimed) -> Result<Option<i64>> 
     sqlx::query_scalar(sql::COUNT_ATTEMPT)
         .bind(&job.id)
         .bind(&job.token)
+        .bind(super::CLAIM_TTL)
         .fetch_optional(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_COUNT))
