@@ -68,10 +68,11 @@ Skip issuer generation for that environment.
 
    Success prints nothing.
 
-5. Sign the server certificate for 90 days.
+5. Sign the server certificate to expire with its issuer after 10 years.
+   The certificate stops validating when its issuer expires, so renew both together.
 
    ```bash
-   openssl x509 -req -sha256 -days 90 -in server.csr \
+   openssl x509 -req -sha256 -days 3650 -in server.csr \
      -CA ca.crt -CAkey ca.key -CAcreateserial \
      -extfile server.ext -out server.crt
    ```
@@ -86,16 +87,16 @@ Skip issuer generation for that environment.
 
    Success prints nothing.
 
-7. Save these file contents in the matching 1Password vault: `ZMB_CD_DEV` or `ZMB_CD_PROD`.
+7. Save these file contents in one `agentsfleet-runner-stream` item in the matching vault: `ZMB_CD_DEV` or `ZMB_CD_PROD`.
    Keep private-key fields concealed.
 
-   | Item | Field | File or value |
-   |---|---|---|
-   | `runner-stream-ca` | `certificate` | `ca.crt` |
-   | `runner-stream-ca` | `private-key` | `ca.key`; signing only, never delivered to runtime |
-   | `agentsfleetd-runner-stream-tls` | `certificate-chain` | `server-chain.pem` |
-   | `agentsfleetd-runner-stream-tls` | `private-key` | `server.key`; daemon only |
-   | `agentsfleetd-runner-stream-tls` | `server-name` | `agentsfleetd-dev.internal` or `agentsfleetd-prod.internal` |
+   | Field | File or value |
+   |---|---|
+   | `ca-certificate` | `ca.crt` |
+   | `ca-private-key` | `ca.key`; signing only, never delivered to runtime; concealed |
+   | `certificate-chain` | `server-chain.pem` |
+   | `private-key` | `server.key`; daemon only; concealed |
+   | `server-name` | `agentsfleetd-dev.internal` or `agentsfleetd-prod.internal` |
 
    Runners receive only the public CA certificate and keep their existing bearer tokens.
 
