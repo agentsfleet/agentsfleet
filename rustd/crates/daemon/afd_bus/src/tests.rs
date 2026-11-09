@@ -65,7 +65,6 @@ async fn reconnect_and_lag_cross_the_object_boundary_without_backend_types() -> 
     let mut first = bus.subscribe(&subject).await?;
     let mut second = bus.subscribe(&subject).await?;
     server.gap(&subject);
-    server.gap(&subject);
     assert_eq!(first.recv().await?, Received::Gap);
     assert_eq!(second.recv().await?, Received::Gap);
     for _ in 0..513 {

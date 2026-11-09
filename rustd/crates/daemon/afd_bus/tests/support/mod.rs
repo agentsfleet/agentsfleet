@@ -1,15 +1,11 @@
 //! The lane's NATS cluster, one dev namespace per test, and patient reads.
 
-pub(crate) mod proxy;
-
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
-use af_core::env::{EnvSource, MapEnv, ProcessEnv};
-use afd_bus::{
-    Handle, Received, Subject, Subscription,
-    nats::{self, Config, NAMESPACE_ENV, Tuning, URL_ENV},
-};
+use afd_bus::{Handle, Received, Subject, Subscription, nats::Tuning};
+
+pub(crate) use afd_bus::test_util::{Proxy, port_of, via};
 
 pub(crate) type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 pub(crate) type Fallible<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -19,24 +15,9 @@ pub(crate) const PATIENCE: Duration = Duration::from_secs(15);
 
 static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 
-/// The three node seeds `make` exports.
+/// The three node seeds `make` exports, one per node.
 pub(crate) fn seeds() -> Fallible<Vec<String>> {
-    let raw = ProcessEnv
-        .get("TEST_NATS_URL")
-        .ok_or("TEST_NATS_URL is unset: run through make test-integration-rustd")?;
-    Ok(raw.split(',').map(str::to_owned).collect())
-}
-
-/// One seed with its port swapped, keeping its credentials.
-pub(crate) fn via(seed: &str, port: u16) -> Fallible<String> {
-    let (head, _) = seed.rsplit_once(':').ok_or("a seed has a port")?;
-    Ok(format!("{head}:{port}"))
-}
-
-/// The port a seed dials.
-pub(crate) fn port_of(seed: &str) -> Fallible<u16> {
-    let (_, port) = seed.rsplit_once(':').ok_or("a seed has a port")?;
-    Ok(port.parse()?)
+    Ok(afd_bus::test_util::lane_seeds()?)
 }
 
 /// A namespace no other test shares, so parallel tests never cross subjects.
@@ -48,11 +29,9 @@ pub(crate) fn namespace() -> String {
     )
 }
 
-/// Connect through the production boot path to the given seeds.
+/// Connect to the given seeds under this test's `namespace`.
 pub(crate) async fn bus(seeds: &str, namespace: &str, tuning: Tuning) -> Fallible<Handle> {
-    let env = MapEnv::from_pairs([(URL_ENV, seeds), (NAMESPACE_ENV, namespace)]);
-    let config = Config::from_env(&env)?.with_tuning(tuning)?;
-    Ok(nats::connect(&config).await?)
+    Ok(afd_bus::test_util::dial(seeds, Some(namespace), tuning).await?)
 }
 
 /// The next delivery, or a failed test.

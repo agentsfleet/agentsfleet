@@ -85,9 +85,7 @@ async fn answer_is_owed_to_the_recorded_destination() {
         )
         .await;
 
-    let owing = owed_by(stage.run_next(0).await).expect("an answer asked from a thread is owed");
-    assert_eq!(owing.reply.provider, Provider::Slack);
-    assert_eq!(owing.reply.address, THREAD);
+    owed_by(stage.run_next(0).await).expect("an answer asked from a thread is owed");
     assert_eq!(
         obligations(&stage.fixtures, &stage.fleet).await,
         vec![Obligation {

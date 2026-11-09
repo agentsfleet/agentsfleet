@@ -4,7 +4,7 @@ use super::*;
 use af_core::id::Uuid7;
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn overlay_survives_apply_after_registration_and_restore_uses_the_new_base() {
     let scheduled = Scheduled::create().await;
     let overlaid = pause_with_instance_intent(&scheduled).await;
@@ -91,7 +91,7 @@ async fn apply_revised_recipe(scheduled: &Scheduled) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn restore_after_repeated_applies_reads_the_latest_base_and_admits_one_of_two_racers() {
     let scheduled = Scheduled::create().await;
     let overlaid = pause_with_instance_intent(&scheduled).await;

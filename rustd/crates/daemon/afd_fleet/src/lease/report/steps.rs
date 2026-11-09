@@ -111,7 +111,7 @@ impl LeaseService {
     /// obligation is already committed and claimable, so a lost ping costs
     /// one claim pass of latency. Failing the report instead would tell a
     /// runner its finished, charged run did not land — and it did.
-    pub(super) async fn queue_owed_answer(&self, owing: &Owing) {
+    pub(super) async fn wake_owed_answer(&self, owing: &Owing) {
         self.leases.wake_delivery(&owing.obligation).await;
     }
 

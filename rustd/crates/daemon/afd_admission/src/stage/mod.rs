@@ -33,7 +33,7 @@ impl Admissions {
     ///
     /// The caller must commit before confirming acceptance. A rollback removes both
     /// the admission and its surrounding activation. `confirm` reads the saved
-    /// producer identity and rings the doorbell after the commit.
+    /// producer identity and rings the wake subject after the commit.
     ///
     /// # Errors
     /// Preserves a failed statement, a fleet outside the caller's workspace,

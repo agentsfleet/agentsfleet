@@ -1,5 +1,7 @@
 //! Every branch of the retired verify script, decided without a database.
 
+use af_core::error::DETAIL_DATABASE_ERROR;
+use af_core::error_code;
 use af_crypto::mac::HmacSha256Tag;
 use af_crypto::secret::SecretBytes;
 use jiff::{SignedDuration, Timestamp};
@@ -23,6 +25,18 @@ fn fingerprint(agent: &str) -> Fingerprint {
     Fingerprint::of("203.0.113.7", agent, "sid")
 }
 
+/// Asserts `classified` refused its row as unreadable: the internal database
+/// code and its fixed sentence, never a verify outcome.
+fn assert_unreadable(
+    classified: crate::Result<(VerifyOutcome, Option<Write>)>,
+    why: &str,
+) -> TestResult {
+    let error = classified.err().ok_or(why.to_owned())?;
+    assert_eq!(error.code(), error_code::INTERNAL_DB_QUERY, "{why}");
+    assert_eq!(error.detail(), DETAIL_DATABASE_ERROR, "{why}");
+    Ok(())
+}
+
 fn row(status: SessionStatus) -> Locked {
     Locked {
         status: status.as_str().to_owned(),
@@ -30,7 +44,7 @@ fn row(status: SessionStatus) -> Locked {
         ciphertext: Some("ct".to_owned()),
         nonce: Some("n".to_owned()),
         verification_code_hmac: Some(code("123456").as_bytes().to_vec()),
-        verification_attempts: 0,
+        verification_attempt_count: 0,
         aborted_reason: None,
         consumed_client_fingerprint: None,
         expires_at: NOW + SignedDuration::from_secs(300),
@@ -58,7 +72,7 @@ fn the_right_code_redeems_and_writes_the_consume() -> TestResult {
 fn wrong_codes_count_then_abort_at_the_cap() -> TestResult {
     let mut locked = row(SessionStatus::VerificationPending);
     for attempt in 1..MAX_VERIFY_ATTEMPTS {
-        locked.verification_attempts = i16::from(attempt - 1);
+        locked.verification_attempt_count = i16::from(attempt - 1);
         let (outcome, write) = classify(&locked, &code("000000"), &fingerprint("afc/1"))?;
         assert_eq!(outcome, VerifyOutcome::InvalidCode(attempt));
         assert_eq!(
@@ -70,7 +84,7 @@ fn wrong_codes_count_then_abort_at_the_cap() -> TestResult {
             })
         );
     }
-    locked.verification_attempts = i16::from(MAX_VERIFY_ATTEMPTS - 1);
+    locked.verification_attempt_count = i16::from(MAX_VERIFY_ATTEMPTS - 1);
     let (outcome, write) = classify(&locked, &code("000000"), &fingerprint("afc/1"))?;
     assert_eq!(
         outcome,
@@ -89,18 +103,30 @@ fn wrong_codes_count_then_abort_at_the_cap() -> TestResult {
 }
 
 #[test]
-fn a_missing_stored_digest_never_matches() -> TestResult {
+fn an_approved_row_without_a_whole_digest_is_unreadable() -> TestResult {
     let mut locked = row(SessionStatus::VerificationPending);
     locked.verification_code_hmac = None;
-    let (outcome, _) = classify(&locked, &code("123456"), &fingerprint("afc/1"))?;
-    assert_eq!(outcome, VerifyOutcome::InvalidCode(1));
+    assert_unreadable(
+        classify(&locked, &code("123456"), &fingerprint("afc/1")),
+        "an approved row without its digest is unreadable",
+    )?;
     locked.verification_code_hmac = Some(vec![1, 2, 3]);
-    let (outcome, _) = classify(&locked, &code("123456"), &fingerprint("afc/1"))?;
-    assert_eq!(
-        outcome,
-        VerifyOutcome::InvalidCode(1),
-        "a short digest is unequal"
-    );
+    assert_unreadable(
+        classify(&locked, &code("123456"), &fingerprint("afc/1")),
+        "a short digest is unreadable, not a wrong code",
+    )
+}
+
+#[test]
+fn an_attempt_count_a_verify_never_writes_is_unreadable() -> TestResult {
+    for count in [-1, i16::from(MAX_VERIFY_ATTEMPTS), i16::MAX] {
+        let mut locked = row(SessionStatus::VerificationPending);
+        locked.verification_attempt_count = count;
+        assert_unreadable(
+            classify(&locked, &code("000000"), &fingerprint("afc/1")),
+            &format!("a count of {count} on a pending row is unreadable"),
+        )?;
+    }
     Ok(())
 }
 
@@ -165,13 +191,14 @@ fn terminal_and_unapproved_sessions_answer_without_writing() -> TestResult {
 fn a_row_this_daemon_never_writes_is_refused() -> TestResult {
     let mut unknown = row(SessionStatus::Pending);
     unknown.status = "verified".to_owned();
-    classify(&unknown, &code("123456"), &fingerprint("afc/1"))
-        .err()
-        .ok_or("an unknown status is unreadable")?;
+    assert_unreadable(
+        classify(&unknown, &code("123456"), &fingerprint("afc/1")),
+        "an unknown status is unreadable",
+    )?;
     let mut hollow = row(SessionStatus::VerificationPending);
     hollow.ciphertext = None;
-    classify(&hollow, &code("123456"), &fingerprint("afc/1"))
-        .err()
-        .ok_or("an approved row without its payload is unreadable")?;
-    Ok(())
+    assert_unreadable(
+        classify(&hollow, &code("123456"), &fingerprint("afc/1")),
+        "an approved row without its payload is unreadable",
+    )
 }

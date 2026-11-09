@@ -46,8 +46,8 @@ async fn a_policy_kill_pauses_the_fleet_even_when_the_bus_is_unreachable() {
     fixture.cleanup().await;
 }
 
-/// Gates over `database` and a queue that refuses every command.
-fn gates_without_a_queue(database: afd_db::Db) -> Gates {
+/// Gates over `database` and a bus that refuses every publish and subscribe.
+fn gates_without_a_bus(database: afd_db::Db) -> Gates {
     Gates::new(database, afd_bus::test_util::unreachable(), Entropy::new())
 }
 
@@ -55,7 +55,7 @@ fn gates_without_a_queue(database: afd_db::Db) -> Gates {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_reference_whose_row_is_gone_keeps_the_event_waiting() {
     let fixture = Fixture::create().await;
-    let gates = gates_without_a_queue(fixture.database.clone());
+    let gates = gates_without_a_bus(fixture.database.clone());
 
     let evaluation = gates
         .evaluate(&GateRef::new(mint_id()))
@@ -75,7 +75,7 @@ async fn a_reference_whose_row_is_gone_keeps_the_event_waiting() {
 async fn parked_event_finds_its_gate_from_the_table() -> Result<(), &'static str> {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = gates_without_a_queue(fixture.database.clone());
+    let gates = gates_without_a_bus(fixture.database.clone());
     let event_id = &mint_id();
     let config = config(false);
     let scope = fixture.check(event_id, &config);

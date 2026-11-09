@@ -7,10 +7,11 @@ use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_connector::Provider;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, Migrator};
 use afd_outbound::obligation::{self, Delivery};
 use afd_outbound::{Posters, Worker};
+use afd_state::sql::FLEET_STATUS_ACTIVE;
 
 use super::poster::Recorder;
 
@@ -25,6 +26,9 @@ pub(super) struct Ledger {
     pub(super) lane: TestDatabase,
     pub(super) database: Db,
     pub(super) tenant: Uuid7,
+    /// The NATS namespace this test's workers listen under, so a ping another
+    /// suite publishes on the lane never reaches them.
+    namespace: String,
 }
 
 /// One workspace and its fleet: one (slack, workspace) lane.
@@ -44,38 +48,32 @@ impl Ledger {
             .expect("the private database migrates");
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();
-        sql(
-            &database,
-            "INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-             VALUES ($1, 'outbound-claims', now(), now())",
-            &[&tenant],
-        )
-        .await;
+        let mut connection = database.acquire().await.expect("a connection");
+        TenantSeed::new(&tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the tenant seeds");
+        drop(connection);
         Self {
             lane,
             database,
             tenant,
+            namespace: format!("claims-{}", mint_id()),
         }
     }
 
     pub(super) async fn lane(&self) -> Lane {
         let workspace = mint_id();
         let fleet = mint_id();
-        sql(
-            &self.database,
-            "INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-             VALUES ($1, $2, 'outbound-claims-' || substr(md5(random()::text), 1, 12), now())",
-            &[&workspace, &self.tenant],
-        )
-        .await;
-        sql(
-            &self.database,
-            "INSERT INTO fleet.fleets (id, workspace_id, tenant_id, name, status, required_tags, \
-             memory_reads_workspace, memory_publishes_workspace, resource_version, created_at, updated_at) \
-             VALUES ($1, $2, $3, 'outbound-claims', 'active', '{}'::text[], false, false, 1, now(), now())",
-            &[&fleet, &workspace, &self.tenant],
-        )
-        .await;
+        let mut connection = self.database.acquire().await.expect("a connection");
+        WorkspaceSeed::new(&workspace, &self.tenant)
+            .insert(&mut *connection)
+            .await
+            .expect("the workspace seeds");
+        FleetSeed::new(&fleet, &workspace, &self.tenant, FLEET_STATUS_ACTIVE)
+            .insert(&mut *connection)
+            .await
+            .expect("the fleet seeds");
         Lane { workspace, fleet }
     }
 
@@ -161,9 +159,17 @@ impl Ledger {
         .await;
     }
 
-    pub(super) fn worker(&self, poster: &Recorder, pass: Duration) -> Worker<Recorder> {
-        let (bus, _server) = afd_bus::test_util::detached().expect("a detached bus");
-        self.worker_on(bus, poster, pass)
+    /// A worker pinged over the lane's NATS under this test's namespace,
+    /// claiming every `pass`. Every worker of one test shares the namespace.
+    pub(super) async fn worker(&self, poster: &Recorder, pass: Duration) -> Worker<Recorder> {
+        self.worker_on(self.bus().await, poster, pass)
+    }
+
+    /// A connection to the lane's NATS under this test's namespace.
+    pub(super) async fn bus(&self) -> afd_bus::Handle {
+        afd_bus::test_util::lane_in(&self.namespace)
+            .await
+            .expect("the lane's NATS: run through make test-integration-rustd")
     }
 
     /// [`Ledger::worker`], pinged over `bus`.

@@ -26,7 +26,7 @@ use crate::retry::delivery_schedule;
 /// What one delivery attempt was worth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
-    /// The destination has the answer. Acknowledge and move on.
+    /// The destination has the answer. Stamp it delivered and move on.
     Delivered,
     /// It might work later: a rate limit, a 5xx, a transport failure, a
     /// deadline. Worth another attempt on the backoff schedule.
@@ -109,8 +109,8 @@ pub struct Posters<S> {
 ///
 /// Returns [`Verdict::Permanent`] for a provider string this build ships no
 /// connector for, and for one it ships no poster for yet. Both are the same
-/// answer for the same reason: the job cannot be delivered by any retry, and
-/// leaving it unacknowledged would redeliver it forever.
+/// answer for the same reason: the job cannot be delivered by any retry, so
+/// the lane abandons it, where releasing it would claim and fail it forever.
 pub async fn dispatch<S: Deliver>(
     posters: &Posters<S>,
     job: &Outgoing,
@@ -122,8 +122,9 @@ pub async fn dispatch<S: Deliver>(
     match (provider, attempt) {
         (Provider::Slack, Attempt::First) => posters.slack.deliver(job).await,
         (Provider::Slack, Attempt::Repeat) => posters.slack.redeliver(job).await,
-        // Tabled, not yet posted. These four connect and hold a grant — §4
-        // serves all five — but none has an answer surface yet: there is no
+        // Tabled, not yet posted. These four connect and hold a grant, as
+        // Slack does — `afd_connector`'s OAuth and grant catalogue serve all
+        // five providers — but none has an answer surface yet: there is no
         // Jira comment to reply on until the ingress that reads one lands. A
         // job naming one is therefore this daemon's own bug rather than a
         // vendor problem, and it is dropped rather than redelivered.

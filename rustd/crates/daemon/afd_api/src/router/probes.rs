@@ -53,7 +53,8 @@ const COMMIT: &str = match option_env!("GIT_COMMIT") {
 pub struct ReadyInputs {
     /// Whether Postgres answered.
     pub database: bool,
-    /// Whether the bus answered. Reported, never gating (M244 §6).
+    /// Whether the bus answered. Reported, never gating: a live stream rides
+    /// out a bus outage by backfilling from Postgres.
     pub queue: bool,
 }
 

@@ -1,5 +1,5 @@
-//! §1's receive half against live Postgres: an event that parks is
-//! still counted, and moves no budget.
+//! The tail's receive frame against live Postgres and NATS: an event that
+//! parks is still counted, and moves no budget.
 //!
 //! The receive is the one frame whose counters cannot ride its own statement:
 //! the insert that writes the row is what fires the counter trigger, and a
@@ -63,8 +63,9 @@ async fn parked() -> Parked {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    // The in-process bus registers the reader before `subscribe` returns, so a
-    // frame published afterwards cannot race the subscription.
+    // The stores publish on this same NATS connection, which sends the
+    // subscription to the server before any later publish, so a frame
+    // published afterwards cannot race the subscription.
     let tail = fixtures
         .bus()
         .subscribe(&Subject::FleetTail(fleet.clone()))
@@ -116,7 +117,7 @@ async fn next_frame(tail: &mut Subscription) -> serde_json::Value {
     .expect("the tail delivers within budget")
 }
 
-/// Dimension 1.3. The receive frame carries the count the insert moved, and
+/// The receive frame carries the count the insert moved, and
 /// no completion follows it: a parked event leaves the tile showing the event
 /// it counted.
 #[tokio::test(flavor = "multi_thread")]
@@ -153,7 +154,7 @@ async fn a_parked_event_still_reports_its_event_count() {
     let _ = EVENT_COMPLETE;
 }
 
-/// Dimension 1.4. The park writes no usage line and moves no budget — it is
+/// The park writes no usage line and moves no budget — it is
 /// durably a retry, not a charge — and the row it leaves is still open.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]

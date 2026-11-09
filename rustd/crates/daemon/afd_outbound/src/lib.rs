@@ -31,7 +31,8 @@
 //!
 //! Two answers into one Slack thread must arrive in the order the fleet
 //! produced them. The claim hands out at most one row per (provider,
-//! workspace) lane at a time, across every replica (M244 §4).
+//! workspace) lane at a time, across every replica, so no second replica can
+//! overtake the first inside one thread.
 
 // A dependency listed but unused is a supply-chain and compile-time cost with
 // no offsetting benefit. Gated on `not(test)` because the test build links
@@ -58,10 +59,8 @@ pub mod test_util {
     pub const CLAIM_HEADS: &str = crate::obligation::sql::CLAIM_HEADS;
 }
 pub use self::interim::{Interim, Interjector};
-pub use self::lanes::{
-    CYCLE_BACKOFF, Destination, IN_FLIGHT_DELIVERIES, LANE_DEPTH, Lanes, MAX_DELIVERY_CYCLES,
-};
+pub use self::lanes::{Destination, IN_FLIGHT_DELIVERIES, LANE_DEPTH, Lanes};
 pub use self::obligation::{Claimed, Outgoing};
 pub use self::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry, dispatch};
 pub use self::slack::SlackPoster;
-pub use self::worker::{CLAIM_PASS, Via, Worker};
+pub use self::worker::Worker;

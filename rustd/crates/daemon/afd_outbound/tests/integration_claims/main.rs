@@ -1,5 +1,5 @@
-//! Outbound delivery claimed from Postgres (M244 §4), on a private database
-//! per test: a claim reads every lane, so a shared schema's other rows would
+//! Outbound delivery claimed from Postgres, the ledger that is also the
+//! queue, on a private database per test: a claim reads every lane, so a shared schema's other rows would
 //! become this test's work.
 #![cfg(feature = "test-util")]
 #![expect(
@@ -10,20 +10,22 @@
 mod cycles;
 mod ledger;
 mod pings;
+mod plan;
 mod poster;
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_db::test_util::mint_id;
 use afd_outbound::obligation::{self, Delivery};
 use tokio_util::sync::CancellationToken;
 
-use self::ledger::{DESTINATION, Ledger, POLL, sql, until};
+use self::ledger::{DESTINATION, Lane, Ledger, POLL, sql, until};
 use self::poster::Recorder;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn two_workers_keep_one_lane_in_order() {
     let ledger = Ledger::create().await;
     let (a, b) = (ledger.lane().await, ledger.lane().await);
@@ -34,8 +36,8 @@ async fn two_workers_keep_one_lane_in_order() {
     }
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let first = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
-    let second = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+    let first = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
+    let second = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     ledger.until_delivered(20).await;
     token.cancel();
@@ -61,7 +63,7 @@ async fn two_workers_keep_one_lane_in_order() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn failing_head_blocks_only_its_lane() {
     let ledger = Ledger::create().await;
     let (a, b) = (ledger.lane().await, ledger.lane().await);
@@ -72,7 +74,7 @@ async fn failing_head_blocks_only_its_lane() {
     }
     let poster = Recorder::failing(head.clone());
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     ledger.until_delivered(5).await;
     token.cancel();
@@ -128,7 +130,7 @@ async fn lapsed_claim_is_retaken_and_the_late_stamp_refused() -> Result<(), &'st
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn lost_ping_is_caught_by_the_claim_pass() {
     let metrics = af_observability::test_util::Capture::install();
     let scans = || metrics.sum("agentsfleet_outbound_claims_total", &[("via", "scan")]);
@@ -139,6 +141,7 @@ async fn lost_ping_is_caught_by_the_claim_pass() {
     let worker = tokio::spawn(
         ledger
             .worker(&poster, Duration::from_millis(200))
+            .await
             .run(token.clone()),
     );
     // Let the worker's opening claim find nothing before the row exists.
@@ -157,46 +160,6 @@ async fn lost_ping_is_caught_by_the_claim_pass() {
         scans() - before >= 1,
         "the pass, not a ping, claimed the row"
     );
-    ledger.cleanup().await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn claim_reads_the_open_lane_index() {
-    let ledger = Ledger::create().await;
-    let lane = ledger.lane().await;
-    let seed = "INSERT INTO fleet.obligations (id, fleet_id, workspace_id, provider, destination, \
-        event_id, answer, receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at) \
-        SELECT ('0195b4ba-8d3a-7a11-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, $1, $2, 'slack', 'd', \
-        ('0195b4ba-8d3a-7a12-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, 'a', \
-        ('0195b4ba-8d3a-7a13-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, now(), \
-        CASE WHEN n <= 10000 THEN now() END, 0, now(), now() FROM generate_series(1, 10100) n";
-    sql(&ledger.database, seed, &[&lane.fleet, &lane.workspace]).await;
-    let mut connection = ledger.database.acquire().await.expect("a connection");
-    sqlx::query("ANALYZE fleet.obligations")
-        .execute(&mut *connection)
-        .await
-        .expect("statistics refresh");
-    let mut transaction = sqlx::Transaction::begin(connection, None)
-        .await
-        .expect("a transaction to roll back");
-    let explain = format!(
-        "EXPLAIN (ANALYZE, BUFFERS) {}",
-        afd_outbound::test_util::CLAIM_HEADS
-    );
-    let plan: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(explain))
-        .bind(8_i64)
-        .bind(mint_id())
-        .bind(Duration::from_secs(30))
-        .fetch_all(&mut *transaction)
-        .await
-        .expect("the claim plans");
-    transaction
-        .rollback()
-        .await
-        .expect("the plan's claims roll back");
-    let plan = plan.join("\n");
-    assert!(plan.contains("idx_obligations_open_lane"), "{plan}");
     ledger.cleanup().await;
 }
 
@@ -242,26 +205,7 @@ async fn an_empty_answer_owes_nothing_and_a_repeat_owes_once() {
 async fn a_late_commit_waits_behind_a_held_claim() -> Result<(), &'static str> {
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
-    let connection = ledger.database.acquire().await.expect("a connection");
-    let mut early = sqlx::Transaction::begin(connection, None)
-        .await
-        .expect("the earlier report's transaction");
-    let early_event = mint_id();
-    obligation::owe(
-        &mut early,
-        &mint_id(),
-        &mint_id(),
-        Delivery {
-            fleet_id: &lane.fleet,
-            workspace_id: &lane.workspace,
-            provider: Provider::Slack,
-            destination: DESTINATION,
-            event_id: &early_event,
-            answer: "early",
-        },
-    )
-    .await
-    .expect("the earlier report owes first");
+    let (early, early_event) = owe_uncommitted(&ledger, &lane, "early").await;
     let late_event = ledger.owe(&lane, "late").await;
 
     let first = obligation::claim(&ledger.database, 8, &mint_id())
@@ -291,6 +235,36 @@ async fn a_late_commit_waits_behind_a_held_claim() -> Result<(), &'static str> {
     assert_eq!(next.outgoing.event_id, early_event);
     ledger.cleanup().await;
     Ok(())
+}
+
+/// Owes `answer` on `lane` inside a report transaction left open, so its row
+/// draws its `sequence` now and commits when the caller says.
+async fn owe_uncommitted(
+    ledger: &Ledger,
+    lane: &Lane,
+    answer: &str,
+) -> (sqlx::Transaction<'static, sqlx::Postgres>, Uuid7) {
+    let connection = ledger.database.acquire().await.expect("a connection");
+    let mut report = sqlx::Transaction::begin(connection, None)
+        .await
+        .expect("the report's transaction");
+    let event = mint_id();
+    obligation::owe(
+        &mut report,
+        &mint_id(),
+        &mint_id(),
+        Delivery {
+            fleet_id: &lane.fleet,
+            workspace_id: &lane.workspace,
+            provider: Provider::Slack,
+            destination: DESTINATION,
+            event_id: &event,
+            answer,
+        },
+    )
+    .await
+    .expect("the report owes");
+    (report, event)
 }
 
 /// Claimers released together never hold two rows of one lane.

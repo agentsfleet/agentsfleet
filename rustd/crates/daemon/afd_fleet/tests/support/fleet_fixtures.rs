@@ -46,8 +46,8 @@ impl Fixtures {
     }
 
     /// Opens the api-role pool against the database the lane already migrated,
-    /// with an in-process bus: these suites assert on rows, and the frames a
-    /// suite reads arrive on [`Fixtures::bus`] without a broker.
+    /// and one connection to the lane's NATS that every store here shares, so
+    /// a frame a suite reads on [`Fixtures::bus`] crossed the real broker.
     pub(crate) async fn create() -> Self {
         Self::from_lane(TestDatabase::shared()).await
     }
@@ -73,9 +73,9 @@ impl Fixtures {
         Self {
             runners: Runners::new(database.clone(), Entropy::new()),
             database,
-            bus: afd_bus::test_util::detached()
-                .expect("an in-process bus opens")
-                .0,
+            bus: afd_bus::test_util::lane()
+                .await
+                .expect("the lane's NATS: run through make test-integration-rustd"),
             lane,
             enrolled: af_core::clock::now(),
         }
@@ -238,7 +238,8 @@ impl Fixtures {
         // Our own handles go first, so nothing is still borrowing a connection
         // when the lane handle is released.
         drop(runners);
-        // The bus is in-process, so dropping it closes nothing shared.
+        // Each fixture owns its NATS connection, so dropping it closes nothing
+        // another test holds.
         drop((database, bus));
         lane.cleanup().await;
     }

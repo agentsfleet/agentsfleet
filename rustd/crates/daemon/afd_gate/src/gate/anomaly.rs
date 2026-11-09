@@ -9,12 +9,14 @@
 //! suspiciously often", where the safe answer under uncertainty is that we do
 //! not know and must not pause a healthy fleet on a guess.
 //!
-//! # It counts per replica, in memory (M244)
+//! # It counts per replica, in memory
 //!
 //! Each replica keeps its own windows, one per fleet, tool, action and rule
 //! window, bounded at [`ANOMALY_KEYS_MAX`] with the oldest window evicted. A
 //! runaway spread over R replicas can repeat up to R times a threshold before
-//! a pause, and a restart forgets every count; Indy accepted both (M244 §5).
+//! a pause, and a restart forgets every count. Both are accepted costs: a
+//! shared count would put a network round trip on every first encounter, and
+//! the brake is a backstop that fails open by design.
 //!
 //! # It is only ever reached on a FIRST encounter
 //!

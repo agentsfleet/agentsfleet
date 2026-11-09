@@ -1,5 +1,5 @@
 //! Every rustls connection this daemon opens offers the hybrid post-quantum
-//! key exchange first (M244, Indy's TLS posture call).
+//! key exchange first: the TLS posture this workspace chose.
 //!
 //! rustls is the TLS under sqlx, reqwest, async-nats, lettre and `object_store`,
 //! so one handshake between a rustls client and server built the way those

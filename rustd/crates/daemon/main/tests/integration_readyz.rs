@@ -1,8 +1,8 @@
-//! Dimension 7.3 — `/readyz` goes red for a dependency, `/healthz` never does.
+//! `/readyz` goes red for a dependency, `/healthz` never does.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`, which supplies `TEST_DATABASE_URL` and
-//! `TEST_NATS_URL`.
+//! [`afd_bus::test_util::LANE_URL_ENV`].
 //!
 //! # "Stopped Postgres", without stopping Postgres
 //!
@@ -18,9 +18,10 @@
 //! against sqlx's own reconnect timing.
 //!
 //! What the substitution does NOT cover is the transition — the seconds during
-//! which sqlx still holds sockets to a dead server. That belongs to §2's fault
-//! lane, which owns a proxy that can break a live connection mid-flight, and it
-//! is `test_pool_error_classes` there rather than a second copy here.
+//! which sqlx still holds sockets to a dead server. That belongs to the
+//! database's fault lane, which owns a proxy that can break a live connection
+//! mid-flight, and it is `test_pool_error_classes` there rather than a second
+//! copy here.
 //!
 //! # Why both probes, in one test
 //!
@@ -47,9 +48,6 @@ use crate::support::install_subscriber;
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
-/// Where the lane publishes its NATS seeds.
-const NATS_LANE_SEEDS: &str = "TEST_NATS_URL";
-
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
     ProcessEnv.get(knob).unwrap_or_else(|| {
@@ -66,65 +64,18 @@ async fn connected() -> (Db, afd_bus::Handle) {
     let database = Db::connect(&db_config)
         .await
         .expect("the lane's Postgres is up");
-    let bus = bus_at(&lane(NATS_LANE_SEEDS)).await;
+    let bus = afd_bus::test_util::lane_in(&namespace())
+        .await
+        .expect("the lane's NATS is up");
     (database, bus)
 }
 
-/// A bus through the production boot path, on its own namespace.
-async fn bus_at(seeds: &str) -> afd_bus::Handle {
-    let namespace = format!("readyz_{}", std::process::id());
-    let env = MapEnv::from_pairs([
-        (afd_bus::nats::URL_ENV, seeds),
-        (afd_bus::nats::NAMESPACE_ENV, namespace.as_str()),
-    ]);
-    let config = afd_bus::nats::Config::from_env(&env).expect("the lane publishes usable seeds");
-    afd_bus::nats::connect(&config)
-        .await
-        .expect("the lane's NATS is up")
+/// This suite's own subject namespace, so no other suite reads its traffic.
+fn namespace() -> String {
+    format!("readyz_{}", std::process::id())
 }
 
-/// A relay to one seed that a test can cut, so every connection the bus holds
-/// drops and every reconnect is refused.
-struct Relay {
-    seed: String,
-    accept: tokio::task::JoinHandle<()>,
-}
-
-impl Relay {
-    async fn before(seed: &str) -> Self {
-        let (head, port) = seed.rsplit_once(':').expect("a seed has a port");
-        let backend: u16 = port.parse().expect("a numeric port");
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-            .await
-            .expect("a free local port");
-        let local = listener.local_addr().expect("a bound listener").port();
-        let accept = tokio::spawn(async move {
-            let mut relays = tokio::task::JoinSet::new();
-            while let Ok((mut client, _)) = listener.accept().await {
-                relays.spawn(async move {
-                    if let Ok(mut server) =
-                        tokio::net::TcpStream::connect(("127.0.0.1", backend)).await
-                    {
-                        let _ = tokio::io::copy_bidirectional(&mut client, &mut server).await;
-                    }
-                });
-            }
-        });
-        Self {
-            seed: format!("{head}:{local}"),
-            accept,
-        }
-    }
-
-    /// Drop every relayed connection and refuse new ones.
-    fn cut(self) {
-        // Aborting the accept task drops the listener and the JoinSet, which
-        // aborts every relay it spawned.
-        self.accept.abort();
-    }
-}
-
-/// The dimension: a dependency goes away, readiness follows, liveness does not.
+/// A dependency goes away, readiness follows, liveness does not.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_readyz_dependency_probe() {
@@ -162,19 +113,30 @@ async fn test_readyz_dependency_probe() {
     );
 }
 
-/// A bus that answers nothing leaves the instance ready (M244 §6.5).
+/// A bus that answers nothing leaves the instance ready.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn readyz_stays_ready_through_a_bus_outage() {
     let (database, _bus) = connected().await;
-    let seeds = lane(NATS_LANE_SEEDS);
-    let first = seeds.split(',').next().expect("the lane exports a seed");
-    let relay = Relay::before(first).await;
-    let bus = bus_at(&relay.seed).await;
+    let seeds = afd_bus::test_util::lane_seeds().expect("the lane exports its seeds");
+    let first = seeds.first().expect("the lane exports a seed");
+    let port = afd_bus::test_util::port_of(first).expect("a seed names its port");
+    let proxy = afd_bus::test_util::Proxy::start(port)
+        .await
+        .expect("a free local port");
+    let through = afd_bus::test_util::via(first, proxy.port()).expect("a seed through the proxy");
+    let bus = afd_bus::test_util::dial(
+        &through,
+        Some(&namespace()),
+        afd_bus::nats::Tuning::default(),
+    )
+    .await
+    .expect("the lane's NATS answers through the proxy");
     let probes = LiveDependencies::new(database, bus.clone());
-    assert!(probes.probe().await.queue, "connected through the relay");
+    assert!(probes.probe().await.queue, "connected through the proxy");
 
-    relay.cut();
+    // Every connection drops, and every reconnect is refused.
+    proxy.cut().await;
     let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
     let mut inputs = probes.probe().await;
     while inputs.queue && tokio::time::Instant::now() < deadline {

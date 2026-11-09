@@ -65,7 +65,7 @@ const WHOLE_PAGE: i64 = 50;
 
 /// The name reaches the row the operator reads.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decider_with_a_user_row_reads_as_their_name() {
     let lane = Lane::isolated().await;
     seed_person(&lane, &lane.tenant, KNOWN_SUBJECT, KNOWN_NAME).await;
@@ -96,7 +96,7 @@ async fn a_decider_with_a_user_row_reads_as_their_name() {
 /// the only record of who decided would be worse than printing it ugly, so the
 /// read must return the subject with an empty name rather than skipping the row.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decider_with_no_user_row_keeps_the_row_and_answers_no_name() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -124,7 +124,7 @@ async fn a_decider_with_no_user_row_keeps_the_row_and_answers_no_name() {
 /// scoped the subject per tenant would silently turn the capture cross-tenant,
 /// and this test is what fails when it does.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_user_row_in_another_tenant_does_not_name_this_gate() {
     let lane = Lane::isolated().await;
     let other_tenant = seed_other_tenant(&lane).await;
@@ -150,7 +150,7 @@ async fn a_user_row_in_another_tenant_does_not_name_this_gate() {
 /// DEFAULT. The waiting gate is still on the page: an absent name was never a
 /// reason to drop a row.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_pending_gate_carries_neither_a_decider_nor_a_name() {
     let lane = Lane::isolated().await;
     lane.seed_gate(Window::Open).await;
@@ -171,7 +171,7 @@ async fn a_pending_gate_carries_neither_a_decider_nor_a_name() {
 /// failure mode worth pinning: the detail page is where an operator looks when
 /// the table's answer surprised them.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_single_gate_read_names_the_decider_too() {
     let lane = Lane::isolated().await;
     seed_person(&lane, &lane.tenant, KNOWN_SUBJECT, KNOWN_NAME).await;
@@ -202,7 +202,7 @@ async fn the_single_gate_read_names_the_decider_too() {
 /// permanently. The browser lookup this replaced fell back to the address, and
 /// dropping that would show a shortened subject where a human string used to be.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decider_with_no_display_name_reads_as_their_address() {
     let lane = Lane::isolated().await;
     seed_nameless_person(&lane, NAMELESS_SUBJECT, NAMELESS_EMAIL).await;

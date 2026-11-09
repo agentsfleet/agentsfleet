@@ -14,7 +14,7 @@ use af_observability::Analytics;
 use afd_db::Db;
 
 use super::clients::Clients;
-use super::optional::{announce_identity, live_over};
+use super::optional::announce_identity;
 use crate::error::BootFailure;
 use crate::plane::{ServingPlane, Shared};
 use crate::preflight::BootConfig;
@@ -110,6 +110,14 @@ pub(super) async fn open_runtime(
     })
 }
 
+/// The live-stream surface over the bus boot connected.
+///
+/// It always carries a bus: an unreachable one refuses boot as
+/// `UZ-STARTUP-004` before the router exists.
+fn live_over(bus: &afd_bus::Handle, max_streams: usize) -> afd_sse::Live {
+    afd_sse::Live::new(bus.clone(), afd_sse::StreamLimit::new(max_streams))
+}
+
 /// The database, warmed.
 async fn open_database(config: &BootConfig) -> Result<Db, BootFailure> {
     let database = Db::connect(config.api_pool()).await?;
@@ -194,7 +202,7 @@ pub(super) async fn spawn_background(
     outbound_client: reqwest::Client,
 ) {
     let outbound_bus = bus.clone();
-    supervisor.spawn(crate::HUB_PUMP, async move |token| {
+    supervisor.spawn(crate::BUS_SHUTDOWN, async move |token| {
         token.cancelled().await;
         if let Err(error) = bus.shutdown().await {
             let error_code = error.code().as_str();
@@ -223,4 +231,18 @@ pub(super) async fn spawn_background(
         outbound_client,
         config.slack_api_base().to_owned(),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::live_over;
+
+    #[tokio::test]
+    async fn the_live_surface_rides_the_booted_bus_at_its_capacity() -> afd_bus::Result<()> {
+        let (bus, _server) = afd_bus::test_util::detached()?;
+        let live = live_over(&bus, 3);
+        assert!(live.bus().is_some());
+        assert_eq!(live.capacity(), 3);
+        Ok(())
+    }
 }

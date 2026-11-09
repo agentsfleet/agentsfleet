@@ -7,7 +7,7 @@
 //! [`owe`] inside its report transaction. The dependency runs fleet → outbound
 //! and nowhere back.
 //!
-//! # Postgres is the queue (M244 §4)
+//! # Postgres is the queue
 //!
 //! An owed row is free to claim the moment its report commits. A worker claims
 //! lane heads — the earliest open row of each (provider, workspace) pair — with

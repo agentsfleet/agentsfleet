@@ -3,7 +3,7 @@
 use super::{
     Fallible,
     lane::Lane,
-    queue::{confirm, over_bus},
+    queue::{confirm, over_bus, over_lane},
 };
 use af_wire::event::EventType;
 use afd_admission::{Admission, Key, Producer, Reply as ReplyTo};
@@ -81,10 +81,10 @@ async fn a_committed_stage_confirms_without_a_second_queue_record() -> Fallible 
 /// An unrepeatable admission keys its row by the row's own id: two stages of
 /// the same request are two rows, neither read as a retry of the other.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unrepeatable_stage_is_keyed_by_its_own_row() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_rings, admissions) = over_bus(&lane).await?;
+    let admissions = over_lane(&lane).await?;
     let mut staged = Vec::new();
     for _ in 0..2 {
         let prepared = admissions

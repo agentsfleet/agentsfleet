@@ -9,7 +9,7 @@ use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
 use crate::support::Fixtures;
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_reclaimed_row_is_leased_as_redelivered() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(&fixtures).await;

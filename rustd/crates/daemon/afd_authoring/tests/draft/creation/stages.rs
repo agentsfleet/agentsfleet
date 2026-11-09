@@ -73,7 +73,7 @@ async fn assert_finishes_once(c: &Case, key: &Uuid7, request: SaveFleet, fleet: 
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_once() {
     let c = Case::create().await;
     let (draft, request) = c.request("activation-fault", run_now()).await;
@@ -123,7 +123,7 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_initial_run_over_the_deployment_backlog_budget_activates_blocked() {
     let c = Case::create().await;
     c.fund().await;

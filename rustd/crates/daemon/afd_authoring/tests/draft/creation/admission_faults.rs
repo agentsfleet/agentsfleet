@@ -18,7 +18,7 @@ fn run_now() -> Start {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_admission_whose_identity_cannot_be_drawn_fails_the_activation() {
     let c = Case::create().await;
     let (entropy, control) = Entropy::new_mocked();
@@ -53,7 +53,7 @@ async fn an_admission_whose_identity_cannot_be_drawn_fails_the_activation() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_admission_insert_the_ledger_refuses_rolls_the_activation_back() {
     // Its own database: the refusing trigger is on the shared admissions table.
     let c = Case::isolated().await;

@@ -127,11 +127,18 @@ pub(super) fn silent() -> Handle {
 }
 
 /// The lane's admissions over an in-process bus, and a reader on every wake
-/// shard of it.
+/// shard of it, for a case that drives the server half to read the rings.
 pub(super) async fn over_bus(lane: &Lane) -> Fallible<(Rings, Admissions)> {
     let (bus, server) = afd_bus::test_util::detached()?;
     let rings = Rings::open(&bus, server).await?;
     Ok((rings, over(lane, bus)))
+}
+
+/// The lane's admissions over the integration lane's NATS, for a case that
+/// reads no wake ring.
+pub(super) async fn over_lane(lane: &Lane) -> Fallible<Admissions> {
+    let bus = afd_bus::test_util::lane().await?;
+    Ok(over(lane, bus))
 }
 
 /// The lane's admissions over `bus`.

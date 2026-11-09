@@ -1,5 +1,6 @@
 //! The claim loop: Postgres holds every owed answer, and the worker claims
-//! lane heads when it is pinged or when its pass comes round (M244 §4).
+//! lane heads when it is pinged or when its pass comes round, so no answer
+//! depends on a ping arriving.
 //!
 //! ```text
 //!   report commits ──► af.outbound.wake (lossy) ─┐
@@ -53,7 +54,7 @@ const EVENT_WAKE_CLOSED: &str = "outbound_wake_closed";
 
 /// What triggered a claim, for the claim counter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Via {
+pub(crate) enum Via {
     /// A committed report's ping.
     Ping,
     /// The periodic pass, or a full batch draining a backlog.
@@ -120,10 +121,14 @@ impl<S: Deliver + 'static> Worker<S> {
         let lanes = Lanes::renewing_every(posters, database.clone(), token.clone(), renew);
         let mut via = Via::Scan;
         while !token.is_cancelled() {
-            let claimed = claim_once(&database, &entropy, &lanes, via).await;
-            if claimed == Some(CLAIM_BATCH) {
-                via = Via::Scan;
-                continue;
+            match claim_once(&database, &entropy, &lanes, via).await {
+                Ok(CLAIM_BATCH) => {
+                    via = Via::Scan;
+                    continue;
+                }
+                Ok(_partial) => {}
+                // The next ping or pass claims again.
+                Err(failure) => report(EVENT_CLAIM_FAILED, &failure),
             }
             via = tokio::select! {
                 biased;
@@ -138,30 +143,21 @@ impl<S: Deliver + 'static> Worker<S> {
     }
 }
 
-/// Claims one batch and dispatches it; answers how many rows it took, or
-/// `None` when the claim failed.
+/// Claims one batch and dispatches it; answers how many rows it took.
+///
+/// # Errors
+/// The claim token could not be drawn, or the ledger would not answer or
+/// refused the claim; nothing was taken either way.
 async fn claim_once<S: Deliver + 'static>(
     database: &Db,
     entropy: &Entropy,
     lanes: &Lanes<S>,
     via: Via,
-) -> Option<i64> {
+) -> crate::Result<i64> {
     let via_label = via.label().as_str();
     tracing::debug!(via = via_label, event = EVENT_CLAIM_STARTED);
-    let token = match entropy.uuid7(af_core::clock::now()) {
-        Ok(token) => token,
-        Err(failure) => {
-            report(EVENT_CLAIM_FAILED, &failure.into());
-            return None;
-        }
-    };
-    let claimed = match obligation::claim(database, CLAIM_BATCH, &token).await {
-        Ok(claimed) => claimed,
-        Err(failure) => {
-            report(EVENT_CLAIM_FAILED, &failure);
-            return None;
-        }
-    };
+    let token = entropy.uuid7(af_core::clock::now())?;
+    let claimed = obligation::claim(database, CLAIM_BATCH, &token).await?;
     let count = i64::try_from(claimed.len()).unwrap_or(CLAIM_BATCH);
     tracing::debug!(
         via = via_label,
@@ -174,7 +170,7 @@ async fn claim_once<S: Deliver + 'static>(
     for job in claimed {
         lanes.dispatch(Box::new(job)).await;
     }
-    Some(count)
+    Ok(count)
 }
 
 impl Via {

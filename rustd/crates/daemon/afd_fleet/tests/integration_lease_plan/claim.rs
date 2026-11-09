@@ -27,7 +27,7 @@ const FRESH: &str = "WITH ended AS (UPDATE fleet.admissions SET settled_at=now()
 // scans a backlog; why_new=small histories hide unbounded index keys; seam=none;
 // no_claim=full claim or discovery cost is constant in fleet population.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn prior_lease_lookup_probes_the_lease_event_index_for_fresh_and_reclaimed_heads() {
     let held = held_in(Fixtures::create_isolated().await).await;
     let owner = held.fixtures.open(DbRole::Migrator).await;

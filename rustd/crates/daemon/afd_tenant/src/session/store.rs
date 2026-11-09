@@ -25,11 +25,11 @@ use crate::error::query;
 use crate::sql::session as sql;
 
 /// A session's life, re-stamped at every transition.
-pub const SESSION_TTL: Duration = Duration::from_secs(300);
+pub(crate) const SESSION_TTL: Duration = Duration::from_secs(300);
 /// How long a redeemed session answers the same request again.
-pub const CONSUME_REPLAY_WINDOW: Duration = Duration::from_secs(60);
+pub(crate) const CONSUME_REPLAY_WINDOW: Duration = Duration::from_secs(60);
 /// Wrong codes a session survives before it aborts.
-pub const MAX_VERIFY_ATTEMPTS: u8 = 5;
+pub(crate) const MAX_VERIFY_ATTEMPTS: u8 = 5;
 
 const CONTEXT_OPEN: &str = "open a device session";
 const CONTEXT_READ: &str = "read a device session";
@@ -61,7 +61,7 @@ pub(crate) struct Locked {
     pub(crate) ciphertext: Option<String>,
     pub(crate) nonce: Option<String>,
     pub(crate) verification_code_hmac: Option<Vec<u8>>,
-    pub(crate) verification_attempts: i16,
+    pub(crate) verification_attempt_count: i16,
     pub(crate) aborted_reason: Option<String>,
     pub(crate) consumed_client_fingerprint: Option<Vec<u8>>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -91,24 +91,24 @@ impl DeviceSessions {
         Self { database }
     }
 
-    /// Writes a new `pending` session and answers its deadline.
+    /// Writes a new `pending` session.
     pub(crate) async fn open(
         &self,
         id: &Uuid7,
         cli_public_key: &str,
         token_name: &str,
-    ) -> Result<Timestamp> {
+    ) -> Result<()> {
         let mut connection = self.database.acquire().await?;
-        let expires_at = sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(sql::INSERT_SESSION)
+        sqlx::query(sql::INSERT_SESSION)
             .bind(id)
             .bind(SessionStatus::Pending.as_str())
             .bind(cli_public_key)
             .bind(token_name)
             .bind(SESSION_TTL)
-            .fetch_one(&mut *connection)
+            .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_OPEN))?;
-        Ok(expires_at.to_jiff())
+        Ok(())
     }
 
     /// A live session, or `None` once it is gone or past its deadline.
@@ -271,18 +271,37 @@ pub(crate) fn classify(
     Ok((outcome, None))
 }
 
+/// Compares a code against an approved session's digest.
+///
+/// An approval writes the digest and the status in one statement, and only
+/// a verify writes the count, so an approved row with no digest, a digest of
+/// the wrong length, or a count outside `0..MAX_VERIFY_ATTEMPTS` was written
+/// by something else. Each is refused as unreadable rather than read as a
+/// wrong code, which would hide the corruption behind a person's typo.
 fn compare(row: &Locked, submitted: &HmacSha256Tag) -> Result<(VerifyOutcome, Option<Write>)> {
-    let matches = row
+    let stored = row
         .verification_code_hmac
         .as_deref()
-        .and_then(|stored| HmacSha256Tag::from_slice(stored).ok())
-        .is_some_and(|stored| stored.verify(submitted).is_ok());
-    if matches {
+        .ok_or_else(|| crate::error::session_unreadable("verification_code_hmac missing"))?;
+    let stored = HmacSha256Tag::from_slice(stored).map_err(|_length| {
+        crate::error::session_unreadable(format!(
+            "verification_code_hmac of {} bytes",
+            stored.len()
+        ))
+    })?;
+    if stored.verify(submitted).is_ok() {
         return Ok((VerifyOutcome::Success(payload(row)?), Some(Write::Consume)));
     }
-    let attempts = u8::try_from(row.verification_attempts)
-        .unwrap_or(MAX_VERIFY_ATTEMPTS)
-        .saturating_add(1);
+    let recorded = u8::try_from(row.verification_attempt_count)
+        .ok()
+        .filter(|recorded| *recorded < MAX_VERIFY_ATTEMPTS)
+        .ok_or_else(|| {
+            crate::error::session_unreadable(format!(
+                "verification_attempt_count {}",
+                row.verification_attempt_count
+            ))
+        })?;
+    let attempts = recorded + 1;
     if attempts >= MAX_VERIFY_ATTEMPTS {
         let write = Write::Attempt {
             attempts,

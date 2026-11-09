@@ -31,7 +31,7 @@ use self::support::{CronLane, SEED_AT};
 const NIGHTLY: &str = "0 3 * * *";
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_created_schedule_reads_back_as_it_was_written() {
     let lane = CronLane::open().await;
     let created = lane.create("key-readback", NIGHTLY).await;
@@ -55,7 +55,7 @@ async fn a_created_schedule_reads_back_as_it_was_written() {
 /// the external scheduler has not been told yet, and a create that claimed
 /// `Synced` would make the reconcile skip a schedule that was never registered.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_new_schedule_wants_to_fire_and_admits_upstream_does_not_know_yet() {
     let lane = CronLane::open().await;
     let created = lane.create("key-initial-state", NIGHTLY).await;
@@ -73,7 +73,7 @@ async fn a_new_schedule_wants_to_fire_and_admits_upstream_does_not_know_yet() {
 /// Zero would make "never synced" and "synced at version zero" the same
 /// state to a finalize, which is the one comparison the fence turns on.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_new_schedule_starts_at_version_one() {
     let lane = CronLane::open().await;
     let created = lane.create("key-version", NIGHTLY).await;
@@ -83,7 +83,7 @@ async fn a_new_schedule_starts_at_version_one() {
 
 /// A create is fenced from birth: it lands already claimed by its creator.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_new_schedule_is_already_held_by_the_caller_that_will_push_it() {
     let lane = CronLane::open().await;
     let created = lane.create("key-born-held", NIGHTLY).await;
@@ -104,7 +104,7 @@ async fn a_new_schedule_is_already_held_by_the_caller_that_will_push_it() {
 /// caller could enumerate other tenants' fleets by watching which id earns a
 /// different refusal.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_fleet_outside_the_proven_workspace_is_refused_as_no_such_fleet() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;
@@ -138,7 +138,7 @@ async fn a_fleet_outside_the_proven_workspace_is_refused_as_no_such_fleet() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn the_same_upstream_key_twice_on_one_fleet_is_refused() {
     let lane = CronLane::open().await;
     lane.create("key-once", NIGHTLY).await;
@@ -154,7 +154,7 @@ async fn the_same_upstream_key_twice_on_one_fleet_is_refused() {
 
 /// The key is unique PER FLEET, so two fleets may each hold the same one.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn the_same_upstream_key_on_two_different_fleets_is_admitted() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;
@@ -167,7 +167,7 @@ async fn the_same_upstream_key_on_two_different_fleets_is_admitted() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_fleet_at_its_ceiling_refuses_the_next_schedule() {
     let lane = CronLane::open().await;
     for index in 0..MAX_SCHEDULES_PER_FLEET {

@@ -62,12 +62,9 @@ pub struct PlaneParts {
     /// A deployment naming no `PostHog` project reports nothing, and a caller that
     /// had to ask before reporting is a caller that can forget.
     pub analytics: Analytics,
-    /// The live-stream surface, holding its own absence.
+    /// The live-stream surface over the bus boot connected.
     ///
-    /// An instance whose pub/sub connection could not be opened still SERVES the
-    /// stream routes, silently, and `afd_sse::Live::detached` is that case as a
-    /// value rather than as a `None` this file would unwrap into a refusal.
-    /// Built before the plane because opening the hub is asynchronous where
+    /// Built before the plane because opening the bus is asynchronous where
     /// this constructor is not.
     pub live: Live,
     /// What the device-flow login surface needs from configuration.

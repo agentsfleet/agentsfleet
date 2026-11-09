@@ -12,9 +12,7 @@ use tokio::time::Instant;
 
 use super::{
     fleet,
-    support::{
-        Fallible, TestResult, bus, namespace, port_of, proxy::Proxy, seeds, settle, until, via,
-    },
+    support::{Fallible, Proxy, TestResult, bus, namespace, port_of, seeds, settle, until, via},
 };
 
 /// The command line `make` exports for driving the compose cluster; the test
@@ -22,7 +20,8 @@ use super::{
 const CONTROL_ENV: &str = "TEST_NATS_CONTROL";
 /// The node every test here stops.
 const VICTIM: &str = "nats-2";
-/// The longest a viewer on a stopped node may wait to resume (M244 §1's bar).
+/// The deadline a viewer on a stopped node resumes inside: its client fails
+/// over to a live seed, and the viewer is told of the gap before it does.
 const RESUME: Duration = Duration::from_secs(10);
 
 /// `nats-2`, stopped until [`Self::restart`], or until this drops on a failed
@@ -107,13 +106,16 @@ async fn node_kill_gaps_viewers_and_resumes() -> TestResult {
     .await?;
 
     let stopped = Stopped::node()?;
-    let started = Instant::now();
-    let before = until(&publisher, &subject, &mut stranded, "after").await?;
-    let waited = started.elapsed();
-    assert!(waited <= RESUME, "resumed after {waited:?}");
+    let before = tokio::time::timeout(RESUME, until(&publisher, &subject, &mut stranded, "after"))
+        .await
+        .map_err(|_elapsed| {
+            format!("the viewer on the stopped node did not resume inside {RESUME:?}")
+        })??;
+    // `until` returns what arrived before the resumed frame, so a gap in it is
+    // a gap told before the viewer resumed.
     assert!(
         before.contains(&Received::Gap),
-        "the viewer on the stopped node is told: {before:?}"
+        "the viewer on the stopped node is told before it resumes: {before:?}"
     );
     for viewer in [&mut beside, &mut local] {
         let seen = until(&publisher, &subject, viewer, "after").await?;

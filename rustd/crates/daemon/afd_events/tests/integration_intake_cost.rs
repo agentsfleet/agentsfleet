@@ -69,7 +69,7 @@ impl Private {
             .await?;
         drop(connection);
         let runtime = lane.open(DbRole::Api, &[]).await;
-        let (bus, _server) = afd_bus::test_util::detached()?;
+        let bus = afd_bus::test_util::lane().await?;
         let steer = Steer::new(afd_admission::Admissions::for_tests(runtime.clone(), bus));
         Ok(Self {
             lane,

@@ -1,4 +1,4 @@
-//! Device-login sessions under contention, as Postgres rows (M244 §5).
+//! Device-login sessions under contention, as Postgres rows.
 //!
 //! The row lock is the authority, so each claim is proven with many callers
 //! released together rather than one caller at a time.
@@ -38,7 +38,7 @@ async fn row(harness: &SessionHarness, session_id: &str) -> (String, i16) {
     let id = Uuid7::parse(session_id).expect("a session id");
     let mut connection = harness.database.acquire().await.expect("a connection");
     sqlx::query_as(
-        "SELECT status, verification_attempts FROM identity.device_sessions WHERE id = $1",
+        "SELECT status, verification_attempt_count FROM identity.device_sessions WHERE id = $1",
     )
     .bind(&id)
     .fetch_one(&mut *connection)

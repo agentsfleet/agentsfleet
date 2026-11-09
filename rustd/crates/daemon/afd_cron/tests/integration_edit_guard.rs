@@ -58,7 +58,7 @@ async fn reread(lane: &CronLane, schedule: &Schedule) -> Schedule {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn an_edit_while_a_sync_holds_the_row_is_refused_and_writes_nothing() {
     let lane = CronLane::open().await;
     // Born held: the creating request keeps the fence until it has pushed.
@@ -73,7 +73,7 @@ async fn an_edit_while_a_sync_holds_the_row_is_refused_and_writes_nothing() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn an_edit_to_a_schedule_being_removed_is_refused() {
     let lane = CronLane::open().await;
     let settled = lane.settled("key-edit-deleting", "0 3 * * *").await;
@@ -107,7 +107,7 @@ async fn an_edit_to_a_schedule_being_removed_is_refused() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn an_edit_to_a_one_off_recounts_its_instant_from_the_edit() {
     let lane = CronLane::open().await;
     let fleet = lane.fleet_id();

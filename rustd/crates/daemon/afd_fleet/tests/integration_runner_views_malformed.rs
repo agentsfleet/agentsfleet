@@ -15,7 +15,7 @@ use crate::requests::enrolment;
 use crate::support::Fixtures;
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn runner_views_report_missing_and_malformed_rows_without_partial_success() {
     let fixtures = Fixtures::create_isolated().await;
     assert_missing_runner_is_not_found(&fixtures).await;

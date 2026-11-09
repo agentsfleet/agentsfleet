@@ -1,5 +1,5 @@
 //! The scope a gate test parks in: a tenant, a workspace, a fleet, and the
-//! datastore and bus the gate plane needs. Shared by the lifecycle suite and the
+//! Postgres and NATS the gate plane needs. Shared by the lifecycle suite and the
 //! live-tail suite, so each compiles its own copy and uses a subset.
 #![allow(
     dead_code,
@@ -42,14 +42,14 @@ pub(crate) fn config_gates(gates: &str) -> FleetConfig {
     FleetConfig::stored(&document).expect("the gate policy fixture resolves")
 }
 
-/// An in-process bus, and its server half for a suite that injects frames.
-pub(crate) fn bus_and_server() -> (afd_bus::Handle, afd_bus::test_util::Server) {
-    afd_bus::test_util::detached().expect("an in-process bus opens")
-}
-
-/// An in-process bus, for a suite that only needs the gate plane to publish.
-pub(crate) fn bus() -> afd_bus::Handle {
-    bus_and_server().0
+/// The lane's NATS, which the gate plane publishes on.
+///
+/// One per test: clones share the connection, so a subscribe then a publish
+/// stay ordered.
+pub(crate) async fn bus() -> afd_bus::Handle {
+    afd_bus::test_util::lane()
+        .await
+        .expect("the lane's NATS: run through make test-integration-rustd")
 }
 
 pub(crate) struct Fixture {

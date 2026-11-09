@@ -31,7 +31,7 @@ const DEBT_NANOS: i64 = 50;
 /// alone, and an admission gate that clamped the balance at zero would cover a
 /// zero floor and admit a payer who owes money.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
     let fixtures = Fixtures::create().await;
     let accounts = Accounts::new(fixtures.database.clone());

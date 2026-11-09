@@ -79,7 +79,7 @@ async fn next(leases: &Leases, runner: &Uuid7) -> Option<Acquired> {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_rows_lease_in_order_behind_a_park() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
@@ -140,7 +140,7 @@ async fn finish(leases: &Leases, connection: &mut sqlx::PgConnection, acquired: 
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
@@ -178,7 +178,7 @@ async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
@@ -222,7 +222,7 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_locked_slot_is_skipped_without_changing_the_admission() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;

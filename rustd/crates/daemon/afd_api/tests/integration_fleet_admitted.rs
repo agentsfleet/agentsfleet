@@ -1,5 +1,5 @@
 //! A person's message, announced on the fleet's live tail the moment it is
-//! accepted, over live Postgres and an in-process bus.
+//! accepted, over live Postgres and the lane's NATS.
 //!
 //! Bob, a member of John's account, steers John's fleet while John watches
 //! it: John's open stream carries `event_admitted` before any runner has the
@@ -41,14 +41,14 @@ const QUIET: Duration = Duration::from_millis(750);
 /// John's fleet tail, opened as John and read past its greeting, and the bus
 /// it streams through.
 async fn watch(members: &Members) -> (BodyDataStream, afd_bus::Handle) {
-    let bus = harness::bus();
+    let bus = harness::bus().await;
     let router = members.live_router(&members.john, owner_scopes(), bus.clone());
     let path = members.tail();
     let response = send(&router, Method::GET, &path, Some(&members.john.token), "").await;
     assert_eq!(response.status(), StatusCode::OK, "{path} opens");
     let mut body = response.into_body().into_data_stream();
     assert!(next_chunk(&mut body).await.contains("event: hello"));
-    // One backfill prompt after subscribing (M244 §6).
+    // One backfill prompt after subscribing.
     assert!(next_chunk(&mut body).await.contains("event: catching_up"));
     (body, bus)
 }
@@ -76,7 +76,7 @@ fn bob_router(members: &Members, bus: afd_bus::Handle) -> Router {
 
 /// Dimension 1.1: the watcher sees the typed message under the 202's id.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_steer_publishes_admitted_frame() {
     let members = Members::create().await;
     let (mut johns, bus) = watch(&members).await;
@@ -115,7 +115,7 @@ async fn test_steer_publishes_admitted_frame() {
 
 /// Dimension 1.3: a repeat of one operation is answered, never announced again.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_replayed_steer_publishes_nothing() {
     let members = Members::create().await;
     let (mut johns, bus) = watch(&members).await;
@@ -135,7 +135,7 @@ async fn test_replayed_steer_publishes_nothing() {
     members.cleanup().await;
 }
 
-/// Dimension 1.2: a bus that refuses the frame costs the steer nothing, and
+/// A bus that refuses the frame costs the steer nothing, and
 /// the publisher's one log line never carries what was typed.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -162,10 +162,10 @@ async fn test_admitted_publish_failure_still_accepts() {
 /// Dimension 4.3: a workspace's member list names each member by the actor
 /// their messages record, so a thread can put a name on each one.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_workspace_members_carry_actor() {
     let members = Members::create().await;
-    let bob = members.live(&members.bob, owner_scopes());
+    let bob = members.live(&members.bob, owner_scopes()).await;
     let path = format!("/v1/workspaces/{}/members", members.john.workspace.as_str());
 
     let (status, list) = exchange(&bob, Method::GET, &path, Some(&members.bob.token), "").await;

@@ -4,7 +4,7 @@
 //! # The shape of a run
 //!
 //! Owe N answers across D destination fleets, then start the real `Worker` and
-//! let it claim and drain them from `fleet.obligations` (M244 §4). Every job is
+//! let it claim and drain them from `fleet.obligations`. Every job is
 //! paid by one workspace, so they share one (provider, workspace) lane and
 //! deliver one at a time: each job's latency includes the time every earlier
 //! job spent, which is exactly the head-of-line cost this lane measures.
@@ -135,15 +135,11 @@ pub async fn run(
     let destinations: Vec<&String> = behaviours.keys().collect();
 
     let payer = parents(&stores.database, prefix, &destinations).await?;
-    let (mut ledger, queued_at) =
+    let (mut ledger, owed) =
         owe_all(&stores.database, &payer, &destinations, parameters.jobs).await?;
 
     let drained = drain(stores, poster.clone(), parameters).await?;
-    let ids = queued_at
-        .keys()
-        .map(|id| Uuid7::parse(id))
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    ledger.swept(sweep::outbound_obligations(&stores.database, &ids).await?);
+    ledger.swept(sweep::outbound_obligations(&stores.database, &owed.rows).await?);
 
     let mut report = Report::new(Lane::Outbound, profile, provenance);
     report.created = true;
@@ -160,7 +156,7 @@ pub async fn run(
         &mut report,
         &drained,
         &poster,
-        &queued_at,
+        &owed.queued_at,
         &behaviours,
         parameters.jobs,
     )?;
@@ -203,16 +199,31 @@ async fn parents(database: &Db, prefix: &RunPrefix, destinations: &[&String]) ->
     Ok(payer)
 }
 
+/// What the owe loop handed out, under the two names each job goes by.
+///
+/// The poster sees a job as the event it answers, so the latency clock is
+/// keyed by event; the sweep deletes by obligation row. One map keyed by row
+/// would never match a stamp, and every latency would silently drop out.
+struct Owed {
+    /// When each job was owed, by the event it answers.
+    queued_at: HashMap<Uuid7, Instant>,
+    /// Every obligation row this run inserted, for the sweep.
+    rows: Vec<Uuid7>,
+}
+
 /// Owe `jobs` answers dealt round-robin over `destinations`, noting when each
-/// row was owed and counting each in the fixture ledger.
+/// was owed and counting each in the fixture ledger.
 async fn owe_all(
     database: &Db,
     payer: &Uuid7,
     destinations: &[&String],
     jobs: u64,
-) -> Result<(FixtureLedger, HashMap<String, Instant>)> {
+) -> Result<(FixtureLedger, Owed)> {
     let mut ledger = FixtureLedger::new();
-    let mut queued_at = HashMap::new();
+    let mut owed = Owed {
+        queued_at: HashMap::new(),
+        rows: Vec::new(),
+    };
     let entropy = Entropy::new();
     let mut connection = database.acquire().await?;
     for (index, destination) in (0..jobs).zip(destinations.iter().cycle()) {
@@ -234,24 +245,26 @@ async fn owe_all(
             },
         )
         .await?;
-        queued_at.insert(row.as_str().to_owned(), Instant::now());
+        owed.queued_at.insert(event, Instant::now());
+        owed.rows.push(row);
         ledger.created(1);
     }
-    Ok((ledger, queued_at))
+    Ok((ledger, owed))
 }
+
+/// The identifier kinds this lane mints: a destination fleet, the paying
+/// workspace, an answered event, and the paying tenant. Distinct from the
+/// lease seeds' kinds.
+const KIND_DESTINATION: u32 = 0x0d1;
+const KIND_PAYER: u32 = 0x0d2;
+const KIND_ANSWERED: u32 = 0x0d3;
+const KIND_TENANT: u32 = 0x0d4;
 
 /// Assign a behaviour to each destination by the requested fractions.
 ///
 /// A `BTreeMap`, so the order jobs are dealt to destinations — and therefore
 /// which position in each cycle the slow one occupies — is a function of the
 /// parameters and not of a hash seed that changes per process.
-/// The identifier kinds this lane mints: a destination fleet, the paying
-/// workspace, and an answered event. Distinct from the lease seeds' kinds.
-const KIND_DESTINATION: u32 = 0x0d1;
-const KIND_PAYER: u32 = 0x0d2;
-const KIND_ANSWERED: u32 = 0x0d3;
-const KIND_TENANT: u32 = 0x0d4;
-
 pub(crate) fn script(
     _prefix: &RunPrefix,
     parameters: Parameters,

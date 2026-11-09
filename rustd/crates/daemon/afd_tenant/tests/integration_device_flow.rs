@@ -1,12 +1,13 @@
-//! §1 — the device-flow login handshake, against a real queue.
+//! The device-flow login handshake, against live Postgres.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without needing a datastore; `make test-integration-rustd` runs them.
 //!
 //! Everything here goes through [`Sessions`] rather than through the store
-//! beneath it, deliberately: the store's own atomicity is M176's proof, and
-//! what this milestone adds is the SURFACE — which refusal each outcome
-//! becomes, and which of them a client can tell apart.
+//! beneath it, deliberately: the store's own atomicity is proven under
+//! contention in `integration_device_sessions_contention`, and what this file
+//! adds is the SURFACE — which refusal each outcome becomes, and which of them
+//! a client can tell apart.
 //!
 //! Split by concern: this file holds the handshake and its refusals,
 //! `integration_device_flow_lifecycle` the terminal states and cancels, and
@@ -25,7 +26,7 @@ use afd_tenant::session::input::{Code, Opening};
 use crate::device_flow_lane::{APPROVER, CODE, NOW, approval, origin, surface};
 use crate::session_harness::SessionHarness;
 
-/// Dimension 1.1 — create, approve, verify, and the envelope comes back whole.
+/// Create, approve, verify, and the envelope comes back whole.
 ///
 /// The daemon's whole job in this flow is to relay: what goes in at `/approve`
 /// is what comes out at `/verify`, byte for byte, and nothing in between opens
@@ -83,7 +84,7 @@ async fn test_device_flow_happy_path() {
     assert!(!redeemed.repeated, "the first redemption is not a replay");
 }
 
-/// Dimension 1.1 — the queue holds a DIGEST of the code and never the code.
+/// The session row holds a DIGEST of the code and never the code.
 ///
 /// Split from the handshake above because it is a different claim about a
 /// different thing: that one is about what a client receives, this is about
@@ -122,11 +123,11 @@ async fn test_device_flow_stores_only_the_code_digest() {
     );
 }
 
-/// Dimension 1.2 — every malformed field earns its own documented code.
+/// Every malformed field earns its own documented code.
 ///
 /// A unit-level claim about [`Opening`] and [`Approval`] already exists; what
 /// this adds is that the refusal survives the whole way out of the SERVICE,
-/// against a live queue, rather than being swallowed by a store error on the
+/// against live Postgres, rather than being swallowed by a store error on the
 /// way.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]

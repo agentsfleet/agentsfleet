@@ -17,7 +17,7 @@
 //! exactly the tasks named here.
 
 /// The supervised name for the task that shuts the bus down on cancellation.
-pub const HUB_PUMP: &str = "hub_pump";
+pub const BUS_SHUTDOWN: &str = "bus_shutdown";
 
 /// The supervised name for the span exporter's flush loop.
 pub const OTLP_EXPORT: &str = "otlp_export";
@@ -40,4 +40,5 @@ pub const OUTBOUND_WORKER: &str = crate::outbound::OUTBOUND_WORKER;
 /// The accept loop is not here: it is spawned by [`crate::serve::boot`] and is
 /// the server rather than a background task, so it is asserted where it is
 /// created instead of being listed as something boot must go and find.
-pub const BACKGROUND_TASKS: &[&str] = &[HUB_PUMP, OUTBOUND_WORKER, OTLP_EXPORT, ANALYTICS_FLUSH];
+pub const BACKGROUND_TASKS: &[&str] =
+    &[BUS_SHUTDOWN, OUTBOUND_WORKER, OTLP_EXPORT, ANALYTICS_FLUSH];

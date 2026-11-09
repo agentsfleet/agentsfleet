@@ -11,7 +11,7 @@ use af_core::{error_code, id::Uuid7};
 use afd_bus::{Received, Subject, nats::Tuning};
 
 use support::{
-    Fallible, TestResult, bus, namespace, next, port_of, proxy::Proxy, seeds, settle, until, via,
+    Fallible, Proxy, TestResult, bus, namespace, next, port_of, seeds, settle, until, via,
 };
 
 const LIVE: &str = "needs live NATS: make test-integration-rustd";
@@ -134,19 +134,39 @@ fn slow_consumer_gaps_every_subscription_on_the_client() -> TestResult {
     })?;
     // The publisher runs on its own thread and runtime, so its frames reach the
     // server while this runtime, and with it the subscriber's pump, is held.
+    flood_from_another_runtime(node, ns, subject, 100)?;
+    runtime.block_on(async {
+        assert!(
+            told_a_gap(&mut held).await,
+            "the held subscription is told it lost frames"
+        );
+        assert_eq!(next(&mut quiet).await?, Received::Gap, "so is every other");
+        assert!(
+            slow_gaps() - counted >= 2,
+            "each subscription on the client counts as told"
+        );
+        subscriber.shutdown().await?;
+        Ok(())
+    })
+}
+
+/// Publishes `frames` to `subject` from a thread and runtime of its own, and
+/// returns once every frame has left.
+fn flood_from_another_runtime(
+    node: String,
+    namespace: String,
+    subject: Subject,
+    frames: u32,
+) -> TestResult {
     let (sent, finished) = std::sync::mpsc::channel();
-    let publisher_ns = ns;
-    let publisher_subject = subject;
     let worker = std::thread::spawn(move || -> TestResult {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
         runtime.block_on(async {
-            let publisher = bus(&node, &publisher_ns, Tuning::default()).await?;
-            for index in 0..100 {
-                publisher
-                    .publish(&publisher_subject, &index.to_string())
-                    .await?;
+            let publisher = bus(&node, &namespace, Tuning::default()).await?;
+            for index in 0..frames {
+                publisher.publish(&subject, &index.to_string()).await?;
             }
             publisher.shutdown().await?;
             Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
@@ -157,25 +177,19 @@ fn slow_consumer_gaps_every_subscription_on_the_client() -> TestResult {
     finished.recv_timeout(support::PATIENCE)?;
     worker
         .join()
-        .map_err(|panic| format!("publisher panicked: {panic:?}"))??;
-    runtime.block_on(async {
-        let mut saw_gap = false;
-        while let Ok(Ok(received)) = tokio::time::timeout(Duration::from_secs(2), held.recv()).await
-        {
-            if received == Received::Gap {
-                saw_gap = true;
-                break;
-            }
+        .map_err(|panic| format!("publisher panicked: {panic:?}"))?
+}
+
+/// Whether `subscription` reports a gap before it goes quiet for two seconds.
+async fn told_a_gap(subscription: &mut afd_bus::Subscription) -> bool {
+    while let Ok(Ok(received)) =
+        tokio::time::timeout(Duration::from_secs(2), subscription.recv()).await
+    {
+        if received == Received::Gap {
+            return true;
         }
-        assert!(saw_gap, "the held subscription is told it lost frames");
-        assert_eq!(next(&mut quiet).await?, Received::Gap, "so is every other");
-        assert!(
-            slow_gaps() - counted >= 2,
-            "each subscription on the client counts as told"
-        );
-        subscriber.shutdown().await?;
-        Ok(())
-    })
+    }
+    false
 }
 
 #[tokio::test]

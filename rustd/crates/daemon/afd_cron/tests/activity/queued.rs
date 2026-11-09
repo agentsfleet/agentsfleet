@@ -18,7 +18,7 @@ const DELIVER: &str = "WITH landed AS (INSERT INTO fleet.events \
 // fails_when=queued history excludes schedule_fire or retry rewrites its first payload;
 // seam=atomic SQL seeds the reachable delivered state; no_claim=signatures or native lease execution.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn queued_schedule_fire_history_survives_reload_and_single_row_promotion() {
     let lane = CronLane::open().await;
     let row = registered(&lane).await;

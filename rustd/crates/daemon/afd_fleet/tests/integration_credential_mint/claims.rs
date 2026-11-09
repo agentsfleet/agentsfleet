@@ -142,7 +142,7 @@ async fn mint(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_handle_naming_another_workspaces_installation_mints_nothing() {
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
@@ -168,7 +168,7 @@ async fn test_a_handle_naming_another_workspaces_installation_mints_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_handle_with_no_routing_row_mints_nothing() {
     // The same refusal as the forged case, on purpose: told apart, the answer
     // would say whether some other workspace holds the installation.
@@ -191,7 +191,7 @@ async fn test_a_handle_with_no_routing_row_mints_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_the_workspaces_own_installation_mints() {
     support::install_subscriber();
     let fixtures = Fixtures::create().await;
@@ -215,7 +215,7 @@ async fn test_the_workspaces_own_installation_mints() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_github_handle_filed_under_another_name_is_not_connected() {
     // Asked for by a name no connector carries, the grant gate has nothing to
     // check; the handle inside still says GitHub. Even with its workspace
@@ -246,7 +246,7 @@ async fn test_a_github_handle_filed_under_another_name_is_not_connected() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_refresh_steered_off_its_provider_posts_nothing() {
     // The platform's client secret rides every refresh. A base the SSRF guard
     // admits but no Zoho callback writes must never reach the exchange.
@@ -278,7 +278,7 @@ async fn test_a_refresh_steered_off_its_provider_posts_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_refresh_at_its_own_data_centre_mints() {
     support::install_subscriber();
     let fixtures = Fixtures::create().await;

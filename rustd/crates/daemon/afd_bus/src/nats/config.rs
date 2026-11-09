@@ -18,7 +18,7 @@ use crate::{Result, error::ErrorKind};
 pub const URL_ENV: &str = "NATS_URL";
 /// Optional development namespace; empty keeps the deployed subject spelling.
 pub const NAMESPACE_ENV: &str = "AGENTSFLEET_DEV_NAMESPACE";
-const MAX_NAMESPACE_BYTES: usize = 64;
+pub(crate) const MAX_NAMESPACE_BYTES: usize = 64;
 
 /// Proven connection settings; holding one means every seed parsed.
 #[derive(Debug, Clone)]
@@ -124,7 +124,7 @@ fn prefix_of(namespace: &str) -> Result<String> {
 mod tests {
     use af_core::{env::MapEnv, error_code};
 
-    use super::{Config, NAMESPACE_ENV, Tuning, URL_ENV};
+    use super::{Config, MAX_NAMESPACE_BYTES, NAMESPACE_ENV, Tuning, URL_ENV};
 
     type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
     const TWO_SEEDS: &str = "nats://agentsfleet:agentsfleet@127.0.0.1:7001, nats://agentsfleet:agentsfleet@127.0.0.1:7002";
@@ -165,14 +165,22 @@ mod tests {
     }
 
     #[test]
-    fn a_user_without_a_password_is_refused() {
+    fn a_user_without_a_password_is_refused() -> TestResult {
         for seeds in [
             "nats://agentsfleet@127.0.0.1:4222",
             "nats://agentsfleet:@127.0.0.1:4222",
         ] {
-            let refused = Config::from_env(&MapEnv::from_pairs([(URL_ENV, seeds)]));
-            assert!(refused.is_err(), "{seeds} names a user and no password");
+            let error = Config::from_env(&MapEnv::from_pairs([(URL_ENV, seeds)]))
+                .err()
+                .ok_or_else(|| format!("{seeds} names a user and no password"))?;
+            assert_eq!(error.code(), error_code::STARTUP_ENV_CHECK);
+            assert_eq!(error.reason(), "configuration");
+            assert!(
+                error.to_string().contains("a non-empty password"),
+                "the refusal names the credential rule: {error}"
+            );
         }
+        Ok(())
     }
 
     #[test]
@@ -213,7 +221,7 @@ mod tests {
     fn the_namespace_prefixes_subjects_and_its_charset_is_enforced() -> TestResult {
         let named = MapEnv::from_pairs([(URL_ENV, TWO_SEEDS), (NAMESPACE_ENV, "indy-1")]);
         assert_eq!(Config::from_env(&named)?.prefix, "dev.indy-1.");
-        let long = "x".repeat(65);
+        let long = "x".repeat(MAX_NAMESPACE_BYTES + 1);
         for bad in ["has.dot", "has space", long.as_str()] {
             let env = MapEnv::from_pairs([(URL_ENV, TWO_SEEDS), (NAMESPACE_ENV, bad)]);
             let error = Config::from_env(&env)

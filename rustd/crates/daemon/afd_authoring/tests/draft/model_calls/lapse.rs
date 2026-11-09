@@ -1,4 +1,4 @@
-//! Dimension 4.8: a locking validity check reads the clock once its lock is
+//! A locking validity check reads the clock once its lock is
 //! held, so a row that lapses while the check waits on the lock is refused.
 //!
 //! Each case lets the row lapse while another transaction only holds its lock

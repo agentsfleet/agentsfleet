@@ -9,7 +9,6 @@ use std::sync::Arc;
 use afd_api_wire::auth::{
     DeleteAllSessionsResponse, OpenSessionRequest, OpenSessionResponse, PollSessionResponse,
 };
-use afd_tenant::session::SessionStatus;
 use afd_tenant::session::input::Opening;
 use axum::Json;
 use axum::body::Bytes;
@@ -127,7 +126,7 @@ pub(crate) async fn poll<D: Services>(
 ) -> Response {
     match services.sessions().poll(&session_id).await {
         Ok(waiting) => Json(PollSessionResponse {
-            status: Cow::Borrowed(status_name(waiting.status)),
+            status: Cow::Borrowed(waiting.status.as_str()),
             cli_public_key: Cow::Owned(waiting.cli_public_key),
             token_name: Cow::Owned(waiting.token_name),
             expires_at: waiting.expires_at,
@@ -171,22 +170,3 @@ pub(crate) async fn delete_all<D: Services>(
         Err(error) => refuse(&error, EVENT_CANCEL_ALL),
     }
 }
-
-/// The wire spelling of a state a poll may report.
-///
-/// Only the two non-terminal states reach here: the service answers the other
-/// three as refusals, so there is no arm below that could put `consumed` on a
-/// 200. The match is still total, because a state added to the store must be
-/// answered here rather than defaulting to whichever spelling came first.
-const fn status_name(status: SessionStatus) -> &'static str {
-    match status {
-        SessionStatus::Pending => "pending",
-        SessionStatus::VerificationPending => "verification_pending",
-        SessionStatus::Consumed => "consumed",
-        SessionStatus::Expired => "expired",
-        SessionStatus::Aborted => "aborted",
-    }
-}
-
-#[cfg(test)]
-mod tests;

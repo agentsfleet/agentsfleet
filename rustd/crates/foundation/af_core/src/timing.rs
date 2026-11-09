@@ -74,15 +74,13 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 /// bounds the cost of the wait.
 pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 
-/// How long a readiness-doorbell command may take before its caller goes on
-/// without it: the ring a mark publishes, and the peek of the partition a ring
-/// named.
+/// How long a best-effort NATS publish may take before its caller goes on
+/// without it: the wake ring (`af.wake.<shard>`) an admission rings, and a
+/// runner's recheck command.
 ///
-/// The doorbell only ever makes a poll faster. Under the datastore's own
-/// request timeout a slow node could hold an admission, or a poll the rotation
-/// alone would have answered, for seconds; past this deadline the ring is
-/// reported lost or the rung peek counts as failed, and the rotation still
-/// reaches the work.
+/// Either only ever makes work arrive sooner. Under the client's own publish
+/// deadline a slow node could hold an admission for seconds; past this one the
+/// ring is reported lost, and the next Postgres probe still finds the work.
 pub const READY_WAKE_DEADLINE: Duration = Duration::from_millis(100);
 
 /// Maximum time to answer an application request or finish a partial stream frame.

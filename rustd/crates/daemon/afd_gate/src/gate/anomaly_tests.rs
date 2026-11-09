@@ -120,3 +120,39 @@ fn anomaly_keys_stay_bounded() -> TestResult {
     );
     Ok(())
 }
+
+/// Callers released together on one key each count once: the window's count
+/// ends at the number of callers, and no two callers read the same count.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn callers_released_together_on_one_key_each_count_once() -> TestResult {
+    const CALLERS: u64 = 64;
+    let brake = std::sync::Arc::new(Brake::new(64));
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(usize::try_from(CALLERS)?));
+    let now = Instant::now();
+    let mut callers = tokio::task::JoinSet::new();
+    for _ in 0..CALLERS {
+        let brake = std::sync::Arc::clone(&brake);
+        let barrier = std::sync::Arc::clone(&barrier);
+        let key = key("run", 0, 60)?;
+        callers.spawn(async move {
+            barrier.wait().await;
+            brake.hit(key, now)
+        });
+    }
+    let mut counts = Vec::new();
+    while let Some(count) = callers.join_next().await {
+        counts.push(count?);
+    }
+    counts.sort_unstable();
+    assert_eq!(
+        counts,
+        (1..=CALLERS).collect::<Vec<_>>(),
+        "every caller read its own count"
+    );
+    assert_eq!(
+        brake.hit(key("run", 0, 60)?, now),
+        CALLERS + 1,
+        "the window holds every caller's hit"
+    );
+    Ok(())
+}

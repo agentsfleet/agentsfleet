@@ -1,10 +1,16 @@
 //! What a device-login session can be, and what each transition answers.
 
+use af_core::spelling::from_spelling;
 use af_crypto::mac::HmacSha256Tag;
 
 /// A session's lifecycle (`docs/AUTH_DEVICE_LOGIN.md` §Session state machine).
-/// The stored spelling is [`SessionStatus::as_str`]; no schema CHECK repeats it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// The `rename_all` below is the reading vocabulary: a stored spelling parses
+/// through serde (`af_core::spelling::from_spelling`). [`SessionStatus::as_str`]
+/// is the writing one, for the `&'static str` a statement binds, and this
+/// module's tests pin the two against each other. No schema CHECK repeats it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SessionStatus {
     /// Opened by the CLI, awaiting the dashboard's approval.
     Pending,
@@ -43,14 +49,16 @@ impl SessionStatus {
     /// Reads a stored spelling; `None` for one this build never writes.
     #[must_use]
     pub fn parse(stored: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|status| status.as_str() == stored)
+        from_spelling(stored)
     }
 }
 
 /// Why a session was aborted, as stored in `aborted_reason`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Read through serde and written through [`AbortReason::as_str`], pinned
+/// together by this module's tests, as [`SessionStatus`] is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum AbortReason {
     /// The approver cancelled it.
     ExplicitCancel,
@@ -62,9 +70,7 @@ impl AbortReason {
     /// The reason a stored spelling names, or `None` for one this build does
     /// not write.
     pub(crate) fn parse(stored: &str) -> Option<Self> {
-        [Self::ExplicitCancel, Self::RateLimitExceeded]
-            .into_iter()
-            .find(|reason| reason.as_str() == stored)
+        from_spelling(stored)
     }
 
     /// The stored spelling.
@@ -118,12 +124,19 @@ pub(crate) struct Approval<'a> {
 
 #[cfg(test)]
 mod tests {
+    use af_core::spelling::to_spelling;
+
     use super::{AbortReason, SessionStatus};
 
     #[test]
     fn every_status_reads_back_from_its_spelling() {
         for status in SessionStatus::ALL {
             assert_eq!(SessionStatus::parse(status.as_str()), Some(status));
+            assert_eq!(
+                to_spelling(&status).as_deref(),
+                Some(status.as_str()),
+                "the written spelling is the one serde reads"
+            );
         }
         assert_eq!(
             SessionStatus::parse("verified"),
@@ -140,5 +153,10 @@ mod tests {
             AbortReason::RateLimitExceeded.as_str(),
             "rate_limit_exceeded"
         );
+        for reason in [AbortReason::ExplicitCancel, AbortReason::RateLimitExceeded] {
+            assert_eq!(AbortReason::parse(reason.as_str()), Some(reason));
+            assert_eq!(to_spelling(&reason).as_deref(), Some(reason.as_str()));
+        }
+        assert_eq!(AbortReason::parse("timeout"), None, "never a stored reason");
     }
 }

@@ -89,7 +89,7 @@ philiprehberger-cron-parser = "0.3.0"
 # own code reaches the ledger only through `afd_admission`, so this is a
 # test-side dependency and not a second door.
 afd_admission = { workspace = true, features = ["test-util"] }
-# The in-process bus that ledger publishes on.
+# The lane's NATS that ledger publishes on.
 afd_bus = { workspace = true, features = ["test-util"] }
 # The lane fixture and the fleet seed its rows go in through. A dev-dependency
 # feature only.
@@ -102,8 +102,8 @@ jsonwebtoken.workspace = true
 serde.workspace = true
 sha2.workspace = true
 # `net` for the retry suite's hung-scheduler listener; `test-util` for its
-# paused clock.
-tokio = { workspace = true, features = ["net", "test-util"] }
+# paused clock; `rt-multi-thread` so the fire race's callers run in parallel.
+tokio = { workspace = true, features = ["net", "rt-multi-thread", "test-util"] }
 # The `tracing` capture `integration_fire.rs` reads the fire's log line back
 # through.
 af_core = { workspace = true, features = ["test-util"] }

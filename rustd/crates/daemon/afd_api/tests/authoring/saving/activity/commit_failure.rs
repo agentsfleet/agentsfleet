@@ -5,7 +5,7 @@ use http::{Method, StatusCode};
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn failed_access_commit_emits_nothing_and_retry_announces_committed_history() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     let mut reader = Reader::open(&saved, &saved.fleet).await;
@@ -37,7 +37,7 @@ async fn failed_access_commit_emits_nothing_and_retry_announces_committed_histor
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn failed_memory_commit_emits_nothing_and_retry_announces_committed_grants() {
     let saved = Saved::create(json!({})).await;
     let before = saved.grants().await;

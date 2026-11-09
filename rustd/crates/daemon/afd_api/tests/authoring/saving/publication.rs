@@ -9,7 +9,7 @@ use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn explicit_publication_is_reused_by_save_and_deletion_preserves_the_installed_snapshot() {
     let mut case = Case::create().await;
     case.fund().await;

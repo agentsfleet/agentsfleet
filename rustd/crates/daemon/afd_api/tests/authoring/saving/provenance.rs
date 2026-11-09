@@ -8,7 +8,7 @@ use http::StatusCode;
 use serde_json::{Value, json};
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn save_records_each_supported_origin_without_relabelling_replays() {
     for origin in ["cli", "dashboard", "chat"] {
         let case = Case::create().await;

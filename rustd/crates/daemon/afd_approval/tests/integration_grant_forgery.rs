@@ -18,7 +18,7 @@
 //! standing grant having taken over the authorisation it asked for.
 //! `integration_grant` had
 //! nothing, and was harmless only because no grant row existed for the arm to
-//! move — which is exactly what M194 changed.
+//! move — which is exactly what the standing grant changed.
 //!
 //! # Why the event column is the discriminator
 //!
@@ -150,7 +150,7 @@ async fn grant_status(lane: &Lane) -> Option<String> {
 /// daemon's kind, the matching service evidence, a pending status, the fleet's
 /// own workspace — except that it carries an event id, and that is enough.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn approving_a_card_that_carries_an_event_moves_no_grant() {
     let lane = Lane::isolated().await;
     raise_honest_grant(&lane).await;
@@ -182,7 +182,7 @@ async fn approving_a_card_that_carries_an_event_moves_no_grant() {
 /// unguarded forgery would also let a fleet take away its own standing yes — or,
 /// worse, get an operator to do it while answering about something else.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn denying_a_card_that_carries_an_event_revokes_no_grant() {
     let lane = Lane::isolated().await;
     raise_honest_grant(&lane).await;
@@ -211,7 +211,7 @@ async fn denying_a_card_that_carries_an_event_revokes_no_grant() {
 /// A rules-path forgery holds no active grant reference and cannot move the
 /// standing grant even while its real card remains actionable.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_forged_approval_cannot_move_a_grant_with_an_open_honest_card() {
     let lane = Lane::isolated().await;
     raise_honest_grant(&lane).await;

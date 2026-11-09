@@ -24,7 +24,7 @@ pub(super) const FRAME_KIND: &str = "bench_frame";
 /// so a frame's latency is one trip through the bus and the fan-out. A wider
 /// window measured queueing instead, and unevenly: a bus whose publish waits
 /// for the server's reply paced itself, while one whose publish returns at
-/// once ran the whole window ahead (Indy, M244 §1, Nov 09, 2026).
+/// once ran the whole window ahead.
 pub(super) const WINDOW: u64 = 1;
 
 /// The kind a readiness probe carries.

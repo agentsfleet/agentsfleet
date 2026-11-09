@@ -38,7 +38,10 @@ pub(crate) enum ErrorKind {
     },
     #[error("Every NATS_URL seed must carry the same user and a non-empty password.")]
     NatsCredentials,
-    #[error("AGENTSFLEET_DEV_NAMESPACE must be at most 64 letters, digits, '-' or '_'.")]
+    #[error(
+        "AGENTSFLEET_DEV_NAMESPACE must be at most {max} letters, digits, '-' or '_'.",
+        max = crate::nats::MAX_NAMESPACE_BYTES
+    )]
     NatsNamespace {
         #[source]
         source: garde::Report,

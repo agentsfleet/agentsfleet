@@ -1,8 +1,8 @@
-//! What the gate pass says when neither datastore answers.
+//! What the gate pass says when neither Postgres nor the bus answers.
 //!
-//! No datastore, deliberately: the pool points at a reserved port and the queue
-//! at a loopback port nobody listens on, so every read and write fails at the
-//! socket. One kill-rule check walks two failure arms in order — the lookup
+//! No datastore, deliberately: the pool points at a reserved port and the bus
+//! refuses every publish and subscribe as a disconnected broker does, so every
+//! read and write fails. One kill-rule check walks two failure arms in order — the lookup
 //! that could not be read and the pause that could not be written — and each
 //! says why in a `reason` an operator can read without the registry code, which
 //! the line's own fields already carry, or a captured backtrace. The anomaly
@@ -40,7 +40,7 @@ const EVENT_LOOKUP_UNREADABLE: &str = "gate_ref_lookup_failed";
 /// The pause that could not be written.
 const EVENT_PAUSE_FAILED: &str = "gate_pause_failed";
 
-/// Gates over a pool and a queue that both refuse.
+/// Gates over a pool and a bus that both refuse.
 fn unreachable_gates() -> Gates {
     Gates::new(
         afd_db::test_util::unreachable_db(),

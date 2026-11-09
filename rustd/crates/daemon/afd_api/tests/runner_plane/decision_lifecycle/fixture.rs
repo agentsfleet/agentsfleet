@@ -92,7 +92,7 @@ impl Fixture {
             &model.model.id,
         );
         let [runner, other] = enroll(&database, &owner, &model.model.id).await;
-        let bus = harness::bus();
+        let bus = harness::bus().await;
         let admissions = Admissions::for_tests(database.clone(), bus.clone());
         let leases = Leases::new(database.clone(), bus, Entropy::new());
         let lease = acquire(&leases, &admissions, &owner, &runner).await;

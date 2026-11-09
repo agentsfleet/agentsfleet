@@ -24,7 +24,6 @@ test-util = [
   # The capturing metric reader the lease suite reads the runs-started
   # counter back through.
   "af_observability/test-util",
-  # The queue refusal a stubbed device-flow surface answers with.
   # The labelled billing refusal the fail-open posture suite absorbs. Taken
   # from that crate's own sample rather than named here, because the kind is
   # private to it.
@@ -85,7 +84,6 @@ scopeguard.workspace = true
 # `sql::event` and into the crate named for it, so `afd_approval` could reach
 # them without depending on leases, money, policy and four sweepers.
 afd_events.workspace = true
-# The live tail and best-effort pickup doorbell.
 # Owns `fleet.obligations`: the report path commits an obligation through
 # it. The edge runs fleet -> outbound and never back.
 afd_outbound.workspace = true

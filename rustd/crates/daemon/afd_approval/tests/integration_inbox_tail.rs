@@ -1,4 +1,4 @@
-//! Dimension 6.4 — what the inbox tells the fleet's live tail.
+//! What the inbox tells the fleet's live tail.
 //!
 //! A decision and a sweep both move a row and then say so on the fleet's
 //! live tail, `Subject::FleetTail`, count included, so a console watching the
@@ -28,7 +28,7 @@ use crate::tail_watch::{NOTE, OPERATOR, SWEEPER, next_frame, tail};
 /// console shows how many approvals still wait without a read of its own —
 /// which is why a second gate is seeded: the count must say ONE, not zero.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decision_is_announced_on_the_fleets_live_tail() {
     let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
@@ -118,7 +118,7 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
 /// stand as pending — so it must leave out everything the statement moved,
 /// not the one row the caller happened to read back.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_re_raised_actions_rows_are_counted_out_together() {
     let lane = Lane::isolated().await;
 
@@ -151,7 +151,7 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
 /// lands a continuation, which
 /// `an_approval_with_a_lost_notification_still_commits_its_continuation` proves.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_bus_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let lane = Lane::isolated().await;
     let inbox = Inbox::new(

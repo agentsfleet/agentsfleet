@@ -63,11 +63,13 @@ fn test_two_indexes_never_collide_within_a_kind() {
 }
 
 #[tokio::test]
-#[ignore = "requires TEST_DATABASE_URL — run via make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: run by hand with `cargo test -p afd_bench --all-features -- --ignored` under the lane's environment"]
 async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     let database = TestDatabase::shared().open(DbRole::Api, &[]).await;
     // The admission row is the proof; the wake it publishes has no reader.
-    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus");
+    let bus = afd_bus::test_util::lane()
+        .await
+        .expect("the lane's NATS: export TEST_NATS_URL as the integration lane does");
     let prefix = RunPrefix::mint();
     let seeded = ready_fleet(
         &database,

@@ -24,7 +24,7 @@ const WAITER: &str = "SELECT pid FROM pg_stat_activity \
 // uncommitted park; why_new=answer-first tests miss uncommitted park writes;
 // seam=none; no_claim=all gate interleavings. A database trigger holds the write.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn answers_and_expiry_clear_a_park_that_was_uncommitted_when_resolution_started() {
     for expire in [false, true] {
         resolve_during_park(expire).await;

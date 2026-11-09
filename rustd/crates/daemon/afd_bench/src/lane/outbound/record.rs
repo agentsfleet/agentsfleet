@@ -7,6 +7,8 @@ use core::time::Duration;
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
+use af_core::id::Uuid7;
+
 use super::poster::{Attempt, Behaviour, Scripted, Seen};
 use crate::error::Result;
 use crate::report::{
@@ -61,7 +63,7 @@ pub(super) fn record(
     report: &mut Report,
     drained: &Drained,
     poster: &Scripted,
-    queued_at: &HashMap<String, Instant>,
+    queued_at: &HashMap<Uuid7, Instant>,
     behaviours: &BTreeMap<String, Behaviour>,
     jobs: u64,
 ) -> Result<()> {

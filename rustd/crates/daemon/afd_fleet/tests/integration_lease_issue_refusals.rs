@@ -84,7 +84,7 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_lease() {
 
 /// A claim without its durable queue row cannot create narrative history.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_event_absent_from_the_ledger_cannot_open_history() {
     let fixtures = Fixtures::create().await;
     let Seeded {

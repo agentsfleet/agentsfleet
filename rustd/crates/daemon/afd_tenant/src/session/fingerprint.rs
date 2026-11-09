@@ -50,12 +50,17 @@ impl Fingerprint {
         &self.0
     }
 
-    /// Whether `stored` is this digest, compared in constant time: the answer
+    /// Whether `stored` is this digest.
+    ///
+    /// A stored value that is not 32 bytes is not, and is refused before any
+    /// comparison: every digest has that length, so the length tells a caller
+    /// nothing. The 32 bytes compare in constant time, because the answer
     /// decides whether a sealed credential is handed out again.
     #[must_use]
     pub fn matches(&self, stored: &[u8]) -> bool {
         use subtle::ConstantTimeEq as _;
-        stored.ct_eq(&self.0).into()
+        <&[u8; 32]>::try_from(stored)
+            .is_ok_and(|stored| stored.as_slice().ct_eq(self.0.as_slice()).into())
     }
 }
 
@@ -81,6 +86,23 @@ mod tests {
         ] {
             assert_ne!(base, other);
         }
+    }
+
+    #[test]
+    fn only_the_same_32_bytes_match() {
+        let fingerprint = Fingerprint::of("203.0.113.7", "afc/1", "sid");
+        let digest = fingerprint.as_bytes();
+        assert!(fingerprint.matches(digest));
+        assert!(
+            !fingerprint.matches(&digest[..31]),
+            "a short value is refused"
+        );
+        let mut long = digest.to_vec();
+        long.push(0);
+        assert!(!fingerprint.matches(&long), "a long value is refused");
+        let mut flipped = *digest;
+        flipped[31] ^= 1;
+        assert!(!fingerprint.matches(&flipped), "one changed bit is refused");
     }
 
     #[test]

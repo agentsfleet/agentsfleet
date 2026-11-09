@@ -4,7 +4,6 @@
     reason = "a failed fixture precondition fails the benchmark proof"
 )]
 
-use af_core::env::EnvSource as _;
 use std::time::Duration;
 
 use afd_bench::datastores::Datastores;
@@ -18,13 +17,13 @@ const FLEETS: u64 = 200;
 const RUNNERS: u64 = 8;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the exclusive benchmark rig; run after make bench-lease"]
+#[ignore = "needs the exclusive benchmark rig's Postgres and NATS: run by hand after make bench-lease with `cargo test -p afd_bench --all-features -- --ignored`"]
 async fn test_ledger_claim_lane_reports_round_trips() {
     let lane = database().await;
-    let seeds = af_core::env::ProcessEnv
-        .get("TEST_NATS_URL")
-        .expect("the test cluster's NATS seeds");
-    let stores = Datastores::open(&lane.url(), &seeds)
+    let bus = afd_bus::test_util::lane()
+        .await
+        .expect("the lane's NATS: export TEST_NATS_URL as the integration lane does");
+    let stores = Datastores::over(&lane.url(), bus)
         .await
         .expect("the benchmark rig answers");
     let prefix = RunPrefix::mint();

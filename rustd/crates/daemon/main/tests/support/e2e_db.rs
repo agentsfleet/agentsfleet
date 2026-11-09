@@ -28,7 +28,7 @@
 use af_core::env::MapEnv;
 use sqlx::AssertSqlSafe;
 
-use crate::e2e::{GOOD_KEK, lane};
+use crate::e2e::GOOD_KEK;
 use crate::support::{IDENTITY, SESSION_PEPPER};
 
 /// Runs one statement on the lane's admin database.
@@ -69,7 +69,12 @@ pub(crate) fn daemon_environment(
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", database),
-            ("NATS_URL", lane("TEST_NATS_URL").as_str()),
+            (
+                "NATS_URL",
+                afd_bus::test_util::lane_url()
+                    .expect("the lane's NATS seeds: run through make test-integration-rustd")
+                    .as_str(),
+            ),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()

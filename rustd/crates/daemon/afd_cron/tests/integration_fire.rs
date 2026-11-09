@@ -15,9 +15,9 @@
 //! Two daemons behind one load balancer can receive the same retry at the same
 //! moment. The claim and the write are one admission statement over a unique
 //! key, so the second loses the claim rather than writing — there is no window
-//! between "check" and "write" for both to pass through. The concurrent case
-//! below is the one that would still pass if the statement were split in two
-//! and run slowly enough, which is why it races them rather than sequencing them.
+//! between "check" and "write" for two to pass through. The concurrent case
+//! below is the one that fails if the statement is split in two, which is why
+//! it races a hundred callers rather than sequencing them.
 
 #![expect(
     clippy::expect_used,
@@ -27,13 +27,20 @@
 #[path = "support/cron_lane.rs"]
 mod support;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
 use af_core::test_util::trace::Capture;
 use afd_cron::{DesiredStatus, Fire, FireTarget};
+use tokio::sync::Barrier;
 
 use self::support::CronLane;
 
 /// The scheduler's own id for one delivery, repeated across its retries.
 const MESSAGE_ID: &str = "msg_01J8ZQ4X7K2N";
+
+/// Daemons racing one retry: the floor a contention claim is proven at.
+const CALLERS: usize = 100;
 
 /// What the fleet is asked to do when it fires.
 const MESSAGE: &str = "run the nightly repair";
@@ -53,7 +60,7 @@ fn target(lane: &CronLane) -> FireTarget {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_verified_fire_reaches_the_stream_once() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions());
@@ -76,7 +83,7 @@ async fn a_verified_fire_reaches_the_stream_once() {
 
 /// The retry case, which is the ordinary one rather than the exceptional one.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions());
@@ -100,35 +107,76 @@ async fn the_schedulers_retry_is_claimed_by_the_first_attempt() {
     );
 }
 
-/// Two daemons, one retry, at the same moment.
-#[tokio::test]
-#[ignore = "needs the lane's Postgres"]
-async fn two_daemons_receiving_one_retry_together_append_once() {
+/// Many daemons, one retry, at the same moment.
+///
+/// Every caller is released from one barrier with the same message id, so the
+/// claims overlap at the statement; a claim split into a check and a write
+/// would let more than one through.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs the lane's Postgres and NATS"]
+async fn many_daemons_receiving_one_retry_together_append_once() {
     let lane = CronLane::open().await;
-    let target = target(&lane);
-    let schedule = CronLane::token();
+    let target = Arc::new(target(&lane));
+    let schedule = Arc::new(CronLane::token());
+    let barrier = Arc::new(Barrier::new(CALLERS));
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let peak = Arc::new(AtomicUsize::new(0));
 
-    // Two ledgers, as two processes would hold.
-    let left = Fire::new(lane.admissions());
-    let right = Fire::new(lane.admissions());
+    let mut callers = Vec::with_capacity(CALLERS);
+    for _ in 0..CALLERS {
+        // One ledger per caller, as separate processes would hold.
+        let fire = Fire::new(lane.admissions());
+        let (target, schedule) = (Arc::clone(&target), Arc::clone(&schedule));
+        let (barrier, in_flight, peak) = (
+            Arc::clone(&barrier),
+            Arc::clone(&in_flight),
+            Arc::clone(&peak),
+        );
+        callers.push(tokio::spawn(async move {
+            barrier.wait().await;
+            let now = in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(now, Ordering::SeqCst);
+            let fired = fire.deliver(&schedule, &target, MESSAGE_ID).await;
+            in_flight.fetch_sub(1, Ordering::SeqCst);
+            fired
+        }));
+    }
+    let mut outcomes = Vec::with_capacity(CALLERS);
+    for caller in callers {
+        outcomes.push(
+            caller
+                .await
+                .expect("a caller task finishes")
+                .expect("the lane's Postgres answers every daemon"),
+        );
+    }
 
-    let (one, two) = tokio::join!(
-        left.deliver(&schedule, &target, MESSAGE_ID),
-        right.deliver(&schedule, &target, MESSAGE_ID),
+    assert!(
+        peak.load(Ordering::SeqCst) > 1,
+        "the callers overlapped, or this proved nothing about a race"
     );
-    let one = one.expect("the lane's Postgres answers the first daemon");
-    let two = two.expect("the lane's Postgres answers the second daemon");
-
     assert_eq!(
-        one.event_id, two.event_id,
-        "both daemons must answer with the one entry that exists"
-    );
-    assert_eq!(
-        usize::from(one.replayed) + usize::from(two.replayed),
+        outcomes.iter().filter(|fired| !fired.replayed).count(),
         1,
-        "exactly one of the two claimed the fire and one found it taken; \
-         two claims means the check and the write came apart"
+        "exactly one caller claimed the fire and every other found it taken; \
+         more than one claim means the check and the write came apart"
     );
+    let first = &outcomes.first().expect("a hundred outcomes").event_id;
+    assert!(
+        outcomes.iter().all(|fired| &fired.event_id == first),
+        "every daemon must answer with the one entry that exists"
+    );
+    assert_eq!(admissions(&lane).await, 1, "the fleet holds one admission");
+}
+
+/// The admissions this lane's fleet holds.
+async fn admissions(lane: &CronLane) -> i64 {
+    let mut connection = lane.connection().await;
+    sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
+        .bind(lane.fleet_id())
+        .fetch_one(&mut *connection)
+        .await
+        .expect("counting this fleet's admissions")
 }
 
 /// The claim is scoped by SCHEDULE as well as by fleet.
@@ -138,7 +186,7 @@ async fn two_daemons_receiving_one_retry_together_append_once() {
 /// second would be reported as a replay and the fleet would never be woken for
 /// it.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions());
@@ -168,7 +216,7 @@ async fn two_schedules_firing_on_one_tick_do_not_silence_each_other() {
 /// The scheduler repeats its id only for a RETRY. A fresh id means the schedule
 /// came round again, and suppressing that would silently skip a run.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn the_next_tick_of_one_schedule_is_a_new_fire() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions());
@@ -195,7 +243,7 @@ async fn the_next_tick_of_one_schedule_is_a_new_fire() {
 /// A one-off fires once, whichever path asks: the scheduler's callback and a
 /// run-now under its own key admit one event between them.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_once_schedule_fires_once_whichever_path_asks() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions());
@@ -224,7 +272,7 @@ async fn a_once_schedule_fires_once_whichever_path_asks() {
 
 /// Two fleets cannot claim over each other, even on one schedule id.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn one_fleets_fire_does_not_claim_anothers() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;
@@ -250,7 +298,7 @@ async fn one_fleets_fire_does_not_claim_anothers() {
 /// The fire's log line names the workspace and the event it appended, so an
 /// operator can find the run a schedule started.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_fire_logs_the_workspace_and_event_it_appended() {
     let lane = CronLane::open().await;
     let fire = Fire::new(lane.admissions());

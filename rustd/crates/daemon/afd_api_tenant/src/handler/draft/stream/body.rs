@@ -9,8 +9,6 @@ use std::{collections::HashMap, convert::Infallible, time::Duration};
 const QUIET: Duration = Duration::from_secs(1);
 const CHECK_DEADLINE: Duration = Duration::from_secs(10);
 const FAILED: &str = "draft_stream_recheck_failed";
-// A text piece can expand sixfold when escaped, before JSON frame metadata.
-const MAX_FRAME_BYTES: usize = 32 * 1024;
 
 struct Watch {
     drafts: Drafts,
@@ -21,9 +19,8 @@ struct Watch {
     seen: HashMap<String, String>,
     delay: Duration,
     done: bool,
-    subscription: Option<afd_bus::Subscription>,
-    /// Where a lost subscription is reopened.
-    live: afd_sse::Live,
+    /// Live progress; reopened after a loss, never after the bus closed.
+    link: afd_sse::Link,
     /// A subscription was lost and the viewer is not yet told to resync.
     lost: bool,
     /// The viewer was told; a further loss before any delivery is the same
@@ -36,10 +33,8 @@ struct Watch {
 pub(super) struct Feed {
     /// This stream's place under the instance's ceiling.
     pub(super) slot: afd_sse::StreamPermit,
-    /// Where a lost subscription is reopened.
-    pub(super) live: afd_sse::Live,
-    /// The subscription the handler confirmed before answering, if any.
-    pub(super) subscription: Option<afd_bus::Subscription>,
+    /// The subscription the handler opened before answering.
+    pub(super) link: afd_sse::Link,
 }
 
 pub(super) fn frames(
@@ -50,11 +45,7 @@ pub(super) fn frames(
     generation: i64,
     feed: Feed,
 ) -> impl Stream<Item = Result<Event, Infallible>> + Send + 'static {
-    let Feed {
-        slot,
-        live,
-        subscription,
-    } = feed;
+    let Feed { slot, link } = feed;
     stream::unfold(
         Watch {
             drafts,
@@ -67,8 +58,7 @@ pub(super) fn frames(
             done: false,
             lost: false,
             resynced: false,
-            subscription,
-            live,
+            link,
             _slot: slot,
         },
         step,
@@ -78,27 +68,11 @@ pub(super) fn frames(
 async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
     let heartbeat_at = tokio::time::Instant::now() + afd_sse::HEARTBEAT_INTERVAL;
     while !watch.done {
-        if watch.subscription.is_none() {
-            let subject = afd_bus::Subject::DraftEvents(watch.draft.clone());
-            watch.subscription = watch.live.subscribe(&subject).await;
-        }
-        if watch.lost {
-            // A lost subscription may have dropped progress; the viewer reloads.
-            watch.lost = false;
-            watch.resynced = true;
-            return Some((Ok(resync()), watch));
+        if let Some(event) = recover(&mut watch).await {
+            return Some((Ok(event), watch));
         }
         let pending = receive(&mut watch).await;
-        let access = Access {
-            workspace: &watch.workspace,
-            subject: &watch.subject,
-        };
-        let observed = tokio::time::timeout(
-            CHECK_DEADLINE,
-            watch.drafts.observe(access, &watch.draft, watch.generation),
-        )
-        .await;
-        match observed {
+        match observe(&mut watch).await {
             Ok(Ok(Observation::Deleted)) => {
                 watch.done = true;
                 return Some((Ok(deleted(&watch.draft)?), watch));
@@ -119,10 +93,7 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
                 }
                 watch.delay = QUIET;
                 if tokio::time::Instant::now() >= heartbeat_at {
-                    let heartbeat = Event::default()
-                        .event(afd_sse::HEARTBEAT_EVENT)
-                        .data(afd_sse::HEARTBEAT_DATA);
-                    return Some((Ok(heartbeat), watch));
+                    return Some((Ok(heartbeat()), watch));
                 }
             }
             Ok(Err(error)) => {
@@ -134,6 +105,42 @@ async fn step(mut watch: Watch) -> Option<(Result<Event, Infallible>, Watch)> {
         }
     }
     None
+}
+
+/// The fresh membership and generation read every frame waits on. Takes the
+/// watch mutably because a shared borrow of its link is not `Send`.
+async fn observe(
+    watch: &mut Watch,
+) -> Result<afd_authoring::Result<Observation>, tokio::time::error::Elapsed> {
+    let access = Access {
+        workspace: &watch.workspace,
+        subject: &watch.subject,
+    };
+    tokio::time::timeout(
+        CHECK_DEADLINE,
+        watch.drafts.observe(access, &watch.draft, watch.generation),
+    )
+    .await
+}
+
+fn heartbeat() -> Event {
+    Event::default()
+        .event(afd_sse::HEARTBEAT_EVENT)
+        .data(afd_sse::HEARTBEAT_DATA)
+}
+
+/// Reopen a lost subscription once its retry is due, and tell the viewer to
+/// resync after a loss. A closed bus is never retried.
+async fn recover(watch: &mut Watch) -> Option<Event> {
+    watch.link.reopen_if_due().await;
+    if !watch.lost {
+        return None;
+    }
+    // A lost subscription may have dropped progress; the viewer reloads.
+    watch.lost = false;
+    watch.resynced = true;
+    tracing::debug!(event = "draft_stream_resynced");
+    Some(resync())
 }
 
 fn resync() -> Event {
@@ -152,26 +159,30 @@ async fn receive(watch: &mut Watch) -> Option<afd_bus::Received> {
     if watch.delay.is_zero() {
         return None;
     }
-    let Some(subscription) = watch.subscription.as_mut() else {
+    let Some(subscription) = watch.link.subscription() else {
         tokio::time::sleep(watch.delay).await;
         return None;
     };
     tokio::select! {
         () = tokio::time::sleep(watch.delay) => None,
-        received = subscription.recv() => if let Ok(received) = received {
-            watch.resynced = false;
-            Some(received)
-        } else {
-            watch.subscription = None;
-            watch.lost = !watch.resynced;
-            None
+        received = subscription.recv() => match received {
+            Ok(received) => {
+                watch.resynced = false;
+                Some(received)
+            }
+            Err(error) => {
+                watch.link.lose(&error);
+                watch.lost = !watch.resynced;
+                None
+            }
         },
     }
 }
 
 #[derive(garde::Validate)]
 struct Payload<'a> {
-    #[garde(length(bytes, max = MAX_FRAME_BYTES))]
+    // A text piece can expand sixfold when escaped, before JSON frame metadata.
+    #[garde(length(bytes, max = afd_bus::DRAFT_FRAME_BYTES))]
     value: &'a str,
 }
 

@@ -149,7 +149,7 @@ impl Saved {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_saved_fleet_serves_messages_history_and_grants() {
     let saved = Saved::create().await;
     let grant = mint();

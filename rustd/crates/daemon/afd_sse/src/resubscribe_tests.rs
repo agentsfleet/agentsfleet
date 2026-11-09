@@ -22,14 +22,15 @@ fn kind(frame: &crate::frame::Frame) -> String {
 
 #[test]
 fn retries_double_to_their_ceiling() {
-    let policy = Resubscribe::default();
-    assert_eq!(policy.wait(0), Duration::from_millis(250));
-    assert_eq!(policy.wait(1), Duration::from_millis(500));
-    assert_eq!(policy.wait(4), Duration::from_secs(4));
-    assert_eq!(policy.wait(5), Duration::from_secs(5), "capped");
+    let waits: Vec<Duration> = Resubscribe::default().schedule().take(64).collect();
+    assert_eq!(waits.first(), Some(&Duration::from_millis(250)));
+    assert_eq!(waits.get(1), Some(&Duration::from_millis(500)));
+    assert_eq!(waits.get(4), Some(&Duration::from_secs(4)));
+    assert_eq!(waits.get(5), Some(&Duration::from_secs(5)), "capped");
+    assert_eq!(waits.len(), 64, "the schedule never runs out");
     assert_eq!(
-        policy.wait(u32::MAX),
-        Duration::from_secs(5),
+        waits.last(),
+        Some(&Duration::from_secs(5)),
         "never overflows"
     );
 }
@@ -164,10 +165,7 @@ async fn a_tail_that_failed_to_subscribe_recovers_with_catching_up() -> TestResu
         live: live_bus,
     });
     let fleet = Uuid7::parse(FLEET)?;
-    let fast = Resubscribe {
-        first: Duration::from_millis(1),
-        ceiling: Duration::from_millis(4),
-    };
+    let fast = Resubscribe::between(Duration::from_millis(1), Duration::from_millis(4));
     let live = Live::new(flaky, StreamLimit::new(4)).with_resubscribe(fast);
     let mut tail = live.tail_of(&fleet).await;
     for expected in ["hello", "catching_up"] {
@@ -198,8 +196,6 @@ async fn a_gap_in_the_tail_is_announced() -> TestResult {
     for _ in 0..2 {
         tail.next().await.ok_or("the opening")?;
     }
-    // The first confirmation is the subscription's own; a repeat is a gap.
-    server.gap(&Subject::FleetTail(fleet.clone()));
     server.gap(&Subject::FleetTail(fleet));
     let gap = tokio::time::timeout(Duration::from_secs(1), tail.next())
         .await?
@@ -239,5 +235,62 @@ async fn a_lagging_viewer_is_told_how_much_it_missed() -> TestResult {
         "a lag names what it dropped: {}",
         lagged.data
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_link_on_a_closed_bus_is_never_retried() -> TestResult {
+    let (bus, _server) = afd_bus::test_util::detached()?;
+    bus.shutdown().await?;
+    let live = Live::new(bus, StreamLimit::new(4));
+    let mut link = live.link(Subject::FleetTail(Uuid7::parse(FLEET)?)).await;
+    assert!(link.is_closed());
+    assert!(!link.reopen_if_due().await, "a closed bus is final");
+    assert!(link.subscription().is_none());
+    Ok(())
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refused_link_retries_only_once_its_wait_has_passed() -> TestResult {
+    let (inner, _server) = afd_bus::test_util::detached()?;
+    let flaky = Handle::new(Flaky {
+        refusals: AtomicUsize::new(1),
+        live: inner,
+    });
+    let live = Live::new(flaky, StreamLimit::new(4));
+    let mut link = live.link(Subject::FleetTail(Uuid7::parse(FLEET)?)).await;
+    assert!(link.subscription().is_none() && !link.is_closed());
+    assert!(!link.reopen_if_due().await, "not before the first wait");
+    tokio::time::advance(Duration::from_millis(250)).await;
+    assert!(link.reopen_if_due().await, "then the subscribe is retried");
+    assert!(link.subscription().is_some());
+    Ok(())
+}
+
+#[tokio::test]
+async fn a_transient_loss_is_retried_at_once_and_a_closed_one_never() -> TestResult {
+    let (bus, _server) = afd_bus::test_util::detached()?;
+    let live = Live::new(bus, StreamLimit::new(4));
+    let mut link = live.link(Subject::FleetTail(Uuid7::parse(FLEET)?)).await;
+    let Err(elapsed) = tokio::time::timeout(Duration::ZERO, std::future::pending::<()>()).await
+    else {
+        return Err("a zero deadline elapses".into());
+    };
+    link.lose(&elapsed.into());
+    assert!(!link.is_closed());
+    assert!(
+        link.reopen_if_due().await,
+        "a transient loss retries at once"
+    );
+    let subscription = link.subscription().ok_or("reopened")?;
+    live.bus().ok_or("a bus")?.shutdown().await?;
+    let closed = subscription
+        .recv()
+        .await
+        .err()
+        .ok_or("a shut bus ends it")?;
+    link.lose(&closed);
+    assert!(link.is_closed());
+    assert!(!link.reopen_if_due().await, "a closed bus is final");
     Ok(())
 }

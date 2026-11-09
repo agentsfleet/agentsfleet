@@ -23,7 +23,7 @@ const REPLY_ADDRESS: &str = "{}";
 /// The destination fleet scripted to answer at once.
 const FAST: &str = "0195b4ba-8d3a-7000-8abc-000000000001";
 
-/// Obligation row ids, one per job a test delivers.
+/// The events the jobs answer, one per job a test delivers.
 const JOB_FAST: &str = "0195b4ba-8d3a-7000-8abc-100000000001";
 const JOB_REFUSED: &str = "0195b4ba-8d3a-7000-8abc-100000000002";
 const JOB_RETRIED: &str = "0195b4ba-8d3a-7000-8abc-100000000003";
@@ -104,7 +104,7 @@ async fn test_every_attempt_is_stamped_in_order() {
     let seen = poster.seen();
     let attempts = seen
         .attempts()
-        .get(JOB_RETRIED)
+        .get(&Uuid7::parse(JOB_RETRIED).expect("a fixture job id"))
         .expect("two attempts on one job");
     assert_eq!(attempts.len(), 2);
     assert!(attempts[0].at <= attempts[1].at);

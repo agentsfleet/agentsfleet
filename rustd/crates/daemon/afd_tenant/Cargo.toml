@@ -70,7 +70,6 @@ test-util = [
   # The scripted entropy a suite pins a generated workspace name with.
   "af_crypto/test-util",
   "afd_db/test-util",
-  # The queue refusal a stubbed device-flow surface answers with.
 ]
 
 [dev-dependencies]

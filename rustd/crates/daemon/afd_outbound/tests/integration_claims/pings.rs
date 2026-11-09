@@ -1,6 +1,6 @@
 //! How a worker hears of owed answers: a ping claims at once, a full batch
-//! drains without waiting, and a closed bus leaves the claim pass alone
-//! (M244 §4).
+//! drains without waiting, and a closed bus leaves the claim pass alone, so
+//! a lost ping costs latency and never an answer.
 
 use std::time::Duration;
 
@@ -46,14 +46,14 @@ async fn a_ping_claims_a_full_backlog_without_a_pass() {
 
 // Current-thread: the capture is per thread, and the worker runs on this one.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_claim_the_database_refuses_is_logged_and_retried() {
     let capture = af_core::test_util::trace::Capture::install();
     let ledger = Ledger::create().await;
     ledger.database.close().await;
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     crate::until(|| {
         capture
@@ -85,7 +85,7 @@ async fn a_claim_the_database_refuses_is_logged_and_retried() {
 
 // Current-thread: the capture is per thread, and the worker runs on this one.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_claim_that_takes_a_row_logs_how_many_it_took() {
     let capture = af_core::test_util::trace::Capture::install();
     let ledger = Ledger::create().await;
@@ -93,7 +93,7 @@ async fn a_claim_that_takes_a_row_logs_how_many_it_took() {
     ledger.owe(&lane, "claimed").await;
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     ledger.until_delivered(1).await;
     token.cancel();
@@ -108,10 +108,10 @@ async fn a_claim_that_takes_a_row_logs_how_many_it_took() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_closed_bus_leaves_the_claim_pass() {
     let ledger = Ledger::create().await;
-    let (bus, _server) = afd_bus::test_util::detached().expect("a detached bus");
+    let bus = ledger.bus().await;
     let poster = Recorder::default();
     let token = CancellationToken::new();
     let worker = tokio::spawn(

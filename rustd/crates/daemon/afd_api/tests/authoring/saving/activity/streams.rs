@@ -23,7 +23,7 @@ impl Reader {
             .bus
             .subscribe(&subject)
             .await
-            .expect("the in-process bus subscribes");
+            .expect("the lane's NATS subscribes");
         Self {
             subscription,
             bus: saved.case.bus.clone(),

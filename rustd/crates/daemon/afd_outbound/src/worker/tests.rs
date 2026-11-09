@@ -4,7 +4,7 @@
 use std::future::ready;
 use std::time::Duration;
 
-use af_core::error_code;
+use af_core::error_code::{self, Coded as _};
 use af_core::test_util::trace::{Capture, CapturedEvent};
 use af_crypto::entropy::Entropy;
 use afd_bus::Subject;
@@ -118,30 +118,121 @@ async fn a_closed_wake_is_logged_and_dropped() -> TestResult {
     Ok(())
 }
 
-/// A claim Postgres refuses logs its start and its failure, and no completion.
+/// No line under `event` was logged; a claim that failed never completes.
+fn assert_not_logged(capture: &Capture, event: &str) {
+    assert!(
+        capture
+            .events()
+            .iter()
+            .all(|record| record.field("event") != Some(event)),
+        "nothing was logged under {event}"
+    );
+}
+
+/// Runs `worker` until it logs `event`, then stops it.
+async fn run_until_logged(worker: Worker<Unreached>, capture: &Capture, event: &str) {
+    let token = CancellationToken::new();
+    let watch = async {
+        while capture
+            .events()
+            .iter()
+            .all(|record| record.field("event") != Some(event))
+        {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        token.cancel();
+    };
+    let stopped = tokio::time::timeout(Duration::from_secs(30), async {
+        tokio::join!(worker.run(token.clone()), watch)
+    })
+    .await;
+    assert!(stopped.is_ok(), "the worker never logged {event}");
+}
+
+/// A claim Postgres refuses logs its start, takes nothing and never completes.
 #[tokio::test]
-async fn a_refused_claim_logs_its_start_and_its_failure() {
+async fn a_refused_claim_logs_its_start_and_takes_nothing() -> TestResult {
     let capture = Capture::install();
     let database = afd_db::test_util::unreachable_db();
     let lanes = Lanes::new(posters(), database.clone(), CancellationToken::new());
 
     let claimed = claim_once(&database, &Entropy::new(), &lanes, Via::Ping).await;
 
-    assert_eq!(claimed, None, "a refused claim takes nothing");
+    let failure = claimed.err().ok_or("a refused claim takes nothing")?;
+    assert_eq!(failure.code(), error_code::INTERNAL_DB_UNAVAILABLE);
     let started = capture.only(EVENT_CLAIM_STARTED);
     assert_eq!(started.level, tracing::Level::DEBUG);
     assert_eq!(started.field("via"), Some("ping"));
+    assert_not_logged(&capture, EVENT_CLAIM_COMPLETED);
+    Ok(())
+}
+
+/// A claim token the host cannot draw stops the claim before it reaches
+/// Postgres, as an operation failure rather than an outage.
+#[tokio::test]
+async fn a_refused_draw_claims_nothing() -> TestResult {
+    let capture = Capture::install();
+    let database = afd_db::test_util::unreachable_db();
+    let lanes = Lanes::new(posters(), database.clone(), CancellationToken::new());
+    let (entropy, control) = Entropy::new_mocked();
+    control.fail_next();
+
+    let claimed = claim_once(&database, &entropy, &lanes, Via::Scan).await;
+
+    let failure = claimed.err().ok_or("a claim with no token takes nothing")?;
+    assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);
+    let reason = failure.logged().reason;
+    assert!(
+        reason.starts_with("a claim token could not be drawn"),
+        "the reason names the draw: {reason}"
+    );
+    assert_not_logged(&capture, EVENT_CLAIM_COMPLETED);
+    Ok(())
+}
+
+/// The loop logs a failed claim once at `warn`, under the failure's own code,
+/// and claims again on its next ping or pass.
+#[tokio::test]
+async fn a_failed_claim_is_logged_by_the_loop() -> TestResult {
+    let capture = Capture::install();
+    let (bus, _server) = afd_bus::test_util::detached()?;
+    let worker = Worker::new(
+        afd_db::test_util::unreachable_db(),
+        bus,
+        posters(),
+        Entropy::new(),
+    );
+
+    run_until_logged(worker, &capture, EVENT_CLAIM_FAILED).await;
+
     let failed = capture.only(EVENT_CLAIM_FAILED);
     assert_eq!(failed.level, tracing::Level::WARN);
     assert_eq!(
         failed.field("error_code"),
         Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())
     );
-    assert!(
-        capture
-            .events()
-            .iter()
-            .all(|record| record.field("event") != Some(EVENT_CLAIM_COMPLETED)),
-        "a refused claim never completes"
+    failed.assert_uncoded_reason();
+    assert_not_logged(&capture, EVENT_CLAIM_COMPLETED);
+    Ok(())
+}
+
+/// A refused draw reaches the same line, under the operation-failure code.
+#[tokio::test]
+async fn a_refused_draw_is_logged_by_the_loop() -> TestResult {
+    let capture = Capture::install();
+    let (bus, _server) = afd_bus::test_util::detached()?;
+    let (entropy, control) = Entropy::new_mocked();
+    control.fail_next();
+    let worker = Worker::new(afd_db::test_util::unreachable_db(), bus, posters(), entropy);
+
+    run_until_logged(worker, &capture, EVENT_CLAIM_FAILED).await;
+
+    let failed = capture.only(EVENT_CLAIM_FAILED);
+    assert_eq!(failed.level, tracing::Level::WARN);
+    assert_eq!(
+        failed.field("error_code"),
+        Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
     );
+    failed.assert_uncoded_reason();
+    Ok(())
 }

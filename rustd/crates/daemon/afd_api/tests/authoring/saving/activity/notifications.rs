@@ -6,7 +6,7 @@ use http::{Method, StatusCode};
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn failed_notifications_keep_access_and_memory_committed_and_reloadable() {
     let mut saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     saved.case.router = saved

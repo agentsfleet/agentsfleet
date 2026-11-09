@@ -1,4 +1,4 @@
-//! Workspace stream opening over live Postgres and an in-process bus.
+//! Workspace stream opening over live Postgres and the lane's NATS.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -70,7 +70,7 @@ async fn assert_revoked_wall_closes(body: &mut BodyDataStream) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_workspace_stream_announces_its_live_fleet_set() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
@@ -80,7 +80,7 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())
-    .with_live_bus(harness::bus());
+    .with_live_bus(harness::bus().await);
     let ownership = fleet.ownership();
     let fleet_store = fleet.fleet_store();
     let router = fleet.router();
@@ -117,7 +117,7 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
 /// out (`fleet_ids` carries the fleet added since the opening) and the map is
 /// empty, so a client leaves what it has standing.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
     let fixture = Fixture::with_pool(&[
         (POOL_SIZE_KNOB, ONE_CONNECTION),
@@ -171,7 +171,7 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
 /// the second is a `hello` carrying where every fleet stands now — the
 /// dropped frames are exactly the ones that moved the counters.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     let mut wall = Wall::open(Fixture::create().await).await;
     wall.publish(GAP_FRAMES).await;

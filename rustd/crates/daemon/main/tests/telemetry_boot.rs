@@ -28,7 +28,8 @@ async fn collect(
 }
 
 fn environment(database: &str, endpoint: &str) -> MapEnv {
-    let bus = ProcessEnv.get("TEST_NATS_URL").expect("lane bus seeds");
+    let bus = afd_bus::test_util::lane_url()
+        .expect("the lane's NATS seeds: run through make test-integration-rustd");
     environment_over(database, &bus, endpoint)
 }
 

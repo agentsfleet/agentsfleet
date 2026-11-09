@@ -1,7 +1,7 @@
 //! What the gate plane tells the fleet's live tail: a human has been asked.
 //!
-//! A park writes its row and its reference and then says so on
-//! `fleet:{id}:activity`, count included, so a console watching the fleet
+//! A park writes its row and its reference and then says so on the fleet's
+//! tail subject, `af.fleet.{id}.tail`, count included, so a console watching the fleet
 //! shows the gate waiting without a read. Beside the lifecycle suite rather
 //! than inside it, so each file stays about one property.
 #![cfg(feature = "test-util")]
@@ -28,8 +28,8 @@ const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 
 /// The policy that parks this fixture's event.
 ///
-/// A write binding parked every first-encounter event until M202 and this suite
-/// used one. It no longer parks anything — the standing integration grant
+/// A write binding once parked every first-encounter event and this suite used
+/// one. It no longer parks anything — the standing integration grant
 /// authorises the write — so the gate is opened by an authored rule instead.
 /// What is under test here is the ANNOUNCEMENT, not which policy raised it.
 const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
@@ -40,16 +40,16 @@ const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixt
 /// names; the count rides the frame so the console can show the gate waiting
 /// without a read of its own.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let bus = bus();
+    let bus = bus().await;
     let gates = Gates::new(fixture.database.clone(), bus.clone(), Entropy::new());
     let mut tail = bus
         .subscribe(&Subject::FleetTail(fixture.fleet.clone()))
         .await
-        .expect("the in-process bus subscribes");
+        .expect("the lane's NATS subscribes");
     let event = mint_id();
 
     assert_eq!(

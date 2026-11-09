@@ -1,4 +1,5 @@
-//! Each setup owns its Postgres rows and its bus, including on retry.
+//! Each setup owns its Postgres rows and its connection to the lane's NATS,
+//! including on retry.
 
 use super::super::{
     fixture::{Fixture, now},
@@ -37,17 +38,19 @@ pub(super) struct Case {
 
 impl Case {
     pub(super) async fn create() -> Self {
-        Self::over(Fixture::create().await)
+        Self::over(Fixture::create().await).await
     }
 
     /// A case with a database of its own, for a proof whose fault would reach
     /// every other proof's rows.
     pub(super) async fn isolated() -> Self {
-        Self::over(Fixture::isolated().await)
+        Self::over(Fixture::isolated().await).await
     }
 
-    fn over(base: Fixture) -> Self {
-        let (bus, _server) = afd_bus::test_util::detached().expect("in-process bus");
+    async fn over(base: Fixture) -> Self {
+        let bus = afd_bus::test_util::lane()
+            .await
+            .expect("the lane's NATS: run through make test-integration-rustd");
         let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
             .expect("fixture encryption key");
         let setup = Setup::new(base.drafts.clone(), Arc::new(key));

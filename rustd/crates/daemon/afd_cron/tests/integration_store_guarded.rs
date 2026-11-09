@@ -47,7 +47,7 @@ const fn fleet_made(fleet: &af_core::id::Uuid7) -> NewSchedule<'_> {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_create_under_a_guard_that_no_longer_holds_writes_nothing() {
     let lane = CronLane::open().await;
     let fleet = lane.fleet_id();
@@ -83,7 +83,7 @@ async fn a_create_under_a_guard_that_no_longer_holds_writes_nothing() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_change_under_a_guard_that_no_longer_holds_writes_nothing() {
     let lane = CronLane::open().await;
     let settled = lane.settled("key-guarded-change", "0 9 * * 1").await;

@@ -2,11 +2,11 @@
 //!
 //! # Why an in-process poster and not a loopback vendor
 //!
-//! The spec pointed at `hanging_queue.rs` as the model for a stub vendor. That
-//! server exists to prove the HTTP client's deadline, which is not what this
-//! lane measures: head-of-line cost and retry occupancy are properties of the
-//! worker's LOOP — one job at a time, the retry ladder awaited inline — and
-//! the loop takes its poster through the [`Deliver`] trait. Scripting the trait
+//! A loopback stub vendor would prove the HTTP client's deadline, which is
+//! not what this lane measures: head-of-line cost and retry occupancy are
+//! properties of the worker's LOOP — one job at a time, the retry ladder
+//! awaited inline — and the loop takes its poster through the [`Deliver`]
+//! trait. Scripting the trait
 //! drives the real `Worker` with the real ladder and skips a socket that would
 //! only have added its own latency to the number.
 //!
@@ -37,6 +37,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use af_core::id::Uuid7;
 use afd_outbound::Outgoing;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Verdict};
@@ -75,7 +76,7 @@ impl Attempt {
 /// Everything the poster saw of THIS run's jobs, keyed by the event each answers.
 #[derive(Debug, Default)]
 pub struct Seen {
-    attempts: HashMap<String, Vec<Attempt>>,
+    attempts: HashMap<Uuid7, Vec<Attempt>>,
     /// Jobs answered with a foreign destination: left by an earlier run.
     foreign: u64,
 }
@@ -83,7 +84,7 @@ pub struct Seen {
 impl Seen {
     /// Every attempt, in the order it happened, per job.
     #[must_use]
-    pub const fn attempts(&self) -> &HashMap<String, Vec<Attempt>> {
+    pub const fn attempts(&self) -> &HashMap<Uuid7, Vec<Attempt>> {
         &self.attempts
     }
 
@@ -161,14 +162,14 @@ impl Scripted {
     /// answer to it will settle the job.
     fn stamp(
         &self,
-        id: &str,
+        id: &Uuid7,
         behaviour: Behaviour,
         at: Instant,
         delay: Duration,
         terminal: bool,
     ) -> bool {
         let attempts_so_far = if let Ok(mut seen) = self.seen.lock() {
-            let attempts = seen.attempts.entry(id.to_owned()).or_default();
+            let attempts = seen.attempts.entry(id.clone()).or_default();
             attempts.push(Attempt {
                 at,
                 behaviour,
@@ -206,7 +207,7 @@ impl Deliver for Scripted {
         let settles = if let Some(behaviour) = scripted {
             // One obligation per (fleet, event), so the event names the job.
             self.stamp(
-                job.event_id.as_str(),
+                &job.event_id,
                 behaviour,
                 at,
                 delay,

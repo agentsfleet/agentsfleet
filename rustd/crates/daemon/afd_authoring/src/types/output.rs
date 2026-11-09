@@ -243,7 +243,7 @@ mod tests {
         }
     }
 
-    /// Spec Dimension 4.5: the runner wire lost its deletion generation, and
+    /// The runner wire lost its deletion generation, and
     /// the draft message response kept the `operation_id` the message was
     /// accepted under.
     #[test]

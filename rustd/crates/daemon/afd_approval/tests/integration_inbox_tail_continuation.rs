@@ -31,7 +31,7 @@ use crate::tail_watch::{
 /// continuation, then `gate_resolved` for the answer, and the count on the
 /// answer says the sibling still waits.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     let lane = Lane::isolated().await;
 
@@ -99,7 +99,7 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
 
 /// Approval and its continuation commit even when notification fails.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     let lane = Lane::isolated().await;
     let inbox = Inbox::new(
@@ -146,7 +146,7 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
 /// second resolve is stopped by the gate's `WHERE status = 'pending'` guard
 /// before `continue_from` is ever reached.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_converged_continuation_announces_nothing() {
     let lane = Lane::isolated().await;
 

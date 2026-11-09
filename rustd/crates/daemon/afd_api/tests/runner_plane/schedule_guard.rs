@@ -48,7 +48,7 @@ fn pause() -> Change<'static> {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_guarded_change_refuses_an_unheld_lease_and_finds_no_unknown_schedule() {
     let lane = TestDatabase::shared();
     let database = lane.open(DbRole::Api, &[]).await;
@@ -64,7 +64,7 @@ async fn a_guarded_change_refuses_an_unheld_lease_and_finds_no_unknown_schedule(
         ),
         Fire::new(afd_admission::Admissions::for_tests(
             database.clone(),
-            harness::bus(),
+            harness::bus().await,
         )),
         Entropy::new(),
     );

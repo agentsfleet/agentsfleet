@@ -31,7 +31,7 @@ use crate::rows::Row;
 /// one response and the row keeps a hash of it, so a database read — a backup, a
 /// replica, an operator with `SELECT` — cannot recover a working credential.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_enrolment_stores_only_the_digest() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 4);
@@ -74,7 +74,7 @@ async fn test_enrolment_stores_only_the_digest() {
 /// What the operator is echoed and what the host will apply are the same value,
 /// which is only true if the clamp lands on the ROW rather than on the reply.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_enrolment_stores_the_clamped_assignment() {
     let fixtures = Fixtures::create().await;
     // Far past the ceiling: a fat-fingered value must not fork unbounded
@@ -127,7 +127,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
 /// there is no evidence, so the lease gate refuses work rather than assuming
 /// the cage exists.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_enrolment_opens_degraded_with_its_audit_row() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
@@ -165,7 +165,7 @@ async fn test_enrolment_opens_degraded_with_its_audit_row() {
 /// make a dead host look alive, which is a property of the statement rather
 /// than of a handler remembering not to ask.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_the_self_read_never_bumps_liveness() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 2);

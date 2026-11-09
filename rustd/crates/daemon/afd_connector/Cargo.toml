@@ -30,7 +30,6 @@ afd_db.workspace = true
 # `compute_peppered` is the primitive: a connect signing secret is an
 # operator-supplied string rather than a fixed-width key.
 af_crypto.workspace = true
-# Where the single-use nonce lives for as long as a connect round-trip does.
 # Where a grant is sealed. The KEY-holding half: the platform app credentials
 # have to be opened to spend them at the vendor.
 afd_vault.workspace = true

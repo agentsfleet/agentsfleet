@@ -4,12 +4,8 @@ use async_nats::ServerInfo;
 
 use crate::{Result, error::ErrorKind};
 
-/// The tail's largest batch: a final reply's inline text, 64 KiB
-/// (`afd_fleet::lease::bracket::MAX_INLINE_FINAL_REPLY_BYTES`).
-const TAIL_BATCH_BYTES: usize = 64 * 1024;
-/// The draft stream's largest frame, 32 KiB
-/// (`afd_api_tenant::handler::draft::stream::body::MAX_FRAME_BYTES`).
-const DRAFT_FRAME_BYTES: usize = 32 * 1024;
+use crate::{DRAFT_FRAME_BYTES, TAIL_BATCH_BYTES};
+
 /// Room for the JSON envelope around the largest frame.
 const ENVELOPE_BYTES: usize = 64 * 1024;
 

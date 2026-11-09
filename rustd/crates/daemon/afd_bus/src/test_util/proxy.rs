@@ -12,7 +12,10 @@ use tokio::{
     task::{AbortHandle, JoinHandle},
 };
 
-pub(crate) struct Proxy {
+/// A cut-able relay on a fresh local port. Dropping it stops accepting; a
+/// relay already open runs until either side closes.
+#[derive(Debug)]
+pub struct Proxy {
     port: u16,
     cut: Arc<AtomicBool>,
     relays: Arc<Mutex<Vec<AbortHandle>>>,
@@ -21,7 +24,10 @@ pub(crate) struct Proxy {
 
 impl Proxy {
     /// Relay a fresh local port to `backend` on 127.0.0.1.
-    pub(crate) async fn start(backend: u16) -> std::io::Result<Self> {
+    ///
+    /// # Errors
+    /// The local listener could not bind.
+    pub async fn start(backend: u16) -> std::io::Result<Self> {
         let listener = TcpListener::bind("127.0.0.1:0").await?;
         let port = listener.local_addr()?.port();
         let cut = Arc::new(AtomicBool::new(false));
@@ -40,19 +46,22 @@ impl Proxy {
         })
     }
 
-    pub(crate) const fn port(&self) -> u16 {
+    /// The local port a client dials to reach the backend through the relay.
+    #[must_use]
+    pub const fn port(&self) -> u16 {
         self.port
     }
 
     /// Drop every live connection and refuse new ones until [`Self::restore`].
-    pub(crate) async fn cut(&self) {
+    pub async fn cut(&self) {
         self.cut.store(true, Ordering::SeqCst);
         for relay in self.relays.lock().await.drain(..) {
             relay.abort();
         }
     }
 
-    pub(crate) fn restore(&self) {
+    /// Accept connections again; the clients cut off reconnect on their own.
+    pub fn restore(&self) {
         self.cut.store(false, Ordering::SeqCst);
     }
 }

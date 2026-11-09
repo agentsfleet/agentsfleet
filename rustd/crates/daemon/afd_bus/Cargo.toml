@@ -15,7 +15,10 @@ categories.workspace = true
 workspace = true
 
 [features]
-test-util = []
+# The detached and unreachable fixtures, the lane's live connection, and the
+# cut-able TCP relay (`tokio`'s `net` and `io-util`). The live suite reads the
+# gap counter back through `af_observability`'s capture.
+test-util = ["af_observability/test-util", "tokio/net", "tokio/io-util"]
 
 [dependencies]
 af_core.workspace = true
@@ -39,3 +42,10 @@ af_core = { workspace = true, features = ["test-util"] }
 # Reads agentsfleet_bus_gaps_total back in the live suite.
 af_observability = { workspace = true, features = ["test-util"] }
 tokio = { workspace = true, features = ["net", "io-util"] }
+
+# Reaches the lane's seeds, connection and relay through `test_util`, the one
+# place that holds them.
+[[test]]
+name = "nats_suite"
+path = "tests/nats_suite.rs"
+required-features = ["test-util"]

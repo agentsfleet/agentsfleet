@@ -1,10 +1,11 @@
-//! How a delivery cycle ends: refused, retried, spent, renewed or lapsed
-//! (M244 §4).
+//! How a delivery cycle ends: refused, retried, spent, renewed or lapsed,
+//! each matched to the holder's token so a lapsed holder writes nothing.
 
 use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
 use afd_outbound::lanes::MAX_DELIVERY_CYCLES;
+use afd_outbound::obligation::AbandonReason;
 use tokio_util::sync::CancellationToken;
 
 use crate::poster::Recorder;
@@ -21,27 +22,30 @@ const IN_FLIGHT: Duration = Duration::from_millis(800);
 const FAST_RENEW: Duration = Duration::from_millis(50);
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_refused_answer_is_abandoned_once() {
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
     let event = ledger.owe(&lane, "refused").await;
     let poster = Recorder::refusing(event.clone());
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     let row = ledger.until(&event, |row| row.abandoned).await;
     token.cancel();
     worker.await.expect("the worker stops");
 
-    assert_eq!(row.abandon_reason.as_deref(), Some("refused"));
+    assert_eq!(
+        row.abandon_reason.as_deref(),
+        Some(AbandonReason::Refused.as_str())
+    );
     assert!(!row.delivered, "an abandoned answer is not delivered");
     assert_eq!(poster.attempts_of(&event), 1, "a refusal is not retried");
     ledger.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unknown_connector_is_abandoned_unaddressable() {
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
@@ -54,26 +58,29 @@ async fn an_unknown_connector_is_abandoned_unaddressable() {
     .await;
     let poster = Recorder::default();
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     let row = ledger.until(&event, |row| row.abandoned).await;
     token.cancel();
     worker.await.expect("the worker stops");
 
-    assert_eq!(row.abandon_reason.as_deref(), Some("unaddressable"));
+    assert_eq!(
+        row.abandon_reason.as_deref(),
+        Some(AbandonReason::Unaddressable.as_str())
+    );
     assert_eq!(poster.attempts_of(&event), 0, "no poster is tried");
     ledger.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_retryable_cycle_is_released_due_later() {
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
     let event = ledger.owe(&lane, "retried").await;
     let poster = Recorder::failing(event.clone());
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     let row = ledger.until(&event, |row| row.due_later).await;
     token.cancel();
@@ -86,7 +93,7 @@ async fn a_retryable_cycle_is_released_due_later() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn spent_cycles_abandon_the_answer() {
     const _: () = assert!(MAX_DELIVERY_CYCLES == 12, "the fixture seeds one short");
     let ledger = Ledger::create().await;
@@ -100,19 +107,22 @@ async fn spent_cycles_abandon_the_answer() {
     .await;
     let poster = Recorder::failing(event.clone());
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     let row = ledger.until(&event, |row| row.abandoned).await;
     token.cancel();
     worker.await.expect("the worker stops");
 
-    assert_eq!(row.abandon_reason.as_deref(), Some("cycles_exhausted"));
+    assert_eq!(
+        row.abandon_reason.as_deref(),
+        Some(AbandonReason::CyclesExhausted.as_str())
+    );
     assert_eq!(row.attempt_count, MAX_DELIVERY_CYCLES);
     ledger.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_slow_delivery_renews_its_claim() {
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;
@@ -122,6 +132,7 @@ async fn a_slow_delivery_renews_its_claim() {
     let worker = tokio::spawn(
         ledger
             .worker(&poster, POLL)
+            .await
             .with_claim_renew(FAST_RENEW)
             .run(token.clone()),
     );
@@ -148,7 +159,7 @@ fn lapsed(capture: &Capture, write: &str) -> bool {
 // Current-thread: the capture is per thread, and every task the worker spawns
 // runs on this one.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_renewal_that_finds_the_row_taken_ends_the_cycle() {
     let capture = Capture::install();
     let ledger = Ledger::create().await;
@@ -159,6 +170,7 @@ async fn a_renewal_that_finds_the_row_taken_ends_the_cycle() {
     let worker = tokio::spawn(
         ledger
             .worker(&poster, POLL)
+            .await
             .with_claim_renew(FAST_RENEW)
             .run(token.clone()),
     );
@@ -180,7 +192,7 @@ async fn a_renewal_that_finds_the_row_taken_ends_the_cycle() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_lapsed_holder_neither_stamps_nor_releases() {
     let capture = Capture::install();
     let ledger = Ledger::create().await;
@@ -189,7 +201,7 @@ async fn a_lapsed_holder_neither_stamps_nor_releases() {
     let retried = ledger.owe(&b, "released late").await;
     let poster = Recorder::failing(retried.clone()).with_slow(Duration::from_millis(300));
     let token = CancellationToken::new();
-    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).await.run(token.clone()));
 
     until(|| poster.attempts_of(&delivered) == 1 && poster.attempts_of(&retried) == 1).await;
     ledger.steal(&delivered).await;

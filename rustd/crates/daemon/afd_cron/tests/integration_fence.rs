@@ -51,7 +51,7 @@ const NO_EDIT: Change<'static> = Change {
 };
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_claim_takes_the_token_and_moves_the_version() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-claim", "0 3 * * *").await;
@@ -77,7 +77,7 @@ async fn a_claim_takes_the_token_and_moves_the_version() {
 
 /// The property the whole table exists for.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_second_syncer_cannot_take_a_schedule_the_first_still_holds() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-contended", "0 3 * * *").await;
@@ -106,7 +106,7 @@ async fn a_second_syncer_cannot_take_a_schedule_the_first_still_holds() {
 
 /// A syncer that died must not hold the row forever.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_lease_that_ran_out_releases_the_row_to_the_next_syncer() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-expired", "0 3 * * *").await;
@@ -139,7 +139,7 @@ async fn a_lease_that_ran_out_releases_the_row_to_the_next_syncer() {
 /// stamp plus `SYNC_LEASE`, give or take the statement's run time, so a
 /// syncer's wall clock cannot widen or shorten it.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_lease_is_set_on_the_database_clock() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-lease-clock", "0 3 * * *").await;
@@ -165,7 +165,7 @@ async fn a_lease_is_set_on_the_database_clock() {
 /// no token, and a syncer arriving in that window would push an intent nobody
 /// had claimed responsibility for.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_claim_carrying_an_edit_applies_it_and_takes_the_fence_together() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-edit", "0 3 * * *").await;
@@ -199,7 +199,7 @@ async fn a_claim_carrying_an_edit_applies_it_and_takes_the_fence_together() {
 
 /// An edit cannot jump the queue while another syncer holds the row.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn an_edit_is_refused_while_another_syncer_holds_the_row() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-edit-held", "0 3 * * *").await;
@@ -241,7 +241,7 @@ async fn an_edit_is_refused_while_another_syncer_holds_the_row() {
 
 /// A schedule is addressed by fleet AND id, so another fleet cannot reach it.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_schedule_cannot_be_claimed_through_a_fleet_that_does_not_own_it() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;

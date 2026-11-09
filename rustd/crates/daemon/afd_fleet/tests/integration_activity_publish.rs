@@ -1,4 +1,4 @@
-//! Dimension 4.1's failure mode — the live tail is best-effort, and proves it.
+//! The live tail is best-effort, and this suite proves it.
 //!
 //! One claim, and it is the one a runner's whole run depends on: a bus that
 //! will not take a telemetry frame must not fail the verb that forwarded it.
@@ -149,7 +149,7 @@ async fn test_first_chunk_records_active_lease_stages() {
     expired.fixtures.cleanup().await;
 }
 
-/// Dimension 4.1 (failure mode) — an unreachable bus does not fail the verb.
+/// An unreachable bus does not fail the verb.
 ///
 /// The runner is told the frames were RECEIVED, because they were: the lease
 /// resolved, the runner owns it, and everything after that is telemetry. What
@@ -174,7 +174,7 @@ async fn test_activity_publish_bus_down() {
     );
 }
 
-/// Dimension 4.1 (failure mode) — the ownership check still runs first.
+/// With an unreachable bus, the ownership check still runs first.
 ///
 /// The half a "never fails" claim could quietly break. If an unreachable bus
 /// short-circuited the verb, a runner naming a lease it does not hold would get
@@ -238,8 +238,7 @@ async fn test_bracket_publish_bus_down_does_not_fail_the_closing() {
     );
 }
 
-/// Dimension 1.3 — the closing counts the fleet's pending gates, and only
-/// those.
+/// The closing counts the fleet's pending gates, and only those.
 ///
 /// The count on a completion is what the strip shows beside "approvals
 /// waiting", so it is proven off zero: one pending gate and one answered gate

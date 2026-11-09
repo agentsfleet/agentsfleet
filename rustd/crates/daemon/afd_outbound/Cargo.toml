@@ -14,8 +14,17 @@ categories.workspace = true
 [features]
 # M-TEST-UTIL. Unlocks `error::one_of_each_kind`, the samples a crate that
 # wraps this one's error renders in its own error-surface suite, so its idea of
-# a ledger outage cannot drift from this crate's.
-test-util = []
+# a ledger outage cannot drift from this crate's. It forwards the flag to every
+# dependency whose `test_util` this crate's own suites reach, so the crate builds
+# and tests alone rather than through workspace feature unification.
+test-util = [
+    "af_core/test-util",
+    "af_crypto/test-util",
+    "af_observability/test-util",
+    "afd_bus/test-util",
+    "afd_connector/test-util",
+    "afd_db/test-util",
+]
 
 [dependencies]
 # The registry codes a failed delivery is logged under, and the identifiers a
@@ -69,11 +78,16 @@ afd_connector = { workspace = true, features = ["test-util"] }
 # from, and the vault the bot token is opened out of.
 afd_db = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
+# The fleet status the claim suite's seeded fleets carry, from the crate that
+# owns the stored vocabulary.
+afd_state.workspace = true
 # The ledger's stamps, read back as instants: the suites compare the
 # `TIMESTAMPTZ` columns the database wrote.
 jiff.workspace = true
 # The `tracing` capture the worker's failure-line test reads a `reason` back through.
 af_core = { workspace = true, features = ["test-util"] }
+# The mocked entropy source the claim loop's refused-draw test is driven by.
+af_crypto = { workspace = true, features = ["test-util"] }
 # `rt-multi-thread` because the worker is a spawned task raced against a
 # cancellation token, and a current-thread runtime interleaving the two politely
 # would prove nothing about a shutdown.

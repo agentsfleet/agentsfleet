@@ -10,7 +10,7 @@ use std::sync::{
 use tokio::sync::Barrier;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn one_hundred_concurrent_saves_converge_on_one_retained_fleet() {
     const CALLERS: usize = 100;
     let c = Arc::new(Case::create().await);
