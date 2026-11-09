@@ -6,6 +6,7 @@ use af_observability::{
 };
 use tokio::sync::watch;
 use tokio_util::task::AbortOnDropHandle;
+use tracing::{Instrument as _, instrument::WithSubscriber as _};
 
 /// Live native counters sampled without calling an exporter from a QUIC callback.
 #[derive(Clone, Copy, Debug, Default)]
@@ -71,14 +72,21 @@ impl Sampler {
 }
 
 /// A connection owns this task and joins it after the native driver is dropped.
+///
+/// A spawned task inherits neither the opener's span nor its subscriber, so
+/// both are carried in: the negotiated-group record then names the session it
+/// belongs to, as the HTTP/2 path's inline record does.
 pub(super) fn observe(
     samples: watch::Receiver<NetworkStats>,
     security: watch::Receiver<Option<crate::tls::KeyExchange>>,
     peer: StreamPeer,
 ) -> AbortOnDropHandle<()> {
-    AbortOnDropHandle::new(tokio::spawn(async move {
+    let observing = async move {
         tokio::join!(record_network(samples), record_security(security, peer));
-    }))
+    };
+    AbortOnDropHandle::new(tokio::spawn(
+        observing.in_current_span().with_current_subscriber(),
+    ))
 }
 
 async fn record_network(mut samples: watch::Receiver<NetworkStats>) {
