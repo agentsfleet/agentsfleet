@@ -1,7 +1,7 @@
 //! §1 — a running fleet keeps its own schedules on the daemon's plane:
 //! creating, listing, the fence and the fleet's own cap.
 //!
-//! Each case boots the daemon against the lane's Postgres and Dragonfly, with
+//! Each case boots the daemon against the lane's Postgres and NATS, with
 //! `QSTASH_URL` pointed at a fake scheduler that records what it is told, so
 //! "reconciled to `QStash`" is a call this suite can count rather than a sync
 //! state it infers. The fleet is always the lease's: no body here names one.
@@ -29,7 +29,7 @@ use crate::verbs::{FakeQStash, Told};
 /// Dimension 1.1. A valid create stores a `fleet`-sourced row, registers it
 /// once, and the fleet's own list returns it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_creates_its_own_schedule() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -59,7 +59,7 @@ async fn test_fleet_creates_its_own_schedule() {
 /// One run may create two schedules at once: each is keyed by its own id, so
 /// neither is refused as the other's duplicate.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_one_lease_creates_two_schedules_at_once() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -80,7 +80,7 @@ async fn test_one_lease_creates_two_schedules_at_once() {
 /// Dimension 1.2. A holder the fleet has moved past stores nothing and reads
 /// nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_stale_fence_schedule_refused() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -100,7 +100,7 @@ async fn test_stale_fence_schedule_refused() {
 /// Dimension 1.3. A fleet holding its sixteen refuses the seventeenth, names
 /// the state, and the scheduler is never asked.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedule_cap_refuses_with_code() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -122,7 +122,7 @@ async fn test_schedule_cap_refuses_with_code() {
 /// The fleet's cap counts only what the fleet made: sixteen of a person's
 /// schedules beside fifteen of its own still leave it one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_cap_counts_only_its_own_schedules() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -147,7 +147,7 @@ async fn test_fleet_cap_counts_only_its_own_schedules() {
 /// A scheduler that is down: the schedule is saved, answers 201 with its sync
 /// state showing, and is the fleet's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedule_saved_when_qstash_is_down() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::refusing(503).await;

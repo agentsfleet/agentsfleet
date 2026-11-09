@@ -6,10 +6,9 @@ use jiff::Timestamp;
 
 /// A lease plane that by default answers no-work.
 ///
-/// The production plane holds a Dragonfly connection that is opened by CONNECTING,
-/// so these suites cannot build one — and should not: what they prove is the
-/// router's guard, scope and refusal matrix, which is decided BEFORE any verb
-/// runs. A stub that answers each verb the same way keeps that boundary honest,
+/// The production plane holds a bus connection beside its stores, and these
+/// suites should not build one: what they prove is the router's guard, scope
+/// and refusal matrix, which is decided BEFORE any verb runs. A stub that answers each verb the same way keeps that boundary honest,
 /// because a suite here cannot accidentally start asserting on lease
 /// behaviour that belongs to `afd_fleet`'s own integration lane.
 ///

@@ -2,7 +2,7 @@
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`, which supplies `TEST_DATABASE_URL` and
-//! `TEST_DRAGONFLY_URL`.
+//! `TEST_NATS_URL`.
 //!
 //! # "Stopped Postgres", without stopping Postgres
 //!

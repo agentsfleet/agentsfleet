@@ -8,7 +8,6 @@ use async_trait::async_trait;
 use serde::Serialize;
 
 mod command;
-pub mod dragonfly;
 pub mod error;
 pub mod nats;
 mod subject;

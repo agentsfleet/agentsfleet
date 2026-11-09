@@ -166,7 +166,7 @@ fn kill(c: &Arc<Case>, fleet: &Uuid7, tag: String) -> JoinHandle<Result<SavedFle
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_kill_committed_while_activation_waits_refuses_that_activation() {
     let c = Arc::new(Case::create().await);
     let Installing {
@@ -238,7 +238,7 @@ async fn kill_after_table_lock(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_activation_committed_first_makes_the_concurrent_kill_stale() {
     let c = Arc::new(Case::create().await);
     let Installing {

@@ -12,16 +12,12 @@ use std::time::Instant;
 use af_crypto::entropy::Entropy;
 use afd_admission::Admissions;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_events::Steer;
 
 use super::append_until;
 use crate::abort::{Abort, CONSECUTIVE_FAILURES};
 
-/// Port 1 is reserved and unbound, so every command is refused at once.
-const NOWHERE: &str = "redis://127.0.0.1:1";
-
-/// A Postgres nobody listens on either.
+/// A Postgres nobody listens on.
 const NO_DATABASE: &str = "postgres://nobody:nobody@127.0.0.1:1/nothing?sslmode=disable";
 
 /// How long an acquire waits before refusing: short, so a refused append
@@ -36,14 +32,9 @@ fn refusing_steer() -> Steer {
         ("DATABASE_ACQUIRE_TIMEOUT_MS", ACQUIRE_TIMEOUT_MS),
     ]);
     let pool = afd_db::config::PoolConfig::resolve(&env, role).expect("a URL resolves");
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail");
     Steer::new(Admissions::new(
         afd_db::Db::unreachable(&pool),
-        afd_bus::dragonfly::publisher(queue),
+        afd_bus::test_util::unreachable(),
         Entropy::new(),
     ))
 }

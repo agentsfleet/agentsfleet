@@ -29,7 +29,7 @@ async fn running_private_answer_arrives_before_durable_completion() {
     let messages = crate::harness::json_body(response).await;
     assert!(!messages.to_string().contains("incremental answer"));
     drop(body);
-    assert_eq!(live.hub.readers(&live.channel()), 0);
+    assert_eq!(live.readers(), 0);
     live.cleanup().await;
 }
 
@@ -76,7 +76,7 @@ async fn malformed_unbounded_foreign_and_nonrunning_deltas_are_withheld() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
     for raw in ["not-json".to_owned(), "x".repeat(32769)] {
-        live.server.publish(&live.channel(), &raw);
+        live.server.publish(&live.subject(), &raw);
     }
     for (field, invalid) in [
         ("draft_id", json!(super::super::mint())),

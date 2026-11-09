@@ -1,7 +1,7 @@
 //! The second daemon replica, and the expiry it re-admits work after.
 //!
-//! Its own pool and Dragonfly connection over the lane both replicas share, so
-//! the two meet only where two deployed replicas meet: rows and queue keys.
+//! Its own pool over the lane both replicas share, and its own bus, so the two
+//! meet only where two deployed replicas meet: rows.
 
 use super::fixture::Running;
 use af_core::{clock, id::Uuid7};
@@ -25,7 +25,9 @@ impl Replica {
         let database = lane.open(DbRole::Api, &[]).await;
         let leases = Leases::new(
             database.clone(),
-            afd_bus::dragonfly::publisher(crate::queue::connect().await),
+            afd_bus::test_util::detached()
+                .expect("an in-process bus opens")
+                .0,
             Entropy::new(),
         );
         Self {

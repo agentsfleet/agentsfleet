@@ -40,7 +40,7 @@ const HOLDER: &str = "SELECT last_runner_id FROM runner.fleet_slots WHERE fleet_
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_claim_that_waited_on_a_live_claim_takes_nothing() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,

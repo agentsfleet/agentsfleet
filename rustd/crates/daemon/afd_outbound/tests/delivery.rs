@@ -8,11 +8,9 @@
 //!
 //! # Why the retry is exercised through `deliver_with_retry` and not `run`
 //!
-//! `Worker::run` needs a live Dragonfly: an `OutboundReader` owns a socket, and
-//! there is no in-memory stand-in for one that would prove anything about a
-//! consumer group. The loop's Dragonfly half is the integration lane's
-//! (`test_outbound_delivery_retry`, `test_outbound_shutdown_no_loss`). What is
-//! provable here without a server is the retry POLICY, which is the part that
+//! `Worker::run` claims rows of `fleet.obligations`, so its loop needs a live
+//! Postgres, and `tests/integration_claims/` grades it on the integration lane.
+//! What is provable here without a server is the retry POLICY, which is the part that
 //! decides what a vendor sees — and it is worth proving here because the
 //! integration lane cannot make Slack answer 429 three times either.
 
@@ -203,9 +201,8 @@ async fn test_a_permanent_refusal_is_offered_once() {
 /// The attempt that is running finishes, and no further one starts. That is
 /// what bounds a shutdown at one vendor deadline rather than at the whole
 /// retry budget, and it is what lets the supervisor join inside its timeout.
-/// The job is left unacknowledged by the caller on this verdict, which is the
-/// "re-queues" half — proven against a real pending list in the integration
-/// lane, since only Dragonfly can say what is pending.
+/// The caller releases the job's claim on this verdict, which is the
+/// "re-queues" half: another replica takes the row on its next claim pass.
 #[tokio::test]
 async fn test_a_shutdown_stops_the_retry_without_abandoning_the_attempt() {
     let token = tokio_util::sync::CancellationToken::new();

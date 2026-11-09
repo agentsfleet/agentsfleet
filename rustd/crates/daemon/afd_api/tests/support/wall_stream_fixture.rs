@@ -18,8 +18,7 @@ use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_dragonfly::SubscriptionHub;
-use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
+use afd_bus::Subject;
 use afd_fleet_lifecycle::Fleets;
 use axum::body::BodyDataStream;
 
@@ -217,45 +216,39 @@ pub(crate) struct Wall {
     pub(crate) fixture: Fixture,
     pub(crate) ownership: OneWorkspace,
     pub(crate) store: Fleets,
-    pub(crate) hub: SubscriptionHub,
+    /// The bus the wall's router streams through, and the one a test publishes on.
+    pub(crate) bus: afd_bus::Handle,
     pub(crate) body: BodyDataStream,
-    pub(crate) publisher: FleetStreams,
 }
 
 impl Wall {
     pub(crate) async fn open(fixture: Fixture) -> Self {
         fixture.seed().await;
-        let hub = harness::live_hub().await;
+        let bus = harness::bus();
         let fleet = Fleet::live(
             fixture.database.clone(),
             SUBJECT,
             ScopeSet::from_scopes(&Scope::ALL),
         )
         .with_owned_workspace(fixture.workspace.clone())
-        .with_live_hub(hub.clone());
+        .with_live_bus(bus.clone());
         let ownership = fleet.ownership();
         let store = fleet.fleet_store();
         let body = open_stream(&fleet.router(), &fixture).await;
-        let publisher = FleetStreams::new(
-            afd_dragonfly::Dragonfly::connect(&harness::dragonfly_config())
-                .await
-                .expect("the lane's Dragonfly accepts a publisher"),
-        );
         Self {
             fixture,
             ownership,
             store,
-            hub,
+            bus,
             body,
-            publisher,
         }
     }
 
     pub(crate) async fn publish(&self, count: usize) {
-        let channel = fleet_activity_channel(self.fixture.fleet.as_str());
+        let subject = Subject::FleetTail(self.fixture.fleet.clone());
         for _ in 0..count {
-            self.publisher
-                .publish(&channel, CHUNK)
+            self.bus
+                .publish(&subject, CHUNK)
                 .await
                 .expect("the frame publishes");
         }
@@ -289,7 +282,6 @@ impl Wall {
 
     pub(crate) async fn close(self) {
         drop(self.body);
-        self.hub.shutdown();
         self.fixture.cleanup().await;
     }
 }

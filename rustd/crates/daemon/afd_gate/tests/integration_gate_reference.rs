@@ -10,7 +10,7 @@ use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
 use afd_gate::gate::{Gates, Refused, Verdict, Waiting};
 
-use fixture::{Fixture, NOW, config, config_gates, connect_redis};
+use fixture::{Fixture, NOW, bus, config, config_gates};
 
 const APPROVE_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
 // Value: protects=a re-encounter cannot bypass, duplicate or restart a durable
@@ -20,12 +20,7 @@ const APPROVE_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","
 async fn a_reencountered_event_keeps_its_deadline_and_late_answer() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let queue = connect_redis().await;
-    let gates = Gates::new(
-        fixture.database.clone(),
-        afd_bus::dragonfly::publisher(queue),
-        Entropy::new(),
-    );
+    let gates = Gates::new(fixture.database.clone(), bus(), Entropy::new());
     let ruled = config_gates(APPROVE_CHAT);
     let event = &mint_id();
     assert_eq!(

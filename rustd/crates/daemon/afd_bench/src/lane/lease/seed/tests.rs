@@ -6,21 +6,15 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_dragonfly::{DragonflyConfig, DragonflyRole};
 
 use super::{
     KIND_FLEET, KIND_TENANT, KIND_WORKSPACE, SEEDED_AT, identifier, placement_tag, ready_fleet,
 };
 use crate::fixture::RunPrefix;
 use crate::lane::sweep;
-
-/// The lane's Dragonfly URL and its certificate authority, when it serves TLS.
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// An index clear of every lane's population, so this fleet is this test's.
 const LIVE_INDEX: u64 = 0x2000_0000;
@@ -69,19 +63,12 @@ fn test_two_indexes_never_collide_within_a_kind() {
 }
 
 #[tokio::test]
-#[ignore = "requires TEST_DATABASE_URL and TEST_DRAGONFLY_URL — run via make test-integration-rustd"]
+#[ignore = "requires TEST_DATABASE_URL — run via make test-integration-rustd"]
 async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     let database = TestDatabase::shared().open(DbRole::Api, &[]).await;
-    let url = ProcessEnv
-        .get(DRAGONFLY_URL_KNOB)
-        .expect("the lane's Dragonfly URL is set");
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into));
-    let queue = afd_dragonfly::test_util::connect_live(&config)
-        .await
-        .expect("the lane's Dragonfly answers");
+    // The admission row is the proof; the wake it publishes has no reader.
+    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus");
     let prefix = RunPrefix::mint();
-    let bus = afd_bus::dragonfly::publisher(queue.clone());
     let seeded = ready_fleet(
         &database,
         &bus,
@@ -112,11 +99,8 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     )
     .await
     .expect("fixture runner");
-    let leases = afd_fleet::lease::Leases::new(
-        database.clone(),
-        afd_bus::dragonfly::publisher(queue.clone()),
-        af_crypto::entropy::Entropy::new(),
-    );
+    let leases =
+        afd_fleet::lease::Leases::new(database.clone(), bus, af_crypto::entropy::Entropy::new());
     let acquired = leases
         .select(&runner, &[])
         .await

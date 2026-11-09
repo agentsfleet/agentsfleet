@@ -12,6 +12,8 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# The NATS Bus the live tail and the wakes run over, connected the way the
+# daemon connects it.
 afd_bus.workspace = true
 # THE dependency that makes this a measurement rather than a model: the lanes
 # drive `Leases::select`, the real assignment pass, not a copy of it. A
@@ -61,8 +63,6 @@ futures-util.workspace = true
 # with them. The release build names its package (`make/build.mk`), so this
 # feature never reaches the shipped daemon.
 afd_db = { workspace = true, features = ["test-util"] }
-# The live tail, doorbell and outbound queue used by the measured paths.
-afd_dragonfly.workspace = true
 # Identifiers, the clock the pass is given, and the environment source the
 # daemon's own pool config resolves through.
 af_core = { workspace = true, features = ["sqlx"] }
@@ -102,9 +102,10 @@ thiserror.workspace = true
 # `MapEnv`: the environment a test hands every knob reader instead of
 # mutating the process.
 af_core = { workspace = true, features = ["test-util"] }
-# `Redis::unreachable`: a handle that opens no socket, so the abort rail can be
-# proven wired into a lane without a datastore to kill.
-afd_dragonfly = { workspace = true, features = ["test-util"] }
+# `unreachable()`: a Bus that refuses every publish without a broker, so the
+# abort rail can be proven wired into a lane without a datastore to kill; and
+# `detached()`, the in-process Bus a seeded fleet's wake lands on.
+afd_bus = { workspace = true, features = ["test-util"] }
 # Paused time: the burst's pacer is proven 100 ms apart without waiting it out.
 tokio = { workspace = true, features = ["test-util"] }
 

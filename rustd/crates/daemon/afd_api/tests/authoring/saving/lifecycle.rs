@@ -8,7 +8,7 @@ use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn save_retries_the_same_fleet_after_funding_without_copying_private_chat() {
     let case = Case::create().await;
     let (draft, request) = case.request().await;

@@ -40,7 +40,7 @@ impl Error for Layered {
 }
 
 fn roles() -> Vec<String> {
-    vec!["postgres:api".to_owned(), "redis:api".to_owned()]
+    vec!["postgres:api".to_owned(), "postgres:migrator".to_owned()]
 }
 
 /// A terminal gets colour; anything else gets text.
@@ -107,7 +107,7 @@ fn test_banner_draws_the_mark_on_a_terminal() {
     assert!(rendered.contains(ESCAPE), "a terminal gets colour");
     assert!(rendered.contains("agentsfleetd"));
     assert!(rendered.contains(VERSION));
-    assert!(rendered.contains("redis:api"));
+    assert!(rendered.contains("postgres:migrator"));
 }
 
 /// The fatal renders the message and every cause.

@@ -10,14 +10,9 @@ mod fixture;
 
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_gate::gate::{Claim, Evaluation, GateRef, Gates, Park, Parked, Stated, Trigger, Verdict};
 
 use self::fixture::{Fixture, NOW, config, config_gates};
-
-/// A queue address nothing listens on.
-const NOWHERE: &str = "redis://127.0.0.1:1";
 
 /// How long a parked question waits for its answer.
 const REFERENCE_TIMEOUT: std::time::Duration = std::time::Duration::from_hours(1);
@@ -28,17 +23,12 @@ const KILL_EVERY_CHAT: &str =
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_policy_kill_pauses_the_fleet_even_when_dragonfly_is_unreachable() {
+async fn a_policy_kill_pauses_the_fleet_even_when_the_bus_is_unreachable() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let dead_queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail");
     let gates = Gates::new(
         fixture.database.clone(),
-        afd_bus::dragonfly::publisher(dead_queue),
+        afd_bus::test_util::unreachable(),
         Entropy::new(),
     );
     let policy_kill = config_gates(KILL_EVERY_CHAT);
@@ -58,16 +48,7 @@ async fn a_policy_kill_pauses_the_fleet_even_when_dragonfly_is_unreachable() {
 
 /// Gates over `database` and a queue that refuses every command.
 fn gates_without_a_queue(database: afd_db::Db) -> Gates {
-    let dead_queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail");
-    Gates::new(
-        database,
-        afd_bus::dragonfly::publisher(dead_queue),
-        Entropy::new(),
-    )
+    Gates::new(database, afd_bus::test_util::unreachable(), Entropy::new())
 }
 
 #[tokio::test]

@@ -10,7 +10,7 @@ use super::fixture::{Case, NO_ADMISSIONS};
 use afd_authoring::types::{DraftState, Start, StartOutcome};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn save_without_run_activates_without_admitting_a_message() {
     let c = Case::create().await;
     c.fund().await;
@@ -33,7 +33,7 @@ async fn save_without_run_activates_without_admitting_a_message() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn run_now_is_accepted_only_with_one_committed_admission_and_replays_same_event() {
     let c = Case::create().await;
     c.fund().await;

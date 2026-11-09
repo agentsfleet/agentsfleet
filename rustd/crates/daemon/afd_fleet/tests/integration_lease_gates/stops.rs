@@ -22,7 +22,7 @@ async fn test_stop_releases_the_claim() {
     // A refusal used to return with the claim still held, so the fleet's next
     // event waited out the claim's lifetime behind an event that was over.
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     set_config(&fixtures, &fleet, BUDGETED_CONFIG).await;
     let event_id = send(&fixtures, &fleet, &workspace, EVENT_TYPE_UNKNOWN).await;
@@ -68,7 +68,7 @@ async fn test_approval_resolution_leases_next_poll() {
     // A park frees the slot. Resolution un-parks the same admission before
     // landing its continuation, so the original delivery leases first.
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
@@ -91,10 +91,10 @@ async fn test_approval_resolution_leases_next_poll() {
 
     let resolved = Inbox::new(
         fixtures.database.clone(),
-        afd_bus::dragonfly::publisher(fixtures.queue().clone()),
+        fixtures.bus().clone(),
         Admissions::new(
             fixtures.database.clone(),
-            afd_bus::dragonfly::publisher(fixtures.queue().clone()),
+            fixtures.bus().clone(),
             Entropy::new(),
         ),
     )
@@ -126,11 +126,11 @@ async fn test_approval_resolution_leases_next_poll() {
 
 // Value: protects=an unanswered approval cannot strand the queue;
 // fails_when=deadline reconsideration cannot reach gate evaluation and settlement;
-// why_new=claim-only tests cannot prove tail progress; seam=Postgres and Dragonfly.
+// why_new=claim-only tests cannot prove tail progress; seam=Postgres and the bus.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;

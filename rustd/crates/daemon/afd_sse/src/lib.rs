@@ -27,10 +27,6 @@
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-// The native backend is used only by the separate integration-test target.
-#[cfg(test)]
-use afd_dragonfly as _;
-
 pub mod error;
 pub mod fanin;
 pub mod frame;

@@ -20,14 +20,9 @@ use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_gate::gate::{Check, Claim, Gates, Park, Parked, Stated, Trigger, Verdict, Waiting};
 
 use self::fixture::config_gates;
-
-/// A queue address nothing listens on.
-const NOWHERE: &str = "redis://127.0.0.1:1";
 
 /// A rule that stops the fleet on every chat, and a threshold to count it
 /// against, so one check reaches the counter and then the pause.
@@ -47,14 +42,9 @@ const EVENT_PAUSE_FAILED: &str = "gate_pause_failed";
 
 /// Gates over a pool and a queue that both refuse.
 fn unreachable_gates() -> Gates {
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail");
     Gates::new(
         afd_db::test_util::unreachable_db(),
-        afd_bus::dragonfly::publisher(queue),
+        afd_bus::test_util::unreachable(),
         Entropy::new(),
     )
 }

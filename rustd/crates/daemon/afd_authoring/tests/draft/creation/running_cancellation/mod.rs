@@ -4,13 +4,9 @@ mod probe;
 
 use std::time::Duration;
 
-use af_core::{
-    env::{EnvSource as _, ProcessEnv},
-    id::Uuid7,
-};
+use af_core::id::Uuid7;
 use afd_authoring::types::Start;
 use afd_bus::{Command, Handle, Received, Subject, Subscription};
-use afd_dragonfly::{DragonflyConfig, DragonflyRole};
 
 use super::{
     super::{fixture::now, mint},
@@ -28,7 +24,7 @@ const LEASE: &str = "INSERT INTO runner.leases \
 const WAIT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() -> TestResult {
     let case = Case::create().await;
     case.fund().await;
@@ -38,7 +34,7 @@ async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() 
     let lease = seed_lease(&case, &saved.id).await?;
     let (observed, mut received) = tokio::sync::mpsc::unbounded_channel();
     let publisher = Handle::new(probe::BeforePublish {
-        bus: afd_bus::dragonfly::publisher(case.queue.clone()),
+        bus: case.bus.clone(),
         database: case.base.db.clone(),
         observed,
     });
@@ -49,15 +45,7 @@ async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() 
     );
     let creations = afd_authoring::Creations::new(case.setup.clone(), admissions);
     let address = Subject::RunnerCommand(case.base.runner.clone());
-    let config = DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        ProcessEnv
-            .get("TEST_DRAGONFLY_URL")
-            .ok_or("live broker URL is missing")?,
-    );
-    let subscriber = afd_bus::dragonfly::connect(case.queue.clone(), config).await?;
-    let mut commands = subscriber.subscribe(&address).await?;
-    confirm(&subscriber, &address, &mut commands).await?;
+    let mut commands = case.bus.subscribe(&address).await?;
     creations
         .patch(
             case.base.access(),
@@ -74,7 +62,6 @@ async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() 
     assert!(marked, "the marker was committed before publication began");
     assert_cancel(&address, &lease, &mut commands).await?;
     drop(commands);
-    subscriber.shutdown().await?;
     case.cleanup().await;
     Ok(())
 }
@@ -136,22 +123,4 @@ async fn seed_lease(case: &Case, fleet: &Uuid7) -> TestResult<Uuid7> {
         .execute(&mut *case.base.db.acquire().await?)
         .await?;
     Ok(lease)
-}
-
-async fn confirm(bus: &Handle, subject: &Subject, subscription: &mut Subscription) -> TestResult {
-    tokio::time::timeout(WAIT, async {
-        let mut tick = tokio::time::interval(Duration::from_millis(10));
-        loop {
-            tokio::select! {
-                _instant = tick.tick() => {
-                    let publication = bus.publish_frame(subject, &Command::Recheck).await;
-                    afd_bus::observe_notification(subject, publication);
-                }
-                received = subscription.recv() => match received? {
-                    Received::Message(_) => return Ok::<_, Box<dyn std::error::Error + Send + Sync>>(()),
-                    Received::Lagged(_) | Received::Gap => {}
-                }
-            }
-        }
-    }).await?
 }

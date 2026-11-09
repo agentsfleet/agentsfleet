@@ -93,7 +93,7 @@ async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_lease_affinity_race() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
@@ -144,7 +144,7 @@ async fn test_lease_affinity_race() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_reclaim_bumps_fence() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
@@ -198,7 +198,7 @@ async fn test_reclaim_bumps_fence() {
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_superseded_holder_cannot_release_the_live_slot() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures

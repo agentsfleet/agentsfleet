@@ -38,7 +38,7 @@ const FIXTURE_NAME: &str = "fixture";
 /// is the lane's.
 mod seed;
 
-/// A migrated database, a queue, and the store over both.
+/// A migrated database and the store over it.
 pub(crate) struct Lane {
     database: TestDatabase,
     pub(crate) pool: Db,
@@ -119,7 +119,7 @@ impl Lane {
             .flatten()
     }
 
-    /// Drops the database. Dragonfly keys are namespaced per fleet and age out.
+    /// Drops the database.
     pub(crate) async fn cleanup(self) {
         self.database.cleanup().await;
     }

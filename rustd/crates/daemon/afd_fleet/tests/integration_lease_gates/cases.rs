@@ -16,7 +16,7 @@ async fn test_a_fleet_paused_after_its_event_was_claimed_issues_no_lease() {
     // The pause lands BETWEEN the claim and the verb, which is the only place
     // it can: a fleet stopped before the claim is never selected at all.
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
 
@@ -45,7 +45,7 @@ async fn test_a_fleet_past_its_ceiling_ends_the_event_rather_than_retrying_it() 
     // record which gate ended it. A retry would leave the delivery leasable,
     // and every poll would re-read the same exhausted ledger forever.
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
@@ -78,7 +78,7 @@ async fn test_a_denied_gate_ends_the_event_and_names_the_denial() {
     // end the event: a human said no, so waiting would offer the same event
     // back on every poll forever.
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
@@ -109,7 +109,7 @@ async fn test_an_unanswered_gate_parks_the_event_without_ending_it() {
     // here. Ending an unanswered gate would throw away work a human is still
     // deciding about, so the row must stay runnable.
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;

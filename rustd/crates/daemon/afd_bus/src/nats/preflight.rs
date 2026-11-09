@@ -106,7 +106,7 @@ mod tests {
         ];
         for (info, field) in cases {
             let error = check(&info).err().ok_or(field)?;
-            assert_eq!(error.code(), error_code::STARTUP_DRAGONFLY_CONNECT);
+            assert_eq!(error.code(), error_code::STARTUP_BUS_CONNECT);
             assert_eq!(error.reason(), "backend");
             assert!(error.to_string().contains(field), "{error}");
             assert!(error.to_string().contains("NATS_URL"), "{error}");

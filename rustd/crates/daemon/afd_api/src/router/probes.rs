@@ -76,8 +76,8 @@ const EVENT_BUS_UNAVAILABLE: &str = "bus_unavailable_at_readyz";
 /// What `/readyz` consults.
 ///
 /// The trait is the seam between §5 and §7: routing and the response shape are
-/// settled here, and what it MEANS to reach Postgres and Dragonfly is supplied by
-/// whoever owns the pools. Generic rather than `dyn`, so the probe is a static
+/// settled here, and what it MEANS to reach Postgres and the bus is supplied by
+/// whoever owns the connections. Generic rather than `dyn`, so the probe is a static
 /// call and the trait needs no boxed future to stay object safe.
 pub trait Dependencies: Send + Sync + std::fmt::Debug + 'static {
     /// Checks every dependency, reporting each separately.

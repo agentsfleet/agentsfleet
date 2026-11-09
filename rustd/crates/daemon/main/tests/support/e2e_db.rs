@@ -28,7 +28,7 @@
 use af_core::env::MapEnv;
 use sqlx::AssertSqlSafe;
 
-use crate::e2e::{DRAGONFLY_CA_LANE_KNOB, DRAGONFLY_LANE_KNOB, GOOD_KEK, lane};
+use crate::e2e::{GOOD_KEK, lane};
 use crate::support::{IDENTITY, SESSION_PEPPER};
 
 /// Runs one statement on the lane's admin database.
@@ -54,7 +54,7 @@ pub(crate) fn scenario_database(base_url: &str) -> String {
     base_url.to_owned()
 }
 
-/// An environment pointing the daemon at `database` and the lane's Dragonfly, on an
+/// An environment pointing the daemon at `database` and the lane's NATS, on an
 /// ephemeral port.
 ///
 /// The database is a parameter rather than the lane knob: each scenario boots
@@ -69,12 +69,7 @@ pub(crate) fn daemon_environment(
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", database),
-            ("DRAGONFLY_URL", lane(DRAGONFLY_LANE_KNOB).as_str()),
             ("NATS_URL", lane("TEST_NATS_URL").as_str()),
-            (
-                "DRAGONFLY_TLS_CA_CERT_FILE",
-                lane(DRAGONFLY_CA_LANE_KNOB).as_str(),
-            ),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()

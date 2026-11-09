@@ -46,7 +46,7 @@ async fn lapse_hold(fixtures: &Fixtures, fleet: &Uuid7, holder: &Uuid7, lapse: L
 /// poll reaches the claim only through the candidate scan, so a fleet the scan
 /// filters is never leased.
 async fn offered_to_another(lapse: Lapse) -> bool {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder, other],
         fleet,
@@ -93,7 +93,7 @@ async fn test_another_runners_poll_is_offered_a_silent_holders_fleet() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_an_empty_claim_on_a_lapsed_hold_drops_the_hint() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;

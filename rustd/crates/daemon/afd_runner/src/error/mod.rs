@@ -187,14 +187,6 @@ pub(crate) enum ErrorKind {
         source: af_core::error::Error,
     },
 
-    /// The queue would not take the repaired delivery.
-    #[error("the fleet's stream could not be reached")]
-    Queue {
-        /// The queue failure underneath.
-        #[from]
-        source: afd_dragonfly::Error,
-    },
-
     /// The pool would not give a connection.
     #[error("the runner store's datastore is unavailable")]
     Datastore {
@@ -235,9 +227,7 @@ impl Error {
             | ErrorKind::AdminStateMalformed
             | ErrorKind::AssignmentMalformed { .. } => DETAIL_DATABASE_ERROR,
             ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => DETAIL_OPERATION_FAILED,
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } | ErrorKind::TimedOut { .. } => {
-                DETAIL_UNAVAILABLE
-            }
+            ErrorKind::Datastore { .. } | ErrorKind::TimedOut { .. } => DETAIL_UNAVAILABLE,
             // The ledger already decided what a caller is told, and answering
             // a second sentence for one condition is the drift the shared
             // constants in `af_core::error` exist to prevent.
@@ -251,9 +241,7 @@ impl Error {
     #[must_use]
     pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } | ErrorKind::TimedOut { .. } => {
-                true
-            }
+            ErrorKind::Datastore { .. } | ErrorKind::TimedOut { .. } => true,
             ErrorKind::Admission { source } => source.is_datastore_unavailable(),
             ErrorKind::DecisionModelId { .. }
             | ErrorKind::Query { .. }
@@ -311,7 +299,6 @@ impl Error {
             // the caller's request being wrong.
             ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::Datastore { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::TimedOut { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Admission { source } => source.code(),
         }

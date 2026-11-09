@@ -39,7 +39,7 @@ async fn read_together(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires live Postgres + Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn test_concurrent_misses_read_once() {
     let lane = Lane::create().await;
     let seeded = [lane.fleet().await, lane.fleet().await];

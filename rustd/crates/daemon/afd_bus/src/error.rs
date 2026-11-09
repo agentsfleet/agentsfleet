@@ -22,11 +22,6 @@ pub(crate) enum ErrorKind {
         #[source]
         source: std::num::ParseIntError,
     },
-    #[error("The message broker could not complete the operation.")]
-    Dragonfly {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
     #[error("The live notification could not be encoded as JSON.")]
     Json {
         #[source]
@@ -100,7 +95,6 @@ pub(crate) enum ErrorKind {
 af_core::error_lifts!(Error, ErrorKind:
     garde::Report => Bounds,
     std::num::ParseIntError => Capacity,
-    afd_dragonfly::Error => Dragonfly,
     serde_json::Error => Json,
     tokio::time::error::Elapsed => Timeout,
     async_nats::ConnectError => NatsConnect,
@@ -122,8 +116,7 @@ impl Error {
     #[must_use]
     pub const fn reason(&self) -> &'static str {
         match self.kind() {
-            ErrorKind::Dragonfly { .. }
-            | ErrorKind::NatsConnect { .. }
+            ErrorKind::NatsConnect { .. }
             | ErrorKind::NatsUnsuitable { .. }
             | ErrorKind::NatsDisconnected
             | ErrorKind::NatsPublish { .. }
@@ -148,14 +141,13 @@ impl Error {
     #[must_use]
     pub fn code(&self) -> ErrorCode {
         match self.kind() {
-            ErrorKind::Dragonfly { source } => source.code(),
             ErrorKind::NatsUrlUnset
             | ErrorKind::NatsUrl { .. }
             | ErrorKind::NatsCredentials
             | ErrorKind::NatsNamespace { .. }
             | ErrorKind::NatsTuning { .. } => error_code::STARTUP_ENV_CHECK,
             ErrorKind::NatsConnect { .. } | ErrorKind::NatsUnsuitable { .. } => {
-                error_code::STARTUP_DRAGONFLY_CONNECT
+                error_code::STARTUP_BUS_CONNECT
             }
             ErrorKind::Json { .. }
             | ErrorKind::Closed

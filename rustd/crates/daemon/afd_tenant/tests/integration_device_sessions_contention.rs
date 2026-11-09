@@ -1,8 +1,7 @@
 //! Device-login sessions under contention, as Postgres rows (M244 §5).
 //!
-//! The retired Lua scripts were atomic because Dragonfly ran each one alone.
-//! Here the row lock is the authority, so each claim is proven with many
-//! callers released together rather than one caller at a time.
+//! The row lock is the authority, so each claim is proven with many callers
+//! released together rather than one caller at a time.
 #![expect(
     clippy::expect_used,
     reason = "integration preconditions should fail the test loudly"

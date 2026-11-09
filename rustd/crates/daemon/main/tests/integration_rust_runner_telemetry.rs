@@ -119,7 +119,7 @@ fn spans(received: &Received) -> Vec<Exported> {
 /// A runner pointed at a collector delivers one lease as one trace with four
 /// span kinds, its root carrying the lease and the daemon's event.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_e2e_runner_lease_trace_reaches_a_collector() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

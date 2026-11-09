@@ -30,7 +30,7 @@ const FUTURE: &str = "future";
 /// A report naming an unknown key is refused, and the lease survives to take
 /// the correct one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_retired_report_route_cannot_settle_a_lease() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -89,7 +89,7 @@ const ANSWER: &str = "the scripted run is done";
 /// executor, streams its frames to the fleet's live tail, pushes memory,
 /// settles the report, and leaves no sandbox behind.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_rust_runner_lease_roundtrip() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

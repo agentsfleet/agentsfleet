@@ -136,7 +136,7 @@ pub(super) struct Login {
 /// into the returned value.
 pub(super) fn login(login: LoginConfig, database: &Db) -> Login {
     let logins = Logins::new(
-        afd_tenant::session::SessionStore::new(database.clone()),
+        afd_tenant::session::DeviceSessions::new(database.clone()),
         login.code_pepper,
         Entropy::new(),
         login.app_url.as_str(),

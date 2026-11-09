@@ -56,7 +56,7 @@ async fn as_api_runtime(connection: &mut sqlx::PgConnection) {
 /// `FOR UPDATE` needs the UPDATE grant and the delete needs DELETE on
 /// `fleet.fleets` (schema/1500); withholding either fails here.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn the_purge_statements_all_run_as_api_runtime() {
     let lane = Lane::create().await;
     // A fresh id matches nothing: the assertion is about the refusal, and a
@@ -105,7 +105,7 @@ async fn the_purge_statements_all_run_as_api_runtime() {
 /// `pg_write_all_data`, which is exactly what hid the bug above — would let the
 /// last test pass without proving the cascade crosses the fence.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn memory_stays_out_of_reach_until_the_role_is_assumed() {
     let lane = Lane::create().await;
     let fleet = mint();
@@ -148,7 +148,7 @@ async fn memory_stays_out_of_reach_until_the_role_is_assumed() {
 /// either DELETE, or a memory cascade the fence stopped, fails here and nowhere
 /// else.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn the_purge_itself_runs_as_api_runtime() {
     let lane = Lane::create().await;
     let fleet = lane.fleet().await;

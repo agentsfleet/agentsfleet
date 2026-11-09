@@ -25,8 +25,8 @@
 //!
 //! # Only this run's jobs count
 //!
-//! The worker reads the shared stream, so an entry an earlier, unswept run
-//! left behind reaches this poster too. Its destination is one this script
+//! The worker claims from the shared `fleet.obligations` table, so a row an
+//! earlier, unswept run left behind reaches this poster too. Its destination is one this script
 //! never named, and such a job is answered but never counted: not as an
 //! attempt, not as settled. Counting it would end the drain before this run's
 //! own jobs had all been reached.
@@ -72,7 +72,7 @@ impl Attempt {
     }
 }
 
-/// Everything the poster saw of THIS run's jobs, keyed by stream entry id.
+/// Everything the poster saw of THIS run's jobs, keyed by the event each answers.
 #[derive(Debug, Default)]
 pub struct Seen {
     attempts: HashMap<String, Vec<Attempt>>,

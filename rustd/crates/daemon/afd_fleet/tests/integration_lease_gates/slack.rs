@@ -41,7 +41,7 @@ async fn admit_mention(
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn one_slack_request_is_one_attempt() {
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     set_config(&fixtures, &fleet, WRITE_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &fleet).await;

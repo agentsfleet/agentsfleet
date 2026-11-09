@@ -11,7 +11,6 @@ use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::Dashboard;
 use afd_cron::SigningKeys;
 use afd_db::PoolConfig;
-use afd_dragonfly::DragonflyConfig;
 use afd_identity::ProviderSecret;
 
 /// The identity provider a deployment has, when it has one.
@@ -39,7 +38,6 @@ pub struct IdentityConfig {
 #[derive(Debug)]
 pub struct BootConfig {
     pub(super) api_pool: PoolConfig,
-    pub(super) redis: DragonflyConfig,
     pub(super) bus: afd_bus::nats::Config,
     pub(super) kek: Kek,
     pub(super) session_code_pepper: SecretBytes,
@@ -130,12 +128,6 @@ impl BootConfig {
     #[must_use]
     pub const fn api_pool(&self) -> &PoolConfig {
         &self.api_pool
-    }
-
-    /// Settings for the API role's Dragonfly client.
-    #[must_use]
-    pub const fn redis(&self) -> &DragonflyConfig {
-        &self.redis
     }
 
     /// Settings for the event bus: the NATS seeds and this deployment's namespace.

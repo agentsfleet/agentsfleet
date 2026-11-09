@@ -32,7 +32,7 @@ use crate::rows::{LAPSE, Row};
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,
@@ -133,7 +133,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_every_lease_meters_from_its_own_issue() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,
@@ -192,7 +192,7 @@ async fn test_every_lease_meters_from_its_own_issue() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_stale_claim_writes_no_lease() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,

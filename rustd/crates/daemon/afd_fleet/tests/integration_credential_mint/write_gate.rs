@@ -58,7 +58,7 @@ async fn test_the_standing_grant_alone_carries_a_write_mint_to_the_vault() {
     // No card was ever raised. Before M202 this refused as unapproved; now the
     // approved grant is the whole answer and the mint walks to the vault.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = write_bound(&fixtures).await;
 
     assert_eq!(
@@ -78,7 +78,7 @@ async fn test_a_drifted_card_does_not_block_a_mint_the_grant_authorises() {
     // now, so the mint is unaffected — the assertion is that the card's reach
     // makes no difference at all.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = write_bound(&fixtures).await;
     let _gate = seed_write_gate(&fixtures, &owner, DRIFTED_BINDING, 0).await;
 
@@ -98,7 +98,7 @@ async fn test_a_spent_allowance_does_not_block_a_mint_the_grant_authorises() {
     // raised with is gone. It used to refuse as exhausted; the ceiling is no
     // longer consulted at mint time either.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = write_bound(&fixtures).await;
     let _gate = seed_write_gate(&fixtures, &owner, STATED_BINDING, WRITE_SPEND_CEILING).await;
 
@@ -119,7 +119,7 @@ async fn test_a_write_mint_without_a_standing_grant_is_refused() {
     // because nothing is checked. An approved card is seeded here to make the
     // point sharply: a card cannot stand in for the grant.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, WRITE_BOUND_CONFIG).await;
     let _gate = seed_write_gate(&fixtures, &owner, STATED_BINDING, 0).await;
 

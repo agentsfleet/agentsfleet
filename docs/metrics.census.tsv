@@ -65,7 +65,7 @@ agentsfleet_api_in_flight_requests	gauge	u64	{request}	-	-	-	fixed:1	no	saturati
 agentsfleet_sse_backpressure_rejections_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	streams refused at the cap
 agentsfleet_sse_in_flight_streams	gauge	u64	{stream}	-	-	-	fixed:1	no	saturation	approaching the stream cap
 agentsfleet_sse_dropped_frames_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	slow consumers losing frames
-agentsfleet_sse_hub_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	pub/sub redials; spikes mean Redis instability
+agentsfleet_sse_hub_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	NATS client reconnects; spikes mean broker instability
 agentsfleet_worker_running	gauge	u64	{worker}	-	-	-	fixed:1	yes	health	0 when the worker should be up
 agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:18	no	errors	telemetry loss counted at the source
 agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reason	-	fixed:6	no	health	model attribution gaps (never faked)

@@ -32,8 +32,8 @@ use crate::wire::{capable_beat, wait_for_seeded_offer};
 /// here would make the suite fail on a loaded machine and read as a lost frame.
 pub(crate) const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 
-/// How long the hub's pump is given to register a subscription with Dragonfly
-/// before the suite publishes; see [`settle`].
+/// How long a subscription is given to reach every node of the lane's NATS
+/// cluster before the suite publishes; see [`settle`].
 pub(crate) const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
 
 /// How long the "nothing was published" arms wait before believing it.
@@ -88,11 +88,12 @@ pub(crate) async fn lease(run: &Scenario) -> (String, u64) {
     wait_for_seeded_offer(run).await
 }
 
-/// Gives the hub's pump time to register the subscription with Dragonfly.
+/// Gives the subscription time to reach every node of the lane's NATS cluster.
 ///
-/// `subscribe` queues a command for the pump rather than round-tripping, so a
-/// publish issued in the same instant can beat the `SUBSCRIBE` to the server
-/// and be legitimately missed. This is the one place in these suites where a
+/// `subscribe` returns once its `SUB` leaves the socket, not once the server
+/// answers, and a daemon connected to another node learns of the interest
+/// later still. A publish issued in the same instant can therefore be
+/// legitimately missed. This is the one place in these suites where a
 /// sleep is the honest tool: there is no acknowledgement to await, and the
 /// alternative — publishing until something arrives — would make the
 /// "nothing was published" arms unprovable.

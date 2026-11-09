@@ -3,7 +3,7 @@
 //! Open, poll and verify are intentionally unauthenticated. Approve and cancel
 //! require a verified dashboard session, which the fixture supplies through the
 //! real OIDC authentication path with only the key-set verifier replaced. The
-//! Dragonfly store is production code over an unreachable lazy connection, so 503
+//! session store is production code over an unreachable Postgres pool, so 503
 //! proves a well-formed request reached the service boundary.
 #![cfg(feature = "test-util")]
 
@@ -54,7 +54,7 @@ async fn dashboard_router(
 }
 
 #[tokio::test]
-async fn open_poll_and_verify_need_no_bearer_but_reach_the_queue() {
+async fn open_poll_and_verify_need_no_bearer_but_reach_the_store() {
     for (method, path, body) in [
         (Method::POST, SESSIONS, OPEN_BODY),
         (Method::GET, SESSION, ""),
@@ -64,13 +64,13 @@ async fn open_poll_and_verify_need_no_bearer_but_reach_the_queue() {
         assert_eq!(
             response.status(),
             StatusCode::SERVICE_UNAVAILABLE,
-            "{path}: a valid open request reaches the unavailable Dragonfly store"
+            "{path}: a valid open request reaches the unavailable session store"
         );
     }
 }
 
 #[tokio::test]
-async fn opening_refuses_unreadable_or_unbounded_input_before_redis() {
+async fn opening_refuses_unreadable_or_unbounded_input_before_the_store() {
     let oversized_key = format!(
         r#"{{"public_key":"{}","token_name":"laptop"}}"#,
         "k".repeat(201)
@@ -87,7 +87,7 @@ async fn opening_refuses_unreadable_or_unbounded_input_before_redis() {
 }
 
 #[tokio::test]
-async fn verification_refuses_unreadable_and_wrong_shaped_codes_before_redis() {
+async fn verification_refuses_unreadable_and_wrong_shaped_codes_before_the_store() {
     for body in [
         "{not json",
         r#"{"verification_code":"12345"}"#,

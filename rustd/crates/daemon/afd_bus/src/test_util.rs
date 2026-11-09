@@ -1,85 +1,186 @@
-//! The real adapter and native fan-out, driven at their server boundary.
+//! An in-process Bus for the suites that need fan-out without a broker.
+//!
+//! Every subject is one broadcast channel: readers share each payload, a reader
+//! that falls behind is told how many it lost, and the fixture's server half
+//! injects messages and gaps the way a broker and its reconnects would.
 
-use afd_dragonfly::{Dragonfly, DragonflyConfig, SubscriptionHub, config::DragonflyRole};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use crate::{Handle, Result, Subject, dragonfly};
+use async_trait::async_trait;
+use futures_util::stream;
+use tokio::sync::broadcast;
 
-/// Detached native server; no datastore or network socket is required.
-#[derive(Debug)]
-pub struct Server {
-    native: afd_dragonfly::hub::DetachedServer,
-    hub: SubscriptionHub,
+use crate::{Bus, Handle, Message, Received, Result, Subject, Subscription, error::ErrorKind};
+
+/// Messages one reader may fall behind before it is told how many it lost.
+const CAPACITY: usize = 256;
+
+/// Every subject's channel, keyed by its broker spelling, and whether the bus
+/// has shut down.
+#[derive(Debug, Default)]
+struct Hub {
+    channels: Mutex<HashMap<String, broadcast::Sender<Received>>>,
+    closed: AtomicBool,
 }
 
-/// Build the real subscription adapter over a detached server.
+impl Hub {
+    fn channels(&self) -> MutexGuard<'_, HashMap<String, broadcast::Sender<Received>>> {
+        // Each critical section leaves the map whole, so a panic elsewhere
+        // cannot leave it half-written.
+        self.channels.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn sender(&self, subject: &Subject) -> broadcast::Sender<Received> {
+        self.channels()
+            .entry(crate::nats::spelling(subject))
+            .or_insert_with(|| broadcast::channel(CAPACITY).0)
+            .clone()
+    }
+
+    /// Hand `received` to every reader of `subject`. No reader is not an
+    /// error: the bus is at most once.
+    fn send(&self, subject: &Subject, received: Received) {
+        let _ = self.sender(subject).send(received);
+    }
+
+    fn deliver(&self, subject: &Subject, payload: &str) {
+        let message = Message {
+            subject: subject.clone(),
+            payload: Arc::new(payload.to_owned()),
+        };
+        self.send(subject, Received::Message(Arc::new(message)));
+    }
+
+    fn closed(&self) -> bool {
+        self.closed.load(Ordering::Acquire)
+    }
+}
+
+/// The adapter half the fixture's [`Handle`] wraps.
+#[derive(Debug)]
+struct Memory(Arc<Hub>);
+
+#[async_trait]
+impl Bus for Memory {
+    async fn publish(&self, subject: &Subject, payload: &str) -> Result<()> {
+        if self.0.closed() {
+            return Err(ErrorKind::Closed.into());
+        }
+        self.0.deliver(subject, payload);
+        Ok(())
+    }
+
+    async fn publish_batch(&self, subject: &Subject, payloads: &[String]) -> Result<()> {
+        for payload in payloads {
+            self.publish(subject, payload).await?;
+        }
+        Ok(())
+    }
+
+    async fn subscribe(&self, subject: &Subject) -> Result<Subscription> {
+        if self.0.closed() {
+            return Err(ErrorKind::Closed.into());
+        }
+        let receiver = self.0.sender(subject).subscribe();
+        Ok(Subscription::new(stream::unfold(
+            Some(receiver),
+            async |state| {
+                let mut receiver = state?;
+                match receiver.recv().await {
+                    Ok(delivered) => Some((Ok(delivered), Some(receiver))),
+                    Err(broadcast::error::RecvError::Lagged(missed)) => {
+                        Some((Ok(Received::Lagged(missed)), Some(receiver)))
+                    }
+                    Err(broadcast::error::RecvError::Closed) => {
+                        Some((Err(ErrorKind::Closed.into()), None))
+                    }
+                }
+            },
+        )))
+    }
+
+    async fn shutdown(&self) -> Result<()> {
+        self.0.closed.store(true, Ordering::Release);
+        // Dropping every sender ends every reader's stream.
+        self.0.channels().clear();
+        Ok(())
+    }
+
+    async fn connected(&self) -> bool {
+        !self.0.closed()
+    }
+}
+
+/// A broker nobody can reach: every publish and subscribe fails.
+#[derive(Debug)]
+struct Unreachable;
+
+#[async_trait]
+impl Bus for Unreachable {
+    async fn publish(&self, _subject: &Subject, _payload: &str) -> Result<()> {
+        Err(ErrorKind::NatsDisconnected.into())
+    }
+
+    async fn publish_batch(&self, _subject: &Subject, _payloads: &[String]) -> Result<()> {
+        Err(ErrorKind::NatsDisconnected.into())
+    }
+
+    async fn subscribe(&self, _subject: &Subject) -> Result<Subscription> {
+        Err(ErrorKind::NatsDisconnected.into())
+    }
+
+    async fn shutdown(&self) -> Result<()> {
+        Ok(())
+    }
+
+    async fn connected(&self) -> bool {
+        false
+    }
+}
+
+/// A bus whose every publish and subscribe fails as a disconnected broker's
+/// does, for the suites that prove what a failure arm does with no bus.
+#[must_use]
+pub fn unreachable() -> Handle {
+    Handle::new(Unreachable)
+}
+
+/// The server side of a detached bus: what a broker would send its readers.
+#[derive(Debug, Clone)]
+pub struct Server(Arc<Hub>);
+
+/// A bus with in-process fan-out, and its server half; no broker or network
+/// socket is required.
 ///
 /// # Errors
-/// Returns invalid local fixture configuration; publication still needs a live broker.
+/// Never in practice; the `Result` keeps every fixture call site fallible, as
+/// a real adapter's connect is.
 pub fn detached() -> Result<(Handle, Server)> {
-    let (hub, native) = SubscriptionHub::detached();
-    let bus = with_hub(hub.clone())?;
-    Ok((bus, Server { native, hub }))
+    let hub = Arc::new(Hub::default());
+    Ok((Handle::new(Memory(Arc::clone(&hub))), Server(hub)))
 }
 
 impl Server {
-    /// Inject a server message through the production fan-out path.
+    /// Deliver `payload` to every reader of `subject`, as the broker would.
     pub fn publish(&self, subject: &Subject, payload: &str) {
-        self.native.publish(&dragonfly::channel(subject), payload);
+        self.0.deliver(subject, payload);
     }
 
-    /// A repeated server confirmation becomes a gap for every consumer.
-    pub fn confirm(&self, subject: &Subject) {
-        self.native.confirm(&dragonfly::channel(subject));
+    /// Tell every reader of `subject` that frames may be missing, as a broker
+    /// reconnect does.
+    pub fn gap(&self, subject: &Subject) {
+        self.0.send(subject, Received::Gap);
     }
 
-    /// Counts actual native interests, including last-subscriber drop behavior.
+    /// How many readers `subject` has right now; a dropped subscription stops
+    /// counting at once.
     #[must_use]
     pub fn readers(&self, subject: &Subject) -> usize {
-        self.hub.readers(&dragonfly::channel(subject))
+        self.0
+            .channels()
+            .get(&crate::nats::spelling(subject))
+            .map_or(0, broadcast::Sender::receiver_count)
     }
-}
-
-/// Bind the production adapter to a fixture's already-open native resources.
-#[must_use]
-pub fn attached(client: Dragonfly, hub: SubscriptionHub) -> Handle {
-    dragonfly::attached(client, Some(hub))
-}
-
-/// Adapt a fixture's native subscription through the production conversion.
-#[must_use]
-pub fn subscription(native: afd_dragonfly::Subscription, subject: Subject) -> crate::Subscription {
-    dragonfly::subscribe::open(native, subject)
-}
-
-/// Attach an existing native fixture hub without opening a publishing socket.
-///
-/// # Errors
-/// Returns an invalid fixture client configuration.
-pub fn with_hub(hub: SubscriptionHub) -> Result<Handle> {
-    let config =
-        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1".to_owned());
-    let client = Dragonfly::unreachable(&config)?;
-    Ok(attached(client, hub))
-}
-
-/// Native address for a fixture exercising the server side of this adapter.
-#[must_use]
-pub fn physical_channel(subject: &Subject) -> String {
-    dragonfly::channel(subject)
-}
-
-/// Decode a fixture's native fleet address before using the production conversion.
-///
-/// # Errors
-/// Returns a noncanonical fixture identifier.
-pub fn fleet_subscription(
-    native: afd_dragonfly::Subscription,
-) -> Result<crate::Subscription, af_core::error::Error> {
-    let channel = native.channel();
-    let fleet = channel
-        .strip_prefix("fleet:")
-        .and_then(|name| name.strip_suffix(":activity"))
-        .unwrap_or(channel);
-    let subject = Subject::FleetTail(af_core::id::Uuid7::parse(fleet)?);
-    Ok(subscription(native, subject))
 }

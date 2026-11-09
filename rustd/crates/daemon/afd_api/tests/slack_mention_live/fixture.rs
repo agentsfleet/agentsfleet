@@ -4,7 +4,7 @@
 //! Everything a mention reads on its way to the ledger is real here: the app
 //! bag the wall verifies against, the install row the team resolves through,
 //! the sealed grant the bot's identity is read from, and fleet rows whose
-//! stored configurations are ones Save accepts. Dragonfly is unreachable;
+//! stored configurations are ones Save accepts. The bus is unreachable;
 //! admission commits to Postgres and its notification may fail independently.
 //!
 //! Slack is a loopback. A routed mention reads its thread back before it is
@@ -21,7 +21,6 @@ use afd_db::test_util::{
     FIXTURE_SETUP_MODEL_REF, FleetSeed, InstallSeed, SetupRevision, TestDatabase, WorkspaceSeed,
     mint_id,
 };
-use afd_dragonfly::Dragonfly;
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 
@@ -108,21 +107,23 @@ impl Fixture {
 
     /// The production ingress over this fixture's database, for a case that
     /// drives one of its statements directly rather than through a delivery.
-    /// Its vault key and queue are never reached by the statements it runs.
+    /// Its vault key and bus are never reached by the statements it runs.
     pub(super) fn ingress(&self) -> afd_ingress::Ingress {
         harness::unreachable_ingress(self.database.clone())
     }
 
     fn instance(&self) -> harness::Fleet {
-        let queue = Dragonfly::unreachable(&harness::unreachable_queue())
-            .expect("a lazy manager opens no socket, so it cannot fail to open one");
         harness::Fleet::live(
             self.database.clone(),
             &self.subject,
             afd_auth::scope::ScopeSet::from_scopes(&afd_auth::scope::Scope::ALL),
         )
         .with_platform_admin(self.admin.clone())
-        .with_live_connectors(self.database.clone(), queue, self.slack.base().to_owned())
+        .with_live_connectors(
+            self.database.clone(),
+            afd_bus::test_util::unreachable(),
+            self.slack.base().to_owned(),
+        )
     }
 
     /// The tenant, both workspaces, the person, the app bag, the install row

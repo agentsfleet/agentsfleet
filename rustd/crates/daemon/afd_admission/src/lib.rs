@@ -111,18 +111,14 @@ impl Admissions {
     ///
     /// Every crate whose lane drives a producer needs an `Admissions`, and the
     /// only argument any of them has an opinion about is the pool and the
-    /// queue their own harness already opened. Handing the third one out here
+    /// bus their own harness already opened. Handing the third one out here
     /// keeps `af_crypto` out of eight `[dev-dependencies]` blocks and means a
     /// suite that wants a CONTROLLED entropy source has to say so, by calling
     /// [`Admissions::new`] with one, rather than getting it by accident.
     #[cfg(feature = "test-util")]
     #[must_use]
-    pub fn for_tests(database: Db, queue: afd_dragonfly::Dragonfly) -> Self {
-        Self::new(
-            database,
-            afd_bus::dragonfly::publisher(queue),
-            Entropy::new(),
-        )
+    pub fn for_tests(database: Db, bus: afd_bus::Handle) -> Self {
+        Self::new(database, bus, Entropy::new())
     }
 
     /// The live tails over this ledger's queue, for a producer announcing

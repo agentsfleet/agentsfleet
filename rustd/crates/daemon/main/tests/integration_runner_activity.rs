@@ -92,7 +92,7 @@ impl Tailed {
 /// them: the frame that should publish, the body that should be refused before
 /// the publish, and the lease this runner does not hold.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_activity_publish() {
     let mut supervisor = Supervisor::new();
     let Tailed {
@@ -196,17 +196,16 @@ async fn test_activity_publish() {
 /// One of the two drop branches in `publish_activity`, and the one that can be
 /// driven over HTTP: a `tool_call_started` whose `args_redacted` is a string
 /// that does not hold JSON cannot become a `RawValue`, so the frame is skipped
-/// and the loop continues. The other branch — the queue refusing the publish —
-/// is a socket failure and lives in `afd_fleet`'s
-/// `integration_activity_publish.rs`, which holds a Dragonfly handle that will not
-/// answer. They are separate branches with the same outcome, and both are
+/// and the loop continues. The other branch — the bus refusing the publish —
+/// lives in `afd_fleet`'s `integration_activity_publish.rs`, which holds a bus
+/// handle that will not answer. They are separate branches with the same outcome, and both are
 /// covered rather than one standing in for the other.
 ///
 /// What this pins is the property the row names: the verb's outcome does not
 /// change. A telemetry failure that turned into a 500 would make a runner treat
 /// a healthy run as a failed one and terminate its child.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_activity_drops_a_frame_it_cannot_render() {
     let mut supervisor = Supervisor::new();
     let Tailed {

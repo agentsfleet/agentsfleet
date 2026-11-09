@@ -61,7 +61,7 @@ pub(super) struct Issued {
 
 impl Chat {
     pub(super) async fn open() -> Self {
-        let fixtures = Fixtures::create_with_queue().await;
+        let fixtures = Fixtures::create().await;
         let (fleet, workspace, tenant, [runner, spare]) = seeded_parts::<2>(&fixtures).await;
         set_config(&fixtures, &fleet, READ_BOUND_CONFIG).await;
         fixtures.seed_wallet(&tenant, DEEP_POOL).await;

@@ -4,16 +4,16 @@
 //! # Two ladders, one hub
 //!
 //! ```text
-//!   publisher ──SPUBLISH──► Dragonfly ──push──► hub (one per process)
-//!                                              │  broadcast per channel
-//!                                              ├──► viewer 1 ─► afd_sse tail ─► frame
-//!                                              ├──► viewer 2 ─► …
-//!                                              └──► viewer N
+//!   publisher ──publish──► NATS ──push──► hub (one per process)
+//!                                       │  broadcast per subject
+//!                                       ├──► viewer 1 ─► afd_sse tail ─► frame
+//!                                       ├──► viewer 2 ─► …
+//!                                       └──► viewer N
 //! ```
 //!
 //! The VIEWER ladder puts 1, 64, 256 and 1024 viewers on one fleet's channel
 //! and publishes frames of 200 B, 4 KiB and 64 KiB through the product's own
-//! `SPUBLISH` path. Each viewer is the per-fleet SSE stream the tenant route
+//! Bus publish path. Each viewer is the per-fleet SSE stream the tenant route
 //! serves (`afd_sse::Live::tail_of`), so what a frame costs includes the
 //! per-viewer copy and the frame built from it — the costs a shared payload
 //! would remove. It reports allocations, runtime busy time and publish-to-
@@ -114,7 +114,7 @@ pub const STREAMS_UNREACHED: &str = "streams_unreached";
 /// # Errors
 ///
 /// A cap refusal before anything opens, a hub that will not start, a publish
-/// Dragonfly refused, or a lost viewer task. A frame that did not arrive is a
+/// the Bus refused, or a lost viewer task. A frame that did not arrive is a
 /// measurement, not an error.
 pub async fn run(
     profile: Profile,

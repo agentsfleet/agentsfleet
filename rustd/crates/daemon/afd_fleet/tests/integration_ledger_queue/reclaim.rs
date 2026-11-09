@@ -14,7 +14,7 @@ async fn test_reclaimed_row_is_leased_as_redelivered() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &holder).await.expect("first claim");
     assert!(!first.redelivered);
     assert!(first.reused.is_none());

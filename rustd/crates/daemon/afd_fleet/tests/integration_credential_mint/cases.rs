@@ -12,7 +12,7 @@ async fn test_mint_scope_is_the_presenting_runners_lease() {
     // this runner's resolves to NO ROW rather than to another tenant's
     // workspace.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, "{}").await;
     let stranger = bound(&fixtures, "{}").await;
     let leases = fixtures.leases();
@@ -61,7 +61,7 @@ async fn test_mint_refuses_a_superseded_active_lease() {
     // the lease still holds the fleet. The mint scope is checked against the
     // affinity row's sequence, as the memory fence and report are.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, "{}").await;
     seed_handle(
         &fixtures,
@@ -112,7 +112,7 @@ async fn test_a_static_handle_mints_from_the_leases_own_workspace() {
     // distinguishes the owner's workspace from any other, so a mint that
     // resolved the wrong workspace fails here rather than passing on presence.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, "{}").await;
     seed_handle(
         &fixtures,
@@ -148,7 +148,7 @@ async fn test_the_grant_gate_refuses_before_the_vault_is_opened() {
     // withholding only the grant — if the gate ran after the vault read, this
     // would surface as a successful mint.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, "{}").await;
     seed_handle(
         &fixtures,
@@ -186,7 +186,7 @@ async fn test_an_unconnected_integration_is_not_a_grant_failure() {
     // versus nobody connected it. Approving the grant and storing no handle
     // isolates the second.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, "{}").await;
     seed_grant(&fixtures, &owner.fleet, CONNECTOR_GITHUB, STATUS_APPROVED).await;
 

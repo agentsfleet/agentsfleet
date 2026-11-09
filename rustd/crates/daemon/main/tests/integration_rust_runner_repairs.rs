@@ -186,7 +186,7 @@ fn incident_upstream(contents: Reply) -> Vec<Route> {
 /// query; after a partial read — the file answers 403 — it ends
 /// diagnosis-only and nothing is written.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_incident_repairer_ships_or_stops() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, "incident-repairer", &telemetry(), None).await;

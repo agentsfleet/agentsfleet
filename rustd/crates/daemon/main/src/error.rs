@@ -145,9 +145,6 @@ pub enum BootFailure {
     /// Postgres would not answer.
     #[error("agentsfleetd cannot boot: the API database would not answer")]
     Database(#[from] afd_db::Error),
-    /// Dragonfly would not answer.
-    #[error("agentsfleetd cannot boot: the API queue would not answer")]
-    Queue(#[from] afd_dragonfly::Error),
     /// No NATS seed answered, or the server failed the boot check.
     #[error("agentsfleetd cannot boot: the event bus would not answer")]
     Bus(#[from] afd_bus::Error),
@@ -206,7 +203,6 @@ impl BootFailure {
         match *self {
             Self::Environment(_) => "preflight",
             Self::Database(_) => "database",
-            Self::Queue(_) => "queue",
             Self::Bus(_) => "bus",
             Self::Listen(_) | Self::RunnerStream(_) => "listen",
             Self::Exporter(_) | Self::Contract(_) => "telemetry",
@@ -224,7 +220,7 @@ impl BootFailure {
         match *self {
             Self::Environment(_) => af_core::error_code::STARTUP_ENV_CHECK,
             Self::Database(_) => af_core::error_code::STARTUP_DB_CONNECT,
-            Self::Queue(_) | Self::Bus(_) => af_core::error_code::STARTUP_DRAGONFLY_CONNECT,
+            Self::Bus(_) => af_core::error_code::STARTUP_BUS_CONNECT,
             Self::Listen(_)
             | Self::RunnerStream(_)
             | Self::Exporter(_)

@@ -38,12 +38,6 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
-    #[error("the queue backing the gate plane would not answer")]
-    Queue {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
-
     /// The caller sent something this plane will not accept.
     ///
     /// The only variant whose sentence is written FOR the caller; every other
@@ -88,12 +82,9 @@ impl Error {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
-            // The queue joins the internal family for the registry reason the
-            // runner plane's does: a new code for a Dragonfly failure would fire
-            // the ERROR REGISTRY gate over a registry this family does not own.
             // A daemon that cannot draw random bytes or name an instant is THIS
             // process failing, not the caller's request being wrong.
-            ErrorKind::Queue { .. } | ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => {
+            ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => {
                 error_code::INTERNAL_OPERATION_FAILED
             }
             // Delegated rather than restated: each plane already decides which
@@ -110,10 +101,9 @@ impl Error {
         match self.kind() {
             ErrorKind::Rejected { detail } => detail,
             ErrorKind::Datastore { .. } => DETAIL_UNAVAILABLE,
-            ErrorKind::Query { .. }
-            | ErrorKind::Queue { .. }
-            | ErrorKind::Entropy { .. }
-            | ErrorKind::Identifier { .. } => DETAIL_OPERATION_FAILED,
+            ErrorKind::Query { .. } | ErrorKind::Entropy { .. } | ErrorKind::Identifier { .. } => {
+                DETAIL_OPERATION_FAILED
+            }
             ErrorKind::Credential { source } => source.detail(),
             ErrorKind::Billing { source } => source.detail(),
         }
@@ -127,7 +117,6 @@ impl Error {
             ErrorKind::Credential { source } => source.is_datastore_unavailable(),
             ErrorKind::Billing { source } => source.is_datastore_unavailable(),
             _served @ (ErrorKind::Query { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Rejected { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Identifier { .. }) => false,
@@ -151,7 +140,6 @@ impl Error {
             ErrorKind::Credential { source } => source.is_config_permanent(),
             _transient @ (ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Rejected { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::Identifier { .. }
@@ -171,7 +159,6 @@ pub const DETAIL_GATE_BINDING_UNWRITABLE: &str = "The approval binding could not
 
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_dragonfly::Error => Queue,
     afd_credential::Error => Credential,
     afd_billing::Error => Billing,
     af_crypto::error::Error => Entropy,

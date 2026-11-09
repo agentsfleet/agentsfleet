@@ -71,7 +71,6 @@ impl Error {
             | ErrorKind::Billing { .. }
             | ErrorKind::Credential { .. }
             | ErrorKind::Gate { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }

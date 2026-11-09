@@ -148,7 +148,7 @@ async fn fleet_charge(c: &Case, fleet: &Uuid7) -> Uuid7 {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_deletion_matrix_keeps_money() {
     let c = Case::create().await;
     let fleets = Fleets::new(c.base.db.clone());

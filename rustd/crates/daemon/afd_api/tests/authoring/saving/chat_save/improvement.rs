@@ -6,7 +6,7 @@ use http::{Method, StatusCode};
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_fleet_killed_during_the_turn_cannot_be_changed_or_reactivated() {
     let mut case = Case::create().await;
     case.fund().await;
@@ -41,7 +41,7 @@ async fn a_fleet_killed_during_the_turn_cannot_be_changed_or_reactivated() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn saved_fleet_turn_applies_once_and_replays_without_another_revision() {
     let mut case = Case::create().await;
     case.fund().await;

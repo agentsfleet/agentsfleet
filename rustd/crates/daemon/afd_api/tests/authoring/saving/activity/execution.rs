@@ -6,7 +6,7 @@ use http::{Method, StatusCode};
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn recorded_receipts_never_admit_run_bill_deliver_or_enter_runtime_context() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     assert_eq!(

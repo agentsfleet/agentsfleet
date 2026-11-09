@@ -42,7 +42,6 @@ pub(super) struct Drained {
     /// When the last of this run's jobs settled, or the deadline.
     pub(super) ended: Instant,
     pub(super) settled: u64,
-    pub(super) dragonfly_calls: u64,
     pub(super) transactions: u64,
 }
 
@@ -137,10 +136,6 @@ pub(super) fn record(
         });
     }
     report.datastores = DatastoreCosts {
-        dragonfly: DatastoreCost {
-            operations: drained.dragonfly_calls,
-            time_ms: None,
-        },
         postgres: DatastoreCost {
             operations: drained.transactions,
             time_ms: None,

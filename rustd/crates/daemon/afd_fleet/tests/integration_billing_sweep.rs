@@ -39,7 +39,7 @@ const AGED: &str = "UPDATE {table} SET created_at = created_at - $2::interval, \
 async fn the_relay_settles_orphaned_lines() {
     // Its own database: a pass sweeps every unsettled line it can see, so the
     // counts below are exact only where this test's rows are the only ones.
-    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let held = held_in(Fixtures::create_isolated().await).await;
     let database = &held.fixtures.database;
     let biller = LedgerBiller::new(
         database.clone(),
@@ -82,7 +82,7 @@ async fn the_relay_settles_orphaned_lines() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_fleet_expiry_bills_its_last_slice() {
-    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let held = held_in(Fixtures::create_isolated().await).await;
     let outcome = AssertUnwindSafe(tokio::time::timeout(
         Duration::from_secs(45),
         expiry_after_decision(&held),
@@ -224,7 +224,7 @@ async fn renew_runtime(held: &Held, biller: &LedgerBiller) -> i64 {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
-    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let held = held_in(Fixtures::create_isolated().await).await;
     let database = &held.fixtures.database;
     let biller = LedgerBiller::new(
         database.clone(),

@@ -20,7 +20,7 @@ FROM fleet.fleets f WHERE f.id=$4";
 #[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
 async fn test_an_authoring_lease_has_no_credential_mint_rights() {
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = bound(&fixtures, "{}").await;
     seed_handle(
         &fixtures,

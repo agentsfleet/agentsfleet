@@ -16,17 +16,12 @@ mod fixture;
 use std::time::Duration;
 
 use af_crypto::entropy::Entropy;
+use afd_bus::{Received, Subject};
 use afd_db::test_util::mint_id;
-use afd_dragonfly::SubscriptionHub;
-use afd_dragonfly::hub::Received;
 use afd_gate::gate::{Gates, Verdict, Waiting};
 use serde_json::json;
 
-use self::fixture::{Fixture, NOW, config_gates, connect_redis, dragonfly_config};
-
-/// How long the hub's pump is given to register the subscription before the
-/// park publishes; `subscribe` queues the command rather than round-tripping.
-const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
+use self::fixture::{Fixture, NOW, bus, config_gates};
 
 /// How long a published frame is given to reach the subscriber.
 const FRAME_DEADLINE: Duration = Duration::from_secs(5);
@@ -45,20 +40,16 @@ const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixt
 /// names; the count rides the frame so the console can show the gate waiting
 /// without a read of its own.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = Gates::new(
-        fixture.database.clone(),
-        afd_bus::dragonfly::publisher(connect_redis().await),
-        Entropy::new(),
-    );
-    let hub = SubscriptionHub::start(dragonfly_config())
+    let bus = bus();
+    let gates = Gates::new(fixture.database.clone(), bus.clone(), Entropy::new());
+    let mut tail = bus
+        .subscribe(&Subject::FleetTail(fixture.fleet.clone()))
         .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", fixture.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+        .expect("the in-process bus subscribes");
     let event = mint_id();
 
     assert_eq!(

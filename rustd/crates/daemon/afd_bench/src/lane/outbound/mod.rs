@@ -47,7 +47,7 @@ use tokio_util::sync::CancellationToken;
 
 use self::poster::{Behaviour, Scripted};
 use self::record::{Drained, record, window_end};
-use crate::datastores::{Datastores, dragonfly_calls, postgres_transactions};
+use crate::datastores::{Datastores, postgres_transactions};
 use crate::error::{ErrorKind, Result, seed_refused};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::knobs::{RETRYABLE_FRACTION_VARIABLE, SLOW_FRACTION_VARIABLE};
@@ -291,7 +291,6 @@ pub(crate) fn fraction_of(total: u64, fraction: f64) -> u64 {
 /// Start the real worker, wait for it to settle every job or the deadline,
 /// stop it.
 async fn drain(stores: &Datastores, poster: Scripted, parameters: Parameters) -> Result<Drained> {
-    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let transactions_before = postgres_transactions(&stores.database).await?;
     let token = CancellationToken::new();
     let started = Instant::now();
@@ -318,9 +317,6 @@ async fn drain(stores: &Datastores, poster: Scripted, parameters: Parameters) ->
         started,
         ended,
         settled,
-        dragonfly_calls: dragonfly_calls(&stores.queue)
-            .await?
-            .saturating_sub(dragonfly_before),
         transactions: postgres_transactions(&stores.database)
             .await?
             .saturating_sub(transactions_before),

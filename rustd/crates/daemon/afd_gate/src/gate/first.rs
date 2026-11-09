@@ -209,15 +209,10 @@ mod tests {
         use af_core::test_util::trace::Capture;
         use af_crypto::entropy::Entropy;
         use af_fleet_runtime::FleetConfig;
-        use afd_dragonfly::Dragonfly;
-        use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
         use crate::gate::pass::{Check, Verdict, Waiting};
         use crate::gate::route::RefState;
         use crate::gate::store::Gates;
-
-        /// A queue address nothing listens on.
-        const NOWHERE: &str = "redis://127.0.0.1:1";
 
         /// A fleet whose only rule names another tool, so policy passes a chat outright.
         const APPROVE_EVERY_CHAT: &str = r#"{"name":"gate-unit","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"gates":{"rules":[{"tool":"shell","action":"user:other","behavior":"approve"}]}}}"#;
@@ -229,14 +224,9 @@ mod tests {
 
         #[tokio::test]
         async fn a_recorded_gate_reaching_the_policy_pass_waits_and_says_so() {
-            let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-                DragonflyRole::Default,
-                NOWHERE.to_owned(),
-            ))
-            .expect("a lazy handle opens no socket and cannot fail");
             let gates = Gates::new(
                 afd_db::test_util::unreachable_db(),
-                afd_bus::dragonfly::publisher(queue),
+                afd_bus::test_util::unreachable(),
                 Entropy::new(),
             );
             let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");

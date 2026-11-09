@@ -4,13 +4,13 @@ use super::super::activity::fault::Refusal;
 use super::*;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_failed_save_commit_can_replay_the_same_report_without_partial_rows() {
     refuse_and_retry(true).await;
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_failed_save_write_rolls_back_the_answer_for_report_retry() {
     refuse_and_retry(false).await;
 }

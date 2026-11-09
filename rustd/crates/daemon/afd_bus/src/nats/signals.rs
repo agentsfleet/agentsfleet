@@ -77,6 +77,7 @@ impl Signals {
             }
             Event::Connected => {
                 if self.down.swap(false, Ordering::AcqRel) {
+                    af_observability::producers::http::hub_reconnected();
                     self.reconnected.store(true, Ordering::Release);
                     self.wake.notify_one();
                 }

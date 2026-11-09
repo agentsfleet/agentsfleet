@@ -8,7 +8,7 @@
 //!
 //! Only the fleets the caller may read are ever subscribed, so a frame from
 //! another workspace is not delivered and then discarded — it never arrives.
-//! There is deliberately no pattern subscribe: `PSUBSCRIBE fleet:*` would put
+//! There is deliberately no wildcard subscribe: `af.fleet.*.tail` would put
 //! every tenant's frames on one firehose and make tenant isolation a matter of
 //! discipline rather than of what is attached.
 //!
@@ -293,8 +293,8 @@ mod tests {
             1
         );
         let channel = Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet"));
-        server.confirm(&channel);
-        server.confirm(&channel);
+        server.gap(&channel);
+        server.gap(&channel);
 
         let frame = fan_in.next_frame().await;
         assert_eq!(frame.kind, crate::frame::KIND_CATCHING_UP);

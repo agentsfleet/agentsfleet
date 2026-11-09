@@ -324,10 +324,10 @@ pub(super) const REQUEST: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::STARTUP_DRAGONFLY_CONNECT,
+        code: error_code::STARTUP_BUS_CONNECT,
         status: 500,
         title: "Event service unavailable",
-        hint: "Dragonfly is unreachable. Check that DRAGONFLY_URL is set and the Dragonfly server accepts connections. Run 'agentsfleetd doctor' to verify.",
+        hint: "The message bus is unreachable. Check that NATS_URL is set and a NATS seed accepts connections. Run 'agentsfleetd doctor' to verify.",
         user_message: None,
     },
 ];

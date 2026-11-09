@@ -20,7 +20,6 @@ use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_sse::{Live, StreamLimit};
 
 use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
@@ -45,17 +44,12 @@ fn plane() -> ServingPlane {
     )
     .expect("the unreachable database URL is valid");
     let database = afd_db::Db::unreachable(&database_config);
-    let queue = afd_dragonfly::Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Api,
-        "redis://127.0.0.1:1".to_owned(),
-    ))
-    .expect("a lazy Dragonfly handle opens no socket");
     let vendors = Vendors::new(Platform::empty(), reqwest::Client::new());
     ServingPlane::new(PlaneParts {
         authoring_transport: afd_authoring::Network::new()
             .expect("fixed transport builds without a network request"),
         database,
-        bus: afd_bus::dragonfly::publisher(queue),
+        bus: afd_bus::test_util::unreachable(),
         kek: Arc::new(Kek::from_bytes([0x2a; 32])),
         capabilities: Capabilities::Unconfigured(NoCapabilitySource),
         signup_writeback: SignupWriteback::Unconfigured(crate::identity::NoWriteback),

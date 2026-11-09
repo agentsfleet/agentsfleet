@@ -19,7 +19,6 @@ use af_core::test_util::trace::Capture;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_dragonfly::SubscriptionHub;
 use afd_sse::{HEARTBEAT_EVENT, KIND_ACCESS_REVOKED};
 use axum::body::BodyDataStream;
 use futures_util::StreamExt as _;
@@ -97,7 +96,7 @@ async fn past_heartbeats(body: &mut BodyDataStream) -> String {
 /// with no `access_revoked`: an outage is not a revocation, and the client's
 /// reconnect is authorized at open. The closing is logged once.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_wall_whose_rechecks_go_unanswered_closes_without_access_revoked() {
     let capture = Capture::install();
     let mut wall = Wall::open(Fixture::create().await).await;
@@ -157,12 +156,12 @@ async fn pool_of_one(lane: &TestDatabase) -> Db {
 
 /// Bob's wall on John's workspace, past its opening `hello`, with access
 /// decided by the production resolver over `pool`.
-async fn bobs_wall(members: &Members, pool: &Db, hub: &SubscriptionHub) -> BodyDataStream {
+async fn bobs_wall(members: &Members, pool: &Db) -> BodyDataStream {
     let bob = &members.bob;
     let router = Fleet::live(pool.clone(), &bob.subject, owner_scopes())
         .with_live_ownership()
         .with_dashboard_holding(&bob.subject, owner_scopes())
-        .with_live_hub(hub.clone())
+        .with_live_bus(harness::bus())
         .router();
     let path = format!(
         "/v1/workspaces/{}/events/stream",
@@ -181,14 +180,13 @@ async fn bobs_wall(members: &Members, pool: &Db, hub: &SubscriptionHub) -> BodyD
 /// The decision is the production resolver over a pool of one connection,
 /// which the test holds through the first tick.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_revocation_behind_an_overrun_tick_lands_on_the_next_tick() {
     let capture = Capture::install();
     let members = Members::create().await;
     let lane = TestDatabase::shared();
     let pool = pool_of_one(&lane).await;
-    let hub = harness::live_hub().await;
-    let mut body = bobs_wall(&members, &pool, &hub).await;
+    let mut body = bobs_wall(&members, &pool).await;
 
     let held = pool
         .acquire()
@@ -216,7 +214,6 @@ async fn a_revocation_behind_an_overrun_tick_lands_on_the_next_tick() {
         "nothing follows access_revoked"
     );
     drop(capture);
-    hub.shutdown();
     drop(pool);
     lane.cleanup().await;
     members.cleanup().await;

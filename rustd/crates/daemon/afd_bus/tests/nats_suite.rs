@@ -324,7 +324,7 @@ async fn boot_refuses_an_unreachable_seed() -> TestResult {
     let error = error
         .downcast::<afd_bus::Error>()
         .map_err(|other| format!("not a bus error: {other}"))?;
-    assert_eq!(error.code(), error_code::STARTUP_DRAGONFLY_CONNECT);
+    assert_eq!(error.code(), error_code::STARTUP_BUS_CONNECT);
     assert!(error.to_string().contains("NATS_URL"), "{error}");
     Ok(())
 }

@@ -6,7 +6,7 @@ use af_wire::authoring::{ActivityEvent, Report};
 use agentsfleetd::supervisor::Supervisor;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn changed_replay_content_cannot_dispatch_publish_or_charge_again() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, false).await;
@@ -86,7 +86,7 @@ async fn refuse_changed_completion(fixture: &AuthoringFixture) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn disconnect_keeps_the_provider_receipt_for_native_reconnect_without_redispatch() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;

@@ -37,16 +37,6 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
             .map(|(_kind, error)| error)
             .ok_or("database test utility has no outage kind")
     };
-    // By name, not by position. `one_of_each_kind` enumerates EVERY kind, and
-    // its data-only ones — a missing URL knob, a closed hub — truthfully carry
-    // no cause. Taking the first entry made this case's `source()` assertion a
-    // hostage to that vector's ordering; "unreachable" is the kind this test
-    // actually means, because it is the one that wraps a driver failure.
-    let queue = afd_dragonfly::error::one_of_each_kind()
-        .into_iter()
-        .find(|(kind, _error)| *kind == "unreachable")
-        .map(|(_kind, error)| error)
-        .ok_or("queue test utility exposes no unreachable error")?;
     let identifier = af_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("the malformed fixture unexpectedly parsed")?;
@@ -61,15 +51,15 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
     // The third column is whether the gate is a NEW causal link. Every variant
     // here wraps a failure that happened in another crate, and every one adds
     // the fact that crate cannot carry: WHICH plane was using it. `afd_db`,
-    // `afd_dragonfly`, `afd_credential`, `afd_billing`, `af_crypto` and
+    // `afd_credential`, `afd_billing`, `af_crypto` and
     // `af_core` are each shared by many planes, so "entropy pool exhausted"
     // alone leaves an operator without the one thing they need to act on.
     //
     // `Entropy` and `Identifier` used to be `#[error(transparent)]` and so
     // carried no link, which read as a deliberate distinction and was not one:
-    // `code()` and `detail()` already answer for `Queue`, `Entropy` and
-    // `Identifier` in a single arm, so three variants identical at the API
-    // boundary had two different internal shapes. They now say which plane and
+    // `code()` and `detail()` already answer for `Entropy` and `Identifier`
+    // in a single arm, so variants identical at the API boundary had two
+    // different internal shapes. They now say which plane and
     // keep the inner error as their `source`, like their four siblings.
     //
     // What stays non-uniform is the SECOND column. Only a datastore failure is
@@ -77,7 +67,6 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
     // worded.
     let cases = [
         ("database", Error::from(database()?), true, true),
-        ("queue", Error::from(queue), false, true),
         (
             "credential",
             Error::from(afd_credential::Error::from(database()?)),

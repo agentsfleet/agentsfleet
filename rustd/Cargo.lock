@@ -367,9 +367,9 @@ dependencies = [
  "af_wire",
  "afd_bus",
  "afd_db",
- "afd_dragonfly",
  "afd_fleet_lifecycle",
  "afd_state",
+ "async-trait",
  "hex",
  "jiff",
  "jiff-sqlx",
@@ -407,7 +407,6 @@ dependencies = [
  "afd_credential",
  "afd_cron",
  "afd_db",
- "afd_dragonfly",
  "afd_events",
  "afd_fleet",
  "afd_fleet_lifecycle",
@@ -591,7 +590,6 @@ dependencies = [
  "afd_api_wire",
  "afd_bus",
  "afd_db",
- "afd_dragonfly",
  "afd_events",
  "afd_fleet_lifecycle",
  "jiff",
@@ -639,7 +637,6 @@ dependencies = [
  "afd_credential",
  "afd_cron",
  "afd_db",
- "afd_dragonfly",
  "afd_events",
  "afd_fleet_lifecycle",
  "afd_identity",
@@ -691,7 +688,6 @@ dependencies = [
  "afd_connector",
  "afd_credential",
  "afd_db",
- "afd_dragonfly",
  "afd_events",
  "afd_fleet",
  "afd_fleet_lifecycle",
@@ -745,14 +741,12 @@ dependencies = [
  "af_core",
  "af_observability",
  "af_validate",
- "afd_dragonfly",
  "async-nats",
  "async-trait",
  "bytes",
  "crc16",
  "futures-util",
  "garde",
- "redis",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -833,7 +827,6 @@ dependencies = [
  "afd_api_wire",
  "afd_bus",
  "afd_db",
- "afd_dragonfly",
  "afd_events",
  "backon",
  "base64 0.23.1",
@@ -876,29 +869,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "afd_dragonfly"
-version = "0.75.0"
-dependencies = [
- "af_core",
- "af_observability",
- "af_validate",
- "backon",
- "crc16",
- "dashmap",
- "futures-util",
- "garde",
- "hostname",
- "jiff",
- "redis",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
 name = "afd_events"
 version = "0.75.0"
 dependencies = [
@@ -908,7 +878,6 @@ dependencies = [
  "afd_api_wire",
  "afd_bus",
  "afd_db",
- "afd_dragonfly",
  "afd_fleet_lifecycle",
  "afd_sse",
  "afd_state",
@@ -948,7 +917,6 @@ dependencies = [
  "afd_connector",
  "afd_credential",
  "afd_db",
- "afd_dragonfly",
  "afd_events",
  "afd_gate",
  "afd_identity",
@@ -1035,7 +1003,6 @@ dependencies = [
  "afd_bus",
  "afd_credential",
  "afd_db",
- "afd_dragonfly",
  "afd_events",
  "afd_fleet_lifecycle",
  "base64 0.23.1",
@@ -1102,11 +1069,11 @@ dependencies = [
  "afd_auth",
  "afd_authoring",
  "afd_billing",
+ "afd_bus",
  "afd_connector",
  "afd_credential",
  "afd_cron",
  "afd_db",
- "afd_dragonfly",
  "afd_events",
  "afd_fleet",
  "afd_fleet_lifecycle",
@@ -1259,7 +1226,6 @@ dependencies = [
  "afd_api_wire",
  "afd_auth",
  "afd_db",
- "afd_dragonfly",
  "afd_state",
  "const_format",
  "garde",
@@ -1282,7 +1248,6 @@ dependencies = [
  "af_observability",
  "afd_api_wire",
  "afd_bus",
- "afd_dragonfly",
  "async-trait",
  "futures-util",
  "serde_json",
@@ -1639,7 +1604,6 @@ dependencies = [
  "afd_credential",
  "afd_cron",
  "afd_db",
- "afd_dragonfly",
  "afd_events",
  "afd_fleet",
  "afd_fleet_lifecycle",
@@ -1795,12 +1759,6 @@ checksum = "db4c94f57a570fce5d381be3289b3f79aef6332d72948fe82ab5772e423ccf92"
 dependencies = [
  "rustversion",
 ]
-
-[[package]]
-name = "arcstr"
-version = "1.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "03918c3dbd7701a85c6b9887732e2921175f26c350b4563841d0958c21d57e6d"
 
 [[package]]
 name = "arraydeque"
@@ -2615,11 +2573,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4356eba6976435498d05a311ee9fc486da3bc81c200d3f0d7dd9703b41913f92"
 dependencies = [
  "bytes",
- "futures-core",
  "memchr",
- "pin-project-lite",
- "tokio",
- "tokio-util",
 ]
 
 [[package]]
@@ -6997,39 +6951,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "redis"
-version = "1.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db7f3d75b5a3301746bff39a767bf4c5c42506b08513527308b3875bfb64a031"
-dependencies = [
- "arc-swap",
- "arcstr",
- "async-lock",
- "backon",
- "bytes",
- "cfg-if",
- "combine",
- "crc16",
- "futures-channel",
- "futures-util",
- "itoa",
- "log",
- "percent-encoding",
- "pin-project-lite",
- "rand 0.10.3",
- "rustls",
- "rustls-native-certs",
- "ryu",
- "sha1_smol",
- "socket2",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "url",
- "xxhash-rust",
-]
-
-[[package]]
 name = "redox_syscall"
 version = "0.5.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7621,12 +7542,6 @@ dependencies = [
  "cpufeatures 0.3.1",
  "digest 0.11.3",
 ]
-
-[[package]]
-name = "sha1_smol"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbfa15b3dddfee50a0fff136974b3e1bde555604ba463834a7eb7deb6417705d"
 
 [[package]]
 name = "sha1dc"
@@ -9294,12 +9209,6 @@ dependencies = [
  "thiserror 2.0.21",
  "time",
 ]
-
-[[package]]
-name = "xxhash-rust"
-version = "0.8.19"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "550a2b930b62486a393c52d5c3b84bff264b28aa437ed64694d31e93b1757af7"
 
 [[package]]
 name = "yaml-merge-keys"

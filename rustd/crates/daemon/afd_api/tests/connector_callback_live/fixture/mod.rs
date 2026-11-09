@@ -19,7 +19,6 @@ use afd_connector::Provider;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
-use afd_dragonfly::Dragonfly;
 use afd_tenant::workspace::access::Grant;
 use afd_vault::{SecretBody, SecretName};
 
@@ -52,7 +51,7 @@ const SUBJECT_PREFIX: &str = "user_live_connector_callback_";
 pub(crate) struct Fixture {
     lane: TestDatabase,
     pub(crate) database: Db,
-    pub(crate) queue: Dragonfly,
+    pub(crate) bus: afd_bus::Handle,
     pub(crate) subject: String,
     /// The provider account this fixture's grant is scoped to.
     ///
@@ -83,7 +82,7 @@ impl Fixture {
         let bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            queue: harness::connect_redis().await,
+            bus: harness::bus(),
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             team: format!(
                 "T0FIX{}",
@@ -126,7 +125,7 @@ impl Fixture {
         )
         .with_owned_workspace(self.workspace.clone())
         .with_platform_admin(self.admin.clone())
-        .with_live_connectors(self.database.clone(), self.queue.clone(), provider.url())
+        .with_live_connectors(self.database.clone(), self.bus.clone(), provider.url())
         .router()
     }
 
@@ -140,7 +139,7 @@ impl Fixture {
         )
         .with_owned_workspace(self.workspace.clone())
         .with_platform_admin(self.admin.clone())
-        .with_live_connectors(self.database.clone(), self.queue.clone(), provider.url());
+        .with_live_connectors(self.database.clone(), self.bus.clone(), provider.url());
         fleet.ownership().hold_as(Grant::Platform);
         fleet.router()
     }

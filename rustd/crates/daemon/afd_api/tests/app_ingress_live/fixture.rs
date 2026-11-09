@@ -30,7 +30,6 @@ use afd_db::test_util::{
     FIXTURE_SETUP_MODEL_REF, FleetSeed, GrantSeed, InstallSeed, SetupRevision, TestDatabase,
     WorkspaceSeed, mint_id,
 };
-use afd_dragonfly::Dragonfly;
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 use jiff::Timestamp;
@@ -89,7 +88,7 @@ pub(super) enum Mapped {
 pub(super) struct Fixture {
     lane: TestDatabase,
     database: Db,
-    queue: Dragonfly,
+    bus: afd_bus::Handle,
     subject: String,
     tenant: Uuid7,
     /// Where the App's own signing secret lives.
@@ -108,7 +107,7 @@ impl Fixture {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            queue: harness::connect_redis().await,
+            bus: harness::bus(),
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
             admin: mint_id(),
@@ -127,7 +126,7 @@ impl Fixture {
             &self.subject,
             afd_auth::scope::ScopeSet::from_scopes(&afd_auth::scope::Scope::ALL),
         )
-        .with_live_ingress(self.database.clone(), self.queue.clone())
+        .with_live_ingress(self.database.clone(), self.bus.clone())
         .with_platform_admin(self.admin.clone())
         .router()
     }

@@ -8,7 +8,7 @@ use af_core::error_code;
 use http::{Method, StatusCode, header};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn stale_tags_and_changed_replay_bodies_cannot_rename_or_resurrect() {
     let case = Case::create().await;
     case.fund().await;

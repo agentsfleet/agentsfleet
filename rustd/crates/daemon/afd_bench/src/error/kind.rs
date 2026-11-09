@@ -47,9 +47,6 @@ pub(crate) enum ErrorKind {
     #[error("the bench database would not open")]
     DatabaseUnavailable { source: afd_db::Error },
 
-    #[error("the bench queue would not open")]
-    QueueUnavailable { source: afd_dragonfly::Error },
-
     #[error("the notification bus would not answer")]
     BusUnavailable { source: afd_bus::Error },
 

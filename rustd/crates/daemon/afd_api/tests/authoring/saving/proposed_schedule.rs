@@ -51,7 +51,7 @@ async fn finish_turn(case: &Case, lease: &str, token: &str) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_proposed_cron_trigger_is_saved_as_a_schedule() {
     let mut case = Case::create().await;
     case.fund().await;

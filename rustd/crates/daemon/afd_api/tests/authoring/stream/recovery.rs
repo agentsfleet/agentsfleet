@@ -51,7 +51,7 @@ async fn a_blocked_authorization_read_closes_at_its_deadline_and_releases_capaci
     );
     held.rollback().await.expect("release draft");
     drop(body);
-    assert_eq!(live.hub.readers(&live.channel()), 0);
+    assert_eq!(live.readers(), 0);
     let replacement = live.open().await;
     drop(replacement);
     monitor.close().await.expect("release monitor");
@@ -87,7 +87,7 @@ async fn wait_for_block(monitor: &mut sqlx::PgConnection, pid: i32) {
 async fn subscription_gap_and_lag_request_resync_without_private_text() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    live.server.confirm(&live.channel());
+    live.server.gap(&live.subject());
     let gap = frame(&mut body).await;
     assert!(gap.contains("event: draft.resync\n"), "{gap}");
     assert_eq!(data(&gap), json!({}));
@@ -98,7 +98,7 @@ async fn subscription_gap_and_lag_request_resync_without_private_text() {
     assert!(lag.contains("event: draft.resync\n"), "{lag}");
     assert_eq!(data(&lag), json!({}));
     drop(body);
-    assert_eq!(live.hub.readers(&live.channel()), 0);
+    assert_eq!(live.readers(), 0);
     live.cleanup().await;
 }
 
@@ -107,7 +107,7 @@ async fn subscription_gap_and_lag_request_resync_without_private_text() {
 async fn draft_stream_resyncs_when_its_subscription_ends() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    live.hub.shutdown();
+    live.bus.shutdown().await.expect("the bus shuts down");
     let resync = tokio::time::timeout(super::DELIVERY, body.next())
         .await
         .expect("a lost subscription is announced")
@@ -117,7 +117,7 @@ async fn draft_stream_resyncs_when_its_subscription_ends() {
     let heartbeat =
         tokio::time::timeout(afd_sse::HEARTBEAT_INTERVAL + super::DELIVERY, body.next())
             .await
-            .expect("a stopped hub retains periodic durable reads")
+            .expect("a stopped bus retains periodic durable reads")
             .expect("the running draft stays open")
             .expect("infallible body");
     assert_eq!(
@@ -164,11 +164,11 @@ async fn stream_ceiling_refuses_excess_viewers_and_dropped_body_releases_its_slo
         problem["error_code"],
         af_core::error_code::SSE_STREAM_CAP.as_str()
     );
-    assert_eq!(live.hub.readers(&live.channel()), 1);
+    assert_eq!(live.readers(), 1);
     drop(body);
     let replacement = live.open().await;
     drop(replacement);
-    assert_eq!(live.hub.readers(&live.channel()), 0);
+    assert_eq!(live.readers(), 0);
     live.cleanup().await;
 }
 

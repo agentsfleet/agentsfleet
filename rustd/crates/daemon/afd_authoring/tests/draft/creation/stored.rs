@@ -46,7 +46,7 @@ async fn corrupt_head(c: &Case, fleet: &Uuid7, review: Option<&str>, foreign_sou
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_saved_fleet_whose_stored_setup_is_unreadable_reads_as_a_stored_fault() {
     let c = Case::create().await;
     let (_, request) = c.request("stored-faults", Start::None).await;

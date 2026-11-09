@@ -15,7 +15,6 @@ use afd_events::{ACTOR_MACHINE, Steer};
 
 use crate::integration_list_plans::private_database;
 use crate::integration_steer_retry::REQUEST_JSON;
-use crate::support::EventsLane;
 
 /// Top-level statements the API login ran in this database. The deployment
 /// ceiling's own sample (`select_backlog.sql`, the only statement naming
@@ -70,8 +69,8 @@ impl Private {
             .await?;
         drop(connection);
         let runtime = lane.open(DbRole::Api, &[]).await;
-        let queue = afd_dragonfly::test_util::connect_live(&EventsLane::redis()).await?;
-        let steer = Steer::new(afd_admission::Admissions::for_tests(runtime.clone(), queue));
+        let (bus, _server) = afd_bus::test_util::detached()?;
+        let steer = Steer::new(afd_admission::Admissions::for_tests(runtime.clone(), bus));
         Ok(Self {
             lane,
             owner,
