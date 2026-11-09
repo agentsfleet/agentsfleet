@@ -65,6 +65,7 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 The Bus keeps one bounded wake queue shared by producers and the gateway.
 A dropped notification or periodic database probe marks a recovery generation.
 That mark survives later locality hints and hosts with no free capacity.
+
 The five-second probe repairs a crash after admission commits but before its disposable wake is published.
 Normal admission and steering publish a wake immediately and do not wait for that probe.
 

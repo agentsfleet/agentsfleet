@@ -12,6 +12,7 @@ executable: false
 
 Source closure for Indy's feedback on [PR 819](https://github.com/agentsfleet/agentsfleet/pull/819).
 The 23 numbers match the original comments. Implementation findings are closed in source; runtime verification remains due.
+
 This table claims no unrun test passed.
 
 ## Why it exists
@@ -70,6 +71,7 @@ Rust paths below are relative to `rustd/crates/`.
 
 Codex `e54a5713caf331f42a6eef0166186df5f7563c29`, `app-server-transport/src/transport/remote_control/websocket.rs`, owns connection workers in a `JoinSet`, cancels them together and bounds joining before aborting.
 Exonum `2d2fa22e5f5bc451d08c155c2398956f11dce06e`, `exonum-node/src/events/mod.rs`, owns and prioritizes input receivers.
+
 This gateway additionally drains already accepted input instead of ending aggregation when any receiver closes.
 Inspected source copies are under `/tmp/m243-reference-sources`, without Git metadata.
 
@@ -77,11 +79,17 @@ Inspected source copies are under `/tmp/m243-reference-sources`, without Git met
 
 The source review mapped all 23 comments to current code and found no remaining implementation finding in its inspected scope.
 The reuse audit removed the forwarding time helper and both runner JSON counters; `af_validate::serialized_len` now shares the existing allocation-free bounded writer.
+
 Tokio owns channels, semaphore permits, cancellation and tracked tasks; Hyper owns proxy matching; Boring owns certificate verification. Foundation helpers own identifiers, entropy, errors, environment reads and time conversion. The operator fixture reuses `afd_identity::direct`.
-All 717 current candidate test/gate hunks were reviewed. The follow-up restored selected wake and loss-recovery proofs, prioritized forbidden offers over a durable test condition, corrected the settlement query key, and restored native report-to-completion analytics coverage.
+
+All 717 current candidate test/gate hunks were reviewed.
+The follow-up restored wake delivery and loss recovery proofs.
+It also corrected refusal ordering, the settlement key, and completion analytics coverage.
+
 Renewal partitioning, request correlation, offer admission and cancellation ordering remain domain logic.
 The final size audit found zero violations across 848 changed paths; no suppression was added.
 Integration, aggregate coverage, Miri, three reset-rig benchmark comparisons and deployed-route evidence are not certified by this source audit.
+
 The base-branch comparison passed: runner 1,749; daemon 158; daemon libraries 3,482 (`make test-unit-rustd`, `/tmp/m243-base-rust-unit-01.log`). These are base counts, not candidate results.
 
 ## Related pages
