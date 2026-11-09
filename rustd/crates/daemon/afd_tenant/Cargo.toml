@@ -36,6 +36,8 @@ afd_auth.workspace = true
 afd_admin.workspace = true
 # Entropy for the identifiers these stores mint.
 af_crypto.workspace = true
+# The replay check compares a stored digest in constant time.
+subtle.workspace = true
 # The Postgres pool the api-key, workspace and credential rows are read through.
 afd_db.workspace = true
 # Instants: `TIMESTAMPTZ(3)` columns decode to and bind from `jiff::Timestamp`

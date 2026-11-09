@@ -18,6 +18,12 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
+    #[error("a device session row is unreadable: {what}")]
+    SessionUnreadable {
+        /// What about the row this build cannot read.
+        what: Box<str>,
+    },
+
     #[error("a stored role holds {stored}, which this build does not know")]
     RoleUnknown {
         /// The stored bytes, so the log names what a newer daemon wrote.
