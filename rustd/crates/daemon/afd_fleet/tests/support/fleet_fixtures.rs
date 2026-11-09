@@ -95,9 +95,8 @@ impl Fixtures {
     /// between the two clocks. A suite that needs a lease to lapse ages its row,
     /// not its clock.
     ///
-    /// Per fixture, never per binary: a lease lives `LEASE_TTL` (30 s) past
-    /// this instant, so one shared instant expired every lease a test took
-    /// after the suite's first 30 s.
+    /// Per fixture, never per binary: a lease lives `LEASE_TTL` past this
+    /// instant. Sharing one instant expires leases taken after that interval.
     pub(crate) const fn enrolled_at(&self) -> Timestamp {
         self.enrolled
     }

@@ -116,7 +116,7 @@ impl FullHost {
 struct RenewalPeer {
     sender: Arc<super::super::SessionSender>,
     outgoing: super::super::queues::Receivers,
-    _current: tokio::sync::watch::Sender<Option<Arc<super::super::SessionSender>>>,
+    current: tokio::sync::watch::Sender<Option<Arc<super::super::SessionSender>>>,
     _assignments: tokio::sync::watch::Sender<Option<Arc<af_stream::OwnedFrame>>>,
 }
 
@@ -142,7 +142,7 @@ impl RenewalPeer {
             Self {
                 sender,
                 outgoing,
-                _current: current,
+                current,
                 _assignments: assignments,
             },
         )
