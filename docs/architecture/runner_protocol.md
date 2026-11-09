@@ -1,506 +1,211 @@
+---
+type: explanation
+audience: operator
+verified: 2026-11-09
+product_version: 0.75.0
+executable: false
+---
+
 # Runner stream protocol
 
-This page records the M243 implementation design and unfinished working source.
-The active M243 specification holds acceptance criteria; current source remains unverified.
+## What it is
 
-## Connection direction and deployment
+Each runner opens one outbound connection to `agentsfleetd` for work, cancellation, progress and results.
+The runner prefers HTTP/3 and uses HTTP/2 when an eligible transport failure prevents HTTP/3.
 
-The runner opens an outbound connection to a configured `agentsfleetd` endpoint.
-The daemon sends offers and cancellation over that connection.
-The daemon never needs to dial the runner or expose an inbound runner port.
+Read this page to connect a runner, set certificate trust or understand reconnect behavior.
+The [certificate guide](../../playbooks/operations/runner_stream_tls/001_playbook.md) gives the generation and vault steps.
 
-HTTP/3 is preferred. HTTP/2 carries the same application protocol when HTTP/3 cannot connect.
-Both transports are required in M243; WebSocket and lease polling are removed.
+## Why it exists
+
+The daemon pushes work to available workers, so idle workers send no lease requests.
+One authenticated session carries both fleet runs and authoring operations.
+The browser setup chat keeps its existing API and user authentication.
+
+## How it behaves
+
+### Certificates and configuration
+
+Use separate certificates in development and production.
+The certificate must cover the hostname in `AGENTSFLEET_RUNNER_STREAM_URL`, including a private hostname when using Fly networking.
+
+| Environment | 1Password vault | Certificate hostname |
+|---|---|---|
+| Development | `ZMB_CD_DEV` | `agentsfleetd-dev.internal` |
+| Production | `ZMB_CD_PROD` | `agentsfleetd-prod.internal` |
+
+The daemon needs its leaf certificate chain and matching private key as protected files.
+Runners need the issuer's public certificate when their operating system does not trust that issuer.
+Runners keep their existing bearer tokens and need no client certificates.
+
+| Item | Fields | Runtime use |
+|---|---|---|
+| `agentsfleet-runner-stream` | `ca-certificate`, concealed `ca-private-key`, `certificate-chain`, concealed `private-key`, `server-name` | `ca-certificate`: public runner trust; `ca-private-key`: signing only, never runtime; `certificate-chain` and `private-key`: daemon files; `server-name`: hostname metadata |
+
+Each environment's vault holds one `agentsfleet-runner-stream` item.
+The CA signing key sits beside runtime material, where the Continuous Integration (CI) service account can read it.
+Indy accepted this access on Nov 09, 2026.
+
+Certificate files use Privacy-Enhanced Mail (PEM) encoding.
+The issuer is a certificate authority (CA).
+
+The application reads file paths, never 1Password references, for certificate material.
+The deployment must deliver the selected vault values to those protected files before starting the binaries.
+
+| Process | Setting | Effect and default |
+|---|---|---|
+| Daemon | `AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR` | TCP and UDP bind address; default `[::]:4443`; valid IP address and port |
+| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE` | Required PEM leaf certificate followed by its issuer chain; no default |
+| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE` | Required PEM private key matching the leaf certificate; no default |
+| Runner | `AGENTSFLEET_RUNNER_STREAM_URL` | Required HTTPS origin; no credentials, path, query or fragment; no default |
+| Runner | `AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE` | Optional public CA bundle added to operating-system trust; default operating-system trust |
+| Runner | `AGENTSFLEET_RUNNER_TOKEN` | Required existing `agt_r` runner credential; no default |
+| Runner | `AGENTSFLEET_API_URL` | Required HTTP or HTTPS base URL for the remaining HTTP operations; no default |
+
+For development, the native origin is `https://agentsfleetd-dev.internal:4443`.
+The client adds `/v1/runners/me/stream`; configure only the origin.
+
+The configuration readers are [daemon preflight](../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) and [runner configuration](../../rustd/crates/runner/afr_supervisor/src/config/stream.rs).
+
+### Connection direction and deployment
+
+The runner needs outbound access to the configured daemon endpoint.
+The daemon never dials the runner, and the runner needs no inbound listener.
 
 ```text
-Fly-hosted runner ---- Fly private network ----------> agentsfleetd runner listener
-External runner ----- operator-provided reachability -> configured daemon endpoint
-                       HTTP/3: UDP + TLS 1.3
-                       HTTP/2: TCP + TLS
+Runner ── private network ──> agentsfleetd listener
+         HTTP/3: UDP 4443
+         HTTP/2: TCP 4443
 ```
 
 User Datagram Protocol (UDP) carries HTTP/3 through QUIC.
 Transmission Control Protocol (TCP) carries HTTP/2.
-Transport Layer Security (TLS) verifies the daemon's identity on both paths.
+The port above is the default; both listeners use the configured address.
 
-Both binaries require TLS 1.3 with `X25519MLKEM768` hybrid key exchange.
-A peer offering only classical groups is refused on either transport; transport fallback never relaxes this requirement.
+Private Fly routing is the supported hosted path.
+An external runner needs a route to that private network, working name resolution and at least one permitted transport.
+Enabling HTTP/3 or HTTP/2 alone does not create private network access.
 
-Cloudflare is not a dependency of either path.
-Private Fly routing is the supported hosted deployment path for M243.
-External operators supply reachability and permit outbound HTTP/3 over QUIC or HTTP/2 to their configured endpoint.
+Permit both transports to allow HTTP/2 fallback when UDP is unavailable.
+Any intermediary must pass duplex streaming and retain native connection ownership across packets.
+Cloudflare is not required.
 
-An external runner needs private network access when its configured daemon endpoint is private to Fly.
-Enabling HTTP/3 or HTTP/2 alone does not create that route.
-The runner remains an outbound client and needs no inbound HTTP listener.
+### One session and two transports
 
-The deployment requirements are:
+Both transports require Transport Layer Security (TLS) 1.3 and `X25519MLKEM768` hybrid key exchange.
+Classical-only peers are refused, including during fallback.
+Certificate signatures remain conventional; handshake keys need no vault entry.
 
-- A runner can resolve and reach the configured daemon endpoint.
-- The endpoint presents a certificate valid for the configured server name.
-- The runner trusts the certificate chain; private deployments may supply their own trusted certificate authority.
-- HTTP/3 requires outbound UDP to the daemon's configured listener port.
-- HTTP/2 requires outbound TCP to the daemon's configured listener port.
-- External operators permit at least one transport; permitting both allows HTTP/2 fallback when UDP fails.
-- Any intermediary must pass bidirectional streaming without buffering the entire request.
-- Routing must retain native connection ownership across packets, including during scaling and drain.
-
-The selected port and hostname belong to deployment configuration.
-Running both services on Fly does not require a public route.
-Fly documents UDP support on its private IPv6 network separately from its public UDP service limitations.
-
-Sources: [Fly UDP networking](https://docs.fly.io/networking/udp-and-tcp/),
-[HTTP/3 connection establishment](https://www.rfc-editor.org/rfc/rfc9114.html#section-3.2).
-
-## Certificates and configuration
-
-The daemon presents one certificate chain and private key on both native listeners.
-The certificate's subject alternative names include the hostname in the runner stream URL.
-Runners verify that name and chain, then authenticate with their existing bearer token; they need no client certificate.
-
-For private Fly routing, use a private certificate authority (CA) or another issuer valid for the configured hostname.
-Distribute the CA's public certificate to runners when their operating system does not already trust it.
-The CA signing key stays outside daemon and runner runtime configuration.
-
-The implementation uses these configuration names:
-
-| Process | Environment variable | Purpose |
-|---|---|---|
-| Daemon | `AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR` | Private TCP and UDP listen address; proposed default `[::]:4443` |
-| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE` | PEM leaf certificate followed by its issuer chain |
-| Daemon | `AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE` | PEM private key matching that leaf certificate |
-| Runner | `AGENTSFLEET_RUNNER_STREAM_URL` | HTTPS daemon origin; the client opens `/v1/runners/me/stream` there |
-| Runner | `AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE` | Trusted CA bundle for a private issuer; omitted for operating-system trust |
-| Runner | Existing `AGENTSFLEET_RUNNER_TOKEN` | Runner bearer credential, independent of certificate trust |
-| Runner | Existing `AGENTSFLEET_API_URL` | Endpoint for the remaining HTTP operations |
-
-These names are recorded before their configuration readers land; this page's implementation status still applies.
-A runner stream URL such as `https://agentsfleetd-dev.internal:4443` requires that exact hostname in the certificate.
-An external runner also needs a route to that private endpoint.
-
-Use the existing 1Password vault selected by `VAULT_DEV` for development and `VAULT_PROD` for production.
-The deployment workflow already selects those variables; never hardcode vault names into transport code.
-The proposed item fields are:
-
-| Item | Fields | Runtime delivery |
-|---|---|---|
-| `runner-stream-ca` | `certificate`, `private-key` | Distribute only the public certificate to runner trust bundles; keep the signing key out of runtime |
-| `agentsfleetd-runner-stream-tls` | `certificate-chain`, `private-key`, `server-name` | Stage the chain and leaf key as protected daemon files; the hostname is configuration metadata |
-
-Use separate CA and leaf items in each environment's vault.
-The existing runner item continues to hold the bearer credential.
-Creating items, delivering protected files and changing Fly configuration require their concrete reviewed deployment patch.
-
-The [operator setup draft](../../playbooks/operations/runner_stream_tls/001_playbook.md) gives certificate-generation commands and exact 1Password fields.
-
-Rotate leaf files through a daemon rollout, which drains sessions and lets runners reconnect using the current transport preference.
-When rotating the CA, distribute the new trust anchor before serving certificates issued by it.
-Overlapping trust bundles allow that sequence without disabling certificate verification.
-
-## One session and two transports
-
-A runner has one serving session, identified by `runner.runners.connection_id`.
-Choosing another transport creates a new session and rebuilds from Postgres.
-HTTP/2 and HTTP/3 never run competing lease consumers for one host.
-
-Connection establishment tries HTTP/3 within a bounded recovery deadline.
-A network failure or unsupported transport permits HTTP/2 fallback.
-Authentication, certificate, protocol-version and policy refusals fail closed instead of causing fallback.
+Network failures and bounded transport timeouts permit fallback.
+Certificate, credential, protocol and policy refusals fail closed.
+An explicit HTTP CONNECT proxy selects HTTP/2; HTTP/3 never bypasses that policy.
 
 A healthy HTTP/2 session stays on HTTP/2.
-The runner does not interrupt active work merely to try HTTP/3 again.
-Subsequent attempts retain recent failure history so an unavailable UDP path cannot create a retry loop.
+The runner tries HTTP/3 again during a later permitted connection setup, after recent UDP failure history allows another attempt.
+There is no periodic transport upgrade or hot switch.
 
-The next normal connection setup tries HTTP/3 again when network policy permits it.
-That setup follows a connection failure, daemon drain or restart, or runner restart.
-A healthy HTTP/2 session can therefore remain on HTTP/2 indefinitely; this milestone adds no periodic upgrade or hot switch.
+### Recovery and availability
 
-An explicit outbound proxy policy must also govern transport selection.
-An HTTP/3 attempt must not bypass a configured proxy requirement.
-Ordinary HTTP CONNECT proxy support belongs to the HTTP/2 transport.
+Reconnect rebuilds live work from Postgres.
+Each running lease keeps its last confirmed expiry and stops when that deadline expires.
+A reconnect or report retry cannot extend that deadline.
 
-The recovery deadline covers transport attempts, handshake, authentication and state rebuild.
-Each running lease also keeps its independent expiry deadline.
-A connection attempt or a report retry never extends a lease without a confirmed renewal.
-
-## Session protocol
-
-Both transports use the same strict, bounded JSON messages from `af_wire::protocol`.
-The transport handles HTTP and framing; the gateway handles runner and lease decisions.
-The session opening authenticates the runner token and validates the protocol version before accepting work.
-
-Upstream messages carry hello, confirmation, credits, heartbeats, renewal batches, activity, reports and folded-input requests.
-Downstream messages carry preparation, welcome, assignments, offers, answers, report acknowledgements, folded input, cancellation and drain instructions.
-Only declared variants and fields are accepted.
-
-Message size, running-lease count, renewal count and queue bounds apply equally to both transports.
-Native HTTP frame boundaries are not application-message boundaries.
-The codec must reject an oversized declared length before allocating that payload.
-
-Each transport opens four duplex POST requests on one native connection, all at `/v1/runners/me/stream`.
-The `agentsfleet-runner-kind` header selects `control`, `work`, `reports` or `activity`.
-The protocol header is `agentsfleet-runner-protocol: agentsfleet.runner.v1`.
-
-The control request presents the runner bearer token and opens first.
-After authentication, `prepared` gives the runner an observed owner and a proposed new owner.
-The runner records both before sending `confirm`.
-
-The database compares the observed owner and commits the proposal before `welcome` returns its identifier.
-The other three requests present that identifier in `agentsfleet-runner-session`.
-
-The server supplies a connection-local context as a typed request extension.
-That context binds the proven runner, credential digest, connection identifier and cancellation token.
-A secondary stream must match that context, its current session and its declared stream exactly.
-
-The server rejects duplicate streams, missing context, another connection's identifier, cancelled bindings and secondary bearer-token authentication.
-One session reserves one `StreamPermit` from the shared `StreamLimit`, covering all four streams.
-Closing the native connection cancels all four requests and their pending replies.
-An accepted authoring model call remains tracked by the daemon until its bounded provider operation records a receipt.
-Disconnecting cannot discard known usage or authorize another physical model dispatch.
-
-The control stream carries hello, preparation, confirmation, welcome, credits, heartbeat, ping, renewal, authoring renewal, cancellation and drain.
-The work stream carries offers, folded-input requests and answers, authoring model calls and results, and authoring proposals with their receipts.
-The reports stream carries fleet and authoring reports and their acknowledgements; the activity stream carries fleet activity without acknowledgements.
-
-Authoring uses the same connection authority as fleet work.
-Model dispatch, proposal receipt replay, renewal and completion check the current owner and credential under the host lock.
-The daemon checks that authority again before publishing provider output or saving a private model result.
-A fenced result retains authoritative usage while withholding private text and its provider continuation.
-
-Postgres owns model results, proposal receipts, completion acknowledgements and billing lines.
-The runner retains only unacknowledged requests and reports in memory.
-A retry uses the original dispatch, activity or report identity; changed content is refused.
-Unresolved accounting keeps the worker occupied until authoritative provider usage permits settlement.
-Content-free accounting replay remains available after private draft deletion.
-
-Wrong-stream messages are protocol errors.
-
-Availability uses `ready { credits, revision, observed_offers }` on control.
-`credits` is the number of currently idle workers; the other fields identify the update and the number of work offers received in this session.
-The daemon ignores older revisions and deducts offers sent but not yet observed.
-
-Each offer consumes one worker, so another free worker can receive work immediately.
-The counters restart with the new session after reconnect; running leases remain included in occupied capacity.
-
-Each message is a four-byte, unsigned big-endian length followed by UTF-8 JSON.
-The length covers only the JSON bytes, with a maximum of 2 MiB.
-The reader validates that prefix before reserving memory and reading into one zeroing payload buffer.
-
-Its reservation returns automatically on success, cancellation, timeout and failed I/O.
-
-Requests expecting answers carry a positive, session-local `request_id` that every answer echoes.
-The counter never repeats within a session; exhaustion ends that session.
-At most 256 requests may be outstanding, and every pending entry has an answer deadline.
-
-Cancellation, timeout and disconnect remove the pending entry and fail its waiting caller.
-Late or duplicate answers have no pending owner and are ignored with bounded telemetry.
-A new session starts a new request map; old answers cannot reach its callers.
-
-Each successful renewal entry carries the complete `RenewResponse`, including `recorded_through`.
-Usage acknowledgements advance independently for each lease, including after a repeated renewal.
-Final usage flushing keeps its existing batching behavior.
-
-Renewals, ping and cancellation receive control service ahead of ordinary heartbeat updates.
-Large offers and folded inputs remain on the independently flow-controlled work stream.
-Reports use a separate bounded writer and cannot queue ahead of control.
-
-Activity drops beyond its cap. Each worker retains its pending report in memory until the daemon acknowledges it.
-
-Data writes use chunks of at most 16 KiB and bounded per-stream flow-control windows.
-The connection receive window exceeds the combined data-stream windows, preserving control credit.
-Native tests must prove control progress with continuously ready reports and activity.
-
-Multiple QUIC streams can avoid transport ordering stalls between streams.
-Messages sharing one ordered stream still wait for missing earlier bytes.
-HTTP/3 does not remove shared bandwidth, congestion or application queue limits.
-
-Control cancellation may arrive before its work-stream offer.
-The runner retains that lease's cancellation within bounded session state and refuses to start it when the offer arrives.
-Exhausting that state closes the session; reconnect discards unread bytes from its predecessor.
-
-State-changing messages cannot use replayable TLS early data.
-Reports retain their lease-keyed idempotency regardless of transport.
-Transport retries alone never establish exactly-once processing.
-
-### Memory configuration
-
-Frame memory is shared per daemon replica, with independent receive and send pools.
-This separation lets a charged incoming frame reserve memory for its answer without waiting on itself.
-Each direction receives half the configured control and data totals.
-
-| Setting | Default | Bounds |
+| Timing | Value | Meaning |
 |---|---|---|
-| `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` | 16 MiB | 12–512 MiB |
-| `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | 48 MiB | 12–512 MiB |
-| `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | 64 fleet identifiers | 1–65,536 identifiers |
+| Heartbeat | Every 10 seconds | No heartbeat for two intervals closes the session |
+| Ping | Every 15 seconds | An unanswered ping fails after 5 seconds; idle detection can take 20 seconds |
+| Renewal | Every 5 seconds | Each answer has its own 5-second deadline |
+| Recovery attempt | 7 seconds total | HTTP/3 setup 2 seconds, HTTP/2 setup 2 seconds, authenticated opening and rebuild 3 seconds |
+| Reconnect delay | Jittered exponential backoff, capped at 30 seconds | Failed openings and short sessions retain retry history |
+| Stable reset | 60 seconds | A stable session resets reconnect backoff |
+| Replica work probe | Every 5 seconds | Finds work after a lost notification |
 
-The frame-pool minimum leaves room for a maximum frame, its prefix and temporary serialization allocation.
-Invalid configured values refuse startup before allocation.
-`MemorySettings` supports document deserialization; daemon startup currently reads the environment settings above.
+[Timing constants](../../rustd/crates/foundation/af_core/src/timing.rs) assert the renewal and recovery relationship.
+Repeated outages can exceed the recovery window; confirmed lease expiry remains the limit on execution.
 
-The 2 MiB frame maximum and 256 pending-request bound remain protocol limits.
-They protect untrusted input and do not change when deployment memory changes.
+A kill saves cancellation before sending its notification.
+Renewal and reconnect read that saved decision if the notification is lost.
+Revocation and token rotation fence new grants before an old socket detects the change.
 
-### Session events and confirmed targets
-
-`SessionOpening` owns a proposal; `ConfirmedSession` owns its database-issued authority.
-`SessionSupervisor` consumes typed `SessionEvent` values through `EventHandler` and owns every operation task.
-Stream selection and handler decisions follow Exonum's event-source and handler separation.
-
-`RequestRegistration` releases a correlation identifier through `Drop`.
-Independent operation permits preserve control capacity under activity and report pressure.
-The four `StreamKind` values describe control, work, reports and activity.
-
-`LeaseCache::refresh` loads and validates a complete snapshot before applying it.
-A revision comparison prevents a stale read from restoring a reported lease or shortening a confirmed renewal.
-Durable cancellation still applies when a concurrent local update wins that comparison.
-
-Lease issue returns the actual stored `created_at` in its existing statement.
-Capacity keeps the full-precision database clock; no cache-format assumption changes that clock.
-The reconnect query uses native UUIDv7 values and each table's runner, status and expiry index.
-
-`UNION ALL` avoids deduplication; the fleet-slot lookup uses its primary key.
-Its query plan and latency remain to be measured before a performance claim.
-
-The recovery probe runs once per replica every five seconds, independently of notifications.
-It asks whether any pending work merits a claim pass, covering lost disposable notifications.
-Subscription retries do not create additional database passes for the same outage.
-
-The scheduler in `afd_gateway/src/scheduler/mod.rs` owns one notification pass at a time.
-A pass spends one lease per wake generation, walks locality-first candidates in waiting order and advances to the next host after an empty claim.
-Wakes received during a pass form one subsequent pass.
-Each claim returns through the session's bounded request queue, so the scheduler observes the outcome before spending another lease.
-
-An uncertain claim outcome ends that pass, because the transaction may already have issued its lease.
-Only newly available worker capacity or recovery from degraded status starts an independent session pass.
-Successful issue updates waiting order; empty notifications and unchanged heartbeat capacity do not.
-
-## Rust boundaries and file owners
-
-Indy approved implementation and continuation to one pull request on Nov 08, 2026.
-The [sign-off packet](../reviews/m243/implementation-signoff.md) records the shared `af_stream` transport crate and exact file paths.
-This page owns the approved runtime design; the review packet supplies supporting detail and evidence.
-
-The paths below describe planned files, not existing implementations.
-Existing crate owners keep their lease, billing and authentication decisions.
-New dependencies land with their first production callers.
-
-| Responsibility | Exact planned source files |
-|---|---|
-| Strict message variants and bounds | `rustd/crates/protocol/af_wire/src/protocol/mod.rs`, `up.rs`, `down.rs`, `bounds.rs` |
-| Bus abstraction and typed subjects | `rustd/crates/daemon/afd_bus/src/lib.rs`, `subject.rs`, `command.rs`, `subscription.rs`, `error.rs` |
-| Dragonfly bus adapter | `rustd/crates/daemon/afd_bus/src/dragonfly/mod.rs` |
-| Wake notifications | `rustd/crates/daemon/afd_bus/src/wake/mod.rs` |
-| Gateway composition and errors | `rustd/crates/daemon/afd_gateway/src/lib.rs`, `error/mod.rs` |
-| Session registry and offer passes | `rustd/crates/daemon/afd_gateway/src/registry/mod.rs`, `scheduler/mod.rs`, `scheduler/recovery/mod.rs`, `scheduler/subscriptions.rs` |
-| Session opening, messages and authority checks | `rustd/crates/daemon/afd_gateway/src/session/mod.rs`, `opening/mod.rs`, `opening/`, `runtime.rs`, `events.rs`, `supervisor.rs`, `dispatch/` |
-| Shared framing and byte budgets | `rustd/crates/protocol/af_stream/src/framing/mod.rs`, `reader.rs`, `writer.rs`, `encoder.rs`, `budget.rs`, `memory.rs` |
-| Native HTTP/2 transport | `rustd/crates/protocol/af_stream/src/h2/mod.rs`, `client.rs`, `server.rs` |
-| Native HTTP/3 transport | `rustd/crates/protocol/af_stream/src/h3/mod.rs`, `client.rs`, `server.rs`, `driver.rs`, `socket.rs`, `trust.rs`, `telemetry.rs` |
-| Shared BoringSSL trust policy | `rustd/crates/protocol/af_stream/src/tls/mod.rs`, `boring.rs` |
-| HTTP runner entry | `rustd/crates/daemon/afd_api_runner/src/handler/runner/stream.rs` |
-| Client connection and recovery | `rustd/crates/runner/afr_supervisor/src/downlink/mod.rs`, `connect.rs`, `dispatch.rs`, `reconnect.rs`, `pending.rs` |
-| Client priority queues and writer | `rustd/crates/runner/afr_supervisor/src/uplink/mod.rs`, `queues.rs`, `writer.rs` |
-| Stream metrics and finite labels | `rustd/crates/protocol/af_observability/src/producers/fleet/runner/stream.rs`, `metrics/label/fleet.rs`, `metrics/declared/fleet.rs` |
-| Native transport and failure evidence | `rustd/crates/daemon/main/tests/integration_runner_stream/mod.rs`, `transport.rs`, `reconnect.rs`, `cancel.rs`, `reports.rs`, `observability.rs` |
-
-Directory prefixes in each row apply to the following short filenames.
-The active specification inventories the existing files whose callers also change.
-The HTTP stream mapping may require refining this plan during the spike.
-
-`afd_bus::Bus` is the runtime-selected broker boundary.
-Its `publish`, `publish_batch` and `subscribe` methods use typed `Subject` values.
-An `Arc<dyn Bus>` handle permits the later broker replacement without changing publishers.
-
-Its synchronous `shutdown` closes the adapter's subscriptions during drain.
-Subscription streams own native release behavior, and message payloads share one allocation across consumers.
-
-The adapter translates backend-specific values into `Message`, `Lagged` and `Gap` outcomes.
-M244 supplies core NATS behind this interface and moves Dragonfly's durable responsibilities into Postgres before deleting Dragonfly.
-The bus carries signals without adding durable replay or broker credentials to runners.
-
-The gateway remains a concrete session owner over existing services.
-Transport adapters supply bounded inbound and outbound messages.
-Rust's `Stream` and `Sink` traits provide the transport boundary where their semantics fit.
-
-The client chooses a transport at connection establishment.
-Domain services never branch on HTTP versions.
-Enums distinguish retryable connection failures, terminal refusals, graceful drain and superseded sessions.
-
-One task owns each mutable session state.
-Bounded Tokio channels transfer messages; watch channels carry the latest assignment or credits.
-Per-connection cancellation tokens stop sibling tasks when a reader, writer or supervisor ends.
-
-A supervised `JoinSet` collects task results and bounds shutdown.
-Owned permits release stream capacity when a task returns, fails or is cancelled.
-The writer's deadline also bounds a socket stuck during an in-progress send.
-
-## Libraries and reference code
-
-The HTTP/3 candidate uses `tokio-quiche` 0.20.1 with default compression features disabled.
-BoringSSL serves both transports on the new runner connection.
-HTTP/2 keeps Hyper and h2, using a matching `tokio-boring` stream for TLS.
-
-Existing database, broker and outbound HTTP clients retain their current Rustls integrations.
-The [reference study](../reviews/m243/transport-and-toon-research.md) records their backend support and the broader migration cost.
-
-The native spike verifies certificate handling, build targets, cancellation and metric integration before production wiring.
-It never disables peer verification to obtain a passing test.
-State-changing operations wait for the completed handshake; early data is disabled.
-
-Cloudflare documents production use of `tokio-quiche`.
-Using that library does not require using Cloudflare's network or hosting.
-Source: [tokio-quiche library documentation](https://developers.cloudflare.com/privacy-proxy/reference/client-libraries/).
-
-Codex's transport provides references for independent reader and writer tasks, bounded shutdown, and delayed backoff reset.
-The inspected checkout is `openai/codex` revision `748ab55ca7de0b647d9a7a9d9a8e70e00f28666d`.
-Its broker-independent lifecycle patterns apply here; its WebSocket framing and forked dependencies do not.
-
-Reference files:
-
-- `codex-rs/app-server-transport/src/transport/remote_control/websocket.rs`
-- `codex-rs/websocket-client/src/lib.rs`
-- `codex-rs/websocket-client/src/dialer.rs`
-
-## Recovery and availability
-
-Postgres holds live leases, connection ownership and cancellation markers.
-Reconnect compares the runner's running leases with that authority.
-Missing, cancelled or superseded leases receive cancellation; valid leases retain their confirmed deadlines.
-
-Postgres is the only saved store for completed reports and their billing settlement.
-Each worker retains its current-format report in memory until acknowledgement or a terminal refusal.
-The occupied worker slot bounds pending report count; a disconnect retries the same report.
-
-An acknowledgement lost after commit causes an idempotent retry, without another charge.
-Process loss before the commit can lose the unsent answer and usage.
-The runner writes no report files and loads no reports from an earlier process.
-
-Task-decision issuance commits in Postgres before the runner receives permission for a provider call.
-The caller retains its receipt in memory and retries that receipt until acknowledged.
-A repeated reservation never grants another physical call.
-
-A process lost before recording the receipt can leave unknown provider usage; files and traces do not settle that uncertainty.
-
-A kill marks the affected leases in its transaction before publishing cancellation.
-Renewal and reconnect read the marker when a notification is lost.
-A failed bus publish costs delivery time, not the durable cancellation decision.
-
-Ownership acquisition updates the runner row only if the authenticated credential digest still matches and the administrative state permits connection.
-Each issue and streamed renewal checks the expected connection identifier and credential digest while holding the host row lock.
-A stale in-memory session cannot authorize new work, even when a notification is lost.
-
-Those checks widen the existing capacity lock and its callers, rather than adding a second authority resolver.
-The claim ticket carries the expected session authority into both fleet and authoring issue transactions.
-Per-request authoring renewals retain their existing bearer authentication and do not use a cached session identity.
-
-Only the database owner can grant or renew; an old socket may remain open until its next recheck.
-Supersession tests include lost notifications, token rotation and old claims already waiting on the host lock.
-Socket closure is bounded detection, not the execution-authority fence.
-
-The activity cache eliminates target reads for ordinary chat chunks.
-Durable task observations retain their existing fenced database writes and daemon-owned sequence values.
-Cached timing eligibility expires at the confirmed lease deadline and is cleared on refusal, cancellation or report completion.
-
-Heartbeat and application ping deadlines measure session responsiveness.
-Transport acknowledgement alone cannot prove that the gateway can answer a renewal.
-With a 15-second ping interval and 5-second answer timeout, ping-only detection can take 20 seconds.
-
-An unanswered renewal fails within its own answer timeout.
-Tests measure the complete detection and reconnect interval from the injected fault.
-Recovery succeeds before lease expiry or the runner stops the lease at its confirmed deadline.
-
-One recovery attempt has a seven-second aggregate deadline: two seconds for HTTP/3, two for HTTP/2, and three for authenticated opening and rebuild.
-The runner also caps that deadline by each running lease's remaining time before expiry.
-Cancellation can interrupt every stage, including name resolution and backoff.
-
-The normal recovery assertion includes renewal tick, answer timeout, maximum initial jitter and the full recovery deadline.
-Their sum is 19 seconds, below the 20-second budget left after reserving the renewal window.
-Repeated failures may outlast that budget; independent lease expiry remains unconditional.
-
-The bounded recovery test restores connectivity within the first transport-attempt budget.
-A separate sustained-outage test proves that no retry extends an unconfirmed lease.
-Backoff resets only after 60 seconds of a stable session.
-
-During drain, the gateway stops offers and finishes already accepted answers before sending `go_away`.
-It closes all streams within the existing drain deadline.
-The client may reconnect immediately after `go_away` without losing the answers that preceded it.
-
-HTTP/3 may preserve a connection across supported network-address changes.
-It does not preserve a session whose daemon process died.
-Both transports use the same reconnect, fencing and database rebuild rules after server failure.
+During drain, the daemon stops offers, answers accepted requests, then sends `go_away` and closes the session.
+The runner reconnects with its pending results still in memory.
 
 ### Ownership during reconnect
 
-The control request carries its previous connection identifier in `agentsfleet-runner-session` when reconnecting after a successful welcome.
-Hello also carries a proposal whose final welcome might have been lost.
-Preparation accepts the confirmed owner or that unconfirmed proposal, then proposes a fresh physical owner.
+One database marker identifies the current connection owner.
+Preparation and confirmation compare the previous owner and credential under the host lock before a new session becomes authoritative.
+The marker survives network disconnects.
 
-Confirmation compares the observed owner and credential digest while holding the host row lock.
-A fresh runner process omits the previous owner and can supersede an existing process using the same token.
+A fresh process using the same token can replace an older process.
+The older process receives UZ-RUN-021 and halts; stop the duplicate process before restarting the intended runner.
 
-The ownership marker remains after a network disconnect; liveness and the local registry record whether a session is serving.
-An older process cannot resume after another connection has replaced its marker.
-It receives UZ-RUN-021 and halts, preventing automatic reconnects from repeatedly replacing the newer process.
+### Refusals
 
-## Observability
+| Code | Cause | Next action |
+|---|---|---|
+| [UZ-RUN-001](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-001) | Missing, changed or invalid runner token | Set the intended runner's current token; re-register if necessary |
+| [UZ-RUN-009](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-009) | Administrative state blocks access | Check cordon, drain or revocation; re-enroll when required |
+| [UZ-RUN-021](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-021) | A newer connection owns the runner | Stop the duplicate process; keep one intended process per token |
+| [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was killed | Stop that lease and report its final result |
+| [UZ-RUN-023](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-023) | Runner and daemon use different protocols | Upgrade the runner and daemon together |
 
-Every attempt records its selected transport and classified outcome.
-Every established session records one completed or failed exit.
-A transition to HTTP/2 records why HTTP/3 was unavailable.
+### Results and billing
 
-| Signal | Purpose |
-|---|---|
-| Connection attempts and failures by transport and finite reason | Distinguish unreachable endpoints, timeouts and terminal refusals |
-| Fallback count by reason | Show when HTTP/3 availability differs from overall session availability |
-| Active sessions and disconnected duration | Distinguish a stable connection from a retry loop or sustained outage |
-| Reconnect count, delay and recovery duration | Expose repeated short-lived connections and slow rebuilds |
-| Ping and renewal response duration | Expose a responsive socket whose application control path is delayed |
-| Queue pressure and dropped activity | Expose congestion before control traffic misses its deadline |
-| Stream closes and offer claim outcomes | Preserve M243's operator-facing session and scheduling counters |
+Postgres owns saved results, acknowledgements and billing records.
+Workers retry unacknowledged reports and task-decision receipts from memory using their original identities.
+A lost acknowledgement does not authorize another charge or physical provider call.
 
-Metric labels use closed enums for transport, outcome, reason and message kind.
-Runner, connection and lease identifiers belong in tracing fields, not unbounded metric labels.
-Tokens, certificates, report bodies, tenant messages and private keys never enter logs.
+An unacknowledged result occupies its worker until acknowledgement or a terminal refusal.
+Process loss before the database commit can lose that unsent result and usage.
+The runner writes no report spool and replays no files from an earlier process.
 
-Start and exit records include connection identifiers, transport, duration and the registered error code where applicable.
-Reconnect records include attempt count, selected delay and outage duration.
-An HTTP/2 fallback is visible as a transport outcome, not reported as an HTTP/3 success.
+### Authoring operations on the native session
 
-## Transport evidence
+Authoring model calls, proposals, renewals and completion share the authenticated runner session.
+The daemon checks the current connection owner and credential at each authority boundary.
+Model credentials and saved results remain in the daemon.
 
-The local HTTP/3 spike completed verified-certificate duplex exchange, a byte-identical 2 MiB payload and 120 seconds of application pings.
-The raw client worker reported exit after explicit close, without a client certificate configured.
-The HTTP/2 BoringSSL spike also passed duplex, payload, 120-second ping and worker-exit checks.
+An accepted physical provider call stays tracked after disconnect so known usage can reach Postgres.
+A fenced result retains that usage while withholding private text.
+Uncertain physical model calls are never automatically redispatched.
 
-These scratch probes establish library behavior, not completion of production adapter or deployment tests.
-Fly development checks follow local implementation and repository gates, before the pull request.
+### Session protocol
 
-The probe commands and findings live in the [transport study](../reviews/m243/transport-and-toon-research.md).
+The session authenticates once, then binds four independently bounded streams to the same physical connection.
+Control stays available while reports, model results or activity are waiting.
+Wrong-stream messages, unknown fields and conflicting session bindings are refused.
 
-Before runtime implementation, the spike must record:
+The [native protocol reference](../reviews/m243/native-protocol-reference.md) owns framing, messages, correlation, cache and source-map details.
+This page owns connection setup, trust, durable authority and recovery behavior.
 
-1. Native HTTP/3 and HTTP/2 duplex exchange while both request bodies remain open.
-2. Idle operation for at least 120 seconds, application ping answers, and large-message bounds.
-3. HTTP/3 network failure followed by successful HTTP/2 fallback within the recovery deadline.
-4. No fallback after authentication, certificate or protocol-version refusal.
-5. Renewal and cancellation progress during large reports and activity pressure.
-6. Cancellation of blocked reads, writes, handshakes and reconnect backoff.
-7. Session rebuild and report retry after server restart, with one settlement.
-8. Tracing and metrics that distinguish timeout, fallback, reconnect and sustained outage.
+#### Memory configuration
 
-Private Fly routing needs deployment evidence before the hosted rollout.
-External operators meet the documented routing, certificate and transport prerequisites; public ingress deployment is outside this milestone.
-Certificate delivery remains a deployment decision requiring a concrete reviewed patch.
+| Setting | Default | Bounds |
+|---|---|---|
+| `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` | 16 MiB per replica | 12–512 MiB |
+| `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` | 48 MiB per replica | 12–512 MiB |
+| `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY` | 64 fleet identifiers | 1–65,536 identifiers |
 
-No production deployment or configuration change is authorized by this page.
+Receive and send pools are separate; each receives half the configured totals.
+Invalid values refuse startup before allocation.
+The 2 MiB frame and 256 pending-request limits remain fixed protocol bounds.
 
-## Authoring operations on the native session
+### Observability
 
-Authoring uses the same connection as fleet runs. The work lane carries bounded authoring model requests/results and acknowledged proposals; control carries authoring renewals; reports carries authoring completion and accounting acknowledgements. The former four authoring machine HTTP routes are deleted.
+Connection records identify transport, failure reason, fallback and recovery duration.
+Queue-pressure and dropped-activity counters expose congestion; ping and renewal timings expose a delayed application path.
+Metric labels remain finite; tokens, private keys, payloads and tenant text never enter logs.
 
-Browser setup-chat routes keep their current user authentication.
+## Limits
 
-A model request retains one physical dispatch identifier and the existing provider answer budget, independently of control responsiveness. It is never automatically redispatched after a disconnect. Model credentials and Postgres writes stay in the daemon.
+These settings and behaviors are checked against source.
+The [current handoff](../reviews/m243/session-handoff.md) records which runtime and repository checks have completed.
+Private routing, certificate delivery and hosted rollout need their own deployment evidence.
 
-The transport migration does not claim a measured reduction in provider response time.
+## Related pages
+
+- [Generate and store listener certificates](../../playbooks/operations/runner_stream_tls/001_playbook.md)
+- [Native protocol reference](../reviews/m243/native-protocol-reference.md)
+- [Authentication rules](../AUTH.md)
+- [Failure and observability design](../reviews/m243/failure-and-observability.md)
+- [Transport study and recorded probes](../reviews/m243/transport-and-toon-research.md)
