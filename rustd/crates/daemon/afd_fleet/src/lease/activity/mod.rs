@@ -260,7 +260,7 @@ impl crate::lease::pull::LeaseService {
         } else if target.timing_eligible {
             let history = self
                 .leases
-                .retain_task_activity(&target, runner_id, lease_id, &retained)
+                .retain_task_activity(target, runner_id, lease_id, &retained)
                 .await?;
             history::canonical(frames, &history.unwrap_or_default())
         } else {

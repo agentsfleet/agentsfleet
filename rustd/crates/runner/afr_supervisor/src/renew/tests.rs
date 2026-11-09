@@ -231,7 +231,7 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
     let sent = drain(&mut calls);
     let body: serde_json::Value =
         serde_json::from_slice(sent.first().unwrap().body.as_ref().unwrap()).unwrap();
-    let line = &body[REQUESTS][0];
+    let line = &body["request"][REQUESTS][0];
     assert_eq!(line[SEQ], 0, "the run's first request");
     assert_eq!(line["input_tokens"], 300);
     assert_eq!(line["cached_input_tokens"], 100);
@@ -272,7 +272,7 @@ async fn a_line_a_renewal_recorded_is_not_sent_again() {
     let lines = |index: usize| -> serde_json::Value {
         let body: serde_json::Value =
             serde_json::from_slice(sent[index].body.as_ref().unwrap()).unwrap();
-        body[REQUESTS].clone()
+        body["request"][REQUESTS].clone()
     };
     assert_eq!(
         lines(0)[0][SEQ],

@@ -107,8 +107,8 @@ impl StreamWriters {
             sender
                 .send(PendingWrite { frame, flushed })
                 .await
-                .map_err(|_| ErrorKind::Closed)?;
-            completion.await.map_err(|_| ErrorKind::Closed)?;
+                .map_err(crate::error::closed_send)?;
+            completion.await?;
             Ok(())
         })
         .await
@@ -137,7 +137,7 @@ pub(super) async fn read_stream(
         tokio::select! {
             biased;
             () = stop.cancelled() => return Ok(()),
-            result = incoming.send(IncomingFrame { kind, frame }) => { result.map_err(|_| ErrorKind::Closed)?; }
+            result = incoming.send(IncomingFrame { kind, frame }) => { result.map_err(crate::error::closed_send)?; }
         }
     }
 }

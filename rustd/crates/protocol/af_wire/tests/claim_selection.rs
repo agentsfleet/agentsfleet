@@ -60,7 +60,7 @@ fn accepted_kind_order_is_a_set_and_serializes_canonically() {
 #[test]
 fn test_claim_reply_requires_a_supported_discriminator() {
     for body in [
-        r#"{}"#,
+        "{}",
         r#"{"kind":"runtime"}"#,
         r#"{"kind":"authoring"}"#,
         r#"{"kind":"fleet"}"#,
@@ -70,5 +70,6 @@ fn test_claim_reply_requires_a_supported_discriminator() {
             "{body}"
         );
     }
-    assert!(serde_json::from_str::<Down<'_>>(r#"{"type":"offer","lease":null}"#).is_err());
+    serde_json::from_str::<Down<'_>>(r#"{"type":"offer","lease":null}"#)
+        .expect_err("an offer must contain a native lease");
 }

@@ -13,6 +13,9 @@ use crate::lease::AcceptedKinds;
 use crate::report::{RenewRequest, ReportRequest};
 use crate::runner::HeartbeatRequest;
 
+mod decode;
+mod other;
+
 /// One lease's usage records in the host's renewal batch.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
@@ -27,7 +30,7 @@ pub struct Renewal<'a> {
 }
 
 /// Every message accepted from a runner. Requests use positive correlation ids.
-#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Up<
     'a,
@@ -174,7 +177,7 @@ pub enum Up<
         /// The current report retained in the runner worker's memory.
         #[serde(borrow)]
         #[garde(skip)]
-        request: Cow<'a, ReportRequest<'a>>,
+        request: Box<Cow<'a, ReportRequest<'a>>>,
     },
     /// Claim pending inputs at a model-call boundary under the lease fence.
     Folds {
@@ -206,8 +209,8 @@ impl<D: Clone, O: Clone, I: Clone> Up<'_, D, O, I> {
             | Self::Ready { .. }
             | Self::Heartbeat { .. }
             | Self::Ping { .. }
-            | Self::RenewBatch { .. } => StreamKind::Control,
-            Self::AuthoringRenew { .. } => StreamKind::Control,
+            | Self::RenewBatch { .. }
+            | Self::AuthoringRenew { .. } => StreamKind::Control,
         }
     }
 

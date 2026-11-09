@@ -234,7 +234,7 @@ impl Command for Report<'_> {
     fn outgoing(&self, request_id: NonZeroU64) -> Up<'_> {
         Up::Report {
             request_id,
-            request: std::borrow::Cow::Borrowed(&self.request),
+            request: Box::new(std::borrow::Cow::Borrowed(&self.request)),
         }
     }
     fn decode(reply: Down<'_>) -> Result<Self::Output> {
@@ -264,7 +264,7 @@ impl Command for Folds<'_> {
         Up::Folds {
             request_id,
             lease_id: self.lease.as_str().into(),
-            request: self.request.clone(),
+            request: self.request,
         }
     }
     fn decode(reply: Down<'_>) -> Result<Body> {

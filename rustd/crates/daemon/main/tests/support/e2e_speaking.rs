@@ -50,7 +50,7 @@ impl Speaking {
 
     /// Leases the seeded event, which came from no thread.
     pub(crate) async fn lease_seeded(&self) -> (String, u64) {
-        lease(&self.http, &self.run).await
+        lease(&self.run).await
     }
 
     /// Settles the seeded lease, then admits an event from the Slack thread

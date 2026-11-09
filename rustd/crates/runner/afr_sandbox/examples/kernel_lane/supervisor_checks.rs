@@ -4,9 +4,7 @@
 const POST: &str = "POST";
 const FENCING_FIELD: &str = "fencing_token";
 
-use af_wire::paths::{
-    LEASE_SCHEDULES_SUFFIX, RUNNER_LEASES, RUNNER_MEMORY, RUNNER_REPORTS, SCHEDULE_RUNS_SUFFIX,
-};
+use af_wire::paths::{LEASE_SCHEDULES_SUFFIX, RUNNER_LEASES, RUNNER_MEMORY, SCHEDULE_RUNS_SUFFIX};
 use afr_supervisor::test_util::{FENCING, LEASE_ID};
 use libtest_mimic::Failed;
 use serde_json::json;
@@ -38,7 +36,7 @@ pub(crate) fn finished(observed: &Observed, preparations: usize) -> Result<(), F
             observed
                 .received
                 .iter()
-                .filter(|request| request.path == RUNNER_REPORTS)
+                .filter(|request| is_report(request))
                 .collect::<Vec<_>>()
         )
     })?;
@@ -46,13 +44,13 @@ pub(crate) fn finished(observed: &Observed, preparations: usize) -> Result<(), F
         asked.instructions.contains(INSTRUCTIONS) && asked.user.iter().any(|user| user == STEER),
         format!("installed instructions and user steer reach the model: {asked:?}"),
     )?;
-    let report = received(observed, RUNNER_REPORTS)?;
+    let report = report(observed)?;
     expect(
-        report.body.get("outcome") == Some(&json!("processed")),
-        format!("processed report, got {}", report.body),
+        report.get("outcome") == Some(&json!("processed")),
+        format!("processed report, got {report}"),
     )?;
     expect(
-        report.body.to_string().contains(ANSWER),
+        report.to_string().contains(ANSWER),
         "the final model answer reaches the report",
     )?;
     fenced(observed)
@@ -72,10 +70,13 @@ fn fenced(observed: &Observed) -> Result<(), Failed> {
                 format!("mutation bound to the fixture lease: {}", request.path),
             )?;
         }
-        if mutation
-            || request.path == RUNNER_REPORTS
-            || request.method == POST && request.path.starts_with(RUNNER_MEMORY)
-        {
+        if is_report(request) {
+            expect(
+                request.body.pointer("/request/fencing_token") == Some(&json!(FENCING)),
+                "native report retains its lease fence",
+            )?;
+        }
+        if mutation || request.method == POST && request.path.starts_with(RUNNER_MEMORY) {
             expect(
                 request.body.get(FENCING_FIELD) == Some(&json!(FENCING)),
                 format!("fenced request to {}", request.path),
@@ -131,7 +132,7 @@ pub(crate) fn supervisor_results(observed: &Observed) -> Result<(), Failed> {
     let report = observed
         .received
         .iter()
-        .position(|request| request.path == RUNNER_REPORTS)
+        .position(is_report)
         .ok_or("the runner reports its answer")?;
     expect(
         capture < report,
@@ -172,4 +173,19 @@ fn schedules_sent(observed: &Observed) -> Result<(), Failed> {
         observed.output("run")?.contains(SCHEDULE_EVENT_ID),
         "the admitted run's event identifier reaches the model",
     )
+}
+
+/// Native reports retain their frame envelope in the shared chronological transcript.
+pub(crate) fn is_report(request: &Received) -> bool {
+    request.path == af_wire::paths::RUNNER_STREAM
+        && request.body.get("type").and_then(serde_json::Value::as_str) == Some("report")
+}
+
+pub(crate) fn report(observed: &Observed) -> Result<&serde_json::Value, Failed> {
+    observed
+        .received
+        .iter()
+        .find(|request| is_report(request))
+        .and_then(|request| request.body.get("request"))
+        .ok_or_else(|| "the native runner reports its answer".into())
 }

@@ -75,7 +75,10 @@ fn assert_failed_claim(claimed: &Claimed, code: ErrorCode) {
     assert_eq!(failed.level, tracing::Level::WARN);
     assert_eq!(failed.field("error_code"), Some(code.as_str()));
     assert_eq!(failed.field("after_sequence"), Some("7"));
-    assert_eq!(warnings(&claimed.capture).len(), 1);
+    assert_eq!(warnings(&claimed.capture).len(), 2);
+    let command = claimed.capture.only("runner_command_failed");
+    assert_eq!(command.field("verb"), Some("folds"));
+    assert_eq!(command.field("error_code"), Some(code.as_str()));
     assert_eq!(
         claim_events(&claimed.capture),
         ["fold_claim_started", "fold_claim_failed"]
@@ -164,5 +167,5 @@ async fn an_unavailable_daemon_hands_the_run_nothing_and_logs_the_verbs_code() {
 async fn an_unreadable_reply_hands_the_run_nothing_and_logs_the_verbs_code() {
     let claimed = claim(|_call| json(&serde_json::json!(["not", "a", "reply"]))).await;
 
-    assert_failed_claim(&claimed, Verb::Folds.code());
+    assert_failed_claim(&claimed, error_code::RUN_PROTOCOL_UNSUPPORTED);
 }

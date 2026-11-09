@@ -46,7 +46,7 @@ async fn edit_labels(run: &Scenario, labels: &[&str]) {
 }
 
 /// Spends the whole poll budget asserting the fleet under test is never offered.
-async fn assert_never_offered(http: &reqwest::Client, run: &Scenario, why: &str) {
+async fn assert_never_offered(run: &Scenario, why: &str) {
     let ended = wait_without_offer(run, || async { false }).await;
     assert!(!ended, "{why}");
 }
@@ -60,7 +60,6 @@ async fn assert_never_offered(http: &reqwest::Client, run: &Scenario, why: &str)
 async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
     // `gpu`, made unique to this fleet so another suite's runner on the shared
     // lane can never be the one that matches it.
     let tag = format!("gpu-{}", run.fleet);
@@ -71,12 +70,7 @@ async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
-    assert_never_offered(
-        &http,
-        &run,
-        "a runner without the tag was offered the fleet",
-    )
-    .await;
+    assert_never_offered(&run, "a runner without the tag was offered the fleet").await;
 
     edit_labels(&run, &[ENROLLED_LABEL, &tag]).await;
     let (lease_id, fence) = wait_for_seeded_offer(&run).await;
@@ -87,7 +81,6 @@ async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
     edit_labels(&run, &[ENROLLED_LABEL]).await;
     let _next = run.enqueue_event(EVENT_TYPE).await;
     assert_never_offered(
-        &http,
         &run,
         "a runner whose tag was edited away was offered the fleet again",
     )

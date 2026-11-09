@@ -256,6 +256,37 @@ pub(crate) async fn scenario_with(
 }
 
 impl Scenario {
+    /// Connects once through the production native downlink.
+    pub(crate) async fn native_session(&self) -> &afr_supervisor::test_util::Session {
+        self.native
+            .get_or_init(|| async {
+                let origin = format!(
+                    "https://localhost:{}",
+                    self.booted.runner_stream_address.port()
+                );
+                let root = crate::support::runner_stream::root_file()
+                    .to_string_lossy()
+                    .into_owned();
+                let env = af_core::env::MapEnv::from_pairs([
+                    (afr_supervisor::config::ENV_API_URL, self.base.as_str()),
+                    (
+                        afr_supervisor::config::ENV_RUNNER_TOKEN,
+                        self.token.as_str(),
+                    ),
+                    (afr_supervisor::config::ENV_STREAM_URL, origin.as_str()),
+                    (afr_supervisor::config::ENV_STREAM_CA, root.as_str()),
+                ]);
+                let config = afr_supervisor::config::Config::from_env(&env)
+                    .expect("the native fixture configuration is valid");
+                let session = afr_supervisor::test_util::Session::connect(&config)
+                    .await
+                    .expect("the native fixture connects");
+                session.capacity(1);
+                session
+            })
+            .await
+    }
+
     /// Admits another event under this scenario's ready fleet.
     pub(crate) async fn enqueue_event(&self, event_type: EventType) -> Uuid7 {
         enqueue(&self.booted, &self.fleet, &self.workspace, event_type).await

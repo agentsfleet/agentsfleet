@@ -1,150 +1,9 @@
-//! Session failures preserve domain and transport causes behind the shared error shell.
+//! HTTP refusals and retry decisions share one finite error classification.
 
+use super::{Error, ErrorKind};
 use af_core::error_code::{self, ErrorCode};
 use afd_runner::capacity::authority::Refusal;
 use std::borrow::Cow;
-
-use crate::Operation;
-
-/// Fallible session operations retain the service that refused them.
-pub type Result<T, E = Error> = core::result::Result<T, E>;
-
-af_core::error_shell!(
-    /// A safe session failure with its original cause and captured backtrace.
-    pub struct Error(ErrorKind);
-);
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum ErrorKind {
-    #[error("The message is not valid for this runner stream or session state.")]
-    Protocol,
-    #[error("Required runner stream header '{header}' is missing.")]
-    MissingHeader { header: &'static str },
-    #[error("Send runner stream header '{header}' exactly once.")]
-    RepeatedHeader { header: &'static str },
-    #[error("Runner stream header '{header}' must contain valid text.")]
-    HeaderEncoding {
-        header: &'static str,
-        #[source]
-        source: http::header::ToStrError,
-    },
-    #[error("Runner and daemon use different stream protocols. Update them to matching versions.")]
-    UnsupportedVersion,
-    #[error("Choose a runner stream kind: control, work, reports or activity.")]
-    UnknownStream,
-    #[error("Authenticate the control kind before attaching the remaining streams.")]
-    ControlBearerMissing,
-    #[error("Send the bearer only on control; secondary streams use the authenticated session.")]
-    UnexpectedBearer,
-    #[error("The runner session header must contain a valid UUIDv7 identifier.")]
-    SessionIdentifier {
-        #[source]
-        source: af_core::error::Error,
-    },
-    #[error("This stream does not belong to the authenticated connection.")]
-    Binding,
-    #[error("The {kind:?} kind is already attached to this connection.")]
-    DuplicateStream { kind: af_wire::protocol::StreamKind },
-    #[error("This daemon has no available runner stream slots. Retry later.")]
-    Capacity { carrying: usize, capacity: usize },
-    #[error("The runner stream closed before the operation completed.")]
-    Closed,
-    #[error("The runner stream no longer has permission to serve this host.")]
-    Authority { refusal: Refusal },
-    #[error("The runner stream could not read an HTTP header.")]
-    Header {
-        #[source]
-        source: http::header::ToStrError,
-    },
-    #[error("The runner stream contains an invalid identifier.")]
-    Identifier {
-        #[source]
-        source: af_core::error::Error,
-    },
-    #[error("The runner stream message is outside its supported bounds.")]
-    Bounds {
-        #[source]
-        source: garde::Report,
-    },
-    #[error("The runner stream message could not be read as JSON.")]
-    Json {
-        #[source]
-        source: serde_json::Error,
-    },
-    #[error("The runner stream transport could not complete the operation.")]
-    Transport {
-        #[source]
-        source: af_stream::Error,
-    },
-    #[error("The runner stream timed out while {operation}.")]
-    Timeout {
-        operation: Operation,
-        #[source]
-        source: tokio::time::error::Elapsed,
-    },
-    #[error("The runner stream could not read or write its body.")]
-    Io {
-        #[source]
-        source: std::io::Error,
-    },
-    #[error("The runner stream could not read its durable state.")]
-    Database {
-        #[source]
-        source: afd_db::Error,
-    },
-    #[error("The notification broker is unavailable. Database recovery remains active.")]
-    Bus {
-        #[source]
-        source: afd_bus::Error,
-    },
-    #[error("The runner stream database statement could not complete.")]
-    Query {
-        #[source]
-        source: sqlx::Error,
-    },
-    #[error("The runner service could not complete the operation.")]
-    Runner {
-        #[source]
-        source: afd_runner::Error,
-    },
-    #[error("The fleet service could not complete the operation.")]
-    Fleet {
-        #[source]
-        source: afd_fleet::Error,
-    },
-    #[error("The authoring service could not complete the operation.")]
-    Authoring {
-        #[source]
-        source: afd_authoring::Error,
-    },
-    #[error("The runner stream worker stopped before completing its work.")]
-    Worker {
-        #[source]
-        source: tokio::task::JoinError,
-    },
-    #[error("The runner stream could not construct its HTTP response.")]
-    Http {
-        #[source]
-        source: http::Error,
-    },
-}
-
-af_core::error_lifts!(Error, ErrorKind:
-    http::header::ToStrError => Header,
-    af_core::error::Error => Identifier,
-    garde::Report => Bounds,
-    serde_json::Error => Json,
-    af_stream::Error => Transport,
-    std::io::Error => Io,
-    afd_db::Error => Database,
-    afd_bus::Error => Bus,
-    sqlx::Error => Query,
-    afd_runner::Error => Runner,
-    afd_fleet::Error => Fleet,
-    afd_authoring::Error => Authoring,
-    tokio::task::JoinError => Worker,
-    http::Error => Http,
-);
 
 impl Error {
     /// Render through the common problem catalogue; never choose status ad hoc.
@@ -179,6 +38,7 @@ impl Error {
             | ErrorKind::ControlBearerMissing
             | ErrorKind::UnexpectedBearer
             | ErrorKind::Protocol
+            | ErrorKind::Conversion { .. }
             | ErrorKind::DuplicateStream { .. }
             | ErrorKind::Header { .. }
             | ErrorKind::Bounds { .. }
@@ -193,6 +53,8 @@ impl Error {
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Transport { source } => source.code(),
             ErrorKind::Closed
+            | ErrorKind::ChannelSend { .. }
+            | ErrorKind::Completion { .. }
             | ErrorKind::Timeout { .. }
             | ErrorKind::Io { .. }
             | ErrorKind::Worker { .. }
@@ -208,7 +70,7 @@ impl Error {
             | ErrorKind::HeaderEncoding { .. } | ErrorKind::UnsupportedVersion
             | ErrorKind::UnknownStream | ErrorKind::ControlBearerMissing
             | ErrorKind::UnexpectedBearer | ErrorKind::SessionIdentifier { .. } => self.kind().to_string().into(),
-            ErrorKind::Protocol => "The message is not valid for this stream or session state.".into(),
+            ErrorKind::Protocol | ErrorKind::Conversion { .. } => "The message is not valid for this stream or session state.".into(),
             ErrorKind::Binding => "Attach this kind to the physical connection that authenticated its session.".into(),
             ErrorKind::DuplicateStream { kind } => format!("The {} kind is already attached. Open each kind once.", kind.as_str()).into(),
             ErrorKind::Header { .. } => "A runner stream header is not valid text.".into(),
@@ -220,7 +82,7 @@ impl Error {
             ErrorKind::Authority { refusal: Refusal::Superseded } => "Another connection owns this runner. Stop this process to avoid competing connections.".into(),
             ErrorKind::Capacity { .. } => "This daemon has no available stream slots. Retry after the advertised delay.".into(),
             ErrorKind::Timeout { operation, .. } => format!("The stream timed out while {operation}. Retain the last confirmed lease deadline.").into(),
-            ErrorKind::Closed | ErrorKind::Transport { .. } | ErrorKind::Io { .. } => "The connection ended. Reconnect before the last confirmed lease deadline.".into(),
+            ErrorKind::Closed | ErrorKind::ChannelSend { .. } | ErrorKind::Completion { .. } | ErrorKind::Transport { .. } | ErrorKind::Io { .. } => "The connection ended. Reconnect before the last confirmed lease deadline.".into(),
             ErrorKind::Database { .. } | ErrorKind::Query { .. } => "The database did not confirm the operation. Retain the last confirmed lease deadline.".into(),
             ErrorKind::Bus { .. } => "The notification broker is unavailable. Database recovery remains active.".into(),
             ErrorKind::Worker { .. } => "A session worker stopped. Reconnect before the last confirmed lease deadline.".into(),
@@ -237,6 +99,7 @@ impl Error {
         match self.kind() {
             ErrorKind::Authority { .. }
             | ErrorKind::Protocol
+            | ErrorKind::Conversion { .. }
             | ErrorKind::UnsupportedVersion
             | ErrorKind::MissingHeader { .. }
             | ErrorKind::RepeatedHeader { .. }
@@ -266,6 +129,8 @@ impl Error {
             }
             ErrorKind::Capacity { .. }
             | ErrorKind::Closed
+            | ErrorKind::ChannelSend { .. }
+            | ErrorKind::Completion { .. }
             | ErrorKind::Timeout { .. }
             | ErrorKind::Io { .. }
             | ErrorKind::Database { .. }
@@ -289,9 +154,10 @@ impl Error {
             | ErrorKind::UnexpectedBearer
             | ErrorKind::SessionIdentifier { .. }
             | ErrorKind::Header { .. } => "metadata",
-            ErrorKind::Protocol | ErrorKind::Identifier { .. } | ErrorKind::Json { .. } => {
-                "protocol"
-            }
+            ErrorKind::Protocol
+            | ErrorKind::Conversion { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Json { .. } => "protocol",
             ErrorKind::Binding | ErrorKind::DuplicateStream { .. } => "binding",
             ErrorKind::Authority {
                 refusal: Refusal::Credential,
@@ -305,7 +171,9 @@ impl Error {
             ErrorKind::Bounds { .. } => "bounds",
             ErrorKind::Transport { source } => source.reason().as_str(),
             ErrorKind::Timeout { .. } => "timeout",
-            ErrorKind::Closed => "closed",
+            ErrorKind::Closed | ErrorKind::ChannelSend { .. } | ErrorKind::Completion { .. } => {
+                "closed"
+            }
             ErrorKind::Io { .. } => "network",
             ErrorKind::Worker { .. } => "worker",
             ErrorKind::Database { .. } | ErrorKind::Query { .. } => "database",
@@ -315,21 +183,6 @@ impl Error {
                 "service"
             }
             ErrorKind::Http { .. } => "internal",
-        }
-    }
-}
-
-pub(crate) async fn within<T>(
-    stop: &tokio_util::sync::CancellationToken,
-    deadline: tokio::time::Instant,
-    operation: Operation,
-    future: impl Future<Output = Result<T>>,
-) -> Result<T> {
-    tokio::select! {
-        biased;
-        () = stop.cancelled() => Err(ErrorKind::Closed.into()),
-        result = tokio::time::timeout_at(deadline, future) => {
-            result.map_err(|source| ErrorKind::Timeout { operation, source })?
         }
     }
 }

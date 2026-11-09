@@ -62,11 +62,11 @@ async fn test_runner_suite_vs_rust_daemon() {
 
     refusals::assert_unknown_credential_is_refused(&http, &run).await;
     prove_runner_ready(&http, &run).await;
-    let (lease_id, fence) = claim_seeded_lease(&http, &run).await;
+    let (lease_id, fence) = claim_seeded_lease(&run).await;
     prove_live_lease_satellites(&http, &run, &lease_id).await;
     capture_memory(&http, &run, &lease_id, fence).await;
-    settle_report(&http, &run, &lease_id, fence).await;
-    refusals::assert_unsupported_event_ends(&http, &run).await;
+    settle_report(&run, &lease_id, fence).await;
+    refusals::assert_unsupported_event_ends(&run).await;
 
     supervisor.shutdown().await;
     run.cleanup().await;
@@ -99,7 +99,7 @@ async fn prove_runner_ready(http: &reqwest::Client, run: &Scenario) {
     );
 }
 
-async fn claim_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
+async fn claim_seeded_lease(run: &Scenario) -> (String, u64) {
     // One caller, one poller. There used to be a bare POST here to prove the
     // STATUS before the loop proved the EVENT, on the reading that a poll which
     // misses this fleet's partition costs nothing — and about fifteen times in
@@ -140,7 +140,7 @@ async fn capture_memory(http: &reqwest::Client, run: &Scenario, lease_id: &str, 
     );
 }
 
-async fn settle_report(http: &reqwest::Client, run: &Scenario, lease_id: &str, fence: u64) {
+async fn settle_report(run: &Scenario, lease_id: &str, fence: u64) {
     let before = balance(run).await;
     let report = report_body(lease_id, &run.event_id, fence);
     let settled = crate::wire::report(run, &report).await;
@@ -152,7 +152,7 @@ async fn settle_report(http: &reqwest::Client, run: &Scenario, lease_id: &str, f
     );
 
     assert_settled(run, lease_id, before).await;
-    assert_replay_returns_the_stored_outcome(http, run, lease_id, &report).await;
+    assert_replay_returns_the_stored_outcome(run, lease_id, &report).await;
 }
 
 /// The side-channel verbs operate on the same live lease and identity.
@@ -279,12 +279,7 @@ async fn assert_settled(run: &Scenario, lease_id: &str, before: Option<i64>) {
 /// A fleet the runner has genuinely been superseded on still answers 409,
 /// because the lease is not `reported` there — that refusal is proven against
 /// live rows in the fleet plane's own suites, not here.
-async fn assert_replay_returns_the_stored_outcome(
-    http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
-    report: &Value,
-) {
+async fn assert_replay_returns_the_stored_outcome(run: &Scenario, lease_id: &str, report: &Value) {
     let drawn = balance(run).await;
     let logged = ledger_rows(run).await;
     let replay = crate::wire::report(run, report).await;

@@ -22,6 +22,7 @@ pub(crate) struct Halt {
     serving: CancellationToken,
     leasing: CancellationToken,
     running: CancellationToken,
+    stopped: CancellationToken,
     refused: AtomicBool,
 }
 
@@ -32,6 +33,7 @@ impl Halt {
             leasing: shutdown.child_token(),
             serving: shutdown,
             running: CancellationToken::new(),
+            stopped: CancellationToken::new(),
             refused: AtomicBool::new(false),
         }
     }
@@ -51,8 +53,14 @@ impl Halt {
         &self.running
     }
 
+    /// Cancelled when the owner ends delivery as well as work.
+    pub(crate) const fn stopped(&self) -> &CancellationToken {
+        &self.stopped
+    }
+
     /// Ends everything, leases in flight included.
     pub(crate) fn stop(&self) {
+        self.stopped.cancel();
         self.running.cancel();
         self.serving.cancel();
     }

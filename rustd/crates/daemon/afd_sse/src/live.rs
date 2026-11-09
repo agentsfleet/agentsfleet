@@ -144,8 +144,7 @@ mod tests {
 
     use futures_util::StreamExt as _;
 
-    use super::Live;
-    use crate::stream_limit::Ceiling;
+    use super::{Live, StreamLimit};
 
     #[tokio::test]
     async fn detached_live_streams_are_admitted_but_stay_silent() {

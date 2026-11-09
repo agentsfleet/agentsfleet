@@ -5,7 +5,7 @@ use std::sync::Arc;
 use afd_billing::biller::Biller;
 use afd_credential::provider::Providers;
 
-use crate::lease::Plane;
+use crate::lease::LeaseService;
 
 /// Handles only; the task lifecycle owns behavior and introduces no dispatcher.
 #[derive(Debug, Clone)]
@@ -22,8 +22,8 @@ pub struct TaskDependencies {
     pub storage: Option<super::storage::R2CheckpointStore>,
 }
 
-impl From<&Plane> for TaskDependencies {
-    fn from(plane: &Plane) -> Self {
+impl From<&LeaseService> for TaskDependencies {
+    fn from(plane: &LeaseService) -> Self {
         Self {
             admin_workspace: None,
             biller: Arc::clone(&plane.biller),

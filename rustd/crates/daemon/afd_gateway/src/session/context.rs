@@ -31,29 +31,32 @@ impl SessionServices {
             .await
     }
 
-    pub(super) async fn operation<T>(
+    pub(super) fn operation<T>(
         &self,
         operation: Operation,
         future: impl Future<Output = Result<T>>,
-    ) -> Result<T> {
+    ) -> impl Future<Output = Result<T>> {
         self.operation_until(operation, Instant::now() + STREAM_ANSWER_TIMEOUT, future)
-            .await
     }
 
-    pub(super) async fn operation_until<T>(
+    pub(super) fn operation_until<T>(
         &self,
         operation: Operation,
         deadline: Instant,
         future: impl Future<Output = Result<T>>,
-    ) -> Result<T> {
-        let result = within(&self.handle.stop, deadline, operation, future).await;
-        if let Err(error) = &result {
-            self.gateway.observe(error, operation);
+    ) -> impl Future<Output = Result<T>> {
+        // Box the service computation before building the supervised future; every request stays small.
+        let future = Box::pin(future);
+        async move {
+            let result = within(&self.handle.stop, deadline, operation, future).await;
+            if let Err(error) = &result {
+                crate::Gateway::observe(error, operation);
+            }
+            result
         }
-        result
     }
 
-    pub(super) fn policy<'a>(&self, beat: &'a Beat) -> Result<HeartbeatResponse<'a>> {
+    pub(super) fn policy(beat: &Beat) -> Result<HeartbeatResponse<'_>> {
         Ok(HeartbeatResponse {
             status: HeartbeatStatus::Ok,
             assigned_policy: beat.assignment.decode()?,
@@ -101,7 +104,7 @@ impl SessionServices {
             .await?;
         self.apply_policy(&beat);
         self.send(&Message::Assignment {
-            response: self.policy(&beat)?,
+            response: Self::policy(&beat)?,
         })
         .await?;
         self.refresh_cancellations().await
@@ -111,8 +114,10 @@ impl SessionServices {
         let cancelled = self
             .operation(
                 Operation::Recheck,
-                self.cache
-                    .refresh(self.leases.leases.pool(), &self.handle.runner),
+                self.cache.refresh(
+                    &self.gateway.inner.dependencies.database,
+                    &self.handle.runner,
+                ),
             )
             .await?;
         for lease in cancelled {

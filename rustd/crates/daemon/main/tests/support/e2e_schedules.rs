@@ -68,9 +68,6 @@ pub(crate) struct Leased {
 /// fleet holds [`crate::e2e_seed::FLEET_NAME`].
 const OTHER_FLEET_NAME: &str = "e2e-other-fleet";
 
-/// Where a runner reports a lease's end.
-const REPORTS: &str = "/v1/runners/me/reports";
-
 impl Leased {
     pub(crate) async fn boot(supervisor: &mut Supervisor, qstash: &FakeQStash) -> Self {
         let extra = [
@@ -83,7 +80,7 @@ impl Leased {
             reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
         )]
         let http = reqwest::Client::new();
-        let (lease_id, fence) = lease(&http, &run).await;
+        let (lease_id, fence) = lease(&run).await;
         let lease_id = Uuid7::parse(&lease_id).expect("the daemon answers a canonical lease id");
         Self {
             run,

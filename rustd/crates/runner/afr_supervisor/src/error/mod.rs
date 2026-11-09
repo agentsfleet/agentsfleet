@@ -32,8 +32,8 @@ mod raise;
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
     boundary, checkpoint_transfer, client, config, egress, egress_blocked, egress_no_ipv4,
-    egress_unresolved, encode, git, malformed, refused_with_body, token_refused, transport,
-    unavailable,
+    egress_unresolved, encode, git, malformed, refused_with_body, stream_disconnected,
+    stream_protocol, token_refused, transport, unavailable,
 };
 
 /// The daemon refused the runner's token.
@@ -58,9 +58,23 @@ pub(crate) enum ErrorKind {
     #[error("the runner stream is disconnected")]
     Disconnected,
 
+    /// A closed native channel retains its original failure for diagnostics.
+    #[error("the runner stream channel disconnected")]
+    StreamDisconnected {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
     /// A daemon message or request identifier violated the session protocol.
     #[error("the runner stream protocol was refused")]
     StreamProtocol,
+
+    /// A native capacity or delivery invariant failed with a typed cause.
+    #[error("the runner stream protocol bound was refused")]
+    StreamProtocolSource {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
 
     /// An unanswered request preserves its deadline failure.
     #[error("the runner stream answer deadline expired")]

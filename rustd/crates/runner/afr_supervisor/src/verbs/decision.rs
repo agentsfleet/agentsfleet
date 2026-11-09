@@ -96,40 +96,7 @@ impl FencedVerbs<'_> {
         // PostgreSQL marks this call issued before returning Dispatch. Repeating
         // the reservation returns Existing, never permission for another physical call.
         let request = dispatch.request.clone();
-        let mut progress = af_wire::activity::TaskActivity {
-            activity_id: call_id.clone(),
-            task_id: request
-                .state
-                .get("task")
-                .and_then(|task| task.get("task_id"))
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned),
-            source_admission_id: request
-                .state
-                .get("source_admission_id")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned),
-            operation: if request.purpose == af_wire::decision::DecisionPurpose::Goal {
-                af_wire::activity::TaskActivityOperation::Goal
-            } else {
-                af_wire::activity::TaskActivityOperation::Intent
-            },
-            phase: af_wire::activity::TaskActivityPhase::Starting,
-            provider: Some(
-                match dispatch.assignment.profile.api {
-                    af_wire::decision::DecisionApi::Typesafe => "typesafe",
-                    af_wire::decision::DecisionApi::Openai => "openai",
-                    af_wire::decision::DecisionApi::Perplexity => "perplexity",
-                    af_wire::decision::DecisionApi::Cloudflare => "cloudflare",
-                }
-                .to_owned(),
-            ),
-            model: Some(dispatch.assignment.profile.model.clone()),
-            completed: 0,
-            total: None,
-            bytes: None,
-            sequence: None,
-        };
+        let mut progress = progress_of(&call_id, &dispatch);
         self.task_activity(af_wire::activity::ActivityFrame::TaskDecisionStarted(
             progress.clone(),
         ))
@@ -191,6 +158,44 @@ impl FencedVerbs<'_> {
             },
             retry,
         ))
+    }
+}
+
+fn progress_of(call_id: &str, dispatch: &DecisionDispatch<'_>) -> af_wire::activity::TaskActivity {
+    let request = &dispatch.request;
+    af_wire::activity::TaskActivity {
+        activity_id: call_id.to_owned(),
+        task_id: request
+            .state
+            .get("task")
+            .and_then(|task| task.get("task_id"))
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        source_admission_id: request
+            .state
+            .get("source_admission_id")
+            .and_then(serde_json::Value::as_str)
+            .map(str::to_owned),
+        operation: if request.purpose == af_wire::decision::DecisionPurpose::Goal {
+            af_wire::activity::TaskActivityOperation::Goal
+        } else {
+            af_wire::activity::TaskActivityOperation::Intent
+        },
+        phase: af_wire::activity::TaskActivityPhase::Starting,
+        provider: Some(
+            match dispatch.assignment.profile.api {
+                af_wire::decision::DecisionApi::Typesafe => "typesafe",
+                af_wire::decision::DecisionApi::Openai => "openai",
+                af_wire::decision::DecisionApi::Perplexity => "perplexity",
+                af_wire::decision::DecisionApi::Cloudflare => "cloudflare",
+            }
+            .to_owned(),
+        ),
+        model: Some(dispatch.assignment.profile.model.clone()),
+        completed: 0,
+        total: None,
+        bytes: None,
+        sequence: None,
     }
 }
 

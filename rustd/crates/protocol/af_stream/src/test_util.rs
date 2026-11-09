@@ -4,6 +4,9 @@ use crate::{
     Result,
     tls::{Identity, Trust},
 };
+use std::io::Write as _;
+#[cfg(unix)]
+use std::os::unix::fs::OpenOptionsExt as _;
 
 /// Local issuer and matching leaf files, kept alive until all native owners join.
 #[derive(Debug)]
@@ -20,6 +23,8 @@ impl IdentityFixture {
         let directory = tempfile::tempdir()?;
         let mut root = rcgen::CertificateParams::new(Vec::<String>::new())?;
         root.is_ca = rcgen::IsCa::Ca(rcgen::BasicConstraints::Unconstrained);
+        root.distinguished_name
+            .push(rcgen::DnType::CommonName, "native session test issuer");
         root.key_usages = vec![rcgen::KeyUsagePurpose::KeyCertSign];
         let root = rcgen::CertifiedIssuer::self_signed(root, rcgen::KeyPair::generate()?)?;
         let key = rcgen::KeyPair::generate()?;
@@ -34,11 +39,7 @@ impl IdentityFixture {
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
         #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt as _;
-            options.mode(0o600);
-        }
-        use std::io::Write as _;
+        options.mode(0o600);
         options.open(key_path)?.write_all(private.as_bytes())?;
         Ok(Self { directory })
     }

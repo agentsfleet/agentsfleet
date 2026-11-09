@@ -128,8 +128,8 @@ impl<'a> Heartbeat<'a> {
                 biased;
                 () = halt.serving().cancelled() => return self.last_beat(halt).await,
                 () = halt.leasing().cancelled(), if !self.closed => { self.close(); }
-                updated = updates.changed() => {
-                    if updated.is_err() { halt.stop(); return; }
+                changed = updates.changed() => {
+                    if changed.is_err() { halt.stop(); return; }
                     let frame = updates.borrow_and_update().clone();
                     if let Some(frame) = frame {
                         let result = match frame.decode::<Down<'_>>() {
@@ -172,12 +172,11 @@ impl<'a> Heartbeat<'a> {
                 Err(error) => {
                     let error_code = error.code().as_str();
                     tracing::warn!(event = "heartbeat_failed", error_code);
-                    pause = match retries.next() {
-                        Some(pause) => pause.min(self.last.interval),
-                        None => {
-                            halt.stop();
-                            return;
-                        }
+                    pause = if let Some(pause) = retries.next() {
+                        pause.min(self.last.interval)
+                    } else {
+                        halt.stop();
+                        return;
                     };
                 }
             }

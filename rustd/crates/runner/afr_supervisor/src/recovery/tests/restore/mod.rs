@@ -1,6 +1,5 @@
 use super::*;
 use crate::recovery::Restore;
-use crate::test_support::drain;
 use af_wire::task::CheckpointFile;
 use std::{
     fs,
@@ -51,7 +50,7 @@ async fn restore_rejects_changed_identity_and_future_cursors_before_reading_page
             &error,
             "checkpoint bootstrap is incompatible with current task",
         );
-        let requests = drain(&mut calls);
+        let requests = drain(&mut calls).await;
         assert!(
             !requests
                 .iter()
@@ -102,7 +101,7 @@ async fn corrupt_or_unordered_manifests_never_touch_the_destination() -> crate::
         config_failure(&error, expected);
         assert_eq!(fs::read_dir(destination.path())?.count(), 0);
         assert_eq!(
-            phases(&drain(&mut calls)).last().map(String::as_str),
+            phases(&drain(&mut calls).await).last().map(String::as_str),
             Some("failed")
         );
     }
@@ -144,7 +143,7 @@ async fn files_require_a_workspace_and_existing_files_are_never_overwritten() ->
         );
         assert_eq!(fs::read(destination.path().join("keep"))?, b"human data");
         assert_eq!(
-            phases(&drain(&mut calls)).last().map(String::as_str),
+            phases(&drain(&mut calls).await).last().map(String::as_str),
             Some("failed")
         );
     }
@@ -188,7 +187,7 @@ async fn cancellation_and_changed_pin_deadline_end_restore_custody() -> crate::R
                 "checkpoint custody ended"
             },
         );
-        let requests = drain(&mut calls);
+        let requests = drain(&mut calls).await;
         assert!(
             !requests
                 .iter()
@@ -218,7 +217,7 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
     assert_eq!(restored.history.expose(), b"");
     assert_eq!(restored.base_paths.len(), 0);
     assert_eq!(
-        phases(&drain(&mut calls)).last().map(String::as_str),
+        phases(&drain(&mut calls).await).last().map(String::as_str),
         Some("restored")
     );
     let mut archive = Archive::saved(vec![]);
@@ -233,7 +232,7 @@ async fn empty_api_recovery_requires_its_matching_history_root() -> crate::Resul
     .unwrap_err();
     config_failure(&error, "checkpoint history root mismatch");
     assert_eq!(
-        phases(&drain(&mut calls)).last().map(String::as_str),
+        phases(&drain(&mut calls).await).last().map(String::as_str),
         Some("failed")
     );
     Ok(())

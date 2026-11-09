@@ -92,11 +92,19 @@ async fn a_retryable_refusal_is_retried_quickly_and_a_final_refusal_ends_renewal
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_renewal_that_never_answers_ends_at_the_live_expiry() {
+async fn unanswered_native_renewals_retry_only_until_the_confirmed_expiry() {
     let start = Instant::now();
     let (kept, sent) = keep(&lease(), |_| Answer::Stall).await;
     kept.unwrap_err();
-    assert_eq!(sent, [INTERVAL]);
+    assert_eq!(
+        sent,
+        [
+            Duration::from_secs(10),
+            Duration::from_millis(15_250),
+            Duration::from_millis(20_500),
+            Duration::from_millis(25_750)
+        ]
+    );
     assert_eq!(
         start.elapsed(),
         Duration::from_secs(30),

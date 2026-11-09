@@ -221,8 +221,7 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
     // The connection remains available while accepted workers finish and their reports settle.
     let session_stop = CancellationToken::new();
     let session_halt = Halt::new(session_stop.clone());
-    let connection = downlink.run(&session_halt);
-    tokio::pin!(connection);
+    let mut connection = Box::pin(downlink.run(&session_halt));
     let result = tokio::select! {
         result = &mut connection => {
             lessee.halt.stop();

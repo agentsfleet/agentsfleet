@@ -5,7 +5,11 @@
 //! daemon gives each route.
 
 #[cfg(feature = "test-util")]
+mod native;
+#[cfg(feature = "test-util")]
 mod session;
+#[cfg(feature = "test-util")]
+pub use native::NativeDaemon;
 #[cfg(feature = "test-util")]
 pub use session::Session;
 
@@ -27,7 +31,7 @@ use crate::client::Verb;
 
 /// The lease every suite is granted, with its identifiers left for the suite
 /// to fill.
-pub const LEASE_JSON: &str = include_str!("test_support/lease.json");
+pub const LEASE_JSON: &str = include_str!("../test_support/lease.json");
 /// A canonical lease identifier.
 pub const LEASE_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8057";
 /// A canonical fleet identifier.
@@ -252,5 +256,4 @@ impl Drop for Listener {
 }
 
 #[cfg(test)]
-#[path = "test_util_tests.rs"]
 mod tests;

@@ -100,5 +100,6 @@ pub(super) async fn reclaimed(
         .filter_map(|event| event.field("reason").map(str::to_owned))
         .collect();
     drop(capture);
-    body.unwrap_or_else(|| panic!("ordinary task lease refused: {reasons:?}"))
+    assert!(body.is_some(), "ordinary task lease refused: {reasons:?}");
+    body.expect("the ordinary task lease was issued")
 }

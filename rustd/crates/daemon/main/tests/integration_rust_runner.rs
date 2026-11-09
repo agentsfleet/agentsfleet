@@ -39,7 +39,7 @@ async fn test_a_retired_report_route_cannot_settle_a_lease() {
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
     )]
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let mut body = report_body(&lease_id, &run.event_id, fence);
     let report = body.as_object_mut().expect("a report is a JSON object");
     report.insert(FUTURE.to_owned(), serde_json::Value::from(1));

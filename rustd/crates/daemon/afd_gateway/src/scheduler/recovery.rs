@@ -2,7 +2,7 @@
 
 use crate::{Gateway, Operation, Result, error::within};
 use af_core::timing::{OFFER_FALLBACK_TICK, STREAM_ANSWER_TIMEOUT};
-use afd_authoring::types::{EDITING, QUEUED};
+use afd_authoring::types::{DraftState, MessageState};
 use tokio::time::{Instant, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
@@ -22,9 +22,8 @@ pub(super) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()>
 async fn recover(gateway: &Gateway, stop: &CancellationToken) {
     match pending_work(gateway, stop).await {
         Ok(true) => gateway.inner.dependencies.wake.recheck(),
-        Ok(false) => {}
-        Err(error) if !stop.is_cancelled() => gateway.observe(&error, Operation::Recheck),
-        Err(_) => {}
+        Err(error) if !stop.is_cancelled() => crate::Gateway::observe(&error, Operation::Recheck),
+        Ok(false) | Err(_) => {}
     }
 }
 
@@ -38,18 +37,9 @@ async fn pending_work(gateway: &Gateway, stop: &CancellationToken) -> Result<boo
             Ok(
                 sqlx::query_scalar::<_, bool>(include_str!("../sql/select_waiting_admission.sql"))
                     .bind(afd_fleet::lease::sql::LEASE_STATUS_ACTIVE)
-                    .bind(EDITING)
-                    .bind(QUEUED)
-                    .fetch_one(
-                        &mut *gateway
-                            .inner
-                            .dependencies
-                            .leases
-                            .leases
-                            .pool()
-                            .acquire()
-                            .await?,
-                    )
+                    .bind(DraftState::Editing.as_str())
+                    .bind(MessageState::Queued.as_str())
+                    .fetch_one(&mut *gateway.inner.dependencies.database.acquire().await?)
                     .await?,
             )
         },

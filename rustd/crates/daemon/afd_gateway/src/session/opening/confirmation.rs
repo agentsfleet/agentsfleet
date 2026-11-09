@@ -37,7 +37,7 @@ impl SessionOpening {
             self.deadline,
             Operation::Opening,
             LeaseCache::rebuild(
-                self.gateway.inner.dependencies.leases.leases.pool(),
+                &self.gateway.inner.dependencies.database,
                 authority.runner(),
             ),
         )

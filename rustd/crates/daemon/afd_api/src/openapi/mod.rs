@@ -54,7 +54,12 @@ const PRODUCTION_DESCRIPTION: &str = "Production";
         contact(name = "agentsfleet", url = "https://agentsfleet.net"),
     ),
     paths(crate::router::probes::healthz, crate::router::probes::readyz,),
-    components(schemas(ProblemBody))
+    // Frame payload schemas accompany the native stream's binary HTTP body.
+    components(schemas(
+        ProblemBody,
+        af_wire::lease::LeasePayload<'static>,
+        af_wire::fold::FoldResponse<'static>,
+    ))
 )]
 struct Root;
 

@@ -103,8 +103,8 @@ fn unrecognized_bypass_entries_keep_the_explicit_proxy() -> Result<()> {
 }
 
 #[tokio::test]
-async fn a_transient_connect_refusal_can_retry_but_proxy_authentication_is_terminal() -> Result<()>
-{
+async fn a_transient_connect_refusal_can_retry_but_proxy_authentication_is_terminal()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
     let proxy = format!("http://{}", listener.local_addr()?);
@@ -132,13 +132,15 @@ async fn a_transient_connect_refusal_can_retry_but_proxy_authentication_is_termi
     });
     let transient = super::socket(&endpoint)
         .await
-        .expect_err("503 refuses this attempt");
+        .err()
+        .ok_or("503 refuses this attempt")?;
     assert_eq!(transient.reason(), Reason::Network);
     assert!(transient.to_string().contains("503"));
     drop(super::socket(&endpoint).await?);
     let terminal = super::socket(&endpoint)
         .await
-        .expect_err("407 requires operator action");
+        .err()
+        .ok_or("407 requires operator action")?;
     assert_eq!(terminal.reason(), Reason::Protocol);
     assert!(terminal.to_string().contains("407"));
     tokio::time::timeout(std::time::Duration::from_secs(5), server).await???;

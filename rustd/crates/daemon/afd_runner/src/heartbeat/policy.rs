@@ -31,6 +31,12 @@ struct PolicyColumns {
     capability_report: Option<Json<Box<RawValue>>>,
     selftest_requested: bool,
     sandbox_config: Option<Json<Box<RawValue>>>,
+    #[sqlx(flatten)]
+    authority: ConnectionColumns,
+}
+
+#[derive(sqlx::FromRow)]
+struct ConnectionColumns {
     credential_matches: bool,
     active: bool,
     owned: Option<bool>,
@@ -73,12 +79,23 @@ pub(super) async fn read(
     Ok(match row {
         None
         | Some(PolicyColumns {
-            credential_matches: false,
+            authority:
+                ConnectionColumns {
+                    credential_matches: false,
+                    ..
+                },
             ..
         }) => Decision::Refused(Refusal::Credential),
-        Some(PolicyColumns { active: false, .. }) => Decision::Refused(Refusal::Revoked),
         Some(PolicyColumns {
-            owned: None | Some(false),
+            authority: ConnectionColumns { active: false, .. },
+            ..
+        }) => Decision::Refused(Refusal::Revoked),
+        Some(PolicyColumns {
+            authority:
+                ConnectionColumns {
+                    owned: None | Some(false),
+                    ..
+                },
             ..
         }) => Decision::Refused(Refusal::Superseded),
         Some(row) => Decision::Allowed(row.into()),

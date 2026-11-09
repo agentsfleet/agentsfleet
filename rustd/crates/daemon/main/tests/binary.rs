@@ -1,4 +1,4 @@
-//! Dimension 7.4, at the boundary that actually matters: the process itself.
+//! Refused boot settings produce the exit status and output an operator reads.
 //!
 //! Everything else in this crate's suites asserts on a returned value. An exit
 //! CODE is not a returned value — it is the only thing an init system reads,
@@ -12,6 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use agentsfleetd::preflight::runner_listener::{LISTEN_ADDR, TLS_CERT_FILE, TLS_KEY_FILE};
 use std::process::{Command, Output};
 
 /// The binary under test, built by Cargo for this suite.
@@ -46,6 +47,7 @@ fn run(knobs: &[(&str, &str)]) -> Output {
         .into_iter()
         .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
         .chain(crate::support::IDENTITY_KNOBS)
+        .chain([LISTEN_ADDR, TLS_CERT_FILE, TLS_KEY_FILE])
     {
         command.env_remove(knob);
     }
@@ -55,7 +57,7 @@ fn run(knobs: &[(&str, &str)]) -> Output {
     command.output().expect("the daemon binary runs")
 }
 
-/// Dimension 7.4 — an absent or malformed key exits non-zero, naming the knob.
+/// An absent or malformed key exits non-zero and names the knob.
 #[test]
 fn test_boot_refuses_bad_kek() {
     for bad in [None, Some(""), Some("abcd"), Some("zz")] {
@@ -109,7 +111,7 @@ fn test_boot_refuses_bad_kek() {
     }
 }
 
-/// Dimension 8.1, at the process boundary — every unset knob in one run.
+/// One process reports every required setting missing from its environment.
 #[test]
 fn test_preflight_lists_missing() {
     let output = run(&[]);
@@ -120,6 +122,7 @@ fn test_preflight_lists_missing() {
         .into_iter()
         .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
         .chain(crate::support::IDENTITY.map(|(knob, _value)| knob))
+        .chain([TLS_CERT_FILE, TLS_KEY_FILE])
     {
         assert!(
             stderr.contains(knob),
@@ -142,6 +145,7 @@ fn test_boot_announces_itself_when_the_environment_is_complete() {
     ];
     knobs.extend_from_slice(&crate::support::SESSION_PEPPER);
     knobs.extend_from_slice(&crate::support::IDENTITY);
+    knobs.extend(crate::support::runner_stream::environment());
     let output = run(&knobs);
     let stdout = String::from_utf8_lossy(&output.stdout);
 

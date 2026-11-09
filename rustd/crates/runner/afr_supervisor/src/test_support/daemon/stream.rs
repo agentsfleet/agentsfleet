@@ -26,17 +26,17 @@ use crate::{
     },
 };
 
-pub(super) fn start(api: Arc<dyn RunnerApi>) -> StreamHandle {
+pub(super) fn start(api: &Arc<dyn RunnerApi>, stop: CancellationToken) -> StreamHandle {
     let (queues, receivers) = Queues::new();
     let (budget, _) = Budget::duplex(MemoryLimits::default());
     let requests = Requests::new();
-    let stop = CancellationToken::new();
     let sender = Arc::new(SessionSender {
         queues,
         budget: budget.clone(),
         requests: Arc::clone(&requests),
         stop: stop.clone(),
     });
+    let (renewal_owner, renewal_session) = watch::channel(Some(Arc::clone(&sender)));
     let (current, session) = watch::channel(Some(sender));
     let (assignment, assignments) = watch::channel(None);
     let handle = StreamHandle::new(session, Arc::new(Running::default()), assignments);
@@ -50,15 +50,26 @@ pub(super) fn start(api: Arc<dyn RunnerApi>) -> StreamHandle {
     for queue in [priority, control, work, reports, activity] {
         tokio::spawn(serve(
             queue,
-            Arc::clone(&api),
+            Arc::clone(api),
             Arc::clone(&requests),
             budget.clone(),
             stop.clone(),
         ));
     }
+    let mut renewal_handle = StreamHandle::new(
+        renewal_session,
+        Arc::clone(&handle.running),
+        handle.assignments.clone(),
+    );
+    renewal_handle.renewing = Arc::clone(&handle.renewing);
     tokio::spawn(async move {
         let _assignment = assignment;
-        current.closed().await;
+        // The batcher uses its own receiver so it cannot keep the caller's lifetime watch alive.
+        let _renewal_owner = renewal_owner;
+        tokio::select! {
+            () = current.closed() => {},
+            _finished = renewal_handle.renewing.run(&renewal_handle, stop.clone()) => {},
+        }
         stop.cancel();
         requests.close();
     });
@@ -106,7 +117,8 @@ async fn respond(
         )
         .await?;
         let message: Down<'_> = frame.decode()?;
-        if let Some(reply) = requests.reply(&message)? {
+        let reply = requests.reply(&message)?;
+        if let Some(reply) = reply {
             reply.send(frame);
         }
     }
@@ -134,7 +146,7 @@ async fn response(api: &dyn RunnerApi, frame: &OwnedFrame) -> Result<Option<Valu
         Up::RenewBatch { request_id, leases } => {
             let mut answers = Vec::new();
             for lease in leases {
-                answers.push(json!({"lease_id":lease.lease_id, "answer":answer(api, Verb::Renew, &lease.request).await?}));
+                answers.push(json!({"lease_id":lease.lease_id, "answer":answer(api, Verb::Renew, &lease).await?}));
             }
             json!({"type":"renewed", "request_id":request_id, "leases":answers})
         }

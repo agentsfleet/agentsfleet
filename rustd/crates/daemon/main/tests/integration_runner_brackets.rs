@@ -14,10 +14,6 @@
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
-#![expect(
-    clippy::disallowed_methods,
-    reason = "plain clients call the daemon these tests booted; a proxy rule and a deadline are not what the tests prove"
-)]
 
 use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
@@ -41,7 +37,6 @@ use crate::wire::{capable_beat, field, report_body, wait_without_offer};
 async fn test_bracket_frames_open_and_close_a_run() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
 
     // Subscribed BEFORE the lease: the opening bracket is published by the
     // poll itself, and pub/sub keeps nothing for a reader that arrives late.
@@ -51,7 +46,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
     let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
     settle().await;
 
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let opened = next_frame(&mut tail)
         .await
         .expect("the lease announces the row it opened");
@@ -121,7 +116,6 @@ async fn test_bracket_frames_open_and_close_a_run() {
 async fn test_a_refused_lease_closes_the_run_on_the_tail() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
 
     let hub = SubscriptionHub::start(dragonfly_config())
         .await

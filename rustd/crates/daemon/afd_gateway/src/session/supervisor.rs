@@ -92,15 +92,15 @@ impl SessionSupervisor {
         self.command_running = true;
         let services = Arc::clone(&self.services);
         self.jobs.spawn(async move {
-            if let Err(error) = services.command(command).await {
-                if !error.retryable() {
-                    services
-                        .send(&Message::GoAway {
-                            error_code: Some(error.code().as_str().into()),
-                        })
-                        .await?;
-                    services.handle.stop.cancel();
-                }
+            if let Err(error) = services.command(command).await
+                && !error.retryable()
+            {
+                services
+                    .send(&Message::GoAway {
+                        error_code: Some(error.code().as_str().into()),
+                    })
+                    .await?;
+                services.handle.stop.cancel();
             }
             Ok(OperationCompletion::Command)
         });
@@ -128,7 +128,7 @@ impl SessionSupervisor {
         }
     }
 
-    /// Stop taking frames, observe accepted operations and their flushed answers, then send go_away.
+    /// Stop taking frames, observe accepted operations and their flushed answers, then send `go_away`.
     async fn drain(&mut self, read_stop: &CancellationToken) -> Result<()> {
         read_stop.cancel();
         let stop = self.services.handle.stop.clone();

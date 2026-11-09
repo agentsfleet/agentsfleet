@@ -1,9 +1,7 @@
 //! Preserve the typed placement decision until shared polling chooses an answer.
 
-use af_core::id::Uuid7;
 use af_wire::lease::LeasePayload;
 use afd_runner::capacity::choice::Ticket;
-use jiff::Timestamp;
 
 use super::LeaseService;
 use crate::{

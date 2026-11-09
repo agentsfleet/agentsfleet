@@ -69,7 +69,7 @@ impl Endpoint {
     /// Apply the host's explicit proxy policy once; HTTP/3 never bypasses it.
     ///
     /// # Errors
-    /// Refuses unsupported proxy URLs. Standard NO_PROXY matching handles host, network and wildcard bypasses.
+    /// Refuses unsupported proxy URLs. Standard `NO_PROXY` matching handles host, network and wildcard bypasses.
     pub fn with_environment_route(
         mut self,
         env: &(impl af_core::env::EnvSource + ?Sized),

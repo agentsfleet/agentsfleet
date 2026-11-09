@@ -37,15 +37,13 @@ pub struct Pricing {
 /// Only the authenticated holder of this lease may present this capability.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ModelAccess {
     /// Random capability; never log or spool it.
     pub token: String,
     /// Current lease expiry, capped by the attempt deadline.
     #[serde(with = "crate::instant")]
     pub expires_at: jiff::Timestamp,
-    /// Relative path of the server's model endpoint. Provider addresses and credentials are
-    /// not returned.
-    pub invocation_path: String,
 }
 
 impl fmt::Debug for ModelAccess {

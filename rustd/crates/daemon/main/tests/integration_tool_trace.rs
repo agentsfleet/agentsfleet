@@ -31,9 +31,6 @@ use crate::reads::event_column;
 use crate::tail::lease;
 use crate::wire::{field, json as body_of, report_body};
 
-/// The report verb every case here settles through.
-pub(crate) const REPORTS: &str = "/v1/runners/me/reports";
-
 /// A trace of `count` calls, numbered from 1 as the runner numbers them.
 pub(crate) fn trace(count: usize) -> Value {
     let calls: Vec<Value> = (1..=count)
@@ -97,8 +94,7 @@ fn fenced(sent: &Value, fence: u64) -> Value {
 async fn test_report_writes_tool_calls_with_result() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
 
     let sent = trace(2);
     let settled =
@@ -124,8 +120,7 @@ async fn test_report_writes_tool_calls_with_result() {
 async fn test_oversize_tool_trace_dropped_report_settles() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
 
     let over = trace(TRACE_MAX_CALLS + 1);
     let settled = crate::wire::report(&run, &report_with(&lease_id, &run, fence, over)).await;
@@ -147,8 +142,7 @@ async fn test_oversize_tool_trace_dropped_report_settles() {
 async fn test_fenced_report_writes_no_tool_calls() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
 
     // A reclaim bumps the fleet's sequence past the lease's token; this is
     // that bump without the reclaim, so the report is the stale holder's.
@@ -166,8 +160,10 @@ async fn test_fenced_report_writes_no_tool_calls() {
 
     let refused = crate::wire::report(&run, &report_with(&lease_id, &run, fence, trace(2))).await;
     assert_eq!(
-        refused.status().as_u16(),
-        409,
+        refused
+            .expect_err("the stale holder is refused")
+            .refusal_code(),
+        Some(af_core::error_code::RUN_LEASE_LOST),
         "the stale holder is refused"
     );
     assert_eq!(stored_trace(&run).await, None, "no trace was written");
@@ -209,13 +205,14 @@ pub(crate) async fn tenant_get(
 
 /// Settles a lease the caller holds with `tool_calls`.
 pub(crate) async fn settle_with(
-    http: &reqwest::Client,
     run: &Scenario,
     (lease_id, fence): (String, u64),
     tool_calls: Value,
 ) {
     let body = report_with(&lease_id, run, fence, tool_calls);
-    assert_eq!(crate::wire::report(run, &body).await.status().as_u16(), 200);
+    crate::wire::report(run, &body)
+        .await
+        .expect("the native report is acknowledged");
 }
 
 /// Dimension 4.1. The single-event read serves the stored trace, and `null`
@@ -232,7 +229,7 @@ async fn test_event_detail_serves_tool_calls() {
     );
 
     // The row is written when a runner takes the event, before any report.
-    let claimed = lease(&http, &run).await;
+    let claimed = lease(&run).await;
     let fence = claimed.1;
     let before = tenant_get(&http, &run, &token, &detail).await;
     assert_eq!(
@@ -242,7 +239,7 @@ async fn test_event_detail_serves_tool_calls() {
     );
 
     let sent = trace(3);
-    settle_with(&http, &run, claimed, sent.clone()).await;
+    settle_with(&run, claimed, sent.clone()).await;
     let after = tenant_get(&http, &run, &token, &detail).await;
     assert_eq!(field(&after, "tool_calls"), &fenced(&sent, fence));
 
@@ -272,8 +269,8 @@ async fn test_event_list_omits_tool_calls() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let claimed = lease(&http, &run).await;
-    settle_with(&http, &run, claimed, trace(2)).await;
+    let claimed = lease(&run).await;
+    settle_with(&run, claimed, trace(2)).await;
 
     let list = format!(
         "/v1/workspaces/{}/fleets/{}/events",
@@ -302,11 +299,11 @@ async fn a_reported_empty_trace_is_served_as_known_zero_calls() {
         "/v1/workspaces/{}/fleets/{}/events/{}",
         run.workspace, run.fleet, run.event_id
     );
-    let claimed = lease(&http, &run).await;
+    let claimed = lease(&run).await;
     let before = tenant_get(&http, &run, &token, &detail).await;
     assert_eq!(field(&before, "tool_calls"), &Value::Null);
     let known = json!({"calls": [], "omitted_call_count": 0});
-    settle_with(&http, &run, claimed, known.clone()).await;
+    settle_with(&run, claimed, known.clone()).await;
     let after = tenant_get(&http, &run, &token, &detail).await;
     assert_eq!(field(&after, "tool_calls"), &known);
     supervisor.shutdown().await;

@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 use sqlx::AssertSqlSafe;
 
 use crate::e2e::{Scenario, scenario};
-use crate::integration_tool_trace::{REPORTS, tenant_reader};
+use crate::integration_tool_trace::tenant_reader;
 use crate::tail::lease;
 use crate::wire::{json as body_of, post, report_body};
 
@@ -106,7 +106,7 @@ pub(crate) async fn leased(
 ) -> (Scenario, reqwest::Client, String, u64) {
     let run = scenario(supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     (run, http, lease_id, fence)
 }
 
@@ -273,7 +273,7 @@ async fn test_member_reads_tool_call_detail() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let lines: Vec<String> = (1..=224).map(|n| format!("line {n}")).collect();
     let output = format!("{}\n", lines.join("\n"));
     let mut kept = record(3, &output);
@@ -304,7 +304,7 @@ async fn test_tool_call_detail_absent_is_not_found() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(3, "x")]).await;
     assert_eq!(status, 200);
 

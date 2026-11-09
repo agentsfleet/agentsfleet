@@ -12,10 +12,11 @@ executable: false
 
 This file accompanies Indy's requested context-save checkpoint on draft [PR 819](https://github.com/agentsfleet/agentsfleet/pull/819).
 Resume the feature branch at the commit containing this file, or a later explicitly published checkpoint.
-The preceding published checkpoint was `a0a8cf3b766d74fb7984d332cbe5cc49010bc0a0`.
+The preceding published checkpoint was `d68ea48f8250c143f3a7f259e1ed6421668c1bee`.
 
-**The implementation is incomplete and has no passing full compilation, lint or test lane.**
-Authoring daemon dispatch is written; kernel examples and remaining fixtures still need migration.
+**The implementation is incomplete. Rust lint has passed; the full Rust unit lane is not yet green.**
+
+Kernel compilation blockers are fixed. Native fixture migration and the remaining implementation still need verification.
 Do not present this source checkpoint as usable, code complete, ready to undraft or a benchmark baseline.
 
 | Context | Value |
@@ -41,6 +42,7 @@ The [owner feedback audit](owner-feedback-audit.md) distinguishes source edits f
 
 The [implementation guide](implementation-signoff.md) contains historical evidence from earlier revisions.
 Those results do not verify this checkpoint.
+
 The date above records source reading. The check results below state exactly what ran.
 
 ## How it behaves
@@ -62,7 +64,7 @@ The date above records source reading. The check results below state exactly wha
 - Ask before new repository scripts, workflow or deployment edits, unlisted tables or SQL casts.
 - Keep native UUIDv7 database bindings, `event_id`, owning table files and the shared Bus abstraction.
 - Keep HTTP/3 preference with HTTP/2 fallback after eligible transport failures. Do not add hot transport switching.
-- Require `X25519MLKEM768` on both ends and carriers. Transport fallback must not weaken cryptography.
+- Require `X25519MLKEM768` on both ends and transports. Transport fallback must not weaken cryptography.
 - Keep private Fly routing. External runners need an explicit route to the private listener.
 - Remove obsolete polling, old report shapes and compatibility retries. Add no aliases or legacy delivery path.
 - Postgres owns saved results and billing. Unacknowledged results stay only in caller memory.
@@ -75,7 +77,7 @@ It also removes startup replay, quarantine, encryption helpers, directory creati
 Do not restore these to repair unfinished fixtures.
 
 `lease_loop/settle.rs` retains one `Zeroizing<Vec<u8>>` report buffer in its worker until delivery ends.
-`report/delivery.rs` retries the current operation from that caller.
+`report/delivery/mod.rs` retries the current operation from that caller.
 `authoring/mod.rs::Pending` clears its private answer on drop; no separate `authoring/report.rs` remains.
 
 ```text
@@ -124,20 +126,35 @@ Runner commands share a lifetime-independent `Command: Send + Sync` computation 
 Authoring requests and fleet reports borrow their caller's payload through `Cow` during encoding.
 The gateway decodes native definition types and consumes owned payloads; no HTTP tunnel or old-shape retry was added.
 
-The latest complete unit-lane attempt stops during compilation of sandbox kernel examples.
-They still import or use the deleted `RUNNER_REPORTS` constant:
+The kernel example's supervisor, report checks and recovery checks now use native frames through `NativeDaemon`.
+The removed `RUNNER_REPORTS` constant was not restored.
+Runner binary fixtures also use this native daemon; their remaining HTTP handlers serve only retained operations.
 
-- `afr_sandbox/examples/kernel_lane/supervisor_checks.rs`.
-- `afr_sandbox/examples/kernel_lane/supervisor_plane.rs`.
-- `afr_sandbox/examples/kernel_lane/supervisor_recovery/mod.rs`.
+The shared test issuer now has a distinct subject from its leaf. The regression authenticates both transports and requires `X25519MLKEM768`.
+It failed before the issuer correction and passed after it.
 
-Migrate those examples to native sessions; do not restore polling/report-route constants to silence the compiler.
-Continue any remaining runner test signature fixes after that build reaches them.
-The ignored `.tmp/rustd-unit-runner.log` contains this machine's latest attempt; reproduce it in a fresh checkout.
+Boot fixtures explicitly supply the required native URL before testing later startup checks.
+
+The resume run reached supervisor unit tests and found a real report-decoding defect.
+Serde's tagged-enum buffering could not decode the report's borrowed raw tool trace.
+`af_wire/src/protocol/up/decode.rs` now selects the current report schema from its discriminator and borrows its raw data from the charged frame.
+
+It preserves the JSON shape, strict fields and malformed-trace handling.
+The previously stuck telemetry test passed in 0.55 seconds after this change.
+
+The scripted native fixture now starts production renewal batching and supplies the missing healthy folds answer.
+Batching tests control the activity writer boundary; native progress tests wait for their terminal frame.
+Lease cancellation and soft shutdown preserve final delivery; the hard-stop signal ends pending delivery.
+
+No report files, old format, retired route or compatibility alias was restored.
+
+The library run also found stale route counts, missing native payload schemas and a missing key-exchange vocabulary entry.
+The source fixes register current payloads, document the existing 413 refusal and count all ten removed HTTP routes explicitly.
+The transport telemetry fixture uses one literal loopback address, preserving its exact physical-attempt assertions.
 
 A test-only `afr_supervisor::test_util::Session` now uses the production downlink, correlation and recovery owners.
 It receives offers, retains registrations until report acknowledgement and exposes typed native operations.
-`main/tests/support/runner_stream.rs::client` shares that session through the scenario's `OnceCell`.
+`main/tests/support/e2e.rs::Scenario::native_session` shares that session through the scenario's `OnceCell`.
 
 Native heartbeat/report calls were ported in fifteen end-to-end fixture files.
 `e2e_wire.rs` now waits for pushed offers and durable refusals without issuing polling requests.
@@ -166,7 +183,7 @@ Do not restore the four authoring routes as compatibility fallback.
 
 ### Remaining source migration and review
 
-1. Finish the kernel example and end-to-end fixture migration above, then rerun the complete Rust build and unit lanes.
+1. Finish the full Rust lint/unit reruns and fix any further caller failures. The kernel example compilation is fixed; end-to-end fixtures still need the live lane.
 2. Migrate remaining `LeaseResponse`, `Verb::Lease`, `.lease()`, `.claim()` and deleted path-constant callers in tests, examples and benchmarks.
 3. Port HTTP-only fixture constructors through the native test seam. Supply required stream configuration in external fixtures.
 4. Replace held-heartbeat end-to-end tests and stale downlink policy tests with session behavior.
@@ -174,8 +191,8 @@ Do not restore the four authoring routes as compatibility fallback.
 6. Add and run authoring native integration cases, connection fencing, provider-dispatch replay, cancellation, renewals, folds and report retry cases.
 7. Review worker policy changes while waiting for offers and shutdown bounds during a report outage.
 8. Complete the whole-PR Rust review, including RS-SENTINEL, RS-UNWRAP, public docs, function sizes and causes.
-9. Reconcile manifest changes and Cargo.lock only when the permitted dependency-generation step is clear.
-10. Reconcile canonical and public docs; generate OpenAPI through its generator after approval, never by hand.
+9. Review manifest changes and Cargo.lock against their current callers.
+10. Reconcile canonical and public docs; keep generated OpenAPI matched to its source, never edit it by hand.
 
 Tool-trace parsing now returns its error, and invalid authoring call limits no longer become zero-call runs.
 Remaining examples include `report_workers` saturation and listener failure handling that drops typed causes.
@@ -188,11 +205,11 @@ Reconcile all rewritten test modules with their test-only unwrap policy.
 ### TLS deployment and certificates still open
 
 The source does not prove where production TLS ends.
-Define the private hostname, direct TCP/UDP exposure and native acceptor termination before claiming the hybrid policy applies in production.
+Define the private hostname, direct TCP/UDP exposure and where native acceptors end TLS before claiming the hybrid policy applies in production.
 No deployment or workflow file was changed for this checkpoint.
 
 Pinned Quiche 0.30.0 sets SNI and `X509_VERIFY_PARAM_set1_host` in `src/tls/mod.rs::set_host_name`.
-Wrong-host rejection test sources exist for both carriers, without runtime results.
+Wrong-host rejection test sources exist for both transports, without runtime results.
 HTTP/2 pre-negotiation rejection telemetry remains incomplete.
 
 Certificate issuer, root delivery and reload before expiry still need a concrete lifecycle design and Indy's review.
@@ -252,7 +269,7 @@ The scheduler's positive-pass issuance budget and coalescing in M243 Dimension 4
 Notifying all candidates closes the wrong-host delay but does not establish that acceptance result.
 
 File-length review also remains due.
-Newly oversized files include `downlink/mod.rs`, `main/src/serve/mod.rs` and `main/src/serve/drain/mod.rs`.
+Remaining oversized files include `af_stream/src/error/mod.rs`, `main/src/serve/mod.rs` and `main/src/serve/drain/mod.rs`.
 Several earlier touched domain files exceed 350 lines too; a green Clippy run would not prove this review rule satisfied.
 
 ### Cloud build tools used here
@@ -266,8 +283,16 @@ Rust lanes used that environment's `bin` directory on PATH and the library path 
 Keep two Cargo jobs, zero development/test debug info and incremental compilation disabled, as `.orly/LOCAL.md` requires.
 
 These tools are machine setup outside the repository; a fresh cloud session must inspect its own installed tools.
-Root and CLI Bun dependencies were installed from their frozen lockfiles.
-Remaining UI package installs, CLI build and live-datastore setup may still be needed before the full repository lanes.
+Root, CLI and every UI package were installed from their frozen lockfiles, and the CLI build completed.
+Live-datastore setup still remains before the integration lane.
+
+This container runs `tail -f /dev/null` as process 1 and does not reap orphaned children.
+The unchanged executor process-cleanup tests failed because killed children remained zombies.
+They passed under a temporary child-subreaper wrapper outside the repository (`/tmp/m243-subreaper.py` on this machine).
+
+It sets `PR_SET_CHILD_SUBREAPER` and waits for adopted children; no repository script was added.
+Run Rust tests with `umask 022` scoped to the lane: the cloud shell's `0077` mask also caused the published-image mode assertion to fail.
+These are execution-environment requirements, with no relaxed assertion or coverage floor.
 
 ## Limits
 
@@ -278,13 +303,18 @@ This checkpoint records current failures and must remain draft.
 | Command | Actual result |
 |---|---|
 | `orly doctor` | Passed: local rules match and Codex tools are installed. |
-| `orly gate work --accept-dirty` | Passed: four configured commands declared. This does not compile or test the source. |
-| `gitleaks protect --staged --redact --verbose --no-banner` | Passed on the final staged checkpoint before commit. |
+| `orly gate work --accept-dirty` | Passed: four declared commands. This does not compile or test the source. |
+| `gitleaks protect --staged --redact --verbose --no-banner` | Passed for the published checkpoint. The resume edits are not staged or scanned yet. |
 | `make lint-source` | Passed: 44 rule tests and source scan after the source changes. |
-| `cargo fmt --all` | Completed successfully after the last source edit. |
-| `make lint-rustd` | Failed at rustfmt before the formatting pass. No completed Clippy/shear result. |
-| `make test-unit-rustd` | Fails during compilation; latest recorded blockers are kernel example references to removed report routes. No completed unit lane. |
-| Full unit, integration, version and shipping gates | Not passed for this checkpoint. |
+| `cargo fmt --all --check` | Passed after the latest source changes. |
+| `cargo check --workspace --all-targets --all-features` | Passed from `rustd/`: development profile completed in 1 minute 5 seconds after the latest fixes. |
+| `make lint-rustd` | Passed before OpenAPI regeneration: source checks, formatting, all-target/all-feature Clippy and cargo shear. The regenerated JSON now has one source-prose finding below. |
+| `make test-unit-rustd` | Runner: 1,685 passed. Daemon: 164 passed. The final library run has three failing tests; see the handoff below. |
+| `cargo test -p afr_supervisor --all-features --lib` | Passed: 396 tests in the full runner shard, zero failures. This is an inner-loop result, not the repository unit lane. |
+| `cargo test -p af_wire --all-features` | Passed: 79 library tests and 103 suite tests, zero failures. Includes native report-trace and strict-field regressions. |
+| Generated OpenAPI | Rebuilt from the current daemon with `--no-banner openapi`: 115 paths; all ten retired paths absent; native body and 413 response present. |
+| `make test-unit-all` | Failed in the Rust library shard on the three cases below. Frontend coverage did not run. |
+| Integration and final shipping gates | Still due. PR remains draft. |
 
 There are no active Git hooks in this checkout; only sample hooks exist.
 Manual publication checks are required; do not claim hooks ran.
@@ -302,3 +332,41 @@ Production private routing, certificate lifecycle and handshake evidence remain 
 - [Implementation guide and historical evidence](implementation-signoff.md)
 - [File inventory](files.tsv)
 - [Runner protocol](../../architecture/runner_protocol.md)
+
+
+### Current checkpoint for Claude: three remaining unit failures
+
+Indy requested this checkpoint pushed before these three tests are fixed.
+Cargo check and formatting pass. Rust Clippy and dependency checks passed before OpenAPI regeneration.
+The regenerated document now fails the source-prose check below.
+The runner shard passes 1,685 tests; the daemon shard passes 164.
+
+The final `make test-unit-all` run failed in the library shard.
+It used Cargo's `--no-fail-fast` option and collected these remaining failures:
+
+| Test and source | Actual failure and next action |
+|---|---|
+| `runner_plane::test_runner_bearer_state_matrix`, `afd_api/tests/runner_plane/mod.rs:78` | The response is `UZ-INTERNAL-001`; the assertion mistakenly expects `UZ-INTERNAL-003`. Codex changed the wrong matching assertion. Restore the database-query expectation here. |
+| `runner_plane::the_native_stream_opening_is_guarded_like_every_other_runner_verb`, same file, line 244 | The fixture response is `UZ-INTERNAL-003`; the assertion still expects `UZ-INTERNAL-001`. `NoWork::open` deliberately returns `INTERNAL_OPERATION_FAILED` without a native connection. Correct this assertion instead. |
+| `blackhole_fallback_cancellation_and_redaction_reach_exported_telemetry`, `af_stream/tests/transport_observability.rs:306` | The negotiated TLS log assertion fails. Exact connection, fallback and timeout metric assertions now pass with the single-address fixture. Determine which transport observation is missing; preserve both hybrid-group log assertions and redaction checks. |
+
+The complete unit lane is still red; no full repository or code-completion claim applies.
+Indy will assign these fixes to another Claude Code agent.
+Codex will coordinate on issue 818 and continue outside those files.
+
+The current generated OpenAPI has 115 paths and omits all ten retired HTTP operations.
+Its native stream body remains binary; current lease/fold schemas and the existing 413 refusal are documented.
+No retired route, compatibility alias, report file or backward-format retry was restored.
+
+
+### Publication gate result
+
+`orly gate work` and the staged secret scan pass.
+`orly gate verify` passes configuration, documentation language and version 0.75.0 checks.
+Its `make lint-all` command fails the source scan on one generated OpenAPI description.
+
+The finding is `docs-api-internal-detail` at `public/openapi.json:8741`.
+The protocol header description contains `agentsfleet.runner.v1`; its source is `afd_api_runner/src/handler/runner/stream.rs`.
+Codex owns correcting that annotation and regenerating the document; Claude owns the three unit failures above.
+
+No repository gate, test assertion or coverage floor was weakened to publish this owner-requested checkpoint.

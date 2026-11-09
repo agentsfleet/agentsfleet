@@ -1,6 +1,5 @@
 use super::*;
 use crate::recovery::Capture;
-use crate::test_support::drain;
 use std::{fs, os::unix::fs::symlink};
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
@@ -34,7 +33,7 @@ async fn capture_deduplicates_content_and_commits_only_the_acknowledged_boundary
         vec!["removed".to_owned()],
     )
     .await?;
-    let requests = drain(&mut calls);
+    let requests = drain(&mut calls).await;
     assert_captured_boundary(&requests, &state, &saved);
     assert_eq!(
         fs::read(workspace.path().join("repo/first"))?,
@@ -65,7 +64,7 @@ async fn cancelled_capture_allocates_nothing_and_never_announces_saved() -> crat
     .await
     .unwrap_err();
     config_failure(&error, "checkpoint capture was cancelled");
-    let requests = drain(&mut calls);
+    let requests = drain(&mut calls).await;
     assert!(requests.iter().all(|call| call.verb == Verb::Activity));
     assert_eq!(phases(&requests), ["preparing", "failed"]);
     Ok(())
@@ -95,7 +94,7 @@ async fn retained_base_replay_does_not_register_or_republish_objects() -> crate:
     .await?;
     assert!(saved.replayed);
     assert_eq!(saved.manifest_root, expected);
-    let requests = drain(&mut calls);
+    let requests = drain(&mut calls).await;
     assert_eq!(
         requests
             .iter()
@@ -142,7 +141,7 @@ async fn incompatible_plan_and_live_writer_refuse_before_publication() -> crate:
         .unwrap_err();
         config_failure(&error, expected);
         assert!(state.lock().unwrap().plan.manifest_root.is_none());
-        let requests = drain(&mut calls);
+        let requests = drain(&mut calls).await;
         assert!(
             !requests
                 .iter()
@@ -190,7 +189,7 @@ async fn page_and_commit_acknowledgements_cannot_change_the_saved_boundary() -> 
         .await
         .unwrap_err();
         config_failure(&error, expected);
-        let requests = drain(&mut calls);
+        let requests = drain(&mut calls).await;
         assert_eq!(
             requests
                 .iter()

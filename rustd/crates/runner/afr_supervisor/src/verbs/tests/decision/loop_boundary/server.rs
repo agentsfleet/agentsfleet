@@ -15,7 +15,7 @@ type Calls = Arc<Mutex<Vec<(String, Value)>>>;
 pub(super) struct Server {
     pub(super) plane: ControlPlane,
     calls: Calls,
-    _native: crate::test_support::Calls,
+    native: crate::test_support::Calls,
     mode: &'static str,
     worker: tokio::task::JoinHandle<()>,
 }
@@ -52,13 +52,39 @@ impl Server {
         });
         Self {
             plane,
-            _native: native,
             calls,
+            native,
             mode,
             worker,
         }
     }
-    pub(super) fn assert_calls(&self) {
+    pub(super) async fn assert_calls(&mut self) {
+        if matches!(
+            self.mode,
+            "empty_credential" | "invalid_header" | "mismatched_receipt"
+        ) {
+            let wanted = if self.mode == "mismatched_receipt" {
+                1
+            } else {
+                2
+            };
+            crate::test_support::bounded("native decision progress", async {
+                loop {
+                    let observed = self
+                        .calls
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .filter(|(_, body)| body.get("frames").is_some())
+                        .count();
+                    if observed >= wanted {
+                        break;
+                    }
+                    self.native.recv().await.unwrap();
+                }
+            })
+            .await;
+        }
         let calls = self.calls.lock().unwrap();
         let reservations: Vec<_> = calls
             .iter()

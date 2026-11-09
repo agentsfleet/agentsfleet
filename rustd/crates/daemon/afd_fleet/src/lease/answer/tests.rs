@@ -96,7 +96,7 @@ fn rendered(resume_hold: bool) -> Value {
         policy(),
         Context::default(),
     );
-    serde_json::to_value(af_wire::protocol::Down::Offer {
+    serde_json::to_value(af_wire::protocol::Down::<serde_json::Value>::Offer {
         lease: af_wire::lease::TaggedLease::<serde_json::Value>::Fleet(Box::new(lease)),
     })
     .expect("an offer renders")

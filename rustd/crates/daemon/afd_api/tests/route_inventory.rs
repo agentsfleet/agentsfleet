@@ -24,7 +24,7 @@
 use std::collections::BTreeSet;
 
 use afd_api::Route;
-use afd_api::route::{Ownership, TenantRoute};
+use afd_api::route::{Ownership, RunnerRoute, TenantRoute};
 
 /// Every path this milestone's §1, §2, §3, §4, §6 and §7 own.
 ///
@@ -219,6 +219,7 @@ fn tenant_and_workspace_templates() -> impl Iterator<Item = &'static str> {
                     | Route::Workspace(_)
                     | Route::Fleet(_)
                     | Route::Connector(_)
+                    | Route::Runner(RunnerRoute::Stream)
             )
         })
         // The identity-provider delivery is signature-authenticated ingress and

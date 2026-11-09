@@ -39,17 +39,16 @@ impl SessionServices {
                     let mut state = self.handle.snapshot.lock();
                     state.held = listed;
                     state.degraded = beat.verdict.is_degraded();
-                }
+                };
                 self.send(&Message::Heartbeat {
                     request_id,
                     answer: Answer::Ok {
-                        response: self.policy(&beat)?,
+                        response: Self::policy(&beat)?,
                     },
                 })
                 .await?;
                 self.refresh_cancellations().await?;
                 self.handle.request_offer();
-                Ok(())
             }
             Err(error) => {
                 let terminal = !error.retryable();
@@ -66,8 +65,8 @@ impl SessionServices {
                     .await?;
                     self.handle.stop.cancel();
                 }
-                Ok(())
             }
         }
+        Ok(())
     }
 }

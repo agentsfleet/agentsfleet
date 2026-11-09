@@ -1,7 +1,8 @@
-//! The downlink owns connection recovery and every task attached to the current carrier.
+//! The downlink owns connection recovery and every task attached to the current transport.
 
 mod connect;
 mod dispatch;
+mod io;
 pub(crate) mod pending;
 pub(crate) mod policy;
 mod reconnect;
@@ -9,7 +10,7 @@ pub(crate) mod running;
 
 use std::{collections::HashSet, sync::Arc};
 
-use af_stream::{Budget, OwnedFrame, Reader};
+use af_stream::{Budget, OwnedFrame};
 use af_wire::protocol::StreamKind;
 use http::header::HeaderValue;
 use tokio::{
@@ -24,13 +25,9 @@ use crate::{
     config::Config,
     error::{self, ErrorKind},
     halt::Halt,
-    uplink::{
-        SessionSender, StreamHandle,
-        queues::{Queues, Receivers},
-        writer,
-    },
+    uplink::{SessionSender, StreamHandle, queues::Queues},
 };
-use connect::{Connected, Pipe};
+use connect::Connected;
 use dispatch::{Dispatch, Progress};
 use reconnect::{Preference, Resume};
 use running::{LeaseRegistration, Running};
@@ -168,13 +165,6 @@ impl Downlink {
         budget: Budget,
         stop: CancellationToken,
     ) -> Result<Progress> {
-        let Connected {
-            connection,
-            control,
-            work,
-            reports,
-            activity,
-        } = connected;
         self.running.new_session();
         let (queues, receivers) = Queues::new();
         let requests = pending::Requests::new();
@@ -187,19 +177,16 @@ impl Downlink {
         let (frames_tx, mut frames) = mpsc::channel(16);
         let (control_tx, mut control_frames) = mpsc::channel(16);
         let mut workers = JoinSet::new();
-        spawn(
-            control,
-            work,
-            reports,
-            activity,
+        let connection = io::spawn(
+            connected,
             receivers,
             control_tx,
-            frames_tx,
+            &frames_tx,
             &stop,
             &mut workers,
         );
         self.current.send_replace(Some(Arc::clone(&sender)));
-        workers.spawn(ping(self.handle.clone(), stop.clone()));
+        workers.spawn(io::ping(self.handle.clone(), stop.clone()));
         let mut dispatch = Dispatch {
             requests: &requests,
             running: &self.running,
@@ -291,75 +278,5 @@ impl Downlink {
                 }
             }
         }
-    }
-}
-
-fn spawn(
-    control: Pipe,
-    work: Pipe,
-    reports: Pipe,
-    activity: Pipe,
-    receivers: Receivers,
-    control_frames: mpsc::Sender<(StreamKind, OwnedFrame)>,
-    frames: mpsc::Sender<(StreamKind, OwnedFrame)>,
-    stop: &CancellationToken,
-    workers: &mut JoinSet<Result<()>>,
-) {
-    let Receivers {
-        priority,
-        control: ordinary,
-        work: work_rx,
-        reports: reports_rx,
-        activity: activity_rx,
-    } = receivers;
-    workers.spawn(writer::control(
-        control.writer,
-        priority,
-        ordinary,
-        stop.clone(),
-    ));
-    workers.spawn(writer::run(work.writer, work_rx, stop.clone()));
-    workers.spawn(writer::run(reports.writer, reports_rx, stop.clone()));
-    workers.spawn(writer::run(activity.writer, activity_rx, stop.clone()));
-    workers.spawn(read(
-        control.reader,
-        StreamKind::Control,
-        control_frames,
-        stop.clone(),
-    ));
-    for (kind, pipe) in [
-        (StreamKind::Work, work.reader),
-        (StreamKind::Reports, reports.reader),
-        (StreamKind::Activity, activity.reader),
-    ] {
-        workers.spawn(read(pipe, kind, frames.clone(), stop.clone()));
-    }
-}
-
-async fn read(
-    mut reader: Reader<af_stream::IncomingReader>,
-    kind: StreamKind,
-    frames: mpsc::Sender<(StreamKind, OwnedFrame)>,
-    stop: CancellationToken,
-) -> Result<()> {
-    loop {
-        let frame = reader.next().await?.ok_or(ErrorKind::Disconnected)?;
-        tokio::select! {
-            biased;
-            () = stop.cancelled() => return Ok(()),
-            sent = frames.send((kind, frame)) => sent.map_err(|_| ErrorKind::Disconnected)?,
-        }
-    }
-}
-
-async fn ping(handle: StreamHandle, stop: CancellationToken) -> Result<()> {
-    let mut ticks = tokio::time::interval_at(
-        Instant::now() + af_core::timing::STREAM_PING_INTERVAL,
-        af_core::timing::STREAM_PING_INTERVAL,
-    );
-    ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
-    loop {
-        tokio::select! { () = stop.cancelled() => return Ok(()), _ = ticks.tick() => {} }
-        handle.compute(crate::client::stream::Ping).await?;
     }
 }

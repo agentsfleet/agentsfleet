@@ -63,16 +63,14 @@ impl Requests {
     }
 
     pub(crate) async fn register(self: &Arc<Self>, expected: Expected) -> Result<Registration> {
-        let permit = self
-            .capacity
-            .clone()
+        let permit = Arc::clone(&self.capacity)
             .acquire_owned()
             .await
-            .map_err(|_| ErrorKind::Disconnected)?;
+            .map_err(crate::error::stream_disconnected)?;
         let next = self
             .next
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |id| id.checked_add(1))
-            .map_err(|_| ErrorKind::StreamProtocol)?;
+            .map_err(|_exhausted_counter| ErrorKind::StreamProtocol)?;
         let id = NonZeroU64::new(next).ok_or(ErrorKind::StreamProtocol)?;
         let (answer, receiver) = oneshot::channel();
         let mut entries = self.entries.lock();
@@ -168,7 +166,7 @@ impl Registration {
     pub(crate) async fn receive(&mut self) -> Result<OwnedFrame> {
         (&mut self.receiver)
             .await
-            .map_err(|_| ErrorKind::Disconnected)?
+            .map_err(crate::error::stream_disconnected)?
     }
 }
 

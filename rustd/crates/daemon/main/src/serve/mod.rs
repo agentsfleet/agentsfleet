@@ -38,7 +38,7 @@ use std::net::SocketAddr;
 
 use af_core::env::EnvSource;
 use af_observability::{Analytics, Telemetry};
-use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Services as _};
+use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 

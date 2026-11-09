@@ -93,7 +93,7 @@ impl LeaseCache {
     /// Late acknowledgements cannot shorten a newer confirmed deadline.
     pub(super) fn renew(&self, lease: &Uuid7, expires_at: Timestamp) {
         self.update(lease, |record| {
-            record.expires_at = record.expires_at.max(expires_at)
+            record.expires_at = record.expires_at.max(expires_at);
         });
     }
 

@@ -208,17 +208,19 @@ fn fixture_id() -> Uuid7 {
 }
 
 impl afd_api::services::RunnerStreams for NoWork {
-    async fn open(
+    fn open(
         &self,
         _runner: afd_auth::principal::Runner,
         _request: axum::extract::Request,
-    ) -> axum::response::Response {
+    ) -> impl Future<Output = axum::response::Response> {
         use axum::response::IntoResponse as _;
-        afd_http::envelope::ProblemResponse::new(
-            af_core::error_code::INTERNAL_OPERATION_FAILED,
-            "This router fixture has no native runner connection.",
-            afd_http::request_id::RequestId::mint(),
+        std::future::ready(
+            afd_http::envelope::ProblemResponse::new(
+                af_core::error_code::INTERNAL_OPERATION_FAILED,
+                "This router fixture has no native runner connection.",
+                afd_http::request_id::RequestId::mint(),
+            )
+            .into_response(),
         )
-        .into_response()
     }
 }

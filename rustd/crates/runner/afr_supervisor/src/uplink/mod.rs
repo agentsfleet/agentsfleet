@@ -65,7 +65,7 @@ impl StreamHandle {
                 session
                     .changed()
                     .await
-                    .map_err(|_| ErrorKind::Disconnected)?;
+                    .map_err(crate::error::stream_disconnected)?;
             }
         })
         .await?

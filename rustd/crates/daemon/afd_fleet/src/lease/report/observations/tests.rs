@@ -96,11 +96,12 @@ fn request() -> ReportRequest<'static> {
 /// cost family and the delivery span alike; the reads stay their own
 /// subset and output is untouched.
 #[test]
-fn test_cache_writes_count_as_input_tokens() -> Result<(), &'static str> {
+fn test_cache_writes_count_as_input_tokens() -> Result<(), Box<dyn std::error::Error + Send + Sync>>
+{
     let settled = settled(TOKENS)?;
     let request = request();
 
-    let usage = UsageCounts::try_from(&settled.tokens).map_err(|_| "saved usage is nonnegative")?;
+    let usage = UsageCounts::try_from(&settled.tokens)?;
     let spend = spend_of(&settled, &request, &usage);
     assert_eq!(spend.input_tokens, PROMPT, "reads and writes are input");
     assert_eq!(spend.cached_input_tokens, 400, "the read subset alone");
@@ -118,7 +119,8 @@ fn test_cache_writes_count_as_input_tokens() -> Result<(), &'static str> {
 /// The span starts at the event's creation and carries the daemon's two
 /// segments beside the runner's, each where it was measured.
 #[test]
-fn test_span_joins_daemon_and_runner_segments() -> Result<(), &'static str> {
+fn test_span_joins_daemon_and_runner_segments()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let settled = settled(TOKENS)?;
     let mut request = request();
     request.telemetry.segments = Some(RunSegments {
@@ -130,7 +132,7 @@ fn test_span_joins_daemon_and_runner_segments() -> Result<(), &'static str> {
     });
     let complete = Some(Duration::from_millis(120));
 
-    let usage = UsageCounts::try_from(&settled.tokens).map_err(|_| "saved usage is nonnegative")?;
+    let usage = UsageCounts::try_from(&settled.tokens)?;
     let delivery = delivery_of(&settled, &request, complete, &usage);
 
     assert_eq!(
@@ -154,10 +156,11 @@ fn test_span_joins_daemon_and_runner_segments() -> Result<(), &'static str> {
 /// A runner from before the segments rode the report leaves only what the
 /// daemon measured itself.
 #[test]
-fn test_span_without_runner_segments_keeps_the_daemons() -> Result<(), &'static str> {
+fn test_span_without_runner_segments_keeps_the_daemons()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let settled = settled(TOKENS)?;
     let request = request();
-    let usage = UsageCounts::try_from(&settled.tokens).map_err(|_| "saved usage is nonnegative")?;
+    let usage = UsageCounts::try_from(&settled.tokens)?;
     let delivery = delivery_of(&settled, &request, None, &usage);
     assert_eq!(
         delivery.segments,
@@ -179,4 +182,52 @@ fn negative_saved_usage_is_an_error() {
         output_tokens: 0,
     };
     assert!(UsageCounts::try_from(&tokens).is_err());
+}
+
+/// Failed outcomes remain failures even when the runner gives no finer cause.
+#[test]
+fn failed_reports_observe_the_failed_outcome_with_or_without_a_class()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let (analytics, recorded) = af_observability::Analytics::recording();
+    let settled = settled(TOKENS)?;
+    for reason in [Some(af_wire::report::FailureClass::TimeoutKill), None] {
+        let mut request = request();
+        request.outcome = Outcome::FleetError;
+        request.failure_reason = reason;
+        super::observe(
+            &analytics,
+            &settled,
+            &request,
+            settled.fleet_id.as_str(),
+            af_core::clock::now(),
+        )?;
+    }
+    let exits: Vec<_> = recorded
+        .events()
+        .into_iter()
+        .filter_map(|event| match event {
+            af_observability::Telemetry::FleetCompleted { exit_status, .. } => Some(exit_status),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(exits, ["fleet_error", "fleet_error"]);
+    Ok(())
+}
+
+/// Acknowledging a retried saved report emits no second completion event.
+#[test]
+fn a_saved_report_retry_does_not_repeat_completion_analytics()
+-> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let (analytics, recorded) = af_observability::Analytics::recording();
+    let mut settled = settled(TOKENS)?;
+    settled.repeated = true;
+    super::observe(
+        &analytics,
+        &settled,
+        &request(),
+        settled.fleet_id.as_str(),
+        af_core::clock::now(),
+    )?;
+    assert_eq!(recorded.events().len(), 0);
+    Ok(())
 }

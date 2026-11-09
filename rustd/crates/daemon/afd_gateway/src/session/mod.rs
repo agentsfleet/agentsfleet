@@ -71,7 +71,7 @@ impl SchedulingState {
         self.credits = if unseen >= credits as u64 {
             0
         } else {
-            credits - unseen as usize
+            credits - usize::try_from(unseen)?
         };
         self.offers_seen = observed_offers;
         self.ready_revision = Some(revision);

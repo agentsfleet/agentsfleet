@@ -20,7 +20,7 @@ impl Registry {
     /// The host lock orders local insertion with every durable ownership transition.
     pub(crate) async fn register_current(
         self: &Arc<Self>,
-        session: Arc<SessionHandle>,
+        session: &Arc<SessionHandle>,
         authority: &afd_runner::capacity::authority::Authority,
         database: &afd_db::Db,
     ) -> Result<Registration> {
@@ -39,13 +39,13 @@ impl Registry {
         Ok(registration)
     }
 
-    fn register(self: &Arc<Self>, session: Arc<SessionHandle>) -> Result<Registration> {
+    fn register(self: &Arc<Self>, session: &Arc<SessionHandle>) -> Result<Registration> {
         if self.draining.load(Ordering::Acquire) {
             return Err(ErrorKind::Closed.into());
         }
         let runner = session.runner.clone();
         let connection = session.connection.clone();
-        if let Some(old) = self.sessions.insert(runner.clone(), session.clone()) {
+        if let Some(old) = self.sessions.insert(runner.clone(), Arc::clone(session)) {
             old.supersede();
         }
         if self.draining.load(Ordering::Acquire) {

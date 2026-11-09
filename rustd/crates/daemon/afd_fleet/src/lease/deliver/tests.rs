@@ -128,18 +128,17 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
 /// answer may park: a retry that parked would wait on nobody.
 #[test]
 fn only_an_open_card_turns_the_answer_into_a_park() {
-    let answer = || "no work".to_owned();
     assert!(matches!(
-        Ungranted::Parks.ending::<String>(answer()),
-        super::Step::Park(bytes) if bytes == answer()
+        Ungranted::Parks.ending::<String>(),
+        super::Step::Park
     ));
     assert!(matches!(
-        Ungranted::Retries.ending::<String>(answer()),
-        super::Step::Stop(bytes) if bytes == answer()
+        Ungranted::Retries.ending::<String>(),
+        super::Step::Stop
     ));
     assert!(matches!(
-        Ungranted::Ends.ending::<String>(answer()),
-        super::Step::Stop(bytes) if bytes == answer()
+        Ungranted::Ends.ending::<String>(),
+        super::Step::Stop
     ));
 }
 

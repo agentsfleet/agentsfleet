@@ -320,17 +320,4 @@ impl Fixtures {
             .await
             .expect("a connection for seeding")
     }
-
-    /// Runs one seeding statement with text binds.
-    async fn run(&self, statement: &str, binds: &[&str]) {
-        let mut connection = self.connection().await;
-        let mut query = sqlx::query(AssertSqlSafe(statement.to_owned()));
-        for bind in binds {
-            query = query.bind((*bind).to_owned());
-        }
-        query
-            .execute(&mut *connection)
-            .await
-            .expect("the fixture row must insert");
-    }
 }
