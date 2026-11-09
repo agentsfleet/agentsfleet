@@ -109,7 +109,7 @@ pub(super) async fn authorize(
 ) -> crate::Result<(Uuid7, i64)> {
     let mut connection = drafts.database.acquire().await?;
     let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-    let guarded = guard::publication(&mut tx, runner, lease, counters).await?;
+    let guarded = drafts.publication(&mut tx, runner, lease, counters).await?;
     let identity = (guarded.attempt.draft_id, guarded.attempt.message_sequence);
     tx.commit().await.map_err(query(CONTEXT))?;
     drop(connection);

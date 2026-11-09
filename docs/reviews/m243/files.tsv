@@ -773,3 +773,26 @@ EDIT	rustd/crates/runner/main/tests/run.rs	present	Repair native session compila
 EDIT	schema/20261108123100_runner_runners.sql	present	Only connection_id and cancel_requested_at; no new table or ALTER file
 EDIT	schema/20261108123200_runner_leases.sql	present	Only connection_id and cancel_requested_at; no new table or ALTER file
 EDIT	ui/packages/app/tests/approvals-list/resolve.test.ts	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/provider/network/mod.rs	present	Native authoring session, durable receipts, connection fencing and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/receipt/finish.rs	present	Native authoring session, durable receipts, connection fencing and focused verification
+EDIT	rustd/crates/daemon/main/src/serve/test_util.rs	present	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/accounting.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/contention.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/fencing.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/fixture.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/flow.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/mod.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/provider.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/reads.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/refusals.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/replay.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/seed.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+EDIT	rustd/crates/protocol/af_wire/src/authoring/report.rs	present	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/expiry.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/afd_authoring/src/lease/guard/connected.rs	absent	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/lease/guard/mod.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/lease/report/prepare.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/dispatch/funding.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/edit_intent/prepare.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/edit_intent/record.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/edit_intent/reserve.rs	present	Native authoring authority boundary, caller simplification and focused verification

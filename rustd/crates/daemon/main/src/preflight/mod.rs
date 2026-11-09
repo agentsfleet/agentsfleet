@@ -272,6 +272,8 @@ impl Readings {
                 exchanger: None,
                 #[cfg(feature = "test-util")]
                 connector_endpoint: None,
+                #[cfg(feature = "test-util")]
+                authoring_transport: None,
             }),
             // Anything else: a knob that is missing or unusable, the identity
             // provider included. Every one of them has already pushed its own

@@ -69,6 +69,7 @@ pub(crate) struct Inner {
     output_budget: Budget,
     registry: Arc<registry::Registry>,
     tasks: TaskTracker,
+    accounting_stop: CancellationToken,
 }
 
 /// Cloneable session opening and shutdown owner for one daemon replica.
@@ -101,6 +102,7 @@ impl Gateway {
                 output_budget,
                 registry: Arc::new(registry::Registry::default()),
                 tasks: TaskTracker::new(),
+                accounting_stop: CancellationToken::new(),
             }),
         }
     }
@@ -122,6 +124,7 @@ impl Gateway {
         self.inner.tasks.close();
         if let Err(source) = tokio::time::timeout_at(deadline, self.inner.tasks.wait()).await {
             self.inner.registry.cancel_all();
+            self.inner.accounting_stop.cancel();
             return Err(error::ErrorKind::Timeout {
                 operation: Operation::Drain,
                 source,

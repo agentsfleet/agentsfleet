@@ -14,10 +14,14 @@ This file accompanies Indy's requested context-save checkpoint on draft [PR 819]
 Resume the feature branch at the commit containing this file, or a later explicitly published checkpoint.
 The preceding published checkpoint was `d68ea48f8250c143f3a7f259e1ed6421668c1bee`.
 
-**The implementation is incomplete. Rust lint has passed; the full Rust unit lane is not yet green.**
+**M243 remains incomplete. Authoring source is implemented; native integration verification is paused until code completion.**
+
+Workspace compilation and full `make lint-all` pass.
+The full Rust unit lane passed 5,380 tests before the guard simplification; the affected library shard then passed all 3,531 tests again.
+Claude's three previously failing tests are fixed and included.
 
 Kernel compilation blockers are fixed. Native fixture migration and the remaining implementation still need verification.
-Do not present this source checkpoint as usable, code complete, ready to undraft or a benchmark baseline.
+Do not present M243 as code complete, ready to undraft or a benchmark baseline.
 
 | Context | Value |
 |---|---|
@@ -405,3 +409,92 @@ Results, run from `rustd/` with `--all-features`, no debug info, no incremental 
 
 The full `make test-unit-all` lane was not rerun here; one full Rust verification is still due on the combined branch.
 M243 remains incomplete.
+
+### Nov 09 native authoring source checkpoint
+
+Indy prioritized authoring model calls, proposals, renewals and completion on one native session.
+The runner commands and daemon dispatch keep those four operations on the existing work, control and reports streams.
+No authoring HTTP route, compatibility alias or disk report storage was restored.
+
+The source now rechecks connection authority before publishing previews or retaining a provider result.
+It checks expiry again after waiting for the host lock.
+A fenced result preserves authoritative provider usage while withholding private output and its continuation.
+
+Accepted work requests remain in the daemon task tracker after their native connection closes.
+They retain their charged input frame and request permit until completion, their bounded deadline or daemon shutdown.
+This lets a physical provider call record its receipt even when its native reply cannot be delivered.
+
+An unsettled authoring acknowledgement retains both the daemon lease cache entry and the test runner's worker registration.
+Only settlement releases those owners.
+Postgres continues to own saved results, receipt replay and billing; runner report retries remain memory-only.
+
+`main/tests/integration_runner_stream/authoring/` contains twelve ignored integration cases.
+They cover the four operations on one session, saved-result replay, changed replay content, disconnect recovery and one report identity under 100 contending callers.
+They also cover cancellation, replacement during provider HTTP, stale connection and credential authority, wrong fences, pending accounting, private deletion and expiry during a host-lock wait.
+
+`AuthoringFixture` is explicitly test-only.
+It boots the real daemon and native runner, uses the real stores, and substitutes only provider HTTP with a local server.
+The provider boundary has no environment option and leaves the guarded production client unchanged.
+
+Indy stopped integration testing until code completion.
+The first focused run was terminated by process ID after three cases printed `ok`; it has no complete suite verdict.
+No integration pass is claimed, and no further integration run has started.
+
+At Indy's subsequent signal, Codex fast-forwarded from `5c03ead30` to Claude's `b5e971269`, preserving the authoring changes.
+That includes the HTTP/3 observer fix and the two corrected API fixture expectations.
+The combined Rust unit lane and final lint are recorded below when they finish.
+
+The browser setup chat keeps its existing draft API and event stream.
+No UI source change is required for the daemon-to-runner authoring transport migration.
+
+Combined unit result: `make test-unit-rustd` passed with 5,380 tests and zero failures.
+The runner shard passed 1,685, daemon 164 and daemon libraries 3,531.
+The library result includes Claude's three formerly failing tests.
+
+`make check-version` passed: all versions match 0.75.0.
+Integration remains paused, so the twelve new native authoring cases have no complete execution verdict.
+The full `make test-unit-all` frontend coverage lane, integration, benchmarks and final shipping review remain due.
+
+### Nov 09 authoring guard simplification
+
+Indy asked Codex to study `openai/codex` and `exonum/exonum` and simplify the repeated authoring checks.
+Both repositories were cloned outside this worktree for reference.
+No code from them was executed or added as a dependency.
+
+The relevant examples are [Codex ProviderAuthContext](https://github.com/openai/codex/blob/e54a5713caf331f42a6eef0166186df5f7563c29/codex-rs/model-provider/src/auth.rs#L40), [Codex NetworkPermit](https://github.com/openai/codex/blob/e54a5713caf331f42a6eef0166186df5f7563c29/codex-rs/http-client/src/network_policy.rs#L345) and [Exonum ExecutionContext](https://github.com/exonum/exonum/blob/2d2fa22e5f5bc451d08c155c2398956f11dce06e/exonum/src/runtime/execution_context.rs#L68).
+They keep caller authority with the operation context and expose a checked boundary to callers.
+The implementation applies that pattern to the existing `Drafts` owner.
+
+`afd_authoring/src/lease/guard/connected.rs` now returns the complete guard for invocation, private publication or accounting.
+Model dispatch and proposal callers each request one guard instead of mutating its timestamp and repeating connection checks.
+The shared boundary retains the draft/attempt-before-host lock order and checks database time after the host wait.
+
+The same boundary now protects native token counting and setup edit-intent preparation, reservation and result recording.
+Late physical model results still retain known usage when private publication is refused.
+Accounting keeps its independent path after private deletion or expiry.
+
+The expiry test's `pg_backend_pid()` identifies only the test transaction holding the host lock.
+Its observer proves the native request is waiting on that transaction before the test releases it after expiry.
+No production authoring code queries backend process identifiers.
+
+The full Rust unit pass recorded above preceded this simplification.
+Compilation, final lint and the affected library unit shard are being checked again for the changed guard boundary.
+Integration remains paused at Indy's instruction.
+
+Post-simplification compilation passed: `cargo check --workspace --all-targets --all-features` completed in 44.42 seconds.
+`make lint-all` passed, including source checks, rustfmt, workspace Clippy, app/design-system/CLI lint and repository safety checks.
+OpenAPI was regenerated with the current daemon: 115 paths, the native stream and 413 response present, all authoring lease HTTP paths absent.
+The generated bytes match the published document.
+
+The post-simplification `make test-unit-rustd-daemon-libs` recheck passed: 3,531 tests, zero failures.
+The first attempt was stopped unnecessarily after a misleading progress observation; the completed rerun used the unchanged Make target and assertions.
+No test, gate, repository script or coverage floor was weakened.
+
+Authoring implementation is ready for source review, with integration execution still pending.
+M243's remaining scheduling, recovery/drain work, full review, benchmarks and final repository verification are not complete.
+Keep PR 819 draft and retain Indy's listener, certificate and 1Password merge hold.
+
+Before publication, Codex fast-forwarded to Claude's CI builder tip `292424604` without changing its files.
+Those commits contain no Rust source changes; the authoring index was preserved.
+Their workflow/Make-reference checks, playbook references, shellcheck and all 21 image-builder unit cases pass locally.
+Claude still owns the full musl static builds and r2 image publication; no image was published by Codex.

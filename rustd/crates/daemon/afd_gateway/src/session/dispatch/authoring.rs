@@ -1,7 +1,7 @@
 //! Authoring shares the confirmed connection and the existing accounting owners.
 
 use super::super::{Message, SessionServices, context::answer};
-use crate::{Operation, Result};
+use crate::{Operation, Result, error::within};
 use af_core::id::Uuid7;
 use af_wire::authoring::{Renew, Report};
 use std::num::NonZeroU64;
@@ -14,19 +14,22 @@ impl SessionServices {
         lease: &str,
         request: afd_authoring::ModelCallInput,
     ) -> Result<()> {
-        let result = self
-            .operation_until(
-                Operation::Model,
-                Instant::now() + af_core::timing::AUTHORING_MODEL_ANSWER_TIMEOUT,
-                async {
-                    let lease = Uuid7::parse(lease)?;
-                    Ok(self
-                        .models
-                        .call(&self.handle.runner, &lease, request)
-                        .await?)
-                },
-            )
-            .await;
+        let result = within(
+            &self.gateway.inner.accounting_stop,
+            Instant::now() + af_core::timing::AUTHORING_MODEL_ANSWER_TIMEOUT,
+            Operation::Model,
+            Box::pin(async {
+                let lease = Uuid7::parse(lease)?;
+                Ok(self
+                    .models
+                    .call(&self.handle.runner, &lease, request)
+                    .await?)
+            }),
+        )
+        .await;
+        if let Err(error) = &result {
+            crate::Gateway::observe(error, Operation::Model);
+        }
         self.send(&Message::AuthoringModelResult {
             request_id,
             lease_id: lease.into(),
@@ -96,7 +99,9 @@ impl SessionServices {
                     .creations
                     .report(&self.handle.runner, &lease, request)
                     .await?;
-                self.cache.forget(&lease);
+                if reported.settled {
+                    self.cache.forget(&lease);
+                }
                 Ok(reported)
             })
             .await;

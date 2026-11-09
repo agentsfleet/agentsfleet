@@ -29,7 +29,10 @@ impl ModelCalls {
             budget::covers(&self.drafts.database, self.drafts.biller.as_ref(), &attempt).await;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let guarded = guard::publication(&mut tx, runner, lease, counters).await?;
+        let guarded = self
+            .drafts
+            .publication(&mut tx, runner, lease, counters)
+            .await?;
         let selected = afd_runner::decision_assignment_on(&mut tx, runner).await?;
         let fresh = selected
             .is_some_and(|current| *current.assignment == prepared.snapshot.assignment)

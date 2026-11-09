@@ -63,6 +63,9 @@ pub(super) async fn open_runtime(
     // First, before a socket opens: a client that will not build is a defect
     // in the build, and nothing below should be opened only to be abandoned.
     let clients = Clients::open()?;
+    let authoring_transport = clients.authoring;
+    #[cfg(feature = "test-util")]
+    let authoring_transport = config.authoring_transport().unwrap_or(authoring_transport);
     let (database, queue) = open_datastores(config).await?;
     let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
@@ -71,7 +74,7 @@ pub(super) async fn open_runtime(
     let (bus, live) = open_live(config.redis(), queue.clone(), config.sse_max_streams()).await;
     let observed = live.clone();
     let plane = ServingPlane::new(crate::plane::PlaneParts {
-        authoring_transport: clients.authoring,
+        authoring_transport,
         database: database.clone(),
         queue: queue.clone(),
         bus: bus.clone(),

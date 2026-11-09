@@ -307,3 +307,51 @@ The [handoff](session-handoff.md#claudes-fixes-for-the-three-unit-failures) list
 
 The full unit lane and the final Rust verification on the combined branch are still due.
 PR 819 remains draft, with merge held for Indy's listener, certificate and 1Password review.
+
+### Nov 09 authoring priority and verification ordering
+
+Indy asked to finish model calls, proposals, renewals and completion over one native session before broader M243 work.
+The authoring source retains accepted provider work through disconnect, rechecks connection authority before private publication and checks expiry after host-lock waits.
+Unsettled reports retain their lease and worker owners until accounting settles.
+
+Twelve ignored native integration cases cover saved results, accounting, replay, cancellation, connection fencing and expiry.
+The test owner was renamed from `Rig` to `AuthoringFixture` at Indy's request.
+It substitutes provider HTTP only; the daemon, runner session, Postgres and Dragonfly remain real.
+
+Indy instructed Codex to stop integration testing until code completion.
+The active focused process was terminated by PID; three cases had printed `ok`, with no complete suite verdict.
+No integration run has restarted.
+
+Indy then authorized pulling Claude's published fixes.
+Codex fast-forwarded to `b5e971269` with its local authoring changes preserved.
+The setup-chat UI still uses the browser draft API and event stream, so this migration requires no UI source edit.
+
+The combined `make test-unit-rustd` run passed: 1,685 runner, 164 daemon and 3,531 library tests, with zero failures.
+`make check-version` also passed at 0.75.0.
+This is Rust unit evidence; the complete repository verification and native authoring integration verdict remain due.
+
+### Guard readability follow-up
+
+At Indy's request, Codex cloned and studied `openai/codex` and `exonum/exonum` outside the working repository.
+Their context-bound authority pattern informed a small shared guard boundary on the existing `Drafts` owner.
+Model and proposal callers now obtain one checked guard; connection checks and fresh database time stay inside that boundary.
+
+The boundary also covers native token counting and setup edit-intent calls.
+The expiry test retains its real Postgres lock observer; `pg_backend_pid()` identifies the test's own lock holder only.
+No production process-ID mechanism or additional framework was introduced.
+
+The earlier 5,380-test Rust unit pass is preserved as pre-refactor evidence.
+The changed authoring boundary requires fresh compilation, lint and affected-library unit verification; integration remains paused.
+
+After simplification, workspace `cargo check --all-targets --all-features` and full `make lint-all` pass.
+OpenAPI regeneration produced the existing published bytes, with 115 paths and no authoring lease HTTP operations.
+The affected library unit shard is being rerun; integration remains paused.
+
+The post-refactor `make test-unit-rustd-daemon-libs` recheck passed all 3,531 tests.
+A prior attempt was stopped after its progress was misread; the completed run used the same repository target and assertions.
+The authoring source is implemented and checked for compilation/lint/unit regressions, but native integration remains unverified and paused.
+M243 and its shipping gates remain incomplete; PR 819 stays draft under Indy's merge hold.
+
+Claude's separately published CI builder commits through `292424604` were preserved by fast-forward before the authoring commit.
+They change no Rust source, and their workflow references, playbook references, shellcheck and 21 hermetic builder cases pass locally.
+Full static builds and image publication remain Claude's work; no deployment or image publication was performed here.

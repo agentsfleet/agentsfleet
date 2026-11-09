@@ -28,6 +28,7 @@ path = "src/main.rs"
 [features]
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [
+    "afd_authoring/test-util",
     "afd_api/test-util",
     "afd_auth/test-util",
     "afd_connector/test-util",

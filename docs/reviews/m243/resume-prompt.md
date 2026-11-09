@@ -12,7 +12,8 @@ executable: false
 
 Copy the prompt below into the new session after the context-save commit reaches PR 819.
 Use the published feature-branch tip containing this file.
-The checkpoint is incomplete and has no passing full build or test lane.
+The milestone is incomplete; current compilation, lint and Rust unit evidence is recorded in the handoff.
+Native integration execution is paused until code completion.
 
 ## Why it exists
 
@@ -29,7 +30,8 @@ Branch: feat/m243-runner-push-stream
 Existing draft PR: https://github.com/agentsfleet/agentsfleet/pull/819
 Coordination: https://github.com/agentsfleet/agentsfleet/issues/818
 Use the latest published context-save commit containing this prompt.
-The preceding checkpoint was a0a8cf3b766d74fb7984d332cbe5cc49010bc0a0.
+The preceding published tip was Claude's 292424604; b5e971269 fixes the three unit failures.
+Claude's later musl-builder commits are preserved; image publication remains its owner task.
 
 Reuse /workspace/agentsfleet-m243 if present. Otherwise fetch the published
 feature branch into an isolated worktree. Preserve the current work.
@@ -41,20 +43,24 @@ Read first:
 4. docs/architecture/runner_protocol.md.
 5. docs/v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md.
 
-This is incomplete source with failed compilation attempts. Do not claim code
-completion, a green checkpoint or passing tests from earlier revisions.
+M243 is incomplete. Workspace cargo check and make lint-all pass.
+The full Rust unit lane passed 5,380 tests before the authoring guard refactor;
+the affected library shard passed 3,531 again afterwards. Full repository
+verification, including frontend coverage and native integration, remains due.
 
 Indy explicitly authorized compilation, formatting, lint, tests and gates on
 Nov 09. That supersedes the earlier verification hold; do not ask again for
-routine checks. Read the handoff for exact results and cloud native tool setup.
+routine checks. Indy subsequently paused integration tests until code completion.
+Keep that pause; read the handoff for results and cloud native tool setup.
 
-First migrate the sandbox kernel examples still using RUNNER_REPORTS, then
-finish native end-to-end fixtures and compile the complete workspace.
-The four authoring daemon handlers, shared domain wiring and current-owner
-checks are written, and their four HTTP adapters/routes are removed.
-Finish caller migration and native integration evidence. Preserve database
-lock ordering, provider dispatch accounting and memory-only result delivery.
-Do not redispatch an uncertain physical model call.
+Kernel examples and current caller fixtures are migrated; RUNNER_REPORTS stays removed.
+Authoring model calls, proposals, renewals and completion use one native session.
+Their HTTP adapters/routes are removed. The shared checked boundary is
+afd_authoring/src/lease/guard/connected.rs; model and proposal callers request
+one guard. It checks connection authority and fresh time after the host lock.
+Accepted provider work stays tracked through disconnect, preserving known usage.
+Twelve native authoring integration cases are written but lack a complete run.
+Do not claim them verified, and do not redispatch an uncertain physical model call.
 
 Then complete source and tests for listener drain, native child cleanup, reconnect/cancellation,
 renewals/folds/report retries, remaining polling fixtures and benchmarks,
@@ -68,7 +74,7 @@ disk outbox, disk replay, old-format retry or compatibility alias may return.
 The temporary authoring/report.rs and lease/tagged.rs were removed.
 
 Preserve HTTP/3 preference with HTTP/2 transport fallback, private Fly routing,
-hybrid-only X25519MLKEM768 on both carriers and ends, native UUIDv7 bindings
+hybrid-only X25519MLKEM768 on both transports and ends, native UUIDv7 bindings
 and the shared Bus abstraction. Production path and certificate lifecycle
 evidence remain open; do not claim them proved by local source.
 
@@ -78,7 +84,8 @@ issue 818 and read issue 813 before every push. Push reviewable checkpoints
 to existing PR 819 without rebasing or force-pushing its published branch.
 
 Keep the PR draft and hold merge for Indy's listener, certificate and
-1Password review. Tell Indy when code is complete; verification is authorized.
+1Password review. Tell Indy when milestone code is complete, then run the
+remaining verification lanes. Integration remains paused until that point.
 ```
 
 ## Limits
