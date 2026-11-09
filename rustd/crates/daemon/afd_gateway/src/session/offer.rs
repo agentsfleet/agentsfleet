@@ -11,9 +11,9 @@ use crate::{Operation, Result};
 
 impl SessionServices {
     /// Reserve before policy assembly, then transfer the same charged bytes to the writer.
-    pub(super) async fn offer(&self) -> Result<()> {
+    pub(super) async fn offer(&self) -> Result<bool> {
         let Some(state) = self.offer_state() else {
-            return Ok(());
+            return Ok(false);
         };
         let deadline = Instant::now() + STREAM_ANSWER_TIMEOUT;
         let mut encoder = Encoder::reserve(
@@ -24,7 +24,7 @@ impl SessionServices {
         )
         .await?;
         let Some(offered) = self.issue_offer(&state, &mut encoder).await? else {
-            return Ok(());
+            return Ok(false);
         };
         let frame = encoder.finish()?;
         self.cache.insert(offered)?;
@@ -32,9 +32,7 @@ impl SessionServices {
         self.output
             .send(StreamKind::Work, frame, &self.handle.stop, deadline)
             .await?;
-        // Continue filling real idle capacity; an empty claim stops this notification chain.
-        self.handle.request_offer();
-        Ok(())
+        Ok(true)
     }
 
     /// Credits are advisory; the issue transaction still proves physical capacity.
