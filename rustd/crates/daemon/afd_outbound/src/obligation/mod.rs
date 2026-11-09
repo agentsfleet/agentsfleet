@@ -34,6 +34,14 @@ pub use self::outcome::{AbandonReason, abandon, count_attempt, stamp_delivered};
 pub const CLAIM_TTL: Duration = Duration::from_secs(30);
 /// How often a holder renews while it delivers; a third of [`CLAIM_TTL`].
 pub const CLAIM_RENEW: Duration = Duration::from_secs(10);
+const _: () = assert!(
+    CLAIM_RENEW.as_millis() * 3 <= CLAIM_TTL.as_millis(),
+    "a holder renews at least three times inside one claim"
+);
+
+/// The longest renewal interval a worker accepts: two renewals may fail and
+/// the third still lands inside one claim.
+pub const CLAIM_RENEW_MAX: Duration = Duration::from_secs(CLAIM_TTL.as_secs() / 3);
 
 /// Statement name, for the context a claim failure carries.
 const CONTEXT_CLAIM: &str = "claim obligations";

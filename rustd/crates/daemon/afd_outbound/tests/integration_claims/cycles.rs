@@ -42,6 +42,31 @@ async fn a_refused_answer_is_abandoned_once() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_unknown_connector_is_abandoned_unaddressable() {
+    let ledger = Ledger::create().await;
+    let lane = ledger.lane().await;
+    let event = ledger.owe(&lane, "nowhere").await;
+    crate::sql(
+        &ledger.database,
+        "UPDATE fleet.obligations SET provider = 'retired' WHERE event_id = $1",
+        &[&event],
+    )
+    .await;
+    let poster = Recorder::default();
+    let token = CancellationToken::new();
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+
+    let row = ledger.until(&event, |row| row.abandoned).await;
+    token.cancel();
+    worker.await.expect("the worker stops");
+
+    assert_eq!(row.abandon_reason.as_deref(), Some("unaddressable"));
+    assert_eq!(poster.attempts_of(&event), 0, "no poster is tried");
+    ledger.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_retryable_cycle_is_released_due_later() {
     let ledger = Ledger::create().await;
     let lane = ledger.lane().await;

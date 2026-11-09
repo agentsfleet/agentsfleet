@@ -86,11 +86,12 @@ impl<S: Deliver + 'static> Worker<S> {
         self
     }
 
-    /// Replaces how often a delivery renews its claim; keep it well inside
-    /// [`obligation::CLAIM_TTL`].
+    /// Replaces how often a delivery renews its claim, capped at
+    /// [`obligation::CLAIM_RENEW_MAX`] so a configured interval cannot let a
+    /// claim lapse between two renewals.
     #[must_use]
-    pub const fn with_claim_renew(mut self, renew: Duration) -> Self {
-        self.renew = renew;
+    pub fn with_claim_renew(mut self, renew: Duration) -> Self {
+        self.renew = renew.min(obligation::CLAIM_RENEW_MAX);
         self
     }
 
