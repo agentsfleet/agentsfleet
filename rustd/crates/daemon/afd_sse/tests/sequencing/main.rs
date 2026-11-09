@@ -1,6 +1,6 @@
-//! Dimension 5.1 — what a tail delivers over the bus, and in what order.
+//! What a tail delivers over the bus, and in what order.
 //!
-//! The frame-level half of this dimension is pinned by `afd_sse`'s own unit
+//! The frame-level half of this claim is pinned by `afd_sse`'s own unit
 //! tests: a lag or a gap arrives in band as `catching_up` and spends no
 //! number. Those hand a tail one report at a time.
 //!
@@ -82,8 +82,8 @@ fn fleet(id: &str) -> Uuid7 {
     Uuid7::parse(id).expect("a canonical fixture fleet")
 }
 
-/// Dimension 5.1 — frames arrive in publish order, numbered from zero, and a
-/// reconnect starts over rather than resuming.
+/// Frames arrive in publish order, numbered from zero, and a reconnect starts
+/// over rather than resuming.
 ///
 /// Three claims over one channel, because they are three facts about the SAME
 /// stream:

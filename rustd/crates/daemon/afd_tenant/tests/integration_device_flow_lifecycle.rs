@@ -1,5 +1,5 @@
-//! §1 — a device-flow login's terminal states and its cancels, against a real
-//! queue: a redeemed session stays gone, and a cancel reaches its owner's
+//! A device-flow login's terminal states and its cancels, against live
+//! Postgres: a redeemed session stays gone, and a cancel reaches its owner's
 //! logins and nobody else's.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
@@ -18,7 +18,7 @@ use afd_tenant::session::input::{Code, Opening};
 use crate::device_flow_lane::{CODE, NOW, approval, origin, owner, surface};
 use crate::session_harness::SessionHarness;
 
-/// Dimension 1.2 — a redeemed session is terminal, and reads as gone.
+/// A redeemed session is terminal, and reads as gone.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_terminal_states_are_terminal() {
@@ -102,7 +102,7 @@ async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
     assert_eq!(refusal.code(), error_code::SESSION_ABORTED);
 }
 
-/// Dimension 1.2 — one person's bulk cancel touches nobody else's logins.
+/// One person's bulk cancel touches nobody else's logins.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
@@ -161,7 +161,7 @@ async fn test_device_flow_expired_and_unknown_sessions_refuse_a_code() {
     let mut connection = harness.database.acquire().await.expect("a connection");
     sqlx::query(
         "INSERT INTO identity.device_sessions \
-         (id, status, cli_public_key, token_name, verification_attempts, created_at, updated_at, expires_at) \
+         (id, status, cli_public_key, token_name, verification_attempt_count, created_at, updated_at, expires_at) \
          VALUES ($1, $2, 'cli-key', 'laptop', 0, now(), now(), now() + interval '5 minutes')",
     )
     .bind(&expired)

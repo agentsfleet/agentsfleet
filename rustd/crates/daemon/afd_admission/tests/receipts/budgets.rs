@@ -5,7 +5,7 @@ use super::{
     Fallible,
     lane::Lane,
     ledger::{admit, steer},
-    queue::over_bus,
+    queue::over_lane,
 };
 use afd_admission::Reply as ReplyTo;
 use afd_db::test_util::mint_id;
@@ -14,10 +14,10 @@ use afd_db::test_util::mint_id;
 const OLD_FLEET_CAP: usize = 10_000;
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_fleet_admits_past_ten_thousand_unsettled() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_rings, admissions) = over_bus(&lane).await?;
+    let admissions = over_lane(&lane).await?;
     let first = admit(
         &admissions,
         steer(&lane, lane.fleet.as_str(), ReplyTo::None),

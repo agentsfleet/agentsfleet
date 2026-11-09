@@ -53,7 +53,7 @@ async fn refusal_code(fixtures: &Fixtures, owner: &Bound) -> ErrorCode {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_the_standing_grant_alone_carries_a_write_mint_to_the_vault() {
     // No card was ever raised. Before M202 this refused as unapproved; now the
     // approved grant is the whole answer and the mint walks to the vault.
@@ -71,7 +71,7 @@ async fn test_the_standing_grant_alone_carries_a_write_mint_to_the_vault() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_drifted_card_does_not_block_a_mint_the_grant_authorises() {
     // The card was answered for `acme/ledger`; the fleet declares
     // `acme/payments`. That mismatch used to refuse as drift. Nothing reads it
@@ -92,7 +92,7 @@ async fn test_a_drifted_card_does_not_block_a_mint_the_grant_authorises() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_spent_allowance_does_not_block_a_mint_the_grant_authorises() {
     // Same shape, the other half of the deleted gate: the allowance the card was
     // raised with is gone. It used to refuse as exhausted; the ceiling is no
@@ -112,7 +112,7 @@ async fn test_a_spent_allowance_does_not_block_a_mint_the_grant_authorises() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_write_mint_without_a_standing_grant_is_refused() {
     // The negative that keeps the three above honest. Remove the grant and the
     // mint refuses — so those cases pass because the grant authorised them, not

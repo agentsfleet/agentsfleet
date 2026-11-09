@@ -107,7 +107,7 @@ impl Fixture {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            bus: harness::bus(),
+            bus: harness::bus().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
             admin: mint_id(),

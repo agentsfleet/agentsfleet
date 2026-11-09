@@ -38,7 +38,7 @@ async fn resumed(scheduled: &Scheduled, stopped: &Value) -> Value {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_schedule_whose_sync_errors_does_not_fail_the_resume() {
     let scheduled = Scheduled::create().await;
     let stopped = stopped(&scheduled).await;
@@ -68,7 +68,7 @@ async fn a_schedule_whose_sync_errors_does_not_fail_the_resume() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_schedule_whose_sync_stalls_does_not_hold_the_resume_past_its_limit() {
     let scheduled = Scheduled::create().await;
     let stopped = stopped(&scheduled).await;

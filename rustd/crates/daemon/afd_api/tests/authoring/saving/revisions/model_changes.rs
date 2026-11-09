@@ -12,7 +12,7 @@ const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 const FINISHED: &str = "model-change-writes-finished";
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn every_saved_revision_notifies_but_a_replayed_save_stays_quiet() {
     let fleet = Fleet::create().await;
     let tail = tail(&fleet);
@@ -21,7 +21,7 @@ async fn every_saved_revision_notifies_but_a_replayed_save_stays_quiet() {
         .bus
         .subscribe(&tail)
         .await
-        .expect("the in-process bus subscribes");
+        .expect("the lane's NATS subscribes");
     let other = Fixture::create().await;
     let selected = mint();
     sqlx::query("INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) SELECT $1,$2,model_name,'authoring-model',now(),now() FROM model.tenant_models WHERE id=$3")
@@ -127,7 +127,7 @@ async fn save_without_model_change(fleet: &Fleet, applied: &Value) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn catalogue_price_changes_do_not_require_review_to_resume_a_ready_fleet() {
     let fleet = Fleet::create().await;
     let stopped = stop_then_change_price(&fleet).await;
@@ -253,7 +253,7 @@ async fn history_with_receipts(fleet: &Fleet, revision: u32) -> Vec<Value> {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_failed_live_notice_keeps_the_model_save_committed_and_replayable() {
     let mut fleet = Fleet::create().await;
     let other = Fixture::create().await;

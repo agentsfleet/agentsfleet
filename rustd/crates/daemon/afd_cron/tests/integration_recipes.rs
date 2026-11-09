@@ -88,7 +88,7 @@ async fn rows(lane: &CronLane) -> Vec<(i64, String, String)> {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_fleet_outside_the_callers_workspace_is_refused_as_absent() {
     let lane = CronLane::open().await;
     let elsewhere = mint_id();
@@ -103,7 +103,7 @@ async fn a_fleet_outside_the_callers_workspace_is_refused_as_absent() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn recipes_past_the_fleet_ceiling_are_refused_before_any_row() {
     let lane = CronLane::open().await;
     // One independent schedule already counts against the ceiling, so a
@@ -127,7 +127,7 @@ async fn recipes_past_the_fleet_ceiling_are_refused_before_any_row() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_slot_the_new_definition_drops_is_marked_for_deletion_not_deleted() {
     let lane = CronLane::open().await;
     replace(&lane, &recipes(2)).await.expect("two recipes land");
@@ -155,7 +155,7 @@ async fn a_slot_the_new_definition_drops_is_marked_for_deletion_not_deleted() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_recipe_revision_at_its_ceiling_refuses_a_changed_base() {
     let lane = CronLane::open().await;
     replace(&lane, &recipes(1))

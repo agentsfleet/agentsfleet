@@ -14,7 +14,6 @@ SET status = $3,
     nonce = $6,
     verification_code_hmac = $7,
     approver_subject = $8,
-    approved_at = clock.now,
     expires_at = clock.now + $9::interval,
     updated_at = now()
 FROM locked, clock

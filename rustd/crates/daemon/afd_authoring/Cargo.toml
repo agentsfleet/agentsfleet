@@ -80,7 +80,7 @@ af_observability = { workspace = true, features = ["test-util"] }
 afd_vault.workspace = true
 # The mocked entropy source, so a proof can make one draw fail.
 af_crypto = { workspace = true, features = ["test-util"] }
-# The fleet purge, so the deletion-matrix test (Dimension 4.1) drives both
+# The fleet purge, so the deletion-matrix test drives both
 # erasure roots from one fixture. Already in the tree through afd_approval.
 afd_fleet_lifecycle.workspace = true
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time", "io-util", "test-util"] }

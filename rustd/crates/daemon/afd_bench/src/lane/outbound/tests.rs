@@ -6,17 +6,20 @@
 )]
 
 use core::time::Duration;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::time::Instant;
 
 use afd_db::test_util::mint_id;
 use afd_outbound::Deliver as _;
 use afd_outbound::Outgoing;
 
 use super::poster::{Behaviour, Scripted};
-use super::record::window_end;
+use super::record::{Drained, record, window_end};
 use super::{DESTINATIONS, Parameters, fraction_of, script};
 use crate::error::Result;
 use crate::fixture::RunPrefix;
+use crate::profile::Profile;
+use crate::report::{Lane, Provenance, Report};
 
 /// The thread an owed answer is addressed to, as a Slack producer records it.
 const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
@@ -126,10 +129,58 @@ async fn test_the_window_ends_when_the_last_answer_lands_not_when_it_is_asked_fo
     assert_eq!(poster.settled(), 1, "the answer is what settles it");
 
     let seen = poster.seen();
-    let asked = seen.attempts()[job.event_id.as_str()][0].at;
+    let asked = seen.attempts()[&job.event_id][0].at;
     assert_eq!(
         window_end(&seen, asked).saturating_duration_since(asked),
         slow,
         "the window closes when the slow answer lands"
     );
+}
+
+/// The latency clock and the poster's stamps meet on the event each job answers.
+///
+/// The lane once keyed the clock by obligation row while the poster stamped by
+/// event, so no lookup matched and the report silently carried no p95 and no
+/// head-of-line number. Two jobs owed and delivered here must both be timed.
+#[tokio::test]
+async fn test_a_drained_job_is_timed_by_the_event_the_poster_stamped() -> Result<()> {
+    let fleet = mint_id();
+    let mut behaviours = BTreeMap::new();
+    behaviours.insert(fleet.to_string(), Behaviour::Fast);
+    let poster = Scripted::new(behaviours.clone(), Duration::ZERO, Duration::ZERO);
+    let started = Instant::now();
+    let mut queued_at = HashMap::new();
+    for _ in 0..2 {
+        let job = Outgoing {
+            provider: "slack".to_owned(),
+            destination: DESTINATION.to_owned(),
+            workspace_id: mint_id(),
+            fleet_id: fleet.clone(),
+            event_id: mint_id(),
+            answer: "a".to_owned(),
+        };
+        queued_at.insert(job.event_id.clone(), started);
+        poster.deliver(&job).await;
+    }
+    let drained = Drained {
+        started,
+        ended: window_end(&poster.seen(), started),
+        settled: poster.settled(),
+        transactions: 0,
+    };
+    let mut report = Report::new(Lane::Outbound, Profile::Rig, Provenance::for_test());
+
+    record(&mut report, &drained, &poster, &queued_at, &behaviours, 2)?;
+
+    assert_eq!(report.measurements.get("delivered").copied(), Some(2.0));
+    assert!(
+        report.measurements.contains_key("others_p95_ms"),
+        "both jobs were timed, so the head-of-line p95 is reported: {:?}",
+        report.measurements
+    );
+    assert!(
+        !report.measurements.contains_key("slow_p95_ms"),
+        "no destination was scripted slow"
+    );
+    Ok(())
 }

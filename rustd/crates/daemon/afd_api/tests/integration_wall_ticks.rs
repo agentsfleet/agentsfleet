@@ -51,7 +51,7 @@ fn the_tick_re_read_ownership(wall: &Wall, before: usize) {
 /// A tick that finds the set unchanged and the caller still a member says
 /// nothing, and the stream goes on carrying activity.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_steady_tick_announces_nothing_and_the_stream_keeps_serving() {
     let mut wall = Wall::open(Fixture::create().await).await;
     let before = wall.ownership.authorize_calls();
@@ -66,7 +66,7 @@ async fn a_steady_tick_announces_nothing_and_the_stream_keeps_serving() {
 /// A tick whose ownership read fails keeps the stream open: a datastore blip
 /// is not a revocation.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_tick_whose_ownership_read_fails_keeps_the_stream_open() {
     let mut wall = Wall::open(Fixture::create().await).await;
     wall.ownership.refuse();
@@ -82,7 +82,7 @@ async fn a_tick_whose_ownership_read_fails_keeps_the_stream_open() {
 /// A tick whose set read fails keeps the set it has — a fleet added meanwhile
 /// is not announced — and the next tick that can read announces it.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_tick_whose_set_read_fails_keeps_the_set_until_one_succeeds() {
     let fixture = Fixture::with_pool(&[
         (POOL_SIZE_KNOB, ONE_CONNECTION),
@@ -118,7 +118,7 @@ async fn a_tick_whose_set_read_fails_keeps_the_set_until_one_succeeds() {
 /// A second lag inside one tick does not re-read the counters at once: its
 /// read waits for the tick after the first, which announces them then.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_second_lag_inside_a_tick_re_announces_when_the_tick_ends() {
     let mut wall = Wall::open(Fixture::create().await).await;
     wall.publish(OVERFLOW_FRAMES).await;

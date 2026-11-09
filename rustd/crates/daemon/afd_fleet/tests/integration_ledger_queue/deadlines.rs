@@ -19,7 +19,7 @@ const PENDING: &str = "SELECT count(*) FROM fleet.approval_gates \
 // fails_when=any expired gate admits a head still held by a live gate, or expired
 // gates never requalify it; why_new=no sweeper runs; seam=real gate and queue rows.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn parked_heads_wait_for_all_matching_deadlines_without_expiring_the_cards() {
     for first_gate_first in [false, true] {
         deadline_case(first_gate_first).await;
@@ -106,7 +106,7 @@ async fn approve(fixtures: &Fixtures, action: &Uuid7) {
 // Value: protects=standing access cannot loop through claim and park after its
 // deadline; fails_when=deadline alone wakes it; seam=real approval and slot rows.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn standing_access_waits_for_an_answer_after_its_card_deadline() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;

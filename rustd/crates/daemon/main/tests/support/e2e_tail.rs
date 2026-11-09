@@ -16,7 +16,6 @@
 
 use std::time::Duration;
 
-use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use af_core::id::Uuid7;
 use afd_bus::{Handle, Received, Subject, Subscription};
 use serde_json::Value;
@@ -55,14 +54,9 @@ pub(crate) struct Tail {
 /// Subscribe to `fleet`'s tail. No namespace: the daemon a scenario boots
 /// reads only the environment the scenario hands it, which sets none.
 pub(crate) async fn tail_of(fleet: &Uuid7) -> Tail {
-    let seeds = ProcessEnv
-        .get("TEST_NATS_URL")
-        .expect("TEST_NATS_URL is unset: run through make test-integration-rustd");
-    let env = MapEnv::from_pairs([(afd_bus::nats::URL_ENV, seeds.as_str())]);
-    let config = afd_bus::nats::Config::from_env(&env).expect("the lane publishes usable seeds");
-    let bus = afd_bus::nats::connect(&config)
+    let bus = afd_bus::test_util::lane()
         .await
-        .expect("the lane's NATS accepts a subscriber");
+        .expect("the lane's NATS: run through make test-integration-rustd");
     let subscription = bus
         .subscribe(&Subject::FleetTail(fleet.clone()))
         .await

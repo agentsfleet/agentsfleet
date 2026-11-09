@@ -35,8 +35,9 @@
 //! resolved. Those two groups take [`sweeper_exclusive`] and run one at a time;
 //! everything else still runs concurrently.
 //!
-//! Each lane's in-process bus carries activity frames and wake notifications,
-//! and a test subscribes through the same handle the inbox publishes on.
+//! Each lane's connection to the integration lane's NATS carries activity
+//! frames and wake notifications, and a test subscribes through the same
+//! handle the inbox publishes on.
 //! Continuations commit to the admissions ledger; notification failure cannot
 //! undo them.
 #![expect(
@@ -128,8 +129,9 @@ impl Lane {
     async fn open(workspace: Uuid7, fleet: Uuid7) -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let (bus, _server) =
-            afd_bus::test_util::detached().expect("an in-process bus needs no broker");
+        let bus = afd_bus::test_util::lane()
+            .await
+            .expect("the lane's NATS: run through make test-integration-rustd");
 
         let lane = Self {
             inbox: Inbox::new(

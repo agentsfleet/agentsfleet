@@ -19,7 +19,7 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::{Message, Received, Result, Subject, Subscription, error::ErrorKind};
+use crate::{Message, Received, Result, Subject, Subscription};
 
 /// The header that turns an empty message into a gap.
 pub(super) const GAP_HEADER: &str = "Af-Gap";
@@ -33,6 +33,15 @@ pub(super) enum Delivery {
     Message(Arc<Message>),
     /// Frames on this subject may be missing.
     Gap,
+}
+
+impl From<Delivery> for Received {
+    fn from(delivery: Delivery) -> Self {
+        match delivery {
+            Delivery::Message(message) => Self::Message(message),
+            Delivery::Gap => Self::Gap,
+        }
+    }
 }
 
 /// Read one native message: the gap header wins over any payload, and a
@@ -251,12 +260,7 @@ impl Reader {
     /// # Errors
     /// Returns `Closed` once the channel's pump has ended.
     pub(super) async fn recv(&mut self) -> Result<Received> {
-        match self.receiver.recv().await {
-            Ok(Delivery::Message(message)) => Ok(Received::Message(message)),
-            Ok(Delivery::Gap) => Ok(Received::Gap),
-            Err(broadcast::error::RecvError::Lagged(missed)) => Ok(Received::Lagged(missed)),
-            Err(broadcast::error::RecvError::Closed) => Err(ErrorKind::Closed.into()),
-        }
+        crate::subscription::received(self.receiver.recv().await)
     }
 
     /// The bus-facing stream; it ends after the first error.

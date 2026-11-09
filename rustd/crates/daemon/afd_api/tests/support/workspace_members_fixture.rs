@@ -193,9 +193,9 @@ impl Members {
             .router()
     }
 
-    /// A router for `who` over a bus of its own.
-    pub(crate) fn live(&self, who: &Person, scopes: ScopeSet) -> Router {
-        self.live_router(who, scopes, harness::bus())
+    /// A router for `who` over a lane NATS connection of its own.
+    pub(crate) async fn live(&self, who: &Person, scopes: ScopeSet) -> Router {
+        self.live_router(who, scopes, harness::bus().await)
     }
 
     /// John's fleets, under his workspace.

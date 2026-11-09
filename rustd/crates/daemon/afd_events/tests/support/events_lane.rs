@@ -1,5 +1,5 @@
-//! The lane's database, a bus of the fixture's own, and the rows every event
-//! hangs from.
+//! The lane's database, a connection to the lane's NATS, and the rows every
+//! event hangs from.
 //!
 //! `fleet.events` has foreign keys into `fleet.fleets` and
 //! `identity.workspaces`, so no history test can seed a single row without first
@@ -14,7 +14,8 @@
 //! length: a database per test meant applying forty-seven schema files per test.
 //! What replaces isolation is that every fixture mints its OWN workspace and
 //! fleet identifiers, so two suites running in parallel address disjoint rows.
-//! The bus is in-process and opened per fixture, so no two fixtures share one.
+//! The bus is one lane NATS connection per fixture, and a fleet's frames ride
+//! subjects named for that fleet, so no fixture hears another's.
 
 #![expect(
     clippy::expect_used,
@@ -39,7 +40,7 @@ use jiff_sqlx::ToSqlx as _;
 pub(crate) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 
 /// A tenant, a workspace and a fleet nothing else in the suite addresses, over
-/// the live database and an in-process bus.
+/// the live database and the lane's NATS.
 pub(crate) struct EventsLane {
     lane: TestDatabase,
     pub(crate) database: Db,
@@ -54,7 +55,9 @@ impl EventsLane {
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
-        let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens");
+        let bus = afd_bus::test_util::lane()
+            .await
+            .expect("the lane's NATS: run through make test-integration-rustd");
 
         let seeded = Self {
             lane,

@@ -31,7 +31,6 @@ async fn a_gap_is_catching_up_with_nothing_counted_and_no_sequence_spent() -> Te
     let (bus, server) = test_util::detached()?;
     let subject = Subject::FleetTail(Uuid7::parse(FLEET)?);
     let mut frames = Box::pin(tail(bus.subscribe(&subject).await?));
-    server.gap(&subject);
     server.publish(&subject, CHUNK);
     assert_eq!(next(&mut frames).await.seq, 0);
 

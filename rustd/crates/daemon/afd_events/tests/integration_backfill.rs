@@ -33,7 +33,7 @@
 //! hand-written vectors would prove only that `HashSet` deduplicates.
 //!
 //! Marked `#[ignore]` so `make test-unit-all` still COMPILES and lints this
-//! without Postgres, and `make test-integration-rustd` — which runs
+//! without Postgres or NATS, and `make test-integration-rustd` — which runs
 //! `--ignored` and nothing else — is the only lane that executes it.
 #![expect(
     clippy::expect_used,
@@ -101,7 +101,7 @@ fn after_now(span: Duration) -> Timestamp {
 /// Dimension 5.4 — a reconnect misses nothing, and the client sees each event
 /// once.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_sse_reconnect_backfill() {
     let lane = EventsLane::open().await;
 
@@ -253,7 +253,7 @@ fn event_id_of(data: &str) -> Uuid7 {
 /// clock, which shares a machine with the lane's Postgres; the margins are
 /// minutes, so no skew between the two decides the outcome.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_since_span_is_measured_on_the_database_clock() {
     let lane = EventsLane::open().await;
     let (old, recent) = (mint_id(), mint_id());

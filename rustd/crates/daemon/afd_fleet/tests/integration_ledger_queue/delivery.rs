@@ -26,7 +26,7 @@ const RESTORE_DELIVERY: &str = "DROP TRIGGER refuse_delivery ON fleet.admissions
 // or optional counter read rolls back delivery; why_new=success misses SQL faults;
 // seam=none; no_claim=every failure ordinal.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_failed_delivery_stamp_rolls_back_narrative_and_counters_then_retries_once() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
@@ -143,7 +143,7 @@ async fn receive_with_counter_read_refused(
 // blocks the event foreign key; why_new=serial delivery misses producer locks;
 // seam=none; no_claim=every possible deadlock cycle.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;

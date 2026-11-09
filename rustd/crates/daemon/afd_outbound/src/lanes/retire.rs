@@ -4,6 +4,7 @@
 //! guard. Capacity reservations alone never transfer ownership of a job.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TryRecvError;
@@ -23,14 +24,18 @@ impl<S: Deliver + 'static> Inner<S> {
     ) {
         while let Some(job) = self.take_or_retire(&destination, &mut jobs) {
             // Between jobs, and before a permit is waited for: a job taken
-            // here and not delivered stays unacknowledged, which is the
-            // hand-off to the next process.
+            // here and not delivered gives its claim back due at once, so
+            // another replica takes it on its next claim pass.
             if self.token.is_cancelled() {
+                self.release(&job, Duration::ZERO).await;
                 return;
             }
             let permit = tokio::select! {
                 biased;
-                () = self.token.cancelled() => return,
+                () = self.token.cancelled() => {
+                    self.release(&job, Duration::ZERO).await;
+                    return;
+                }
                 permit = self.permits.acquire() => permit,
             };
             // The semaphore is never closed, so this is the permit; a closed

@@ -2,7 +2,8 @@
 //!
 //! Every write after the owe matches the holder's token in `receipt`, so a
 //! holder whose claim lapsed cannot stamp, count, release or abandon a row
-//! another holder has since taken (M244 §4). Deadlines are computed from
+//! another holder has since taken, and two holders never both post one
+//! answer. Deadlines are computed from
 //! `clock_timestamp()` plus a bound interval; the claim compares them with
 //! `statement_timestamp()`.
 

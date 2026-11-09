@@ -12,7 +12,7 @@ pub enum Subject {
     /// Recheck or cancellation for one runner host.
     RunnerCommand(Uuid7),
     /// An owed outbound answer was committed; a worker should claim now
-    /// rather than at its next pass (M244 §4).
+    /// rather than at its next pass. Lossy: a missed ping costs one pass.
     OutboundWake,
 }
 

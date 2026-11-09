@@ -45,7 +45,10 @@ fn lane(knob: &str) -> String {
 
 /// An environment pointed at the lane's services, on an ephemeral port.
 fn lane_environment() -> MapEnv {
-    lane_environment_on(&lane("TEST_NATS_URL"))
+    lane_environment_on(
+        &afd_bus::test_util::lane_url()
+            .expect("the lane's NATS seeds: run through make test-integration-rustd"),
+    )
 }
 
 /// The lane's environment with the bus seeds given.
@@ -154,7 +157,7 @@ fn assert_supervises_every_task(supervisor: &Supervisor) {
             agentsfleetd::sweepers::TASKS,
             agentsfleetd::sweepers::TASK_STORAGE,
             agentsfleetd::sweepers::BILLING,
-            agentsfleetd::inventory::HUB_PUMP,
+            agentsfleetd::inventory::BUS_SHUTDOWN,
             agentsfleetd::inventory::OUTBOUND_WORKER,
             agentsfleetd::serve::ACCEPT_LOOP,
             agentsfleetd::inventory::ANALYTICS_FLUSH,
@@ -225,7 +228,7 @@ async fn test_a_second_boot_finds_nothing_left_behind() {
     }
 }
 
-/// M244 Dimension 7.2: a bus no seed answers for refuses boot, naming the
+/// A bus no seed answers for refuses boot, naming the
 /// setting an operator has to fix.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

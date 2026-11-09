@@ -206,8 +206,7 @@ pub(super) async fn rung(
 /// Every stamp is the burst's start, so a stream's figure is how long the
 /// whole burst took to reach it. Stamping each publish instead charged a bus
 /// whose publish returns at once for the queue behind it, and excused one
-/// whose publish waits for a reply for the waiting (Indy, M244 §1, Nov 09,
-/// 2026).
+/// whose publish waits for a reply for the waiting.
 async fn time_every_stream(publisher: &Handle, fleets: &[Uuid7], watch: &Watch) -> Result<()> {
     let frame = frame_of(TIMED_FRAME_BYTES);
     let started = watch.now();

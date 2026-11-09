@@ -24,7 +24,7 @@ const LEASE: &str = "INSERT INTO runner.leases \
 const WAIT: Duration = Duration::from_secs(5);
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn kill_marks_running_leases_before_another_replica_receives_the_cancel() -> TestResult {
     let case = Case::create().await;
     case.fund().await;

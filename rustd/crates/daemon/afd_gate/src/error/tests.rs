@@ -60,7 +60,7 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
     // `code()` and `detail()` already answer for `Entropy` and `Identifier`
     // in a single arm, so variants identical at the API boundary had two
     // different internal shapes. They now say which plane and
-    // keep the inner error as their `source`, like their four siblings.
+    // keep the inner error as their `source`, like their three siblings.
     //
     // What stays non-uniform is the SECOND column. Only a datastore failure is
     // an availability signal; a refused entropy draw is not, however it is

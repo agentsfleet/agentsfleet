@@ -54,6 +54,8 @@ const SUBJECT_PREFIX: &str = "user_live_approval_callback_";
 pub(super) struct Fixture {
     lane: TestDatabase,
     pub(super) database: Db,
+    /// The bus the router's approval queue rings.
+    bus: afd_bus::Handle,
     /// Who the dashboard half acts as, and what its `resolved_by` will say.
     ///
     /// Minted per fixture rather than named once for the file, because
@@ -84,6 +86,7 @@ impl Fixture {
         let bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
+            bus: harness::bus().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
             workspace: mint_id(),
@@ -113,7 +116,7 @@ impl Fixture {
         )
         .with_owned_workspace(self.other_workspace.clone())
         .with_platform_admin(self.admin.clone())
-        .with_approval_queue(self.database.clone(), harness::bus())
+        .with_approval_queue(self.database.clone(), self.bus.clone())
         .router()
     }
 

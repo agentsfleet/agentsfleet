@@ -22,11 +22,11 @@ const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixt
 /// raised one approval card per model turn and posted nothing. The standing
 /// integration grant authorises the mint; nobody is asked per event.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_m202_001_write_fleet_and_its_continuations_pass_without_a_card() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = Gates::new(fixture.database.clone(), bus(), Entropy::new());
+    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
     let writing = config(true);
 
     // 2.1 — the first encounter.
@@ -58,11 +58,11 @@ async fn test_m202_001_write_fleet_and_its_continuations_pass_without_a_card() {
 /// The boundary that survives. A workspace that asks to be consulted still is,
 /// and that is the one thing this milestone must not destabilize.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_m202_001_rule_gated_fleet_still_parks() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = Gates::new(fixture.database.clone(), bus(), Entropy::new());
+    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
     let ruled = config_gates(APPROVE_EVERY_CHAT);
     let event = mint_id();
 
@@ -91,11 +91,11 @@ async fn test_m202_001_rule_gated_fleet_still_parks() {
 /// `statement_timestamp()`. Moving the deadline behind that clock is what a
 /// day passing would do, and the very next poll answers Expired.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = Gates::new(fixture.database.clone(), bus(), Entropy::new());
+    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
     let ruled = config_gates(APPROVE_EVERY_CHAT);
     let event = &mint_id();
     assert_eq!(
@@ -124,11 +124,11 @@ async fn a_pending_gate_past_its_deadline_on_the_database_clock_expires() {
 /// A recorded gate outranks policy, so the run stays parked until its answer
 /// arrives and continues once a person gives it.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn recorded_gate_decides_after_the_config_stops_asking() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = Gates::new(fixture.database.clone(), bus(), Entropy::new());
+    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
     let ruled = config_gates(APPROVE_EVERY_CHAT);
     let event = mint_id();
     assert_eq!(
@@ -153,11 +153,11 @@ async fn recorded_gate_decides_after_the_config_stops_asking() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = Gates::new(fixture.database.clone(), bus(), Entropy::new());
+    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
 
     let approval = config_gates(
         r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#,
@@ -194,13 +194,13 @@ async fn authored_rules_and_anomaly_thresholds_drive_each_first_encounter_route(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_gate_that_cannot_mint_its_identity_fails_closed() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let (entropy, control) = Entropy::new_mocked();
     control.fail_next();
-    let gates = Gates::new(fixture.database.clone(), bus(), entropy);
+    let gates = Gates::new(fixture.database.clone(), bus().await, entropy);
 
     assert_eq!(
         gates

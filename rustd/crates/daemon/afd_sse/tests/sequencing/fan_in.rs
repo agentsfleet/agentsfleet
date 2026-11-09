@@ -1,6 +1,6 @@
-//! Dimension 5.1, across fleets: a workspace fan-in over the bus attaches the
-//! fleets it is told to, numbers frames across their channels, and skips what
-//! it cannot route.
+//! Across fleets: a workspace fan-in over the bus attaches the fleets it is
+//! told to, numbers frames across their channels, and skips what it cannot
+//! route.
 //!
 //! Split from the single-channel ordering claims beside it by concern: those
 //! are about one channel's order, this is about the fan-in's own attach set

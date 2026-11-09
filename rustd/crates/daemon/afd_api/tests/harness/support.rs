@@ -25,11 +25,13 @@ pub(crate) const ERROR_CODE: &str = "error_code";
 /// The field a page envelope carries its rows under.
 const ITEMS: &str = "items";
 
-/// One in-process bus, for a test to hand every publisher under test and to
-/// subscribe through, so a publisher and its observer share one broker.
-pub(crate) fn bus() -> afd_bus::Handle {
-    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens no socket");
-    bus
+/// One connection to the lane's NATS, for a test to hand every publisher under
+/// test and to subscribe through. Clones share the connection, so a subscribe
+/// then a publish through it stay ordered.
+pub(crate) async fn bus() -> afd_bus::Handle {
+    afd_bus::test_util::lane()
+        .await
+        .expect("the lane's NATS: run through make test-integration-rustd")
 }
 
 /// The tenant every fixture person acts in.

@@ -1,4 +1,4 @@
-//! The lane's Postgres, where device-login sessions live since M244.
+//! The lane's Postgres, where device-login sessions live as rows.
 
 use afd_db::Db;
 use afd_db::config::DbRole;

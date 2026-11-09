@@ -7,7 +7,7 @@
 //! `afd_ingress`'s app resolution read zero covered lines: nothing runs them.
 //!
 //! This fixture is the other half. The router is the production one over a live
-//! Postgres and an in-process bus, so a delivery here resolves its binding out
+//! Postgres and the lane's NATS, so a delivery here resolves its binding out
 //! of `fleet.fleets`, opens its secret out of `vault.secrets`, and lands its
 //! claim in the admission ledger exactly as the daemon does it.
 
@@ -91,7 +91,7 @@ impl Fixture {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            bus: harness::bus(),
+            bus: harness::bus().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
             workspace: mint_id(),

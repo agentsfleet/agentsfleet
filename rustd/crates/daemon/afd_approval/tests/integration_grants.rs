@@ -123,7 +123,7 @@ fn grants(lane: &Lane) -> IntegrationGrants {
 /// a workspace's own un-granted fleet indistinguishable from somebody else's,
 /// and the edge answers a different 404 for each.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_fleet_with_no_grants_is_not_a_fleet_that_is_not_there() {
     let lane = Lane::isolated().await;
     let store = grants(&lane);
@@ -156,7 +156,7 @@ async fn a_fleet_with_no_grants_is_not_a_fleet_that_is_not_there() {
 /// has and has not answered, which is exactly the distinction a mint must not
 /// be able to make.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_list_shows_every_status_newest_first() {
     let lane = Lane::isolated().await;
     seed_grant(&lane, SERVICE_SLACK, status::PENDING, NOW).await;
@@ -210,7 +210,7 @@ async fn the_list_shows_every_status_newest_first() {
 /// stamped by the database's clock, so the test reads the stamp back rather
 /// than predicting it.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_revoke_moves_the_row_once_and_reports_the_second_as_absent() {
     let lane = Lane::isolated().await;
     let grant = seed_grant(&lane, SERVICE_SLACK, status::APPROVED, NOW).await;
@@ -259,7 +259,7 @@ async fn a_revoke_moves_the_row_once_and_reports_the_second_as_absent() {
 
 /// A grant id this fleet does not hold is absent, not an error.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_grant_this_fleet_does_not_hold_is_absent() {
     let lane = Lane::isolated().await;
     let stranger = crate::lane::mint();
@@ -278,7 +278,7 @@ async fn a_grant_this_fleet_does_not_hold_is_absent() {
 /// grant is real, the grant id is right, and the answer is still that this
 /// workspace holds no such fleet — with the row exactly as it was found.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_cross_workspace_revoke_changes_nothing() {
     let lane = Lane::isolated().await;
     let grant = seed_grant(&lane, SERVICE_GITHUB, status::APPROVED, NOW).await;
@@ -305,7 +305,7 @@ async fn a_cross_workspace_revoke_changes_nothing() {
 
 /// The list refuses a foreign workspace the same way, and reads nothing.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_cross_workspace_list_discloses_nothing() {
     let lane = Lane::isolated().await;
     seed_grant(&lane, SERVICE_SLACK, status::APPROVED, NOW).await;

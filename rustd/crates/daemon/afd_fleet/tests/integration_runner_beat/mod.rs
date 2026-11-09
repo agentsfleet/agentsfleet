@@ -55,7 +55,7 @@ pub(super) async fn assert_seen_now(fixtures: &Fixtures, runner: &Uuid7) {
 /// The first beat bumps liveness, stores the report, clears the verdict, and
 /// emits exactly one transition event.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_the_first_beat_reports_and_comes_online() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowListEgress, 1);
@@ -111,7 +111,7 @@ async fn test_the_first_beat_reports_and_comes_online() {
 /// ten seconds per host, and a transition row per beat would bury every real
 /// transition under them.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_steady_beat_writes_no_second_event() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
@@ -174,7 +174,7 @@ async fn test_a_steady_beat_writes_no_second_event() {
 /// nonsense: a host that cannot beat is a host the fleet reads as dead, and
 /// that is a far worse outcome than a report this daemon ignores.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
@@ -231,7 +231,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
 /// refuses. The former must be ignored and the latter must fall back to the
 /// liveness-only statement. Neither is allowed to fail the request.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_optional_heartbeat_failures_still_land_liveness() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);

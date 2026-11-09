@@ -37,6 +37,7 @@ use tokio::{sync::RwLock, task::JoinHandle};
 
 use crate::{Bus, Handle, Result, Subject, Subscription, error::ErrorKind};
 
+pub(crate) use config::MAX_NAMESPACE_BYTES;
 pub use config::{Config, NAMESPACE_ENV, URL_ENV};
 pub use tuning::Tuning;
 
@@ -185,10 +186,11 @@ impl Bus for Adapter {
     }
 
     async fn publish_batch(&self, subject: &Subject, payloads: &[String]) -> Result<()> {
-        for payload in payloads {
-            self.publish(subject, payload).await?;
+        // A shut adapter refuses every operation, an empty batch included.
+        if self.live.read().await.is_none() {
+            return Err(ErrorKind::Closed.into());
         }
-        Ok(())
+        crate::publish_each(self, subject, payloads).await
     }
 
     async fn subscribe(&self, subject: &Subject) -> Result<Subscription> {
@@ -248,12 +250,27 @@ impl Bus for Adapter {
         // client drains, so nothing it owns outlives the call, even while a
         // subscriber still holds its stream.
         live.watcher.abort();
-        let _ = live.watcher.await;
+        joined("bus_watcher_panicked", live.watcher.await);
         for pump in live.channels.close() {
-            let _ = pump.await;
+            joined("bus_pump_panicked", pump.await);
         }
         live.client.drain().await?;
         Ok(())
+    }
+}
+
+/// A stopped task's join. Cancellation is how shutdown stops it; a panic is a
+/// defect it hid until now, so it is logged rather than dropped.
+fn joined(event: &'static str, join: core::result::Result<(), tokio::task::JoinError>) {
+    if let Err(failure) = join
+        && failure.is_panic()
+    {
+        let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        tracing::warn!(
+            event,
+            error_code,
+            "a bus task panicked before shutdown joined it"
+        );
     }
 }
 

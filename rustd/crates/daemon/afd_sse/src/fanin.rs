@@ -294,7 +294,6 @@ mod tests {
         );
         let channel = Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet"));
         server.gap(&channel);
-        server.gap(&channel);
 
         let frame = fan_in.next_frame().await;
         assert_eq!(frame.kind, crate::frame::KIND_CATCHING_UP);

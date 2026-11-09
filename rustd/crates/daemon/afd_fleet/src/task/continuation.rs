@@ -71,7 +71,7 @@ impl Continuation {
     }
 
     pub(super) async fn confirm(&self, tasks: &Tasks) {
-        // A missed doorbell cannot undo a committed admission; normal ledger
+        // A lost wake ring cannot undo a committed admission; normal ledger
         // discovery still finds the row and this call's replay remains stable.
         if let Err(error) = tasks
             .admissions

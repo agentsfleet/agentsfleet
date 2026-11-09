@@ -1,4 +1,4 @@
-//! The lane's Postgres, and the row chain a schedule hangs from.
+//! The lane's Postgres and NATS, and the row chain a schedule hangs from.
 //!
 //! `fleet.schedules.fleet_id` references `fleet.fleets`, which references a
 //! workspace and a tenant, so no schedule test can seed a single row without
@@ -47,7 +47,7 @@ const FLEET_ACTIVE: &str = "active";
 pub(crate) struct CronLane {
     lane: TestDatabase,
     pub(crate) database: Db,
-    /// The in-process bus every ledger this lane builds publishes on.
+    /// The lane's NATS, which every ledger this lane builds publishes on.
     bus: afd_bus::Handle,
     pub(crate) store: Schedules,
     pub(crate) tenant: Uuid7,
@@ -56,11 +56,13 @@ pub(crate) struct CronLane {
 }
 
 impl CronLane {
-    /// Opens Postgres and seeds the row chain a schedule needs.
+    /// Opens Postgres and NATS, and seeds the row chain a schedule needs.
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
-        let (bus, _server) = afd_bus::test_util::detached().expect("in-process bus");
+        let bus = afd_bus::test_util::lane()
+            .await
+            .expect("the lane's NATS: run through make test-integration-rustd");
         let seeded = Self {
             lane,
             store: Schedules::new(database.clone(), Entropy::new()),

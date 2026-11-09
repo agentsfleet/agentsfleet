@@ -14,7 +14,7 @@ const ADMISSIONS: &str = "SELECT count(*) FROM fleet.admissions WHERE fleet_id=$
 const RUN_NOW: &str = "Investigate the failed build.";
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn resume_after_reload_recovers_a_capacity_blocked_initial_run_once() {
     let logs = af_core::test_util::trace::Capture::install();
     let case = Case::with_budgets(afd_admission::Budgets {
@@ -103,7 +103,7 @@ async fn count(case: &Case, fleet: &Value) -> i64 {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_lost_notification_keeps_the_first_run_accepted_through_reload_and_retry() {
     let mut case = Case::create().await;
     let (_, mut request) = case.request().await;

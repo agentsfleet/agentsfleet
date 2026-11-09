@@ -39,7 +39,6 @@ jiff-sqlx.workspace = true
 # The stored vocabulary two planes share — admin states, lease statuses, the
 # never-seen sentinel — lives below both, where `ADMIN_STATE_*` always has.
 afd_state.workspace = true
-# The outbound rebuild sweeper restores its transport group.
 # The enrolment and heartbeat request shapes, as the frozen wire spells them.
 afd_api_wire.workspace = true
 af_wire.workspace = true

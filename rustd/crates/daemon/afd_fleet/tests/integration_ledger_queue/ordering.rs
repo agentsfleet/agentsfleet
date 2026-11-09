@@ -17,7 +17,7 @@ const ORDER: &str = "SELECT claimed.sequence < delayed.sequence \
 // fails_when=created_at outranks serialized insertion order; why_new=real producer
 // transactions invert timestamp order; seam=Postgres plus admission and lease stores.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(&fixtures).await;
@@ -110,7 +110,7 @@ const BLOCKED_ON: &str =
 /// A send that waits behind a staged admission's fleet lock draws the later
 /// sequence, and the claim takes the staged row first.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;

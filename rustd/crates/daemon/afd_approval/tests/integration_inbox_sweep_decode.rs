@@ -20,7 +20,7 @@ use crate::lane::Lane;
 /// A bad row ahead of a good one: the good row's fleet is still woken, and the
 /// sweep still answers the bad row's error.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_undecodable_row_does_not_strand_the_rows_that_decoded() {
     let lane = Lane::isolated().await;
     let fleet = lane.fleet.clone();

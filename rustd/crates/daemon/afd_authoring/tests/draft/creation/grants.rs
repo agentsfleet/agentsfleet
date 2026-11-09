@@ -70,7 +70,7 @@ async fn cards(c: &Case, fleet: &af_core::id::Uuid7) -> Vec<(af_core::id::Uuid7,
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activates() {
     let c = Case::create().await;
     c.fund().await;
@@ -113,7 +113,7 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
     let c = Case::create().await;
     c.fund().await;
@@ -150,7 +150,7 @@ async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn kill_closes_setup_cards_and_late_grant_work_cannot_reopen_them() {
     let c = Case::create().await;
     c.fund().await;
@@ -193,7 +193,7 @@ async fn kill_closes_setup_cards_and_late_grant_work_cannot_reopen_them() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn concurrent_retries_open_one_card_for_the_one_missing_grant() {
     const RETRIES: usize = 8;
     let c = Arc::new(Case::create().await);
@@ -242,7 +242,7 @@ async fn concurrent_retries_open_one_card_for_the_one_missing_grant() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_stored_token_for_an_unrouted_integration_needs_no_connection_or_grant() {
     use afd_authoring::types::{CheckKind, CheckState};
     let c = Case::create().await;

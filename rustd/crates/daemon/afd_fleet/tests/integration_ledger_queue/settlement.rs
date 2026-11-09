@@ -17,7 +17,7 @@ const RESTORE_SETTLE: &str = "DROP TRIGGER refuse_admission_settlement ON fleet.
     DROP FUNCTION fleet.refuse_admission_settlement()";
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_once() {
     let held = held_in(Fixtures::create_isolated().await).await;
     let owner = held.fixtures.open(DbRole::Migrator).await;
@@ -60,7 +60,7 @@ async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_onc
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
     let held = held_in(Fixtures::create_isolated().await).await;
     let mut connection = held.fixtures.database.acquire().await.expect("database");

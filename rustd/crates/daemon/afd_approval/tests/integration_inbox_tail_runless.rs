@@ -25,7 +25,7 @@ use crate::tail_watch::{NOTE, OPERATOR, delivery_unparked, next_frame, park_deli
 /// where a run's answer would name its event, rather than fail after the
 /// row moved or continue a run that never was.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
     let lane = Lane::isolated().await;
     park_delivery(&lane).await;
@@ -62,7 +62,7 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
 /// The loser receives `AlreadyResolved` and the original delivery stays
 /// available to the ledger probe.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_already_resolved_runless_gate_keeps_its_delivery_unparked() {
     let lane = Lane::isolated().await;
     park_delivery(&lane).await;
@@ -100,7 +100,7 @@ async fn an_already_resolved_runless_gate_keeps_its_delivery_unparked() {
 /// fleet for every answer that leaves a delivery parked, not only a runless
 /// gate's.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_already_denied_gate_keeps_its_delivery_unparked() {
     let lane = Lane::isolated().await;
     park_delivery(&lane).await;
@@ -133,7 +133,7 @@ async fn an_already_denied_gate_keeps_its_delivery_unparked() {
 
 /// A lost notification cannot undo the answer or leave its delivery parked.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_runless_gate_with_a_lost_notification_still_resolves() {
     let lane = Lane::isolated().await;
     park_delivery(&lane).await;

@@ -1,5 +1,6 @@
 //! An event's gate is found from `approval_gates` alone, so a re-encounter keeps
-//! the original question, its deadline and its late answer (M244: no cache).
+//! the original question, its deadline and its late answer, with no cache in
+//! front of the table.
 #![cfg(feature = "test-util")]
 
 #[path = "support/gate_fixture.rs"]
@@ -16,11 +17,11 @@ const APPROVE_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","
 // Value: protects=a re-encounter cannot bypass, duplicate or restart a durable
 // gate; fails_when=a missing cache meant a first encounter; seam=Postgres.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_reencountered_event_keeps_its_deadline_and_late_answer() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = Gates::new(fixture.database.clone(), bus(), Entropy::new());
+    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
     let ruled = config_gates(APPROVE_CHAT);
     let event = &mint_id();
     assert_eq!(

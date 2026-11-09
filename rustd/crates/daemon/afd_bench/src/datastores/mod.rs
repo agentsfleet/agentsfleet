@@ -48,7 +48,9 @@ const TRANSACTIONS_QUERY: &str = "SELECT xact_commit + xact_rollback \
 #[derive(Debug, Clone, Copy)]
 struct LaneEnv<'a> {
     database_url: &'a str,
-    nats_url: &'a str,
+    /// `None` when the caller brought its own Bus, so the knob is answered
+    /// unset rather than from the developer's shell.
+    nats_url: Option<&'a str>,
 }
 
 impl EnvSource for LaneEnv<'_> {
@@ -61,7 +63,7 @@ impl EnvSource for LaneEnv<'_> {
             return Some(self.database_url.to_owned());
         }
         if key == afd_bus::nats::URL_ENV {
-            return Some(self.nats_url.to_owned());
+            return self.nats_url.map(str::to_owned);
         }
         ProcessEnv.get(key)
     }
@@ -93,15 +95,34 @@ impl Datastores {
     pub async fn open(database_url: &str, nats_url: &str) -> Result<Self> {
         let env = LaneEnv {
             database_url,
-            nats_url,
+            nats_url: Some(nats_url),
         };
-        let pool = PoolConfig::resolve(&env, DbRole::Api)?;
-        let database = Db::connect(&pool).await?;
+        let (database, pool_size) = connect_database(&env).await?;
         let bus = afd_bus::nats::connect(&afd_bus::nats::Config::from_env(&env)?).await?;
         Ok(Self {
             database,
             bus,
-            pool_size: pool.max_connections(),
+            pool_size,
+            database_url: database_url.to_owned(),
+        })
+    }
+
+    /// Open Postgres beside a Bus the caller already holds, such as the
+    /// integration lane's from `afd_bus::test_util::lane`.
+    ///
+    /// # Errors
+    ///
+    /// `DatabaseUnavailable` when Postgres will not answer.
+    pub async fn over(database_url: &str, bus: afd_bus::Handle) -> Result<Self> {
+        let env = LaneEnv {
+            database_url,
+            nats_url: None,
+        };
+        let (database, pool_size) = connect_database(&env).await?;
+        Ok(Self {
+            database,
+            bus,
+            pool_size,
             database_url: database_url.to_owned(),
         })
     }
@@ -120,6 +141,14 @@ impl Datastores {
             .await
             .map_err(|source| ErrorKind::SamplerUnavailable { source }.into())
     }
+}
+
+/// The pool the daemon would open from `env`, proved to answer, and how many
+/// connections it may hold.
+async fn connect_database(env: &LaneEnv<'_>) -> Result<(Db, u32)> {
+    let pool = PoolConfig::resolve(env, DbRole::Api)?;
+    let database = Db::connect(&pool).await?;
+    Ok((database, pool.max_connections()))
 }
 
 /// Transactions this database has committed or rolled back, in total.

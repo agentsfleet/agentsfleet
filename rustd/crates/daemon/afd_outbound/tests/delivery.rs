@@ -1,10 +1,10 @@
-//! Dimensions 5.1 and 5.2 — what a retry costs, and what a shutdown keeps.
+//! What a retry costs, and what a shutdown keeps.
 //!
 //! Both are graded against a poster that answers on command, not against Slack:
 //! the questions are about the WORKER's loop — how many times it offers a job,
-//! when it stops offering, and whether it acknowledges — and a real vendor can
-//! answer none of them on demand. `slack.rs`'s own suite covers the half that
-//! is about reading Slack's replies.
+//! when it stops offering, and what verdict it hands the lane — and a real
+//! vendor can answer none of them on demand. `slack.rs`'s own suite covers the
+//! half that is about reading Slack's replies.
 //!
 //! # Why the retry is exercised through `deliver_with_retry` and not `run`
 //!
@@ -100,8 +100,7 @@ fn job() -> Outgoing {
     }
 }
 
-/// Dimension 5.1 — a queued answer is delivered ONCE when the destination
-/// takes it.
+/// A queued answer is delivered ONCE when the destination takes it.
 ///
 /// The assertion that matters is the count. A worker that retried a delivered
 /// job would post the same answer into the same thread twice, and a person
@@ -122,8 +121,7 @@ async fn test_a_delivered_answer_is_offered_exactly_once() {
     );
 }
 
-/// Dimension 5.1 — a destination answering 5xx is retried up to the budget and
-/// then given up on.
+/// A destination answering 5xx is retried up to the budget, then given up on.
 ///
 /// Two halves, and both are the point: it retries at all, and it STOPS. An
 /// unbounded retry would hold this job at the head of a serial queue forever,
@@ -142,7 +140,7 @@ async fn test_a_retryable_destination_is_offered_the_budget_and_no_more() {
         verdict,
         Verdict::Retryable,
         "an exhausted budget reports itself, so the caller can log it before \
-         acknowledging"
+         releasing the claim"
     );
     assert_eq!(
         posters.slack.attempts(),
@@ -151,8 +149,8 @@ async fn test_a_retryable_destination_is_offered_the_budget_and_no_more() {
     );
 }
 
-/// Dimension 5.1 — a destination that recovers mid-budget is delivered, and
-/// the remaining attempts are not spent.
+/// A destination that recovers mid-budget is delivered, and the remaining
+/// attempts are not spent.
 #[tokio::test]
 async fn test_a_destination_that_recovers_is_not_offered_again() {
     let posters = Posters {
@@ -171,7 +169,7 @@ async fn test_a_destination_that_recovers_is_not_offered_again() {
     );
 }
 
-/// Dimension 5.1 — a permanent refusal is not retried.
+/// A permanent refusal is not retried.
 ///
 /// The distinction a boolean would lose. A revoked token or a deleted channel
 /// refuses identically every time, so three attempts cost the vendor three
@@ -195,8 +193,7 @@ async fn test_a_permanent_refusal_is_offered_once() {
     );
 }
 
-/// Dimension 5.2 — a shutdown arriving mid-delivery stops the RETRY, not the
-/// attempt in flight.
+/// A shutdown arriving mid-delivery stops the RETRY, not the attempt in flight.
 ///
 /// The attempt that is running finishes, and no further one starts. That is
 /// what bounds a shutdown at one vendor deadline rather than at the whole
@@ -227,12 +224,12 @@ async fn test_a_shutdown_stops_the_retry_without_abandoning_the_attempt() {
     );
 }
 
-/// Dimension 5.2 — a shutdown does not discard an attempt that SUCCEEDED.
+/// A shutdown does not discard an attempt that SUCCEEDED.
 ///
 /// The direction that would be worse to get wrong. A worker that treated a
-/// cancelled token as "give up" after a successful post would leave the job
-/// unacknowledged, and the next process would deliver the same answer into the
-/// same thread a second time.
+/// cancelled token as "give up" after a successful post would leave the row
+/// unstamped, and the next holder would deliver the same answer into the same
+/// thread a second time.
 #[tokio::test]
 async fn test_a_shutdown_during_a_successful_delivery_still_reports_it() {
     let token = tokio_util::sync::CancellationToken::new();
@@ -245,8 +242,8 @@ async fn test_a_shutdown_during_a_successful_delivery_still_reports_it() {
     assert_eq!(
         verdict,
         Verdict::Delivered,
-        "an answer that landed is acknowledged even as the process stops, or \
-         the next one posts it again"
+        "an answer that landed is reported delivered even as the process stops, \
+         so it is stamped and the next holder does not post it again"
     );
 }
 

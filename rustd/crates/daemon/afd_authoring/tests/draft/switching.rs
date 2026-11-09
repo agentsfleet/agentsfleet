@@ -1,4 +1,4 @@
-//! Dimension 2.2 — model switches and Stop against queued work.
+//! Model switches and Stop against queued work.
 //!
 //! A switch is an idle, If-Match edit: it refuses a model the workspace owner
 //! has taken away and refuses while a request is still queued, leaving the

@@ -6,7 +6,7 @@ use http::{Method, StatusCode};
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn receipt_history_reloads_exact_safe_setup_access_and_memory_facts() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     assert_eq!(saved.initial["status"], "installing");
@@ -37,7 +37,7 @@ async fn receipt_history_reloads_exact_safe_setup_access_and_memory_facts() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn access_receipts_reach_only_relevant_saved_fleets_in_the_same_workspace() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     let dependent = saved

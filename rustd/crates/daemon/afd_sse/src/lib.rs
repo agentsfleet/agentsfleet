@@ -31,7 +31,7 @@ pub mod error;
 pub mod fanin;
 pub mod frame;
 pub mod live;
-pub mod resubscribe;
+mod resubscribe;
 pub mod stream_limit;
 pub mod tail;
 
@@ -43,7 +43,7 @@ pub use crate::frame::{
     DEFAULT_KIND, Data, Frame, KIND_ACCESS_REVOKED, KIND_CATCHING_UP, KIND_HELLO,
 };
 pub use crate::live::Live;
-pub use crate::resubscribe::Resubscribe;
+pub use crate::resubscribe::Link;
 pub use crate::stream_limit::{StreamLimit, StreamPermit};
 pub use crate::tail::tail;
 

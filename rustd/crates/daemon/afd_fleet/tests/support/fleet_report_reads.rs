@@ -135,7 +135,7 @@ impl Fixtures {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn model_rate_seeds_keep_distinct_models_and_concurrent_retries() {
     let fixtures = Fixtures::create_isolated().await;
     let first = "fixture-priced-first";

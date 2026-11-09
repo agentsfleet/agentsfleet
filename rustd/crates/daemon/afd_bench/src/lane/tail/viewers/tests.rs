@@ -72,6 +72,29 @@ async fn a_tail_that_ends_early_reports_the_frames_and_lags_it_saw() {
     );
 }
 
+#[tokio::test]
+async fn the_catching_up_that_opens_a_tail_is_not_a_lag() {
+    let shared = shared();
+    // The tail's opening notice arrives before any probe, then one probe and
+    // one measured frame: nothing was missed.
+    let tail = futures_util::stream::iter([
+        Frame::catching_up(0),
+        frame(PROBE.to_owned()),
+        frame(frame_of(200)),
+    ])
+    .boxed();
+
+    let seen = view(tail, Arc::clone(&shared), CancellationToken::new())
+        .await
+        .expect("an ended tail is a short count, not a failure");
+
+    assert_eq!(seen.frames, 1);
+    assert_eq!(
+        seen.lagged, 0,
+        "the notice before the first probe opens every tail and is not counted"
+    );
+}
+
 /// A rung that timed `latencies`, one viewer, nothing allocated.
 fn rung_of(latencies: impl IntoIterator<Item = core::time::Duration>) -> Rung {
     let mut latency = Latency::new().expect("an empty histogram");
@@ -96,7 +119,7 @@ fn only(report: &Report, key: &str) -> Option<f64> {
     report.series.get(key)?.first().copied()
 }
 
-/// M244 Dimension 1.1: the summary carries p99 beside p95.
+/// The summary carries p99 beside p95.
 #[test]
 fn tail_summary_reports_p99() {
     let mut report = Report::new(Lane::Tail, Profile::Rig, Provenance::for_test());
@@ -114,8 +137,8 @@ fn tail_summary_reports_p99() {
     );
 }
 
-/// M244 Dimension 1.2: a rung with nothing timed reports no tail figure,
-/// because a p99 of nothing is not a zero.
+/// A rung with nothing timed reports no tail figure, because a p99 of
+/// nothing is not a zero.
 #[test]
 fn rung_without_frames_reports_no_p99() {
     let mut report = Report::new(Lane::Tail, Profile::Rig, Provenance::for_test());

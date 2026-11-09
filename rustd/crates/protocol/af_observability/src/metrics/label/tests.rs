@@ -137,7 +137,7 @@ fn label_products() -> Vec<(&'static str, usize)> {
     products
 }
 
-/// The bus and outbound families M244 added.
+/// The bus and outbound transport families.
 fn transport_products() -> [(&'static str, usize); 2] {
     [
         (bus::GAPS.wire_name(), bus_labels::GapCause::ALL.len()),

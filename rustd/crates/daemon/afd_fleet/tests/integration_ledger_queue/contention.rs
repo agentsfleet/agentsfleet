@@ -30,7 +30,7 @@ const BLOCKED: &str = "SELECT count(*) FROM pg_stat_activity
 type Claimer = JoinHandle<afd_fleet::Result<Option<Acquired>>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_concurrent_claims_lease_one_row() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, runners) = seeded_parts::<2>(&fixtures).await;

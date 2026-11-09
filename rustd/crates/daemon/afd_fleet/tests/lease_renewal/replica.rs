@@ -1,7 +1,9 @@
 //! The second daemon replica, and the expiry it re-admits work after.
 //!
-//! Its own pool over the lane both replicas share, and its own bus, so the two
-//! meet only where two deployed replicas meet: rows.
+//! Its own pool over the lane both replicas share, and its own in-process bus.
+//! The bus is isolated deliberately: the claim is that the second replica
+//! re-admits a lapsed lease from the rows alone, so nothing the first one
+//! publishes may reach it.
 
 use super::fixture::Running;
 use af_core::{clock, id::Uuid7};

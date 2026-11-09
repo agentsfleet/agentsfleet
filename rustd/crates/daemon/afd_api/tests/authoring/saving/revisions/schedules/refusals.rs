@@ -7,7 +7,7 @@ use super::*;
 const SYNC_HOLD: std::time::Duration = std::time::Duration::from_secs(30);
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn required_tags_and_inherited_input_shape_are_enforced_before_writes() {
     let scheduled = Scheduled::create().await;
     let original = scheduled.read().await;
@@ -39,7 +39,7 @@ async fn required_tags_and_inherited_input_shape_are_enforced_before_writes() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_live_schedule_sync_refuses_the_entire_apply_and_keeps_its_private_draft() {
     let scheduled = Scheduled::create().await;
     let request = scheduled.improvement().await;

@@ -224,7 +224,7 @@ pub(crate) struct Wall {
 impl Wall {
     pub(crate) async fn open(fixture: Fixture) -> Self {
         fixture.seed().await;
-        let bus = harness::bus();
+        let bus = harness::bus().await;
         let fleet = Fleet::live(
             fixture.database.clone(),
             SUBJECT,

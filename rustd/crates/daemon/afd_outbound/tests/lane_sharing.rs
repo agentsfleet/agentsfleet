@@ -33,14 +33,14 @@ use self::gated_poster::Gated;
 const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 
 const PROVIDER: &str = "slack";
-/// How long the acknowledgement is waited for. Nothing here is held shut, so
+/// How long a delivery is waited for. Nothing here is held shut, so
 /// reaching this means the lanes stopped rather than that they were slow.
 const PATIENCE: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(5);
 
 /// Cloning names the SAME lanes, not a second set. A component that took a
 /// clone and opened its own lane map would deliver past the ceiling and
-/// acknowledge through a tracker nobody drains.
+/// stamp through a tracker nobody drains.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_clone_names_the_same_lanes() {
     let token = CancellationToken::new();
@@ -130,18 +130,18 @@ async fn a_delivery_survives_a_stamp_that_cannot_be_recorded() {
     .expect("the destination takes the answer even though the ledger is gone");
 
     // Waiting for the LANE to retire, not just for the first delivery. The
-    // acknowledgement is attempted after the delivery returns, so asserting at
+    // stamp is attempted after the delivery returns, so asserting at
     // the first delivery would assert before the failure this test is named
     // for has happened, and a regression that redelivered afterwards would
     // still be green. A retired lane is the point at which the job is finished
-    // with — failed ack and all.
+    // with — failed stamp and all.
     tokio::time::timeout(PATIENCE, async {
         while lanes.active() != 0 {
             tokio::time::sleep(POLL).await;
         }
     })
     .await
-    .expect("the lane retires once the job is done with, however the ack went");
+    .expect("the lane retires once the job is done with, however the stamp went");
 
     assert_eq!(
         poster.delivered(),

@@ -1,5 +1,5 @@
 //! What every device-flow suite builds its logins from: the login surface over
-//! the lane's queue, and the one approval, code and caller they all present.
+//! the lane's Postgres, and the one approval, code and caller they all present.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -45,9 +45,9 @@ pub(crate) fn approval() -> Approval<'static> {
 /// An approver no other test shares, for a test that bulk-cancels.
 ///
 /// `cancel_all` aborts every live login its owner approved, and the suites run
-/// in parallel against one queue. A test cancelling as [`APPROVER`] would abort
+/// in parallel against one database. A test cancelling as [`APPROVER`] would abort
 /// the logins a sibling test is still driving, so each canceller takes its own
-/// owner; the process id keeps two concurrent runs on one queue apart too.
+/// owner; the process id keeps two concurrent runs on one database apart too.
 pub(crate) fn owner(test: &str) -> String {
     format!("{APPROVER}_{test}_{}", std::process::id())
 }

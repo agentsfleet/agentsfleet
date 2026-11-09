@@ -24,9 +24,9 @@
 //!
 //! # What this verb does NOT do
 //!
-//! No activity publish and no delivery-queue append inside the settle. An owed
+//! No activity publish and no outbound wake inside the settle. An owed
 //! answer's obligation row does commit there, through
-//! [`crate::lease::obligation`]; the publish and the append run after the
+//! [`crate::lease::obligation`]; the publish and the wake run after the
 //! commit, best effort, and a failure is logged, never returned.
 //! No OTLP spans either — the drained amount comes back as a VALUE, the way
 //! [`afd_billing::Accounts::debit_receive`] answers one, and the caller
@@ -228,7 +228,7 @@ impl LeaseService {
                     .await;
                 timing::completed(&lease, now, completed_at);
                 if let Some(owing) = owed {
-                    self.queue_owed_answer(&owing).await;
+                    self.wake_owed_answer(&owing).await;
                 }
                 self.announce_folds(&lease, lease_id.as_str(), folds, answer)
                     .await;

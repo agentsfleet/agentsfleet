@@ -31,7 +31,7 @@ fn installing(saved: &SavedFleet) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn setup_waiting_past_its_budget_answers_installing_and_the_key_finishes_it() {
     let c = Case::create().await;
     let (key, request, fleet) = funded_retained(&c, "budget-elapsed").await;
@@ -60,7 +60,7 @@ async fn setup_waiting_past_its_budget_answers_installing_and_the_key_finishes_i
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_stream_record_lost_while_activation_waited_holds_the_fleet_installing() {
     let c = Case::create().await;
     let (key, request, fleet) = funded_retained(&c, "readiness-lost").await;
@@ -97,7 +97,7 @@ async fn a_stream_record_lost_while_activation_waited_holds_the_fleet_installing
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_activation_update_that_matches_nothing_rolls_back_as_setup_changed() {
     let c = Case::create().await;
     let (key, request, fleet) = funded_retained(&c, "activation-skipped").await;

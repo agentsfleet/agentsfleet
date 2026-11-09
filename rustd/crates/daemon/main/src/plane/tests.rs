@@ -157,8 +157,8 @@ async fn production_plane_hands_each_route_its_deployment_facts() {
     assert!(plane.platform_admin_workspace().is_none());
 }
 
-/// The doorbell `ServingPlane::new` builds listens on the live-stream hub: a
-/// ring published on a partition's production channel reaches it. This proves
+/// The wake listener `ServingPlane::new` builds hears the NATS wake ring: a
+/// ring published on a shard's subject (`af.wake.<shard>`) reaches it. This proves
 /// the helper the plane calls, not that the plane hands its result to the
 /// lease store; that hand-off is one line beside it in `plane/mod.rs`.
 #[cfg(feature = "test-util")]
@@ -171,24 +171,21 @@ async fn test_the_wake_queue_hears_the_shared_bus() {
     const HEARD_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
 
     let (bus, server) = afd_bus::test_util::detached().expect("fixture bus");
-    let doorbell = Wake::default();
+    let wake = Wake::default();
     let stop = tokio_util::sync::CancellationToken::new();
-    let _listeners = doorbell
-        .listen(&bus, &stop)
-        .await
-        .expect("wake subscriptions");
+    let _listeners = wake.listen(&bus, &stop).await.expect("wake subscriptions");
     let rung = Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").expect("fleet");
     server.publish(&Subject::Wake(6), rung.as_str());
 
     let deadline = tokio::time::Instant::now() + HEARD_WITHIN;
     let mut taken = None;
     while taken.is_none() && tokio::time::Instant::now() < deadline {
-        taken = doorbell.take();
+        taken = wake.take();
         tokio::task::yield_now().await;
     }
     assert_eq!(
         taken,
         Some(rung),
-        "the daemon's doorbell listens on its hub"
+        "the daemon's wake listener hears the wake ring"
     );
 }

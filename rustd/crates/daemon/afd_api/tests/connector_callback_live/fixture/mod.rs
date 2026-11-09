@@ -82,7 +82,7 @@ impl Fixture {
         let bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            bus: harness::bus(),
+            bus: harness::bus().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             team: format!(
                 "T0FIX{}",

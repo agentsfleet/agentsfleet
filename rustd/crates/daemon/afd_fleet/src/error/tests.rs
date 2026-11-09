@@ -220,8 +220,6 @@ fn assert_error(expected: &Expected) {
     assert!(expected.error.to_string().contains(expected.code.as_str()));
 }
 
-/// A queue outage names the queue, not the database: the sentence sends an
-/// operator to the datastore that actually failed.
 /// A fleet with no reviewed native setup is refused for good, with a sentence
 /// that sends its owner to review it rather than to retry.
 #[test]

@@ -5,10 +5,11 @@
 //!
 //! A worker that returns `Err` up its loop stops delivering. So a failure to
 //! POST, a bot token that is gone, an event row that vanished — none of them
-//! are errors: they are [`crate::Verdict`]s, which the worker acts on and then
-//! acknowledges the job. Only the things that make the LOOP unable to continue
-//! reach this type: the stream would not answer, the group could not be
-//! created, the dedicated connection would not open.
+//! are errors: they are [`crate::Verdict`]s, which the lane acts on by
+//! stamping, releasing or abandoning the obligation. Only what stops the
+//! worker from claiming or recording reaches this type: the host would not
+//! draw the entropy a claim token is minted from, the ledger's pool would not
+//! answer, or the ledger refused a claim, stamp, release or abandon.
 //!
 //! The two categories have different types, so a raise site cannot put a
 //! delivery failure where a loop failure goes.
@@ -39,8 +40,8 @@ pub(crate) enum ErrorKind {
 
     /// The obligation ledger's pool would not hand out a connection.
     ///
-    /// The ledger is the queue since M244, so an unanswered pool stops claims
-    /// until it answers again; nothing owed is lost meanwhile.
+    /// The ledger is the queue, so an unanswered pool stops claims until it
+    /// answers again; nothing owed is lost meanwhile.
     #[error("the ledger holding the delivery obligations would not answer")]
     Ledger {
         #[source]
@@ -67,10 +68,18 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 
 /// One sample of each kind a caller can match on, for a crate wrapping this
 /// error to render in its own suite.
-///
 #[cfg(feature = "test-util")]
 #[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
+    control.fail_next();
+    let refused_draw = entropy
+        .uuid_randomness()
+        .expect_err("a mocked source told to fail refuses the draw");
     vec![
         (
             "ledger",
@@ -80,6 +89,9 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             .into(),
         ),
         ("query", query("owe delivery")(sqlx::Error::RowNotFound)),
+        // Listed last: a wrapping crate that takes the first kind that is not
+        // an outage keeps reading the refused statement.
+        ("entropy", refused_draw.into()),
     ]
 }
 

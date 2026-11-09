@@ -125,7 +125,7 @@ impl Watched {
                 &json!({"kind":"hello","fleet_ids":[&self.fixture.fleet],"counters":{}}),
             );
             // Then one `catching_up`, so the client backfills whatever was
-            // published before its interest reached the publisher (M244 §6).
+            // published before its interest reached the publisher.
             // Still sequence zero: control frames are the server talking about
             // the stream, so they spend no activity number.
             assert_frame(

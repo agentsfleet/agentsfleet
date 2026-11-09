@@ -39,8 +39,10 @@
 //! # Cancellation gives the claim back
 //!
 //! A lane asked to stop finishes nothing new; a job whose delivery the
-//! shutdown interrupted releases its claim at once, so another replica can
-//! take it on its next claim pass.
+//! shutdown interrupted, or that the lane had taken and not started, releases
+//! its claim at once, so another replica can take it on its next claim pass.
+//! One still queued behind it keeps its claim until
+//! [`CLAIM_TTL`](crate::obligation::CLAIM_TTL) lapses.
 
 use std::sync::Arc;
 

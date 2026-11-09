@@ -70,7 +70,11 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
     vec![
         ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB)),
         ("DATABASE_URL_MIGRATOR", lane(DATABASE_LANE_KNOB)),
-        ("NATS_URL", lane("TEST_NATS_URL")),
+        (
+            "NATS_URL",
+            afd_bus::test_util::lane_url()
+                .expect("the lane's NATS seeds: run through make test-integration-rustd"),
+        ),
         ("ENCRYPTION_MASTER_KEY", GOOD_KEK.to_owned()),
         ("DATABASE_POOL_SIZE", LANE_POOL_SIZE.to_owned()),
     ]

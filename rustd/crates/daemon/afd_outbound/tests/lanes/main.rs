@@ -1,10 +1,10 @@
-//! The delivery lanes, graded without a live queue: a fake that accepts every
-//! acknowledgement, and a poster whose destinations answer when the test says.
+//! The delivery lanes, graded without a live ledger: a handle whose every
+//! write fails, and a poster whose destinations answer when the test says.
 //!
 //! The half of the fairness dimension that lives on the delivery side. A
 //! destination that will not answer is played by a gate the test holds shut;
-//! what is asserted is that answers to OTHER destinations are delivered and
-//! acknowledged while it is shut, that answers to ONE destination leave in
+//! what is asserted is that answers to OTHER destinations are delivered while
+//! it is shut, that answers to ONE destination leave in
 //! the order they were queued, and that the number of vendor calls in flight
 //! never passes the ceiling.
 #![expect(
@@ -35,7 +35,7 @@ const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000
 ///
 /// Harness patience, NOT a budget any of these tests assert. Nothing here
 /// claims a latency: the claims are the ceiling (`high_water <= ceiling`), the
-/// concurrency (`high_water > 1`) and that every answer is acknowledged. Those
+/// concurrency (`high_water > 1`) and that every answer is delivered. Those
 /// hold or fail regardless of how long the wait is allowed to be, which is why
 /// this number can be generous without softening anything.
 ///
@@ -120,8 +120,8 @@ where
 }
 
 /// A destination that will not answer holds only its own lane: answers to
-/// another workspace queued BEHIND it are delivered and acknowledged while
-/// it is still waiting.
+/// another workspace queued BEHIND it are delivered while it is still
+/// waiting.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_destination_does_not_hold_unrelated_answers() {
     let token = CancellationToken::new();
@@ -132,10 +132,9 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
     lanes.dispatch(job(FAST_WORKSPACE, 2)).await;
     lanes.dispatch(job(FAST_WORKSPACE, 3)).await;
 
-    await_until(
-        "the fast workspace's two answers to be acknowledged",
-        || poster.delivered().len() == 2,
-    )
+    await_until("the fast workspace's two answers to be delivered", || {
+        poster.delivered().len() == 2
+    })
     .await;
     assert_eq!(
         poster.delivered(),
@@ -148,7 +147,7 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
     );
 
     gate.notify_one();
-    await_until("the slow answer to be acknowledged", || {
+    await_until("the slow answer to be delivered", || {
         poster.delivered().len() == 3
     })
     .await;
@@ -167,7 +166,7 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
 }
 
 /// Answers to one destination leave in the order they were queued, however
-/// long each takes, and are acknowledged in that order.
+/// long each takes.
 #[tokio::test(flavor = "multi_thread")]
 async fn answers_to_one_destination_leave_in_the_order_they_were_queued() {
     let token = CancellationToken::new();
@@ -177,7 +176,7 @@ async fn answers_to_one_destination_leave_in_the_order_they_were_queued() {
     for n in 1..=count {
         lanes.dispatch(job(FAST_WORKSPACE, n)).await;
     }
-    await_until("every answer to be acknowledged", || {
+    await_until("every answer to be delivered", || {
         poster.delivered().len() == count as usize
     })
     .await;
@@ -211,7 +210,7 @@ async fn in_flight_deliveries_never_exceed_the_ceiling() {
             .dispatch(job(n, u32::try_from(n).expect("small")))
             .await;
     }
-    await_until("every destination's answer to be acknowledged", || {
+    await_until("every destination's answer to be delivered", || {
         poster.delivered().len() == destinations
     })
     .await;
@@ -240,14 +239,14 @@ async fn a_retired_lane_is_replaced_and_order_survives_the_hand_over() {
     let (lanes, poster) = lanes_against(&token);
 
     lanes.dispatch(job(FAST_WORKSPACE, 1)).await;
-    await_until("the first answer to be acknowledged", || {
+    await_until("the first answer to be delivered", || {
         poster.delivered().len() == 1
     })
     .await;
     await_until("the lane to retire", || lanes.active() == 0).await;
 
     lanes.dispatch(job(FAST_WORKSPACE, 2)).await;
-    await_until("the second answer to be acknowledged", || {
+    await_until("the second answer to be delivered", || {
         poster.delivered().len() == 2
     })
     .await;
@@ -261,9 +260,10 @@ async fn a_retired_lane_is_replaced_and_order_survives_the_hand_over() {
     lanes.drain().await;
 }
 
-/// Cancellation finishes the delivery in hand and acknowledges it; what was
-/// still queued behind it is neither delivered nor acknowledged, so the next
-/// process finds it pending.
+/// Cancellation finishes the delivery in hand; the lane starts nothing after
+/// it. The job it takes next gives its claim back and the one queued behind
+/// keeps its claim until it lapses, so either way another holder delivers
+/// them, never this one.
 #[tokio::test(flavor = "multi_thread")]
 async fn cancellation_finishes_the_job_in_hand_and_starts_nothing_else() {
     let token = CancellationToken::new();
@@ -308,9 +308,9 @@ async fn a_job_rescued_from_a_retiring_lane_is_not_overtaken() {
     for round in 0..rounds {
         lanes.dispatch(job(FAST_WORKSPACE, round * 2 + 1)).await;
         lanes.dispatch(job(FAST_WORKSPACE, round * 2 + 2)).await;
-        let acknowledged = (round as usize + 1) * 2;
-        await_until("the pair to be acknowledged", || {
-            poster.delivered().len() == acknowledged
+        let delivered = (round as usize + 1) * 2;
+        await_until("the pair to be delivered", || {
+            poster.delivered().len() == delivered
         })
         .await;
     }

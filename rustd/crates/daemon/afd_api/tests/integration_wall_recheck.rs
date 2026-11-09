@@ -96,7 +96,7 @@ async fn past_heartbeats(body: &mut BodyDataStream) -> String {
 /// with no `access_revoked`: an outage is not a revocation, and the client's
 /// reconnect is authorized at open. The closing is logged once.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_wall_whose_rechecks_go_unanswered_closes_without_access_revoked() {
     let capture = Capture::install();
     let mut wall = Wall::open(Fixture::create().await).await;
@@ -161,7 +161,7 @@ async fn bobs_wall(members: &Members, pool: &Db) -> BodyDataStream {
     let router = Fleet::live(pool.clone(), &bob.subject, owner_scopes())
         .with_live_ownership()
         .with_dashboard_holding(&bob.subject, owner_scopes())
-        .with_live_bus(harness::bus())
+        .with_live_bus(harness::bus().await)
         .router();
     let path = format!(
         "/v1/workspaces/{}/events/stream",
@@ -180,7 +180,7 @@ async fn bobs_wall(members: &Members, pool: &Db) -> BodyDataStream {
 /// The decision is the production resolver over a pool of one connection,
 /// which the test holds through the first tick.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_revocation_behind_an_overrun_tick_lands_on_the_next_tick() {
     let capture = Capture::install();
     let members = Members::create().await;

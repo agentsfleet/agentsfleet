@@ -20,9 +20,19 @@ pub(super) struct Live {
 
 impl Live {
     pub(super) async fn create(capacity: usize) -> Self {
+        Self::over(capacity, |bus| bus).await
+    }
+
+    /// A stream whose router subscribes through `wrap` of the in-process bus,
+    /// so a suite can shape what a subscription does before it delivers.
+    pub(super) async fn over(
+        capacity: usize,
+        wrap: impl FnOnce(afd_bus::Handle) -> afd_bus::Handle,
+    ) -> Self {
         let f = Fixture::create().await;
-        let (bus, server) =
+        let (inner, server) =
             afd_bus::test_util::detached().expect("an in-process bus opens no socket");
+        let bus = wrap(inner);
         let router = f
             .services(&Scope::ALL)
             .with_stream_capacity(bus.clone(), capacity)

@@ -5,7 +5,7 @@ use crate::requests;
 use crate::rows::{LAPSE, Row};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_mint_scope_is_the_presenting_runners_lease() {
     // Invariant 2, and the whole reason the wire carries no workspace: a
     // prompt-injected child has nothing to forge, because a lease that is not
@@ -54,7 +54,7 @@ async fn test_mint_scope_is_the_presenting_runners_lease() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_mint_refuses_a_superseded_active_lease() {
     // A reclaim moves the fleet's sequence past a lease before the issue that
     // expires its row, so a row that is `active` and unexpired is not proof
@@ -106,7 +106,7 @@ async fn test_mint_refuses_a_superseded_active_lease() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_static_handle_mints_from_the_leases_own_workspace() {
     // The positive, and the scope proof: the token's VALUE is what
     // distinguishes the owner's workspace from any other, so a mint that
@@ -141,7 +141,7 @@ async fn test_a_static_handle_mints_from_the_leases_own_workspace() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_the_grant_gate_refuses_before_the_vault_is_opened() {
     // The ordering property no unit test can reach: an ungranted request must
     // not touch credential bytes. Proven by connecting the integration and
@@ -180,7 +180,7 @@ async fn test_the_grant_gate_refuses_before_the_vault_is_opened() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_an_unconnected_integration_is_not_a_grant_failure() {
     // The two refusals a runner must be able to tell apart: nobody approved it,
     // versus nobody connected it. Approving the grant and storing no handle

@@ -22,7 +22,7 @@ impl Case {
 
     pub(super) async fn with_budgets(budgets: afd_admission::Budgets) -> Self {
         let base = Fixture::create().await;
-        let bus = crate::harness::bus();
+        let bus = crate::harness::bus().await;
         let router = base
             .services(&Scope::ALL)
             .with_fleet_queue_budgets(base.db.clone(), bus.clone(), budgets)

@@ -1,13 +1,14 @@
 //! The live surface, composed: the pub/sub connection and the instance's
 //! stream budget, as one value a handler holds.
 //!
-//! # A deployment with no hub is a value, not a `None` every handler renders
+//! # A surface with no bus is a value, not a `None` every handler renders
 //!
-//! `afd_fleet::bundle::Bundles::unconfigured` is the shape this follows. An
-//! instance with no pub/sub connection still SERVES the stream routes: the
+//! `afd_fleet::bundle::Bundles::unconfigured` is the shape this follows. A
+//! surface with no pub/sub connection still SERVES the stream routes: the
 //! connection opens, the ceiling is charged and the heartbeat runs. A fleet
 //! tail tells the viewer it is catching up rather than going silent, so the
-//! UI backfills from Postgres (M244 §6).
+//! UI backfills from Postgres. Boot always connects a bus; suites build the
+//! detached surface to prove what a stream does without one.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -17,10 +18,11 @@ use futures_util::stream::{self, BoxStream};
 
 use crate::fanin::FanIn;
 use crate::frame::Frame;
-use crate::resubscribe::{Resubscribe, resilient};
+use crate::resubscribe::{Link, Resubscribe, resilient};
 use crate::stream_limit::{StreamLimit, StreamPermit};
 
 /// What one subscribe attempt found.
+#[derive(Debug)]
 pub(crate) enum Subscribed {
     /// The subscription is live.
     Open(afd_bus::Subscription),
@@ -49,23 +51,27 @@ impl Live {
         }
     }
 
-    /// Replaces how a lost tail retries, such as from a configuration file.
+    /// Replaces how a lost tail retries, so a suite need not wait out the
+    /// production backoff.
+    #[cfg(test)]
     #[must_use]
-    pub const fn with_resubscribe(mut self, resubscribe: Resubscribe) -> Self {
+    pub(crate) const fn with_resubscribe(mut self, resubscribe: Resubscribe) -> Self {
         self.resubscribe = resubscribe;
         self
     }
 
     /// How a lost tail retries.
     #[must_use]
-    pub const fn resubscribe(&self) -> &Resubscribe {
+    pub(crate) const fn resubscribe(&self) -> &Resubscribe {
         &self.resubscribe
     }
 
-    /// The live surface of an instance with no pub/sub connection.
+    /// The live surface with no pub/sub connection.
     ///
-    /// Its streams open, count against the ceiling, and stay silent. See the
-    /// module header for why that is the behaviour rather than a refusal.
+    /// Its streams open and count against the ceiling. A fleet tail sends
+    /// `hello` and `catching_up`, then retries quietly; a fan-in stays
+    /// pending. The module header says why that is the behaviour rather than
+    /// a refusal.
     #[must_use]
     pub fn detached(stream_limit: StreamLimit) -> Self {
         Self {
@@ -113,27 +119,29 @@ impl Live {
     /// the stream and keeps retrying, so the viewer is never left with only
     /// heartbeats.
     pub async fn tail_of(&self, fleet: &af_core::id::Uuid7) -> BoxStream<'static, Frame> {
-        let subject = afd_bus::Subject::FleetTail(fleet.clone());
-        let first = self.subscribe(&subject).await;
+        let link = self.link(afd_bus::Subject::FleetTail(fleet.clone())).await;
         let opening = [
             Frame::hello(&[fleet.to_string()], &BTreeMap::new()),
             Frame::catching_up(0),
         ];
-        stream::iter(opening)
-            .chain(resilient(self.clone(), subject, first))
-            .boxed()
+        stream::iter(opening).chain(resilient(link)).boxed()
     }
 
-    /// Failed subscription startup preserves the silent dashboard surface.
-    pub async fn subscribe(&self, subject: &afd_bus::Subject) -> Option<afd_bus::Subscription> {
-        match self.try_subscribe(subject).await {
-            Subscribed::Open(subscription) => Some(subscription),
-            Subscribed::Unavailable | Subscribed::Closed => None,
-        }
+    /// A link to `subject`, subscribed once before it returns; a failed
+    /// subscribe leaves it retrying on the backoff.
+    pub async fn link(&self, subject: afd_bus::Subject) -> Link {
+        Link::open(self.clone(), subject).await
     }
 
     /// Subscribe, telling a bus that may answer later from one that closed.
-    pub(crate) async fn try_subscribe(&self, subject: &afd_bus::Subject) -> Subscribed {
+    ///
+    /// `attempt` counts from 0. The first attempt's failure warns; a retry's
+    /// logs at debug, so an outage warns once rather than once per retry.
+    pub(crate) async fn try_subscribe(
+        &self,
+        subject: &afd_bus::Subject,
+        attempt: u32,
+    ) -> Subscribed {
         let Some(bus) = self.bus.as_ref() else {
             return Subscribed::Unavailable;
         };
@@ -142,7 +150,16 @@ impl Live {
             Err(error) => {
                 let error_code = error.code().as_str();
                 let reason = error.reason();
-                tracing::warn!(event = "sse_subscription_unavailable", error_code, reason);
+                if attempt == 0 {
+                    tracing::warn!(event = "sse_subscription_unavailable", error_code, reason);
+                } else {
+                    tracing::debug!(
+                        event = "sse_subscription_unavailable",
+                        attempt,
+                        error_code,
+                        reason
+                    );
+                }
                 if error.is_closed() {
                     Subscribed::Closed
                 } else {

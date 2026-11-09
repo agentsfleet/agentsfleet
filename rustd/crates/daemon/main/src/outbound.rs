@@ -18,7 +18,7 @@ pub const OUTBOUND_WORKER: &str = "connector:outbound";
 /// Starts the answer-delivery worker under `supervisor`.
 ///
 /// It claims owed answers from `fleet.obligations` when `bus` pings it and on
-/// its own pass, so it needs no connection of its own (M244 §4).
+/// its own pass, so it needs no connection of its own.
 pub fn spawn(
     supervisor: &mut Supervisor,
     database: &Db,

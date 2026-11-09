@@ -31,7 +31,7 @@ async fn residents(c: &Case) -> i64 {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_resident_whose_activation_fails_is_removed_unless_the_removal_fails_too() {
     // Its own database: the refusing triggers are on the shared fleets table.
     let c = Case::isolated().await;

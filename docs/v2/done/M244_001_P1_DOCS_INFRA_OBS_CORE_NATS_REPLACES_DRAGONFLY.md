@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Implementation branch:** `feat/m244-core-nats`, worktree `~/Projects/agentsfleet-m244`, cut from `origin/main` `61820b66a` on Nov 08, 2026. It adopts M243 checkpoints from `feat/m243-runner-push-stream` by normal merge, recorded in issue #818; M244 merges after M243.
 
@@ -108,7 +108,7 @@ Discovery search: `git grep -l -i dragonfly -- ':!docs/v2'` found 541 files outs
 | `rustd/crates/daemon/afd_connector/src/state/nonce.rs`, `registry/mod.rs`, `connect.rs`, `tests/` | EDIT | §5: nonce digests as rows |
 | `rustd/crates/daemon/afd_gate/src/gate/{store,anomaly,park}*`, `tests/` | EDIT | §5: references from `approval_gates`; the mirror read goes; the brake in memory |
 | `rustd/crates/daemon/afd_sse/src/{live,tail,fanin}*`, `rustd/crates/daemon/afd_api_tenant/src/handler/{stream,draft/stream}/` | EDIT | §6: `catching_up` after subscribe and on failure; `draft.resync` on a lost subscription |
-| `rustd/crates/daemon/main/src/{serve,plane,preflight,sweepers}/`, `probes.rs`, `outbound.rs`, `error.rs`, `inventory.rs`, `migrate.rs`, `tests/` | EDIT | §2 boot; §4 claim pass; §5 expiry sweep; §6 readiness; §7 environment variable removal |
+| `rustd/crates/daemon/main/src/{serve,plane,preflight,sweepers}/`, `probes.rs`, `outbound.rs`, `error.rs`, `inventory.rs`, `migrate.rs`, `tests/` | EDIT | §2 boot; §4 claim pass; §6 readiness; §7 environment variable removal |
 | `rustd/crates/{afd_admission,afd_approval,afd_authoring,afd_events,afd_fleet,afd_memory,afd_vault,afd_runner,afd_api,afd_http,afd_cron,afd_ingress,afd_identity,afd_billing,af_crypto,af_wire,afd_api_wire,afd_api_runner,afd_db}` sources, manifests and tests that name Dragonfly | EDIT | §7: error seams, test harnesses and comments follow the deletion |
 | `rustd/crates/foundation/af_core/src/error_code/request.rs`, `problem/request.rs`, `error_code/mod.rs` | EDIT | §7: `STARTUP_DRAGONFLY_CONNECT` becomes `STARTUP_BUS_CONNECT`; code `UZ-STARTUP-004` and its title stay; the hint names `NATS_URL` |
 | `rustd/crates/protocol/af_observability/src/metrics/declared/`, `producers/`, `tests/producers_drive.rs` | EDIT | §2, §4: two families and their producers |
@@ -272,9 +272,9 @@ The Dragonfly Bus implementation, `afd_dragonfly`, the `redis` dependency, the c
 
 Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 
-- **Dimension 8.1** — the dev rollover delivers each reply once → Test `dev_cutover_delivers_each_reply_once` (manual): during the dev deploy, `outbound_delivery_delivered` events grouped by obligation id never exceed 1; the query and counts land in the Session Notes.
-- **Dimension 8.2** — dev survives a machine stop → Test `dev_machine_kill_drill` (manual): `fly machine stop` on one `nats-dev` machine; two viewers receive `catching_up` and resume within 10 s.
-- **Dimension 8.3** — the old apps are gone → Test `dragonfly_apps_destroyed` (manual): Indy runs the destroy; `fly apps list` output in the Session Notes names neither.
+- **Dimension 8.1** — DEFERRED to the post-merge deploy (Indy, Nov 09, 2026: "I preseume standing up the nats in fly will be needed, this can be dealt with in the morning when indy is up.") — the dev rollover delivers each reply once → Test `dev_cutover_delivers_each_reply_once` (manual): during the dev deploy, `outbound_delivery_delivered` events grouped by obligation id never exceed 1; the query and counts land in the Session Notes.
+- **Dimension 8.2** — DEFERRED to the post-merge deploy (Indy, Nov 09, 2026: "I preseume standing up the nats in fly will be needed, this can be dealt with in the morning when indy is up.") — dev survives a machine stop → Test `dev_machine_kill_drill` (manual): `fly machine stop` on one `nats-dev` machine; two viewers receive `catching_up` and resume within 10 s.
+- **Dimension 8.3** — DEFERRED to the post-merge deploy (Indy, Nov 09, 2026: "I preseume standing up the nats in fly will be needed, this can be dealt with in the morning when indy is up.") — the old apps are gone → Test `dragonfly_apps_destroyed` (manual): Indy runs the destroy; `fly apps list` output in the Session Notes names neither.
 
 ## Interfaces
 
@@ -330,7 +330,7 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The Dragonfly baseline, drill and bar are recorded first (§1) | `grep -c "^### Broker pass bar" docs/architecture/push_scheduler.md` | `1` | P0 | |
 | R2 | NATS meets the bar on the same laptop (§3) | `grep -c "^Verdict: NATS passes" docs/architecture/push_scheduler.md` | `1` | P0 | |
-| R3 | Tail and wake p99 are lane baselines (§1, §3) | `grep -c wake_p99_ms_hubs_4 bench/baselines/tail.rig.json` | `1` | P0 | |
+| R3 | Tail p99 is a lane baseline (§1, §3); the wake half TRANSFERRED to M243 with Dimension 1.5 (Discovery, Nov 09, 2026) | `grep -c stream_receive_p99_ms bench/baselines/tail.rig.json` | `1` or more | P0 | |
 | R4 | No JetStream code exists (Invariant 1) | `git grep -n "async_nats::jetstream" -- rustd` | no output | P0 | |
 | R5 | Dragonfly is gone from code and tooling (§7) | `git grep -n -i dragonfly -- rustd make scripts docker-compose.yml compose.dev-infra.yml cli README.md .orly/LOCAL.md` | no output | P0 | |
 | R6 | The crate and its environment variables are gone everywhere (§7, §8) | `git grep -n -w -e afd_dragonfly -e DRAGONFLY_URL -e TEST_DRAGONFLY_URL -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!playbooks/operations/acceptance' ':!docs/RUST_ERROR_STANDARD.md'` | no output | P0 | |

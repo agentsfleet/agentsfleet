@@ -8,7 +8,7 @@ use af_core::error_code;
 use http::{Method, StatusCode, header};
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn retrying_save_after_purge_returns_gone_without_allocating_another_fleet() {
     let case = Case::create().await;
     case.fund().await;
@@ -96,7 +96,7 @@ async fn assert_retained_identity(case: &Case, key: &af_core::id::Uuid7) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_current_tag_does_not_authorize_purging_a_live_or_foreign_fleet() {
     let case = Case::create().await;
     case.fund().await;

@@ -24,7 +24,7 @@ const GATE: &str = "INSERT INTO fleet.approval_gates
 // why_new=the resolver must now wait for an admission lock, so hold the earlier slot;
 // seam=none; no_claim=park-first ordering, covered separately.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
@@ -79,7 +79,7 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uu
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_stale_claim_cannot_park_or_release_its_replacement() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner, rival]) = seeded_parts::<2>(&fixtures).await;

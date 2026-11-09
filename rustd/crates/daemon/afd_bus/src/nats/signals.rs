@@ -174,12 +174,16 @@ async fn mark(client: &Client, physical: String, deadline: Duration) -> Result<(
 pub(super) async fn pay(client: &Client, signals: &Signals, everyone: &str) -> usize {
     let owed = signals.debt().take();
     let mut paid = 0;
+    let mut failed = 0_usize;
+    let mut last_failure = None;
     for subject in owed.subjects {
         match mark(client, subject.clone(), signals.deadline).await {
             Ok(()) => paid += 1,
             Err(failure) => {
                 mark_failed(&failure);
                 signals.debt().failed(&subject);
+                failed += 1;
+                last_failure = Some(failure);
             }
         }
     }
@@ -189,19 +193,32 @@ pub(super) async fn pay(client: &Client, signals: &Signals, everyone: &str) -> u
             Err(failure) => {
                 mark_failed(&failure);
                 signals.debt().everyone();
+                failed += 1;
+                last_failure = Some(failure);
             }
         }
     }
     if paid > 0 {
         tracing::info!(event = "bus_gap_marked", markers = paid);
     }
+    if let Some(failure) = last_failure {
+        let Logged { error_code, reason } = failure.logged();
+        tracing::warn!(
+            event = "bus_gap_marks_owed",
+            error_code,
+            reason,
+            failed,
+            "markers stay owed for the next reconnect"
+        );
+    }
     paid
 }
 
-/// A marker that would not publish stays owed; the watcher retries it.
+/// One marker that would not publish, at `debug`: a reconnect can owe
+/// thousands, and the pass logs one `warn` with the count.
 fn mark_failed(failure: &crate::Error) {
     let Logged { error_code, reason } = failure.logged();
-    tracing::warn!(event = "bus_gap_mark_failed", error_code, reason);
+    tracing::debug!(event = "bus_gap_mark_failed", error_code, reason);
 }
 
 /// Pay what a reconnect owes and lift the block if nothing overtook it;

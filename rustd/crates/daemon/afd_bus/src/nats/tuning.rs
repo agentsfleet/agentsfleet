@@ -111,9 +111,17 @@ mod tests {
     }
 
     #[test]
-    fn an_unknown_field_is_refused() {
+    fn an_unknown_field_is_refused() -> TestResult {
         let parsed = serde_json::from_str::<Tuning>(r#"{"channel_capactiy": 512}"#);
-        assert!(parsed.is_err(), "a misspelt limit must not be ignored");
+        let error = parsed.err().ok_or("a misspelt limit must not be ignored")?;
+        assert_eq!(error.classify(), serde_json::error::Category::Data);
+        assert!(
+            error
+                .to_string()
+                .starts_with("unknown field `channel_capactiy`"),
+            "the refusal names the misspelt field: {error}"
+        );
+        Ok(())
     }
 
     #[test]
