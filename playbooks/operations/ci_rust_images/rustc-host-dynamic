@@ -1,0 +1,17 @@
+#!/bin/sh
+# Cargo's rustc wrapper in the musl builder; Dockerfile.alpine installs it.
+#
+# Every build in the image names its target, so cargo passes `--target` to
+# rustc for target artifacts and leaves it off for host artifacts: build
+# scripts, proc-macros and what they depend on. Host artifacts link the dynamic
+# C runtime, so a build script can load a shared library, as bindgen loads
+# libclang for boring-sys. Target artifacts, the shipped binary among them,
+# keep the toolchain's static default.
+set -eu
+
+rustc="$1"
+shift
+case " $* " in
+  *" --target "* | *" --target="*) exec "$rustc" "$@" ;;
+esac
+exec "$rustc" "$@" -C target-feature=-crt-static

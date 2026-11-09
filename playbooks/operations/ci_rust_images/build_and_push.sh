@@ -73,7 +73,7 @@ require_tool() {
 
 load_versions() {
   [ -f "$VERSIONS_FILE" ] || fatal "versions.env not found at $VERSIONS_FILE"
-  unset "${PINS[@]}"
+  unset "${PINS[@]}" IMAGE_REVISION
   set -a
   # shellcheck source=/dev/null
   . "$VERSIONS_FILE"
@@ -202,6 +202,8 @@ main() {
   [ "$subcommand" = "help" ] && usage 0
 
   load_versions
+  # The file's revision is the default; `--revision` replaces it for one build.
+  [ -n "${IMAGE_REVISION:-}" ] && revision="-$IMAGE_REVISION"
   while [ $# -gt 0 ]; do
     case "$1" in
       --rust-version)   RUST_VERSION="${2:?}"; shift 2 ;;
