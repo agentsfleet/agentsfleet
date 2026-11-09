@@ -280,7 +280,7 @@ New dependencies land with their first production callers.
 |---|---|
 | Strict message variants and bounds | `rustd/crates/protocol/af_wire/src/protocol/mod.rs`, `up.rs`, `down.rs`, `bounds.rs` |
 | Bus abstraction and typed subjects | `rustd/crates/daemon/afd_bus/src/lib.rs`, `subject.rs`, `command.rs`, `subscription.rs`, `error.rs` |
-| Dragonfly bus adapter | `rustd/crates/daemon/afd_bus/src/dragonfly/mod.rs` |
+| NATS bus adapter (M244) | `rustd/crates/daemon/afd_bus/src/nats/mod.rs`, `config.rs`, `preflight.rs`, `tuning.rs`, `signals.rs`, `debt.rs`, `hub/mod.rs` |
 | Wake notifications | `rustd/crates/daemon/afd_bus/src/wake/mod.rs` |
 | Gateway composition and errors | `rustd/crates/daemon/afd_gateway/src/lib.rs`, `error/mod.rs` |
 | Session registry and offer passes | `rustd/crates/daemon/afd_gateway/src/registry/mod.rs`, `scheduler/mod.rs`, `scheduler/recovery.rs`, `scheduler/subscriptions.rs` |
@@ -307,7 +307,7 @@ Its synchronous `shutdown` closes the adapter's subscriptions during drain.
 Subscription streams own native release behavior, and message payloads share one allocation across consumers.
 
 The adapter translates backend-specific values into `Message`, `Lagged` and `Gap` outcomes.
-M244 supplies core NATS behind this interface and moves Dragonfly's durable responsibilities into Postgres before deleting Dragonfly.
+M244 put core NATS behind this interface (`afd_bus::nats`) and moved the old broker's durable jobs into Postgres.
 The bus carries signals without adding durable replay or broker credentials to runners.
 
 The gateway remains a concrete session owner over existing services.

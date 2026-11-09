@@ -252,10 +252,10 @@ A fleet tail sends `hello`, then one `catching_up` with `dropped: 0` once the su
 
 The Dragonfly Bus implementation, `afd_dragonfly`, the `redis` dependency, the compose service, `TEST_DRAGONFLY_*`, `BENCH_BUS` and the cluster scripts go; every error seam lifts the Bus or `afd_db` error instead. `bench-outbound` and the cardinality lane run on the new paths, and their median runs replace the baselines. `.orly/LOCAL.md`'s datastore bullet states: core NATS, three nodes in one region, no JetStream or KV, `NATS_URL`, Postgres for every durable fact, boot refusals. Its lane, auth and probe lines follow, and it names no retired store. `datastore_scaling.md` records the decision with Indy's words, which its own rule requires before the destination changes. Its Dragonfly history stays as dated sections that name no removed identifier, so R6 stays clean.
 
-- **Dimension 7.1** — nothing names Dragonfly in code or tooling → Test R5's `git grep` (manual): prints nothing.
+- **Dimension 7.1** — DONE — nothing names Dragonfly in code or tooling → Test R5's `git grep` (manual): prints nothing.
 - **Dimension 7.2** — DONE — an unreachable bus names its environment variable → Test `boot_names_nats_url_when_the_bus_is_unreachable` (integration, `agentsfleetd/tests/integration_serve.rs`, which boots against the lane's Postgres): a dead seed exits non-zero with `UZ-STARTUP-004` and `NATS_URL` in the line.
 - **Dimension 7.3** — DONE — a missing environment variable is refused before any connect → Test `boot_refuses_an_unset_nats_url` (unit): an empty `NATS_URL` refuses with `UZ-STARTUP-001`.
-- **Dimension 7.4** — the pages read clean → Test `orly gate verify` (integration): 0 `docs.language` findings on the edited pages and `.orly/LOCAL.md`.
+- **Dimension 7.4** — DONE — the pages read clean → Test `orly gate verify` (integration): 0 `docs.language` findings on the edited pages and `.orly/LOCAL.md`.
 
 ### §8 — Deploy NATS, and roll the daemon over (blocked on Indy at CHORE(open))
 
@@ -443,4 +443,10 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
   > Indy (Nov 09, 2026: 12:35 AM): "donot use that term KNOB use releavnt ones" — context: constants are `URL_ENV` and `NAMESPACE_ENV`; prose says "environment variable" or "setting".
   > Indy (Nov 09, 2026: 12:04 AM): "If NATS is a winner then you will proceed on a PR, if not you need to prepare me a report with a rubric pros and cons for indy to signoff nats." — context: §3's failing-rung path produces that report before any deletion.
   > Indy (Nov 09, 2026: 12:05 AM): chose "Run when adapter ready" — context: §3's verdict runs on this branch's Bus-level tail lane once the NATS adapter is ready, with `BENCH_BUS` swapping only the adapter. One interleaved pair reruns after M243 merges, before the Pull Request leaves draft.
-- **Deferrals and transfers** — none. M241_001 §6 and the drill half of its §7 arrive here as §1, mapped Dimension for Dimension (M241 6.1-6.4 → 1.1, 1.3-1.5; 7.2-7.3 → 1.6), under Indy's 02:13 PM quote above.
+- **Overnight run to a Pull Request** —
+  > Indy (Nov 09, 2026: 09:10 PM): "i suggest you also dleete all the Dragonfly (nuke them 2) and keep goin gfor a PR … ensure your PR CI gates are green, greptile is resolved. Donot merged since PR 819 must go first." — context: §7 deletes every Dragonfly path, M243's Bus adapter included, and this Pull Request merges only after #819.
+  > Indy (Nov 09, 2026: 09:12 PM): chose "Undraft when green" — context: #820 leaves draft once CI is green, Greptile is resolved and `orly gate pr` passes. It is not merged.
+  > Indy (Nov 09, 2026: 09:12 PM): "skip the review with codex (both rounds)" — context: both Codex review rounds are dropped; gstack review and `orly-standards-reviewer` remain.
+  > Indy (Nov 09, 2026: 09:12 PM): chose "Cover M244, flag M243" — context: M244's changed lines reach the floor. A workspace gap left by M243's lines goes to #818, and no floor changes.
+- **Deferrals and transfers** — M241_001 §6 and the drill half of its §7 arrive here as §1, mapped Dimension for Dimension (M241 6.1-6.4 → 1.1, 1.3-1.5; 7.2-7.3 → 1.6), under Indy's 02:13 PM quote above. The docs-repository change for the `/readyz` text moves to Indy, after merge:
+  > Indy (Nov 09, 2026: 09:12 PM): "not needed now, we do it after later by Indy"

@@ -10,17 +10,17 @@ facts.
 
 - Write the product as `agentsfleet`; binaries are `agentsfleetd` and
   `agentsfleet-runner`. API entities use `fleet`, `fleet_id`, and `/fleets`.
-- The datastore is Dragonfly, cluster-only, per [the datastore requirements](../docs/architecture/datastore_scaling.md).
-  `agentsfleetd` speaks one transport — redis-rs `cluster_async` over RESP3 — with no standalone
-  path and no topology selector; a seed that is not a cluster refuses boot. Four self-hosted
-  Dragonfly processes in one region are the deployment target, with Dragonfly Cloud Swarm the
-  later move once its control plane is worth its bill (Indy, 2026-09-14, superseding the earlier
-  "Swarm is the required target" rule); the local lane is a real four-node cluster. Redis is not a supported
-  backend: Indy called the cutover on 2026-09-12 (M192_001 Discovery), superseding the earlier
-  "Redis remains the default" rule. The crate is `afd_dragonfly`; the boot knob is
-  `DRAGONFLY_URL`, declared at `rustd/crates/daemon/afd_dragonfly/src/config.rs`. The retired Zig
-  daemon's `REDIS_*` spelling went with it — one URL for both roles, and a seed that answers
-  as a single server is refused at `serve/runtime.rs` before the daemon serves anything.
+- Postgres holds every durable fact; the message bus is core NATS and holds
+  none, per [the datastore requirements](../docs/architecture/datastore_scaling.md)
+  (Indy, Nov 06, 2026, M244_001 Discovery). Three NATS nodes in one region,
+  clustered by routes, are the deployment target, with JetStream, KV and the
+  object store off everywhere. The crate is `afd_bus`; the boot knob is
+  `NATS_URL`, comma-separated seeds with credentials in the userinfo, declared
+  at `rustd/crates/daemon/afd_bus/src/nats/config.rs`. Boot refuses, as
+  `UZ-STARTUP-004`, a seed it cannot reach and a server that reports JetStream,
+  no cluster, no headers or a `max_payload` under the largest frame
+  (`afd_bus/src/nats/preflight.rs`). The local lane is a real three-node
+  cluster: compose `nats-1`, `nats-2` and `nats-3`.
 - Drive work with `orly gate` (work → verify → pr). Hooks run `orly gate work`;
   `orly gate pr` runs by hand at CHORE(close), before `gh pr create`.
   `.orly/orly.json` declares `verify.lint`, `verify.unit`,
@@ -30,7 +30,7 @@ facts.
 - **Two lanes need live datastores, and only two.** The Zig integration and
   memory-leak lanes went with the rest of the Zig gating; `make/test-infra.mk`
   survived them, and M176 built `make test-integration-rustd` on it — docker
-  compose Postgres and Dragonfly, schemas reset per run. `make test-coverage-rustd`
+  compose Postgres and NATS, schemas reset per run. `make test-coverage-rustd`
   is the second: it runs the same `#[ignore]`d tests under the coverage
   instrument with `--include-ignored`. Nothing else a developer runs needs
   either: `make test-unit-all` stays datastore-free, because every Rust test
@@ -40,7 +40,7 @@ facts.
   equivalents.** lint → `make lint-all`
   (Rust lint rides `lint-rustd`) ·
   unit → `make test-unit-all` (cargo workspace + every TypeScript coverage
-  gate) · integration → `make test-integration-rustd` (live Postgres + Dragonfly) ·
+  gate) · integration → `make test-integration-rustd` (live Postgres + NATS) ·
   version → `make check-version` · dry lanes → `make dry-app` /
   `make dry`. A package-scoped runner
   (`cd ui/packages/app && bun run test`, `cargo test -p af_wire`, …) is
@@ -121,7 +121,7 @@ repository:
 - **OpenAPI:** `public/openapi.json` is regenerated from `rustd/` with
   `--no-banner`, never edited by hand.
 - **Auth:** `afd_auth`, `afd_credential`, `ui/packages/app/lib/auth/**` and the
-  Dragonfly `session/verify_consume.lua` script.
+  device-session statements in `afd_tenant/src/sql/session/`.
 - **Events:** test helpers come from the `afd_events` `test-util` feature.
 
 ## Running lanes here
@@ -142,9 +142,10 @@ repository:
   after merge), so a rendered-page change runs its specs locally.
 - Run one lane per checkout. Stop a run by its process ID, never `pkill -f`. A
   vitest coverage-lock red is not a test failure.
-- Dragonfly nodes announce 127.0.0.1, so probe inside the container with
-  `redis-cli -c`. Recreate the cluster only through `make _ensure-test-infra`,
-  and force-recreate after changing `scripts/dragonfly-cluster.sh`.
+- The NATS nodes run `--no_advertise`, so a host client uses its whole seed
+  list. Probe a node with `docker compose exec nats-1 wget -q -O -
+  http://127.0.0.1:8222/healthz`; recreate the cluster only through
+  `make _ensure-test-infra`.
 - Linux-only `afr_sandbox` and `afr_executor` code is linted and tested on
   Linux; a Codex cloud task provides one.
 - cargo-mutants runs `--in-place` in a throwaway worktree.

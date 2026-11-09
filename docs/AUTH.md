@@ -340,9 +340,9 @@ and answers as a replay. An index holds under concurrency and a read never can.
 
 A failed writeback is logged with the tenant and the reason; the subject stays out of the log line. The cost is a person whose next token carries no tenant. An operator repairs that from the provider's dashboard, and only if the log gave them something to repair from.
 
-**Signup writes nothing to Dragonfly.** No key, no stream, no queue. The account
-is five Postgres rows and one outbound call to the identity provider; the
-datastore learns about a tenant when that tenant's first fleet is installed.
+**Signup publishes nothing on the bus.** `afd_tenant`, which runs it, does not
+depend on `afd_bus` (`rustd/crates/daemon/afd_tenant/Cargo.toml`). The account
+is five Postgres rows and one outbound call to the identity provider.
 
 ## Memberships and roles
 
