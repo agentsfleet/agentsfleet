@@ -1,5 +1,9 @@
-//! Boot reads one knob: `NATS_URL`, comma-separated seeds with credentials in
+//! Boot reads one setting: `NATS_URL`, comma-separated seeds with credentials in
 //! the userinfo. The development namespace prefixes every subject.
+//!
+//! The password is letters and digits: `#`, `?` or `/` would end the URL's
+//! userinfo here, and the Fly node (`deploy/fly/nats-*/Dockerfile`) splits the
+//! same string on `@` and `:`.
 
 use std::str::FromStr as _;
 
