@@ -389,3 +389,7 @@ After pulling `3e3d8f1b0`, `make lint-rustd` passed, including rustfmt and works
 The final focused `cargo test -p afd_gateway --all-features --lib --locked` passed 20 tests with zero failures and one live test ignored.
 These results include the scheduler source and incoming dependency patch, with its recorded unused-import warning.
 Full Rust shards, frontend coverage and native integration were not rerun for this checkpoint; final combined verification remains due after code completion.
+
+Immediately before publication, Claude reported the r2 builder image published for both architectures in issue 818 comment 6743710519.
+The native Linux CI reruns still need results; the earlier image-pull failures happened before publication.
+This update required only handoff corrections; the checked scheduler source is unchanged.
