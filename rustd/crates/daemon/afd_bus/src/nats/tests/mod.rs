@@ -13,6 +13,8 @@ use af_observability::metrics::label::bus::GapCause as Cause;
 use super::{GAP_ALL, Tuning, debt::Owed, hub::Channels, options_for, signals, spelling};
 use crate::{Error, Received, Subject, error::ErrorKind};
 
+mod live_debt;
+
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 /// A NATS address nothing listens on: port 1 is reserved and unbound.
@@ -88,6 +90,18 @@ fn a_disconnect_during_the_payment_keeps_publishes_blocked() {
         "the later disconnect wins"
     );
     assert!(signals.blocked(), "publishes still fail fast");
+}
+
+#[test]
+fn a_payment_that_begins_while_down_never_lifts_the_block() {
+    let signals = signals::Signals::new(&Tuning::default());
+    signals.observe(&Event::Disconnected, Instant::now());
+    let before = signals.disconnects();
+    assert!(
+        !signals.unblock_if_settled(before),
+        "only a reconnect lifts it"
+    );
+    assert!(signals.blocked());
 }
 
 #[test]

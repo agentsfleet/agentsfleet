@@ -43,3 +43,40 @@ async fn simultaneous_dispatchers_deliver_every_answer_once() {
     token.cancel();
     lanes.drain().await;
 }
+
+/// The room the worker claims into shrinks with every job the lanes hold and
+/// comes back as each ends, so a claim never takes a row no slot is free for.
+#[tokio::test(flavor = "multi_thread")]
+async fn room_shrinks_with_each_held_job_and_returns_as_each_ends() {
+    let token = CancellationToken::new();
+    let (lanes, poster) = lanes_against(&token);
+    let gates: Vec<_> = (1..=IN_FLIGHT_DELIVERIES)
+        .map(|w| poster.shut(&workspace(w)))
+        .collect();
+    assert_eq!(
+        lanes.room(),
+        IN_FLIGHT_DELIVERIES,
+        "idle lanes have every slot"
+    );
+
+    for w in 1..=IN_FLIGHT_DELIVERIES {
+        lanes.dispatch(job(w, 1)).await;
+    }
+    assert_eq!(lanes.room(), 0, "every slot is held");
+    let first = gates.first().expect("one gate per slot");
+    first.notify_one();
+    tokio::time::timeout(PATIENCE, lanes.finished())
+        .await
+        .expect("the opened delivery ends");
+    assert_eq!(lanes.room(), 1, "the ended job's slot is free");
+
+    for gate in &gates {
+        gate.notify_one();
+    }
+    await_until("every slot to come back", || {
+        lanes.room() == IN_FLIGHT_DELIVERIES
+    })
+    .await;
+    token.cancel();
+    lanes.drain().await;
+}

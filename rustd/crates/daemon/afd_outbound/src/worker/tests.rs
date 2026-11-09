@@ -156,7 +156,7 @@ async fn a_refused_claim_logs_its_start_and_takes_nothing() -> TestResult {
     let database = afd_db::test_util::unreachable_db();
     let lanes = Lanes::new(posters(), database.clone(), CancellationToken::new());
 
-    let claimed = claim_once(&database, &Entropy::new(), &lanes, Via::Ping).await;
+    let claimed = claim_once(&database, &Entropy::new(), &lanes, Via::Ping, lanes.room()).await;
 
     let failure = claimed.err().ok_or("a refused claim takes nothing")?;
     assert_eq!(failure.code(), error_code::INTERNAL_DB_UNAVAILABLE);
@@ -177,7 +177,7 @@ async fn a_refused_draw_claims_nothing() -> TestResult {
     let (entropy, control) = Entropy::new_mocked();
     control.fail_next();
 
-    let claimed = claim_once(&database, &entropy, &lanes, Via::Scan).await;
+    let claimed = claim_once(&database, &entropy, &lanes, Via::Scan, lanes.room()).await;
 
     let failure = claimed.err().ok_or("a claim with no token takes nothing")?;
     assert_eq!(failure.code(), error_code::INTERNAL_OPERATION_FAILED);

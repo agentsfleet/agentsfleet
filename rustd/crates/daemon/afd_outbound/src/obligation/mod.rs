@@ -152,17 +152,59 @@ pub async fn owe(
     Ok(written.is_some())
 }
 
-/// Claims up to `limit` lane heads for `token`, in `sequence` order.
+/// Claims up to `limit` lane heads for `token`, in `sequence` order, and
+/// commits the claim.
 ///
 /// # Errors
 /// Reports a database that would not answer.
 pub async fn claim(database: &Db, limit: i64, token: &Uuid7) -> Result<Vec<Claimed>> {
-    let mut connection = database.acquire().await?;
+    let mut transaction = sqlx::Transaction::begin(database.acquire().await?, None)
+        .await
+        .map_err(crate::error::query(CONTEXT_CLAIM))?;
+    let claimed = claim_in(&mut transaction, limit, token).await?;
+    transaction
+        .commit()
+        .await
+        .map_err(crate::error::query(CONTEXT_CLAIM))?;
+    Ok(claimed)
+}
+
+/// [`claim`], inside the caller's transaction, which commits it.
+///
+/// # A claim locks its lanes before it chooses their heads
+///
+/// The lanes are locked for the transaction first, and the heads chosen by a
+/// second statement, whose snapshot postdates the locks. A claim that guarded
+/// only the rows it picked would race a row committing late: one claim takes
+/// a lane's later row, the earlier row commits, and a second claim that
+/// starts before the first commits sees the earlier row as the head and the
+/// later row's claim as not yet written, so the lane gets two holders. The
+/// locks hold until the caller's transaction ends, so the caller commits at
+/// once.
+///
+/// # Errors
+/// Reports a database that would not answer.
+pub async fn claim_in(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    limit: i64,
+    token: &Uuid7,
+) -> Result<Vec<Claimed>> {
+    let lanes: Vec<(String, Uuid7)> = sqlx::query_as(sql::LOCK_LANES)
+        .bind(limit)
+        .fetch_all(&mut **transaction)
+        .await
+        .map_err(crate::error::query(CONTEXT_CLAIM))?;
+    if lanes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let (providers, workspaces): (Vec<String>, Vec<Uuid7>) = lanes.into_iter().unzip();
     let rows = sqlx::query_as::<_, ClaimedRow>(sql::CLAIM_HEADS)
         .bind(limit)
         .bind(token)
         .bind(CLAIM_TTL)
-        .fetch_all(&mut *connection)
+        .bind(&providers)
+        .bind(&workspaces)
+        .fetch_all(&mut **transaction)
         .await
         .map_err(crate::error::query(CONTEXT_CLAIM))?;
     Ok(rows

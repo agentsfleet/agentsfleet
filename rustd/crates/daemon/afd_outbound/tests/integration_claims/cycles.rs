@@ -223,8 +223,9 @@ async fn a_lapsed_holder_neither_stamps_nor_releases() {
     ledger.cleanup().await;
 }
 
-/// A refusal for a row another holder has taken stamps nothing and announces
-/// nothing: abandoning it is the current holder's call.
+/// A refusal for a row another holder took while the post was in flight
+/// stamps nothing and announces nothing: abandoning it is the current
+/// holder's call.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_refusal_for_a_row_another_holder_took_is_neither_stamped_nor_announced() {
@@ -237,8 +238,8 @@ async fn a_refusal_for_a_row_another_holder_took_is_neither_stamped_nor_announce
         .expect("the claim");
     assert_eq!(claimed.len(), 1, "one row is claimed");
     let job = claimed.into_iter().next().expect("the claimed row");
-    ledger.steal(&event).await;
-    let poster = Recorder::refusing(event.clone());
+    let gate = CancellationToken::new();
+    let poster = Recorder::refusing(event.clone()).with_gate(gate.clone());
     let token = CancellationToken::new();
     let lanes = Lanes::new(
         Posters {
@@ -249,6 +250,9 @@ async fn a_refusal_for_a_row_another_holder_took_is_neither_stamped_nor_announce
     );
 
     lanes.dispatch(Box::new(job)).await;
+    until(|| poster.attempts_of(&event) == 1).await;
+    ledger.steal(&event).await;
+    gate.cancel();
     tokio::time::timeout(crate::ledger::PATIENCE, lanes.finished())
         .await
         .expect("the cycle ends");

@@ -6,6 +6,7 @@ use std::time::Duration;
 
 use af_core::id::Uuid7;
 use afd_outbound::{Deliver, Outgoing, Verdict};
+use tokio_util::sync::CancellationToken;
 
 #[derive(Debug, Default)]
 struct Log {
@@ -27,6 +28,8 @@ pub(crate) struct Recorder {
     failing: Option<Uuid7>,
     refusing: Option<Uuid7>,
     slow: Duration,
+    /// Held shut until cancelled: every attempt waits on it before answering.
+    gate: Option<CancellationToken>,
 }
 
 impl Default for Recorder {
@@ -36,6 +39,7 @@ impl Default for Recorder {
             failing: None,
             refusing: None,
             slow: OVERLAP,
+            gate: None,
         }
     }
 }
@@ -58,6 +62,12 @@ impl Recorder {
     /// Every attempt takes `slow` before it answers.
     pub(crate) const fn with_slow(mut self, slow: Duration) -> Self {
         self.slow = slow;
+        self
+    }
+
+    /// Every attempt waits until `gate` is cancelled before it answers.
+    pub(crate) fn with_gate(mut self, gate: CancellationToken) -> Self {
+        self.gate = Some(gate);
         self
     }
 
@@ -107,9 +117,12 @@ impl Deliver for Recorder {
         let (workspace, event) = (job.workspace_id.clone(), job.event_id.clone());
         let failing = self.failing.as_ref() == Some(&event);
         let refusing = self.refusing.as_ref() == Some(&event);
-        let (log, slow) = (Arc::clone(&self.log), self.slow);
+        let (log, slow, gate) = (Arc::clone(&self.log), self.slow, self.gate.clone());
         async move {
             started(&log, &workspace, &event);
+            if let Some(gate) = gate {
+                gate.cancelled().await;
+            }
             tokio::time::sleep(slow).await;
             let mut log = log.lock().unwrap_or_else(PoisonError::into_inner);
             if let Some(held) = log.in_flight.get_mut(&workspace) {
