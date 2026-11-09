@@ -20,15 +20,6 @@ use tokio::sync::Barrier;
 
 const SPENDERS: usize = 100;
 
-async fn rows(database: &afd_db::Db, provider: Provider) -> i64 {
-    let mut connection = database.acquire().await.expect("a connection");
-    sqlx::query_scalar("SELECT count(*) FROM connector.oauth_nonces WHERE provider = $1")
-        .bind(provider.id())
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the count reads")
-}
-
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn nonce_spends_once_under_contention() {
@@ -129,29 +120,55 @@ async fn expired_nonce_is_refused() {
     .await
     .expect("the expired row is written");
     drop(connection);
-    let before = rows(&database, Provider::Zoho).await;
-
     let spent = nonce::consume(&database, Provider::Zoho, &stale)
         .await
         .expect("the store answered");
 
     assert!(!spent, "an expired nonce answers nobody");
-    assert_eq!(
-        rows(&database, Provider::Zoho).await,
-        before,
-        "a refused spend deletes nothing; the sweep owns expired rows"
+    assert!(
+        !exists(&database, &expired_id).await,
+        "presenting an expired nonce removes it; nothing could spend it"
     );
+}
+
+/// An expired nonce nobody presents is left for the sweep, which removes it.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn the_sweep_removes_an_expired_nonce_nobody_presented() {
+    let lane = TestDatabase::shared();
+    let database = lane.open(DbRole::Api, &[]).await;
+    let entropy = Entropy::new();
+    let stale = nonce::mint(&entropy).expect("the host has entropy");
+    let expired_id = mint_id();
+    let mut connection = database.acquire().await.expect("a connection");
+    sqlx::query(
+        "INSERT INTO connector.oauth_nonces (id, provider, nonce_digest, created_at, expires_at) \
+         VALUES ($1, $2, sha256(convert_to($3, 'UTF8')), now(), clock_timestamp() - interval '1 second')",
+    )
+    .bind(&expired_id)
+    .bind(Provider::Zoho.id())
+    .bind(&stale)
+    .execute(&mut *connection)
+    .await
+    .expect("the expired row is written");
+    drop(connection);
 
     let swept = nonce::sweep_expired(&database, 1_000)
         .await
         .expect("the sweep runs");
     assert!(swept >= 1, "a pass removes the expired row");
+    assert!(
+        !exists(&database, &expired_id).await,
+        "the expired nonce is gone"
+    );
+}
+
+/// Whether the nonce row `id` is still stored.
+async fn exists(database: &afd_db::Db, id: &af_core::id::Uuid7) -> bool {
     let mut connection = database.acquire().await.expect("a connection");
-    let left: bool =
-        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM connector.oauth_nonces WHERE id = $1)")
-            .bind(&expired_id)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the existence check reads");
-    assert!(!left, "the expired nonce is gone");
+    sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM connector.oauth_nonces WHERE id = $1)")
+        .bind(id)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the existence check reads")
 }
