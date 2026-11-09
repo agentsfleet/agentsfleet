@@ -28,6 +28,7 @@ path = "src/main.rs"
 [features]
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [
+    "afd_authoring/test-util",
     "afd_api/test-util",
     "afd_auth/test-util",
     "afd_connector/test-util",
@@ -44,6 +45,8 @@ openapi = ["afd_api/openapi"]
 
 [dependencies]
 afd_bus.workspace = true
+afd_gateway.workspace = true
+af_stream.workspace = true
 garde.workspace = true
 serde_json.workspace = true
 af_inference.workspace = true
@@ -154,6 +157,7 @@ tracing-subscriber.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+af_stream = { workspace = true, features = ["test-util"] }
 afd_bus = { workspace = true, features = ["test-util"] }
 af_webhook = { workspace = true, features = ["test-util"] }
 # The overlap scenario wraps the unsandboxed engine to stall its prepare.

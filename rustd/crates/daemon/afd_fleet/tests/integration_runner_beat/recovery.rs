@@ -78,7 +78,6 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                     selftest: None,
                     holds: HeldFleets::default(),
                     closing: false,
-                    wake: false,
                 },
                 None,
                 fixtures.after(offset),

@@ -33,7 +33,7 @@ impl Fleet {
 
     /// An instance that will carry `streams` at once and no more.
     pub(crate) fn carrying_at_most(mut self, streams: usize) -> Self {
-        self.live = Live::detached(Ceiling::new(streams));
+        self.live = Live::detached(StreamLimit::new(streams));
         self
     }
 
@@ -175,7 +175,7 @@ impl Fleet {
     pub(crate) fn with_live_hub(mut self, hub: afd_dragonfly::SubscriptionHub) -> Self {
         self.live = Live::new(
             afd_bus::test_util::with_hub(hub).expect("fixture bus"),
-            Ceiling::new(DEFAULT_STREAM_CEILING),
+            StreamLimit::new(DEFAULT_STREAM_CEILING),
         );
         self
     }

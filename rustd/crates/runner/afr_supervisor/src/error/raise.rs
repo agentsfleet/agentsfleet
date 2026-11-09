@@ -14,9 +14,10 @@ use crate::client::Verb;
 // WHICH verb failed, which only the call site can say. An address error has
 // one meaning wherever it arises, so it lifts.
 af_core::error_lifts!(Error, ErrorKind:
+    af_stream::Error => Stream,
+    tokio::time::error::Elapsed => StreamTimeout,
     std::io::Error => Io,
     af_crypto::error::Error => Crypto,
-    tempfile::PersistError => Persist,
     af_core::error::Error => Identifier,
     tokio::task::JoinError => Task,
     url::ParseError => Address,
@@ -148,6 +149,26 @@ pub(crate) fn boundary(
 ) -> Error {
     ErrorKind::Boundary {
         detail,
+        source: Box::new(source),
+    }
+    .into()
+}
+
+/// Preserve a native channel failure without changing its retry classification.
+pub(crate) fn stream_disconnected(
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> super::Error {
+    super::ErrorKind::StreamDisconnected {
+        source: Box::new(source),
+    }
+    .into()
+}
+
+/// Preserve the cause of a refused native capacity or delivery invariant.
+pub(crate) fn stream_protocol(
+    source: impl std::error::Error + Send + Sync + 'static,
+) -> super::Error {
+    super::ErrorKind::StreamProtocolSource {
         source: Box::new(source),
     }
     .into()

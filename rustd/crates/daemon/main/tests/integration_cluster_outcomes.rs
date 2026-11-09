@@ -47,9 +47,7 @@ use crate::reads::{
     balance, counter_column, lease_column, ledger_rows, relay_settled, unsettled_lines,
 };
 use crate::tail::{next_frame, settle};
-use crate::wire::{
-    capable_beat, field, json, poll_for_lease, poll_for_seeded_lease, post, report_body,
-};
+use crate::wire::{capable_beat, field, post, report_body, wait_for_offer, wait_for_seeded_offer};
 
 /// The event type the daemon has an execution path for, so an extra append is
 /// leasable rather than ended as unsupported. `EventType` is a closed set and
@@ -63,15 +61,14 @@ const CHUNK_TEXT: &str = "the cluster carried this across a shard";
 /// A runner that has proven its capabilities is leasable; one that has not
 /// reads degraded and is correctly answered no-work, which would make every
 /// arm below pass for the wrong reason.
-async fn prove_capabilities(http: &reqwest::Client, run: &Scenario) {
-    let beat = post(http, run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(
-        beat.status().as_u16(),
-        200,
-        "a heartbeat is accepted on the documented path"
+async fn prove_capabilities(run: &Scenario) {
+    let beat = crate::wire::heartbeat(run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
     );
     assert_eq!(
-        field(&json(beat).await, "degraded"),
+        field(&beat, "degraded"),
         &json!(false),
         "and the proven capabilities clear the degraded verdict"
     );
@@ -107,17 +104,14 @@ async fn a_second_admission_lands_on_the_same_slot(run: &Scenario) -> Uuid7 {
 /// not follow the second read would answer `lease: null` — a documented,
 /// perfectly valid response — from a fleet that is holding work. That is the
 /// failure this arm exists for: it does not look like an error anywhere.
-async fn a_poll_crosses_the_partition_and_the_stream(
-    http: &reqwest::Client,
-    run: &Scenario,
-) -> (String, u64) {
+async fn a_poll_crosses_the_partition_and_the_stream(run: &Scenario) -> (String, u64) {
     // WHICH fleet answers is a rotation's question, not one request's: the
-    // index is sixteen partitions and a poll reads one. `poll_for_seeded_lease`
+    // index is sixteen partitions and a poll reads one. `wait_for_seeded_offer`
     // turns the rotation and stops on this scenario's own event, which is the
     // OLDEST entry on this fleet's stream — so a lease coming back at all is
     // the stream read having followed the partition read to a different node
     // rather than answering from whatever was local.
-    poll_for_seeded_lease(http, run).await
+    wait_for_seeded_offer(run).await
 }
 
 /// A frame the daemon publishes reaches a subscriber that attached elsewhere.
@@ -185,19 +179,14 @@ async fn a_frame_crosses_the_shard_to_its_subscriber(
 /// committed second would lose the result on a crash between them; one that
 /// charged per delivery would debit a retried report twice. Both are invisible
 /// in the success path, so the repeat is asserted rather than assumed.
-async fn a_report_settles_once_across_both_stores(
-    http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
-    fence: u64,
-) {
+async fn a_report_settles_once_across_both_stores(run: &Scenario, lease_id: &str, fence: u64) {
     let before = balance(run).await;
     let report = report_body(lease_id, &run.event_id, fence);
 
-    let settled = post(http, run, "/v1/runners/me/reports", &report).await;
-    assert_eq!(settled.status().as_u16(), 200, "the report is accepted");
+    let settled = crate::wire::report(run, &report).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(
-        json(settled).await,
+        settled.expect("the native report is acknowledged"),
         json!({"ok": true}),
         "and answers in the shape a runner parses"
     );
@@ -224,13 +213,8 @@ async fn a_report_settles_once_across_both_stores(
         "a priced run draws the wallet down: {before:?} → {after:?}"
     );
 
-    let repeated = post(http, run, "/v1/runners/me/reports", &report).await;
-    assert_eq!(
-        repeated.status().as_u16(),
-        200,
-        "a repeat is acknowledged rather than refused — a runner replays because \
-         it did not hear the first answer, and refusing teaches it to retry forever"
-    );
+    let repeated = crate::wire::report(run, &report).await;
+    assert!(repeated.is_ok(), "native report refused: {repeated:?}");
     assert_eq!(
         ledger_rows(run).await,
         logged,
@@ -260,14 +244,13 @@ async fn a_report_settles_once_across_both_stores(
 /// documented outcome intact on THIS request and loses the next event
 /// entirely — which is why the remaining work is claimed rather than counted.
 async fn the_fleet_is_still_discoverable_for_its_remaining_work(
-    http: &reqwest::Client,
     run: &Scenario,
     second_event: &Uuid7,
 ) {
     // A rotation rather than one request: the second event is discoverable
     // only on the poll that samples its partition, and the helper carries the
     // diagnosis if no poll in the budget is handed it.
-    let (_lease_id, _fence) = poll_for_lease(http, run, second_event).await;
+    let (_lease_id, _fence) = wait_for_offer(run, second_event).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -281,12 +264,12 @@ async fn test_cluster_preserves_application_outcomes() {
     )]
     let http = reqwest::Client::new();
 
-    prove_capabilities(&http, &run).await;
+    prove_capabilities(&run).await;
     let second_event = a_second_admission_lands_on_the_same_slot(&run).await;
-    let (lease_id, fence) = a_poll_crosses_the_partition_and_the_stream(&http, &run).await;
+    let (lease_id, fence) = a_poll_crosses_the_partition_and_the_stream(&run).await;
     a_frame_crosses_the_shard_to_its_subscriber(&http, &run, &lease_id).await;
-    a_report_settles_once_across_both_stores(&http, &run, &lease_id, fence).await;
-    the_fleet_is_still_discoverable_for_its_remaining_work(&http, &run, &second_event).await;
+    a_report_settles_once_across_both_stores(&run, &lease_id, fence).await;
+    the_fleet_is_still_discoverable_for_its_remaining_work(&run, &second_event).await;
 
     supervisor.shutdown().await;
     run.cleanup().await;

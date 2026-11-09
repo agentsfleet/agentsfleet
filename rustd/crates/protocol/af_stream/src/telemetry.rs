@@ -3,7 +3,9 @@
 use tokio::time::Instant;
 
 use af_observability::{
-    metrics::label::fleet::{StreamFallback, StreamOutcome, StreamStage, StreamTransport},
+    metrics::label::fleet::{
+        StreamFallback, StreamOutcome, StreamPeer, StreamStage, StreamTlsOutcome, StreamTransport,
+    },
     producers::fleet::runner::stream,
 };
 use tracing::Span;
@@ -107,6 +109,43 @@ impl Drop for Observation {
                 io_kind
             ),
         }
+    }
+}
+
+pub(crate) fn security(transport: Transport, peer: StreamPeer, group: crate::tls::KeyExchange) {
+    let accepted = group == crate::tls::KeyExchange::X25519MlKem768;
+    let outcome = if accepted {
+        StreamTlsOutcome::Accepted
+    } else {
+        StreamTlsOutcome::Failed
+    };
+    stream::tls(transport.into(), peer, group.into(), outcome);
+    let transport = transport.as_str();
+    let role = peer.as_str();
+    let key_exchange = group.as_str();
+    let post_quantum_key_exchange = accepted;
+    if accepted {
+        tracing::info!(
+            event = "runner_stream_tls_negotiated",
+            transport,
+            role,
+            key_exchange,
+            post_quantum_key_exchange
+        );
+    } else {
+        let error_code = if group == crate::tls::KeyExchange::Other {
+            af_core::error_code::INTERNAL_OPERATION_FAILED.as_str()
+        } else {
+            af_core::error_code::RUN_PROTOCOL_UNSUPPORTED.as_str()
+        };
+        tracing::warn!(
+            event = "runner_stream_tls_failed",
+            error_code,
+            transport,
+            role,
+            key_exchange,
+            post_quantum_key_exchange
+        );
     }
 }
 

@@ -6,14 +6,12 @@
 //! as a sequence of decisions interleaved with serialization.
 
 use af_core::id::Uuid7;
-use af_core::timing::NO_WORK_RETRY_AFTER;
 use af_wire::decision::DecisionAssignment;
 use af_wire::event::{EventEnvelope, EventType};
-use af_wire::lease::{LeasePayload, LeaseResponse, SecretDelivery, TaggedLease, Turn};
+use af_wire::lease::{LeasePayload, SecretDelivery, Turn};
 use af_wire::memory::MemoryHydrateResponse;
 use af_wire::policy::ExecutionPolicy;
 
-use crate::error::{DETAIL_EVENT_MALFORMED, Result, rejected};
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
 
@@ -26,44 +24,10 @@ pub(super) const EVENT_LEASED: &str = "runner_lease_issued";
 /// The event a refused delivery is logged under.
 pub(super) const EVENT_REFUSED: &str = "runner_lease_refused";
 
-/// A poll that issued nothing, logged with why.
-///
-/// The reason reaches the LOG and never the wire. A runner cannot act on the
-/// difference between "no fleet was ready" and "a human owes an answer" — it
-/// waits and asks again either way — and telling it would describe this
-/// daemon's internal state to a caller with no use for it.
-///
-/// # Errors
-/// Only a serialization failure of a fixed, field-free shape, which is
-/// unreachable; it is still a `Result` so no caller has to learn that.
-pub(super) fn no_work(runner_id: &Uuid7, reason: &str) -> Result<String> {
-    let runner_id = runner_id.as_str();
-    tracing::info!(
-        event = EVENT_NO_WORK,
-        runner_id,
-        reason,
-        "the poll issued no lease"
-    );
-    answer(None)
-}
-
-/// One `LeaseResponse`, serialized.
-///
-/// The backoff hint rides on the EMPTY answer only: a runner handed work has
-/// somewhere better to be than a sleep.
-///
-/// # Errors
-/// Reports a payload that would not serialize.
-pub(super) fn answer(lease: Option<LeasePayload<'_>>) -> Result<String> {
-    // A wire span spelled as a count of milliseconds, which `af_wire` defines.
-    let retry_after_ms = lease.is_none().then(|| {
-        u32::try_from(af_core::clock::saturating_millis(NO_WORK_RETRY_AFTER)).unwrap_or(u32::MAX)
-    });
-    serde_json::to_string(&LeaseResponse {
-        lease: lease.map(|payload| TaggedLease::<serde_json::Value>::Fleet(Box::new(payload))),
-        retry_after_ms,
-    })
-    .map_err(|_shape| rejected(DETAIL_EVENT_MALFORMED))
+/// A placement decision that sends no frame; its reason stays in bounded operator telemetry.
+pub(super) fn no_work(runner: &Uuid7, reason: &str) {
+    let runner_id = runner.as_str();
+    tracing::debug!(event = EVENT_NO_WORK, runner_id, reason);
 }
 
 /// What a lease carries about the fleet beyond its event: the thread's earlier
@@ -78,19 +42,16 @@ pub(super) struct Context<'a> {
     pub(super) execution_deadline: Option<jiff::Timestamp>,
 }
 
-/// The issued lease, as the bytes a runner executes from.
-///
-/// # Errors
-/// Reports a payload that would not serialize.
-pub(super) fn render<'a>(
+/// Assemble the issued payload while its policy still borrows the admitted work.
+pub(super) fn payload<'a>(
     lease_id: &'a Uuid7,
     acquired: &'a Acquired,
     event_type: EventType,
     installed: &'a Installed,
     policy: ExecutionPolicy<'a>,
     context: Context<'a>,
-) -> Result<String> {
-    answer(Some(LeasePayload {
+) -> LeasePayload<'a> {
+    LeasePayload {
         lease_id: lease_id.as_str().into(),
         fencing_token: acquired.fence.as_u64(),
         lease_expires_at: context.expires_at.unwrap_or(acquired.leased_until),
@@ -117,7 +78,7 @@ pub(super) fn render<'a>(
         task: context.task,
         durable_tasks: installed.config.decision_policy().is_some(),
         memory: context.memory,
-    }))
+    }
 }
 
 #[cfg(all(test, feature = "test-util"))]

@@ -1,6 +1,8 @@
 //! Length-delimited JSON with memory reserved before decoder allocation.
 
 mod budget;
+mod encoder;
+mod memory;
 mod reader;
 mod writer;
 
@@ -11,6 +13,8 @@ use zeroize::Zeroizing;
 use crate::Result;
 
 pub use budget::Budget;
+pub use encoder::Encoder;
+pub use memory::{CONTROL_MEMORY_ENV, DATA_MEMORY_ENV, MemoryLimits, MemorySettings};
 pub use reader::Reader;
 pub use writer::{encode, write};
 

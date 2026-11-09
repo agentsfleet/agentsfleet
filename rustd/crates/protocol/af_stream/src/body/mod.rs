@@ -92,6 +92,28 @@ pub struct Incoming {
     cancelled: Pin<Box<WaitForCancellationFutureOwned>>,
 }
 
+type DataStream =
+    futures_util::stream::MapErr<BodyDataStream<Incoming>, fn(Error) -> std::io::Error>;
+
+/// Named adapter lets a session own all four readers without erasing their types.
+pub struct IncomingReader(StreamReader<DataStream, Bytes>);
+
+impl fmt::Debug for IncomingReader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("IncomingReader").finish_non_exhaustive()
+    }
+}
+
+impl tokio::io::AsyncRead for IncomingReader {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        Pin::new(&mut self.0).poll_read(cx, buf)
+    }
+}
+
 enum Native {
     H2(hyper::body::Incoming),
     H3(h3::H3Body),
@@ -121,8 +143,10 @@ impl Incoming {
     }
 
     /// Adapt to the bounded application frame reader without collecting the body.
-    pub fn reader(self) -> impl tokio::io::AsyncRead + Send + Unpin {
-        StreamReader::new(BodyDataStream::new(self).map_err(std::io::Error::other))
+    #[must_use]
+    pub fn reader(self) -> IncomingReader {
+        let failed: fn(Error) -> std::io::Error = std::io::Error::other;
+        IncomingReader(StreamReader::new(BodyDataStream::new(self).map_err(failed)))
     }
 }
 

@@ -10,7 +10,7 @@ use crate::report_seed;
 use af_core::error_code;
 use af_core::test_util::trace::Capture;
 use af_wire::report::{RenewRequest, ReportRequest};
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 use jiff::Timestamp;
 
 use crate::seed::{MODEL, PROVIDER};
@@ -311,7 +311,7 @@ fn run_fee(from: Timestamp, to: Timestamp) -> afd_billing::Nanos {
 /// Renews `held`'s lease with request `seq` of `input_tokens` and answers what
 /// it charged for tokens alone: the charge less the run fee for the runtime it
 /// measured.
-async fn token_charge(held: &Held, plane: &Plane, seq: u32, input_tokens: u32) -> i64 {
+async fn token_charge(held: &Held, plane: &LeaseService, seq: u32, input_tokens: u32) -> i64 {
     let from = held.fixtures.metered_since(&held.fleet).await;
     let (_, charged) = plane
         .renew(
@@ -329,7 +329,7 @@ async fn token_charge(held: &Held, plane: &Plane, seq: u32, input_tokens: u32) -
 /// Renews `held`'s lease for `request` with the catalogue offline, and checks
 /// the renewal charged the runtime it measured and no token, and said itself
 /// that it logged those tokens unpriced, not only the pricing helper it calls.
-async fn renew_through_a_catalogue_fault(held: &Held, plane: &Plane, request: RenewRequest) {
+async fn renew_through_a_catalogue_fault(held: &Held, plane: &LeaseService, request: RenewRequest) {
     let lease_id = &held.issued.lease_id;
     held.fixtures.set_catalogue_readable(false).await;
     let log = Capture::install();

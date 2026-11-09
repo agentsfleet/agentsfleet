@@ -4,7 +4,7 @@ use super::{ack, json, lease, result, rig, run};
 use crate::{client::Verb, test_support::Answer};
 
 #[tokio::test]
-async fn an_unavailable_model_route_is_called_once_and_spools_unknown_usage() {
+async fn an_unavailable_model_route_is_called_once_and_reports_unknown_usage() {
     let mut rig = rig(|call| match call.verb {
         Verb::AuthoringModel => Answer::Fail(crate::error::unavailable(call.verb, 503)),
         Verb::AuthoringReport => ack(),
@@ -39,9 +39,37 @@ async fn a_changed_dispatch_identity_cannot_publish_the_returned_private_text() 
         Verb::AuthoringReport => ack(),
         other => panic!("unexpected authority {other:?}"),
     });
-    let (_, report) = run(&mut rig, lease()).await;
-    assert_eq!(report["usage"]["knowledge"], "unknown");
-    assert!(report.get("answer").is_none_or(serde_json::Value::is_null));
+    let configured = lease();
+    let sending = Box::pin(
+        rig.lessee
+            .author(&configured, tokio_util::sync::CancellationToken::new()),
+    );
+    let owner = async {
+        rig.calls.stopped.cancelled().await;
+        rig.lessee.halt.stop();
+    };
+    let (result, ()) =
+        crate::test_support::bounded("protocol refusal stops the native owner", async {
+            tokio::join!(sending, owner)
+        })
+        .await;
+    let failure = result.unwrap_err();
+    assert_eq!(
+        failure.code(),
+        af_core::error_code::RUN_PROTOCOL_UNSUPPORTED
+    );
+    let calls = rig.calls();
+    assert_eq!(
+        calls
+            .iter()
+            .filter(|call| call.verb == Verb::AuthoringModel)
+            .count(),
+        1
+    );
+    assert!(
+        calls.iter().all(|call| call.verb != Verb::AuthoringReport),
+        "the closed owner cannot publish private output"
+    );
 }
 
 /// A model reply carrying one proposal, as the daemon's model route answers.

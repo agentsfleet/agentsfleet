@@ -49,8 +49,8 @@ use crate::reads::{
 };
 use crate::wire::{
     MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, UNKNOWN_TOKEN,
-    assert_no_lease_for_fleet_under_test, capable_beat, field, fleet_poll, get, json,
-    poll_for_seeded_lease, poll_until, post, report_body,
+    assert_no_lease_for_fleet_under_test, capable_beat, field, fleet_poll, get, json, post,
+    report_body, wait_for_seeded_offer, wait_without_offer,
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -62,11 +62,11 @@ async fn test_runner_suite_vs_rust_daemon() {
 
     refusals::assert_unknown_credential_is_refused(&http, &run).await;
     prove_runner_ready(&http, &run).await;
-    let (lease_id, fence) = claim_seeded_lease(&http, &run).await;
+    let (lease_id, fence) = claim_seeded_lease(&run).await;
     prove_live_lease_satellites(&http, &run, &lease_id).await;
     capture_memory(&http, &run, &lease_id, fence).await;
-    settle_report(&http, &run, &lease_id, fence).await;
-    refusals::assert_unsupported_event_ends(&http, &run).await;
+    settle_report(&run, &lease_id, fence).await;
+    refusals::assert_unsupported_event_ends(&run).await;
 
     supervisor.shutdown().await;
     run.cleanup().await;
@@ -86,17 +86,20 @@ async fn prove_runner_ready(http: &reqwest::Client, run: &Scenario) {
          and the store scope by the same identity"
     );
 
-    let beat = post(http, run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(beat.status().as_u16(), 200, "a beat is accepted");
+    let beat = crate::wire::heartbeat(run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
+    );
     assert_eq!(
-        field(&json(beat).await, "degraded"),
+        field(&beat, "degraded"),
         &json!(false),
         "and the proven capabilities clear the degraded verdict, which is what \
          makes the poll below leasable rather than fail-closed"
     );
 }
 
-async fn claim_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
+async fn claim_seeded_lease(run: &Scenario) -> (String, u64) {
     // One caller, one poller. There used to be a bare POST here to prove the
     // STATUS before the loop proved the EVENT, on the reading that a poll which
     // misses this fleet's partition costs nothing — and about fifteen times in
@@ -108,10 +111,10 @@ async fn claim_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, 
     // never offered. Measured at 2 failures in 15 local runs, and it is the red
     // `test-integration-rustd` lane on Pull Request #693.
     //
-    // `poll_for_lease` already asserts the status on EVERY turn and its doc
+    // `wait_for_offer` already asserts the status on EVERY turn and its doc
     // comment names this exact caller as the hazard, so the separate request
     // proved nothing the loop does not prove and cost a lease to do it.
-    poll_for_seeded_lease(http, run).await
+    wait_for_seeded_offer(run).await
 }
 
 async fn capture_memory(http: &reqwest::Client, run: &Scenario, lease_id: &str, fence: u64) {
@@ -137,19 +140,19 @@ async fn capture_memory(http: &reqwest::Client, run: &Scenario, lease_id: &str, 
     );
 }
 
-async fn settle_report(http: &reqwest::Client, run: &Scenario, lease_id: &str, fence: u64) {
+async fn settle_report(run: &Scenario, lease_id: &str, fence: u64) {
     let before = balance(run).await;
     let report = report_body(lease_id, &run.event_id, fence);
-    let settled = post(http, run, "/v1/runners/me/reports", &report).await;
-    assert_eq!(settled.status().as_u16(), 200, "the report is accepted");
+    let settled = crate::wire::report(run, &report).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(
-        json(settled).await,
+        settled.expect("the native report is acknowledged"),
         json!({"ok": true}),
         "and says so in the shape a runner parses"
     );
 
     assert_settled(run, lease_id, before).await;
-    assert_replay_returns_the_stored_outcome(http, run, lease_id, &report).await;
+    assert_replay_returns_the_stored_outcome(run, lease_id, &report).await;
 }
 
 /// The side-channel verbs operate on the same live lease and identity.
@@ -276,23 +279,13 @@ async fn assert_settled(run: &Scenario, lease_id: &str, before: Option<i64>) {
 /// A fleet the runner has genuinely been superseded on still answers 409,
 /// because the lease is not `reported` there — that refusal is proven against
 /// live rows in the fleet plane's own suites, not here.
-async fn assert_replay_returns_the_stored_outcome(
-    http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
-    report: &Value,
-) {
+async fn assert_replay_returns_the_stored_outcome(run: &Scenario, lease_id: &str, report: &Value) {
     let drawn = balance(run).await;
     let logged = ledger_rows(run).await;
-    let replay = post(http, run, "/v1/runners/me/reports", report).await;
+    let replay = crate::wire::report(run, report).await;
+    assert!(replay.is_ok(), "native report refused: {replay:?}");
     assert_eq!(
-        replay.status().as_u16(),
-        200,
-        "the second delivery is acknowledged, so the runner stops retrying a result \
-         the platform has already stored and already charged for"
-    );
-    assert_eq!(
-        json(replay).await,
+        replay.expect("the native report is acknowledged"),
         json!({"ok": true}),
         "and in the same shape the first one answered — a runner parses one reply, not two"
     );

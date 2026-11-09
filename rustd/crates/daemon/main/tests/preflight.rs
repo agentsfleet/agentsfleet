@@ -1,4 +1,4 @@
-//! Dimensions 8.1 and 7.4 — boot refuses loudly, and names everything at once.
+//! Boot refuses loudly and names all unusable settings at once.
 //!
 //! Driven through [`MapEnv`] rather than the process environment, because
 //! `std::env::set_var` is `unsafe` in edition 2024 for a reason that bites
@@ -13,6 +13,7 @@
 use af_core::env::MapEnv;
 use agentsfleetd::preflight::{
     ENCRYPTION_MASTER_KEY_KNOB, Fault, SESSION_CODE_PEPPER_KNOB, preflight,
+    runner_listener::{TLS_CERT_FILE, TLS_KEY_FILE},
 };
 
 /// The API role's Postgres knob — the name an operator actually exports.
@@ -39,6 +40,7 @@ fn env_with(extra: [(&str, &str); 3]) -> MapEnv {
             .into_iter()
             .chain(crate::support::SESSION_PEPPER)
             .chain(crate::support::BUS)
+            .chain(crate::support::runner_stream::environment())
             .chain(crate::support::IDENTITY),
     )
 }
@@ -52,7 +54,7 @@ fn complete() -> MapEnv {
     ])
 }
 
-/// Dimension 8.1 — every unset knob is named in ONE failure, not the first.
+/// Every unset knob is named in one failure.
 ///
 /// This is the dimension's whole point. A boot that exits at the first check
 /// makes an operator missing seven knobs restart seven times to find that out;
@@ -68,6 +70,8 @@ fn test_preflight_lists_missing() {
         DRAGONFLY_KNOB,
         ENCRYPTION_MASTER_KEY_KNOB,
         SESSION_CODE_PEPPER_KNOB,
+        TLS_CERT_FILE,
+        TLS_KEY_FILE,
     ];
     expected.extend(crate::support::BUS.map(|(name, _value)| name));
     expected.extend(crate::support::IDENTITY.map(|(knob, _value)| knob));
@@ -119,7 +123,7 @@ fn test_preflight_treats_a_blank_value_as_unset() {
     );
 }
 
-/// Dimension 7.4 — a malformed master key is INVALID, and says so.
+/// A malformed master key is invalid and names its setting.
 ///
 /// The distinction from "missing" is the operator's next action: supply a
 /// value, versus correct the one you wrote. A refusal that collapsed them
@@ -197,6 +201,7 @@ fn test_preflight_requires_the_login_pepper() {
         ]
         .into_iter()
         .chain(crate::support::BUS)
+        .chain(crate::support::runner_stream::environment())
         .chain(crate::support::IDENTITY),
     );
 

@@ -21,7 +21,7 @@
 //!
 //! # Why the slot rides the body
 //!
-//! [`afd_sse::Slot`] is released by `Drop`, and the body owns it: a client
+//! [`afd_sse::StreamPermit`] is released by `Drop`, and the body owns it: a client
 //! that goes away drops the body, which returns the slot.
 
 use std::collections::VecDeque;
@@ -29,7 +29,7 @@ use std::convert::Infallible;
 use std::sync::{Arc, LazyLock};
 
 use afd_bus::Message;
-use afd_sse::{Frame, Slot};
+use afd_sse::{Frame, StreamPermit};
 use axum::body::{Body, Bytes};
 use axum::http::header;
 use axum::response::{IntoResponse as _, Response};
@@ -59,7 +59,7 @@ static HEARTBEAT: LazyLock<Bytes> = LazyLock::new(|| {
 });
 
 /// One response body, holding `slot` for as long as it is alive.
-pub(super) fn serve(frames: BoxStream<'static, Frame>, slot: Slot) -> Response {
+pub(super) fn serve(frames: BoxStream<'static, Frame>, slot: StreamPermit) -> Response {
     let chunks = stream::unfold(
         Wire {
             frames,
@@ -83,7 +83,7 @@ pub(super) fn serve(frames: BoxStream<'static, Frame>, slot: Slot) -> Response {
 struct Wire {
     frames: BoxStream<'static, Frame>,
     /// Held for its `Drop`, never read.
-    _slot: Slot,
+    _slot: StreamPermit,
     /// The rest of an event already started on the wire.
     queued: VecDeque<Bytes>,
     /// When the heartbeat is due if nothing is written first.

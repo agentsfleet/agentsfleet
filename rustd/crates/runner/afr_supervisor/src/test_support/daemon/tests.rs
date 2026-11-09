@@ -18,20 +18,20 @@ fn failure_message(panic: Box<dyn std::any::Any + Send>) -> String {
 #[tokio::test]
 async fn should_answer_500_and_fail_teardown_when_a_handler_panics() {
     let (api, mut calls) = fake(|_| panic!("{PANIC_MESSAGE}"));
-    let serving = tokio::spawn(async move { api.send(call(Verb::Lease)).await });
+    let serving = tokio::spawn(async move { api.send(call(Verb::Heartbeat)).await });
     let failure = bounded("panicking handler response", serving)
         .await
         .unwrap()
         .unwrap_err();
     assert!(
-        failure.to_string().contains("lease call (500)"),
+        failure.to_string().contains("heartbeat call (500)"),
         "{failure}"
     );
-    assert_eq!(calls.recv().await.unwrap().verb, Verb::Lease);
+    assert_eq!(calls.recv().await.unwrap().verb, Verb::Heartbeat);
     let panic = catch_unwind(AssertUnwindSafe(|| drop(calls))).unwrap_err();
     let message = failure_message(panic);
     assert!(message.contains(PANIC_MESSAGE), "{message}");
-    assert!(message.contains("lease /fake"), "{message}");
+    assert!(message.contains("heartbeat /fake"), "{message}");
 }
 
 #[tokio::test]

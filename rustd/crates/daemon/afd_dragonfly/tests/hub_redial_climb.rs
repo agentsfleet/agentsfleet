@@ -1,4 +1,4 @@
-//! A primary that stays down while the doorbell holds a channel on it.
+//! A primary that stays down while the hub holds a channel on it.
 //!
 //! Split from `hub_socket_faults.rs` per RULE FLL; it shares that file's fake,
 //! budget and polling helper. The pacing itself, a generation that held
@@ -12,8 +12,8 @@
 
 use std::time::Duration;
 
+use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::{Doorbell, SubscriptionHub};
 use backon::ExponentialBuilder;
 
 use crate::fake_redis::{FakeRedis, Reply};
@@ -26,10 +26,10 @@ const FIRST_STEP: Duration = Duration::from_millis(25);
 const CEILING: Duration = Duration::from_millis(200);
 
 /// A cluster that keeps refusing the resubscribes after each redial, a
-/// primary down while the doorbell holds a channel on it, is redialled on a
+/// primary down while the hub holds a channel on it, is redialled on a
 /// climbing wait, not at the schedule's first step forever.
 ///
-/// The doorbell holds its sixteen channels for the life of the process, so
+/// The hub holds its sixteen channels for the life of the process, so
 /// every replica has channels on every primary. With the wait restarting each
 /// lap, one dead primary would redial every replica's hub about forty times a
 /// second here (32 measured), each lap re-confirming the healthy channels into a gap for
@@ -58,9 +58,10 @@ async fn test_a_cluster_refusing_resubscribes_is_redialled_on_a_climbing_wait() 
     .await
     .expect("the fake serves, so the hub must start")
     .expect("the fake serves, so the hub must start");
-    let doorbell = Doorbell::new();
-    doorbell.listen(&hub);
-    until("the doorbell's subscribes to reach the server", || {
+    let _subscriptions: Vec<_> = (0..16)
+        .map(|index| hub.subscribe(&format!("redial:{index}")))
+        .collect();
+    until("the held subscribes to reach the server", || {
         server.seen().iter().any(|command| command == "SSUBSCRIBE")
     })
     .await;

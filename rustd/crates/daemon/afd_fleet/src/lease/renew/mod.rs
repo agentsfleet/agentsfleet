@@ -29,7 +29,7 @@ use jiff::Timestamp;
 use crate::error::{
     Result, lease_cancelled, lease_lost, lease_max_runtime, lease_not_found, query,
 };
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::sql;
 use crate::lease::sql::meter::Metering;
 use crate::lease::store::Leases;
@@ -192,7 +192,7 @@ impl From<LeaseForRenew> for Renewing {
     }
 }
 
-impl Plane {
+impl LeaseService {
     /// Extend one live lease, metering the slice since its last renewal.
     ///
     /// Answers the new deadline and what the slice drained.

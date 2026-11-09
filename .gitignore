@@ -63,6 +63,11 @@ bench/results/
 # from rustd/ — build output either way, and never committed.
 /target/
 
+# The musl candidate build's Cargo registry and git cache, which
+# `scripts/build-candidate.sh` mounts into the builder. Third-party sources;
+# the source scan must not read them either.
+/.cargo-cache/
+
 # Local orly evidence; installed rules and configuration remain committed.
 .orly/evidence.json
 .orly/judgments/

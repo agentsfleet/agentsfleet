@@ -114,6 +114,24 @@ test_should_suffix_the_tag_with_the_revision() {
   else bad "$name" "revision did not reach the tag: $(tr '\n' ' ' < "$dir/args")"; fi
 }
 
+test_should_suffix_the_tag_with_the_files_revision() {
+  local name="${FUNCNAME[0]}" dir
+  dir="$(fixture)"; stub_docker "$dir"
+  printf 'IMAGE_REVISION=r2\n' >> "$(env_file "$dir")"
+  run_script "$dir" >/dev/null
+  if grep -qx "ghcr.io/agentsfleet/ci-rust-alpine:1.98.1-alpine3.24-r2" "$dir/args"; then ok "$name"
+  else bad "$name" "the file's revision did not reach the tag: $(tr '\n' ' ' < "$dir/args")"; fi
+}
+
+test_should_let_the_flag_replace_the_files_revision() {
+  local name="${FUNCNAME[0]}" dir
+  dir="$(fixture)"; stub_docker "$dir"
+  printf 'IMAGE_REVISION=r2\n' >> "$(env_file "$dir")"
+  run_script "$dir" --revision r3 >/dev/null
+  if grep -qx "ghcr.io/agentsfleet/ci-rust-alpine:1.98.1-alpine3.24-r3" "$dir/args"; then ok "$name"
+  else bad "$name" "--revision did not replace the file's revision: $(tr '\n' ' ' < "$dir/args")"; fi
+}
+
 test_should_refuse_when_a_required_pin_is_missing() {
   local name="${FUNCNAME[0]}" dir out status=0
   dir="$(fixture)"; stub_docker "$dir"
@@ -262,6 +280,8 @@ test_fetch_shas_should_write_the_installer_version_it_fetched
 test_fetch_shas_should_not_half_write_when_one_architecture_fails
 test_fetch_shas_should_leave_every_other_line_intact
 test_should_stop_rather_than_resume_when_cancelled
+test_should_suffix_the_tag_with_the_files_revision
+test_should_let_the_flag_replace_the_files_revision
 test_should_refuse_an_unknown_argument
 test_should_refuse_when_the_versions_file_is_absent
 

@@ -64,9 +64,15 @@ async fn test_renew_keeps_on_5xx_ends_on_4xx() {
     let clock = clock();
     let started = Instant::now();
 
-    let class = Renewal::new(&plane, &lease, GRANTED_UNTIL, &clock, &Meter::default())
-        .keep()
-        .await;
+    let class = Renewal::new(
+        &plane,
+        &lease,
+        GRANTED_UNTIL,
+        &clock,
+        &std::sync::Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
 
     assert_eq!(class, FailureClass::RenewalTerminate);
     assert_eq!(
@@ -84,9 +90,15 @@ async fn blips_past_the_granted_deadline_end_the_lease() {
     let clock = clock();
     let started = Instant::now();
 
-    let class = Renewal::new(&plane, &lease, GRANTED_UNTIL, &clock, &Meter::default())
-        .keep()
-        .await;
+    let class = Renewal::new(
+        &plane,
+        &lease,
+        GRANTED_UNTIL,
+        &clock,
+        &std::sync::Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
 
     assert_eq!(class, FailureClass::RenewalTerminate);
     assert_eq!(
@@ -103,9 +115,15 @@ async fn a_hanging_renewal_does_not_outlive_the_deadline() {
     let clock = clock();
     let started = Instant::now();
 
-    Renewal::new(&plane, &lease, GRANTED_UNTIL, &clock, &Meter::default())
-        .keep()
-        .await;
+    Renewal::new(
+        &plane,
+        &lease,
+        GRANTED_UNTIL,
+        &clock,
+        &std::sync::Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
 
     assert_eq!(started.elapsed(), budget());
 }
@@ -125,14 +143,26 @@ async fn each_grant_moves_the_deadline_and_a_lapsed_lease_ends_at_once() {
     let clock = clock();
     let started = Instant::now();
 
-    Renewal::new(&plane, &lease, GRANTED_UNTIL, &clock, &Meter::default())
-        .keep()
-        .await;
+    Renewal::new(
+        &plane,
+        &lease,
+        GRANTED_UNTIL,
+        &clock,
+        &std::sync::Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
     let lapsed = Instant::now();
     let lapsed_grant = before(Timestamp::UNIX_EPOCH, Duration::from_millis(1));
-    Renewal::new(&plane, &lease, lapsed_grant, &clock, &Meter::default())
-        .keep()
-        .await;
+    Renewal::new(
+        &plane,
+        &lease,
+        lapsed_grant,
+        &clock,
+        &std::sync::Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
 
     assert_eq!(
         started.elapsed(),
@@ -158,9 +188,15 @@ async fn an_exhausted_budget_ends_the_run_as_a_budget_breach() {
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let clock = clock();
 
-    let class = Renewal::new(&plane, &lease, GRANTED_UNTIL, &clock, &Meter::default())
-        .keep()
-        .await;
+    let class = Renewal::new(
+        &plane,
+        &lease,
+        GRANTED_UNTIL,
+        &clock,
+        &std::sync::Arc::new(Meter::default()),
+    )
+    .keep()
+    .await;
 
     assert_eq!(class, FailureClass::BudgetBreach);
 }
@@ -178,7 +214,7 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
     });
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let clock = clock();
-    let meter = Meter::default();
+    let meter = std::sync::Arc::new(Meter::default());
     meter.add(Usage {
         input: 300,
         cached_input: 100,
@@ -195,7 +231,7 @@ async fn a_renewal_reports_what_the_run_spent_so_far() {
     let sent = drain(&mut calls);
     let body: serde_json::Value =
         serde_json::from_slice(sent.first().unwrap().body.as_ref().unwrap()).unwrap();
-    let line = &body[REQUESTS][0];
+    let line = &body["request"][REQUESTS][0];
     assert_eq!(line[SEQ], 0, "the run's first request");
     assert_eq!(line["input_tokens"], 300);
     assert_eq!(line["cached_input_tokens"], 100);
@@ -221,7 +257,7 @@ async fn a_line_a_renewal_recorded_is_not_sent_again() {
     });
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let clock = clock();
-    let meter = Meter::default();
+    let meter = std::sync::Arc::new(Meter::default());
     meter.add(Usage {
         input: 300,
         output: 40,
@@ -236,7 +272,7 @@ async fn a_line_a_renewal_recorded_is_not_sent_again() {
     let lines = |index: usize| -> serde_json::Value {
         let body: serde_json::Value =
             serde_json::from_slice(sent[index].body.as_ref().unwrap()).unwrap();
-        body[REQUESTS].clone()
+        body["request"][REQUESTS].clone()
     };
     assert_eq!(
         lines(0)[0][SEQ],

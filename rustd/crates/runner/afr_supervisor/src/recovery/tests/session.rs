@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::recovery::{Capture, Restore};
-use crate::test_support::drain;
 use base64::Engine as _;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
@@ -47,7 +46,7 @@ async fn already_received_ciphertext_is_verified_without_a_second_physical_uploa
     .run(None, Zeroizing::new(b"private history".to_vec()), vec![])
     .await?;
     assert!(saved.manifest_root.is_some());
-    let requests = drain(&mut calls);
+    let requests = drain(&mut calls).await;
     assert_verified_upload(&requests, &state);
     Ok(())
 }
@@ -88,7 +87,7 @@ async fn upload_response_cannot_replace_registered_ciphertext_or_skip_readback()
         .unwrap_err();
         config_failure(&error, expected);
         assert!(state.lock().unwrap().plan.manifest_root.is_none());
-        let requests = drain(&mut calls);
+        let requests = drain(&mut calls).await;
         assert!(
             !requests
                 .iter()
@@ -171,7 +170,7 @@ async fn history_download_requires_exact_object_scope_length_and_read_authority(
         .await
         .unwrap_err();
         config_failure(&error, expected);
-        let requests = drain(&mut calls);
+        let requests = drain(&mut calls).await;
         assert_eq!(
             requests
                 .iter()

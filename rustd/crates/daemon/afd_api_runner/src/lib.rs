@@ -24,17 +24,7 @@ use services::Services;
 pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
     match verb {
         RunnerRoute::SelfRecord => get(handler::runner::self_record::handle::<D>),
-        RunnerRoute::Heartbeat => post(handler::runner::heartbeat::handle::<D>),
-        RunnerRoute::Lease => post(handler::runner::lease::handle::<D>),
-        RunnerRoute::Report => post(handler::runner::report::handle::<D>),
-        RunnerRoute::Renew => post(handler::runner::renew::handle::<D>),
-        RunnerRoute::Activity => post(handler::runner::activity::handle::<D>),
-        RunnerRoute::AuthoringActivity => post(handler::runner::authoring::activity::handle::<D>),
-        RunnerRoute::AuthoringModelCalls => {
-            post(handler::runner::authoring::model_call::handle::<D>)
-        }
-        RunnerRoute::AuthoringRenew => post(handler::runner::authoring::renew::handle::<D>),
-        RunnerRoute::AuthoringReports => post(handler::runner::authoring::report::handle::<D>),
+        RunnerRoute::Stream => post(handler::runner::stream::handle::<D>),
         RunnerRoute::ContextCheckpoint => {
             get(handler::runner::context::load::<D>).put(handler::runner::context::put::<D>)
         }
@@ -80,7 +70,6 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
         RunnerRoute::ScheduleRuns => get(handler::runner::schedule_run::runs::<D>)
             .post(handler::runner::schedule_run::run::<D>),
         RunnerRoute::Messages => post(handler::runner::message::handle::<D>),
-        RunnerRoute::Folds => post(handler::runner::folds::handle::<D>),
     }
 }
 

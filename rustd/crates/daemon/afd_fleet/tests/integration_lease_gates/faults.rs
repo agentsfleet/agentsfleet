@@ -7,7 +7,7 @@ use super::*;
 
 use af_core::test_util::trace::Capture;
 use afd_billing::Accounts;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 
 use crate::rows::{LAPSE, Row};
 
@@ -32,7 +32,7 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     let now = fixtures.enrolled_at();
     let log = Capture::install();
     let answer = plane
-        .lease_claimed(claimed.clone(), &seeded.runner, now)
+        .claim_selected(claimed.clone(), &seeded.runner, now)
         .await
         .expect("an unread payer is a retry, not a fault");
     let line = log.only("lease_tenant_lookup_failed").fields;
@@ -40,18 +40,15 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     // The next poll meets the same delivery on its open row: it retries again
     // and reopens nothing.
     let again = plane
-        .lease_claimed(claimed, &seeded.runner, now)
+        .claim_selected(claimed, &seeded.runner, now)
         .await
         .expect("the retry repeats");
 
     assert!(
-        answer.contains(NO_LEASE),
-        "an unread payer issued a lease: {answer}"
+        answer.is_none(),
+        "an unread payer issued a lease: {answer:?}"
     );
-    assert!(
-        again.contains(NO_LEASE),
-        "the repeat issued a lease: {again}"
-    );
+    assert!(again.is_none(), "the repeat issued a lease: {again:?}");
     assert_eq!(
         line.get("error_code").map(String::as_str),
         Some(af_core::error_code::INTERNAL_DB_QUERY.as_str())
@@ -67,8 +64,8 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
 }
 
 /// The fixture plane with a payer ledger whose database never answers.
-fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
-    Plane {
+fn plane_with_unreadable_payer(fixtures: &Fixtures) -> LeaseService {
+    LeaseService {
         task_reports: None,
         accounts: Accounts::new(afd_db::test_util::unreachable_db()),
         ..fixtures.plane()
@@ -103,7 +100,7 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
         STATUS_GATE_BLOCKED.to_owned(),
         af_core::event::label::CONFIG_UNREADABLE.to_owned(),
     ));
-    assert!(first.contains(NO_LEASE) && second.contains(NO_LEASE));
+    assert!(first.is_none() && second.is_none());
     assert_eq!(ended, expected, "the first pass ends the event");
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
@@ -139,7 +136,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
         .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
         .await;
     let answer = drive(&fixtures, &seeded, claimed).await;
-    assert!(answer.contains(NO_LEASE));
+    assert!(answer.is_none());
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
         Some((af_core::event::status::PROCESSED.to_owned(), String::new()))
@@ -180,8 +177,8 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
     drop(log);
 
     assert!(
-        answer.contains(NO_LEASE),
-        "an unrecordable refusal issued a lease: {answer}"
+        answer.is_none(),
+        "an unrecordable refusal issued a lease: {answer:?}"
     );
     assert!(line.get("error_code").is_some_and(|code| !code.is_empty()));
     assert_eq!(
@@ -224,10 +221,7 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     let lost = log.only("lease_claim_lost").fields;
     drop(log);
 
-    assert!(
-        answer.contains(NO_LEASE),
-        "a lost claim issued a lease: {answer}"
-    );
+    assert!(answer.is_none(), "a lost claim issued a lease: {answer:?}");
     assert_eq!(
         lost.get("runner_id").map(String::as_str),
         Some(seeded.runner.as_str())
@@ -260,7 +254,7 @@ async fn should_write_no_lease_when_the_pass_outlived_its_claim() {
 
     assert_eq!(
         (
-            answer.contains(NO_LEASE),
+            answer.is_none(),
             lost.field("runner_id"),
             lost.field("agentsfleet_event_id"),
         ),
@@ -269,7 +263,7 @@ async fn should_write_no_lease_when_the_pass_outlived_its_claim() {
             Some(seeded.runner.as_str()),
             Some(seeded.event_id.as_str())
         ),
-        "a lapsed claim issued a lease: {answer}"
+        "a lapsed claim issued a lease: {answer:?}"
     );
     fixtures.cleanup().await;
 }

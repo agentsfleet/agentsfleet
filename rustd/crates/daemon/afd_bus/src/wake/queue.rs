@@ -42,6 +42,10 @@ impl WakeQueue {
         Some(fleet)
     }
 
+    pub(super) fn fleets(&self) -> HashSet<Uuid7> {
+        self.members.clone()
+    }
+
     pub(super) fn clear(&mut self) {
         self.queue.clear();
         self.members.clear();

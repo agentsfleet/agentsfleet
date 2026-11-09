@@ -21,7 +21,8 @@ impl Error {
                 error_code::STARTUP_DRAGONFLY_CONNECT
             }
             _ if self.is_pre_flight() => error_code::STARTUP_ENV_CHECK,
-            ErrorKind::UnknownProfile { .. }
+            ErrorKind::ConcurrencyUnrepresentable { .. }
+            | ErrorKind::UnknownProfile { .. }
             | ErrorKind::CapExceeded { .. }
             | ErrorKind::AcknowledgementMissing { .. }
             | ErrorKind::SteerPathFaulted { .. }

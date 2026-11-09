@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use af_core::id::Uuid7;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 
 use super::burst::Pickups;
 use super::runner::{self, Shared, Tally};
@@ -47,7 +47,7 @@ pub(super) struct Shape {
 /// Drive every runner until `shape.target` events are reported or
 /// `shape.length` passes.
 pub(super) async fn window(
-    plane: &Plane,
+    plane: &LeaseService,
     stores: &Datastores,
     runners: &[Uuid7],
     shape: Shape,

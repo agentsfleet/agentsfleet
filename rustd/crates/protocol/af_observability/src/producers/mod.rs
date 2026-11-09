@@ -5,7 +5,7 @@
 //! These families are process facts. Requests in flight, streams carried,
 //! frames dropped, sweeps completed — none of them belongs to a request, a
 //! connection or a store, and threading an instrument handle into
-//! [`afd_sse::Ceiling`]'s constructor to count a shed would put a telemetry
+//! [`afd_sse::StreamLimit`]'s constructor to count a shed would put a telemetry
 //! parameter on a type whose job is a semaphore.
 //!
 //! So the handles live here, claimed once at boot, and a producer calls a free

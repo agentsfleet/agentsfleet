@@ -22,7 +22,7 @@ use af_wire::report::ReportRequest;
 use jiff::Timestamp;
 
 use crate::lease::memory::Holder;
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::settle::Reported;
 
 /// The report's memory could not be written; the report still settles.
@@ -31,7 +31,7 @@ pub(super) const EVENT_CAPTURE_FAILED: &str = "memory_capture_failed";
 /// The report's lease was no longer live, so its memory was not written again.
 const EVENT_CAPTURE_SKIPPED: &str = "memory_capture_skipped";
 
-impl Plane {
+impl LeaseService {
     /// Writes the report's memory deltas, fenced on the lease's own token.
     /// A fence refusal was logged by the fence; anything else is logged here.
     pub(super) async fn capture_reported(

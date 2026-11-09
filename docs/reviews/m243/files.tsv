@@ -1,250 +1,40 @@
 action	path	origin_main	reason
 AUDIT	Dockerfile	present	Verify static BoringSSL linking and CA paths work in the existing distroless runtime
-AUDIT	make/build.mk	present	Verify existing static and both-architecture build path; propose changes before altering build delivery
-AUDIT	playbooks/operations/ci_rust_images/001_playbook.md	present	Record native dependency requirements if the builder changes
-AUDIT	playbooks/operations/ci_rust_images/versions.env	present	Verify pinned native build inputs and image version; no toolchain change implied
-AUDIT	rustd/crates/daemon/afd_api/tests/harness/support.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/integration_fleet_admitted.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/integration_wall_recheck.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/openapi_contract.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/openapi_task_shapes.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/decision_lifecycle/task_routes.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/decisions.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/folds.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/satellites.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/usage.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/support/fleet_stream_transport_fixture.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/support/wall_stream_fixture.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_api/tests/support/workspace_members_fixture.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_api_operator/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/message.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/schedule.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/schedule_edit.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/schedule_run.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/tool_call.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_api_tenant/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_approval/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_approval/tests/integration_grant_request.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_sweep_decode.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_approval/tests/support/tail_watch.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_bench/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_db/src/migration.rs	present	Verify table-file registration after other PR rewrites schema layout
-AUDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_connect_deadline.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_redial_climb.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_repair_faults.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_socket_faults.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_dragonfly/tests/integration_doorbell.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_dragonfly/tests/integration_hub_exclusive.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_dragonfly/tests/integration_namespace/sweep.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_events/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_fleet/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/chat.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/decision.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_fleet/tests/integration_wall_counters.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/afd_fleet/tests/lease_renewal/offered.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/afd_gate/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/afd_http/src/lib.rs	present	Constructor and re-export plumbing for injected bus
-AUDIT	rustd/crates/daemon/main/tests/integration_authoring_mint.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_cluster_outcomes.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_activity.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_brackets.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/labels.rs	present	Session fixture and offer behavior changes
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/mod.rs	present	Session fixture and offer behavior changes
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/money_gate.rs	present	Session fixture and offer behavior changes
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/refusals.rs	present	Session fixture and offer behavior changes
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_messages.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_schedules_refusals.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_runner_shapes.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_rust_runner.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_rust_runner_overlap.rs	present	Broker constructors/subscribers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_tool_call_details.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_tool_call_refusals.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_tool_trace.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/daemon/main/tests/integration_unreadable_config.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/protocol/af_wire/src/activity/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/protocol/af_wire/src/fold/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/protocol/af_wire/src/message_verb/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/protocol/af_wire/src/report/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/protocol/af_wire/src/schedule_verb/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/protocol/af_wire/src/tool_detail/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_sandbox/examples/kernel_lane/supervisor_recovery/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_supervisor/src/client/lease_verbs/tests.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_supervisor/src/client/tests/routing.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_supervisor/src/client/tests/task/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_supervisor/src/client/tests/transport.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_supervisor/src/config/tests.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/recovery/mod.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_supervisor/src/lib_tests.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_supervisor/src/report_spool/decision/delivery_tests.rs	present	Retired route/type callers and fixtures
-AUDIT	rustd/crates/runner/afr_supervisor/src/test_support/daemon/mod.rs	present	Session fixture and offer behavior changes
-AUDIT	rustd/crates/runner/afr_supervisor/src/test_support/daemon/tests.rs	present	Session fixture and offer behavior changes
+AUDIT	bench/baselines/lease.rig.json	present	Adjust existing bench recipe and baseline; no new helper script
+AUDIT	deploy/fly/agentsfleetd-dev/fly.toml	present	No edit until Indy approves concrete certificate and listener delivery
+AUDIT	deploy/fly/agentsfleetd-prod/fly.toml	present	No edit until Indy approves concrete certificate and listener delivery
+EDIT	docs/AUTH.md	present	Authentication and metric reference
+EDIT	docs/architecture/README.md	present	Replace polling and held-heartbeat behavior
+AUDIT	docs/architecture/api_resources.md	present	Replace polling and held-heartbeat behavior
+AUDIT	docs/architecture/data_flow.md	present	Replace polling and held-heartbeat behavior
+EDIT	docs/architecture/datastore_scaling.md	present	M243 review feedback, observability evidence or matching test support
+AUDIT	docs/architecture/lease_flow.md	present	Replace polling and held-heartbeat behavior
+EDIT	docs/architecture/observability.md	present	Replace polling and held-heartbeat behavior
+EDIT	docs/architecture/push_scheduler.md	present	Replace polling and held-heartbeat behavior
+AUDIT	docs/architecture/runner_execution.md	present	Replace polling and held-heartbeat behavior
+AUDIT	docs/architecture/runner_fleet.md	present	Replace polling and held-heartbeat behavior
 CREATE	docs/architecture/runner_protocol.md	absent	Session architecture introduced on this branch
+AUDIT	docs/architecture/scaling.md	present	Replace polling and held-heartbeat behavior
+AUDIT	docs/architecture/scenarios/fleet-to-fleet.md	present	Replace polling and held-heartbeat behavior
+AUDIT	docs/architecture/scenarios/slack-incident-responder.md	present	Replace polling and held-heartbeat behavior
+AUDIT	docs/architecture/user_flow.md	present	Replace polling and held-heartbeat behavior
+EDIT	docs/metrics.census.tsv	present	Authentication and metric reference
 CREATE	docs/reviews/m243/failure-and-observability.md	absent	Indy sign-off packet; proposal only
 CREATE	docs/reviews/m243/files.tsv	absent	Indy sign-off packet; proposal only
 CREATE	docs/reviews/m243/implementation-signoff.md	absent	Indy sign-off packet; proposal only
+CREATE	docs/reviews/m243/m246-parallel-prompt.md	absent	Publish source checkpoint, owner feedback evidence and cloud resume context
+CREATE	docs/reviews/m243/owner-feedback-audit.md	absent	Map every owner comment to source changes and open verification work
+CREATE	docs/reviews/m243/resume-prompt.md	absent	Publish source checkpoint, owner feedback evidence and cloud resume context
+CREATE	docs/reviews/m243/session-handoff.md	absent	Owner-requested context handoff for the next session
 CREATE	docs/reviews/m243/transport-and-toon-research.md	absent	Indy sign-off packet; proposal only
+CREATE	docs/v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md	absent	Active spec and Discovery
+DELETE	docs/v2/pending/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md	present	Spec opened on this branch
+AUDIT	make/bench.mk	present	Adjust existing bench recipe and baseline; no new helper script
+AUDIT	make/build.mk	present	Verify existing static and both-architecture build path; propose changes before altering build delivery
+AUDIT	playbooks/operations/ci_rust_images/001_playbook.md	present	Record native dependency requirements if the builder changes
+AUDIT	playbooks/operations/ci_rust_images/Dockerfile.alpine	present	Native proof may require adding clang and clang-dev; no builder edit or image publication until Indy approves concrete change
+AUDIT	playbooks/operations/ci_rust_images/versions.env	present	Verify pinned native build inputs and image version; no toolchain change implied
 CREATE	playbooks/operations/runner_stream_tls/001_playbook.md	absent	Owner-requested morning certificate generation and 1Password setup instructions
-CREATE	rustd/crates/daemon/afd_api_runner/src/handler/runner/stream.rs	absent	Stream opening route
-CREATE	rustd/crates/daemon/afd_authoring/src/creation/sql/mark_leases_cancel_requested.sql	absent	Durable kill marker in existing transaction
-CREATE	rustd/crates/daemon/afd_authoring/tests/draft/creation/running_cancellation/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_authoring/tests/draft/creation/running_cancellation/probe.rs	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_bus/Cargo.toml	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/command.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/dragonfly/mod.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/dragonfly/subscribe.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/error.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/lib.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/subject.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/subscription.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/test_util.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/daemon/afd_bus/src/tests.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/daemon/afd_bus/src/wake/config.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/daemon/afd_bus/src/wake/mod.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/wake/publish.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/src/wake/queue.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/daemon/afd_bus/src/wake/tests.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/daemon/afd_bus/tests/bus_suite.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/tests/commands.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/tests/gaps.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_bus/tests/wake.rs	absent	Neutral broker boundary and Dragonfly adapter
-CREATE	rustd/crates/daemon/afd_fleet/src/lease/rebuild.rs	absent	Live lease rebuild and per-replica fallback probe
-CREATE	rustd/crates/daemon/afd_fleet/src/lease/renew/extend.rs	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_cancelled.sql	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_fleet/src/lease/sql/select_runner_live_leases.sql	absent	Live lease rebuild and per-replica fallback probe
-CREATE	rustd/crates/daemon/afd_fleet/src/lease/sql/select_waiting_admission.sql	absent	Live lease rebuild and per-replica fallback probe
-CREATE	rustd/crates/daemon/afd_fleet/src/task/sql/lock_issue_scope.sql	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_fleet/tests/issue_lifecycle.rs	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_fleet/tests/lease_renewal/cancellation.rs	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_gateway/Cargo.toml	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/authority.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/connection.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/error.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/lib.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/registry/mod.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/registry/offers.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/registry/probe.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/activity.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/drain.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/folds.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/frames.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/hello.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/leases.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/mod.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/recheck.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/renew.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_gateway/src/session/reports.rs	absent	Concrete daemon session owner; domain decisions remain in existing owners
-CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/acquire.sql	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/check.sql	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_runner/src/sql/runner/clear_runner_connection.sql	absent	Guarded connection ownership writes; no UUID casts
-CREATE	rustd/crates/daemon/afd_runner/src/sql/runner/write_runner_connection.sql	absent	Guarded connection ownership writes; no UUID casts
-CREATE	rustd/crates/daemon/afd_runner/tests/integration_runner_plane/connections/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/afd_runner/tests/integration_runner_plane/connections/races.rs	absent	Runner ownership, durable cancellation and matching regression verification
-CREATE	rustd/crates/daemon/main/src/preflight/runner_stream.rs	absent	Direct native listener and validated configuration; deployment file approval separate
-CREATE	rustd/crates/daemon/main/src/serve/runner_stream.rs	absent	Direct native listener and validated configuration; deployment file approval separate
-CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authority.rs	absent	Native carrier and cross-replica failure evidence
-CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/cancel.rs	absent	Native carrier and cross-replica failure evidence
-CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/fixture.rs	absent	Native carrier and cross-replica failure evidence
-CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/mod.rs	absent	Native carrier and cross-replica failure evidence
-CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/observability.rs	absent	Native carrier and cross-replica failure evidence
-CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/pressure.rs	absent	Native carrier and cross-replica failure evidence
-CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/reconnect.rs	absent	Native carrier and cross-replica failure evidence
-CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/reports.rs	absent	Native carrier and cross-replica failure evidence
-CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/transport.rs	absent	Native carrier and cross-replica failure evidence
-CREATE	rustd/crates/protocol/af_observability/src/producers/fleet/runner/stream.rs	absent	Finite stream health and recovery producers
-CREATE	rustd/crates/protocol/af_observability/tests/stream_observations.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/protocol/af_stream/Cargo.toml	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/body/h3.rs	absent	Typed transport, review regression or matching configuration evidence
-CREATE	rustd/crates/protocol/af_stream/src/body/mod.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/client.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/endpoint.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/error/labels.rs	absent	Typed transport, review regression or matching configuration evidence
-CREATE	rustd/crates/protocol/af_stream/src/error/mod.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/framing/budget.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/framing/mod.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/framing/reader.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/framing/writer.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h2/client.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h2/executor.rs	absent	Typed transport, review regression or matching configuration evidence
-CREATE	rustd/crates/protocol/af_stream/src/h2/mod.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h2/server.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h3/client.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h3/driver.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h3/headers.rs	absent	Typed transport, review regression or matching configuration evidence
-CREATE	rustd/crates/protocol/af_stream/src/h3/mod.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h3/server.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h3/socket.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h3/telemetry.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/h3/trust.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/jobs.rs	absent	Typed transport, review regression or matching configuration evidence
-CREATE	rustd/crates/protocol/af_stream/src/lib.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/limits.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/server.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/telemetry.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/protocol/af_stream/src/tls/boring.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/src/tls/key_exchange/mod.rs	absent	TLS 1.3 hybrid preference and negotiated group observations
-CREATE	rustd/crates/protocol/af_stream/src/tls/key_exchange/tests.rs	absent	Real TLS peers prove classical interoperability and reject TLS 1.2
-CREATE	rustd/crates/protocol/af_stream/src/tls/mod.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/tests/failures.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/tests/framing.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/tests/native.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/tests/stream_suite.rs	absent	Proposed shared transport crate; native proof before integration
-CREATE	rustd/crates/protocol/af_stream/tests/support/mod.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/protocol/af_stream/tests/support/proxy.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/protocol/af_stream/tests/transport_observability.rs	absent	M243 review feedback, observability evidence or matching test support
-CREATE	rustd/crates/protocol/af_wire/src/protocol/bounds.rs	absent	Strict versioned wire messages; first three files and test already held as draft
-CREATE	rustd/crates/protocol/af_wire/src/protocol/down.rs	absent	Strict versioned wire messages; first three files and test already held as draft
-CREATE	rustd/crates/protocol/af_wire/src/protocol/mod.rs	absent	Strict versioned wire messages; first three files and test already held as draft
-CREATE	rustd/crates/protocol/af_wire/src/protocol/up.rs	absent	Strict versioned wire messages; first three files and test already held as draft
-CREATE	rustd/crates/protocol/af_wire/tests/protocol.rs	absent	Strict versioned wire messages; first three files and test already held as draft
-CREATE	rustd/crates/runner/afr_supervisor/src/downlink/connect.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
-CREATE	rustd/crates/runner/afr_supervisor/src/downlink/dispatch.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
-CREATE	rustd/crates/runner/afr_supervisor/src/downlink/mod.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
-CREATE	rustd/crates/runner/afr_supervisor/src/downlink/pending.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
-CREATE	rustd/crates/runner/afr_supervisor/src/downlink/reconnect.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
-CREATE	rustd/crates/runner/afr_supervisor/src/renew/host.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
-CREATE	rustd/crates/runner/afr_supervisor/src/uplink/mod.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
-CREATE	rustd/crates/runner/afr_supervisor/src/uplink/queues.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
-CREATE	rustd/crates/runner/afr_supervisor/src/uplink/writer.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
-DELETE	rustd/crates/daemon/afd_api/tests/integration_runner_heartbeat.rs	present	Obsolete held-heartbeat tests replaced by session tests
-DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/activity.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/folds.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/heartbeat.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/lease/input.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/lease/mod.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/renew.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/report.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/wake.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/wake_tests.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
-DELETE	rustd/crates/daemon/afd_dragonfly/src/doorbell/mod.rs	present	Wake notifications move behind bus; held wait path disappears
-DELETE	rustd/crates/daemon/afd_dragonfly/src/doorbell/tests.rs	present	Wake notifications move behind bus; held wait path disappears
-DELETE	rustd/crates/daemon/main/tests/integration_runner_wake.rs	present	Obsolete held-heartbeat tests replaced by session tests
-DELETE	rustd/crates/protocol/af_wire/src/lease/request.rs	present	Retire polling request/response surface; retain needed accepted-kind values in owning types
-DELETE	rustd/crates/protocol/af_wire/src/lease/response.rs	present	Retire polling request/response surface; retain needed accepted-kind values in owning types
-DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/closing_tests.rs	present	Old held-heartbeat and wake path
-DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/durable_policy_tests.rs	present	Old held-heartbeat and wake path
-DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/mod.rs	present	Old held-heartbeat and wake path
-DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/tests.rs	present	Old held-heartbeat and wake path
-DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/unanswered_tests.rs	present	Old held-heartbeat and wake path
-EDIT	bench/baselines/lease.rig.json	present	Adjust existing bench recipe and baseline; no new helper script
-EDIT	docs/AUTH.md	present	Authentication and metric reference
-EDIT	docs/architecture/README.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/api_resources.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/data_flow.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/datastore_scaling.md	present	M243 review feedback, observability evidence or matching test support
-EDIT	docs/architecture/lease_flow.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/observability.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/push_scheduler.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/runner_execution.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/runner_fleet.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/scaling.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/scenarios/fleet-to-fleet.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/scenarios/slack-incident-responder.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/architecture/user_flow.md	present	Replace polling and held-heartbeat behavior
-EDIT	docs/metrics.census.tsv	present	Authentication and metric reference
-EDIT	make/bench.mk	present	Adjust existing bench recipe and baseline; no new helper script
 EDIT	public/openapi.json	present	Dependencies and regenerated API reference
 EDIT	rustd/Cargo.lock	present	Dependencies and regenerated API reference
 EDIT	rustd/Cargo.toml	present	Dependencies and regenerated API reference
@@ -255,34 +45,77 @@ EDIT	rustd/crates/daemon/afd_admission/src/lib.rs	present	Constructor and re-exp
 EDIT	rustd/crates/daemon/afd_admission/src/wake.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_api/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_api/src/lib.rs	present	Constructor and re-export plumbing for injected bus
+EDIT	rustd/crates/daemon/afd_api/src/openapi/mod.rs	present	Repair native session compilation, lint, metadata, callers and regression fixtures
 EDIT	rustd/crates/daemon/afd_api/src/openapi/stability/mod.rs	present	Regenerated route metadata and response surface
+EDIT	rustd/crates/daemon/afd_api/src/router/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_api/tests/authoring/saving/activity/connectors.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/authoring/saving/activity/streams.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/authoring/saving/revisions/model_changes.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/authoring/stream/live.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/harness/fleet/mod.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/harness/fleet_seams.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_api/tests/harness/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_api/tests/harness/services.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_api/tests/harness/stubs_runner.rs	present	One route in, six out, updated stubs
+AUDIT	rustd/crates/daemon/afd_api/tests/harness/support.rs	present	Broker constructors/subscribers and fixtures
+AUDIT	rustd/crates/daemon/afd_api/tests/integration_fleet_admitted.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/integration_fleet_tasks/fixture.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+DELETE	rustd/crates/daemon/afd_api/tests/integration_runner_heartbeat.rs	present	Obsolete held-heartbeat tests replaced by session tests
+AUDIT	rustd/crates/daemon/afd_api/tests/integration_wall_recheck.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_api/tests/openapi_contract.rs	present	Retired route/type callers and fixtures
+AUDIT	rustd/crates/daemon/afd_api/tests/openapi_task_shapes.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/daemon/afd_api/tests/route_inventory.rs	present	One route in, six out, updated stubs
 EDIT	rustd/crates/daemon/afd_api/tests/route_meta_total.rs	present	One route in, six out, updated stubs
 EDIT	rustd/crates/daemon/afd_api/tests/runner_plane/decision_lifecycle/fixture.rs	present	Retired route/type callers and fixtures
-EDIT	rustd/crates/daemon/afd_api_operator/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
-EDIT	rustd/crates/daemon/afd_api_operator/src/handler/operator/runner_delete.rs	present	Publish runner authority recheck after commit
-EDIT	rustd/crates/daemon/afd_api_operator/src/handler/operator/runner_patch.rs	present	Publish runner authority recheck after commit
+AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/decision_lifecycle/task_routes.rs	present	Retired route/type callers and fixtures
+AUDIT	rustd/crates/daemon/afd_api/tests/runner_plane/decisions.rs	present	Retired route/type callers and fixtures
+DELETE	rustd/crates/daemon/afd_api/tests/runner_plane/folds.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/afd_api/tests/runner_plane/mod.rs	present	Retired route/type callers and fixtures
+CREATE	rustd/crates/daemon/afd_api/tests/runner_plane/retired.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/daemon/afd_api/tests/runner_plane/satellites.rs	present	Retired route/type callers and fixtures
+DELETE	rustd/crates/daemon/afd_api/tests/runner_plane/usage.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/afd_api/tests/runner_plane_suite.rs	present	Repair native session compilation, lint, callers and regression fixtures
+AUDIT	rustd/crates/daemon/afd_api/tests/support/fleet_stream_transport_fixture.rs	present	Broker constructors/subscribers and fixtures
+AUDIT	rustd/crates/daemon/afd_api/tests/support/wall_stream_fixture.rs	present	Broker constructors/subscribers and fixtures
+AUDIT	rustd/crates/daemon/afd_api/tests/support/workspace_members_fixture.rs	present	Broker constructors/subscribers and fixtures
+AUDIT	rustd/crates/daemon/afd_api_operator/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+AUDIT	rustd/crates/daemon/afd_api_operator/src/handler/operator/runner_delete.rs	present	Publish runner authority recheck after commit
+AUDIT	rustd/crates/daemon/afd_api_operator/src/handler/operator/runner_patch.rs	present	Publish runner authority recheck after commit
+AUDIT	rustd/crates/daemon/afd_api_operator/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_api_runner/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/activity.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/authoring/activity.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/authoring/mod.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/authoring/model_call.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/authoring/renew.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/authoring/report.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/folds.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/heartbeat.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/lease/input.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/lease/mod.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
+AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/message.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/mod.rs	present	Route registration and usage validation reused by session
-EDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/usage.rs	present	Route registration and usage validation reused by session
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/renew.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/report.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
+AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/schedule.rs	present	Retired route/type callers and fixtures
+AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/schedule_edit.rs	present	Retired route/type callers and fixtures
+AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/schedule_run.rs	present	Retired route/type callers and fixtures
+CREATE	rustd/crates/daemon/afd_api_runner/src/handler/runner/stream.rs	absent	Stream opening route
+AUDIT	rustd/crates/daemon/afd_api_runner/src/handler/runner/tool_call.rs	present	Retired route/type callers and fixtures
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/usage.rs	present	Route registration and usage validation reused by session
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/wake.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
+DELETE	rustd/crates/daemon/afd_api_runner/src/handler/runner/wake_tests.rs	present	Remove six retired HTTP routes and held-heartbeat machinery
 EDIT	rustd/crates/daemon/afd_api_runner/src/lib.rs	present	Route registration and usage validation reused by session
 EDIT	rustd/crates/daemon/afd_api_runner/src/openapi.rs	present	Route registration and usage validation reused by session
 EDIT	rustd/crates/daemon/afd_api_tenant/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/draft/stream/body.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/draft/stream/mod.rs	present	Inject bus handle; hide backend-specific pub/sub types
-EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/fleet/native/patch.rs	present	Publish cancellation after transaction commits
+AUDIT	rustd/crates/daemon/afd_api_tenant/src/handler/fleet/native/patch.rs	present	Publish cancellation after transaction commits
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/stream/body.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/stream/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/stream/transport_tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
 EDIT	rustd/crates/daemon/afd_api_tenant/src/handler/stream/wall/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+AUDIT	rustd/crates/daemon/afd_api_tenant/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_approval/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_approval/src/inbox/announce.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_approval/src/inbox/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
@@ -290,19 +123,27 @@ EDIT	rustd/crates/daemon/afd_approval/src/inbox/resolve/mod.rs	present	Inject bu
 EDIT	rustd/crates/daemon/afd_approval/src/inbox/resolve/stood.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_approval/src/inbox/resolve/wake_tests.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_approval/src/inbox/sweep.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+AUDIT	rustd/crates/daemon/afd_approval/src/lib.rs	present	Constructor and re-export plumbing for injected bus
+AUDIT	rustd/crates/daemon/afd_approval/tests/integration_grant_request.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_continuation.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+AUDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_sweep_decode.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_tail.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_tail_continuation.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_approval/tests/integration_inbox_tail_runless.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_approval/tests/support/gate_lane.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+AUDIT	rustd/crates/daemon/afd_approval/tests/support/tail_watch.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_authoring/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+EDIT	rustd/crates/daemon/afd_authoring/src/candidate/activity.rs	present	Native runner source, fixture migration, review correction or context-save evidence
 EDIT	rustd/crates/daemon/afd_authoring/src/creation/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/src/creation/patch.rs	present	Mark leases before cancel notification
+CREATE	rustd/crates/daemon/afd_authoring/src/creation/sql/mark_leases_cancel_requested.sql	absent	Durable kill marker in existing transaction
 EDIT	rustd/crates/daemon/afd_authoring/src/creation/sql/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_authoring/src/draft/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_authoring/src/error/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_authoring/src/lease/claim/issue/payload.rs	present	Repair native session compilation, lint, callers and regression fixtures
 EDIT	rustd/crates/daemon/afd_authoring/src/lease/claim/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_authoring/src/lease/renew.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_authoring/src/lease/report/mod.rs	present	Native runner source, fixture migration, review correction or context-save evidence
 EDIT	rustd/crates/daemon/afd_authoring/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_authoring/src/model/dispatch/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/src/model/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
@@ -316,6 +157,8 @@ EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/fixture.rs	present	C
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/grants.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/identity.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_authoring/tests/draft/creation/running_cancellation/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_authoring/tests/draft/creation/running_cancellation/probe.rs	absent	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/creation/stages.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/model_calls/progress/fixture.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_authoring/tests/draft/model_calls/progress/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
@@ -331,7 +174,7 @@ EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/burst/mod.rs	present	Com
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/mod.rs	present	Drive sessions and measure idle totals
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/runner.rs	present	Drive sessions and measure idle totals
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/stage.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
-EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/tests.rs	present	Drive sessions and measure idle totals
+AUDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/tests.rs	present	Drive sessions and measure idle totals
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/drain/window.rs	present	Drive sessions and measure idle totals
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/saturation/production.rs	present	Drive sessions and measure idle totals
@@ -340,17 +183,41 @@ EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/seed/mod.rs	present	Drive sess
 EDIT	rustd/crates/daemon/afd_bench/src/lane/lease/seed/tests.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_bench/src/lane/steer/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_bench/src/lane/steer/tests.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
-EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
-EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/publish/mod.rs	present	Broker constructors/subscribers and fixtures
-EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/streams/mod.rs	present	Broker constructors/subscribers and fixtures
-EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/streams/tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
-EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/viewers/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
-EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/viewers/tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/mod.rs	present	StreamLimit naming and fallible concurrency conversion only; M244 owns benchmark behavior
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/publish/mod.rs	present	StreamLimit naming and fallible concurrency conversion only; M244 owns benchmark behavior
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/streams/mod.rs	present	StreamLimit naming and fallible concurrency conversion only; M244 owns benchmark behavior
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/streams/tests.rs	present	StreamLimit naming and fallible concurrency conversion only; M244 owns benchmark behavior
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/viewers/mod.rs	present	StreamLimit naming and fallible concurrency conversion only; M244 owns benchmark behavior
+EDIT	rustd/crates/daemon/afd_bench/src/lane/tail/viewers/tests.rs	present	StreamLimit naming and fallible concurrency conversion only; M244 owns benchmark behavior
+AUDIT	rustd/crates/daemon/afd_bench/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_bench/tests/abort_wiring.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+CREATE	rustd/crates/daemon/afd_bus/Cargo.toml	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/command.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/dragonfly/mod.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/dragonfly/subscribe.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/error.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/lib.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/subject.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/subscription.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/test_util.rs	absent	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/daemon/afd_bus/src/tests.rs	absent	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/daemon/afd_bus/src/wake/config.rs	absent	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/daemon/afd_bus/src/wake/live_tests.rs	absent	M243 native session integration and affected source callers
+CREATE	rustd/crates/daemon/afd_bus/src/wake/mod.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/wake/publish.rs	absent	Neutral broker boundary and Dragonfly adapter
+CREATE	rustd/crates/daemon/afd_bus/src/wake/queue.rs	absent	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/daemon/afd_bus/src/wake/tests.rs	absent	M243 review feedback, observability evidence or matching test support
+AUDIT	rustd/crates/daemon/afd_bus/tests/bus_suite.rs	absent	Neutral broker boundary and Dragonfly adapter
+AUDIT	rustd/crates/daemon/afd_bus/tests/commands.rs	absent	Neutral broker boundary and Dragonfly adapter
+AUDIT	rustd/crates/daemon/afd_bus/tests/gaps.rs	absent	Neutral broker boundary and Dragonfly adapter
+AUDIT	rustd/crates/daemon/afd_bus/tests/wake.rs	absent	Neutral broker boundary and Dragonfly adapter
 EDIT	rustd/crates/daemon/afd_cron/Cargo.toml	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_cron/src/fire/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_cron/src/store/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+AUDIT	rustd/crates/daemon/afd_db/src/migration.rs	present	Verify table-file registration after other PR rewrites schema layout
 EDIT	rustd/crates/daemon/afd_dragonfly/Cargo.toml	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+DELETE	rustd/crates/daemon/afd_dragonfly/src/doorbell/mod.rs	present	Wake notifications move behind bus; held wait path disappears
+DELETE	rustd/crates/daemon/afd_dragonfly/src/doorbell/tests.rs	present	Wake notifications move behind bus; held wait path disappears
 EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/channels.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/detached.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
 EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/dispatch.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
@@ -358,16 +225,26 @@ EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/mod.rs	present	Stream transport, 
 EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/pump/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/src/hub/tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
 EDIT	rustd/crates/daemon/afd_dragonfly/src/lib.rs	present	Remove doorbell export; retain private hub implementation
+EDIT	rustd/crates/daemon/afd_dragonfly/src/streams/mod.rs	present	Repair native session compilation, lint, callers and regression fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/src/streams/tail.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_dragonfly/tests/datastore_suite.rs	present	M243 native session integration and affected source callers
+AUDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_connect_deadline.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_gap_faults.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_redial_climb.rs	present	Broker constructors/subscribers and fixtures
+AUDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_repair_faults.rs	present	Broker constructors/subscribers and fixtures
+AUDIT	rustd/crates/daemon/afd_dragonfly/tests/hub_socket_faults.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/tests/integration_cluster_recovery.rs	present	Broker constructors/subscribers and fixtures
+DELETE	rustd/crates/daemon/afd_dragonfly/tests/integration_doorbell.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/tests/integration_hub.rs	present	Broker constructors/subscribers and fixtures
+AUDIT	rustd/crates/daemon/afd_dragonfly/tests/integration_hub_exclusive.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/tests/integration_namespace/mod.rs	present	Broker constructors/subscribers and fixtures
+AUDIT	rustd/crates/daemon/afd_dragonfly/tests/integration_namespace/sweep.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_dragonfly/tests/support/hub_exclusive.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_events/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_events/src/activity.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_events/src/error/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_events/src/error/raise.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+AUDIT	rustd/crates/daemon/afd_events/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_events/src/steer/mod.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_events/tests/error_surface.rs	present	Complete typed bus injection and matching caller, error and ownership checks
 EDIT	rustd/crates/daemon/afd_events/tests/integration_backfill.rs	present	Broker constructors/subscribers and fixtures
@@ -375,107 +252,295 @@ EDIT	rustd/crates/daemon/afd_fleet/Cargo.toml	present	Wire gateway/bus/transport
 EDIT	rustd/crates/daemon/afd_fleet/src/error/classify.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/error/detail.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/error/kind.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/src/error/lift.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_fleet/src/error/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/error/permanence.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/error/refuse.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/error/tests.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/activity/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/answer/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/answer/tests.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/assign/ledger.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/bracket.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/claim.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/coverage.rs	present	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_fleet/src/lease/deliver/issue.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/deliver/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/deliver/tests.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/deliver/window.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/fold.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/issue.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/memory.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/message/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/mint/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
+CREATE	rustd/crates/daemon/afd_fleet/src/lease/offer.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/pull/claimed.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/pull/held.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/pull/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/pull/poll.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/pull/refuse.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/pull/step.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/pull/tests.rs	present	M243 native session integration and affected source callers
+AUDIT	rustd/crates/daemon/afd_fleet/src/lease/rebuild.rs	absent	Live lease rebuild and per-replica fallback probe
+CREATE	rustd/crates/daemon/afd_fleet/src/lease/renew/extend.rs	absent	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/renew/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
-EDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/activity.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
-EDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/report/memory.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/report/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+CREATE	rustd/crates/daemon/afd_fleet/src/lease/report/observations/mod.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
+CREATE	rustd/crates/daemon/afd_fleet/src/lease/report/observations/tests.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/report/steps.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+AUDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/activity.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/lease/row.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+AUDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/mod.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/renew.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
+CREATE	rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_cancelled.sql	absent	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_for_renew.sql	present	Typed offered claim, cached target and fenced cancel-aware renewal
+AUDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/select_runner_live_leases.sql	absent	Live lease rebuild and per-replica fallback probe
+AUDIT	rustd/crates/daemon/afd_fleet/src/lease/sql/select_waiting_admission.sql	absent	Live lease rebuild and per-replica fallback probe
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/standing/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/store.rs	present	Typed offered claim, cached target and fenced cancel-aware renewal
 EDIT	rustd/crates/daemon/afd_fleet/src/lease/test_dead.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/tool_detail/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/src/lease/write_fence.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+AUDIT	rustd/crates/daemon/afd_fleet/src/lib.rs	present	Constructor and re-export plumbing for injected bus
+EDIT	rustd/crates/daemon/afd_fleet/src/task/dependencies.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/daemon/afd_fleet/src/task/github/mod.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/daemon/afd_fleet/src/task/input_receipt/answer.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_fleet/src/task/lease.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/src/task/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/src/task/sql.rs	present	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_fleet/src/task/sql/lock_issue_scope.sql	absent	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_fleet/tests/fleet_suite.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_activity_publish.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_credential_mint/claims.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_credential_mint/rotation.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_held_sandbox/mod.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_held_sandbox/poll.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_edges.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_fairness.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/bindings.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/cases.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/chat.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/decision.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/faults.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/faults/parking.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/history.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/mod.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/slack.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/stops.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/tenant.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_gates/window.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_lease_usage_flush.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/contention.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/deadlines.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/delivery.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/parking.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_ledger_queue/parking_commit.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_renew_clamp.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_renew_coverage.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_report_memory.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_runner_beat/mod.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_runner_beat/recovery.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/decisions/lease_recovery/mod.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/decisions/timeouts.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/fixture.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/read_deadline.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_tasks/report_limits.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/tests/integration_terminal_redelivery.rs	present	M243 native session integration and affected source callers
+AUDIT	rustd/crates/daemon/afd_fleet/tests/integration_wall_counters.rs	present	Broker constructors/subscribers and fixtures
+CREATE	rustd/crates/daemon/afd_fleet/tests/issue_lifecycle.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_fleet/tests/lease_renewal/cancellation.rs	absent	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/tests/lease_renewal/fixture.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/afd_fleet/tests/lease_renewal/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_fleet/tests/lease_renewal/offered.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/lease_renewal/replica.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_fleet/tests/support/fleet_fixtures.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_fleet/tests/support/fleet_lease_seed.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/afd_fleet/tests/support/fleet_report_seed.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_fleet/tests/support/view_heartbeat.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/afd_gate/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_gate/src/gate/first.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_gate/src/gate/park.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_gate/src/gate/store/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+AUDIT	rustd/crates/daemon/afd_gate/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_gate/tests/gate_faults.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_gate/tests/integration_gate_faults.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_gate/tests/integration_gate_lifecycle.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_gate/tests/integration_gate_reference.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_gate/tests/integration_gate_tail.rs	present	Broker constructors/subscribers and fixtures
-EDIT	rustd/crates/daemon/afd_http/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+CREATE	rustd/crates/daemon/afd_gateway/Cargo.toml	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/connection.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/error/classify.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+CREATE	rustd/crates/daemon/afd_gateway/src/error/kind.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+CREATE	rustd/crates/daemon/afd_gateway/src/error/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/lib.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/observations.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/operation.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/registry/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/registry/tests.rs	absent	Native runner source, fixture migration, review correction or context-save evidence
+CREATE	rustd/crates/daemon/afd_gateway/src/scheduler/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/scheduler/recovery.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/scheduler/subscriptions.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/service.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/cache/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/cache/snapshot.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/cache/tests.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/commands.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/context.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/credits_tests.rs	absent	Session ownership, capacity ordering and domain dispatch
+CREATE	rustd/crates/daemon/afd_gateway/src/session/dispatch/authoring.rs	absent	Native runner source, fixture migration, review correction or context-save evidence
+CREATE	rustd/crates/daemon/afd_gateway/src/session/dispatch/heartbeat.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/dispatch/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/dispatch/progress.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/dispatch/renewal.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/dispatch/report.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/events.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/io.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/offer.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/opening/confirmation.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/opening/control.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/opening/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/opening/request.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/requests.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/runtime.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/sql/select_lease_cancellation.sql	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/sql/select_runner_live_leases.sql	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/streams.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/supervisor.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/sql/select_waiting_admission.sql	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/stream_headers.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+AUDIT	rustd/crates/daemon/afd_http/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
 EDIT	rustd/crates/daemon/afd_http/src/auth/guard.rs	present	Native-bound stream guard and gateway service access
-EDIT	rustd/crates/daemon/afd_http/src/route/mod.rs	present	Native-bound stream guard and gateway service access
+EDIT	rustd/crates/daemon/afd_http/src/auth/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+CREATE	rustd/crates/daemon/afd_http/src/auth/request.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
+CREATE	rustd/crates/daemon/afd_http/src/auth/runner_stream.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_http/src/handler/refusal/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+AUDIT	rustd/crates/daemon/afd_http/src/lib.rs	present	Constructor and re-export plumbing for injected bus
+AUDIT	rustd/crates/daemon/afd_http/src/route/mod.rs	present	Native-bound stream guard and gateway service access
 EDIT	rustd/crates/daemon/afd_http/src/route/runner.rs	present	Native-bound stream guard and gateway service access
-EDIT	rustd/crates/daemon/afd_http/src/services/contract.rs	present	Native-bound stream guard and gateway service access
+DELETE	rustd/crates/daemon/afd_http/src/services/contract.rs	present	Descriptive naming requested in Indys review; no compatibility alias
+CREATE	rustd/crates/daemon/afd_http/src/services/http_services.rs	absent	Descriptive naming requested in Indys review; no compatibility alias
+CREATE	rustd/crates/daemon/afd_http/src/services/leasing/lease_service.rs	absent	Descriptive naming requested in Indys review; no compatibility alias
 EDIT	rustd/crates/daemon/afd_http/src/services/leasing/mod.rs	present	Native-bound stream guard and gateway service access
-EDIT	rustd/crates/daemon/afd_http/src/services/leasing/plane.rs	present	Native-bound stream guard and gateway service access
+DELETE	rustd/crates/daemon/afd_http/src/services/leasing/plane.rs	present	Descriptive naming requested in Indys review; no compatibility alias
 EDIT	rustd/crates/daemon/afd_http/src/services/mod.rs	present	Native-bound stream guard and gateway service access
+CREATE	rustd/crates/daemon/afd_http/src/services/runner_stream.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_memory/Cargo.toml	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_memory/src/access.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_memory/src/memories.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
-EDIT	rustd/crates/daemon/afd_runner/src/capacity/choice.rs	present	Credential and connection authority under host lock
+CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/acquire.sql	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/check.sql	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_runner/src/capacity/authority/sql/prepare.sql	absent	Reviewed M243 source checkpoint; implementation and caller updates
+AUDIT	rustd/crates/daemon/afd_runner/src/capacity/choice.rs	present	Credential and connection authority under host lock
 EDIT	rustd/crates/daemon/afd_runner/src/capacity/mod.rs	present	Credential and connection authority under host lock
+EDIT	rustd/crates/daemon/afd_runner/src/capacity/sql/census.sql	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_runner/src/capacity/sql/lock_host.sql	present	Credential and connection authority under host lock
-EDIT	rustd/crates/daemon/afd_runner/src/capacity/sql/mod.rs	present	Credential and connection authority under host lock
+AUDIT	rustd/crates/daemon/afd_runner/src/capacity/sql/mod.rs	present	Credential and connection authority under host lock
 EDIT	rustd/crates/daemon/afd_runner/src/heartbeat/mod.rs	present	Credential and connection authority under host lock
-EDIT	rustd/crates/daemon/afd_runner/src/sql/runner/mod.rs	present	Credential and connection authority under host lock
+CREATE	rustd/crates/daemon/afd_runner/src/heartbeat/policy.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
+AUDIT	rustd/crates/daemon/afd_runner/src/sql/runner/clear_runner_connection.sql	absent	Guarded connection ownership writes; no UUID casts
+AUDIT	rustd/crates/daemon/afd_runner/src/sql/runner/mod.rs	present	Credential and connection authority under host lock
 EDIT	rustd/crates/daemon/afd_runner/src/sql/runner/select_runner_assigned_policy.sql	present	Credential and connection authority under host lock
+AUDIT	rustd/crates/daemon/afd_runner/src/sql/runner/write_runner_connection.sql	absent	Guarded connection ownership writes; no UUID casts
+CREATE	rustd/crates/daemon/afd_runner/tests/integration_runner_plane/connections/mod.rs	absent	Runner ownership, durable cancellation and matching regression verification
+CREATE	rustd/crates/daemon/afd_runner/tests/integration_runner_plane/connections/races.rs	absent	Runner ownership, durable cancellation and matching regression verification
+EDIT	rustd/crates/daemon/afd_runner/tests/integration_runner_plane/faults.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/afd_runner/tests/integration_runner_plane/mod.rs	present	Runner ownership, durable cancellation and matching regression verification
 EDIT	rustd/crates/daemon/afd_sse/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
-EDIT	rustd/crates/daemon/afd_sse/src/ceiling.rs	present	Inject bus handle; hide backend-specific pub/sub types
+DELETE	rustd/crates/daemon/afd_sse/src/ceiling.rs	present	Descriptive naming requested in Indys review; no compatibility alias
 EDIT	rustd/crates/daemon/afd_sse/src/fanin.rs	present	Inject bus handle; hide backend-specific pub/sub types
 EDIT	rustd/crates/daemon/afd_sse/src/frame/data.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_sse/src/frame/mod.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_sse/src/frame/tests.rs	present	Stream transport, neutral bus payload ownership or matching regression evidence
 EDIT	rustd/crates/daemon/afd_sse/src/lib.rs	present	Constructor and re-export plumbing for injected bus
 EDIT	rustd/crates/daemon/afd_sse/src/live.rs	present	Inject bus handle; hide backend-specific pub/sub types
+CREATE	rustd/crates/daemon/afd_sse/src/stream_limit.rs	absent	Descriptive naming requested in Indys review; no compatibility alias
 EDIT	rustd/crates/daemon/afd_sse/src/tail/mod.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_sse/src/tail/tests.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_sse/tests/integration_sequencing/fan_in.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_sse/tests/integration_sequencing/main.rs	present	Broker constructors/subscribers and fixtures
 EDIT	rustd/crates/daemon/afd_sse/tests/support/sse_lane.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/afd_state/Cargo.toml	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_state/tests/directory/runners.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+EDIT	rustd/crates/daemon/afd_state/tests/support/directory_fixtures.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/afd_vault/Cargo.toml	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/afd_vault/src/lib.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/main/Cargo.toml	present	Wire gateway/bus/transport dependencies at first caller
+EDIT	rustd/crates/daemon/main/src/error.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/main/src/plane/config.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/main/src/plane/mod.rs	present	Build shared handles once; bounded session drain
 EDIT	rustd/crates/daemon/main/src/plane/platform.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/main/src/plane/services.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/main/src/plane/stores.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/main/src/plane/surfaces.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
 EDIT	rustd/crates/daemon/main/src/plane/tests.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/main/src/preflight/config.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/main/src/preflight/mod.rs	present	Build shared handles once; bounded session drain
+EDIT	rustd/crates/daemon/main/src/preflight/read.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
+CREATE	rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs	absent	Direct native listener and validated configuration; deployment file approval separate
+CREATE	rustd/crates/daemon/main/src/preflight/runner_listener/tests.rs	absent	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/main/src/serve/drain/mod.rs	present	Build shared handles once; bounded session drain
 EDIT	rustd/crates/daemon/main/src/serve/drain/tests.rs	present	Build shared handles once; bounded session drain
+EDIT	rustd/crates/daemon/main/src/serve/exporting.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/daemon/main/src/serve/mod.rs	present	Build shared handles once; bounded session drain
 EDIT	rustd/crates/daemon/main/src/serve/optional.rs	present	Build shared handles once; bounded session drain
+CREATE	rustd/crates/daemon/main/src/serve/runner_stream.rs	absent	Direct native listener and validated configuration; deployment file approval separate
 EDIT	rustd/crates/daemon/main/src/serve/runtime.rs	present	Build shared handles once; bounded session drain
+EDIT	rustd/crates/daemon/main/src/telemetry/tests.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/daemon/main/tests/binary.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/daemon/main/tests/cli.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/main/tests/daemon_suite.rs	present	Register tests and retire route calls in shared helpers
+AUDIT	rustd/crates/daemon/main/tests/integration_authoring_mint.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_cluster_outcomes.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/daemon/main/tests/integration_grant_denial.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_runner_activity.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_runner_brackets.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/daemon/main/tests/integration_runner_context.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/labels.rs	present	Session fixture and offer behavior changes
+EDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/mod.rs	present	Session fixture and offer behavior changes
+EDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/money_gate.rs	present	Session fixture and offer behavior changes
+EDIT	rustd/crates/daemon/main/tests/integration_runner_e2e/refusals.rs	present	Session fixture and offer behavior changes
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_messages.rs	present	Retired route/type callers and fixtures
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_schedules_refusals.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_runner_schedules_runs.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/daemon/main/tests/integration_runner_shapes.rs	present	Retired route/type callers and fixtures
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_stream/authority.rs	absent	Native carrier and cross-replica failure evidence
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_stream/cancel.rs	absent	Native carrier and cross-replica failure evidence
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_stream/fixture.rs	absent	Native carrier and cross-replica failure evidence
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/heartbeat.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/mod.rs	absent	Native carrier and cross-replica failure evidence
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_stream/observability.rs	absent	Native carrier and cross-replica failure evidence
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/offers.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_stream/pressure.rs	absent	Native carrier and cross-replica failure evidence
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_stream/reconnect.rs	absent	Native carrier and cross-replica failure evidence
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_stream/reports.rs	absent	Native carrier and cross-replica failure evidence
+AUDIT	rustd/crates/daemon/main/tests/integration_runner_stream/transport.rs	absent	Native carrier and cross-replica failure evidence
+DELETE	rustd/crates/daemon/main/tests/integration_runner_wake.rs	present	Obsolete held-heartbeat tests replaced by session tests
+EDIT	rustd/crates/daemon/main/tests/integration_rust_runner.rs	present	Retired route/type callers and fixtures
+AUDIT	rustd/crates/daemon/main/tests/integration_rust_runner_overlap.rs	present	Broker constructors/subscribers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_serve.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/main/tests/integration_tool_call_details.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_tool_call_refusals.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_tool_trace.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/integration_unreadable_config.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/daemon/main/tests/preflight.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/main/tests/preflight_optional.rs	present	M243 native session integration and affected source callers
+EDIT	rustd/crates/daemon/main/tests/serve.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/main/tests/support/definition_install/fleet.rs	present	Complete typed bus injection, owned shutdown and the matching caller fixtures
+EDIT	rustd/crates/daemon/main/tests/support/definition_install/mod.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/daemon/main/tests/support/e2e.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/daemon/main/tests/support/e2e_db.rs	present	M243 native session integration and affected source callers
 EDIT	rustd/crates/daemon/main/tests/support/e2e_schedules.rs	present	Register tests and retire route calls in shared helpers
 EDIT	rustd/crates/daemon/main/tests/support/e2e_speaking.rs	present	Register tests and retire route calls in shared helpers
 EDIT	rustd/crates/daemon/main/tests/support/e2e_tail.rs	present	Register tests and retire route calls in shared helpers
 EDIT	rustd/crates/daemon/main/tests/support/e2e_wire.rs	present	Register tests and retire route calls in shared helpers
+EDIT	rustd/crates/daemon/main/tests/support/mod.rs	present	M243 native session integration and affected source callers
+CREATE	rustd/crates/daemon/main/tests/support/runner_stream.rs	absent	M243 native session integration and affected source callers
 EDIT	rustd/crates/foundation/af_core/src/error_code/fleet.rs	present	Timing, limits and stable failure codes
 EDIT	rustd/crates/foundation/af_core/src/error_code/mod.rs	present	Timing, limits and stable failure codes
 EDIT	rustd/crates/foundation/af_core/src/limits.rs	present	Timing, limits and stable failure codes
@@ -487,43 +552,247 @@ EDIT	rustd/crates/protocol/af_observability/src/metrics/label/fleet.rs	present	D
 EDIT	rustd/crates/protocol/af_observability/src/metrics/label/tests.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/protocol/af_observability/src/producers/fleet/mod.rs	present	Declare and register metrics; remove wake answer family
 EDIT	rustd/crates/protocol/af_observability/src/producers/fleet/runner/mod.rs	present	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/protocol/af_observability/src/producers/fleet/runner/stream.rs	absent	Finite stream health and recovery producers
+EDIT	rustd/crates/protocol/af_observability/src/producers/mod.rs	present	Reviewed M243 source checkpoint; implementation and caller updates
 EDIT	rustd/crates/protocol/af_observability/src/semconv/mod.rs	present	Declare the transport label used by the stream metric census
-EDIT	rustd/crates/protocol/af_wire/src/lease/kinds.rs	present	Register protocol and remove old route/request shape
+EDIT	rustd/crates/protocol/af_observability/tests/producers_drive.rs	present	M243 native session integration and affected source callers
+CREATE	rustd/crates/protocol/af_observability/tests/stream_observations.rs	absent	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/protocol/af_stream/Cargo.toml	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/body/h3.rs	absent	Typed transport, review regression or matching configuration evidence
+CREATE	rustd/crates/protocol/af_stream/src/body/mod.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/client.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/endpoint.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/error/labels.rs	absent	Typed transport, review regression or matching configuration evidence
+CREATE	rustd/crates/protocol/af_stream/src/error/mod.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/framing/budget.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/framing/encoder.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
+CREATE	rustd/crates/protocol/af_stream/src/framing/memory.rs	absent	Reviewed M243 source checkpoint; implementation and caller updates
+CREATE	rustd/crates/protocol/af_stream/src/framing/mod.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/framing/reader.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/framing/writer.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h2/client.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h2/executor.rs	absent	Typed transport, review regression or matching configuration evidence
+CREATE	rustd/crates/protocol/af_stream/src/h2/mod.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h2/server.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h3/client.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h3/driver.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h3/headers.rs	absent	Typed transport, review regression or matching configuration evidence
+CREATE	rustd/crates/protocol/af_stream/src/h3/mod.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h3/server.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h3/socket.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h3/telemetry.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/h3/tests.rs	absent	Native H3/H2 lifecycle, strict hybrid TLS and explicit proxy routing
+CREATE	rustd/crates/protocol/af_stream/src/h3/trust.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/jobs.rs	absent	Typed transport, review regression or matching configuration evidence
+CREATE	rustd/crates/protocol/af_stream/src/lib.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/limits.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/proxy/mod.rs	absent	Native H3/H2 lifecycle, strict hybrid TLS and explicit proxy routing
+CREATE	rustd/crates/protocol/af_stream/src/proxy/tests.rs	absent	Native H3/H2 lifecycle, strict hybrid TLS and explicit proxy routing
+CREATE	rustd/crates/protocol/af_stream/src/server.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/telemetry.rs	absent	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/protocol/af_stream/src/test_util.rs	absent	Native H3/H2 lifecycle, strict hybrid TLS and explicit proxy routing
+CREATE	rustd/crates/protocol/af_stream/src/tls/boring.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/src/tls/key_exchange/mod.rs	absent	TLS 1.3 hybrid preference and negotiated group observations
+CREATE	rustd/crates/protocol/af_stream/src/tls/key_exchange/tests.rs	absent	Real TLS peers prove classical interoperability and reject TLS 1.2
+CREATE	rustd/crates/protocol/af_stream/src/tls/mod.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/tests/failures.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/tests/framing.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/tests/native.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/tests/stream_suite.rs	absent	Proposed shared transport crate; native proof before integration
+CREATE	rustd/crates/protocol/af_stream/tests/support/mod.rs	absent	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/protocol/af_stream/tests/support/proxy.rs	absent	M243 review feedback, observability evidence or matching test support
+CREATE	rustd/crates/protocol/af_stream/tests/transport_observability.rs	absent	M243 review feedback, observability evidence or matching test support
+AUDIT	rustd/crates/protocol/af_wire/src/activity/mod.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/protocol/af_wire/src/authoring/lease.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/protocol/af_wire/src/authoring/lease_tests.rs	present	Repair native session compilation, lint, callers and regression fixtures
+AUDIT	rustd/crates/protocol/af_wire/src/fold/mod.rs	present	Retired route/type callers and fixtures
+AUDIT	rustd/crates/protocol/af_wire/src/lease/kinds.rs	present	Register protocol and remove old route/request shape
 EDIT	rustd/crates/protocol/af_wire/src/lease/mod.rs	present	Register protocol and remove old route/request shape
-EDIT	rustd/crates/protocol/af_wire/src/lease/payload.rs	present	Register protocol and remove old route/request shape
+AUDIT	rustd/crates/protocol/af_wire/src/lease/payload.rs	present	Register protocol and remove old route/request shape
+DELETE	rustd/crates/protocol/af_wire/src/lease/request.rs	present	Retire polling request/response surface; retain needed accepted-kind values in owning types
+DELETE	rustd/crates/protocol/af_wire/src/lease/response.rs	present	Retire polling request/response surface; retain needed accepted-kind values in owning types
 EDIT	rustd/crates/protocol/af_wire/src/lib.rs	present	Register protocol and remove old route/request shape
+AUDIT	rustd/crates/protocol/af_wire/src/message_verb/mod.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/protocol/af_wire/src/paths.rs	present	Register protocol and remove old route/request shape
+AUDIT	rustd/crates/protocol/af_wire/src/protocol/bounds.rs	absent	Strict versioned wire messages; first three files and test already held as draft
+CREATE	rustd/crates/protocol/af_wire/src/protocol/down.rs	absent	Strict versioned wire messages; first three files and test already held as draft
+CREATE	rustd/crates/protocol/af_wire/src/protocol/mod.rs	absent	Strict versioned wire messages; first three files and test already held as draft
+CREATE	rustd/crates/protocol/af_wire/src/protocol/up/decode.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+CREATE	rustd/crates/protocol/af_wire/src/protocol/up/mod.rs	absent	Strict versioned wire messages; first three files and test already held as draft
+CREATE	rustd/crates/protocol/af_wire/src/protocol/up/other.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/protocol/af_wire/src/report/mod.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/protocol/af_wire/src/runner/mod.rs	present	Register protocol and remove old route/request shape
+AUDIT	rustd/crates/protocol/af_wire/src/schedule_verb/mod.rs	present	Retired route/type callers and fixtures
+AUDIT	rustd/crates/protocol/af_wire/src/tool_detail/mod.rs	present	Retired route/type callers and fixtures
 EDIT	rustd/crates/protocol/af_wire/tests/claim_selection.rs	present	Register protocol and remove old route/request shape
+CREATE	rustd/crates/protocol/af_wire/tests/native_requests.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+CREATE	rustd/crates/protocol/af_wire/tests/protocol.rs	absent	Strict versioned wire messages; first three files and test already held as draft
 EDIT	rustd/crates/protocol/af_wire/tests/routes.rs	present	Register protocol and remove old route/request shape
 EDIT	rustd/crates/protocol/af_wire/tests/strictness.rs	present	Register protocol and remove old route/request shape
 EDIT	rustd/crates/protocol/af_wire/tests/validation_holds.rs	present	Register protocol and remove old route/request shape
 EDIT	rustd/crates/protocol/af_wire/tests/wire_suite.rs	present	Register protocol and remove old route/request shape
+EDIT	rustd/crates/runner/afr_sandbox/examples/kernel_lane/supervisor.rs	present	Repair native session compilation, lint, callers and regression fixtures
 EDIT	rustd/crates/runner/afr_sandbox/examples/kernel_lane/supervisor_checks.rs	present	Native stream fake daemon interfaces
 EDIT	rustd/crates/runner/afr_sandbox/examples/kernel_lane/supervisor_plane.rs	present	Native stream fake daemon interfaces
-EDIT	rustd/crates/runner/afr_supervisor/Cargo.toml	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/activity/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/client/http.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/client/lease_verbs/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/client/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/client/verb.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/drainer/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/halt/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/lessee.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/lib.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/renew/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/report/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/test_util.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/verbs/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/worker_pool/mod.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
-EDIT	rustd/crates/runner/afr_supervisor/src/worker_pool/tests.rs	present	Consume offers; preserve report spool, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_sandbox/examples/kernel_lane/supervisor_recovery/mod.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/runner/afr_supervisor/Cargo.toml	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/activity/early_tests.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/activity/mod.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/activity/tests.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/authoring/mod.rs	present	Retain pending authoring results in memory; no report files
+EDIT	rustd/crates/runner/afr_supervisor/src/authoring/proposal.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/authoring/tests/execution.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/authoring/tests/failures.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/authoring/tests/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/authoring/tests/renewal.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/authoring/turn.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/runner/afr_supervisor/src/client/authoring.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/client/http.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/client/lease_verbs/mod.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+AUDIT	rustd/crates/runner/afr_supervisor/src/client/lease_verbs/tests.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/client/mod.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+CREATE	rustd/crates/runner/afr_supervisor/src/client/stream.rs	absent	Complete pushed runner operations and migrate fixtures from removed behavior
+DELETE	rustd/crates/runner/afr_supervisor/src/client/tests/authoring.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/client/tests/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/client/tests/routing.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/client/tests/task/mod.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/client/tests/transport.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/client/verb.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/config/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+CREATE	rustd/crates/runner/afr_supervisor/src/config/stream.rs	absent	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/config/tests.rs	present	Retired route/type callers and fixtures
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/connect.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/dispatch.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/io.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/mod.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/pending.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/policy/closing_tests.rs	absent	Own native connection recovery, correlated replies, offers, policy and cancellation
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/policy/durable_policy_tests.rs	absent	Own native connection recovery, correlated replies, offers, policy and cancellation
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/policy/mod.rs	absent	Own native connection recovery, correlated replies, offers, policy and cancellation
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/policy/tests.rs	absent	Own native connection recovery, correlated replies, offers, policy and cancellation
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/policy/unanswered_tests.rs	absent	Own native connection recovery, correlated replies, offers, policy and cancellation
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/reconnect.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
+CREATE	rustd/crates/runner/afr_supervisor/src/downlink/running.rs	absent	Own native connection recovery, correlated replies, offers, policy and cancellation
+DELETE	rustd/crates/runner/afr_supervisor/src/drainer/mod.rs	present	Owner removed runner disk report and receipt storage, restart replay and older-daemon retries
+DELETE	rustd/crates/runner/afr_supervisor/src/drainer/reshape_tests.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/drainer/tests.rs	present	Remove runner disk result storage, replay and backward-format delivery
+EDIT	rustd/crates/runner/afr_supervisor/src/error/classify.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/error/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/error/raise.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/error/tests.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/halt/mod.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/halt/tests.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/closing_tests.rs	present	Old held-heartbeat and wake path
+DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/durable_policy_tests.rs	present	Old held-heartbeat and wake path
+DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/mod.rs	present	Old held-heartbeat and wake path
+DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/tests.rs	present	Old held-heartbeat and wake path
+DELETE	rustd/crates/runner/afr_supervisor/src/heartbeat/unanswered_tests.rs	present	Old held-heartbeat and wake path
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/drive.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/lessee.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/mod.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/settle.rs	present	Remove disk spool and backward-format fallback; send current result
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/admission.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/build_endings.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/completion.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/failures.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+DELETE	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/fallback.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/holds/release.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/holds/reuse.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/holds/revive.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/records.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/recovery/mod.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/recovery/server.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/renewal.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/settlement.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_loop/tests/usage.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/lease_telemetry_tests/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/lib.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/lib_tests.rs	present	Retired route/type callers and fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/memory/mod.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/runner/afr_supervisor/src/memory/tests.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/runner/afr_supervisor/src/recovery/tests/capture.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/recovery/tests/mod.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/recovery/tests/restore/mod.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/recovery/tests/restore/success.rs	present	Repair native session compilation, lint, callers and regression fixtures
+EDIT	rustd/crates/runner/afr_supervisor/src/recovery/tests/session.rs	present	Repair native session compilation, lint, callers and regression fixtures
+AUDIT	rustd/crates/runner/afr_supervisor/src/renew/host.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
+EDIT	rustd/crates/runner/afr_supervisor/src/renew/mod.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/renew/tests.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+CREATE	rustd/crates/runner/afr_supervisor/src/report/delivery/mod.rs	absent	Keep report and decision receipt retry in caller memory until acknowledgement
+CREATE	rustd/crates/runner/afr_supervisor/src/report/delivery/tests.rs	absent	Current-format retry, pending settlement, terminal refusal and cancellation sources
+EDIT	rustd/crates/runner/afr_supervisor/src/report/mod.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/cipher.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/drain.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/entry.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/files.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/mod.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/tests/cleanup.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/tests/delivery.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/tests/integrity.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/tests/mod.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/tests/refusal.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/authoring/tests/retention.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/decision/cipher.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/decision/delivery_tests.rs	present	Owner removed runner disk report and receipt storage, restart replay and older-daemon retries
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/decision/mod.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/decision/tests.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/mod.rs	present	Remove runner disk result storage, replay and backward-format delivery
+DELETE	rustd/crates/runner/afr_supervisor/src/report_spool/tests.rs	present	Remove runner disk result storage, replay and backward-format delivery
+EDIT	rustd/crates/runner/afr_supervisor/src/storage_home/mod.rs	present	Stop creating report and receipt directories
+EDIT	rustd/crates/runner/afr_supervisor/src/storage_home/tests.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/test_support/daemon/mod.rs	present	Session fixture and offer behavior changes
+CREATE	rustd/crates/runner/afr_supervisor/src/test_support/daemon/stream.rs	absent	Answer current native frames through the reply correlator in scripted tests
+EDIT	rustd/crates/runner/afr_supervisor/src/test_support/daemon/tests.rs	present	Session fixture and offer behavior changes
+EDIT	rustd/crates/runner/afr_supervisor/src/test_support/fixtures.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/test_support/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/test_support/rig.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+DELETE	rustd/crates/runner/afr_supervisor/src/test_util.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+CREATE	rustd/crates/runner/afr_supervisor/src/test_util/mod.rs	absent	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+CREATE	rustd/crates/runner/afr_supervisor/src/test_util/native/mod.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+CREATE	rustd/crates/runner/afr_supervisor/src/test_util/native/reply.rs	absent	Repair native session compilation, lint, callers and regression fixtures
+CREATE	rustd/crates/runner/afr_supervisor/src/test_util/session.rs	absent	Native runner source, fixture migration, review correction or context-save evidence
+CREATE	rustd/crates/runner/afr_supervisor/src/test_util/tests.rs	absent	Complete pushed runner operations and migrate fixtures from removed behavior
+DELETE	rustd/crates/runner/afr_supervisor/src/test_util_tests.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+CREATE	rustd/crates/runner/afr_supervisor/src/uplink/mod.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
+CREATE	rustd/crates/runner/afr_supervisor/src/uplink/queues.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
+CREATE	rustd/crates/runner/afr_supervisor/src/uplink/renewals.rs	absent	Own bounded native writes and host-wide renewal batches
+CREATE	rustd/crates/runner/afr_supervisor/src/uplink/writer.rs	absent	Client session, pending answers, prioritized writes and per-host renewal
+EDIT	rustd/crates/runner/afr_supervisor/src/verbs/decision.rs	present	Keep original-owner decision receipt in memory until Postgres acknowledgement
+EDIT	rustd/crates/runner/afr_supervisor/src/verbs/mod.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/verbs/tests/decision/loop_boundary/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/verbs/tests/decision/loop_boundary/server.rs	present	Native runner source, fixture migration, review correction or context-save evidence
+EDIT	rustd/crates/runner/afr_supervisor/src/verbs/tests/decision/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/verbs/tests/folds.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/verbs/tests/mod.rs	present	Complete pushed runner operations and migrate fixtures from removed behavior
+EDIT	rustd/crates/runner/afr_supervisor/src/worker_pool/mod.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/afr_supervisor/src/worker_pool/tests.rs	present	Consume offers; retry current reports only from memory, zeroing lease body and remaining HTTP verbs
+EDIT	rustd/crates/runner/main/tests/entries.rs	present	Repair native session compilation, lint, callers and regression fixtures
 EDIT	rustd/crates/runner/main/tests/fake_daemon.rs	present	Native stream fake daemon interfaces
+EDIT	rustd/crates/runner/main/tests/run.rs	present	Repair native session compilation, lint, callers and regression fixtures
 EDIT	schema/20261108123100_runner_runners.sql	present	Only connection_id and cancel_requested_at; no new table or ALTER file
 EDIT	schema/20261108123200_runner_leases.sql	present	Only connection_id and cancel_requested_at; no new table or ALTER file
 EDIT	ui/packages/app/tests/approvals-list/resolve.test.ts	present	Runner ownership, durable cancellation and matching regression verification
-MOVE_FROM	docs/v2/pending/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md	present	Spec opened on this branch
-MOVE_TO	docs/v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md	absent	Active spec and Discovery
-PROPOSE	deploy/fly/agentsfleetd-dev/fly.toml	present	No edit until Indy approves concrete certificate and listener delivery
-PROPOSE	deploy/fly/agentsfleetd-prod/fly.toml	present	No edit until Indy approves concrete certificate and listener delivery
-PROPOSE	playbooks/operations/ci_rust_images/Dockerfile.alpine	present	Native proof may require adding clang and clang-dev; no builder edit or image publication until Indy approves concrete change
+EDIT	rustd/crates/daemon/afd_authoring/src/model/provider/network/mod.rs	present	Native authoring session, durable receipts, connection fencing and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/receipt/finish.rs	present	Native authoring session, durable receipts, connection fencing and focused verification
+EDIT	rustd/crates/daemon/main/src/serve/test_util.rs	present	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/accounting.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/contention.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/fencing.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/fixture.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/flow.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/mod.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/provider.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/reads.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/refusals.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/replay.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/seed.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+EDIT	rustd/crates/protocol/af_wire/src/authoring/report.rs	present	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/main/tests/integration_runner_stream/authoring/expiry.rs	absent	Native authoring session, durable receipts, connection fencing and focused verification
+CREATE	rustd/crates/daemon/afd_authoring/src/lease/guard/connected.rs	absent	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/lease/guard/mod.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/lease/report/prepare.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/dispatch/funding.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/edit_intent/prepare.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/edit_intent/record.rs	present	Native authoring authority boundary, caller simplification and focused verification
+EDIT	rustd/crates/daemon/afd_authoring/src/model/edit_intent/reserve.rs	present	Native authoring authority boundary, caller simplification and focused verification

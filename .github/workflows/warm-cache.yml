@@ -115,7 +115,8 @@ jobs:
           mkdir -p .cargo-cache/registry .cargo-cache/git rustd/target
           RUST_VERSION="$(sed -n 's/^RUST_VERSION=//p' playbooks/operations/ci_rust_images/versions.env)"
           ALPINE_SERIES="$(sed -n 's/^ALPINE_SERIES=//p' playbooks/operations/ci_rust_images/versions.env)"
-          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES"
+          IMAGE_REVISION="$(sed -n 's/^IMAGE_REVISION=//p' playbooks/operations/ci_rust_images/versions.env)"
+          BUILDER="ghcr.io/agentsfleet/ci-rust-alpine:$RUST_VERSION-alpine$ALPINE_SERIES${IMAGE_REVISION:+-$IMAGE_REVISION}"
           docker run --rm \
             -v "$PWD:/w" \
             -v "$PWD/.cargo-cache/registry:/usr/local/cargo/registry" \

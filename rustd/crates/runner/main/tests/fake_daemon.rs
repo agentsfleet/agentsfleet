@@ -10,18 +10,16 @@
     reason = "test support: a fake that cannot start, or a fixture that will not take a field, is a broken test"
 )]
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use af_core::clock::{after, now};
 use af_wire::lease::LeaseKind;
-use af_wire::paths::{RUNNER_LEASES, RUNNER_REPORTS};
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 pub(crate) use afr_supervisor::test_util::{FENCING, LEASE_ID};
 use afr_supervisor::test_util::{FLEET_ID, Healthy, LEASE_JSON};
-use axum::http::{Method, header};
-use serde_json::{Value, json};
+use axum::http::header;
+use serde_json::Value;
 use tokio::sync::mpsc;
 
 /// A model endpoint under a top-level domain that never resolves (RFC 2606):
@@ -41,6 +39,7 @@ pub(crate) struct FakeDaemon {
     pub(crate) url: String,
     reports: mpsc::UnboundedReceiver<Value>,
     _server: afr_supervisor::test_util::Listener,
+    pub(crate) native: afr_supervisor::test_util::NativeDaemon,
 }
 
 impl FakeDaemon {
@@ -70,7 +69,6 @@ impl FakeDaemon {
         reports_are: Reports,
     ) -> Self {
         let (sent, reports) = mpsc::unbounded_channel();
-        let granted = Arc::new(AtomicBool::new(false));
         let healthy = Arc::new(Healthy {
             assigned: AssignedPolicy {
                 durable_tasks_enabled: af_wire::runner::DURABLE_TASKS_DEFAULT_ENABLED,
@@ -84,20 +82,41 @@ impl FakeDaemon {
             interval_ms: INTERVAL_MS,
             granted_until: jiff::Timestamp::UNIX_EPOCH,
         });
+        let native = afr_supervisor::test_util::NativeDaemon::serve(
+            Healthy {
+                granted_until: granted_until(),
+                ..healthy.as_ref().clone()
+            },
+            lease(),
+            move |frame| {
+                let sent = sent.clone();
+                async move {
+                    if frame.get("type").and_then(Value::as_str) == Some("report") {
+                        sent.send(
+                            frame
+                                .get("request")
+                                .expect("report carries its request")
+                                .clone(),
+                        )
+                        .expect("the binary test retains its reports");
+                        if reports_are == Reports::Stalled {
+                            std::future::pending::<()>().await;
+                        }
+                    }
+                }
+            },
+        )
+        .await
+        .expect("a native loopback daemon");
         let app = axum::Router::new().fallback(move |request: axum::extract::Request| {
-            let (sent, granted) = (sent.clone(), Arc::clone(&granted));
             let healthy = Arc::clone(&healthy);
             async move {
-                let method = request.method().clone();
-                let path = request.uri().path().to_owned();
-                let body = axum::body::to_bytes(request.into_body(), usize::MAX)
-                    .await
-                    .unwrap_or_default();
-                let answered = answer(&method, &path, &body, (&sent, &granted, &healthy));
-                if reports_are == Reports::Stalled && path == RUNNER_REPORTS {
-                    std::future::pending::<()>().await;
-                }
-                ([(header::CONTENT_TYPE, JSON)], answered.to_string())
+                (
+                    [(header::CONTENT_TYPE, JSON)],
+                    healthy
+                        .reply(request.method().as_str(), request.uri().path())
+                        .to_string(),
+                )
             }
         });
         let server = afr_supervisor::test_util::Listener::serve(app)
@@ -107,6 +126,7 @@ impl FakeDaemon {
             url: server.url.clone(),
             reports,
             _server: server,
+            native,
         }
     }
 
@@ -124,32 +144,6 @@ impl FakeDaemon {
 enum Reports {
     Answered,
     Stalled,
-}
-
-/// What the daemon keeps between calls: where reports go, whether the one
-/// lease was granted, and the healthy daemon it answers as.
-type State<'a> = (
-    &'a mpsc::UnboundedSender<Value>,
-    &'a AtomicBool,
-    &'a Healthy,
-);
-
-/// The daemon's reply to one call: the one lease the first time it is asked
-/// for, each report kept, and a healthy daemon's reply to everything else,
-/// renewals granted from now.
-fn answer(method: &Method, path: &str, body: &[u8], state: State<'_>) -> Value {
-    let (reports, granted, healthy) = state;
-    if path == RUNNER_LEASES && !granted.swap(true, Ordering::SeqCst) {
-        return json!({"lease": lease(), "retry_after_ms": null});
-    }
-    if path == RUNNER_REPORTS {
-        drop(reports.send(serde_json::from_slice(body).unwrap_or(Value::Null)));
-    }
-    let healthy = Healthy {
-        granted_until: granted_until(),
-        ..healthy.clone()
-    };
-    healthy.reply(method.as_str(), path)
 }
 
 /// The fixture lease, tagged as fleet work for this suite's fleet, granted from

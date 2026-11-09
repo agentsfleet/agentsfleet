@@ -87,13 +87,13 @@ Transport activity without an application answer does not refresh an answer dead
 | UDP blocked, unreachable address or supported transport unavailable | End the HTTP/3 attempt at its deadline, classify the reason, then try HTTP/2 inside the shared recovery deadline |
 | Daemon certificate untrusted, expired or wrong name | Refuse the session; no fallback that changes trust policy |
 | Unknown TLS/cryptographic failure | Fail closed with its preserved cause; no error-string matching to authorize fallback |
-| Invalid runner token, protocol version or permission | Report a refusal, stop that opening attempt, and retain the durable report spool |
+| Invalid runner token, protocol version or permission | Report a refusal and stop that opening attempt; pending reports have no disk copy |
 | Required outbound proxy | Honor the proxy policy; use an allowed HTTP/2 path or refuse, without bypassing the proxy over UDP |
 | HTTP/2 proxy buffers uploads | Opening/ping deadline fails; record the failed direct-stream prerequisite |
 | Read blackhole or blocked write | Absolute answer/write deadline cancels all lanes and pending operations; record the failing stage |
 | One lane ends or resets | Close the logical session and recover once; no surviving report lane with stale control authority |
 | Lost reply after renewal | Keep the old deadline until a confirmed answer; repeated usage retains `recorded_through` semantics |
-| Lost report acknowledgement after commit | Retry the existing durable report; lease-keyed idempotence prevents another charge |
+| Lost report acknowledgement after commit | Retry the report retained in worker memory; lease-keyed idempotence prevents another charge |
 | Full report queue | Keep reports on disk and retry with backpressure; never erase a report after socket send alone |
 | Report storage write fails | Expose the storage failure, retain every previously accepted report and avoid claiming the new report reached durable storage |
 | Full activity queue | Drop excess live activity, increment its drop counter, preserve task-history writes required by the spec |
@@ -119,7 +119,7 @@ Request identifiers correlate answers; storage rules determine whether a retry r
 | Live leases | Existing host worker limit, currently 64 |
 | Application control queue | At most 64 messages and 2 MiB per session; reserve service for renewal, ping and cancellation |
 | Application work queue | At most 8 messages and 4 MiB per session; offers and folded inputs use this lane |
-| Application reports queue | At most 8 messages and 4 MiB per session; disk spool remains the backlog |
+| Application reports queue | Bounded transport frames; each admitted worker retains one pending report in memory |
 | Application activity queue | At most 64 messages and 256 KiB per session; drop excess |
 | Replica application frame budgets | 16 MiB reserved for control and 48 MiB for data; permits cover encoded and decoded owned frames |
 | Native data chunks | At most 16 KiB per forwarded body chunk |
@@ -151,7 +151,7 @@ Caller cancellation, timeout, disconnect and refusal remove its entry and releas
 Late or duplicate answers increment a finite outcome counter without reaching a new session's callers.
 
 Answers must match the pending response kind and expected lease identifiers.
-Renewal answers must cover the requested lease set without duplicates, and report acknowledgements must match the exact pending spool entry.
+Renewal answers must cover the requested lease set without duplicates, and report acknowledgements must match the pending request and lease.
 Malformed matches close the session without advancing usage cursors or deleting reports.
 
 Sensitive application buffers retain the existing zeroing ownership rule.
@@ -180,7 +180,7 @@ Never record bearer tokens, credential hashes, payload bodies, private keys or T
 | `agentsfleet_runner_stream_queue_bytes` | Gauge; `lane` | Memory held by queued frames |
 | `agentsfleet_runner_stream_dropped_total` | Counter; `lane,reason` | Activity loss, invalid frames and abandoned queued work |
 | `agentsfleet_runner_stream_answers_total` | Counter; `kind,outcome` | Accepted, late, duplicate or wrong-kind responses |
-| `agentsfleet_runner_stream_report_backlog` | Gauge; finite spool class | Reports awaiting acknowledged reconciliation |
+| `agentsfleet_runner_stream_report_backlog` | Gauge; pending in-memory reports | Reports awaiting acknowledged reconciliation |
 | `agentsfleet_runner_stream_native_rtt_seconds` | Histogram; `transport` | Native path round-trip samples when the adapter exposes them |
 | `agentsfleet_runner_stream_native_packets_total` | Counter; `outcome` | HTTP/3 sent, lost and retransmitted packet deltas |
 | `agentsfleet_runner_stream_native_pto_total` | Counter; no identifiers | QUIC probe timeout deltas |

@@ -48,6 +48,7 @@ fn parses_but_dead() -> MapEnv {
         // one it is asserting about.
         .chain(crate::support::SESSION_PEPPER)
         .chain(crate::support::BUS)
+        .chain(crate::support::runner_stream::environment())
         .chain(crate::support::IDENTITY),
     )
 }

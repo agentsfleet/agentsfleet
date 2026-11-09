@@ -17,6 +17,7 @@ use sqlx::PgConnection;
 
 use super::{Status, sql};
 
+mod connected;
 mod counters;
 pub(crate) use counters::{Counters, DELETION_GENERATION};
 
@@ -112,17 +113,8 @@ pub(crate) struct Guarded {
     pub(crate) now: Timestamp,
 }
 
-pub(crate) async fn publication(
-    connection: &mut PgConnection,
-    runner: &Uuid7,
-    lease: &Uuid7,
-    counters: &Counters,
-) -> Result<Guarded> {
-    authorize(connection, runner, lease, counters, Purpose::Publication).await
-}
-
 /// Validates live private authority before checking a model capability or key.
-pub(crate) async fn bound(
+pub(in crate::lease) async fn bound(
     connection: &mut PgConnection,
     runner: &Uuid7,
     lease: &Uuid7,
@@ -203,21 +195,6 @@ impl Purpose {
             }
         }
     }
-}
-
-async fn authorize(
-    connection: &mut PgConnection,
-    runner: &Uuid7,
-    lease: &Uuid7,
-    counters: &Counters,
-    purpose: Purpose,
-) -> Result<Guarded> {
-    let guarded = bound(connection, runner, lease, counters).await?;
-    if !purpose.accepts(&guarded.attempt) {
-        return Err(ErrorKind::Fence.into());
-    }
-    current_model(connection, &guarded).await?;
-    Ok(guarded)
 }
 
 pub(crate) async fn refresh(

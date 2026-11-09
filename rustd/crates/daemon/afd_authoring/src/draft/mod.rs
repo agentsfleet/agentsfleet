@@ -59,7 +59,9 @@ impl Drafts {
         self
     }
 
-    pub(crate) async fn lock_capacity(
+    /// Lock the runner row through this transaction and count its occupied workers.
+    /// Stream grants also recheck the opening credential and connection owner.
+    pub(crate) async fn lock_host_capacity(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         runner: &Uuid7,
@@ -68,6 +70,24 @@ impl Drafts {
             Some(authority) => afd_runner::capacity::lock(tx, (runner, authority)).await?,
             None => afd_runner::capacity::lock(tx, runner).await?,
         })
+    }
+
+    /// Recheck a streamed mutation after its draft/attempt lock, preserving lock order.
+    pub(crate) async fn check_connection(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &Uuid7,
+    ) -> Result<()> {
+        if self.authority.is_some() {
+            let host = self
+                .lock_host_capacity(tx, runner)
+                .await?
+                .ok_or(crate::error::ErrorKind::Hidden)?;
+            if !host.can_renew() {
+                return Err(crate::error::ErrorKind::Fence.into());
+            }
+        }
+        Ok(())
     }
 
     /// Reports the private-chat-to-fleet funnel steps to `analytics`. Every

@@ -32,6 +32,19 @@ HTTP/3 can keep loss on the reports stream from blocking the control stream's or
 Both streams still share congestion limits, bandwidth and the daemon's capacity.
 An unavailable daemon, database or network can still stop work.
 
+## Nov 09 owner correction: reports and billing
+
+Indy rejected completed-report files and all backward-format retries.
+His selected answer was: "Remove runner disk storage; retry from memory".
+Postgres owns saved completion and billing records; runner memory holds only unacknowledged results.
+
+Task-decision receipts also remain in the calling task until the daemon acknowledges them.
+Process loss can lose uncommitted results and usage; no file recovery or trace-based billing is promised.
+
+The [owner feedback audit](owner-feedback-audit.md) records each supplied comment, its source evidence and unfinished work.
+Full milestone verification remains incomplete; the handoff records current results.
+Historical test results below do not verify the current source.
+
 ## Why it exists
 
 M243 moves work delivery, renewal, reports, folded input and progress onto a session with one opening authentication.
@@ -42,7 +55,31 @@ The existing `guffbolt` loop remains independent of network transport and model 
 The [reference study](transport-and-toon-research.md) explains the Quiche recommendation and TOON's narrower use for model input.
 The [failure design](failure-and-observability.md) defines recovery and verification.
 
-### Current evidence
+## Nov 09 context save and authoring scope correction
+
+Indy requested authoring jobs on the same runner stream.
+The original decision to retain four authoring HTTP calls is superseded.
+Model calls, proposals, authoring renewals and final authoring reports now belong to M243's transport migration.
+
+Wire variants, runner commands, daemon dispatch and connection-authority checks are written.
+The four authoring HTTP routes are removed; native integration evidence remains due.
+
+Kernel examples now compile through native fixtures.
+The handoff records remaining checks; this checkpoint is not ready to undraft.
+
+Read the [current handoff](session-handoff.md) and [resume prompt](resume-prompt.md) before continuing in a new session.
+The [owner feedback audit](owner-feedback-audit.md) maps supplied comments to source changes and remaining evidence.
+
+Indy subsequently authorized compilation, formatting, lint and tests. The handoff records actual passing checks and remaining verification.
+
+M246 extends M243's authentication, recheck and revocation interface.
+Independent tenant-management work can prepare separately; final integration still requires the completed M243 interface.
+The [parallel preparation prompt](m246-parallel-prompt.md) preserves M246's unresolved owner decisions.
+
+### Historical evidence before this context save
+
+The following table records earlier revisions only.
+It does not verify this checkpoint or certify the current source.
 
 | Item | Checked state |
 |---|---|
@@ -87,11 +124,49 @@ The gateway, runner integration and remaining milestone gates stay open.
 | Human and agent error handling | Plain outer messages, retained causes, stable error codes and finite outcome fields |
 | Tokio Quiche features | Exact pinned feature decisions and native telemetry bridge are recorded in the research page |
 | Wake queue ownership and performance | One short mutex protects FIFO and membership together; hash membership replaces the linear duplicate scan; latency benchmark remains due |
-| Capacity and configuration | Validated `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`; startup wiring remains due; runner concurrency retains its existing server-owned policy |
+| Capacity and configuration | Validated `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`; startup now resolves the wake queue and frame-memory settings; runtime verification remains due |
 | Wake naming and environment prefix | `WakeQueue`, matching queue metrics and `AGENTSFLEET_` settings replace the newly introduced names; no aliases |
 | A thousand fleets and fairness | Buffer pressure test is written; unconditional database discovery and end-to-end fairness proof remain due |
 | UUIDv7 main changes | Merged #816 and #817 normally; new data access retains native identifiers and table ownership |
 | Traces, logs and coverage | Finite metric declarations, structured operation observations and export/redaction tests are written; final coverage measurement remains due |
+
+### Review checkpoint requested on Nov 09, 2026
+
+This checkpoint publishes reviewed source changes for Indy.
+It does not declare M243 complete or claim a new verification result.
+Runner wiring, private listener startup, retired routes, integration evidence and final coverage remain open.
+
+| Review item | Source change |
+|---|---|
+| Cache complexity | `session/cache.rs` loads a validated snapshot and applies it atomically; revision checks protect concurrent reports and renewals |
+| Reconnect query | Native UUIDv7 rows, `UNION ALL`, bounded results and runner/status/expiry indexes; execution plans remain unmeasured |
+| Stream naming | `StreamKind` replaces the protocol type and reader names; the header is `agentsfleet-runner-kind` |
+| Offer complexity | A borrowed encoder separates eligibility, issue, serialization and delivery without optional writer extraction |
+| Opening complexity | `ControlOpening`, `SessionOpening` and `ConfirmedSession` carry increasingly strong ownership proofs |
+| Bearer authentication | Ordinary guarded routes and initial native control use the existing registry; secondary streams use the physical connection proof |
+| Service trait file | `afd_http/src/services/http_services.rs` owns `Services`; its old filename is removed |
+| Memory configuration | `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` and `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` configure validated per-replica totals |
+| Event-loop abstraction | `SessionEvent`, `EventHandler`, `EventSource` and `SessionSupervisor` separate selection from decisions |
+| Exonum reference | Its event-source and handler pattern informs the new split; Tokio task ownership and cancellation remain current |
+| Recovery SQL | `EXISTS` asks whether a pass may help; claim transactions retain all eligibility and capacity decisions |
+| Recovery cadence | One independent probe per replica every five seconds; notification retries do not multiply database passes |
+| Typed commands | `Cancel` checks the named durable marker; `Recheck`, gaps and overflow reload authority and policy |
+| Comments | Module and ownership comments explain deadlines, allocation, cancellation, safe logging and durable boundaries |
+| RS-SENTINEL | Publication and subscription failures return `Result`; invalid configuration stays `None`; request and allocation guards release through `Drop` |
+| RS-UNWRAP | Production additions use fallible conversions; panic assertions belong to tests or compile-time invariant proofs |
+| Stored timestamps | The issue statement returns its saved `created_at`; capacity keeps the full-precision database clock |
+
+Review the gateway in this order: `lib.rs`, `connection.rs`, `stream_headers.rs`, then `session/opening/`.
+Continue through `session/runtime.rs`, `streams.rs`, `events.rs`, `supervisor.rs`, `requests.rs`, `cache.rs` and `dispatch/`.
+The native carrier and bus source remain separate from these domain decisions.
+
+`LeaseService` replaces `Plane`; `AdmittedFleetWork` replaces `Admission2`.
+`GatewayDependencies` names composition inputs, and `StreamLimit` plus `StreamPermit` name shared stream admission.
+The injected wall clock serves repeated identifier and cache-expiry decisions; timeouts use monotonic Tokio instants.
+
+The source review applies Orly's Rust and error standards across the PR diff, including existing changed callers.
+A source review does not substitute for the later Rust, integration or coverage gates.
+The current checkpoint retains the merge hold and the existing coverage floors.
 
 ### Early draft requested for M244
 
@@ -113,7 +188,7 @@ flowchart BT
     stream[af_stream: framing, TLS, native HTTP/3 and HTTP/2]
     bus[afd_bus: notification boundary]
     gateway[afd_gateway: session and offer decisions]
-    runner[afr_supervisor: host lifecycle and durable reports]
+    runner[afr_supervisor: host lifecycle and memory-only report retries]
     api[afd_api_runner and daemon/main: HTTP entry and boot]
     stream --> core
     stream --> wire
@@ -132,12 +207,12 @@ Indy's approval includes the additional shared carrier crate.
 
 | Crate | Responsibility and principal public values |
 |---|---|
-| `af_wire` | `Up<'a>`, `Down<'a>`, `Answer<'a, T>`, `Lane::{Control,Work,Reports,Activity}`, `Renewal`, `RenewalAnswer`; values and validation without Tokio, SQL or native transport |
+| `af_wire` | `Up<'a>`, `Down<'a>`, `Answer<'a, T>`, `StreamKind::{Control,Work,Reports,Activity}`, `Renewal`, `RenewalAnswer`; values and validation without Tokio, SQL or native transport |
 | **New `af_stream`**, under `protocol/` | `Transport`, `Endpoint`, `Trust`, `Incoming`, `OwnedFrame`, `Connection`, `ConnectionInfo`; native transport and framing, without SQL or authentication decisions |
 | **New `afd_bus`**, under `daemon/` | Object-safe `Bus`, cloneable `Handle`, `Subject`, `Command`, `Subscription`, `Received`; Dragonfly adapter and wake notifications |
 | **New `afd_gateway`**, under `daemon/` | Concrete `Gateway`, `ConnectionContext`, `Session`, `LiveLease`, `Registry`; consumes the domain's proven authority |
 | Existing `afd_runner` | `capacity::authority::{Authority, Decision, Refusal}`; guarded acquisition and grant-time credential checks |
-| `afr_supervisor` | `Downlink`, cloneable `StreamHandle`, `Pending`, `Uplink`; offers feed existing workers, reports retain their durable spool |
+| `afr_supervisor` | `Downlink`, cloneable `StreamHandle`, `Pending`, `Uplink`; offers feed workers; pending reports remain in worker memory |
 | Existing domain crates | Host locks, claim, renewal, billing, task activity, authoring and reports retain their owning services |
 
 | Dependency | Proposed use |
@@ -152,7 +227,7 @@ Indy's approval includes the additional shared carrier crate.
 | Existing async-trait 0.1.92 | Object-safe broker methods selected once at boot |
 | Existing `tracing`, `af_observability`, backon 1.6.0 | Trace context, declared metric families and bounded reconnect scheduling |
 | Existing SQLx and `af_core/sqlx` | Native `Uuid7` rows and parameters after the data-layer follow-up lands |
-| Existing rcgen 0.14.10 and tempfile 3.27.0, test dependencies | Create test certificate chains and isolated spool fixtures |
+| Existing rcgen 0.14.10 and tempfile 3.27.0, test dependencies | Create test certificate chains and isolated repository fixtures |
 
 No RustAPI framework, Neqo server or TOON dependency enters the M243 production dependency graph.
 No WebSocket carrier or Cloudflare service enters the design.
@@ -161,14 +236,14 @@ No WebSocket carrier or Cloudflare service enters the design.
 
 The proposed `work` lane carries offers and folded-input exchanges.
 This keeps potentially large work payloads out of control's ordered byte stream.
-The initial wire draft follows the earlier three-lane sketch and needs the approved fourth lane.
+The current protocol declares all four stream kinds.
 
-| Lane | Messages |
+| Stream kind | Messages |
 |---|---|
-| `control` | Hello/welcome, credits, heartbeat, ping/pong, renewal batches, cancel and `go_away` |
-| `work` | Offers and folded-input requests/answers |
-| `reports` | Durable reports and matching acknowledgements |
-| `activity` | Bounded live progress |
+| `control` | Hello/welcome, credits, heartbeat, ping/pong, renewal batches, authoring renewal, cancel and `go_away` |
+| `work` | Offers, folded-input requests/answers, authoring model calls/results and authoring activity/proposal receipts |
+| `reports` | Fleet and authoring reports with matching acknowledgements |
+| `activity` | Bounded fleet live progress |
 
 These are proposed signatures, not compiled implementation claims.
 Each fallible crate uses the repository's generated error shell and local `Result` alias.
@@ -262,11 +337,11 @@ Dropping an individual subscription releases only that consumer, rather than clo
 
 | Owner | Proposed callables | Purpose |
 |---|---|---|
-| `Gateway` | `open`, `attach_lane`, `drain` | Claim authority after authentication, bind secondary lanes, stop new offers |
+| `Gateway` | `open`, `attach_stream`, `drain` | Claim authority after authentication, bind secondary lanes, stop new offers |
 | `ConnectionContext` | `bind`, `attach`, `cancel` | Set one proven binding, reserve each lane once, close sibling requests |
 | `Session` | `serve`, `on_up`, `on_command`, `recheck` | Own lease index and state transitions; dispatch bounded domain work |
 | `Registry` | `register`, `offer_pass`, `probe` | Find eligible sessions and run one fallback admission probe per replica |
-| Existing `Plane` | `claim` returning `Claimed`, `rebuild`, cached-target activity publishing | Preserve payload assembly and return the lease's target without another target read |
+| Existing `LeaseService` | `claim` returning `Claimed`, `rebuild`, cached-target activity publishing | Preserve payload assembly and return the lease's target without another target read |
 | Existing host capacity | `lock` with expected authority, ticket propagation | Compare connection ownership and credential digest inside issue and renewal transactions |
 | Existing `Runners` | `acquire_connection`, `check_connection` | Acquire a fresh owner or classify refusal; prevent a replaced automatic resume |
 | `StreamHandle` | `renew_batch`, `report`, `folds`, `activity`, `credits`, `heartbeat` | Typed runner-facing operations over channels; no raw socket sharing |

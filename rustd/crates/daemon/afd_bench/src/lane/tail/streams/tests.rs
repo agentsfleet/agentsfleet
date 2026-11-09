@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use afd_bus::{Message, Subject};
-use afd_sse::{Ceiling, Frame};
+use afd_sse::{Frame, StreamLimit};
 use futures_util::StreamExt as _;
 use tokio_util::sync::CancellationToken;
 
@@ -23,7 +23,7 @@ fn frame(payload: String) -> Frame {
 
 #[tokio::test]
 async fn a_stream_that_closes_releases_its_slot_and_keeps_what_it_heard() {
-    let ceiling = Ceiling::new(1);
+    let ceiling = StreamLimit::new(1);
     let slot = ceiling.admit();
     assert!(slot.is_some(), "an empty ceiling admits one");
     let watch = Arc::new(Watch::new(1));

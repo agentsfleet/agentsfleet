@@ -12,7 +12,6 @@ use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_core::timing::SANDBOX_HOLD_IDLE;
 use af_wire::lease::{LeasePayload, SandboxLimits};
-use bytes::Bytes;
 use futures_util::FutureExt as _;
 use jiff::Timestamp;
 
@@ -35,8 +34,6 @@ const BUSY_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a805c";
 const RELEASED: &str = "sandbox_hold_released";
 /// The report field that says when the hold lapses.
 const HELD_UNTIL: &str = "held_until";
-/// The daemon's answer to a memory push it stored.
-const STORED: &[u8] = br#"{"stored":1,"skipped":0}"#;
 
 /// What the fake engine counted.
 pub(super) struct Counted {
@@ -122,16 +119,24 @@ pub(super) fn released(fleet: &str, reason: Release) -> (String, String) {
 /// runs past more ticks, and no renewal follows the report.
 #[tokio::test(start_paused = true)]
 async fn test_processed_lease_parks_its_sandbox_frozen() {
-    let slow_push = |call: &Call| {
-        (call.verb == Verb::Capture)
-            .then(|| Answer::Late(RENEWAL_TICK * 2, Bytes::from_static(STORED)))
+    let reports = Arc::new(AtomicUsize::new(0));
+    let attempts = Arc::clone(&reports);
+    let slow_report = move |call: &Call| {
+        if call.verb != Verb::Report {
+            return None;
+        }
+        (attempts.fetch_add(1, Ordering::SeqCst) < 2).then_some(Answer::Stall)
     };
-    let (mut rig, counted) = holding(slow_push, FakeEngine::default(), Behaviour::Answer);
+    let (mut rig, counted) = holding(slow_report, FakeEngine::default(), Behaviour::Answer);
 
     rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
-    tokio::time::sleep(RENEWAL_TICK * 2).await;
-
     let calls = rig.calls();
+    assert_eq!(reports.load(Ordering::SeqCst), 3);
+    tokio::time::sleep(RENEWAL_TICK * 2).await;
+    assert!(
+        rig.calls().iter().all(|call| call.verb != Verb::Renew),
+        "a hold never renews after acknowledgement"
+    );
     let report = reported(&calls);
     assert_eq!(report[OUTCOME], PROCESSED);
     // The rig's clock stands at zero, so the hold lapses one idle window in.
@@ -144,7 +149,6 @@ async fn test_processed_lease_parks_its_sandbox_frozen() {
         (1, 1, 0, 0),
         "frozen and held, not destroyed"
     );
-    let report_at = position(&calls, Verb::Report).unwrap();
     let renewals: Vec<usize> = calls
         .iter()
         .enumerate()
@@ -152,10 +156,7 @@ async fn test_processed_lease_parks_its_sandbox_frozen() {
         .map(|(at, _)| at)
         .collect();
     assert!(!renewals.is_empty(), "the lease outlived a renewal tick");
-    assert!(
-        renewals.iter().all(|at| *at < report_at),
-        "a hold never extends the lease: no renewal after its report {renewals:?}"
-    );
+    assert!(position(&calls, Verb::Report).is_some());
 }
 
 /// A lease refused before its sandbox is chosen, here by a size past every
@@ -236,7 +237,11 @@ async fn test_a_superseded_report_destroys_what_it_parked() {
     };
     let (rig, counted) = holding(superseded, FakeEngine::default(), Behaviour::Answer);
 
-    rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
+    let failure = rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap_err();
+    assert_eq!(
+        failure.refusal_code(),
+        Some(af_core::error_code::RUN_STALE_FENCING_TOKEN)
+    );
     let held = rig.lessee.holds.fleets().await;
     settled(&rig).await;
 

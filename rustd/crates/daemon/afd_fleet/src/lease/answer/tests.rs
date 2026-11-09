@@ -16,7 +16,7 @@ use af_wire::event::EventType;
 use af_wire::policy::{ContextBudget, ExecutionPolicy, NetworkPolicy};
 use serde_json::Value;
 
-use super::{Context, render};
+use super::{Context, payload};
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::{FRESH_CONTEXT, Installed};
 use crate::lease::test_dead;
@@ -87,16 +87,19 @@ fn rendered(resume_hold: bool) -> Value {
         ..test_dead::acquired()
     };
     let installed = installed();
-    let answer = render(
-        &test_dead::id(4),
+    let lease_id = test_dead::id(4);
+    let lease = payload(
+        &lease_id,
         &acquired,
         EventType::Chat,
         &installed,
         policy(),
         Context::default(),
-    )
-    .expect("a lease renders");
-    serde_json::from_str(&answer).expect("the answer is JSON")
+    );
+    serde_json::to_value(af_wire::protocol::Down::<serde_json::Value>::Offer {
+        lease: af_wire::lease::TaggedLease::<serde_json::Value>::Fleet(Box::new(lease)),
+    })
+    .expect("an offer renders")
 }
 
 #[test]

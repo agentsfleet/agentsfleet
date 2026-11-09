@@ -12,8 +12,8 @@ use serde_json::json;
 use crate::e2e::{MODEL, POSTURE, Scenario, scenario};
 use crate::reads::{assert_shape, lease_column, line_output_tokens, relay_settled};
 use crate::wire::{
-    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat,
-    poll_for_seeded_lease, post, report_body,
+    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat, post, report_body,
+    wait_for_seeded_offer,
 };
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
@@ -119,14 +119,13 @@ async fn test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows() {
 }
 
 async fn complete_cycle(http: &reqwest::Client, run: &Scenario) -> String {
-    let beat = post(http, run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(
-        beat.status().as_u16(),
-        200,
-        "the runner proves its capabilities"
+    let beat = crate::wire::heartbeat(run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
     );
 
-    let (lease_id, fence) = poll_for_seeded_lease(http, run).await;
+    let (lease_id, fence) = wait_for_seeded_offer(run).await;
 
     let captured = post(
         http,
@@ -145,14 +144,8 @@ async fn complete_cycle(http: &reqwest::Client, run: &Scenario) -> String {
     .await;
     assert_eq!(captured.status().as_u16(), 200, "the memory capture lands");
 
-    let settled = post(
-        http,
-        run,
-        "/v1/runners/me/reports",
-        &report_body(&lease_id, &run.event_id, fence),
-    )
-    .await;
-    assert_eq!(settled.status().as_u16(), 200, "the report settles");
+    let settled = crate::wire::report(run, &report_body(&lease_id, &run.event_id, fence)).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     lease_id
 }
 
