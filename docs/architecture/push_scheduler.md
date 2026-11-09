@@ -220,3 +220,48 @@ The 3 s one-fleet window scattered from 210 to 837 on the branch, so the 10 s ru
 A burst on the branch measured pickup p95 at 54.7 s, unchanged from M241, because that branch did not fold messages yet.
 
 Tail and wake p99 and the broker-kill drill are measured in M244, on Dragonfly and then on NATS, against the same code.
+
+### M244: Dragonfly against NATS
+
+Measured on Indy's laptop on Nov 09, 2026, with `make bench-tail PROFILE=rig`, `BENCH_BUS=dragonfly` then `BENCH_BUS=nats`, three interleaved pairs, each on a reset rig. The tree was this branch at `514f37420` with the tail-lane method of `fb2f55801` and the publish-record fix of `202b08ffd`. Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, is committed as `tail.rig.json`.
+
+The method keeps one frame in flight on the viewer ladder, so a frame's time is one trip through the bus and the fan-out. The stream ladder publishes to every stream at once and times each stream from the burst's start. Indy chose it after the first pass, where a 64-frame window let NATS's non-blocking publish queue ahead and measured the queue instead.
+
+The bar, per rung: NATS p99 at most the greater of Dragonfly's p99 plus 10% and Dragonfly's p99 plus 1 ms.
+
+| Viewers | Frame | Dragonfly p99 (ms) | NATS p99 (ms) | Bar (ms) | Verdict |
+|---|---|---|---|---|---|
+| 1 | 200 B | 0.35 | 0.79 | 1.35 | pass |
+| 1 | 4 KiB | 0.56 | 0.50 | 1.56 | pass |
+| 1 | 64 KiB | 0.46 | 2.76 | 1.46 | miss |
+| 64 | 200 B | 0.32 | 0.40 | 1.31 | pass |
+| 64 | 4 KiB | 0.29 | 1.13 | 1.29 | pass |
+| 64 | 64 KiB | 0.46 | 1.22 | 1.46 | pass |
+| 256 | 200 B | 0.86 | 0.86 | 1.86 | pass |
+| 256 | 4 KiB | 0.88 | 0.82 | 1.88 | pass |
+| 256 | 64 KiB | 0.87 | 1.36 | 1.87 | pass |
+| 1,024 | 200 B | 3.28 | 3.71 | 4.28 | pass |
+| 1,024 | 4 KiB | 3.18 | 3.09 | 4.18 | pass |
+| 1,024 | 64 KiB | 3.39 | 3.35 | 4.39 | pass |
+
+| Streams bursting at once | Dragonfly p99 (ms) | NATS p99 (ms) | Bar (ms) | Verdict |
+|---|---|---|---|---|
+| 64 | 0.87 | 0.84 | 1.87 | pass |
+| 256 | 1.53 | 1.78 | 2.53 | pass |
+| 1,024 | 4.17 | 2.26 | 5.17 | pass |
+| 4,096 | 20.83 | 9.83 | 22.91 | pass |
+
+No frame went undelivered and no viewer lagged on either bus.
+
+Verdict: NATS passes. Fifteen of sixteen rungs meet the bar. The miss is one viewer of 64 KiB frames, 1.3 ms over; a size sweep ruled out the client's 65,535-byte read buffer, and the cause is open. Indy accepted it: "I would accept the 1 bench miss and signoff NATS."
+
+#### Kill drills
+
+Two runs per bus, on the local daemon (`make up`): two viewers on one fleet's stream, one steer every 10 s, the bus stopped for 60 s, then started. For NATS the stopped node was the one the daemon held, `nats-3` then `nats-2`.
+
+| | Dragonfly, runs 1 and 2 | NATS, runs 1 and 2 |
+|---|---|---|
+| During the outage | heartbeats only | every steer reached both viewers live |
+| `catching_up` | 2.8 to 3.0 s after the container restarted | 0.25 to 0.3 s after the node stopped |
+| Steers in `fleet.admissions` | 19 of 19 per run | 19 of 19 per run |
+| Recovery | waited for Dragonfly | the daemon moved to a surviving node |
