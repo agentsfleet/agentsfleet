@@ -111,7 +111,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/main/Cargo.toml`, `rustd/crates/daemon/main/tests/daemon_suite.rs`, `rustd/crates/daemon/main/tests/support/{e2e_wire,e2e_tail,e2e_speaking,e2e_schedules}.rs`, `rustd/crates/protocol/af_wire/tests/wire_suite.rs` | EDIT | register carrier/protocol tests and convert shared harnesses that call retired routes |
 | `docs/architecture/push_scheduler.md` | EDIT | §M243 status; retires "no cancel channel" and "not a general scheduler"; §8's baseline row |
 | `docs/architecture/datastore_scaling.md` | EDIT | Indy's requested NATS decision record; preserve the current deployment description until M244 replaces it |
-| `docs/architecture/runner_fleet.md`, `lease_flow.md`, `data_flow.md`, `scaling.md`, `observability.md`, `api_resources.md`, `runner_execution.md`, `user_flow.md`, `scenarios/fleet-to-fleet.md`, `scenarios/slack-incident-responder.md` | EDIT | §7: the held heartbeat, the poll, the retired routes, kill and the idle-cost knob, described as the stream |
+| `docs/architecture/runner_fleet.md`, `lease_flow.md`, `data_flow.md`, `scaling.md`, `observability.md`, `api_resources.md`, `runner_execution.md`, `user_flow.md`, `scenarios/fleet-to-fleet.md`, `scenarios/slack-incident-responder.md`, `scenarios/two-fleets-github-slack.md` | EDIT | §7: the held heartbeat, the poll, the retired routes, kill and the idle-cost knob, described as the stream; preserve complete renewal and cleanup budgets |
 | `docs/AUTH.md` | EDIT | §7: auth once per connection, revocation pushed with its backstop, the grant re-check |
 | `docs/metrics.census.tsv` | EDIT | §4, §7: stream health, fallback and recovery families in; wake answers out |
 | `public/openapi.json` | EDIT | §7: regenerated from `rustd/` with `--no-banner` |
@@ -141,7 +141,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/afd_api/tests/route_inventory.rs`, `route_meta_total.rs`, `harness/stubs_runner.rs`, `afd_api/src/openapi/stability/mod.rs` | EDIT | §4, §7: one route in, six out |
 | `rustd/crates/daemon/afd_api/tests/runner_plane/native_opening.rs`, `runner_plane/decision_lifecycle/fixture.rs`, `runner_plane/decision_lifecycle/fixture/native_report.rs` | CREATE, EDIT | Native protocol/capacity refusals and acknowledged reports retain their completion-analytics proof |
 | `rustd/crates/runner/afr_supervisor/src/downlink/**`, `uplink/**` | CREATE | §6: connect, hello, reconnect, dispatch; the prioritised writer |
-| `rustd/crates/runner/afr_supervisor/src/{worker_pool,renew,activity,report,drainer,lease_loop,client,halt,verbs}/**`, `rustd/crates/runner/afr_supervisor/src/lib.rs`, `rustd/crates/runner/afr_supervisor/src/test_util/mod.rs`, `rustd/crates/runner/afr_supervisor/Cargo.toml` | EDIT | §6: workers take offers; renewals batch per host; activity, reports and folds ride the uplink; the existing inbox implementation is `verbs::FencedVerbs` |
+| `rustd/crates/runner/afr_supervisor/src/{worker_pool,renew,activity,report,drainer,lease_loop,client,halt,verbs}/**`, `rustd/crates/runner/afr_supervisor/src/{lib,shutdown}.rs`, `rustd/crates/runner/afr_supervisor/src/test_util/mod.rs`, `rustd/crates/runner/afr_supervisor/Cargo.toml` | EDIT | §6: workers take offers; renewals batch per host; activity, reports and folds ride the uplink; the existing inbox implementation is `verbs::FencedVerbs`; shutdown retains one lease interval |
 | `rustd/crates/runner/afr_supervisor/src/test_support/daemon/**`, `agentsfleet_runner/tests/fake_daemon.rs`, `afr_sandbox/examples/kernel_lane/supervisor_plane.rs`, `supervisor_checks.rs` | EDIT | §6: the fake daemons speak the stream |
 | `rustd/crates/daemon/afd_bench/src/lane/lease/drain/{runner,window,mod,tests}.rs`, `lane/lease/saturation/production.rs`, `lane/lease/seed/mod.rs`, `make/bench.mk`, `bench/baselines/lease.rig.json` | EDIT | §8: the drain drives a session; idle totals replace per-poll ratios; median baseline |
 | retired: `afd_api_runner/src/handler/runner/{heartbeat,wake,wake_tests,renew,activity,report,folds}.rs`, `handler/runner/lease/**`, `afr_supervisor/src/heartbeat/**`, `afd_api/tests/integration_runner_heartbeat.rs`, `agentsfleetd/tests/integration_runner_wake.rs`, `afd_approval/tests/integration_grant_request.rs` | DELETE, EDIT | §7: pull path and tests; fold client methods currently live in `afr_supervisor/src/client/lease_verbs/mod.rs` |
@@ -693,3 +693,16 @@ A later design must cover publication crashes, listener gaps, capacity changes a
 
 Owner confirmation (Indy, Nov 09, 2026): "Okay for the above case i am ok with the recovery poll. That is fine. So keep going with yours".
 The accepted failure example is a daemon crash after admission commit and before wake publication.
+
+### Renewal recovery budget correction
+
+Greptile found that reconnect waited for another renewal tick, despite the nine-second physical cleanup margin.
+Connection changes now start a renewal batch immediately.
+The grant is 35 seconds; the reserved renewal window is 15 seconds.
+The complete path budgets five seconds to a tick, five for its failed answer, two for jitter and seven for reconnect.
+Another five-second answer and nine-second cleanup fit before expiry.
+Compile-time assertions check both relationships; the derived offline threshold is 105 seconds.
+
+Paused-time regressions reproduced both defects separately.
+Immediate renewal fixed the missed tick; the full-delay test still failed until the grant and reserved window covered cleanup.
+Both regressions then passed. Full repository verification remains due.

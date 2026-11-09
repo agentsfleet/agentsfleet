@@ -25,13 +25,13 @@ pub const AUTHORING_MODEL_ANSWER_TIMEOUT: Duration = Duration::from_secs(310);
 /// Deliberately short: it is the backstop
 /// against a runner that dies silently, and a live runner extends it through
 /// the renew verb rather than being handed a long lease up front.
-pub const LEASE_TTL: Duration = Duration::from_secs(30);
+pub const LEASE_TTL: Duration = Duration::from_secs(35);
 
 /// The renewal slack preserved by the lease and connection-recovery relationship.
 ///
 /// Strictly below [`LEASE_TTL`] so a renewal that fails transiently still
 /// has room to retry before the deadline.
-pub const RENEWAL_WINDOW: Duration = Duration::from_secs(10);
+pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
 
 /// How often a runner's supervision loop wakes to consider a renewal.
 ///

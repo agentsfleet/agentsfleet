@@ -17,7 +17,7 @@ Every row is taken from the sections below; the owner column names the section t
 
 | Invariant | Value | Mechanism | Owner section |
 |---|---|---|---|
-| Lease expiry backstop | `LEASE_TTL` = 30 s (single-sourced for the control plane in `af_core`'s timing constants) | the next eligible ledger claim re-leases an expired slot with a higher fencing token | §Failure recovery model |
+| Lease expiry backstop | `LEASE_TTL` = 35 s (single-sourced for the control plane in `af_core`'s timing constants) | the next eligible ledger claim re-leases an expired slot with a higher fencing token | §Failure recovery model |
 | Max run duration | `MAX_RUNTIME` hard cap | `/renew` extends to `min(now+LEASE_TTL, created_at+MAX_RUNTIME)` | §Per-lease renewal |
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the lease reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
@@ -137,7 +137,7 @@ A runner's work becomes eligible when its slot expires. Another eligible runner 
 
 | Failure | Recovery | Durable guard |
 |---|---|---|
-| Runner dies mid-lease | A later poll claims the same unsettled admission after its 30-second slot expires. | The slot and admission receive a higher fence; the old holder cannot write. |
+| Runner dies mid-lease | A later offer pass claims the same unsettled admission after its 35-second slot expires. | The slot and admission receive a higher fence; the old holder cannot write. |
 | Wake notification lost | The next poll probes PostgreSQL without a hint. | Acceptance is already committed in `fleet.admissions`. |
 | Claim decoding fails | The transaction rolls back its slot and admission changes. | Both fences remain unchanged. |
 | Failure after claim commit | Release the claim where possible; otherwise wait for its deadline. | Every write verifies the current slot and admission fences. |
@@ -158,10 +158,10 @@ Renewal atomically extends **both** the lease row and the affinity slot under a 
 
 ```text
  lease issued                                every RENEWAL_TICK (5 s) tick
- (expires = now + LEASE_TTL)              posts /renew, from the lease's start
+ (expires = now + LEASE_TTL)              sends a native renewal batch
    |            tick    tick    tick    tick   tick
    *------------*-------*-------*-------*------*-------------------->
-                                               | POST /renew
+                                               | RenewBatch
                                                v
    server, in ONE fenced atomic statement:
      . still the fencing holder?  no -> 409 lease_lost  -> runner cuts the run
@@ -401,7 +401,9 @@ The dashboard splits them. The **Leases** tab renders work, one row per lease wi
 
 The client asks for the seven-tag lifecycle set (`RUNNER_LIFECYCLE_EVENT_TYPES`, one exported constant) through the comma-separated multi-value `event_type` filter. The activity headline map is keyed on that subset, so a lease tag cannot be given a headline at compile time.
 
-**The lease read's index support is load-bearing, not incidental.** `runner.leases` gains a row per claim and another per reclaim. One worker turning a short event every `LEASE_TTL` accrues roughly 2.9k rows a day, and `MAX_WORKER_COUNT` workers make that about 184k.
+`runner.leases` gains a row per claim and another per reclaim.
+A worker turning one short event every `LEASE_TTL` adds about 2.5k rows daily.
+At `MAX_WORKER_COUNT`, that becomes about 158k rows.
 
 Two indexes serve the read. `idx_leases_runner_id_created_at_id` answers the page, and `idx_leases_fleet_event_id_fencing_token` answers the per-row reclaim derivation.
 
@@ -1131,7 +1133,7 @@ The [shared chat explanation](shared_chat_verification.md#backend-ownership) map
 | Wall time per attempt | 300 seconds | Monotonic runner timer plus daemon expiry/fence; timeouts become timed_out. |
 | Provider request | Up to 300 seconds | Recorded dispatch deadline, clipped to attempt expiry; replay never starts another send. Upstream cancellation remains unconfirmed. |
 | Runner model-call HTTP wait | 310 seconds | Allows the bounded provider call and receipt settlement. |
-| Lease TTL / renewal | 30 seconds /10 seconds | No overlapping admitted lease while the prior live attempt remains counted. |
+| Lease TTL / renewal | 35 seconds / 5 seconds | No overlapping admitted lease while the prior live attempt remains counted. |
 | First instructions / edited | 12,288 /32,768 characters | Shared validated text bounds, independently of tokenizer counts. |
 | Progress frame / terminal envelope | 4 KiB /128 KiB | Typed bounds before append or spool. |
 

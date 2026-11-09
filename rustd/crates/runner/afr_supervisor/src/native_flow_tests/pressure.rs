@@ -80,7 +80,9 @@ async fn exercise(transport: Transport, logs: &Capture) -> TestResult {
     let blocked = Arc::new(Blocked::default());
     let observed = Arc::clone(&blocked);
     let _release_on_exit = blocked.release.clone().drop_guard();
-    let payload = serde_json::to_value(lease(LEASE_ID, FLEET_ID))?;
+    let payload = serde_json::to_value(af_wire::lease::TaggedLease::<Value>::Fleet(Box::new(
+        lease(LEASE_ID, FLEET_ID),
+    )))?;
     let mut daemon = NativeDaemon::serve(healthy(), payload, move |frame| {
         let blocked = Arc::clone(&observed);
         async move { blocked.observe(frame).await }
