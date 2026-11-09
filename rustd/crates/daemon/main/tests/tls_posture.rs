@@ -1,7 +1,7 @@
 //! Every rustls connection this daemon opens offers the hybrid post-quantum
 //! key exchange first (M244, Indy's TLS posture call).
 //!
-//! rustls is the TLS under sqlx, reqwest, async-nats, lettre and object_store,
+//! rustls is the TLS under sqlx, reqwest, async-nats, lettre and `object_store`,
 //! so one handshake between a rustls client and server built the way those
 //! libraries build theirs proves the workspace feature reached them all. The
 //! handshake runs in memory: what is under test is the negotiation, not a
@@ -57,7 +57,7 @@ fn rustls_negotiates_the_hybrid_post_quantum_key_exchange() -> Fallible {
     handshake(&mut client, &mut server)?;
     let negotiated = client
         .negotiated_key_exchange_group()
-        .map(|group| group.name());
+        .map(rustls::crypto::SupportedKxGroup::name);
     assert_eq!(
         negotiated,
         Some(NamedGroup::X25519MLKEM768),
