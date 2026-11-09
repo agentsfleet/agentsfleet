@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use af_core::id::Uuid7;
 use afd_bus::Handle;
-use afd_sse::{Frame, Live, Slot};
+use afd_sse::{Frame, Live, StreamPermit};
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 use tokio_util::sync::CancellationToken;
@@ -251,7 +251,7 @@ fn latency_of(watch: &Watch) -> Result<Latency> {
 /// Hold one stream open, pulling frames, until the rung is done with it.
 async fn hold(
     mut tail: BoxStream<'static, Frame>,
-    _slot: Slot,
+    _slot: StreamPermit,
     watch: Arc<Watch>,
     index: usize,
     stop: CancellationToken,

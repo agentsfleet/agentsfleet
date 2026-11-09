@@ -1,7 +1,7 @@
 //! Optional boot surfaces that degrade without refusing the daemon.
 
 use af_observability::Analytics;
-use afd_sse::{Ceiling, Live};
+use afd_sse::{Live, StreamLimit};
 
 use crate::identity::Capabilities;
 
@@ -31,7 +31,7 @@ pub(super) fn announce_identity(capabilities: &Capabilities) {
 /// Nothing degrades here any more: an unreachable bus refused boot as
 /// `UZ-STARTUP-004` before the router existed (M244 §2).
 pub(super) fn live_over(bus: &afd_bus::Handle, max_streams: usize) -> Live {
-    Live::new(bus.clone(), Ceiling::new(max_streams))
+    Live::new(bus.clone(), StreamLimit::new(max_streams))
 }
 
 /// The product-analytics reporter, or its silent form.

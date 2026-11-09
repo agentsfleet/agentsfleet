@@ -173,12 +173,9 @@ impl crate::lease::Leases {
                 task_id: std::borrow::Cow::Borrowed(task.as_str()),
                 resource_version: super::row::counter(version, "resource_version")?,
             };
-            self.streams()
-                .publish_frame(
-                    &afd_bus::Subject::FleetTail(acquired.fleet_id.clone()),
-                    &frame,
-                )
-                .await;
+            let subject = afd_bus::Subject::FleetTail(acquired.fleet_id.clone());
+            let publication = self.streams().publish_frame(&subject, &frame).await;
+            afd_bus::observe_notification(&subject, publication);
             tracing::info!(
                 event = "dt_transition",
                 task_id = task.as_str(),

@@ -1,6 +1,6 @@
 //! The production verbs a saturation host calls, behind [`Host`].
 //!
-//! The daemon's `Plane` and `Drafts`, composed the way its root composes them
+//! The daemon's `LeaseService` and `Drafts`, composed the way its root composes them
 //! and sharing one biller, so a setup chat claim and the fleet poll it competes
 //! with move money through the same path they do in production.
 
@@ -11,13 +11,13 @@ use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use af_wire::authoring::{Knowledge, Meter, Renew};
-use af_wire::lease::{AcceptedKinds, LeaseResponse, TaggedLease};
+use af_wire::lease::{AcceptedKinds, TaggedLease};
 use afd_authoring::Drafts;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::{LeaseService, OfferRequest};
 
 use super::requester::{Held, Host, Polled};
 use crate::datastores::Datastores;
-use crate::error::{ErrorKind, Result};
+use crate::error::Result;
 use crate::lane::lease::drain::stage;
 
 /// What a host that has made no model call yet observes on renewal.
@@ -33,7 +33,7 @@ const IDLE: Meter = Meter {
 /// The runner route's two verbs over the lane's datastores.
 #[derive(Debug, Clone)]
 pub(super) struct Production {
-    plane: Plane,
+    plane: LeaseService,
     pub(super) drafts: Drafts,
 }
 
@@ -53,18 +53,31 @@ impl Production {
 
 impl Host for Production {
     async fn poll(&self, runner: &Uuid7) -> Result<Polled> {
-        let answer = self
+        let offered = self
             .plane
-            .claim(
+            .claim_with(
                 &self.drafts,
-                runner,
-                &[],
+                OfferRequest {
+                    runner,
+                    held: &[],
+                    degraded: false,
+                    now: clock::now(),
+                },
                 AcceptedKinds::ALL,
-                false,
-                clock::now(),
+                |lease, _metadata| match lease {
+                    TaggedLease::Fleet(_) => Ok(Polled::Fleet),
+                    TaggedLease::Authoring(lease) => Ok(Polled::Chat(Held {
+                        lease: Uuid7::parse(&lease.lease_id)?,
+                        fence: lease.fence.clone(),
+                    })),
+                },
             )
             .await;
-        answer.map_or(Ok(Polled::Refused), |body| polled(&body))
+        match offered {
+            Ok(Some(issued)) => issued,
+            Ok(None) => Ok(Polled::Nothing),
+            Err(_) => Ok(Polled::Refused),
+        }
     }
 
     async fn renew(&self, runner: &Uuid7, held: &Held) -> bool {
@@ -77,18 +90,4 @@ impl Host for Production {
             .await
             .is_ok()
     }
-}
-
-/// What a lease answer's body says was issued.
-fn polled(body: &str) -> Result<Polled> {
-    let response: LeaseResponse<'_> =
-        serde_json::from_str(body).map_err(|source| ErrorKind::LeaseUnreadable { source })?;
-    Ok(match response.lease {
-        None => Polled::Nothing,
-        Some(TaggedLease::Fleet(_)) => Polled::Fleet,
-        Some(TaggedLease::Authoring(lease)) => Polled::Chat(Held {
-            lease: Uuid7::parse(&lease.lease_id)?,
-            fence: lease.fence.clone(),
-        }),
-    })
 }

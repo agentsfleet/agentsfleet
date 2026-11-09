@@ -10,10 +10,13 @@ pub(crate) mod tests;
 
 use self::{meter::Observed, turn::Turn};
 use crate::{Result, lease_loop::Lessee};
-use af_core::id::Uuid7;
+use crate::{client::ControlPlane, halt::Halt, report::delivery::until_acknowledged};
+use af_core::{id::Uuid7, timing::DAY};
 use af_crypto::entropy::Entropy;
-use af_wire::authoring::{Accounting, FailureReason, Lease, Outcome, Report};
+use af_wire::authoring::{Accounting, FailureReason, Lease, Outcome, Report, Reported};
 use serde_json::Value;
+use tokio::time::Instant;
+use zeroize::Zeroize as _;
 
 struct Ending {
     outcome: Outcome,
@@ -56,7 +59,11 @@ impl Ending {
 }
 
 impl Lessee {
-    pub(crate) async fn author(&self, lease: &Lease<Value>) -> Result<()> {
+    pub(crate) async fn author(
+        &self,
+        lease: &Lease<Value>,
+        interrupt: tokio_util::sync::CancellationToken,
+    ) -> Result<()> {
         let id = Uuid7::parse(&lease.lease_id)?;
         let observed = Observed::new();
         let turn = Turn {
@@ -84,6 +91,7 @@ impl Lessee {
                 Ending::unknown()
             },
             () = self.halt.running().cancelled() => { observed.uncertain()?; Ending::unknown() },
+            () = interrupt.cancelled() => { observed.uncertain()?; Ending::unknown() },
         };
         let accounting = Accounting {
             fence: lease.fence.clone(),
@@ -92,15 +100,75 @@ impl Lessee {
             failure_reason: ending.reason,
             usage: observed.snapshot()?,
         };
-        self.authoring_spool
-            .hold(
-                &id,
-                &lease.attempt_id,
-                Report::Terminal {
-                    accounting,
-                    answer: ending.answer,
-                },
-            )
-            .await
+        deliver_report(
+            &self.plane,
+            &self.halt,
+            &id,
+            Report::Terminal {
+                accounting,
+                answer: ending.answer,
+            },
+        )
+        .await
     }
+}
+
+/// Zeroes the owned private answer when delivery completes or its future is dropped.
+struct Pending(Report);
+
+impl Drop for Pending {
+    fn drop(&mut self) {
+        if let Report::Terminal {
+            answer: Some(answer),
+            ..
+        } = &mut self.0
+        {
+            answer.zeroize();
+        }
+    }
+}
+
+async fn deliver_report(
+    plane: &ControlPlane,
+    halt: &Halt,
+    lease: &Uuid7,
+    report: Report,
+) -> Result<()> {
+    let mut pending = Pending(report);
+    garde::Unvalidated::new(&pending.0).validate()?;
+    let private_until = Instant::now() + DAY;
+    let sending = acknowledged_report(plane, halt, lease, &pending.0);
+    match tokio::time::timeout_at(private_until, sending).await {
+        Ok(result) => result.map(drop),
+        Err(_expired) => {
+            // Privacy expiry changes an authoring report to its current
+            // accounting-only form; no earlier wire format is accepted or retried.
+            if let Report::Terminal {
+                answer: Some(answer),
+                ..
+            } = &mut pending.0
+            {
+                answer.zeroize();
+            }
+            pending.0 = Report::Accounting {
+                accounting: pending.0.accounting().clone(),
+            };
+            acknowledged_report(plane, halt, lease, &pending.0)
+                .await
+                .map(drop)
+        }
+    }
+}
+
+async fn acknowledged_report(
+    plane: &ControlPlane,
+    halt: &Halt,
+    lease: &Uuid7,
+    report: &Report,
+) -> Result<Reported> {
+    until_acknowledged(halt, || async {
+        let reply = plane.authoring_report(lease, report).await?;
+        Ok(reply.settled.then_some(reply))
+    })
+    .await
 }

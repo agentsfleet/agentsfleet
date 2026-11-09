@@ -29,13 +29,13 @@ struct Watch {
     /// The viewer was told; a further loss before any delivery is the same
     /// outage and is not announced again.
     resynced: bool,
-    _slot: afd_sse::Slot,
+    _slot: afd_sse::StreamPermit,
 }
 
 /// What a draft stream reads live progress through.
 pub(super) struct Feed {
     /// This stream's place under the instance's ceiling.
-    pub(super) slot: afd_sse::Slot,
+    pub(super) slot: afd_sse::StreamPermit,
     /// Where a lost subscription is reopened.
     pub(super) live: afd_sse::Live,
     /// The subscription the handler confirmed before answering, if any.

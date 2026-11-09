@@ -19,7 +19,7 @@ use std::time::Duration;
 use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use af_core::id::Uuid7;
 use afd_bus::{Handle, Subject};
-use afd_sse::{Ceiling, KIND_CATCHING_UP, Live};
+use afd_sse::{KIND_CATCHING_UP, Live, StreamLimit};
 use futures_util::StreamExt as _;
 
 type Fallible<T = ()> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -55,7 +55,7 @@ async fn frame_before_interest_is_covered_by_backfill() -> Fallible {
     let namespace = format!("race_{}", std::process::id());
     let publisher = bus_on(seeds.first().ok_or("node 1")?, &namespace).await?;
     let viewer = bus_on(seeds.get(2).ok_or("node 3")?, &namespace).await?;
-    let live = Live::new(viewer.clone(), Ceiling::new(1));
+    let live = Live::new(viewer.clone(), StreamLimit::new(1));
     for attempt in 0..ATTEMPTS {
         // A fresh fleet per attempt, so no attempt inherits another's interest.
         let fleet = Uuid7::parse(&format!("0195b4ba-8d3a-7f13-8abc-{attempt:012x}"))?;

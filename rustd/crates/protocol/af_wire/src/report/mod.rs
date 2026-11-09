@@ -64,7 +64,7 @@ pub enum FailureClass {
     BudgetBreach,
 }
 
-/// `POST /v1/runners/me/leases/{lease_id}/renew` reply.
+/// One lease's native renewal acknowledgement.
 ///
 /// The authoritative new kill deadline. A non-`200` means stop renewing and kill
 /// the child — the run is over.
@@ -104,8 +104,7 @@ pub struct ReportTelemetry {
     pub time_to_first_token_ms: u32,
     /// Total wall-clock milliseconds.
     pub wall_ms: u64,
-    /// Where the run's time went, segment by segment. Send it only when the
-    /// lease carried `memory`.
+    /// Where the run's time went, segment by segment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub segments: Option<RunSegments>,
 }
@@ -148,7 +147,7 @@ pub struct ReportCheckpoint<'a> {
     pub last_response: Cow<'a, str>,
 }
 
-/// `POST /v1/runners/me/reports` — one batched write keyed by event id.
+/// Native runner report — one batched write keyed by event id.
 //
 // The fencing token is echoed and verified: a reclaimed holder carrying a token
 // below the fleet's live sequence is refused. No runner id — the token owns the
@@ -211,12 +210,11 @@ pub struct ReportRequest<'a> {
     /// What the run learned, for the fleet's next run. Written before the
     /// report settles, so the next lease's memory window holds it. Entries
     /// past 262144 bytes in total are dropped and counted, never refused.
-    /// Send it only when the lease carried `memory`.
     #[serde(borrow, default, skip_serializing_if = "Vec::is_empty")]
     pub memory: Vec<crate::memory::MemoryDelta<'a>>,
 }
 
-/// `POST /v1/runners/me/reports` reply.
+/// Native report acknowledgement payload.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ReportResponse {

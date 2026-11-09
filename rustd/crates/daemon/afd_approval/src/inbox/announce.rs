@@ -56,11 +56,8 @@ impl Inbox {
             pending_approvals: answer.pending_approvals,
             counters: answer.counters,
         };
-        self.bus
-            .publish_frame(
-                &afd_bus::Subject::FleetTail(answer.fleet_id.clone()),
-                &frame,
-            )
-            .await;
+        let subject = afd_bus::Subject::FleetTail(answer.fleet_id.clone());
+        let publication = self.bus.publish_frame(&subject, &frame).await;
+        afd_bus::observe_notification(&subject, publication);
     }
 }

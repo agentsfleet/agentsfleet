@@ -199,8 +199,13 @@ async fn test_a_reused_sandbox_is_marked_on_the_lease_span_and_logged() {
 
 /// Refuses every renewal of the fleet's next lease, and of no other.
 fn next_lease_cut(call: &Call) -> Option<Answer> {
-    (call.verb == Verb::Renew && call.path.contains(NEXT_LEASE_ID))
-        .then(|| Answer::Fail(crate::error::refused(Verb::Renew, 409, None)))
+    (call.verb == Verb::Renew
+        && serde_json::from_slice::<serde_json::Value>(call.body.as_ref().unwrap())
+            .unwrap()
+            .get("lease_id")
+            .and_then(serde_json::Value::as_str)
+            == Some(NEXT_LEASE_ID))
+    .then(|| Answer::Fail(crate::error::refused(Verb::Renew, 409, None)))
 }
 
 /// Holds up every lease's memory a while, and refuses the renewals of the

@@ -12,15 +12,15 @@ use std::time::Duration;
 use af_core::event::status;
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
-use af_wire::lease::LeaseResponse;
+use af_wire::lease::TaggedLease;
 use af_wire::memory::MemoryDelta;
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_db::test_util::{EventKind, FleetEventSeed, PlatformDefault, mint_id};
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 use jiff::Timestamp;
 
 use super::seed::seed_provider_resolution;
-use super::{NO_LEASE, READ_BOUND_CONFIG, set_config};
+use super::{READ_BOUND_CONFIG, set_config};
 use crate::report_seed::{DEEP_POOL, SLICE, SLICE_MS};
 use crate::seed::{ACTOR, seeded_parts};
 use crate::support::Fixtures;
@@ -144,22 +144,19 @@ impl Chat {
     /// [`Self::lease`], issued by `plane`.
     pub(super) async fn lease_through(
         &self,
-        plane: &Plane,
+        plane: &LeaseService,
         runner: &Uuid7,
         now: Timestamp,
     ) -> Issued {
         let claimed = self.claim(runner).await.expect("the fleet is leasable");
         let answer = plane
-            .lease_claimed(claimed, runner, now)
+            .claim_selected(claimed, runner, now)
             .await
             .expect("every gate verdict is a decision, not a fault");
-        assert!(
-            !answer.contains(NO_LEASE),
-            "the lease was refused: {answer}"
-        );
-        let response: LeaseResponse<'_> =
-            serde_json::from_str(&answer).expect("the plane answers a lease response");
-        let af_wire::lease::TaggedLease::Fleet(lease) = response.lease.expect("an issued lease")
+        assert!(answer.is_some(), "the lease was refused: {answer:?}");
+        let body = answer.expect("an issued lease").to_string();
+        let TaggedLease::Fleet(lease) =
+            serde_json::from_str::<TaggedLease<'_>>(&body).expect("the issued fleet payload")
         else {
             panic!("the fleet plane grants fleet work");
         };

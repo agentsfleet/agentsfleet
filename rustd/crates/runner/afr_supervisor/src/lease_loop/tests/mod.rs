@@ -16,7 +16,6 @@ use super::ACTIVITY_DRAIN_WAIT;
 use crate::client::{Call, Verb};
 use crate::egress::Egress;
 use crate::error;
-use crate::report_spool::ReportSpool;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FENCING, FLEET_ID, FakeAgent, FakeEngine, LEASE_ID, OUTCOME,
     PROCESSED, RENEWAL_TERMINATE, RUNNER_CRASH, Rig, STARTUP_POSTURE, daemon, lease, position,

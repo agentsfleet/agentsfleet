@@ -5,8 +5,8 @@ use super::{hold, live};
 use crate::seed::{Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
 use af_core::timing::SANDBOX_HOLD_IDLE;
+use afd_bus::wake::Wake;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::Doorbell;
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -61,9 +61,9 @@ async fn test_a_stale_notification_does_not_hide_unnotified_work() {
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let bell = Doorbell::new();
+    let bell = Wake::default();
     bell.ring(mint_id());
-    let leases = fixtures.leases().with_doorbell(bell);
+    let leases = fixtures.leases().with_wake(bell);
     let acquired = leases
         .select(&runner, &[])
         .await

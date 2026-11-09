@@ -56,7 +56,9 @@ Postgres holds cancellation markers and connection ownership, so a lost publish 
 Pub/sub moves behind `afd_bus::Bus`, with Dragonfly as its first implementation and NATS added by M244.
 
 The gateway claims work when a notification arrives or credits rise.
-The poll, held heartbeat, per-flush activity posts and six retired routes are deleted.
+The poll, held heartbeat, per-flush activity posts and ten retired routes are deleted.
+The Nov 09 authoring correction also moves model calls, proposals, renewal and completion onto this native session.
+Postgres retains saved results and accounting; unacknowledged runner reports remain only in memory.
 Connection failures, fallback, disconnected duration and recovery are measured and traced.
 
 **Design flow:**
@@ -70,7 +72,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
  heartbeat every 10 s ─► Runners::heartbeat (liveness, holds, policy, status, token hash, connection_id)
  renew batch every 5 s ─► Plane::renew per lease ─► renewed{deadline | refusal}
  activity ─► lease target cached at offer or rebuild ─► Bus tail (0 statements)
- report ─► Plane::report (lease-keyed, idempotent) ─► report_ack ─► runner spool deletes it
+ report ─► Plane::report (lease-keyed, idempotent) ─► report_ack ─► runner releases pending memory
  kill ─► cancel_requested_at in the kill transaction ─► Bus runner command ─► owning replica ─► cancel
  operator edit, revoke, rotate ─► Bus recheck ─► owning replica re-reads the row ─► answer or close
  drain ─► go_away ─► runner reconnects after a jittered delay
@@ -94,7 +96,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 1. `rustd/crates/daemon/afd_api_runner/src/handler/runner/heartbeat.rs` and `afd_runner/src/heartbeat/mod.rs` — what one beat writes and answers; the stream carries both unchanged except `wake` and `woken`.
 2. `rustd/crates/daemon/afd_runner/src/capacity/mod.rs` — `lock` refuses a non-active or degraded host inside every issue transaction, and a revoked or degraded one inside every renewal; that is the grant re-check `docs/AUTH.md` requires once auth stops running per request.
 3. `rustd/crates/daemon/afd_dragonfly/src/hub/mod.rs` and `doorbell/mod.rs` — `Received`, the gap signal, and the ring the gateway listens to.
-4. `rustd/crates/runner/afr_supervisor/src/report_spool/mod.rs` and `drainer/mod.rs` — the durable report spool the stream's acknowledgement completes.
+4. `rustd/crates/runner/afr_supervisor/src/lease_loop/settle.rs` and `report/delivery.rs` — workers retain current reports in memory until acknowledgement.
 5. `https://github.com/openai/codex/blob/cc7ba33/codex-rs/app-server-transport/src/transport/remote_control/websocket.rs` (Indy's checkout at `~/Projects/oss/rs/codex`) — an outbound WebSocket client with pings, a pong timeout and jittered reconnect.
 
 ## Files Changed (blast radius)
@@ -114,15 +116,16 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `docs/metrics.census.tsv` | EDIT | §4, §7: stream health, fallback and recovery families in; wake answers out |
 | `public/openapi.json` | EDIT | §7: regenerated from `rustd/` with `--no-banner` |
 | `ui/packages/app/tests/approvals-list/resolve.test.ts` | EDIT | Fix the reported CI race by awaiting the visible error before asserting its content |
+| `rustd/crates/daemon/afd_state/Cargo.toml`, `tests/directory/runners.rs`, `tests/support/directory_fixtures.rs` | EDIT | Native UUIDv7 fixtures; a raw UUID fault proves malformed runner identifiers fail the strengthened schema constraint |
 | `schema/20261108123200_runner_leases.sql`, `schema/20261108123100_runner_runners.sql`, `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | §3: edit table files for the cancel marker and owning connection; recheck names after the data-layer follow-up lands |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/daemon/afd_bus/**` | EDIT, CREATE | §2: bus, wake and Dragonfly adapter; §1, §6: native HTTP/3 and HTTP/2 carrier dependencies |
 | `rustd/crates/daemon/afd_dragonfly/src/lib.rs`, `doorbell/**` | EDIT, DELETE | §2: the doorbell moves to `afd_bus::wake` |
-| `rustd/crates/daemon/afd_admission/src/wake.rs`, `afd_approval/src/inbox/announce.rs`, `afd_approval/src/inbox/resolve/mod.rs`, `afd_authoring/src/model/progress/context.rs`, `publish.rs`, `afd_events/src/activity.rs`, `afd_events/src/steer/mod.rs`, `afd_fleet/src/lease/bracket.rs`, `afd_gate/src/gate/park.rs`, `afd_sse/src/fanin.rs`, `live.rs`, `ceiling.rs`, `afd_api_tenant/src/handler/draft/stream/mod.rs` | EDIT | §2: every production publisher and subscriber goes through `afd_bus::Handle` |
+| `rustd/crates/daemon/afd_admission/src/wake.rs`, `afd_approval/src/inbox/announce.rs`, `afd_approval/src/inbox/resolve/mod.rs`, `afd_authoring/src/model/progress/context.rs`, `publish.rs`, `afd_events/src/activity.rs`, `afd_events/src/steer/mod.rs`, `afd_fleet/src/lease/bracket.rs`, `afd_gate/src/gate/park.rs`, `afd_sse/src/fanin.rs`, `live.rs`, `stream_limit.rs`, `afd_api_tenant/src/handler/draft/stream/mod.rs` | EDIT | §2: every production publisher and subscriber goes through `afd_bus::Handle` |
 | test harnesses that build a hub: `afd_api/tests/harness/**`, `afd_api/tests/support/**`, `afd_sse/tests/**`, `afd_approval/tests/integration_inbox_*.rs`, `afd_authoring/tests/draft/model_calls/progress/fixture.rs`, `afd_events/tests/integration_backfill.rs`, `afd_gate/tests/integration_gate_tail.rs`, `afd_fleet/tests/integration_wall_counters.rs`, `agentsfleetd/tests/integration_cluster_outcomes.rs`, `afd_bench/src/datastores/mod.rs`, `afd_bench/src/lane/tail/**` | EDIT | §2: build an `afd_bus::Handle` instead |
 | `rustd/crates/protocol/af_wire/src/protocol/**`, `paths.rs`, `runner/mod.rs`, `lease/request.rs`, `lease/response.rs`, `af_wire/tests/{routes,strictness,validation_holds,claim_selection}.rs` | CREATE, EDIT | §3: frames; `RUNNER_STREAM`; `wake`, `woken`, `LeaseRequest` and `LeaseResponse` go |
 | `rustd/crates/foundation/af_core/src/timing.rs`, `limits.rs`, `error_code/fleet.rs`, `error_code/mod.rs`, `problem/fleet.rs` | EDIT | §3: stream timings and assertions; three codes; §7: three constants go |
 | `rustd/crates/daemon/afd_gateway/**` | CREATE | §4: registry, session, offer passes, target cache, rebuild, recheck, HTTP/2 and HTTP/3 server adapters; exact planned files in `runner_protocol.md` |
-| `rustd/crates/daemon/afd_http/src/route/runner.rs`, `afd_http/src/services/mod.rs` and the `Services` trait file, `services/leasing/mod.rs`, `services/leasing/plane.rs` | EDIT | §4: the stream route; `gateway()`; `wait_for_work` and `activity` leave `Leasing` |
+| `rustd/crates/daemon/afd_http/src/route/runner.rs`, `afd_http/src/services/mod.rs` and the `Services` trait file, `services/leasing/mod.rs`, `services/leasing/lease_service.rs` | EDIT | §4: the stream route; `gateway()`; `wait_for_work` and `activity` leave `Leasing` |
 | `rustd/crates/daemon/afd_api_runner/src/handler/runner/stream.rs`, `mod.rs`, `usage.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §4: session opening, version check, ceiling permit, drain registration |
 | `rustd/crates/daemon/afd_fleet/src/lease/claim.rs`, `activity/mod.rs`, `store.rs`, `answer/mod.rs`, `renew/mod.rs`, `rebuild.rs`, `sql/select_runner_live_leases.sql`, `sql/select_waiting_admission.sql`, `sql/select_lease_for_renew.sql`, `sql/activity.rs` | EDIT, CREATE | §4: claim answers its target; rebuild read; the fallback probe; §5: renewal reads the cancel marker |
 | `rustd/crates/daemon/afd_runner/src/heartbeat/mod.rs`, `sql/runner/select_runner_assigned_policy.sql`, `sql/runner/write_runner_connection.sql`, `sql/runner/mod.rs` | EDIT, CREATE | §4, §5: the beat's read carries status, token-hash match and `connection_id`; connect writes it |
@@ -135,11 +138,16 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/main/tests/integration_runner_e2e/**`, `integration_rust_runner*.rs`, `integration_runner_activity*.rs`, `integration_runner_messages*.rs`, `integration_runner_shapes.rs` | EDIT | §6: drive leases over the stream |
 | `rustd/crates/daemon/afd_api/tests/route_inventory.rs`, `route_meta_total.rs`, `harness/stubs_runner.rs`, `afd_api/src/openapi/stability/mod.rs` | EDIT | §4, §7: one route in, six out |
 | `rustd/crates/runner/afr_supervisor/src/downlink/**`, `uplink/**` | CREATE | §6: connect, hello, reconnect, dispatch; the prioritised writer |
-| `rustd/crates/runner/afr_supervisor/src/{worker_pool,renew,activity,report,drainer,lease_loop,client,halt,verbs}/**`, `rustd/crates/runner/afr_supervisor/src/lib.rs`, `rustd/crates/runner/afr_supervisor/src/test_util.rs`, `rustd/crates/runner/afr_supervisor/Cargo.toml` | EDIT | §6: workers take offers; renewals batch per host; activity, reports and folds ride the uplink; the existing inbox implementation is `verbs::FencedVerbs` |
+| `rustd/crates/runner/afr_supervisor/src/{worker_pool,renew,activity,report,drainer,lease_loop,client,halt,verbs}/**`, `rustd/crates/runner/afr_supervisor/src/lib.rs`, `rustd/crates/runner/afr_supervisor/src/test_util/mod.rs`, `rustd/crates/runner/afr_supervisor/Cargo.toml` | EDIT | §6: workers take offers; renewals batch per host; activity, reports and folds ride the uplink; the existing inbox implementation is `verbs::FencedVerbs` |
 | `rustd/crates/runner/afr_supervisor/src/test_support/daemon/**`, `agentsfleet_runner/tests/fake_daemon.rs`, `afr_sandbox/examples/kernel_lane/supervisor_plane.rs`, `supervisor_checks.rs` | EDIT | §6: the fake daemons speak the stream |
 | `rustd/crates/daemon/afd_bench/src/lane/lease/drain/{runner,window,mod,tests}.rs`, `lane/lease/saturation/production.rs`, `lane/lease/seed/mod.rs`, `make/bench.mk`, `bench/baselines/lease.rig.json` | EDIT | §8: the drain drives a session; idle totals replace per-poll ratios; median baseline |
 | retired: `afd_api_runner/src/handler/runner/{heartbeat,wake,wake_tests,renew,activity,report,folds}.rs`, `handler/runner/lease/**`, `afr_supervisor/src/heartbeat/**`, `afd_api/tests/integration_runner_heartbeat.rs`, `agentsfleetd/tests/integration_runner_wake.rs`, `afd_approval/tests/integration_grant_request.rs` | DELETE, EDIT | §7: pull path and tests; fold client methods currently live in `afr_supervisor/src/client/lease_verbs/mod.rs` |
-| `rustd/crates/daemon/main/src/serve/runner_stream.rs`, `rustd/crates/daemon/main/src/preflight/runner_stream.rs` and their parent module indexes | CREATE, EDIT | direct TLS listener and deployment configuration; exact transport mapping is fixed by §1 |
+| `rustd/crates/daemon/main/src/serve/runner_stream.rs`, `rustd/crates/daemon/main/src/preflight/runner_listener.rs` and their parent module indexes | CREATE, EDIT | direct TLS listener and deployment configuration; exact transport mapping is fixed by §1 |
+| `rustd/crates/daemon/afd_http/src/auth/{guard,request,runner_stream,mod}.rs`, `handler/refusal/mod.rs`, `services/{http_services,runner_stream,mod}.rs`, `services/leasing/lease_service.rs` | CREATE, EDIT, MOVE | Indy's middleware and naming review; explicit result types and one scope guard |
+| `rustd/crates/daemon/afd_sse/src/stream_limit.rs` and all renamed-type callers in the exact review inventory | MOVE, EDIT | `StreamLimit`, `StreamPermit`, `LeaseService` and `AdmittedFleetWork` replace ambiguous names without aliases |
+| `rustd/crates/daemon/afd_fleet/src/lease/{offer,deliver/issue,report/observations}.rs`, `report/observations/tests.rs`, `src/error/{kind,lift,classify,permanence}.rs` | CREATE, EDIT | Typed offer metadata and observation errors preserve saved timestamps and usage failures |
+| `rustd/crates/daemon/main/src/preflight/{config,mod,read}.rs`, `plane/{config,services,tests}.rs` | EDIT | Resolve wake and memory settings before startup; invalid values remain absent until admission |
+| `rustd/crates/daemon/afd_bench/src/error/{kind,mod,accessors}.rs` | EDIT | Preserve failed concurrency conversion rather than substituting a maximum value |
 | `deploy/fly/agentsfleetd-dev/fly.toml`, `deploy/fly/agentsfleetd-prod/fly.toml` | PROPOSE only; edit after Indy's approval | private runner listener and certificate delivery; public ingress is outside this milestone |
 | `~/Projects/docs` branch `chore/m243-runner-stream-changelog`: `runners.mdx`, `runners/install.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx`, `changelog.mdx` | EDIT | §7: direct endpoint and network prerequisites, carrier fallback, kill behaviour and errors; API pages after merge |
 
@@ -280,7 +288,7 @@ The other frames:
 - **report** runs `Plane::report` and answers `report_ack` with the saved result or a refusal code that says whether a retry helps. The report's spend and delivery telemetry moves here from the deleted handler.
 - **folds** runs M242_002's `Leasing::fold` under the lease's fence and answers `folded`. **Implementation default:** request and answer, not an unasked push, because the runner consumes input only at a model-call boundary, so a push would arrive no sooner.
 
-Authoring leases arrive as offers; their four per-lease routes stay HTTP. On drain the registry stops offering, answers accepted work, then sends `go_away` and closes within `DRAIN_TIMEOUT`.
+Authoring leases arrive as offers; model calls, proposals/progress, renewals and reports use the same native session. Their four HTTP routes are removed. On drain the registry stops offering, answers accepted work, then sends `go_away` and closes within `DRAIN_TIMEOUT`.
 
 - **Dimension 4.1** — a streamed chat reads the token once and no lease target → Test `a_streamed_chat_reads_no_lease_target` (integration, a private database filtered by `dbid` as `afd_events/tests/queued/snapshot.rs` does): one lease, 2 renewal batches, 40 activity frames and a report over the stream make 1 call of the runner-token statement and 0 of the lease-target statement. Over HTTP the lease-target statement runs 40 times.
 - **Dimension 4.2** — an unknown protocol is refused before opening → Test `an_unknown_protocol_version_is_refused` (integration): `agentsfleet.runner.v9` answers `400` UZ-RUN-023, never a successful session response.
@@ -340,10 +348,10 @@ Reports and activity have separate bounded HTTP streams and writers; a report ba
 Activity retains its 64 KiB batches and drops past `MAX_BATCHES_HELD`.
 
 Renewals batch per host each `RENEWAL_TICK` and preserve each lease's complete `RenewResponse`, including `recorded_through`.
-The report spool deletes a report only on its matching `report_ack`, and replays after reconnect.
+Each worker retains its report only in memory until its matching `report_ack`, and retries after reconnect.
 Every answer echoes the session-local request identifier; disconnect fails and clears all pending callers.
 
-- **Dimension 6.1** — a bounded blackhole recovers inside the lease → Test `a_blackholed_stream_reconnects_and_reports_once` (native integration for both carriers): inject a bounded interruption between probes and measure total detection and recovery time. Renew before the confirmed deadline and settle the spooled report once. A separate sustained-outage test, `an_outage_never_extends_a_confirmed_lease`, must stop the lease at expiry.
+- **Dimension 6.1** — a bounded blackhole recovers inside the lease → Test `a_blackholed_stream_reconnects_and_reports_once` (native integration for both carriers): inject a bounded interruption between probes and measure total detection and recovery time. Renew before the confirmed deadline and settle the report retained in worker memory once. A separate sustained-outage test, `an_outage_never_extends_a_confirmed_lease`, must stop the lease at expiry.
 - **Dimension 6.2** — an activity flood never delays a renewal → Test `an_activity_flood_does_not_delay_renewal` (unit): with 1,000 activity batches queued, a renewal queued after them is the next frame written.
 - **Dimension 6.3** — reconnects spread out → Test `reconnects_spread_over_the_jitter_window` (unit, paused time and injected random source): 100 runners reconnect within the initial jitter bound and occupy several time buckets. The test pins the deterministic injected sample; it does not demand an impossible perfectly even random distribution.
 - **Dimension 6.4** — a superseded runner halts → Test `a_superseded_runner_halts` (unit): `go_away` with UZ-RUN-021 stops the runner, and it opens no new connection.
@@ -378,6 +386,18 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
   - up: `hello{request_id, accepted_kinds, running[lease_id], credits}`, `ready{credits}`, `heartbeat{request_id, HeartbeatRequest without wake}`, `ping{request_id}`, `renew_batch{request_id, leases[{lease_id, RenewRequest}]}` (`Up::RenewBatch`), `activity{lease_id, frames}`, `report{request_id, ReportRequest}`, `folds{request_id, lease_id, FoldRequest}`.
   - down: `welcome{request_id, connection_id, heartbeat_interval_ms}`, `offer{TaggedLease}`, `heartbeat{request_id, HeartbeatResponse without woken}`, `pong{request_id}`, `renewed{request_id, leases[{lease_id, RenewResponse | refusal}]}`, `report_ack{request_id, lease_id, ReportResponse | refusal}`, `folded{request_id, lease_id, FoldResponse | refusal}`, `cancel{lease_id, error_code}`, `go_away{error_code?}`. Every answerable up message carries the same positive request identifier; ready and activity need no reply.
 
+The Nov 09 authoring correction adds four correlated exchanges, each carrying `request_id`, `lease_id` and its current operation body.
+Work carries `authoring_model` / `authoring_model_result` and `authoring_activity` / `authoring_activity_ack`.
+Control carries `authoring_renew` / `authoring_renewed`; reports carries `authoring_report` / `authoring_report_ack`.
+
+Each authoring mutation checks the current connection owner and credential under the host lock.
+The provider receipt checks authority again after physical HTTP finishes, retaining known usage while withholding fenced private output.
+Accepted provider work stays tracked after a native disconnect, bounded by the original operation deadline and daemon shutdown.
+
+The same native-session integration cases check saved model results, proposal receipt identity, renewal alongside blocked model HTTP and completion replay.
+Further cases cover lost replies, changed replay content, private deletion, pending accounting, credential replacement and connection fencing.
+These cases remain unverified until the code-completion review is finished and integration verification resumes.
+
 ```
 ↑ {"type":"hello","accepted_kinds":["fleet","authoring"],"running":[],"credits":4}
 ↓ {"type":"welcome","heartbeat_interval_ms":10000}
@@ -389,7 +409,7 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 - **Schema:** `runner.leases.cancel_requested_at TIMESTAMPTZ(3) NULL`; `runner.runners.connection_id UUID NULL`, with a UUIDv7 check when set.
 - **Error codes:** UZ-RUN-021 "Runner stream superseded" (409); UZ-RUN-022 "Lease cancelled" (409); UZ-RUN-023 "Runner protocol unsupported" (400).
 - **Timing** (`af_core/src/timing.rs`): `STREAM_PING_INTERVAL` 15 s; `STREAM_ANSWER_TIMEOUT` 5 s; `RECONNECT_JITTER_MAX` 2 s; `STREAM_RECOVERY_BUDGET` 7 s, comprising HTTP/3 setup 2 s, HTTP/2 setup 2 s and opening/rebuild 3 s; `STREAM_STABLE_RESET_AFTER` 60 s; `OFFER_FALLBACK_TICK` 5 s; `PROXY_IDLE_FLOOR` 60 s. Assert `RENEWAL_TICK + STREAM_ANSWER_TIMEOUT + RECONNECT_JITTER_MAX + STREAM_RECOVERY_BUDGET < LEASE_TTL − RENEWAL_WINDOW`. Preserve the ping, heartbeat, fallback and drain relations; cap every recovery attempt by the lease's remaining safe lifetime.
-- **Removed:** the six routes in §7, and `retry_after_ms` with `LeaseResponse`.
+- **Removed:** the six routes in §7, the four authoring lease routes, and `retry_after_ms` with `LeaseResponse`.
 
 ## Failure Modes
 
@@ -410,7 +430,7 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 | Token rotated | security | operator rotation | the old token's stream closes with UZ-RUN-001 | `rotating_a_token_closes_the_stream_on_the_old_token` |
 | Degraded host | security | capability lost mid-stream | no offers; the host lock refuses inside the issue | `a_grant_rechecks_the_host_inside_its_transaction` |
 | Two processes share a token | race | a duplicated host | the newer connection wins; the older halts with UZ-RUN-021 | `a_second_connection_supersedes_the_first`, `a_superseded_runner_halts` |
-| Report reply lost | replay | a cut after the commit | the spool replays; the lease-keyed report answers its saved result, charged once | `a_report_resent_after_a_cut_settles_once` |
+| Report reply lost | replay | a cut after the commit | the worker retries from memory; the lease-keyed report answers its saved result, charged once | `a_report_resent_after_a_cut_settles_once` |
 | Rolling deploy | failure | drain | answers in flight are sent, then `go_away`; the runner reconnects elsewhere | `draining_sends_go_away_and_waits_for_answers` |
 | Mass reconnect | capacity | a tunnel restart | reconnects spread over the jitter window | `reconnects_spread_over_the_jitter_window` |
 | Stream ceiling reached | capacity | dashboards hold every slot | `503` with `Retry-After`; the runner retries | `a_stream_past_the_ceiling_is_refused_with_retry` |
@@ -422,7 +442,7 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 2. A cancel outlives a lost publish — `cancel_requested_at` commits before the publish, and renewal and rebuild read it; `a_cancel_whose_push_is_lost_ends_at_the_next_renewal` fails if renewal ignores it.
 3. One runner has one serving stream — `connection_id` is last-writer-wins, and every heartbeat read compares it; `a_second_connection_supersedes_the_first` fails if the comparison goes.
 4. A bounded first-attempt recovery leaves renewal slack; every outage retains the confirmed expiry deadline. The timing assertion includes the full seven-second carrier/open/rebuild budget. `an_outage_never_extends_a_confirmed_lease` proves the unconditional deadline rule.
-5. A report leaves the runner spool only on its acknowledgement — the spool's delete takes the `report_ack`; `a_blackholed_stream_reconnects_and_reports_once` fails on a lost or doubled report.
+5. A worker releases its pending report memory only on acknowledgement or a terminal refusal; `a_blackholed_stream_reconnects_and_reports_once` fails on a lost or doubled report.
 6. Renewals never queue behind activity — the uplink's biased select; `an_activity_flood_does_not_delay_renewal` fails if the order flips.
 
 ## Metrics & Observability
@@ -480,8 +500,7 @@ Schema this milestone leaves with no runtime reader or writer is removed from it
 
 - One statement per host renewal: M245. Each lease keeps its own renewal statements here.
 - The NATS implementation behind `afd_bus`: M244.
-- The authoring lease's per-lease routes (renew, activity, model calls, reports): they stay HTTP with per-request auth. Authoring leases still arrive as offers.
-  - A pause that cancels a running lease: pause keeps today's behaviour.
+- A pause that cancels a running lease: pause keeps today's behaviour.
 - Aiming a ring at one eligible runner: an empty pass still costs one claim per session with credits, as each ring costs today, counted by `agentsfleet_runner_offer_claims_total`. Not planned until that count matters.
 - Customer-runner trust (M246) and the lapsed-host respawn signal (M247).
 - Deployment changes without a concrete reviewed patch. Private Fly routing needs deployment evidence; a hosted public ingress deployment is outside M243.
@@ -493,7 +512,7 @@ Schema this milestone leaves with no runtime reader or writer is removed from it
 1. **Successful user moment** — an operator kills a fleet mid-run and its run stops within a second, and a host idle all day sends no lease request yet picks up the next message as soon as it is admitted.
 2. **Preserved user behaviour** — enrolment, the `agt_r` token, policy edits from the dashboard, live tail, reports and billing, and authoring.
 3. **Optimal-way check** — one outbound session per host connects directly to the daemon, preferring HTTP/3 with HTTP/2 fallback. M245 reduces renewal statements.
-4. **Rebuild-vs-iterate** — iterate: the lease plane, the report path and the spool stay, and only transport, wake and cancel change.
+4. **Rebuild-vs-iterate** — iterate: the lease plane and database report writes stay; transport changes and runner disk report storage is deleted.
 5. **What we build** — the stream route and gateway, the frames, the runner's downlink and uplink, the cancel marker, the connection owner, and the bus seam.
 6. **What we do NOT build** — a replay buffer (Postgres rebuilds), compatibility routes (pre-production), NATS (M244), and single-runner ring routing (unmeasured).
 7. **Fit with existing features** — compounds with M242's folding and M244's broker swap. It must not destabilise the report and billing path, which keeps its statements and its lease-keyed retry.
@@ -514,6 +533,33 @@ Schema this milestone leaves with no runtime reader or writer is removed from it
 - **Patch-vs-refactor verdict:** a **refactor** of the runner transport, because every runner verb changes carrier while the lease plane's statements stay.
 
 ## Discovery (consult log)
+
+Indy changed the working order on Nov 09, 2026:
+
+> can you complete the code first and then we can fix CI and the lint, cargo checks and so on.
+>
+> Ask indy for approval before running lint, test-unit and so.
+>
+> once you write the code just push the changes
+>
+> or commit them.
+>
+> and push to the PR
+
+Finish and publish code to draft #819 before starting further manual verification.
+Ask Indy before lint, tests, Cargo checks or other verification commands.
+The draft must distinguish written code from verified behavior; retain the morning merge hold.
+
+Indy requested a review checkpoint after the current feedback is fixed:
+
+> So after you fix the above changed, take a check point with all the changes i have reviewed, so i can look at the next set of changes again.
+
+The checkpoint includes the source review for RS-SENTINEL and RS-UNWRAP across the PR diff.
+It preserves explicit publication errors and treats notification observation as the caller's post-commit policy.
+No new milestone Dimension is marked verified by this checkpoint.
+
+The precision review replaces census truncation with the issue statement's returned stored `created_at`.
+The shared capacity clock remains unchanged.
 
 - **Current owner decisions, Nov 08, 2026:**
   > Indy: "since i dont want to use websocket" — context: remove the earlier transport default.
@@ -551,14 +597,14 @@ Schema this milestone leaves with no runtime reader or writer is removed from it
 - **Consults** — source review on `main` `14539a73e` plus M241's branch, Nov 06, 2026:
   - Auth admits only `active` runners (`afd_state/src/credentials/rows.rs`), so cordon and drain refuse every call today; the stream keeps that by closing.
   - `capacity::lock` already refuses a non-active or degraded host inside issue, and a revoked or degraded one inside renewal (`afd_runner/src/capacity/mod.rs`); `docs/AUTH.md` requires exactly that check once auth stops running per request.
-  - The report is lease-keyed and idempotent ("Repeats return the saved result without another charge", `afd_api_runner/src/handler/runner/report.rs`). The runner already spools and replays reports (`afr_supervisor/src/report_spool/`, `drainer/`).
+  - The report is lease-keyed and idempotent ("Repeats return the saved result without another charge", `afd_api_runner/src/handler/runner/report.rs`). Discovery found runner report files; Indy rejected retaining those files on Nov 09.
   - Kill marks nothing on `runner.leases` (`afd_authoring/src/creation/patch.rs`; `runner_fleet.md` §Steer, kill, pause).
   - `Plane::claim` picks either work kind (`afd_fleet/src/lease/claim.rs`), so authoring offers cost nothing extra.
   - axum has no `ws` feature and no `tungstenite` crate is in `Cargo.lock` (`rustd/Cargo.toml`); `SSE_MAX_STREAMS` defaults to 256; `DRAIN_TIMEOUT` is 15 s.
   - The tunnel sets no `originRequest` (`deploy/fly/cloudflared-prod/config.yml`), and the daemon has no public Fly service.
-- **Reports decision (agent):** reports ride the stream with the existing spool and an acknowledgement. The spool and the lease-keyed retry already exist, so only the carrier changes. Keeping the HTTP report would keep per-request auth for the message that matters most.
+- **Reports decision (owner, Nov 09):** "Remove runner disk storage; retry from memory". Workers retain one current-format report until acknowledgement. Postgres owns saved completion and billing records. Process loss can lose uncommitted results and usage. No disk recovery or backward-format retry remains.
 - **Cross-spec note:** M242_002's Out of Scope expects M243 to push input with the read as backstop. §4 moves the read onto the stream and declines the push; the review reconciles that line.
-- **Authoring decision (agent):** authoring leases arrive as offers; their four per-lease routes stay HTTP, because they hold their own spool, receipts and the model-call proxy.
+- **Authoring delivery (superseded by Nov 09 direction below):** authoring leases arrive as offers. Their model, activity, renewal and report operations now move onto the native session. Completed authoring reports remain in worker memory until acknowledgement. The runner stores no private report, accounting report or decision receipt files.
 - **Owner decisions** —
   > Indy (Nov 06, 2026: 08:50 AM): "And we are not in production yet, so i want to rethink the approach on admissions, lease, and so on as i am focussed on scale. If something fails in one host bare metal, it should automatically cordon and respawn in another runner" — context: no compatibility period for the retired routes.
   > Indy (Nov 06, 2026: 10:19 AM): "This will be on by default durable_tasks_v1. ... my plan also was to have folks spin a runner and point to the agentsfleetd (in cloud) and keep using it." — context: one stream through the public API, with no broker credential on the runner.
@@ -594,3 +640,27 @@ Indy said:
 Use TLS 1.3 and prefer `X25519MLKEM768` for the native runner transports.
 Verify actual negotiation in transport tests and expose its finite classification in connection observations.
 Certificate signatures remain conventional unless a separate supported authentication change is approved.
+
+### Nov 09 report-storage correction
+
+Indy rejected runner report files, old-format retries and added storage machinery.
+His selected answer was: "Remove runner disk storage; retry from memory".
+He also required: "No backward compatibility crap, when you remove storage reports."
+
+Postgres saves accepted results and billing records.
+Workers retry unacknowledged reports and task-decision receipts from memory without repeating provider calls.
+Process loss can leave an uncommitted result or unknown provider usage.
+Grafana receives performance observations separately; traces and local files are never a billing ledger.
+
+Source changes and unfinished feedback appear in `docs/reviews/m243/owner-feedback-audit.md`.
+No verification result is claimed for this correction.
+
+### Nov 09 authoring transport correction
+
+Indy said: "I think the authoring job must move to the stream, that is th e whole point in making this faster? or is that part of M245 or M246 or M247? if so i can wait".
+
+The current M245 plan changes database cost, M246 adds tenant-owned runners and protected runtime model access, and M247 adds failed-host recovery. None owns migration of the four existing authoring operations. M243 therefore carries authoring model calls, proposals/progress, renewals and reports over its existing authenticated native connection and deletes their HTTP routes, handlers and HTTP client code. This supersedes the earlier HTTP retention decision.
+
+Model invocation keeps its existing long provider budget and physical dispatch identifier; disconnect never automatically repeats a model dispatch. Control ping, renewal and cancellation progress while a model call is pending. The daemon retains provider credentials, existing authoring validators, Postgres settlement and the shared Bus. Completed reports remain only in runner memory until acknowledgement. No report file or backward-format path is added. Transport latency remains unmeasured.
+
+The M246 implementation must use the current authoring model-call stream boundary as its reference after M243 merges. Its tenant ownership and runtime provider-proxy work remain M246 scope.

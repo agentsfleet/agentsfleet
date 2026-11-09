@@ -43,6 +43,7 @@ af_core::error_shell!(
 );
 
 af_core::error_lifts!(Error, ErrorKind:
+    std::num::TryFromIntError => ConcurrencyUnrepresentable,
     afd_db::Error => DatabaseUnavailable,
     afd_dragonfly::Error => QueueUnavailable,
     afd_bus::Error => BusUnavailable,

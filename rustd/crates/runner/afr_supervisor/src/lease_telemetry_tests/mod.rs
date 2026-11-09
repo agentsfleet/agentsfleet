@@ -18,7 +18,6 @@ use afr_telemetry::{Endpoint, Telemetry};
 use afr_tools::Catalog;
 use afr_tools::catalog::FILE_READ;
 use afr_tools::stub::Stub;
-use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -27,7 +26,6 @@ use crate::egress::Egress;
 use crate::halt::Halt;
 use crate::identity::Whoami;
 use crate::lease_loop::Lessee;
-use crate::report_spool::ReportSpool;
 use crate::storage_home::StorageHome;
 use crate::test_support::{
     Behaviour, FLEET_ID, FakeAgent, FakeEngine, FakeResolver, LEASE_ID, Rig, clock, daemon, lease,
@@ -106,10 +104,18 @@ async fn test_runner_exports_spans_and_metrics_when_configured() {
     // one-token policy cannot hold those schemas and its pinned instructions.
     leased.policy.model_context_tokens = 32_768;
     leased.policy.context.context_cap_tokens = 32_768;
-    lessee
-        .run(&turns, &leased, &Egress::closed())
-        .await
-        .unwrap();
+    crate::test_support::bounded("telemetry native lease", async {
+        lessee
+            .run(
+                &turns,
+                &leased,
+                &Egress::closed(),
+                tokio_util::sync::CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+    })
+    .await;
     drop(guard);
     tokio::task::spawn_blocking(move || telemetry.flush())
         .await
@@ -161,16 +167,12 @@ fn scripted_lessee(home: &StorageHome) -> Lessee {
         engine: Box::new(FakeEngine::default()),
         resolver: Box::new(FakeResolver::default()),
         agent,
-        spool: ReportSpool::new(home),
-        authoring_spool: crate::report_spool::authoring::Spool::open(home, clock()).unwrap(),
         mirrors: Mirrors::new(home.mirrors(), GITHUB_ORIGIN),
         limits: Limits::default(),
         holds: crate::holds::Holds::start(clock()),
         clock: clock(),
         halt: Halt::new(CancellationToken::new()),
-        held: Notify::new(),
         whoami: Whoami::default(),
-        wake: crate::worker_pool::Wake::default(),
     }
 }
 

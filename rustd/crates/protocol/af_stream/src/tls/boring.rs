@@ -24,8 +24,10 @@ impl Identity {
     }
 
     pub(crate) fn h2(&self) -> Result<SslAcceptor> {
+        // The older `mozilla_modern` v4 preset disables TLS 1.3 in this crate.
+        // Start from v5, then require TLS 1.3 through our shared policy below.
         let mut context = SslAcceptor::mozilla_intermediate_v5(SslMethod::tls())?;
-        super::key_exchange::prefer(&mut context)?;
+        super::key_exchange::require_context(&mut context)?;
         context.set_certificate_chain_file(&self.chain)?;
         context.set_private_key_file(&self.key, SslFiletype::PEM)?;
         context.check_private_key()?;
@@ -38,7 +40,7 @@ impl Identity {
 }
 
 /// Trust roots; runners never load a client identity or CA signing key.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Trust {
     roots: Option<PathBuf>,
 }
@@ -53,7 +55,7 @@ impl Trust {
     }
 
     fn configure(&self, context: &mut SslContextBuilder) -> Result<()> {
-        super::key_exchange::prefer(context)?;
+        super::key_exchange::require_context(context)?;
         context.set_verify(SslVerifyMode::PEER);
         context.set_default_verify_paths()?;
         if let Some(roots) = &self.roots {

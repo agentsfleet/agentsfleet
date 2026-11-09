@@ -46,8 +46,6 @@ pub(crate) enum Verb {
     ContextLoad,
     /// Private run working notes, conditionally replaced.
     ContextCommit,
-    /// The next event to run.
-    Lease,
     /// Scoped private model invocation; never automatically redispatched.
     AuthoringModel,
     /// Native proposal receipt for a private authoring attempt.
@@ -128,11 +126,10 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 41] = [
+    pub(crate) const ALL: [Self; 40] = [
         Self::Heartbeat,
         Self::ContextLoad,
         Self::ContextCommit,
-        Self::Lease,
         Self::AuthoringModel,
         Self::AuthoringActivity,
         Self::AuthoringRenew,
@@ -191,7 +188,6 @@ impl Verb {
             | Self::TaskCheckpointPin => Method::Patch,
             Self::ScheduleDelete => Method::Delete,
             Self::Heartbeat
-            | Self::Lease
             | Self::AuthoringModel
             | Self::AuthoringActivity
             | Self::AuthoringRenew
@@ -224,7 +220,6 @@ impl Verb {
             Self::Heartbeat => "heartbeat",
             Self::ContextLoad => "context_load",
             Self::ContextCommit => "context_commit",
-            Self::Lease => "lease",
             Self::AuthoringModel => "authoring_model",
             Self::AuthoringActivity => "authoring_activity",
             Self::AuthoringRenew => "authoring_renew",
@@ -272,7 +267,6 @@ impl Verb {
             Self::ContextLoad
             | Self::ContextCommit
             | Self::Heartbeat
-            | Self::Lease
             | Self::AuthoringModel
             | Self::AuthoringActivity
             | Self::AuthoringRenew

@@ -65,9 +65,6 @@ const OVERFLOWING_LINES: &str = "INSERT INTO billing.usage_lines \
 /// The line a failed token read is logged under.
 const TOKENS_UNREAD: &str = "report_run_tokens_unread";
 
-/// The line an answered no-work poll is logged under.
-const NO_WORK: &str = "runner_lease_no_work";
-
 /// One value a fixture statement binds, in its column's own type.
 #[derive(Debug, Clone, Copy)]
 enum Bind<'a> {
@@ -252,18 +249,32 @@ async fn test_a_runner_with_no_lease_or_no_host_row_gets_no_work() {
     let window = plane.hydrate(&held.spare, &held.fleet).await;
     let capture = Capture::install();
     let answer = plane
-        .claim(&drafts, &stranger, &[], AcceptedKinds::ALL, false, held.now)
+        .claim_with(
+            &drafts,
+            afd_fleet::lease::OfferRequest {
+                runner: &stranger,
+                held: &[],
+                degraded: false,
+                now: held.now,
+            },
+            AcceptedKinds::ALL,
+            |_lease, _metadata| (),
+        )
         .await
         .expect("an unknown host is answered, not refused");
 
-    let line = capture.only(NO_WORK);
+    assert!(
+        !capture
+            .events()
+            .iter()
+            .any(|event| event.field("event") == Some("runner_lease_no_work"))
+    );
     drop(capture);
     assert_eq!(
         window.err().map(|error| error.code()),
         Some(error_code::RUN_LEASE_NOT_FOUND)
     );
-    assert!(answer.contains("\"lease\":null"), "{answer}");
-    assert_eq!(line.field("runner_id"), Some(stranger.as_str()));
+    assert!(answer.is_none(), "{answer:?}");
     drop(plane);
     held.fixtures.cleanup().await;
 }

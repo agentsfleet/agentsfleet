@@ -2,7 +2,7 @@
 
 use std::time::Duration;
 
-use af_wire::protocol::Lane;
+use af_wire::protocol::StreamKind;
 use tokio::io::{AsyncRead, AsyncReadExt as _};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
@@ -18,7 +18,7 @@ use crate::{
 pub struct Reader<R> {
     input: R,
     budget: Budget,
-    lane: Lane,
+    kind: StreamKind,
     stop: CancellationToken,
     partial_timeout: Duration,
 }
@@ -26,24 +26,24 @@ pub struct Reader<R> {
 impl<R> std::fmt::Debug for Reader<R> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Reader")
-            .field("lane", &self.lane)
+            .field("kind", &self.kind)
             .finish_non_exhaustive()
     }
 }
 
 impl<R: AsyncRead + Unpin> Reader<R> {
-    /// Bind one lane to its byte pool and parent cancellation.
+    /// Bind one kind to its byte pool and parent cancellation.
     pub const fn new(
         input: R,
         budget: Budget,
-        lane: Lane,
+        kind: StreamKind,
         stop: CancellationToken,
         partial_timeout: Duration,
     ) -> Self {
         Self {
             input,
             budget,
-            lane,
+            kind,
             stop,
             partial_timeout,
         }
@@ -77,7 +77,7 @@ impl<R: AsyncRead + Unpin> Reader<R> {
         let length = Length::prove(usize::try_from(u32::from_be_bytes(prefix))?)?;
         let reservation = self
             .budget
-            .reserve(self.lane, length.bytes, &self.stop, deadline)
+            .reserve(self.kind, length.bytes, &self.stop, deadline)
             .await?;
         let mut frame = OwnedFrame::allocate(&length, reservation);
         self.input.read_exact(&mut frame.bytes).await?;

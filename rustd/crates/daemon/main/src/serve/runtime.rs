@@ -63,6 +63,9 @@ pub(super) async fn open_runtime(
     // First, before a socket opens: a client that will not build is a defect
     // in the build, and nothing below should be opened only to be abandoned.
     let clients = Clients::open()?;
+    let authoring_transport = clients.authoring;
+    #[cfg(feature = "test-util")]
+    let authoring_transport = config.authoring_transport().unwrap_or(authoring_transport);
     let (database, queue) = open_datastores(config).await?;
     let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
@@ -72,9 +75,11 @@ pub(super) async fn open_runtime(
     let live = live_over(&bus, config.sse_max_streams());
     let observed = live.clone();
     let plane = ServingPlane::new(crate::plane::PlaneParts {
-        authoring_transport: clients.authoring,
+        authoring_transport,
         database: database.clone(),
         bus: bus.clone(),
+        runner_wake: config.runner_wake().clone(),
+        frame_memory: config.frame_memory(),
         // Cloned rather than moved: the outbound worker below opens its own
         // grant store over the same key, for the reason `crate::outbound`
         // gives — it runs beside the plane, not through it.

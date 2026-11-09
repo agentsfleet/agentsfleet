@@ -31,17 +31,16 @@
 #[cfg(test)]
 use afd_dragonfly as _;
 
-pub mod ceiling;
 pub mod error;
 pub mod fanin;
 pub mod frame;
 pub mod live;
 pub mod resubscribe;
+pub mod stream_limit;
 pub mod tail;
 
 use std::time::Duration;
 
-pub use crate::ceiling::{Ceiling, Slot};
 pub use crate::error::{Error, Result};
 pub use crate::fanin::{Delta, FanIn};
 pub use crate::frame::{
@@ -49,6 +48,7 @@ pub use crate::frame::{
 };
 pub use crate::live::Live;
 pub use crate::resubscribe::Resubscribe;
+pub use crate::stream_limit::{StreamLimit, StreamPermit};
 pub use crate::tail::tail;
 
 /// How often an idle stream proves that its transport still carries events.

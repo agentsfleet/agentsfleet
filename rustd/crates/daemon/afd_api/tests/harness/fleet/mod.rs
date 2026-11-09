@@ -39,7 +39,7 @@ impl Fleet {
     ) -> Self {
         self.live = Live::new(
             afd_bus::test_util::with_hub(hub).expect("fixture bus"),
-            Ceiling::new(capacity),
+            StreamLimit::new(capacity),
         );
         self
     }
@@ -109,7 +109,7 @@ impl Fleet {
             ),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
-            live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
+            live: Live::detached(StreamLimit::new(DEFAULT_STREAM_CEILING)),
             analytics: Analytics::silent(),
             steering: Steer::new(ledger),
             memories: Memories::new(database.clone(), Entropy::new()),

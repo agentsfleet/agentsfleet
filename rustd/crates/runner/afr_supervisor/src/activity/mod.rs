@@ -106,10 +106,25 @@ impl Early {
     }
 }
 
+/// The batcher's write boundary; native transport owns queue admission and delivery policy.
+pub(crate) trait ActivityWriter: Send + Sync {
+    fn activity(
+        &self,
+        lease: &Uuid7,
+        request: &ActivityRequest<'_>,
+    ) -> impl Future<Output = crate::Result<()>> + Send;
+}
+
+impl ActivityWriter for ControlPlane {
+    async fn activity(&self, lease: &Uuid7, request: &ActivityRequest<'_>) -> crate::Result<()> {
+        self.activity(lease, request).await
+    }
+}
+
 /// The posting side: batches frames and posts them, for one lease.
 #[derive(Debug)]
-pub(crate) struct ActivityPump<'a> {
-    plane: &'a ControlPlane,
+pub(crate) struct ActivityPump<'a, W: ActivityWriter + ?Sized = ControlPlane> {
+    plane: &'a W,
     lease_id: &'a Uuid7,
     frames: mpsc::UnboundedReceiver<ActivityFrame<'static>>,
     /// Batches dropped because [`MAX_BATCHES_HELD`] were already held.
@@ -121,7 +136,7 @@ pub(crate) struct ActivityPump<'a> {
     early: Early,
 }
 
-impl Drop for ActivityPump<'_> {
+impl<W: ActivityWriter + ?Sized> Drop for ActivityPump<'_, W> {
     /// Records the frames a pump still holds as abandoned: zero for a pump
     /// that drained, everything left for one the lease stopped waiting for.
     fn drop(&mut self) {
@@ -134,10 +149,10 @@ impl Drop for ActivityPump<'_> {
 }
 
 /// A sink for the run and the pump that posts what it emits.
-pub(crate) fn channel<'a>(
-    plane: &'a ControlPlane,
+pub(crate) fn channel<'a, W: ActivityWriter + ?Sized>(
+    plane: &'a W,
     lease_id: &'a Uuid7,
-) -> (ActivitySink, ActivityPump<'a>) {
+) -> (ActivitySink, ActivityPump<'a, W>) {
     let (sender, receiver) = mpsc::unbounded_channel();
     let pump = ActivityPump {
         plane,
@@ -157,7 +172,7 @@ pub(crate) fn channel<'a>(
 /// The frames posted together in one request.
 type Batch = Vec<ActivityFrame<'static>>;
 
-impl ActivityPump<'_> {
+impl<W: ActivityWriter + ?Sized> ActivityPump<'_, W> {
     /// Batches and posts until the sink is dropped and every held batch is
     /// sent.
     pub(crate) async fn run(&mut self) {
@@ -251,7 +266,7 @@ fn offer(posts: &mpsc::Sender<Batch>, batch: &mut Batch, bytes: &mut usize) {
 }
 
 /// Posts one batch. Activity is best-effort: a failure is logged, not retried.
-async fn post(plane: &ControlPlane, lease_id: &Uuid7, frames: Batch) {
+async fn post(plane: &(impl ActivityWriter + ?Sized), lease_id: &Uuid7, frames: Batch) {
     let lost = frame_count(frames.len());
     if let Err(failure) = plane.activity(lease_id, &ActivityRequest { frames }).await {
         record::frames_dropped(FrameDrop::PostFailed, lost);

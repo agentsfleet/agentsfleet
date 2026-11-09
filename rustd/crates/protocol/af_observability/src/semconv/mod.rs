@@ -311,6 +311,7 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_CAUSE,
     LABEL_VIA,
     LABEL_TRANSPORT,
+    LABEL_KEY_EXCHANGE,
     LABEL_OPERATION,
     LABEL_SURFACE,
     LABEL_STAGE,
@@ -323,6 +324,8 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
 
 /// Role of a database connection pool.
 pub const LABEL_ROLE: &str = "role";
+/// Finite TLS key-agreement group selected by a native connection.
+pub const LABEL_KEY_EXCHANGE: &str = "key_exchange";
 /// A closed inventory or connection state.
 pub const LABEL_STATE: &str = "state";
 /// A model's configured limit kind.

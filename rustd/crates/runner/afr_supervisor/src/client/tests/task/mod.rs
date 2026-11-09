@@ -21,6 +21,7 @@ struct Request {
 }
 struct Server {
     plane: ControlPlane,
+    native: crate::test_support::Calls,
     worker: tokio::task::JoinHandle<()>,
     pending: Arc<Mutex<std::collections::VecDeque<Request>>>,
 }
@@ -54,13 +55,24 @@ impl Server {
         let address = listener.local_addr().unwrap();
         let worker = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let api = super::api(&format!("http://{address}"), "agt_r_task_fixture").unwrap();
+        let (plane, native) = crate::test_support::plane_with_http(Box::new(api), |_| {
+            crate::test_support::Answer::Fail(crate::error::config(
+                "task fixture sent a native operation",
+            ))
+        });
         Self {
-            plane: ControlPlane::new(Box::new(api)),
+            plane,
+            native,
             worker,
             pending,
         }
     }
-    fn finish(self) {
+    fn finish(mut self) {
+        let native = crate::test_support::drain(&mut self.native);
+        assert!(
+            native.is_empty(),
+            "task verbs sent native operations: {native:?}"
+        );
         assert!(self.pending.lock().unwrap().is_empty());
         self.worker.abort();
     }

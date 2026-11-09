@@ -54,6 +54,47 @@ pub struct Authority {
     digest: Digest,
 }
 
+/// A prospective owner that has not changed the database yet.
+/// The runner records both identifiers before confirming over its native connection.
+pub struct Prepared {
+    runner: Uuid7,
+    previous: Option<Uuid7>,
+    connection: Uuid7,
+    digest: Digest,
+}
+
+impl fmt::Debug for Prepared {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Prepared")
+            .field("runner", &self.runner)
+            .field("previous", &self.previous)
+            .field("connection", &self.connection)
+            .finish_non_exhaustive()
+    }
+}
+
+impl Prepared {
+    /// Prospective owner, recorded by the runner before it confirms.
+    #[must_use]
+    pub const fn connection(&self) -> &Uuid7 {
+        &self.connection
+    }
+
+    /// Owner observed while checking the opening; confirmation compares it again.
+    #[must_use]
+    pub const fn previous(&self) -> Option<&Uuid7> {
+        self.previous.as_ref()
+    }
+}
+
+#[derive(sqlx::FromRow)]
+struct Preparatory {
+    connection_id: Option<Uuid7>,
+    credential_matches: bool,
+    active: bool,
+    can_resume: bool,
+}
+
 impl fmt::Debug for Authority {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Authority")
@@ -64,6 +105,10 @@ impl fmt::Debug for Authority {
 }
 
 impl Authority {
+    pub(crate) const fn digest(&self) -> &Digest {
+        &self.digest
+    }
+
     /// Enrolled host whose transactions this connection may authorize.
     #[must_use]
     pub const fn runner(&self) -> &Uuid7 {
@@ -117,21 +162,77 @@ impl Runners {
         previous: Option<&Uuid7>,
         now: Timestamp,
     ) -> Result<Decision<Authority>> {
-        let connection = self.entropy().uuid7(now)?;
-        let row = sqlx::query_as::<_, Checked>(sql::ACQUIRE)
+        match self
+            .prepare_connection(runner, digest, previous, None, now)
+            .await?
+        {
+            Decision::Allowed(prepared) => self.confirm_connection(prepared).await,
+            Decision::Refused(refusal) => Ok(Decision::Refused(refusal)),
+        }
+    }
+
+    /// Inspect ownership without mutating it, then propose one new physical owner.
+    /// `unconfirmed` is the proposal whose acknowledgement the runner may have lost.
+    ///
+    /// # Errors
+    /// Preserves database and entropy failures; no ownership changes on this read.
+    pub async fn prepare_connection(
+        &self,
+        runner: &Uuid7,
+        digest: Digest,
+        previous: Option<&Uuid7>,
+        unconfirmed: Option<&Uuid7>,
+        now: Timestamp,
+    ) -> Result<Decision<Prepared>> {
+        let row = sqlx::query_as::<_, Preparatory>(sql::PREPARE)
             .bind(runner)
             .bind(digest.as_str())
-            .bind(&connection)
             .bind(crate::sql::RUNNER_STATUS_ACTIVE)
             .bind(previous)
+            .bind(unconfirmed)
+            .bind(previous.is_none() && unconfirmed.is_none())
+            .fetch_optional(&mut *self.pool().acquire().await?)
+            .await
+            .map_err(query(sql::CONTEXT))?;
+        Ok(match row {
+            None
+            | Some(Preparatory {
+                credential_matches: false,
+                ..
+            }) => Decision::Refused(Refusal::Credential),
+            Some(Preparatory { active: false, .. }) => Decision::Refused(Refusal::Revoked),
+            Some(Preparatory {
+                can_resume: false, ..
+            }) => Decision::Refused(Refusal::Superseded),
+            Some(row) => Decision::Allowed(Prepared {
+                runner: runner.clone(),
+                previous: row.connection_id,
+                connection: self.entropy().uuid7(now)?,
+                digest,
+            }),
+        })
+    }
+
+    /// Commit a proposal only after its runner has acknowledged both possible owners.
+    /// A concurrent replacement makes this proof stale instead of stealing ownership back.
+    ///
+    /// # Errors
+    /// Preserves database failures; durable refusals remain classified decisions.
+    pub async fn confirm_connection(&self, prepared: Prepared) -> Result<Decision<Authority>> {
+        let row = sqlx::query_as::<_, Checked>(sql::ACQUIRE)
+            .bind(&prepared.runner)
+            .bind(prepared.digest.as_str())
+            .bind(&prepared.connection)
+            .bind(crate::sql::RUNNER_STATUS_ACTIVE)
+            .bind(prepared.previous.as_ref())
             .fetch_optional(&mut *self.pool().acquire().await?)
             .await
             .map_err(query(sql::CONTEXT))?;
         Ok(match row.map(Checked::decision) {
             Some(Decision::Allowed(())) => Decision::Allowed(Authority {
-                runner: runner.clone(),
-                connection,
-                digest,
+                runner: prepared.runner,
+                connection: prepared.connection,
+                digest: prepared.digest,
             }),
             Some(Decision::Refused(refusal)) => Decision::Refused(refusal),
             None => Decision::Refused(Refusal::Credential),

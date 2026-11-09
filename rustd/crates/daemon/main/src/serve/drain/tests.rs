@@ -100,7 +100,8 @@ async fn an_empty_server_drains_at_once_and_stops_accepting() {
         settled,
         Settled {
             in_flight_at_close: 0,
-            abandoned: 0
+            abandoned: 0,
+            completed: true,
         }
     );
     assert!(settled.is_clean());
@@ -269,30 +270,24 @@ async fn the_default_drain_is_an_open_one() {
     assert_eq!(drain.settle(GENEROUS).await, Settled::EMPTY);
 }
 
-/// A heartbeat held on the doorbell ends the moment the drain stops
-/// accepting, so the drain is clean long before the hold's own deadline.
-#[tokio::test]
-async fn a_held_heartbeat_ends_when_the_drain_stops_accepting() {
-    let doorbell = afd_dragonfly::Doorbell::new();
-    let drain = Drain::new().with_doorbell(doorbell.clone());
-    let guard = drain.enter();
-    let held = tokio::spawn(async move {
-        let waited = doorbell.wait_for_ring(Duration::from_secs(3_600), 1).await;
-        drop(guard);
-        waited
-    });
-    tokio::task::yield_now().await;
+/// A stuck accept loop consumes the same bound as a stuck request.
+#[tokio::test(start_paused = true)]
+async fn a_stuck_accept_loop_cannot_make_the_drain_unbounded() {
+    let drain = Drain::new();
+    drain.attach();
+    let request = drain.enter();
+    let settled = drain.settle(Duration::from_secs(2)).await;
+    assert_eq!(settled.abandoned, 1);
+    assert!(drain.accepting().is_cancelled());
+    drop(request);
+}
 
-    let settled = drain.settle(GENEROUS).await;
-
-    assert_eq!(
-        (settled, held.await.expect("the held beat's task finished")),
-        (
-            Settled {
-                in_flight_at_close: 1,
-                abandoned: 0
-            },
-            afd_dragonfly::doorbell::Waited::Deadline
-        )
-    );
+#[tokio::test(start_paused = true)]
+async fn an_empty_count_does_not_hide_an_accept_loop_that_never_stopped() {
+    let drain = Drain::new();
+    drain.attach();
+    let settled = drain.settle(Duration::from_secs(2)).await;
+    assert_eq!(settled.abandoned, 0);
+    assert!(!settled.completed);
+    assert!(!settled.is_clean());
 }

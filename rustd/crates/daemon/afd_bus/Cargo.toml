@@ -40,4 +40,5 @@ af_core = { workspace = true, features = ["test-util"] }
 # Reads agentsfleet_bus_gaps_total back in the live suite.
 af_observability = { workspace = true, features = ["test-util"] }
 afd_dragonfly = { workspace = true, features = ["test-util"] }
+redis.workspace = true
 tokio = { workspace = true, features = ["net", "io-util"] }

@@ -69,8 +69,7 @@ impl LeaseRun<'_> {
             &self.lessee.plane,
             &self.ids.lease,
             self.lease.fencing_token,
-            &self.lessee.spool,
-            &self.lessee.held,
+            &self.lessee.halt,
             &self.interrupt,
         );
         let run = AssertUnwindSafe(self.lessee.agent.run(AgentRun {

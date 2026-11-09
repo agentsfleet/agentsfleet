@@ -11,8 +11,8 @@ pub const VERSION: &str = "agentsfleet.runner.v1";
 /// Application version; independent of the negotiated HTTP version.
 pub const VERSION_HEADER: &str = "agentsfleet-runner-protocol";
 /// Which independently flow-controlled request this stream serves.
-pub const LANE_HEADER: &str = "agentsfleet-runner-lane";
-/// Previous owner on a reconnecting control lane; current owner on secondary lanes.
+pub const STREAM_KIND_HEADER: &str = "agentsfleet-runner-kind";
+/// Previous owner on a reconnecting control stream; current owner on secondary streams.
 pub const SESSION_HEADER: &str = "agentsfleet-runner-session";
 /// Maximum JSON payload, excluding its four-byte length prefix.
 pub const MESSAGE_BYTES_MAX: usize = 2 * 1024 * 1024;
@@ -22,8 +22,8 @@ pub const LEASES_MAX: usize = crate::runner::HOLDS_MAX;
 pub const PENDING_MAX: usize = 256;
 
 /// Independent HTTP request streams within one authenticated connection.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Lane {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum StreamKind {
     /// Offers, cancellation, renewals and small request/answer exchanges.
     Control,
     /// Offers and folded inputs, independently flow-controlled from control.
@@ -34,8 +34,8 @@ pub enum Lane {
     Activity,
 }
 
-impl Lane {
-    /// Every lane required before the session can accept work.
+impl StreamKind {
+    /// Every kind required before the session can accept work.
     pub const ALL: [Self; 4] = [Self::Control, Self::Work, Self::Reports, Self::Activity];
 
     /// Header spelling, shared by both carriers and the server.
@@ -49,7 +49,7 @@ impl Lane {
         }
     }
 
-    /// Refuses an unsupported lane without substituting a default.
+    /// Refuses an unsupported kind without substituting a default.
     #[must_use]
     pub fn parse(raw: &str) -> Option<Self> {
         match raw {

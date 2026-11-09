@@ -45,7 +45,7 @@ pub(super) async fn apply(
             true,
         ),
         Ok(_) => return Err(error::config("the daemon did not accept the proposal")),
-        Err(failure) if matches!(failure.refusal_status(), Some(400 | 422)) => (
+        Err(failure) if failure.refusal_code() == Some(af_core::error_code::INVALID_REQUEST) => (
             "The proposal is invalid. Correct it using the fixed native proposal schema."
                 .to_owned(),
             false,

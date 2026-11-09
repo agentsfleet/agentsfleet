@@ -66,7 +66,10 @@ CREATE INDEX idx_leases_fleet_id_status_fencing_token
 CREATE INDEX idx_leases_runner_id_created_at_id
     ON runner.leases (runner_id, created_at DESC, id DESC);
 
-CREATE INDEX idx_leases_runner_id_status ON runner.leases (runner_id, status);
+-- Reconnect and cancellation refresh read one host's unexpired active leases.
+-- The equality prefix still serves other runner/status reads.
+CREATE INDEX idx_leases_runner_id_status_lease_expires_at
+    ON runner.leases (runner_id, status, lease_expires_at);
 
 -- The expiry sweep.
 CREATE INDEX idx_leases_status_updated_at ON runner.leases (status, updated_at);

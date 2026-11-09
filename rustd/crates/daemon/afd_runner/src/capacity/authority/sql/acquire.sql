@@ -9,7 +9,7 @@ WITH locked AS MATERIALIZED (
     FROM locked l
     WHERE r.id = l.id AND l.credential_matches AND l.active
       AND r.token_hash = $2 AND r.status = $4
-      AND (r.connection_id IS NOT DISTINCT FROM $5 OR $5 IS NULL)
+      AND r.connection_id IS NOT DISTINCT FROM $5
     RETURNING r.id
 )
 SELECT credential_matches, active, EXISTS (SELECT 1 FROM acquired) AS owned

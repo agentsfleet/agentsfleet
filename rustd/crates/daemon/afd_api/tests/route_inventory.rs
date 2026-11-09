@@ -24,7 +24,7 @@
 use std::collections::BTreeSet;
 
 use afd_api::Route;
-use afd_api::route::{Ownership, TenantRoute};
+use afd_api::route::{Ownership, RunnerRoute, TenantRoute};
 
 /// Every path this milestone's §1, §2, §3, §4, §6 and §7 own.
 ///
@@ -32,6 +32,7 @@ use afd_api::route::{Ownership, TenantRoute};
 /// though the table carries them; the families walked below exclude them the
 /// same way.
 const INVENTORY: &[&str] = &[
+    "/v1/runners/me/stream",
     // §1 — the device-flow login surface.
     "/v1/auth/sessions",
     "/v1/auth/sessions/{session_id}",
@@ -218,6 +219,7 @@ fn tenant_and_workspace_templates() -> impl Iterator<Item = &'static str> {
                     | Route::Workspace(_)
                     | Route::Fleet(_)
                     | Route::Connector(_)
+                    | Route::Runner(RunnerRoute::Stream)
             )
         })
         // The identity-provider delivery is signature-authenticated ingress and

@@ -36,8 +36,8 @@ async fn test_stop_releases_the_claim() {
     let claimed = claim(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, claimed).await;
     assert!(
-        answer.contains(NO_LEASE),
-        "a refused event issued a lease: {answer}"
+        answer.is_none(),
+        "a refused event issued a lease: {answer:?}"
     );
     assert!(
         fixtures.slot_is_free(&seeded.fleet).await,
@@ -77,8 +77,8 @@ async fn test_approval_resolution_leases_next_poll() {
     let claimed = claim(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, claimed).await;
     assert!(
-        answer.contains(NO_LEASE),
-        "an unanswered gate issued a lease: {answer}"
+        answer.is_none(),
+        "an unanswered gate issued a lease: {answer:?}"
     );
     assert!(
         fixtures.slot_is_free(&seeded.fleet).await,
@@ -136,7 +136,7 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let action = seed_gate(&fixtures, &seeded, afd_api_wire::approval::status::PENDING).await;
     let claimed = claim(&fixtures, &seeded).await;
-    assert!(drive(&fixtures, &seeded, claimed).await.contains(NO_LEASE));
+    assert!(drive(&fixtures, &seeded, claimed).await.is_none());
     assert!(parked(&fixtures, &seeded.event_id).await);
     let workspace = seed::workspace_of(&fixtures, &seeded.fleet).await;
     let later = send(&fixtures, &seeded.fleet, &workspace, EVENT_TYPE_CHAT).await;
@@ -145,7 +145,7 @@ async fn an_expired_approval_settles_its_parked_head_and_releases_the_next_event
         .await.expect("elapsed approval deadline");
     let resumed = claim(&fixtures, &seeded).await;
     assert_eq!(resumed.event_id, seeded.event_id);
-    assert!(drive(&fixtures, &seeded, resumed).await.contains(NO_LEASE));
+    assert!(drive(&fixtures, &seeded, resumed).await.is_none());
     assert_expired_settlement(&fixtures, &seeded.event_id, &action).await;
     let next = claim(&fixtures, &seeded).await;
     assert_eq!(

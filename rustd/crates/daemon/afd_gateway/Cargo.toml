@@ -1,0 +1,53 @@
+[package]
+name = "afd_gateway"
+description = "Authenticated native runner sessions over the shared domain services."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[features]
+test-util = ["af_core/test-util", "afd_db/test-util", "afd_bus/test-util"]
+
+[dependencies]
+af_core = { workspace = true, features = ["sqlx"] }
+af_fleet_runtime.workspace = true
+af_observability.workspace = true
+af_stream.workspace = true
+af_wire.workspace = true
+afd_auth.workspace = true
+afd_authoring.workspace = true
+afd_bus.workspace = true
+afd_db.workspace = true
+afd_fleet.workspace = true
+afd_http.workspace = true
+afd_runner.workspace = true
+afd_sse.workspace = true
+axum.workspace = true
+dashmap.workspace = true
+futures-util.workspace = true
+garde.workspace = true
+http.workspace = true
+http-body-util.workspace = true
+jiff.workspace = true
+jiff-sqlx.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sqlx = { workspace = true, features = ["derive"] }
+thiserror.workspace = true
+tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "io-util"] }
+tokio-util = { workspace = true, features = ["rt", "io"] }
+tower.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+af_crypto.workspace = true
+
+[lints]
+workspace = true

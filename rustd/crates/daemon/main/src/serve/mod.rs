@@ -27,17 +27,18 @@ mod exporting;
 mod listen;
 mod observations;
 mod optional;
+mod runner_stream;
 mod runtime;
 #[cfg(feature = "test-util")]
 mod test_util;
 #[cfg(feature = "test-util")]
-pub use test_util::boot_with_connector_boundary;
+pub use test_util::{boot_with_authoring_boundary, boot_with_connector_boundary};
 
 use std::net::SocketAddr;
 
 use af_core::env::EnvSource;
 use af_observability::{Analytics, Telemetry};
-use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT, Services as _};
+use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 
@@ -78,6 +79,10 @@ pub const DEFAULT_PORT: u16 = 3000;
 pub struct Booted {
     /// The address actually bound — resolved, so port 0 reports what it got.
     pub address: SocketAddr,
+    /// Native TCP and UDP address serving only runner streams.
+    pub runner_stream_address: SocketAddr,
+    /// Wakes the process owner if native serving or scheduling ends unexpectedly.
+    serving_failed: tokio_util::sync::CancellationToken,
     /// The Postgres pool, to be dropped only after shutdown returns.
     pub database: Db,
     /// The Dragonfly client, likewise.
@@ -202,9 +207,11 @@ async fn serve_plane(
     port: u16,
     supervisor: &mut Supervisor,
 ) -> Result<Booted, BootFailure> {
-    // Taken before the plane moves into the router: the drain closes it, so a
-    // held heartbeat never holds a deploy open.
-    let doorbell = runtime.plane.leases().leases.doorbell().clone();
+    let listener = runner_stream::bind(config.runner_listener()).await?;
+    let runner_stream_address = listener.local_addr()?;
+    let gateway = runtime.plane.runner_streams().clone();
+    let native = runner_stream::Signals::default();
+    let serving_failed = tokio_util::sync::CancellationToken::new();
     let task_owner = runtime.plane.task_owner();
     let router = afd_api::router::build(runtime.plane, admission);
     // The sweepers read through pools that are open by now. Starting them
@@ -222,11 +229,30 @@ async fn serve_plane(
     )
     .await;
     report_workers(supervisor, &analytics);
-    let drain = Drain::new().with_doorbell(doorbell);
+    let drain = Drain::new().with_runner_streams(
+        gateway.clone(),
+        native.stop.clone(),
+        native.closed.clone(),
+    );
+    runner_stream::spawn(
+        listener,
+        router.clone(),
+        gateway,
+        drain.clone(),
+        native,
+        serving_failed.clone(),
+        supervisor,
+    );
+    tracing::info!(
+        event = "runner_stream_listener_started",
+        port = runner_stream_address.port()
+    );
     let address = listen(port, router, supervisor, drain.clone()).await?;
     announce_started(supervisor, analytics, address);
     Ok(Booted {
         address,
+        runner_stream_address,
+        serving_failed,
         database: runtime.database,
         queue: runtime.queue,
         drain,
@@ -278,15 +304,11 @@ where
     let (supervisor, booted) = boot_supervised(env, port).await?;
     show_banner(&booted);
 
-    // The server future is `pending`: serving happens in the supervised accept
-    // loop, so what ends this run is the signal — or the accept loop itself
-    // dying, which `Daemon` would then have to report. Modelled as pending
-    // because a loop that returned would leave the supervisor with a finished
-    // task rather than a stopped server, and `Daemon::run` reads the outcome
-    // from the report either way.
+    // A failed native listener must stop the process rather than leave a healthy public API
+    // advertising a runner service that no longer has a listener or scheduler.
     let outcome = Daemon::new(supervisor)
         .draining(booted.drain.clone())
-        .run(std::future::pending(), signal)
+        .run(booted.serving_failed.cancelled(), signal)
         .await;
 
     // C2, as two statements the compiler will not let you swap: the pools are

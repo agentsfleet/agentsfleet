@@ -95,7 +95,7 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
         workspace: owner.workspace.clone(),
         during,
     };
-    let plane = afd_fleet::lease::Plane {
+    let plane = afd_fleet::lease::LeaseService {
         task_reports: None,
         broker: Arc::new(Broker::new(Arc::new(Registry::default()), Arc::new(vendor))),
         ..fixtures.plane()

@@ -17,7 +17,7 @@ use afr_memory::Recall as _;
 use afr_telemetry::labels::PushFailure;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
-use super::{CapturedMemory, LeaseCheckpoint, Recaller, capture, hydrate};
+use super::{CapturedMemory, LeaseCheckpoint, Recaller, hydrate};
 use crate::client::Verb;
 use crate::error;
 use crate::test_support::{
@@ -63,27 +63,6 @@ async fn hydrate_rides_out_a_blip() {
         1
     );
     assert_eq!(attempts.load(Ordering::SeqCst), 2);
-}
-
-#[tokio::test]
-async fn capture_carries_the_lease_and_its_fencing_token() {
-    let (plane, mut calls) = plane(|_call| json(&serde_json::json!({"stored": 1, "skipped": 0})));
-    let lease = lease(LEASE_ID, FLEET_ID);
-
-    capture(
-        &plane,
-        &Uuid7::parse(FLEET_ID).unwrap(),
-        &lease,
-        &CapturedMemory::from(answer().memory),
-    )
-    .await
-    .unwrap();
-
-    let pushed = drain(&mut calls).remove(0);
-    let body: serde_json::Value = serde_json::from_slice(&pushed.body.unwrap()).unwrap();
-    assert_eq!(body["lease_id"], LEASE_ID);
-    assert_eq!(body["fencing_token"], FENCING);
-    assert_eq!(body["memory"][0]["key"], "k");
 }
 
 #[tokio::test]
@@ -185,28 +164,14 @@ async fn test_memory_push_failure_is_counted() {
     let lease = lease(LEASE_ID, FLEET_ID);
     let (tally, recorded) = Tally::new();
 
-    let pushed = scoped(
-        Arc::<Tally>::clone(&tally),
-        capture(
-            &plane,
-            &fleet,
-            &lease,
-            &CapturedMemory::from(answer().memory),
-        ),
-    )
-    .await;
-    assert!(pushed.is_err(), "the push did not land");
     let checkpoint = LeaseCheckpoint::new(&plane, &fleet, &lease);
     let checkpointed = scoped(tally, checkpoint.push(answer().memory)).await;
     assert!(checkpointed.is_err(), "nor did the checkpoint");
 
     assert_eq!(
         recorded.try_iter().collect::<Vec<_>>(),
-        vec![
-            Recorded::PushFailed(PushFailure::Upstream),
-            Recorded::PushFailed(PushFailure::Upstream),
-        ],
-        "one count per push that did not land, never one per retried attempt"
+        vec![Recorded::PushFailed(PushFailure::Upstream),],
+        "one count for the checkpoint that did not land, never one per retried attempt"
     );
 }
 

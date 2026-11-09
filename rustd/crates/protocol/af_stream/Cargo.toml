@@ -15,7 +15,14 @@ categories.workspace = true
 [lints]
 workspace = true
 
+[features]
+test-util = ["dep:rcgen", "dep:tempfile"]
+
 [dependencies]
+rcgen = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+base64.workspace = true
+percent-encoding.workspace = true
 af_core.workspace = true
 af_observability.workspace = true
 af_crypto.workspace = true
@@ -29,7 +36,7 @@ http.workspace = true
 http-body.workspace = true
 http-body-util.workspace = true
 hyper.workspace = true
-hyper-util.workspace = true
+hyper-util = { workspace = true, features = ["client-proxy"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

@@ -14,10 +14,6 @@
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
-#![expect(
-    clippy::disallowed_methods,
-    reason = "plain clients call the daemon these tests booted; a proxy rule and a deadline are not what the tests prove"
-)]
 
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
@@ -25,7 +21,7 @@ use serde_json::json;
 use crate::e2e::scenario;
 use crate::reads::event_column;
 use crate::tail::{lease, next_frame, settle};
-use crate::wire::{capable_beat, field, poll_until, post, report_body};
+use crate::wire::{capable_beat, field, report_body, wait_without_offer};
 
 /// The bracket frames — the daemon opens and closes a run on the tail itself.
 ///
@@ -40,14 +36,13 @@ use crate::wire::{capable_beat, field, poll_until, post, report_body};
 async fn test_bracket_frames_open_and_close_a_run() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
 
     // Subscribed BEFORE the lease: the opening bracket is published by the
     // poll itself, and pub/sub keeps nothing for a reader that arrives late.
     let mut tail = crate::tail::tail_of(&run.fleet).await;
     settle().await;
 
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let opened = next_frame(&mut tail)
         .await
         .expect("the lease announces the row it opened");
@@ -66,14 +61,8 @@ async fn test_bracket_frames_open_and_close_a_run() {
         "the row's own instant, so a client never stamps it with its clock"
     );
 
-    let reported = post(
-        &http,
-        &run,
-        "/v1/runners/me/reports",
-        &report_body(&lease_id, &run.event_id, fence),
-    )
-    .await;
-    assert_eq!(reported.status().as_u16(), 200, "the report settles");
+    let reported = crate::wire::report(&run, &report_body(&lease_id, &run.event_id, fence)).await;
+    assert!(reported.is_ok(), "native report refused: {reported:?}");
 
     let closed = next_frame(&mut tail)
         .await
@@ -123,19 +112,21 @@ async fn test_bracket_frames_open_and_close_a_run() {
 async fn test_a_refused_lease_closes_the_run_on_the_tail() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
 
     let mut tail = crate::tail::tail_of(&run.fleet).await;
     settle().await;
 
     run.drain_wallet().await;
-    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(beat.status().as_u16(), 200);
+    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
+    );
     // Every poll in the rotation must answer no-work — an exhausted tenant
     // receives no lease — and the loop ends on the row the refusal writes,
     // because a poll that never sampled this fleet's partition answers the
     // same `null` without having refused anything.
-    let refused = poll_until(&http, &run, || async {
+    let refused = wait_without_offer(&run, || async {
         event_column(&run, &run.event_id, "status").await.as_deref() == Some("gate_blocked")
     })
     .await;

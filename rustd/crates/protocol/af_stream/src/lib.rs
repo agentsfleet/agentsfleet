@@ -11,16 +11,22 @@ mod h2;
 mod h3;
 mod jobs;
 mod limits;
+mod proxy;
 pub mod server;
 mod telemetry;
+#[cfg(feature = "test-util")]
+pub mod test_util;
 pub mod tls;
 
-pub use body::{Incoming, Outgoing};
+pub use body::{Incoming, IncomingReader, Outgoing};
 pub use client::{Connection, Transport};
 pub use endpoint::Endpoint;
 pub use error::{Error, Reason, Result, Stage};
-pub use framing::{Budget, OwnedFrame, Reader, encode, write};
+pub use framing::{
+    Budget, Encoder, MemoryLimits, MemorySettings, OwnedFrame, Reader, encode, write,
+};
 pub use h3::NetworkStats;
+pub use server::{ConnectionInfo, Listener};
 
 /// Upper bound on each native body transfer or pipe allocation.
 pub const CHUNK_BYTES: usize = 16 * 1024;

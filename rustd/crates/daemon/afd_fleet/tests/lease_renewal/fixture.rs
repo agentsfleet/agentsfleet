@@ -55,7 +55,6 @@ impl Running {
                     selftest: None,
                     holds: HeldFleets::default(),
                     closing: false,
-                    wake: false,
                 },
                 None,
                 now,

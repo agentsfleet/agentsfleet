@@ -26,17 +26,16 @@ async fn test_lease_money_gate_refusal() {
     // Drained after the seed, so the wallet row exists and holds zero.
     run.drain_wallet().await;
 
-    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(
-        beat.status().as_u16(),
-        200,
-        "the runner proves its capabilities before the money refusal"
+    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
     );
 
     // A rotation, ended by the row the refusal writes: a poll that never
     // sampled this fleet's partition answers the same `null` as the refusal,
     // and the two assertions below would then pass with nothing refused.
-    let refused = poll_until(&http, &run, || async {
+    let refused = wait_without_offer(&run, || async {
         event_column(&run, &run.event_id, "status").await.as_deref() == Some("gate_blocked")
     })
     .await;

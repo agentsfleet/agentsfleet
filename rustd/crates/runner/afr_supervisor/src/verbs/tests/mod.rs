@@ -29,7 +29,7 @@ async fn existing_uncertain_decisions_never_obtain_another_dispatch_or_receipt()
     });
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let host = Host::new();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
     let input = af_wire::task::DecisionReservationInput {
         operation_id: call_id.to_owned(),
         fencing_token: 0,
@@ -52,7 +52,7 @@ async fn a_schedules_reply_reaches_the_tool_as_its_text() {
     let (plane, _calls) = plane(|_call| Answer::Reply(bytes::Bytes::from_static(PAGE.as_bytes())));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let host = Host::new();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
     assert_eq!(verbs.schedules(ScheduleCall::List).await.unwrap(), PAGE);
 }
 
@@ -69,7 +69,7 @@ async fn a_refusal_keeps_its_code() {
     });
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let host = Host::new();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
     assert_eq!(
         verbs.message("hello").await,
         Err(Unanswered::Refused(Some(error_code::MESSAGE_NO_CHANNEL)))
@@ -83,7 +83,7 @@ async fn an_unavailable_daemon_is_unreachable_after_one_attempt() {
     let (plane, mut calls) = plane(|call| Answer::Fail(error::unavailable(call.verb, 503)));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let host = Host::new();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
     assert_eq!(
         verbs.schedules(ScheduleCall::List).await,
         Err(Unanswered::Unreachable)
@@ -99,7 +99,7 @@ async fn a_message_answers_whether_the_thread_has_it() {
     });
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let host = Host::new();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
     assert_eq!(verbs.message("status").await, Ok(false));
 }
 
@@ -109,25 +109,19 @@ async fn an_unreadable_message_reply_is_unreachable() {
     let (plane, _calls) = plane(|_call| json(&serde_json::json!(["not", "a", "reply"])));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let host = Host::new();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
     assert_eq!(verbs.message("status").await, Err(Unanswered::Unreachable));
 }
 
 struct Host {
-    _directory: tempfile::TempDir,
-    spool: crate::report_spool::ReportSpool,
-    held: tokio::sync::Notify,
+    halt: crate::halt::Halt,
     stop: tokio_util::sync::CancellationToken,
 }
 
 impl Host {
     fn new() -> Self {
-        let directory = tempfile::tempdir().unwrap();
-        let home = crate::storage_home::StorageHome::open(directory.path()).unwrap();
         Self {
-            _directory: directory,
-            spool: crate::report_spool::ReportSpool::new(&home),
-            held: tokio::sync::Notify::new(),
+            halt: crate::halt::Halt::new(tokio_util::sync::CancellationToken::new()),
             stop: tokio_util::sync::CancellationToken::new(),
         }
     }

@@ -113,10 +113,9 @@ impl Tasks {
             task_id: std::borrow::Cow::Borrowed(task_id.as_str()),
             resource_version: version,
         };
-        self.leases
-            .streams()
-            .publish_frame(&afd_bus::Subject::FleetTail(scope.fleet_id.clone()), &frame)
-            .await;
+        let subject = afd_bus::Subject::FleetTail(scope.fleet_id.clone());
+        let publication = self.leases.streams().publish_frame(&subject, &frame).await;
+        afd_bus::observe_notification(&subject, publication);
     }
 }
 

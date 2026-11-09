@@ -1,38 +1,7 @@
-//! The lease verb: one runner's poll, from claim to answer.
+//! Fleet placement keeps policy borrows alive through the caller's offer encoder.
 //!
-//! Every step below already exists and is proven on its own. What is here is
-//! the ORDER, which is the part no single step can be right about — the money
-//! gates must not run before the narrative log exists to record a refusal on,
-//! the policy must not assemble before the gates have passed, and the row must
-//! not be written before the policy is known to be buildable.
-//!
-//! # Why this answers serialized bytes
-//!
-//! `ExecutionPolicy` borrows from the config, the resolved provider and the
-//! declared credentials — every field is a `Cow`, which is what keeps the
-//! payload copy-free on the path every lease takes. A value borrowing from
-//! four locals cannot be returned, and both alternatives are worse than they
-//! look: deep-owning the tree copies exactly what the borrows exist to avoid,
-//! and assembling twice — once to check, once to render — puts a second
-//! opinion about what a run may do into the one place that must have only one.
-//!
-//! So the assembly, the payload and the serialization all happen inside the
-//! borrow, and the caller receives bytes. The HTTP layer adds a status and a
-//! content type; it makes no decision, which is what the split is for.
-//!
-//! # Every stop answers the same thing
-//!
-//! No work, refused, parked, degraded, nothing ready — all of them are
-//! `{"lease":null,"retry_after_ms":…}` and a `200`. The runner's only move is
-//! to wait and ask again, so the reasons live in the log where an operator can
-//! read them beside a request id, and the wire carries none of them.
-//!
-//! # What is deliberately not read
-//!
-//! The request body, which is empty. This port serves exactly one shape, so
-//! there is no negotiation, no downgrade, and no "unsupported version" refusal
-//! — that last would need a new registry code. Any body, or none, gets that
-//! shape.
+//! Gates run before issue; an empty selection carries no polling response or retry hint.
+//! The native session owns delivery and decides when another placement pass is useful.
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::event::EventType;
@@ -75,7 +44,7 @@ const REDELIVERED_FINISHED: &str = "the redelivered event had already finished";
 /// and cheap to clone — which is what lets the composition root build it once
 /// and the request path borrow it.
 #[derive(Debug, Clone)]
-pub struct Plane {
+pub struct LeaseService {
     /// Claims, rows, and the narrative log.
     pub leases: Leases,
     /// Native task report evidence, sharing the request-path task owner.
@@ -104,13 +73,13 @@ pub struct Plane {
     /// The on-demand credential broker.
     ///
     /// Behind an `Arc` because it holds the process's ONE token cache: the
-    /// whole point of the cache is that every request shares it, and a `Plane`
+    /// whole point of the cache is that every request shares it, and a `LeaseService`
     /// clone that deep-copied it would give each cloned handle its own — which
     /// is a cache that never hits and a single-flight that never single-flights.
     pub broker: std::sync::Arc<afd_credential::credential::Broker>,
     /// The standing grants a fleet holds, and the only writer of them.
     ///
-    /// The lease path READS grants through [`Plane::gates`] on every delivery
+    /// The lease path READS grants through [`LeaseService::gates`] on every delivery
     /// and writes one here only when it finds none — which is a different
     /// question and, deliberately, a different crate. `afd_approval` owns the
     /// table because its resolve moves a row in the same statement that answers
@@ -122,7 +91,7 @@ pub struct Plane {
 }
 
 /// What the claim and the gates settled, before the policy is built.
-pub(super) struct Admission2 {
+pub(super) struct AdmittedFleetWork {
     /// The work, and the fleet it belongs to.
     pub(super) acquired: Acquired,
     /// That fleet as installed.
@@ -135,34 +104,12 @@ pub(super) struct Admission2 {
     pub(super) billed: Admitted,
 }
 
-impl Plane {
-    /// Answer one runner's poll.
-    ///
-    /// The bytes are a complete `LeaseResponse` — work, or `null` with a
-    /// backoff hint. Never a 204, and never an error for "nothing to do": a
-    /// runner polling an idle deployment is the common case, not a fault.
-    ///
-    /// `held` names the fleets whose sandboxes the runner holds, for the pass
-    /// to try first.
-    ///
-    /// `degraded` fails CLOSED. A runner whose verdict could not be read is
-    /// treated as degraded and issued nothing, because its assignment names an
-    /// isolation the host may not deliver and a lease would run outside the
-    /// boundary an operator assigned.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer, and a stored configuration
-    /// this daemon cannot read. Every DECISION is an `Ok`.
-    pub async fn lease(
-        &self,
-        runner_id: &Uuid7,
-        held: &[Uuid7],
-        degraded: bool,
-        now: Timestamp,
-    ) -> Result<String> {
-        self.poll(runner_id, held, degraded, now, None)
-            .await
-            .map(Polled::into_body)
+impl LeaseService {
+    /// Bind grant and renewal transactions to the physical session that owns this host.
+    #[must_use]
+    pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
+        self.leases = self.leases.for_connection(authority);
+        self
     }
 
     /// Run gates after selection under the slot and admission fences.
@@ -171,7 +118,7 @@ impl Plane {
         acquired: Acquired,
         runner_id: &Uuid7,
         now: Timestamp,
-    ) -> Result<Step<Admission2>> {
+    ) -> Result<Step<AdmittedFleetWork>> {
         let installed = match self
             .resolve_installed(&acquired, runner_id)
             .await?
@@ -184,7 +131,7 @@ impl Plane {
         let received = match self.leases.record_received(&acquired).await {
             Ok(received) => received,
             Err(stale) if stale.code() == error_code::RUN_STALE_FENCING_TOKEN => {
-                return claim_lost(runner_id, &acquired);
+                return Ok(claim_lost(runner_id, &acquired));
             }
             Err(failure) => return Err(failure),
         };
@@ -211,14 +158,14 @@ impl Plane {
         installed: Installed,
         runner_id: &Uuid7,
         now: Timestamp,
-    ) -> Result<Step<Admission2>> {
+    ) -> Result<Step<AdmittedFleetWork>> {
         let Some(event_type) = EventType::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
             let label = label::EVENT_TYPE_UNSUPPORTED;
             return self
                 .refused(&acquired, label, runner_id, &reason)
                 .await
-                .map(Step::Stop);
+                .map(|()| Step::Stop);
         };
 
         // The payer is read ONCE, here: the provider resolves against it and
@@ -237,7 +184,7 @@ impl Plane {
             Ok(billed) => billed,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
-        Ok(Step::Go(Admission2 {
+        Ok(Step::Go(AdmittedFleetWork {
             acquired,
             installed,
             event_type,
@@ -247,7 +194,11 @@ impl Plane {
     }
 
     /// A durable ending suppresses execution and settles the admission under its fence.
-    async fn finished(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<Step<Admission2>> {
+    async fn finished(
+        &self,
+        acquired: &Acquired,
+        runner_id: &Uuid7,
+    ) -> Result<Step<AdmittedFleetWork>> {
         self.leases.settle_terminal(acquired).await?;
         let fleet_id = acquired.fleet_id.as_str();
         let agentsfleet_event_id = acquired.event_id.as_str();
@@ -257,7 +208,8 @@ impl Plane {
             event = EVENT_TERMINAL_SUPPRESSED,
             "the redelivered event already has a durable ending"
         );
-        no_work(runner_id, REDELIVERED_FINISHED).map(Step::Stop)
+        no_work(runner_id, REDELIVERED_FINISHED);
+        Ok(Step::Stop)
     }
 
     /// The money gates over the tenant the payer gate found, then — once they

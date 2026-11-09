@@ -10,7 +10,7 @@ use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use afr_agent::AgentEngine;
 use afr_executor::Unavailable;
 use afr_sandbox::Limits;
-use tokio::sync::{Notify, mpsc};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use super::{
@@ -23,7 +23,6 @@ use crate::halt::Halt;
 use crate::holds::Holds;
 use crate::identity::Whoami;
 use crate::lease_loop::Lessee;
-use crate::report_spool::ReportSpool;
 use crate::storage_home::StorageHome;
 use crate::test_util::Healthy;
 use crate::turns::FleetTurns;
@@ -141,8 +140,6 @@ impl Rig {
             engine: Box::new(engine),
             resolver: Box::new(resolver),
             agent,
-            spool: ReportSpool::new(&home),
-            authoring_spool: crate::report_spool::authoring::Spool::open(&home, clock()).unwrap(),
             mirrors: Mirrors::new(
                 home.mirrors(),
                 format!("file://{}/", root.path().join(ORIGINS).display()),
@@ -151,9 +148,7 @@ impl Rig {
             holds,
             clock: clock(),
             halt: Halt::new(shutdown.clone()),
-            held: Notify::new(),
             whoami: Whoami::default(),
-            wake: crate::worker_pool::Wake::default(),
         });
         let (runs, peak, prepared, destroyed) = counters;
         // No agent lends through this one: its sender is gone, so it reads
@@ -189,7 +184,8 @@ impl Rig {
         tokio::spawn(coordinator);
         bounded(
             "Rig::run_under / lessee.run",
-            self.lessee.run(&turns, lease, egress),
+            self.lessee
+                .run(&turns, lease, egress, CancellationToken::new()),
         )
         .await
     }
@@ -230,7 +226,6 @@ pub(crate) fn daemon(
     };
     let replies: std::collections::HashMap<_, _> = [
         Verb::Heartbeat,
-        Verb::Lease,
         Verb::Renew,
         Verb::Hydrate,
         Verb::Capture,
@@ -239,6 +234,7 @@ pub(crate) fn daemon(
         Verb::Me,
         Verb::Activity,
         Verb::Report,
+        Verb::Folds,
         Verb::ContextLoad,
         Verb::ContextCommit,
     ]

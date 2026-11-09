@@ -114,14 +114,14 @@ async fn test_lease_without_sandbox_tools_starts_no_sandbox() {
 }
 
 #[tokio::test(start_paused = true)]
-async fn a_supervisor_only_lease_still_reports_and_pushes_memory() {
+async fn a_supervisor_only_lease_reports_its_memory() {
     let mut rig = rig();
 
     rig.run(&offering(&[])).await.unwrap();
 
     let calls = rig.calls();
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
-    assert!(position(&calls, Verb::Capture).unwrap() < position(&calls, Verb::Report).unwrap());
+    assert_eq!(reported(&calls)["memory"][0]["key"], "k");
     assert_eq!(reported(&calls)[OUTCOME], PROCESSED);
 }
 

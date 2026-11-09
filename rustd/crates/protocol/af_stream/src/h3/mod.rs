@@ -43,3 +43,6 @@ async fn upload(mut body: Outgoing, mut output: OutboundFrameSender) -> Result<(
     output.send(OutboundFrame::Body(Bytes::new(), true)).await?;
     Ok(())
 }
+
+#[cfg(all(test, feature = "test-util"))]
+mod tests;

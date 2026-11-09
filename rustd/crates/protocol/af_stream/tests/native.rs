@@ -1,6 +1,6 @@
 pub(super) use super::support::{Fixture, Result, deadline};
 use af_stream::{Connection, Outgoing, Transport};
-use af_wire::protocol::Lane;
+use af_wire::protocol::StreamKind;
 use http::Request;
 use std::{sync::atomic::Ordering, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -10,12 +10,12 @@ async fn duplex(transport: Transport) -> Result {
     let host = fixture.serve().await?;
     let mut connection = connect(&fixture, &host, transport).await?;
     let mut lanes = Vec::new();
-    for lane in Lane::ALL {
+    for kind in StreamKind::ALL {
         let (writer, body) = Outgoing::pipe();
         let request = Request::builder()
             .method("POST")
             .uri(host.endpoint.uri().clone())
-            .header(af_wire::protocol::LANE_HEADER, lane.as_str())
+            .header(af_wire::protocol::STREAM_KIND_HEADER, kind.as_str())
             .body(body)?;
         let response = connection.open(request, deadline()).await?;
         assert_eq!(response.status(), http::StatusCode::OK);
@@ -32,7 +32,7 @@ async fn duplex(transport: Transport) -> Result {
     }
     let (writer, reader) = lanes
         .get_mut(1)
-        .ok_or_else(|| std::io::Error::other("missing work lane"))?;
+        .ok_or_else(|| std::io::Error::other("missing work kind"))?;
     let payload = vec![b'x'; af_wire::protocol::MESSAGE_BYTES_MAX];
     let mut answer = vec![0; payload.len()];
     tokio::time::timeout(Duration::from_secs(5), async {
@@ -62,15 +62,15 @@ async fn pressure(transport: Transport) -> Result {
     let mut control = None;
     let mut blocked = tokio::task::JoinSet::new();
     let mut unread = Vec::new();
-    for lane in Lane::ALL {
+    for kind in StreamKind::ALL {
         let (mut writer, body) = Outgoing::pipe();
         let request = Request::builder()
             .method("POST")
             .uri(host.endpoint.uri().clone())
-            .header(af_wire::protocol::LANE_HEADER, lane.as_str())
+            .header(af_wire::protocol::STREAM_KIND_HEADER, kind.as_str())
             .body(body)?;
         let response = connection.open(request, deadline()).await?;
-        if lane == Lane::Control {
+        if kind == StreamKind::Control {
             control = Some((writer, response.into_body().reader()));
         } else {
             unread.push(response);
@@ -88,7 +88,7 @@ async fn pressure(transport: Transport) -> Result {
         "unread streams apply backpressure before a whole large payload is accepted"
     );
     let (mut writer, mut reader) =
-        control.ok_or_else(|| std::io::Error::other("missing control lane"))?;
+        control.ok_or_else(|| std::io::Error::other("missing control kind"))?;
     ping(&mut writer, &mut reader, 4).await?;
     connection.close(deadline()).await?;
     while let Some(result) = blocked.join_next().await {

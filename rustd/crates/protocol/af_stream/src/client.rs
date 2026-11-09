@@ -69,9 +69,15 @@ impl Connection {
         parent: &CancellationToken,
         deadline: Instant,
     ) -> Result<Selection> {
-        let budget = std::time::Duration::from_secs(2);
-        let attempt = deadline.min(Instant::now() + budget);
-        match Self::connect(Transport::H3, endpoint, trust, parent, attempt).await {
+        if endpoint.proxy.is_some() {
+            tracing::info!(event = "runner_stream_proxy_selected", transport = "http2");
+            return Ok(Selection {
+                connection: Self::connect(Transport::H2, endpoint, trust, parent, deadline).await?,
+                http3_failure: None,
+            });
+        }
+        let attempt = deadline.min(Instant::now() + af_core::timing::STREAM_HTTP3_CONNECT_TIMEOUT);
+        match Self::http3_addresses(endpoint, trust, parent, attempt).await {
             Ok(connection) => Ok(Selection {
                 connection,
                 http3_failure: None,
@@ -81,7 +87,8 @@ impl Connection {
                 if !crate::telemetry::fallback(reason) {
                     return Err(error);
                 }
-                let attempt = deadline.min(Instant::now() + budget);
+                let attempt =
+                    deadline.min(Instant::now() + af_core::timing::STREAM_HTTP2_CONNECT_TIMEOUT);
                 let connection =
                     Self::connect(Transport::H2, endpoint, trust, parent, attempt).await?;
                 Ok(Selection {
@@ -90,6 +97,45 @@ impl Connection {
                 })
             }
         }
+    }
+
+    /// Each resolved address gets a bounded share; certificate identity always uses the origin name.
+    async fn http3_addresses(
+        endpoint: &Endpoint,
+        trust: &Trust,
+        parent: &CancellationToken,
+        deadline: Instant,
+    ) -> Result<Self> {
+        let addresses = within(parent, deadline, Stage::Connect, async {
+            Ok(tokio::net::lookup_host((endpoint.host(), endpoint.port()))
+                .await?
+                .collect::<Vec<_>>())
+        })
+        .await?;
+        let count = u32::try_from(addresses.len())?;
+        if count == 0 {
+            return Err(std::io::Error::from(std::io::ErrorKind::AddrNotAvailable).into());
+        }
+        let share = deadline.saturating_duration_since(Instant::now()) / count;
+        let mut last = None;
+        for address in addresses {
+            let mut resolved = endpoint.clone();
+            resolved.dial = Some(address);
+            let attempt = deadline.min(Instant::now() + share);
+            match Self::connect(Transport::H3, &resolved, trust, parent, attempt).await {
+                Ok(connection) => return Ok(connection),
+                Err(error)
+                    if matches!(
+                        error.reason(),
+                        crate::Reason::Network | crate::Reason::Timeout
+                    ) =>
+                {
+                    last = Some(error);
+                }
+                Err(error) => return Err(error),
+            }
+        }
+        Err(last.ok_or(crate::error::ErrorKind::Protocol)?)
     }
 
     /// Connect and verify one transport within the caller's absolute deadline.
@@ -103,6 +149,9 @@ impl Connection {
         parent: &CancellationToken,
         deadline: Instant,
     ) -> Result<Self> {
+        if transport == Transport::H3 && endpoint.proxy.is_some() {
+            return Err(crate::error::ErrorKind::Protocol.into());
+        }
         let observation = crate::telemetry::Observation::connect(transport);
         let result = async {
             let stop = parent.child_token();
@@ -117,7 +166,6 @@ impl Connection {
             };
             let _stop = guard.disarm();
             let connection = Self { native, stop, task };
-            connection.observe_security();
             Ok(connection)
         }
         .instrument(observation.span())
@@ -156,19 +204,6 @@ impl Connection {
             Native::H2(client) => Some(client.key_exchange),
             Native::H3(client) => *client.key_exchange.borrow(),
         }
-    }
-
-    fn observe_security(&self) {
-        let selected = self.key_exchange();
-        let key_exchange = selected.map_or("unknown", crate::tls::KeyExchange::as_str);
-        let post_quantum_key_exchange = selected == Some(crate::tls::KeyExchange::X25519MlKem768);
-        let transport = self.transport().as_str();
-        tracing::info!(
-            event = "runner_stream_tls_negotiated",
-            transport,
-            key_exchange,
-            post_quantum_key_exchange
-        );
     }
 
     /// The transport stays fixed for the lifetime of this connection.

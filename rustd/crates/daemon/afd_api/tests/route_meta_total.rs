@@ -93,6 +93,10 @@ const DURABLE_TASK_ADDITIONS: usize = 16;
 
 /// The lease route a running fleet claims the messages it receives through.
 const FOLD_ADDITIONS: usize = 1;
+/// Native runner sessions replace the polling routes as the runtime wiring completes.
+const RUNNER_STREAM_ADDITIONS: usize = 1;
+/// Six polling and lease-update routes plus four authoring routes now use native frames.
+const RETIRED_RUNNER_HTTP_ROUTES: usize = 10;
 
 /// What this daemon's union must carry.
 const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
@@ -104,7 +108,9 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + AUTHORING_CONTEXT_ADDITIONS
     + DURABLE_TASK_ADDITIONS
     + FOLD_ADDITIONS
-    - RETIRED_WEBHOOK_ROUTES;
+    + RUNNER_STREAM_ADDITIONS
+    - RETIRED_WEBHOOK_ROUTES
+    - RETIRED_RUNNER_HTTP_ROUTES;
 
 /// Every family's roster is reachable from `Route::all`, and nothing is
 /// counted twice.
@@ -175,8 +181,8 @@ fn test_every_template_is_a_low_cardinality_literal() {
     }
 }
 
-/// Only the three Server-Sent Events tails are exempt from the request ceiling,
-/// and only the two probes are exempt from shedding. The third is a creator's
+/// The three event tails and the native runner stream share the separate stream limit,
+/// and only the two probes are exempt from shedding. One tail is a creator's
 /// draft progress, which the setup reference specifies as `text/event-stream`.
 ///
 /// Every route states its class, so the default is not a fallthrough and no
@@ -204,9 +210,10 @@ fn test_only_probes_and_streams_escape_the_request_ceiling() {
             Route::Workspace(WorkspaceRoute::DraftStream),
             Route::Workspace(WorkspaceRoute::EventsStream),
             Route::Fleet(FleetRoute::EventsStream),
+            Route::Runner(RunnerRoute::Stream),
         ],
         "a route joined the stream class. That moves it off the request \
-         ceiling and onto the SSE limit, which is a capacity decision."
+         ceiling and onto the stream limit, which is a capacity decision."
     );
 }
 

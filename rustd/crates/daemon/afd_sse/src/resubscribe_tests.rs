@@ -9,8 +9,8 @@ use afd_bus::{Bus, Handle, Subject, Subscription};
 use futures_util::StreamExt as _;
 
 use super::Resubscribe;
-use crate::ceiling::Ceiling;
 use crate::live::Live;
+use crate::stream_limit::StreamLimit;
 
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
@@ -38,7 +38,7 @@ fn retries_double_to_their_ceiling() {
 async fn tail_sends_catching_up_once_after_subscribing() -> TestResult {
     let (bus, server) = afd_bus::test_util::detached()?;
     let fleet = Uuid7::parse(FLEET)?;
-    let live = Live::new(bus, Ceiling::new(4));
+    let live = Live::new(bus, StreamLimit::new(4));
     let mut tail = live.tail_of(&fleet).await;
     let hello = tail.next().await.ok_or("hello")?;
     let caught_up = tail.next().await.ok_or("catching_up")?;
@@ -63,7 +63,7 @@ async fn tail_sends_catching_up_once_after_subscribing() -> TestResult {
 
 #[tokio::test]
 async fn tail_subscribe_failure_sends_catching_up() -> TestResult {
-    let live = Live::detached(Ceiling::new(4));
+    let live = Live::detached(StreamLimit::new(4));
     let mut tail = live.tail_of(&Uuid7::parse(FLEET)?).await;
     let hello = tokio::time::timeout(Duration::from_secs(1), tail.next())
         .await?
@@ -80,7 +80,7 @@ async fn tail_subscribe_failure_sends_catching_up() -> TestResult {
 async fn a_tail_opened_on_a_closed_bus_ends_rather_than_retrying() -> TestResult {
     let (bus, _server) = afd_bus::test_util::detached()?;
     bus.shutdown().await?;
-    let live = Live::new(bus, Ceiling::new(4));
+    let live = Live::new(bus, StreamLimit::new(4));
     let mut tail = live.tail_of(&Uuid7::parse(FLEET)?).await;
     for _ in 0..2 {
         tail.next().await.ok_or("the opening")?;
@@ -93,7 +93,7 @@ async fn a_tail_opened_on_a_closed_bus_ends_rather_than_retrying() -> TestResult
 #[tokio::test]
 async fn a_closed_bus_ends_the_tail_so_the_client_reconnects_elsewhere() -> TestResult {
     let (bus, _server) = afd_bus::test_util::detached()?;
-    let live = Live::new(bus.clone(), Ceiling::new(4));
+    let live = Live::new(bus.clone(), StreamLimit::new(4));
     let mut tail = live.tail_of(&Uuid7::parse(FLEET)?).await;
     for _ in 0..2 {
         tail.next().await.ok_or("the opening")?;
@@ -106,7 +106,7 @@ async fn a_closed_bus_ends_the_tail_so_the_client_reconnects_elsewhere() -> Test
 
 #[tokio::test(start_paused = true)]
 async fn a_failed_subscribe_is_announced_once_then_retried_quietly() -> TestResult {
-    let live = Live::detached(Ceiling::new(4));
+    let live = Live::detached(StreamLimit::new(4));
     let mut tail = live.tail_of(&Uuid7::parse(FLEET)?).await;
     for _ in 0..2 {
         tail.next().await.ok_or("the opening")?;
@@ -168,7 +168,7 @@ async fn a_tail_that_failed_to_subscribe_recovers_with_catching_up() -> TestResu
         first: Duration::from_millis(1),
         ceiling: Duration::from_millis(4),
     };
-    let live = Live::new(flaky, Ceiling::new(4)).with_resubscribe(fast);
+    let live = Live::new(flaky, StreamLimit::new(4)).with_resubscribe(fast);
     let mut tail = live.tail_of(&fleet).await;
     for expected in ["hello", "catching_up"] {
         let frame = tail.next().await.ok_or("the opening")?;
@@ -193,7 +193,7 @@ async fn a_tail_that_failed_to_subscribe_recovers_with_catching_up() -> TestResu
 async fn a_gap_in_the_tail_is_announced() -> TestResult {
     let (bus, server) = afd_bus::test_util::detached()?;
     let fleet = Uuid7::parse(FLEET)?;
-    let live = Live::new(bus, Ceiling::new(4));
+    let live = Live::new(bus, StreamLimit::new(4));
     let mut tail = live.tail_of(&fleet).await;
     for _ in 0..2 {
         tail.next().await.ok_or("the opening")?;
@@ -212,7 +212,7 @@ async fn a_gap_in_the_tail_is_announced() -> TestResult {
 async fn a_lagging_viewer_is_told_how_much_it_missed() -> TestResult {
     let (bus, server) = afd_bus::test_util::detached()?;
     let fleet = Uuid7::parse(FLEET)?;
-    let live = Live::new(bus, Ceiling::new(4));
+    let live = Live::new(bus, StreamLimit::new(4));
     let mut tail = live.tail_of(&fleet).await;
     for _ in 0..2 {
         tail.next().await.ok_or("the opening")?;

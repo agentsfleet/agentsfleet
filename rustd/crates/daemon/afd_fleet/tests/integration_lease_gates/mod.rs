@@ -11,7 +11,7 @@
 //! **The claim.** `Plane::lease` opens by asking the readiness index for work,
 //! and that call peeks ONE partition per invocation against a cursor the whole
 //! process shares. Everything below the claim is deterministic, so the claim is
-//! made here and the verb entered at `Plane::lease_claimed`.
+//! made here and the verb entered at `Plane::claim_selected`.
 //!
 //! **The event type.** `seed::EVENT_TYPE` is `"steer"`, and `EventType::parse`
 //! accepts `chat`, `webhook`, `cron` and `continuation` — nothing else. So
@@ -55,10 +55,6 @@ use sqlx::Row as _;
 
 use crate::seed::{ACTOR, REQUEST_JSON, seeded_parts};
 use crate::support::Fixtures;
-
-/// The answer every stop on this path renders — identical for all of them,
-/// which is why these tests assert on the event row instead.
-const NO_LEASE: &str = "\"lease\":null";
 
 /// An event type `EventType::parse` accepts. See the module note.
 const EVENT_TYPE_CHAT: &str = "chat";
@@ -189,10 +185,10 @@ async fn claim(fixtures: &Fixtures, ready: &Ready) -> Acquired {
 }
 
 /// Runs the gate chain over an already-claimed event.
-async fn drive(fixtures: &Fixtures, ready: &Ready, claimed: Acquired) -> String {
+async fn drive(fixtures: &Fixtures, ready: &Ready, claimed: Acquired) -> Option<serde_json::Value> {
     fixtures
         .plane()
-        .lease_claimed(claimed, &ready.runner, fixtures.enrolled_at())
+        .claim_selected(claimed, &ready.runner, fixtures.enrolled_at())
         .await
         .expect("every gate verdict is a decision, not a fault")
 }

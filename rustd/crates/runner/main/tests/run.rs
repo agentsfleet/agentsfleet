@@ -64,7 +64,7 @@ fn run_one_lease(
     extra: &[(&str, &str)],
 ) -> Ran {
     let home = storage_home();
-    let mut child = start(&daemon.url, home.path(), extra);
+    let mut child = start(daemon, home.path(), extra);
     let stderr = drain_stderr(&mut child);
 
     let report = runtime.block_on(daemon.report(SETTLE_WITHIN));
@@ -89,9 +89,19 @@ fn storage_home() -> tempfile::TempDir {
 }
 
 /// Starts `run --unsandboxed` against the daemon at `url`, its stderr piped.
-fn start(url: &str, home: &std::path::Path, extra: &[(&str, &str)]) -> Child {
+fn start(daemon: &FakeDaemon, home: &std::path::Path, extra: &[(&str, &str)]) -> Child {
     Runner::new(&["run", "--unsandboxed"])
-        .daemon(url)
+        .daemon(&daemon.url)
+        .envs(&[
+            (
+                afr_supervisor::config::ENV_STREAM_URL,
+                daemon.native.url.as_str(),
+            ),
+            (
+                afr_supervisor::config::ENV_STREAM_CA,
+                &daemon.native.root().display().to_string(),
+            ),
+        ])
         .home(home)
         .envs(extra)
         .command()
@@ -264,7 +274,7 @@ fn a_second_signal_stops_a_drain_the_first_began() {
     let runtime = runtime();
     let mut daemon = runtime.block_on(FakeDaemon::stalling_reports());
     let home = storage_home();
-    let mut child = start(&daemon.url, home.path(), &[]);
+    let mut child = start(&daemon, home.path(), &[]);
     let stderr = drain_stderr(&mut child);
 
     let reported = runtime.block_on(daemon.report(SETTLE_WITHIN));

@@ -81,6 +81,7 @@ pub(crate) fn daemon_environment(
         // Required at boot, and resolved rather than used: this lane boots the
         // daemon for real, so it has to satisfy preflight in full.
         .chain(SESSION_PEPPER)
+        .chain(crate::support::runner_stream::environment())
         .chain(IDENTITY)
         // LAST, so a caller's live provider wins over the fixture base above.
         // The runner scenarios keep the non-resolving fixture — their plane

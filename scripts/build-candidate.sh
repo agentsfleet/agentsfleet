@@ -13,7 +13,14 @@ linux() {
     "$CANDIDATE_BUILDER" sh -c \
     'cargo build --profile dist -p "$CANDIDATE_PACKAGE" --bin "$CANDIDATE_BINARY"'
   sudo chown -R "$(id -u):$(id -g)" .cargo-cache rustd/target
-  install -m 755 "rustd/target/dist/$CANDIDATE_BINARY" "dist/candidate/bin/$CANDIDATE_FILENAME"
+  # The builder names its own musl target, so the output path carries it.
+  local triple
+  case "$CANDIDATE_ARCH" in
+    amd64) triple=x86_64-unknown-linux-musl ;;
+    arm64) triple=aarch64-unknown-linux-musl ;;
+    *) echo "unsupported CANDIDATE_ARCH: $CANDIDATE_ARCH"; exit 1 ;;
+  esac
+  install -m 755 "rustd/target/$triple/dist/$CANDIDATE_BINARY" "dist/candidate/bin/$CANDIDATE_FILENAME"
   local bin="dist/candidate/bin/$CANDIDATE_FILENAME"
   readelf -h "$bin"
   if readelf -d "$bin" | grep -q ' (NEEDED)'; then

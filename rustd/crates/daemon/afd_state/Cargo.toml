@@ -29,6 +29,8 @@ sqlx = { workspace = true, features = ["derive"] }
 tracing.workspace = true
 
 [dev-dependencies]
+# Raw UUIDs inject a forbidden variant; runtime identifiers remain `Uuid7`.
+sqlx = { workspace = true, features = ["uuid"] }
 # The runner-status vocabulary the sibling test pins these binds against. A
 # dev-dependency and not a dependency: this crate WRITES the words and the enum
 # READS them, and the test is what keeps the two from drifting apart.

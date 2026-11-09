@@ -28,7 +28,7 @@ use crate::tail::lease;
 /// How long a held sync lease outlives the database clock: past the case.
 const SYNC_HOLD: std::time::Duration = std::time::Duration::from_secs(60);
 use crate::verbs::{FakeQStash, QSTASH_TOKEN, send};
-use crate::wire::{post, report_body};
+use crate::wire::report_body;
 
 /// The expression and zone every created schedule here fires on.
 pub(crate) const WEEKLY: &str = "0 9 * * 1";
@@ -68,9 +68,6 @@ pub(crate) struct Leased {
 /// fleet holds [`crate::e2e_seed::FLEET_NAME`].
 const OTHER_FLEET_NAME: &str = "e2e-other-fleet";
 
-/// Where a runner reports a lease's end.
-const REPORTS: &str = "/v1/runners/me/reports";
-
 impl Leased {
     pub(crate) async fn boot(supervisor: &mut Supervisor, qstash: &FakeQStash) -> Self {
         let extra = [
@@ -83,7 +80,7 @@ impl Leased {
             reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
         )]
         let http = reqwest::Client::new();
-        let (lease_id, fence) = lease(&http, &run).await;
+        let (lease_id, fence) = lease(&run).await;
         let lease_id = Uuid7::parse(&lease_id).expect("the daemon answers a canonical lease id");
         Self {
             run,
@@ -132,8 +129,8 @@ impl Leased {
     /// Settles the held lease, so the fleet takes its next event.
     pub(crate) async fn settle(&self) {
         let report = report_body(self.lease_id.as_str(), &self.run.event_id, self.fence);
-        let reported = post(&self.http, &self.run, REPORTS, &report).await;
-        assert_eq!(reported.status().as_u16(), 200, "the held lease settles");
+        let reported = crate::wire::report(&self.run, &report).await;
+        assert!(reported.is_ok(), "native report refused: {reported:?}");
     }
 
     /// Runs `schedule` now under this lease's fence.

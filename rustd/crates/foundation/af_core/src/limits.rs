@@ -19,13 +19,6 @@ pub const MIN_WORKERS: u32 = 1;
 /// Most workers an assignment may carry, bounding concurrent children per host.
 pub const MAX_WORKERS: u32 = 64;
 
-/// The most heartbeats one daemon process holds at once.
-///
-/// A held beat waits for fresh work and keeps one of the API's in-flight
-/// permits, so this keeps three quarters of them for requests; a beat past it
-/// answers at once.
-pub const HELD_BEATS_MAX: usize = 64;
-
 /// How many workers a runner is assigned, guaranteed within `MIN..=MAX`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(transparent)]

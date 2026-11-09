@@ -22,7 +22,7 @@ use af_wire::tool_detail::{
 use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::standing::LiveLease;
 
 /// A record was not kept; the run is unaffected.
@@ -128,7 +128,7 @@ enum Kept {
     },
 }
 
-impl Plane {
+impl LeaseService {
     /// Keep the full record of each finished call a lease posts.
     ///
     /// # Errors
