@@ -21,6 +21,12 @@ use crate::error::Error;
 pub(crate) const EXPIRY_MARGIN: Duration = af_core::timing::ENGINE_STOP_GRACE
     .saturating_add(afr_executor::timing::KILL_GRACE)
     .saturating_add(Duration::from_secs(2));
+
+const _: () = assert!(
+    EXPIRY_MARGIN.as_nanos() + af_core::timing::STREAM_ANSWER_TIMEOUT.as_nanos()
+        < af_core::timing::RENEWAL_WINDOW.as_nanos(),
+    "recovery must leave a complete renewal answer and physical cleanup window"
+);
 /// The longest a lease can be granted for, which bounds any deadline a reply
 /// can set, however far ahead it claims.
 const LONGEST_GRANT: Duration = MAX_RUNTIME;

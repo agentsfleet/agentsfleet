@@ -3,6 +3,8 @@ use af_core::id::Uuid7;
 use std::{sync::Arc, time::Duration};
 use tokio::time::Instant;
 
+mod recovery;
+
 #[tokio::test(start_paused = true)]
 async fn recovery_shares_confirmed_deadlines_and_retires_them_before_final_delivery()
 -> crate::Result<()> {

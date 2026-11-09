@@ -61,7 +61,8 @@ Rust paths below are relative to `rustd/crates/`.
 | Liveness through the stream | Valid control-lane host heartbeats refresh `session/liveness.rs`; pings/unrelated traffic do not extend its two-interval deadline. |
 | Preserve accepted frames during drain | Closed queues drain under existing operation permits before `go_away`; Tokio owns readers, writers and operations. |
 | Delete unused code | Retired handlers/polling helpers, unused `ActivityAccepted` and forwarding `deadline::left` are removed. Six time callers use `af_core::clock::elapsed` directly. Duplicate runner JSON counters use `af_validate::serialized_len`. |
-| Greptile blocked acknowledgements | Retained offers transfer charges into a separate bounded Tokio semaphore allowance. Focused mutation red/green evidence exists; the pushed thread remains open. |
+| Greptile blocked acknowledgements | Retained offers transfer charges into a separate bounded Tokio semaphore allowance. Focused mutation red/green evidence exists; the pushed thread is replied and resolved. |
+| Greptile recovery timing | Reconnect triggers renewal immediately. A 35-second grant covers setup, another answer and the nine-second cleanup margin. Two paused-time regressions passed; publication remains due. |
 | Keep recovery probe | Indy accepted crash-after-commit/before-wake recovery. One daemon probe per replica every five seconds remains; runners receive pushed offers. |
 | Include deployment | Existing flows reference the approved vault item, deliver daemon chain/key files and runner public trust/private Fly origin, and exclude the signing key. DEV restores WireGuard routing. |
 | One vault item and ten-year validity | Approved item/fields and joint renewal are documented. Certificates are already provisioned. No operator vault read, key generation or secret printing occurred here. |
@@ -82,12 +83,14 @@ The reuse audit removed the forwarding time helper and both runner JSON counters
 
 Tokio owns channels, semaphore permits, cancellation and tracked tasks; Hyper owns proxy matching; Boring owns certificate verification. Foundation helpers own identifiers, entropy, errors, environment reads and time conversion. The operator fixture reuses `afd_identity::direct`.
 
-All 717 current candidate test/gate hunks were reviewed.
+All 717 test/gate hunks at the preceding checkpoint were reviewed.
+The subsequent pressure fixture and renewal timing changes have separate regression evidence.
+
 The follow-up restored wake delivery and loss recovery proofs.
 It also corrected refusal ordering, the settlement key, and completion analytics coverage.
 
 Renewal partitioning, request correlation, offer admission and cancellation ordering remain domain logic.
-The final size audit found zero violations across 848 changed paths; no suppression was added.
+The final size audit found zero violations across 849 changed paths; no suppression was added.
 Integration, aggregate coverage, Miri, three reset-rig benchmark comparisons and deployed-route evidence are not certified by this source audit.
 
 The base-branch comparison passed: runner 1,749; daemon 158; daemon libraries 3,482 (`make test-unit-rustd`, `/tmp/m243-base-rust-unit-01.log`). These are base counts, not candidate results.

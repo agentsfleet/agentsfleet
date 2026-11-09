@@ -366,8 +366,8 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 
 - Activity: 64 KiB batches, 4 held (`afr_supervisor`'s activity). Memory: a 256 KiB memory window (`af_wire`'s memory module).
 
-- Timers in `af_core`: the lease TTL is 30 seconds and renewals run every 5 seconds.
-  A run lasts at most 12 hours, and a runner counts as offline after 90 seconds.
+- Timers in `af_core`: leases last 35 seconds and renewals run every 5 seconds.
+  A run lasts at most 12 hours, and a runner counts as offline after 105 seconds.
   Heartbeats run every 10 seconds; a sandbox hold lasts 10 minutes.
 
 - Claim and admission: at most 64 candidate fleets per claim; no per-fleet admission cap.

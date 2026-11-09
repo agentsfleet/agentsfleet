@@ -125,8 +125,26 @@ impl Renewals {
     pub(crate) async fn run(&self, handle: &StreamHandle, stop: CancellationToken) -> Result<()> {
         let mut ticks = tokio::time::interval_at(Instant::now() + RENEWAL_TICK, RENEWAL_TICK);
         ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut sessions = handle.session.clone();
+        let mut previous = sessions.borrow_and_update().clone();
         loop {
-            tokio::select! { () = stop.cancelled() => return Ok(()), _ = ticks.tick() => {} }
+            tokio::select! {
+                biased;
+                () = stop.cancelled() => return Ok(()),
+                changed = sessions.changed() => {
+                    if changed.is_err() { return Ok(()); }
+                    let current = sessions.borrow_and_update().clone();
+                    let unchanged = current.as_ref().zip(previous.as_ref())
+                        .is_some_and(|(current, previous)| Arc::ptr_eq(current, previous));
+                    let connected = current.as_ref().is_some_and(|session| !session.stop.is_cancelled());
+                    previous = current;
+                    if unchanged { continue; }
+                    if !connected { continue; }
+                    // Recovery must not spend another tick waiting to renew live work.
+                    ticks.reset();
+                }
+                _ = ticks.tick() => {}
+            }
             let renewed = tokio::select! {
                 () = stop.cancelled() => return Ok(()),
                 result = self.batch(handle) => result,
