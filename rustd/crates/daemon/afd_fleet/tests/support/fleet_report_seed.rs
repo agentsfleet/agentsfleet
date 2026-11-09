@@ -25,7 +25,7 @@ use afd_credential::credential::{Broker, Vendors};
 use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases, Settled};
@@ -316,9 +316,9 @@ impl Fixtures {
         clippy::disallowed_methods,
         reason = "the broker's vendors hold Platform::empty(), so this client never exchanges a credential or sends a request; afd_identity::direct's deadline and no_proxy have nothing to bound"
     )]
-    pub(crate) fn plane(&self) -> Plane {
+    pub(crate) fn plane(&self) -> LeaseService {
         let kek = Arc::new(Kek::from_hex(FIXTURE_KEK_HEX).expect("the fixture key is well formed"));
-        Plane {
+        LeaseService {
             task_reports: None,
             grants: afd_approval::IntegrationGrants::new(self.database.clone(), Entropy::new()),
             leases: self.leases(),
@@ -350,12 +350,12 @@ impl Fixtures {
 
     /// The same plane, over a queue that will not answer.
     ///
-    /// Live Postgres, dead Dragonfly. Every decision `Plane::activity` makes before
+    /// Live Postgres, dead Dragonfly. Every decision `LeaseService::activity` makes before
     /// the publish is a DATABASE read, so this is the composition that reaches
     /// the publish and fails only there — which is the whole claim the live
     /// tail makes about itself.
-    pub(crate) fn plane_with_dead_queue(&self) -> Plane {
-        Plane {
+    pub(crate) fn plane_with_dead_queue(&self) -> LeaseService {
+        LeaseService {
             task_reports: None,
             leases: self.leases_with_dead_queue(),
             ..self.plane()

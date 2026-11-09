@@ -82,6 +82,7 @@ impl Error {
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskState { .. }

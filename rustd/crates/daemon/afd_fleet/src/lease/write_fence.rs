@@ -1,6 +1,6 @@
 //! A lease proved on the transaction of the write it guards.
 //!
-//! [`crate::lease::pull::Plane::standing`] proves a lease and lets go: right for
+//! [`crate::lease::pull::LeaseService::standing`] proves a lease and lets go: right for
 //! a read, and wrong for a write that lands afterwards, since a reclaim can take
 //! the fleet in between. [`WriteFence`] proves the same lease again, on the
 //! write's own transaction and under a shared lock on the lease row. A reclaim,

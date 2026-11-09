@@ -54,6 +54,8 @@ pub struct BootConfig {
     pub(super) identity_webhook_secret: Option<Box<str>>,
     pub(super) qstash_keys: Option<SigningKeys>,
     pub(super) sse_max_streams: usize,
+    pub(super) runner_wake: afd_bus::wake::Wake,
+    pub(super) frame_memory: af_stream::MemoryLimits,
     pub(super) posthog: Option<PostHogConfig>,
     pub(super) otlp: Option<super::OtlpConfig>,
     /// A test boot's stand-in for the vendors' token endpoints.
@@ -78,6 +80,14 @@ pub struct PostHogConfig {
 }
 
 impl BootConfig {
+    /// Frame memory settings shared by every native runner session.
+    #[must_use]
+    pub const fn frame_memory(&self) -> af_stream::MemoryLimits { self.frame_memory }
+
+    /// The validated queue is shared by every session in this replica.
+    #[must_use]
+    pub const fn runner_wake(&self) -> &afd_bus::wake::Wake { &self.runner_wake }
+
     /// Private storage configuration resolved before opening any connection.
     #[must_use]
     pub const fn checkpoint_storage(

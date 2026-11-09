@@ -20,6 +20,9 @@ pub const RUNNER_TOKEN_PREFIX: &str = "agt_r";
 /// `GET /v1/runners/me` — read-only self status, which does not bump liveness.
 pub const RUNNER_SELF: &str = concatcp!(RUNNERS, "/me");
 
+/// Four independently flow-controlled lanes on one authenticated native connection.
+pub const RUNNER_STREAM: &str = concatcp!(RUNNER_SELF, "/stream");
+
 /// `POST /v1/runners/me/heartbeats` — liveness, capability report, assignment.
 pub const RUNNER_HEARTBEATS: &str = concatcp!(RUNNER_SELF, "/heartbeats");
 

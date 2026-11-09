@@ -14,7 +14,7 @@ use jiff::Timestamp;
 use crate::error::Result;
 use crate::lease::fold::Folds;
 use crate::lease::obligation::Owing;
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::settle::Reported;
 
 /// The `event_complete` frame was published for a settled report.
@@ -35,7 +35,7 @@ pub(super) struct Completion<'a> {
     pub answer: &'a str,
 }
 
-impl Plane {
+impl LeaseService {
     /// Announce a report that committed, and clear what it leaves behind.
     ///
     /// The money and queue transitions already committed. Completion frames
@@ -76,14 +76,21 @@ impl Plane {
         // nothing the owner sees depends on.
         // Timed only when the frame landed: a dropped announcement is logged
         // by the tail and leaves no completion instant to measure from.
-        let mut completed_at = None;
-        if let Some(closed) = closed
-            && self.leases.publish_completion(&closed, Some(answer)).await
-        {
-            let event = EVENT_COMPLETION_PUBLISHED;
-            tracing::debug!(fleet_id = fleet, lease_id, event);
-            completed_at = Some(af_core::clock::now());
-        }
+        let completed_at = match closed {
+            Some(closed) => match self.leases.publish_completion(&closed, Some(answer)).await {
+                Ok(()) => {
+                    let event = EVENT_COMPLETION_PUBLISHED;
+                    tracing::debug!(fleet_id = fleet, lease_id, event);
+                    Some(af_core::clock::now())
+                }
+                Err(error) => {
+                    // The report is durable. Observe its failed live notification without undoing settlement.
+                    afd_bus::observe_notification(&afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()), Err(error));
+                    None
+                }
+            },
+            None => None,
+        };
         step(
             "record_released",
             lease,
@@ -127,7 +134,8 @@ impl Plane {
     ) {
         folds.record_settled(lease.fleet_id.as_str(), lease_id);
         for closed in &folds.closed {
-            let _published = self.leases.publish_completion(closed, Some(answer)).await;
+            let publication = self.leases.publish_completion(closed, Some(answer)).await;
+            afd_bus::observe_notification(&afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()), publication);
         }
     }
 

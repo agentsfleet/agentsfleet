@@ -48,7 +48,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// An associated type for the reason [`Services::Auth`] is one: the
     /// concrete plane holds a Dragonfly connection that is opened by CONNECTING,
     /// so a suite proving the router's refusal matrix cannot construct one and
-    /// must not need to. The binary supplies `afd_fleet::lease::Plane`; a test
+    /// must not need to. The binary supplies `afd_fleet::lease::LeaseService`; a test
     /// supplies whatever answers.
     type Leases: Leasing;
 
@@ -59,6 +59,12 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// this host", and this answers "what may it run next". A single accessor
     /// returning both would put the money path behind every heartbeat.
     fn leases(&self) -> &Self::Leases;
+
+    /// The native runner session owner, sharing the same authentication middleware.
+    type RunnerStreams: super::RunnerStreams;
+
+    /// Opens or attaches a lane after the common guard proves its principal.
+    fn runner_streams(&self) -> &Self::RunnerStreams;
 
     /// Authoritative task lifecycle over the same fleet lease and admission stores.
     fn tasks(&self) -> &dyn afd_fleet::task::TaskLifecycle;

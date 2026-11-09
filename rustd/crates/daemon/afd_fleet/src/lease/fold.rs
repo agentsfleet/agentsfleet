@@ -16,7 +16,7 @@ use sqlx::PgConnection;
 use afd_events::Closed;
 
 use crate::error::{Result, query};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::settle::Reported;
 use crate::lease::sql;
 use crate::lease::store::Leases;
@@ -74,7 +74,7 @@ impl Folds {
     }
 }
 
-impl Plane {
+impl LeaseService {
     /// The messages `lease_id`'s fleet received after `request.after_sequence`,
     /// claimed for the run, oldest first. See [`Leases::claim_folds`].
     ///

@@ -14,34 +14,38 @@ use af_core::id::Uuid7;
 use af_fleet_runtime::FleetConfig;
 use af_fleet_runtime::config::Access;
 use af_wire::policy::ExecutionPolicy;
-use futures_util::future;
 use jiff::Timestamp;
 
 use afd_approval::{Origin, Requested, Wanted};
 
 use crate::error::Result;
-use crate::lease::answer::{Context, EVENT_LEASED, no_work, render};
+use crate::lease::answer::{EVENT_LEASED, no_work};
+use crate::lease::Offered;
+use af_wire::lease::LeasePayload;
 use crate::lease::envelope::Acquired;
-use crate::lease::history;
-use crate::lease::issue::Billed;
-use crate::lease::pull::{Admission2, Leased, Plane, Step, claim_lost};
+use crate::lease::pull::{AdmittedFleetWork, Leased, LeaseService, Step};
 use af_core::event::label;
 use afd_gate::policy::build::{self, Assembled};
 use afd_gate::policy::repair;
 
-impl Plane {
+impl LeaseService {
     /// Assemble the policy and write the row that makes this runner the holder.
     ///
     /// Named `deliver` rather than `issue`: `Leases::issue` writes the ROW, and
     /// this is the whole delivery around it. Answers [`Step::Go`] only when
     /// that row was written.
-    pub(super) async fn deliver(
+    pub(super) async fn deliver_with<T, F>(
         &self,
         runner_id: &Uuid7,
-        admitted: Admission2,
+        admitted: AdmittedFleetWork,
         now: Timestamp,
         began: Instant,
-    ) -> Result<Step<Leased>> {
+        emit: &mut F,
+    ) -> Result<Step<Leased<T>>>
+    where
+        T: Send,
+        F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
+    {
         let declared = self
             .vault
             .declared(
@@ -96,7 +100,7 @@ impl Plane {
             // raised rather than ending the event for good.
             Err(fault) => return Err(fault.into()),
         };
-        self.issue_ready(runner_id, &admitted, *policy, now, began)
+        self.issue_ready(runner_id, &admitted, *policy, now, began, emit)
             .await
     }
 
@@ -113,14 +117,14 @@ impl Plane {
     /// `event_id` and so could not end anything itself; this is where a
     /// person's no stops the redelivery. An open card parks the delivery, and
     /// anything else stops it for the next poll to ask again.
-    async fn ungranted(
+    async fn ungranted<T>(
         &self,
         runner_id: &Uuid7,
         acquired: &Acquired,
         credential: &str,
         integration: &str,
         now: Timestamp,
-    ) -> Result<Step<Leased>> {
+    ) -> Result<Step<Leased<T>>> {
         let asked = self
             .grants
             .request(
@@ -144,70 +148,6 @@ impl Plane {
                 no_work(runner_id, &reason).map(|answer| waits.ending(answer))
             }
         }
-    }
-
-    async fn issue_ready(
-        &self,
-        runner_id: &Uuid7,
-        admitted: &Admission2,
-        policy: ExecutionPolicy<'_>,
-        now: Timestamp,
-        began: Instant,
-    ) -> Result<Step<Leased>> {
-        // LAST, and only once everything above succeeded.
-        let Some(issued) = self
-            .leases
-            .issue_for_revision(
-                runner_id,
-                &admitted.acquired,
-                Billed {
-                    tenant_id: &admitted.billed.tenant_id,
-                    posture: admitted.billed.posture.as_str(),
-                    provider: &admitted.billed.provider,
-                    model: &admitted.billed.model,
-                },
-                now,
-                admitted.installed.issue_revision.as_ref(),
-            )
-            .await?
-        else {
-            return claim_lost(runner_id, &admitted.acquired);
-        };
-        // Here, and not at the claim: a claim is an affinity token, and the
-        // dozen refusals between it and this line — a stopped fleet, an
-        // unparseable event, a denied budget, an unauthorised branch — end
-        // without a lease row. Counting one there would make the gauge climb
-        // on requests that were refused.
-        af_observability::producers::fleet::runner::lease_taken(runner_id.as_str());
-        let issued_at = queue_wait::issued_at(now, began);
-        log_issued(runner_id, &issued.lease_id, &admitted.acquired, issued_at);
-        // Two independent reads, overlapped: the thread's turns and the
-        // fleet's memory window.
-        let (history, memory) = future::join(
-            history::turns(
-                self.thread.as_ref(),
-                &admitted.acquired,
-                admitted.event_type,
-            ),
-            self.window_for(&admitted.acquired.fleet_id),
-        )
-        .await;
-        render(
-            &issued.lease_id,
-            &admitted.acquired,
-            admitted.event_type,
-            &admitted.installed,
-            policy,
-            Context {
-                history,
-                memory,
-                decision: issued.decision,
-                task: issued.task,
-                expires_at: Some(issued.expires_at),
-                execution_deadline: Some(issued.execution_deadline),
-            },
-        )
-        .map(|answer| Step::Go(Leased(answer)))
     }
 
     /// The branch a write-bound lease may author on.
@@ -265,7 +205,7 @@ const EVENT_REQUEST_FAILED: &str = "park_grant_request_failed";
 /// the delivery redelivers every second — which is precisely the failure with no
 /// error that this milestone exists to end, reproduced on the path that ends it.
 ///
-/// [`crate::lease::pull::Plane::refused`] already reports the denial and
+/// [`crate::lease::pull::LeaseService::refused`] already reports the denial and
 /// `IntegrationGrants::request` reports what it wrote; the error was the one
 /// outcome nothing spoke for. The install path says the same thing at its own
 /// call site (`afd_fleet_lifecycle::install::grants`).
@@ -312,7 +252,7 @@ impl Ungranted {
     /// The step an ungranted delivery takes once its answer is rendered: an
     /// open card parks it, and anything else stops it — for the next poll to
     /// ask again, or, for [`Ungranted::Ends`], after the refusal was written.
-    const fn ending(self, answer: String) -> Step<Leased> {
+    const fn ending<T>(self, answer: String) -> Step<Leased<T>> {
         match self {
             Self::Parks => Step::Park(answer),
             Self::Retries | Self::Ends => Step::Stop(answer),
@@ -342,6 +282,7 @@ const fn answers(asked: Option<Requested>) -> Ungranted {
     }
 }
 
+mod issue;
 mod queue_wait;
 mod window;
 

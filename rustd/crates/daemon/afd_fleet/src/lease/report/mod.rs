@@ -39,7 +39,7 @@ use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::commit::{Committed, TerminalReport};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::settle::Reported;
 use crate::lease::tool_trace::{self, TraceOwner};
 use crate::lease::usage::{self, Pricing};
@@ -48,6 +48,8 @@ use afd_billing::Nanos;
 use afd_billing::rates::Posture;
 
 pub use tokens::RunTokens;
+mod observations;
+pub use observations::observe;
 
 /// What one settled report leaves its caller with.
 ///
@@ -112,7 +114,7 @@ pub struct Reconciled {
     pub completed_at: Option<Timestamp>,
 }
 
-impl Plane {
+impl LeaseService {
     /// Record one runner's terminal result for a lease it holds.
     ///
     /// Answers what the final slice's usage line cost, so the caller can meter
@@ -251,7 +253,7 @@ struct Subject<'a> {
 
 /// Everything the report's transaction needs, assembled from the wire request.
 ///
-/// Separate from [`Plane::report`] so the verb reads as its four steps. The
+/// Separate from [`LeaseService::report`] so the verb reads as its four steps. The
 /// two `try_from` saturations are the request's own numbers: a runner reports
 /// its counts and nothing upstream bounds them, so a value past `i64` is
 /// clamped rather than refused — the run happened either way, and refusing it

@@ -242,7 +242,7 @@ mod snapshot_tests {
     async fn pool_callback_reads_actual_capacity_and_withdraws_a_closed_pool() {
         let database = afd_db::test_util::unreachable_db();
         let admission = Admission::new(afd_api::DEFAULT_MAX_IN_FLIGHT);
-        let live = afd_sse::Live::detached(afd_sse::Ceiling::new(1));
+        let live = afd_sse::Live::detached(afd_sse::StreamLimit::new(1));
         let sources = gauge_sources(&admission, &live, &database);
         let readings = (sources.database_pools)();
         assert_eq!(readings.len(), 5);

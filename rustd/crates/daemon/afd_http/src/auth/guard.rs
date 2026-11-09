@@ -1,163 +1,57 @@
-//! The HTTP layer that stands between a route and its handler.
-//!
-//! Two checks, in this order and no other: prove the credential, then check the
-//! capability it resolved to. Both refuse before the handler runs, so a handler
-//! never sees a request it should not have — which is what lets every handler
-//! in this crate take an identity as an ARGUMENT rather than re-deriving one.
-//!
-//! # Why the route's facts are captured at mount time
-//!
-//! A route's guard and scope rung are constants in the table, so nothing about
-//! them can change between requests. [`Gate`] captures them while the router
-//! is being built, so the request path reads a `Copy` struct it already holds
-//! instead of re-deciding what it is.
-//!
-//! # What is deliberately NOT memoised
-//!
-//! The verdict. `docs/AUTH.md` makes the row read per request the revocation
-//! channel for the runner plane — there is no cached decision to invalidate,
-//! because there is no cache. This layer holds no state beyond the route's own
-//! constants, and `test_revocation_immediate` is what keeps it that way.
-
-use std::sync::Arc;
+//! One middleware proves a principal through its selected strategy, then checks scope.
 
 use afd_auth::gate::require_scope;
-use afd_auth::{Plane, Principal};
-use axum::extract::{Request, State};
-use axum::middleware::Next;
-use axum::response::{IntoResponse as _, Response};
-use http::header;
+use axum::{extract::{Request, State}, middleware::Next, response::{IntoResponse as _, Response}};
 
-use crate::auth::{Authenticator as _, plane_of};
-use crate::envelope::ProblemResponse;
-use crate::request_id::RequestId;
-use crate::route::RouteMeta;
-use crate::services::Services;
+use crate::{envelope::ProblemResponse, request_id::RequestId, route::RouteMeta};
+use super::RequestAuthentication;
 
-/// Everything one guarded route needs, resolved once when it is mounted.
-///
-/// Cheap to clone — an `Arc` and a `Copy` — which it must be, because axum
-/// clones the layer's state per request.
-#[derive(Debug)]
-pub struct Gate<D> {
-    services: Arc<D>,
+/// Authentication strategy and route policy, selected together when the route is mounted.
+#[derive(Debug, Clone)]
+pub struct Gate<A> {
+    authentication: A,
     meta: RouteMeta,
 }
 
-impl<D> Gate<D> {
-    /// The gate for a route whose facts are `meta`.
-    pub const fn new(services: Arc<D>, meta: RouteMeta) -> Self {
-        Self { services, meta }
+impl<A> Gate<A> {
+    /// Bind a concrete strategy to the route that declares its required scopes.
+    pub const fn new(authentication: A, meta: RouteMeta) -> Self {
+        Self { authentication, meta }
     }
 }
 
-// Hand-written rather than derived: `#[derive(Clone)]` would demand `D: Clone`,
-// and `D` is behind an `Arc` precisely so it does not have to be.
-impl<D> Clone for Gate<D> {
-    fn clone(&self) -> Self {
-        Self {
-            services: Arc::clone(&self.services),
-            meta: self.meta,
-        }
-    }
-}
-
-/// Proves the credential and the capability, or refuses.
-///
-/// Mounted with [`axum::middleware::from_fn_with_state`] over exactly the
-/// routes whose [`crate::route::Guard`] names a plane. A route whose guard
-/// names none never reaches this function, which is why there is no
-/// "unguarded" arm here to get wrong.
-pub async fn prove<D: Services>(
-    State(gate): State<Gate<D>>,
-    mut request: Request,
+/// Authenticate through the route's strategy and apply the common scope check.
+pub async fn prove<A: RequestAuthentication>(
+    State(gate): State<Gate<A>>,
+    request: Request,
     next: Next,
 ) -> Response {
-    let Some(plane) = plane_of(gate.meta.guard) else {
-        // Unreachable through the router, which mounts this layer only where
-        // `plane_of` answered `Some`. Written as a pass-through rather than a
-        // refusal so that a future guard added to the table cannot be silently
-        // closed by a layer that was never meant to judge it.
-        return next.run(request).await;
+    let (mut parts, body) = request.into_parts();
+    let principal = match gate.authentication.authenticate(&mut parts, gate.meta).await {
+        Ok(Some(principal)) => principal,
+        Err(refusal) => return refusal.into_response(),
+        Ok(None) => return next.run(Request::from_parts(parts, body)).await,
     };
-
-    let header = request
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok());
-    let principal = match authenticate(&gate, plane, header).await {
-        Ok(principal) => principal,
-        Err(refusal) => return authentication_refusal(refusal, &gate),
-    };
-
-    let required = gate.meta.scopes.required(request.method());
+    let required = gate.meta.scopes.required(&parts.method);
     if let Err(denied) = require_scope(&principal, required) {
-        return refuse(
-            denied.code(),
-            // The whole requirement, because the gate is any-of: naming one
-            // missing scope would tell a caller to obtain that one when any of
-            // the others would also have let them through.
-            denied.to_string(),
-            &gate,
-            "capability refused",
-        );
+        return reject(gate.meta, denied.code(), denied.to_string(), "capability_refused");
     }
-
-    // The handler reads this back through a typed extractor. An extension
-    // rather than a parameter because axum has no other way to hand a value
-    // from a layer to a handler — and the extractor is what keeps that
-    // stringly-typed lookup out of every handler body.
-    request.extensions_mut().insert(principal.clone());
-    let mut response = next.run(request).await;
-    // And onto the RESPONSE, for the reporting layer outside this one. A
-    // request extension travels inward only, so a refusal written beneath here
-    // would otherwise be attributed to nobody — which is the difference between
-    // "a person hit a wall" and "something did".
+    parts.extensions.insert(principal.clone());
+    let mut response = next.run(Request::from_parts(parts, body)).await;
     response.extensions_mut().insert(principal);
     response
 }
 
-async fn authenticate<D: Services>(
-    gate: &Gate<D>,
-    plane: Plane,
-    header: Option<&str>,
-) -> Result<Principal, afd_auth::Error> {
-    gate.services
-        .authenticator()
-        .authenticate(plane, header)
-        .await
-}
-
-fn authentication_refusal<D>(refusal: afd_auth::Error, gate: &Gate<D>) -> Response {
-    refuse(refusal.code(), refusal.detail(), gate, "credential refused")
-}
-
-/// Writes a refusal, and logs it against the same request id the caller sees.
-///
-/// One function for both checks, so an authentication refusal and a capability
-/// refusal cannot end up shaped differently, the drift a hand-written refusal
-/// at each call site invites.
-fn refuse<D>(
+pub(super) fn reject(
+    meta: RouteMeta,
     code: af_core::error_code::ErrorCode,
     detail: impl Into<String>,
-    gate: &Gate<D>,
     event: &'static str,
 ) -> Response {
     let request_id = RequestId::mint();
-    // Hoisted out of the macro: `tracing`'s `log` bridge compiles a second copy
-    // of every field expression, and llvm-cov scores the copy that never runs.
-    let code_field = code.as_str();
+    let error_code = code.as_str();
     let request_id_field = request_id.as_str();
-    let template = gate.meta.template;
-    // `debug`, not `warn`: a refused credential is the surface behaving
-    // correctly, and at `warn` a scanner probing the API would be the loudest
-    // thing in an operator's log. The template rather than the path, because a
-    // real path carries workspace and fleet identifiers.
-    tracing::debug!(
-        error_code = code_field,
-        request_id = request_id_field,
-        route = template,
-        event,
-    );
+    let route = meta.template;
+    tracing::debug!(error_code, request_id = request_id_field, route, event);
     ProblemResponse::new(code, detail, request_id).into_response()
 }

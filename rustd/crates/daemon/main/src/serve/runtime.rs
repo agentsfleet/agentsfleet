@@ -75,6 +75,8 @@ pub(super) async fn open_runtime(
         database: database.clone(),
         queue: queue.clone(),
         bus: bus.clone(),
+        runner_wake: config.runner_wake().clone(),
+        frame_memory: config.frame_memory(),
         // Cloned rather than moved: the outbound worker below opens its own
         // grant store over the same key, for the reason `crate::outbound`
         // gives — it runs beside the plane, not through it.

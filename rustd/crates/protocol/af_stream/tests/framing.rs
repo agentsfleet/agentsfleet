@@ -3,7 +3,7 @@
 use std::{error::Error as _, time::Duration};
 
 use af_stream::{Budget, Reader, Reason, write};
-use af_wire::protocol::{Lane, MESSAGE_BYTES_MAX, Up};
+use af_wire::protocol::{StreamKind, MESSAGE_BYTES_MAX, Up};
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt as _},
     time::Instant,
@@ -19,11 +19,11 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn reader<R: AsyncRead + Unpin>(&self, input: R, lane: Lane) -> Reader<R> {
+    fn reader<R: AsyncRead + Unpin>(&self, input: R, kind: StreamKind) -> Reader<R> {
         Reader::new(
             input,
             self.budget.clone(),
-            lane,
+            kind,
             self.stop.clone(),
             Duration::from_secs(5),
         )
@@ -36,9 +36,9 @@ impl Fixture {
     async fn encode<T: serde::Serialize + Sync>(
         &self,
         value: &T,
-        lane: Lane,
+        kind: StreamKind,
     ) -> af_stream::Result<af_stream::OwnedFrame> {
-        af_stream::encode(value, &self.budget, lane, &self.stop, Self::deadline()).await
+        af_stream::encode(value, &self.budget, kind, &self.stop, Self::deadline()).await
     }
 }
 
@@ -53,7 +53,7 @@ async fn send_raw(output: &mut (impl AsyncWrite + Unpin), payload: &[u8]) -> Res
 #[tokio::test]
 async fn split_frames_and_consecutive_frames_preserve_boundaries() -> Result {
     let fixture = Fixture::default();
-    let available = fixture.budget.available(Lane::Control);
+    let available = fixture.budget.available(StreamKind::Control);
     let (mut output, input) = tokio::io::duplex(1);
     let sending = async {
         for payload in [
@@ -66,7 +66,7 @@ async fn split_frames_and_consecutive_frames_preserve_boundaries() -> Result {
         Result::Ok(())
     };
     let receiving = async {
-        let mut reader = fixture.reader(input, Lane::Control);
+        let mut reader = fixture.reader(input, StreamKind::Control);
         for expected in [1, 2] {
             let frame = reader.next().await?.ok_or("ping frame missing")?;
             let ping: Up<'_> = frame.decode()?;
@@ -79,7 +79,7 @@ async fn split_frames_and_consecutive_frames_preserve_boundaries() -> Result {
         Result::Ok(())
     };
     tokio::try_join!(sending, receiving)?;
-    assert_eq!(fixture.budget.available(Lane::Control), available);
+    assert_eq!(fixture.budget.available(StreamKind::Control), available);
     Ok(())
 }
 
@@ -91,40 +91,40 @@ async fn oversized_prefix_is_refused_before_waiting_for_memory_or_payload() -> R
     };
     let (mut output, input) = tokio::io::duplex(4);
     output.write_all(&u32::MAX.to_be_bytes()).await?;
-    let Err(error) = fixture.reader(input, Lane::Reports).next().await else {
+    let Err(error) = fixture.reader(input, StreamKind::Reports).next().await else {
         return Err("oversized prefix accepted".into());
     };
     assert_eq!(error.reason(), Reason::Protocol);
-    assert_eq!(fixture.budget.available(Lane::Reports), 1);
+    assert_eq!(fixture.budget.available(StreamKind::Reports), 1);
     Ok(())
 }
 
 #[tokio::test(start_paused = true)]
 async fn partial_header_times_out_and_returns_its_memory() -> Result {
     let fixture = Fixture::default();
-    let available = fixture.budget.available(Lane::Control);
+    let available = fixture.budget.available(StreamKind::Control);
     let (mut output, input) = tokio::io::duplex(4);
     output.write_all(&[0]).await?;
-    let Err(error) = fixture.reader(input, Lane::Control).next().await else {
+    let Err(error) = fixture.reader(input, StreamKind::Control).next().await else {
         return Err("partial header accepted".into());
     };
     assert_eq!(error.reason(), Reason::Timeout);
-    assert_eq!(fixture.budget.available(Lane::Control), available);
+    assert_eq!(fixture.budget.available(StreamKind::Control), available);
     Ok(())
 }
 
 #[tokio::test(start_paused = true)]
 async fn partial_payload_times_out_and_releases_its_reservation() -> Result {
     let fixture = Fixture::default();
-    let available = fixture.budget.available(Lane::Reports);
+    let available = fixture.budget.available(StreamKind::Reports);
     let (mut output, input) = tokio::io::duplex(8);
     output.write_all(&20_u32.to_be_bytes()).await?;
     output.write_all(b"{").await?;
-    let Err(error) = fixture.reader(input, Lane::Reports).next().await else {
+    let Err(error) = fixture.reader(input, StreamKind::Reports).next().await else {
         return Err("partial payload accepted".into());
     };
     assert_eq!(error.reason(), Reason::Timeout);
-    assert_eq!(fixture.budget.available(Lane::Reports), available);
+    assert_eq!(fixture.budget.available(StreamKind::Reports), available);
     Ok(())
 }
 
@@ -134,7 +134,7 @@ async fn malformed_json_preserves_its_cause_without_exposing_the_payload() -> Re
     let (mut output, input) = tokio::io::duplex(64);
     send_raw(&mut output, b"private-fixture-text").await?;
     let frame = fixture
-        .reader(input, Lane::Control)
+        .reader(input, StreamKind::Control)
         .next()
         .await?
         .ok_or("frame missing")?;
@@ -156,8 +156,8 @@ async fn data_pressure_preserves_control_memory_and_cancellation_releases_waiter
     };
     let reason = {
         let value = "x".repeat(MESSAGE_BYTES_MAX - 2);
-        let _held = fixture.encode(&value, Lane::Reports).await?;
-        let waiting = fixture.encode(&"waiting", Lane::Reports);
+        let _held = fixture.encode(&value, StreamKind::Reports).await?;
+        let waiting = fixture.encode(&"waiting", StreamKind::Reports);
         tokio::pin!(waiting);
         assert!(
             std::future::poll_fn(|cx| std::task::Poll::Ready(
@@ -165,7 +165,7 @@ async fn data_pressure_preserves_control_memory_and_cancellation_releases_waiter
             ))
             .await
         );
-        let _control = fixture.encode(&"ping", Lane::Control).await?;
+        let _control = fixture.encode(&"ping", StreamKind::Control).await?;
         fixture.stop.cancel();
         let Err(error) = waiting.await else {
             return Err("cancelled memory waiter succeeded".into());
@@ -174,11 +174,11 @@ async fn data_pressure_preserves_control_memory_and_cancellation_releases_waiter
     };
     assert_eq!(reason, Reason::Cancelled);
     assert_eq!(
-        fixture.budget.available(Lane::Control),
+        fixture.budget.available(StreamKind::Control),
         MESSAGE_BYTES_MAX * 2
     );
     assert_eq!(
-        fixture.budget.available(Lane::Reports),
+        fixture.budget.available(StreamKind::Reports),
         MESSAGE_BYTES_MAX * 2
     );
     Ok(())
@@ -187,7 +187,7 @@ async fn data_pressure_preserves_control_memory_and_cancellation_releases_waiter
 #[tokio::test(start_paused = true)]
 async fn a_blocked_write_obeys_the_whole_frame_deadline() -> Result {
     let fixture = Fixture::default();
-    let frame = fixture.encode(&"ping", Lane::Control).await?;
+    let frame = fixture.encode(&"ping", StreamKind::Control).await?;
     let (mut output, _unread) = tokio::io::duplex(1);
     let Err(error) = write(&mut output, &frame, &fixture.stop, Fixture::deadline()).await else {
         return Err("blocked write succeeded".into());
@@ -200,10 +200,10 @@ async fn a_blocked_write_obeys_the_whole_frame_deadline() -> Result {
 async fn maximum_payload_round_trips_without_crossing_its_allocation_bound() -> Result {
     let fixture = Fixture::default();
     let value = "x".repeat(MESSAGE_BYTES_MAX - 2);
-    let frame = fixture.encode(&value, Lane::Reports).await?;
+    let frame = fixture.encode(&value, StreamKind::Reports).await?;
     assert_eq!(frame.as_bytes().len(), MESSAGE_BYTES_MAX);
     let (mut output, input) = tokio::io::duplex(1024);
-    let mut reader = fixture.reader(input, Lane::Reports);
+    let mut reader = fixture.reader(input, StreamKind::Reports);
     let ((), received) = tokio::try_join!(
         write(&mut output, &frame, &fixture.stop, Fixture::deadline()),
         reader.next()
@@ -211,7 +211,7 @@ async fn maximum_payload_round_trips_without_crossing_its_allocation_bound() -> 
     let received = received.ok_or("payload frame missing")?;
     assert_eq!(received.decode::<String>()?, value);
     let oversized = "x".repeat(MESSAGE_BYTES_MAX - 1);
-    let Err(error) = fixture.encode(&oversized, Lane::Reports).await else {
+    let Err(error) = fixture.encode(&oversized, StreamKind::Reports).await else {
         return Err("oversized frame encoded".into());
     };
     assert_eq!(error.reason(), Reason::Protocol);

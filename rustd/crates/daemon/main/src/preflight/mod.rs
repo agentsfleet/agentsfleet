@@ -87,6 +87,8 @@ struct Readings {
     kek: Option<Kek>,
     session_code_pepper: Option<SecretBytes>,
     sse_max_streams: usize,
+    runner_wake: Option<afd_bus::wake::Wake>,
+    frame_memory: Option<af_stream::MemoryLimits>,
     posthog: Option<PostHogConfig>,
     otlp: Option<OtlpConfig>,
     slack_api_url: Option<Box<str>>,
@@ -111,6 +113,8 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
     // a dashboard that silently refuses every stream — the furthest possible
     // point from the mistake. Unset is the default, which is most deployments.
     let sse_max_streams = read::sse_max_streams(env, faults);
+    let runner_wake = read::runner_wake(env, faults);
+    let frame_memory = read::frame_memory(env, faults);
     let posthog = posthog(env);
     // Absent is a deployment that exports nothing, which is most of them and
     // is not a fault. What IS a fault is an endpoint with a protocol, timeout
@@ -132,6 +136,8 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
         kek,
         session_code_pepper,
         sse_max_streams,
+        runner_wake,
+        frame_memory,
         posthog,
         otlp,
         slack_api_url,
@@ -204,6 +210,8 @@ impl Readings {
             kek,
             session_code_pepper,
             sse_max_streams,
+            runner_wake,
+            frame_memory,
             posthog,
             otlp,
             slack_api_url,
@@ -220,6 +228,8 @@ impl Readings {
             identity,
             session_code_pepper,
             dashboard,
+            runner_wake,
+            frame_memory,
         ) {
             (
                 Some(api_pool),
@@ -228,6 +238,8 @@ impl Readings {
                 Some(identity),
                 Some(session_code_pepper),
                 Some(dashboard),
+                Some(runner_wake),
+                Some(frame_memory),
             ) if faults.is_empty() => Ok(BootConfig {
                 api_pool,
                 redis,
@@ -244,6 +256,8 @@ impl Readings {
                 identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
                 qstash_keys: signing_keys(env),
                 sse_max_streams,
+                runner_wake,
+                frame_memory,
                 posthog,
                 otlp,
                 #[cfg(feature = "test-util")]

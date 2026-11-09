@@ -75,7 +75,7 @@ const REDELIVERED_FINISHED: &str = "the redelivered event had already finished";
 /// and cheap to clone — which is what lets the composition root build it once
 /// and the request path borrow it.
 #[derive(Debug, Clone)]
-pub struct Plane {
+pub struct LeaseService {
     /// Claims, rows, and the narrative log.
     pub leases: Leases,
     /// Native task report evidence, sharing the request-path task owner.
@@ -104,13 +104,13 @@ pub struct Plane {
     /// The on-demand credential broker.
     ///
     /// Behind an `Arc` because it holds the process's ONE token cache: the
-    /// whole point of the cache is that every request shares it, and a `Plane`
+    /// whole point of the cache is that every request shares it, and a `LeaseService`
     /// clone that deep-copied it would give each cloned handle its own — which
     /// is a cache that never hits and a single-flight that never single-flights.
     pub broker: std::sync::Arc<afd_credential::credential::Broker>,
     /// The standing grants a fleet holds, and the only writer of them.
     ///
-    /// The lease path READS grants through [`Plane::gates`] on every delivery
+    /// The lease path READS grants through [`LeaseService::gates`] on every delivery
     /// and writes one here only when it finds none — which is a different
     /// question and, deliberately, a different crate. `afd_approval` owns the
     /// table because its resolve moves a row in the same statement that answers
@@ -122,7 +122,7 @@ pub struct Plane {
 }
 
 /// What the claim and the gates settled, before the policy is built.
-pub(super) struct Admission2 {
+pub(super) struct AdmittedFleetWork {
     /// The work, and the fleet it belongs to.
     pub(super) acquired: Acquired,
     /// That fleet as installed.
@@ -135,7 +135,14 @@ pub(super) struct Admission2 {
     pub(super) billed: Admitted,
 }
 
-impl Plane {
+impl LeaseService {
+    /// Bind grant and renewal transactions to the physical session that owns this host.
+    #[must_use]
+    pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
+        self.leases = self.leases.for_connection(authority);
+        self
+    }
+
     /// Answer one runner's poll.
     ///
     /// The bytes are a complete `LeaseResponse` — work, or `null` with a
@@ -171,7 +178,7 @@ impl Plane {
         acquired: Acquired,
         runner_id: &Uuid7,
         now: Timestamp,
-    ) -> Result<Step<Admission2>> {
+    ) -> Result<Step<AdmittedFleetWork>> {
         let installed = match self
             .resolve_installed(&acquired, runner_id)
             .await?
@@ -211,7 +218,7 @@ impl Plane {
         installed: Installed,
         runner_id: &Uuid7,
         now: Timestamp,
-    ) -> Result<Step<Admission2>> {
+    ) -> Result<Step<AdmittedFleetWork>> {
         let Some(event_type) = EventType::parse(&acquired.event_type) else {
             let reason = acquired.event_type.clone();
             let label = label::EVENT_TYPE_UNSUPPORTED;
@@ -237,7 +244,7 @@ impl Plane {
             Ok(billed) => billed,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,
         };
-        Ok(Step::Go(Admission2 {
+        Ok(Step::Go(AdmittedFleetWork {
             acquired,
             installed,
             event_type,
@@ -247,7 +254,7 @@ impl Plane {
     }
 
     /// A durable ending suppresses execution and settles the admission under its fence.
-    async fn finished(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<Step<Admission2>> {
+    async fn finished(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<Step<AdmittedFleetWork>> {
         self.leases.settle_terminal(acquired).await?;
         let fleet_id = acquired.fleet_id.as_str();
         let agentsfleet_event_id = acquired.event_id.as_str();

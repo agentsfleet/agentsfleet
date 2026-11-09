@@ -78,19 +78,16 @@ pub(super) struct Context<'a> {
     pub(super) execution_deadline: Option<jiff::Timestamp>,
 }
 
-/// The issued lease, as the bytes a runner executes from.
-///
-/// # Errors
-/// Reports a payload that would not serialize.
-pub(super) fn render<'a>(
+/// Assemble the issued payload while its policy still borrows the admitted work.
+pub(super) fn payload<'a>(
     lease_id: &'a Uuid7,
     acquired: &'a Acquired,
     event_type: EventType,
     installed: &'a Installed,
     policy: ExecutionPolicy<'a>,
     context: Context<'a>,
-) -> Result<String> {
-    answer(Some(LeasePayload {
+) -> LeasePayload<'a> {
+    LeasePayload {
         lease_id: lease_id.as_str().into(),
         fencing_token: acquired.fence.as_u64(),
         lease_expires_at: context.expires_at.unwrap_or(acquired.leased_until),
@@ -117,7 +114,7 @@ pub(super) fn render<'a>(
         task: context.task,
         durable_tasks: installed.config.decision_policy().is_some(),
         memory: context.memory,
-    }))
+    }
 }
 
 #[cfg(all(test, feature = "test-util"))]

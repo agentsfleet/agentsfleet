@@ -148,7 +148,7 @@ async fn exhausted(case: &Case, task: &str, reason: Option<&str>) -> afd_fleet::
 
 async fn report_after_preparation_deadline(
     case: &Case,
-    plane: &afd_fleet::lease::Plane,
+    plane: &afd_fleet::lease::LeaseService,
     report: &af_wire::report::ReportRequest<'_>,
     now: jiff::Timestamp,
 ) {

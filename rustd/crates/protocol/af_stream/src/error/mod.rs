@@ -16,6 +16,8 @@ af_core::error_shell!(
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("Set {setting} to a whole number of mebibytes between 12 and 512.")]
+    MemorySetting { setting: &'static str, #[source] source: std::num::ParseIntError },
     #[error("The runner message does not match the stream protocol.")]
     Protocol,
     #[error("The message body could not be read.")]
@@ -222,6 +224,7 @@ impl Error {
     #[must_use]
     pub fn reason(&self) -> Reason {
         match self.kind() {
+            ErrorKind::MemorySetting { .. } => Reason::Protocol,
             ErrorKind::Io { .. } => Reason::Network,
             ErrorKind::Timeout { .. } => Reason::Timeout,
             ErrorKind::Cancelled => Reason::Cancelled,

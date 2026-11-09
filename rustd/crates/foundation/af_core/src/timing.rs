@@ -95,6 +95,29 @@ pub const WAKE_HOLD_MAX: Duration = HEARTBEAT_INTERVAL;
 /// reaches the work.
 pub const READY_WAKE_DEADLINE: Duration = Duration::from_millis(100);
 
+/// Maximum time to answer an application request or finish a partial stream frame.
+pub const STREAM_ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
+/// Idle interval between application pings; a silent idle path is detected within twenty seconds.
+pub const STREAM_PING_INTERVAL: Duration = Duration::from_secs(15);
+/// Preferred transport gets this much of the bounded reconnect attempt.
+pub const STREAM_HTTP3_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+/// The TCP fallback gets its own bounded connection attempt.
+pub const STREAM_HTTP2_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+/// Ownership confirmation and lane attachment share the remaining recovery budget.
+pub const STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(3);
+/// One independent ready-work probe per daemon replica, regardless of broker traffic.
+pub const OFFER_FALLBACK_TICK: Duration = Duration::from_secs(5);
+
+const _: () = assert!(
+    RENEWAL_TICK.as_nanos()
+        + STREAM_ANSWER_TIMEOUT.as_nanos()
+        + STREAM_HTTP3_CONNECT_TIMEOUT.as_nanos()
+        + STREAM_HTTP2_CONNECT_TIMEOUT.as_nanos()
+        + STREAM_OPEN_TIMEOUT.as_nanos()
+        + RENEWAL_WINDOW.as_nanos() < LEASE_TTL.as_nanos(),
+    "a failed renewal and bounded reconnect must leave a complete renewal window"
+);
+
 /// One day.
 ///
 /// Not a lease value. It is the one spelling of a day for whatever counts in

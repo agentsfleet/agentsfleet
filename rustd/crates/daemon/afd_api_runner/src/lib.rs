@@ -24,6 +24,7 @@ use services::Services;
 pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
     match verb {
         RunnerRoute::SelfRecord => get(handler::runner::self_record::handle::<D>),
+        RunnerRoute::Stream => post(handler::runner::stream::handle::<D>),
         RunnerRoute::Heartbeat => post(handler::runner::heartbeat::handle::<D>),
         RunnerRoute::Lease => post(handler::runner::lease::handle::<D>),
         RunnerRoute::Report => post(handler::runner::report::handle::<D>),

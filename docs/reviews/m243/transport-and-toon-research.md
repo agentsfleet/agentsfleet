@@ -215,6 +215,23 @@ Its historical decoder checks plaintext length after collecting and decrypting t
 Our reader proves the declared length before allocation, then reads directly into one zeroing buffer.
 The old dependencies, late bounds and test unwraps are not imported.
 
+### Event handling and the supplied authentication reference
+
+Exonum revision `2d2fa22e5f5bc451d08c155c2398956f11dce06e` separates asynchronous event selection from typed handler decisions.
+Relevant files are `exonum-node/src/events/mod.rs`, `events/internal.rs` and `events_impl.rs`.
+M243 follows that separation through `SessionEvent`, `EventSource`, `EventHandler` and `SessionSupervisor`.
+
+Its detached spawning and older networking stack are not copied.
+M243 retains bounded Tokio task sets, cancellation tokens, absolute deadlines and drop-owned request permits.
+
+The supplied `core_api-develop.zip` contains Indy's older `components/lib-auth` and Iron authentication middleware.
+The reviewed files define flow backends, delegates, identity access and a shared middleware boundary.
+M243 reuses that architectural pattern through `RequestAuthentication`, existing `afd_auth` and the common HTTP scope guard.
+
+The old JWT, crypto and Iron dependencies are not imported.
+`AuthenticationResult` distinguishes an unguarded route from a proved principal and a typed refusal.
+A connection strategy selects bearer proof or session continuity without inspecting a path in the generic guard.
+
 ### What TOON changes
 
 TOON encodes the JSON data model as text using indentation and table-like rows.

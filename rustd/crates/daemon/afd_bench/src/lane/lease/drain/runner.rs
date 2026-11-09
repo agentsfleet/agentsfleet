@@ -11,7 +11,7 @@ use af_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 use af_wire::fold::FoldRequest;
 use af_wire::lease::{LeasePayload, LeaseResponse};
 use af_wire::report::{Outcome, RenewRequest, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 
 use super::burst::Pickups;
 use super::turn::Turn;
@@ -101,7 +101,7 @@ impl Tally {
 ///
 /// A latency the histogram would not hold, or a lease answer that does not
 /// parse. Never a refusal from the path, which is counted.
-pub(super) async fn drive(plane: &Plane, runner: &Uuid7, shared: &Shared) -> Result<Tally> {
+pub(super) async fn drive(plane: &LeaseService, runner: &Uuid7, shared: &Shared) -> Result<Tally> {
     let mut tally = Tally::new()?;
     while shared.open() {
         tally.polls += 1;
@@ -117,7 +117,7 @@ pub(super) async fn drive(plane: &Plane, runner: &Uuid7, shared: &Shared) -> Res
 }
 
 /// Keep each refusal's cause intact before the driver counts it.
-async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally) -> Result<()> {
+async fn step(plane: &LeaseService, runner: &Uuid7, shared: &Shared, tally: &mut Tally) -> Result<()> {
     let started = Instant::now();
     let answer = plane.lease(runner, &[], false, clock::now()).await?;
     let took = started.elapsed();
@@ -147,7 +147,7 @@ async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally)
 /// the fleet's new messages before each simulated model call the way a
 /// runner does. Answers the last folded message's sequence, when any folded.
 async fn run_turn(
-    plane: &Plane,
+    plane: &LeaseService,
     runner: &Uuid7,
     lease: &LeasePayload<'_>,
     shared: &Shared,

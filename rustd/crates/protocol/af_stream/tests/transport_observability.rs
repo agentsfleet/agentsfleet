@@ -10,7 +10,7 @@ use std::{
 
 use af_observability::test_util::Capture;
 use af_stream::{Budget, Connection, Outgoing, Reader, Reason, Transport};
-use af_wire::protocol::Lane;
+use af_wire::protocol::StreamKind;
 use http::Request;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt as _;
@@ -124,7 +124,7 @@ async fn fallback_and_redaction(secret: &str, token: &str) -> Result {
     let mut reader = Reader::new(
         response.into_body().reader(),
         Budget::default(),
-        Lane::Control,
+        StreamKind::Control,
         host.stop.clone(),
         Duration::from_secs(5),
     );
@@ -191,7 +191,7 @@ async fn native_health() -> Result {
     let mut reader = Reader::new(
         response.into_body().reader(),
         Budget::default(),
-        Lane::Control,
+        StreamKind::Control,
         host.stop.clone(),
         Duration::from_secs(5),
     );
@@ -210,7 +210,7 @@ async fn abandon_partial_frame() -> Result {
     let mut reader = Reader::new(
         input,
         Budget::default(),
-        Lane::Control,
+        StreamKind::Control,
         tokio_util::sync::CancellationToken::new(),
         Duration::from_secs(5),
     );

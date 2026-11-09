@@ -22,6 +22,8 @@ const RUNNER_SELF: &[Scope] = &[Scope::RunnerSelf];
 pub enum RunnerRoute {
     /// The runner reading its own record.
     SelfRecord,
+    /// Native runner control, work, report and activity lanes.
+    Stream,
     /// Private context checkpoint for a branch of a live lease.
     ContextCheckpoint,
     /// Reserve a physical decision with accepted native questions and credit.
@@ -97,6 +99,7 @@ impl RunnerRoute {
     /// Every runner-plane route.
     pub const ALL: &'static [Self] = &[
         Self::SelfRecord,
+        Self::Stream,
         Self::ContextCheckpoint,
         Self::TaskDecisions,
         Self::TaskInputs,
@@ -153,7 +156,8 @@ impl RunnerRoute {
             Self::SelfRecord | Self::MemoryHydrate | Self::TaskInputs | Self::TaskEffect => {
                 &[Verb::Get]
             }
-            Self::Heartbeat
+            Self::Stream
+            | Self::Heartbeat
             | Self::Lease
             | Self::Report
             | Self::CredentialsMint
@@ -185,6 +189,7 @@ impl RunnerRoute {
     pub const fn meta(self) -> RouteMeta {
         let template = match self {
             Self::SelfRecord => paths::RUNNER_SELF,
+            Self::Stream => paths::RUNNER_STREAM,
             Self::ContextCheckpoint => paths::LEASE_CONTEXT,
             Self::TaskDecisions => paths::LEASE_TASK_DECISIONS,
             Self::TaskInputs => paths::LEASE_TASK_INPUTS,
@@ -221,7 +226,7 @@ impl RunnerRoute {
         };
         RouteMeta::new(
             Guard::RunnerBearer,
-            RouteClass::Api,
+            match self { Self::Stream => RouteClass::Stream, _ => RouteClass::Api },
             template,
             Scopes::Always(RUNNER_SELF),
         )

@@ -14,7 +14,7 @@ pub use self::summary::summary;
 use core::time::Duration;
 use std::sync::Arc;
 
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 
 use self::turn::Turn;
 use self::window::{Shape, Window, window};
@@ -177,7 +177,7 @@ async fn measure(
 
 /// Include the serving path's admission settlement in its drain cost.
 async fn drain(
-    plane: &Plane,
+    plane: &LeaseService,
     parameters: Parameters,
     stores: &Datastores,
     staged: &stage::Staged,

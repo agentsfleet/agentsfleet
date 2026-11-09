@@ -87,11 +87,49 @@ The gateway, runner integration and remaining milestone gates stay open.
 | Human and agent error handling | Plain outer messages, retained causes, stable error codes and finite outcome fields |
 | Tokio Quiche features | Exact pinned feature decisions and native telemetry bridge are recorded in the research page |
 | Wake queue ownership and performance | One short mutex protects FIFO and membership together; hash membership replaces the linear duplicate scan; latency benchmark remains due |
-| Capacity and configuration | Validated `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`; startup wiring remains due; runner concurrency retains its existing server-owned policy |
+| Capacity and configuration | Validated `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`; startup now resolves the wake queue and frame-memory settings; runtime verification remains due |
 | Wake naming and environment prefix | `WakeQueue`, matching queue metrics and `AGENTSFLEET_` settings replace the newly introduced names; no aliases |
 | A thousand fleets and fairness | Buffer pressure test is written; unconditional database discovery and end-to-end fairness proof remain due |
 | UUIDv7 main changes | Merged #816 and #817 normally; new data access retains native identifiers and table ownership |
 | Traces, logs and coverage | Finite metric declarations, structured operation observations and export/redaction tests are written; final coverage measurement remains due |
+
+### Review checkpoint requested on Nov 09, 2026
+
+This checkpoint publishes reviewed source changes for Indy.
+It does not declare M243 complete or claim a new verification result.
+Runner wiring, private listener startup, retired routes, integration evidence and final coverage remain open.
+
+| Review item | Source change |
+|---|---|
+| Cache complexity | `session/cache.rs` loads a validated snapshot and applies it atomically; revision checks protect concurrent reports and renewals |
+| Reconnect query | Native UUIDv7 rows, `UNION ALL`, bounded results and runner/status/expiry indexes; execution plans remain unmeasured |
+| Stream naming | `StreamKind` replaces the protocol type and reader names; the header is `agentsfleet-runner-kind` |
+| Offer complexity | A borrowed encoder separates eligibility, issue, serialization and delivery without optional writer extraction |
+| Opening complexity | `ControlOpening`, `SessionOpening` and `ConfirmedSession` carry increasingly strong ownership proofs |
+| Bearer authentication | Ordinary guarded routes and initial native control use the existing registry; secondary streams use the physical connection proof |
+| Service trait file | `afd_http/src/services/http_services.rs` owns `Services`; its old filename is removed |
+| Memory configuration | `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` and `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB` configure validated per-replica totals |
+| Event-loop abstraction | `SessionEvent`, `EventHandler`, `EventSource` and `SessionSupervisor` separate selection from decisions |
+| Exonum reference | Its event-source and handler pattern informs the new split; Tokio task ownership and cancellation remain current |
+| Recovery SQL | `EXISTS` asks whether a pass may help; claim transactions retain all eligibility and capacity decisions |
+| Recovery cadence | One independent probe per replica every five seconds; notification retries do not multiply database passes |
+| Typed commands | `Cancel` checks the named durable marker; `Recheck`, gaps and overflow reload authority and policy |
+| Comments | Module and ownership comments explain deadlines, allocation, cancellation, safe logging and durable boundaries |
+| RS-SENTINEL | Publication and subscription failures return `Result`; invalid configuration stays `None`; request and allocation guards release through `Drop` |
+| RS-UNWRAP | Production additions use fallible conversions; panic assertions belong to tests or compile-time invariant proofs |
+| Stored timestamps | The issue statement returns its saved `created_at`; capacity keeps the full-precision database clock |
+
+Review the gateway in this order: `lib.rs`, `connection.rs`, `stream_headers.rs`, then `session/opening/`.
+Continue through `session/runtime.rs`, `streams.rs`, `events.rs`, `supervisor.rs`, `requests.rs`, `cache.rs` and `dispatch/`.
+The native carrier and bus source remain separate from these domain decisions.
+
+`LeaseService` replaces `Plane`; `AdmittedFleetWork` replaces `Admission2`.
+`GatewayDependencies` names composition inputs, and `StreamLimit` plus `StreamPermit` name shared stream admission.
+The injected wall clock serves repeated identifier and cache-expiry decisions; timeouts use monotonic Tokio instants.
+
+The source review applies Orly's Rust and error standards across the PR diff, including existing changed callers.
+A source review does not substitute for the later Rust, integration or coverage gates.
+The current checkpoint retains the merge hold and the existing coverage floors.
 
 ### Early draft requested for M244
 
@@ -132,7 +170,7 @@ Indy's approval includes the additional shared carrier crate.
 
 | Crate | Responsibility and principal public values |
 |---|---|
-| `af_wire` | `Up<'a>`, `Down<'a>`, `Answer<'a, T>`, `Lane::{Control,Work,Reports,Activity}`, `Renewal`, `RenewalAnswer`; values and validation without Tokio, SQL or native transport |
+| `af_wire` | `Up<'a>`, `Down<'a>`, `Answer<'a, T>`, `StreamKind::{Control,Work,Reports,Activity}`, `Renewal`, `RenewalAnswer`; values and validation without Tokio, SQL or native transport |
 | **New `af_stream`**, under `protocol/` | `Transport`, `Endpoint`, `Trust`, `Incoming`, `OwnedFrame`, `Connection`, `ConnectionInfo`; native transport and framing, without SQL or authentication decisions |
 | **New `afd_bus`**, under `daemon/` | Object-safe `Bus`, cloneable `Handle`, `Subject`, `Command`, `Subscription`, `Received`; Dragonfly adapter and wake notifications |
 | **New `afd_gateway`**, under `daemon/` | Concrete `Gateway`, `ConnectionContext`, `Session`, `LiveLease`, `Registry`; consumes the domain's proven authority |
@@ -161,9 +199,9 @@ No WebSocket carrier or Cloudflare service enters the design.
 
 The proposed `work` lane carries offers and folded-input exchanges.
 This keeps potentially large work payloads out of control's ordered byte stream.
-The initial wire draft follows the earlier three-lane sketch and needs the approved fourth lane.
+The current protocol declares all four stream kinds.
 
-| Lane | Messages |
+| Stream kind | Messages |
 |---|---|
 | `control` | Hello/welcome, credits, heartbeat, ping/pong, renewal batches, cancel and `go_away` |
 | `work` | Offers and folded-input requests/answers |
@@ -262,11 +300,11 @@ Dropping an individual subscription releases only that consumer, rather than clo
 
 | Owner | Proposed callables | Purpose |
 |---|---|---|
-| `Gateway` | `open`, `attach_lane`, `drain` | Claim authority after authentication, bind secondary lanes, stop new offers |
+| `Gateway` | `open`, `attach_stream`, `drain` | Claim authority after authentication, bind secondary lanes, stop new offers |
 | `ConnectionContext` | `bind`, `attach`, `cancel` | Set one proven binding, reserve each lane once, close sibling requests |
 | `Session` | `serve`, `on_up`, `on_command`, `recheck` | Own lease index and state transitions; dispatch bounded domain work |
 | `Registry` | `register`, `offer_pass`, `probe` | Find eligible sessions and run one fallback admission probe per replica |
-| Existing `Plane` | `claim` returning `Claimed`, `rebuild`, cached-target activity publishing | Preserve payload assembly and return the lease's target without another target read |
+| Existing `LeaseService` | `claim` returning `Claimed`, `rebuild`, cached-target activity publishing | Preserve payload assembly and return the lease's target without another target read |
 | Existing host capacity | `lock` with expected authority, ticket propagation | Compare connection ownership and credential digest inside issue and renewal transactions |
 | Existing `Runners` | `acquire_connection`, `check_connection` | Acquire a fresh owner or classify refusal; prevent a replaced automatic resume |
 | `StreamHandle` | `renew_batch`, `report`, `folds`, `activity`, `credits`, `heartbeat` | Typed runner-facing operations over channels; no raw socket sharing |

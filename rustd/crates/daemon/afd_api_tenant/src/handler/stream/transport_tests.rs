@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_bus::{Message, Subject};
-use afd_sse::{Ceiling, Frame};
+use afd_sse::{StreamLimit, Frame};
 use axum::body::{BodyDataStream, Bytes};
 use axum::response::IntoResponse as _;
 use axum::response::sse::{Event, Sse};
@@ -32,7 +32,7 @@ fn published(payload: &str) -> Arc<Message> {
     })
 }
 
-fn quiet_body(ceiling: &Ceiling) -> BodyDataStream {
+fn quiet_body(ceiling: &StreamLimit) -> BodyDataStream {
     serve(
         stream::pending().boxed(),
         ceiling.admit().expect(ADMISSION_PRECONDITION),
@@ -63,7 +63,7 @@ async fn next_text(body: &mut BodyDataStream) -> String {
 
 #[tokio::test(start_paused = true)]
 async fn an_idle_stream_emits_named_heartbeats_at_the_documented_cadence() {
-    let ceiling = Ceiling::new(1);
+    let ceiling = StreamLimit::new(1);
     let mut body = quiet_body(&ceiling);
     for _ in 0..3 {
         assert!(body.next().now_or_never().is_none());
@@ -79,7 +79,7 @@ async fn an_idle_stream_emits_named_heartbeats_at_the_documented_cadence() {
 
 #[tokio::test(start_paused = true)]
 async fn heartbeats_neither_consume_activity_ids_nor_delay_ready_activity() {
-    let ceiling = Ceiling::new(1);
+    let ceiling = StreamLimit::new(1);
     let (sender, receiver) = tokio::sync::mpsc::channel(1);
     let frames = stream::unfold(receiver, |mut receiver| async move {
         receiver.recv().await.map(|frame| (frame, receiver))
@@ -115,7 +115,7 @@ async fn heartbeats_neither_consume_activity_ids_nor_delay_ready_activity() {
 
 #[tokio::test(start_paused = true)]
 async fn one_hundred_idle_streams_keep_their_slots_until_each_body_drops() {
-    let ceiling = Ceiling::new(CONCURRENT_STREAMS);
+    let ceiling = StreamLimit::new(CONCURRENT_STREAMS);
     let mut bodies: Vec<_> = (0..CONCURRENT_STREAMS)
         .map(|_| quiet_body(&ceiling))
         .collect();
@@ -134,7 +134,7 @@ async fn one_hundred_idle_streams_keep_their_slots_until_each_body_drops() {
 
 #[tokio::test(start_paused = true)]
 async fn dropping_an_unpolled_response_releases_its_slot() {
-    let ceiling = Ceiling::new(1);
+    let ceiling = StreamLimit::new(1);
     let body = quiet_body(&ceiling);
     assert_eq!(ceiling.live(), 1);
     drop(body);
@@ -143,7 +143,7 @@ async fn dropping_an_unpolled_response_releases_its_slot() {
 
 #[tokio::test(start_paused = true)]
 async fn a_finished_stream_does_not_emit_a_posthumous_heartbeat() {
-    let ceiling = Ceiling::new(1);
+    let ceiling = StreamLimit::new(1);
     let mut body = serve(
         stream::empty().boxed(),
         ceiling.admit().expect(ADMISSION_PRECONDITION),
@@ -182,7 +182,7 @@ async fn the_body_writes_what_axum_would() {
                 .data(frame.data.text()))
         })
         .collect();
-    let ceiling = Ceiling::new(1);
+    let ceiling = StreamLimit::new(1);
     let ours = serve(
         stream::iter(frames).boxed(),
         ceiling.admit().expect(ADMISSION_PRECONDITION),
@@ -207,7 +207,7 @@ async fn the_body_writes_what_axum_would() {
 #[tokio::test]
 async fn test_the_body_shares_one_payload_across_viewers() {
     let message = published(ACTIVITY);
-    let ceiling = Ceiling::new(3);
+    let ceiling = StreamLimit::new(3);
     for viewer in 0..3 {
         let frame = Frame::activity(viewer, Arc::clone(&message));
         let mut body = serve(

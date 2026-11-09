@@ -56,7 +56,7 @@ use crate::error::{
     github_reconnect_required, grant_required, integration_not_connected, lease_not_found,
     mint_unconfigured, vault_data_invalid,
 };
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::scope::MintScope;
 use afd_credential::credential::broker::Ask;
 use afd_credential::credential::outcome::{Minted, Outcome};
@@ -76,7 +76,7 @@ enum Purpose {
     TaskPublish,
 }
 
-impl Plane {
+impl LeaseService {
     /// Mints one short-lived credential for the child behind `runner_id`.
     ///
     /// # Errors

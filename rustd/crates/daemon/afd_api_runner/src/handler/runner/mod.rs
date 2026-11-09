@@ -32,6 +32,7 @@ pub(crate) mod schedule;
 pub(crate) mod schedule_edit;
 pub(crate) mod schedule_run;
 pub(crate) mod self_record;
+pub(crate) mod stream;
 pub(crate) mod task_bindings;
 pub(crate) mod task_checkpoints;
 pub(crate) mod task_effects;

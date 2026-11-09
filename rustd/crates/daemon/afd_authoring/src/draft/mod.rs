@@ -59,7 +59,9 @@ impl Drafts {
         self
     }
 
-    pub(crate) async fn lock_capacity(
+    /// Lock the runner row through this transaction and count its occupied workers.
+    /// Stream grants also recheck the opening credential and connection owner.
+    pub(crate) async fn lock_host_capacity(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         runner: &Uuid7,

@@ -21,7 +21,7 @@ use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_sse::{Ceiling, Live};
+use afd_sse::{StreamLimit, Live};
 
 use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
 
@@ -65,7 +65,9 @@ fn plane() -> ServingPlane {
             Arc::new(Registry::default()),
             Arc::new(vendors),
         )),
-        live: Live::detached(Ceiling::new(4)),
+        runner_wake: afd_bus::wake::Wake::default(),
+        frame_memory: af_stream::MemoryLimits::default(),
+        live: Live::detached(StreamLimit::new(4)),
         // No admin workspace and no scheduler credentials: the fail-closed
         // deployment state, which is what this fixture is for — the plane must
         // map every service to its own store whether or not either is present.

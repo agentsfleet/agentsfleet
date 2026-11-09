@@ -5,13 +5,13 @@ use jiff::Timestamp;
 
 use crate::error::Result;
 use crate::lease::envelope::Acquired;
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 
-impl Plane {
-    /// [`Plane::lease`] over an event the caller has already claimed.
+impl LeaseService {
+    /// [`LeaseService::lease`] over an event the caller has already claimed.
     ///
     /// # Errors
-    /// As [`Plane::lease`]: a datastore that would not answer, and a stored
+    /// As [`LeaseService::lease`]: a datastore that would not answer, and a stored
     /// configuration this daemon cannot read. Every decision is an `Ok`.
     pub async fn lease_claimed(
         &self,

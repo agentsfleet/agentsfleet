@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use af_wire::protocol::Lane;
+use af_wire::protocol::StreamKind;
 use garde::{Unvalidated, Validate};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tokio::time::Instant;
@@ -35,6 +35,17 @@ impl Default for Budget {
 }
 
 impl Budget {
+    /// Independent receive and send pools prevent held input from starving its own answer.
+    /// Each direction receives half of the validated deployment budget.
+    #[must_use]
+    pub fn duplex(limits: super::MemoryLimits) -> (Self, Self) {
+        let half = || Self {
+            control: Arc::new(Semaphore::new(limits.control_bytes / 2)),
+            data: Arc::new(Semaphore::new(limits.data_bytes / 2)),
+        };
+        (half(), half())
+    }
+
     /// Allocate separate byte pools; small pools also support pressure tests.
     ///
     /// # Errors
@@ -53,26 +64,26 @@ impl Budget {
 
     /// Bytes available without waiting, used by queue-pressure telemetry.
     #[must_use]
-    pub fn available(&self, lane: Lane) -> usize {
-        self.pool(lane).available_permits()
+    pub fn available(&self, kind: StreamKind) -> usize {
+        self.pool(kind).available_permits()
     }
 
-    fn pool(&self, lane: Lane) -> &Arc<Semaphore> {
-        match lane {
-            Lane::Control => &self.control,
-            Lane::Work | Lane::Reports | Lane::Activity => &self.data,
+    fn pool(&self, kind: StreamKind) -> &Arc<Semaphore> {
+        match kind {
+            StreamKind::Control => &self.control,
+            StreamKind::Work | StreamKind::Reports | StreamKind::Activity => &self.data,
         }
     }
 
     pub(super) async fn reserve(
         &self,
-        lane: Lane,
+        kind: StreamKind,
         bytes: usize,
         stop: &CancellationToken,
         deadline: Instant,
     ) -> Result<OwnedSemaphorePermit> {
         let requested = u32::try_from(bytes)?;
-        let pool = Arc::clone(self.pool(lane));
+        let pool = Arc::clone(self.pool(kind));
         error::within(stop, deadline, Stage::Memory, async move {
             Ok(pool.acquire_many_owned(requested).await?)
         })
