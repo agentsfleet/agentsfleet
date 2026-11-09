@@ -68,6 +68,42 @@ async fn a_claim_the_database_refuses_is_logged_and_retried() {
     worker.await.expect("the worker stops");
 
     assert!(poster.attempted().is_empty(), "nothing was claimed");
+    let unavailable = af_core::error_code::INTERNAL_DB_UNAVAILABLE.as_str();
+    let failed: Vec<_> = capture
+        .events()
+        .into_iter()
+        .filter(|event| event.field("event") == Some("outbound_claim_failed"))
+        .collect();
+    assert!(
+        failed
+            .iter()
+            .all(|event| event.field("error_code") == Some(unavailable)),
+        "a closed pool is the outage an operator retries against: {failed:?}"
+    );
+    ledger.cleanup().await;
+}
+
+// Current-thread: the capture is per thread, and the worker runs on this one.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_claim_that_takes_a_row_logs_how_many_it_took() {
+    let capture = af_core::test_util::trace::Capture::install();
+    let ledger = Ledger::create().await;
+    let lane = ledger.lane().await;
+    ledger.owe(&lane, "claimed").await;
+    let poster = Recorder::default();
+    let token = CancellationToken::new();
+    let worker = tokio::spawn(ledger.worker(&poster, POLL).run(token.clone()));
+
+    ledger.until_delivered(1).await;
+    token.cancel();
+    worker.await.expect("the worker stops");
+
+    let took_one = capture.events().iter().any(|event| {
+        event.field("event") == Some("outbound_claim_completed")
+            && event.field("claimed") == Some("1")
+    });
+    assert!(took_one, "the claim that took the row logs its count");
     ledger.cleanup().await;
 }
 
