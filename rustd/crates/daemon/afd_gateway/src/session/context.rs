@@ -86,7 +86,7 @@ impl SessionServices {
     }
 
     pub(super) fn apply_policy(&self, beat: &Beat) {
-        self.handle.snapshot.lock().degraded = beat.verdict.is_degraded();
+        self.handle.apply_policy(beat.verdict.is_degraded());
     }
 
     pub(super) async fn recheck(&self) -> Result<()> {

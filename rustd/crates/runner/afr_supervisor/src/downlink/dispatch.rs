@@ -137,4 +137,77 @@ mod tests {
         assert!(!stop.is_cancelled());
         Ok(())
     }
+
+    #[tokio::test]
+    async fn a_cancel_received_before_its_offer_prevents_execution()
+    -> std::result::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        use crate::test_support::{Behaviour, FakeAgent, FakeEngine, Rig, bounded, daemon};
+        use std::sync::atomic::Ordering;
+        let rig = Rig::new(
+            daemon(|_| None),
+            FakeEngine::default(),
+            FakeAgent::new(Behaviour::Answer),
+        );
+        let requests = Requests::new();
+        let (offers, offered) = mpsc::channel(LEASES_MAX);
+        let (assignments, _) = watch::channel(None);
+        let stop = CancellationToken::new();
+        let mut dispatch = Dispatch {
+            requests: &requests,
+            running: &rig.lessee.plane.stream.running,
+            offers: &offers,
+            assignments: &assignments,
+            stop: &stop,
+            early_cancel: HashSet::new(),
+        };
+        cancel_then_offer(&mut dispatch, &stop).await?;
+        assert!(dispatch.early_cancel.is_empty());
+        drop(dispatch);
+        drop(offers);
+        let (_, watching) = watch::channel(super::super::policy::Assignment::initial());
+        let pool = tokio::spawn(crate::worker_pool::serve(
+            Arc::clone(&rig.lessee),
+            watching,
+            offered,
+        ));
+        bounded("cancelled wire offer removal", async {
+            while !rig.lessee.plane.stream.running.snapshot().is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await;
+        rig.shutdown.cancel();
+        bounded("cancelled wire offer pool shutdown", pool).await?;
+        assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
+        Ok(())
+    }
+
+    async fn cancel_then_offer(
+        dispatch: &mut Dispatch<'_>,
+        stop: &CancellationToken,
+    ) -> Result<()> {
+        use crate::test_support::{FLEET_ID, LEASE_ID, lease};
+        let messages: [Down<'_>; 2] = [
+            Down::Cancel {
+                lease_id: LEASE_ID.into(),
+                error_code: af_core::error_code::RUN_LEASE_CANCELLED.as_str().into(),
+            },
+            Down::Offer {
+                lease: TaggedLease::<serde_json::Value>::Fleet(Box::new(lease(LEASE_ID, FLEET_ID))),
+            },
+        ];
+        for message in messages {
+            let kind = message.stream_kind();
+            let frame = encode(
+                &message,
+                &Budget::default(),
+                kind,
+                stop,
+                Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT,
+            )
+            .await?;
+            assert!(matches!(dispatch.frame(kind, frame)?, Progress::Continue));
+        }
+        Ok(())
+    }
 }

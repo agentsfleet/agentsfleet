@@ -1,7 +1,9 @@
 //! A lost welcome retains the proposal until the database classifies the next opening.
 
-use af_core::id::Uuid7;
+use af_core::{id::Uuid7, timing::STREAM_STABLE_RESET_AFTER};
 use af_stream::{Connection, Transport};
+use backon::BackoffBuilder as _;
+use std::time::Duration;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -84,3 +86,34 @@ impl Preference {
         self.retry_http3_after = Some(Instant::now() + std::time::Duration::from_secs(30));
     }
 }
+
+/// Failed openings and short-lived sessions share one retry history.
+pub(crate) struct Recovery {
+    builder: backon::ExponentialBuilder,
+    pauses: backon::ExponentialBackoff,
+}
+
+impl Recovery {
+    pub(crate) fn new(builder: backon::ExponentialBuilder) -> Self {
+        let builder = builder.without_max_times();
+        Self {
+            builder,
+            pauses: builder.build(),
+        }
+    }
+
+    pub(crate) fn after(&mut self, connected_for: Option<Duration>) -> crate::Result<Duration> {
+        if connected_for.is_some_and(|duration| duration >= STREAM_STABLE_RESET_AFTER) {
+            self.pauses = self.builder.build();
+        }
+        // Backon's jitter is added after its maximum-delay clamp.
+        self.pauses
+            .next()
+            .map(|pause| pause.min(Duration::from_secs(30)))
+            .ok_or_else(|| crate::error::ErrorKind::StreamProtocol.into())
+    }
+}
+
+#[cfg(test)]
+#[path = "reconnect_tests.rs"]
+mod tests;

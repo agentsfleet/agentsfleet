@@ -147,6 +147,10 @@ test_deployment_checks_complete_infrastructure_inputs() {
     'planetscale-dev/api-connection-string'
     'planetscale-dev/migrator-connection-string'
     'dragonfly-dev/api-url'
+    'agentsfleet-runner-stream/certificate-chain'
+    'agentsfleet-runner-stream/private-key'
+    'agentsfleet-runner-stream/ca-certificate'
+    'agentsfleet-runner-stream/server-name'
     'grafana-dev/otlp-endpoint'
     'grafana-dev/instance-id'
     'grafana-dev/api-key'
@@ -280,7 +284,34 @@ test_unknown_stage_fails_closed() {
   fi
 }
 
+test_runner_stream_runtime_material_is_deployment_only() {
+  local target_env field ref output status
+  for target_env in dev prod; do
+    for field in certificate-chain private-key ca-certificate server-name; do
+      case "$target_env" in dev) ref="op://ZMB_CD_DEV/agentsfleet-runner-stream/$field" ;; prod) ref="op://ZMB_CD_PROD/agentsfleet-runner-stream/$field" ;; esac
+      status=0
+      output="$(run_gate deployment "$ref" "$target_env")" || status=$?
+      if [ "$status" -ne 1 ] || [[ "$output" != *"MISSING: $ref"* ]]; then
+        bad "stream deployment input" "$target_env did not refuse missing $field"
+        return
+      fi
+    done
+    output="$(run_gate bootstrap '' "$target_env")" || { bad "stream bootstrap boundary" "$output"; return; }
+    if [[ "$output" == *agentsfleet-runner-stream/* ]]; then
+      bad "stream bootstrap boundary" "bootstrap read post-generation material"
+      return
+    fi
+    output="$(run_gate deployment '' "$target_env")" || { bad "complete stream inventory" "$output"; return; }
+    if [[ "$output" == *agentsfleet-runner-stream/ca-private-key* ]] || [[ "$output" == *do-not-print-provider-secret* ]]; then
+      bad "stream runtime boundary" "deployment read signing material or printed a value"
+      return
+    fi
+  done
+  ok "stream runtime inputs are required only at deployment"
+}
+
 echo "credential-stage regression tests"
+test_runner_stream_runtime_material_is_deployment_only
 test_bootstrap_checks_only_pre_priming_inputs
 test_post_deploy_values_are_not_early_inputs
 test_deployment_checks_complete_infrastructure_inputs

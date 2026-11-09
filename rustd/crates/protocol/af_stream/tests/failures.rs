@@ -1,4 +1,4 @@
-use af_stream::{Connection, Reason, Transport};
+use af_stream::{Connection, Endpoint, Reason, Transport};
 
 use super::native::{Fixture, Result, deadline};
 
@@ -91,12 +91,17 @@ async fn expired_opening_cancels_every_native_worker_on_both_transports() -> Res
 
 #[tokio::test]
 async fn blackholed_quic_falls_back_to_verified_http2_within_one_connection_budget() -> Result {
-    let fixture = Fixture::new(vec!["localhost".to_owned()], false)?;
+    let fixture = Fixture::new(vec!["localhost".to_owned(), "::1".to_owned()], false)?;
     let host = fixture.serve().await?;
     let proxy = super::support::proxy::Blackhole::start(&host).await?;
+    let port = proxy
+        .endpoint
+        .uri()
+        .port_u16()
+        .ok_or("proxy port missing")?;
+    let endpoint = Endpoint::parse(&format!("https://[::1]:{port}"))?;
     let started = tokio::time::Instant::now();
-    let selected =
-        Connection::preferred(&proxy.endpoint, &fixture.trust, &host.stop, deadline()).await?;
+    let selected = Connection::preferred(&endpoint, &fixture.trust, &host.stop, deadline()).await?;
     assert_eq!(selected.connection.transport(), Transport::H2);
     assert_eq!(selected.http3_failure, Some(Reason::Timeout));
     assert!(started.elapsed() < std::time::Duration::from_millis(4500));

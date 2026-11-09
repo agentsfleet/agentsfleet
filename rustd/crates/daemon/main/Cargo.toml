@@ -28,6 +28,7 @@ path = "src/main.rs"
 [features]
 # M-TEST-UTIL. Unlocks the mockable cores the boot path reads through.
 test-util = [
+    "afd_admin/test-util",
     "afd_authoring/test-util",
     "afd_api/test-util",
     "afd_auth/test-util",
@@ -157,6 +158,7 @@ tracing-subscriber.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+afd_admin = { workspace = true, features = ["test-util"] }
 af_stream = { workspace = true, features = ["test-util"] }
 afd_bus = { workspace = true, features = ["test-util"] }
 af_webhook = { workspace = true, features = ["test-util"] }

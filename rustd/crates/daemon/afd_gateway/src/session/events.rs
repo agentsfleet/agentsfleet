@@ -20,6 +20,7 @@ pub(super) enum SessionEvent {
     DrainRequested,
     Superseded,
     Disconnected,
+    Silent,
 }
 
 #[derive(Clone, Copy)]
@@ -33,6 +34,7 @@ pub(super) enum ShutdownReason {
     Drain,
     Superseded,
     Disconnected,
+    Silent,
 }
 
 /// The handler owns state transitions; the event source owns asynchronous selection.
@@ -59,6 +61,7 @@ impl EventSource {
             () = handle.stop.cancelled() => Ok(SessionEvent::Disconnected),
             () = handle.superseded.cancelled() => Ok(SessionEvent::Superseded),
             () = handle.drain.cancelled() => Ok(SessionEvent::DrainRequested),
+            () = handle.liveness.silence() => Ok(SessionEvent::Silent),
             done = session.jobs.join_next(), if !session.jobs.is_empty() => Ok(SessionEvent::Completed(join_result(done)?)),
             done = workers.join_next(), if !workers.is_empty() => { join_result(done)?; Err(ErrorKind::Closed.into()) }
             command = self.commands.recv(), if !session.command_running => {

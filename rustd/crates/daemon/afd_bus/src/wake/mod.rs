@@ -19,6 +19,10 @@ pub use publish::publish;
 /// Independent subjects distribute notifications across the broker's shard slots.
 pub const SHARDS: u16 = 16;
 
+/// Proof that an independent recovery pass still needs a successful durable claim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Recovery(u64);
+
 /// One wake queue and generation counter per replica, shared by its sessions.
 #[derive(Debug, Clone)]
 pub struct Wake {
@@ -66,8 +70,20 @@ impl Wake {
 
     /// An unknown loss wakes a full eligible-session pass without fabricating a fleet identifier.
     pub fn recheck(&self) {
+        self.lock().recheck();
         self.generation
             .send_modify(|generation| *generation = generation.wrapping_add(1));
+    }
+
+    /// A recovery request survives empty hosts and ordinary locality notifications.
+    #[must_use]
+    pub fn recovery(&self) -> Option<Recovery> {
+        self.lock().recovery()
+    }
+
+    /// A successful claim covers this generation, while a newer request remains pending.
+    pub fn recovered(&self, recovery: Recovery) {
+        self.lock().recovered(recovery);
     }
 
     /// Consume one fleet; absence never proves that Postgres has no ready work.

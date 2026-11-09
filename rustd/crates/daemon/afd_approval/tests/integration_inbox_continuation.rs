@@ -237,22 +237,7 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
     let before = lane.event_count().await;
-
-    // A ledger with no room refuses the continuation after the row moved.
-    let full = Budgets {
-        deployment_backlog: 0,
-    };
-    let refusing = Inbox::new(
-        lane.pool.clone(),
-        afd_bus::dragonfly::publisher(lane.queue.clone()),
-        Admissions::for_tests(lane.pool.clone(), lane.queue.clone()).with_budgets(full),
-    );
-    refusing
-        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
-        .await
-        .expect_err("the continuation's admission is refused");
-    assert_eq!(lane.status_of(&action).await, "approved");
-    assert_eq!(lane.event_count().await, before, "nothing continued yet");
+    refuse_continuation(&lane, &action, before).await;
 
     let retried = lane
         .inbox
@@ -297,4 +282,22 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
         "the third answer finds the continuation already landed"
     );
     assert_eq!(lane.event_count().await, before + 1, "and lands none");
+}
+
+async fn refuse_continuation(lane: &Lane, action: &Uuid7, before: i64) {
+    // A ledger with no room refuses the continuation after the row moved.
+    let full = Budgets {
+        deployment_backlog: 0,
+    };
+    let refusing = Inbox::new(
+        lane.pool.clone(),
+        afd_bus::dragonfly::publisher(lane.queue.clone()),
+        Admissions::for_tests(lane.pool.clone(), lane.queue.clone()).with_budgets(full),
+    );
+    refusing
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
+        .await
+        .expect_err("the continuation's admission is refused");
+    assert_eq!(lane.status_of(action).await, "approved");
+    assert_eq!(lane.event_count().await, before, "nothing continued yet");
 }

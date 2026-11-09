@@ -215,9 +215,12 @@ pub(crate) fn dragonfly_calls_in(info: &str) -> Option<u64> {
     let mut seen = false;
     let total = info
         .lines()
-        .filter_map(|line| line.split_once(CALLS_FIELD))
-        .filter_map(|(_before, after)| after.split(',').next())
-        .filter_map(|calls| calls.trim().parse::<u64>().ok())
+        .filter_map(|line| {
+            let (name, values) = line.split_once(CALLS_FIELD)?;
+            let calls = values.split(',').next()?.trim().parse::<u64>().ok()?;
+            // INFO belongs to the measuring reader, not the product operation.
+            Some(if name == "cmdstat_info:" { 0 } else { calls })
+        })
         .inspect(|_calls| seen = true)
         .sum();
     seen.then_some(total)

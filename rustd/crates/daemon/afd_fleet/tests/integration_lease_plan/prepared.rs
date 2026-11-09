@@ -10,7 +10,7 @@ use sqlx::{AssertSqlSafe, PgConnection};
 use super::run;
 
 pub(super) async fn prepare(connection: &mut PgConnection) {
-    run(connection, &format!("PREPARE gate_candidates (text,uuid,bigint,interval,text,uuid[],uuid,text,text,text,text[]) AS {SELECT_CANDIDATES}")).await;
+    run(connection, &format!("PREPARE gate_candidates (text,uuid,bigint,interval,text,uuid[],uuid,text,text,text,text[],boolean) AS {SELECT_CANDIDATES}")).await;
     run(
         connection,
         &format!("PREPARE gate_claim (uuid,uuid,interval,interval,text,text,text,text,text,text,text[]) AS {CLAIM_HEAD}"),
@@ -28,7 +28,7 @@ pub(super) async fn candidates(connection: &mut PgConnection, runner: &Uuid7) ->
     let runner_active = sql::RUNNER_STATUS_ACTIVE;
     let offline = af_core::timing::RUNNER_OFFLINE_AFTER.as_secs();
     let task = task_parameters();
-    explain(connection, &format!("gate_candidates('{active}','{runner}',64,'{offline} seconds','{runner_active}','{{}}',NULL,{task})")).await
+    explain(connection, &format!("gate_candidates('{active}','{runner}',64,'{offline} seconds','{runner_active}','{{}}',NULL,{task},false)")).await
 }
 
 pub(super) async fn claim(

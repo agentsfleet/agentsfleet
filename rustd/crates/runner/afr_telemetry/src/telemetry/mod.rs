@@ -106,8 +106,8 @@ impl Telemetry {
     /// The layer that exports the runner's spans: `runner.lease`,
     /// `invoke_agent`, `chat`, `decision` and `execute_tool`.
     ///
-    /// Filtered to the runner's own span target, so a library's span never
-    /// leaves the host, and to spans alone, so no log record rides a span as
+    /// Filtered to the runner target and the shared transport's value-free
+    /// operation span. Other library spans stay local; no log record rides a span as
     /// an event: the constructors in `afr_agent`, `af_providers` and `afr_supervisor` are
     /// the only things that decide what a runner span carries, and none takes
     /// a prompt, a reply or a tool's output. The tool span names its tool by
@@ -223,5 +223,11 @@ pub fn announce_disabled() {
 
 /// Whether `metadata` is one of the runner's own spans.
 fn is_runner_span(metadata: &Metadata<'_>) -> bool {
-    metadata.is_span() && metadata.target() == RUNNER_SCOPE_NAME
+    metadata.is_span()
+        && (metadata.target() == RUNNER_SCOPE_NAME
+            || (metadata.target() == "af_stream::telemetry"
+                && metadata.name() == "runner_stream_operation"))
 }
+
+#[cfg(test)]
+mod transport_tests;

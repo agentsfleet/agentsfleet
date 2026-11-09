@@ -34,7 +34,12 @@ impl Error {
             | ErrorKind::RunnersExceedPool { .. }
             | ErrorKind::UnknownShape { .. }
             | ErrorKind::ShapeNeedsRig { .. } => true,
-            ErrorKind::LatencyUnavailable { .. }
+            ErrorKind::StreamFaulted { .. }
+            | ErrorKind::WakeClosed { .. }
+            | ErrorKind::ProviderTransportFaulted { .. }
+            | ErrorKind::StreamAnswer
+            | ErrorKind::StreamRefused { .. }
+            | ErrorKind::LatencyUnavailable { .. }
             | ErrorKind::LatencyUnrecordable { .. }
             | ErrorKind::LatencyUnmergeable { .. }
             | ErrorKind::ResultUnrenderable { .. }

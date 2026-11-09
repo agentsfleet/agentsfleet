@@ -89,25 +89,7 @@ async fn test_approval_resolution_leases_next_poll() {
         "the admission is durably parked"
     );
 
-    let resolved = Inbox::new(
-        fixtures.database.clone(),
-        afd_bus::dragonfly::publisher(fixtures.queue().clone()),
-        Admissions::new(
-            fixtures.database.clone(),
-            afd_bus::dragonfly::publisher(fixtures.queue().clone()),
-            Entropy::new(),
-        ),
-    )
-    .resolve(
-        action.as_str(),
-        Decision::Approved,
-        REVIEWER,
-        "",
-        Some(seeded.fleet.as_str()),
-    )
-    .await
-    .expect("the resolve must not fault");
-    assert!(matches!(resolved, Resolution::Resolved(_)), "{resolved:?}");
+    approve_parked(&fixtures, &seeded, &action).await;
     assert!(
         !parked(&fixtures, &seeded.event_id).await,
         "the answer durably unparked the admission"
@@ -192,4 +174,26 @@ async fn parked(fixtures: &Fixtures, event: &Uuid7) -> bool {
         .fetch_one(&mut *connection)
         .await
         .expect("park state")
+}
+
+async fn approve_parked(fixtures: &Fixtures, seeded: &Ready, action: &Uuid7) {
+    let resolved = Inbox::new(
+        fixtures.database.clone(),
+        afd_bus::dragonfly::publisher(fixtures.queue().clone()),
+        Admissions::new(
+            fixtures.database.clone(),
+            afd_bus::dragonfly::publisher(fixtures.queue().clone()),
+            Entropy::new(),
+        ),
+    )
+    .resolve(
+        action.as_str(),
+        Decision::Approved,
+        REVIEWER,
+        "",
+        Some(seeded.fleet.as_str()),
+    )
+    .await
+    .expect("the resolve must not fault");
+    assert!(matches!(resolved, Resolution::Resolved(_)), "{resolved:?}");
 }

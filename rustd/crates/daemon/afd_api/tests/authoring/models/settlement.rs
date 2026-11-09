@@ -1,4 +1,4 @@
-//! Own-runner renewal and post-purge accounting use real HTTP and database state.
+//! Own-runner renewal and post-purge accounting use native frames and database state.
 
 use super::super::{json_body, mint, send};
 use super::fixture::Model;
@@ -10,19 +10,12 @@ use serde_json::{Value, json};
 async fn runner_renews_and_accounts_after_creator_deletes_private_text() {
     let model = Model::create().await;
     let r = &model.running;
-    let root = r.path.trim_end_matches("/activity");
-    let renew = format!("{root}/renew");
-    let reports = format!("{root}/reports");
+    let renew = crate::harness::native::Operation::Renew(r.lease.clone());
+    let reports = crate::harness::native::Operation::Report(r.lease.clone());
     let usage = json!({"knowledge":"known","calls":0,"input_tokens":0,"output_tokens":0,"runtime_ms":0,"provider_cost_nanos":"0"});
     let input = json!({"fence":"1","usage":usage});
-    let extended = send(
-        &r.router,
-        Method::POST,
-        &renew,
-        Some(&r.token),
-        &input.to_string(),
-    )
-    .await;
+    let extended =
+        crate::harness::native::send(&r.router, &renew, Some(&r.token), &input.to_string()).await;
     assert_eq!(extended.status(), StatusCode::OK);
     let extended = json_body(extended).await;
     assert_eq!(
@@ -60,15 +53,22 @@ async fn runner_renews_and_accounts_after_creator_deletes_private_text() {
 async fn renewal_and_report_refuse_person_identity_and_accounting_text() {
     let model = Model::create().await;
     let r = &model.running;
-    let root = r.path.trim_end_matches("/activity");
     let usage = json!({"knowledge":"known","calls":0,"runtime_ms":0});
     let renew = json!({"fence":"1","usage":usage});
     let report = json!({"kind":"accounting","fence":"1","report_id":mint(),"outcome":"completed","usage":usage});
-    for (suffix, body) in [("renew", renew), ("reports", report.clone())] {
-        let reply = send(
+    for (operation, body) in [
+        (
+            crate::harness::native::Operation::Renew(r.lease.clone()),
+            renew,
+        ),
+        (
+            crate::harness::native::Operation::Report(r.lease.clone()),
+            report.clone(),
+        ),
+    ] {
+        let reply = crate::harness::native::send(
             &r.router,
-            Method::POST,
-            &format!("{root}/{suffix}"),
+            &operation,
             Some(&r.f.token),
             &body.to_string(),
         )
@@ -80,39 +80,30 @@ async fn renewal_and_report_refuse_person_identity_and_accounting_text() {
         .as_object_mut()
         .expect("report object")
         .insert("answer".into(), json!("private"));
-    let reply = send(
+    crate::harness::native::assert_closed(
         &r.router,
-        Method::POST,
-        &format!("{root}/reports"),
+        &crate::harness::native::Operation::Report(r.lease.clone()),
         Some(&r.token),
         &forged.to_string(),
     )
     .await;
-    assert_eq!(reply.status(), StatusCode::BAD_REQUEST);
     let count:i64=sqlx::query_scalar("SELECT count(*) FROM billing.authoring_report_receipts r JOIN authoring.attempts a ON a.id=r.attempt_id WHERE a.draft_id=$1")
         .bind(&r.draft).fetch_one(&mut *r.f.db.acquire().await.expect("receipt read")).await.expect("no effects on refusal");
     assert_eq!(count, 0);
     model.running.f.cleanup().await;
 }
 
-async fn replay_accounting(model: &Model, reports: &str, input: &Value) {
+async fn replay_accounting(
+    model: &Model,
+    reports: &crate::harness::native::Operation,
+    input: &Value,
+) {
     let r = &model.running;
     for replayed in [false, true] {
-        let ack = send(
-            &r.router,
-            Method::POST,
-            reports,
-            Some(&r.token),
-            &input.to_string(),
-        )
-        .await;
+        let ack =
+            crate::harness::native::send(&r.router, reports, Some(&r.token), &input.to_string())
+                .await;
         assert_eq!(ack.status(), StatusCode::OK);
-        assert_eq!(
-            ack.headers()
-                .get("cache-control")
-                .expect("private cache policy"),
-            "no-store"
-        );
         let ack = json_body(ack).await;
         assert_eq!(ack.get("settled"), Some(&Value::Bool(true)));
         assert_eq!(ack.get("replayed"), Some(&Value::Bool(replayed)));

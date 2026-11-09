@@ -8,6 +8,10 @@ use crate::test_support::{Answer, drain, json, plane};
 use af_core::id::Uuid7;
 use af_wire::task::{DecisionCallState, DecisionReservationInput};
 use afr_agent::{LeaseVerbs as _, Unanswered};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicUsize, Ordering},
+};
 
 const CALL: &str = "019f0000-0000-7000-8000-000000000001";
 
@@ -69,7 +73,14 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
         host.stop.cancel();
     }
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
+    let verbs = FencedVerbs::new(
+        &plane,
+        &lease,
+        FENCING,
+        &host.halt,
+        &host.stop,
+        &host.decisions,
+    );
     let result = verbs.task_decision(input()).await.unwrap();
     assert_eq!(result.state, DecisionCallState::NotSent);
     assert!(result.recorded.is_none());
@@ -85,6 +96,125 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
         }
     })
     .await;
+    assert_preflight_requests(&requests, api, purpose);
+    assert_eq!(drain(&mut calls).len(), 0);
+}
+
+fn preflight_reply(
+    call: &crate::client::Call,
+    reservation: &serde_json::Value,
+    _fault: &str,
+) -> Answer {
+    match call.verb {
+        Verb::TaskDecisionReserve => {
+            let sent: DecisionReservationInput =
+                serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            assert_eq!(sent.fencing_token, FENCING);
+            assert!(sent.retry_of.is_none());
+            json(reservation)
+        }
+        Verb::TaskDecisionRecord => {
+            let receipt: serde_json::Value =
+                serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
+            assert_eq!(*receipt.get("fencing_token").unwrap(), FENCING);
+            assert_eq!(*receipt.pointer("/receipt/outcome").unwrap(), "not_sent");
+            assert_eq!(*receipt.pointer("/receipt/cause").unwrap(), "preflight");
+            json(&acknowledged())
+        }
+        Verb::Activity => json(&serde_json::json!({})),
+        _ => Answer::Fail(crate::error::config("unexpected decision request")),
+    }
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_dispatch() {
+    let reservations = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&reservations);
+    let bodies = Arc::new(Mutex::new(Vec::new()));
+    let saved = Arc::clone(&bodies);
+    let (plane, mut calls) = plane(receipt_retries(count, saved));
+    let host = Host::new();
+    host.stop.cancel();
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let verbs = FencedVerbs::new(
+        &plane,
+        &lease,
+        FENCING,
+        &host.halt,
+        &host.stop,
+        &host.decisions,
+    );
+    assert_eq!(
+        verbs.task_decision(input()).await.unwrap().state,
+        DecisionCallState::NotSent
+    );
+    assert_eq!(reservations.load(Ordering::SeqCst), 1);
+    let bodies = bodies.lock().unwrap();
+    assert_eq!(bodies.len(), 2);
+    assert_eq!(bodies.first().unwrap(), bodies.last().unwrap());
+    assert_eq!(
+        drain(&mut calls)
+            .iter()
+            .filter(|call| call.verb == Verb::TaskDecisionRecord)
+            .count(),
+        2
+    );
+}
+
+#[tokio::test]
+async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
+    let (plane, mut calls) = plane(|call| {
+        assert_eq!(call.verb, Verb::TaskDecisionReserve);
+        let mut value = dispatch("typesafe", "goal");
+        *value.pointer_mut("/dispatch/request/call_id").unwrap() = serde_json::json!(LEASE_ID);
+        json(&value)
+    });
+    let host = Host::new();
+    let lease = Uuid7::parse(LEASE_ID).unwrap();
+    let verbs = FencedVerbs::new(
+        &plane,
+        &lease,
+        FENCING,
+        &host.halt,
+        &host.stop,
+        &host.decisions,
+    );
+    assert!(matches!(
+        verbs.task_decision(input()).await,
+        Err(Unanswered::Unreachable)
+    ));
+    assert_eq!(drain(&mut calls).len(), 1);
+    assert_eq!(drain(&mut calls).len(), 0);
+}
+
+fn failed_dispatch(api: &str, purpose: &str, fault: &str) -> serde_json::Value {
+    let mut reservation = dispatch(api, purpose);
+    match fault {
+        "expired" => {
+            *reservation.pointer_mut("/dispatch/expires_at").unwrap() =
+                serde_json::json!(af_core::clock::now());
+        }
+        "profile" => {
+            *reservation
+                .pointer_mut("/dispatch/assignment/profile/revision")
+                .unwrap() = serde_json::json!("");
+        }
+        "request" => {
+            *reservation
+                .pointer_mut("/dispatch/request/questions")
+                .unwrap() = serde_json::json!([]);
+        }
+        "endpoint" => {
+            *reservation
+                .pointer_mut("/dispatch/assignment/profile/endpoint")
+                .unwrap() = serde_json::json!("http://decision.invalid");
+        }
+        _ => {}
+    }
+    reservation
+}
+
+fn assert_preflight_requests(requests: &[crate::client::Call], api: &str, purpose: &str) {
     let authorities: Vec<_> = requests
         .iter()
         .filter(|call| call.verb != Verb::Activity)
@@ -123,46 +253,13 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
             .unwrap(),
         "unavailable"
     );
-    assert_eq!(drain(&mut calls).len(), 0);
 }
 
-fn preflight_reply(
-    call: &crate::client::Call,
-    reservation: &serde_json::Value,
-    _fault: &str,
-) -> Answer {
-    match call.verb {
-        Verb::TaskDecisionReserve => {
-            let sent: DecisionReservationInput =
-                serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
-            assert_eq!(sent.fencing_token, FENCING);
-            assert!(sent.retry_of.is_none());
-            json(reservation)
-        }
-        Verb::TaskDecisionRecord => {
-            let receipt: serde_json::Value =
-                serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
-            assert_eq!(*receipt.get("fencing_token").unwrap(), FENCING);
-            assert_eq!(*receipt.pointer("/receipt/outcome").unwrap(), "not_sent");
-            assert_eq!(*receipt.pointer("/receipt/cause").unwrap(), "preflight");
-            json(&acknowledged())
-        }
-        Verb::Activity => json(&serde_json::json!({})),
-        _ => Answer::Fail(crate::error::config("unexpected decision request")),
-    }
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_dispatch() {
-    use std::sync::{
-        Arc, Mutex,
-        atomic::{AtomicUsize, Ordering},
-    };
-    let reservations = Arc::new(AtomicUsize::new(0));
-    let count = Arc::clone(&reservations);
-    let bodies = Arc::new(Mutex::new(Vec::new()));
-    let saved = Arc::clone(&bodies);
-    let (plane, mut calls) = plane(move |call| match call.verb {
+fn receipt_retries(
+    count: Arc<AtomicUsize>,
+    saved: Arc<Mutex<Vec<bytes::Bytes>>>,
+) -> impl Fn(&crate::client::Call) -> Answer + Send + Sync {
+    move |call| match call.verb {
         Verb::TaskDecisionReserve => {
             count.fetch_add(1, Ordering::SeqCst);
             json(&dispatch("typesafe", "goal"))
@@ -178,70 +275,5 @@ async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_disp
         }
         Verb::Activity => json(&serde_json::json!({})),
         _ => Answer::Fail(crate::error::config("unexpected decision request")),
-    });
-    let host = Host::new();
-    host.stop.cancel();
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
-    assert_eq!(
-        verbs.task_decision(input()).await.unwrap().state,
-        DecisionCallState::NotSent
-    );
-    assert_eq!(reservations.load(Ordering::SeqCst), 1);
-    let bodies = bodies.lock().unwrap();
-    assert_eq!(bodies.len(), 2);
-    assert_eq!(bodies.first().unwrap(), bodies.last().unwrap());
-    assert_eq!(
-        drain(&mut calls)
-            .iter()
-            .filter(|call| call.verb == Verb::TaskDecisionRecord)
-            .count(),
-        2
-    );
-}
-
-#[tokio::test]
-async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
-    let (plane, mut calls) = plane(|call| {
-        assert_eq!(call.verb, Verb::TaskDecisionReserve);
-        let mut value = dispatch("typesafe", "goal");
-        *value.pointer_mut("/dispatch/request/call_id").unwrap() = serde_json::json!(LEASE_ID);
-        json(&value)
-    });
-    let host = Host::new();
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
-    assert!(matches!(
-        verbs.task_decision(input()).await,
-        Err(Unanswered::Unreachable)
-    ));
-    assert_eq!(drain(&mut calls).len(), 1);
-    assert_eq!(drain(&mut calls).len(), 0);
-}
-
-fn failed_dispatch(api: &str, purpose: &str, fault: &str) -> serde_json::Value {
-    let mut reservation = dispatch(api, purpose);
-    match fault {
-        "expired" => {
-            *reservation.pointer_mut("/dispatch/expires_at").unwrap() =
-                serde_json::json!(af_core::clock::now());
-        }
-        "profile" => {
-            *reservation
-                .pointer_mut("/dispatch/assignment/profile/revision")
-                .unwrap() = serde_json::json!("");
-        }
-        "request" => {
-            *reservation
-                .pointer_mut("/dispatch/request/questions")
-                .unwrap() = serde_json::json!([]);
-        }
-        "endpoint" => {
-            *reservation
-                .pointer_mut("/dispatch/assignment/profile/endpoint")
-                .unwrap() = serde_json::json!("http://decision.invalid");
-        }
-        _ => {}
     }
-    reservation
 }

@@ -59,19 +59,55 @@ verify_host_prepared() {
   runner_require_remote_tools
 }
 
-write_runner_environment() {
-  local env_file
-  env_file="$(mktemp)"
-  trap 'rm -f "${env_file:-}"' RETURN
+write_runner_environment() (
+  local work
+  work="$(mktemp -d)"
+  trap 'rm -rf "$work"' EXIT
+  chmod 700 "$work"
   {
     printf 'AGENTSFLEET_API_URL=%s\n' "$RUNNER_API_URL"
     printf 'AGENTSFLEET_RUNNER_TOKEN=%s\n' "$RUNNER_TOKEN"
-  } >"$env_file"
-  chmod 600 "$env_file"
-  runner_copy "$env_file" "$HOST_ENV_FILE" 600
-  rm -f "$env_file"
-  trap - RETURN
-}
+    printf 'AGENTSFLEET_RUNNER_STREAM_URL=%s\n' "$RUNNER_STREAM_URL"
+    printf 'AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE=%s\n' "$UNIT_STREAM_CA_FILE"
+  } >"$work/runner.env"
+  chmod 600 "$work/runner.env"
+  printf '%s\n' "$RUNNER_STREAM_CA_CERTIFICATE" >"$work/ca.pem"
+  runner_copy "$work/ca.pem" "$HOST_STREAM_CA_FILE" 644
+  runner_copy "$work/runner.env" "$HOST_ENV_FILE" 600
+)
+
+# The peer private key travels only on SSH stdin and is staged beside its
+# destination. Stop before replacement so the old PreDown reads the old file.
+write_runner_wireguard() (
+  set +x
+  [ "$ENV" = dev ] || return 0
+  [ -n "${RUNNER_STREAM_WIREGUARD_CONFIG:-}" ] || return 0
+  local command
+  command="$(cat <<'REMOTE'
+sudo bash -c '
+  set -euo pipefail
+  umask 077
+  install -d -m 0700 /etc/wireguard
+  pending=$(mktemp /etc/wireguard/.fly-dev.XXXXXX)
+  trap "rm -f \"$pending\"" EXIT
+  cat >"$pending"
+  chown root:root "$pending"
+  chmod 0600 "$pending"
+  config=/etc/wireguard/fly-dev.conf
+  if ! cmp -s "$pending" "$config"; then
+    if systemctl is-active --quiet wg-quick@fly-dev; then
+      systemctl stop wg-quick@fly-dev
+    fi
+    mv "$pending" "$config"
+  fi
+  chown root:root "$config"
+  chmod 0600 "$config"
+  systemctl enable --now wg-quick@fly-dev
+'
+REMOTE
+)"
+  printf '%s\n' "$RUNNER_STREAM_WIREGUARD_CONFIG" | runner_remote "$command"
+)
 
 copy_deploy_files() {
   local entry file
@@ -107,6 +143,7 @@ main() {
   verify_host_prepared
   runner_enable_ipv4_forwarding
   copy_deploy_files
+  write_runner_wireguard
   write_runner_environment
   deploy_runner
   echo "PASS: $RUNNER_ITEM deployment completed"

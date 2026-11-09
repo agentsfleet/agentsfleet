@@ -19,6 +19,7 @@ pub(super) struct Provider {
 
 pub(super) struct Calls {
     bodies: Mutex<Vec<Value>>,
+    proposal: Mutex<Option<Value>>,
     blocked: AtomicBool,
     entered: Semaphore,
     release: Semaphore,
@@ -29,6 +30,7 @@ impl Provider {
         let state = Arc::new(Calls {
             blocked: AtomicBool::new(blocked),
             bodies: Mutex::new(Vec::new()),
+            proposal: Mutex::new(None),
             entered: Semaphore::new(0),
             release: Semaphore::new(0),
         });
@@ -67,6 +69,10 @@ impl Provider {
 }
 
 impl Calls {
+    pub(super) fn propose(&self, proposal: Value) {
+        *self.proposal.lock().expect("provider proposal") = Some(proposal);
+    }
+
     pub(super) fn count(&self) -> usize {
         self.bodies.lock().expect("provider recording").len()
     }
@@ -108,9 +114,17 @@ async fn respond(
             .expect("provider release")
             .forget();
     }
+    let mut output =
+        vec![json!({"type":"message","content":[{"type":"output_text","text":ANSWER}]})];
+    let proposal = state.proposal.lock().expect("provider proposal").clone();
+    if let Some(proposal) = proposal {
+        output.push(
+            json!({"type":"function_call","name":"propose_setup","call_id":"edit-request",
+            "arguments":json!({"proposal":proposal}).to_string()}),
+        );
+    }
     let response = json!({"type":"response.completed","response":{
-        "status":"completed", "output":[{"type":"message","content":[{"type":"output_text","text":ANSWER}]}],
-        "usage":{"input_tokens":1,"output_tokens":1}
+        "status":"completed", "output":output, "usage":{"input_tokens":1,"output_tokens":1}
     }});
     (
         [("content-type", "text/event-stream")],

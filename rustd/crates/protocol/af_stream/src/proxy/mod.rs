@@ -83,12 +83,15 @@ fn authorization(url: &url::Url) -> Option<Zeroizing<String>> {
     if url.username().is_empty() && url.password().is_none() {
         return None;
     }
-    let mut credentials =
+    let username =
         Zeroizing::new(percent_encoding::percent_decode_str(url.username()).collect::<Vec<_>>());
     let password = Zeroizing::new(
         percent_encoding::percent_decode_str(url.password().unwrap_or_default())
             .collect::<Vec<_>>(),
     );
+    // The validated URL is at most 4096 bytes, so this sum cannot overflow.
+    let mut credentials = Zeroizing::new(Vec::with_capacity(username.len() + 1 + password.len()));
+    credentials.extend_from_slice(&username);
     credentials.push(b':');
     credentials.extend_from_slice(&password);
     let encoded = Zeroizing::new(STANDARD.encode(&credentials));

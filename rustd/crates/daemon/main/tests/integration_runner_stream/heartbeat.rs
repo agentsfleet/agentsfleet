@@ -13,7 +13,7 @@ use crate::{e2e::scenario, wire::capable_beat};
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn heartbeat_reply_names_the_holds_to_release() {
     let mut supervisor = Supervisor::new();
-    let mut run = scenario(&mut supervisor).await;
+    let run = scenario(&mut supervisor).await;
     let never_held = afd_db::test_util::mint_id();
     let mut request = capable_beat();
     request
@@ -29,40 +29,16 @@ async fn heartbeat_reply_names_the_holds_to_release() {
         .await
         .expect("native heartbeat");
     assert_eq!(reply.get("release_holds"), Some(&json!([never_held])));
-    run.native
-        .get_mut()
-        .expect("the session opened")
-        .close()
-        .await
-        .expect("native shutdown");
-    supervisor.shutdown().await;
-    run.cleanup().await;
+    finish(run, supervisor).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn an_unreadable_assignment_is_refused_on_the_native_beat_and_self_read() {
     let mut supervisor = Supervisor::new();
-    let mut run = scenario(&mut supervisor).await;
+    let run = scenario(&mut supervisor).await;
     let native = run.native_session().await;
-    let mut connection = run
-        .booted
-        .database
-        .acquire()
-        .await
-        .expect("a fixture connection");
-    let tier: String = sqlx::query_scalar("SELECT sandbox_tier FROM runner.runners WHERE id = $1")
-        .bind(&run.runner_id)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the enrolled tier");
-    sqlx::query("UPDATE runner.runners SET sandbox_tier = $2 WHERE id = $1")
-        .bind(&run.runner_id)
-        .bind("not-a-tier")
-        .execute(&mut *connection)
-        .await
-        .expect("corrupt only this runner");
-    drop(connection);
+    let tier = corrupt_tier(&run).await;
     let bytes = serde_json::to_vec(&capable_beat()).expect("a heartbeat encodes");
     let request: HeartbeatRequest<'_> = serde_json::from_slice(&bytes).expect("a current beat");
     let failure = native
@@ -96,21 +72,14 @@ async fn an_unreadable_assignment_is_refused_on_the_native_beat_and_self_read() 
         )
         .await
         .expect("restore the runner before platform reads");
-    run.native
-        .get_mut()
-        .expect("the session opened")
-        .close()
-        .await
-        .expect("native shutdown");
-    supervisor.shutdown().await;
-    run.cleanup().await;
+    finish(run, supervisor).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn a_native_heartbeat_records_liveness_without_waiting_for_work() {
     let mut supervisor = Supervisor::new();
-    let mut run = scenario(&mut supervisor).await;
+    let run = scenario(&mut supervisor).await;
     let native = run.native_session().await;
     sqlx::query("UPDATE runner.runners SET last_seen_at = $2 WHERE id = $1")
         .bind(&run.runner_id)
@@ -151,6 +120,32 @@ async fn a_native_heartbeat_records_liveness_without_waiting_for_work() {
     assert!(recorded);
     assert!(reply.get("woken").is_none());
     assert!(reply.get("assigned_policy").is_some());
+    finish(run, supervisor).await;
+}
+
+async fn corrupt_tier(run: &crate::e2e::Scenario) -> String {
+    let mut connection = run
+        .booted
+        .database
+        .acquire()
+        .await
+        .expect("a fixture connection");
+    let tier: String = sqlx::query_scalar("SELECT sandbox_tier FROM runner.runners WHERE id = $1")
+        .bind(&run.runner_id)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the enrolled tier");
+    sqlx::query("UPDATE runner.runners SET sandbox_tier = $2 WHERE id = $1")
+        .bind(&run.runner_id)
+        .bind("not-a-tier")
+        .execute(&mut *connection)
+        .await
+        .expect("corrupt only this runner");
+    drop(connection);
+    tier
+}
+
+async fn finish(mut run: crate::e2e::Scenario, supervisor: Supervisor) {
     run.native
         .get_mut()
         .expect("the session opened")

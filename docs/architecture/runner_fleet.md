@@ -243,29 +243,24 @@ Identity and auth are covered in [`../AUTH.md`](../AUTH.md); the runner is the f
 
 A token without that scope is rejected `403`, tenant `admin` JWT and `agt_t` api_key alike.
 
-### The held heartbeat
+### Heartbeats and pushed work
 
-A runner with an idle worker asks the daemon to hold its heartbeat (`wake: true`). It asks only after a reply carried `woken`, the proof this daemon holds beats. An older daemon reads an unknown field as no report at all.
+The runner sends a native heartbeat every ten seconds to report liveness, capabilities and held sandboxes.
+The daemon pushes work when capacity is available; idle workers send no lease requests.
 
-The daemon records liveness, capability and holds as for any beat. It then waits for the next doorbell ring or `WAKE_HOLD_MAX`, which equals `HEARTBEAT_INTERVAL` (10 s). A held beat so returns no later than the next beat was due.
-
-A ring answers `woken: true`, and the runner ends one idle worker's pause. Fresh work then waits one round trip, not the idle hint. The ring is the doorbell's sharded publish, which every replica hears (`afd_dragonfly`'s doorbell and `afd_api_runner`'s wake handler).
-
-One process holds at most `HELD_BEATS_MAX` (64) beats. A beat past the cap answers `woken: false` at once, counted under `agentsfleet_runner_wake_answers_total{reason="capped"}`. A held beat keeps one in-flight permit, so the cap keeps three quarters of `DEFAULT_MAX_IN_FLIGHT` for requests.
-
-A lost ring costs only the hold: the worker still polls on the 1 s `NO_WORK_RETRY_AFTER`. This is one held request per runner host, on the heartbeat it already sends. It is not the per-worker long poll M225 rejected.
-
-A hold never delays a transition. The daemon's drain closes the doorbell the moment it stops accepting, ending every held beat. The runner drops a held beat to send a holds-saturation release, or its closing beat, at once.
+Two missed heartbeat intervals close the session.
+A per-replica recovery probe finds admissions after lost notifications.
+The [runner guide](runner_protocol.md) describes connection setup, cancellation and recovery.
 
 ## Registering a runner
 
-A runner needs a `agt_r` token before it can pull work. The **platform admin pre-mints it from the dashboard** and installs it on the host. The host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model).
+A runner needs a `agt_r` token before it can receive work. The **platform admin pre-mints it from the dashboard** and installs it on the host. The host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model).
 
 The admin opens **dashboard → Admin → Runners → "Add runner"**, and a session-authed server action calls `POST /v1/runners`. `agentsfleetd` mints the `agt_r` and reveals it **once** (copy-to-clipboard, then dropped from the browser). The admin drops it into the host's vault or its `AGENTSFLEET_RUNNER_TOKEN` env var.
 
 No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the runner validates the `agt_r` prefix and fails loud rather than looping on a silent 401.
 
-It then goes straight to the heartbeat and lease loop. There is no register call, so no host ever holds an enrollment-grade credential.
+It then opens its native session and starts the worker pool. There is no register call, so no host ever holds an enrollment-grade credential.
 
 There is no enrollment token; the minter must hold `runner:enroll`. The open-fleet, self-enrolling case is mode C, later.
 
@@ -457,7 +452,7 @@ Access to the runner-domain tables (`runner.runners`, `runner.leases`, `runner.f
 
 ```text
    caller (Clerk JWT, runner:enroll)                  runner (agt_r token, NO db creds)
-        |  GET/POST /v1/fleet, /v1/runners                  |  POST /v1/runners/me/leases
+        |  GET/POST /v1/fleet, /v1/runners                  |  Native runner stream
         v                                                   v
    +-------------------------------------------------------------------------+
    | agentsfleetd                                                            |
@@ -779,7 +774,7 @@ Each renewal reads that ceiling afresh. A paused or stopped fleet's config can b
 
 - **Steer** — a message to a fleet. The send answers one of three dispositions: `started`, `folded` or `queued`. With no run live and nothing waiting, the message starts a run of its own.
 
-  While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_event_id`. The running lease claims it at its next model call through `POST /v1/runners/me/leases/{lease_id}/folds`.
+  While a run is live, the message **folds** into that run. The send answers `folded` with `folded_into_event_id`. The running lease claims it at its next model call through a native `folds` request.
 
   A run claims a person's messages in its own conversation after its own, oldest first. It stops at the first parked (approval-gated), task-bound or non-person one.
 
@@ -837,7 +832,10 @@ A claim takes the fleet slot before its exact oldest unsettled admission. Both f
 Locked or parked heads cannot expose later admissions. A gate answer clears the park stamp and publishes a best-effort wake.
 
 The candidate query prefers held fleets and a recent wake hint, then the runner's previous fleet, with random ordering for the rest.
-It checks runner labels and live sandbox holds before attempting a claim. Every poll probes PostgreSQL; missing notifications cannot hide accepted work.
+It checks runner labels and live sandbox holds before attempting a claim.
+
+The gateway claims on notifications and capacity changes.
+A five-second database probe per replica recovers work after missing notifications.
 
 ## Sandbox tiers
 
@@ -1083,7 +1081,7 @@ It is **not "metrics in Postgres"**. It *reads* already-durable operational stat
 
 Private setup work shares runner capacity with fleet runs. The sections below describe the implemented protocol; verification evidence belongs in the [check ledger](../reviews/workspace-setup/checks.md).
 
-POST `/v1/runners/me/leases` requires `accepted_kinds` and returns `kind:"fleet"` or `kind:"authoring"`. Claims lock the runner row, count unexpired active leases across both kinds, and insert the selected lease within that transaction.
+The native session declares `accepted_kinds` and receives offers tagged `kind:"fleet"` or `kind:"authoring"`. Claims lock the runner row, count unexpired active leases across both kinds, and insert the selected lease within that transaction.
 
 The server owns `worker_count`; a poll cannot override it. Reducing it below current occupancy stops new claims and refuses renewals until occupancy fits (`afd_runner`'s capacity module). Existing leases can therefore be interrupted.
 

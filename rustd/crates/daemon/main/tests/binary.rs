@@ -90,24 +90,7 @@ fn test_boot_refuses_bad_kek() {
             stderr.contains("We flunked!"),
             "the fatal renderer is the one that speaks on the way out, got: {stderr}"
         );
-        // Narrowed, not dropped. The nameplate now prints before anything is
-        // resolved, so a refusing process DOES write its own identity to
-        // stdout — but the thing this guarded is still guarded: no boot
-        // RESULT reaches stdout. The refusal, the address and the resolved
-        // roles all remain stderr's alone, and stdout carries the nameplate
-        // and nothing besides.
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert_eq!(
-            stdout.trim(),
-            format!("agentsfleetd {}", env!("CARGO_PKG_VERSION")),
-            "a refusing process announces its identity and no more"
-        );
-        for leaked in ["We flunked!", KEK_KNOB, "listening", "postgres:", "redis:"] {
-            assert!(
-                !stdout.contains(leaked),
-                "a boot result must not reach stdout: {leaked} in {stdout}"
-            );
-        }
+        assert_refused_stdout(&String::from_utf8_lossy(&output.stdout));
     }
 }
 
@@ -203,5 +186,19 @@ fn test_help_carries_the_nameplate_above_the_usage() {
         // The help page announces the flags that control it.
         assert!(stdout.contains("--no-banner"), "{flag}: {stdout}");
         assert!(stdout.contains("--quiet"), "{flag}: {stdout}");
+    }
+}
+
+fn assert_refused_stdout(stdout: &str) {
+    assert_eq!(
+        stdout.trim(),
+        format!("agentsfleetd {}", env!("CARGO_PKG_VERSION")),
+        "a refusing process announces its identity and no more"
+    );
+    for leaked in ["We flunked!", KEK_KNOB, "listening", "postgres:", "redis:"] {
+        assert!(
+            !stdout.contains(leaked),
+            "a boot result must not reach stdout: {leaked} in {stdout}"
+        );
     }
 }

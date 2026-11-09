@@ -11,6 +11,18 @@ use crate::profile::Profile;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("the in-process runner stream failed")]
+    StreamFaulted { source: afd_gateway::Error },
+    #[error("the benchmark wake subscription closed")]
+    WakeClosed {
+        source: tokio::sync::watch::error::RecvError,
+    },
+    #[error("the provider transport could not initialize")]
+    ProviderTransportFaulted { source: reqwest::Error },
+    #[error("the runner stream returned an unexpected answer")]
+    StreamAnswer,
+    #[error("the runner stream refused the operation with {error_code}")]
+    StreamRefused { error_code: String },
     #[error("the requested benchmark concurrency cannot be represented on this platform")]
     ConcurrencyUnrepresentable {
         #[source]

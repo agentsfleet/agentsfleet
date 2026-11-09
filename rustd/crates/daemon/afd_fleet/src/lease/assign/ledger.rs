@@ -47,7 +47,12 @@ impl Leases {
         held: &[Uuid7],
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
-        let hint = self.wake().take();
+        let recovery = self.wake().recovery();
+        let hint = if recovery.is_some() {
+            None
+        } else {
+            self.wake().take()
+        };
         let held: Vec<&Uuid7> = held.iter().collect();
         let mut connection = self.pool().acquire().await?;
         let candidates: Vec<Uuid7> = sqlx::query_scalar(queue::SELECT_CANDIDATES)
@@ -62,12 +67,16 @@ impl Leases {
             .bind(af_wire::task::TaskState::Ready.as_str())
             .bind(af_wire::task::TaskState::Running.as_str())
             .bind(crate::task::DECISION_POLICY_PATH)
+            .bind(recovery.is_some())
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
         cost.candidates_scanned = u64::try_from(candidates.len()).unwrap_or(u64::MAX);
         for fleet in candidates {
             if let Some(acquired) = self.ledger_claim(&mut connection, &fleet, runner).await? {
+                if let Some(recovery) = recovery {
+                    self.wake().recovered(recovery);
+                }
                 producers::fleet::run_started(started(acquired.kind));
                 affinity::count_resumed(&acquired);
                 return Ok(Some(acquired));

@@ -30,7 +30,7 @@ WITH instant AS MATERIALIZED (
 SELECT z.id
 FROM eligible z
 JOIN LATERAL (
-  SELECT a.id, a.parked_at
+  SELECT a.id, a.parked_at, a.event_created_at
   FROM fleet.admissions a
   WHERE a.fleet_id = z.id AND a.settled_at IS NULL
     AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR (z.task_capable AND EXISTS (
@@ -48,10 +48,12 @@ JOIN LATERAL (
   (SELECT 1 FROM fleet.approval_gates g
   WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
     AND g.event_id = head.id AND g.expires_at > z.read_at LIMIT 1))
-ORDER BY z.id = ANY($6) DESC,
-         (z.id = $7) DESC NULLS LAST,
-         (z.last_runner_id = $2) DESC NULLS LAST,
-         -- Only each fleet's head is ordered. Spread runners across fleets
-         -- rather than making all of them contend for the same oldest fleet.
-         random()
+-- The independent recovery generation must reach old work even while a hot
+-- fleet keeps replacing every disposable hint. Notifications retain locality.
+ORDER BY CASE WHEN $12 THEN head.event_created_at END,
+         CASE WHEN $12 THEN head.id END,
+         CASE WHEN NOT $12 THEN z.id = ANY($6) END DESC,
+         CASE WHEN NOT $12 THEN z.id = $7 END DESC NULLS LAST,
+         CASE WHEN NOT $12 THEN z.last_runner_id = $2 END DESC NULLS LAST,
+         CASE WHEN NOT $12 THEN random() END
 LIMIT $3

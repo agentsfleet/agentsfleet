@@ -19,10 +19,14 @@ pub(super) async fn keep(
     clock: &dyn Clock,
     observed: &Observed,
 ) -> Result<()> {
-    let mut expiry = deadline(lease.expires_at, clock);
     let maximum = deadline(lease.deadline, clock).min(Instant::now() + Duration::from_secs(300));
+    let lifetime = plane
+        .stream
+        .renewing
+        .authoring(id, deadline(lease.expires_at, clock).min(maximum))?;
     let mut pause = INTERVAL;
     loop {
+        let expiry = lifetime.deadline();
         let renew_at = (Instant::now() + pause).min(expiry).min(maximum);
         tokio::time::sleep_until(renew_at).await;
         if Instant::now() >= expiry || Instant::now() >= maximum {
@@ -35,12 +39,12 @@ pub(super) async fn keep(
         let response =
             tokio::time::timeout_at(expiry.min(maximum), plane.authoring_renew(id, &request))
                 .await
-                .map_err(|_elapsed| {
-                    error::config("authoring renewal exceeded the live deadline")
+                .map_err(|source| {
+                    error::boundary("authoring renewal exceeded the live deadline", source)
                 })?;
         match response {
             Ok(reply) if !reply.stop_requested => {
-                expiry = deadline(reply.expires_at, clock).min(maximum);
+                lifetime.extend(deadline(reply.expires_at, clock).min(maximum));
                 pause = INTERVAL;
             }
             Ok(_) => return Ok(()),

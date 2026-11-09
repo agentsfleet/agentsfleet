@@ -163,7 +163,7 @@ async fn test_fenced_report_writes_no_tool_calls() {
         refused
             .expect_err("the stale holder is refused")
             .refusal_code(),
-        Some(af_core::error_code::RUN_LEASE_LOST),
+        Some(af_core::error_code::RUN_STALE_FENCING_TOKEN),
         "the stale holder is refused"
     );
     assert_eq!(stored_trace(&run).await, None, "no trace was written");

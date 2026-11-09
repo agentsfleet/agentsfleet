@@ -142,19 +142,7 @@ async fn a_free_worker_takes_b_while_a_waits_for_its_report_acknowledgement() ->
     let (offers, offered) = mpsc::channel(LEASES_MAX);
     offers.send(offer(&rig, FIRST, FLEET_ID).await?).await?;
     let pool = tokio::spawn(serve(Arc::clone(&rig.lessee), watching, offered));
-    bounded("A's report submission", async {
-        loop {
-            let call = rig
-                .calls
-                .recv()
-                .await
-                .ok_or("the call log closed before A reported")?;
-            if call.verb == Verb::Report {
-                return Ok::<(), Box<dyn std::error::Error + Send + Sync>>(());
-            }
-        }
-    })
-    .await?;
+    wait_for_report(&mut rig.calls).await?;
     offers.send(offer(&rig, SECOND, OTHER_FLEET).await?).await?;
     until(&rig.runs, 2).await;
     assert!(
@@ -228,4 +216,19 @@ async fn unread_offers_from_a_disconnected_session_are_not_executed() -> TestRes
     bounded("stale pool shutdown", pool).await?;
     assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
     Ok(())
+}
+
+async fn wait_for_report(calls: &mut crate::test_support::Calls) -> TestResult {
+    bounded("A's report submission", async {
+        loop {
+            let call = calls
+                .recv()
+                .await
+                .ok_or("the call log closed before A reported")?;
+            if call.verb == Verb::Report {
+                return Ok::<(), Box<dyn std::error::Error + Send + Sync>>(());
+            }
+        }
+    })
+    .await
 }

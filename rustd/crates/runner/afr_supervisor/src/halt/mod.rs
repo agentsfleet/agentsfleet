@@ -3,7 +3,7 @@
 //! ```text
 //!   stop_leasing  take no new lease; the heartbeat and leases in flight go on
 //!   shutdown      (the caller's token) also stop beating; leases in flight
-//!                 still run to their reports
+//!                 retain work and report delivery for the supervisor's bounded grace
 //!   stop          also end leases in flight: the daemon said stop, or it
 //!                 refused this runner's token and no call can succeed
 //! ```

@@ -5,7 +5,7 @@ use super::*;
 /// Dimension 2.3 — an exhausted tenant is refused at issue, and nothing is
 /// written.
 ///
-/// The credits gate is only reached on the pull path, after the runner proves
+/// The credits gate is reached when a native session proves
 /// its capabilities. The event is ended rather than retried forever, while no
 /// lease or charge is written.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -13,15 +13,11 @@ use super::*;
 async fn test_lease_money_gate_refusal() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
-
-    let degraded = post(&http, &run, "/v1/runners/me/leases", &fleet_poll()).await;
-    assert_eq!(degraded.status().as_u16(), 200);
-    assert_eq!(
-        field(&json(degraded).await, "lease"),
-        &Value::Null,
+    assert!(
+        !wait_without_offer(&run, || async { false }).await,
         "a newly enrolled runner receives no work before proving its capabilities"
     );
+    assert_eq!(lease_rows(&run).await, 0);
 
     // Drained after the seed, so the wallet row exists and holds zero.
     run.drain_wallet().await;
@@ -32,9 +28,7 @@ async fn test_lease_money_gate_refusal() {
         "the native heartbeat carries its assignment"
     );
 
-    // A rotation, ended by the row the refusal writes: a poll that never
-    // sampled this fleet's partition answers the same `null` as the refusal,
-    // and the two assertions below would then pass with nothing refused.
+    // Durable refusal proves the claim ran; silence alone would not.
     let refused = wait_without_offer(&run, || async {
         event_column(&run, &run.event_id, "status").await.as_deref() == Some("gate_blocked")
     })
@@ -51,7 +45,7 @@ async fn test_lease_money_gate_refusal() {
     assert_eq!(
         balance(&run).await,
         Some(0),
-        "the refused poll charges nothing"
+        "the refused claim charges nothing"
     );
 
     // Stop background tasks before releasing the scenario's placement guard.

@@ -132,79 +132,54 @@ impl ServingPlane {
     /// key by value.
     #[must_use]
     pub fn new(parts: PlaneParts) -> Self {
-        let PlaneParts {
-            database,
-            queue,
-            kek,
-            ..
-        } = parts;
-        let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
-        let github_client = parts.authoring_transport.guarded_client();
-        let task_master = Arc::clone(&kek);
-        let admissions = Admissions::new(database.clone(), parts.bus.clone(), Entropy::new());
-        // One biller for every money path: fleet leases and setup chat reserve
-        // against the same holds and settle into the same ledger (billing §11).
-        let biller = crate::billing::biller(database.clone());
-        let drafts =
-            afd_authoring::Drafts::new(database.clone(), Entropy::new(), Arc::clone(&biller))
-                .with_analytics(parts.analytics.clone());
+        let common = construction::Common::new(&parts);
+        let database = parts.database;
+        let queue = parts.queue;
+        let kek = parts.kek;
         let authoring = surfaces::authoring(
-            drafts,
+            common.drafts,
             &kek,
-            &providers,
-            &admissions,
+            &common.providers,
+            &common.admissions,
             parts.authoring_transport,
             parts.platform_admin_workspace.as_ref(),
         );
         let admin = stores::admin(&database);
         let activity_streams = parts.bus.clone();
-        let tenant = stores::tenant(&database, &kek, &providers, &activity_streams);
-        let activity = stores::activity(&database, &kek, &admissions);
-        let task_admissions = admissions.clone();
+        let tenant = stores::tenant(&database, &kek, &common.providers, &activity_streams);
+        let activity = stores::activity(&database, &kek, &common.admissions);
+        let task_admissions = common.admissions.clone();
         let outbound = surfaces::outbound(
             &database,
             &queue,
             &kek,
             surfaces::OutboundParts {
                 schedule: parts.schedule,
-                admissions,
+                admissions: common.admissions,
                 vendor_client: parts.vendor_client,
                 slack_api_base: parts.slack_api_base,
             },
         );
-        let mut leases = lease_plane(
-            database.clone(),
-            queue.clone(),
+        let native = construction::NativeInputs {
+            database: &database,
+            queue: &queue,
             kek,
-            providers,
-            parts.bus.clone(),
-            parts.broker,
-            biller,
-        );
-        leases.leases = leases.leases.with_wake(parts.runner_wake.clone());
-        let tasks = task_plane(
-            &mut leases,
-            task_admissions,
-            parts.platform_admin_workspace.clone(),
-            parts.checkpoint_storage,
-            task_master,
-            github_client,
-        );
-        let runners = Runners::new(database.clone(), Entropy::new());
-        let runner_streams = afd_gateway::Gateway::new(afd_gateway::GatewayDependencies {
-            database: database.clone(),
-            runners: runners.clone(),
-            leases: leases.clone(),
-            drafts: authoring.drafts.clone(),
-            models: authoring.models.clone(),
-            creations: authoring.creations.clone(),
+            providers: common.providers,
             bus: parts.bus,
-            stream_limit: parts.live.stream_limit().clone(),
+            broker: parts.broker,
+            biller: common.biller,
             wake: parts.runner_wake,
+            admissions: task_admissions,
+            admin_workspace: parts.platform_admin_workspace.clone(),
+            storage_config: parts.checkpoint_storage,
+            master: common.task_master,
+            client: common.github_client,
+            authoring: &authoring,
+            stream_limit: parts.live.stream_limit().clone(),
             frame_memory: parts.frame_memory,
-            wall_clock: Arc::new(af_core::clock::SystemClock),
             analytics: parts.analytics.clone(),
-        });
+        }
+        .build();
         Self {
             authoring,
             tenant,
@@ -214,15 +189,11 @@ impl ServingPlane {
             login: surfaces::login(parts.login, &queue),
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             signup_writeback: parts.signup_writeback,
-            authenticator: Planes::new(
-                Credentials::new(database),
-                parts.capabilities,
-                parts.sessions,
-            ),
-            runners,
-            runner_streams,
-            leases,
-            tasks,
+            authenticator: authenticator(database, parts.capabilities, parts.sessions),
+            runners: native.runners,
+            runner_streams: native.streams,
+            leases: native.leases,
+            tasks: native.tasks,
             identity_webhook_secret: parts.identity_webhook_secret,
             platform_admin_workspace: parts.platform_admin_workspace,
             live: parts.live,
@@ -231,7 +202,16 @@ impl ServingPlane {
     }
 }
 
+fn authenticator(
+    database: afd_db::Db,
+    capabilities: Capabilities,
+    sessions: Sessions,
+) -> Authenticator {
+    Planes::new(Credentials::new(database), capabilities, sessions)
+}
+
 mod config;
+mod construction;
 mod platform;
 mod services;
 mod stores;

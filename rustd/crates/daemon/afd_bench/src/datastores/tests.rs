@@ -65,3 +65,13 @@ fn test_a_non_negative_postgres_tally_reads_as_itself() {
         matches!(super::postgres_count(i64::MAX, "count(*)"), Ok(n) if n == i64::MAX.unsigned_abs())
     );
 }
+
+#[test]
+fn observer_commands_do_not_create_product_cost() {
+    let info = "cmdstat_info:calls=70,usec=10\r\ncmdstat_get:calls=3,usec=2\r\n";
+    assert_eq!(dragonfly_calls_in(info), Some(3));
+    assert_eq!(
+        dragonfly_calls_in("cmdstat_info:calls=70,usec=10\r\n"),
+        Some(0)
+    );
+}

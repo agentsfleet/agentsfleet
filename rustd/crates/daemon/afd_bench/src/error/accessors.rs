@@ -21,7 +21,12 @@ impl Error {
                 error_code::STARTUP_DRAGONFLY_CONNECT
             }
             _ if self.is_pre_flight() => error_code::STARTUP_ENV_CHECK,
-            ErrorKind::ConcurrencyUnrepresentable { .. }
+            ErrorKind::StreamFaulted { .. }
+            | ErrorKind::WakeClosed { .. }
+            | ErrorKind::ProviderTransportFaulted { .. }
+            | ErrorKind::StreamAnswer
+            | ErrorKind::StreamRefused { .. }
+            | ErrorKind::ConcurrencyUnrepresentable { .. }
             | ErrorKind::UnknownProfile { .. }
             | ErrorKind::CapExceeded { .. }
             | ErrorKind::AcknowledgementMissing { .. }

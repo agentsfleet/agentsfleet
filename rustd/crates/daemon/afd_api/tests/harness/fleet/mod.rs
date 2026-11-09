@@ -57,6 +57,7 @@ impl Fleet {
         } = Inputs::new(database);
         let authoring = authoring::stores(&database, &ledger, &providers);
         Self {
+            native: None,
             ready: ReadyInputs {
                 database: true,
                 queue: true,
@@ -70,16 +71,7 @@ impl Fleet {
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             leases: NoWork::default(),
-            tasks: afd_fleet::task::Tasks::new(
-                afd_fleet::lease::Leases::new(
-                    database.clone(),
-                    queue.clone(),
-                    afd_bus::dragonfly::publisher(queue.clone()),
-                    Entropy::new(),
-                ),
-                ledger.clone(),
-                task_dependencies(database.clone()),
-            ),
+            tasks: tasks(&database, &queue, &ledger),
             authoring: authoring.drafts,
             authoring_setup: authoring.setup,
             authoring_models: authoring.models,
@@ -164,4 +156,21 @@ impl Inputs {
             authenticator,
         }
     }
+}
+
+fn tasks(
+    database: &Db,
+    queue: &Dragonfly,
+    ledger: &afd_admission::Admissions,
+) -> afd_fleet::task::Tasks {
+    afd_fleet::task::Tasks::new(
+        afd_fleet::lease::Leases::new(
+            database.clone(),
+            queue.clone(),
+            afd_bus::dragonfly::publisher(queue.clone()),
+            Entropy::new(),
+        ),
+        ledger.clone(),
+        task_dependencies(database.clone()),
+    )
 }

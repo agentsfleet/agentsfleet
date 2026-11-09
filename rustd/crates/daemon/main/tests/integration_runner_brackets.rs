@@ -1,10 +1,10 @@
 //! The bracket frames — the daemon opens and closes a run on the tail itself.
 //!
-//! `event_received` when the lease verb writes the row, `event_complete` when
+//! `event_received` when lease issuance writes the row, `event_complete` when
 //! a report or a refusal closes it. Proven end to end because the property is
 //! the ORDER: the row is written before the frame that names it, so a watcher
 //! reacting to the frame can never find the row missing. Beside the runner's
-//! forwarded frames (`integration_runner_activity.rs`) rather than inside that
+//! forwarded frames (`integration_runner_activity/mod.rs`) rather than inside that
 //! suite, so each file stays about one publisher.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
@@ -26,7 +26,7 @@ use crate::wire::{capable_beat, field, report_body, wait_without_offer};
 
 /// The bracket frames — the daemon opens and closes a run on the tail itself.
 ///
-/// `event_received` when the lease verb writes the row, `event_complete` when
+/// `event_received` when lease issuance writes the row, `event_complete` when
 /// the report closes it, and the second carries the row as the events list
 /// would serve it plus the fleet's status and pending gate count. Proven end
 /// to end because the property is the ORDER: the row is written before the
@@ -39,7 +39,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
     let run = scenario(&mut supervisor).await;
 
     // Subscribed BEFORE the lease: the opening bracket is published by the
-    // poll itself, and pub/sub keeps nothing for a reader that arrives late.
+    // claim itself, and pub/sub keeps nothing for a reader that arrives late.
     let hub = SubscriptionHub::start(dragonfly_config())
         .await
         .expect("the lane's Dragonfly accepts a subscriber");
@@ -50,20 +50,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
     let opened = next_frame(&mut tail)
         .await
         .expect("the lease announces the row it opened");
-    assert_eq!(field(&opened, "kind"), &json!("event_received"));
-    assert_eq!(
-        field(&opened, "event_id"),
-        &json!(run.event_id),
-        "the frame names the event the lease was issued for"
-    );
-    assert!(field(&opened, "actor").is_string());
-    assert!(field(&opened, "event_type").is_string());
-    assert!(
-        field(&opened, "created_at")
-            .as_str()
-            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok()),
-        "the row's own instant, so a client never stamps it with its clock"
-    );
+    assert_opened(&opened, &run.event_id);
 
     let reported = crate::wire::report(&run, &report_body(&lease_id, &run.event_id, fence)).await;
     assert!(reported.is_ok(), "native report refused: {reported:?}");
@@ -71,34 +58,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
     let closed = next_frame(&mut tail)
         .await
         .expect("the report announces the row it closed");
-    assert_eq!(field(&closed, "kind"), &json!("event_complete"));
-    assert_eq!(field(&closed, "event_id"), &json!(run.event_id));
-    assert_eq!(field(&closed, "status"), &json!("processed"));
-    assert_eq!(
-        field(&closed, "wall_ms"),
-        &json!(1_500),
-        "the runner's telemetry rides the row"
-    );
-    assert!(
-        field(&closed, "tokens")
-            .as_i64()
-            .is_some_and(|tokens| tokens > 0),
-        "so does its token count"
-    );
-    assert!(
-        field(&closed, "cost_nanos").is_string(),
-        "the settle's ledger rows are summed into the frame, as the events list sums them"
-    );
-    assert_eq!(
-        field(&closed, "fleet_status"),
-        &json!("active"),
-        "the fleet's status after the run, for the console's lifecycle controls"
-    );
-    assert_eq!(
-        field(&closed, "pending_approvals"),
-        &json!(0),
-        "and how many approvals wait on it, for the console's strip"
-    );
+    assert_completed(&closed, &run.event_id);
 
     drop(tail);
     supervisor.shutdown().await;
@@ -107,10 +67,8 @@ async fn test_bracket_frames_open_and_close_a_run() {
 
 /// A lease refused at a gate closes the run on the tail too.
 ///
-/// The money gate is the refusal reachable over HTTP: an exhausted tenant's
-/// poll ends the event `gate_blocked`, and the watcher must learn that from
-/// the tail rather than from a reload — the row was opened by the same poll,
-/// so both brackets arrive from one request.
+/// An exhausted tenant's admission ends the event `gate_blocked`. The same
+/// claim opens and closes its row, so a tail watcher receives both brackets.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
 async fn test_a_refused_lease_closes_the_run_on_the_tail() {
@@ -129,17 +87,14 @@ async fn test_a_refused_lease_closes_the_run_on_the_tail() {
         beat.get("assigned_policy").is_some(),
         "the native heartbeat carries its assignment"
     );
-    // Every poll in the rotation must answer no-work — an exhausted tenant
-    // receives no lease — and the loop ends on the row the refusal writes,
-    // because a poll that never sampled this fleet's partition answers the
-    // same `null` without having refused anything.
+    // No work may be offered before the durable money-gate refusal is visible.
     let refused = wait_without_offer(&run, || async {
         event_column(&run, &run.event_id, "status").await.as_deref() == Some("gate_blocked")
     })
     .await;
     assert!(
         refused,
-        "the exhausted tenant's poll ends the event at the money gate"
+        "the exhausted tenant's claim ends the event at the money gate"
     );
 
     let opened = next_frame(&mut tail)
@@ -149,22 +104,74 @@ async fn test_a_refused_lease_closes_the_run_on_the_tail() {
     let closed = next_frame(&mut tail)
         .await
         .expect("and the refusal closes it on the same tail");
-    assert_eq!(field(&closed, "kind"), &json!("event_complete"));
-    assert_eq!(field(&closed, "event_id"), &json!(run.event_id));
-    assert_eq!(field(&closed, "status"), &json!("gate_blocked"));
+    assert_refused(&closed, &run.event_id);
+
+    drop(tail);
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+fn assert_opened(opened: &serde_json::Value, event: &af_core::id::Uuid7) {
+    assert_eq!(field(opened, "kind"), &json!("event_received"));
+    assert_eq!(
+        field(opened, "event_id"),
+        &json!(event),
+        "the frame names the event the lease was issued for"
+    );
+    assert!(field(opened, "actor").is_string());
+    assert!(field(opened, "event_type").is_string());
     assert!(
-        field(&closed, "failure_label")
+        field(opened, "created_at")
+            .as_str()
+            .is_some_and(|at| at.parse::<jiff::Timestamp>().is_ok()),
+        "the row's own instant, so a client never stamps it with its clock"
+    );
+}
+
+fn assert_completed(closed: &serde_json::Value, event: &af_core::id::Uuid7) {
+    assert_eq!(field(closed, "kind"), &json!("event_complete"));
+    assert_eq!(field(closed, "event_id"), &json!(event));
+    assert_eq!(field(closed, "status"), &json!("processed"));
+    assert_eq!(
+        field(closed, "wall_ms"),
+        &json!(1_500),
+        "the runner's telemetry rides the row"
+    );
+    assert!(
+        field(closed, "tokens")
+            .as_i64()
+            .is_some_and(|tokens| tokens > 0),
+        "so does its token count"
+    );
+    assert!(
+        field(closed, "cost_nanos").is_string(),
+        "the settle's ledger rows are summed into the frame, as the events list sums them"
+    );
+    assert_eq!(
+        field(closed, "fleet_status"),
+        &json!("active"),
+        "the fleet's status after the run, for the console's lifecycle controls"
+    );
+    assert_eq!(
+        field(closed, "pending_approvals"),
+        &json!(0),
+        "and how many approvals wait on it, for the console's strip"
+    );
+}
+
+fn assert_refused(closed: &serde_json::Value, event: &af_core::id::Uuid7) {
+    assert_eq!(field(closed, "kind"), &json!("event_complete"));
+    assert_eq!(field(closed, "event_id"), &json!(event));
+    assert_eq!(field(closed, "status"), &json!("gate_blocked"));
+    assert!(
+        field(closed, "failure_label")
             .as_str()
             .is_some_and(|label| !label.is_empty()),
         "the refusal names what refused it, so the chat can say so live"
     );
     assert_eq!(
-        field(&closed, "tokens"),
+        field(closed, "tokens"),
         &json!(null),
         "a run that never started spent nothing"
     );
-
-    drop(tail);
-    supervisor.shutdown().await;
-    run.cleanup().await;
 }

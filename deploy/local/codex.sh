@@ -22,6 +22,7 @@ PY
 
 acceptance_adapter_build() {
   unset ACCEPTANCE_RUNNER_MACHINE
+  export LOCAL_ACCEPTANCE_RUNNER_STREAM_HOST=localhost
 }
 
 acceptance_machine() {
@@ -70,6 +71,12 @@ acceptance_proxy_config() {
 acceptance_proxy() {
   docker compose --project-name "$DEV_PROJECT-$DEV_ID-acceptance" --file deploy/local/compose.yml \
     --file deploy/local/codex-compose.yml "$@"
+}
+
+acceptance_runner_stream_environment() {
+  printf 'AGENTSFLEET_RUNNER_STREAM_URL=https://%s:%s\n' \
+    "$LOCAL_ACCEPTANCE_RUNNER_STREAM_HOST" "$LOCAL_ACCEPTANCE_RUNNER_STREAM_PORT"
+  printf 'AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE=/acceptance-ca.crt\n'
 }
 
 start_runner() {

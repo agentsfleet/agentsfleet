@@ -1,14 +1,14 @@
-//! Token limits hold at the runner route, not only in the domain call.
+//! Token limits hold at the native session, not only in the domain call.
 //!
 //! The wire bound refuses before the domain is consulted. The exact remaining
 //! output allowance dispatches; one token past what is left, and a context
 //! window too small for the assembled prompt, each refuse with no physical
 //! intent, and the refused attempt cannot be retried into a dispatch.
 
-use super::super::{json_body, send};
+use super::super::json_body;
 use super::fixture::Model;
 use af_core::error_code;
-use http::{Method, StatusCode};
+use http::StatusCode;
 use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
 
@@ -23,7 +23,7 @@ const NARROW_WINDOW: i32 = 64;
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn output_limits_refuse_at_the_runner_route_and_the_exact_allowance_dispatches() {
+async fn output_limits_refuse_at_the_native_session_and_the_exact_allowance_dispatches() {
     let model = Model::create().await;
     let past_wire = with_output(&model.request, 0);
     assert_eq!(call(&model, &past_wire).await.0, StatusCode::BAD_REQUEST);
@@ -54,7 +54,7 @@ async fn output_limits_refuse_at_the_runner_route_and_the_exact_allowance_dispat
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn a_window_too_small_for_the_prompt_refuses_at_the_runner_route() {
+async fn a_window_too_small_for_the_prompt_refuses_at_the_native_session() {
     let model = Model::create().await;
     window(&model, NARROW_WINDOW, NARROW_WINDOW.cast_unsigned()).await;
     let refused = call(&model, &with_output(&model.request, 1)).await;
@@ -108,10 +108,9 @@ fn with_output(request: &Value, tokens: u32) -> Value {
 
 async fn call(model: &Model, body: &Value) -> (StatusCode, Value) {
     let r = &model.running;
-    let response = send(
+    let response = crate::harness::native::send(
         &r.router,
-        Method::POST,
-        &model.path,
+        &model.operation,
         Some(&r.token),
         &body.to_string(),
     )

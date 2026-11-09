@@ -21,6 +21,9 @@ install_host_dependencies() {
     sudo apt-get install -y --no-install-recommends \
       bubblewrap nftables iproute2 ca-certificates git openssl curl jq
   '
+  if [ "$ENV" = dev ]; then
+    runner_remote 'sudo apt-get install -y --no-install-recommends wireguard-tools'
+  fi
 }
 
 prepare_host_paths() {
@@ -38,6 +41,7 @@ main() {
   echo "Preparing $RUNNER_ITEM in ${ENV} via Tailscale SSH"
   runner_verify_host_cgroup_capability
   install_host_dependencies
+  runner_require_native_tls
   runner_enable_ipv4_forwarding
   prepare_host_paths
   runner_require_tailnet_online

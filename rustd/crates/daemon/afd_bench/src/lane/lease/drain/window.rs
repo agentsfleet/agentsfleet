@@ -4,22 +4,21 @@ use core::time::Duration;
 use std::sync::Arc;
 use std::time::Instant;
 
-use af_core::id::Uuid7;
-use afd_fleet::lease::LeaseService;
+use afd_gateway::test_util::Session;
 
 use super::burst::Pickups;
 use super::runner::{self, Shared, Tally};
 use super::settled::Settled;
 use super::turn::Turn;
 use super::{
-    COMMITS_PER_LEASE, DRAGONFLY_CALLS_PER_LEASE, EVENT_ROWS, EVENTS, EVENTS_PROCESSED, FAILURES,
-    IDLE_COMMITS_PER_POLL, IDLE_DRAGONFLY_CALLS_PER_POLL, IDLE_POLLS, IDLE_STATEMENTS_PER_POLL,
-    LEASE_P95_MS, LEASES, LEASES_PER_SECOND, LEDGER_ROWS_PER_EVENT, POLLS, REPORT_P95_MS,
-    RUNNER_ROLE, STATEMENTS_PER_LEASE, UNSETTLED_ROWS,
+    CLAIMS, COMMITS_PER_LEASE, DRAGONFLY_CALLS_PER_LEASE, EVENT_ROWS, EVENTS, EVENTS_PROCESSED,
+    FAILURES, IDLE_COMMITS, IDLE_DRAGONFLY_CALLS, IDLE_STATEMENTS, LEASE_P95_MS, LEASES,
+    LEASES_PER_SECOND, LEDGER_ROWS_PER_EVENT, REPORT_P95_MS, RUNNER_ROLE, STATEMENTS_PER_LEASE,
+    UNSETTLED_ROWS,
 };
 use crate::abort::Abort;
 use crate::datastores::{Datastores, dragonfly_calls};
-use crate::error::{ErrorKind, Result};
+use crate::error::Result;
 use crate::lane::joined;
 use crate::report::{Report, count, latency, per_second, ratio};
 use crate::statements::paths::{self, Path};
@@ -28,6 +27,7 @@ use crate::statements::{self, QueryCost, StatementCost};
 /// One window of every runner at once, with its cost either side.
 pub(super) struct Window {
     pub(super) tally: Tally,
+    pub(super) sessions: Vec<Session>,
     length: Duration,
     cost: StatementCost,
     /// Each statement's calls in the window, for the split by path.
@@ -39,6 +39,7 @@ pub(super) struct Window {
 /// runner's turn behaves, and the pickups a burst's runners time.
 pub(super) struct Shape {
     pub(super) length: Duration,
+    pub(super) idle: bool,
     pub(super) target: Option<u64>,
     pub(super) turn: Turn,
     pub(super) pickups: Option<Arc<Pickups>>,
@@ -47,18 +48,20 @@ pub(super) struct Shape {
 /// Drive every runner until `shape.target` events are reported or
 /// `shape.length` passes.
 pub(super) async fn window(
-    plane: &LeaseService,
+    sessions: Vec<Session>,
     stores: &Datastores,
-    runners: &[Uuid7],
     shape: Shape,
     abort: &Arc<Abort>,
 ) -> Result<Window> {
-    let Shape {
-        length,
-        target,
-        turn,
-        pickups,
-    } = shape;
+    let length = shape.length;
+    let idle = shape.idle;
+    let wake = afd_bus::wake::Wake::default();
+    let wake_stop = tokio_util::sync::CancellationToken::new();
+    let mut listeners = if idle {
+        tokio::task::JoinSet::new()
+    } else {
+        wake.listen(&stores.bus, &wake_stop).await?
+    };
     let queries_before = statements::read_queries(&stores.database).await?;
     let before = statements::read(&stores.database).await?;
     let dragonfly_before = dragonfly_calls(&stores.queue).await?;
@@ -66,29 +69,20 @@ pub(super) async fn window(
     let shared = Arc::new(Shared {
         deadline: started + length,
         reported: 0.into(),
-        target,
-        turn,
-        pickups,
+        target: shape.target,
+        turn: shape.turn,
+        pickups: shape.pickups,
         abort: Arc::clone(abort),
+        done: tokio_util::sync::CancellationToken::new(),
     });
-    let mut tasks = Vec::with_capacity(runners.len());
-    for runner in runners {
-        let (plane, runner, shared) = (plane.clone(), runner.clone(), Arc::clone(&shared));
-        tasks.push(tokio::spawn(async move {
-            runner::drive(&plane, &runner, &shared).await
-        }));
-    }
-    let mut tally: Option<Tally> = None;
-    for task in tasks {
-        let theirs = joined(task.await, RUNNER_ROLE)??;
-        match tally.as_mut() {
-            Some(total) => total.absorb(&theirs)?,
-            None => tally = Some(theirs),
-        }
-    }
+    let measured = run_sessions(sessions, &shared, &wake, idle).await;
+    wake_stop.cancel();
+    listeners.shutdown().await;
+    let (tally, sessions) = measured?;
     let length = started.elapsed();
     Ok(Window {
-        tally: tally.ok_or(ErrorKind::TaskLost { role: RUNNER_ROLE })?,
+        tally,
+        sessions,
         length,
         cost: statements::read(&stores.database).await?.since(before),
         queries: statements::read_queries(&stores.database)
@@ -100,13 +94,55 @@ pub(super) async fn window(
     })
 }
 
+/// Each host keeps its own in-process session across the measured windows.
+async fn run_sessions(
+    sessions: Vec<Session>,
+    shared: &Arc<Shared>,
+    wake: &afd_bus::wake::Wake,
+    idle: bool,
+) -> Result<(Tally, Vec<Session>)> {
+    let mut tasks = tokio::task::JoinSet::new();
+    for session in sessions {
+        let shared = Arc::clone(shared);
+        let generations = wake.generations();
+        tasks.spawn(async move {
+            if idle {
+                let abort = shared.abort.token();
+                tokio::select! {
+                    () = abort.cancelled() => {},
+                    () = tokio::time::sleep_until(shared.deadline.into()) => {},
+                }
+                Ok((Tally::new()?, session))
+            } else {
+                runner::drive(session, &shared, generations).await
+            }
+        });
+    }
+    let mut tally = Tally::new()?;
+    let mut sessions = Vec::new();
+    let result = async {
+        while let Some(task) = tasks.join_next().await {
+            let (theirs, session) = joined(task, RUNNER_ROLE)??;
+            tally.absorb(&theirs)?;
+            sessions.push(session);
+        }
+        Ok::<_, crate::error::Error>(())
+    }
+    .await;
+    if result.is_err() {
+        tasks.shutdown().await;
+    }
+    result?;
+    Ok((tally, sessions))
+}
+
 impl Window {
     /// The drain's cost per lease, and where the population settled.
     pub(super) fn record(&self, report: &mut Report, events: u64, settled: Settled) {
         let leased = self.tally.leased;
         report.measurement(LEASES, count(leased));
-        report.measurement(POLLS, count(self.tally.polls));
-        report.measurement(FAILURES, count(self.tally.failures));
+        report.measurement(CLAIMS, count(self.tally.claims));
+        report.measurement(FAILURES, 0.0);
         report.measurement(
             LEASES_PER_SECOND,
             per_second(leased, self.length.as_secs_f64()),
@@ -141,19 +177,11 @@ impl Window {
         report.measurement(UNSETTLED_ROWS, count(settled.unsettled_rows));
     }
 
-    /// The quiet window's cost per poll.
+    /// Idle sessions report measured totals even when no offer pass ran.
     pub(super) fn record_idle(&self, report: &mut Report) {
-        let polls = self.tally.polls;
-        report.measurement(IDLE_POLLS, count(polls));
-        if polls == 0 {
-            return;
-        }
-        report.measurement(IDLE_STATEMENTS_PER_POLL, ratio(self.cost.statements, polls));
-        report.measurement(IDLE_COMMITS_PER_POLL, ratio(self.cost.commits, polls));
-        report.measurement(
-            IDLE_DRAGONFLY_CALLS_PER_POLL,
-            ratio(self.dragonfly_calls, polls),
-        );
+        report.measurement(IDLE_STATEMENTS, count(self.cost.statements));
+        report.measurement(IDLE_COMMITS, count(self.cost.commits));
+        report.measurement(IDLE_DRAGONFLY_CALLS, count(self.dragonfly_calls));
     }
 }
 
@@ -185,3 +213,31 @@ const COSTLIEST_SHOWN: usize = 5;
 
 /// How much of a statement's text a run prints.
 const QUERY_SHOWN: usize = 110;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::profile::Profile;
+    use crate::report::{Lane, Provenance};
+
+    #[test]
+    fn an_idle_window_reports_totals_not_ratios() -> Result<()> {
+        let window = Window {
+            tally: Tally::new()?,
+            sessions: Vec::new(),
+            length: Duration::from_secs(2),
+            cost: StatementCost {
+                statements: 0,
+                commits: 0,
+            },
+            queries: Vec::new(),
+            dragonfly_calls: 0,
+        };
+        let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
+        window.record_idle(&mut report);
+        assert_eq!(report.measurements.get(IDLE_STATEMENTS), Some(&0.0));
+        assert_eq!(report.measurements.get(IDLE_DRAGONFLY_CALLS), Some(&0.0));
+        assert_eq!(report.measurements.len(), 3);
+        Ok(())
+    }
+}

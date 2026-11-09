@@ -119,5 +119,5 @@ afr_agent = { workspace = true, features = ["test-util"] }
 axum = { workspace = true, features = ["json"] }
 af_core = { workspace = true, features = ["test-util"] }
 # The subscriber a lease's spans are exported through in the telemetry suite.
-tracing-subscriber.workspace = true
+tracing-subscriber = { workspace = true, features = ["json"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "test-util"] }
