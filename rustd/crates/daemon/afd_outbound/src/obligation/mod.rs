@@ -64,14 +64,14 @@ pub struct Delivery<'a> {
     pub answer: &'a str,
 }
 
-/// One claimed answer, as the holder delivers it.
+/// What a poster needs to carry one answer: whose it is, where it goes, and
+/// what it says. A claimed row carries one, and so does an interjection, which
+/// is posted without ever being owed.
 ///
 /// Decoded by `sqlx::FromRow`, which binds by column name, so a reordered
 /// `RETURNING` list cannot silently shift a field.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
-pub struct Claimed {
-    /// The obligation row.
-    pub id: Uuid7,
+pub struct Outgoing {
     /// The fleet that produced the answer.
     pub fleet_id: Uuid7,
     /// The workspace whose grant pays for the delivery.
@@ -84,9 +84,25 @@ pub struct Claimed {
     pub event_id: Uuid7,
     /// What to say.
     pub answer: String,
+}
+
+/// One claimed answer, as the holder delivers it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Claimed {
+    /// The obligation row.
+    pub id: Uuid7,
+    /// What the row asks to be posted.
+    pub outgoing: Outgoing,
     /// The claim's token; every later write on this row matches it.
-    #[sqlx(skip)]
-    pub token: String,
+    pub token: Uuid7,
+}
+
+/// One row the claim statement returns.
+#[derive(sqlx::FromRow)]
+struct ClaimedRow {
+    id: Uuid7,
+    #[sqlx(flatten)]
+    outgoing: Outgoing,
 }
 
 /// Owe this answer its delivery, on the caller's connection.
@@ -107,7 +123,7 @@ pub struct Claimed {
 pub async fn owe(
     connection: &mut sqlx::PgConnection,
     row_id: &Uuid7,
-    token: &str,
+    token: &Uuid7,
     delivery: Delivery<'_>,
 ) -> Result<bool> {
     if delivery.answer.is_empty() {
@@ -132,19 +148,23 @@ pub async fn owe(
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn claim(database: &Db, limit: i64, token: &str) -> Result<Vec<Claimed>> {
+pub async fn claim(database: &Db, limit: i64, token: &Uuid7) -> Result<Vec<Claimed>> {
     let mut connection = database.acquire().await?;
-    let mut claimed = sqlx::query_as::<_, Claimed>(sql::CLAIM_HEADS)
+    let rows = sqlx::query_as::<_, ClaimedRow>(sql::CLAIM_HEADS)
         .bind(limit)
         .bind(token)
         .bind(CLAIM_TTL)
         .fetch_all(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_CLAIM))?;
-    for row in &mut claimed {
-        token.clone_into(&mut row.token);
-    }
-    Ok(claimed)
+    Ok(rows
+        .into_iter()
+        .map(|row| Claimed {
+            id: row.id,
+            outgoing: row.outgoing,
+            token: token.clone(),
+        })
+        .collect())
 }
 
 /// Extends `job`'s claim; `false` when it lapsed and another holder may own it.

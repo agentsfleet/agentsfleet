@@ -8,233 +8,19 @@
 )]
 
 mod cycles;
+mod ledger;
 mod pings;
 mod poster;
 
 use std::time::Duration;
 
-use af_core::id::Uuid7;
-use af_crypto::entropy::Entropy;
 use afd_connector::Provider;
-use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_id};
-use afd_db::{Db, Migrator};
+use afd_db::test_util::mint_id;
 use afd_outbound::obligation::{self, Delivery};
-use afd_outbound::{Posters, Worker};
 use tokio_util::sync::CancellationToken;
 
+use self::ledger::{DESTINATION, Ledger, POLL, sql, until};
 use self::poster::Recorder;
-
-/// How long a test waits for the workers before it fails.
-const PATIENCE: Duration = Duration::from_secs(60);
-const POLL: Duration = Duration::from_millis(20);
-const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
-
-/// A migrated database of this test's own, and its fixture parents.
-struct Ledger {
-    lane: TestDatabase,
-    database: Db,
-    tenant: Uuid7,
-}
-
-/// One workspace and its fleet: one (slack, workspace) lane.
-struct Lane {
-    workspace: Uuid7,
-    fleet: Uuid7,
-}
-
-impl Ledger {
-    async fn create() -> Self {
-        af_core::test_util::trace::install_subscriber();
-        let lane = TestDatabase::create().await;
-        let migrator = lane.open(DbRole::Migrator, &[]).await;
-        Migrator::new()
-            .run(&migrator)
-            .await
-            .expect("the private database migrates");
-        let database = lane.open(DbRole::Api, &[]).await;
-        let tenant = mint_id();
-        sql(
-            &database,
-            "INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-             VALUES ($1, 'outbound-claims', now(), now())",
-            &[&tenant],
-        )
-        .await;
-        Self {
-            lane,
-            database,
-            tenant,
-        }
-    }
-
-    async fn lane(&self) -> Lane {
-        let workspace = mint_id();
-        let fleet = mint_id();
-        sql(
-            &self.database,
-            "INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-             VALUES ($1, $2, $1::text, now())",
-            &[&workspace, &self.tenant],
-        )
-        .await;
-        sql(
-            &self.database,
-            "INSERT INTO fleet.fleets (id, workspace_id, tenant_id, name, status, required_tags, \
-             memory_reads_workspace, memory_publishes_workspace, resource_version, created_at, updated_at) \
-             VALUES ($1, $2, $3, 'outbound-claims', 'active', '{}'::text[], false, false, 1, now(), now())",
-            &[&fleet, &workspace, &self.tenant],
-        )
-        .await;
-        Lane { workspace, fleet }
-    }
-
-    /// Owes one answer on `lane`, as a committed report would; answers its event.
-    async fn owe(&self, lane: &Lane, answer: &str) -> Uuid7 {
-        let event = mint_id();
-        let mut connection = self.database.acquire().await.expect("a connection");
-        let written = obligation::owe(
-            &mut connection,
-            &mint_id(),
-            mint_id().as_str(),
-            Delivery {
-                fleet_id: &lane.fleet,
-                workspace_id: &lane.workspace,
-                provider: Provider::Slack,
-                destination: DESTINATION,
-                event_id: &event,
-                answer,
-            },
-        )
-        .await
-        .expect("the owe lands");
-        assert!(written, "a fresh event owes a row");
-        event
-    }
-
-    async fn delivered(&self) -> i64 {
-        let mut connection = self.database.acquire().await.expect("a connection");
-        sqlx::query_scalar("SELECT count(*) FROM fleet.obligations WHERE delivered_at IS NOT NULL")
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the count reads")
-    }
-
-    async fn until_delivered(&self, rows: i64) {
-        tokio::time::timeout(PATIENCE, async {
-            while self.delivered().await < rows {
-                tokio::time::sleep(POLL).await;
-            }
-        })
-        .await
-        .expect("the workers deliver every owed row");
-    }
-
-    /// One row's delivery state, by its event.
-    async fn row(&self, event: &Uuid7) -> Row {
-        let mut connection = self.database.acquire().await.expect("a connection");
-        sqlx::query_as(
-            "SELECT delivered_at IS NOT NULL AS delivered, abandoned_at IS NOT NULL AS abandoned, \
-             abandon_reason, attempt_count, receipt, \
-             COALESCE(next_attempt_at > now() + interval '20 seconds', false) AS due_later, \
-             extract(epoch FROM claim_expires_at)::float8 AS claim_expires \
-             FROM fleet.obligations WHERE event_id = $1",
-        )
-        .bind(event)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the row reads")
-    }
-
-    /// Polls `event`'s row until `done` holds.
-    async fn until(&self, event: &Uuid7, done: impl Fn(&Row) -> bool) -> Row {
-        tokio::time::timeout(PATIENCE, async {
-            loop {
-                let row = self.row(event).await;
-                if done(&row) {
-                    return row;
-                }
-                tokio::time::sleep(POLL).await;
-            }
-        })
-        .await
-        .expect("the row reaches the state the test waits for")
-    }
-
-    /// Takes `event`'s row from its holder, as a retaking replica would.
-    async fn steal(&self, event: &Uuid7) {
-        sql(
-            &self.database,
-            "UPDATE fleet.obligations SET receipt = 'thief' WHERE event_id = $1",
-            &[event],
-        )
-        .await;
-    }
-
-    fn worker(&self, poster: &Recorder, pass: Duration) -> Worker<Recorder> {
-        let (bus, _server) = afd_bus::test_util::detached().expect("a detached bus");
-        self.worker_on(bus, poster, pass)
-    }
-
-    /// [`Ledger::worker`], pinged over `bus`.
-    fn worker_on(
-        &self,
-        bus: afd_bus::Handle,
-        poster: &Recorder,
-        pass: Duration,
-    ) -> Worker<Recorder> {
-        Worker::new(
-            self.database.clone(),
-            bus,
-            Posters {
-                slack: poster.clone(),
-            },
-            Entropy::new(),
-        )
-        .with_claim_pass(pass)
-    }
-
-    async fn cleanup(self) {
-        self.lane.cleanup().await;
-    }
-}
-
-/// One row's delivery state, as a test reads it.
-#[derive(Debug, sqlx::FromRow)]
-struct Row {
-    delivered: bool,
-    abandoned: bool,
-    abandon_reason: Option<String>,
-    attempt_count: i64,
-    receipt: Option<String>,
-    /// Released with the cycle backoff still ahead of it.
-    due_later: bool,
-    claim_expires: f64,
-}
-
-/// Polls until `done` holds.
-async fn until(done: impl Fn() -> bool) {
-    tokio::time::timeout(PATIENCE, async {
-        while !done() {
-            tokio::time::sleep(POLL).await;
-        }
-    })
-    .await
-    .expect("the condition the test waits for holds");
-}
-
-/// Runs one statement on the runtime role; fixtures only.
-async fn sql(database: &Db, statement: &'static str, binds: &[&Uuid7]) {
-    let mut connection = database.acquire().await.expect("a connection");
-    let mut query = sqlx::query(statement);
-    for bind in binds {
-        query = query.bind(*bind);
-    }
-    query
-        .execute(&mut *connection)
-        .await
-        .expect("the fixture statement runs");
-}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -308,7 +94,7 @@ async fn lapsed_claim_is_retaken_and_the_late_stamp_refused() -> Result<(), &'st
     let lane = ledger.lane().await;
     ledger.owe(&lane, "only").await;
 
-    let first = obligation::claim(&ledger.database, 8, "holder-one")
+    let first = obligation::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the first claim");
     let [first] = first.as_slice() else {
@@ -320,7 +106,7 @@ async fn lapsed_claim_is_retaken_and_the_late_stamp_refused() -> Result<(), &'st
         &[&first.id],
     )
     .await;
-    let second = obligation::claim(&ledger.database, 8, "holder-two")
+    let second = obligation::claim(&ledger.database, 8, &mint_id())
         .await
         .expect("the retake");
     let [second] = second.as_slice() else {
@@ -382,7 +168,8 @@ async fn claim_reads_the_open_lane_index() {
     let seed = "INSERT INTO fleet.obligations (id, fleet_id, workspace_id, provider, destination, \
         event_id, answer, receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at) \
         SELECT ('0195b4ba-8d3a-7a11-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, $1, $2, 'slack', 'd', \
-        ('0195b4ba-8d3a-7a12-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, 'a', 't', now(), \
+        ('0195b4ba-8d3a-7a12-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, 'a', \
+        ('0195b4ba-8d3a-7a13-8abc-' || lpad(to_hex(n), 12, '0'))::uuid, now(), \
         CASE WHEN n <= 10000 THEN now() END, 0, now(), now() FROM generate_series(1, 10100) n";
     sql(&ledger.database, seed, &[&lane.fleet, &lane.workspace]).await;
     let mut connection = ledger.database.acquire().await.expect("a connection");
@@ -399,7 +186,7 @@ async fn claim_reads_the_open_lane_index() {
     );
     let plan: Vec<String> = sqlx::query_scalar(sqlx::AssertSqlSafe(explain))
         .bind(8_i64)
-        .bind("plan-holder")
+        .bind(mint_id())
         .bind(Duration::from_secs(30))
         .fetch_all(&mut *transaction)
         .await
@@ -429,20 +216,109 @@ async fn an_empty_answer_owes_nothing_and_a_repeat_owes_once() {
         answer,
     };
     assert!(
-        !obligation::owe(&mut connection, &mint_id(), "t", delivery(""))
+        !obligation::owe(&mut connection, &mint_id(), &mint_id(), delivery(""))
             .await
             .expect("owe")
     );
     assert!(
-        obligation::owe(&mut connection, &mint_id(), "t", delivery("x"))
+        obligation::owe(&mut connection, &mint_id(), &mint_id(), delivery("x"))
             .await
             .expect("owe")
     );
     assert!(
-        !obligation::owe(&mut connection, &mint_id(), "t", delivery("x"))
+        !obligation::owe(&mut connection, &mint_id(), &mint_id(), delivery("x"))
             .await
             .expect("owe")
     );
     drop(connection);
+    ledger.cleanup().await;
+}
+
+/// A row that commits after a later row of its lane was claimed waits behind
+/// that claim: `sequence` is drawn at insert, not at commit, so the lower one
+/// is not the lane's head while the higher one is held.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_late_commit_waits_behind_a_held_claim() -> Result<(), &'static str> {
+    let ledger = Ledger::create().await;
+    let lane = ledger.lane().await;
+    let connection = ledger.database.acquire().await.expect("a connection");
+    let mut early = sqlx::Transaction::begin(connection, None)
+        .await
+        .expect("the earlier report's transaction");
+    let early_event = mint_id();
+    obligation::owe(
+        &mut early,
+        &mint_id(),
+        &mint_id(),
+        Delivery {
+            fleet_id: &lane.fleet,
+            workspace_id: &lane.workspace,
+            provider: Provider::Slack,
+            destination: DESTINATION,
+            event_id: &early_event,
+            answer: "early",
+        },
+    )
+    .await
+    .expect("the earlier report owes first");
+    let late_event = ledger.owe(&lane, "late").await;
+
+    let first = obligation::claim(&ledger.database, 8, &mint_id())
+        .await
+        .expect("the first claim");
+    let [holding] = first.as_slice() else {
+        return Err("only the committed row is claimed");
+    };
+    assert_eq!(holding.outgoing.event_id, late_event);
+    early.commit().await.expect("the earlier report commits");
+
+    let while_held = obligation::claim(&ledger.database, 8, &mint_id())
+        .await
+        .expect("the second claim");
+    assert!(while_held.is_empty(), "a held lane offers nothing more");
+    assert!(
+        obligation::stamp_delivered(&ledger.database, holding)
+            .await
+            .expect("the holder stamps")
+    );
+    let after = obligation::claim(&ledger.database, 8, &mint_id())
+        .await
+        .expect("the claim after delivery");
+    let [next] = after.as_slice() else {
+        return Err("the earlier row is offered once the lane is free");
+    };
+    assert_eq!(next.outgoing.event_id, early_event);
+    ledger.cleanup().await;
+    Ok(())
+}
+
+/// Claimers released together never hold two rows of one lane.
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn claimers_released_together_hold_one_row_per_lane() {
+    const CLAIMERS: usize = 100;
+    let ledger = Ledger::create().await;
+    let lane = ledger.lane().await;
+    for number in 0..10 {
+        ledger.owe(&lane, &format!("answer {number}")).await;
+    }
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(CLAIMERS));
+    let mut claims = tokio::task::JoinSet::new();
+    for _ in 0..CLAIMERS {
+        let (database, barrier) = (ledger.database.clone(), std::sync::Arc::clone(&barrier));
+        claims.spawn(async move {
+            barrier.wait().await;
+            obligation::claim(&database, 8, &mint_id())
+                .await
+                .expect("a claim")
+                .len()
+        });
+    }
+    let held: usize = claims.join_all().await.into_iter().sum();
+    assert_eq!(
+        held, 1,
+        "one lane, one held row, however many claim at once"
+    );
     ledger.cleanup().await;
 }

@@ -22,8 +22,8 @@ const EVENT_ABANDON_FAILED: &str = "outbound_obligation_abandon_failed";
 pub(crate) async fn delivery(database: &Db, job: &Claimed, reason: AbandonReason) {
     match obligation::abandon(database, job, reason).await {
         Ok(Some(attempt_count)) => Abandoned {
-            provider: &job.provider,
-            fleet_id: job.fleet_id.as_str(),
+            provider: &job.outgoing.provider,
+            fleet_id: job.outgoing.fleet_id.as_str(),
             reason: reason.as_str(),
             attempt_count,
         }
@@ -71,6 +71,7 @@ impl Abandoned<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::obligation::Outgoing;
 
     /// Dimension 4.4 — what an abandonment announces carries the connector, the
     /// fleet, the reason and the count, and neither the answer nor the address.
@@ -81,23 +82,30 @@ mod tests {
     fn abandonment_is_logged_once_without_content() {
         let job = Claimed {
             id: afd_db::test_util::mint_id(),
-            token: "holder-token".to_owned(),
-            provider: "slack".to_owned(),
-            destination: r#"{"channel_id":"C0SECRET","thread_ts":"1700000000.000100"}"#.to_owned(),
-            workspace_id: afd_db::test_util::mint_id(),
-            fleet_id: afd_db::test_util::mint_id(),
-            event_id: afd_db::test_util::mint_id(),
-            answer: "the private answer text".to_owned(),
+            token: afd_db::test_util::mint_id(),
+            outgoing: Outgoing {
+                provider: "slack".to_owned(),
+                destination: r#"{"channel_id":"C0SECRET","thread_ts":"1700000000.000100"}"#
+                    .to_owned(),
+                workspace_id: afd_db::test_util::mint_id(),
+                fleet_id: afd_db::test_util::mint_id(),
+                event_id: afd_db::test_util::mint_id(),
+                answer: "the private answer text".to_owned(),
+            },
         };
 
         let announced = Abandoned {
-            provider: &job.provider,
-            fleet_id: job.fleet_id.as_str(),
+            provider: &job.outgoing.provider,
+            fleet_id: job.outgoing.fleet_id.as_str(),
             reason: AbandonReason::CyclesExhausted.as_str(),
             attempt_count: 12,
         };
         let rendered = format!("{announced:?}");
-        for private in [job.answer.as_str(), job.destination.as_str(), "C0SECRET"] {
+        for private in [
+            job.outgoing.answer.as_str(),
+            job.outgoing.destination.as_str(),
+            "C0SECRET",
+        ] {
             assert!(
                 !rendered.contains(private),
                 "the announcement carries `{private}`: {rendered}"

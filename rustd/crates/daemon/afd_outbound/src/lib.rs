@@ -61,7 +61,7 @@ pub use self::interim::{Interim, Interjector};
 pub use self::lanes::{
     CYCLE_BACKOFF, Destination, IN_FLIGHT_DELIVERIES, LANE_DEPTH, Lanes, MAX_DELIVERY_CYCLES,
 };
-pub use self::obligation::Claimed;
+pub use self::obligation::{Claimed, Outgoing};
 pub use self::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry, dispatch};
 pub use self::slack::SlackPoster;
 pub use self::worker::{CLAIM_PASS, Via, Worker};

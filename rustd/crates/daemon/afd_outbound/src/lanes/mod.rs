@@ -96,8 +96,8 @@ impl Destination {
     #[must_use]
     pub fn of(job: &Claimed) -> Self {
         Self {
-            provider: job.provider.clone(),
-            workspace_id: job.workspace_id.clone().into(),
+            provider: job.outgoing.provider.clone(),
+            workspace_id: job.outgoing.workspace_id.clone().into(),
         }
     }
 }
@@ -227,7 +227,7 @@ impl<S: Deliver + 'static> Inner<S> {
         let attempts = self.count_cycle(job).await;
         let opening = Attempt::opening(attempts);
         let verdict = tokio::select! {
-            verdict = deliver_with_retry(&self.posters, job, &self.token, opening) => Some(verdict),
+            verdict = deliver_with_retry(&self.posters, &job.outgoing, &self.token, opening) => Some(verdict),
             () = self.renewing(job) => None,
         };
         let Some(verdict) = verdict else {
@@ -261,8 +261,8 @@ impl<S: Deliver + 'static> Inner<S> {
     /// A retryable cycle: give the claim back, due again later, or abandon it
     /// once its cycles are spent. A shutdown gives it back due at once.
     async fn retry_later(&self, job: &Claimed, attempts: Option<i64>) {
-        let provider = job.provider.as_str();
-        let fleet_id = job.fleet_id.as_str();
+        let provider = job.outgoing.provider.as_str();
+        let fleet_id = job.outgoing.fleet_id.as_str();
         if self.token.is_cancelled() {
             tracing::info!(
                 provider,
@@ -298,8 +298,8 @@ impl<S: Deliver + 'static> Inner<S> {
 
     /// A holder's write matched nothing: its claim had lapsed.
     fn lapsed(job: &Claimed, write: &'static str) {
-        let provider = job.provider.as_str();
-        let fleet_id = job.fleet_id.as_str();
+        let provider = job.outgoing.provider.as_str();
+        let fleet_id = job.outgoing.fleet_id.as_str();
         let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
         tracing::warn!(
             error_code,
@@ -339,12 +339,12 @@ impl<S: Deliver + 'static> Inner<S> {
             }
         }
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let provider = job.provider.as_str();
-        let fleet_id = job.fleet_id.as_str();
+        let provider = job.outgoing.provider.as_str();
+        let fleet_id = job.outgoing.fleet_id.as_str();
         // The turn this answer belongs to. Every other layer stamps it, and a
         // delivery line that names only the fleet cannot be joined back to the
         // turn a reader is tracing — nor tell two turns of one fleet apart.
-        let agentsfleet_event_id = job.event_id.as_str();
+        let agentsfleet_event_id = job.outgoing.event_id.as_str();
         tracing::debug!(
             provider,
             fleet_id,

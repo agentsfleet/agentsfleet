@@ -223,7 +223,7 @@ async fn owe_all(
         obligation::owe(
             &mut connection,
             &row,
-            token.as_str(),
+            &token,
             Delivery {
                 fleet_id: &fleet,
                 workspace_id: payer,

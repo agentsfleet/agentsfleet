@@ -145,7 +145,7 @@ impl Leases {
         // The report's own token, so no holder's write matches it until a
         // claim replaces it.
         let token = self.entropy().uuid7(now)?;
-        let written = obligation::owe(connection, &row_id, token.as_str(), delivery).await?;
+        let written = obligation::owe(connection, &row_id, &token, delivery).await?;
         Ok(written.then_some(row_id))
     }
 

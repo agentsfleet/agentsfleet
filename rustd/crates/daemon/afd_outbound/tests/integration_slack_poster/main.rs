@@ -236,7 +236,7 @@ async fn an_answer_naming_the_channel_posts_as_text() {
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
     let slack = slack_answering(200, r#"{"ok":true}"#).await;
-    let paging = afd_outbound::Claimed {
+    let paging = afd_outbound::Outgoing {
         answer: "<!channel> <https://x.example|docs>".to_owned(),
         ..fixture.job()
     };

@@ -14,7 +14,7 @@
 use std::time::Duration;
 
 use afd_db::test_util::mint_id;
-use afd_outbound::Claimed;
+use afd_outbound::{Claimed, Outgoing};
 use afd_outbound::{Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 
@@ -57,13 +57,16 @@ async fn a_clone_names_the_same_lanes() {
     lanes
         .dispatch(Box::new(Claimed {
             id: afd_db::test_util::mint_id(),
-            token: String::new(),
-            provider: PROVIDER.to_owned(),
-            destination: DESTINATION.to_owned(),
-            workspace_id: mint_id(),
-            fleet_id: mint_id(),
-            event_id: mint_id(),
-            answer: "the run finished".to_owned(),
+            token: af_core::id::Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff")
+                .expect("a fixture token"),
+            outgoing: Outgoing {
+                provider: PROVIDER.to_owned(),
+                destination: DESTINATION.to_owned(),
+                workspace_id: mint_id(),
+                fleet_id: mint_id(),
+                event_id: mint_id(),
+                answer: "the run finished".to_owned(),
+            },
         }))
         .await;
 
@@ -105,13 +108,16 @@ async fn a_delivery_survives_a_stamp_that_cannot_be_recorded() {
     lanes
         .dispatch(Box::new(Claimed {
             id: afd_db::test_util::mint_id(),
-            token: String::new(),
-            provider: PROVIDER.to_owned(),
-            destination: DESTINATION.to_owned(),
-            workspace_id: mint_id(),
-            fleet_id: mint_id(),
-            event_id: event.clone(),
-            answer: "the run finished".to_owned(),
+            token: af_core::id::Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff")
+                .expect("a fixture token"),
+            outgoing: Outgoing {
+                provider: PROVIDER.to_owned(),
+                destination: DESTINATION.to_owned(),
+                workspace_id: mint_id(),
+                fleet_id: mint_id(),
+                event_id: event.clone(),
+                answer: "the run finished".to_owned(),
+            },
         }))
         .await;
 

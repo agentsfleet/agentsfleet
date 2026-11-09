@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_outbound::Claimed;
+use afd_outbound::Outgoing;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver as _, Verdict};
 
@@ -35,15 +35,13 @@ const REFUSES: &str = "0195b4ba-8d3a-7000-8abc-000000000002";
 /// A destination fleet no script names.
 const FOREIGN: &str = "0195b4ba-8d3a-7000-8abc-000000000009";
 
-fn job(id: &str, destination: &str) -> Claimed {
-    Claimed {
-        id: af_core::id::Uuid7::parse(id).expect("a fixture row id"),
-        token: String::new(),
+fn job(id: &str, destination: &str) -> Outgoing {
+    Outgoing {
         provider: "slack".to_owned(),
         destination: REPLY_ADDRESS.to_owned(),
         workspace_id: mint_id(),
         fleet_id: Uuid7::parse(destination).expect("a canonical destination fleet"),
-        event_id: mint_id(),
+        event_id: Uuid7::parse(id).expect("a fixture job id"),
         answer: "a".to_owned(),
     }
 }

@@ -32,7 +32,7 @@
 //! The poster escapes every text it sends (`crate::slack`), so a line is handed
 //! over as the fleet wrote it and escaped exactly once.
 
-use crate::obligation::Claimed;
+use crate::obligation::Outgoing;
 use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_connector::slack::Part;
@@ -99,11 +99,8 @@ impl Interjector {
             text,
             part,
         } = interim;
-        // An interjection posts directly and is never claimed, so its row id
-        // and token are placeholders no ledger write ever reads.
-        let job = Claimed {
-            id: event_id.clone(),
-            token: String::new(),
+        // An interjection posts directly and is never owed or claimed.
+        let job = Outgoing {
             provider: provider.id().to_owned(),
             destination,
             workspace_id,
@@ -147,11 +144,11 @@ struct Line<'p> {
 }
 
 impl Deliver for Line<'_> {
-    fn deliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         self.slack.deliver_part(job, Some(&self.part))
     }
 
-    fn redeliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
+    fn redeliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         self.slack.redeliver_part(job, Some(&self.part))
     }
 }
