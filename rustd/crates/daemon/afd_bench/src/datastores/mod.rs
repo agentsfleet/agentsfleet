@@ -54,6 +54,15 @@ pub const DRAGONFLY_URL_VARIABLE: &str = "BENCH_DRAGONFLY_URL";
 /// The certificate authority for a Dragonfly serving TLS, when it does.
 pub const DRAGONFLY_CA_CERT_VARIABLE: &str = "BENCH_DRAGONFLY_CA_CERT";
 
+/// Which Bus a lane measures, `dragonfly` (the default) or `nats` (M244 §1, §3).
+pub const BUS_VARIABLE: &str = "BENCH_BUS";
+
+/// The NATS seeds a `BENCH_BUS=nats` lane connects to.
+pub const NATS_URL_VARIABLE: &str = "BENCH_NATS_URL";
+
+/// `BENCH_BUS`'s value that selects NATS.
+const BUS_NATS: &str = "nats";
+
 /// The field inside a `cmdstat_*` line holding the call count.
 const CALLS_FIELD: &str = "calls=";
 
@@ -136,7 +145,13 @@ impl Datastores {
         let redis = DragonflyConfig::from_url(DragonflyRole::Default, dragonfly_url.to_owned())
             .with_ca_cert_file(ca_cert.map(Into::into));
         let queue = Dragonfly::connect(&redis).await?;
-        let bus = afd_bus::dragonfly::connect(queue.clone(), redis.clone()).await?;
+        let bus = if ProcessEnv.get(BUS_VARIABLE).as_deref() == Some(BUS_NATS) {
+            let seeds = ProcessEnv.get(NATS_URL_VARIABLE).unwrap_or_default();
+            let env = af_core::env::MapEnv::from_pairs([(afd_bus::nats::URL_ENV, seeds.as_str())]);
+            afd_bus::nats::connect(&afd_bus::nats::Config::from_env(&env)?).await?
+        } else {
+            afd_bus::dragonfly::connect(queue.clone(), redis.clone()).await?
+        };
         Ok(Self {
             database,
             queue,

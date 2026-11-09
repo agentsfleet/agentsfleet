@@ -15,9 +15,9 @@
 //! # Then timed through one frame each
 //!
 //! A ceiling is only as good as its latency at that many streams, so once the
-//! heap is read the rung publishes one measured frame to every stream's fleet,
-//! stamping each publish, and every stream records how long its own took to
-//! arrive. The p95 over the streams is the rung's publish-to-receive figure;
+//! heap is read the rung publishes one measured frame to every stream's fleet
+//! in one concurrent burst, and every stream records how long after the burst began its
+//! own arrived. The p95 over the streams is the rung's burst-to-receive figure;
 //! a stream that never hears its frame is counted, not timed.
 
 use std::sync::Arc;
@@ -32,7 +32,10 @@ use futures_util::stream::BoxStream;
 use tokio_util::sync::CancellationToken;
 
 use super::publish::{FRAME_KIND, PROBE, PROBE_INTERVAL, PROBE_KIND, RUNG_DEADLINE, frame_of};
-use super::{HEAP_BYTES_PER_STREAM, LADDER_STREAMS, STREAM_RECEIVE_P95_MS, STREAMS_LIVE, push};
+use super::{
+    HEAP_BYTES_PER_STREAM, LADDER_STREAMS, STREAM_RECEIVE_P95_MS, STREAM_RECEIVE_P99_MS,
+    STREAMS_LIVE, push,
+};
 use crate::allocations::Snapshot;
 use crate::error::{ErrorKind, Result};
 use crate::fixture::RunPrefix;
@@ -81,6 +84,11 @@ impl Rung {
                 report,
                 STREAM_RECEIVE_P95_MS,
                 self.latency.quantile_ms(0.95),
+            );
+            push(
+                report,
+                STREAM_RECEIVE_P99_MS,
+                self.latency.quantile_ms(0.99),
             );
         }
     }
@@ -192,16 +200,30 @@ pub(super) async fn rung(
     })
 }
 
-/// Publish one timed frame to every fleet, stamping each, then wait for every
-/// stream to hear its own or the deadline.
+/// Publish one timed frame to every fleet, then wait for every stream to hear
+/// its own or the deadline.
+///
+/// Every stamp is the burst's start, so a stream's figure is how long the
+/// whole burst took to reach it. Stamping each publish instead charged a bus
+/// whose publish returns at once for the queue behind it, and excused one
+/// whose publish waits for a reply for the waiting (Indy, M244 §1, Nov 09,
+/// 2026).
 async fn time_every_stream(publisher: &Handle, fleets: &[Uuid7], watch: &Watch) -> Result<()> {
     let frame = frame_of(TIMED_FRAME_BYTES);
-    for (fleet, stamp) in fleets.iter().zip(&watch.stamped) {
-        stamp.store(watch.now(), Ordering::Release);
-        publisher
-            .publish(&afd_bus::Subject::FleetTail(fleet.clone()), &frame)
-            .await?;
+    let started = watch.now();
+    for stamp in &watch.stamped {
+        stamp.store(started, Ordering::Release);
     }
+    // Concurrently, as fleets publish in production: each from its own task,
+    // never one waiting on another's reply.
+    let sent = futures_util::future::join_all(fleets.iter().map(|fleet| {
+        let subject = afd_bus::Subject::FleetTail(fleet.clone());
+        let frame = &frame;
+        async move { publisher.publish(&subject, frame).await }
+    }))
+    .await;
+    sent.into_iter()
+        .collect::<std::result::Result<Vec<()>, _>>()?;
     let deadline = Instant::now() + RUNG_DEADLINE;
     while watch
         .arrived
