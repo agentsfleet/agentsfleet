@@ -75,7 +75,7 @@ async fn test_runner_bearer_state_matrix() {
         "a live runner must reach its handler; the 503 is the absent datastore, \
          not the guard"
     );
-    assert_eq!(code_of(admitted).await, "UZ-INTERNAL-003");
+    assert_eq!(code_of(admitted).await, "UZ-INTERNAL-001");
 
     // A row that exists and is revoked, cordoned, draining or deleted. Its own
     // code, because "stop presenting this" and "this was never valid" are
@@ -241,7 +241,7 @@ async fn the_native_stream_opening_is_guarded_like_every_other_runner_verb() {
     assert_eq!(code_of(refused).await, "UZ-RUN-001");
     let admitted = send(&router, Method::POST, STREAM_PATH, Some(RUNNER_TOKEN), "{}").await;
     assert_eq!(admitted.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(code_of(admitted).await, "UZ-INTERNAL-001");
+    assert_eq!(code_of(admitted).await, "UZ-INTERNAL-003");
 }
 
 mod authorization;
