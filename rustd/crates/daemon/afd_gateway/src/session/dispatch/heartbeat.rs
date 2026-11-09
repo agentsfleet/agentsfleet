@@ -35,10 +35,12 @@ impl SessionServices {
             .await;
         match result {
             Ok(beat) => {
-                {
+                let recovered = {
                     let mut state = self.handle.snapshot.lock();
+                    let recovered = state.degraded && !beat.verdict.is_degraded();
                     state.held = listed;
                     state.degraded = beat.verdict.is_degraded();
+                    recovered
                 };
                 self.send(&Message::Heartbeat {
                     request_id,
@@ -48,7 +50,9 @@ impl SessionServices {
                 })
                 .await?;
                 self.refresh_cancellations().await?;
-                self.handle.request_offer();
+                if recovered {
+                    self.handle.request_offer();
+                }
             }
             Err(error) => {
                 let terminal = !error.retryable();

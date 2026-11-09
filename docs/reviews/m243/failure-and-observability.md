@@ -94,8 +94,8 @@ Transport activity without an application answer does not refresh an answer dead
 | One lane ends or resets | Close the logical session and recover once; no surviving report lane with stale control authority |
 | Lost reply after renewal | Keep the old deadline until a confirmed answer; repeated usage retains `recorded_through` semantics |
 | Lost report acknowledgement after commit | Retry the report retained in worker memory; lease-keyed idempotence prevents another charge |
-| Full report queue | Keep reports on disk and retry with backpressure; never erase a report after socket send alone |
-| Report storage write fails | Expose the storage failure, retain every previously accepted report and avoid claiming the new report reached durable storage |
+| Full report queue | Keep unacknowledged reports in worker memory and retry with backpressure; release them after acknowledgement |
+| Postgres settlement fails | Expose the storage failure and retain the unacknowledged report in worker memory; saved results and billing stay in Postgres |
 | Full activity queue | Drop excess live activity, increment its drop counter, preserve task-history writes required by the spec |
 | Lost broker ring | The replica's next admission probe runs an offer pass |
 | Lost cancellation push | Renewal and reconnect read the committed cancel marker |

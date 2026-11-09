@@ -72,6 +72,8 @@ impl Registry {
                     || state.degraded
                     || state.credits == 0
                     || session.stop.is_cancelled()
+                    || session.drain.is_cancelled()
+                    || session.is_superseded()
                 {
                     return None;
                 }
@@ -101,6 +103,14 @@ impl Registry {
 
     pub(crate) fn is_draining(&self) -> bool {
         self.draining.load(Ordering::Acquire)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn register_fixture(
+        self: &Arc<Self>,
+        session: &Arc<SessionHandle>,
+    ) -> Result<Registration> {
+        self.register(session)
     }
 }
 

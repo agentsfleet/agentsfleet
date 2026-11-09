@@ -12,13 +12,14 @@ executable: false
 
 This file accompanies Indy's requested context-save checkpoint on draft [PR 819](https://github.com/agentsfleet/agentsfleet/pull/819).
 Resume the feature branch at the commit containing this file, or a later explicitly published checkpoint.
-The preceding published checkpoint was `d68ea48f8250c143f3a7f259e1ed6421668c1bee`.
+The latest incorporated published checkpoint is Claude's `3e3d8f1b0`, following Codex's authoring checkpoint `9c2803f91`.
 
-**M243 remains incomplete. Authoring source is implemented; native integration verification is paused until code completion.**
+**M243 remains incomplete. Finish code and review first, then run the combined final verification. Integration is paused until code completion.**
 
-Workspace compilation and full `make lint-all` pass.
-The full Rust unit lane passed 5,380 tests before the guard simplification; the affected library shard then passed all 3,531 tests again.
-Claude's three previously failing tests are fixed and included.
+The authoring checkpoint passed workspace compilation and full `make lint-all`.
+The full Rust unit lane passed 5,380 tests before its guard simplification; the affected library shard then passed all 3,531 tests again.
+The later scheduler checkpoint has its own narrow results in [bounded scheduling passes](#nov-09-bounded-scheduling-passes).
+Claude's three previously failing tests and latest musl dependency fix are included.
 
 Kernel compilation blockers are fixed. Native fixture migration and the remaining implementation still need verification.
 Do not present M243 as code complete, ready to undraft or a benchmark baseline.
@@ -498,3 +499,100 @@ Before publication, Codex fast-forwarded to Claude's CI builder tip `292424604` 
 Those commits contain no Rust source changes; the authoring index was preserved.
 Their workflow/Make-reference checks, playbook references, shellcheck and all 21 image-builder unit cases pass locally.
 Claude still owns the full musl static builds and r2 image publication; no image was published by Codex.
+
+### Nov 09 bounded scheduling passes
+
+Authoring checkpoint `9c2803f918b8202b99b9b7bb534a0578e7ef2cea` was pushed successfully and PR 819 remains draft.
+The PR body and issue 818 comment 6743278302 record that checkpoint's actual checks.
+
+The next source change completes the scheduler mechanism for Dimensions 4.4 and 4.5.
+`afd_gateway/src/scheduler/mod.rs` now runs one notification pass, with one lease of budget per observed wake generation.
+It awaits each session's claim outcome, continues a host while it issues work and advances after an empty claim.
+Notifications received during that pass form one subsequent pass; an uncertain outcome ends the current pass.
+
+`session/offers.rs` transfers each request through a bounded session queue and a one-shot reply.
+The existing supervisor still owns offer execution and keeps control, reports and authoring progress independent.
+An abandoned queued request is skipped before issue.
+Local capacity passes start on a credit increase or recovery from degraded state, instead of every heartbeat or unchanged Ready update.
+
+Successful issue updates waiting order; merely requesting an offer does not.
+Draining and superseded sessions are excluded from candidate selection.
+The five-second probe starts after its first full interval and retains its own clock during notification work.
+
+The focused unit check `cargo test -p afd_gateway --all-features --lib` passed 20 tests, with zero failures and one live-database test ignored.
+Ten cases were added: eight pass/registry tests, one credit-rise test and one replica-probe test.
+Increasing the production pass budget by one made the one-ring test fail at its extra-claim assertion; the mutation was removed before the green run.
+
+The first probe test attempt assumed equal-priority hosts would be visited in insertion order and was stopped without a suite verdict.
+The corrected fixture answers all 50 real session request queues concurrently, under a deadline; no scheduler check was weakened.
+The test proves probe frequency and pass dispatch with a controlled probe result, without running a live datastore test.
+
+A full changed-file count found 14 first-party Rust files still over the 350-line ceiling.
+Those corrections, whole-PR review, remaining native fault scenarios, benchmarks and final repository lanes remain due.
+Integration stays paused until code completion; the twelve authoring cases still have no complete runtime verdict.
+
+### Latest GitHub pull and next-session order
+
+Indy requested a checkpoint push and context save, then explicitly asked to pull the latest GitHub work and push again.
+Codex fetched both main and the feature branch, then fast-forwarded from `9c2803f91` to `3e3d8f1b0` with all local scheduler work preserved.
+The pulled commit adds Claude's licensed `datagram-socket` musl patch under `rustd/patches/`, its workspace exclusion and lockfile resolution.
+Codex did not edit those incoming files or Claude's CI-builder files.
+
+Claude reports the arm64 static daemon build passed at that incoming checkpoint.
+Its amd64 daemon and runner builds, r2 image publication and any upstream report remain Claude's work; check issue 818 for a newer result.
+Local tooling reports an unused `IoSlice` import in the vendored dependency; retain that fact when reviewing the fork.
+Vendored upstream files are outside the first-party length count below.
+
+The checkpoint lint initially found the new recovery module's directory layout and test-only reply/error assertions.
+The module moved to `scheduler/recovery/mod.rs`, including its relative SQL path, and the assertions now retain their actual outcomes.
+No lint rule, test assertion, floor or gate was disabled.
+
+Continue in this order:
+
+1. Fetch the feature branch again and incorporate any newer published work while preserving this checkpoint.
+2. Finish the source review and fixes for drain, recovery, cancellation, renewals, folds and report retries. Reconcile actual tests against the active specification rather than treating old handoff lists as new compiler failures.
+3. Review `SessionSupervisor::drain` specifically: it cancels readers and joins dispatched jobs. The treatment of frames already queued by readers still needs a source decision and a native test; this is a review question, not a confirmed runtime verdict.
+4. Finish first-party file and function length corrections, full Rust ownership/error review, native failure/fairness test sources, benchmark source and documentation/OpenAPI reconciliation.
+5. Tell Indy when code is complete. Then run the combined repository verification: lint, unit/coverage, native integration including authoring, version, benchmarks and applicable Orly shipping gates.
+
+Routine formatting, compilation, lint, unit checks and gates remain authorized.
+Do not repeat unchanged full shards merely for status, and do not start integration before code completion.
+An existing green command is evidence for its recorded revision and scope only.
+
+| First-party Rust file | Lines at this checkpoint |
+|---|---:|
+| `afd_fleet/src/error/classify.rs` | 658 |
+| `afd_fleet/src/task/mod.rs` | 574 |
+| `afd_fleet/src/lease/mint/mod.rs` | 406 |
+| `afd_authoring/src/error/mod.rs` | 404 |
+| `afd_api/src/openapi/mod.rs` | 395 |
+| `afr_supervisor/src/lease_loop/mod.rs` | 386 |
+| `afd_events/src/steer/mod.rs` | 381 |
+| `main/src/serve/mod.rs` | 367 |
+| `afd_fleet/tests/support/fleet_report_seed.rs` | 364 |
+| `afd_fleet/src/lease/report/mod.rs` | 362 |
+| `af_stream/src/error/mod.rs` | 357 |
+| `afd_fleet/tests/integration_renew_coverage.rs` | 353 |
+| `main/tests/cli.rs` | 352 |
+| `main/src/serve/drain/mod.rs` | 352 |
+
+Paths above are relative to each crate's layer under `rustd/crates/`; `main` is the daemon binary.
+No completion or ready-for-review claim accompanies this context save.
+PR 819 stays draft, with merge held for Indy's listener, certificate and 1Password review.
+
+### Checkpoint checks after pulling `3e3d8f1b0`
+
+| Command | Actual result |
+|---|---|
+| `make lint-rustd` | Passed: 44 source-rule tests and clean scan, 16 coverage-harness tests, rustfmt, workspace all-target/all-feature Clippy and cargo shear |
+| `cargo check --workspace --all-targets --all-features --locked` | Passed in 20.65 seconds |
+| `cargo test -p afd_gateway --all-features --lib --locked` | Passed: 20 tests, zero failures, one live-database test ignored; build finished in 4.92 seconds |
+| `make check-version` | Passed: all versions match 0.75.0 |
+| `orly gate work` | Passed: repository configuration declares four commands; this work gate does not replace final verification |
+| `gitleaks protect --staged --redact --no-banner` | Passed for the checkpoint index; no leaks found |
+
+The last two logs are `/tmp/m243-scheduler-check.log` and `/tmp/m243-scheduler-unit.log` when reusing this environment.
+Cargo reports the vendored unused import described above; cargo shear retains its existing five unlinked `afd_api` fixture warnings and exits successfully.
+No full Rust shard or frontend coverage lane was rerun for this scheduler context save.
+The full `make lint-all` and Rust shard results earlier in this file belong to their recorded authoring revisions.
+No integration test restarted; full repository and shipping verification remain due after code completion.

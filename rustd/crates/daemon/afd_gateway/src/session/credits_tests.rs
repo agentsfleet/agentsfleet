@@ -83,5 +83,35 @@ fn asynchronously_completed_older_updates_cannot_overwrite_current_capacity() ->
 
 #[test]
 fn acknowledgement_cannot_name_an_offer_the_daemon_never_sent() {
-    assert!(state().availability(1, NonZeroU64::MIN, 1).is_err());
+    assert!(
+        matches!(state().availability(1, NonZeroU64::MIN, 1), Err(error) if error.code() == af_core::error_code::INVALID_REQUEST)
+    );
+}
+
+#[test]
+fn only_a_rise_in_available_workers_starts_a_session_pass() -> Result<()> {
+    let mut state = state();
+    let mut revision = NonZeroU64::MIN;
+    assert!(state.availability(2, revision, 0)?);
+    revision = revision
+        .checked_add(1)
+        .ok_or(crate::error::ErrorKind::Protocol)?;
+    assert!(!state.availability(2, revision, 0)?);
+    assert!(!state.availability(64, NonZeroU64::MIN, 0)?);
+    state.issued()?;
+    revision = revision
+        .checked_add(1)
+        .ok_or(crate::error::ErrorKind::Protocol)?;
+    assert!(
+        !state.availability(2, revision, 0)?,
+        "one offer is still unseen"
+    );
+    revision = revision
+        .checked_add(1)
+        .ok_or(crate::error::ErrorKind::Protocol)?;
+    assert!(
+        state.availability(2, revision, 1)?,
+        "acknowledged work freed capacity"
+    );
+    Ok(())
 }

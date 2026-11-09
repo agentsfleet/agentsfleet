@@ -6,6 +6,7 @@ use super::{
         EventHandler, EventSource, OperationCompletion, SessionEvent, ShutdownReason, join_result,
     },
     io::IncomingFrame,
+    offers::OfferTrigger,
     requests::{RequestSlots, RequestTracker},
 };
 use crate::{
@@ -89,11 +90,21 @@ impl SessionSupervisor {
         Ok(())
     }
 
-    fn offer(&mut self) {
+    fn offer(&mut self, trigger: OfferTrigger) {
         self.offer_running = true;
         let services = Arc::clone(&self.services);
         self.jobs.spawn(async move {
-            services.offer().await?;
+            let abandoned = matches!(&trigger, OfferTrigger::Pass(reply) if reply.is_closed());
+            let issued = !abandoned && services.offer().await?;
+            match trigger {
+                OfferTrigger::Ready if issued => services.handle.request_offer(),
+                OfferTrigger::Ready => {}
+                OfferTrigger::Pass(reply) => {
+                    if reply.send(issued).is_err() {
+                        tracing::debug!(event = "runner_offer_pass_abandoned", issued);
+                    }
+                }
+            }
             Ok(OperationCompletion::Offer)
         });
     }
@@ -165,7 +176,7 @@ impl EventHandler for SessionSupervisor {
             SessionEvent::Frame(frame) => self.request(frame)?,
             SessionEvent::Completed(completion) => self.completed(completion),
             SessionEvent::Command(command) => self.command(command),
-            SessionEvent::OfferRequested => self.offer(),
+            SessionEvent::OfferRequested(trigger) => self.offer(trigger),
             SessionEvent::DrainRequested => return Ok(ControlFlow::Break(ShutdownReason::Drain)),
             SessionEvent::Superseded => return Ok(ControlFlow::Break(ShutdownReason::Superseded)),
             SessionEvent::Disconnected => {
