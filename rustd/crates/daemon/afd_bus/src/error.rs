@@ -75,7 +75,12 @@ pub(crate) enum ErrorKind {
         #[source]
         source: async_nats::SubscribeError,
     },
-    #[error("The NATS server did not confirm the subscription.")]
+    #[error("The NATS subscription this one joined failed before it was sent.")]
+    NatsJoin {
+        #[source]
+        source: tokio::sync::watch::error::RecvError,
+    },
+    #[error("The NATS client could not send the subscription.")]
     NatsFlush {
         #[source]
         source: async_nats::client::FlushError,
@@ -101,6 +106,7 @@ af_core::error_lifts!(Error, ErrorKind:
     async_nats::ConnectError => NatsConnect,
     async_nats::PublishError => NatsPublish,
     async_nats::SubscribeError => NatsSubscribe,
+    tokio::sync::watch::error::RecvError => NatsJoin,
     async_nats::client::FlushError => NatsFlush,
     async_nats::client::DrainError => NatsDrain,
 );
@@ -122,6 +128,7 @@ impl Error {
             | ErrorKind::NatsDisconnected
             | ErrorKind::NatsPublish { .. }
             | ErrorKind::NatsSubscribe { .. }
+            | ErrorKind::NatsJoin { .. }
             | ErrorKind::NatsFlush { .. }
             | ErrorKind::NatsDrain { .. } => "backend",
             ErrorKind::Json { .. } => "serialization",
@@ -158,6 +165,7 @@ impl Error {
             | ErrorKind::NatsDisconnected
             | ErrorKind::NatsPublish { .. }
             | ErrorKind::NatsSubscribe { .. }
+            | ErrorKind::NatsJoin { .. }
             | ErrorKind::NatsFlush { .. }
             | ErrorKind::NatsDrain { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
