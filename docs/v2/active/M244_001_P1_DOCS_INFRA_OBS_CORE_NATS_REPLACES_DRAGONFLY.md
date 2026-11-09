@@ -202,8 +202,8 @@ The debt set is bounded at 4,096 subjects; overflow publishes one marker on `af.
 
 Three interleaved pairs of `bench-tail`, Dragonfly then NATS, run on Indy's laptop after a reset rig. The verdict compares per-rung medians of that session against the bar, with spread recorded. The NATS drill repeats §1's steps with `stop nats-2`. A failing rung stops the milestone here, before anything is deleted, and Indy decides; the bar is his. The integration lane gains `integration_bus_exclusive`, the serial group's new member, which stops a real node through `TEST_NATS_CONTROL`.
 
-- **Dimension 3.1** — a killed node gaps its viewers, who resume → Test `node_kill_gaps_viewers_and_resumes` (integration, exclusive): subscribers on all three nodes; `nats-2` stops; its subscriber receives `Gap` within 10 s and the next frame.
-- **Dimension 3.2** — no frame is lost without a gap → Test `every_lost_frame_follows_a_gap` (integration, exclusive): 1,000 numbered frames across a node stop; every hole in each subscriber's sequence is preceded by `Gap`.
+- **Dimension 3.1** — DONE — a killed node gaps its viewers, who resume → Test `node_kill_gaps_viewers_and_resumes` (integration, exclusive): subscribers on all three nodes; `nats-2` stops; its subscriber receives `Gap` within 10 s and the next frame.
+- **Dimension 3.2** — DONE — no frame is lost without a gap → Test `every_lost_frame_follows_a_gap` (integration, exclusive): 1,000 numbered frames across a node stop; every hole in each subscriber's sequence is preceded by `Gap`.
 - **Dimension 3.3** — NATS meets the bar → Test `broker_ab_meets_the_bar` (manual): §Baselines holds the three pairs' medians per rung and `Verdict: NATS passes` or the failing rung.
 - **Dimension 3.4** — the NATS drill is recorded → Test `nats_kill_drill_recorded` (manual): two runs, each viewer's `catching_up` and resume seconds; any viewer over 10 s fails the bar.
 
