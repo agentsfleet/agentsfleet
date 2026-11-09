@@ -15,7 +15,6 @@ use tokio_util::sync::CancellationToken;
 use crate::error::Error;
 
 const EVENT_TOKEN_REFUSED: &str = "runner_token_refused";
-const EVENT_LEASING_STOPPED: &str = "runner_leasing_stopped";
 
 /// The runner's stop signals.
 #[derive(Debug)]
@@ -56,14 +55,6 @@ impl Halt {
     pub(crate) fn stop(&self) {
         self.running.cancel();
         self.serving.cancel();
-    }
-
-    /// Takes no new lease; whatever is running finishes.
-    pub(crate) fn stop_leasing(&self) {
-        let code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
-        let event = EVENT_LEASING_STOPPED;
-        tracing::warn!(error_code = code, event, "this runner takes no new lease");
-        self.leasing.cancel();
     }
 
     /// Stops the runner when `failure` is the daemon refusing its token, and

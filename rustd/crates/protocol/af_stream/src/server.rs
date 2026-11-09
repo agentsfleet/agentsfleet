@@ -59,10 +59,16 @@ impl Listener {
     }
 
     /// Build one service per connection; all lanes reuse that service's context.
+    /// Cancel `accepting` to drain connections, then `abort` if the caller's drain deadline expires.
     ///
     /// # Errors
     /// Returns listener setup or acceptance failures; individual peer failures are observed separately.
-    pub async fn serve<M, S>(self, make: M, stop: CancellationToken) -> Result<()>
+    pub async fn serve<M, S>(
+        self,
+        make: M,
+        accepting: CancellationToken,
+        abort: CancellationToken,
+    ) -> Result<()>
     where
         M: Fn(ConnectionInfo) -> S + Clone + Send + Sync + 'static,
         S: Service<Request<Incoming>, Response = Response<Outgoing>, Error = Infallible>
@@ -71,11 +77,38 @@ impl Listener {
             + 'static,
         S::Future: Send + 'static,
     {
-        let _guard = stop.clone().drop_guard();
-        let h2 = crate::h2::serve(self.tcp, self.identity.clone(), make.clone(), stop.clone());
-        let h3 = crate::h3::serve(self.udp, self.identity, make, stop);
-        tokio::try_join!(h2, h3)?;
-        Ok(())
+        let _guard = abort.clone().drop_guard();
+        let h2 = crate::h2::serve(
+            self.tcp,
+            self.identity.clone(),
+            make.clone(),
+            accepting.clone(),
+            abort.clone(),
+        );
+        let h3 = crate::h3::serve(self.udp, self.identity, make, accepting, abort.clone());
+        // A failed carrier stops its sibling, but both owners still finish their cleanup.
+        let h2 = async {
+            let result = h2.await;
+            if result.is_err() {
+                abort.cancel();
+            }
+            result
+        };
+        let h3 = async {
+            let result = h3.await;
+            if result.is_err() {
+                abort.cancel();
+            }
+            result
+        };
+        let (h2, h3) = tokio::join!(h2, h3);
+        match (h2, h3) {
+            (Ok(()), result) | (result, Ok(())) => result,
+            (Err(primary), Err(secondary)) => {
+                observe(Err(secondary), Transport::H3);
+                Err(primary)
+            }
+        }
     }
 }
 
@@ -95,12 +128,21 @@ pub(crate) fn observe(result: Result<()>, transport: Transport) {
     }
 }
 
-pub(crate) async fn finish(workers: &mut JoinSet<()>) {
-    let joined = async { while workers.join_next().await.is_some() {} };
-    if tokio::time::timeout(std::time::Duration::from_secs(5), joined)
-        .await
-        .is_err()
-    {
-        workers.shutdown().await;
+/// The caller owns the absolute shutdown bound and cancels `abort` when it expires.
+pub(crate) async fn finish(
+    workers: &mut JoinSet<()>,
+    abort: &CancellationToken,
+    transport: Transport,
+) {
+    let joined = async {
+        while let Some(done) = workers.join_next().await {
+            if let Err(source) = done {
+                observe(Err(source.into()), transport);
+            }
+        }
+    };
+    tokio::select! {
+        () = joined => {},
+        () = abort.cancelled() => workers.shutdown().await,
     }
 }

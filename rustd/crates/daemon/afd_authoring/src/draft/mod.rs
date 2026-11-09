@@ -72,6 +72,24 @@ impl Drafts {
         })
     }
 
+    /// Recheck a streamed mutation after its draft/attempt lock, preserving lock order.
+    pub(crate) async fn check_connection(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &Uuid7,
+    ) -> Result<()> {
+        if self.authority.is_some() {
+            let host = self
+                .lock_host_capacity(tx, runner)
+                .await?
+                .ok_or(crate::error::ErrorKind::Hidden)?;
+            if !host.can_renew() {
+                return Err(crate::error::ErrorKind::Fence.into());
+            }
+        }
+        Ok(())
+    }
+
     /// Reports the private-chat-to-fleet funnel steps to `analytics`. Every
     /// service built over these drafts — setup, creations — shares it.
     #[must_use]

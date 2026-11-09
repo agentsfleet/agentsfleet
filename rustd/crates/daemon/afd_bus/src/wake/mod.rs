@@ -66,13 +66,20 @@ impl Wake {
 
     /// An unknown loss wakes a full eligible-session pass without fabricating a fleet identifier.
     pub fn recheck(&self) {
-        self.generation.send_modify(|generation| *generation = generation.wrapping_add(1));
+        self.generation
+            .send_modify(|generation| *generation = generation.wrapping_add(1));
     }
 
     /// Consume one fleet; absence never proves that Postgres has no ready work.
     #[must_use]
     pub fn take(&self) -> Option<Uuid7> {
         self.lock().take()
+    }
+
+    /// Scheduling reads locality preferences without consuming the claim's reminder.
+    #[must_use]
+    pub fn fleets(&self) -> std::collections::HashSet<Uuid7> {
+        self.lock().fleets()
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, queue::WakeQueue> {
@@ -142,5 +149,7 @@ async fn receive(wake: Wake, mut subscription: crate::Subscription, stop: Cancel
     }
 }
 
+#[cfg(all(test, feature = "test-util"))]
+mod live_tests;
 #[cfg(test)]
 mod tests;

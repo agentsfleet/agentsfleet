@@ -41,16 +41,17 @@ use crate::route::Guard;
 
 pub use self::guard::{Gate, prove};
 pub use self::identity::RunnerIdentity;
-pub use self::request::{AuthenticationResult, BearerAuthentication, RequestAuthentication};
-pub use self::runner_stream::{
-    AuthenticatedRunnerCredential, AuthenticatedRunnerStream, ConnectionCredentials, ConnectionAuthenticationResult,
-    NativeRunnerConnection, RunnerConnectionAuthentication, RunnerStreamAuthentication,
-};
 pub use self::ownership::{Acting, DETAIL_NOT_YOURS, Owned, Owner, WorkspaceContext, own};
 pub use self::person::{
     AnyClass, ClassPolicy, DETAIL_NOT_DASHBOARD, DETAIL_PERSON_REQUIRED, DETAIL_SESSION_REQUIRED,
     DashboardClass, DashboardIdentity, FreshSession, FreshSessionClass, HumanClass, HumanIdentity,
     PersonIdentity, Proven,
+};
+pub use self::request::{AuthenticationResult, BearerAuthentication, RequestAuthentication};
+pub use self::runner_stream::{
+    AuthenticatedRunnerCredential, AuthenticatedRunnerStream, ConnectionAuthenticationResult,
+    ConnectionCredentials, NativeRunnerConnection, RunnerConnectionAuthentication,
+    RunnerStreamAuthentication,
 };
 
 /// What proves a credential presented on a plane.

@@ -50,7 +50,6 @@ pub const NO_REPORT: HeartbeatRequest<'static> = HeartbeatRequest {
     selftest: None,
     holds: HeldFleets(Vec::new()),
     closing: false,
-    wake: false,
 };
 
 /// What one beat resolved to, for the reply the host reads.
@@ -70,8 +69,8 @@ pub struct Beat {
     pub release_holds: Vec<String>,
 }
 
-use policy::PolicyRow;
 use crate::capacity::authority::{Authority, Decision};
+use policy::PolicyRow;
 
 impl Runners {
     /// Records a beat and answers what the host must apply. `held` is the
@@ -99,7 +98,8 @@ impl Runners {
             Decision::Allowed(row) => row,
             Decision::Refused(_) => return Err(runner_vanished()),
         };
-        self.record_beat(&mut connection, runner, beat, held, now, row).await
+        self.record_beat(&mut connection, runner, beat, held, now, row)
+            .await
     }
 
     /// Record liveness only after the same policy read proves this physical owner.
@@ -107,15 +107,21 @@ impl Runners {
     /// # Errors
     /// Preserves database failures; changed credentials and owners are explicit refusals.
     pub async fn heartbeat_connected(
-        &self, authority: &Authority, beat: &HeartbeatRequest<'_>,
-        held: Option<&Valid<HeldFleets<'_>>>, now: Timestamp,
+        &self,
+        authority: &Authority,
+        beat: &HeartbeatRequest<'_>,
+        held: Option<&Valid<HeldFleets<'_>>>,
+        now: Timestamp,
     ) -> Result<Decision<Beat>> {
         let mut connection = self.pool().acquire().await?;
         let row = match policy::read(&mut connection, authority.runner(), Some(authority)).await? {
             Decision::Allowed(row) => row,
             Decision::Refused(refusal) => return Ok(Decision::Refused(refusal)),
         };
-        Ok(Decision::Allowed(self.record_beat(&mut connection, authority.runner(), beat, held, now, row).await?))
+        Ok(Decision::Allowed(
+            self.record_beat(&mut connection, authority.runner(), beat, held, now, row)
+                .await?,
+        ))
     }
 
     /// Recheck ownership and policy without pretending that a silent host sent a heartbeat.
@@ -123,22 +129,36 @@ impl Runners {
     /// # Errors
     /// Preserves database failures; callers keep their previous confirmed deadlines.
     pub async fn recheck_connection(&self, authority: &Authority) -> Result<Decision<Beat>> {
-        let row = match policy::read(&mut *self.pool().acquire().await?, authority.runner(), Some(authority)).await? {
+        let row = match policy::read(
+            &mut *self.pool().acquire().await?,
+            authority.runner(),
+            Some(authority),
+        )
+        .await?
+        {
             Decision::Allowed(row) => row,
             Decision::Refused(refusal) => return Ok(Decision::Refused(refusal)),
         };
         let report = capability(row.capability_report_json.as_deref());
         let assigned = row.assignment.decode()?;
         let verdict = reconcile(&assigned, report.as_ref());
-        Ok(Decision::Allowed(Beat { assignment: row.assignment, verdict,
-            selftest_requested: row.selftest_requested, release_holds: Vec::new() }))
+        Ok(Decision::Allowed(Beat {
+            assignment: row.assignment,
+            verdict,
+            selftest_requested: row.selftest_requested,
+            release_holds: Vec::new(),
+        }))
     }
 
     async fn record_beat(
-        &self, connection: &mut PgConnection, runner: &Uuid7, beat: &HeartbeatRequest<'_>,
-        held: Option<&Valid<HeldFleets<'_>>>, now: Timestamp, row: PolicyRow,
+        &self,
+        connection: &mut PgConnection,
+        runner: &Uuid7,
+        beat: &HeartbeatRequest<'_>,
+        held: Option<&Valid<HeldFleets<'_>>>,
+        now: Timestamp,
+        row: PolicyRow,
     ) -> Result<Beat> {
-
         let incoming = bounded_report(beat);
         let stored = capability(row.capability_report_json.as_deref());
         let assigned = row.assignment.decode()?;
@@ -295,8 +315,8 @@ fn report(event: &'static str, runner: &Uuid7, error: &Error) {
 }
 
 pub mod holds;
-mod verdict;
 mod policy;
+mod verdict;
 
 #[cfg(test)]
 mod tests;

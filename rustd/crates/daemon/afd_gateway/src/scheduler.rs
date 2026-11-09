@@ -3,20 +3,22 @@
 mod recovery;
 mod subscriptions;
 
-use std::collections::HashSet;
-use tokio_util::sync::CancellationToken;
 use crate::{Gateway, Result};
+use tokio_util::sync::CancellationToken;
 
 /// Subscription repair, notification handling and recovery keep independent progress.
 pub(crate) async fn run(gateway: Gateway, stop: CancellationToken) -> Result<()> {
     let _cancel_on_exit = stop.clone().drop_guard();
-    tokio::try_join!(subscriptions::run(gateway.clone(), stop.clone()),
-        recovery::run(gateway.clone(), stop.clone()), notifications(gateway, stop))?;
+    tokio::try_join!(
+        subscriptions::run(gateway.clone(), stop.clone()),
+        recovery::run(gateway.clone(), stop.clone()),
+        notifications(gateway, stop)
+    )?;
     Ok(())
 }
 
 async fn notifications(gateway: Gateway, stop: CancellationToken) -> Result<()> {
-    let mut generations = gateway.0.dependencies.wake.generations();
+    let mut generations = gateway.inner.dependencies.wake.generations();
     loop {
         tokio::select! {
             biased;
@@ -31,9 +33,11 @@ async fn notifications(gateway: Gateway, stop: CancellationToken) -> Result<()> 
 
 /// Empty fleet membership means an unknown gap; all eligible sessions get a recovery opportunity.
 fn request_offers(gateway: &Gateway) {
-    let mut fleets = HashSet::new();
-    while let Some(fleet) = gateway.0.dependencies.wake.take() { fleets.insert(fleet); }
-    let sessions = gateway.0.registry.candidates(&fleets);
-    let limit = if fleets.is_empty() { sessions.len() } else { fleets.len() };
-    for session in sessions.into_iter().take(limit) { session.request_offer(); }
+    let fleets = gateway.inner.dependencies.wake.fleets();
+    let sessions = gateway.inner.registry.candidates(&fleets);
+    // A hint identifies a fleet, not a host whose labels can serve it.
+    // Every eligible local host must get a chance when earlier hosts select nothing.
+    for session in sessions {
+        session.request_offer();
+    }
 }

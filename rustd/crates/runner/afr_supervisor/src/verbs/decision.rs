@@ -93,12 +93,8 @@ impl FencedVerbs<'_> {
                 "native decision dispatch names another physical call",
             ));
         }
-        // Failure can mean an existing call directory, including an earlier
-        // physical send. It cannot prove that this native identity was unsent.
-        let pending = self
-            .spool
-            .begin_decision(self.lease_id, &call, self.fencing_token)
-            .await?;
+        // PostgreSQL marks this call issued before returning Dispatch. Repeating
+        // the reservation returns Existing, never permission for another physical call.
         let request = dispatch.request.clone();
         let mut progress = af_wire::activity::TaskActivity {
             activity_id: call_id.clone(),
@@ -148,15 +144,27 @@ impl FencedVerbs<'_> {
             DecisionReceipt::Provider { result } => Some(result.clone()),
             DecisionReceipt::Unknown { .. } | DecisionReceipt::NotSent { .. } => None,
         };
-        let (pending, saved) = pending.finish(receipt).await?;
-        if let Err(failure) = &saved {
-            tracing::warn!(event = "decision_receipt_storage_failed", error_code = %failure.code());
-        }
-        let result = pending.deliver(self.plane).await;
-        self.held.notify_one();
-        // A disk failure still permits immediate original-owner accounting.
-        // No answer reaches the root unless the daemon acknowledges it.
-        let result = result?;
+        let input = garde::Unvalidated::new(af_wire::task::DecisionReceiptInput {
+            fencing_token: self.fencing_token,
+            receipt,
+        })
+        .validate()?
+        .into_inner();
+        // The result remains in this call's memory until PostgreSQL acknowledges it.
+        // Retrying this receipt never repeats the provider request.
+        let result = crate::report::delivery::until_acknowledged(self.halt, || async {
+            let result = self
+                .plane
+                .task_decision_record(self.lease_id, &call, &input)
+                .await?;
+            if result.call_id != call.as_str() {
+                return Err(error::config(
+                    "decision receipt acknowledgement names another call",
+                ));
+            }
+            Ok(Some(result))
+        })
+        .await?;
         progress.phase = if result.state == DecisionCallState::Known {
             af_wire::activity::TaskActivityPhase::Recorded
         } else {

@@ -1,261 +1,158 @@
-//! N workers, each polling for a lease and running it.
-//!
-//! The pool grows to the assigned worker count and never kills a worker: one
-//! numbered past a smaller count finishes its lease and then waits, so a
-//! shrinking assignment never interrupts a run. A worker that panics catches
-//! its own panic, logs it and starts again under its number, so the pool only
-//! starts workers and waits for them. When leasing stops, polling stops;
-//! leases in flight run to their reports.
+//! Idle workers await pushed offers; only an available worker advertises a credit.
 
-use std::panic::AssertUnwindSafe;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
+use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use af_core::error_code;
-use af_core::timing::NO_WORK_RETRY_AFTER;
-use af_wire::lease::{LeaseResponse, TaggedLease};
-use backon::ExponentialBackoff;
+use af_wire::{lease::TaggedLease, protocol::Down};
 use futures_util::FutureExt as _;
-use tokio::sync::{Notify, watch};
-use tokio::task::JoinSet;
-use tokio_util::sync::CancellationToken;
+use tokio::{
+    sync::{Mutex, mpsc, watch},
+    task::JoinSet,
+};
 
-use crate::client::endless;
-use crate::heartbeat::Assignment;
-use crate::lease_loop::Lessee;
-use crate::turns::FleetTurns;
+use crate::{
+    Result,
+    downlink::{Offered, policy::Assignment},
+    lease_loop::Lessee,
+    turns::FleetTurns,
+};
 
-/// The shortest pause after an empty poll, whatever the daemon hints: a hint
-/// of zero must not turn polling into a busy loop.
-pub(crate) const MIN_POLL_PAUSE: Duration = Duration::from_millis(250);
-const EVENT_STARTED: &str = "worker_started";
-const EVENT_STOPPED: &str = "worker_stopped";
-const EVENT_PANICKED: &str = "worker_panicked";
-const EVENT_POLL_FAILED: &str = "lease_read_failed";
-const EVENT_LEASE_ERROR: &str = "lease_write_failed";
-
-/// The pool's idle workers, and the signal a woken heartbeat sends one of
-/// them.
-///
-/// `notify_one` stores a permit when no worker is waiting, so a worker that
-/// enters its pause just after the wake still takes it and polls at once. One
-/// worker per wake, so the others keep their staggered polls.
-#[derive(Debug, Default)]
-pub(crate) struct Wake {
-    idle: AtomicUsize,
-    poll_now: Notify,
-}
-
-impl Wake {
-    /// Whether any worker is in an idle pause, with something to be woken for.
-    pub(crate) fn any_idle(&self) -> bool {
-        self.idle.load(Ordering::Acquire) > 0
-    }
-
-    /// Ends one idle worker's pause.
-    pub(crate) fn one(&self) {
-        self.poll_now.notify_one();
-    }
-
-    /// Counts one worker idle until the guard drops.
-    pub(crate) fn idle(&self) -> Idle<'_> {
-        Idle::enter(&self.idle)
-    }
-
-    /// Pauses for `pause`, or until a wake ends it first, counted idle while
-    /// it lasts.
-    pub(crate) async fn pause(&self, pause: Duration) {
-        let _idle = self.idle();
-        tokio::select! {
-            () = tokio::time::sleep(pause) => {}
-            () = self.poll_now.notified() => {}
-        }
-    }
-}
-
-/// One worker counted idle until it is dropped, a cancelled pause included.
-pub(crate) struct Idle<'a>(&'a AtomicUsize);
-
-impl<'a> Idle<'a> {
-    fn enter(idle: &'a AtomicUsize) -> Self {
-        idle.fetch_add(1, Ordering::AcqRel);
-        Self(idle)
-    }
-}
-
-impl Drop for Idle<'_> {
-    fn drop(&mut self) {
-        self.0.fetch_sub(1, Ordering::AcqRel);
-    }
-}
-
-/// Runs workers to the assigned count until leasing stops, then waits for every
-/// lease in flight.
-pub(crate) async fn serve(lessee: Arc<Lessee>, mut assignment: watch::Receiver<Assignment>) {
+pub(crate) async fn serve(
+    lessee: Arc<Lessee>,
+    mut assignment: watch::Receiver<Assignment>,
+    offers: mpsc::Receiver<Offered>,
+) {
     let (turns, coordinator) = FleetTurns::start();
     let coordinator = tokio::spawn(coordinator);
+    let offers = Arc::new(Mutex::new(offers));
     let mut workers = JoinSet::new();
     let mut spawned = 0;
     loop {
-        let wanted = assignment.borrow_and_update().workers;
-        lessee
-            .holds
-            .resize(usize::try_from(wanted).unwrap_or(usize::MAX));
-        for number in spawned..wanted {
+        let policy = assignment.borrow_and_update().clone();
+        let workers_wanted = if policy.takes_work(0) {
+            policy.workers
+        } else {
+            0
+        };
+        let wanted = usize::try_from(workers_wanted);
+        let wanted = match wanted {
+            Ok(wanted) => wanted,
+            Err(source) => {
+                let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+                tracing::error!(event = "runner_worker_capacity_refused", error_code, error = %source);
+                lessee.halt.stop();
+                break;
+            }
+        };
+        lessee.holds.resize(wanted);
+        lessee.plane.stream.running.capacity(wanted);
+        for number in spawned..workers_wanted {
             workers.spawn(
                 Worker {
                     number,
                     lessee: Arc::clone(&lessee),
                     turns: turns.clone(),
                     assignment: assignment.clone(),
-                    failures: endless(),
+                    offers: Arc::clone(&offers),
                 }
                 .run(),
             );
         }
-        spawned = spawned.max(wanted);
+        spawned = spawned.max(workers_wanted);
         tokio::select! {
             () = lessee.halt.leasing().cancelled() => break,
-            changed = assignment.changed() => if changed.is_err() { break },
+            changed = assignment.changed() => if changed.is_err() { break; },
         }
     }
-    while workers.join_next().await.is_some() {}
+    lessee.plane.stream.running.capacity(0);
+    while let Some(done) = workers.join_next().await {
+        if let Err(error) = done {
+            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+            tracing::error!(event = "worker_panicked", error_code, error = %error);
+        }
+    }
     drop(turns);
-    drop(coordinator.await);
+    if let Err(error) = coordinator.await {
+        let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+        tracing::error!(event = "fleet_turn_coordinator_failed", error_code, error = %error);
+    }
 }
 
-/// One worker: wait to be wanted, poll, run, repeat.
 struct Worker {
     number: u32,
     lessee: Arc<Lessee>,
     turns: FleetTurns,
     assignment: watch::Receiver<Assignment>,
-    failures: ExponentialBackoff,
+    offers: Arc<Mutex<mpsc::Receiver<Offered>>>,
 }
 
 impl Worker {
-    /// Polls and runs leases until leasing stops. A panic is caught here,
-    /// logged, and the worker starts again under its number while leasing
-    /// goes on; what the panic interrupted released its fleet as it unwound.
     async fn run(mut self) {
         let worker = self.number;
-        let event = EVENT_STARTED;
-        tracing::info!(worker, event);
-        let leasing = self.lessee.halt.leasing().clone();
-        while AssertUnwindSafe(self.serve(&leasing))
-            .catch_unwind()
-            .await
-            .is_err()
-        {
-            let code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            let event = EVENT_PANICKED;
-            tracing::error!(
-                error_code = code,
-                worker,
-                event,
-                "a worker panicked; it starts again"
-            );
-            if leasing.is_cancelled() {
-                break;
+        tracing::info!(event = "worker_started", worker);
+        while !self.lessee.halt.leasing().is_cancelled() {
+            match AssertUnwindSafe(self.next()).catch_unwind().await {
+                Ok(Ok(true)) => {}
+                Ok(Ok(false)) => break,
+                Ok(Err(error)) => {
+                    let error_code = error.code().as_str();
+                    tracing::warn!(event = "lease_write_failed", worker, error_code);
+                    if self.lessee.halt.stops_on(&error) {
+                        break;
+                    }
+                }
+                Err(_panic) => {
+                    let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+                    tracing::error!(event = "worker_panicked", worker, error_code);
+                }
             }
-            self.failures = endless();
         }
-        let event = EVENT_STOPPED;
-        tracing::info!(worker, event);
+        tracing::info!(event = "worker_stopped", worker);
     }
 
-    /// Polls, runs, and pauses between, until leasing stops. The first poll
-    /// waits this worker's share of the idle interval, so a pool started at
-    /// once spreads its polls over the interval instead of landing them
-    /// together: with four workers on a one-second hint, fresh work waits a
-    /// quarter second at most for the next poll rather than the whole second.
-    async fn serve(&mut self, leasing: &CancellationToken) {
-        let offset = first_poll_offset(self.number, self.assignment.borrow().workers);
-        // A clone of the lessee's handle, so the pause borrows it rather than
-        // `self`, which each poll borrows mutably.
-        let lessee = Arc::clone(&self.lessee);
-        let wake = &lessee.wake;
-        tokio::select! {
-            () = leasing.cancelled() => return,
-            () = wake.pause(offset) => {}
-        }
-        while let Some(pause) = self.next().await {
-            if pause.is_zero() {
-                continue;
-            }
-            tokio::select! {
-                () = leasing.cancelled() => break,
-                () = wake.pause(pause) => {}
-            }
-        }
-    }
-
-    /// Waits to be wanted, then polls once and runs what it got. Returns how
-    /// long to pause before the next poll, or `None` to stop.
-    async fn next(&mut self) -> Option<Duration> {
+    async fn next(&mut self) -> Result<bool> {
         let number = self.number;
-        let leasing = self.lessee.halt.leasing();
-        tokio::select! {
-            () = leasing.cancelled() => return None,
-            wanted = self.assignment.wait_for(|now| now.takes_work(number)) => wanted.ok()?,
-        };
-        let held = self.lessee.holds.fleets().await;
-        let polled = tokio::select! {
-            () = leasing.cancelled() => return None,
-            polled = self.lessee.plane.lease(&held) => polled,
-        };
-        let body = match polled {
-            Ok(body) => body,
-            Err(failure) if self.lessee.halt.stops_on(&failure) => return None,
-            Err(failure) => return Some(self.failed(&failure, EVENT_POLL_FAILED)),
-        };
-        let reply = match body.decode::<LeaseResponse<'_>>() {
-            Ok(reply) => reply,
-            Err(failure) => return Some(self.failed(&failure, EVENT_POLL_FAILED)),
-        };
-        self.failures = endless();
-        let Some(lease) = reply.lease else {
-            let hinted = reply.retry_after_ms.map_or(NO_WORK_RETRY_AFTER, |ms| {
-                Duration::from_millis(u64::from(ms))
-            });
-            return Some(hinted.max(MIN_POLL_PAUSE));
-        };
-        // The egress assigned when the lease arrived is the one it runs under,
-        // whatever a beat assigns while it runs.
-        let egress = self.assignment.borrow().egress.clone();
-        let result = match lease {
-            TaggedLease::Fleet(lease) => self.lessee.run(&self.turns, &lease, &egress).await,
-            TaggedLease::Authoring(lease) => self.lessee.author(&lease).await,
-        };
-        if let Err(failure) = result {
-            return Some(self.failed(&failure, EVENT_LEASE_ERROR));
+        let leasing = self.lessee.halt.leasing().clone();
+        while !self.assignment.borrow_and_update().takes_work(number) {
+            tokio::select! {
+                () = leasing.cancelled() => return Ok(false),
+                changed = self.assignment.changed() => if changed.is_err() { return Ok(false); },
+            }
         }
-        Some(Duration::ZERO)
+        let offer = tokio::select! {
+            () = leasing.cancelled() => return Ok(false),
+            changed = self.assignment.changed() => return Ok(changed.is_ok()),
+            offer = async { self.offers.lock().await.recv().await } => offer,
+        };
+        let Some(offer) = offer else {
+            return Ok(false);
+        };
+        if offer.session.is_cancelled() || offer.registration.stop.is_cancelled() {
+            return Ok(true);
+        }
+        let egress = self.assignment.borrow().egress.clone();
+        let Down::Offer { lease } = offer.frame.decode::<Down<'_>>()? else {
+            return Err(crate::error::ErrorKind::StreamProtocol.into());
+        };
+        match lease {
+            TaggedLease::Fleet(lease) => {
+                self.lessee
+                    .run(
+                        &self.turns,
+                        &lease,
+                        &egress,
+                        offer.registration.stop.clone(),
+                    )
+                    .await?
+            }
+            TaggedLease::Authoring(lease) => {
+                self.lessee
+                    .author(&lease, offer.registration.stop.clone())
+                    .await?
+            }
+        }
+        Ok(true)
     }
-
-    /// Logs a failed poll or lease, and backs off before the next.
-    fn failed(&mut self, failure: &crate::Error, event: &'static str) -> Duration {
-        let code = failure.code().as_str();
-        let worker = self.number;
-        tracing::warn!(
-            error_code = code,
-            worker,
-            event,
-            "the worker backs off before polling again"
-        );
-        self.failures.next().unwrap_or(MIN_POLL_PAUSE)
-    }
-}
-
-/// How long worker `number` of `workers` waits before its first poll: its
-/// share of the idle interval, `number × interval / workers`, so the pool's
-/// polls are spread evenly over it. A worker numbered past the count takes
-/// the share of its place in the rotation.
-pub(crate) fn first_poll_offset(number: u32, workers: u32) -> Duration {
-    let workers = workers.max(1);
-    let place = number % workers;
-    NO_WORK_RETRY_AFTER.saturating_mul(place) / workers
 }
 
 #[cfg(test)]

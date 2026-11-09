@@ -14,9 +14,10 @@ use crate::client::Verb;
 // WHICH verb failed, which only the call site can say. An address error has
 // one meaning wherever it arises, so it lifts.
 af_core::error_lifts!(Error, ErrorKind:
+    af_stream::Error => Stream,
+    tokio::time::error::Elapsed => StreamTimeout,
     std::io::Error => Io,
     af_crypto::error::Error => Crypto,
-    tempfile::PersistError => Persist,
     af_core::error::Error => Identifier,
     tokio::task::JoinError => Task,
     url::ParseError => Address,

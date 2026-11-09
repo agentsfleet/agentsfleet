@@ -46,21 +46,15 @@ async fn run(refusal: Refusal) -> (server::Server, Rig, model::Model) {
         0,
         "API-only work needs no sandbox"
     );
-    assert_eq!(
-        crate::report_spool::ReportSpool::new(&rig.home)
-            .pending()
-            .await
-            .unwrap()
-            .len(),
-        0
-    );
     (server, rig, model)
 }
 fn report(archive: &archive::Archive) -> &Value {
     let reports: Vec<_> = archive
         .calls
         .iter()
-        .filter(|(path, _)| path == af_wire::paths::RUNNER_REPORTS)
+        .filter(|(path, body)| {
+            path == af_wire::paths::RUNNER_STREAM && body.get("outcome").is_some()
+        })
         .collect();
     assert_eq!(reports.len(), 1);
     &reports.first().unwrap().1
@@ -101,7 +95,9 @@ async fn real_loop_commits_api_history_before_reporting_reused_checkpoint() {
         let reported = archive
             .calls
             .iter()
-            .position(|(path, _)| path == af_wire::paths::RUNNER_REPORTS)
+            .position(|(path, body)| {
+                path == af_wire::paths::RUNNER_STREAM && body.get("outcome").is_some()
+            })
             .unwrap();
         assert!(committed < reported);
         assert!(archive.plan.as_ref().unwrap().history_digest.is_some());

@@ -38,6 +38,7 @@ fn env_with(extra: [(&str, &str); 3]) -> MapEnv {
         extra
             .into_iter()
             .chain(crate::support::SESSION_PEPPER)
+            .chain(crate::support::runner_stream::environment())
             .chain(crate::support::IDENTITY),
     )
 }

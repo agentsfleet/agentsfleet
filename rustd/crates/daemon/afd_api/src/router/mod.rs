@@ -215,13 +215,17 @@ fn authenticate_route<D: Serving>(
     match (meta.guard, meta.class) {
         (crate::route::Guard::RunnerBearer, crate::route::RouteClass::Stream) => {
             let authentication = RunnerStreamAuthentication::new(Arc::clone(dependencies));
-            handler.layer(from_fn_with_state(Gate::new(authentication, meta),
-                prove::<RunnerStreamAuthentication<D>>))
+            handler.layer(from_fn_with_state(
+                Gate::new(authentication, meta),
+                prove::<RunnerStreamAuthentication<D>>,
+            ))
         }
         _ if plane_of(meta.guard).is_some() => {
             let authentication = BearerAuthentication::new(Arc::clone(dependencies));
-            handler.layer(from_fn_with_state(Gate::new(authentication, meta),
-                prove::<BearerAuthentication<D>>))
+            handler.layer(from_fn_with_state(
+                Gate::new(authentication, meta),
+                prove::<BearerAuthentication<D>>,
+            ))
         }
         _ => handler,
     }

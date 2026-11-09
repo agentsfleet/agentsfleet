@@ -18,7 +18,6 @@ use afr_telemetry::{Endpoint, Telemetry};
 use afr_tools::Catalog;
 use afr_tools::catalog::FILE_READ;
 use afr_tools::stub::Stub;
-use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 use tracing::subscriber::DefaultGuard;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -27,7 +26,6 @@ use crate::egress::Egress;
 use crate::halt::Halt;
 use crate::identity::Whoami;
 use crate::lease_loop::Lessee;
-use crate::report_spool::ReportSpool;
 use crate::storage_home::StorageHome;
 use crate::test_support::{
     Behaviour, FLEET_ID, FakeAgent, FakeEngine, FakeResolver, LEASE_ID, Rig, clock, daemon, lease,
@@ -161,16 +159,12 @@ fn scripted_lessee(home: &StorageHome) -> Lessee {
         engine: Box::new(FakeEngine::default()),
         resolver: Box::new(FakeResolver::default()),
         agent,
-        spool: ReportSpool::new(home),
-        authoring_spool: crate::report_spool::authoring::Spool::open(home, clock()).unwrap(),
         mirrors: Mirrors::new(home.mirrors(), GITHUB_ORIGIN),
         limits: Limits::default(),
         holds: crate::holds::Holds::start(clock()),
         clock: clock(),
         halt: Halt::new(CancellationToken::new()),
-        held: Notify::new(),
         whoami: Whoami::default(),
-        wake: crate::worker_pool::Wake::default(),
     }
 }
 

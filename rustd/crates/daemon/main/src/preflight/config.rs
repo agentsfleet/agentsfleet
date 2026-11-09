@@ -56,6 +56,7 @@ pub struct BootConfig {
     pub(super) sse_max_streams: usize,
     pub(super) runner_wake: afd_bus::wake::Wake,
     pub(super) frame_memory: af_stream::MemoryLimits,
+    pub(super) runner_listener: super::runner_listener::RunnerListenerConfig,
     pub(super) posthog: Option<PostHogConfig>,
     pub(super) otlp: Option<super::OtlpConfig>,
     /// A test boot's stand-in for the vendors' token endpoints.
@@ -80,13 +81,23 @@ pub struct PostHogConfig {
 }
 
 impl BootConfig {
+    /// Private native listener settings, resolved before opening datastores.
+    #[must_use]
+    pub const fn runner_listener(&self) -> &super::runner_listener::RunnerListenerConfig {
+        &self.runner_listener
+    }
+
     /// Frame memory settings shared by every native runner session.
     #[must_use]
-    pub const fn frame_memory(&self) -> af_stream::MemoryLimits { self.frame_memory }
+    pub const fn frame_memory(&self) -> af_stream::MemoryLimits {
+        self.frame_memory
+    }
 
     /// The validated queue is shared by every session in this replica.
     #[must_use]
-    pub const fn runner_wake(&self) -> &afd_bus::wake::Wake { &self.runner_wake }
+    pub const fn runner_wake(&self) -> &afd_bus::wake::Wake {
+        &self.runner_wake
+    }
 
     /// Private storage configuration resolved before opening any connection.
     #[must_use]

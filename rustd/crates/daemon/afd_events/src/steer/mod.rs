@@ -266,7 +266,11 @@ impl Steer {
             return;
         };
         let subject = afd_bus::Subject::FleetTail(fleet);
-        let publication = self.admissions.streams().publish_frame(&subject, frame).await;
+        let publication = self
+            .admissions
+            .streams()
+            .publish_frame(&subject, frame)
+            .await;
         afd_bus::observe_notification(&subject, publication);
     }
 

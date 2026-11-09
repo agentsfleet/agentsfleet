@@ -5,10 +5,10 @@
 mod connection;
 mod error;
 mod observations;
-mod service;
 mod operation;
 mod registry;
 mod scheduler;
+mod service;
 mod session;
 mod stream_headers;
 
@@ -36,6 +36,10 @@ pub struct GatewayDependencies {
     pub leases: LeaseService,
     /// Existing private authoring owner.
     pub drafts: Drafts,
+    /// Scoped provider invocations share the daemon's key owner and dispatch ledger.
+    pub models: afd_authoring::ModelCalls,
+    /// Authoring completion retains native Save/Apply and accounting behavior.
+    pub creations: afd_authoring::Creations,
     /// The same bus used by every production publisher.
     pub bus: Handle,
     /// The same stream ceiling used by browser streams.
@@ -52,7 +56,8 @@ pub struct GatewayDependencies {
 
 impl std::fmt::Debug for GatewayDependencies {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GatewayDependencies").finish_non_exhaustive()
+        f.debug_struct("GatewayDependencies")
+            .finish_non_exhaustive()
     }
 }
 
@@ -66,7 +71,9 @@ pub(crate) struct Inner {
 
 /// Cloneable session opening and shutdown owner for one daemon replica.
 #[derive(Clone)]
-pub struct Gateway(Arc<Inner>);
+pub struct Gateway {
+    inner: Arc<Inner>,
+}
 
 impl std::fmt::Debug for Gateway {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -75,15 +82,25 @@ impl std::fmt::Debug for Gateway {
 }
 
 impl Gateway {
+    /// Includes provisional openings, so shutdown counts work that has not entered the registry yet.
+    #[must_use]
+    pub fn in_flight(&self) -> usize {
+        self.inner.tasks.len()
+    }
+
     /// Share immutable domain handles and one replica-wide frame budget.
     #[must_use]
     pub fn new(dependencies: GatewayDependencies) -> Self {
         let (input_budget, output_budget) = Budget::duplex(dependencies.frame_memory);
-        Self(Arc::new(Inner {
-            dependencies, input_budget, output_budget,
-            registry: Arc::new(registry::Registry::default()),
-            tasks: TaskTracker::new(),
-        }))
+        Self {
+            inner: Arc::new(Inner {
+                dependencies,
+                input_budget,
+                output_budget,
+                registry: Arc::new(registry::Registry::default()),
+                tasks: TaskTracker::new(),
+            }),
+        }
     }
 
     /// Own wake subscriptions, scheduling and the independent database backstop.
@@ -99,21 +116,32 @@ impl Gateway {
     /// # Errors
     /// Returns the drain timeout after cancelling any session still serving.
     pub async fn drain(&self, deadline: Instant) -> Result<()> {
-        self.0.registry.begin_drain();
-        self.0.tasks.close();
-        if let Err(source) = tokio::time::timeout_at(deadline, self.0.tasks.wait()).await {
-            self.0.registry.cancel_all();
-            return Err(error::ErrorKind::Timeout { operation: Operation::Drain, source }.into());
+        self.inner.registry.begin_drain();
+        self.inner.tasks.close();
+        if let Err(source) = tokio::time::timeout_at(deadline, self.inner.tasks.wait()).await {
+            self.inner.registry.cancel_all();
+            return Err(error::ErrorKind::Timeout {
+                operation: Operation::Drain,
+                source,
+            }
+            .into());
         }
         Ok(())
     }
 }
 
 impl afd_http::services::RunnerStreams for Gateway {
-    async fn open(&self, runner: afd_auth::principal::Runner, request: axum::extract::Request) -> axum::response::Response {
+    async fn open(
+        &self,
+        runner: afd_auth::principal::Runner,
+        request: axum::extract::Request,
+    ) -> axum::response::Response {
         match session::open(self, runner, request).await {
             Ok(response) => response,
-            Err(error) => { self.observe(&error, Operation::Opening); error.response() }
+            Err(error) => {
+                self.observe(&error, Operation::Opening);
+                error.response()
+            }
         }
     }
 }

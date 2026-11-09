@@ -13,8 +13,8 @@ use crate::{
         declared::fleet as declared,
         instrument::Instruments,
         label::fleet::{
-            StreamFallback, StreamOutcome, StreamPacket, StreamStage, StreamTransport,
-            WakeQueueOutcome,
+            StreamFallback, StreamKeyExchange, StreamOutcome, StreamPacket, StreamPeer,
+            StreamStage, StreamTlsOutcome, StreamTransport, WakeQueueOutcome,
         },
     },
     producers::installed,
@@ -24,6 +24,7 @@ use crate::{
 #[derive(Debug)]
 pub(in crate::producers::fleet) struct Handles {
     connections: Counter<u64>,
+    tls_handshakes: Counter<u64>,
     connect_seconds: Histogram<f64>,
     operations: Histogram<f64>,
     fallbacks: Counter<u64>,
@@ -39,6 +40,8 @@ impl Handles {
     pub(in crate::producers::fleet) fn claim(instruments: &Instruments) -> Result<Self> {
         Ok(Self {
             connections: instruments.counter_u64(&declared::RUNNER_STREAM_CONNECT_TOTAL)?,
+            tls_handshakes: instruments
+                .counter_u64(&declared::RUNNER_STREAM_TLS_HANDSHAKES_TOTAL)?,
             connect_seconds: instruments.histogram_f64(&declared::RUNNER_STREAM_CONNECT_SECONDS)?,
             operations: instruments.histogram_f64(&declared::RUNNER_STREAM_OPERATION_SECONDS)?,
             fallbacks: instruments.counter_u64(&declared::RUNNER_STREAM_FALLBACK_TOTAL)?,
@@ -67,6 +70,26 @@ pub fn connected(transport: StreamTransport, outcome: StreamOutcome, elapsed: Du
             .stream
             .connect_seconds
             .record(elapsed.as_secs_f64(), &labels);
+    }
+}
+
+/// Both process sides expose the actual group, including failed or rejected handshakes.
+pub fn tls(
+    transport: StreamTransport,
+    peer: StreamPeer,
+    group: StreamKeyExchange,
+    outcome: StreamTlsOutcome,
+) {
+    if let Some(producers) = installed() {
+        producers.fleet.stream.tls_handshakes.add(
+            1,
+            &[
+                KeyValue::new(semconv::LABEL_TRANSPORT, transport.as_str()),
+                KeyValue::new(semconv::LABEL_ROLE, peer.as_str()),
+                KeyValue::new(semconv::LABEL_KEY_EXCHANGE, group.as_str()),
+                KeyValue::new(semconv::LABEL_OUTCOME, outcome.as_str()),
+            ],
+        );
     }
 }
 

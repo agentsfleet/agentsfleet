@@ -16,6 +16,7 @@ test-util = ["af_core/test-util", "afd_db/test-util", "afd_bus/test-util"]
 
 [dependencies]
 af_core = { workspace = true, features = ["sqlx"] }
+af_fleet_runtime.workspace = true
 af_observability.workspace = true
 af_stream.workspace = true
 af_wire.workspace = true
@@ -44,6 +45,9 @@ tokio = { workspace = true, features = ["rt", "macros", "sync", "time", "io-util
 tokio-util = { workspace = true, features = ["rt", "io"] }
 tower.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+af_crypto.workspace = true
 
 [lints]
 workspace = true

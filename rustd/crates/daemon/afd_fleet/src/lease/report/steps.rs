@@ -85,7 +85,10 @@ impl LeaseService {
                 }
                 Err(error) => {
                     // The report is durable. Observe its failed live notification without undoing settlement.
-                    afd_bus::observe_notification(&afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()), Err(error));
+                    afd_bus::observe_notification(
+                        &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                        Err(error),
+                    );
                     None
                 }
             },
@@ -135,7 +138,10 @@ impl LeaseService {
         folds.record_settled(lease.fleet_id.as_str(), lease_id);
         for closed in &folds.closed {
             let publication = self.leases.publish_completion(closed, Some(answer)).await;
-            afd_bus::observe_notification(&afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()), publication);
+            afd_bus::observe_notification(
+                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                publication,
+            );
         }
     }
 

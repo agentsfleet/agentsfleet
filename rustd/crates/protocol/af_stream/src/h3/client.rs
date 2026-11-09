@@ -40,13 +40,14 @@ pub(crate) async fn connect(
     deadline: Instant,
 ) -> Result<(Native, AbortOnDropHandle<Result<()>>)> {
     let super::socket::Connected {
-        initial,
+        mut initial,
         receive,
         shutdown,
-        key_exchange,
     } = super::socket::connect(endpoint, trust, &stop, deadline).await?;
     let (driver, controller) = ClientH3Driver::new(super::settings());
-    let (driver, _completion, stats) = super::driver::Driver::new(driver, stop.clone());
+    crate::tls::key_exchange::require_session(initial.ssl_mut())?;
+    let (driver, _completion, stats, mut key_exchange) =
+        super::driver::Driver::new(driver, stop.clone());
     let (_connection, handshake) = initial.handshake_fut(driver);
     let handshake = Box::pin(handshake);
     let running = within(&stop, deadline, Stage::Handshake, async {
@@ -56,8 +57,31 @@ pub(crate) async fn connect(
     })
     .await?;
     tokio_quiche::InitialQuicConnection::<UdpSocket, _>::resume(running);
+    within(&stop, deadline, Stage::Handshake, async {
+        while key_exchange.borrow().is_none() {
+            key_exchange
+                .changed()
+                .await
+                .map_err(|_| ErrorKind::Closed {
+                    stage: Stage::Handshake,
+                })?;
+        }
+        match *key_exchange.borrow() {
+            Some(crate::tls::KeyExchange::X25519MlKem768) => Ok(()),
+            Some(negotiated) => Err(ErrorKind::KeyExchangeRefused { negotiated }.into()),
+            None => Err(ErrorKind::Closed {
+                stage: Stage::Handshake,
+            }
+            .into()),
+        }
+    })
+    .await?;
     let (requests, receiver) = mpsc::channel(4);
-    let observed = super::telemetry::observe(stats.clone());
+    let observed = super::telemetry::observe(
+        stats.clone(),
+        key_exchange.clone(),
+        af_observability::metrics::label::fleet::StreamPeer::Client,
+    );
     let task = supervise(controller, receiver, stop, receive, shutdown, observed);
     Ok((
         Native::H3(Client {

@@ -210,7 +210,10 @@ fn only_a_write_binding_is_given_a_branch() {
     // A read binding needs no branch and a fleet with no binding has nothing to
     // write to. Handing either one a branch would put a ref in the egress rules
     // for a run that must not create one.
-    assert_eq!(LeaseService::repair_branch(MINTED_EVENT, &config(None)), None);
+    assert_eq!(
+        LeaseService::repair_branch(MINTED_EVENT, &config(None)),
+        None
+    );
     assert_eq!(
         LeaseService::repair_branch(MINTED_EVENT, &config(Some("read"))),
         None

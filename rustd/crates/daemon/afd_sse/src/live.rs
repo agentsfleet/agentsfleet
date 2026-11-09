@@ -16,9 +16,9 @@ use afd_bus::Handle;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 
-use crate::stream_limit::{StreamLimit, StreamPermit};
 use crate::fanin::FanIn;
 use crate::frame::Frame;
+use crate::stream_limit::{StreamLimit, StreamPermit};
 use crate::tail::tail;
 
 /// What the two stream routes act through.
@@ -44,7 +44,10 @@ impl Live {
     /// module header for why that is the behaviour rather than a refusal.
     #[must_use]
     pub const fn detached(stream_limit: StreamLimit) -> Self {
-        Self { bus: None, stream_limit }
+        Self {
+            bus: None,
+            stream_limit,
+        }
     }
 
     /// The hub behind this surface, for the shutdown that closes it.
@@ -75,7 +78,9 @@ impl Live {
 
     /// Share the same concurrent-stream permits with the native runner listener.
     #[must_use]
-    pub const fn stream_limit(&self) -> &StreamLimit { &self.stream_limit }
+    pub const fn stream_limit(&self) -> &StreamLimit {
+        &self.stream_limit
+    }
 
     /// Subscribe before announcing a live fleet stream.
     pub async fn tail_of(&self, fleet: &af_core::id::Uuid7) -> BoxStream<'static, Frame> {

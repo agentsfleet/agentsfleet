@@ -16,8 +16,22 @@ af_core::error_shell!(
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("The outbound proxy refused CONNECT with HTTP status {status}.")]
+    ProxyRefused { status: http::StatusCode },
+    #[error("The {setting} proxy setting is unsupported.")]
+    ProxyPolicy { setting: &'static str },
+    #[error("The {setting} proxy setting could not be parsed.")]
+    ProxyInput {
+        setting: &'static str,
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
     #[error("Set {setting} to a whole number of mebibytes between 12 and 512.")]
-    MemorySetting { setting: &'static str, #[source] source: std::num::ParseIntError },
+    MemorySetting {
+        setting: &'static str,
+        #[source]
+        source: std::num::ParseIntError,
+    },
     #[error("The runner message does not match the stream protocol.")]
     Protocol,
     #[error("The message body could not be read.")]
@@ -25,6 +39,8 @@ pub(crate) enum ErrorKind {
         #[source]
         source: Box<dyn std::error::Error + Send + Sync>,
     },
+    #[error("The runner channel requires X25519MLKEM768; the peer selected {negotiated:?}.")]
+    KeyExchangeRefused { negotiated: crate::tls::KeyExchange },
     #[error("The TLS certificates or trust settings could not be loaded.")]
     Tls {
         #[source]
@@ -211,7 +227,10 @@ impl Error {
     /// Registry code shared with other failed internal operations.
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
-        error_code::INTERNAL_OPERATION_FAILED
+        match self.kind() {
+            ErrorKind::KeyExchangeRefused { .. } => error_code::RUN_PROTOCOL_UNSUPPORTED,
+            _ => error_code::INTERNAL_OPERATION_FAILED,
+        }
     }
 
     /// Stable sentence; the source chain retains diagnostic detail.
@@ -224,7 +243,16 @@ impl Error {
     #[must_use]
     pub fn reason(&self) -> Reason {
         match self.kind() {
-            ErrorKind::MemorySetting { .. } => Reason::Protocol,
+            ErrorKind::MemorySetting { .. }
+            | ErrorKind::ProxyPolicy { .. }
+            | ErrorKind::ProxyInput { .. } => Reason::Protocol,
+            ErrorKind::ProxyRefused { status } => {
+                if status.is_server_error() || *status == http::StatusCode::TOO_MANY_REQUESTS {
+                    Reason::Network
+                } else {
+                    Reason::Protocol
+                }
+            }
             ErrorKind::Io { .. } => Reason::Network,
             ErrorKind::Timeout { .. } => Reason::Timeout,
             ErrorKind::Cancelled => Reason::Cancelled,
@@ -233,7 +261,9 @@ impl Error {
             | ErrorKind::Reply { .. }
             | ErrorKind::Send { .. } => Reason::Closed,
             ErrorKind::Worker { .. } => Reason::Worker,
-            ErrorKind::Tls { .. } | ErrorKind::IdentityPath => Reason::Tls,
+            ErrorKind::Tls { .. }
+            | ErrorKind::IdentityPath
+            | ErrorKind::KeyExchangeRefused { .. } => Reason::Tls,
             ErrorKind::TlsHandshake { source } => {
                 if source.as_io_error().is_some() {
                     Reason::Network

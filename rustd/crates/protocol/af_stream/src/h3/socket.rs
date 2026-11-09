@@ -10,7 +10,6 @@ pub(super) struct Connected {
         tokio_quiche::InitialQuicConnection<UdpSocket, tokio_quiche::metrics::DefaultMetrics>,
     pub(super) receive: AbortOnDropHandle<Result<()>>,
     pub(super) shutdown: mpsc::Receiver<()>,
-    pub(super) key_exchange: tokio::sync::watch::Receiver<Option<crate::tls::KeyExchange>>,
 }
 
 pub(super) async fn connect(
@@ -22,10 +21,7 @@ pub(super) async fn connect(
     let socket = open(endpoint, stop, deadline).await?;
     let local = socket.local_addr()?;
     let peer = socket.peer_addr()?;
-    let super::trust::Configured {
-        mut config,
-        key_exchange,
-    } = super::trust::client(trust)?;
+    let mut config = super::trust::client(trust)?;
     let mut cid = [0; 16];
     af_crypto::entropy::Entropy::default().fill(&mut cid)?;
     let connection = tokio_quiche::quiche::connect_with_buffer_factory(
@@ -51,7 +47,6 @@ pub(super) async fn connect(
         initial: wrapped.conn,
         receive,
         shutdown: wrapped.worker_shutdown_rx,
-        key_exchange,
     })
 }
 
@@ -61,10 +56,13 @@ async fn open(
     deadline: tokio::time::Instant,
 ) -> Result<Arc<UdpSocket>> {
     within(stop, deadline, Stage::Connect, async {
-        let peer = tokio::net::lookup_host((endpoint.host(), endpoint.port()))
-            .await?
-            .next()
-            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::AddrNotAvailable))?;
+        let peer = match endpoint.dial {
+            Some(peer) => peer,
+            None => tokio::net::lookup_host((endpoint.host(), endpoint.port()))
+                .await?
+                .next()
+                .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::AddrNotAvailable))?,
+        };
         let bind = if peer.is_ipv4() {
             "0.0.0.0:0"
         } else {

@@ -156,6 +156,7 @@ tracing-subscriber.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
+af_stream = { workspace = true, features = ["test-util"] }
 afd_bus = { workspace = true, features = ["test-util"] }
 af_webhook = { workspace = true, features = ["test-util"] }
 # The overlap scenario wraps the unsandboxed engine to stall its prepare.

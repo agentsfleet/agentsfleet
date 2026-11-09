@@ -3,7 +3,7 @@
 use af_core::error_code::{Coded as _, Logged};
 use af_observability::Analytics;
 use afd_dragonfly::{Dragonfly, DragonflyConfig};
-use afd_sse::{StreamLimit, Live};
+use afd_sse::{Live, StreamLimit};
 
 use crate::identity::Capabilities;
 

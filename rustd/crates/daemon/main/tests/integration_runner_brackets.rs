@@ -26,7 +26,7 @@ use serde_json::json;
 use crate::e2e::{dragonfly_config, scenario};
 use crate::reads::event_column;
 use crate::tail::{lease, next_frame, settle};
-use crate::wire::{capable_beat, field, poll_until, post, report_body};
+use crate::wire::{capable_beat, field, report_body, wait_without_offer};
 
 /// The bracket frames — the daemon opens and closes a run on the tail itself.
 ///
@@ -70,14 +70,8 @@ async fn test_bracket_frames_open_and_close_a_run() {
         "the row's own instant, so a client never stamps it with its clock"
     );
 
-    let reported = post(
-        &http,
-        &run,
-        "/v1/runners/me/reports",
-        &report_body(&lease_id, &run.event_id, fence),
-    )
-    .await;
-    assert_eq!(reported.status().as_u16(), 200, "the report settles");
+    let reported = crate::wire::report(&run, &report_body(&lease_id, &run.event_id, fence)).await;
+    assert!(reported.is_ok(), "native report refused: {reported:?}");
 
     let closed = next_frame(&mut tail)
         .await
@@ -136,13 +130,16 @@ async fn test_a_refused_lease_closes_the_run_on_the_tail() {
     settle().await;
 
     run.drain_wallet().await;
-    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(beat.status().as_u16(), 200);
+    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
+    );
     // Every poll in the rotation must answer no-work — an exhausted tenant
     // receives no lease — and the loop ends on the row the refusal writes,
     // because a poll that never sampled this fleet's partition answers the
     // same `null` without having refused anything.
-    let refused = poll_until(&http, &run, || async {
+    let refused = wait_without_offer(&run, || async {
         event_column(&run, &run.event_id, "status").await.as_deref() == Some("gate_blocked")
     })
     .await;

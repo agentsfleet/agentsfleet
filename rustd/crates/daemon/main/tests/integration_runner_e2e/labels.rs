@@ -47,7 +47,7 @@ async fn edit_labels(run: &Scenario, labels: &[&str]) {
 
 /// Spends the whole poll budget asserting the fleet under test is never offered.
 async fn assert_never_offered(http: &reqwest::Client, run: &Scenario, why: &str) {
-    let ended = poll_until(http, run, || async { false }).await;
+    let ended = wait_without_offer(run, || async { false }).await;
     assert!(!ended, "{why}");
 }
 
@@ -66,8 +66,11 @@ async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
     let tag = format!("gpu-{}", run.fleet);
     require_tag(&run, &tag).await;
 
-    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(beat.status().as_u16(), 200, "the runner proves its cage");
+    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
+    );
     assert_never_offered(
         &http,
         &run,
@@ -76,14 +79,10 @@ async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
     .await;
 
     edit_labels(&run, &[ENROLLED_LABEL, &tag]).await;
-    let (lease_id, fence) = poll_for_seeded_lease(&http, &run).await;
+    let (lease_id, fence) = wait_for_seeded_offer(&run).await;
     let report = report_body(&lease_id, &run.event_id, fence);
-    let settled = post(&http, &run, "/v1/runners/me/reports", &report).await;
-    assert_eq!(
-        settled.status().as_u16(),
-        200,
-        "the labelled runner finishes the work"
-    );
+    let settled = crate::wire::report(&run, &report).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
 
     edit_labels(&run, &[ENROLLED_LABEL]).await;
     let _next = run.enqueue_event(EVENT_TYPE).await;

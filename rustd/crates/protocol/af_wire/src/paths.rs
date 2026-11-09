@@ -23,26 +23,11 @@ pub const RUNNER_SELF: &str = concatcp!(RUNNERS, "/me");
 /// Four independently flow-controlled lanes on one authenticated native connection.
 pub const RUNNER_STREAM: &str = concatcp!(RUNNER_SELF, "/stream");
 
-/// `POST /v1/runners/me/heartbeats` — liveness, capability report, assignment.
-pub const RUNNER_HEARTBEATS: &str = concatcp!(RUNNER_SELF, "/heartbeats");
-
-/// `POST /v1/runners/me/leases` — long-poll for the next event.
+/// Collection prefix for fenced per-lease operations; the collection accepts no POST.
 pub const RUNNER_LEASES: &str = concatcp!(RUNNER_SELF, "/leases");
 
 /// An authoring lease has no runtime tools, credentials or event capabilities.
 pub const AUTHORING_LEASE: &str = concatcp!(RUNNER_SELF, "/authoring-leases/{lease_id}/");
-
-/// `POST` — a bounded progress hint or version-bound proposal.
-pub const AUTHORING_ACTIVITY: &str = concatcp!(AUTHORING_LEASE, LEASE_ACTIVITY_SUFFIX);
-/// The daemon's fixed, lease-scoped model invocation boundary.
-pub const AUTHORING_MODEL_CALLS: &str = concatcp!(AUTHORING_LEASE, "model-calls");
-/// Renew an unexpired private authoring lease.
-pub const AUTHORING_RENEW: &str = concatcp!(AUTHORING_LEASE, "renew");
-/// Settle private authoring or recover content-free accounting.
-pub const AUTHORING_REPORTS: &str = concatcp!(AUTHORING_LEASE, "reports");
-
-/// `POST /v1/runners/me/reports` — the terminal result for a lease.
-pub const RUNNER_REPORTS: &str = concatcp!(RUNNER_SELF, "/reports");
 
 /// `GET`/`POST /v1/runners/me/memory/{fleet_id}` — durable fleet memory.
 ///
@@ -63,10 +48,6 @@ pub const RUNNER_CREDENTIALS_MINT: &str = concatcp!(RUNNER_SELF, "/credentials/m
 /// so the full path is `{RUNNER_LEASES}/{lease_id}/{LEASE_ACTIVITY_SUFFIX}`.
 pub const LEASE_ACTIVITY_SUFFIX: &str = "activity";
 
-/// Trailing segment of the per-lease renewal sub-resource. See
-/// [`LEASE_ACTIVITY_SUFFIX`] for why it is a bare segment.
-pub const LEASE_RENEW_SUFFIX: &str = "renew";
-
 /// Trailing segment of the per-lease tool-call records sub-resource. See
 /// [`LEASE_ACTIVITY_SUFFIX`] for why it is a bare segment.
 pub const LEASE_TOOL_CALLS_SUFFIX: &str = "tool-calls";
@@ -84,10 +65,6 @@ pub const SCHEDULE_RUNS_SUFFIX: &str = "runs";
 /// the event's thread before the answer. See [`LEASE_ACTIVITY_SUFFIX`].
 pub const LEASE_MESSAGES_SUFFIX: &str = "messages";
 
-/// Trailing segment of the per-lease folds sub-resource: the messages a
-/// person sent while the run works, claimed for it before each model call.
-pub const LEASE_FOLDS_SUFFIX: &str = "folds";
-
 /// One held lease, the root every per-lease route sits under. The router
 /// matches `{lease_id}`; the runner puts the lease's id in its place.
 const LEASE: &str = concatcp!(RUNNER_LEASES, "/{lease_id}/");
@@ -98,12 +75,6 @@ pub const RUNNER_MEMORY_FLEET: &str = concatcp!(RUNNER_MEMORY, "/{fleet_id}");
 /// `POST` — a search of one fleet's memory past the hydration window.
 pub const RUNNER_MEMORY_RECALL: &str =
     concatcp!(RUNNER_MEMORY_FLEET, "/", RUNNER_MEMORY_RECALL_SUFFIX);
-
-/// `POST` — live-tail frames for a held lease.
-pub const LEASE_ACTIVITY: &str = concatcp!(LEASE, LEASE_ACTIVITY_SUFFIX);
-
-/// `POST` — more time on a held lease.
-pub const LEASE_RENEW: &str = concatcp!(LEASE, LEASE_RENEW_SUFFIX);
 
 /// `POST` — finished calls' full records for a held lease.
 pub const LEASE_TOOL_CALLS: &str = concatcp!(LEASE, LEASE_TOOL_CALLS_SUFFIX);
@@ -119,9 +90,6 @@ pub const LEASE_SCHEDULE_RUNS: &str = concatcp!(LEASE_SCHEDULE, "/", SCHEDULE_RU
 
 /// `POST` — a line said to the leased event's thread.
 pub const LEASE_MESSAGES: &str = concatcp!(LEASE, LEASE_MESSAGES_SUFFIX);
-
-/// `POST` — claim the messages a person sent the fleet while this run works.
-pub const LEASE_FOLDS: &str = concatcp!(LEASE, LEASE_FOLDS_SUFFIX);
 
 /// Private working notes for one branch of a live lease.
 pub const LEASE_CONTEXT: &str = concatcp!(LEASE, "context-checkpoints/{branch_id}");

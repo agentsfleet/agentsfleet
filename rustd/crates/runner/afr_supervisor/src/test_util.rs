@@ -4,14 +4,18 @@
 //! the fixture lease, the identifiers it carries, and the reply a healthy
 //! daemon gives each route.
 
+#[cfg(feature = "test-util")]
+mod session;
+#[cfg(feature = "test-util")]
+pub use session::Session;
+
 use std::borrow::Cow;
 
 use af_wire::fold::FoldResponse;
-use af_wire::lease::LeaseResponse;
 use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryRecallResponse};
 use af_wire::paths::{
-    LEASE_CONTEXT, LEASE_FOLDS_SUFFIX, LEASE_RENEW_SUFFIX, LEASE_TOOL_CALLS_SUFFIX,
-    RUNNER_HEARTBEATS, RUNNER_LEASES, RUNNER_MEMORY, RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_SELF,
+    LEASE_CONTEXT, LEASE_TOOL_CALLS_SUFFIX, RUNNER_LEASES, RUNNER_MEMORY,
+    RUNNER_MEMORY_RECALL_SUFFIX, RUNNER_SELF,
 };
 use af_wire::report::{RenewResponse, ReportResponse};
 use af_wire::runner::{AssignedPolicy, HeartbeatResponse, HeartbeatStatus, SelfResponse};
@@ -89,10 +93,6 @@ impl Healthy {
             ) => Value::Null,
             Some(Verb::ContextLoad | Verb::ContextCommit) => serde_json::json!({}),
             Some(Verb::Heartbeat) => self.heartbeat(),
-            Some(Verb::Lease) => value(&LeaseResponse::<serde_json::Value> {
-                lease: None,
-                retry_after_ms: Some(self.interval_ms),
-            }),
             Some(Verb::Renew) => value(&RenewResponse {
                 lease_expires_at: self.granted_until,
                 recorded_through: None,
@@ -143,7 +143,6 @@ impl Healthy {
             selftest_requested: false,
             release_holds: Vec::new(),
             heartbeat_interval_ms: self.interval_ms,
-            woken: Some(false),
         })
     }
 
@@ -182,12 +181,8 @@ fn routed(method: &str, path: &str) -> Option<Verb> {
         .is_some_and(|(collection, _branch)| LEASE_CONTEXT.rsplit('/').nth(1) == Some(collection));
     let memory = path.starts_with(RUNNER_MEMORY);
     match (path, leased) {
-        (RUNNER_HEARTBEATS, _) => Some(Verb::Heartbeat),
-        (RUNNER_LEASES, _) => Some(Verb::Lease),
         (RUNNER_SELF, _) => Some(Verb::Me),
-        (_, Some(LEASE_RENEW_SUFFIX)) => Some(Verb::Renew),
         (_, Some(LEASE_TOOL_CALLS_SUFFIX)) => Some(Verb::Records),
-        (_, Some(LEASE_FOLDS_SUFFIX)) => Some(Verb::Folds),
         _ if context && method == GET => Some(Verb::ContextLoad),
         _ if context && method == Verb::ContextCommit.method().http().as_str() => {
             Some(Verb::ContextCommit)

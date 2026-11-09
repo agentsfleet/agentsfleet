@@ -16,6 +16,10 @@
 
 use std::time::Duration;
 
+/// Authoring provider work keeps its existing five-minute budget plus delivery slack.
+/// Control ping and renewal deadlines remain independent while the model is pending.
+pub const AUTHORING_MODEL_ANSWER_TIMEOUT: Duration = Duration::from_secs(310);
+
 /// How long an issued lease or affinity claim stays valid before the slot
 /// becomes reclaimable, and the increment each renewal adds.
 ///
@@ -70,20 +74,6 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 /// bounds the cost of the wait.
 pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 
-/// The backoff hint handed to a runner that found no work.
-///
-/// The lease verb always answers 200 — never 204 — and this rides the reply as
-/// `retry_after_ms`.
-pub const NO_WORK_RETRY_AFTER: Duration = Duration::from_secs(1);
-
-/// How long the daemon holds a heartbeat that asked to be woken, waiting for
-/// fresh work to be admitted.
-///
-/// Equal to [`HEARTBEAT_INTERVAL`], so a held beat returns no later than the
-/// runner's next beat was due and the runner's liveness is unchanged by the
-/// hold. The runner's call timeout is asserted above it where it is declared.
-pub const WAKE_HOLD_MAX: Duration = HEARTBEAT_INTERVAL;
-
 /// How long a readiness-doorbell command may take before its caller goes on
 /// without it: the ring a mark publishes, and the peek of the partition a ring
 /// named.
@@ -114,7 +104,8 @@ const _: () = assert!(
         + STREAM_HTTP3_CONNECT_TIMEOUT.as_nanos()
         + STREAM_HTTP2_CONNECT_TIMEOUT.as_nanos()
         + STREAM_OPEN_TIMEOUT.as_nanos()
-        + RENEWAL_WINDOW.as_nanos() < LEASE_TTL.as_nanos(),
+        + RENEWAL_WINDOW.as_nanos()
+        < LEASE_TTL.as_nanos(),
     "a failed renewal and bounded reconnect must leave a complete renewal window"
 );
 
@@ -139,10 +130,6 @@ const _: () = assert!(
 const _: () = assert!(
     HEARTBEAT_INTERVAL.as_nanos() < RUNNER_OFFLINE_AFTER.as_nanos(),
     "an idle host must heartbeat before a fleet read would derive it offline"
-);
-const _: () = assert!(
-    WAKE_HOLD_MAX.as_nanos() <= HEARTBEAT_INTERVAL.as_nanos(),
-    "a held beat must return before the runner's next beat is due"
 );
 const _: () = assert!(
     LEASE_TTL.as_nanos() < MAX_RUNTIME.as_nanos(),

@@ -5,8 +5,8 @@
 use crate::{queue, requests, seed, support::Fixtures};
 use af_core::id::Uuid7;
 use af_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
+use afd_bus::wake::Wake;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::Doorbell;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
@@ -98,9 +98,9 @@ async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
         .await
         .expect("runner")
         .runner_id;
-    let bell = Doorbell::new();
+    let bell = Wake::default();
     bell.ring(second.clone());
-    let leases = fixtures.leases().with_doorbell(bell);
+    let leases = fixtures.leases().with_wake(bell);
     assert_eq!(
         leases
             .select(&runner, &[])

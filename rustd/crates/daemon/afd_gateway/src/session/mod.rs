@@ -4,10 +4,10 @@ mod cache;
 mod commands;
 mod context;
 mod dispatch;
+mod events;
 mod io;
 mod offer;
 mod opening;
-mod events;
 mod requests;
 mod runtime;
 mod streams;
@@ -20,7 +20,11 @@ use af_wire::{lease::AcceptedKinds, protocol::Down};
 use afd_auth::principal::Runner;
 use afd_runner::capacity::authority::{Authority, Prepared};
 use afd_sse::StreamPermit;
-use tokio::{sync::{mpsc, watch, Notify}, time::Instant};
+use parking_lot::Mutex;
+use tokio::{
+    sync::{Notify, mpsc},
+    time::Instant,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::{ConnectionContext, Gateway};
@@ -28,7 +32,10 @@ use crate::{ConnectionContext, Gateway};
 pub(crate) use io::{StreamAttachment, StreamAttachmentSender};
 use io::{StreamIo, StreamWriters};
 
-type Message<'a> = Down<'a, afd_authoring::types::Candidate>;
+use af_fleet_runtime::definition::{ConfigOp, Definition, InstructionEdit};
+
+type Message<'a> = Down<'a, afd_authoring::types::Candidate, Definition, ConfigOp, InstructionEdit>;
+type Request<'a> = af_wire::protocol::Up<'a, Definition, ConfigOp, InstructionEdit>;
 
 /// The scheduler reads only eligibility, available workers and locality preferences.
 #[derive(Debug, Clone)]
@@ -36,8 +43,50 @@ pub(crate) struct SchedulingState {
     pub(crate) ready: bool,
     pub(crate) degraded: bool,
     pub(crate) credits: usize,
+    offers_sent: u64,
+    offers_seen: u64,
+    ready_revision: Option<NonZeroU64>,
     pub(crate) held: Vec<Uuid7>,
     pub(crate) last_offer: Instant,
+}
+
+impl SchedulingState {
+    fn availability(
+        &mut self,
+        credits: usize,
+        revision: NonZeroU64,
+        observed_offers: u64,
+    ) -> crate::Result<()> {
+        if self
+            .ready_revision
+            .is_some_and(|current| revision <= current)
+        {
+            return Ok(());
+        }
+        if observed_offers < self.offers_seen || observed_offers > self.offers_sent {
+            return Err(crate::error::ErrorKind::Protocol.into());
+        }
+        let unseen = self.offers_sent - observed_offers;
+        // The comparison proves any subsequent narrowing fits the supplied usize capacity.
+        self.credits = if unseen >= credits as u64 {
+            0
+        } else {
+            credits - unseen as usize
+        };
+        self.offers_seen = observed_offers;
+        self.ready_revision = Some(revision);
+        self.ready = true;
+        Ok(())
+    }
+
+    fn issued(&mut self) -> crate::Result<()> {
+        self.offers_sent = self
+            .offers_sent
+            .checked_add(1)
+            .ok_or(crate::error::ErrorKind::Protocol)?;
+        self.credits = self.credits.saturating_sub(1);
+        Ok(())
+    }
 }
 
 /// Shared notifications carry no authority; the session retains the database-issued proof.
@@ -45,7 +94,7 @@ pub(crate) struct SchedulingState {
 pub(crate) struct SessionHandle {
     pub(crate) runner: Uuid7,
     pub(crate) connection: Uuid7,
-    pub(crate) snapshot: watch::Sender<SchedulingState>,
+    pub(crate) snapshot: Mutex<SchedulingState>,
     pub(crate) stop: CancellationToken,
     pub(crate) drain: CancellationToken,
     superseded: CancellationToken,
@@ -57,15 +106,19 @@ pub(crate) struct SessionHandle {
 impl SessionHandle {
     /// A full command queue becomes a complete durable recheck; it never silently loses authority changes.
     fn command(&self, command: afd_bus::Command) {
-        if self.commands.try_send(command).is_err() { self.rechecks.notify_one(); }
+        if self.commands.try_send(command).is_err() {
+            self.rechecks.notify_one();
+        }
     }
 
     pub(crate) fn request_offer(&self) {
-        self.snapshot.send_modify(|state| state.last_offer = Instant::now());
+        self.snapshot.lock().last_offer = Instant::now();
         self.offers.notify_one();
     }
 
-    pub(crate) fn supersede(&self) { self.superseded.cancel(); }
+    pub(crate) fn supersede(&self) {
+        self.superseded.cancel();
+    }
 }
 
 /// Parsed opening data owns its identifiers after the charged input frame drops.
@@ -110,13 +163,51 @@ struct SessionServices {
     authority: Authority,
     leases: afd_fleet::lease::LeaseService,
     drafts: afd_authoring::Drafts,
+    models: afd_authoring::ModelCalls,
+    creations: afd_authoring::Creations,
     cache: cache::LeaseCache,
     output: StreamWriters,
     accepted: AcceptedKinds,
 }
 
-pub(crate) async fn open(gateway: &Gateway, runner: Runner, request: axum::extract::Request)
-    -> crate::Result<axum::response::Response>
-{
+pub(crate) async fn open(
+    gateway: &Gateway,
+    runner: Runner,
+    request: axum::extract::Request,
+) -> crate::Result<axum::response::Response> {
     opening::open(gateway, runner, request).await
+}
+
+#[cfg(test)]
+mod credits_tests;
+
+#[cfg(test)]
+impl SessionHandle {
+    pub(crate) fn fixture(runner: Uuid7, connection: Uuid7) -> Arc<Self> {
+        let (commands, _) = mpsc::channel(1);
+        Arc::new(Self {
+            runner,
+            connection,
+            snapshot: Mutex::new(SchedulingState {
+                ready: true,
+                degraded: false,
+                credits: 1,
+                offers_sent: 0,
+                offers_seen: 0,
+                ready_revision: None,
+                held: Vec::new(),
+                last_offer: Instant::now(),
+            }),
+            stop: CancellationToken::new(),
+            drain: CancellationToken::new(),
+            superseded: CancellationToken::new(),
+            offers: Notify::new(),
+            rechecks: Notify::new(),
+            commands,
+        })
+    }
+
+    pub(crate) fn is_superseded(&self) -> bool {
+        self.superseded.is_cancelled()
+    }
 }

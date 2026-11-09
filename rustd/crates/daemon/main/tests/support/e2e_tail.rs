@@ -21,7 +21,7 @@ use afd_dragonfly::hub::Received;
 use serde_json::Value;
 
 use crate::e2e::Scenario;
-use crate::wire::{capable_beat, poll_for_seeded_lease, post};
+use crate::wire::{capable_beat, wait_for_seeded_offer};
 
 /// How long a published frame is given to reach the subscriber.
 ///
@@ -50,14 +50,13 @@ pub(crate) const SILENCE_WINDOW: Duration = Duration::from_millis(750);
 /// and the beat is not optional — a runner that has not proven its capabilities
 /// reads degraded and the poll correctly answers no-work.
 pub(crate) async fn lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
-    let beat = post(http, run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(
-        beat.status().as_u16(),
-        200,
-        "the runner proves its capabilities"
+    let beat = crate::wire::heartbeat(run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
     );
 
-    poll_for_seeded_lease(http, run).await
+    wait_for_seeded_offer(run).await
 }
 
 /// Gives the hub's pump time to register the subscription with Dragonfly.

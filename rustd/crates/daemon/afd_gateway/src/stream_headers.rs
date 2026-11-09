@@ -22,7 +22,9 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
 
     fn try_from(headers: &HeaderMap) -> Result<Self> {
         let version = required(headers, protocol::VERSION_HEADER)?;
-        if version != protocol::VERSION { return Err(ErrorKind::UnsupportedVersion.into()); }
+        if version != protocol::VERSION {
+            return Err(ErrorKind::UnsupportedVersion.into());
+        }
         let kind = StreamKind::parse(required(headers, protocol::STREAM_KIND_HEADER)?)
             .ok_or(ErrorKind::UnknownStream)?;
         let session = one(headers, protocol::SESSION_HEADER)?
@@ -31,12 +33,18 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
         let bearer = one(headers, AUTHORIZATION_HEADER)?;
         match kind {
             StreamKind::Control => {
-                if bearer.is_none() { return Err(ErrorKind::ControlBearerMissing.into()); }
+                if bearer.is_none() {
+                    return Err(ErrorKind::ControlBearerMissing.into());
+                }
                 Ok(Self::Control { previous: session })
             }
             kind => {
-                if bearer.is_some() { return Err(ErrorKind::UnexpectedBearer.into()); }
-                let session = session.ok_or(ErrorKind::MissingHeader { header: protocol::SESSION_HEADER })?;
+                if bearer.is_some() {
+                    return Err(ErrorKind::UnexpectedBearer.into());
+                }
+                let session = session.ok_or(ErrorKind::MissingHeader {
+                    header: protocol::SESSION_HEADER,
+                })?;
                 Ok(match kind {
                     StreamKind::Work => Self::Work { session },
                     StreamKind::Reports => Self::Reports { session },
@@ -61,7 +69,9 @@ impl StreamHeaders {
     pub(crate) fn session(&self) -> Option<&Uuid7> {
         match self {
             Self::Control { previous } => previous.as_ref(),
-            Self::Work { session } | Self::Reports { session } | Self::Activity { session } => Some(session),
+            Self::Work { session } | Self::Reports { session } | Self::Activity { session } => {
+                Some(session)
+            }
         }
     }
 }
@@ -72,8 +82,17 @@ fn required<'a>(headers: &'a HeaderMap, name: &'static str) -> Result<&'a str> {
 
 fn one<'a>(headers: &'a HeaderMap, name: &'static str) -> Result<Option<&'a str>> {
     let mut values = headers.get_all(name).iter();
-    let first = values.next().map(|value| value.to_str()
-        .map_err(|source| ErrorKind::HeaderEncoding { header: name, source })).transpose()?;
-    if values.next().is_some() { return Err(ErrorKind::RepeatedHeader { header: name }.into()); }
+    let first = values
+        .next()
+        .map(|value| {
+            value.to_str().map_err(|source| ErrorKind::HeaderEncoding {
+                header: name,
+                source,
+            })
+        })
+        .transpose()?;
+    if values.next().is_some() {
+        return Err(ErrorKind::RepeatedHeader { header: name }.into());
+    }
     Ok(first)
 }

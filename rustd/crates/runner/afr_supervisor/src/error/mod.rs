@@ -47,6 +47,32 @@ af_core::error_shell!(
 /// Every way the supervisor fails.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    /// A native carrier retains its finite failure class and original cause.
+    #[error("the runner stream did not complete")]
+    Stream {
+        #[source]
+        source: af_stream::Error,
+    },
+
+    /// A disconnected session has no request owner; its caller may retry after reconnect.
+    #[error("the runner stream is disconnected")]
+    Disconnected,
+
+    /// A daemon message or request identifier violated the session protocol.
+    #[error("the runner stream protocol was refused")]
+    StreamProtocol,
+
+    /// An unanswered request preserves its deadline failure.
+    #[error("the runner stream answer deadline expired")]
+    StreamTimeout {
+        #[source]
+        source: tokio::time::error::Elapsed,
+    },
+
+    /// Domain replies keep the registered code independently of HTTP status.
+    #[error("the daemon refused a runner stream request")]
+    StreamRefused { code: ErrorCode, retryable: bool },
+
     /// A filesystem call failed.
     #[error("an input/output call failed")]
     Io {
@@ -55,19 +81,11 @@ pub(crate) enum ErrorKind {
         source: std::io::Error,
     },
 
-    /// Private spool encryption or authentication failed.
-    #[error("private report protection failed")]
+    /// Credential or recovery encryption or authentication failed.
+    #[error("credential or recovery protection failed")]
     Crypto {
         #[source]
         source: af_crypto::error::Error,
-    },
-
-    /// A finished temporary file could not be moved into place.
-    #[error("a finished file could not be moved into place")]
-    Persist {
-        /// The rename's failure; the temporary file is removed with it.
-        #[source]
-        source: tempfile::PersistError,
     },
 
     /// The runner's configuration is missing or unusable.

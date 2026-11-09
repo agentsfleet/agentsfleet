@@ -134,7 +134,12 @@ async fn a_renewal_refused_before_the_fleet_is_free_never_starts_the_run() {
     let _busy = turns.claim(&Uuid7::parse(FLEET_ID).unwrap()).await;
 
     rig.lessee
-        .run(&turns, &lease(LEASE_ID, FLEET_ID), &Egress::closed())
+        .run(
+            &turns,
+            &lease(LEASE_ID, FLEET_ID),
+            &Egress::closed(),
+            tokio_util::sync::CancellationToken::new(),
+        )
         .await
         .unwrap();
 

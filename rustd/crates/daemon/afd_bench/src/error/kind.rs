@@ -12,7 +12,10 @@ use crate::profile::Profile;
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
     #[error("the requested benchmark concurrency cannot be represented on this platform")]
-    ConcurrencyUnrepresentable { #[source] source: std::num::TryFromIntError },
+    ConcurrencyUnrepresentable {
+        #[source]
+        source: std::num::TryFromIntError,
+    },
 
     /// Raised on the way in rather than defaulted, because defaulting an
     /// unrecognised profile would silently pick someone's blast radius.

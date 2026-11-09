@@ -99,7 +99,10 @@ impl<'a> LeaseRow<'a> {
         let metadata = std::collections::BTreeMap::from([
             (afd_runner::sql::meta::LEASE_ID, self.lease_id.as_str()),
             (afd_runner::sql::meta::FLEET_ID, self.fleet_id.as_str()),
-            (afd_runner::sql::meta::AGENTSFLEET_EVENT_ID, self.event_id.as_str()),
+            (
+                afd_runner::sql::meta::AGENTSFLEET_EVENT_ID,
+                self.event_id.as_str(),
+            ),
             (afd_runner::sql::meta::KIND, self.kind),
         ]);
         let created_at = sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(INSERT_LEASE_WITH_EVENT)
@@ -120,7 +123,11 @@ impl<'a> LeaseRow<'a> {
             .bind(sqlx::types::Json(metadata))
             .bind(self.event_created_at.to_sqlx())
             .bind(self.decision_snapshot.map(sqlx::types::Json))
-            .fetch_optional(connection).await.map_err(query("write the fenced lease and return its saved creation time"))?;
+            .fetch_optional(connection)
+            .await
+            .map_err(query(
+                "write the fenced lease and return its saved creation time",
+            ))?;
         Ok(created_at.map(|created| created.to_jiff()))
     }
 }

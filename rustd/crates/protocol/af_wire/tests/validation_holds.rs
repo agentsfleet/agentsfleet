@@ -1,6 +1,6 @@
 //! A runner's held sandboxes on the wire: a beat names its holds every time,
-//! the daemon's answer names its releases every time, a report or poll that
-//! names none decodes as nothing held, and the list a runner sends is bounded.
+//! the daemon's answer names its releases every time, a report can name no
+//! hold, and the list a runner sends is bounded.
 #![expect(
     clippy::unwrap_used,
     reason = "test target: a body that will not decode is an unmet precondition"
@@ -8,7 +8,6 @@
 
 use std::borrow::Cow;
 
-use af_wire::lease::{AcceptedKinds, LeaseRequest};
 use af_wire::report::ReportRequest;
 use af_wire::runner::{
     FLEET_ID_TEXT_BYTES, HOLDS_MAX, HeartbeatRequest, HeartbeatResponse, HeldFleets,
@@ -62,13 +61,9 @@ fn test_a_beat_names_its_holds_and_whether_it_is_closing() {
 }
 
 #[test]
-fn test_a_report_or_poll_naming_no_hold_holds_nothing() {
+fn a_report_naming_no_hold_holds_nothing() {
     let report: ReportRequest<'_> = serde_json::from_str(REPORT).unwrap();
-    let poll: LeaseRequest<'_> = serde_json::from_str(r#"{"accepted_kinds":["fleet"]}"#).unwrap();
-
     assert_eq!(report.held_until, None);
-    assert_eq!(poll.holds, HeldFleets::default());
-    assert_eq!(poll.accepted_kinds, AcceptedKinds::FLEET);
 }
 
 /// The daemon's answer names its releases and the assignment on every beat:
@@ -144,14 +139,12 @@ fn test_every_held_fleet_is_an_identifiers_length() {
 }
 
 #[test]
-fn test_a_poll_naming_its_holds_reads_them_and_refuses_a_stranger() {
-    let body = format!(r#"{{"holds":["{FLEET}"],"accepted_kinds":["fleet"]}}"#);
-
-    let poll: LeaseRequest<'_> = serde_json::from_str(&body).unwrap();
-
-    assert_eq!(poll.holds, held(1, FLEET));
-    poll.validate().unwrap();
-    let _ = serde_json::from_str::<LeaseRequest<'_>>(r#"{"future":1}"#).unwrap_err();
+fn a_heartbeat_names_its_holds_and_refuses_an_unknown_field() {
+    let body = format!(r#"{{"holds":["{FLEET}"],"closing":false}}"#);
+    let beat: HeartbeatRequest<'_> = serde_json::from_str(&body).unwrap();
+    assert_eq!(beat.holds, held(1, FLEET));
+    beat.validate().unwrap();
+    let _ = serde_json::from_str::<HeartbeatRequest<'_>>(r#"{"future":1}"#).unwrap_err();
 }
 
 /// The bounds garde enforces on a runner's holds, as a schema publishes them:
@@ -176,15 +169,12 @@ fn assert_holds_bounded(body: &str, schema: &serde_json::Value) {
     );
 }
 
-/// Both bodies that carry a runner's holds derive the bounds garde enforces.
-/// utoipa takes only a literal for them, so this keeps the two spellings one.
+/// The heartbeat publishes the same bounds it enforces on a runner's holds.
 #[cfg(feature = "openapi")]
 #[test]
 fn test_the_published_holds_bound_is_the_enforced_one() {
-    let poll = serde_json::to_value(<LeaseRequest<'_> as utoipa::PartialSchema>::schema()).unwrap();
     let beat =
         serde_json::to_value(<HeartbeatRequest<'_> as utoipa::PartialSchema>::schema()).unwrap();
 
-    assert_holds_bounded("LeaseRequest", &poll);
     assert_holds_bounded("HeartbeatRequest", &beat);
 }

@@ -29,7 +29,7 @@ use afd_billing::Accounts;
 use afd_credential::provider::Providers;
 use afd_credential::vault::Vault;
 use afd_events::History;
-use afd_fleet::lease::{Leases, LeaseService};
+use afd_fleet::lease::{LeaseService, Leases};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
 use afd_runner::Runners;
@@ -75,7 +75,9 @@ pub struct ServingPlane {
 impl ServingPlane {
     /// One native session owner shared by the router and supervised runtime.
     #[must_use]
-    pub fn runner_streams(&self) -> &afd_gateway::Gateway { &self.runner_streams }
+    pub fn runner_streams(&self) -> &afd_gateway::Gateway {
+        &self.runner_streams
+    }
 
     /// Shares the request-path task owner with supervised maintenance.
     #[must_use]
@@ -195,6 +197,7 @@ impl ServingPlane {
             broker,
             biller,
         );
+        leases.leases = leases.leases.with_wake(runner_wake.clone());
         let tasks = task_plane(
             &mut leases,
             task_admissions,
@@ -205,9 +208,17 @@ impl ServingPlane {
         );
         let runners = Runners::new(database.clone(), Entropy::new());
         let runner_streams = afd_gateway::Gateway::new(afd_gateway::GatewayDependencies {
-            runners: runners.clone(), leases: leases.clone(), drafts: authoring.drafts.clone(),
-            bus, stream_limit: live.stream_limit().clone(), wake: runner_wake, frame_memory,
-            wall_clock: Arc::new(af_core::clock::SystemClock), analytics: analytics.clone(),
+            runners: runners.clone(),
+            leases: leases.clone(),
+            drafts: authoring.drafts.clone(),
+            models: authoring.models.clone(),
+            creations: authoring.creations.clone(),
+            bus,
+            stream_limit: live.stream_limit().clone(),
+            wake: runner_wake,
+            frame_memory,
+            wall_clock: Arc::new(af_core::clock::SystemClock),
+            analytics: analytics.clone(),
         });
         Self {
             authoring,

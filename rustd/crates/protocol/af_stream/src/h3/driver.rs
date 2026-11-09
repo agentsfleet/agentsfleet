@@ -13,24 +13,33 @@ pub(super) struct Driver<A> {
     stop: CancellationToken,
     done: Option<oneshot::Sender<()>>,
     sample: Sampler,
+    security: watch::Sender<Option<crate::tls::KeyExchange>>,
 }
 
 impl<A> Driver<A> {
     pub(super) fn new(
         inner: A,
         stop: CancellationToken,
-    ) -> (Self, oneshot::Receiver<()>, watch::Receiver<NetworkStats>) {
+    ) -> (
+        Self,
+        oneshot::Receiver<()>,
+        watch::Receiver<NetworkStats>,
+        watch::Receiver<Option<crate::tls::KeyExchange>>,
+    ) {
         let (done, completion) = oneshot::channel();
         let (sample, stats) = Sampler::new();
+        let (security, negotiated) = watch::channel(None);
         (
             Self {
                 inner,
                 stop,
                 done: Some(done),
                 sample,
+                security,
             },
             completion,
             stats,
+            negotiated,
         )
     }
 }
@@ -41,6 +50,10 @@ impl<A: ApplicationOverQuic> ApplicationOverQuic for Driver<A> {
         qconn: &mut QuicheConnection,
         handshake_info: &HandshakeInfo,
     ) -> QuicResult<()> {
+        let ssl: &mut boring::ssl::SslRef = qconn.as_mut();
+        let group = crate::tls::KeyExchange::from(&*ssl);
+        self.security.send_replace(Some(group));
+        group.check()?;
         self.sample.sample(qconn);
         self.inner.on_conn_established(qconn, handshake_info)
     }

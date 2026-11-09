@@ -28,7 +28,7 @@ async fn claim(answer: impl Fn(&Call) -> Answer + Send + Sync + 'static) -> Clai
     let (plane, mut calls) = plane(answer);
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let host = Host::new();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
     let folded = verbs.claim(AFTER).await;
     Claimed {
         folded,

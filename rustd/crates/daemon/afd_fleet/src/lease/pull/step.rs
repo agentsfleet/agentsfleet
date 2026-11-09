@@ -3,21 +3,20 @@
 use af_core::id::Uuid7;
 use afd_gate::gate::Waiting;
 
-use crate::error::Result;
 use crate::lease::answer::no_work;
 use crate::lease::envelope::Acquired;
 
 /// The single stable reason logged by both waiting-for-approval paths.
 const AWAITING_APPROVAL: &str = "a human owes an answer";
 
-/// Continue, stop for a later poll, or park the admission until a gate answer.
+/// Continue, leave work available, or park the admission until a gate answer.
 pub(in crate::lease) enum Step<T> {
     /// Carry on, with this.
     Go(T),
-    /// Stop; these are the bytes.
-    Stop(String),
-    /// Stop and wait for a person; these are the bytes.
-    Park(String),
+    /// Stop without issuing work.
+    Stop,
+    /// Stop and wait for a person.
+    Park,
 }
 
 impl<T> Step<T> {
@@ -26,8 +25,8 @@ impl<T> Step<T> {
     pub(in crate::lease) fn proceed<U>(self) -> core::result::Result<T, Step<U>> {
         match self {
             Self::Go(value) => Ok(value),
-            Self::Stop(answer) => Err(Step::Stop(answer)),
-            Self::Park(answer) => Err(Step::Park(answer)),
+            Self::Stop => Err(Step::Stop),
+            Self::Park => Err(Step::Park),
         }
     }
 }
@@ -35,7 +34,7 @@ impl<T> Step<T> {
 /// A lease written and rendered: the bytes a runner reads.
 ///
 /// The claim is the lease's now, so it is the one ending that keeps it.
-pub(in crate::lease) struct Leased<T = String>(pub(in crate::lease) T);
+pub(in crate::lease) struct Leased<T>(pub(in crate::lease) T);
 
 /// A gate's wait, as an ending.
 ///
@@ -43,14 +42,12 @@ pub(in crate::lease) struct Leased<T = String>(pub(in crate::lease) T);
 /// fleet. A wait that could not read whether a question exists stops instead,
 /// and the next poll reads again — nothing would re-mark a fleet on its behalf.
 ///
-/// # Errors
-/// Reports an answer that would not render.
-pub(super) fn waited<T>(runner_id: &Uuid7, waiting: Waiting) -> Result<Step<T>> {
-    let answer = no_work(runner_id, AWAITING_APPROVAL)?;
-    Ok(match waiting {
-        Waiting::Parked | Waiting::Pending => Step::Park(answer),
-        Waiting::Unreadable => Step::Stop(answer),
-    })
+pub(super) fn waited<T>(runner_id: &Uuid7, waiting: Waiting) -> Step<T> {
+    no_work(runner_id, AWAITING_APPROVAL);
+    match waiting {
+        Waiting::Parked | Waiting::Pending => Step::Park,
+        Waiting::Unreadable => Step::Stop,
+    }
 }
 
 /// The pass outlived its claim, so the lease was not written.
@@ -62,7 +59,7 @@ const EVENT_CLAIM_LOST: &str = "lease_claim_lost";
 /// A stop, so the fleet keeps its mark and whoever holds the slot now serves
 /// the entry. The release the stop owes is fenced on this pass's token, so it
 /// cannot free the slot the new holder won.
-pub(in crate::lease) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> Result<Step<T>> {
+pub(in crate::lease) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) -> Step<T> {
     // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
     // scores the dead copy.
     let runner = runner_id.as_str();
@@ -77,7 +74,8 @@ pub(in crate::lease) fn claim_lost<T>(runner_id: &Uuid7, acquired: &Acquired) ->
         fencing_token = fence,
         "the pass outlived its claim; no lease was written"
     );
-    no_work(runner_id, CLAIM_LOST_REASON).map(Step::Stop)
+    no_work(runner_id, CLAIM_LOST_REASON);
+    Step::Stop
 }
 
 /// The no-work reason a lost claim answers with.
@@ -106,8 +104,8 @@ mod tests {
     #[test]
     fn a_wait_on_a_recorded_question_parks() {
         for waiting in [Waiting::Parked, Waiting::Pending] {
-            let step: Step<()> = waited(&runner(), waiting).expect("the answer renders");
-            assert!(matches!(step, Step::Park(_)), "{waiting:?} must park");
+            let step: Step<()> = waited(&runner(), waiting);
+            assert!(matches!(step, Step::Park), "{waiting:?} must park");
         }
     }
 
@@ -115,8 +113,8 @@ mod tests {
     /// nothing would re-mark the fleet on its behalf.
     #[test]
     fn an_unreadable_wait_stops_without_parking() {
-        let step: Step<()> = waited(&runner(), Waiting::Unreadable).expect("the answer renders");
-        assert!(matches!(step, Step::Stop(_)));
+        let step: Step<()> = waited(&runner(), Waiting::Unreadable);
+        assert!(matches!(step, Step::Stop));
     }
 
     /// A pass whose lease insert lost its fence answers no-work, as a stop:
@@ -124,15 +122,12 @@ mod tests {
     #[cfg(feature = "test-util")]
     #[test]
     fn a_lost_claim_answers_no_work_as_a_stop() {
-        use crate::lease::answer::no_work;
         use crate::lease::test_dead;
 
         let runner = runner();
-        let step =
-            super::claim_lost::<()>(&runner, &test_dead::acquired()).expect("the answer renders");
-        let expected = no_work(&runner, super::CLAIM_LOST_REASON).expect("the answer renders");
+        let step = super::claim_lost::<()>(&runner, &test_dead::acquired());
         assert!(
-            matches!(step, Step::Stop(answer) if answer == expected),
+            matches!(step, Step::Stop),
             "a lost claim is the no-work answer, and never a lease"
         );
     }
@@ -141,9 +136,9 @@ mod tests {
     #[test]
     fn proceed_hands_back_the_value_or_the_same_ending() {
         assert!(matches!(Step::Go(7).proceed::<()>(), Ok(7)));
-        let stopped = Step::<u8>::Stop("stop".to_owned()).proceed::<()>();
-        assert!(matches!(stopped, Err(Step::Stop(answer)) if answer == "stop"));
-        let parked = Step::<u8>::Park("park".to_owned()).proceed::<()>();
-        assert!(matches!(parked, Err(Step::Park(answer)) if answer == "park"));
+        let stopped = Step::<u8>::Stop.proceed::<()>();
+        assert!(matches!(stopped, Err(Step::Stop)));
+        let parked = Step::<u8>::Park.proceed::<()>();
+        assert!(matches!(parked, Err(Step::Park)));
     }
 }

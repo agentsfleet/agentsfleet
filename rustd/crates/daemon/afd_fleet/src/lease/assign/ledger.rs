@@ -47,7 +47,7 @@ impl Leases {
         held: &[Uuid7],
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
-        let hint = self.doorbell().take();
+        let hint = self.wake().take();
         let held: Vec<&Uuid7> = held.iter().collect();
         let mut connection = self.pool().acquire().await?;
         let candidates: Vec<Uuid7> = sqlx::query_scalar(queue::SELECT_CANDIDATES)

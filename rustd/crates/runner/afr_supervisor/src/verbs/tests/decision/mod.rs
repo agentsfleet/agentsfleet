@@ -1,4 +1,4 @@
-//! Native reservations must become durable receipts even when no request can be sent.
+//! PostgreSQL acknowledges native decision receipts before the root uses their answers.
 
 mod loop_boundary;
 
@@ -69,7 +69,7 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
         host.stop.cancel();
     }
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
     let result = verbs.task_decision(input()).await.unwrap();
     assert_eq!(result.state, DecisionCallState::NotSent);
     assert!(result.recorded.is_none());
@@ -112,7 +112,6 @@ async fn assert_preflight(api: &'static str, purpose: &str, fault: &'static str)
             .unwrap(),
         "unavailable"
     );
-    assert!(!host.spool.drain_decisions(&plane).await.unwrap());
     assert_eq!(drain(&mut calls).len(), 0);
 }
 
@@ -142,48 +141,52 @@ fn preflight_reply(
     }
 }
 
-#[tokio::test]
-async fn unacknowledged_receipt_survives_and_duplicate_dispatch_cannot_send_again() {
-    let (plane, mut calls) = plane(|call| match call.verb {
-        Verb::TaskDecisionReserve => json(&dispatch("typesafe", "goal")),
-        Verb::TaskDecisionRecord => Answer::Fail(crate::error::unavailable(call.verb, 503)),
+#[tokio::test(start_paused = true)]
+async fn a_lost_receipt_reply_retries_from_memory_without_reserving_another_dispatch() {
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    };
+    let reservations = Arc::new(AtomicUsize::new(0));
+    let count = Arc::clone(&reservations);
+    let bodies = Arc::new(Mutex::new(Vec::new()));
+    let saved = Arc::clone(&bodies);
+    let (plane, mut calls) = plane(move |call| match call.verb {
+        Verb::TaskDecisionReserve => {
+            count.fetch_add(1, Ordering::SeqCst);
+            json(&dispatch("typesafe", "goal"))
+        }
+        Verb::TaskDecisionRecord => {
+            let mut bodies = saved.lock().unwrap();
+            bodies.push(call.body.clone().unwrap());
+            if bodies.len() == 1 {
+                Answer::Fail(crate::error::unavailable(call.verb, 503))
+            } else {
+                json(&acknowledged())
+            }
+        }
         Verb::Activity => json(&serde_json::json!({})),
-        _ => Answer::Fail(crate::error::config("unexpected decision request")),
+        _ => panic!("unexpected decision request"),
     });
     let host = Host::new();
     host.stop.cancel();
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
-    assert!(matches!(
-        verbs.task_decision(input()).await,
-        Err(Unanswered::Unreachable)
-    ));
-    drain(&mut calls);
-    assert!(matches!(
-        verbs.task_decision(input()).await,
-        Err(Unanswered::Unreachable)
-    ));
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
+    assert_eq!(
+        verbs.task_decision(input()).await.unwrap().state,
+        DecisionCallState::NotSent
+    );
+    assert_eq!(reservations.load(Ordering::SeqCst), 1);
+    let bodies = bodies.lock().unwrap();
+    assert_eq!(bodies.len(), 2);
+    assert_eq!(bodies[0], bodies[1]);
     assert_eq!(
         drain(&mut calls)
             .iter()
-            .map(|call| call.verb)
-            .collect::<Vec<_>>(),
-        vec![Verb::TaskDecisionReserve]
+            .filter(|call| call.verb == Verb::TaskDecisionRecord)
+            .count(),
+        2
     );
-    let (recovered, mut receipts) = crate::test_support::plane(|call| {
-        assert_eq!(call.verb, Verb::TaskDecisionRecord);
-        let body: serde_json::Value = serde_json::from_slice(call.body.as_ref().unwrap()).unwrap();
-        assert_eq!(*body.pointer("/receipt/outcome").unwrap(), "not_sent");
-        json(&acknowledged())
-    });
-    // A nonempty page requests another sweep even when every receipt was acknowledged.
-    assert!(host.spool.drain_decisions(&recovered).await.unwrap());
-    assert_eq!(drain(&mut receipts).len(), 1);
-    // The next sweep clears the saved cursor without replaying the acknowledged receipt.
-    assert!(host.spool.drain_decisions(&recovered).await.unwrap());
-    assert_eq!(drain(&mut receipts).len(), 0);
-    assert!(!host.spool.drain_decisions(&recovered).await.unwrap());
-    assert_eq!(drain(&mut receipts).len(), 0);
 }
 
 #[tokio::test]
@@ -196,13 +199,12 @@ async fn mismatched_dispatch_identity_never_creates_a_receipt_or_progress() {
     });
     let host = Host::new();
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.spool, &host.held, &host.stop);
+    let verbs = FencedVerbs::new(&plane, &lease, FENCING, &host.halt, &host.stop);
     assert!(matches!(
         verbs.task_decision(input()).await,
         Err(Unanswered::Unreachable)
     ));
     assert_eq!(drain(&mut calls).len(), 1);
-    assert!(!host.spool.drain_decisions(&plane).await.unwrap());
     assert_eq!(drain(&mut calls).len(), 0);
 }
 

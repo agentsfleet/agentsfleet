@@ -31,7 +31,10 @@ pub struct MemorySettings {
 
 impl Default for MemorySettings {
     fn default() -> Self {
-        Self { control_mib: DEFAULT_CONTROL_MIB, data_mib: DEFAULT_DATA_MIB }
+        Self {
+            control_mib: DEFAULT_CONTROL_MIB,
+            data_mib: DEFAULT_DATA_MIB,
+        }
     }
 }
 
@@ -44,7 +47,10 @@ pub struct MemoryLimits {
 
 impl Default for MemoryLimits {
     fn default() -> Self {
-        Self { control_bytes: DEFAULT_CONTROL_MIB * MIB, data_bytes: DEFAULT_DATA_MIB * MIB }
+        Self {
+            control_bytes: DEFAULT_CONTROL_MIB * MIB,
+            data_bytes: DEFAULT_DATA_MIB * MIB,
+        }
     }
 }
 
@@ -53,7 +59,10 @@ impl TryFrom<MemorySettings> for MemoryLimits {
 
     fn try_from(settings: MemorySettings) -> Result<Self> {
         let settings = Unvalidated::new(settings).validate()?;
-        Ok(Self { control_bytes: settings.control_mib * MIB, data_bytes: settings.data_mib * MIB })
+        Ok(Self {
+            control_bytes: settings.control_mib * MIB,
+            data_bytes: settings.data_mib * MIB,
+        })
     }
 }
 
@@ -66,27 +75,33 @@ impl MemoryLimits {
         MemorySettings {
             control_mib: read(env, CONTROL_MEMORY_ENV, DEFAULT_CONTROL_MIB)?,
             data_mib: read(env, DATA_MEMORY_ENV, DEFAULT_DATA_MIB)?,
-        }.try_into()
+        }
+        .try_into()
     }
 }
 
 fn read(env: &(impl EnvSource + ?Sized), setting: &'static str, default: usize) -> Result<usize> {
     match env.get(setting) {
-        Some(raw) => raw.parse().map_err(|source| ErrorKind::MemorySetting { setting, source }.into()),
+        Some(raw) => raw
+            .parse()
+            .map_err(|source| ErrorKind::MemorySetting { setting, source }.into()),
         None => Ok(default),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{MemoryLimits, MemorySettings, MIB};
+    use super::{MIB, MemoryLimits, MemorySettings};
     use crate::Budget;
     use af_wire::protocol::StreamKind;
 
     /// A deployment can change the total without coupling incoming and outgoing reservations.
     #[test]
     fn configured_memory_is_partitioned_between_independent_directions() -> crate::Result<()> {
-        let limits = MemoryLimits::try_from(MemorySettings { control_mib: 24, data_mib: 64 })?;
+        let limits = MemoryLimits::try_from(MemorySettings {
+            control_mib: 24,
+            data_mib: 64,
+        })?;
         let (incoming, outgoing) = Budget::duplex(limits);
         assert_eq!(incoming.available(StreamKind::Control), 12 * MIB);
         assert_eq!(outgoing.available(StreamKind::Control), 12 * MIB);
@@ -99,8 +114,20 @@ mod tests {
     #[test]
     fn impossible_or_excessive_memory_settings_are_refused() {
         for value in [0, 11, 513, usize::MAX] {
-            assert!(MemoryLimits::try_from(MemorySettings { control_mib: value, data_mib: 48 }).is_err());
-            assert!(MemoryLimits::try_from(MemorySettings { control_mib: 16, data_mib: value }).is_err());
+            assert!(
+                MemoryLimits::try_from(MemorySettings {
+                    control_mib: value,
+                    data_mib: 48
+                })
+                .is_err()
+            );
+            assert!(
+                MemoryLimits::try_from(MemorySettings {
+                    control_mib: 16,
+                    data_mib: value
+                })
+                .is_err()
+            );
         }
     }
 }

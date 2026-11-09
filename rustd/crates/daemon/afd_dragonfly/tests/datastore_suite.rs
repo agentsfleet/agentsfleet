@@ -101,7 +101,6 @@ mod integration_cluster_prototypes;
 #[path = "integration_cluster_recovery.rs"]
 mod integration_cluster_recovery;
 mod integration_cluster_semantics;
-mod integration_doorbell;
 #[path = "integration_hub.rs"]
 mod integration_hub;
 #[path = "integration_hub_exclusive.rs"]

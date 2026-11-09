@@ -1,4 +1,4 @@
-//! Run the real authoring worker and encrypted drainer with a daemon seam.
+//! Run the real authoring worker with a daemon boundary.
 #![expect(
     clippy::unwrap_used,
     clippy::indexing_slicing,
@@ -66,16 +66,13 @@ fn ack() -> Answer {
 }
 
 async fn run(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value) {
-    bounded("authoring turn", rig.lessee.author(&lease))
-        .await
-        .unwrap();
-    let lessee = std::sync::Arc::clone(&rig.lessee);
-    let draining = tokio::spawn(async move {
-        lessee
-            .authoring_spool
-            .run(&lessee.plane, &lessee.halt)
-            .await;
-    });
+    bounded(
+        "authoring turn",
+        rig.lessee
+            .author(&lease, tokio_util::sync::CancellationToken::new()),
+    )
+    .await
+    .unwrap();
     let mut calls = Vec::new();
     let report = loop {
         let call = tokio::time::timeout(std::time::Duration::from_secs(2), rig.calls.recv())
@@ -89,9 +86,5 @@ async fn run(rig: &mut Rig, lease: Lease<Value>) -> (Vec<Call>, Value) {
         }
         calls.push(call);
     };
-    rig.shutdown.cancel();
-    bounded("authoring drainer shutdown", draining)
-        .await
-        .unwrap();
     (calls, report)
 }

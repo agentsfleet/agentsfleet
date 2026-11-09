@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use afd_bus::{Message, Subject};
-use afd_sse::{StreamLimit, Frame};
+use afd_sse::{Frame, StreamLimit};
 use axum::body::{BodyDataStream, Bytes};
 use axum::response::IntoResponse as _;
 use axum::response::sse::{Event, Sse};

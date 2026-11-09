@@ -15,6 +15,42 @@ closed_set! {
 }
 
 closed_set! {
+    /// Process side observing its one native TLS connection.
+    StreamPeer {
+        /// Outbound runner connector.
+        Client => "client",
+        /// Private daemon acceptor.
+        Server => "server"
+    }
+}
+
+closed_set! {
+    /// Public negotiated algorithm names; no certificate or key data.
+    StreamKeyExchange {
+        /// Required hybrid group.
+        X25519MlKem768 => "x25519_mlkem768",
+        /// Rejected conventional group.
+        X25519 => "x25519",
+        /// Rejected conventional group.
+        P256 => "p256",
+        /// Rejected conventional group.
+        P384 => "p384",
+        /// No completed or recognized negotiation.
+        Other => "other"
+    }
+}
+
+closed_set! {
+    /// Result of the required TLS key-agreement policy.
+    StreamTlsOutcome {
+        /// The completed handshake selected the required hybrid group.
+        Accepted => "accepted",
+        /// The handshake failed or selected another group.
+        Failed => "failed"
+    }
+}
+
+closed_set! {
     /// Native protocol used for one connection attempt.
     StreamTransport {
         /// QUIC with verified TLS.
@@ -239,18 +275,6 @@ closed_set! {
         LeaseToReport => "lease_to_report",
         /// The report's arrival to the `event_complete` publish.
         ReportToComplete => "report_to_complete",
-    }
-}
-
-closed_set! {
-    /// How a held heartbeat ended.
-    WakeAnswer {
-        /// Fresh work was admitted while the beat was held.
-        Ring => "ring",
-        /// The hold reached its deadline with no ring.
-        Deadline => "deadline",
-        /// The process held its cap of beats, so this one was not held.
-        Capped => "capped",
     }
 }
 

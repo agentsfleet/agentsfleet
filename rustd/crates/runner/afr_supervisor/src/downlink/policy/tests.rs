@@ -1,0 +1,327 @@
+#![expect(
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    reason = "test target: a fixture that cannot be built is a broken test"
+)]
+
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::time::Duration;
+
+use af_core::clock::{FixedClock, SystemClock};
+use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
+use af_wire::runner::{HeartbeatStatus, NetworkPolicy};
+use afr_sandbox::{Engine as _, HostProbe, Kvm, Limits, SandboxRequest};
+use tokio::sync::watch;
+use tokio_util::sync::CancellationToken;
+
+use super::{Assignment, Heartbeat, MIN_HEARTBEAT_INTERVAL};
+use crate::client::{Call, Verb};
+use crate::error;
+use crate::halt::Halt;
+use crate::holds::{BuiltUnder, HoldKey, Holds, Release};
+use crate::test_support::{self, Answer, FakeEngine, INTERVAL_MS, drain, json, plane};
+
+/// The fleet whose sandbox the runner holds.
+pub(super) const FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a1";
+/// A fleet busy on the runner's only worker.
+const OTHER_FLEET: &str = "01890a5d-ac96-774b-bcce-b302099a80a2";
+const LEASE: &str = "01890a5d-ac96-774b-bcce-b302099a80b1";
+/// A name in `release_holds` that is no fleet id.
+const NOT_AN_ID: &str = "not-a-fleet";
+/// A tick long enough that a beat inside it came early.
+pub(super) const TICK_MS: u32 = 3_600_000;
+/// The event every release is logged under.
+pub(super) const RELEASED: &str = "sandbox_hold_released";
+/// The status of a daemon that wants the runner to keep going.
+pub(super) const KEEP_GOING: &str = "ok";
+/// The status of a daemon that wants the runner to stop.
+pub(super) const STOP: &str = "stop";
+/// The beat's field listing the fleets the runner holds.
+pub(super) const HOLDS_FIELD: &str = "holds";
+
+/// A registry holding nothing, as a runner that has run no lease.
+fn idle_holds() -> Holds {
+    Holds::start(Arc::new(SystemClock))
+}
+
+pub(super) fn probe() -> HostProbe {
+    HostProbe {
+        landlock: true,
+        seccomp: true,
+        cgroup_controllers: vec!["cpu".to_owned(), "memory".to_owned(), "pids".to_owned()],
+        bubblewrap: true,
+        kvm: Kvm::Absent,
+        toolbox_filesystem: true,
+        workspace_direct_io: None,
+        egress: false,
+    }
+}
+
+/// The assignment every answer here carries.
+fn policy() -> serde_json::Value {
+    serde_json::json!({ "durable_tasks_enabled": true,"sandbox_tier": "landlock_full", "network_policy": "allow_all",
+        "registry_allowlist": [], "worker_count": 3, "extra_binds": []})
+}
+
+fn reply(status: &str, selftest: bool, interval_ms: u32) -> Answer {
+    answer(status, &policy(), selftest, interval_ms, &[])
+}
+
+/// An answer whose `release_holds` names `released`.
+pub(super) fn releasing(status: &str, released: &[&str]) -> Answer {
+    answer(status, &policy(), false, TICK_MS, released)
+}
+
+/// The daemon's heartbeat answer, every field spelled once.
+fn answer(
+    status: &str,
+    assigned: &serde_json::Value,
+    selftest: bool,
+    interval_ms: u32,
+    released: &[&str],
+) -> Answer {
+    json(
+        &serde_json::json!({"status": status, "assigned_policy": assigned, "degraded": false,
+        "degraded_reason": null, "selftest_requested": selftest,
+        "heartbeat_interval_ms": interval_ms, "release_holds": released}),
+    )
+}
+
+/// A registry over a stopped clock with room for `workers`, holding a sandbox
+/// for [`FLEET`] that `engine` built.
+pub(super) async fn holding(engine: &FakeEngine, workers: usize) -> Holds {
+    let holds = Holds::start(Arc::new(FixedClock::at(jiff::Timestamp::UNIX_EPOCH)));
+    holds.resize(workers);
+    let parked = park(&holds, engine).await;
+    assert!(
+        matches!(parked, crate::holds::Parked::Held(_)),
+        "parked: {parked:?}"
+    );
+    holds
+}
+
+/// Parks a sandbox `engine` builds for [`FLEET`], and answers as `holds` did:
+/// a sandbox it refuses is still the caller's to end.
+pub(super) async fn park(holds: &Holds, engine: &FakeEngine) -> crate::holds::Parked {
+    let request = SandboxRequest::new(LEASE, Limits::default());
+    let key = HoldKey {
+        fleet: Uuid7::parse(FLEET).unwrap(),
+        workspace: LEASE.to_owned(),
+        limits: Limits::default(),
+        policy: BuiltUnder::allowing(&[]),
+    };
+    let sandbox = engine.prepare(request).await.unwrap();
+    let lease = Uuid7::parse(LEASE).unwrap();
+    let parked = holds.park(key, lease, sandbox);
+    crate::test_support::bounded("the keeper's answer to a park", parked).await
+}
+
+pub(super) fn sent(call: &Call) -> serde_json::Value {
+    serde_json::from_slice(call.body.as_ref().unwrap()).unwrap()
+}
+
+/// An answered beat carries its assignment to the leases, and the self-test it
+/// asks for rides the next beat under that assignment's label. An answer whose
+/// assignment is null is malformed, never an empty assignment.
+#[tokio::test]
+async fn an_assignment_reaches_the_leases_and_labels_the_self_test_it_asks_for() {
+    let beats = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&beats);
+    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+        0 => reply(KEEP_GOING, true, 2000),
+        _later => answer("drain", &serde_json::Value::Null, false, 2000, &[]),
+    });
+    let probe = probe();
+    let held = idle_holds();
+    let mut heartbeat = Heartbeat::new(&plane, &probe, &held);
+
+    let assigned = heartbeat.beat().await.unwrap();
+    let unassigned = heartbeat.beat().await;
+
+    assert_eq!(assigned.workers, 3);
+    assert_eq!(
+        assigned.egress,
+        test_support::assigned(NetworkPolicy::AllowAll, &[]),
+        "the assigned posture reaches the leases"
+    );
+    assert_eq!(assigned.interval, Duration::from_millis(2000));
+    assert!(
+        unassigned.is_err(),
+        "a null assignment is refused: {unassigned:?}"
+    );
+    let calls = drain(&mut calls);
+    assert!(calls.iter().all(|call| call.verb == Verb::Heartbeat));
+    assert!(calls.iter().all(|call| {
+        sent(call)["capability_report"]["durable_tasks_v1"] == serde_json::Value::Bool(true)
+    }));
+    assert!(
+        sent(&calls[0])["capability_report"]["landlock"]
+            .as_bool()
+            .unwrap()
+    );
+    assert!(
+        sent(&calls[0])["selftest"].is_null(),
+        "nothing has asked for a self-test yet"
+    );
+    assert_eq!(sent(&calls[1])["selftest"]["sandbox_tier"], "landlock_full");
+}
+
+#[tokio::test]
+async fn a_zero_interval_is_floored() {
+    let (plane, _calls) = plane(|_call| reply(KEEP_GOING, false, 0));
+    let probe = probe();
+
+    let held = idle_holds();
+    let beat = Heartbeat::new(&plane, &probe, &held).beat().await.unwrap();
+
+    assert_eq!(beat.interval, MIN_HEARTBEAT_INTERVAL);
+}
+
+#[test]
+fn a_worker_takes_work_only_when_wanted() {
+    let mut assignment = Assignment::initial();
+    assert!(
+        !assignment.takes_work(0),
+        "nothing before the first answered beat"
+    );
+
+    assignment.workers = 1;
+    assert!(assignment.takes_work(0));
+    assert!(!assignment.takes_work(1));
+    assignment.status = HeartbeatStatus::Drain;
+    assert!(!assignment.takes_work(0));
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_failed_beat_retries_and_a_stop_ends_leases_in_flight() {
+    let beats = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&beats);
+    let (plane, _calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+        0 | 1 => Answer::Fail(error::unavailable(Verb::Heartbeat, 503)),
+        2 => reply(KEEP_GOING, false, INTERVAL_MS),
+        _later => reply(STOP, false, INTERVAL_MS),
+    });
+    let probe = probe();
+    let (published, mut watching) = watch::channel(Assignment::initial());
+    let halt = Halt::new(CancellationToken::new());
+    let started = tokio::time::Instant::now();
+
+    let held = idle_holds();
+    Heartbeat::new(&plane, &probe, &held)
+        .keep_beating(&published, &halt)
+        .await;
+
+    assert_eq!(
+        beats.load(Ordering::SeqCst),
+        5,
+        "a failed first beat retries; the stop is followed by the last beat"
+    );
+    assert!(
+        started.elapsed() < Duration::from_secs(3),
+        "retries back off from a short pause"
+    );
+    assert!(
+        halt.running().is_cancelled(),
+        "stop ends leases in flight too"
+    );
+    assert_eq!(watching.borrow_and_update().status, HeartbeatStatus::Stop);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_refused_token_ends_the_runner_and_a_shutdown_ends_the_beat() {
+    let (plane, _calls) = plane(|_call| Answer::Fail(error::refused(Verb::Heartbeat, 401, None)));
+    let probe = probe();
+    let (published, _watching) = watch::channel(Assignment::initial());
+    let refused = Halt::new(CancellationToken::new());
+    let stopped = CancellationToken::new();
+    stopped.cancel();
+
+    let held = idle_holds();
+    Heartbeat::new(&plane, &probe, &held)
+        .keep_beating(&published, &refused)
+        .await;
+    let held = idle_holds();
+    Heartbeat::new(&plane, &probe, &held)
+        .keep_beating(&published, &Halt::new(stopped))
+        .await;
+
+    assert!(refused.token_refused() && refused.running().is_cancelled());
+}
+
+/// The daemon names a held fleet inactive: its hold ends as `inactive` and its
+/// sandbox is destroyed. A name that is no fleet id is logged with the code
+/// for an unreadable identifier, and releases nothing.
+#[tokio::test]
+async fn test_a_released_hold_is_destroyed_as_inactive() {
+    let capture = Capture::install();
+    let engine = FakeEngine::default();
+    let holds = holding(&engine, 2).await;
+    let (plane, mut calls) = plane(|_call| releasing(KEEP_GOING, &[FLEET]));
+    let probe = probe();
+
+    Heartbeat::new(&plane, &probe, &holds).beat().await.unwrap();
+    let left = holds.fleets().await;
+    holds.shutdown().await;
+
+    assert!(left.is_empty(), "{left:?}");
+    assert_eq!(
+        sent(&drain(&mut calls)[0])[HOLDS_FIELD],
+        serde_json::json!([FLEET])
+    );
+    let released = capture.only(RELEASED);
+    assert_eq!(released.field("fleet_id"), Some(FLEET));
+    let inactive = Release::Inactive.outcome().as_str();
+    assert_eq!(released.field("reason"), Some(inactive));
+    assert_eq!(engine.destroyed.load(Ordering::SeqCst), 1);
+}
+
+/// Holds released because the last free worker went to another fleet beat at
+/// once, so the daemon stops routing that fleet here before the tick.
+#[tokio::test(start_paused = true)]
+async fn test_a_saturation_release_beats_at_once() {
+    let engine = FakeEngine::default();
+    let holds = holding(&engine, 1).await;
+    let beats = Arc::new(AtomicUsize::new(0));
+    let counted = Arc::clone(&beats);
+    let (plane, mut calls) = plane(move |_call| match counted.fetch_add(1, Ordering::SeqCst) {
+        0 => releasing(KEEP_GOING, &[]),
+        _later => releasing(STOP, &[]),
+    });
+    let probe = probe();
+    let (published, mut watching) = watch::channel(Assignment::initial());
+    let halt = Halt::new(CancellationToken::new());
+    let started = tokio::time::Instant::now();
+
+    let beating = Heartbeat::new(&plane, &probe, &holds).keep_beating(&published, &halt);
+    let saturating = async {
+        watching.changed().await.unwrap();
+        holds.occupy(Uuid7::parse(OTHER_FLEET).unwrap())
+    };
+    let (_beaten, _busy) = tokio::join!(beating, saturating);
+
+    assert_eq!(
+        beats.load(Ordering::SeqCst),
+        3,
+        "the saturation beat, then the last one"
+    );
+    assert!(
+        started.elapsed() < Duration::from_millis(u64::from(TICK_MS)),
+        "the second beat did not wait out the tick"
+    );
+    let calls = drain(&mut calls);
+    assert_eq!(sent(&calls[0])[HOLDS_FIELD], serde_json::json!([FLEET]));
+    assert_eq!(sent(&calls[1])[HOLDS_FIELD], serde_json::json!([]));
+}
+
+#[tokio::test]
+async fn an_invalid_release_identifier_refuses_the_assignment() {
+    let (plane, _calls) = plane(|_| releasing(KEEP_GOING, &[NOT_AN_ID]));
+    let probe = probe();
+    let holds = idle_holds();
+    let mut heartbeat = Heartbeat::new(&plane, &probe, &holds);
+    assert!(heartbeat.beat().await.is_err());
+    assert!(!heartbeat.last.takes_work(0));
+    holds.shutdown().await;
+}

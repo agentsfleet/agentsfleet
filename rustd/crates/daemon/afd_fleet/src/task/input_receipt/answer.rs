@@ -132,8 +132,14 @@ pub(super) async fn finish(
 impl Completion {
     pub(super) async fn announce(self, tasks: &Tasks) {
         if let Some(closed) = self.closed {
-            let publication = tasks.leases.publish_completion(&closed, Some(&self.answer)).await;
-            afd_bus::observe_notification(&afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()), publication);
+            let publication = tasks
+                .leases
+                .publish_completion(&closed, Some(&self.answer))
+                .await;
+            afd_bus::observe_notification(
+                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                publication,
+            );
         }
         if let (Some(owed), Some(reply)) = (self.owed, self.reply)
             && let Err(error) = tasks

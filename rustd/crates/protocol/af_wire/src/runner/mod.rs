@@ -218,7 +218,7 @@ pub struct RegisterResponse<'a> {
     pub assigned_policy: AssignedPolicy<'a>,
 }
 
-/// `POST /v1/runners/me/heartbeats` request.
+/// Host liveness carried by the control stream.
 ///
 /// The capability report rides the first beat and any beat where the probe
 /// result changed. `holds` and `closing` ride every beat.
@@ -244,23 +244,9 @@ pub struct HeartbeatRequest<'a> {
     /// True when the runner's held-sandbox list is final. Any previously held sandbox missing
     /// from `holds` is released immediately.
     pub closing: bool,
-    /// Hold this heartbeat until new work is admitted or the heartbeat
-    /// interval passes, so an idle worker polls at once. Send it only after a
-    /// reply carried `woken`.
-    #[serde(default, skip_serializing_if = "is_false")]
-    pub wake: bool,
 }
 
-/// Whether a flag is unset, so the beat leaves it off the wire.
-#[expect(
-    clippy::trivially_copy_pass_by_ref,
-    reason = "serde hands skip_serializing_if a reference"
-)]
-const fn is_false(set: &bool) -> bool {
-    !*set
-}
-
-/// `POST /v1/runners/me/heartbeats` reply.
+/// Current policy carried by heartbeat answers and pushed assignments.
 ///
 /// Carries the current assignment on EVERY beat, so a dashboard change reaches
 /// the host within one interval.
@@ -288,11 +274,6 @@ pub struct HeartbeatResponse<'a> {
     /// Milliseconds to wait before the next heartbeat. Use this server-provided interval to
     /// avoid being marked offline.
     pub heartbeat_interval_ms: u32,
-    /// Whether new work was admitted while this heartbeat was held; `false`
-    /// for a heartbeat that did not ask. Its presence means this daemon holds
-    /// heartbeats.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub woken: Option<bool>,
 }
 
 /// `GET /v1/runners/me` reply — the runner's own registration row, read-only.

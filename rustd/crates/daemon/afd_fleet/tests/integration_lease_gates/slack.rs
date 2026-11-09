@@ -73,11 +73,16 @@ async fn one_slack_request_is_one_attempt() {
     let claimed = claim(&fixtures, &ready).await;
     let answer = drive(&fixtures, &ready, claimed).await;
     assert!(
-        !answer.contains(NO_LEASE),
-        "a Slack-requested write event was held rather than leased: {answer}"
+        answer.is_some(),
+        "a Slack-requested write event was held rather than leased: {answer:?}"
     );
     let first_branch = repair::branch_for(first.stored.id.as_str());
-    assert!(answer.contains(&first_branch), "{first_branch}: {answer}");
+    assert!(
+        answer
+            .as_ref()
+            .is_some_and(|lease| lease.to_string().contains(&first_branch)),
+        "{first_branch}: {answer:?}"
+    );
 
     let mut connection = fixtures.database.acquire().await.expect("database");
     let states: Vec<(bool,)> = sqlx::query_as(

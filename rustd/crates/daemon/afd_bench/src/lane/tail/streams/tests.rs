@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use afd_bus::{Message, Subject};
-use afd_sse::{StreamLimit, Frame};
+use afd_sse::{Frame, StreamLimit};
 use futures_util::StreamExt as _;
 use tokio_util::sync::CancellationToken;
 

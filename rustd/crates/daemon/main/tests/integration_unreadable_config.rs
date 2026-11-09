@@ -42,7 +42,7 @@ use agentsfleetd::supervisor::Supervisor;
 use crate::e2e::{Scenario, scenario};
 use crate::e2e_event::enqueue;
 use crate::reads::event_column_of;
-use crate::wire::{capable_beat, poll_for_seeded_lease, poll_until, post, report_body};
+use crate::wire::{capable_beat, report_body, wait_for_seeded_offer, wait_without_offer};
 
 /// Valid JSON, and not a fleet.
 const UNREADABLE_CONFIG: &str = "{}";
@@ -92,8 +92,11 @@ async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     )]
     let http = reqwest::Client::new();
 
-    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(beat.status().as_u16(), 200, "the runner proves itself");
+    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
+    );
 
     let poisoned = seed_unreadable_fleet(&run).await;
     let poisoned_event = enqueue(&run.booted, &poisoned, &run.workspace, EventType::Chat).await;
@@ -102,21 +105,15 @@ async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     // answer 200, which is the regression this file exists for: before the
     // fix, the poll that sampled the neighbour's partition answered 500 and
     // this loop died there rather than finding the scenario's own event.
-    let (lease_id, fence) = poll_for_seeded_lease(&http, &run).await;
+    let (lease_id, fence) = wait_for_seeded_offer(&run).await;
 
     // Settled so the runner's one lease slot is free for the polls below.
-    let settled = post(
-        &http,
-        &run,
-        "/v1/runners/me/reports",
-        &report_body(&lease_id, &run.event_id, fence),
-    )
-    .await;
-    assert_eq!(settled.status().as_u16(), 200, "the report is accepted");
+    let settled = crate::wire::report(&run, &report_body(&lease_id, &run.event_id, fence)).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
 
     // And the neighbour is ended rather than retried forever, which is what
     // puts it in front of a human.
-    let refused = poll_until(&http, &run, || async {
+    let refused = wait_without_offer(&run, || async {
         event_column_of(&run, &poisoned, &poisoned_event, "status").await
             == Some(GATE_BLOCKED.to_owned())
     })

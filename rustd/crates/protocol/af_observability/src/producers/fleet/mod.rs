@@ -18,7 +18,7 @@ use std::sync::Arc;
 use crate::error::Result;
 use crate::metrics::declared::fleet as declared;
 use crate::metrics::instrument::{Instruments, Reading};
-use crate::metrics::label::fleet::{DeliveryStage, ReadyWake, RunStart, SignupFailure, WakeAnswer};
+use crate::metrics::label::fleet::{DeliveryStage, ReadyWake, RunStart, SignupFailure};
 use crate::metrics::observed::Observed;
 use crate::producers::installed;
 use crate::runner::RunnerMetrics;
@@ -71,7 +71,6 @@ pub struct Handles {
     runs_started: Counter<u64>,
     delivery_stage: Histogram<f64>,
     ready_wake_failures: Counter<u64>,
-    wake_answers: Counter<u64>,
     report_answers: Counter<u64>,
     retention_swept: Counter<u64>,
     retention_failures: Counter<u64>,
@@ -117,7 +116,6 @@ impl Handles {
             delivery_stage: instruments.histogram_f64(&declared::FLEET_DELIVERY_STAGE_SECONDS)?,
             ready_wake_failures: instruments
                 .counter_u64(&declared::FLEET_READY_WAKE_FAILURES_TOTAL)?,
-            wake_answers: instruments.counter_u64(&declared::RUNNER_WAKE_ANSWERS_TOTAL)?,
             report_answers: instruments.counter_u64(&declared::RUNNER_REPORT_ANSWERS_TOTAL)?,
             retention_swept: instruments.counter_u64(&declared::RUNNER_RETENTION_SWEPT_TOTAL)?,
             retention_failures: instruments
@@ -240,16 +238,6 @@ pub fn ready_wake_failed(wake: ReadyWake) {
             .fleet
             .ready_wake_failures
             .add(1, &[KeyValue::new(semconv::LABEL_KIND, wake.as_str())]);
-    }
-}
-
-/// Records how one held heartbeat ended.
-pub fn wake_answered(answer: WakeAnswer) {
-    if let Some(producers) = installed() {
-        producers
-            .fleet
-            .wake_answers
-            .add(1, &[KeyValue::new(semconv::LABEL_REASON, answer.as_str())]);
     }
 }
 

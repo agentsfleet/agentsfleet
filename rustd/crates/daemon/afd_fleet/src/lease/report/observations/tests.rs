@@ -2,8 +2,8 @@
 
 use std::borrow::Cow;
 
-use af_core::id::Uuid7;
 use crate::lease::report::{Reconciled, RunTokens};
+use af_core::id::Uuid7;
 use std::time::{Duration, SystemTime};
 
 use af_observability::Segments;
@@ -172,6 +172,11 @@ fn test_span_without_runner_segments_keeps_the_daemons() -> Result<(), &'static 
 /// Corrupt saved usage must never appear as a successful zero measurement.
 #[test]
 fn negative_saved_usage_is_an_error() {
-    let tokens = RunTokens { input_tokens: -1, cached_input_tokens: 0, cache_write_tokens: 0, output_tokens: 0 };
+    let tokens = RunTokens {
+        input_tokens: -1,
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        output_tokens: 0,
+    };
     assert!(UsageCounts::try_from(&tokens).is_err());
 }

@@ -72,13 +72,6 @@ pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
 pub const FLEET_READY_WAKE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_wake_failures_total");
 
-/// Held heartbeats by how they ended; rate ÷ heartbeats is the share of beats
-/// that asked to be held, and a rising `capped` share is the cap too low.
-///
-/// Labels: `reason`.
-pub const RUNNER_WAKE_ANSWERS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_runner_wake_answers_total");
-
 /// Installed fleets by lifecycle status, as the last census pass counted them.
 ///
 /// Labels: `status`.
@@ -139,6 +132,10 @@ pub const RUNNER_REPORT_ANSWERS_TOTAL: Declared<CounterKind> =
 /// Every native connection attempt, including failed HTTP/3 before fallback.
 pub const RUNNER_STREAM_CONNECT_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_stream_connect_total");
+
+/// Native TLS decisions; transport, peer role, group and outcome have closed labels.
+pub const RUNNER_STREAM_TLS_HANDSHAKES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_tls_handshakes_total");
 
 /// Complete native connection attempt duration, including name resolution.
 pub const RUNNER_STREAM_CONNECT_SECONDS: Declared<HistogramKind> =

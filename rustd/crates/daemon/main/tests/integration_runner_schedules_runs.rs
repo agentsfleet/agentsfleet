@@ -24,7 +24,7 @@ use sqlx::Row as _;
 use crate::e2e::Scenario;
 use crate::schedules::{Leased, Seeded};
 use crate::verbs::FakeQStash;
-use crate::wire::poll_for_lease;
+use crate::wire::wait_for_offer;
 
 /// Dimension 1.6. Running now admits one event under the schedule's actor, and
 /// a retried post answers the same run.
@@ -80,7 +80,7 @@ async fn test_scheduled_run_is_leased_with_its_message() {
         .expect("the run answers a canonical event id");
 
     leased.settle().await;
-    let _woken = poll_for_lease(&leased.http, &leased.run, &event).await;
+    let _woken = wait_for_offer(&leased.http, &leased.run, &event).await;
 
     let mut connection = leased.connection().await;
     let message: String = sqlx::query_scalar(
