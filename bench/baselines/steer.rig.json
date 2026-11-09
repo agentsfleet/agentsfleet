@@ -13,7 +13,6 @@
   },
   "measurements": {
     "accepted": 32866.0,
-    "dragonfly_calls_per_steer": 1.00246455303353,
     "error_rate": 0.0,
     "failures": 0.0,
     "max_ms": 201.599,
@@ -87,9 +86,6 @@
     ]
   },
   "datastores": {
-    "dragonfly": {
-      "operations": 32947
-    },
     "postgres": {
       "operations": 32993
     }

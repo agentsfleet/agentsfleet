@@ -38,9 +38,6 @@
     "slow_writer_holds": 3.0
   },
   "datastores": {
-    "dragonfly": {
-      "operations": 0
-    },
     "postgres": {
       "operations": 0
     }

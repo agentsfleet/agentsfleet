@@ -35,7 +35,7 @@ dev_identity() {
   DEV_BINARY="$DEV_STATE/build/debug/agentsfleetd"
   DEV_LOG="$DEV_STATE/daemon.log"
   local base=$((DEV_INFRA_PORT_START + 16#$DEV_REPO_ID % DEV_INFRA_SLOTS * DEV_INFRA_STRIDE))
-  export AGENTSFLEET_PG_HOST_PORT="$base" AGENTSFLEET_DRAGONFLY_BASE_PORT="$((base + 1))" AGENTSFLEET_DRAGONFLY_LAST_PORT="$((base + 5))"
+  export AGENTSFLEET_PG_HOST_PORT="$base"
   export AGENTSFLEET_QSTASH_HOST_PORT="$((base + 10))" AGENTSFLEET_MAILPIT_SMTP_PORT="$((base + 11))" AGENTSFLEET_MAILPIT_UI_PORT="$((base + 12))"
   export AGENTSFLEET_NATS_BASE_PORT="$((base + 13))" AGENTSFLEET_NATS_PORT_2="$((base + 14))" AGENTSFLEET_NATS_PORT_3="$((base + 15))"
 }
@@ -108,13 +108,9 @@ dev_snapshot() {
   fi
   local staging="$DEV_SHARED/infrastructure-new-$$"
   dev_directory "$staging"
-  mkdir -p "$staging/scripts"
   cp "$DEV_ROOT/compose.dev-infra.yml" "$staging/compose.yml"
-  cp "$DEV_ROOT/scripts/dragonfly-cluster.sh" "$staging/scripts/dragonfly-cluster.sh"
   cat >"$staging/ports.env" <<EOF
 AGENTSFLEET_PG_HOST_PORT=$AGENTSFLEET_PG_HOST_PORT
-AGENTSFLEET_DRAGONFLY_BASE_PORT=$AGENTSFLEET_DRAGONFLY_BASE_PORT
-AGENTSFLEET_DRAGONFLY_LAST_PORT=$AGENTSFLEET_DRAGONFLY_LAST_PORT
 AGENTSFLEET_QSTASH_HOST_PORT=$AGENTSFLEET_QSTASH_HOST_PORT
 AGENTSFLEET_MAILPIT_SMTP_PORT=$AGENTSFLEET_MAILPIT_SMTP_PORT
 AGENTSFLEET_MAILPIT_UI_PORT=$AGENTSFLEET_MAILPIT_UI_PORT
@@ -131,7 +127,7 @@ dev_infra_up() {
   status="$(dev_compose ps --all --format '{{.Service}} {{.State}} {{.Health}}')"
   if [ -n "$status" ]; then
     while read -r service state health; do
-      case "$service" in postgres|dragonfly|mailpit|qstash|nats-1|nats-2|nats-3) ;; *) dev_fail 'unexpected shared service' ;; esac
+      case "$service" in postgres|mailpit|qstash|nats-1|nats-2|nats-3) ;; *) dev_fail 'unexpected shared service' ;; esac
       if [ "$state" = running ] && [ "$health" = healthy ]; then count=$((count + 1)); fi
       if [ "$state" = running ] && [ "$health" = unhealthy ]; then restart+=("$service"); fi
     done <<<"$status"

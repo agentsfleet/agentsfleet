@@ -2,7 +2,7 @@
 # `make up` uses compose.dev-infra.yml and a native daemon per worktree.
 # Integration tests use this stack with isolated project names and reset state.
 #
-# The four test-infra services (postgres, redis, dragonfly, qstash) carry NO
+# The test-infra services (postgres, qstash, mailpit, nats-1..3) carry NO
 # `container_name`, so several git worktrees can run `make test-integration` at
 # once. Compose namespaces containers and volumes by project, and the project
 # name defaults to the directory basename — already unique per worktree. Pinning
@@ -19,13 +19,13 @@
 #
 # Only a LINKED git worktree gets pinned per-project ports. The `:-` defaults
 # below are what a primary checkout uses, which is what CI always has, and CI
-# hardcodes localhost:5432/6379 into the connection strings it hands the test
+# hardcodes localhost:5432 into the connection strings it hands the test
 # container — so these defaults are load-bearing, not decorative. They also mean
 # a bare `docker compose up` in a fresh clone behaves exactly as it always did.
 #
 # `agentsfleetd` deliberately KEEPS its fixed name, and `localhost:3000` stays
 # the documented entry point of the `make up` dev stack. Its port rides the
-# dragonfly service (the two share a network namespace) under
+# mailpit service (the two share a network namespace) under
 # AGENTSFLEET_API_HOST_PORT, which the test lane sets per worktree so parallel
 # lanes do not collide on 3000 the way two `make up` stacks still would.
 services:
@@ -66,67 +66,24 @@ services:
       timeout: 5s
       retries: 20
 
-  dragonfly:
-    # A real cluster, not `--cluster_mode=emulated`: two primaries and one
-    # replica each, four processes in this one container, bootstrapped and
-    # health-checked by scripts/dragonfly-cluster.sh. The nodes announce
-    # 127.0.0.1 and the port they bind, and the eight published host ports
-    # carry the same numbers, so a MOVED reply resolves from the host, from
-    # inside the container and from CI. A multi-container cluster cannot do
-    # that: a node announcing its bridge address is unreachable from macOS.
-    #
-    # Pinned to the release the probe and the prototype proofs ran against.
-    # Bumping it is a deliberate act that re-runs `make test-integration-rustd`
-    # on both backends, not a drive-by.
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
-    entrypoint: ["bash", "/scripts/dragonfly-cluster.sh"]
-    command: ["serve"]
-    environment:
-      # The first of the eight ports; the script derives the other seven. The
-      # value must equal the published range below for redirects to resolve.
-      DRAGONFLY_BASE_PORT: ${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}
-    ports:
-      # Per-worktree but fixed -- see the postgres service above. The four DATA
-      # ports as one range; the admin ports (base + 4 .. base + 7) stay inside
-      # the container on loopback, unauthenticated, reached only through
-      # `docker compose exec`. Both ends come from make/test-infra.mk because
-      # compose cannot add 3 to a variable.
-      # Five processes: four cluster nodes and, last, the TLS node the trust
-      # suite dials (see scripts/dragonfly-cluster.sh). The daemon service
-      # below shares this network namespace, so its API port is published here.
-      - "${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7005}:${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}-${AGENTSFLEET_DRAGONFLY_LAST_PORT:-7005}"
-      - "${AGENTSFLEET_API_HOST_PORT:-3000}:3000"
-      # Mailpit shares this namespace too (see the mailpit service): its SMTP
-      # port, and the web page a person reads the captured mail on.
-      - "127.0.0.1:${AGENTSFLEET_MAILPIT_SMTP_PORT:-1025}:1025"
-      - "127.0.0.1:${AGENTSFLEET_MAILPIT_UI_PORT:-8025}:8025"
-    volumes:
-      - ./scripts/dragonfly-cluster.sh:/scripts/dragonfly-cluster.sh:ro
-      - dragonfly-data:/data
-    healthcheck:
-      test: ["CMD", "bash", "/scripts/dragonfly-cluster.sh", "healthy"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
   mailpit:
     # The SMTP sink the invite email lands in, locally and in the integration
     # lane. It accepts any credentials and keeps every message for reading at
     # its web page or its API, so a test asserts on the real SMTP exchange and
     # a person can open the rendered email in a browser.
     #
-    # In the dragonfly service's network namespace, beside the daemon, so the
-    # daemon reaches it on 127.0.0.1 — the one kind of host `afd_mail` sends
-    # to without TLS (`afd_mail::Security::of`). Its ports are published on
-    # the dragonfly service for that reason.
+    # The daemon container joins THIS network namespace, so it reaches mailpit
+    # on 127.0.0.1 — the one kind of host `afd_mail` sends to without TLS
+    # (`afd_mail::Security::of`). A container sharing a namespace cannot
+    # publish its own ports, so the daemon's API port is published here too.
     image: axllent/mailpit:v1.31.3
-    network_mode: "service:dragonfly"
+    ports:
+      - "${AGENTSFLEET_API_HOST_PORT:-3000}:3000"
+      - "127.0.0.1:${AGENTSFLEET_MAILPIT_SMTP_PORT:-1025}:1025"
+      - "127.0.0.1:${AGENTSFLEET_MAILPIT_UI_PORT:-8025}:8025"
     environment:
       MP_SMTP_AUTH_ACCEPT_ANY: "1"
       MP_SMTP_AUTH_ALLOW_INSECURE: "1"
-    depends_on:
-      dragonfly:
-        condition: service_started
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
       interval: 5s
@@ -174,13 +131,10 @@ services:
       dockerfile: Dockerfile
       args:
         TARGETARCH: ${TARGETARCH:-amd64}
-    # The cluster nodes announce 127.0.0.1 — the property that makes a MOVED
-    # reply resolve from the host and from CI — so a peer container can only
-    # reach them from inside the same network namespace. That is what this
-    # is: the daemon's loopback IS the cluster's. Its API port is published on
-    # the dragonfly service above, because a container sharing a namespace
-    # cannot publish its own.
-    network_mode: "service:dragonfly"
+    # In mailpit's network namespace, so the invite email goes to 127.0.0.1
+    # without TLS. Postgres and the NATS nodes are reached by service name.
+    # Its API port is published on the mailpit service above.
+    network_mode: "service:mailpit"
     env_file:
       # Local test shells point directly at the machine-level file. Compose
       # reads the path from the invoking shell; the fallback serves setups
@@ -193,20 +147,17 @@ services:
       ENCRYPTION_MASTER_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef # gitleaks:allow
       GITHUB_APP_ID: "12345"
       GITHUB_APP_PRIVATE_KEY: local-dev-private-key
-      # Override DB/Redis to use compose service names instead of localhost.
+      # Compose service names, not localhost.
       DATABASE_URL_API: postgresql://agentsfleet:agentsfleet@postgres:5432/agentsfleetdb?application_name=api&sslmode=disable
-      # No path segment. redis-rs parses a URL path as a database INDEX, so a
-      # name such as `/api` refuses boot with `Invalid database number`. The
-      # daemon never issues `SELECT` and lives in db 0, the default, so the
-      # URL names no database rather than spelling `/0`.
-      # The cluster seed. Plaintext on purpose: the socket never leaves this
-      # container's loopback, and TLS is proven by the trust suite.
-      DRAGONFLY_URL: redis://:agentsfleet@127.0.0.1:${AGENTSFLEET_DRAGONFLY_BASE_PORT:-7001}
+      # Every node as a seed, with the lane's fixed credentials.
+      NATS_URL: nats://agentsfleet:agentsfleet@nats-1:4222,nats://agentsfleet:agentsfleet@nats-2:4222,nats://agentsfleet:agentsfleet@nats-3:4222
       MIGRATE_ON_START: "1"
     depends_on:
       postgres:
         condition: service_healthy
-      dragonfly:
+      mailpit:
+        condition: service_started
+      nats-1:
         condition: service_healthy
     # No healthcheck. The image is distroless — no shell, no wget, no HTTP
     # client — so a compose healthcheck has nothing to run and the container
@@ -217,8 +168,7 @@ services:
   # Three core NATS nodes routed as one cluster: no JetStream, no volume, so a
   # restarted node rejoins empty. `--no_advertise` keeps the nodes' bridge
   # addresses away from clients, which dial their seed list from the host.
-  # The fixed local password matches the Dragonfly service's; nothing deployed
-  # uses it. The alpine build of the pinned release carries wget for the check.
+  # The fixed local password is a lane fixture; nothing deployed uses it. The alpine build of the pinned release carries wget for the check.
   nats-1: &nats
     image: nats:2.15.2-alpine
     command:
@@ -269,4 +219,3 @@ services:
 
 volumes:
   postgres-data:
-  dragonfly-data:

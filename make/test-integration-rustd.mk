@@ -1,5 +1,5 @@
 # =============================================================================
-# TEST-INTEGRATION-RUSTD — the Rust substrate against live Postgres + Dragonfly
+# TEST-INTEGRATION-RUSTD — the Rust substrate against live Postgres + NATS
 # =============================================================================
 # M175 §6 deleted `make/test-integration.mk` with the retired daemon's gating.
 # The datastores did not go away with it: `make/test-infra.mk` survived, because
@@ -24,11 +24,11 @@
 #      that matches nothing exits 0, and "0 tests ran" is indistinguishable from
 #      "everything passed" by exit status alone — the retired lane learned this
 #      the expensive way (it ran green for a week against a dead port).
-#   3. `$(TEST_STATE_DEP)` — a gate run drops schemas and flushes the Dragonfly
-#      cluster first, while `KEEP_TEST_STATE=1` keeps the inner loop fast. CI
-#      never sets that escape hatch.
-#   4. The three service knobs are NOT passed on the command line. `test-infra.mk`
-#      exports `TEST_DATABASE_URL`, `TEST_DRAGONFLY_URL` and `TEST_DRAGONFLY_CA_CERT`,
+#   3. `$(TEST_STATE_DEP)` — a gate run drops schemas first, while
+#      `KEEP_TEST_STATE=1` keeps the inner loop fast. CI never sets that escape
+#      hatch.
+#   4. The service settings are NOT passed on the command line. `test-infra.mk`
+#      exports `TEST_DATABASE_URL` and `TEST_NATS_URL`,
 #      and the suites read those names directly. This file used to resolve a URL
 #      through a shell macro and hand it to cargo under a fourth, `AFD_`-prefixed
 #      name; the rename bought nothing and cost a reader two files to answer
@@ -144,21 +144,16 @@ endef
 # invocations share: the parallel lane skips them, the second runs only them,
 # and neither can drift from the other.
 #
-# A test earns a place here by needing to observe the SERVER's whole client
-# set. `integration_hub_exclusive` snapshots every node's `CLIENT LIST`, starts
-# the hub, and kills the difference -- Dragonfly implements no `CLIENT KILL
-# TYPE` and exposes no subscriber marker, so a diff is the only way to name the
-# hub's connections at all. A sibling opening a connection inside that window
-# would be killed by it, which is why this cannot ride the parallel lane.
+# A test earns a place here by acting on the cluster every sibling shares.
 # `integration_bus_exclusive` stops a real NATS node, which drops every
 # sibling's client on it.
 #
 # Still a hard gate: `_rust_lane` fails a selection that matched nothing, so
 # deleting every module here fails the lane rather than silently passing.
-EXCLUSIVE_FILTER := integration_hub_exclusive integration_bus_exclusive
+EXCLUSIVE_FILTER := integration_bus_exclusive
 EXCLUSIVE_SKIP := $(addprefix --skip ,$(EXCLUSIVE_FILTER))
 
-test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Dragonfly
+test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + NATS
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
 	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored $(EXCLUSIVE_SKIP))
@@ -287,7 +282,7 @@ RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
   $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
 
-# Shards: three, each on its own runner with its own Postgres and Dragonfly,
+# Shards: three, each on its own runner with its own Postgres and NATS,
 # measured in parallel and graded together by `test-coverage-rustd-merge`.
 #
 #   runner     the Rust runner's crates, plus the daemon suite's

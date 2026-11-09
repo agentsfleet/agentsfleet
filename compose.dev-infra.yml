@@ -17,23 +17,6 @@ services:
       timeout: 5s
       retries: 20
 
-  dragonfly:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
-    entrypoint: ["bash", "/scripts/dragonfly-cluster.sh"]
-    command: ["serve"]
-    environment:
-      DRAGONFLY_BASE_PORT: ${AGENTSFLEET_DRAGONFLY_BASE_PORT}
-    ports:
-      - "127.0.0.1:${AGENTSFLEET_DRAGONFLY_BASE_PORT}-${AGENTSFLEET_DRAGONFLY_LAST_PORT}:${AGENTSFLEET_DRAGONFLY_BASE_PORT}-${AGENTSFLEET_DRAGONFLY_LAST_PORT}"
-    volumes:
-      - ./scripts/dragonfly-cluster.sh:/scripts/dragonfly-cluster.sh:ro
-      - dragonfly-data:/data
-    healthcheck:
-      test: ["CMD", "bash", "/scripts/dragonfly-cluster.sh", "healthy"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
   mailpit:
     image: axllent/mailpit:v1.31.3
     environment:
@@ -124,4 +107,3 @@ services:
 
 volumes:
   postgres-data:
-  dragonfly-data:

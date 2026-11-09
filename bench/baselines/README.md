@@ -26,3 +26,7 @@ by hand; a baseline that moves takes that row with it in the same commit.
 
 No baseline exists for the `prod` profile and none should: that profile is
 built as a refusal and never runs.
+
+The Dragonfly attributions went with the datastore.
+Each file's provenance still names the image its run drove.
+Fresh NATS-era median runs replace these baselines on the next rig run.
