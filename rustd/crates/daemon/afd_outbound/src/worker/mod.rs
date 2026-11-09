@@ -41,8 +41,15 @@ const _: () = assert!(
     "a claim fills the lanes and no more"
 );
 
+/// Logged around each claim. A claim polls Postgres every pass, so both halves
+/// sit at `debug`.
+const EVENT_CLAIM_STARTED: &str = "outbound_claim_started";
+const EVENT_CLAIM_COMPLETED: &str = "outbound_claim_completed";
 /// Logged when a claim could not be made; the next pass retries.
 const EVENT_CLAIM_FAILED: &str = "outbound_claim_failed";
+/// Logged when pings stop reaching this worker; its pass carries it alone.
+const EVENT_WAKE_SUBSCRIBE_FAILED: &str = "outbound_wake_subscribe_failed";
+const EVENT_WAKE_CLOSED: &str = "outbound_wake_closed";
 
 /// What triggered a claim, for the claim counter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -105,7 +112,11 @@ impl<S: Deliver + 'static> Worker<S> {
             pass,
             renew,
         } = self;
-        let mut wake = bus.subscribe(&Subject::OutboundWake).await.ok();
+        let mut wake = bus
+            .subscribe(&Subject::OutboundWake)
+            .await
+            .inspect_err(|failure| unpinged(EVENT_WAKE_SUBSCRIBE_FAILED, failure))
+            .ok();
         let lanes = Lanes::renewing_every(posters, database.clone(), token.clone(), renew);
         let mut via = Via::Scan;
         while !token.is_cancelled() {
@@ -135,6 +146,8 @@ async fn claim_once<S: Deliver + 'static>(
     lanes: &Lanes<S>,
     via: Via,
 ) -> Option<i64> {
+    let via_label = via.label().as_str();
+    tracing::debug!(via = via_label, event = EVENT_CLAIM_STARTED);
     let token = match entropy.uuid7(af_core::clock::now()) {
         Ok(token) => token,
         Err(failure) => {
@@ -150,6 +163,11 @@ async fn claim_once<S: Deliver + 'static>(
         }
     };
     let count = i64::try_from(claimed.len()).unwrap_or(CLAIM_BATCH);
+    tracing::debug!(
+        via = via_label,
+        claimed = count,
+        event = EVENT_CLAIM_COMPLETED
+    );
     if count > 0 {
         af_observability::producers::outbound::claims(via.label(), count.unsigned_abs());
     }
@@ -175,10 +193,18 @@ async fn pinged(wake: &mut Option<Subscription>) {
     let Some(subscription) = wake.as_mut() else {
         return std::future::pending().await;
     };
-    if subscription.recv().await.is_err() {
+    if let Err(failure) = subscription.recv().await {
+        unpinged(EVENT_WAKE_CLOSED, &failure);
         *wake = None;
         std::future::pending::<()>().await;
     }
+}
+
+/// Logs that pings stopped; answers now wait up to one claim pass.
+fn unpinged(event: &'static str, failure: &afd_bus::Error) {
+    let error_code = failure.code().as_str();
+    let reason = failure.reason();
+    tracing::warn!(error_code, reason, event, "claims wait for the pass");
 }
 
 /// Logs a failure the loop continues past.

@@ -164,7 +164,7 @@ impl Leases {
         if let Err(error) = &pinged {
             let error_code = error.code().as_str();
             let reason = error.reason();
-            tracing::info!(
+            tracing::warn!(
                 event = "outbound_wake_lost",
                 error_code,
                 reason,
