@@ -59,6 +59,14 @@ pub(crate) enum AbortReason {
 }
 
 impl AbortReason {
+    /// The reason a stored spelling names, or `None` for one this build does
+    /// not write.
+    pub(crate) fn parse(stored: &str) -> Option<Self> {
+        [Self::ExplicitCancel, Self::RateLimitExceeded]
+            .into_iter()
+            .find(|reason| reason.as_str() == stored)
+    }
+
     /// The stored spelling.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
@@ -83,7 +91,7 @@ pub(crate) enum VerifyOutcome {
     Replay(VerifyPayload),
     Missing,
     Expired,
-    Aborted(String),
+    Aborted(Option<AbortReason>),
     Consumed,
     NotApproved,
     InvalidCode(u8),

@@ -259,14 +259,17 @@ pub(crate) fn classify(
     if row.now >= row.expires_at {
         return Ok((VerifyOutcome::Expired, None));
     }
-    let status = SessionStatus::parse(&row.status).ok_or_else(unreadable)?;
+    let status = SessionStatus::parse(&row.status)
+        .ok_or_else(|| crate::error::session_unreadable(format!("status {}", row.status)))?;
     let outcome = match status {
         SessionStatus::Consumed => {
             let open = row
                 .replay_expires_at
                 .is_some_and(|until| until.to_jiff() > row.now);
-            let same = row.consumed_client_fingerprint.as_deref()
-                == Some(fingerprint.as_bytes().as_slice());
+            let same = row
+                .consumed_client_fingerprint
+                .as_deref()
+                .is_some_and(|stored| fingerprint.matches(stored));
             if open && same {
                 VerifyOutcome::Replay(payload(row)?)
             } else {
@@ -274,11 +277,9 @@ pub(crate) fn classify(
             }
         }
         SessionStatus::Expired => VerifyOutcome::Expired,
-        SessionStatus::Aborted => VerifyOutcome::Aborted(
-            row.aborted_reason
-                .clone()
-                .unwrap_or_else(|| "unknown".to_owned()),
-        ),
+        SessionStatus::Aborted => {
+            VerifyOutcome::Aborted(row.aborted_reason.as_deref().and_then(AbortReason::parse))
+        }
         SessionStatus::Pending => VerifyOutcome::NotApproved,
         SessionStatus::VerificationPending => return compare(row, submitted),
     };
@@ -320,15 +321,10 @@ fn payload(row: &Locked) -> Result<VerifyPayload> {
             ciphertext: ciphertext.clone(),
             nonce: nonce.clone(),
         }),
-        _ => Err(unreadable()),
+        _ => Err(crate::error::session_unreadable(
+            "approved without its sealed credential",
+        )),
     }
-}
-
-/// A row whose columns are not a shape this daemon writes.
-fn unreadable() -> crate::Error {
-    query(CONTEXT_VERIFY)(sqlx::Error::Protocol(
-        "a device session row this daemon never writes".to_owned(),
-    ))
 }
 
 #[cfg(test)]

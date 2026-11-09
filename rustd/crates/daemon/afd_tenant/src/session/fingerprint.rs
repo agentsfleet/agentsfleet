@@ -49,6 +49,14 @@ impl Fingerprint {
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
     }
+
+    /// Whether `stored` is this digest, compared in constant time: the answer
+    /// decides whether a sealed credential is handed out again.
+    #[must_use]
+    pub fn matches(&self, stored: &[u8]) -> bool {
+        use subtle::ConstantTimeEq as _;
+        stored.ct_eq(&self.0).into()
+    }
 }
 
 #[cfg(test)]

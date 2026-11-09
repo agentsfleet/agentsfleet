@@ -155,6 +155,7 @@ impl Error {
             ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RoleUnknown { .. }
+            | ErrorKind::SessionUnreadable { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::SessionFieldInvalid { .. }
             | ErrorKind::SessionMissing
@@ -193,9 +194,9 @@ impl Error {
     pub const fn code(&self) -> ErrorCode {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
-            ErrorKind::Query { .. } | ErrorKind::RoleUnknown { .. } => {
-                error_code::INTERNAL_DB_QUERY
-            }
+            ErrorKind::Query { .. }
+            | ErrorKind::RoleUnknown { .. }
+            | ErrorKind::SessionUnreadable { .. } => error_code::INTERNAL_DB_QUERY,
             // One internal code for two failures the caller shares an
             // inability to correct. One is this instance's own: a
             // cryptographic step — a draw, an identifier, a key — that failed.
@@ -271,6 +272,7 @@ impl Error {
             // cause is in the log beside the request id.
             ErrorKind::Query { .. }
             | ErrorKind::RoleUnknown { .. }
+            | ErrorKind::SessionUnreadable { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::CliCredentialMachineCollision => DETAIL_DATABASE_ERROR,
             ErrorKind::SessionFieldInvalid { field } => match field {

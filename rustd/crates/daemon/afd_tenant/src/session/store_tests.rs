@@ -149,12 +149,9 @@ fn terminal_and_unapproved_sessions_answer_without_writing() -> TestResult {
         (row(SessionStatus::Expired), VerifyOutcome::Expired),
         (
             aborted,
-            VerifyOutcome::Aborted("explicit_cancel".to_owned()),
+            VerifyOutcome::Aborted(Some(AbortReason::ExplicitCancel)),
         ),
-        (
-            row(SessionStatus::Aborted),
-            VerifyOutcome::Aborted("unknown".to_owned()),
-        ),
+        (row(SessionStatus::Aborted), VerifyOutcome::Aborted(None)),
     ];
     for (locked, expected) in cases {
         let (outcome, write) = classify(&locked, &code("123456"), &fingerprint("afc/1"))?;

@@ -415,6 +415,8 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
   > Indy (Nov 09, 2026): "Yes i would keep boringssl in runner and migrate later to 1 crate" — context: one TLS library is later work; sqlx, reqwest and async-nats have no BoringSSL backend, so the supported single-library route is rustls on AWS-LC with quinn for QUIC.
 - **Wake ladder transferred (Nov 09, 2026)** — Dimensions 1.3 to 1.5 move to M243, which owns the wake path (`afd_bus::wake`).
   > Indy (Nov 09, 2026): "donot build one, since the M243 will do that"
+- **Lock before the clock (Nov 09, 2026)** — the standards review found the nonce spend, the session approve and the owned-session abort reading `clock_timestamp()` in a WHERE that can run before the row lock, so a row that expires during the lock wait could be accepted.
+  > Indy (Nov 09, 2026): chose "Follow the standard" — context: the session approve and abort lock first, then read the clock once, as `lock_session.sql` does. The nonce spend cannot: `connector.oauth_nonces` is immutable, so the runtime role has no `UPDATE` grant and Postgres refuses it any row lock (42501). Its `DELETE` takes the lock itself, and a competing spend that commits makes Postgres recheck the clock; the window left is a competing spend that rolls back. Raised with Indy.
 - **Model reviews** — none yet. The EGM spec review runs before this spec leaves `pending/`.
 - **Open blockers** — answered at CHORE(open) except item 2, which is Indy's action:
   1. Approve, at CHORE(open), edits to `deploy/fly/*` (new `nats-dev` and `nats-prod`, three machines each; `dragonfly-*` deleted) and to `.github/workflows/{deploy-dev-fly,release,test-integration-rustd,test-unit-rustd}.yml`.

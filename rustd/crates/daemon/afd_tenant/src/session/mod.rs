@@ -129,7 +129,8 @@ impl Sessions {
             .get(&id)
             .await?
             .ok_or_else(error::session_missing)?;
-        let status = SessionStatus::parse(&polled.status).ok_or_else(error::session_missing)?;
+        let status = SessionStatus::parse(&polled.status)
+            .ok_or_else(|| error::session_unreadable(format!("status {}", polled.status)))?;
         match status {
             SessionStatus::Pending | SessionStatus::VerificationPending => Ok(Waiting {
                 status,
@@ -223,6 +224,7 @@ impl Sessions {
             // every one of them has the same remedy — log in again — so the
             // sentence is fixed and the reason stays on the row for an operator.
             VerifyOutcome::Aborted(reason) => {
+                let reason = reason.map(AbortReason::as_str);
                 tracing::debug!(reason, event = "auth_session_verify_aborted");
                 Err(error::session_aborted())
             }
