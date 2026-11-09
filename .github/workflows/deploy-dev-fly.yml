@@ -44,6 +44,12 @@ jobs:
       DRAGONFLY_BUILD_CONTEXT: .
       DRAGONFLY_CONFIG: deploy/fly/dragonfly-dev/fly.toml
       DRAGONFLY_MACHINES: "1"
+      # The event bus (M244 §8): core NATS, two nodes, no volume. Its build
+      # context is its own directory; the image copies nothing.
+      NATS_APP: nats-dev
+      NATS_BUILD_CONTEXT: deploy/fly/nats-dev
+      NATS_CONFIG: deploy/fly/nats-dev/fly.toml
+      NATS_MACHINES: "2"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -57,6 +63,7 @@ jobs:
           DATABASE_URL_API: op://${{ vars.VAULT_DEV }}/planetscale-dev/api-connection-string
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_DEV }}/planetscale-dev/migrator-connection-string
           DRAGONFLY_URL: op://${{ vars.VAULT_DEV }}/dragonfly-dev/api-url
+          NATS_URL: op://${{ vars.VAULT_DEV }}/nats-dev/api-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_DEV }}/encryption-master-key/credential
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_DEV }}/auth-session-code-pepper/credential
           APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_DEV }}/approval-signing-secret/credential
@@ -125,6 +132,21 @@ jobs:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_ORG: agentsfleet-dev
 
+      - name: Ensure the NATS cluster is serving
+        # BEFORE the daemon deploys: boot refuses, as UZ-STARTUP-004, a bus no
+        # seed answers for, so a daemon deployed first would crash-loop.
+        #
+        # The nodes take their password from the same item the daemon dials
+        # with, so it is staged here before the app's first deploy applies it.
+        run: |
+          bash scripts/ensure_fly_app.sh --create-only "$NATS_APP"
+          flyctl secrets set NATS_URL="$NATS_URL" --stage --app "$NATS_APP"
+          bash scripts/ensure_fly_app.sh \
+            "$NATS_APP" "$NATS_BUILD_CONTEXT" "$NATS_MACHINES" "$NATS_CONFIG"
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+          FLY_ORG: agentsfleet-dev
+
       - name: Prove the cluster is bootstrapped, not merely listening
         # Fly's own check is TCP, which a node that has not been handed its
         # DFLYCLUSTER CONFIG passes happily. The daemon's preflight demands
@@ -152,6 +174,7 @@ jobs:
             DATABASE_URL_API="$DATABASE_URL_API" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             DRAGONFLY_URL="$DRAGONFLY_URL" \
+            NATS_URL="$NATS_URL" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
             APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET" \
