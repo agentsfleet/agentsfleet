@@ -8,9 +8,9 @@
 .PHONY: _ensure-test-infra _reset-test-db
 
 # Host ports are FIXED. scripts/test-infra-ports.sh decides them: a LINKED
-# worktree gets three ports derived from its project name (so worktrees cannot
+# worktree gets its ports derived from its project name (so worktrees cannot
 # collide); a primary checkout — which is what CI always has — keeps the
-# conventional 5432/6379/8080.
+# conventional 5432/8080.
 #
 # Exported into the environment rather than written to `.env`. Compose reads
 # `.env` automatically, which is why the first attempt used it, but in CI the
@@ -23,25 +23,16 @@
 TEST_INFRA_PORTS := $(shell bash scripts/test-infra-ports.sh 2>/dev/null)
 AGENTSFLEET_PG_HOST_PORT     ?= $(or $(word 1,$(TEST_INFRA_PORTS)),5432)
 AGENTSFLEET_QSTASH_HOST_PORT ?= $(or $(word 2,$(TEST_INFRA_PORTS)),8080)
-# The first of the Dragonfly cluster's four published data ports; the last is
-# derived so compose can publish them as one range. The four admin ports that
-# follow are loopback-only inside the container -- scripts/dragonfly-cluster.sh
-# is the only thing that speaks to them, through `docker compose exec`.
-AGENTSFLEET_DRAGONFLY_BASE_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),7001)
-# Four cluster nodes and the TLS node: BASE..BASE+4 published, admin ports
-# beyond them stay inside the container (scripts/dragonfly-cluster.sh).
-AGENTSFLEET_DRAGONFLY_LAST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 4 )))
-# The daemon's API port rides the dragonfly service (shared namespace), one
-# past the datastore range so parallel lanes never meet on 3000.
-AGENTSFLEET_API_HOST_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 5 )))
+# The daemon container's API port. It rides the mailpit service (shared
+# namespace), apart from 3000 so parallel lanes never meet there.
+AGENTSFLEET_API_HOST_PORT ?= $(or $(word 3,$(TEST_INFRA_PORTS)),7006)
 export AGENTSFLEET_PG_HOST_PORT
 export AGENTSFLEET_QSTASH_HOST_PORT
-export AGENTSFLEET_DRAGONFLY_BASE_PORT AGENTSFLEET_DRAGONFLY_LAST_PORT AGENTSFLEET_API_HOST_PORT
-# Mailpit's SMTP port and web page, also on the dragonfly service, the next two
-# past the API port: still inside the twelve-port slot scripts/test-infra-ports.sh
-# allocates per worktree.
-AGENTSFLEET_MAILPIT_SMTP_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 6 )))
-AGENTSFLEET_MAILPIT_UI_PORT ?= $(shell echo $$(( $(AGENTSFLEET_DRAGONFLY_BASE_PORT) + 7 )))
+export AGENTSFLEET_API_HOST_PORT
+# Mailpit's SMTP port and web page, the next two past the API port: still
+# inside the slot scripts/test-infra-ports.sh allocates per worktree.
+AGENTSFLEET_MAILPIT_SMTP_PORT ?= $(shell echo $$(( $(AGENTSFLEET_API_HOST_PORT) + 1 )))
+AGENTSFLEET_MAILPIT_UI_PORT ?= $(shell echo $$(( $(AGENTSFLEET_API_HOST_PORT) + 2 )))
 export AGENTSFLEET_MAILPIT_SMTP_PORT AGENTSFLEET_MAILPIT_UI_PORT
 
 # The URLs below use the declared ports directly. They are fixed (above) and
@@ -71,12 +62,11 @@ export AGENTSFLEET_MAILPIT_SMTP_PORT AGENTSFLEET_MAILPIT_UI_PORT
 #
 # 127.0.0.1, not `localhost`. The name costs a resolver round trip on every
 # connection, and on macOS it occasionally costs a five-second one: measured
-# over 20 sequential Dragonfly connects, `localhost` ran a 566 ms median with a
+# over 20 sequential datastore connects, `localhost` ran a 566 ms median with a
 # 6343 ms worst case, and the literal address ran 246 ms with a 2194 ms worst.
 # Every live test opens its own connection, so the median is multiplied across
 # the lane and the tail is what made `ConnectTimeout` a coin flip against the
-# 5 s connect budget. The Dragonfly certificate carries `IP:127.0.0.1` in its SAN
-# beside `DNS:localhost`, so TLS verification is unaffected.
+# 5 s connect budget.
 TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_PG_HOST_PORT)/agentsfleetdb?sslmode=disable
 # The API pool's login, as production's: a member of `api_runtime` and nothing
 # else (`pscale role create … --inherited-roles api_runtime`,
@@ -85,42 +75,7 @@ TEST_DATABASE_URL ?= postgres://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_
 # daemon does. `_migrate-test-db` creates this login once the schema's roles exist.
 TEST_DATABASE_API_LOGIN := agentsfleet_api
 TEST_DATABASE_URL_API ?= postgres://$(TEST_DATABASE_API_LOGIN):$(TEST_DATABASE_API_LOGIN)@127.0.0.1:$(AGENTSFLEET_PG_HOST_PORT)/agentsfleetdb?sslmode=disable
-# `redis://`, not `rediss://`, and the reason is measured rather than assumed.
-#
-# A TLS connect to the lane's Dragonfly runs a 232 ms median against 0.1 ms for
-# plain TCP to the same server, and that difference is a handshake re-proving a
-# certificate authority which is identical on every one of the two hundred
-# connects a lane opens. It is not merely slow: a connect's budget starts
-# BEFORE the connection is admitted, so the queue those handshakes build is
-# what spends the budget, and a perfectly healthy Dragonfly answers `ConnectTimeout`
-# to whichever test sat deepest in it.
-#
-# Nothing about TLS goes unproven. It moves to `TEST_DRAGONFLY_TLS_URL` below and is
-# proven where proving it means something -- and proven harder, because that
-# suite asserts a bad authority is REFUSED, which an all-TLS lane never did:
-# every connect there used the right certificate, so a lane that had silently
-# stopped verifying would have passed exactly the same.
-# The cluster, as one seed. A cluster client discovers the other nodes from
-# this one, and a suite that needs every address asks the topology for it
-# rather than a second variable. Plaintext: the TLS handshake is paid where
-# it proves something, below. The name is the environment contract the daemon
-# reads (DRAGONFLY_URL); the datastore behind it is Dragonfly.
-TEST_DRAGONFLY_URL ?= redis://:agentsfleet@127.0.0.1:$(AGENTSFLEET_DRAGONFLY_BASE_PORT)
-# The TLS node, for the suite whose subject IS the trust decision.
-TEST_DRAGONFLY_TLS_URL ?= rediss://:agentsfleet@127.0.0.1:$(AGENTSFLEET_DRAGONFLY_LAST_PORT)
-# Cert path — populated by _ensure-test-infra after the datastore is healthy.
-# Do NOT shell-expand at parse time; the container may not be running yet when
-# the Makefile is first evaluated.
-TEST_DRAGONFLY_CA_CERT ?= $(CURDIR)/.tmp/dragonfly-ca.crt
-# The authority that signed nothing here, for the refusal half of the trust
-# dimension. Extracted beside the real one; see `integration_tls_trust.rs`.
-TEST_DRAGONFLY_BAD_CA ?= $(CURDIR)/.tmp/dragonfly-bad-ca.crt
-# How a test moves slots or resets the cluster: the script, inside its own
-# container, with the caller's arguments appended. The suites know one command
-# line and nothing about docker; the admin ports it reaches never leave the
-# container (see scripts/dragonfly-cluster.sh).
-TEST_DRAGONFLY_CONTROL ?= docker compose --project-directory $(CURDIR) exec -T dragonfly bash /scripts/dragonfly-cluster.sh
-export TEST_DATABASE_URL TEST_DATABASE_URL_API TEST_DRAGONFLY_URL TEST_DRAGONFLY_TLS_URL TEST_DRAGONFLY_CA_CERT TEST_DRAGONFLY_BAD_CA TEST_DRAGONFLY_CONTROL
+export TEST_DATABASE_URL TEST_DATABASE_URL_API
 
 # Three core NATS nodes, one client port each. Clients take every node as a
 # seed, because the nodes advertise nothing, so a test that stops one node
@@ -162,10 +117,9 @@ AGENTSFLEET_QSTASH_LIVE_URL ?= http://127.0.0.1:$(AGENTSFLEET_QSTASH_HOST_PORT)/
 AGENTSFLEET_QSTASH_LIVE_TOKEN ?= $(shell printf '{"UserID":"%s","Password":"%s"}' defaultUser defaultPassword | base64 | tr -d '\n')
 export AGENTSFLEET_QSTASH_LIVE_URL AGENTSFLEET_QSTASH_LIVE_TOKEN
 
-# Bring postgres + dragonfly + qstash up via docker compose and wait for healthchecks to pass.
-# Idempotent — if already healthy, docker compose up --wait is a no-op. Safe to call
-# multiple times. Extracts the datastore TLS CA cert after the container is healthy so
-# subsequent targets can rely on $(TEST_DRAGONFLY_CA_CERT) being present.
+# Bring postgres + qstash + mailpit + nats up via docker compose and wait for healthchecks
+# to pass. Idempotent — if already healthy, docker compose up --wait is a no-op. Safe to
+# call multiple times.
 #
 _ensure-test-infra:
 	@if ! docker info >/dev/null 2>&1; then \
@@ -176,51 +130,24 @@ _ensure-test-infra:
 	@# sibling worktree's containers are simply different containers. The sweep that
 	@# used to live here force-removed them by fixed name, which is what let one
 	@# worktree's test run destroy another's mid-flight.
-	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT) dragonfly=$(AGENTSFLEET_DRAGONFLY_BASE_PORT)-$(AGENTSFLEET_DRAGONFLY_LAST_PORT) api=$(AGENTSFLEET_API_HOST_PORT) mailpit=$(AGENTSFLEET_MAILPIT_SMTP_PORT)/$(AGENTSFLEET_MAILPIT_UI_PORT) nats=$(AGENTSFLEET_NATS_BASE_PORT)-$(AGENTSFLEET_NATS_PORT_3)"
-	@echo "→ [infra] Starting postgres + dragonfly + qstash + mailpit + nats (waiting for healthchecks)..."
-	@docker compose up -d --wait --remove-orphans postgres dragonfly qstash mailpit nats-1 nats-2 nats-3
-	@mkdir -p "$(CURDIR)/.tmp"
-	@echo "→ [infra] Extracting the datastore TLS CA cert..."
-	@# No `>/dev/null`: a failed copy used to be silent, and the `test -s` below
-	@# only proved the file was non-empty — which a STALE cert from a destroyed
-	@# container satisfies. Every TLS connection then failed signature
-	@# verification, which reads as dozens of unrelated datastore test failures.
-	@docker compose cp dragonfly:/data/tls/ca.crt "$(TEST_DRAGONFLY_CA_CERT)"
-	@docker compose cp dragonfly:/data/tls/bad-ca.crt "$(TEST_DRAGONFLY_BAD_CA)"
-	@test -s "$(TEST_DRAGONFLY_CA_CERT)" || { echo "✗ Failed to extract the datastore TLS cert"; exit 1; }
-	@# Freshness, not size: the copied cert must be byte-identical to the one the
-	@# server is actually presenting.
-	@container_sha=$$(docker compose exec -T dragonfly sha256sum /data/tls/ca.crt | awk '{print $$1}'); \
-	local_sha=$$(shasum -a 256 "$(TEST_DRAGONFLY_CA_CERT)" | awk '{print $$1}'); \
-	if [ "$$container_sha" != "$$local_sha" ]; then \
-	  echo "✗ [infra] datastore CA cert is stale (container $$container_sha != local $$local_sha)"; \
-	  exit 1; \
-	fi
-	@echo "✓ [infra] postgres + dragonfly + qstash + mailpit + nats ready; datastore CA cert at $(TEST_DRAGONFLY_CA_CERT)"
+	@echo "→ [infra] Host ports: postgres=$(AGENTSFLEET_PG_HOST_PORT) qstash=$(AGENTSFLEET_QSTASH_HOST_PORT) api=$(AGENTSFLEET_API_HOST_PORT) mailpit=$(AGENTSFLEET_MAILPIT_SMTP_PORT)/$(AGENTSFLEET_MAILPIT_UI_PORT) nats=$(AGENTSFLEET_NATS_BASE_PORT)-$(AGENTSFLEET_NATS_PORT_3)"
+	@echo "→ [infra] Starting postgres + qstash + mailpit + nats (waiting for healthchecks)..."
+	@docker compose up -d --wait --remove-orphans postgres qstash mailpit nats-1 nats-2 nats-3
+	@echo "✓ [infra] postgres + qstash + mailpit + nats ready"
 
 # Drop and recreate all app schemas so every test-integration run starts from a clean
 # state. Needed because several tests in the suite (rbac, tenant_provider, event_loop) leave
 # fixture rows behind (paused agents, lingering secrets) that break subsequent runs.
-# Uses the same teardown.sql as the PlanetScale playbook for consistency.
-# Dragonfly is flushed in the same reset: fixture ids are fixed, so streams,
-# consumer groups, and unacked PEL entries persist across runs — and the strand
-# recovery path (own-PEL read + reclaim sweep) makes that stale state reachable,
-# replaying prior-run events into a freshly reset DB (shared-tenant balance drift).
+# Uses the same teardown.sql as the PlanetScale playbook for consistency. The bus
+# keeps nothing (core NATS, no JetStream), so there is nothing else to reset.
 _reset-test-db: _ensure-test-infra
 	@echo "→ [infra] Resetting test database schemas to a clean state..."
 	@docker compose cp playbooks/operations/teardown/database/teardown.sql postgres:/tmp/teardown.sql >/dev/null
 	@out=$$(docker compose exec -T postgres psql -U agentsfleet -d agentsfleetdb -v ON_ERROR_STOP=1 -q -f /tmp/teardown.sql 2>&1) || { echo "✗ [infra] teardown.sql failed"; echo "$$out"; exit 1; }; echo "$$out" | grep -v "^NOTICE:" | grep -v "^psql:" || true
 	@docker compose exec -T postgres rm -f /tmp/teardown.sql >/dev/null
 	@echo "✓ [infra] Schemas dropped; migrations will rebuild on next step"
-	@# The cluster too, and its slot layout: a migration test that moved slots
-	@# and failed before moving them back would otherwise hand the next run a
-	@# topology it did not ask for. Owned by construction -- the script only
-	@# ever addresses loopback inside its own container.
-	@echo "→ [infra] Flushing test Dragonfly cluster and restoring its slot layout..."
-	@$(TEST_DRAGONFLY_CONTROL) reset >/dev/null
-	@echo "✓ [infra] Dragonfly flushed"
 
-# Every integration target starts by dropping schemas and flushing Dragonfly,
+# Every integration target starts by dropping schemas,
 # because several suites leave fixture rows behind that break the next run. That
 # is the right default for a gate and the wrong one for an edit-run-edit loop,
 # where the reset plus re-migrate dominates a run filtered to one test.

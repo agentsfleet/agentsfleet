@@ -144,9 +144,6 @@
     ]
   },
   "datastores": {
-    "dragonfly": {
-      "operations": 0
-    },
     "postgres": {
       "operations": 0
     }

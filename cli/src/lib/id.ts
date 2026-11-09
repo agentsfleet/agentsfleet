@@ -18,7 +18,7 @@ export const isValidId = (value: unknown): value is string => {
   if (!value || !isString(value)) return false;
   // `uuid`'s validate is case-insensitive, but server ids are canonical
   // lowercase: an uppercase alias is the same row in Postgres and a different
-  // key in Dragonfly, so the server rejects it too. Keep the two runtimes
+  // subject on the bus, so the server rejects it too. Keep the two runtimes
   // agreeing — see `rustd/crates/foundation/af_core/src/id.rs`.
   if (value !== value.toLowerCase()) return false;
   if (!isValidUuid(value)) return false;

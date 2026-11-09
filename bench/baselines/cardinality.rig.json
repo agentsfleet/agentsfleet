@@ -13,49 +13,19 @@
   "measurements": {
     "candidate_plan_ms": 0.63,
     "candidate_query_ms": 0.542,
-    "datastore_pending_entries": 0.0,
-    "datastore_primaries": 2.0,
-    "datastore_ready_marks": 10000.0,
-    "datastore_ready_partitions": 16.0,
-    "datastore_replicas": 2.0,
-    "datastore_retained_entries": 10000.0,
-    "datastore_streams": 10000.0,
-    "datastore_streams_walked": 10000.0,
-    "dragonfly_bytes_total": 46403600.0,
     "ledger_backlog_oldest_age_ms": 0.0,
     "ledger_backlog_rows": 0.0,
     "postgres_fleets_table_bytes": 5554176.0
   },
   "series": {
-    "dragonfly_bytes_per_fleet": [
-      4624.0,
-      4607.644444444444,
-      4641.351111111111,
-      4640.606222222223
-    ],
     "ladder_fleets": [
       10.0,
       100.0,
       1000.0,
       10000.0
-    ],
-    "peek_ms": [
-      0.236,
-      0.086291,
-      0.1265,
-      0.143292
-    ],
-    "stream_read_ms": [
-      0.257792,
-      0.09050000000000001,
-      0.068125,
-      0.064
     ]
   },
   "datastores": {
-    "dragonfly": {
-      "operations": 0
-    },
     "postgres": {
       "operations": 0
     }

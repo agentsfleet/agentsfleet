@@ -73,7 +73,7 @@ See the [CLI install guide](https://docs.agentsfleet.net/cli/install) for instal
 
 ## Local development
 
-**Prerequisites:** [Rust 1.99.1](https://rustup.rs) · [Docker](https://www.docker.com) (Postgres, Dragonfly, QStash) · [Bun ≥1.4.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
+**Prerequisites:** [Rust 1.99.1](https://rustup.rs) · [Docker](https://www.docker.com) (Postgres, NATS, QStash) · [Bun ≥1.4.4](https://bun.sh) · [Clerk](https://clerk.com) dev project · [1Password CLI](https://1password.com/downloads/command-line/) for secrets
 
 Rustup installs the pinned toolchain from `rustd/rust-toolchain.toml` on the first `cargo` run inside `rustd/`.
 
@@ -111,7 +111,7 @@ for startup, status, ownership and teardown.
 ```bash
 make lint-all
 make test-unit-all
-make test-integration-rustd   # needs Docker: live Postgres + Dragonfly
+make test-integration-rustd   # needs Docker: live Postgres + NATS
 make acceptance-local        # macOS + OrbStack: browser and CLI acceptance
 make acceptance-codex        # Linux + privileged Docker: the same acceptance suites
 ```

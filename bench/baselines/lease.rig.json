@@ -16,12 +16,10 @@
   "measurements": {
     "candidates_per_poll": 53.94685990338164,
     "drain_commits_per_lease": 77.185,
-    "drain_dragonfly_calls_per_lease": 43.09,
     "drain_event_rows": 200.0,
     "drain_events": 200.0,
     "drain_events_processed": 200.0,
     "drain_failures": 0.0,
-    "drain_idle_dragonfly_calls_per_poll": 0.0007803355442840422,
     "drain_idle_polls": 12815.0,
     "drain_lease_p95_ms": 44.095,
     "drain_leases": 200.0,
@@ -57,9 +55,6 @@
     "wasted_claim_rate": 0.033816425120772944
   },
   "datastores": {
-    "dragonfly": {
-      "operations": 9
-    },
     "postgres": {
       "operations": 457
     }

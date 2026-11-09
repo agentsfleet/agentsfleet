@@ -26,9 +26,6 @@
     "unsettled": 0.0
   },
   "datastores": {
-    "dragonfly": {
-      "operations": 428
-    },
     "postgres": {
       "operations": 103
     }

@@ -22,9 +22,6 @@
     "burst_unleased": 25212.0
   },
   "datastores": {
-    "dragonfly": {
-      "operations": 0
-    },
     "postgres": {
       "operations": 0
     }

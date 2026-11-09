@@ -1,8 +1,8 @@
 app = "nats-prod"
 primary_region = "iad"
 # Same region as agentsfleetd-prod, which reaches this app over 6PN: in-region
-# and WireGuard-encrypted, so the seed is plaintext `nats://`, as
-# dragonfly-prod's was. No public service: only the daemon dials it.
+# and WireGuard-encrypted, so the seed is plaintext `nats://`. No public
+# service: only the daemon dials it.
 
 [build]
   dockerfile = "Dockerfile"

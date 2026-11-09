@@ -46,7 +46,7 @@ name: test-unit-rustd
 # installs its own pinned nightly because Miri is unavailable on stable.
 #
 # No coverage measurement here. These jobs run the unit tier only — the
-# integration tests are `#[ignore]`d and need Postgres and Dragonfly, which this
+# integration tests are `#[ignore]`d and need Postgres and NATS, which this
 # workflow deliberately does not have. `test-integration-rustd.yml` measures
 # both tiers in the runs that execute them.
 

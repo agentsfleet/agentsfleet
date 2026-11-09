@@ -15,7 +15,7 @@ Indy changes values in provider consoles and 1Password; the agent propagates and
 
 | Credential | 1Password item and field | Vault |
 |---|---|---|
-| Datastore cluster seed on Fly's private network | `dragonfly-<ENV>/api-url` | Environment's |
+| NATS cluster seed on Fly's private network | `nats-<ENV>/api-url` | Environment's |
 | PostHog key | `posthog-<ENV>/credential` | Environment's |
 | Vercel deployment protection | `vercel-bypass-app`, `vercel-bypass-agents`, `vercel-bypass-website`, each `/credential` | Production, for both environments |
 | Pipeline Fly token | `fly-api-token/credential` | Environment's |
