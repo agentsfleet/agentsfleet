@@ -47,12 +47,15 @@ pub enum Anomaly {
     AutoKill,
 }
 
-/// One rule's window for one action.
+/// One rule's window for one action. The rule's position, not its window,
+/// tells two rules apart, so two rules over the same window each keep their
+/// own count.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Key {
     fleet: Uuid7,
     tool: String,
     action: String,
+    rule: usize,
     window_s: u32,
 }
 
@@ -83,8 +86,7 @@ impl Brake {
     }
 
     /// Counts one call against `key`'s window and answers the new count. A
-    /// window starts at its first call and lasts `window_s`, as the retired
-    /// counter's first-increment expiry did.
+    /// window starts at its first call and lasts `window_s`.
     fn hit(&self, key: Key, now: Instant) -> u64 {
         let window = Duration::from_secs(u64::from(key.window_s));
         let mut windows = self.lock();
@@ -136,11 +138,12 @@ fn judge(
     now: Instant,
 ) -> Option<(u64, u32)> {
     let mut tripped = None;
-    for rule in rules {
+    for (position, rule) in rules.iter().enumerate() {
         let key = Key {
             fleet: fleet_id.clone(),
             tool: tool.to_owned(),
             action: action.to_owned(),
+            rule: position,
             window_s: rule.window_s.get(),
         };
         let count = brake.hit(key, now);
