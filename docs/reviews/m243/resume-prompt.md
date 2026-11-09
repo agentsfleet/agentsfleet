@@ -33,7 +33,9 @@ Use the latest published context-save commit containing this prompt.
 The preceding incorporated tip was Claude's 3e3d8f1b0; b5e971269 fixes the
 three unit failures, and 9c2803f91 contains the authoring guard work.
 Claude's musl-builder and datagram-socket patch commits are preserved.
-Its amd64 static builds and image publication remain its owner task; check #818.
+Claude reports the r2 image published for both architectures in #818 comment
+6743710519. Its native Linux CI reruns/static-build results remain pending;
+local amd64 emulation builds were stopped. Check #818 for newer results.
 
 Reuse /workspace/agentsfleet-m243 if present. Otherwise fetch the published
 feature branch into an isolated worktree. Preserve the current work.

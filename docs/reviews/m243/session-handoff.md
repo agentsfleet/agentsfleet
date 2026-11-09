@@ -539,7 +539,10 @@ The pulled commit adds Claude's licensed `datagram-socket` musl patch under `rus
 Codex did not edit those incoming files or Claude's CI-builder files.
 
 Claude reports the arm64 static daemon build passed at that incoming checkpoint.
-Its amd64 daemon and runner builds, r2 image publication and any upstream report remain Claude's work; check issue 818 for a newer result.
+In [issue 818 comment 6743710519](https://github.com/agentsfleet/agentsfleet/issues/818#issuecomment-6743710519), Claude reports the r2 builder image published for both `linux/amd64` and `linux/arm64`.
+The three Linux build jobs on `3e3d8f1b0` ran before publication and failed to pull that image.
+Claude stopped the local amd64 emulation builds and will rerun those jobs on native CI runners after run 42641151625 completes.
+Those static-build results and any upstream report remain open; image publication itself is complete according to that coordination update.
 Local tooling reports an unused `IoSlice` import in the vendored dependency; retain that fact when reviewing the fork.
 Vendored upstream files are outside the first-party length count below.
 
