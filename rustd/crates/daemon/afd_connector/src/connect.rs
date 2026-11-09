@@ -275,3 +275,32 @@ impl Connectors {
             }))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+    )]
+
+    use af_core::id::Uuid7;
+
+    use super::Spent;
+
+    /// A spent round-trip reaches logs by its workspace, never by the person
+    /// who completed it.
+    #[test]
+    fn a_spent_round_trip_debugs_without_its_subject() {
+        let workspace = Uuid7::parse("01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8e9f")
+            .expect("a fixture identifier is a canonical UUIDv7");
+        let spent = Spent {
+            authenticated_subject: "user_who_finished_it".to_owned(),
+            workspace,
+        };
+
+        assert_eq!(
+            format!("{spent:?}"),
+            r#"Spent { workspace: Uuid7("01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8e9f"), .. }"#
+        );
+    }
+}

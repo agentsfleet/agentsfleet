@@ -4,8 +4,10 @@
 use std::time::Duration;
 
 use af_core::test_util::trace::Capture;
+use afd_db::test_util::mint_id;
 use afd_outbound::lanes::MAX_DELIVERY_CYCLES;
-use afd_outbound::obligation::AbandonReason;
+use afd_outbound::obligation::{self, AbandonReason};
+use afd_outbound::{Lanes, Posters};
 use tokio_util::sync::CancellationToken;
 
 use crate::poster::Recorder;
@@ -217,6 +219,69 @@ async fn a_lapsed_holder_neither_stamps_nor_releases() {
     assert!(
         !ledger.row(&retried).await.due_later,
         "the late release changed nothing"
+    );
+    ledger.cleanup().await;
+}
+
+/// A refusal for a row another holder has taken stamps nothing and announces
+/// nothing: abandoning it is the current holder's call.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_refusal_for_a_row_another_holder_took_is_neither_stamped_nor_announced() {
+    let capture = Capture::install();
+    let ledger = Ledger::create().await;
+    let lane = ledger.lane().await;
+    let event = ledger.owe(&lane, "taken before refused").await;
+    let claimed = obligation::claim(&ledger.database, 8, &mint_id())
+        .await
+        .expect("the claim");
+    assert_eq!(claimed.len(), 1, "one row is claimed");
+    let job = claimed.into_iter().next().expect("the claimed row");
+    ledger.steal(&event).await;
+    let poster = Recorder::refusing(event.clone());
+    let token = CancellationToken::new();
+    let lanes = Lanes::new(
+        Posters {
+            slack: poster.clone(),
+        },
+        ledger.database.clone(),
+        token.clone(),
+    );
+
+    lanes.dispatch(Box::new(job)).await;
+    tokio::time::timeout(crate::ledger::PATIENCE, lanes.finished())
+        .await
+        .expect("the cycle ends");
+    token.cancel();
+    lanes.drain().await;
+
+    assert_eq!(poster.attempts_of(&event), 1, "the destination refused it");
+    let row = ledger.row(&event).await;
+    assert!(
+        !row.abandoned,
+        "the holder that lost the row stamped nothing"
+    );
+    assert_eq!(
+        row.receipt,
+        super::ledger::thief(),
+        "the new holder keeps it"
+    );
+    let said = |name: &str| {
+        capture
+            .events()
+            .iter()
+            .filter(|event| event.field("event") == Some(name))
+            .count()
+    };
+    assert_eq!(
+        said("outbound_delivery_abandoned"),
+        0,
+        "nothing to announce"
+    );
+    assert_eq!(
+        said("outbound_obligation_abandon_failed"),
+        0,
+        "the write ran"
     );
     ledger.cleanup().await;
 }

@@ -27,6 +27,8 @@ mod no_ledger;
 use self::gated_poster::Gated;
 
 mod contention;
+mod ledger_outage;
+mod shutdown;
 
 /// The thread an owed answer is addressed to, as a Slack producer records it.
 const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;

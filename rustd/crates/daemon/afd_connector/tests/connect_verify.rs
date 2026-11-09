@@ -217,6 +217,26 @@ async fn nothing_that_is_not_a_state_verifies_as_one() {
     }
 }
 
+/// A state proved genuine by `state::verify` alone never asked who presents
+/// it, so it spends nothing: the slot stays for the person who started the
+/// round-trip, and the store over nothing is never asked.
+#[tokio::test]
+async fn a_state_nobody_checked_the_presenter_of_spends_nothing() {
+    let presented = state_for(Provider::Slack, STARTER);
+    let unchecked = state::verify(Provider::Slack.state_binding(), &secret(), &presented, NOW)
+        .expect("the state itself is genuine and unexpired");
+
+    let spent = connectors()
+        .spend(Provider::Slack, &unchecked)
+        .await
+        .expect("an unchecked presenter is answered without the store");
+
+    assert!(
+        spent.is_none(),
+        "a presenter nobody checked is answered like a spent slot"
+    );
+}
+
 /// Every rejection reaches a log under its own word.
 ///
 /// One code answers the caller — telling them WHICH way their state was

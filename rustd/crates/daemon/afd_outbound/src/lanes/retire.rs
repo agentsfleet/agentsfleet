@@ -75,3 +75,86 @@ impl<S: Deliver + 'static> Inner<S> {
         None
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a failed test precondition must stop the test"
+    )]
+
+    use std::future::ready;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use af_core::id::Uuid7;
+    use tokio::sync::mpsc;
+    use tokio_util::sync::CancellationToken;
+
+    use crate::lanes::{Destination, LANE_DEPTH, Lanes};
+    use crate::obligation::{Claimed, Outgoing};
+    use crate::poster::{Deliver, Posters, Verdict};
+
+    #[derive(Debug)]
+    struct UnusedPoster;
+
+    impl Deliver for UnusedPoster {
+        fn deliver(&self, _job: &Outgoing) -> impl Future<Output = Verdict> + Send {
+            ready(Verdict::Delivered)
+        }
+    }
+
+    fn id(text: &str) -> Uuid7 {
+        Uuid7::parse(text).expect("a fixture identifier is a canonical UUIDv7")
+    }
+
+    /// A job published while the lane makes its retiring look is taken by
+    /// the lane, never dropped with the channel it was about to close.
+    #[tokio::test]
+    async fn a_job_published_during_retirement_is_taken_not_lost() {
+        let lanes = Lanes::new(
+            Posters {
+                slack: UnusedPoster,
+            },
+            afd_db::test_util::unreachable_db(),
+            CancellationToken::new(),
+        );
+        let event = id("0199a0b0-0002-7000-8000-000000000001");
+        let job = Box::new(Claimed {
+            id: afd_db::test_util::mint_id(),
+            token: afd_db::test_util::mint_id(),
+            outgoing: Outgoing {
+                provider: "slack".to_owned(),
+                destination: "thread".to_owned(),
+                workspace_id: id("0199a0b0-0002-7000-8000-000000000002"),
+                fleet_id: id("0199a0b0-0002-7000-8000-000000000003"),
+                event_id: event.clone(),
+                answer: "answer".to_owned(),
+            },
+        });
+        let destination = Destination::of(&job);
+        let (sender, mut receiver) = mpsc::channel(LANE_DEPTH);
+        lanes.inner.lanes.insert(destination.clone(), sender);
+        let inner = Arc::clone(&lanes.inner);
+
+        let taken = std::thread::scope(|scope| {
+            // Publication's guard: the lane's first look finds its queue
+            // empty, then waits here for the entry it would remove.
+            let publishing = inner
+                .lanes
+                .get(&destination)
+                .expect("the lane is registered");
+            let retiring = scope.spawn(|| inner.take_or_retire(&destination, &mut receiver));
+            std::thread::sleep(Duration::from_millis(50));
+            publishing.try_send(job).expect("the lane has room");
+            drop(publishing);
+            retiring.join().expect("the retiring look completes")
+        });
+
+        assert_eq!(taken.map(|job| job.outgoing.event_id), Some(event));
+        assert!(
+            lanes.inner.lanes.contains_key(&destination),
+            "a lane that found work does not retire"
+        );
+    }
+}

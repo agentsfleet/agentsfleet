@@ -165,10 +165,4 @@ impl Error {
             | ErrorKind::NatsDrain { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
-
-    /// Safe sentence with the native diagnostic retained in the source chain.
-    #[must_use]
-    pub const fn detail(&self) -> &'static str {
-        af_core::error::DETAIL_OPERATION_FAILED
-    }
 }
