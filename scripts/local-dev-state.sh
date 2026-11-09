@@ -175,6 +175,7 @@ dev_stack_select() {
 
 dev_owners() {
   DEV_LIVE_ROOTS=''
+  DEV_RUNNING_ROOTS=''
   local owner marker root state
   for owner in "$DEV_SHARED"/worktrees/*; do
     [ -e "$owner" ] || [ -L "$owner" ] || continue
@@ -190,16 +191,33 @@ dev_owners() {
       state=live
       DEV_LIVE_ROOTS="${DEV_LIVE_ROOTS}${root}"$'\n'
     fi
+    if dev_owner_running "$owner"; then
+      DEV_RUNNING_ROOTS="${DEV_RUNNING_ROOTS}${root}"$'\n'
+    fi
     printf '  worktree %s: %s (%s)\n' "${owner##*/}" "$root" "$state"
   done
+}
+
+dev_owner_running() {
+  local record="$1/daemon.pid" pid
+  [ -s "$record" ] && [ ! -L "$record" ] || return 1
+  pid="$(sed -n '1p' "$record")"
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$pid" 2>/dev/null || return 1
+  [ "$(dev_process_stamp "$pid" 2>/dev/null)" = "$(sed -n '2p' "$record")" ]
 }
 
 dev_stack_down() (
   dev_stack_select "$1"
   dev_lock "$DEV_SHARED/infrastructure.lock"
   dev_owners
-  [ -z "$DEV_LIVE_ROOTS" ] || dev_fail "refusing teardown; live worktrees remain:"$'\n'"$DEV_LIVE_ROOTS"
+  # A worktree that still exists may tear the stack down; one whose daemon
+  # still runs may not. The next `make up` rebuilds the stack from the
+  # checkout's compose file, which is how a stack gains a new service, such as
+  # the event bus (Indy, M244, Nov 09, 2026).
+  [ -z "$DEV_RUNNING_ROOTS" ] || dev_fail "refusing teardown; daemons still run in:"$'\n'"$DEV_RUNNING_ROOTS"
   dev_compose down --volumes
+  rm -rf -- "$DEV_INFRA"
 )
 
 dev_stack_status() (
