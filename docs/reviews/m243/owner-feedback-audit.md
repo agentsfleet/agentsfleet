@@ -267,6 +267,7 @@ The [handoff](session-handoff.md#current-checkpoint-for-claude-three-remaining-u
 
 Cargo check and formatting pass. Rust lint passed before OpenAPI regeneration.
 The regenerated document now fails one source-prose check.
+
 The complete unit lane remains red; frontend coverage, live integration and final shipping verification are still due.
 PR 819 remains draft, with merge held for Indy's listener, certificate and 1Password review.
 
@@ -290,6 +291,9 @@ The protocol header now says "Required runner protocol revision".
 Its example comes from the existing protocol-version constant and remains `agentsfleet.runner.v1`.
 The current daemon generator rebuilt OpenAPI successfully; the targeted `docs-api-internal-detail` scan passes.
 
-The full verification gate is running separately; no unit suite was restarted for this documentation correction.
+`make lint-all` passed, including app, design-system and CLI checks.
+The gate found two paragraph-formatting issues in these notes; those are fixed and the documentation scan passes.
+No unit suite was restarted for this documentation correction.
+
 Indy assigned the three remaining unit failures to Claude.
 Codex will continue M243 and pull Claude's updates only when Indy signals.

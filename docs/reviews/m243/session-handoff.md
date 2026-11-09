@@ -338,6 +338,7 @@ Production private routing, certificate lifecycle and handshake evidence remain 
 
 Indy requested this checkpoint pushed before these three tests are fixed.
 Cargo check and formatting pass. Rust Clippy and dependency checks passed before OpenAPI regeneration.
+
 The regenerated document now fails the source-prose check below.
 The runner shard passes 1,685 tests; the daemon shard passes 164.
 
@@ -378,6 +379,9 @@ The protocol header now says "Required runner protocol revision".
 Its example comes from the existing protocol-version constant and remains `agentsfleet.runner.v1`.
 The current daemon generator rebuilt OpenAPI successfully; the targeted `docs-api-internal-detail` scan passes.
 
-The full verification gate is running separately; no unit suite was restarted for this documentation correction.
+`make lint-all` passed, including app, design-system and CLI checks.
+The gate found two paragraph-formatting issues in these notes; those are fixed and the documentation scan passes.
+No unit suite was restarted for this documentation correction.
+
 Indy assigned the three remaining unit failures to Claude.
 Codex will continue M243 and pull Claude's updates only when Indy signals.
