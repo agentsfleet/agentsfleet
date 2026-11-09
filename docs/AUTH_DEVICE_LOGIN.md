@@ -305,23 +305,21 @@ History replacement failure records a failed handoff, but cannot guarantee remov
 
 **`expired` is a deadline, not a stored transition.** Nothing writes the
 `expired` status. A verify of a row past `expires_at` answers `Expired`, and a
-poll or approval of one answers missing. The login sweeper deletes the row
-within a minute of its deadline.
+poll or approval of one answers missing. The row is not deleted.
 
 ### How a session is stored
 
-One row in `identity.device_sessions`, with one deadline. M244 moved it from a
-Dragonfly key.
+One row in `identity.device_sessions`, with one deadline.
 
 | Fact | Value | Source |
 |---|---|---|
 | Table | `identity.device_sessions`, keyed by the session's UUIDv7 | `schema/20261108193100_identity_device_sessions.sql` |
 | Statements | one `.sql` file per transition | `rustd/crates/daemon/afd_tenant/src/sql/session/` |
 | Deadline | five minutes, re-stamped on every transition | `SESSION_TTL`, `rustd/crates/daemon/afd_tenant/src/session/store.rs` |
-| Cleanup | `sweeper:logins` deletes expired rows in batches of 1,000 every minute | `rustd/crates/daemon/main/src/sweepers/logins.rs` |
+| Cleanup | none: an expired row stays, and every read refuses it | Indy's decision, M244 spec Discovery |
 | Grants | `api_runtime` reads and writes; both read-only operator roles are revoked, as for `vault.secrets` | the table's slot |
 
-Every read refuses a row past its deadline, so a late sweep costs space only.
+Every read refuses a row past its deadline, so an expired row costs only space.
 
 ### The three atomic transitions
 

@@ -63,9 +63,3 @@ pub const INSERT_OAUTH_NONCE: &str = include_str!("sql/insert_oauth_nonce.sql");
 ///
 /// `$1` provider · `$2` SHA-256 of the nonce.
 pub const SPEND_OAUTH_NONCE: &str = include_str!("sql/spend_oauth_nonce.sql");
-
-/// Deletes up to `$1` expired nonces.
-///
-/// No `FOR UPDATE`: the table grants no `UPDATE`, so it cannot lock rows, and
-/// two replicas deleting one expired row only make the second delete a no-op.
-pub const DELETE_EXPIRED_OAUTH_NONCES: &str = include_str!("sql/delete_expired_oauth_nonces.sql");

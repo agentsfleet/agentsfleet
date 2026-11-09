@@ -36,7 +36,6 @@ const CONTEXT_READ: &str = "read a device session";
 const CONTEXT_VERIFY: &str = "verify a device session";
 const CONTEXT_APPROVE: &str = "approve a device session";
 const CONTEXT_ABORT: &str = "abort device sessions";
-const CONTEXT_SWEEP: &str = "sweep expired device sessions";
 
 /// The store every device-login transition goes through.
 #[derive(Debug, Clone)]
@@ -231,20 +230,6 @@ impl SessionStore {
             .await
             .map_err(query(CONTEXT_ABORT))?;
         Ok(aborted.iter().map(|id| id.as_str().to_owned()).collect())
-    }
-
-    /// Deletes up to `limit` expired sessions; answers how many went.
-    ///
-    /// # Errors
-    /// Reports a store that would not answer; the next pass retries.
-    pub async fn sweep_expired(&self, limit: i64) -> Result<u64> {
-        let mut connection = self.database.acquire().await?;
-        let swept = sqlx::query(sql::DELETE_EXPIRED_SESSIONS)
-            .bind(limit)
-            .execute(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_SWEEP))?;
-        Ok(swept.rows_affected())
     }
 }
 

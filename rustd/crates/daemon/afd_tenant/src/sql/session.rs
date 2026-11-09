@@ -34,6 +34,3 @@ pub const SELECT_SESSION_STATUS: &str = include_str!("session/select_session_sta
 /// Aborts every live session one approver owns. `$1` approver · `$2` terminal
 /// statuses · `$3` aborted · `$4` reason · `$5` time to live.
 pub const ABORT_OWNED_SESSIONS: &str = include_str!("session/abort_owned_sessions.sql");
-
-/// Deletes up to `$1` expired sessions, skipping rows another pass holds.
-pub const DELETE_EXPIRED_SESSIONS: &str = include_str!("session/delete_expired_sessions.sql");
