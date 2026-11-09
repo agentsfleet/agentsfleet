@@ -47,6 +47,7 @@ mod memory;
 mod model_entry;
 mod preference;
 mod provider;
+mod runner_stream;
 mod schedule;
 mod signup;
 mod team;
@@ -68,6 +69,7 @@ pub use self::memory::FleetMemories;
 pub use self::model_entry::TenantModelEntries;
 pub use self::preference::WorkspacePreferences;
 pub use self::provider::TenantProviders;
+pub use self::runner_stream::RunnerStreams;
 pub use self::schedule::{FleetSchedules, SchedulePlane};
 pub use self::signup::{
     Bootstrapped, IdentityWebhookSecret, NewAccount, SignupMetadata, Signups, personal_tenant_name,
@@ -76,8 +78,8 @@ pub use self::team::TenantTeam;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
 pub use self::vault::WorkspaceSecrets;
 
-mod contract;
+mod http_services;
 mod tenant_surface;
 
-pub use self::contract::Services;
+pub use self::http_services::Services;
 pub use self::tenant_surface::TenantSurface;

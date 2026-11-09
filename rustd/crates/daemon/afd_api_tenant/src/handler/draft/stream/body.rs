@@ -22,7 +22,7 @@ struct Watch {
     delay: Duration,
     done: bool,
     subscription: Option<afd_bus::Subscription>,
-    _slot: afd_sse::Slot,
+    _slot: afd_sse::StreamPermit,
 }
 
 pub(super) fn frames(
@@ -31,7 +31,7 @@ pub(super) fn frames(
     subject: String,
     draft: Uuid7,
     generation: i64,
-    slot: afd_sse::Slot,
+    slot: afd_sse::StreamPermit,
     subscription: Option<afd_bus::Subscription>,
 ) -> impl Stream<Item = Result<Event, Infallible>> + Send + 'static {
     stream::unfold(

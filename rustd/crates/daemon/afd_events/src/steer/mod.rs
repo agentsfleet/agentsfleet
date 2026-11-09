@@ -265,10 +265,9 @@ impl Steer {
             );
             return;
         };
-        self.admissions
-            .streams()
-            .publish_frame(&afd_bus::Subject::FleetTail(fleet), frame)
-            .await;
+        let subject = afd_bus::Subject::FleetTail(fleet);
+        let publication = self.admissions.streams().publish_frame(&subject, frame).await;
+        afd_bus::observe_notification(&subject, publication);
     }
 
     /// A capacity refusal, unless the key is a repeat: then its event.

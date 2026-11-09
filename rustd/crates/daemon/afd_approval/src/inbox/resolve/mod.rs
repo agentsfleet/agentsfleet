@@ -229,12 +229,9 @@ impl Inbox {
                 message: None,
                 counters,
             };
-            self.bus
-                .publish_frame(
-                    &afd_bus::Subject::FleetTail(resolved.fleet_id.clone()),
-                    &frame,
-                )
-                .await;
+            let subject = afd_bus::Subject::FleetTail(resolved.fleet_id.clone());
+            let publication = self.bus.publish_frame(&subject, &frame).await;
+            afd_bus::observe_notification(&subject, publication);
         }
 
         Ok(Some(admitted.stored.id))

@@ -39,7 +39,7 @@ impl Drafts {
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let mut guarded = guard::bound(&mut tx, runner, lease, &counters).await?;
         let host = self
-            .lock_capacity(&mut tx, runner)
+            .lock_host_capacity(&mut tx, runner)
             .await?
             .ok_or(ErrorKind::Hidden)?;
         if !host.can_renew() {

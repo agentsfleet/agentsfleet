@@ -9,7 +9,7 @@
 use af_core::id::Uuid7;
 
 use crate::error::{Result, lease_not_found, query, stale_fence};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::sql;
 use crate::lease::sql::standing::SELECT_STANDING;
 use crate::lease::store::Leases;
@@ -78,7 +78,7 @@ pub(crate) const fn fence_current(fence: i64, live_seq: i64) -> bool {
     fence >= live_seq
 }
 
-impl Plane {
+impl LeaseService {
     /// Proves `lease_id` is `runner_id`'s live lease, and the fleet's current
     /// holder under the presented token.
     ///

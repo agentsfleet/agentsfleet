@@ -315,3 +315,11 @@ fn fixture_id() -> Uuid7 {
     Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")
         .expect("a fixture identifier is well formed")
 }
+
+impl afd_api::services::RunnerStreams for NoWork {
+    async fn open(&self, _runner: afd_auth::principal::Runner, _request: axum::extract::Request) -> axum::response::Response {
+        use axum::response::IntoResponse as _;
+        afd_http::envelope::ProblemResponse::new(af_core::error_code::INTERNAL_OPERATION_FAILED,
+            "This router fixture has no native runner connection.", afd_http::request_id::RequestId::mint()).into_response()
+    }
+}

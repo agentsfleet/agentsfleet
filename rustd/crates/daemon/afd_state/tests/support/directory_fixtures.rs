@@ -141,12 +141,11 @@ fn minted_seed() -> u32 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-/// An identifier the schema accepts and [`af_core::id::Uuid7`] refuses.
+/// An identifier [`af_core::id::Uuid7`] refuses.
 ///
-/// The version nibble is `7`, which is all `ck_*_id_uuidv7` checks — but the
-/// variant nibble is `0`, and RFC 4122 spells that `8`, `9`, `a` or `b`. So
-/// this is a value Postgres will store and the port will not read, which is
-/// exactly the corrupt row the malformed-identifier path exists for.
+/// The version nibble is `7`, but the variant nibble is `0` instead of an RFC
+/// variant. Runner constraints reject it; older tenant fixtures exercise how
+/// the directory refuses a malformed identifier admitted by a weaker check.
 pub(crate) fn identifier_with_bad_variant(seed: u32) -> String {
     format!(
         "01900000-0000-7000-0000-{:06x}{seed:06x}",
@@ -247,28 +246,24 @@ impl Fixtures {
     /// digest is the runner's own id: this suite looks a runner up BY its
     /// digest, so the digest is the column under test.
     ///
-    /// `id` is text because one test stores an identifier [`Uuid7`] refuses
-    /// (see [`identifier_with_bad_variant`]); the statement casts it, the one
-    /// identifier cast in this suite.
-    pub(crate) async fn runner(&self, id: &str, digest: &Digest, status: &str, degraded: bool) {
-        let degraded_reason = if degraded {
-            "'fixture-degraded'"
-        } else {
-            "NULL"
-        };
-        self.run(
-            &format!(
-                "INSERT INTO runner.runners \
+    pub(crate) async fn runner(&self, id: &Uuid7, digest: &Digest, status: &str, degraded: bool) {
+        let mut connection = self.connection().await;
+        sqlx::query(
+            "INSERT INTO runner.runners \
                  (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, \
                   registry_allowlist, worker_count, degraded_reason, last_seen_at, \
                   lease_version, created_at, updated_at) \
-                 VALUES ($1::uuid, 'fixture-host', $2, 'standard', $3, '[]'::jsonb, \
-                         'deny_all_egress', '[]'::jsonb, 1, {degraded_reason}, now(), 0, \
-                         now(), now())"
-            ),
-            &[id, digest.as_str(), status],
+                 VALUES ($1, 'fixture-host', $2, 'standard', $3, jsonb_build_array(), \
+                         'deny_all_egress', jsonb_build_array(), 1, $4, clock_timestamp(), 0, \
+                         clock_timestamp(), clock_timestamp())",
         )
-        .await;
+        .bind(id)
+        .bind(digest.as_str())
+        .bind(status)
+        .bind(degraded.then_some("fixture-degraded"))
+        .execute(&mut *connection)
+        .await
+        .expect("the native runner fixture must insert");
     }
 
     /// Removes a table out from under the directory.

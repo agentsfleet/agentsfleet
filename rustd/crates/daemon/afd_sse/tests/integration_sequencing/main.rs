@@ -36,7 +36,7 @@ use std::time::Duration;
 use afd_dragonfly::SubscriptionHub;
 use afd_dragonfly::fleet_activity_channel;
 use afd_dragonfly::streams::FleetStreams;
-use afd_sse::ceiling::Ceiling;
+use afd_sse::stream_limit::StreamLimit;
 use afd_sse::frame::Frame;
 use afd_sse::tail::tail;
 use afd_sse::{KIND_HELLO, Live};
@@ -133,7 +133,7 @@ async fn test_fleet_stream_opens_with_hello_before_any_activity() {
 
     let live = Live::new(
         afd_bus::test_util::with_hub(hub).expect("fixture bus"),
-        Ceiling::new(1),
+        StreamLimit::new(1),
     );
     let fleet_id = af_core::id::Uuid7::parse(&fleet).expect("canonical fixture fleet");
     let mut stream = Box::pin(live.tail_of(&fleet_id).await);

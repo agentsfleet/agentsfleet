@@ -21,7 +21,7 @@
 //!
 //! # Why the slot rides the body
 //!
-//! [`afd_sse::Slot`] is released by `Drop`, and the body owns it: a client
+//! [`afd_sse::StreamPermit`] is released by `Drop`, and the body owns it: a client
 //! that goes away drops the body, which returns the slot.
 
 use std::collections::VecDeque;

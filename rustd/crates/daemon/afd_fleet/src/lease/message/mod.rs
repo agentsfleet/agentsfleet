@@ -24,7 +24,7 @@ use af_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
 use afd_outbound::Interim;
 
 use crate::error::{Result, lease_not_found, message_limit_reached, message_no_channel, query};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::sql;
 use crate::lease::sql::standing::COUNT_MESSAGE;
 use crate::lease::standing::Standing;
@@ -33,7 +33,7 @@ use crate::lease::store::Leases;
 /// Statement name, for the context a count failure carries.
 const CONTEXT_COUNT: &str = "count interim message";
 
-impl Plane {
+impl LeaseService {
     /// One line for `lease_id`'s thread, fenced, counted and scrubbed.
     ///
     /// # Errors

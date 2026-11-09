@@ -256,4 +256,4 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send;
 }
 
-mod plane;
+mod lease_service;

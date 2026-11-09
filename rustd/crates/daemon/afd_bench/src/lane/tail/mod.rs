@@ -41,7 +41,7 @@ mod publish;
 mod streams;
 mod viewers;
 
-use afd_sse::{Ceiling, Live};
+use afd_sse::{StreamLimit, Live};
 
 use crate::allocations;
 use crate::datastores::Datastores;
@@ -126,7 +126,7 @@ pub async fn run(
     let bus = stores.bus.clone();
     let live = Live::new(
         bus.clone(),
-        Ceiling::new(usize::try_from(widest).unwrap_or(usize::MAX)),
+        StreamLimit::new(usize::try_from(widest)?),
     );
     let publisher = bus.clone();
     let counting = allocations::installed();

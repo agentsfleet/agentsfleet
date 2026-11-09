@@ -14,7 +14,7 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
-use super::{Plane, Ungranted, answers, written};
+use super::{LeaseService, Ungranted, answers, written};
 use af_core::id::Uuid7;
 use af_core::money::NANOS_PER_USD;
 use af_fleet_runtime::FleetConfig;
@@ -130,15 +130,15 @@ fn an_unwritten_request_reports_and_then_reads_as_no_answer() {
 fn only_an_open_card_turns_the_answer_into_a_park() {
     let answer = || "no work".to_owned();
     assert!(matches!(
-        Ungranted::Parks.ending(answer()),
+        Ungranted::Parks.ending::<String>(answer()),
         super::Step::Park(bytes) if bytes == answer()
     ));
     assert!(matches!(
-        Ungranted::Retries.ending(answer()),
+        Ungranted::Retries.ending::<String>(answer()),
         super::Step::Stop(bytes) if bytes == answer()
     ));
     assert!(matches!(
-        Ungranted::Ends.ending(answer()),
+        Ungranted::Ends.ending::<String>(answer()),
         super::Step::Stop(bytes) if bytes == answer()
     ));
 }
@@ -210,17 +210,17 @@ fn only_a_write_binding_is_given_a_branch() {
     // A read binding needs no branch and a fleet with no binding has nothing to
     // write to. Handing either one a branch would put a ref in the egress rules
     // for a run that must not create one.
-    assert_eq!(Plane::repair_branch(MINTED_EVENT, &config(None)), None);
+    assert_eq!(LeaseService::repair_branch(MINTED_EVENT, &config(None)), None);
     assert_eq!(
-        Plane::repair_branch(MINTED_EVENT, &config(Some("read"))),
+        LeaseService::repair_branch(MINTED_EVENT, &config(Some("read"))),
         None
     );
-    assert!(Plane::repair_branch(MINTED_EVENT, &config(Some("write"))).is_some());
+    assert!(LeaseService::repair_branch(MINTED_EVENT, &config(Some("write"))).is_some());
 }
 
 #[test]
 fn the_branch_names_the_event_and_carries_nothing_else() {
-    let branch = Plane::repair_branch(MINTED_EVENT, &config(Some("write")))
+    let branch = LeaseService::repair_branch(MINTED_EVENT, &config(Some("write")))
         .expect("a write binding is given a branch");
 
     assert!(branch.starts_with(repair::PREFIX), "{branch}");
@@ -231,7 +231,7 @@ fn the_branch_names_the_event_and_carries_nothing_else() {
     // And it is the event's own identifier, not a fresh one per call.
     assert_eq!(
         branch,
-        Plane::repair_branch(MINTED_EVENT, &config(Some("write")))
+        LeaseService::repair_branch(MINTED_EVENT, &config(Some("write")))
             .expect("the same event resolves the same branch")
     );
 }
@@ -243,8 +243,8 @@ fn two_events_are_never_given_one_branch() {
     // every event of a fleet's life on ONE branch, and the second run would
     // force-update the first run's head.
     assert_ne!(
-        Plane::repair_branch(MINTED_EVENT, &config(Some("write"))),
-        Plane::repair_branch(NEXT_MINTED_EVENT, &config(Some("write")))
+        LeaseService::repair_branch(MINTED_EVENT, &config(Some("write"))),
+        LeaseService::repair_branch(NEXT_MINTED_EVENT, &config(Some("write")))
     );
 }
 
@@ -261,7 +261,7 @@ fn test_m202_001_every_identifier_the_ledger_mints_is_given_a_branch() {
     // shape, and two identifiers never share a name.
     for id in [MINTED_EVENT, NEXT_MINTED_EVENT, "evt-cred-mint-fixture"] {
         assert!(
-            Plane::repair_branch(id, &config(Some("write"))).is_some(),
+            LeaseService::repair_branch(id, &config(Some("write"))).is_some(),
             "{id:?}"
         );
     }

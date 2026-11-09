@@ -48,6 +48,7 @@ impl Error {
             | ErrorKind::Admission { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskPrecondition { .. }
@@ -113,6 +114,7 @@ impl Error {
             | ErrorKind::Admission { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskControlAdmission { .. }
@@ -194,6 +196,7 @@ impl Error {
             | ErrorKind::Admission { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskControlAdmission { .. }
@@ -276,6 +279,7 @@ impl Error {
             | ErrorKind::Admission { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskControlConflict { .. }
@@ -337,6 +341,7 @@ impl Error {
             | ErrorKind::Admission { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskControlAdmission { .. }
@@ -403,6 +408,7 @@ impl Error {
             | ErrorKind::Admission { .. }
             | ErrorKind::TaskDocument { .. }
             | ErrorKind::TaskState { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskControlAdmission { .. }
@@ -532,6 +538,7 @@ impl Error {
             ErrorKind::Memory { ref source } => source.code(),
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::TaskDocument { .. }
@@ -607,6 +614,7 @@ impl Error {
             // is told the same thing because there is nothing it can do about
             // any of them.
             ErrorKind::Context { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::TaskDocument { .. }

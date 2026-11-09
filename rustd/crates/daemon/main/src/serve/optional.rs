@@ -3,7 +3,7 @@
 use af_core::error_code::{Coded as _, Logged};
 use af_observability::Analytics;
 use afd_dragonfly::{Dragonfly, DragonflyConfig};
-use afd_sse::{Ceiling, Live};
+use afd_sse::{StreamLimit, Live};
 
 use crate::identity::Capabilities;
 
@@ -34,7 +34,7 @@ pub(super) async fn open_live(
     queue: Dragonfly,
     max_streams: usize,
 ) -> (afd_bus::Handle, Live) {
-    let ceiling = Ceiling::new(max_streams);
+    let ceiling = StreamLimit::new(max_streams);
     match afd_bus::dragonfly::connect(queue.clone(), config.clone()).await {
         Ok(bus) => (bus.clone(), Live::new(bus, ceiling)),
         Err(unopened) => {

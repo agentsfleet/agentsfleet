@@ -16,7 +16,7 @@ use afd_bus::Handle;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 
-use crate::ceiling::{Ceiling, Slot};
+use crate::stream_limit::{StreamLimit, StreamPermit};
 use crate::fanin::FanIn;
 use crate::frame::Frame;
 use crate::tail::tail;
@@ -25,16 +25,16 @@ use crate::tail::tail;
 #[derive(Debug, Clone)]
 pub struct Live {
     bus: Option<Handle>,
-    ceiling: Ceiling,
+    stream_limit: StreamLimit,
 }
 
 impl Live {
     /// The live surface of an instance holding a pub/sub connection.
     #[must_use]
-    pub const fn new(bus: Handle, ceiling: Ceiling) -> Self {
+    pub const fn new(bus: Handle, stream_limit: StreamLimit) -> Self {
         Self {
             bus: Some(bus),
-            ceiling,
+            stream_limit,
         }
     }
 
@@ -43,8 +43,8 @@ impl Live {
     /// Its streams open, count against the ceiling, and stay silent. See the
     /// module header for why that is the behaviour rather than a refusal.
     #[must_use]
-    pub const fn detached(ceiling: Ceiling) -> Self {
-        Self { bus: None, ceiling }
+    pub const fn detached(stream_limit: StreamLimit) -> Self {
+        Self { bus: None, stream_limit }
     }
 
     /// The hub behind this surface, for the shutdown that closes it.
@@ -57,21 +57,25 @@ impl Live {
 
     /// A slot for one stream, or `None` when the instance is full or draining.
     #[must_use]
-    pub fn admit(&self) -> Option<Slot> {
-        self.ceiling.admit()
+    pub fn admit(&self) -> Option<StreamPermit> {
+        self.stream_limit.admit()
     }
 
     /// How many streams this instance is carrying.
     #[must_use]
     pub fn carrying(&self) -> usize {
-        self.ceiling.live()
+        self.stream_limit.live()
     }
 
     /// How many it will carry.
     #[must_use]
     pub const fn capacity(&self) -> usize {
-        self.ceiling.capacity()
+        self.stream_limit.capacity()
     }
+
+    /// Share the same concurrent-stream permits with the native runner listener.
+    #[must_use]
+    pub const fn stream_limit(&self) -> &StreamLimit { &self.stream_limit }
 
     /// Subscribe before announcing a live fleet stream.
     pub async fn tail_of(&self, fleet: &af_core::id::Uuid7) -> BoxStream<'static, Frame> {
@@ -136,11 +140,11 @@ mod tests {
     use futures_util::StreamExt as _;
 
     use super::Live;
-    use crate::ceiling::Ceiling;
+    use crate::stream_limit::Ceiling;
 
     #[tokio::test]
     async fn detached_live_streams_are_admitted_but_stay_silent() {
-        let live = Live::detached(Ceiling::new(2));
+        let live = Live::detached(StreamLimit::new(2));
         assert!(live.bus().is_none());
         assert_eq!(live.capacity(), 2);
         let slot = live.admit().expect("the first detached stream is admitted");

@@ -40,7 +40,7 @@ use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};
 use crate::lease::fence::Fence;
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 
 /// The lease a memory write is fenced on, by its four names.
 #[derive(Debug, Clone, Copy)]
@@ -58,7 +58,7 @@ const EVENT_CAPTURED: &str = "memory_captured";
 /// lease's own — and nothing was read or written.
 const EVENT_FENCED: &str = "memory_verb_fenced";
 
-impl Plane {
+impl LeaseService {
     /// The memory window that seeds one run.
     ///
     /// # Errors
@@ -107,7 +107,7 @@ impl Plane {
         self.capture_for(holder, &request.memory, now).await
     }
 
-    /// [`Plane::capture`]'s fence and write, for a caller holding the parts
+    /// [`LeaseService::capture`]'s fence and write, for a caller holding the parts
     /// rather than a push body: the report verb, whose body carries the run's
     /// memory beside its result.
     pub(crate) async fn capture_for(
@@ -154,7 +154,7 @@ impl Plane {
     /// granted to read shared memory — the workspace's shared ones.
     ///
     /// # Errors
-    /// As [`Plane::capture`]'s fence, and a store that would not answer.
+    /// As [`LeaseService::capture`]'s fence, and a store that would not answer.
     pub async fn recall(
         &self,
         runner_id: &Uuid7,

@@ -163,12 +163,9 @@ impl Gates {
             pending_approvals: recorded.pending_approvals,
             counters: recorded.counters,
         };
-        self.bus()
-            .publish_frame(
-                &afd_bus::Subject::FleetTail(request.fleet_id.clone()),
-                &frame,
-            )
-            .await;
+        let subject = afd_bus::Subject::FleetTail(request.fleet_id.clone());
+        let publication = self.bus().publish_frame(&subject, &frame).await;
+        afd_bus::observe_notification(&subject, publication);
     }
 
     /// Insert the row a resolve updates and the mint spends against, and

@@ -16,7 +16,7 @@ use af_wire::lease::LeaseResponse;
 use af_wire::memory::MemoryDelta;
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_db::test_util::{EventKind, FleetEventSeed, PlatformDefault, mint_id};
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 use jiff::Timestamp;
 
 use super::seed::seed_provider_resolution;
@@ -144,7 +144,7 @@ impl Chat {
     /// [`Self::lease`], issued by `plane`.
     pub(super) async fn lease_through(
         &self,
-        plane: &Plane,
+        plane: &LeaseService,
         runner: &Uuid7,
         now: Timestamp,
     ) -> Issued {

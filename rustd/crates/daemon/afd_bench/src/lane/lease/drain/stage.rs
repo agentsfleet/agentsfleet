@@ -14,7 +14,7 @@ use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_db::test_util::WalletSeed;
-use afd_fleet::lease::{Leases, Plane};
+use afd_fleet::lease::{Leases, LeaseService};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
 
@@ -109,7 +109,7 @@ async fn fund(stores: &Datastores, fleets: &[SeededFleet]) -> Result<()> {
 
 impl Staged {
     /// The daemon's lease plane over the lane's pool and queue.
-    pub(super) fn plane(&self, stores: &Datastores) -> Plane {
+    pub(super) fn plane(&self, stores: &Datastores) -> LeaseService {
         plane(stores, &self.kek)
     }
 }
@@ -124,9 +124,9 @@ impl Staged {
     clippy::disallowed_methods,
     reason = "a seeded fleet declares no integration, so the broker's vendor client never sends a request"
 )]
-pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> Plane {
+pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> LeaseService {
     let database = stores.database.clone();
-    Plane {
+    LeaseService {
         task_reports: None,
         leases: Leases::new(
             database.clone(),

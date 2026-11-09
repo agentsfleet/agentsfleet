@@ -64,7 +64,7 @@ fn requests(held: &Held, from: usize, to: usize) -> RequestLines {
 }
 
 /// Renews `held`'s lease carrying requests `from..to`.
-async fn renew(held: &Held, plane: &afd_fleet::lease::Plane, from: usize, to: usize) {
+async fn renew(held: &Held, plane: &afd_fleet::lease::LeaseService, from: usize, to: usize) {
     plane
         .renew(
             &held.runner,

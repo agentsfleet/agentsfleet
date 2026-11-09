@@ -52,6 +52,7 @@ members = [
     "crates/daemon/afd_fleet_ops",
     "crates/protocol/af_fleet_runtime",
     "crates/daemon/afd_gate",
+    "crates/daemon/afd_gateway",
     "crates/daemon/afd_http",
     "crates/daemon/afd_identity",
     "crates/protocol/af_inference",
@@ -158,6 +159,8 @@ afd_fleet = { path = "crates/daemon/afd_fleet" }
 # needs a person. The lease plane calls down into it at two moments and it
 # calls back at none, which is what let it out.
 afd_gate = { path = "crates/daemon/afd_gate" }
+afd_gateway = { path = "crates/daemon/afd_gateway" }
+af_stream = { path = "crates/protocol/af_stream" }
 afd_http = { path = "crates/daemon/afd_http" }
 af_inference = { path = "crates/protocol/af_inference" }
 # Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
@@ -729,6 +732,7 @@ crc16 = { version = "0.4.0", default-features = false }
 # act a per-key race needs. Where a map is keyed by something many tasks
 # touch at once, this is the shape, not `Mutex<HashMap>`.
 dashmap = { version = "6.2.1", default-features = false }
+parking_lot = { version = "0.12.5", default-features = false }
 
 # JWT semantics for the GitHub App mint: header and claims JSON, base64url
 # segments, and expiry validation. NOT a crypto backend — it sits on one, and

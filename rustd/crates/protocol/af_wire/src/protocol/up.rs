@@ -6,7 +6,7 @@ use std::num::NonZeroU64;
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 
-use super::{LEASES_MAX, Lane};
+use super::{LEASES_MAX, StreamKind};
 use crate::activity::ActivityRequest;
 use crate::fold::FoldRequest;
 use crate::lease::AcceptedKinds;
@@ -45,6 +45,20 @@ pub enum Up<'a> {
         /// Idle workers available to accept offers.
         #[garde(range(max = LEASES_MAX))]
         credits: usize,
+        /// Proposal whose final welcome may have been lost on the prior connection.
+        #[serde(default, borrow, skip_serializing_if = "Option::is_none")]
+        #[garde(inner(length(bytes, min = 36, max = 36)))]
+        unconfirmed_connection_id: Option<Cow<'a, str>>,
+    },
+    /// Acknowledge the prospective owner before the server commits it.
+    Confirm {
+        /// The opening hello's correlation identifier.
+        #[garde(skip)]
+        request_id: NonZeroU64,
+        /// Exact prospective owner received in prepared.
+        #[serde(borrow)]
+        #[garde(length(bytes, min = 36, max = 36))]
+        connection_id: Cow<'a, str>,
     },
     /// Replace, rather than increment, the advertised idle-worker count.
     Ready {
@@ -115,18 +129,19 @@ pub enum Up<'a> {
 }
 
 impl Up<'_> {
-    /// The only lane permitted to carry this message.
+    /// The only kind permitted to carry this message.
     #[must_use]
-    pub const fn lane(&self) -> Lane {
+    pub const fn stream_kind(&self) -> StreamKind {
         match self {
-            Self::Report { .. } => Lane::Reports,
-            Self::Activity { .. } => Lane::Activity,
-            Self::Folds { .. } => Lane::Work,
+            Self::Report { .. } => StreamKind::Reports,
+            Self::Activity { .. } => StreamKind::Activity,
+            Self::Folds { .. } => StreamKind::Work,
             Self::Hello { .. }
+            | Self::Confirm { .. }
             | Self::Ready { .. }
             | Self::Heartbeat { .. }
             | Self::Ping { .. }
-            | Self::RenewBatch { .. } => Lane::Control,
+            | Self::RenewBatch { .. } => StreamKind::Control,
         }
     }
 
@@ -135,6 +150,7 @@ impl Up<'_> {
     pub const fn request_id(&self) -> Option<NonZeroU64> {
         match self {
             Self::Hello { request_id, .. }
+            | Self::Confirm { request_id, .. }
             | Self::Heartbeat { request_id, .. }
             | Self::Ping { request_id }
             | Self::RenewBatch { request_id, .. }

@@ -143,7 +143,10 @@ async fn confirm(bus: &Handle, subject: &Subject, subscription: &mut Subscriptio
         let mut tick = tokio::time::interval(Duration::from_millis(10));
         loop {
             tokio::select! {
-                _instant = tick.tick() => { bus.publish_frame(subject, &Command::Recheck).await; }
+                _instant = tick.tick() => {
+                    let publication = bus.publish_frame(subject, &Command::Recheck).await;
+                    afd_bus::observe_notification(subject, publication);
+                }
                 received = subscription.recv() => match received? {
                     Received::Message(_) => return Ok::<_, Box<dyn std::error::Error + Send + Sync>>(()),
                     Received::Lagged(_) | Received::Gap => {}

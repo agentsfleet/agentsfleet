@@ -1,6 +1,6 @@
 //! The production verbs a saturation host calls, behind [`Host`].
 //!
-//! The daemon's `Plane` and `Drafts`, composed the way its root composes them
+//! The daemon's `LeaseService` and `Drafts`, composed the way its root composes them
 //! and sharing one biller, so a setup chat claim and the fleet poll it competes
 //! with move money through the same path they do in production.
 
@@ -13,7 +13,7 @@ use af_crypto::secret::Kek;
 use af_wire::authoring::{Knowledge, Meter, Renew};
 use af_wire::lease::{AcceptedKinds, LeaseResponse, TaggedLease};
 use afd_authoring::Drafts;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 
 use super::requester::{Held, Host, Polled};
 use crate::datastores::Datastores;
@@ -33,7 +33,7 @@ const IDLE: Meter = Meter {
 /// The runner route's two verbs over the lane's datastores.
 #[derive(Debug, Clone)]
 pub(super) struct Production {
-    plane: Plane,
+    plane: LeaseService,
     pub(super) drafts: Drafts,
 }
 

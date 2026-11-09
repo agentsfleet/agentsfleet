@@ -21,7 +21,7 @@
 //! waiting on; this type's [`close`] only stops NEW ones from starting.
 //!
 //! [`Handle::shutdown`]: afd_bus::Handle::shutdown
-//! [`close`]: Ceiling::close
+//! [`close`]: StreamLimit::close
 
 use std::sync::Arc;
 
@@ -29,12 +29,12 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
 /// The instance's concurrent-stream budget.
 #[derive(Debug, Clone)]
-pub struct Ceiling {
+pub struct StreamLimit {
     slots: Arc<Semaphore>,
     capacity: usize,
 }
 
-impl Ceiling {
+impl StreamLimit {
     /// A ceiling admitting `capacity` streams at once.
     ///
     /// Clamped to what a semaphore can hold. A configured value past that is a
@@ -55,11 +55,11 @@ impl Ceiling {
     /// queued. Queuing would hold the request open until a stranger closed
     /// their tab, which is indistinguishable to a client from a hang.
     #[must_use]
-    pub fn admit(&self) -> Option<Slot> {
+    pub fn admit(&self) -> Option<StreamPermit> {
         Arc::clone(&self.slots)
             .try_acquire_owned()
             .ok()
-            .map(Slot::new)
+            .map(StreamPermit::new)
     }
 
     /// How many streams this instance is carrying.
@@ -85,12 +85,12 @@ impl Ceiling {
 
 /// One stream's claim on the instance, released when the stream ends.
 #[derive(Debug)]
-pub struct Slot {
+pub struct StreamPermit {
     /// Held for its `Drop`, never read. The permit IS the claim.
     _permit: OwnedSemaphorePermit,
 }
 
-impl Slot {
+impl StreamPermit {
     /// Wraps the permit that is the claim.
     const fn new(permit: OwnedSemaphorePermit) -> Self {
         Self { _permit: permit }
@@ -104,12 +104,12 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::Ceiling;
+    use super::StreamLimit;
 
     /// A fresh ceiling is carrying nothing and admits up to its capacity.
     #[test]
     fn should_admit_up_to_its_capacity() {
-        let ceiling = Ceiling::new(2);
+        let ceiling = StreamLimit::new(2);
         assert_eq!(ceiling.live(), 0);
 
         let first = ceiling.admit();
@@ -121,7 +121,7 @@ mod tests {
     /// The stream past the ceiling is refused rather than queued.
     #[test]
     fn should_refuse_the_stream_past_the_ceiling() {
-        let ceiling = Ceiling::new(1);
+        let ceiling = StreamLimit::new(1);
         let held = ceiling.admit();
         assert!(held.is_some());
         assert!(
@@ -136,7 +136,7 @@ mod tests {
     /// or is cancelled still releases, because the release is `Drop`.
     #[test]
     fn should_release_the_slot_when_the_stream_ends() {
-        let ceiling = Ceiling::new(1);
+        let ceiling = StreamLimit::new(1);
         let held = ceiling.admit().expect("the first stream is admitted");
         assert_eq!(ceiling.live(), 1);
         drop(held);
@@ -151,7 +151,7 @@ mod tests {
     /// value, so zero meaning "none" is the only reading that composes.
     #[test]
     fn should_serve_nothing_at_a_ceiling_of_zero() {
-        let ceiling = Ceiling::new(0);
+        let ceiling = StreamLimit::new(0);
         assert!(ceiling.admit().is_none());
         assert_eq!(ceiling.capacity(), 0);
     }
@@ -159,7 +159,7 @@ mod tests {
     /// A draining instance refuses new streams.
     #[test]
     fn should_refuse_new_streams_once_draining() {
-        let ceiling = Ceiling::new(4);
+        let ceiling = StreamLimit::new(4);
         let held = ceiling.admit().expect("an open instance admits");
         ceiling.close();
         assert!(ceiling.admit().is_none(), "a draining instance takes none");

@@ -31,7 +31,7 @@
 #[cfg(test)]
 use afd_dragonfly as _;
 
-pub mod ceiling;
+pub mod stream_limit;
 pub mod error;
 pub mod fanin;
 pub mod frame;
@@ -40,7 +40,7 @@ pub mod tail;
 
 use std::time::Duration;
 
-pub use crate::ceiling::{Ceiling, Slot};
+pub use crate::stream_limit::{StreamLimit, StreamPermit};
 pub use crate::error::{Error, Result};
 pub use crate::fanin::{Delta, FanIn};
 pub use crate::frame::{

@@ -1,6 +1,6 @@
 //! Bounds and billing acknowledgements are identical on either carrier.
 
-use af_wire::protocol::{Answer, Down, LEASES_MAX, Lane, Up};
+use af_wire::protocol::{Answer, Down, LEASES_MAX, StreamKind, Up};
 use garde::Validate as _;
 use serde::de::Error as _;
 use serde_json::{error::Category, json};
@@ -85,7 +85,7 @@ fn renewal_answers_preserve_each_usage_acknowledgement() -> serde_json::Result<(
                 "lease_expires_at": "2026-11-08T10:00:00.125Z", "recorded_through": 9
             }}},
             {"lease_id": LEASE, "answer": {
-                "status": "refused", "error_code": "UZ-RUN-022", "retryable": false
+                "status": "refused", "error_code": "UZ-RUN-022", "detail": "This lease was cancelled.", "retryable": false
             }}
         ]
     });
@@ -111,24 +111,24 @@ fn renewal_answers_preserve_each_usage_acknowledgement() -> serde_json::Result<(
 }
 
 #[test]
-fn message_kinds_select_their_lane_and_pending_answer() -> serde_json::Result<()> {
+fn message_kinds_select_their_stream_and_pending_answer() -> serde_json::Result<()> {
     let ping: Up<'_> = serde_json::from_str(r#"{"type":"ping","request_id":7}"#)?;
-    assert_eq!(ping.lane(), Lane::Control);
+    assert_eq!(ping.stream_kind(), StreamKind::Control);
     assert_eq!(ping.request_id().map(std::num::NonZeroU64::get), Some(7));
     let ready: Up<'_> = serde_json::from_str(r#"{"type":"ready","credits":1}"#)?;
     assert_eq!(ready.request_id(), None);
     let cancel: Down<'_> = serde_json::from_str(
         r#"{"type":"cancel","lease_id":"019a3c00-0000-7000-8000-000000000001","error_code":"UZ-RUN-022"}"#,
     )?;
-    assert_eq!(cancel.lane(), Lane::Control);
+    assert_eq!(cancel.stream_kind(), StreamKind::Control);
     assert_eq!(cancel.request_id(), None);
     Ok(())
 }
 
 #[test]
-fn unknown_lanes_are_never_substituted() {
-    for lane in Lane::ALL {
-        assert_eq!(Lane::parse(lane.as_str()), Some(lane));
+fn unknown_stream_kinds_are_never_substituted() {
+    for kind in StreamKind::ALL {
+        assert_eq!(StreamKind::parse(kind.as_str()), Some(kind));
     }
-    assert_eq!(Lane::parse("unknown"), None);
+    assert_eq!(StreamKind::parse("unknown"), None);
 }

@@ -11,13 +11,15 @@ use std::time::Instant;
 
 use af_core::id::Uuid7;
 use jiff::Timestamp;
+use af_wire::lease::LeasePayload;
 
-use super::Plane;
+use super::LeaseService;
 use super::Polled;
 use super::step::{Leased, Step};
 use crate::error::Result;
 use crate::lease::affinity::Fence;
 use crate::lease::envelope::Acquired;
+use crate::lease::{Offered, answer::answer};
 
 /// What a pass must let go of when it issues no lease.
 struct Held {
@@ -26,7 +28,7 @@ struct Held {
     event_id: Uuid7,
 }
 
-impl Plane {
+impl LeaseService {
     /// Every step after a won claim, then what becomes of the claim.
     ///
     /// A lease keeps it. Anything else frees it. A park stamps the admission
@@ -41,6 +43,26 @@ impl Plane {
         now: Timestamp,
         began: Instant,
     ) -> Result<Polled> {
+        let rendered = self.run_claimed_with(acquired, runner_id, now, began,
+            &mut |payload, _| answer(Some(payload))).await?;
+        match rendered {
+            Polled::Lease(body) => body.map(Polled::Lease),
+            Polled::Empty(body) => Ok(Polled::Empty(body)),
+        }
+    }
+
+    pub(super) async fn run_claimed_with<T, F>(
+        &self,
+        acquired: Acquired,
+        runner_id: &Uuid7,
+        now: Timestamp,
+        began: Instant,
+        emit: &mut F,
+    ) -> Result<Polled<T>>
+    where
+        T: Send,
+        F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
+    {
         let held = Held {
             fleet_id: acquired.fleet_id.clone(),
             fence: acquired.fence,
@@ -51,7 +73,7 @@ impl Plane {
             .await
             .map(Step::proceed)
         {
-            Ok(Ok(admitted)) => self.deliver(runner_id, admitted, now, began).await,
+            Ok(Ok(admitted)) => self.deliver_with(runner_id, admitted, now, began, emit).await,
             Ok(Err(ended)) => Ok(ended),
             Err(fault) => Err(fault),
         };

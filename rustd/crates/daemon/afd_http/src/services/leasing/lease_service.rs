@@ -6,14 +6,14 @@ use super::{
     Reconciled, RenewRequest, ReportRequest, Standing, Timestamp, ToolCallRecordsRequest,
     ToolCallRecordsStored, Uuid7,
 };
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 
 /// The production plane answers it directly.
 ///
 /// The trait is this crate's and the type is `afd_fleet`'s, which is the right
 /// direction: the HTTP layer states what it needs, and the service crate stays
 /// unaware that an HTTP layer exists.
-impl Leasing for Plane {
+impl Leasing for LeaseService {
     fn lease(
         &self,
         drafts: &afd_authoring::Drafts,

@@ -1,22 +1,23 @@
 //! Bound serialization and every in-progress frame write.
 
-use af_wire::protocol::{Lane, MESSAGE_BYTES_MAX};
+use af_wire::protocol::{StreamKind, MESSAGE_BYTES_MAX};
 use serde::Serialize;
 use tokio::io::{AsyncWrite, AsyncWriteExt as _};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use zeroize::Zeroizing;
 
-use super::{Budget, OwnedFrame};
+use super::{Budget, Encoder, OwnedFrame};
 use crate::{Result, Stage, error, limits::Length};
 
-struct Buffer(Zeroizing<Vec<u8>>);
+#[derive(Default)]
+pub(super) struct Buffer(Zeroizing<Vec<u8>>);
 
 // Reallocation can temporarily retain both the old and new allocations.
-const ENCODING_BYTES: usize = MESSAGE_BYTES_MAX * 2;
+pub(super) const ENCODING_BYTES: usize = MESSAGE_BYTES_MAX * 2;
 
 impl Buffer {
-    fn finish(self, mut reservation: tokio::sync::OwnedSemaphorePermit) -> Result<OwnedFrame> {
+    pub(super) fn finish(self, mut reservation: tokio::sync::OwnedSemaphorePermit) -> Result<OwnedFrame> {
         let allocation = Length::prove(self.0.capacity())?;
         let _unused = reservation.split(ENCODING_BYTES - allocation.bytes);
         Ok(OwnedFrame {
@@ -58,14 +59,13 @@ impl std::io::Write for Buffer {
 pub async fn encode<T: Serialize + Sync>(
     value: &T,
     budget: &Budget,
-    lane: Lane,
+    kind: StreamKind,
     stop: &CancellationToken,
     deadline: Instant,
 ) -> Result<OwnedFrame> {
-    let reservation = budget.reserve(lane, ENCODING_BYTES, stop, deadline).await?;
-    let mut output = Buffer(Zeroizing::new(Vec::new()));
+    let mut output = Encoder::reserve(budget, kind, stop, deadline).await?;
     serde_json::to_writer(&mut output, value)?;
-    output.finish(reservation)
+    output.finish()
 }
 
 /// Write a prefix and at most 16 KiB per data operation under one deadline.
@@ -98,12 +98,12 @@ mod tests {
     async fn serialization_growth_stays_bounded_and_retained_capacity_remains_charged() -> Result<()>
     {
         let budget = Budget::default();
-        let available = budget.available(Lane::Reports);
+        let available = budget.available(StreamKind::Reports);
         let value = ("x".repeat(MESSAGE_BYTES_MAX * 3 / 4), 1234);
         let frame = encode(
             &value,
             &budget,
-            Lane::Reports,
+            StreamKind::Reports,
             &CancellationToken::new(),
             Instant::now() + std::time::Duration::from_secs(5),
         )
@@ -111,11 +111,11 @@ mod tests {
         assert!(frame.bytes.capacity() <= MESSAGE_BYTES_MAX);
         assert!(frame.bytes.capacity() >= frame.bytes.len());
         assert_eq!(
-            available - budget.available(Lane::Reports),
+            available - budget.available(StreamKind::Reports),
             frame.bytes.capacity()
         );
         drop(frame);
-        assert_eq!(budget.available(Lane::Reports), available);
+        assert_eq!(budget.available(StreamKind::Reports), available);
         Ok(())
     }
 }

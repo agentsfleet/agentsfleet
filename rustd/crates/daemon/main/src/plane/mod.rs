@@ -29,7 +29,7 @@ use afd_billing::Accounts;
 use afd_credential::provider::Providers;
 use afd_credential::vault::Vault;
 use afd_events::History;
-use afd_fleet::lease::{Leases, Plane};
+use afd_fleet::lease::{Leases, LeaseService};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
 use afd_runner::Runners;
@@ -62,7 +62,8 @@ pub struct ServingPlane {
     signup_writeback: SignupWriteback,
     authenticator: Authenticator,
     runners: Runners,
-    leases: Plane,
+    leases: LeaseService,
+    runner_streams: afd_gateway::Gateway,
     tasks: afd_fleet::task::Tasks,
     /// What a signup event from the identity provider is verified against.
     identity_webhook_secret: Option<SecretBytes>,
@@ -72,6 +73,10 @@ pub struct ServingPlane {
 }
 
 impl ServingPlane {
+    /// One native session owner shared by the router and supervised runtime.
+    #[must_use]
+    pub fn runner_streams(&self) -> &afd_gateway::Gateway { &self.runner_streams }
+
     /// Shares the request-path task owner with supervised maintenance.
     #[must_use]
     pub(crate) fn task_owner(&self) -> afd_fleet::task::Tasks {
@@ -130,6 +135,8 @@ impl ServingPlane {
             identity_webhook_secret,
             queue,
             bus,
+            runner_wake,
+            frame_memory,
             kek,
             capabilities,
             sessions,
@@ -184,7 +191,7 @@ impl ServingPlane {
             queue.clone(),
             kek,
             providers,
-            bus,
+            bus.clone(),
             broker,
             biller,
         );
@@ -196,6 +203,12 @@ impl ServingPlane {
             task_master,
             github_client,
         );
+        let runners = Runners::new(database.clone(), Entropy::new());
+        let runner_streams = afd_gateway::Gateway::new(afd_gateway::GatewayDependencies {
+            runners: runners.clone(), leases: leases.clone(), drafts: authoring.drafts.clone(),
+            bus, stream_limit: live.stream_limit().clone(), wake: runner_wake, frame_memory,
+            wall_clock: Arc::new(af_core::clock::SystemClock), analytics: analytics.clone(),
+        });
         Self {
             authoring,
             tenant,
@@ -206,7 +219,8 @@ impl ServingPlane {
             probes: LiveDependencies::new(database.clone(), queue.clone()),
             signup_writeback,
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
-            runners: Runners::new(database, Entropy::new()),
+            runners,
+            runner_streams,
             leases,
             tasks,
             identity_webhook_secret,
@@ -238,9 +252,9 @@ fn lease_plane(
     bus: afd_bus::Handle,
     broker: Arc<afd_credential::credential::Broker>,
     biller: Arc<dyn afd_billing::biller::Biller>,
-) -> Plane {
+) -> LeaseService {
     let activity_streams = bus.clone();
-    Plane {
+    LeaseService {
         task_reports: None,
         leases: Leases::new(database.clone(), queue.clone(), bus.clone(), Entropy::new()),
         gates: Gates::new(database.clone(), queue, bus, Entropy::new()),
@@ -279,7 +293,7 @@ mod tests;
 
 /// One native task owner attaches reporting to the existing lease plane.
 fn task_plane(
-    leases: &mut Plane,
+    leases: &mut LeaseService,
     admissions: Admissions,
     admin_workspace: Option<Uuid7>,
     storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,

@@ -102,17 +102,17 @@ impl Leases {
             message: steer_message(acquired),
             counters,
         };
-        self.streams()
-            .publish_frame(
-                &afd_bus::Subject::FleetTail(acquired.fleet_id.clone()),
-                &frame,
-            )
-            .await;
+        let subject = afd_bus::Subject::FleetTail(acquired.fleet_id.clone());
+        let publication = self.streams().publish_frame(&subject, &frame).await;
+        afd_bus::observe_notification(&subject, publication);
     }
 
     /// Announce that a run ended, carrying the row the ending wrote. Answers
-    /// whether the announcement landed.
-    pub async fn publish_completion(&self, closed: &Closed, final_reply: Option<&str>) -> bool {
+    /// the original publication failure so the caller decides how to observe it.
+    ///
+    /// # Errors
+    /// Retains serialization and broker failures after the durable report committed.
+    pub async fn publish_completion(&self, closed: &Closed, final_reply: Option<&str>) -> afd_bus::Result<()> {
         let frame = TailFrame::EventComplete {
             event: Box::new(TailRow::from(closed.row.summary())),
             final_reply: inline_final_reply(final_reply),

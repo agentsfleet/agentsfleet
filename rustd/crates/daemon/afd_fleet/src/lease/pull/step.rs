@@ -35,7 +35,7 @@ impl<T> Step<T> {
 /// A lease written and rendered: the bytes a runner reads.
 ///
 /// The claim is the lease's now, so it is the one ending that keeps it.
-pub(in crate::lease) struct Leased(pub(in crate::lease) String);
+pub(in crate::lease) struct Leased<T = String>(pub(in crate::lease) T);
 
 /// A gate's wait, as an ending.
 ///

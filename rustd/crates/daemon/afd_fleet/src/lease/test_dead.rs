@@ -27,7 +27,7 @@ use jiff::Timestamp;
 
 use crate::lease::affinity::Fence;
 use crate::lease::envelope::{Acquired, Kind};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::store::Leases;
 use afd_memory::Memories;
 
@@ -63,9 +63,9 @@ pub(crate) fn leases() -> Leases {
     clippy::disallowed_methods,
     reason = "the broker's vendors hold Platform::empty(), so this client never exchanges a credential or sends a request; afd_identity::direct's deadline and no_proxy have nothing to bound"
 )]
-pub(crate) fn plane() -> Plane {
+pub(crate) fn plane() -> LeaseService {
     let kek = Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN]));
-    Plane {
+    LeaseService {
         task_reports: None,
         leases: leases(),
         gates: Gates::new(

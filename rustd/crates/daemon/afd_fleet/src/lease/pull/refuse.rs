@@ -13,7 +13,7 @@ use af_core::event::label;
 use af_core::id::Uuid7;
 
 use super::step::{Step, waited};
-use super::{Admission2, Plane};
+use super::{AdmittedFleetWork, LeaseService};
 use crate::error::{Error, Result};
 use crate::lease::admit::{Declined, Refusal};
 use crate::lease::answer::{EVENT_REFUSED, no_work};
@@ -27,7 +27,7 @@ const FLEET_STOPPED: &str = "the fleet stopped between selection and claim";
 /// A fleet whose unreadable config could not even be recorded as such.
 pub(super) const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
 
-impl Plane {
+impl LeaseService {
     /// The installed fleet behind a claim, or the answer that ends the pass.
     ///
     /// Three of the four arms end it, which is why this is a
@@ -77,7 +77,7 @@ impl Plane {
         acquired: &Acquired,
         declined: Declined,
         runner_id: &Uuid7,
-    ) -> Result<Step<Admission2>> {
+    ) -> Result<Step<AdmittedFleetWork>> {
         match declined {
             Declined::Await(waiting) => waited(runner_id, waiting),
             Declined::Refuse(refusal) => self
@@ -106,7 +106,8 @@ impl Plane {
             .block(acquired, Refusal { label, detail: "" })
             .await?;
         if let crate::lease::event::Ended::Now(closed) = ended {
-            self.leases.publish_completion(&closed, None).await;
+            let publication = self.leases.publish_completion(&closed, None).await;
+            afd_bus::observe_notification(&afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()), publication);
         }
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();

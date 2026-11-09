@@ -15,7 +15,7 @@
 //!
 //! # Why the slot rides the stream
 //!
-//! [`afd_sse::Slot`] is released by `Drop`, and the stream owns it. A client
+//! [`afd_sse::StreamPermit`] is released by `Drop`, and the stream owns it. A client
 //! that vanishes mid-frame, a handler that returns early, a task cancelled by
 //! shutdown — every one of them drops the response body, which drops the
 //! stream, which returns the slot. There is no deregister call to forget.

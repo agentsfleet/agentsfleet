@@ -44,6 +44,8 @@ openapi = ["afd_api/openapi"]
 
 [dependencies]
 afd_bus.workspace = true
+afd_gateway.workspace = true
+af_stream.workspace = true
 garde.workspace = true
 serde_json.workspace = true
 af_inference.workspace = true

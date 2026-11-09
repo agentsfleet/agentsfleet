@@ -64,6 +64,11 @@ impl Wake {
             .send_modify(|generation| *generation = generation.wrapping_add(1));
     }
 
+    /// An unknown loss wakes a full eligible-session pass without fabricating a fleet identifier.
+    pub fn recheck(&self) {
+        self.generation.send_modify(|generation| *generation = generation.wrapping_add(1));
+    }
+
     /// Consume one fleet; absence never proves that Postgres has no ready work.
     #[must_use]
     pub fn take(&self) -> Option<Uuid7> {
@@ -115,13 +120,18 @@ async fn receive(wake: Wake, mut subscription: crate::Subscription, stop: Cancel
                 Ok(Received::Message(message)) => match Uuid7::parse(&message.payload) {
                     Ok(fleet) => wake.ring(fleet),
                     Err(error) => {
+                        wake.recheck();
                         producers::fleet::ready_wake_failed(ReadyWake::Gap);
                         let error_code = error.code().as_str();
                         tracing::warn!(event = "admission_wake_invalid_notification", error_code);
                     }
                 },
-                Ok(Received::Lagged(_) | Received::Gap) => producers::fleet::ready_wake_failed(ReadyWake::Gap),
+                Ok(Received::Lagged(_) | Received::Gap) => {
+                    wake.recheck();
+                    producers::fleet::ready_wake_failed(ReadyWake::Gap);
+                }
                 Err(error) => {
+                    wake.recheck();
                     producers::fleet::ready_wake_failed(ReadyWake::Gap);
                     let error_code = error.code().as_str();
                     tracing::warn!(event = "admission_wake_subscription_closed", error_code);

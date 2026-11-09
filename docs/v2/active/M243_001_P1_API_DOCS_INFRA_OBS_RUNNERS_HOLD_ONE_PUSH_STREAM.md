@@ -114,15 +114,16 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `docs/metrics.census.tsv` | EDIT | §4, §7: stream health, fallback and recovery families in; wake answers out |
 | `public/openapi.json` | EDIT | §7: regenerated from `rustd/` with `--no-banner` |
 | `ui/packages/app/tests/approvals-list/resolve.test.ts` | EDIT | Fix the reported CI race by awaiting the visible error before asserting its content |
+| `rustd/crates/daemon/afd_state/Cargo.toml`, `tests/directory/runners.rs`, `tests/support/directory_fixtures.rs` | EDIT | Native UUIDv7 fixtures; a raw UUID fault proves malformed runner identifiers fail the strengthened schema constraint |
 | `schema/20261108123200_runner_leases.sql`, `schema/20261108123100_runner_runners.sql`, `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | §3: edit table files for the cancel marker and owning connection; recheck names after the data-layer follow-up lands |
 | `rustd/Cargo.toml`, `rustd/Cargo.lock`, `rustd/crates/daemon/afd_bus/**` | EDIT, CREATE | §2: bus, wake and Dragonfly adapter; §1, §6: native HTTP/3 and HTTP/2 carrier dependencies |
 | `rustd/crates/daemon/afd_dragonfly/src/lib.rs`, `doorbell/**` | EDIT, DELETE | §2: the doorbell moves to `afd_bus::wake` |
-| `rustd/crates/daemon/afd_admission/src/wake.rs`, `afd_approval/src/inbox/announce.rs`, `afd_approval/src/inbox/resolve/mod.rs`, `afd_authoring/src/model/progress/context.rs`, `publish.rs`, `afd_events/src/activity.rs`, `afd_events/src/steer/mod.rs`, `afd_fleet/src/lease/bracket.rs`, `afd_gate/src/gate/park.rs`, `afd_sse/src/fanin.rs`, `live.rs`, `ceiling.rs`, `afd_api_tenant/src/handler/draft/stream/mod.rs` | EDIT | §2: every production publisher and subscriber goes through `afd_bus::Handle` |
+| `rustd/crates/daemon/afd_admission/src/wake.rs`, `afd_approval/src/inbox/announce.rs`, `afd_approval/src/inbox/resolve/mod.rs`, `afd_authoring/src/model/progress/context.rs`, `publish.rs`, `afd_events/src/activity.rs`, `afd_events/src/steer/mod.rs`, `afd_fleet/src/lease/bracket.rs`, `afd_gate/src/gate/park.rs`, `afd_sse/src/fanin.rs`, `live.rs`, `stream_limit.rs`, `afd_api_tenant/src/handler/draft/stream/mod.rs` | EDIT | §2: every production publisher and subscriber goes through `afd_bus::Handle` |
 | test harnesses that build a hub: `afd_api/tests/harness/**`, `afd_api/tests/support/**`, `afd_sse/tests/**`, `afd_approval/tests/integration_inbox_*.rs`, `afd_authoring/tests/draft/model_calls/progress/fixture.rs`, `afd_events/tests/integration_backfill.rs`, `afd_gate/tests/integration_gate_tail.rs`, `afd_fleet/tests/integration_wall_counters.rs`, `agentsfleetd/tests/integration_cluster_outcomes.rs`, `afd_bench/src/datastores/mod.rs`, `afd_bench/src/lane/tail/**` | EDIT | §2: build an `afd_bus::Handle` instead |
 | `rustd/crates/protocol/af_wire/src/protocol/**`, `paths.rs`, `runner/mod.rs`, `lease/request.rs`, `lease/response.rs`, `af_wire/tests/{routes,strictness,validation_holds,claim_selection}.rs` | CREATE, EDIT | §3: frames; `RUNNER_STREAM`; `wake`, `woken`, `LeaseRequest` and `LeaseResponse` go |
 | `rustd/crates/foundation/af_core/src/timing.rs`, `limits.rs`, `error_code/fleet.rs`, `error_code/mod.rs`, `problem/fleet.rs` | EDIT | §3: stream timings and assertions; three codes; §7: three constants go |
 | `rustd/crates/daemon/afd_gateway/**` | CREATE | §4: registry, session, offer passes, target cache, rebuild, recheck, HTTP/2 and HTTP/3 server adapters; exact planned files in `runner_protocol.md` |
-| `rustd/crates/daemon/afd_http/src/route/runner.rs`, `afd_http/src/services/mod.rs` and the `Services` trait file, `services/leasing/mod.rs`, `services/leasing/plane.rs` | EDIT | §4: the stream route; `gateway()`; `wait_for_work` and `activity` leave `Leasing` |
+| `rustd/crates/daemon/afd_http/src/route/runner.rs`, `afd_http/src/services/mod.rs` and the `Services` trait file, `services/leasing/mod.rs`, `services/leasing/lease_service.rs` | EDIT | §4: the stream route; `gateway()`; `wait_for_work` and `activity` leave `Leasing` |
 | `rustd/crates/daemon/afd_api_runner/src/handler/runner/stream.rs`, `mod.rs`, `usage.rs`, `lib.rs`, `openapi.rs` | CREATE, EDIT | §4: session opening, version check, ceiling permit, drain registration |
 | `rustd/crates/daemon/afd_fleet/src/lease/claim.rs`, `activity/mod.rs`, `store.rs`, `answer/mod.rs`, `renew/mod.rs`, `rebuild.rs`, `sql/select_runner_live_leases.sql`, `sql/select_waiting_admission.sql`, `sql/select_lease_for_renew.sql`, `sql/activity.rs` | EDIT, CREATE | §4: claim answers its target; rebuild read; the fallback probe; §5: renewal reads the cancel marker |
 | `rustd/crates/daemon/afd_runner/src/heartbeat/mod.rs`, `sql/runner/select_runner_assigned_policy.sql`, `sql/runner/write_runner_connection.sql`, `sql/runner/mod.rs` | EDIT, CREATE | §4, §5: the beat's read carries status, token-hash match and `connection_id`; connect writes it |
@@ -140,6 +141,11 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/afd_bench/src/lane/lease/drain/{runner,window,mod,tests}.rs`, `lane/lease/saturation/production.rs`, `lane/lease/seed/mod.rs`, `make/bench.mk`, `bench/baselines/lease.rig.json` | EDIT | §8: the drain drives a session; idle totals replace per-poll ratios; median baseline |
 | retired: `afd_api_runner/src/handler/runner/{heartbeat,wake,wake_tests,renew,activity,report,folds}.rs`, `handler/runner/lease/**`, `afr_supervisor/src/heartbeat/**`, `afd_api/tests/integration_runner_heartbeat.rs`, `agentsfleetd/tests/integration_runner_wake.rs`, `afd_approval/tests/integration_grant_request.rs` | DELETE, EDIT | §7: pull path and tests; fold client methods currently live in `afr_supervisor/src/client/lease_verbs/mod.rs` |
 | `rustd/crates/daemon/main/src/serve/runner_stream.rs`, `rustd/crates/daemon/main/src/preflight/runner_stream.rs` and their parent module indexes | CREATE, EDIT | direct TLS listener and deployment configuration; exact transport mapping is fixed by §1 |
+| `rustd/crates/daemon/afd_http/src/auth/{guard,request,runner_stream,mod}.rs`, `handler/refusal/mod.rs`, `services/{http_services,runner_stream,mod}.rs`, `services/leasing/lease_service.rs` | CREATE, EDIT, MOVE | Indy's middleware and naming review; explicit result types and one scope guard |
+| `rustd/crates/daemon/afd_sse/src/stream_limit.rs` and all renamed-type callers in the exact review inventory | MOVE, EDIT | `StreamLimit`, `StreamPermit`, `LeaseService` and `AdmittedFleetWork` replace ambiguous names without aliases |
+| `rustd/crates/daemon/afd_fleet/src/lease/{offer,deliver/issue,report/observations}.rs`, `report/observations/tests.rs`, `src/error/{kind,lift,classify,permanence}.rs` | CREATE, EDIT | Typed offer metadata and observation errors preserve saved timestamps and usage failures |
+| `rustd/crates/daemon/main/src/preflight/{config,mod,read}.rs`, `plane/{config,services,tests}.rs` | EDIT | Resolve wake and memory settings before startup; invalid values remain absent until admission |
+| `rustd/crates/daemon/afd_bench/src/error/{kind,mod,accessors}.rs` | EDIT | Preserve failed concurrency conversion rather than substituting a maximum value |
 | `deploy/fly/agentsfleetd-dev/fly.toml`, `deploy/fly/agentsfleetd-prod/fly.toml` | PROPOSE only; edit after Indy's approval | private runner listener and certificate delivery; public ingress is outside this milestone |
 | `~/Projects/docs` branch `chore/m243-runner-stream-changelog`: `runners.mdx`, `runners/install.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx`, `changelog.mdx` | EDIT | §7: direct endpoint and network prerequisites, carrier fallback, kill behaviour and errors; API pages after merge |
 
@@ -514,6 +520,33 @@ Schema this milestone leaves with no runtime reader or writer is removed from it
 - **Patch-vs-refactor verdict:** a **refactor** of the runner transport, because every runner verb changes carrier while the lease plane's statements stay.
 
 ## Discovery (consult log)
+
+Indy changed the working order on Nov 09, 2026:
+
+> can you complete the code first and then we can fix CI and the lint, cargo checks and so on.
+>
+> Ask indy for approval before running lint, test-unit and so.
+>
+> once you write the code just push the changes
+>
+> or commit them.
+>
+> and push to the PR
+
+Finish and publish code to draft #819 before starting further manual verification.
+Ask Indy before lint, tests, Cargo checks or other verification commands.
+The draft must distinguish written code from verified behavior; retain the morning merge hold.
+
+Indy requested a review checkpoint after the current feedback is fixed:
+
+> So after you fix the above changed, take a check point with all the changes i have reviewed, so i can look at the next set of changes again.
+
+The checkpoint includes the source review for RS-SENTINEL and RS-UNWRAP across the PR diff.
+It preserves explicit publication errors and treats notification observation as the caller's post-commit policy.
+No new milestone Dimension is marked verified by this checkpoint.
+
+The precision review replaces census truncation with the issue statement's returned stored `created_at`.
+The shared capacity clock remains unchanged.
 
 - **Current owner decisions, Nov 08, 2026:**
   > Indy: "since i dont want to use websocket" — context: remove the earlier transport default.

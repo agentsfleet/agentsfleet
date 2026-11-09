@@ -4,6 +4,9 @@ use super::Error;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("a saved usage count cannot be represented as a nonnegative metric")]
+    UsageCount { #[source] source: std::num::TryFromIntError },
+
     #[error("private checkpoint upload authorization could not be signed")]
     TaskStorageSigning {
         #[source]

@@ -24,6 +24,8 @@ impl Identity {
     }
 
     pub(crate) fn h2(&self) -> Result<SslAcceptor> {
+        // The older `mozilla_modern` v4 preset disables TLS 1.3 in this crate.
+        // Start from v5, then require TLS 1.3 through our shared policy below.
         let mut context = SslAcceptor::mozilla_intermediate_v5(SslMethod::tls())?;
         super::key_exchange::prefer(&mut context)?;
         context.set_certificate_chain_file(&self.chain)?;
