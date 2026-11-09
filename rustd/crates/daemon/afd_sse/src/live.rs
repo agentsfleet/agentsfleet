@@ -20,6 +20,16 @@ use crate::fanin::FanIn;
 use crate::frame::Frame;
 use crate::resubscribe::{Resubscribe, resilient};
 
+/// What one subscribe attempt found.
+pub(crate) enum Subscribed {
+    /// The subscription is live.
+    Open(afd_bus::Subscription),
+    /// No bus, or one that may answer on a later attempt.
+    Unavailable,
+    /// The bus shut down; the stream ends and the client reconnects elsewhere.
+    Closed,
+}
+
 /// What the two stream routes act through.
 #[derive(Debug, Clone)]
 pub struct Live {
@@ -110,14 +120,28 @@ impl Live {
 
     /// Failed subscription startup preserves the silent dashboard surface.
     pub async fn subscribe(&self, subject: &afd_bus::Subject) -> Option<afd_bus::Subscription> {
-        let bus = self.bus.as_ref()?;
+        match self.try_subscribe(subject).await {
+            Subscribed::Open(subscription) => Some(subscription),
+            Subscribed::Unavailable | Subscribed::Closed => None,
+        }
+    }
+
+    /// Subscribe, telling a bus that may answer later from one that closed.
+    pub(crate) async fn try_subscribe(&self, subject: &afd_bus::Subject) -> Subscribed {
+        let Some(bus) = self.bus.as_ref() else {
+            return Subscribed::Unavailable;
+        };
         match bus.subscribe(subject).await {
-            Ok(subscription) => Some(subscription),
+            Ok(subscription) => Subscribed::Open(subscription),
             Err(error) => {
                 let error_code = error.code().as_str();
                 let reason = error.reason();
                 tracing::warn!(event = "sse_subscription_unavailable", error_code, reason);
-                None
+                if error.is_closed() {
+                    Subscribed::Closed
+                } else {
+                    Subscribed::Unavailable
+                }
             }
         }
     }

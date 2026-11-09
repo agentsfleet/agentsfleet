@@ -18,7 +18,7 @@ use afd_bus::{Received, Subject, Subscription};
 use futures_util::stream::{self, Stream};
 
 use crate::frame::Frame;
-use crate::live::Live;
+use crate::live::{Live, Subscribed};
 
 /// How a lost tail retries its subscription.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,20 +79,29 @@ pub(crate) fn resilient(
             state = match state {
                 State::Subscribing { attempt } => {
                     let wait = live.resubscribe().wait(attempt.saturating_sub(1));
+                    let wait_ms = wait.as_millis();
+                    tracing::debug!(attempt, wait_ms, event = "sse_tail_resubscribing");
                     tokio::time::sleep(wait).await;
-                    match live.subscribe(&subject).await {
+                    match live.try_subscribe(&subject).await {
                         // Frames published while the tail was down are gone:
                         // the viewer backfills from the events list.
-                        Some(subscription) => {
+                        Subscribed::Open(subscription) => {
+                            tracing::debug!(attempt, event = "sse_tail_resubscribed");
                             let next = State::Tailing {
                                 subscription,
                                 seq: 0,
                             };
                             return Some((Frame::catching_up(0), (live, subject, next)));
                         }
-                        None => State::Subscribing {
+                        Subscribed::Unavailable => State::Subscribing {
                             attempt: attempt.saturating_add(1),
                         },
+                        // A closed bus never answers again: end the stream, so
+                        // the client reconnects to a replica that is serving.
+                        Subscribed::Closed => {
+                            tracing::debug!(event = "sse_tail_closed", reason = "closed");
+                            return None;
+                        }
                     }
                 }
                 State::Tailing {

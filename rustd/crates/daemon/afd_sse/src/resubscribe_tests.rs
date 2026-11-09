@@ -76,6 +76,20 @@ async fn tail_subscribe_failure_sends_catching_up() -> TestResult {
     Ok(())
 }
 
+#[tokio::test(start_paused = true)]
+async fn a_tail_opened_on_a_closed_bus_ends_rather_than_retrying() -> TestResult {
+    let (bus, _server) = afd_bus::test_util::detached()?;
+    bus.shutdown().await?;
+    let live = Live::new(bus, Ceiling::new(4));
+    let mut tail = live.tail_of(&Uuid7::parse(FLEET)?).await;
+    for _ in 0..2 {
+        tail.next().await.ok_or("the opening")?;
+    }
+    let ended = tokio::time::timeout(Duration::from_secs(60), tail.next()).await?;
+    assert!(ended.is_none(), "a closed bus is never retried: {ended:?}");
+    Ok(())
+}
+
 #[tokio::test]
 async fn a_closed_bus_ends_the_tail_so_the_client_reconnects_elsewhere() -> TestResult {
     let (bus, _server) = afd_bus::test_util::detached()?;
@@ -106,7 +120,6 @@ async fn a_failed_subscribe_is_announced_once_then_retried_quietly() -> TestResu
 #[derive(Debug)]
 struct Flaky {
     refusals: AtomicUsize,
-    closed: Handle,
     live: Handle,
 }
 
@@ -128,7 +141,11 @@ impl Bus for Flaky {
             })
             .is_ok();
         if refusing {
-            self.closed.subscribe(subject).await
+            // A transient refusal, as a timed-out subscribe is: the tail retries.
+            match tokio::time::timeout(Duration::ZERO, std::future::pending::<()>()).await {
+                Err(elapsed) => Err(elapsed.into()),
+                Ok(()) => self.live.subscribe(subject).await,
+            }
         } else {
             self.live.subscribe(subject).await
         }
@@ -141,12 +158,9 @@ impl Bus for Flaky {
 
 #[tokio::test]
 async fn a_tail_that_failed_to_subscribe_recovers_with_catching_up() -> TestResult {
-    let (closed, _closed_server) = afd_bus::test_util::detached()?;
-    closed.shutdown().await?;
     let (live_bus, server) = afd_bus::test_util::detached()?;
     let flaky = Handle::new(Flaky {
         refusals: AtomicUsize::new(3),
-        closed,
         live: live_bus,
     });
     let fleet = Uuid7::parse(FLEET)?;

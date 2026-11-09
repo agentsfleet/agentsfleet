@@ -106,6 +106,12 @@ af_core::error_lifts!(Error, ErrorKind:
 );
 
 impl Error {
+    /// Whether the adapter was shut down, so no retry can succeed.
+    #[must_use]
+    pub const fn is_closed(&self) -> bool {
+        matches!(self.kind(), ErrorKind::Closed)
+    }
+
     /// Finite diagnostic category; native messages and payloads never become labels.
     #[must_use]
     pub const fn reason(&self) -> &'static str {
