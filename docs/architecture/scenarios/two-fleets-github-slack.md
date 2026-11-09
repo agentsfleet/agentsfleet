@@ -308,6 +308,8 @@ A browser's `EventSource` cannot send an `Authorization` header, so the dashboar
  You  <--- live activity frames; A#2's answer reaches the CLI stream
 ```
 
-**A runner that dies mid-job:** its lease expires 30 s after its last renew. The next offer pass **reclaims** the job: the same history row, a new lease under a higher fencing token.
+**A runner that dies mid-job:** its lease expires 35 seconds after its last renewal.
+The next offer pass reclaims the job under a higher fencing token, retaining the same history row.
 
-A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and each slice one `billing.usage_lines` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").
+A late report from the dead runner is refused with `UZ-RUN-005`.
+History stays one row, with one `billing.usage_lines` row per slice ([data flow](../data_flow.md)).

@@ -4,22 +4,20 @@
     reason = "test target: a fixture that cannot be built is a broken test"
 )]
 
-use std::io::Write as _;
 use std::time::Duration;
 
 use af_core::id::Uuid7;
 use af_wire::activity::{
-    ActivityAccepted, ActivityFrame, FleetResponseChunk, ToolCallCompleted, ToolCallProgress,
-    ToolCallStarted,
+    ActivityFrame, FleetResponseChunk, ToolCallCompleted, ToolCallProgress, ToolCallStarted,
 };
 use afr_agent::EventSink as _;
 use afr_telemetry::labels::FrameDrop;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
-use super::{Counter, MAX_BATCH_BYTES, channel, encoded_len};
+use super::{MAX_BATCH_BYTES, channel, encoded_len};
 use crate::client::Verb;
 use crate::error;
-use crate::test_support::{Answer, LEASE_ID, activities, drain, json};
+use crate::test_support::{Answer, LEASE_ID, activities, drain};
 
 /// The tool every frame here names.
 pub(super) const TOOL: &str = "shell";
@@ -171,7 +169,7 @@ async fn test_activity_sender_keeps_filling_a_batch_that_waits() {
 /// start rather than from whichever chunk came last.
 #[tokio::test(start_paused = true)]
 async fn frames_ride_together_and_the_first_answer_chunk_is_timed() {
-    let (plane, mut calls) = activities(|_call| json(&ActivityAccepted { ok: true }));
+    let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let (sink, mut pump) = channel(&plane, &lease);
     sink.emit(tool(TOOL));
@@ -209,7 +207,7 @@ async fn frames_ride_together_and_the_first_answer_chunk_is_timed() {
 /// quiet spell waits a full period rather than going on a stale tick.
 #[tokio::test(start_paused = true)]
 async fn a_frame_after_a_quiet_spell_waits_a_full_period_before_it_is_sent() {
-    let (plane, mut calls) = activities(|_call| json(&ActivityAccepted { ok: true }));
+    let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let (sink, mut pump) = channel(&plane, &lease);
 
@@ -236,17 +234,13 @@ async fn a_frame_after_a_quiet_spell_waits_a_full_period_before_it_is_sent() {
 }
 
 #[test]
-fn a_frame_is_measured_as_encoded_and_the_counter_keeps_count() {
+fn a_frame_is_measured_as_encoded() {
     let frame = tool(TOOL);
-    let mut counter = Counter(0);
-    counter.write_all(b"abc").unwrap();
-    counter.flush().unwrap();
 
     assert_eq!(
         encoded_len(&frame),
         serde_json::to_vec(&frame).unwrap().len()
     );
-    assert_eq!(counter.0, 3, "a flush keeps the count");
 }
 
 #[tokio::test(start_paused = true)]

@@ -627,17 +627,18 @@ There is no Bearer fallback. The `Authorization` header is never consulted on `/
 
 ### C. EXECUTE  (lease → runner → report)
 
-The lease call prepares work for the runner. The report call commits its terminal outcome.
+The gateway claims work and pushes a native offer.
+The native report commits its terminal outcome.
 
 1. Refuse placement when the runner's isolation verdict is degraded or unreadable.
 2. Probe eligible active fleets and each fleet's oldest unsettled admission through `idx_admissions_unsettled`.
-3. Prefer held fleets, recent hints and previous placement; randomize the remaining candidates. Try at most 64 candidates per poll.
+3. Prefer held fleets, recent hints and previous placement; randomize the remaining candidates. Try at most 64 candidates per claim.
 4. Lock a fleet slot and its exact oldest admission with `SKIP LOCKED`. A locked or parked head cannot be skipped within that fleet.
 5. Advance the slot and admission fences together. Decode before committing; malformed stored data rolls back both fences.
 6. Open `fleet.events` and stamp admission delivery in one transaction under those fences. Terminal refusals settle the admission without issuing a lease.
 7. Resolve the payer, balance, budget, approvals and installed policy. A wait for a person parks the head and releases the unissued slot.
 8. Resolve declared tool secrets separately from the model provider key. Build `ExecutionPolicy` and issue `runner.leases` under the claimed fence.
-9. Run the lease in the supervisor and sandbox. Forward activity over HTTP; report the outcome and measured usage when the turn ends.
+9. Run the lease in the supervisor and sandbox. Forward activity over the native session; report the outcome and measured usage when the turn ends.
 10. Commit the report under the host, slot, lease and admission guards. One transaction records usage, terminal history, the checkpoint, admission settlement, slot release and any outbound obligation.
 11. After commit, publish terminal activity and attempt outbound delivery.
 

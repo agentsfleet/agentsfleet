@@ -89,6 +89,9 @@ User Datagram Protocol (UDP) carries HTTP/3 through QUIC.
 Transmission Control Protocol (TCP) carries HTTP/2.
 The port above is the default; both listeners use the configured address.
 
+[Fly documents](https://fly.io/docs/networking/app-services/) that `[::]` also accepts private IPv6 traffic.
+Direct private access needs no public `[[services]]` entry.
+
 The DEV OVH runner reaches Fly through `wg-quick@fly-dev`.
 Preparation installs WireGuard; deployment restores `/etc/wireguard/fly-dev.conf` from the DEV vault through SSH input, with root ownership and mode `0600`.
 
@@ -120,11 +123,16 @@ Reconnect rebuilds live work from Postgres.
 Each running lease keeps its last confirmed expiry and stops when that deadline expires.
 A reconnect or report retry cannot extend that deadline.
 
+Fleet work starts stopping nine seconds before expiry.
+This leaves time to stop the engine and reap its processes.
+
 | Timing | Value | Meaning |
 |---|---|---|
 | Heartbeat | Every 10 seconds | No heartbeat for two intervals closes the session |
 | Ping | Every 15 seconds | An unanswered ping fails after 5 seconds; idle detection can take 20 seconds |
 | Renewal | Every 5 seconds | Each answer has its own 5-second deadline |
+| Lease grant | 35 seconds | Includes recovery, another renewal answer and physical cleanup |
+| Offline threshold | 105 seconds | Three missed lease lifetimes mark the host offline |
 | Recovery attempt | 7 seconds total | HTTP/3 setup 2 seconds, HTTP/2 setup 2 seconds, authenticated opening and rebuild 3 seconds |
 | Reconnect delay | Jittered exponential backoff, capped at 30 seconds | Failed openings and short sessions retain retry history |
 | Stable reset | 60 seconds | A stable session resets reconnect backoff |
@@ -132,6 +140,7 @@ A reconnect or report retry cannot extend that deadline.
 
 [Timing constants](../../rustd/crates/foundation/af_core/src/timing.rs) assert the renewal and recovery relationship.
 Repeated outages can exceed the recovery window; confirmed lease expiry still stops the running lease.
+Reconnect starts renewal immediately; it never waits for the next periodic tick.
 
 A kill saves cancellation before sending its notification.
 Renewal and reconnect read that saved decision if the notification is lost.
@@ -163,7 +172,7 @@ The older process receives UZ-RUN-021 and halts; stop the duplicate process befo
 
 Postgres owns saved results, acknowledgements and billing records.
 Workers retry unacknowledged reports and task-decision receipts from memory using their original identities.
-Caller shutdown allows accepted work and result delivery thirty seconds, then stops remaining work.
+Caller shutdown allows accepted work and result delivery thirty-five seconds, then stops remaining work.
 
 Workers receive the existing five-second cleanup grace before forced cancellation and joining.
 Process exit after that grace can lose reports or usage that the daemon has not acknowledged.
@@ -215,6 +224,8 @@ The [gateway](../../rustd/crates/daemon/afd_gateway/src/session/mod.rs) and [run
 
 Receive and send pools are separate; each receives half the configured totals.
 Invalid values refuse startup before allocation.
+
+Accepted offers use a separate allowance of up to 128 MiB for 64 leases, so workers holding offers cannot block report acknowledgements.
 The 2 MiB frame and 256 pending-request limits remain fixed protocol bounds.
 
 ### Observability

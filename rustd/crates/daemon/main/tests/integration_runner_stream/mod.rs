@@ -2,6 +2,7 @@
 
 #[cfg(feature = "test-util")]
 mod authoring;
+mod authority;
 mod heartbeat;
 mod offers;
 
@@ -18,3 +19,9 @@ mod recovery;
 mod lifecycle_selection;
 
 mod usage_replay;
+
+mod measurements;
+mod population;
+
+mod isolation;
+mod reconciliation;

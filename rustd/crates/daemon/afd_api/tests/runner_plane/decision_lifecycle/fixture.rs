@@ -1,5 +1,6 @@
 //! Registered runners issue a real lease and share the router's native secret key.
 
+mod native_report;
 mod storage;
 
 use std::borrow::Cow;

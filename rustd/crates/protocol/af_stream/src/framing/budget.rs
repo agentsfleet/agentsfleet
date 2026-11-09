@@ -75,6 +75,15 @@ impl Budget {
         }
     }
 
+    pub(super) fn try_reserve(
+        &self,
+        kind: StreamKind,
+        bytes: usize,
+    ) -> Result<OwnedSemaphorePermit> {
+        let requested = u32::try_from(bytes)?;
+        Ok(Arc::clone(self.pool(kind)).try_acquire_many_owned(requested)?)
+    }
+
     pub(super) async fn reserve(
         &self,
         kind: StreamKind,

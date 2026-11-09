@@ -172,7 +172,7 @@ where
         }
     };
     tokio::select! {
-        result = tokio::time::timeout(std::time::Duration::from_secs(2), waiting) => result.unwrap_or(false),
+        biased;
         frame = client.offer() => {
             let frame = frame.expect("the native owner remains live");
             let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
@@ -180,7 +180,8 @@ where
                 assert_ne!(lease.event.fleet_id, run.fleet.as_str(), "a refused fleet must not be issued");
             }
             false
-        }
+        },
+        result = tokio::time::timeout(std::time::Duration::from_secs(2), waiting) => result.unwrap_or(false),
     }
 }
 

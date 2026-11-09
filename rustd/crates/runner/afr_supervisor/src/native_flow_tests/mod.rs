@@ -1,5 +1,7 @@
 //! Native frame observations prove independent control and an idle runner's census.
 
+mod pressure;
+
 use std::time::Duration;
 
 use crate::{

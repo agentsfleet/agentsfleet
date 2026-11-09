@@ -6,7 +6,7 @@
     reason = "test target: failing loudly on a malformed payload is the correct outcome"
 )]
 
-use af_wire::activity::{ActivityAccepted, ActivityRequest};
+use af_wire::activity::ActivityRequest;
 use af_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
 use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryPushRequest};
 use af_wire::report::{
@@ -244,7 +244,7 @@ fn policy_carrying_replies() -> [(&'static str, String, Decodes); 2] {
 }
 
 /// The replies to the verbs a runner makes while it holds a lease.
-fn lease_verb_replies() -> [(&'static str, String, Decodes); 7] {
+fn lease_verb_replies() -> [(&'static str, String, Decodes); 6] {
     [
         (
             "hydrate",
@@ -262,9 +262,6 @@ fn lease_verb_replies() -> [(&'static str, String, Decodes); 7] {
             r#"{"token":"t","expires_at":"1970-01-01T00:00:00.001Z","future":1}"#.to_owned(),
             |b| serde_json::from_slice::<MintCredentialResponse<'_>>(b).is_ok(),
         ),
-        ("activity", r#"{"ok":true,"future":1}"#.to_owned(), |b| {
-            serde_json::from_slice::<ActivityAccepted>(b).is_ok()
-        }),
         (
             "renew",
             r#"{"lease_expires_at":"1970-01-01T00:00:00.009Z","future":1}"#.to_owned(),

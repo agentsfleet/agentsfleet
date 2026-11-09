@@ -60,7 +60,7 @@ pub(crate) async fn workers(halt: &Halt, workers: &mut JoinSet<()>) {
 
 #[cfg(test)]
 mod tests {
-    use super::{finish, workers};
+    use super::{LEASE_TTL, finish, workers};
     use crate::{halt::Halt, report::delivery::until_acknowledged};
     use std::{
         sync::{
@@ -86,7 +86,7 @@ mod tests {
             );
         };
         finish(&halt, reporting).await;
-        assert_eq!(started.elapsed(), Duration::from_secs(30));
+        assert_eq!(started.elapsed(), LEASE_TTL);
         assert!(halt.stopped().is_cancelled());
     }
 

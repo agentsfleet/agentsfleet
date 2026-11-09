@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-11-09
+verified: 2026-11-10
 product_version: 0.75.0
 executable: false
 ---
@@ -10,421 +10,93 @@ executable: false
 
 ## What it is
 
-This is a source audit of Indy's feedback on draft [PR 819](https://github.com/agentsfleet/agentsfleet/pull/819).
-The date records source reading; verification results are recorded separately below.
-Historical results below belong to earlier checkpoints. The resumed implementation has not started its combined Make verification.
+Source closure for Indy's feedback on [PR 819](https://github.com/agentsfleet/agentsfleet/pull/819).
+The 23 numbers match the original comments. Implementation findings are closed in source; runtime verification remains due.
 
-Status meanings:
-
-- **Changed in source:** the named edit exists; its required runtime evidence remains due.
-- **Partial:** some requested work exists and the row names what remains.
-- **Explained:** the answer follows the cited source; this does not certify the implementation.
-- **Pending:** the requested change or evidence has not been completed.
-
-No row below means the whole PR is ready.
+This table claims no unrun test passed.
 
 ## Why it exists
 
-Indy requested: "an audit of all my feedback the changes that you did".
-Earlier replies blurred existing code, approved decisions and unverified changes.
-This audit separates those states and records concrete outstanding work.
+Indy requires owner-feedback fixes first, the foundation/crate reuse audit next, then integration, coverage, memory, benchmark and deployment checks.
+The previous audit mixed obsolete findings with later corrections; this replaces that history with current source dispositions.
 
 ## How it behaves
 
-### Report storage, billing and simplicity
+### Original comments
 
-| Feedback | State | Source evidence and remaining work |
-|---|---|---|
-| Remove report spool files | Changed in source | Deleted `afr_supervisor/src/report_spool/` and `src/drainer/`, including fleet and authoring disk storage, startup scans, file replay and quarantine. [`settle`](../../../rustd/crates/runner/afr_supervisor/src/lease_loop/settle.rs) keeps one zeroing report buffer in its worker. |
-| Retry only from memory | Changed in source | [`until_acknowledged`](../../../rustd/crates/runner/afr_supervisor/src/report/delivery/mod.rs) retries the caller's operation and returns terminal failures. The worker retains its slot until acknowledgement; no replacement report queue was added. |
-| Remove backward-format fallback and the memory-window version guess | Changed in source | Deleted `reshaped`, `fall_back`, `ShapeRefused`, `forget_rejected`, field stripping and the separate settle-time memory push. The current report carries memory and timing segments regardless of whether its lease included a memory window. |
-| Billing must not depend on files | Changed in source | Deleted the separate local decision-receipt store and its drainer too. [`verbs/decision.rs`](../../../rustd/crates/runner/afr_supervisor/src/verbs/decision.rs) retains its receipt in the calling task until the daemon acknowledges it. No task-decision receipt directory is created. |
-| Keep database authority | Existing server behavior retained | [`task/decision/dispatch.rs`](../../../rustd/crates/daemon/afd_fleet/src/task/decision/dispatch.rs) commits issuance before returning a dispatch. Its locked issued/accounted check returns an existing result on repetition. [`lease/commit.rs`](../../../rustd/crates/daemon/afd_fleet/src/lease/commit.rs) commits completion and usage in Postgres. No SQL change was made for report-file removal. |
-| Explain what a report is | Explained | [`ReportRequest`](../../../rustd/crates/protocol/af_wire/src/report/mod.rs) declares the final answer, outcome, identifiers, fencing token, usage, checkpoint, optional tool trace, memory changes and timing. This completes work through the daemon; it is not a new Grafana analytics feed. |
-| Is this the previous reports API? | Explained | Fleet report delivery uses [`Up::Report` / `Down::ReportAck`](../../../rustd/crates/protocol/af_wire/src/protocol/up/mod.rs). The previous HTTP report handler is deleted. The daemon retains its report operation and database writes. |
-| Why add `authoring/report.rs`? | Corrected in source | The temporary extra file was removed. The existing [`authoring/mod.rs`](../../../rustd/crates/runner/afr_supervisor/src/authoring/mod.rs) owns memory-only authoring delivery. Its current accounting-only form after private-answer expiry is a privacy rule, not an old daemon format. |
-| Keep things simple; add features later | Changed in source | Each current worker owns its result and retry future. No disk outbox, recovery scanner, receipt encryption store or separate completed-report drainer remains. |
-| Tell Indy when spool removal is done | Source removal complete; unverified | Source and callers are migrated. Regression test sources cover unchanged report retry, refusal without rewriting, no report directories and receipt retry without another reservation. They have not run. |
+Rust paths below are relative to `rustd/crates/`.
 
-The selected owner answer was: "Remove runner disk storage; retry from memory".
-Indy also required: "No backward compatibility crap, when you remove storage reports."
-No migration reads old report files into memory or Postgres.
-
-### Disk-code history and approval evidence
-
-Git follows the original report-file module to commit `830cb0c4b8711c9bfd97aae81d8a450cc56e1eb6`, dated Oct 03, 2026.
-The file-writing path also exists in the published M243 checkpoint `a0a8cf3b766d74fb7984d332cbe5cc49010bc0a0`.
-That original commit is already an ancestor of fetched `origin/main` at `61820b66a765a2aa87684251b07aebebd2c20955`.
-
-It is not a commit introduced by PR 819.
-The report-spool module is identical between that main revision and published checkpoint `a0a8cf3b7`.
-`git merge-base --is-ancestor 830cb0c origin/main` returned zero; the PR-range file log and diff both returned no changes.
-
-The mistake in M243 was retaining that mechanism as an agent decision and presenting retention as agreed.
-Commit authorship does not establish who proposed the behavior or whether Indy approved it.
-No explicit owner approval for retaining disk report storage in M243 was found.
-
-The earlier specification labeled retention as an agent decision; this session rejected and removed that decision.
-
-### Pending-memory ownership
-
-The local `bytes` value in `lease_loop/settle.rs` owns the serialized fleet report through `Zeroizing<Vec<u8>>`.
-Returning from delivery, returning a terminal error, or dropping the future drops that wrapper and zeroes its allocation.
-The separate `CapturedMemory` owner also zeroes its owned text through `Drop`.
-
-Native `OwnedFrame` payloads use `Zeroizing<Vec<u8>>` too.
-
-The `Pending` value in `authoring/mod.rs` explicitly zeroes its owned private answer in `Drop`.
-These are source paths, not evidence that every serializer, HTTP, TLS or operating-system copy is wiped.
-Whole-PR ownership review and the approved memory tests remain due.
-
-### Removed code and test coverage
-
-Disk replay, file-permission, disk-clock recovery and old-shape fallback tests were deleted because their production behavior was deleted.
-This is a removal record, not an approved feature, deferred implementation or permission to restore disk storage.
-Root lifecycle tests coupled to polling and disk replay still need replacement through the native session fixture.
-
-```text
-worker finishes
-      |
-      v
-current result in worker memory
-      |
-      +---- send ----> daemon ----> Postgres commit
-      |                                  |
-      +<----------- acknowledgement -----+
-      |
-release worker and pending memory
-
-disconnect before acknowledgement -> same worker retries
-process loss before commit        -> unsent result or usage can be lost
-commit succeeds; reply is lost    -> retry reads saved result without another charge
-```
-
-Acknowledged usage stays in Postgres.
-A process lost before recording final usage can leave missing or unknown provider usage.
-Neither a trace nor a fabricated successful report resolves that uncertainty.
-
-### Original diff comments
-
-The numbers below match the 23 numbered comments Indy supplied.
-
-| Comment | Request | State | Change, source and remaining work |
+| # | Feedback | Source disposition | File |
 |---|---|---|---|
-| 1 | Explain `self.0` and initialization | Changed in source | [`Gateway`](../../../rustd/crates/daemon/afd_gateway/src/lib.rs) now names its shared field `inner: Arc<Inner>`. `new` initializes it; `in_flight` reads its task tracker. Provisional-task counting still needs shutdown tests. |
-| 2 | Explain `preflight::runner_stream` | Changed in source | Renamed the preflight module to [`runner_listener`](../../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) and its type to `RunnerListenerConfig`. This parses daemon listener settings. `af_stream` owns the HTTP/2 and HTTP/3 transport abstraction. |
-| 3 | Are certificate inputs post-quantum safe? | Changed in source; evidence pending | [`key_exchange`](../../../rustd/crates/protocol/af_stream/src/tls/key_exchange/mod.rs) now requires the hybrid group on both transports and ends. Classical certificate signatures remain a separate concern. Required tests have not run; production route evidence remains due. |
-| 4 | Standard human-readable and agent-readable errors | Partial | [`runner_listener.rs`](../../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) now hoists actionable address, certificate and private-key messages into constants. Preflight retains the knob. Full error-code, cause-chain and wire-refusal review remains due. |
-| 5 | Tracing across listener startup | Partial | [`serve/runner_stream.rs`](../../../rustd/crates/daemon/main/src/serve/runner_stream.rs) logs startup, stop and failure. Failure causes, connection correlation and negotiated-group observations still need completion. |
-| 6 | Copy and study Exonum and Codex without `.git` | Partial | Sparse source copies exist under ignored `.tmp/reference-sources/`. Exonum revision: `2d2fa22e5f5bc451d08c155c2398956f11dce06e`. Codex revision: `8703d32bd0ea5cf26768859a3dd476df906ba053`. Exonum cleanup ownership was read. A complete named comparison and application to listener supervision is still due. |
-| 7 | Why `STARTUP_DRAGONFLY_CONNECT`? | Explained; integration pending | [`main/src/error.rs`](../../../rustd/crates/daemon/main/src/error.rs) maps the existing `Queue` boot error to that code. Runner listener errors are separate. M244 owns the NATS replacement; this branch has not integrated that work yet. Renaming the old code alone would misdescribe the backend. |
-| 8 | What is the proxy? | Explained | [`af_stream/src/proxy/mod.rs`](../../../rustd/crates/protocol/af_stream/src/proxy/mod.rs) handles operator-configured outbound proxy settings. HTTP CONNECT carries end-to-end daemon TLS over HTTP/2. Direct private routing does not need that proxy. Comments 11–13 record the written simplification and unrun tests. |
-| 9 | Tracing throughout the PR and meaningful comments | Partial | Transport, reconnect and worker events exist in [`af_stream`](../../../rustd/crates/protocol/af_stream/src/telemetry.rs) and [`downlink`](../../../rustd/crates/runner/afr_supervisor/src/downlink/mod.rs). This is not a whole-PR tracing audit. Failure pairs, span context, sensitive-data exclusions and bounded labels remain due. |
-| 10 | `Zeroizing` coverage and Miri proof | Partial | Fleet pending report bytes now use `Zeroizing<Vec<u8>>`; authoring pending answers are zeroed on drop. Proxy credentials already have zeroing temporary buffers. `HeaderValue::set_sensitive` is not memory wiping. [The existing Miri job](../../../.github/workflows/test-unit-rustd.yml) targets `afd_authoring --test secret_wiping`; it does not prove wiping across this PR. Full ownership audit remains due; no workflow edit was made. |
-| 11 | Simplify proxy bypass and environment parsing | Changed in source | [`proxy.rs`](../../../rustd/crates/protocol/af_stream/src/proxy/mod.rs) now reuses hyper-util Matcher for standard NO_PROXY host/network matching. Injected EnvSource remains the only input. Proxy URLs are validated before matching so invalid configuration cannot select direct routing. Unrecognized bypass entries keep the explicit proxy. |
-| 12 | Use `TryFrom` for proxy conversion | Changed in source | `Proxy::try_from(&str)` validates bounds and parses the supported proxy URL. The retained URI excludes credentials. Conversion and failure tests have not run. |
-| 13 | Separate proxy conversion from socket creation | Changed in source | `Request<Outgoing>::try_from(&Endpoint)` constructs CONNECT headers synchronously. The named asynchronous `socket` function owns connection, upgrade and transfer failures. No asynchronous From conversion was invented. |
-| 14 | Share repeated client request/decode computation | Changed in source | [`client/stream.rs`](../../../rustd/crates/runner/afr_supervisor/src/client/stream.rs) now uses `StreamHandle::compute` for correlation, request and decode. Heartbeat, renewal batches, reports, folds and ping declare their typed response. Tests remain unrun. |
-| 15 | Typed client command abstraction | Changed in source | Each request implements `Command`; `Outcome::try_from(Answer)` resolves refusal codes once. Both periodic renewal batches and final renewal use this computation. Activity remains an unacknowledged send. |
-| 16 | Explain `ENV_STREAM_CA` and `ENV_STREAM_URL` | Explained | [`config/stream.rs`](../../../rustd/crates/runner/afr_supervisor/src/config/stream.rs) names the daemon HTTPS origin and optional extra root-certificate file. The CA file is neither a runner client identity nor a CA signing key. |
-| 17 | Follow the existing environment/TOML standard | Explained; configuration review pending | The implementation uses injected `af_core::env::EnvSource`, matching [`config/mod.rs`](../../../rustd/crates/runner/afr_supervisor/src/config/mod.rs). No TOML configuration layer was added. Typed validation and operator documentation still need final review. |
-| 18 | Simplify connection opening | Partial | [`Opening`](../../../rustd/crates/runner/afr_supervisor/src/downlink/connect.rs) collects opening inputs and separates request construction, hello, confirmation, secondary attachment and response parsing. Cleanup and opening-failure tests remain due. |
-| 19 | Distinguish connect from dispatch | Explained | [`connect.rs`](../../../rustd/crates/runner/afr_supervisor/src/downlink/connect.rs) establishes and authenticates a connection. [`dispatch.rs`](../../../rustd/crates/runner/afr_supervisor/src/downlink/dispatch.rs) routes established-session messages to replies, offers, cancellation and policy. |
-| 20 | Prove performance and absence of races | Pending | Bounded queues, correlation cleanup and cancellation ownership are source mechanisms, not proof. Contention, lost wakeups, credit changes, disconnect races, fairness and benchmark evidence are still due. No race-free or optimized claim is made. |
-| 21 | Why `parking_lot::Mutex`? | Changed in source | [`Running`](../../../rustd/crates/runner/afr_supervisor/src/downlink/running.rs) now keeps capacity and registrations in one `State` under a short lock. Duplicate detection, length bound and insertion remain atomic together. Cancellation callbacks run after releasing the lock. Tests remain due. |
-| 22 | Look for existing DashMap and use it appropriately | Changed in source | The existing [`afd_outbound` pattern](../../../rustd/crates/daemon/afd_outbound/src/lanes/mod.rs) was read. [`Renewals`](../../../rustd/crates/runner/afr_supervisor/src/uplink/renewals.rs) now uses named DashMap entries and an independent permit bound. It releases shard guards before meter reads and watch updates. |
-| 23 | Simplify renewal functions | Changed in source | The ticker, one-batch exchange, snapshot and reply application have separate methods. Snapshots retain native UUID values without reparsing local strings. Reply decoding and registered refusal conversion use the shared command computation. Runtime evidence remains due. |
+| 1 | Explain `self.0` and initialization | Named `Gateway.inner`; explicit shared dependencies, registry, budgets and tracker. Provisional openings count during drain. | `daemon/afd_gateway/src/lib.rs` |
+| 2 | Explain listener preflight | Named `RunnerListenerConfig` parses deployment inputs; `af_stream` owns both carriers. | `daemon/main/src/preflight/runner_listener/mod.rs` |
+| 3 | Post-quantum safety | Both ends/carriers require TLS 1.3 and `X25519MLKEM768`. Certificate signatures remain classical ECDSA, as documented. TLS-library verification covers DNS and literal IP identities. | `protocol/af_stream/src/tls/key_exchange/mod.rs`, `h3/socket.rs` |
+| 4 | Standard errors | Foundation error macros, registered codes, actionable configuration sentences and original typed causes are retained. Opening refusals preserve status/code. | `protocol/af_stream/src/error/`, `runner/afr_supervisor/src/error/` |
+| 5 | Listener tracing | Startup, stop, failure and negotiated-group events exist; unexpected component termination cancels serving. | `daemon/main/src/serve/mod.rs`, `serve/runner_stream.rs`, `protocol/af_stream/src/telemetry.rs` |
+| 6 | Study Exonum and Codex | Applied receiver ownership/priority, child cancellation, bounded joining and abort cleanup through Tokio primitives. Named comparison below. | `daemon/afd_gateway/src/session/{streams,supervisor}.rs`, `runner/afr_supervisor/src/downlink/mod.rs` |
+| 7 | Explain Dragonfly startup code | Existing code describes M243's actual backend. Native listener failures retain their own path; M244's replacement is not imported. | `daemon/main/src/error.rs` |
+| 8 | Explain proxy | Explicit HTTP CONNECT carries end-to-end TLS over HTTP/2; mandatory proxy policy blocks direct HTTP/3. Private direct routing needs no proxy. | `protocol/af_stream/src/proxy/mod.rs` |
+| 9 | Tracing and comments | Connection/dispatch spans retain identifiers and finite operation labels; observations finish on cancellation. Runner exporter admits the reviewed transport span. Payloads and credentials stay out. | `protocol/af_stream/src/telemetry.rs`, `daemon/afd_gateway/src/session/dispatch/mod.rs`, `runner/afr_telemetry/src/telemetry/mod.rs` |
+| 10 | Wiping and Miri | Fleet bytes use `Zeroizing`; authoring endings/reports and decision receipts wipe their private fields on drop. Debug hides receipt data. Miri remains due; parser/header/TLS/kernel copies are outside this ownership claim. | `runner/afr_supervisor/src/lease_loop/settle.rs`, `authoring/mod.rs`, `verbs/decision/pending/receipt/mod.rs` |
+| 11 | Simplify bypass and environment parsing | Reused Hyper `Matcher`, `EnvSource`, `garde` and `url`. Invalid proxy inputs fail before bypass matching. | `protocol/af_stream/src/proxy/mod.rs` |
+| 12 | Use `TryFrom` | Synchronous proxy conversion validates once; retained URI excludes credentials. | `protocol/af_stream/src/proxy/mod.rs` |
+| 13 | Separate conversion/socket I/O | CONNECT headers use synchronous conversion; the async socket function owns connect/handshake/upgrade. | `protocol/af_stream/src/proxy/mod.rs` |
+| 14 | Share request/decode work | `StreamHandle::compute` shares correlation, deadline, decode and observations across typed commands. | `runner/afr_supervisor/src/client/stream.rs` |
+| 15 | Typed commands | `Command` declares expected output; `Outcome::try_from` resolves refusal codes once. Activity remains unacknowledged. | `runner/afr_supervisor/src/client/stream.rs` |
+| 16 | Explain URL/CA | Required HTTPS origin and optional public trust file are documented. No runner client certificate or signing key is required. | `runner/afr_supervisor/src/config/stream.rs`, `docs/architecture/runner_protocol.md` |
+| 17 | Configuration convention | Injected `EnvSource` and typed validation are retained; no second TOML layer. | `runner/afr_supervisor/src/config/stream.rs`, `protocol/af_stream/src/endpoint.rs` |
+| 18 | Simplify opening | `Opening` separates hello, confirmation, secondary attachment and refusal parsing under one absolute deadline; failure closes the native owner. | `runner/afr_supervisor/src/downlink/connect.rs`, `terminal_tests.rs` |
+| 19 | Connect versus dispatch | Opening authenticates/attaches; dispatch handles established-session replies, offers, cancellation and policy. | `runner/afr_supervisor/src/downlink/{connect,dispatch}.rs` |
+| 20 | Performance and races | Bounded ownership, coalesced scheduling, transactional guards and independent lanes have pressure/contention/lost-command/reconciliation/cost test sources. Measurements remain due. | `daemon/afd_gateway/src/scheduler/`, `daemon/main/tests/integration_runner_stream/`, `runner/afr_supervisor/src/downlink/pressure_tests.rs` |
+| 21 | Appropriate mutex use | Capacity and registrations share one short `parking_lot` lock; no await under its guard. Cancellation runs after release. | `runner/afr_supervisor/src/downlink/running.rs` |
+| 22 | Reuse DashMap patterns | Named entries and a separate semaphore follow existing outbound lanes; shard guards are released before meter reads and watch updates. | `runner/afr_supervisor/src/uplink/renewals/mod.rs`, `daemon/afd_outbound/src/lanes/mod.rs` |
+| 23 | Simplify renewals | Tick, snapshot, partitioning, exchange and reply application are separated. UUID values remain typed; shared commands decode replies. | `runner/afr_supervisor/src/uplink/renewals/{mod,batches}.rs`, `renew/mod.rs` |
 
-### TLS findings supplied after the diff comments
+### Other owner requests
 
-Transport Layer Security (TLS) protects the runner channel.
-HTTP/2 fallback after an eligible HTTP/3 transport failure remains approved.
-Classical cryptographic fallback is a different decision and is now rejected by Indy.
-
-| Finding | State | Required change or evidence |
-|---|---|---|
-| Hybrid-only `X25519MLKEM768` on both ends and both transports | Changed in source | [`key_exchange`](../../../rustd/crates/protocol/af_stream/src/tls/key_exchange/mod.rs) restricts both HTTP/2 contexts and each actual QUIC TLS session before handshaking. Negotiated groups are checked again. Classical-only rejection sources cover the connector and native acceptors; none have run. |
-| Define and prove the production TLS endpoint | Pending | Document exact private listener hostname, TCP/UDP reachability and direct TLS termination. Prove negotiated group on that route. No deployment files changed; a code-only test cannot prove production routing. |
-| Verify certificate hostname on HTTP/3 | Source path established; runtime evidence pending | Pinned Quiche 0.30.0 `src/tls/mod.rs::set_host_name` sets SNI and `X509_VERIFY_PARAM_set1_host`. The connector supplies `endpoint.host()`. [`failures.rs`](../../../rustd/crates/protocol/af_stream/tests/failures.rs) contains wrong-host rejection cases for both transports; none have run. |
-| Issuance, root delivery and rotation before expiry | Pending | Extra roots come from a file. No approved issuer or completed live certificate-reload lifecycle is established by this branch. Prepare a concrete design for Indy's listener/certificate/1Password review. |
-| Daemon negotiated-group telemetry | Partial | `runner_stream_tls_handshakes_total` uses closed transport, peer, group and outcome labels. Both acceptors observe the negotiated group; QUIC observations run outside the native callback. A failed QUIC handshake with no group records `other/failed`. HTTP/2 pre-negotiation rejection telemetry and runtime evidence remain due. |
-
-The requested changes to TLS have not been completed by report-file removal.
-No certificate, private route or deployed handshake has been exercised in this resumed session.
-
-### Overall code-completion requests
-
-| Owner request | State and remaining work |
+| Request | Source disposition |
 |---|---|
-| Listener startup, drain and runner session integration | Partial source wiring. Finish transport shutdown ownership and verify accepted-work drain. |
-| Reconnect, cancellation, renewals, folds and report retry | Partial source wiring. Memory-only result delivery is written; native failure and replay tests remain due. |
-| Remove polling routes and migrate callers/tests | HTTP handlers and runtime methods have removals written. Old polling fixture types, route constants, benches and remaining callers are not all migrated. |
-| Whole-PR Rust review, failure cases, fairness, observability and benchmarks | Pending completion. RS-SENTINEL, RS-UNWRAP, function sizes, causes and ownership need full review. |
-| Reconcile docs and generated OpenAPI | Report-storage design text updated. Generated OpenAPI now matches the current source; public documentation review remains due. |
-| Make PR consumable and merge-ready | Incomplete. PR stays draft; earlier test results do not establish current readiness. |
-| Verification authorization | Indy initially held checks, then explicitly approved publication scans and compilation/lint/tests on Nov 09. Source lint passed; compilation and remaining gates have not passed. See the handoff. |
-| Preserve M244 and coordinate on issue 818 | Coordination comments posted. M244 remains the subsequent PR; shared Bus, startup, live-stream and Cargo changes must be reconciled without importing its whole deployment migration into M243. |
-| Read issue 813 before every push | Issue and comments read during context-save preparation. Read again before a later push if new coordination may have arrived. |
-| Save context and push all source and handoff prompts | Handoff, M243 resume prompt and separate M246 preparation prompt are written. Publication status is the actual branch/PR commit; this checkpoint remains incomplete and unverified. |
-| Use one runner channel for authoring too | Partial. Four wire exchanges and runner commands are written. Gateway dispatch, connection-authority integration and HTTP route deletion are written. Fixture migration and native integration checks remain unfinished. This belongs to M243. |
+| Remove report files and compatibility fallback | Spool, replay, scanner, quarantine, receipt drainer and old-format reshaping are deleted. Each worker retains only its current result until acknowledgement/terminal refusal. Process loss can lose an unsent result. |
+| Keep billing authority | Existing fenced Postgres issuance/settlement remain authoritative; lost acknowledgements replay saved results without another provider call or charge. |
+| Liveness through the stream | Valid control-lane host heartbeats refresh `session/liveness.rs`; pings/unrelated traffic do not extend its two-interval deadline. |
+| Preserve accepted frames during drain | Closed queues drain under existing operation permits before `go_away`; Tokio owns readers, writers and operations. |
+| Delete unused code | Retired handlers/polling helpers, unused `ActivityAccepted` and forwarding `deadline::left` are removed. Six time callers use `af_core::clock::elapsed` directly. Duplicate runner JSON counters use `af_validate::serialized_len`. |
+| Greptile blocked acknowledgements | Retained offers transfer charges into a separate bounded Tokio semaphore allowance. Focused mutation red/green evidence exists; the pushed thread is replied and resolved. |
+| Greptile recovery timing | Reconnect triggers renewal immediately. A 35-second grant covers setup, another answer and the nine-second cleanup margin. Two paused-time regressions passed; publication remains due. |
+| Keep recovery probe | Indy accepted crash-after-commit/before-wake recovery. One daemon probe per replica every five seconds remains; runners receive pushed offers. |
+| Include deployment | Existing flows reference the approved vault item, deliver daemon chain/key files and runner public trust/private Fly origin, and exclude the signing key. DEV restores WireGuard routing. |
+| One vault item and ten-year validity | Approved item/fields and joint renewal are documented. Certificates are already provisioned. No operator vault read, key generation or secret printing occurred here. |
+| Concise canonical docs | Protocol guide/playbook give operator steps; stale runner polling passages are corrected. Delete this folder after verification and preserve final feedback evidence in PR notes. |
+
+### Reference comparison
+
+Codex `e54a5713caf331f42a6eef0166186df5f7563c29`, `app-server-transport/src/transport/remote_control/websocket.rs`, owns connection workers in a `JoinSet`, cancels them together and bounds joining before aborting.
+Exonum `2d2fa22e5f5bc451d08c155c2398956f11dce06e`, `exonum-node/src/events/mod.rs`, owns and prioritizes input receivers.
+
+This gateway additionally drains already accepted input instead of ending aggregation when any receiver closes.
+Inspected source copies are under `/tmp/m243-reference-sources`, without Git metadata.
 
 ## Limits
 
-This section describes limits of the audit evidence, not report-storage policy or approved future features.
-Regression sources were added or rewritten without running them.
+The source review mapped all 23 comments to current code and found no remaining implementation finding in its inspected scope.
+The reuse audit removed the forwarding time helper and both runner JSON counters; `af_validate::serialized_len` now shares the existing allocation-free bounded writer.
 
-The scripted runner test seam now answers current frames through the real reply correlator.
-That seam does not prove HTTP/2 or HTTP/3 socket behavior.
-Several existing HTTP-only fixture constructors and old polling tests still need migration.
+Tokio owns channels, semaphore permits, cancellation and tracked tasks; Hyper owns proxy matching; Boring owns certificate verification. Foundation helpers own identifiers, entropy, errors, environment reads and time conversion. The operator fixture reuses `afd_identity::direct`.
 
-Source review found a credit race: a Ready update could restore capacity before an in-flight offer reached the runner.
-Ready now carries its revision and the count of offers the runner has observed.
-The gateway ignores stale revisions and deducts unseen offers from advertised capacity.
+All 717 test/gate hunks at the preceding checkpoint were reviewed.
+The subsequent pressure fixture and renewal timing changes have separate regression evidence.
 
-An offer consumes one worker; any other free worker remains eligible immediately.
-[`credits_tests.rs`](../../../rustd/crates/daemon/afd_gateway/src/session/credits_tests.rs) covers a crossing update, stale updates, impossible acknowledgements and two workers receiving independent offers.
-These regression sources have not run.
+The follow-up restored wake delivery and loss recovery proofs.
+It also corrected refusal ordering, the settlement key, and completion analytics coverage.
 
-The audit does not certify Orly compliance or mark the PR code complete.
-Before verification, finish the pending source changes and reconcile each affected test caller.
-Indy has now authorized the required commands; do not request that approval again.
+Renewal partitioning, request correlation, offer admission and cancellation ordering remain domain logic.
+The final size audit found zero violations across 849 changed paths; no suppression was added.
+Integration, aggregate coverage, Miri, three reset-rig benchmark comparisons and deployed-route evidence are not certified by this source audit.
+
+The base-branch comparison passed: runner 1,749; daemon 158; daemon libraries 3,482 (`make test-unit-rustd`, `/tmp/m243-base-rust-unit-01.log`). These are base counts, not candidate results.
 
 ## Related pages
 
-- [Current session handoff](session-handoff.md)
-- [Implementation sign-off and historical evidence](implementation-signoff.md)
-- [Runner protocol](../../architecture/runner_protocol.md)
-- [Failure and observability design](failure-and-observability.md)
-- [Active M243 specification](../../v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md)
-
-### Nov 09 authoring clarification
-
-The four retained HTTP calls are active runner operations for fleet setup chat.
-Indy requested that this work also use the stream.
-M245–M247 do not already own that migration.
-
-Wire and runner changes place model calls and proposals on work, renewals on control, and final reports on reports.
-Gateway dispatch and deletion of those HTTP endpoints are written; caller migration and native integration evidence remain unfinished.
-Preserve the daemon-owned provider capability, physical dispatch and Postgres accounting rules while finishing this migration.
-
-No completion or verification is claimed for this extension.
-The [handoff](session-handoff.md) records current compiler failures, review fixes and remaining migration tasks.
-Other per-lease HTTP operations remain outside this four-call correction; this checkpoint does not claim every runner API uses the stream.
-
-
-### Nov 09 publication state
-
-Indy requested the commit, push and handoff while the native fixture migration remains incomplete.
-The handoff records the passing setup/work/secret checks and source lint, plus the failing Rust compilation attempts.
-This publication is a source checkpoint, with no green-build or code-completion claim.
-
-Initial Orly review found ownership, cancellation, retry classification and zeroing failures.
-The corresponding source corrections and unrun regression cases are listed in the handoff.
-Positive-pass scheduling/coalescing is implemented in the later Nov 09 checkpoint below.
-File lengths, native integration, benchmarks and final full-PR sign-off remain unfinished.
-
-### Nov 09 resume results
-
-The resume work fixes the kernel example compilation without restoring `RUNNER_REPORTS`.
-Native server fixtures replace the retired poll/report handlers in runner examples and binary tests.
-Obsolete HTTP assertions are removed or moved to the current wire, native-session and settlement owners.
-
-Tests retain explicit checks that retired HTTP routes are absent.
-
-A native report with a tool trace exposed a decoder defect: Serde's tagged-enum buffer could not deserialize its borrowed raw JSON.
-The current report schema is now selected before that buffering, preserving the JSON shape and borrowed raw trace.
-Valid and malformed trace tests preserve the answer; extra frame and request fields remain refused.
-
-No backward-format decoding or report storage was added.
-
-| Evidence | Actual result |
-|---|---|
-| `make lint-rustd` | Passed through source checks, rustfmt, workspace Clippy and cargo shear before OpenAPI regeneration; the current generated JSON has one source-prose finding. |
-| `cargo check --workspace --all-targets --all-features` | Passed from `rustd/` in 1 minute 5 seconds after the latest fixes; `cargo fmt --all --check` also passed. |
-| `make test-unit-rustd` | Runner: 1,685 passed. Daemon: 164 passed. Three library tests still fail; exact cases and ownership are in the handoff. |
-| Supervisor library in the runner shard | 396 passed, zero failed. Covers the migrated report, renewal, cancellation and batching cases; not a full repository result. |
-| `cargo test -p af_wire --all-features` | 79 library tests and 103 suite tests passed, zero failed. Includes strict native renewals/folds and raw report-trace regressions. |
-| Generated OpenAPI | Current daemon generator completed: 115 paths, no retired operation paths, binary native body and 413 refusal documented. |
-| Full repository lanes and shipping gates | Still due. No code-completion claim. |
-
-The scripted fixture starts production renewal batching and waits for unacknowledged activity observations before asserting them.
-The report retry cases now lose acknowledgements across native answer deadlines and settle the same in-memory result.
-A hard stop ends delivery; stopping a lease or draining the caller leaves its final acknowledgement path available.
-
-The telemetry regression that previously hung passed in 0.55 seconds after the decoder fix.
-
-Cloud tests run under a temporary child subreaper with a lane-scoped `umask 022`.
-The executor's process disappearance assertions remain unchanged; process 1 otherwise leaves killed children as zombies.
-No repository script, workflow, deployment configuration or coverage floor was changed.
-
-PR 819 remains draft at the published checkpoint until the next verified push.
-
-
-### Current push authorization and remaining failures
-
-Indy requested: "can you push and keep going i will ask another claude code agent to fix this".
-This supersedes waiting for a green unit lane before publishing the checkpoint.
-The [handoff](session-handoff.md#current-checkpoint-for-claude-three-remaining-unit-failures) names the three remaining failures and source locations.
-
-Cargo check and formatting pass. Rust lint passed before OpenAPI regeneration.
-The regenerated document now fails one source-prose check.
-
-The complete unit lane remains red; frontend coverage, live integration and final shipping verification are still due.
-PR 819 remains draft, with merge held for Indy's listener, certificate and 1Password review.
-
-
-### Publication gate result
-
-`orly gate work` and the staged secret scan pass.
-`orly gate verify` passes configuration, documentation language and version 0.75.0 checks.
-Its `make lint-all` command fails the source scan on one generated OpenAPI description.
-
-The finding is `docs-api-internal-detail` at `public/openapi.json:8741`.
-The protocol header description contains `agentsfleet.runner.v1`; its source is `afd_api_runner/src/handler/runner/stream.rs`.
-Codex owns correcting that annotation and regenerating the document; Claude owns the three unit failures above.
-
-No repository gate, test assertion or coverage floor was weakened to publish this owner-requested checkpoint.
-
-
-### OpenAPI prose follow-up
-
-The protocol header now says "Required runner protocol revision".
-Its example comes from the existing protocol-version constant and remains `agentsfleet.runner.v1`.
-The current daemon generator rebuilt OpenAPI successfully; the targeted `docs-api-internal-detail` scan passes.
-
-`make lint-all` passed, including app, design-system and CLI checks.
-The gate found two paragraph-formatting issues in these notes; those are fixed and the documentation scan passes.
-No unit suite was restarted for this documentation correction.
-
-Indy assigned the three remaining unit failures to Claude.
-Codex will continue M243 and pull Claude's updates only when Indy signals.
-
-
-### The three unit failures
-
-Claude fixed the three failures the handoff assigned: `e510404ba` for the HTTP/3 telemetry record and `743a64e89` for the two runner guard codes.
-No assertion, metric count, hybrid-group check or redaction check was weakened; the telemetry fix is in source.
-The [handoff](session-handoff.md#claudes-fixes-for-the-three-unit-failures) lists the targeted results.
-
-The full unit lane and the final Rust verification on the combined branch are still due.
-PR 819 remains draft, with merge held for Indy's listener, certificate and 1Password review.
-
-### Nov 09 authoring priority and verification ordering
-
-Indy asked to finish model calls, proposals, renewals and completion over one native session before broader M243 work.
-The authoring source retains accepted provider work through disconnect, rechecks connection authority before private publication and checks expiry after host-lock waits.
-Unsettled reports retain their lease and worker owners until accounting settles.
-
-Twelve ignored native integration cases cover saved results, accounting, replay, cancellation, connection fencing and expiry.
-The test owner was renamed from `Rig` to `AuthoringFixture` at Indy's request.
-It substitutes provider HTTP only; the daemon, runner session, Postgres and Dragonfly remain real.
-
-Indy instructed Codex to stop integration testing until code completion.
-The active focused process was terminated by PID; three cases had printed `ok`, with no complete suite verdict.
-No integration run has restarted.
-
-Indy then authorized pulling Claude's published fixes.
-Codex fast-forwarded to `b5e971269` with its local authoring changes preserved.
-The setup-chat UI still uses the browser draft API and event stream, so this migration requires no UI source edit.
-
-The combined `make test-unit-rustd` run passed: 1,685 runner, 164 daemon and 3,531 library tests, with zero failures.
-`make check-version` also passed at 0.75.0.
-This is Rust unit evidence; the complete repository verification and native authoring integration verdict remain due.
-
-### Guard readability follow-up
-
-At Indy's request, Codex cloned and studied `openai/codex` and `exonum/exonum` outside the working repository.
-Their context-bound authority pattern informed a small shared guard boundary on the existing `Drafts` owner.
-Model and proposal callers now obtain one checked guard; connection checks and fresh database time stay inside that boundary.
-
-The boundary also covers native token counting and setup edit-intent calls.
-The expiry test retains its real Postgres lock observer; `pg_backend_pid()` identifies the test's own lock holder only.
-No production process-ID mechanism or additional framework was introduced.
-
-The earlier 5,380-test Rust unit pass is preserved as pre-refactor evidence.
-The changed authoring boundary requires fresh compilation, lint and affected-library unit verification; integration remains paused.
-
-After simplification, workspace `cargo check --all-targets --all-features` and full `make lint-all` pass.
-OpenAPI regeneration produced the existing published bytes, with 115 paths and no authoring lease HTTP operations.
-The affected library unit shard is being rerun; integration remains paused.
-
-The post-refactor `make test-unit-rustd-daemon-libs` recheck passed all 3,531 tests.
-A prior attempt was stopped after its progress was misread; the completed run used the same repository target and assertions.
-The authoring source is implemented and checked for compilation/lint/unit regressions, but native integration remains unverified and paused.
-M243 and its shipping gates remain incomplete; PR 819 stays draft under Indy's merge hold.
-
-Claude's separately published CI builder commits through `292424604` were preserved by fast-forward before the authoring commit.
-They change no Rust source, and their workflow references, playbook references, shellcheck and 21 hermetic builder cases pass locally.
-Full static builds and image publication remain Claude's work; no deployment or image publication was performed here.
-
-### Bounded scheduling follow-up
-
-The scheduler now awaits session-owned claims under one shared issuance budget.
-One wake can issue one lease; empty claims advance to other eligible hosts.
-Wakes received during a pass coalesce into one subsequent pass, and an uncertain claim outcome stops the current pass.
-The session's bounded queue retains its existing operation owner.
-
-Unchanged credit updates and periodic heartbeats no longer trigger extra empty claims.
-Successful issue updates waiting order; draining and superseded sessions are excluded.
-The independent five-second clock performs one probe per replica and requests a pass only on a positive result.
-
-The focused `afd_gateway` unit run passed 20 tests, with zero failures and one live test ignored.
-Ten new cases cover the pass budget, coalescing, empty walks, locality, waiting order, uncertain outcomes, shutdown eligibility, credit rises and replica probe frequency.
-A temporary extra lease of budget made the one-ring test fail at its assertion; the original budget was restored before the green run.
-
-The failure-design page now states memory-only report retries and Postgres settlement ownership.
-Fourteen changed first-party Rust files remain over the file-length ceiling; whole-PR review, live fairness/fault cases, benchmarks and shipping checks remain due.
-Integration remains paused until code completion, including the twelve written authoring cases.
-
-### Context-save pull
-
-At Indy's explicit request, Codex fetched GitHub and fast-forwarded to Claude's `3e3d8f1b0` with its local scheduler work preserved.
-The incoming licensed musl dependency patch and earlier CI changes were kept unchanged.
-The handoff separates this checkpoint's narrow checks from historical full Rust results and lists the fourteen first-party file-length findings.
-Indy clarified the order: finish code and review first, then combine native integration, full repository unit/coverage, benchmarks and shipping gates in final verification.
-The checkpoint push does not undraft the PR or lift the merge hold.
-
-After pulling `3e3d8f1b0`, `make lint-rustd` passed, including rustfmt and workspace Clippy.
-`cargo check --workspace --all-targets --all-features --locked` passed in 20.65 seconds.
-The final focused `cargo test -p afd_gateway --all-features --lib --locked` passed 20 tests with zero failures and one live test ignored.
-These results include the scheduler source and incoming dependency patch, with its recorded unused-import warning.
-Full Rust shards, frontend coverage and native integration were not rerun for this checkpoint; final combined verification remains due after code completion.
-
-Immediately before publication, Claude reported the r2 builder image published for both architectures in issue 818 comment 6743710519.
-The native Linux CI reruns still need results; the earlier image-pull failures happened before publication.
-This update required only handoff corrections; the checked scheduler source is unchanged.
-
-### Nov 09 integrated implementation
-
-Indy required code completion before review and the combined Make lanes.
-All implementation proposals are integrated. `cargo check --workspace --all-targets --all-features --locked` passed on the combined working tree; code completion is recorded before review and Make verification.
-No resumed `make test*`, `make lint*` or native integration command has run.
-The following source changes supersede earlier partial implementation descriptions; runtime results remain due.
-
-| Recorded feedback | Integrated source |
-|---|---|
-| Drain queued frames before closing | Gateway readers hand off their last complete frame; the supervisor drains the finite queues under the existing per-operation limits before closing. Native drain cases cover both carriers. |
-| Stream liveness | `session/liveness.rs` tracks valid host heartbeats on the control lane. Two silent intervals end the session; pings and unrelated traffic do not extend that clock. |
-| Simple receiver and task ownership | Codex reference `e54a5713caf331f42a6eef0166186df5f7563c29` uses child cancellation plus bounded worker joining in `app-server-transport/src/transport/remote_control/websocket.rs`. Exonum `2d2fa22e5f5bc451d08c155c2398956f11dce06e` owns and prioritizes receivers in `exonum-node/src/events/mod.rs`. Source copies are under `/tmp/m243-reference-sources`, without Git metadata. This gateway preserves accepted queues during drain; Exonum ends aggregation when an input closes. |
-| Recovery and monotonic lease expiry | One absolute connection budget includes attempts and cleanup. Short sessions retain jitter history. Fleet and authoring renewal owners expose their last confirmed monotonic deadline; recovery cannot extend it. |
-| Retain known provider usage | Lease-owned typed receipts survive a canceled calling future and settle before the final report. The authoring gateway retains its existing tracked provider operation after the caller's answer deadline. |
-| No disk reports or compatibility fallback | Memory-only delivery remains owned by the worker. No spool, scanner, old report decoder or background receipt drainer was restored. Shutdown has a bounded delivery and cleanup grace. |
-| Typed failures and tracing | Existing error hulls retain timeout and numeric-conversion causes. Listener failures preserve registered codes and native causes. Native dispatch tasks inherit a connection span; runner transport spans pass the production exporter filter. |
-| Wiping and redaction | Final retained receipt owners wipe their provider result; authoring endings guard answers before fallible accounting; proxy credential assembly reserves once. Debug output omits receipt values. These checks cover named owners, not parser, header, TLS or kernel copies. Miri runtime evidence remains due and is not implied by source review. |
-| Fairness, concurrency and cost | Probe generations survive later hints until a durable oldest-first recovery claim covers them. Native fairness, late-answer, cancellation, idle, pressure and per-lease usage replay sources are written. Drain and saturation benchmarks exercise actual gateway session dispatch and count datastore operations. Measurements remain due. |
-| Delete unused code and keep Rust within size limits | The obsolete `Polled` wrapper and polling test helpers are deleted; callers use the native fixtures or direct optional selection. Mechanical extraction keeps changed first-party Rust files/functions within the prescribed limits without suppressions. |
-| Deployment belongs in this PR | Development and production workflows load `op://<vault>/agentsfleet-runner-stream/<field>`. Fly injects the chain/key files; runner bootstrap installs public trust and its URL. The credential gate excludes the signing key. Local acceptance uses its existing Caddy identity and a direct native listener. |
-| Vault decision | One item per environment holds the approved five fields; issuer and listener renew together after the ten-year lifetime. Indy confirmed the vaults are populated and private Fly routing is provisioned. Claude is checking deployed host connectivity on issue 818. |
-
-No operator vault read, key generation, secret printing or live deployment was performed.
-PR 819 stays draft until checks are green and Greptile threads are answered and resolved; Indy then authorizes removing draft status. Never merge it.
-
-### Combined verification started
-
-The full `make lint-all` lane passed: source rules, formatting, workspace Clippy, dependency checks, TypeScript, shell, workflows and deployment regressions.
-A later fixture review corrected optional native request identifiers and absent usage acknowledgements; final gates will recheck these corrections.
-The fresh standards follow-up reports no remaining findings in its inspected scope.
-Full unit, live integration, coverage, benchmarks and Miri results remain due.
-
-Indy accepted the daemon recovery poll for the crash-after-admission-commit/before-wake case.
-The active spec records the exact owner quote; runner lease polling is removed, while daemon discovery remains once per replica every five seconds.
+- [Runner guide](../../architecture/runner_protocol.md)
+- [Certificate guide](../../../playbooks/operations/runner_stream_tls/001_playbook.md)
+- [Coordination](https://github.com/agentsfleet/agentsfleet/issues/818)

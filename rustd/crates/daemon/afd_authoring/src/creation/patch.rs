@@ -110,9 +110,9 @@ impl Creations {
     async fn announce_cancellations(&self, cancelled: Vec<(Uuid7, Uuid7)>) {
         let bus = self.activity_streams();
         for (runner, lease_id) in cancelled {
-            let subject = afd_bus::Subject::RunnerCommand(runner);
-            let publication = bus
-                .publish_frame(&subject, &afd_bus::Command::Cancel { lease_id })
+            let subject = afd_bus::Subject::RunnerCommand(runner.clone());
+            let publication = afd_bus::Command::Cancel { lease_id }
+                .publish(&bus, &runner)
                 .await;
             afd_bus::observe_notification(&subject, publication);
         }

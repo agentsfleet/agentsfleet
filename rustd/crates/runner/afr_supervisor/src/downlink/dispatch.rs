@@ -18,6 +18,7 @@ pub(crate) struct Dispatch<'a> {
     pub(crate) requests: &'a Requests,
     pub(crate) running: &'a Arc<Running>,
     pub(crate) offers: &'a mpsc::Sender<Offered>,
+    pub(crate) offer_budget: &'a af_stream::Budget,
     pub(crate) assignments: &'a watch::Sender<Option<Arc<OwnedFrame>>>,
     pub(crate) stop: &'a CancellationToken,
     pub(crate) early_cancel: HashSet<Uuid7>,
@@ -44,18 +45,7 @@ impl Dispatch<'_> {
                     TaggedLease::Authoring(lease) => lease.lease_id.as_str(),
                 };
                 let id = Uuid7::parse(id)?;
-                let registration = self
-                    .running
-                    .offer(id.clone(), self.early_cancel.remove(&id))?;
-                let offer = Offered {
-                    frame,
-                    registration,
-                    session: self.stop.clone(),
-                };
-                // Credits already reserve space. Overflow is a protocol failure, never a dropped grant.
-                self.offers
-                    .try_send(offer)
-                    .map_err(crate::error::stream_protocol)?;
+                self.offer(frame, id)?;
             }
             Down::Cancel { lease_id, .. } => {
                 let id = Uuid7::parse(&lease_id)?;
@@ -89,6 +79,22 @@ impl Dispatch<'_> {
         }
         Ok(Progress::Continue)
     }
+
+    fn offer(&mut self, mut frame: OwnedFrame, id: Uuid7) -> Result<()> {
+        let cancelled = self.early_cancel.remove(&id);
+        let registration = self.running.offer(id, cancelled)?;
+        // The fixed lease-count bound admits at most one maximum-sized frame per registration.
+        frame.try_rebudget(self.offer_budget, StreamKind::Work)?;
+        let offer = Offered {
+            frame,
+            registration,
+            session: self.stop.clone(),
+        };
+        self.offers
+            .try_send(offer)
+            .map_err(crate::error::stream_protocol)?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -108,6 +114,7 @@ mod tests {
             requests: &requests,
             running: &running,
             offers: &offers,
+            offer_budget: &Budget::default(),
             assignments: &assignments,
             stop: &stop,
             early_cancel: HashSet::new(),
@@ -156,6 +163,7 @@ mod tests {
             requests: &requests,
             running: &rig.lessee.plane.stream.running,
             offers: &offers,
+            offer_budget: &Budget::default(),
             assignments: &assignments,
             stop: &stop,
             early_cancel: HashSet::new(),

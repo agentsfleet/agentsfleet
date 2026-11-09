@@ -4,14 +4,18 @@
 //! Split from the cases in `integration_report_owes_destination/mod.rs` at the file
 //! cap. The cases state what is owed; this is the stage they state it on.
 
+use std::borrow::Cow;
+
 use af_core::id::Uuid7;
+use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_admission::{Admission, Key, Producer, Reply};
+use afd_connector::Provider;
 use afd_fleet::lease::{Billed, Committed, Leases, Owing, Reported};
 use jiff::Timestamp;
 use sqlx::Row as _;
 
 use crate::recovery_seed::{admission, ledger, producer_key};
-use crate::report_commit::{RESPONSE_ACCEPTED, report};
+use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE, report};
 use crate::report_seed::{DEEP_POOL, SLICE_MS};
 use crate::seed::{MODEL, POSTURE, PROVIDER, seeded_parts};
 use crate::support::Fixtures;
@@ -78,6 +82,83 @@ pub(crate) async fn stage() -> Stage {
 }
 
 impl Stage {
+    pub(crate) async fn admit_thread(&self, delivery: &str) -> Uuid7 {
+        self.admit(
+            Producer::Webhook,
+            delivery,
+            Reply::To {
+                connector: Provider::Slack.id(),
+                address: super::THREAD,
+            },
+        )
+        .await
+    }
+
+    pub(crate) async fn report_through_plane(
+        &self,
+        lease_id: &Uuid7,
+        lease: &Reported,
+        now: Timestamp,
+    ) {
+        let request = ReportRequest {
+            folded_through_sequence: None,
+            task: None,
+            lease_id: Cow::Borrowed(lease_id.as_str()),
+            event_id: Cow::Borrowed(lease.event_id.as_str()),
+            fencing_token: lease.fence.as_u64(),
+            outcome: Outcome::Processed,
+            failure_reason: None,
+            failure_detail: Cow::Borrowed(""),
+            response_text: Cow::Borrowed(RESPONSE_ACCEPTED),
+            tokens: 0,
+            requests: af_wire::usage::RequestLines::default(),
+            telemetry: ReportTelemetry {
+                time_to_first_token_ms: 0,
+                wall_ms: u64::try_from(SLICE_MS).expect("a slice is positive"),
+                segments: None,
+            },
+            checkpoint: ReportCheckpoint {
+                last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
+                last_response: Cow::Borrowed(RESUME_RESPONSE),
+            },
+            tool_calls: None,
+            held_until: None,
+            memory: Vec::new(),
+        };
+        self.fixtures
+            .plane()
+            .report(
+                &self.runner,
+                &request,
+                af_core::clock::after(
+                    now,
+                    std::time::Duration::from_millis(
+                        u64::try_from(SLICE_MS).expect("a fixture span is not negative"),
+                    ),
+                ),
+            )
+            .await
+            .expect("the plane settles the report");
+    }
+
+    pub(crate) async fn receipt(&self, event: &Uuid7) -> Option<String> {
+        let mut connection = self
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection");
+        sqlx::query_scalar(
+            "SELECT receipt FROM fleet.obligations
+          WHERE fleet_id = $1 AND event_id = $2",
+        )
+        .bind(&self.fleet)
+        .bind(event)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the report owed the thread's answer")
+    }
+
     /// Admits one event from `producer`, stating `reply`.
     pub(crate) async fn admit(
         &self,

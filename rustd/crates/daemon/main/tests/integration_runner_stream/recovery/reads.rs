@@ -52,6 +52,37 @@ pub(super) async fn wait_reported(run: &Scenario, lease: &Uuid7, bound: std::tim
     .expect("the retained report settles after connection recovery");
 }
 
+pub(super) async fn wait_renewed_before(
+    run: &Scenario,
+    before: &Snapshot,
+    bound: std::time::Duration,
+) -> Snapshot {
+    let left = std::time::Duration::try_from(before.expires_at.duration_since(clock::now()))
+        .expect("the original confirmed lease is still live");
+    tokio::time::timeout(bound.min(left), async {
+        loop {
+            let current = snapshot(run).await;
+            if current.owner != before.owner && current.expires_at > before.expires_at {
+                assert!(clock::now() < before.expires_at);
+                return current;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("a new native owner renews before the original confirmed expiry")
+}
+
+pub(super) async fn process_survives_deadline(pid: u32, deadline: jiff::Timestamp) {
+    let left = std::time::Duration::try_from(deadline.duration_since(clock::now()))
+        .expect("recovery completed before the original deadline");
+    tokio::time::sleep(left + std::time::Duration::from_millis(100)).await;
+    assert!(
+        std::path::Path::new(&format!("/proc/{pid}")).exists(),
+        "the runner consumed the new grant and kept the same physical process alive"
+    );
+}
+
 pub(super) async fn assert_settled_once(run: &Scenario) {
     let count: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE event_id=$1")
         .bind(&run.event_id)
@@ -71,10 +102,10 @@ pub(super) async fn assert_settled_once(run: &Scenario) {
     );
     wait_for_billing(run).await;
     let lines: Vec<(i64,i64,i64,bool)> = sqlx::query_as("SELECT seq,input_token_count,output_token_count,settled_at IS NOT NULL FROM billing.usage_lines WHERE event_id=$1 AND seq=$2")
-        .bind(&run.event_id).bind(1_i64)
+        .bind(&run.event_id).bind(0_i64)
         .fetch_all(&mut *run.booted.database.acquire().await.expect("provider receipt observer"))
         .await.expect("real provider receipt");
-    assert_eq!(lines, vec![(1, 12000, 4000, true)]);
+    assert_eq!(lines, vec![(0, 12000, 4000, true)]);
     assert_eq!(
         crate::reads::event_column(run, &run.event_id, "status")
             .await

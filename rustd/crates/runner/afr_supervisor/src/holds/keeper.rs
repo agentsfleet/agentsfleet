@@ -129,7 +129,7 @@ impl Keeper {
             self.retire(entry, Release::Mismatch);
             return None;
         }
-        let held = crate::deadline::left(entry.since, self.clock.now());
+        let held = af_core::clock::elapsed(entry.since, self.clock.now());
         Some(Taken {
             sandbox: entry.sandbox,
             held,
