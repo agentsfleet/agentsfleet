@@ -38,7 +38,7 @@ Every row is extracted from the sections below; the owner column names the secti
 The nine sizing anti-patterns are the trap list. Read §Anti-patterns (do NOT do these) before any sizing conversation. Three more live elsewhere:
 
 - Statement count alone hides server work: measure discovery latency at the intended active fleet count (§Idle request volume).
-- Metric ratios need their denominator: without `agentsfleet_lease_polls_total`, a traffic increase and a fan-out regression look identical (§Candidate and claim bounds).
+- Metric ratios need their denominator: without `agentsfleet_lease_polls_total`, a claim increase and a fan-out regression look identical (§Candidate and claim bounds).
 - Fleet-memory load still sorts, and correctly so. An index only removes a sort where the plan can exit early (§Which recurring Postgres reads are index-served).
 
 ## Topology
@@ -164,7 +164,7 @@ The single local samples took 19.702 ms before and 0.079 ms after. These are que
 The real-database test in `afd_fleet`'s lease-plan suite asserts that every fleet scan has zero actual loops.
 
 The process prioritizes recent notification hints, held fleets and previous holders, then randomizes the rest.
-An absent or stale notification cannot strand work because every poll still queries Postgres.
+An absent notification cannot strand work because the daemon recovery probe queries Postgres every five seconds.
 A parked oldest admission blocks later admissions while standing access awaits an answer or an event approval stays within its deadline.
 
 The partial `(fleet_id, event_id, expires_at)` gate index serves both probes over unresolved rows.
@@ -175,7 +175,9 @@ It checks fleet and event index bounds, deadline bounds for event approvals, and
 The claim locks the slot and exact head, stamps their fence, and commits before returning it.
 An uncontended successful claim takes discovery, begin, the claim statement and commit; contended attempts add work.
 
-Watch the candidate counter divided by `agentsfleet_lease_polls_total`.
+The historical `agentsfleet_lease_polls_total` counter now counts gateway claim attempts.
+Divide the candidate counter by those attempts to measure claim fan-out.
+
 Statement cost comes from `pg_stat_statements` in `make bench-lease`, which counts what every crate sends.
 Use query latency and query plans alongside these ratios: one slow discovery statement still counts as one statement.
 
@@ -214,7 +216,7 @@ Resolving liveness over the surviving page instead costs 79. When per-row work s
 | `DRAGONFLY_REQUEST_TIMEOUT_MS` | 5000 | Datastore tail-latency tolerance | No healthy datastore's p99 round-trip approaches 4 s, and in-region 6PN is far below that. **Do not raise it**: above 5 s is failure, not slowness. |
 | `DRAGONFLY_CONNECT_TIMEOUT_MS` | 5000 | Time to establish a connection, which `DRAGONFLY_REQUEST_TIMEOUT_MS` never covered; that knob bounds commands on a connection that already exists. | A dead or black-holing endpoint used to hold a boot preflight open past every deadline it declared; the budget now refuses it as `Unreachable`. Raise only where a TLS handshake to a distant region measurably exceeds 4 s. |
 | `OFFER_FALLBACK_TICK` | 5 seconds | One recovery query per daemon replica | Compiled recovery interval; measure missed-wake latency and database cost before changing it. |
-| `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one poll. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet`'s lease assignment module. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per poll. |
+| `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one claim. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet`'s lease assignment module. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per claim. |
 | `LEASE_TTL` | 30000 | Reclaim latency floor **and** the increment each renewal adds. Fleet renewal runs every 5 s, up to `MAX_RUNTIME` (`afr_supervisor`'s renew module and `af_core`'s timing module). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
 | `SSE_MAX_STREAMS` | 256 | Concurrent asynchronous SSE bodies per replica; shared by fleet, workspace and draft-progress tails. Zero is rejected at boot. Each stream holds a socket, and the daemon neither raises `RLIMIT_NOFILE` nor checks the knob against it: about 300 descriptors go to admitted requests, Postgres and Dragonfly first, so 256 is what a stock 1,024 soft limit leaves room for. | Raise only on a host whose descriptor limit is raised to match, after measuring stream refusals, memory, CPU, and proxy capacity. The tail itself held 4,096 streams inside every bound (below). Watch `agentsfleet_sse_in_flight_streams` and `agentsfleet_sse_backpressure_rejections_total`. |
 | `DEFAULT_MAX_IN_FLIGHT` | 256 | Compiled API admission ceiling; excess API requests receive 429 with Retry-After. SSE has its own ceiling. | The daemon's `serve` boot passes this constant (declared in `afd_http`'s admission module) directly; there is no environment override in the Rust boot path. Measure admission refusals and datastore capacity before changing it. |
@@ -440,9 +442,9 @@ Step 4: Emit configuration
 
 A runner that dies holds no datastore connection to leak and no Dragonfly consumer to reclaim. Its in-flight lease expires at `lease_expires_at`.
 
-The next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Recovery latency is `LEASE_TTL` + poll density, the floor that section calls S0.
+The next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). A disconnected lease expires before another runner can claim it; the recovery probe finds work after missed notifications.
 
-There is **no connection storm** on runner loss: the survivors just keep polling.
+Surviving hosts keep their existing sessions; the gateway pushes newly available work.
 
 **Failure domain scales with the assigned `worker_count`**. A host running a pool of N concurrent leases (M88_002) drops **N** in-flight runs on loss, not one. Each lease expires and re-leases independently (no batch coupling), so no work is lost, but N runs restart instead of one.
 
@@ -450,7 +452,8 @@ This is the cost of running more fleets per host; `worker_count=1` keeps the fai
 
 ### Runner host add
 
-A new runner registers and starts polling `lease`. No rebalance of in-flight work, no Dragonfly connection migration, no coordination. Sticky routing prefers the runner that ran the previous run but never blocks on it.
+A newly enrolled runner opens its native session and advertises capacity.
+Existing leases retain their owners; the gateway can offer waiting work to the new host.
 
 ### Datastore failover (primary swap)
 

@@ -150,9 +150,9 @@ A runner that stops renewing loses its slot at the database deadline.
 
 ### Per-lease renewal: how a long fleet keeps its lease
 
-A renewal pushes the kill-deadline forward while the runner's lease task lives. The supervisor's renew module calls `/renew` on every `RENEWAL_TICK` tick from the lease's start. Each call carries one line per provider request the daemon has not yet recorded.
+A native renewal batch extends active leases every five seconds. Each lease carries the provider-request usage the daemon has not yet recorded.
 
-The runner gives the lease up at the last granted deadline less two seconds. The call atomically extends **both** the lease row and the affinity slot under a fence and the hard cap:
+The runner starts stopping nine seconds before its last confirmed deadline, allowing engine cancellation, process termination and reaping before another runner may reclaim the work. Renewal atomically extends **both** the lease row and the affinity slot under a fence and the hard cap:
 
 ```text
  lease issued                                every RENEWAL_TICK (5 s) tick
@@ -730,7 +730,7 @@ A browser pairs a call's frames by `call_id`; a frame from an older runner has n
 
 Two planes, kept apart on purpose. **Activity** is ephemeral and best-effort (a dropped frame is cosmetic); **report** is the durable system of record. The live tail is never the source of truth.
 
-The runner reports the durable outcome before waiting for its activity sender to drain, so a cold activity connection cannot delay settlement. A late activity frame may arrive after completion. A cold DNS or TCP connect still precedes the sender's socket deadline and can hold a worker at the post-report join.
+The runner reports the durable outcome before its bounded activity drain. Activity uses the established native connection, and a late frame may arrive after completion.
 
 Runner chunks carry a pass start marker, contiguous-delivery flag, and sequence number. The browser rejects a gap, ignores activity after completion, and reads the durable event detail to settle the final answer.
 
@@ -1037,9 +1037,9 @@ Logs, spans and runner families: [observability.md](./observability.md) §"Signa
 
 The four are `agentsfleet_runner_failures_total`, `…_executions_total`, `…_last_seen_seconds` and `…_active_leases`, each labelled by `runner_id`. Alongside them, and deliberately **not** in the per-runner table, are the global unlabelled families that describe the control plane's own discovery cost. Families, labels and types: [`docs/metrics.census.tsv`](../metrics.census.tsv).
 
-The poll counters describe global discovery cost without entity labels.
-Divide the candidate counter by `lease_polls_total` for fan-out per poll.
-Statement cost comes from `pg_stat_statements` in `make bench-lease`, because a poll's statements run in several crates.
+The discovery counters describe gateway claim attempts without entity labels.
+The historical `lease_polls_total` name counts these attempts; it does not imply runner lease polling.
+Statement cost comes from `pg_stat_statements` in `make bench-lease`.
 
 The fleet census publishes unsettled admission count and oldest age.
 Use the maximum across replicas, since each census reads the deployment-wide ledger.
@@ -1083,7 +1083,7 @@ Private setup work shares runner capacity with fleet runs. The sections below de
 
 The native session declares `accepted_kinds` and receives offers tagged `kind:"fleet"` or `kind:"authoring"`. Claims lock the runner row, count unexpired active leases across both kinds, and insert the selected lease within that transaction.
 
-The server owns `worker_count`; a poll cannot override it. Reducing it below current occupancy stops new claims and refuses renewals until occupancy fits (`afd_runner`'s capacity module). Existing leases can therefore be interrupted.
+The server owns `worker_count`; the session cannot override it. Reducing it below current occupancy stops new claims and refuses renewals until occupancy fits (`afd_runner`'s capacity module). Existing leases can therefore be interrupted.
 
 The shared poll reads an optimistic kind choice. Under the host lock, each successful placement rechecks and advances the claim revision and last successful kind. Mixed placements alternate preference across daemon replicas; an empty kind tries the other, and a competing placement invalidates the old offer.
 
@@ -1155,13 +1155,12 @@ Assistant answer and candidate changes are separate records; terminal report doe
 |---|---|---|
 | Draft messages and candidates | Creator-private authoring domain | Draft deletion removes private rows and fences every attempt. |
 | Dispatch result, native provider reply and answer receipts | Authoring domain | Bounded private replay copies expire after 24 hours. Native replies bind the attempt and unchanged conversation prefix, stay out of runner responses and logs, and are cleared with draft deletion. Accounting receipts retain no answer. |
-| Authoring report, temporary files and rejected copies | Supervisor | Private bytes are encrypted with a separate local content key. Logical expiry is 24 hours from first write and survives retry or rename. Cleanup runs during uptime and before any restart content read or upload. |
+| Pending authoring report | Supervisor worker | Retained only in memory. Private answer text is zeroed after 24 hours; retries retain content-free accounting. Process loss discards pending memory. |
 | Attempt and settlement records | Runner and billing domains | Retain content-free identities and validated accounting independently of the draft. |
 | Provider logs and infrastructure snapshots | Their service owners | Follow their published retention; draft deletion cannot promise physical removal from these systems. |
 
-The 24-hour limit is logical expiry enforced by the supervisor. Physical files can remain while a machine is powered off. A holder of retained ciphertext and its local key can decrypt offline; storage snapshots follow their own retention.
-
-[Private content and report retention](runner_execution.md#private-content-and-report-retention) owns encryption, clock rollback, startup cleanup and per-entry failure behavior. These rules apply to the supervisor's private spool.
+The supervisor's 24-hour private-answer deadline does not extend with retries.
+[Private content and report retention](runner_execution.md#private-content-and-report-retention) describes the memory owner and accounting boundary.
 
 Accounting-only replay uses the original report identity and normalized accounting fields. Receipts prevent duplicate settlement after lost acknowledgements or draft deletion. A report never received can also settle without restoring private content.
 

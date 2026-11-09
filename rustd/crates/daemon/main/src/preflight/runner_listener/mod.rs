@@ -10,7 +10,7 @@ use super::{Fault, read::required};
 pub const LISTEN_ADDR: &str = "AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR";
 /// Certificate chain authenticating the daemon; key exchange is configured by `af_stream::tls`.
 pub const TLS_CERT_FILE: &str = "AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE";
-/// Protected leaf private key. The certificate authority's signing key stays offline.
+/// Protected leaf private key. The issuer signing key is never delivered to runtime.
 pub const TLS_KEY_FILE: &str = "AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE";
 
 const DETAIL_ADDRESS: &str =

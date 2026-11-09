@@ -37,7 +37,6 @@ mod authoring;
 mod client;
 mod context;
 mod credentials;
-mod deadline;
 mod downlink;
 mod egress;
 mod halt;

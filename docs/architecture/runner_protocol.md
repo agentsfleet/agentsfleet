@@ -119,6 +119,7 @@ There is no periodic transport upgrade or hot switch.
 Reconnect rebuilds live work from Postgres.
 Each running lease keeps its last confirmed expiry and stops when that deadline expires.
 A reconnect or report retry cannot extend that deadline.
+Fleet execution starts stopping nine seconds before expiry to allow engine cancellation, process termination and reaping.
 
 | Timing | Value | Meaning |
 |---|---|---|
@@ -215,6 +216,7 @@ The [gateway](../../rustd/crates/daemon/afd_gateway/src/session/mod.rs) and [run
 
 Receive and send pools are separate; each receives half the configured totals.
 Invalid values refuse startup before allocation.
+Accepted offers use a separate allowance of up to 128 MiB for 64 leases, so workers holding offers cannot block report acknowledgements.
 The 2 MiB frame and 256 pending-request limits remain fixed protocol bounds.
 
 ### Observability

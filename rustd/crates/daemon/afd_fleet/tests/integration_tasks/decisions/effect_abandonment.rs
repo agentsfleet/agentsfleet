@@ -118,8 +118,7 @@ async fn assert_replay(
 async fn replacement(case: &Case) -> (af_core::id::Uuid7, u64) {
     super::lease_recovery::support::expire(case).await;
     let acquired = super::lease_recovery::support::claim(case).await;
-    let response = super::lease_recovery::reclaimed(case, acquired).await;
-    let lease = response.get("lease").expect("ordinary reclaimed lease");
+    let lease = super::lease_recovery::reclaimed(case, acquired).await;
     let lease_id = id(lease
         .get("lease_id")
         .and_then(Value::as_str)

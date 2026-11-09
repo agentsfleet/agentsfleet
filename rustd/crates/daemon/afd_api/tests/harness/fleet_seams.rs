@@ -172,12 +172,8 @@ impl Fleet {
     }
 
     /// Runs stream handlers through a live shared subscription connection.
-    pub(crate) fn with_live_hub(mut self, hub: afd_dragonfly::SubscriptionHub) -> Self {
-        self.live = Live::new(
-            afd_bus::test_util::with_hub(hub).expect("fixture bus"),
-            StreamLimit::new(DEFAULT_STREAM_CEILING),
-        );
-        self
+    pub(crate) fn with_live_hub(self, hub: afd_dragonfly::SubscriptionHub) -> Self {
+        self.with_stream_capacity(hub, DEFAULT_STREAM_CEILING)
     }
 
     /// An instance reporting `ready` to `/readyz`.

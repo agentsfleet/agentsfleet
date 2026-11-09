@@ -30,6 +30,14 @@ pub(crate) struct Session {
 
 impl Session {
     pub(crate) async fn open(router: &Router, bearer: Option<&str>) -> Result<Self, Box<Response>> {
+        let mut session = Self::new();
+        session.control(router, bearer).await?;
+        let owner = session.confirm().await;
+        session.attach(router, &owner).await;
+        Ok(session)
+    }
+
+    fn new() -> Self {
         let stop = CancellationToken::new();
         let context = Arc::new(afd_gateway::ConnectionContext::new(
             af_stream::ConnectionInfo {
@@ -40,18 +48,28 @@ impl Session {
             },
         ));
         let (input, output) = Budget::duplex(af_stream::MemoryLimits::default());
-        let mut session = Self {
+        Self {
             input,
             output,
             _guard: stop.clone().drop_guard(),
             stop,
             context,
             streams: BTreeMap::new(),
-        };
-        session.control(router, bearer).await?;
-        let owner = session.confirm().await;
-        session.attach(router, &owner).await;
-        Ok(session)
+        }
+    }
+
+    /// Opening refusals must arrive even when the runner has sent no hello.
+    pub(crate) async fn opening(router: &Router, bearer: &str, version: &str) -> Response {
+        Self::new()
+            .open_stream(
+                router,
+                StreamKind::Control,
+                Some(bearer),
+                None,
+                Body::empty(),
+                version,
+            )
+            .await
     }
 
     async fn control(
@@ -64,7 +82,14 @@ impl Session {
         self.write_to(&mut upload, StreamKind::Control, &hello)
             .await;
         let response = self
-            .open_stream(router, StreamKind::Control, bearer, None, Body::new(body))
+            .open_stream(
+                router,
+                StreamKind::Control,
+                bearer,
+                None,
+                Body::new(body),
+                protocol::VERSION,
+            )
             .await;
         if response.status() != http::StatusCode::OK {
             return Err(Box::new(response));
@@ -110,7 +135,14 @@ impl Session {
         for kind in [StreamKind::Work, StreamKind::Reports, StreamKind::Activity] {
             let (upload, body) = af_stream::Outgoing::pipe();
             let response = self
-                .open_stream(router, kind, None, Some(owner), Body::new(body))
+                .open_stream(
+                    router,
+                    kind,
+                    None,
+                    Some(owner),
+                    Body::new(body),
+                    protocol::VERSION,
+                )
                 .await;
             assert_eq!(
                 response.status(),
@@ -129,12 +161,13 @@ impl Session {
         bearer: Option<&str>,
         owner: Option<&str>,
         body: Body,
+        version: &str,
     ) -> Response {
         let mut request = http::Request::builder()
             .method(http::Method::POST)
             .version(http::Version::HTTP_2)
             .uri(af_wire::paths::RUNNER_STREAM)
-            .header(protocol::VERSION_HEADER, protocol::VERSION)
+            .header(protocol::VERSION_HEADER, version)
             .header(protocol::STREAM_KIND_HEADER, kind.as_str());
         if let Some(token) = bearer {
             request = request.header(http::header::AUTHORIZATION, format!("Bearer {token}"));

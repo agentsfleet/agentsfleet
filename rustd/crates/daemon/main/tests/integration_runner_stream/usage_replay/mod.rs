@@ -26,7 +26,7 @@ async fn renewal_batches_acknowledge_usage_independently_across_reconnect() {
     for carrier in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();
         let run = scenario(&mut supervisor).await;
-        let sibling = fixture::sibling(&run).await;
+        let sibling = fixture::sibling(&run, "Pull request review").await;
         let relay = relay::Relay::start(run.booted.runner_stream_address).await;
         let proxy = FaultProxy::start(relay.address, carrier).await;
         let mut session = Arc::new(

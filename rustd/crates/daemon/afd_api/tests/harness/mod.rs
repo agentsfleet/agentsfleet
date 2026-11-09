@@ -257,6 +257,7 @@ pub(crate) struct Fleet {
     capabilities: MockCapabilities,
     authenticator: Planes<Directory, MockCapabilities, MockVerifier>,
     runners: Runners,
+    runner_commands: afd_bus::Handle,
     leases: NoWork,
     tasks: afd_fleet::task::Tasks,
     workspaces: Ownership,

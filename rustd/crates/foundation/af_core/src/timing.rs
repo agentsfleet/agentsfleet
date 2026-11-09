@@ -2,9 +2,8 @@
 //!
 //! Declared here and nowhere else. The daemon sets `leased_until`, treats the
 //! same instant as the kill deadline it sends the host, and derives liveness
-//! from the lapse threshold — so every one of these is a decision this side
-//! makes. The runner is told the two it needs, its deadline on the renew reply
-//! and its cadence on the beat, and holds neither.
+//! from the lapse threshold. Each runner retains its confirmed lease expiry
+//! and uses the heartbeat cadence advertised by the daemon.
 //!
 //! Each is a [`Duration`]: the one span type that a `tokio` sleep takes and
 //! that moves a `jiff::Timestamp` (see [`crate::clock::after`]). A span becomes
@@ -28,7 +27,7 @@ pub const AUTHORING_MODEL_ANSWER_TIMEOUT: Duration = Duration::from_secs(310);
 /// the renew verb rather than being handed a long lease up front.
 pub const LEASE_TTL: Duration = Duration::from_secs(30);
 
-/// How long before expiry a runner auto-renews.
+/// The renewal slack preserved by the lease and connection-recovery relationship.
 ///
 /// Strictly below [`LEASE_TTL`] so a renewal that fails transiently still
 /// has room to retry before the deadline.
@@ -74,15 +73,10 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 /// bounds the cost of the wait.
 pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 
-/// How long a readiness-doorbell command may take before its caller goes on
-/// without it: the ring a mark publishes, and the peek of the partition a ring
-/// named.
+/// How long an ephemeral wake or runner command may wait for its broker.
 ///
-/// The doorbell only ever makes a poll faster. Under the datastore's own
-/// request timeout a slow node could hold an admission, or a poll the rotation
-/// alone would have answered, for seconds; past this deadline the ring is
-/// reported lost or the rung peek counts as failed, and the rotation still
-/// reaches the work.
+/// Admission is already durable; a lost wake leaves work for the replica's
+/// recovery probe, and heartbeat or renewal checks repair a lost runner command.
 pub const READY_WAKE_DEADLINE: Duration = Duration::from_millis(100);
 
 /// Maximum time to answer an application request or finish a partial stream frame.

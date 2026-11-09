@@ -1,4 +1,7 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::{IpAddr, SocketAddr},
+    sync::Arc,
+};
 
 use tokio::{net::UdpSocket, sync::mpsc};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
@@ -24,14 +27,16 @@ pub(super) async fn connect(
     let mut config = super::trust::client(trust)?;
     let mut cid = [0; 16];
     af_crypto::entropy::Entropy::default().fill(&mut cid)?;
+    let expected_ip = endpoint.host().parse::<IpAddr>().ok();
+    let server_name = expected_ip.is_none().then_some(endpoint.host());
     let connection = tokio_quiche::quiche::connect_with_buffer_factory(
-        Some(endpoint.host()),
+        server_name,
         &tokio_quiche::quiche::ConnectionId::from_ref(&cid),
         local,
         peer,
         &mut config,
     )?;
-    let wrapped = tokio_quiche::quic::raw::wrap_quiche_conn(
+    let mut wrapped = tokio_quiche::quic::raw::wrap_quiche_conn(
         connection,
         tokio_quiche::socket::Socket {
             send: Arc::clone(&socket),
@@ -42,6 +47,10 @@ pub(super) async fn connect(
         },
         tokio_quiche::metrics::DefaultMetrics,
     );
+    // quiche's server-name option verifies DNS SANs. Literal origins must prove an IP SAN.
+    if let Some(ip) = expected_ip {
+        wrapped.conn.ssl_mut().verify_param_mut().set_ip(ip)?;
+    }
     let receive = receive(socket, wrapped.incoming_tx, local, peer, stop.clone());
     Ok(Connected {
         initial: wrapped.conn,

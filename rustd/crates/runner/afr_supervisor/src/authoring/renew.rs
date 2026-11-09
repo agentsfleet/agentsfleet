@@ -55,5 +55,5 @@ pub(super) async fn keep(
 }
 
 pub(super) fn deadline(at: Timestamp, clock: &dyn Clock) -> Instant {
-    Instant::now() + crate::deadline::left(clock.now(), at)
+    Instant::now() + af_core::clock::elapsed(clock.now(), at)
 }

@@ -67,14 +67,14 @@ impl Boundary {
             .await
             .expect("reviewed decision model");
         let mut details = model.model.details.clone();
-        details
+        let profile = &mut details
             .decision
             .as_mut()
             .expect("decision settings")
             .configuration
-            .profile
-            .endpoint
-            .clone_from(&self.endpoint);
+            .profile;
+        profile.endpoint.clone_from(&self.endpoint);
+        profile.revision = "reviewed-native-decision".into();
         assert!(
             model
                 .models

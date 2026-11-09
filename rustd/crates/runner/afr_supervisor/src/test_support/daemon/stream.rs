@@ -27,53 +27,96 @@ use crate::{
 };
 
 pub(super) fn start(api: &Arc<dyn RunnerApi>, stop: CancellationToken) -> StreamHandle {
-    let (queues, receivers) = Queues::new();
-    let (budget, _) = Budget::duplex(MemoryLimits::default());
-    let requests = Requests::new();
-    let sender = Arc::new(SessionSender {
-        queues,
-        budget: budget.clone(),
-        requests: Arc::clone(&requests),
-        stop: stop.clone(),
-    });
-    let (renewal_owner, renewal_session) = watch::channel(Some(Arc::clone(&sender)));
-    let (current, session) = watch::channel(Some(sender));
+    let initial = session(&stop);
+    let (current, session) = watch::channel(Some(Arc::clone(&initial.0)));
+    let (renewal_owner, renewal_session) = watch::channel(Some(Arc::clone(&initial.0)));
     let (assignment, assignments) = watch::channel(None);
     let handle = StreamHandle::new(session, Arc::new(Running::default()), assignments);
-    let Receivers {
-        priority,
-        control,
-        work,
-        reports,
-        activity,
-    } = receivers;
-    for queue in [priority, control, work, reports, activity] {
-        tokio::spawn(serve(
-            queue,
-            Arc::clone(api),
-            Arc::clone(&requests),
-            budget.clone(),
-            stop.clone(),
-        ));
-    }
     let mut renewal_handle = StreamHandle::new(
         renewal_session,
         Arc::clone(&handle.running),
         handle.assignments.clone(),
     );
     renewal_handle.renewing = Arc::clone(&handle.renewing);
+    let api = Arc::clone(api);
     tokio::spawn(async move {
         let _assignment = assignment;
-        // The batcher uses its own receiver so it cannot keep the caller's lifetime watch alive.
-        let _renewal_owner = renewal_owner;
-        tokio::select! {
-            () = current.closed() => {},
-            _finished = renewal_handle.renewing.run(&renewal_handle, stop.clone()) => {},
-        }
-        stop.cancel();
-        requests.close();
+        let batching = async {
+            let _stop_on_exit = stop.clone().drop_guard();
+            if let Err(error) = renewal_handle
+                .renewing
+                .run(&renewal_handle, stop.clone())
+                .await
+            {
+                let error_code = error.code().as_str();
+                tracing::warn!(event = "scripted_renewal_failed", error_code);
+            }
+        };
+        tokio::join!(
+            connections(api, stop.clone(), current, renewal_owner, initial),
+            batching,
+        );
     });
     handle
+}
+
+fn session(stop: &CancellationToken) -> (Arc<SessionSender>, Receivers) {
+    let (queues, receivers) = Queues::new();
+    let (budget, _) = Budget::duplex(MemoryLimits::default());
+    (
+        Arc::new(SessionSender {
+            queues,
+            budget,
+            requests: Requests::new(),
+            stop: stop.child_token(),
+        }),
+        receivers,
+    )
+}
+
+async fn connections(
+    api: Arc<dyn RunnerApi>,
+    stop: CancellationToken,
+    current: watch::Sender<Option<Arc<SessionSender>>>,
+    renewal: watch::Sender<Option<Arc<SessionSender>>>,
+    mut connected: (Arc<SessionSender>, Receivers),
+) {
+    let _stop_on_exit = stop.clone().drop_guard();
+    loop {
+        let (sender, receivers) = connected;
+        let mut workers = tokio::task::JoinSet::new();
+        let Receivers {
+            priority,
+            control,
+            work,
+            reports,
+            activity,
+        } = receivers;
+        for queue in [priority, control, work, reports, activity] {
+            workers.spawn(serve(
+                queue,
+                Arc::clone(&api),
+                Arc::clone(&sender.requests),
+                sender.budget.clone(),
+                sender.stop.clone(),
+                stop.clone(),
+            ));
+        }
+        current.send_replace(Some(Arc::clone(&sender)));
+        renewal.send_replace(Some(Arc::clone(&sender)));
+        tokio::select! {
+            () = stop.cancelled() => {},
+            () = current.closed() => {},
+            () = sender.stop.cancelled() => {},
+        }
+        sender.stop.cancel();
+        sender.requests.close();
+        workers.shutdown().await;
+        if stop.is_cancelled() || current.is_closed() {
+            return;
+        }
+        connected = session(&stop);
+    }
 }
 
 async fn serve(
@@ -82,14 +125,21 @@ async fn serve(
     requests: Arc<Requests>,
     budget: Budget,
     stop: CancellationToken,
+    lifetime: CancellationToken,
 ) {
-    let mut workers = tokio::task::JoinSet::new();
+    let mut workers = tokio::task::JoinSet::<Result<()>>::new();
     loop {
         tokio::select! {
             () = stop.cancelled() => break,
-            done = workers.join_next(), if !workers.is_empty() => {
-                if !matches!(done, Some(Ok(Ok(())))) { stop.cancel(); break; }
-            }
+            done = workers.join_next(), if !workers.is_empty() => match done {
+                Some(Ok(Ok(()))) => {},
+                Some(Ok(Err(error))) => {
+                    if !error.is_retryable() { lifetime.cancel(); }
+                    stop.cancel();
+                    break;
+                }
+                Some(Err(_)) | None => { lifetime.cancel(); stop.cancel(); break; }
+            },
             outbound = queue.recv(), if workers.len() < af_wire::protocol::PENDING_MAX => {
                 let Some(outbound) = outbound else { break; };
                 workers.spawn(respond(Arc::clone(&api), Arc::clone(&requests), budget.clone(), stop.clone(), outbound));

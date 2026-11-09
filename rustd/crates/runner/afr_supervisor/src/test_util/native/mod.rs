@@ -1,5 +1,7 @@
 //! Scripted peer on the shipping native transports, with real framing and opening.
 
+#[cfg(test)]
+mod relay;
 mod reply;
 
 use std::{convert::Infallible, sync::Arc};
@@ -31,6 +33,8 @@ pub struct NativeDaemon {
     task: AbortOnDropHandle<af_stream::Result<()>>,
     workers: TaskTracker,
     failure: Arc<parking_lot::Mutex<Option<crate::Error>>>,
+    #[cfg(test)]
+    cancellation: Arc<parking_lot::Mutex<Option<af_core::id::Uuid7>>>,
 }
 
 impl NativeDaemon {
@@ -80,6 +84,7 @@ impl NativeDaemon {
         let stop = CancellationToken::new();
         let workers = TaskTracker::new();
         let failure = Arc::new(parking_lot::Mutex::new(None));
+        let cancellation = Arc::new(parking_lot::Mutex::new(None));
         let peer = Arc::new(Peer {
             healthy,
             lease: Mutex::new(lease),
@@ -87,6 +92,7 @@ impl NativeDaemon {
             observe,
             workers: workers.clone(),
             failure: Arc::clone(&failure),
+            cancellation: Arc::clone(&cancellation),
         });
         let task = tokio::spawn(listener.serve(
             move |connection| {
@@ -107,7 +113,23 @@ impl NativeDaemon {
             task: AbortOnDropHandle::new(task),
             workers,
             failure,
+            #[cfg(test)]
+            cancellation,
         })
+    }
+
+    /// Push a lease cancellation immediately after its next renewal acknowledgement.
+    #[cfg(test)]
+    pub(crate) fn cancel_after_renewal(&self, lease: &af_core::id::Uuid7) {
+        self.cancellation.lock().replace(lease.clone());
+    }
+
+    /// Leave UDP unanswered while forwarding TCP to this same native listener.
+    #[cfg(test)]
+    pub(crate) async fn tcp_only(
+        &self,
+    ) -> Result<relay::TcpOnly, Box<dyn std::error::Error + Send + Sync>> {
+        relay::TcpOnly::start(&self.url).await
     }
 
     /// Public root bundle for the runtime-generated issuer.
@@ -150,6 +172,7 @@ struct Peer<H> {
     observe: H,
     workers: TaskTracker,
     failure: Arc<parking_lot::Mutex<Option<crate::Error>>>,
+    cancellation: Arc<parking_lot::Mutex<Option<af_core::id::Uuid7>>>,
 }
 
 impl<H, F> Peer<H>
@@ -240,8 +263,29 @@ where
             {
                 self.ready.notify_one();
             }
-            if let Some(response) = reply::answer(&self.healthy, &message)? {
-                send(&mut writer, &response, &budget, kind, stop).await?;
+            self.answer(&mut writer, &message, &budget, kind, stop)
+                .await?;
+        }
+        Ok(())
+    }
+
+    async fn answer(
+        &self,
+        writer: &mut DuplexStream,
+        message: &Up<'_>,
+        budget: &Budget,
+        kind: StreamKind,
+        stop: &CancellationToken,
+    ) -> Result<()> {
+        if let Some(response) = reply::answer(&self.healthy, message)? {
+            send(writer, &response, budget, kind, stop).await?;
+        }
+        if matches!(message, Up::RenewBatch { .. }) {
+            let cancelled = self.cancellation.lock().take();
+            if let Some(lease) = cancelled {
+                let response = serde_json::json!({"type":"cancel", "lease_id":lease,
+                    "error_code":af_core::error_code::RUN_LEASE_CANCELLED.as_str()});
+                send(writer, &response, budget, kind, stop).await?;
             }
         }
         Ok(())

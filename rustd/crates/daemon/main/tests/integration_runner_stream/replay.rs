@@ -48,6 +48,7 @@ async fn a_report_resent_after_a_native_cut_is_charged_once() {
             (*crate::wire::pointer(&replay, "/answer")),
             json!({"status":"ok", "response":{"ok":true}})
         );
+        crate::reads::relay_settled(&run).await;
         let counts: (i64, i64) = sqlx::query_as("SELECT count(*) FILTER(WHERE seq=1), count(*) FILTER(WHERE settled_at IS NULL) FROM billing.usage_lines WHERE event_id=$1")
             .bind(&run.event_id)
             .fetch_one(&mut *run.booted.database.acquire().await.expect("receipt observer"))
