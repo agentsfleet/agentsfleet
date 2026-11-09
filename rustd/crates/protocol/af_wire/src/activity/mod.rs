@@ -233,10 +233,7 @@ impl ActivityFrame<'_> {
     }
 }
 
-/// `POST /v1/runners/me/leases/{lease_id}/activity` request, a batch of frames.
-///
-/// One frame per request today; the array shape lets a later change coalesce
-/// without a wire change. The reply is `202` carrying [`ActivityAccepted`].
+/// A batch of best-effort activity frames sent on the native activity stream.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -244,20 +241,6 @@ pub struct ActivityRequest<'a> {
     /// The frames being forwarded.
     #[serde(borrow)]
     pub frames: Vec<ActivityFrame<'a>>,
-}
-
-/// The acknowledgement a batch of frames is answered with.
-///
-/// `202`, because the frames were received and not yet read by anybody. The
-/// publish is best-effort and a subscriber seeing a frame is a separate event
-/// from this call returning.
-// One field, so the runner's client has a body to decode rather than a bare
-// status; the published API document pins it.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ActivityAccepted {
-    /// Always true. Rejected batches return an error response instead.
-    pub ok: bool,
 }
 
 #[cfg(test)]

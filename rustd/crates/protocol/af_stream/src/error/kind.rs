@@ -171,6 +171,11 @@ pub(crate) enum ErrorKind {
         #[source]
         source: tokio::sync::AcquireError,
     },
+    #[error("The retained frame exceeds its available memory allowance.")]
+    Retention {
+        #[source]
+        source: tokio::sync::TryAcquireError,
+    },
     #[error("A connection worker stopped unexpectedly.")]
     Worker {
         #[source]

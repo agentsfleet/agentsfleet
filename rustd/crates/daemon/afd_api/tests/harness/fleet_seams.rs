@@ -171,9 +171,8 @@ impl Fleet {
     }
 
     /// Runs stream handlers through `bus`, the one their publishers share.
-    pub(crate) fn with_live_bus(mut self, bus: afd_bus::Handle) -> Self {
-        self.live = Live::new(bus, StreamLimit::new(DEFAULT_STREAM_CEILING));
-        self
+    pub(crate) fn with_live_bus(self, bus: afd_bus::Handle) -> Self {
+        self.with_stream_capacity(bus, DEFAULT_STREAM_CEILING)
     }
 
     /// An instance reporting `ready` to `/readyz`.

@@ -16,18 +16,12 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use std::borrow::Cow;
-
-use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
 use afd_db::test_util::mint_id;
 use afd_fleet::lease::Committed;
 
-use crate::report_commit::{
-    RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES, RESUME_EVENT_ID, RESUME_RESPONSE,
-};
-use crate::report_seed::SLICE_MS;
+use crate::report_commit::{RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES};
 use crate::seed::PROVIDER;
 
 pub(crate) mod stage;
@@ -38,7 +32,7 @@ use self::stage::{Obligation, obligations, owed_by, stage};
 const THREAD: &str =
     r#"{"team_id":"T024BE7LD","channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
 
-/// Dimension 2.1 — non-empty answers from a steer, an App webhook and a cron
+/// Non-empty answers from a steer, an App webhook and a cron
 /// fire owe nothing: none of them was asked from a thread.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -68,7 +62,7 @@ async fn answers_without_a_destination_owe_nothing() {
     stage.fixtures.cleanup().await;
 }
 
-/// Dimension 2.2 — an event admitted with a Slack thread owes one row to that
+/// an event admitted with a Slack thread owes one row to that
 /// connector and that exact address.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -99,7 +93,7 @@ async fn answer_is_owed_to_the_recorded_destination() {
     stage.fixtures.cleanup().await;
 }
 
-/// Dimension 2.3 — with every lease resolved to a model provider, no ledger
+/// with every lease resolved to a model provider, no ledger
 /// row names it, whichever producer asked.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -137,22 +131,13 @@ async fn the_model_provider_never_reaches_the_ledger() {
     stage.fixtures.cleanup().await;
 }
 
-/// Dimension 2.4 — a report the datastore refuses owes nothing, and a replayed
+/// a report the datastore refuses owes nothing, and a replayed
 /// report owes once.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_replayed_or_rolled_back_report_owes_at_most_once() {
     let stage = stage().await;
-    stage
-        .admit(
-            Producer::Webhook,
-            "asked-once",
-            Reply::To {
-                connector: Provider::Slack.id(),
-                address: THREAD,
-            },
-        )
-        .await;
+    stage.admit_thread("asked-once").await;
     let now = stage.fixtures.enrolled_at();
     let (lease_id, lease) = stage.lease_next(now).await;
 
@@ -262,80 +247,17 @@ async fn an_event_the_ledger_never_minted_owes_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_plane_appends_and_receipts_what_it_owed() {
     let stage = stage().await;
-    let event_id = stage
-        .admit(
-            Producer::Webhook,
-            "asked-and-answered",
-            Reply::To {
-                connector: Provider::Slack.id(),
-                address: THREAD,
-            },
-        )
-        .await;
+    let event_id = stage.admit_thread("asked-and-answered").await;
     let now = stage.fixtures.enrolled_at();
     let (lease_id, lease) = stage.lease_next(now).await;
 
-    let request = ReportRequest {
-        folded_through_sequence: None,
-        task: None,
-        lease_id: Cow::Borrowed(lease_id.as_str()),
-        event_id: Cow::Borrowed(lease.event_id.as_str()),
-        fencing_token: lease.fence.as_u64(),
-        outcome: Outcome::Processed,
-        failure_reason: None,
-        failure_detail: Cow::Borrowed(""),
-        response_text: Cow::Borrowed(RESPONSE_ACCEPTED),
-        tokens: 0,
-        requests: af_wire::usage::RequestLines::default(),
-        telemetry: ReportTelemetry {
-            time_to_first_token_ms: 0,
-            wall_ms: u64::try_from(SLICE_MS).expect("a slice is positive"),
-            segments: None,
-        },
-        checkpoint: ReportCheckpoint {
-            last_event_id: Cow::Borrowed(RESUME_EVENT_ID),
-            last_response: Cow::Borrowed(RESUME_RESPONSE),
-        },
-        tool_calls: None,
-        held_until: None,
-        memory: Vec::new(),
-    };
-    stage
-        .fixtures
-        .plane()
-        .report(
-            &stage.runner,
-            &request,
-            af_core::clock::after(
-                now,
-                std::time::Duration::from_millis(
-                    u64::try_from(SLICE_MS).expect("a fixture span is not negative"),
-                ),
-            ),
-        )
-        .await
-        .expect("the plane settles the report");
+    stage.report_through_plane(&lease_id, &lease, now).await;
 
-    let mut connection = stage
-        .fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    let receipt: Option<String> = sqlx::query_scalar(
-        "SELECT receipt FROM fleet.obligations
-          WHERE fleet_id = $1 AND event_id = $2",
-    )
-    .bind(&stage.fleet)
-    .bind(&event_id)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the report owed the thread's answer");
+    let receipt = stage.receipt(&event_id).await;
     assert!(
         receipt.is_some(),
         "the plane appended the owed answer and recorded the entry it landed on"
     );
-    drop(connection);
 
     stage.fixtures.cleanup().await;
 }

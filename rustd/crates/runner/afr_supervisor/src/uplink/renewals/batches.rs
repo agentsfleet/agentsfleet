@@ -1,10 +1,9 @@
 //! Count actual JSON without allocating a second copy of the host's usage records.
 
-use std::{io, num::NonZeroU64};
+use std::num::NonZeroU64;
 
 use af_core::id::Uuid7;
 use af_wire::protocol::{MESSAGE_BYTES_MAX, Renewal, Up};
-use serde::Serialize;
 
 use crate::{Result, client::stream::RenewalBatch, error::ErrorKind};
 
@@ -17,7 +16,7 @@ pub(super) fn split(
         request_id: NonZeroU64::MAX,
         leases: Vec::new(),
     };
-    let overhead = encoded_bytes(&empty)?;
+    let overhead = af_validate::serialized_len(&empty).map_err(crate::error::encode)?;
     let mut bytes = overhead;
     let mut current = RenewalBatch {
         ids: Vec::new(),
@@ -25,7 +24,7 @@ pub(super) fn split(
     };
     let mut batches = Vec::new();
     for (id, renewal) in entries {
-        let entry_bytes = encoded_bytes(&renewal)?;
+        let entry_bytes = af_validate::serialized_len(&renewal).map_err(crate::error::encode)?;
         if overhead + entry_bytes > MESSAGE_BYTES_MAX {
             return Err(ErrorKind::StreamProtocol.into());
         }
@@ -46,24 +45,4 @@ pub(super) fn split(
         batches.push(current);
     }
     Ok(batches)
-}
-
-fn encoded_bytes(value: &impl Serialize) -> Result<usize> {
-    let mut counter = Counter(0);
-    serde_json::to_writer(&mut counter, value).map_err(crate::error::encode)?;
-    Ok(counter.0)
-}
-
-/// Mirrors activity's counting writer; no encoded request allocation survives sizing.
-struct Counter(usize);
-
-impl io::Write for Counter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0 = self.0.saturating_add(buf.len());
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
 }

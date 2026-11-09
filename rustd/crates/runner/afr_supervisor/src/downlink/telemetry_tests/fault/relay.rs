@@ -61,7 +61,7 @@ impl Drop for Relay {
 async fn relay(
     listener: TcpListener,
     backend: u16,
-    available: watch::Receiver<bool>,
+    mut available: watch::Receiver<bool>,
     stop: CancellationToken,
 ) -> std::io::Result<()> {
     let mut workers = JoinSet::new();
@@ -74,7 +74,7 @@ async fn relay(
             }
             accepted = listener.accept() => {
                 let (client, _) = accepted?;
-                if *available.borrow() {
+                if *available.borrow_and_update() {
                     workers.spawn(pipe(client, backend, available.clone(), stop.clone()));
                 } else {
                     workers.spawn(blackhole(client, available.clone(), stop.clone()));

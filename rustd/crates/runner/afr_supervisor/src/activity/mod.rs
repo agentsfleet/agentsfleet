@@ -25,7 +25,6 @@
 //! as `abandoned` when it is dropped, so the frames a slow daemon cost are
 //! counted on every path that loses them.
 
-use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -289,23 +288,8 @@ fn frame_count(frames: usize) -> u64 {
 
 /// A frame's encoded size, measured without allocating its encoding.
 fn encoded_len(frame: &ActivityFrame<'_>) -> usize {
-    let mut counter = Counter(0);
     // Encoding a wire frame cannot fail; were it to, the frame rides alone.
-    serde_json::to_writer(&mut counter, frame).map_or(MAX_BATCH_BYTES, |()| counter.0)
-}
-
-/// An `io::Write` that keeps only the count of what was written to it.
-struct Counter(usize);
-
-impl io::Write for Counter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0 += buf.len();
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
+    af_validate::serialized_len(frame).unwrap_or(MAX_BATCH_BYTES)
 }
 
 #[cfg(test)]

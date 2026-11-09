@@ -2,5 +2,6 @@
 
 mod failures;
 mod framing;
+mod ip_identity;
 mod native;
 mod support;

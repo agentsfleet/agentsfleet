@@ -11,7 +11,7 @@ impl Fleet {
     }
 
     fn authoring_gateway(&self, database: Db) -> Gateway {
-        let bus = afd_bus::test_util::unreachable();
+        let bus = self.runner_commands.clone();
         let biller = Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
             database.clone(),
         ));
@@ -45,11 +45,11 @@ impl Fleet {
             models: self.authoring_models.clone(),
             creations: self.creations.clone(),
             bus,
-            stream_limit: StreamLimit::new(DEFAULT_STREAM_CEILING),
+            stream_limit: self.live.stream_limit().clone(),
             wake: afd_bus::wake::Wake::default(),
             frame_memory: af_stream::MemoryLimits::default(),
             wall_clock: Arc::new(af_core::clock::SystemClock),
-            analytics: Analytics::silent(),
+            analytics: self.analytics.clone(),
         })
     }
 }

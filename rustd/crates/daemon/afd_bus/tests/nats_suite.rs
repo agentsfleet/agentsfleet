@@ -5,6 +5,9 @@ mod support;
 #[path = "nats_exclusive/mod.rs"]
 mod integration_bus_exclusive;
 
+#[path = "nats_replicas/mod.rs"]
+mod replicas;
+
 use std::{sync::Arc, time::Duration};
 
 use af_core::{error_code, id::Uuid7};

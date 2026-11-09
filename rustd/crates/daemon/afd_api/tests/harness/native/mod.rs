@@ -8,7 +8,7 @@ use axum::{Router, body::Body, response::Response};
 use http::StatusCode;
 use serde_json::{Value, json};
 
-use session::Session;
+pub(crate) use session::Session;
 
 #[derive(Clone, Debug)]
 pub(crate) enum Operation {

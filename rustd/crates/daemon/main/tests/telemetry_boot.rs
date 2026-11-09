@@ -56,6 +56,7 @@ fn environment_over(database: &str, bus: &str, endpoint: &str) -> MapEnv {
         support::SESSION_PEPPER
             .into_iter()
             .chain(support::IDENTITY)
+            .chain(support::runner_stream::environment())
             .map(|(name, value)| (name, value.to_owned())),
     )
     .collect();
@@ -92,15 +93,16 @@ fn has_event(body: &Value, event: &str) -> bool {
         })
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs real datastores and a collector socket: make test-integration-rustd"]
-async fn boot_exports_live_snapshots_and_flushes_before_returning_a_dependency_failure() {
-    assert!(agentsfleetd::logs::install(&MapEnv::default()));
+async fn collector() -> (
+    String,
+    mpsc::UnboundedReceiver<Delivery>,
+    tokio::task::JoinHandle<()>,
+) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
         .expect("collector socket");
     let endpoint = format!("http://{}", listener.local_addr().expect("bound address"));
-    let (sent, mut received) = mpsc::unbounded_channel();
+    let (sent, received) = mpsc::unbounded_channel();
     let collector = tokio::spawn(async move {
         axum::serve(
             listener,
@@ -111,12 +113,10 @@ async fn boot_exports_live_snapshots_and_flushes_before_returning_a_dependency_f
         .await
         .expect("collector serves until aborted");
     });
-    let database = ProcessEnv.get("TEST_DATABASE_URL").expect("lane database");
-    let mut supervisor = Supervisor::new();
-    let booted = agentsfleetd::serve::boot(&environment(&database, &endpoint), 0, &mut supervisor)
-        .await
-        .expect("real daemon boot");
+    (endpoint, received, collector)
+}
 
+async fn live_samples(received: &mut mpsc::UnboundedReceiver<Delivery>) {
     tokio::time::timeout(Duration::from_secs(15), async {
         // Only Linux has `/proc/self/statm`; every other host reports no
         // resident reading by design (`the_resident_reading_is_a_measurement_or_nothing`),
@@ -149,6 +149,20 @@ async fn boot_exports_live_snapshots_and_flushes_before_returning_a_dependency_f
     })
     .await
     .expect("sampler publishes real memory, catalogue and schedule readings");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs real datastores and a collector socket: make test-integration-rustd"]
+async fn boot_exports_live_snapshots_and_flushes_before_returning_a_dependency_failure() {
+    assert!(agentsfleetd::logs::install(&MapEnv::default()));
+    let (endpoint, mut received, collector) = collector().await;
+    let database = ProcessEnv.get("TEST_DATABASE_URL").expect("lane database");
+    let mut supervisor = Supervisor::new();
+    let booted = agentsfleetd::serve::boot(&environment(&database, &endpoint), 0, &mut supervisor)
+        .await
+        .expect("real daemon boot");
+
+    live_samples(&mut received).await;
     let report = supervisor.shutdown().await;
     assert!(report.is_clean(), "{report:?}");
     drop(booted);

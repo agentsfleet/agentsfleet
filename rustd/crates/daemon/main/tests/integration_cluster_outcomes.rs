@@ -47,7 +47,7 @@ use crate::reads::{
     balance, counter_column, lease_column, ledger_rows, relay_settled, unsettled_lines,
 };
 use crate::tail::{next_frame, settle};
-use crate::wire::{capable_beat, field, post, report_body, wait_for_offer, wait_for_seeded_offer};
+use crate::wire::{capable_beat, field, report_body, wait_for_offer, wait_for_seeded_offer};
 
 /// The event type the daemon has an execution path for, so an extra append is
 /// leasable rather than ended as unsupported. `EventType` is a closed set and
@@ -122,11 +122,7 @@ async fn the_runner_is_offered_the_fleets_oldest_event(run: &Scenario) -> (Strin
 /// through the bus subscription because that is the consumer
 /// the live tail actually runs on — a raw subscribe would agree with a
 /// publisher that had drifted from its only reader.
-async fn a_frame_crosses_the_cluster_to_its_subscriber(
-    http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
-) {
+async fn a_frame_crosses_the_cluster_to_its_subscriber(run: &Scenario, lease_id: &str) {
     // Subscribed BEFORE the forward: pub/sub keeps nothing for a reader that
     // arrives late, so a subscription opened afterwards would prove a drop
     // that never happened.
@@ -135,19 +131,15 @@ async fn a_frame_crosses_the_cluster_to_its_subscriber(
     // instant can legitimately beat it to the daemon's node.
     settle().await;
 
-    let forwarded = post(
-        http,
-        run,
-        &format!("/v1/runners/me/leases/{lease_id}/activity"),
-        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT, "text_kind": "answer"}}]}),
-    )
-    .await;
-    assert_eq!(
-        forwarded.status().as_u16(),
-        202,
-        "the reply acknowledges RECEIPT, as documented — the publish behind it \
-         is best-effort and happens whether or not anybody is listening"
-    );
+    let body =
+        json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT, "text_kind": "answer"}}]});
+    let bytes = serde_json::to_vec(&body).expect("activity fixture encodes");
+    let request = serde_json::from_slice(&bytes).expect("current activity fixture");
+    run.native_session()
+        .await
+        .activity(&Uuid7::parse(lease_id).expect("issued lease"), &request)
+        .await
+        .expect("native activity accepted by its send queue");
 
     let frame = next_frame(&mut tail).await.expect(
         "the frame reaches the subscriber — a publish the cluster never routed \
@@ -236,16 +228,10 @@ async fn the_fleet_is_still_discoverable_for_its_remaining_work(
 async fn test_cluster_preserves_application_outcomes() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
-    )]
-    let http = reqwest::Client::new();
-
     prove_capabilities(&run).await;
     let second_event = a_second_admission_is_a_second_event(&run).await;
     let (lease_id, fence) = the_runner_is_offered_the_fleets_oldest_event(&run).await;
-    a_frame_crosses_the_cluster_to_its_subscriber(&http, &run, &lease_id).await;
+    a_frame_crosses_the_cluster_to_its_subscriber(&run, &lease_id).await;
     a_report_settles_once(&run, &lease_id, fence).await;
     the_fleet_is_still_discoverable_for_its_remaining_work(&run, &second_event).await;
 

@@ -13,6 +13,9 @@ mod transport;
 #[path = "support/wall_stream_fixture.rs"]
 pub(crate) mod fixture;
 
+#[path = "runner_plane/native_opening.rs"]
+mod native_opening;
+
 use std::time::Duration;
 
 use afd_auth::scope::{Scope, ScopeSet};

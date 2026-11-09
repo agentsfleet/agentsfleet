@@ -29,7 +29,7 @@ const HOT_TICK: Duration = Duration::from_millis(10);
 const PROBES: &str = "SELECT calls FROM pg_stat_statements \
     WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database()) \
       AND query LIKE $1";
-const PROBE_PATTERN: &str = "%SELECT 1 FROM fleet.admissions a%FROM authoring.drafts d%";
+const PROBE_PATTERN: &str = "%FROM fleet.admissions a%FROM authoring.drafts d%";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]

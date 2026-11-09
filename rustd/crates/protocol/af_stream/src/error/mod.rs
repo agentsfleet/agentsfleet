@@ -42,6 +42,7 @@ af_core::error_lifts!(Error, ErrorKind:
     serde_json::Error => Json,
     std::num::TryFromIntError => Length,
     tokio::sync::AcquireError => Budget,
+    tokio::sync::TryAcquireError => Retention,
     tokio::task::JoinError => Worker,
 );
 
@@ -122,6 +123,7 @@ impl Error {
                 Reason::Worker
             }
             ErrorKind::Protocol
+            | ErrorKind::Retention { .. }
             | ErrorKind::MemorySetting { .. }
             | ErrorKind::ProxyPolicy { .. }
             | ErrorKind::ProxyInput { .. }

@@ -3,6 +3,8 @@ use af_core::id::Uuid7;
 use std::{sync::Arc, time::Duration};
 use tokio::time::Instant;
 
+mod recovery;
+
 #[tokio::test(start_paused = true)]
 async fn recovery_shares_confirmed_deadlines_and_retires_them_before_final_delivery()
 -> crate::Result<()> {
@@ -114,7 +116,7 @@ impl FullHost {
 struct RenewalPeer {
     sender: Arc<super::super::SessionSender>,
     outgoing: super::super::queues::Receivers,
-    _current: tokio::sync::watch::Sender<Option<Arc<super::super::SessionSender>>>,
+    current: tokio::sync::watch::Sender<Option<Arc<super::super::SessionSender>>>,
     _assignments: tokio::sync::watch::Sender<Option<Arc<af_stream::OwnedFrame>>>,
 }
 
@@ -140,7 +142,7 @@ impl RenewalPeer {
             Self {
                 sender,
                 outgoing,
-                _current: current,
+                current,
                 _assignments: assignments,
             },
         )

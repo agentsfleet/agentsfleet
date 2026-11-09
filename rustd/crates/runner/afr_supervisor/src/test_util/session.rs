@@ -63,6 +63,15 @@ impl Session {
         self.plane.stream.running.capacity(workers);
     }
 
+    /// Observe the same cancellation token the received lease's worker retains.
+    #[cfg(test)]
+    pub(crate) fn lease_cancellation(&self, lease: &Uuid7) -> Option<CancellationToken> {
+        self.held
+            .lock()
+            .get(lease)
+            .map(|registration| registration.stop.clone())
+    }
+
     /// Apply the current capability report and return the complete assigned policy.
     ///
     /// # Errors

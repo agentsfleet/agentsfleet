@@ -124,14 +124,14 @@ New process-lifetime background work belongs to the supervisor. Request-owned wo
 
 Rooted at the runner binary (`rustd/crates/runner/main`); no runner crate links a
 datastore crate ([`runner_execution.md`](./runner_execution.md#crates)).
-`afr_supervisor::run` composes the long-lived work. The private report spool protects shared clock and deadline state with its own mutex.
+`afr_supervisor::run` composes the native connection, heartbeat policy and worker pool.
+Workers retain pending reports in memory; no report files or spool drains remain.
 
 | Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
-| heartbeat | `afr_supervisor::run`, beside both drains and the pool under one `tokio::join!` | the assignment it publishes | a `watch` channel; no lock | the halt token → returns → joined |
-| runtime report spool drain | `afr_supervisor::run` | the storage home's runtime reports | file work on the blocking pool | the halt token → returns → joined |
-| private report spool drain | `afr_supervisor::run` | encrypted authoring answers and separate accounting envelopes | private spool state mutex; filesystem work on the blocking pool | serving halt ends the drain; startup cleanup precedes workers |
-| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its lease and that lease's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | leasing stops → polling stops → leases in flight run to their reports → the set drains |
+| Native connection | `afr_supervisor::run` | Four streams, request correlation, offers and reconnect | Bounded channels, permits and cancellation owners | Remains available while accepted workers settle; cancellation joins its tasks |
+| Heartbeat policy | `afr_supervisor::run`, beside the worker pool | Current assignment | A `watch` channel | Halt → return → joined |
+| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its lease and that lease's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | New offers stop; accepted work has thirty seconds, then five seconds for cleanup before abort and join |
 | hold keeper | `Holds::start` | the frozen sandboxes held for their fleet's next lease | owned by the keeper task, reached by message | `holds.shutdown()` after the join destroys every hold |
 | executor link (one per sandbox) | `afr_executor`'s client | one sandbox's executor connection | owned by the link task | ends with its sandbox |
 

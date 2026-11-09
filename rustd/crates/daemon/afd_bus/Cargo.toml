@@ -41,7 +41,8 @@ tracing.workspace = true
 af_core = { workspace = true, features = ["test-util"] }
 # Reads agentsfleet_bus_gaps_total back in the live suite.
 af_observability = { workspace = true, features = ["test-util"] }
-tokio = { workspace = true, features = ["net", "io-util"] }
+# `test-util` pauses time for the publish-deadline tests in `wake_failure`.
+tokio = { workspace = true, features = ["net", "io-util", "test-util"] }
 
 # Reaches the lane's seeds, connection and relay through `test_util`, the one
 # place that holds them.

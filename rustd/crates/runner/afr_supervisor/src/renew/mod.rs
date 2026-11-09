@@ -16,10 +16,17 @@ use tokio::time::Instant;
 use crate::client::{ControlPlane, retrying};
 use crate::error::Error;
 
-/// How long before the daemon's deadline the runner gives the lease up. The
-/// daemon may hand an expired lease to another runner, so a run must end
-/// before then, not at it; this is one slow call's worth of slack.
-pub(crate) const EXPIRY_MARGIN: Duration = Duration::from_secs(2);
+/// Leave time for an uncooperative engine, process-group termination and reaping before
+/// the daemon may hand the expired lease to another runner.
+pub(crate) const EXPIRY_MARGIN: Duration = af_core::timing::ENGINE_STOP_GRACE
+    .saturating_add(afr_executor::timing::KILL_GRACE)
+    .saturating_add(Duration::from_secs(2));
+
+const _: () = assert!(
+    EXPIRY_MARGIN.as_nanos() + af_core::timing::STREAM_ANSWER_TIMEOUT.as_nanos()
+        < af_core::timing::RENEWAL_WINDOW.as_nanos(),
+    "recovery must leave a complete renewal answer and physical cleanup window"
+);
 /// The longest a lease can be granted for, which bounds any deadline a reply
 /// can set, however far ahead it claims.
 const LONGEST_GRANT: Duration = MAX_RUNTIME;
@@ -110,7 +117,7 @@ impl<'a> Renewal<'a> {
 
     /// When to give the lease up, for a grant until `expires_at`.
     fn deadline(&self, expires_at: Timestamp) -> Instant {
-        let left = crate::deadline::left(self.clock.now(), expires_at).min(LONGEST_GRANT);
+        let left = af_core::clock::elapsed(self.clock.now(), expires_at).min(LONGEST_GRANT);
         Instant::now() + left.saturating_sub(EXPIRY_MARGIN)
     }
 

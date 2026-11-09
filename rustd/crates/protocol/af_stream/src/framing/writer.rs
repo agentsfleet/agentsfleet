@@ -25,7 +25,7 @@ impl Buffer {
         let _unused = reservation.split(ENCODING_BYTES - allocation.bytes);
         Ok(OwnedFrame {
             bytes: self.0,
-            _reservation: reservation,
+            reservation,
         })
     }
 }

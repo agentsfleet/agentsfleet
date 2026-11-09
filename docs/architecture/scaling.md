@@ -24,7 +24,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Server-Sent Events (SSE) ceiling | `SSE_MAX_STREAMS` = 256 per replica, bound by file descriptors | async response bodies own semaphore permits; 503 at the cap; hub connection shared | §Tuneup knobs, §2 |
 | Bus publish deadline | `publish_deadline_ms` = 250 (`afd_bus::nats::Tuning`) | a publish or flush that misses it fails and is owed a gap marker; an outage costs a caller this, not a hang | §Tuneup knobs |
 | Bus connect timeout | `connect_timeout_ms` = 5000 (`afd_bus::nats::Tuning`) | a seed that does not answer inside it refuses boot as `UZ-STARTUP-004` | §Tuneup knobs |
-| Lease TTL | `LEASE_TTL` = 30000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
+| Lease TTL | `LEASE_TTL` = 35000 | reclaim latency floor; renewal decouples run length from it | §Tuneup knobs |
 | Per-host concurrency | assigned `worker_count` = 1 (dashboard, per runner) | a capacity knob that widens the failure domain to N in-flight runs on host loss | §Tuneup knobs, §Runner host loss |
 | Admission ceiling | `DEFAULT_MAX_IN_FLIGHT` = 256, api-class only | compiled default; operational and stream routes use separate handling | §Tuneup knobs |
 | The binding constraint | `agentsfleetd` replicas + Postgres writes | both horizontally scalable; the hot path is shardable per fleet | §Where the next ceiling actually lives |
@@ -38,7 +38,7 @@ Every row is extracted from the sections below; the owner column names the secti
 The ten sizing anti-patterns are the trap list. Read §Anti-patterns (do NOT do these) before any sizing conversation. Three more live elsewhere:
 
 - Statement count alone hides server work: measure discovery latency at the intended active fleet count (§Idle request volume).
-- Metric ratios need their denominator: without `agentsfleet_lease_polls_total`, a traffic increase and a fan-out regression look identical (§Candidate and claim bounds).
+- Metric ratios need their denominator: without `agentsfleet_lease_polls_total`, a claim increase and a fan-out regression look identical (§Candidate and claim bounds).
 - Fleet-memory load still sorts, and correctly so. An index only removes a sort where the plan can exit early (§Which recurring Postgres reads are index-served).
 
 ## Topology
@@ -189,7 +189,9 @@ It checks fleet and event index bounds, deadline bounds for event approvals, and
 The claim locks the slot and exact head, stamps their fence, and commits before returning it.
 An uncontended successful claim takes discovery, begin, the claim statement and commit; contended attempts add work.
 
-Watch the candidate counter divided by `agentsfleet_lease_polls_total`.
+The historical `agentsfleet_lease_polls_total` counter now counts gateway claim attempts.
+Divide the candidate counter by those attempts to measure claim fan-out.
+
 Statement cost comes from `pg_stat_statements` in `make bench-lease`, which counts what every crate sends.
 Use query latency and query plans alongside these ratios: one slow discovery statement still counts as one statement.
 
@@ -228,8 +230,8 @@ Resolving liveness over the surviving page instead costs 79. When per-row work s
 | `publish_deadline_ms` (`afd_bus::nats::Tuning`) | 250 | What a bus outage costs each publisher: a publish or flush that misses it fails and is owed a gap marker. | A compiled default today: no environment variable or file sets it yet (`Config::with_tuning` exists for one). Raising it buys no delivery, because the marker recovers the frame. |
 | `connect_timeout_ms` (`afd_bus::nats::Tuning`) | 5000 | Time for a seed to answer at boot; a seed that misses it refuses boot as `UZ-STARTUP-004`. | A compiled default, as above. Raise only where a seed is measurably slower to answer than 4 s. |
 | `OFFER_FALLBACK_TICK` | 5 seconds | One recovery query per daemon replica | Compiled recovery interval; measure missed-wake latency and database cost before changing it. |
-| `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one poll. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet`'s lease assignment module. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per poll. |
-| `LEASE_TTL` | 30000 | Reclaim latency floor **and** the increment each renewal adds. Fleet renewal runs every 5 s, up to `MAX_RUNTIME` (`afr_supervisor`'s renew module and `af_core`'s timing module). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
+| `MAX_CANDIDATES_PER_POLL` | 64 | Maximum candidates returned by Postgres discovery and attempted by one claim. The statement still probes eligible active fleets before applying this limit. | Compile-time in `afd_fleet`'s lease assignment module. Measure discovery latency and candidate attempts before changing it; increasing it also increases contention work per claim. |
+| `LEASE_TTL` | 35000 | Reclaim latency floor **and** the increment each renewal adds. Fleet renewal runs every 5 s, up to `MAX_RUNTIME` (`afr_supervisor`'s renew module and `af_core`'s timing module). | Compile-time. Run length does not size it, because renewal carries long runs. Lower only with a tighter recovery requirement. |
 | `SSE_MAX_STREAMS` | 256 | Concurrent asynchronous SSE bodies per replica; shared by fleet, workspace and draft-progress tails. Zero is rejected at boot. Each stream holds a socket. The daemon neither raises `RLIMIT_NOFILE` nor checks the knob against it. About 300 descriptors go to admitted requests, Postgres and NATS first, so a stock 1,024 soft limit leaves room for 256. | Raise only on a host whose descriptor limit is raised to match, after measuring stream refusals, memory, CPU, and proxy capacity. The tail itself held 4,096 streams inside every bound (below). Watch `agentsfleet_sse_in_flight_streams` and `agentsfleet_sse_backpressure_rejections_total`. |
 | `DEFAULT_MAX_IN_FLIGHT` | 256 | Compiled API admission ceiling; excess API requests receive 429 with Retry-After. SSE has its own ceiling. | The daemon's `serve` boot passes this constant (declared in `afd_http`'s admission module) directly; there is no environment override in the Rust boot path. Measure admission refusals and datastore capacity before changing it. |
 | `agentsfleetd` API replica count | deployment-driven | HTTP requests per second (user surface + `/v1/runners`) + lease/report throughput + SSE fan-in | Lease/report p99 climbs, or per-replica viewer count keeps hitting the `SSE_MAX_STREAMS` ceiling. |
@@ -449,7 +451,7 @@ Step 3: Hot-path throughput (the real wall)
 
 Step 4: Emit configuration
   OFFER_FALLBACK_TICK   = 5 s     (compiled daemon recovery interval)
-  LEASE_TTL             = 30000   (compile-time; renewal carries long runs)
+  LEASE_TTL             = 35000   (compile-time; renewal carries long runs)
   agentsfleetd_replicas         = <step 3 result>
   runner_hosts             = N
 ```
@@ -475,9 +477,9 @@ Step 4: Emit configuration
 
 A runner that dies holds no datastore or bus connection to leak and no subscription to reclaim. Its in-flight lease expires at `lease_expires_at`.
 
-The next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). Recovery latency is `LEASE_TTL` + poll density, the floor that section calls S0.
+The next runner's `lease` reclaim path re-issues the event with a higher fencing token ([`runner_fleet.md`](./runner_fleet.md) §"Failure recovery model"). A disconnected lease expires before another runner can claim it; the recovery probe finds work after missed notifications.
 
-There is **no connection storm** on runner loss: the survivors just keep polling.
+Surviving hosts keep their existing sessions; the gateway pushes newly available work.
 
 **Failure domain scales with the assigned `worker_count`**. A host running a pool of N concurrent leases (M88_002) drops **N** in-flight runs on loss, not one. Each lease expires and re-leases independently (no batch coupling), so no work is lost, but N runs restart instead of one.
 
@@ -485,7 +487,8 @@ This is the cost of running more fleets per host; `worker_count=1` keeps the fai
 
 ### Runner host add
 
-A new runner registers and starts polling `lease`. No rebalance of in-flight work, no bus connection migration, no coordination. Sticky routing prefers the runner that ran the previous run but never blocks on it.
+A newly enrolled runner opens its native session and advertises capacity.
+Existing leases retain their owners; the gateway can offer waiting work to the new host.
 
 ### Datastore failover (primary swap)
 

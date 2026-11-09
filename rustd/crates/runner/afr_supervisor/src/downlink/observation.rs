@@ -27,7 +27,6 @@ impl Outage {
         let span = Span::current();
         span.record("transport", transport);
         span.record("recovery", recovery);
-        span.record("outcome", "connected");
         span.record("disconnected_seconds", disconnected_seconds);
         let event = if self.retried {
             "runner_stream_recovered"

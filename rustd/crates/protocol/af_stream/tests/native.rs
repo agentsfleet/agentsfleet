@@ -55,6 +55,43 @@ async fn four_http2_lanes_share_one_verified_duplex_connection() -> Result {
     duplex(Transport::H2).await
 }
 
+async fn soak(transport: Transport) -> Result {
+    let fixture = Fixture::new(vec!["localhost".to_owned()], false)?;
+    let host = fixture.serve().await?;
+    let mut connection = connect(&fixture, &host, transport).await?;
+    let (mut writer, body) = Outgoing::pipe();
+    let request = Request::builder()
+        .method("POST")
+        .uri(host.endpoint.uri().clone())
+        .body(body)?;
+    let response = connection.open(request, deadline()).await?;
+    assert_eq!(response.status(), http::StatusCode::OK);
+    let mut reader = response.into_body().reader();
+    let started = std::time::Instant::now();
+    while started.elapsed() < Duration::from_secs(120) {
+        ping(&mut writer, &mut reader, 1).await?;
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    assert!(started.elapsed() >= Duration::from_secs(120));
+    assert_eq!(host.connections.load(Ordering::SeqCst), 1);
+    assert_eq!(host.requests.load(Ordering::SeqCst), 1);
+    ping(&mut writer, &mut reader, 1).await?;
+    connection.close(deadline()).await?;
+    host.close().await
+}
+
+#[tokio::test]
+#[ignore = "two-minute native soak: make test-integration-rustd"]
+async fn http3_exchanges_with_its_upload_open_for_two_minutes() -> Result {
+    soak(Transport::H3).await
+}
+
+#[tokio::test]
+#[ignore = "two-minute native soak: make test-integration-rustd"]
+async fn http2_exchanges_with_its_upload_open_for_two_minutes() -> Result {
+    soak(Transport::H2).await
+}
+
 async fn pressure(transport: Transport) -> Result {
     let fixture = Fixture::new(vec!["localhost".to_owned()], false)?;
     let host = fixture.serve().await?;

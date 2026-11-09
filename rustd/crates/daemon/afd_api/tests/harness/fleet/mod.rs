@@ -33,6 +33,7 @@ impl Fleet {
 
     /// Streams through `bus` while setting the stream ceiling for the load ladder.
     pub(crate) fn with_stream_capacity(mut self, bus: afd_bus::Handle, capacity: usize) -> Self {
+        self.runner_commands = bus.clone();
         self.live = Live::new(bus, StreamLimit::new(capacity));
         self
     }
@@ -60,6 +61,7 @@ impl Fleet {
             capabilities,
             authenticator,
             runners: Runners::new(database.clone(), Entropy::new()),
+            runner_commands: bus.clone(),
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),

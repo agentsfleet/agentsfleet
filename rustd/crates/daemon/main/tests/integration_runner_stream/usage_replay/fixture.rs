@@ -5,80 +5,21 @@
     reason = "integration preconditions fail loudly"
 )]
 
-use crate::{
-    e2e::{ACTOR, EVENT_TYPE, REQUEST_JSON, Scenario},
-    e2e_native::Stored,
-    e2e_seed,
-};
-use af_core::{clock, env::MapEnv, id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
+use crate::e2e::Scenario;
+use af_core::{env::MapEnv, id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use af_wire::{lease::TaggedLease, protocol::Down};
-use afd_admission::{Admission, Admissions, Key, Producer, Reply};
-use afd_db::test_util::{FleetSeed, mint_id};
-use afd_fleet_lifecycle::FleetStatus;
 use afr_agent::Meter;
 use afr_supervisor::{config, test_util::Session};
 use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
+
+pub(super) use super::super::population::sibling;
 
 pub(super) struct Held {
     pub(super) lease: Uuid7,
     pub(super) event: Uuid7,
     pub(super) fence: u64,
     expires: jiff::Timestamp,
-}
-
-pub(super) async fn sibling(run: &Scenario) -> (Uuid7, Uuid7) {
-    let fleet = seed_sibling(run).await;
-    let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone())
-        .admit(Admission {
-            producer: Producer::Steer,
-            key: Key::Unrepeatable,
-            fleet: &fleet,
-            workspace: &run.workspace,
-            actor: ACTOR,
-            event_type: EVENT_TYPE,
-            request_json: REQUEST_JSON,
-            reply: Reply::None,
-        })
-        .await
-        .expect("admit sibling event");
-    (fleet, admitted.stored.id)
-}
-
-async fn seed_sibling(run: &Scenario) -> Uuid7 {
-    let fleet = mint_id();
-    let stored = Stored::of(&crate::e2e_native::definition(
-        e2e_seed::FLEET_CONFIG_JSON,
-        e2e_seed::FIXTURE_INSTRUCTIONS,
-    ));
-    let tag = e2e_seed::scenario_tag(&run.fleet);
-    let mut connection = run
-        .booted
-        .database
-        .acquire()
-        .await
-        .expect("sibling fixture connection");
-    FleetSeed::new(
-        &fleet,
-        &run.workspace,
-        &run.tenant,
-        FleetStatus::Active.as_str(),
-    )
-    .name("Pull request review")
-    .tags(&[tag.as_str()])
-    .at(clock::now())
-    .setup(stored.revision())
-    .insert(&mut *connection)
-    .await
-    .expect("second runnable fleet");
-    sqlx::query("UPDATE runner.runners SET worker_count=$2 WHERE id=$1")
-        .bind(&run.runner_id)
-        .bind(2_i32)
-        .execute(&mut *connection)
-        .await
-        .expect("two physical worker slots");
-    drop(connection);
-    fleet
 }
 
 pub(super) fn config(run: &Scenario, origin: &str, root: &std::path::Path) -> config::Config {

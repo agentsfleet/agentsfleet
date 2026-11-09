@@ -293,7 +293,7 @@ async fn reconnect_uses_the_live_fleet_deadline_and_recovers_freely_after_expiry
     let id = Uuid7::parse(LEASE_ID).unwrap();
     let meter = Arc::new(Meter::default());
     let wall = clock();
-    let renewal = Renewal::new(&plane, &id, Timestamp::constant(3, 0), &wall, &meter);
+    let renewal = Renewal::new(&plane, &id, Timestamp::constant(10, 0), &wall, &meter);
     let started = Instant::now();
     let observe = async {
         assert_eq!(
