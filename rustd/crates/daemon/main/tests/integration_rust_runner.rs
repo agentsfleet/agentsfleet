@@ -95,10 +95,7 @@ async fn test_rust_runner_lease_roundtrip() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     allow_all_egress(&run).await;
-    let hub = afd_dragonfly::SubscriptionHub::start(crate::e2e::dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
+    let mut tail = crate::tail::tail_of(&run.fleet).await;
     crate::tail::settle().await;
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");
@@ -147,7 +144,7 @@ async fn assert_settled(run: &crate::e2e::Scenario) {
 }
 
 /// Both tool-call frames and the answer chunk reached the fleet's live tail.
-async fn assert_frames(tail: &mut afd_dragonfly::Subscription) {
+async fn assert_frames(tail: &mut crate::tail::Tail) {
     let kinds = frame_kinds(tail).await;
     for kind in ["tool_call_started", "tool_call_completed", "chunk"] {
         assert!(
@@ -300,7 +297,7 @@ async fn settled_status(run: &crate::e2e::Scenario) -> Option<String> {
 }
 
 /// Every frame kind the tail carried, read until it falls quiet.
-async fn frame_kinds(tail: &mut afd_dragonfly::Subscription) -> Vec<String> {
+async fn frame_kinds(tail: &mut crate::tail::Tail) -> Vec<String> {
     let mut kinds = Vec::new();
     while let Some(frame) = crate::tail::next_frame(tail).await {
         if let Some(kind) = frame.get("kind").and_then(serde_json::Value::as_str) {

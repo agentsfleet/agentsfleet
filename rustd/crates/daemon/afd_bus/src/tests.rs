@@ -77,3 +77,12 @@ async fn reconnect_and_lag_cross_the_object_boundary_without_backend_types() -> 
     bus.shutdown().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn an_adapter_with_no_connection_to_lose_reports_connected() -> Result {
+    // The detached adapter keeps the trait's default, which `/readyz` reads
+    // through the handle without knowing which adapter booted.
+    let (bus, _server) = test_util::detached()?;
+    assert!(bus.connected().await);
+    Ok(())
+}

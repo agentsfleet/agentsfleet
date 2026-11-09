@@ -17,7 +17,7 @@
 //!
 //! # The subscriber is the production one
 //!
-//! `SubscriptionHub` is what the dashboard's live tail runs on. Asserting
+//! The bus subscription is what the dashboard's live tail runs on. Asserting
 //! through it rather than through a raw client means the test proves the frame
 //! reaches the consumer that actually exists, on the channel that consumer
 //! subscribes to — a raw `SUBSCRIBE` would agree with a publisher that had
@@ -31,11 +31,10 @@
     reason = "test target: an unmet precondition should fail the test loudly, and a missing lane knob is one"
 )]
 
-use afd_dragonfly::{Subscription, SubscriptionHub};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{Scenario, dragonfly_config, scenario};
+use crate::e2e::{Scenario, scenario};
 use crate::tail::{lease, next_frame, settle, silence};
 use crate::wire::{field, json, post};
 
@@ -59,9 +58,7 @@ pub(crate) struct Tailed {
     path: String,
     /// The lease's fencing token, which scopes every call id it publishes.
     pub(crate) fence: u64,
-    // Held for the subscription's lifetime: dropping the hub ends the tail.
-    _hub: SubscriptionHub,
-    pub(crate) tail: Subscription,
+    pub(crate) tail: crate::tail::Tail,
 }
 
 impl Tailed {
@@ -73,17 +70,13 @@ impl Tailed {
         )]
         let http = reqwest::Client::new();
         let (lease_id, fence) = lease(&http, &run).await;
-        let hub = SubscriptionHub::start(dragonfly_config())
-            .await
-            .expect("the lane's Dragonfly accepts a subscriber");
-        let tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
+        let tail = crate::tail::tail_of(&run.fleet).await;
         settle().await;
         Self {
             path: format!("/v1/runners/me/leases/{lease_id}/activity"),
             fence,
             run,
             http,
-            _hub: hub,
             tail,
         }
     }
@@ -106,7 +99,6 @@ async fn test_activity_publish() {
         run,
         http,
         path,
-        _hub,
         mut tail,
         ..
     } = Tailed::open(&mut supervisor).await;
@@ -221,7 +213,6 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
         run,
         http,
         path,
-        _hub,
         mut tail,
         ..
     } = Tailed::open(&mut supervisor).await;
