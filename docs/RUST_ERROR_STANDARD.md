@@ -137,7 +137,7 @@ property their row names.
 | Crate | Owns an `Error` | Hull | Notes |
 |---|---|---|---|
 | `af_core` | ✅ | `error_shell!` + `error_lifts!` | `struct Error` + private `ErrorKind`, per M-ERRORS-CANONICAL-STRUCTS. Also DECLARES both macros |
-| `af_crypto`, `afd_dragonfly`, `afd_mail`, `afd_tenant` | ✅ | `error_shell!` + `error_lifts!` | same shape; each foreign source lifts through the macro |
+| `af_crypto`, `afd_bus`, `afd_mail`, `afd_tenant` | ✅ | `error_shell!` + `error_lifts!` | same shape; each foreign source lifts through the macro |
 | `afd_db` | ✅ | `error_shell!` | same shape; composes no foreign error through `From` |
 | `afd_fleet` | ✅ | `error_shell!` + `error_lifts!` | same shape; its sources lift through the macro in `error/lift.rs` |
 | `afd_bench` | ✅ | `error_shell!` + `error_lifts!` | private `ErrorKind` lifting its fourteen sources; reuses existing registry codes rather than minting a `BENCH_*` family, since a bench refusal is read by the developer running the make target, never rendered to a tenant |

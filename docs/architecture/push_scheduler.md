@@ -28,7 +28,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 
 | Rule | Where it is written | Retired by |
 |---|---|---|
-| Dragonfly is the only datastore, cluster-only | `.orly/LOCAL.md`, `datastore_scaling.md` | M244 |
+| Dragonfly is the only datastore, cluster-only | `.orly/LOCAL.md`, `datastore_scaling.md` | M244, done: both pages now name core NATS and Postgres |
 | A runner polls; there is no cancel channel | `runner_fleet.md` | M243 |
 | The lease path is not a general scheduler | `runner_fleet.md` | M243 |
 | Config is never cached | `runner_fleet.md` | M245 |
@@ -219,13 +219,17 @@ The 3 s one-fleet window scattered from 210 to 837 on the branch, so the 10 s ru
 
 A burst on the branch measured pickup p95 at 54.7 s, unchanged from M241, because that branch did not fold messages yet.
 
-Tail and wake p99 and the broker-kill drill are measured in M244, on Dragonfly and then on NATS, against the same code.
+M244 measured tail p99 and the broker-kill drill on Dragonfly and then on NATS, against the same code (below). The wake ladder moved to M243.
 
 ### M244: Dragonfly against NATS
 
-Measured on Indy's laptop on Nov 09, 2026, with `make bench-tail PROFILE=rig`, `BENCH_BUS=dragonfly` then `BENCH_BUS=nats`, three interleaved pairs, each on a reset rig. The tree was this branch at `514f37420` with the tail-lane method of `fb2f55801` and the publish-record fix of `202b08ffd`. Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, is committed as `tail.rig.json`.
+Measured on Indy's laptop on Nov 09, 2026, with `make bench-tail PROFILE=rig`: three interleaved Dragonfly and NATS pairs, each on a reset rig. The tree was this branch at `514f37420` with the tail-lane method of `fb2f55801` and the publish-record fix of `202b08ffd`.
+
+Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, is committed as `tail.rig.json`.
 
 The method keeps one frame in flight on the viewer ladder, so a frame's time is one trip through the bus and the fan-out. The stream ladder publishes to every stream at once and times each stream from the burst's start. Indy chose it after the first pass, where a 64-frame window let NATS's non-blocking publish queue ahead and measured the queue instead.
+
+### Broker pass bar
 
 The bar, per rung: NATS p99 at most the greater of Dragonfly's p99 plus 10% and Dragonfly's p99 plus 1 ms.
 
@@ -253,11 +257,13 @@ The bar, per rung: NATS p99 at most the greater of Dragonfly's p99 plus 10% and 
 
 No frame went undelivered and no viewer lagged on either bus.
 
-Verdict: NATS passes. Fifteen of sixteen rungs meet the bar. The miss is one viewer of 64 KiB frames, 1.3 ms over; a size sweep ruled out the client's 65,535-byte read buffer, and the cause is open. Indy accepted it: "I would accept the 1 bench miss and signoff NATS."
+Verdict: NATS passes. Fifteen of sixteen rungs meet the bar. The miss is one viewer of 64 KiB frames, 1.3 ms over.
+
+A size sweep ruled out the client's 65,535-byte read buffer, and the cause is open. Indy accepted it: "I would accept the 1 bench miss and signoff NATS."
 
 #### Kill drills
 
-Two runs per bus, on the local daemon (`make up`): two viewers on one fleet's stream, one steer every 10 s, the bus stopped for 60 s, then started. For NATS the stopped node was the one the daemon held, `nats-3` then `nats-2`.
+Two runs per bus, on the local daemon (`make up`). Two viewers watched one fleet's stream with one steer every 10 s, while the bus stopped for 60 s and then started. For NATS the stopped node was the one the daemon held, `nats-3` then `nats-2`.
 
 | | Dragonfly, runs 1 and 2 | NATS, runs 1 and 2 |
 |---|---|---|

@@ -1,7 +1,7 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-11-07
+verified: 2026-11-09
 product_version: 0.75.0
 executable: false
 ---
@@ -319,7 +319,7 @@ It does not claim that every unchanged operation has a new tracing span.
 | `afd_authoring` | Dispatch, receipt, private publisher and lease guards | Paired private preview traces; no connection held during provider or bus waits |
 | `af_crypto` | Secret ownership and hex decoding | Existing zeroize and hex implementations; no secret accessor logging |
 | `afd_sse` | Subscription tail and gap handling | Existing bounded hub subscription and coded close record retained |
-| `afd_dragonfly` | Stream publication and outbound acknowledgement | Actual acknowledgement error code is preserved; no payload logging |
+| `afd_bus` | Signal publication; it replaced the audited Dragonfly crate in M244 | A failed publish logs its error code and reason (`tail_frame_dropped`); no payload logging |
 
 The error hull remains `af_core::error_shell!` with typed causes.
 The [Rust error standard](../RUST_ERROR_STANDARD.md) owns the crate exceptions and registry mapping.

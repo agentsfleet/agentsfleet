@@ -40,7 +40,7 @@ Sections 6 and 7 cover the sandbox and host.
                          5 per matched fleet:
                              INSERT fleet.admissions (producer=webhook_app,
                                  key = "{fleet}:{sha256(body)}")           Postgres  ← the acceptance
-                             SPUBLISH fleet:wake:{shard} (best effort)    Dragonfly
+                             publish af.wake.<shard> (best effort)         NATS
                          6 202 {matched, enqueued}
 
  RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker)
@@ -49,7 +49,7 @@ Sections 6 and 7 cover the sandbox and host.
                          c lock slot and exact head with SKIP LOCKED
                          d advance slot + admission fences; decode before commit
                          e INSERT fleet.events status=received (+ stamp admission delivered)
-                         f SPUBLISH event_received bracket on fleet:{id}:activity
+                         f publish event_received bracket on af.fleet.<id>.tail
                          g gates: payer → balance → budget → approval (nothing charged)
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
                              (tools, network.allow, origin rules for api.github.com)
@@ -174,7 +174,7 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
                                                → fleet.events processed/fleet_error + tool_calls
                                                → fleet.sessions checkpoint → admission settled → affinity released
                                                → folded messages settled → obligation if a reply destination; COMMIT
-                                               → SPUBLISH event_complete
+                                               → publish event_complete
 ```
 
 **Boot and composition.** `afr_supervisor::boot` reads three variables and opens `<home>/{sandboxes,spool,git,toolbox}`.

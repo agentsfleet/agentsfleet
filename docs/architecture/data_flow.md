@@ -1,8 +1,8 @@
 ---
 type: explanation
 audience: contributor
-verified: 2026-10-21
-product_version: 0.62.2
+verified: 2026-11-09
+product_version: 0.75.0
 executable: false
 ---
 
@@ -24,12 +24,11 @@ Every row is extracted from the sections below; the owner column names the secti
 |---|---|---|---|
 | Event ingress | Seven producers, one queue | `Producer` names `steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `task_continuation` and `slack_mention`. Each commits `fleet.admissions` and attempts a wake notification. | §B. TRIGGER |
 | Message disposition | `started`, `folded` or `queued` | a message accepted while its fleet's run is live folds into that run; the lease claims it at its next model call, and the message's own event gets the run's reply | §"C. EXECUTE" |
-| Queue ownership | Postgres | Admission, claim and settlement use the same ledger row. Dragonfly carries notifications and outbound replies. | §Steer flow end-to-end |
+| Queue ownership | Postgres | Admission, claim and settlement use the same ledger row. Outbound replies are `fleet.obligations` rows; core NATS carries only notifications. | §Steer flow end-to-end |
 | Durable stores | 5 tables, join key `(fleet_id, event_id)` | `fleet.admissions` (one row per acceptance, UNIQUE `(producer, producer_key)`) · `fleet.events` (one row per delivery) · `fleet.obligations` (one row per answer, UNIQUE `(fleet_id, event_id)`) · `fleet.sessions` (one row per fleet, UPSERT) · `billing.usage_lines` (one row per measured slice of a lease, UNIQUE `(work_type, work_id, seq)`, charged by the billing relay) | §The five durable stores |
 | Replay safety | Stable producer and event identities | Admission deduplicates `(producer, producer_key)`; redelivery keeps the event and billing identities. | §"C. EXECUTE" |
 | Stale-writer rejection | `UZ-RUN-005` | Slot, lease and admission fences guard the report transaction. | §"C. EXECUTE" |
-| Shared Dragonfly handle | One shared cluster command owner per daemon | Outbound stream commands, wake notifications and live activity. Inbound queue reads use Postgres. | §Connection topology |
-| Dedicated Dragonfly owners | hub + outbound reader | Refcounted `SSUBSCRIBE`; blocking outbound reads use a separate cluster owner | §Connection topology |
+| Bus connection | One NATS connection per daemon process | Publishes and subscriptions share it; one native subscription per subject with local readers. Inbound queue and outbound claims use Postgres. | §Connection topology |
 | Postgres acquire failures | 2 distinct errors | `PoolTimeout` (capacity) vs `PoolUnavailable` (datastore); one connection per handler (RULE CNX) | §The Postgres pool |
 | Postgres statement bounds | the API login role's | 2 s lock wait (`55P03`) and 5 s statement (`57014`), declared in `afd_db::login` and set once by `ALTER ROLE`; no statement sets its own | §The Postgres pool |
 | Config freshness | read per lease | a `PATCH` takes effect on the next lease; no cache, no signal | §Config reload |
@@ -41,14 +40,14 @@ Every row is extracted from the sections below; the owner column names the secti
 | Cancel latency | none: a running lease is never cancelled | kill and pause write only `fleet.fleets.status`; the run ends on its own, at its fleet's stored budget ceiling, or at `MAX_RUNTIME` | [`runner_fleet.md`](./runner_fleet.md) §"Steer, kill, pause" |
 | Lease ownership | at most one active lease per fleet | atomic `runner.fleet_slots` claim + monotonic `fencing_token` | §One active lease per fleet |
 | Provider `api_key` | never in `secrets_map` | rides `ExecutionPolicy.provider` + `.api_key`; injected for the inference call only | §"C. EXECUTE" step 8 |
-| Tenant isolation | application-enforced + namespacing | every workspace route passes an ownership check before its handler runs; Dragonfly keys namespaced by unguessable fleet UUID. This repository declares no `ROW LEVEL SECURITY` policy | §Multi-tenancy boundary |
+| Tenant isolation | application-enforced + namespacing | every workspace route passes an ownership check before its handler runs; NATS subjects carry the unguessable fleet UUID. This repository declares no `ROW LEVEL SECURITY` policy | §Multi-tenancy boundary |
 
 ## Traps
 
 Each trap is enforced in its owner section; this list is the index.
 
 - The live tail is the eyeballs surface, not the audit surface; durable history is `fleet.events` (§Two streams + one pub/sub channel).
-- A connection held across a blocking `SSUBSCRIBE` can never return to a pool (§Connection topology).
+- A publish never waits out a broker outage. From a disconnect until its gap markers are paid, every publish fails at once (§Connection topology).
 - Never acquire a second Postgres connection while holding one; that is how a pool deadlocks (§The Postgres pool).
 - The Postgres pool has no ordering or fairness guarantee; do not assert one (§The Postgres pool).
 - No product statement sets its own lock or statement bound; the login role's bounds cover every daemon statement (§The Postgres pool).
@@ -70,7 +69,7 @@ The diagrams live with their flows. Each is the section's proof, so none is dupl
 
 - coding fleet vs Fleet runtime: §The coding fleet and the Fleet runtime
 - the admission, claim and settlement boundaries in §Steer flow end-to-end
-- the Dragonfly connection topology: §Connection topology
+- the NATS connection topology: §Connection topology
 - save, trigger envelope, run, watch: §"End-to-end sequence", A through D
 - the setup failure window: §The install failure scenario, visually
 
@@ -82,7 +81,7 @@ The same sequence told for two fleets at once, a Pull Request and a Slack thread
 |---|---|---|
 | A narrative table and a usage table (`fleet.events` + `billing.usage_lines`) | different write authorities and retention rules | §The five durable stores |
 | `fleet:control` removed | no per-fleet threads left to run | §Two streams + one pub/sub channel |
-| Dedicated Dragonfly tier collapsed | idle cost now tracks lease-poll frequency, not fleet count | §Connection topology; M80_002 |
+| One bus connection per process | idle cost tracks lease-poll frequency, not fleet count | §Connection topology; M80_002, M244 |
 | A pool acquire answers a typed error, not an absent connection | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
 | Statement bounds live on the login role | one `ALTER ROLE` covers every statement; no product statement carries its own override | §The Postgres pool; M242_001 |
 | Gap recovery is client-side, not server resume | no channel or frame-shape change; the durable table is the recovery source | §Two streams; M122 |
@@ -91,7 +90,7 @@ The same sequence told for two fleets at once, a Pull Request and a Slack thread
 | Private drafts own authoring | Native JSON can initialize a draft; GitHub/template-bundle import and Markdown export stay unsupported | [`user_flow.md`](./user_flow.md) §"§8.1 Authoring the Fleet" |
 | Retained setup identity | Retry resumes missing checks under the original creation identity | §The install failure scenario |
 | Browser SSE uses the authenticated Next.js proxy | the server resolves the session and forwards a Bearer; the daemon authenticates Authorization ([AUTH](../AUTH.md)) | §D. WATCH |
-| Outbound answers ride a generic `connector:outbound` stream | the report path stays provider-agnostic (Invariant 9) | §"C. EXECUTE"; M106 |
+| Outbound answers are generic `fleet.obligations` rows claimed per lane | the report path stays provider-agnostic (Invariant 9) | §"C. EXECUTE"; M106, M244 |
 
 ---
 
@@ -107,7 +106,7 @@ Headings are stable because specs cite them by text. Insert new sections; never 
 
 | Process | Role |
 |---|---|
-| **`agentsfleetd`** (`agentsfleetd serve`) | Owns Postgres, Dragonfly, the Vault and HTTP assignment. Producers commit admissions; lease polls claim ledger rows; reports commit results, usage and settlement together. The daemon publishes live activity and delivers outbound replies. Authoring model calls use daemon-held keys. |
+| **`agentsfleetd`** (`agentsfleetd serve`) | Owns Postgres, its NATS connection, the Vault and HTTP assignment. Producers commit admissions; lease polls claim ledger rows; reports commit results, usage and settlement together. The daemon publishes live activity and delivers outbound replies. Authoring model calls use daemon-held keys. |
 | **`agentsfleet-runner`** (host-resident daemon) | The plane that runs the work. Boots from an operator-installed `agt_r` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register), then loops `heartbeat → lease → run → report → activity` over HTTPS carrying that token. Holds **zero datastore credentials**. A trusted supervisor runs the agent loop and holds the model key. A lease that needs one gets a sandbox (bubblewrap, Landlock, seccomp, cgroups) that runs tool calls and nothing else; the sandbox gets a network namespace of its own unless the runner's network policy is `allow_all`. Credential substitution happens in the supervisor at send time ([`runner_execution.md`](./runner_execution.md#process-model)). The supervisor forwards activity frames to `agentsfleetd` over the `activity` verb. |
 
 Streams and tables: §"Two streams + one pub/sub channel" and §"The five durable stores: who owns what".
@@ -165,24 +164,24 @@ report transaction -> usage + terminal history + session checkpoint
                   -> folded messages' events get the run's reply
        | commit
        +-> live activity
-       +-> connector:outbound -> connector thread
+       +-> af.outbound.wake ping -> outbound worker claims the row -> connector thread
 ```
 
 A lost notification changes priority only. Every idle lease poll probes Postgres.
 An expired slot exposes the same unsettled admission with its original event and billing identities.
 
-Outbound delivery keeps a separate stream and durable `fleet.obligations` rows.
-An obligation starts with no `receipt`; the outbound append records one, and successful delivery stamps `delivered_at`.
-The outbound rebuild pass retries undelivered obligations after stream loss.
+Outbound delivery claims durable `fleet.obligations` rows in Postgres.
+The report writes each row with a fresh `receipt` token and an already-lapsed claim, so any replica may claim it at once.
+A lost `af.outbound.wake` ping costs latency only: every replica also claims every 30 s (`CLAIM_PASS`).
 
-The poster stamps `delivered_at` only after successful delivery. Acknowledging an exhausted outbound job must not mark its answer delivered.
+The poster stamps `delivered_at` only after successful delivery. Abandoning an exhausted job must not mark its answer delivered.
 
 ## The five durable stores: who owns what
 
 These five tables answer different questions. Admissions record accepted work; events describe each run; obligations record replies still owed.
 Sessions hold the resume checkpoint, and usage lines record measured work.
 
-The admissions ledger is the inbound queue. Outbound obligations use Dragonfly for delivery and keep receipts for recovery.
+The admissions ledger is the inbound queue. Outbound obligations are claimed per lane from their own rows, and `receipt` names the current holder.
 
 Read the primary keys and the shape falls out:
 
@@ -262,18 +261,24 @@ A later partition key by `created_at` therefore never splits a line from its own
 
 ## Two streams + one pub/sub channel (and the one that retired)
 
-The admissions queue lives in Postgres. Dragonfly carries outbound delivery, live activity and wake notifications.
+The admissions queue and the outbound obligations live in Postgres. Core NATS carries live activity, draft progress, wake notifications, runner commands and the outbound ping, each at most once.
+Subject spellings come from `afd_bus::nats::spelling` (`rustd/crates/daemon/afd_bus/src/nats/mod.rs`).
 
 | Surface | Kind | Owner | Purpose |
 |---|---|---|---|
 | `fleet.admissions` | Postgres ledger | Admission and lease/report paths | Durable inbound queue, ordered by admission `sequence` within a fleet. |
-| `connector:outbound` | Stream and consumer group | Outbound worker | Delivers replies backed by `fleet.obligations`. |
-| `fleet:{id}:activity` | Sharded publish/subscribe channel | Activity hub | Live frames; reconnect recovers durable history through the events list. |
-| `fleet:wake:{shard}` | Sixteen sharded publish/subscribe channels | Doorbell listeners | Prioritizes fleets on subsequent polls. The local hint buffer holds at most 64 distinct fleets. |
+| `fleet.obligations` | Postgres rows, claimed per lane | Outbound worker | Delivers replies; at most one row per `(provider, workspace_id)` lane is held at a time. |
+| `af.fleet.<fleet_id>.tail` | Core NATS subject | Each process's NATS hub | Live frames; a gap or reconnect recovers durable history through the events list. |
+| `af.draft.<draft_id>.events` | Core NATS subject | Draft progress stream | Authoring progress; a lost subscription sends `draft.resync`. |
+| `af.wake.<shard>` | Sixteen core NATS subjects | Runner wake listeners | Prioritizes fleets on subsequent polls. The local queue holds at most 64 distinct fleets by default. |
+| `af.runner.<runner_id>.cmd` | Core NATS subject | The runner's gateway session | `Recheck` or `Cancel` for one runner host; Postgres stays the authority (`afd_gateway/src/session/commands.rs`). |
+| `af.outbound.wake` | Core NATS subject | Outbound worker | Pings a claim after a report commits; a lost ping waits for the 30 s claim pass. |
+
+A development namespace prefixes every subject with `dev.<namespace>.` (`afd_bus/src/nats/config.rs`).
 
 Activity and wake notifications are ephemeral. Their loss cannot remove accepted work from the ledger.
 
-**Client-side gap recovery (M122).** The channel has no resume.
+**Client-side gap recovery (M122).** The subject has no resume.
 
 So a dashboard tab that drops its SSE connection misses every frame published during the reconnect window. The app's stream registry (`ui/packages/app`, `lib/streaming`) closes that gap client-side.
 
@@ -281,39 +286,43 @@ The registry fetches the bounded `fleet.events` list on every reconnect open, ne
 
 The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/{ws}/fleets/{id}/events`, the mirror of the SSE proxy. The `/live/*` prefix keeps these routes outside the `/backend/:path*` rewrite that shadowed them on Vercel. No server, channel, or frame-shape change: the durable table stays the recovery source of truth.
 
+A fleet tail sends one `catching_up` with `dropped: 0` right after `hello` (`afd_sse/src/live.rs`).
+NATS interest reaches other nodes after the subscribe returns, so frames published in that window exist only in Postgres.
+The same backfill recovers them.
+
 ## Connection topology: the cutover collapsed the dedicated tier
 
-The Rust daemon shares one cluster command owner for ordinary Dragonfly commands.
-A lease request probes the Postgres ledger and never blocks on a Dragonfly stream.
-An empty response tells the runner when to poll again; the runner holds no Dragonfly connection.
+Each `agentsfleetd` process holds one NATS connection, opened by `afd_bus::nats::connect` at boot.
+A lease request probes the Postgres ledger and never waits on the bus.
+An empty response tells the runner when to poll again; the runner holds no bus connection.
 
 ```text
 agentsfleetd replica
-  HTTP handlers and background writers
-    +-- shared cluster command owner --> outbound XADD / XACK and activity / wake SPUBLISH
-  SubscriptionHub async pump
-    +-- dedicated pub/sub owner --> SSUBSCRIBE per watched fleet
-         +-- bounded broadcast --> per-fleet or workspace SSE response bodies
-    +-- the same owner --> SSUBSCRIBE fleet:wake:{shard}, sixteen --> bounded fleet hints
-  connector:outbound worker
-    +-- dedicated blocking owner --> XREADGROUP BLOCK (up to 5 seconds)
+  one async-nats client (seeds from NATS_URL)
+    +-- publish --> af.fleet.<fleet_id>.tail, af.draft.<draft_id>.events,
+    |               af.wake.<shard>, af.runner.<runner_id>.cmd, af.outbound.wake
+    +-- hub: one native subscription per subject with local readers
+    |     +-- pump --> bounded broadcast --> per-fleet or workspace SSE response bodies
+    |     +-- af.wake.<shard>, sixteen --> bounded wake queue
+    |     +-- af.outbound.wake --> outbound worker --> claim from fleet.obligations
+    +-- gap watcher --> reconnect, slow consumer, Af-Gap markers, af.bus.gap
 ```
 
-Cloning `afd_dragonfly::Dragonfly` shares its command owner. The outbound reader owns `afd_dragonfly::Dedicated`, keeping blocking reads separate from request-path commands.
-
-Normal boot has three logical owners when both optional background surfaces start. Cluster topology determines physical sockets; see [datastore scaling](datastore_scaling.md#target-design).
-
-The hub refcounts subscribers and keeps one wire subscription per watched channel.
-The control task owns commands, subscriptions and reconnects. A separate dispatch task receives pushes, so a slow subscription command cannot hold a frame.
-
-A connection that ends inside 5 s waits a climbing step before redial.
-This keeps a dead or flapping primary from being redialled at the first step forever.
-A connection that held 5 s is redialled at once.
-
-Recovery from a lost subscription: [datastore_scaling.md](./datastore_scaling.md) §"Target design".
+The hub counts readers per subject and keeps one native subscription for each.
+Each subject's pump forwards frames and never takes the channel map's lock to do so.
 Each frame is one shared allocation, however many viewers read it.
 
-`afd_dragonfly` owns the client, the hub's control and dispatch tasks, and node repair. The daemon's `serve` runtime and its outbound worker boot the three owners.
+The `async-nats` client reconnects to another seed on its own.
+After a reconnect, every local subscription receives one `Gap`.
+A slow-consumer event gaps every subscription too, because the client keeps the subscription id private.
+
+A publish that fails, and every subject published in the 2 s before a disconnect, is owed a marker.
+On reconnect each owed subject gets one empty message with header `Af-Gap: 1`, which subscribers read as `Gap`.
+Past 4,096 owed subjects, one marker on `af.bus.gap` gaps every subscription in every process (`afd_bus/src/nats/debt.rs`).
+
+Boot refuses, as `UZ-STARTUP-004`, a seed it cannot reach within five seconds.
+It also refuses a server with JetStream on, no cluster, no headers, or a `max_payload` under the largest frame (`afd_bus/src/nats/preflight.rs`).
+After boot, `/readyz` reports the bus in its `queue` field and does not gate on it (`main/src/probes.rs`).
 
 ## The Postgres pool: a saturated pool and a dead datastore are different pages
 
@@ -658,10 +667,11 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
    CLI       agentsfleet steer <fleet_id> "<message>"   (batch mode)
                → opens GET /v1/.../fleets/{id}/events/stream (SSE) BEFORE
                  posting the message, and waits (bounded, 2 s) for response
-                 headers. The hub queues SSUBSCRIBE before returning the stream.
-                 Headers do not acknowledge Dragonfly subscription readiness;
-                 an early frame can still race the subscription.
-               → the hub shares one pub/sub connection across viewers;
+                 headers. The hub flushes the subscription to the socket before
+                 the stream returns. NATS interest reaches other nodes later,
+                 so an early frame can still race the subscription; the
+                 opening catching_up { dropped:0 } covers it.
+               → the hub shares one NATS connection across viewers;
                  the response owns a bounded broadcast receiver.
                → frames arriving before the 202 names the event wait in a
                  bounded client-side buffer (drop-oldest) and replay in
@@ -669,8 +679,8 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
                  bound is closed unheard and the durable events list alone
                  decides the outcome (a late tail must never pass a
                  truncated reply off as complete).
-               → on disconnect: release the receiver; the last reader queues
-                 SUNSUBSCRIBE for that channel.
+               → on disconnect: release the receiver; the last reader's drop
+                 aborts that subject's pump, which unsubscribes.
 
    UI        Fleet Console /fleets/{id}
                → browser EventSource opens the same-origin
@@ -682,7 +692,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
                  or database queries. They update timing, not React snapshots.
                → actual arrivals spanning 30 seconds establish stability and
                  reset retry history. HTTP open alone never confirms recovery.
-                 Heartbeats prove HTTP transport, not Dragonfly publisher health.
+                 Heartbeats prove HTTP transport, not NATS publisher health.
                → after a stable connection closes, the displayed status keeps
                  last-known health for up to 25 seconds while reconnection runs.
                  Browser recovery signals preserve that deadline. Sustained
@@ -707,14 +717,14 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
                  /live/v1/workspaces/{id}/events/stream SSE connection
                  shared by the workspace's fleet tiles.
                → agentsfleetd authorizes the workspace and fans in only its
-                 readable fleet:{id}:activity channels through bounded per-channel
-                 broadcast receivers.
+                 readable af.fleet.<fleet_id>.tail subjects through bounded
+                 per-subject broadcast receivers.
                → frame kinds and control frames: API reference › Workspaces
                  (Stream live activity for a whole workspace).
-               → if the hub lost a channel's subscription and restored it
-                 (a node's socket, a slot move, a redial), agentsfleetd sends
-                 catching_up { dropped:0 } once it is back, on this stream
-                 and on the per-fleet one.
+               → if the NATS client reconnected, reported a slow consumer,
+                 or a publisher's Af-Gap marker arrived, agentsfleetd sends
+                 catching_up { dropped:0 }, on this stream and on the
+                 per-fleet one.
 
    Browser authentication
      EventSource + session cookie --> Next.js /live/* Route Handler
@@ -753,7 +763,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 | Layer | Tenant isolation mechanism |
 |---|---|
 | Postgres (`fleet.fleets`, `fleet.events`, etc.) | Enforced in the application, not by the database. `afd_tenant`'s `AUTHORIZE_WORKSPACE` resolves the caller's tenant and the workspace's owner in one statement, and `afd_http`'s ownership layer runs it in front of every route whose path carries a workspace, so no handler can forget it. Every control-plane statement filters by `workspace_id` or `fleet_id` explicitly. **No `ROW LEVEL SECURITY` policy is declared anywhere in `schema/`, and no `current_setting('app.workspace_id')` is read.** Re-adding database policies would need a transaction per request, because `sqlx` returns a connection to the pool between requests and a session-level setting would leak one tenant's identifier onto the next. |
-| Dragonfly live activity (`fleet:{id}:activity`) | Key namespaced by fleet UUID (globally unique); no cross-tenant collision possible. Dragonfly has no per-row authorization of any kind, so the protection is the same shape as the row above it: the key is unguessable and every path to it goes through the ownership check. |
+| NATS live activity (`af.fleet.<fleet_id>.tail`) | Subject named by fleet UUID (globally unique); no cross-tenant collision possible. NATS has no per-subject authorization here, so the protection is the same shape as the row above it: the subject is unguessable and every path to it goes through the ownership check. |
 | Runner ↔ control plane | The `agt_r` token authenticates the runner per call, and a lease carries one fleet's event and scoped secrets ([`runner_fleet.md`](./runner_fleet.md) §"Registering a runner"). |
 | Runner supervisor and sandbox | Secrets stay in the supervisor, substituted at send time, and a sandbox holds no credential ([`runner_execution.md`](./runner_execution.md) §"Credentials"). |
 

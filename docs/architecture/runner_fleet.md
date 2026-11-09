@@ -23,7 +23,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the lease reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
 | Lost wake recovery | next eligible lease poll | every poll probes PostgreSQL, with or without a wake notification | §Failure recovery model |
-| Runner datastore credentials | zero | no runner crate links `sqlx` or `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
+| Runner datastore credentials | zero | no runner crate links `sqlx` or `async-nats`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Fleet** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
@@ -79,12 +79,12 @@ Each trap is enforced in its owner section; this list is the index.
  | agentsfleetd     |        | agentsfleet-runner (one binary)   |
  | control plane:   |<------>|  supervisor: heartbeat, lease,    |
  | owns PG,         | HTTPS  |  agent loop, report, activity     |
- | Dragonfly,       | pull   |  (boots from a pre-minted agt_r)  |
+ | NATS,            | pull   |  (boots from a pre-minted agt_r)  |
  | Vault API,       | agt_r  |                                   |
  | assignment       |        |  a sandbox per lease that runs    |
  +--------+---------+        |  a tool there: executor, tools    |
           |                  +-----------------------------------+
-   PG . Dragonfly . Vault
+   PG . NATS . Vault
    (never leave the platform)
 ```
 
@@ -94,10 +94,10 @@ Deeper diagrams stay with their owner sections below; signal routes are in [obse
 
 | Decision | Reason | Where |
 |---|---|---|
-| The runner holds zero datastore credentials | a compromised host cannot reach Postgres, Dragonfly, or the Vault | §Why split; M80_002 |
+| The runner holds zero datastore credentials | a compromised host cannot reach Postgres, NATS, or the Vault | §Why split; M80_002 |
 | Operator pre-mints `agt_r`; no host self-registration | no enrollment-grade credential ever touches a host (Option B, the GitLab-16 model) | §Registering a runner; M84_001 |
 | Typed columns + event log, not a `status` JSONB | one operator-intent dimension; JSONB conditions are for many writers | §Runner state; cross-validated Jun 2026 |
-| Lease expiry + fencing replaces `XAUTOCLAIM` | an off-platform processor is invisible to Dragonfly consumer-idle | §Datastore topology; M80_001 |
+| Lease expiry + fencing replaces `XAUTOCLAIM` | an off-platform processor was invisible to the old stream's consumer-idle timer | §Datastore topology; M80_001 |
 | Slot and admission fences advance together | a stale runner must not settle a newer claim | §Datastore topology |
 | Cold-start reconciliation deferred | discovery scaffolding the future scheduler replaces (Indy-acked, M141_001 Discovery) | §Failure recovery model |
 | The agent loop runs in the supervisor; only tool calls cross into a per-lease sandbox | no model key or runner token enters a sandbox, and the supervisor keeps the network a sandbox may be denied | §The split; [`runner_execution.md`](./runner_execution.md) §Process model |
@@ -123,7 +123,7 @@ Everything below follows from that one decision. Read the guarantees before the 
 | **At-most-once durable effect** | A reclaimed or duplicate runner cannot double-write state. | Every lease carries a monotonic `fencing_token`; `report` verifies it in the same atomic statement that flips the lease to `reported`. A stale holder's report is rejected (`UZ-RUN-005`). |
 | **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the lease inline over Transport Layer Security (TLS), is substituted at send time by the supervisor's egress guard outside every sandbox, and is never saved runner-side ([Runner runtime](./runner_execution.md) §Credentials). |
 | **Tool calls are always sandboxed** | No tenant program ever runs un-isolated. | A lease offered a tool that runs in a sandbox gets one under bubblewrap, Landlock, seccomp and its own cgroup; a sandbox that cannot be built fails **closed**: the turn never runs and the lease reports `fleet_error` as `startup_posture`. A lease whose tools all run in the supervisor starts none. |
-| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Dragonfly, or the Vault. | No runner crate links `sqlx` or `redis` ([`runner_execution.md`](./runner_execution.md) §Crates); the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
+| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, NATS, or the Vault. | No runner crate links `sqlx` or `async-nats` ([`runner_execution.md`](./runner_execution.md) §Crates); the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
 
 ### Runners are cattle, not pets
 
@@ -209,7 +209,7 @@ The cutover moved running onto arbitrary hosts (bare metal, a Mac, a pod) that h
 
 ## The split: two binaries, no sidecar
 
-- **`agentsfleetd`** — the control plane. Owns Postgres, Dragonfly, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; `XREADGROUP` and `XACK` remain on the separate outbound delivery queue.
+- **`agentsfleetd`** — the control plane. Owns Postgres, its NATS connection, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; outbound delivery claims `fleet.obligations` rows.
 
 - **`agentsfleet-runner`** — the host-resident runner plane, one Rust binary. A trusted supervisor runs the lease loop and the agent loop, and each lease that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
@@ -231,7 +231,7 @@ The runner's supervisor, agent loop, tool catalog, outbound guard, in-sandbox se
 
 ## The control protocol: `/v1/runners`
 
-`agentsfleetd` translates the runner's calls into the Postgres writes and Dragonfly stream operations the worker did directly. The runner never sees a datastore.
+`agentsfleetd` translates the runner's calls into the Postgres writes and NATS publishes the worker once made directly. The runner never sees a datastore.
 
 The routes, their methods and their request and reply shapes are in the API reference's **Runner plane** group on docs.agentsfleet.net. That group is generated from `public/openapi.json`. The enrolment route sits in its **Fleet** group; this doc does not restate them.
 
@@ -249,7 +249,7 @@ A runner with an idle worker asks the daemon to hold its heartbeat (`wake: true`
 
 The daemon records liveness, capability and holds as for any beat. It then waits for the next doorbell ring or `WAKE_HOLD_MAX`, which equals `HEARTBEAT_INTERVAL` (10 s). A held beat so returns no later than the next beat was due.
 
-A ring answers `woken: true`, and the runner ends one idle worker's pause. Fresh work then waits one round trip, not the idle hint. The ring is the doorbell's sharded publish, which every replica hears (`afd_dragonfly`'s doorbell and `afd_api_runner`'s wake handler).
+A ring answers `woken: true`, and the runner ends one idle worker's pause. Fresh work then waits one round trip, not the idle hint. The ring is a publish on one of sixteen `af.wake.<shard>` subjects, which every replica hears (`afd_bus::wake`).
 
 One process holds at most `HELD_BEATS_MAX` (64) beats. A beat past the cap answers `woken: false` at once, counted under `agentsfleet_runner_wake_answers_total{reason="capped"}`. A held beat keeps one in-flight permit, so the cap keeps three quarters of `DEFAULT_MAX_IN_FLIGHT` for requests.
 
@@ -291,7 +291,7 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
    |      eligibility: assigned tier + scope + secret_delivery   GATE 3 - blast radius
 ```
 
-`agentsfleetd` owns the Postgres pool, the Dragonfly pool, and the Vault API. `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/fleets/runners/{id} {"action":"rotate"}`.
+`agentsfleetd` owns the Postgres pool, the NATS connection, and the Vault API. `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/fleets/runners/{id} {"action":"rotate"}`.
 
 The write swaps `token_hash` and appends an actor-attributed event atomically. The write returns the replacement token once, and makes the old token fail the next auth read.
 
@@ -509,7 +509,7 @@ agentsfleet-runner supervisor: admit the policy, take the fleet's turn, load mem
    |
 report -> agentsfleetd: one transaction (settle + terminal state + checkpoint
           + freed slot + the OWED DELIVERY), then, after it commits, the
-          activity frame and the answer onto connector:outbound
+          activity frame and the af.outbound.wake ping
 ```
 
 The admission settlement, usage, terminal event, checkpoint, slot release and outbound obligation commit together.
@@ -679,16 +679,16 @@ The trait must then carry a fleet purge, which today deletes its rows in Postgre
 
 ## Live activity (the SSE tail)
 
-The agent loop emits progress frames mid-run: tool started, tool completed, and each answer chunk. The runner holds no Dragonfly, so the supervisor hands each frame to a per-lease sink that never blocks the run. A pump batches frames up to 64 KiB, flushing every 250 ms.
+The agent loop emits progress frames mid-run: tool started, tool completed, and each answer chunk. The runner holds no bus connection, so the supervisor hands each frame to a per-lease sink that never blocks the run. A pump batches frames up to 64 KiB, flushing every 250 ms.
 
 At most four batches are queued or in flight. Past that the next batch waits with the batcher and keeps filling.
 
 Only a batch that filled while it waited is dropped, counted and logged as `activity_batch_dropped`. A post that fails loses its batch, logs `activity_frame_write_failed` and counts its frames as dropped (`afr_supervisor`'s activity module).
 
-`afd_fleet`'s activity path publishes the ordered batch on the `fleet:{id}:activity` channel `afd_sse` names. The hub shares one Dragonfly subscription connection across downstream Server-Sent Events (SSE) viewers.
+`afd_fleet`'s activity path publishes the ordered batch on the fleet's `af.fleet.<fleet_id>.tail` subject. Each process's hub shares one NATS connection across downstream Server-Sent Events (SSE) viewers.
 
 ```text
-agent loop -sink-> activity pump -POST .../activity (no ack)-> agentsfleetd -SPUBLISH-> SSE
+agent loop -sink-> activity pump -POST .../activity (no ack)-> agentsfleetd -publish-> NATS -> SSE
 ```
 
 The runner's frames reach the channel through `afd_fleet::lease::activity`, each stamped with the `event_id` its lease runs: `tool_call_started`, `tool_call_progress`, `tool_call_completed` and `chunk`. Frame kinds and fields: API reference › Fleet events (Stream live fleet activity).
@@ -763,7 +763,7 @@ A `catching_up` is followed by a fresh `hello`. The dropped frames are exactly t
 
 No daemon frame names its fleet or workspace. The tail is one fleet's channel. The workspace multiplex splices `fleet_id` in as the one leading key of every frame it forwards (`afd_sse::Frame::tagged`).
 
-Every bracket and gate publish goes through `afd_dragonfly::FleetStreams::publish_frame` and is best-effort like the runner's frames. The row is written first, the frame announces it, and reconnect backfill recovers durable event rows from the events list. A missed publish alone does not trigger that backfill.
+Every bracket and gate publish goes through `afd_bus::Handle::publish_frame` and is best-effort like the runner's frames. The row is written first, the frame announces it, and reconnect backfill recovers durable event rows from the events list. A failed publish owes its subject an `Af-Gap` marker, paid at the next reconnect, and that marker's `catching_up` triggers the backfill.
 
 The dashboard opens streams through authenticated, same-origin Next.js `/live/*` proxies.
 The daemon serves asynchronous response bodies through the shared hub, with a separate stream admission ceiling.
@@ -829,7 +829,7 @@ The gates run before the lease is issued and charge nothing. The issued lease's 
 
 ## Datastore topology
 
-PostgreSQL owns the inbound admissions queue. Dragonfly carries activity, wake notifications, session state and outbound delivery.
+PostgreSQL owns the inbound admissions queue, outbound obligations and device-login sessions. Core NATS carries activity, wake notifications, runner commands and the outbound ping.
 The [datastore design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the queue predicate, limits and failure rules.
 
 A claim takes the fleet slot before its exact oldest unsettled admission. Both fences advance in one transaction.
@@ -1095,7 +1095,7 @@ Renewals sample database time after acquiring the host guard. Expired work requi
 
 Authoring is creator-private work. Resolve its workspace owner and recheck creator membership. Choose the oldest eligible queued message within that draft, and refuse another live attempt for the same draft.
 
-Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Authoring messages remain a Postgres queue; Dragonfly publishes wake and progress hints, not another authoritative message copy.
+Selection across kinds must avoid starvation with a bounded alternating eligible-kind choice; an empty kind never blocks the other. Authoring messages remain a Postgres queue; NATS carries wake and progress hints, not another authoritative message copy.
 
 The authoring schema slots define creator-private `authoring.drafts`, `authoring.messages`, candidates and replay receipts, plus content-free `authoring.attempts` and dispatch and activity receipts. A setup chat's charges are its usage lines in `billing.usage_lines`, retained independently of the chat (billing §11). Immutable native setup and Library revisions join their existing domains.
 
