@@ -54,7 +54,7 @@ use tokio_util::task::TaskTracker;
 
 use std::time::Duration;
 
-use crate::obligation::{self, AbandonReason, CLAIM_RENEW, Claimed};
+use crate::obligation::{self, AbandonReason, CLAIM_RENEW, CLAIM_TTL, Claimed};
 use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry};
 
 /// Delivery cycles an answer gets before it is abandoned.
@@ -79,6 +79,7 @@ const EVENT_DELIVERED: &str = "outbound_delivery_delivered";
 const EVENT_STAMP_FAILED: &str = "outbound_obligation_stamp_failed";
 const EVENT_ATTEMPT_COUNT_FAILED: &str = "outbound_obligation_attempt_failed";
 const EVENT_RELEASE_FAILED: &str = "outbound_claim_release_failed";
+const EVENT_RENEW_FAILED: &str = "outbound_claim_renew_failed";
 const EVENT_CLAIM_LAPSED: &str = "outbound_claim_lapsed";
 
 /// Where an answer goes: one provider's workspace.
@@ -224,16 +225,24 @@ impl<S: Deliver + 'static> Inner<S> {
 
     /// One delivery cycle of a claimed job, renewing the claim while it runs.
     async fn deliver_once(&self, job: &Claimed) {
+        // A row naming no connector this build knows has no poster to try.
+        if afd_connector::Provider::parse(&job.outgoing.provider).is_none() {
+            crate::abandon::delivery(&self.database, job, AbandonReason::Unaddressable).await;
+            return;
+        }
         let attempts = self.count_cycle(job).await;
         let opening = Attempt::opening(attempts);
         let verdict = tokio::select! {
-            verdict = deliver_with_retry(&self.posters, &job.outgoing, &self.token, opening) => Some(verdict),
-            () = self.renewing(job) => None,
+            verdict = deliver_with_retry(&self.posters, &job.outgoing, &self.token, opening) => Ok(verdict),
+            lost = self.renewing(job) => Err(lost),
         };
-        let Some(verdict) = verdict else {
-            // The claim lapsed under us: another holder may be posting it.
-            Self::lapsed(job, "renew");
-            return;
+        let verdict = match verdict {
+            Ok(verdict) => verdict,
+            // The claim lapsed, or may have: another holder may be posting it.
+            Err(lost) => {
+                Self::lapsed(job, lost);
+                return;
+            }
         };
         match verdict {
             Verdict::Delivered => self.stamp_delivered(job, attempts).await,
@@ -244,16 +253,25 @@ impl<S: Deliver + 'static> Inner<S> {
         }
     }
 
-    /// Renews `job`'s claim until it is lost; never returns while it holds.
-    async fn renewing(&self, job: &Claimed) {
+    /// Renews `job`'s claim until it is lost, and answers how: `renew` when
+    /// another holder took the row, `renew_unanswered` when no renewal has
+    /// landed for so long that the claim may lapse before the next one.
+    /// Never returns while the claim is known to hold.
+    async fn renewing(&self, job: &Claimed) -> &'static str {
+        let mut held_at = tokio::time::Instant::now();
         loop {
             tokio::time::sleep(self.renew).await;
             match obligation::renew(&self.database, job).await {
-                Ok(true) => {}
-                Ok(false) => return,
-                // An unanswered renewal is not a lost claim: the row still names
-                // this holder, so keep delivering and try again next beat.
-                Err(failure) => crate::worker::report(EVENT_RELEASE_FAILED, &failure),
+                Ok(true) => held_at = tokio::time::Instant::now(),
+                Ok(false) => return "renew",
+                Err(failure) => {
+                    crate::worker::report(EVENT_RENEW_FAILED, &failure);
+                    // Stop before the claim can lapse: a replica may retake
+                    // the row, and two holders would both post it.
+                    if held_at.elapsed() + self.renew >= CLAIM_TTL {
+                        return "renew_unanswered";
+                    }
+                }
             }
         }
     }
