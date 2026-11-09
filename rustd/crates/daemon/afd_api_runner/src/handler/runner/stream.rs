@@ -20,7 +20,7 @@ use std::sync::Arc;
     description = "Open control first with the runner bearer credential. After prepared, confirm and welcome, open work, reports and activity on that same native connection using the returned session identifier. Bodies contain length-prefixed JSON frames. Requires the configured private HTTP/3 or HTTP/2 listener; ordinary API connections cannot open a session. Reports retain lease-keyed idempotence and take no Idempotency-Key.",
     request_body(content = String, content_type = "application/octet-stream"),
     params(
-        ("agentsfleet-runner-protocol" = String, Header, description = "agentsfleet.runner.v1"),
+        ("agentsfleet-runner-protocol" = String, Header, description = "Required runner protocol revision", example = json!(af_wire::protocol::VERSION)),
         ("agentsfleet-runner-kind" = String, Header, description = "control, work, reports or activity"),
         ("agentsfleet-runner-session" = Option<String>, Header, description = "Previous owner on control reconnect; welcome owner on secondary requests"),
     ),

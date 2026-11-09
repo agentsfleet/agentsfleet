@@ -370,3 +370,14 @@ The protocol header description contains `agentsfleet.runner.v1`; its source is 
 Codex owns correcting that annotation and regenerating the document; Claude owns the three unit failures above.
 
 No repository gate, test assertion or coverage floor was weakened to publish this owner-requested checkpoint.
+
+
+### OpenAPI prose follow-up
+
+The protocol header now says "Required runner protocol revision".
+Its example comes from the existing protocol-version constant and remains `agentsfleet.runner.v1`.
+The current daemon generator rebuilt OpenAPI successfully; the targeted `docs-api-internal-detail` scan passes.
+
+The full verification gate is running separately; no unit suite was restarted for this documentation correction.
+Indy assigned the three remaining unit failures to Claude.
+Codex will continue M243 and pull Claude's updates only when Indy signals.
