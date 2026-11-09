@@ -42,7 +42,16 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
         .await
         .expect("the resolve must not fault");
 
-    let frame = next_frame(&mut tail)
+    assert_decision_frame(&lane, &answered, &mut tail).await;
+    assert_swept_frames(&lane, &mut tail).await;
+}
+
+async fn assert_decision_frame(
+    lane: &Lane,
+    answered: &af_core::id::Uuid7,
+    tail: &mut afd_bus::Subscription,
+) {
+    let frame = next_frame(tail)
         .await
         .expect("the decision reaches the fleet's tail");
     assert_eq!(frame.get("kind"), Some(&json!("gate_resolved")));
@@ -50,12 +59,12 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     assert_eq!(frame.get("resolved_by"), Some(&json!(OPERATOR)));
     assert_eq!(
         frame.get("event_id"),
-        Some(&json!(lane.gate_column(&answered, "event_id").await)),
+        Some(&json!(lane.gate_column(answered, "event_id").await)),
         "the frame names the event the gate held"
     );
     assert_eq!(
         frame.get("gate_id"),
-        Some(&json!(lane.gate_column(&answered, "id").await)),
+        Some(&json!(lane.gate_column(answered, "id").await)),
         "and the gate itself"
     );
     assert_eq!(
@@ -63,17 +72,19 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
         Some(&json!(1)),
         "the sibling gate still waits, and the frame says so"
     );
+}
 
+async fn assert_swept_frames(lane: &Lane, tail: &mut afd_bus::Subscription) {
     // The sweeper announces what it takes, the same way: two seeded lapsed,
     // so this sweep takes both — reading the fleet's counters once for the
     // pair — and the sibling above stays.
     let lapsed = lane.seed_gate(Window::Lapsed).await;
     let lapsed_too = lane.seed_gate(Window::Lapsed).await;
     lane.inbox.expire().await.expect("the sweep must not fault");
-    let swept = next_frame(&mut tail)
+    let swept = next_frame(tail)
         .await
         .expect("the sweep reaches the fleet's tail");
-    let swept_too = next_frame(&mut tail)
+    let swept_too = next_frame(tail)
         .await
         .expect("the second swept gate reaches the tail too");
     assert_eq!(swept_too.get("kind"), Some(&json!("gate_resolved")));

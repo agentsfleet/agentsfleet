@@ -1,8 +1,10 @@
-//! Measure complete production lease and report cycles, followed by idle polling.
+//! Measure complete production lease and report cycles, followed by connected idle sessions.
 
 pub mod burst;
+pub(in crate::lane::lease) mod native;
 pub(in crate::lane::lease) mod platform;
 mod runner;
+pub(in crate::lane::lease) mod session;
 mod settled;
 pub(in crate::lane::lease) mod stage;
 mod summary;
@@ -14,7 +16,7 @@ pub use self::summary::summary;
 use core::time::Duration;
 use std::sync::Arc;
 
-use afd_fleet::lease::LeaseService;
+use afd_gateway::test_util::Session;
 
 use self::turn::Turn;
 use self::window::{Shape, Window, window};
@@ -29,23 +31,22 @@ use crate::report::Report;
 /// Measurement key: leases the drain issued, one per event it settled.
 const LEASES: &str = "drain_leases";
 
-/// Measurement key: polls the drain made, lease or not.
-const POLLS: &str = "drain_polls";
+/// Measurement key: production offer entries driven by notifications and capacity.
+const CLAIMS: &str = "drain_offer_claims";
 
-/// Measurement key: polls or reports the path refused.
+/// Measurement key: zero when every native operation completed.
 const FAILURES: &str = "drain_failures";
 
 /// Measurement key: leases issued per second of the drain.
 const LEASES_PER_SECOND: &str = "drain_leases_per_second";
 
-/// Measurement key: the tail of a poll that issued a lease.
+/// Measurement key: the tail of a pushed offer.
 const LEASE_P95_MS: &str = "drain_lease_p95_ms";
 
 /// Measurement key: the tail of the report after it.
 const REPORT_P95_MS: &str = "drain_report_p95_ms";
 
-/// Measurement key: statements Postgres executed per lease issued — polls
-/// that missed, the lease and its report all included.
+/// Measurement key: statements per lease across offer, native exchanges and completion.
 const STATEMENTS_PER_LEASE: &str = "drain_statements_per_lease";
 
 /// Measurement key: transactions Postgres committed per lease issued.
@@ -66,37 +67,29 @@ const LEDGER_ROWS_PER_EVENT: &str = "drain_ledger_rows_per_event";
 /// Measurement key: unsettled admissions remaining after the drain.
 const UNSETTLED_ROWS: &str = "drain_unsettled_rows";
 
-/// Measurement key: polls in the quiet window after the drain.
-const IDLE_POLLS: &str = "drain_idle_polls";
-
-/// Measurement key: Postgres statements per poll once every fleet drained.
-///
-/// The spelling the acceptance rubric greps for in the lane's output.
-pub const IDLE_STATEMENTS_PER_POLL: &str = "idle_statements_per_poll";
-
-/// Measurement key: Postgres commits per poll once every fleet drained.
-const IDLE_COMMITS_PER_POLL: &str = "idle_commits_per_poll";
+/// Measurement key: statements served while sessions have no work.
+pub const IDLE_STATEMENTS: &str = "drain_idle_statements";
+/// Measurement key: commits served while sessions have no work.
+const IDLE_COMMITS: &str = "drain_idle_commits";
 
 /// The task role a lost drain runner is reported under.
 const RUNNER_ROLE: &str = "drain runner";
 
-/// How long the quiet window after the drain polls.
+/// How long sessions remain idle after the drain.
 ///
-/// As long as the contended window's idle half, so the two per-poll figures
-/// are taken over windows of one length.
+/// Uses the same duration as the contended window's idle interval.
 const IDLE_WINDOW: Duration = Duration::from_secs(2);
 
 /// The keys the one-line summary prints, in order.
 const SUMMARY_KEYS: [&str; 5] = [
-    IDLE_STATEMENTS_PER_POLL,
-    IDLE_COMMITS_PER_POLL,
+    IDLE_STATEMENTS,
+    IDLE_COMMITS,
     STATEMENTS_PER_LEASE,
     COMMITS_PER_LEASE,
     UNSETTLED_ROWS,
 ];
 
-/// Drain a fresh population through the lease and report verbs, then poll it
-/// idle, writing both into `report`.
+/// Drain a fresh population through one session per host, then measure connected idle sessions.
 ///
 /// # Errors
 ///
@@ -132,31 +125,30 @@ async fn measure(
     staged: &stage::Staged,
     report: &mut Report,
 ) -> Result<()> {
-    let plane = staged.plane(stores);
+    let sessions = staged.sessions(stores).await?;
     let abort = Arc::new(Abort::new(profile.caps().abort_error_rate));
-    let events = u64::try_from(staged.fleets.len()).unwrap_or(u64::MAX);
-    let drained = drain(&plane, parameters, stores, staged, events, &abort).await?;
+    let events = u64::try_from(staged.fleets.len())?;
+    let drained = drain(sessions, parameters, stores, events, &abort).await?;
     let settled = settled::read(stores, &staged.fleets).await?;
-    if settled.processed != events || drained.tally.failures != 0 {
+    if settled.processed != events {
         return Err(ErrorKind::DrainIncomplete {
             expected: events,
             processed: settled.processed,
-            failures: drained.tally.failures,
+            failures: 0,
         }
         .into());
     }
     drained.record(report, events, settled);
     drained.show_costliest();
-    // After an abort every runner exits on entry, and a per-poll ratio over a
-    // window that never polled would describe nothing.
+    // An aborted measurement cannot establish the cost of a complete idle interval.
     if !abort.fired() {
         let quiet = Turn::back_to_back(Duration::ZERO);
         let idle = window(
-            &plane,
+            drained.sessions,
             stores,
-            &staged.runners,
             Shape {
                 length: IDLE_WINDOW,
+                idle: true,
                 target: None,
                 turn: quiet,
                 pickups: None,
@@ -165,25 +157,27 @@ async fn measure(
         )
         .await?;
         idle.record_idle(report);
+        for session in idle.sessions {
+            session.close().await;
+        }
     }
     Ok(())
 }
 
 /// Include the serving path's admission settlement in its drain cost.
 async fn drain(
-    plane: &LeaseService,
+    sessions: Vec<Session>,
     parameters: Parameters,
     stores: &Datastores,
-    staged: &stage::Staged,
     events: u64,
     abort: &Arc<Abort>,
 ) -> Result<Window> {
     window(
-        plane,
+        sessions,
         stores,
-        &staged.runners,
         Shape {
             length: parameters.window,
+            idle: false,
             target: Some(events),
             turn: Turn::back_to_back(parameters.turn),
             pickups: None,

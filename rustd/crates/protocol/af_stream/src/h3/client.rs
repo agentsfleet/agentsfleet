@@ -36,12 +36,13 @@ pub(crate) struct Client {
 pub(crate) async fn connect(
     endpoint: &Endpoint,
     trust: &Trust,
+    parent: &CancellationToken,
     stop: CancellationToken,
     deadline: Instant,
 ) -> Result<(Native, AbortOnDropHandle<Result<()>>)> {
     let super::socket::Connected {
         mut initial,
-        receive,
+        mut receive,
         shutdown,
     } = super::socket::connect(endpoint, trust, &stop, deadline).await?;
     let (driver, controller) = ClientH3Driver::new(super::settings());
@@ -50,27 +51,19 @@ pub(crate) async fn connect(
         super::driver::Driver::new(driver, stop.clone());
     let (_connection, handshake) = initial.handshake_fut(driver);
     let handshake = Box::pin(handshake);
-    let running = within(&stop, deadline, Stage::Handshake, async {
+    let running = receiving(parent, deadline, &mut receive, async {
         handshake
             .await
             .map_err(|source| ErrorKind::QuicHandshake { source }.into())
     })
     .await?;
     tokio_quiche::InitialQuicConnection::<UdpSocket, _>::resume(running);
-    within(&stop, deadline, Stage::Handshake, async {
-        while key_exchange.borrow().is_none() {
-            key_exchange.changed().await?;
-        }
-        let negotiated = *key_exchange.borrow();
-        match negotiated {
-            Some(crate::tls::KeyExchange::X25519MlKem768) => Ok(()),
-            Some(negotiated) => Err(ErrorKind::KeyExchangeRefused { negotiated }.into()),
-            None => Err(ErrorKind::Closed {
-                stage: Stage::Handshake,
-            }
-            .into()),
-        }
-    })
+    receiving(
+        parent,
+        deadline,
+        &mut receive,
+        negotiated(&mut key_exchange),
+    )
     .await?;
     let (requests, receiver) = mpsc::channel(4);
     let observed = super::telemetry::observe(
@@ -88,6 +81,26 @@ pub(crate) async fn connect(
         }),
         task,
     ))
+}
+
+/// The caller's token denotes cancellation; a native worker ending retains its cause.
+async fn receiving<T>(
+    parent: &CancellationToken,
+    deadline: Instant,
+    receive: &mut AbortOnDropHandle<Result<()>>,
+    operation: impl Future<Output = Result<T>>,
+) -> Result<T> {
+    within(parent, deadline, Stage::Handshake, async {
+        tokio::select! {
+            biased;
+            result = operation => result,
+            result = receive => {
+                result??;
+                Err(ErrorKind::Closed { stage: Stage::Handshake }.into())
+            }
+        }
+    })
+    .await
 }
 
 fn supervise(
@@ -260,5 +273,26 @@ impl Pending {
             ClientH3Event::Core(H3Event::NewFlow { .. }) => return Err(ErrorKind::Protocol.into()),
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+#[path = "client_tests.rs"]
+mod tests;
+
+async fn negotiated(
+    key_exchange: &mut watch::Receiver<Option<crate::tls::KeyExchange>>,
+) -> Result<()> {
+    while key_exchange.borrow().is_none() {
+        key_exchange.changed().await?;
+    }
+    let negotiated = *key_exchange.borrow();
+    match negotiated {
+        Some(crate::tls::KeyExchange::X25519MlKem768) => Ok(()),
+        Some(negotiated) => Err(ErrorKind::KeyExchangeRefused { negotiated }.into()),
+        None => Err(ErrorKind::Closed {
+            stage: Stage::Handshake,
+        }
+        .into()),
     }
 }

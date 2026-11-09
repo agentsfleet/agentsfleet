@@ -209,25 +209,7 @@ async fn a_report_settles_once(run: &Scenario, lease_id: &str, fence: u64) {
         "a priced run draws the wallet down: {before:?} → {after:?}"
     );
 
-    let repeated = crate::wire::report(run, &report).await;
-    assert!(repeated.is_ok(), "native report refused: {repeated:?}");
-    assert_eq!(
-        ledger_rows(run).await,
-        logged,
-        "the repeat logs no usage line"
-    );
-    // No new line, so nothing for the relay to charge: the balance is final.
-    assert_eq!(
-        balance(run).await,
-        after,
-        "and it charges nothing: the settlement keys on the ledger row, so a \
-         replayed receipt cannot debit twice"
-    );
-    assert_eq!(
-        counter_column(run, "succeeded_count").await.as_deref(),
-        Some("1"),
-        "and the lifetime tally counts one completed run, not two"
-    );
+    assert_replayed_report(run, &report, logged, after).await;
 }
 
 /// The next poll finds the fleet's remaining work rather than stalling on it.
@@ -269,4 +251,31 @@ async fn test_cluster_preserves_application_outcomes() {
 
     supervisor.shutdown().await;
     run.cleanup().await;
+}
+
+async fn assert_replayed_report(
+    run: &Scenario,
+    report: &serde_json::Value,
+    logged: i64,
+    after: Option<i64>,
+) {
+    let repeated = crate::wire::report(run, report).await;
+    assert!(repeated.is_ok(), "native report refused: {repeated:?}");
+    assert_eq!(
+        ledger_rows(run).await,
+        logged,
+        "the repeat logs no usage line"
+    );
+    // No new line, so nothing for the relay to charge: the balance is final.
+    assert_eq!(
+        balance(run).await,
+        after,
+        "and it charges nothing: the settlement keys on the ledger row, so a \
+         replayed receipt cannot debit twice"
+    );
+    assert_eq!(
+        counter_column(run, "succeeded_count").await.as_deref(),
+        Some("1"),
+        "and the lifetime tally counts one completed run, not two"
+    );
 }

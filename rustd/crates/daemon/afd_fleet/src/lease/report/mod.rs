@@ -37,82 +37,18 @@ use af_core::id::Uuid7;
 use af_wire::report::ReportRequest;
 use jiff::Timestamp;
 
-use crate::error::{Result, lease_not_found, stale_fence};
-use crate::lease::commit::{Committed, TerminalReport};
+use crate::error::{Result, lease_not_found};
 use crate::lease::pull::LeaseService;
-use crate::lease::settle::Reported;
-use crate::lease::tool_trace::{self, TraceOwner};
-use crate::lease::usage::{self, Pricing};
-use crate::lease::verdict::{Terminal, Verdict};
-use afd_billing::Nanos;
-use afd_billing::rates::Posture;
+use crate::lease::usage::Pricing;
 
+use assembly::{Subject, posture_of, stored_trace, terminal};
+pub use result::Reconciled;
 pub use tokens::RunTokens;
+mod assembly;
+mod finalize;
 mod observations;
+mod result;
 pub use observations::observe;
-
-/// What one settled report leaves its caller with.
-///
-/// A struct rather than a bare [`Nanos`] because the charge was never the only
-/// thing the call learned. The report names a LEASE; everything else about the
-/// run — which fleet and workspace and tenant, which event, which model under
-/// which posture — was resolved by the load inside, and the caller would
-/// otherwise run a second statement for facts this call already held.
-///
-/// # Why the identity travels up rather than the telemetry down
-///
-/// Both callers of this verb describe the finished run: one reports it to
-/// product analytics, the other records its delivery span. Neither concern
-/// belongs on the money path — an exporter fused into it would be one a report
-/// could not settle without — so the money path answers with the facts and the
-/// handler decides what to say about them.
-///
-/// Exhaustive on purpose, where most of this crate's public types are not: a
-/// suite stubbing the lease plane has to ANSWER with one of these, and a
-/// `non_exhaustive` struct cannot be built outside the crate that declares it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Reconciled {
-    /// What the final slice drained. Zero on a repeated report, which charges
-    /// nothing because the first one charged it.
-    pub charged: Nanos,
-    /// The fleet that ran.
-    pub fleet_id: Uuid7,
-    /// The workspace it belongs to.
-    pub workspace_id: Uuid7,
-    /// The tenant whose wallet the settle drew on.
-    pub tenant_id: Uuid7,
-    /// The event that was executed, as the LEASE row records it.
-    ///
-    /// The lease's copy, never the request's. A runner names an event in its
-    /// report and this is the one the lease was issued for; where they could
-    /// differ, the row is the authority.
-    pub event_id: Uuid7,
-    /// The billing posture the lease was issued under, in the stored spelling.
-    pub posture: String,
-    /// The provider resolved at issue, as configured.
-    pub provider: String,
-    /// The model resolved at issue.
-    pub model: String,
-    /// Whether this call produced the outcome or found it already durable.
-    ///
-    /// True when the runner re-sent a report whose response it never received.
-    /// The run itself happened once, so everything a caller says ABOUT the run
-    /// — the completion analytics, the cost meters, the delivery span — must
-    /// fire on the first report and not on the repeat, or one run is counted
-    /// as many. The report still answers success: a runner told to retry
-    /// forever is how a finished answer gets thrown away.
-    pub repeated: bool,
-    /// The tokens the run's usage lines record, every renewal's and the
-    /// report's: what its cost metrics and delivery span describe.
-    pub tokens: RunTokens,
-    /// When the event was created, as the lease row carries it.
-    pub event_created_at: Timestamp,
-    /// When the lease was issued.
-    pub lease_created_at: Timestamp,
-    /// When `event_complete` was published; none on a repeated report, and
-    /// none when the settle closed no event row.
-    pub completed_at: Option<Timestamp>,
-}
 
 impl LeaseService {
     /// Record one runner's terminal result for a lease it holds.
@@ -143,22 +79,10 @@ impl LeaseService {
             return Err(lease_not_found());
         };
 
-        let lease_key = Uuid7::parse(lease_id.as_str()).map_err(|_malformed| lease_not_found())?;
-        let task_plan = match &self.task_reports {
-            Some(owner) => {
-                owner
-                    .prepare_report(
-                        crate::task::TaskLease {
-                            runner_id,
-                            lease_id: &lease_key,
-                            fencing_token: request.fencing_token,
-                        },
-                        request,
-                    )
-                    .await?
-            }
-            None => None,
-        };
+        let lease_key = lease_id.clone();
+        let task_plan = self
+            .prepare_task_report(runner_id, &lease_key, request)
+            .await?;
         let task_settlement = match &task_plan {
             Some(plan) => Some(plan.settlement().await?),
             None => None,
@@ -172,8 +96,7 @@ impl LeaseService {
             lease_id.as_str(),
         )
         .await;
-        let last_event = Uuid7::parse(request.checkpoint.last_event_id.as_ref())
-            .unwrap_or_else(|_text| lease.event_id.clone());
+        let last_event = Uuid7::parse(request.checkpoint.last_event_id.as_ref())?;
         let mut report = terminal(
             Subject {
                 id: lease_id,
@@ -192,165 +115,20 @@ impl LeaseService {
         // Boxed: the capture's state would otherwise ride inside every report
         // future, past the large-future bound, for a step most reports skip.
         Box::pin(self.capture_reported(runner_id, &lease, request, now)).await;
-        match self.leases.commit_report(report).await? {
-            Committed::Fenced { .. } => Err(stale_fence()),
-            Committed::AlreadySettled => {
-                Self::record_repeat(&lease, lease_id.as_str());
-                Ok(reconciled(
-                    lease,
-                    Nanos::ZERO,
-                    true,
-                    RunTokens::default(),
-                    None,
-                ))
-            }
-            Committed::Settled {
-                settlement,
-                closed,
-                owed,
-                notice,
-                folds,
-            } => {
-                if let Some(plan) = &task_plan {
-                    plan.announce().await;
-                }
-                let charged = usage::charged(settlement.as_deref());
-                let answer = notice.unwrap_or_else(|| request.response_text.as_ref());
-                let completed_at = self
-                    .announce(
-                        runner_id,
-                        request,
-                        &lease,
-                        steps::Completion { closed, answer },
-                        charged,
-                        now,
-                    )
-                    .await;
-                timing::completed(&lease, now, completed_at);
-                if let Some(owing) = owed {
-                    self.wake_owed_answer(&owing).await;
-                }
-                self.announce_folds(&lease, lease_id.as_str(), folds, answer)
-                    .await;
-                let tokens = self.leases.run_tokens(&lease_key).await;
-                Ok(reconciled(lease, charged, false, tokens, completed_at))
-            }
-        }
+        let committed = self.leases.commit_report(report).await?;
+        self.finalize_report(
+            lease,
+            committed,
+            task_plan.as_ref(),
+            finalize::Context {
+                runner_id,
+                request,
+                lease_id,
+                now,
+            },
+        )
+        .await
     }
-}
-
-/// The lease a report is about, by its three names and its row.
-#[derive(Clone, Copy)]
-struct Subject<'a> {
-    id: &'a Uuid7,
-    /// The event the run's checkpoint names: the runner's, or the lease's own
-    /// when the runner's text is not a `UUIDv7`.
-    last_event: &'a Uuid7,
-    key: &'a Uuid7,
-    runner: &'a Uuid7,
-    row: &'a Reported,
-}
-
-/// Everything the report's transaction needs, assembled from the wire request.
-///
-/// Separate from [`LeaseService::report`] so the verb reads as its four steps. The
-/// two `try_from` saturations are the request's own numbers: a runner reports
-/// its counts and nothing upstream bounds them, so a value past `i64` is
-/// clamped rather than refused — the run happened either way, and refusing it
-/// here would lose the answer over a telemetry field.
-fn terminal<'a>(
-    lease: Subject<'a>,
-    pricing: &'a Pricing,
-    request: &'a ReportRequest<'a>,
-    tool_calls: Option<&'a str>,
-    now: Timestamp,
-) -> TerminalReport<'a> {
-    TerminalReport {
-        lease_id: lease.id,
-        runner_id: lease.runner,
-        lease: lease.row,
-        lease_key: lease.key,
-        requests: &request.requests.0,
-        pricing,
-        outcome: Terminal {
-            verdict: Verdict::of(
-                request.outcome,
-                request.failure_reason,
-                request.failure_detail.as_ref(),
-            ),
-            response_text: request.response_text.as_ref(),
-            tokens: i64::try_from(request.tokens).unwrap_or(i64::MAX),
-            wall_ms: i64::try_from(request.telemetry.wall_ms).unwrap_or(i64::MAX),
-            tool_calls,
-        },
-        last_event_id: lease.last_event,
-        last_response: request.checkpoint.last_response.as_ref(),
-        held_until: request.held_until,
-        task_settlement: None,
-        folded_through_sequence: request.folded_through_sequence,
-        now,
-    }
-}
-
-/// The run's tool trace as the event row stores it, fenced to `lease`.
-fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Option<String> {
-    let owner = TraceOwner {
-        fleet_id: &lease.fleet_id,
-        event_id: &lease.event_id,
-        fence: lease.fence.as_i64(),
-    };
-    tool_trace::stored(request.tool_calls, owner)
-}
-
-/// The lease's facts, as the caller of the verb receives them.
-///
-/// Takes the lease BY VALUE: every string field moves into the answer rather
-/// than being cloned, which is why the two call sites read the lease's columns
-/// through this and not before it.
-fn reconciled(
-    lease: Reported,
-    charged: Nanos,
-    repeated: bool,
-    tokens: RunTokens,
-    completed_at: Option<Timestamp>,
-) -> Reconciled {
-    Reconciled {
-        tokens,
-        charged,
-        fleet_id: lease.fleet_id,
-        workspace_id: lease.workspace_id,
-        tenant_id: lease.tenant_id,
-        event_id: lease.event_id,
-        posture: lease.posture,
-        provider: lease.provider,
-        model: lease.model,
-        repeated,
-        event_created_at: lease.event_created_at,
-        lease_created_at: lease.lease_created_at,
-        completed_at,
-    }
-}
-
-/// The posture this lease was issued under.
-///
-/// An unrecognised stored spelling meters as `Platform`, which is what
-/// `parsePosture` does and is deliberately NOT corrected here. The column is
-/// written only by the issue path, from a `Posture`'s own `as_str`, so a value
-/// that will not parse means the row was edited out of band — and what billing
-/// should charge for such a row is a product decision, not a parse decision.
-/// It is logged rather than absorbed silently.
-fn posture_of(lease: &Reported) -> Posture {
-    Posture::parse(&lease.posture).unwrap_or_else(|| {
-        let fleet = lease.fleet_id.as_str();
-        let stored = lease.posture.as_str();
-        tracing::warn!(
-            fleet_id = fleet,
-            posture = stored,
-            event = "report_posture_unparseable",
-            "the stored posture does not parse; metering falls back to platform"
-        );
-        Posture::Platform
-    })
 }
 
 mod memory;

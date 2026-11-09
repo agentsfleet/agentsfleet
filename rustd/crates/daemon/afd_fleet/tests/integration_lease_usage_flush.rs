@@ -107,45 +107,7 @@ async fn lines_across_renewals_and_the_report_are_billed_once_each() {
         .expect("the report settles the lease");
     held.relay().await;
 
-    let mut connection = held
-        .fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    let (rows, settled, distinct_prices, first, last, input, per_line): (
-        i64,
-        i64,
-        i64,
-        i64,
-        i64,
-        i64,
-        i64,
-    ) = sqlx::query_as(REQUEST_LINES)
-        .bind(lease)
-        .bind(i64::from(DAEMON_SEQ_BASE))
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the lines read");
-    let lines = i64::try_from(LINES).expect("a test line count fits");
-    assert_eq!(rows, lines, "one row per request, none twice");
-    assert_eq!((first, last), (0, lines - 1), "none missing");
-    assert_eq!(input, lines * i64::from(INPUT_TOKENS));
-    assert_eq!(settled, rows, "every line is settled");
-    assert_eq!(distinct_prices, 1, "identical requests charge alike");
-    assert!(per_line > 0, "the seeded rate prices a request");
-
-    let total: i64 = sqlx::query_scalar(CHARGED)
-        .bind(lease)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the charge reads");
-    drop(connection);
-    assert_eq!(
-        held.fixtures.balance(&held.tenant).await,
-        Some(DEEP_POOL - total),
-        "the wallet pays each line once"
-    );
+    assert_usage_settled(&held, lease).await;
 
     drop(plane);
     held.fixtures.cleanup().await;
@@ -203,4 +165,46 @@ async fn a_report_whose_lines_write_the_cache_counts_the_writes() {
 
     drop(plane);
     held.fixtures.cleanup().await;
+}
+
+async fn assert_usage_settled(held: &Held, lease: &af_core::id::Uuid7) {
+    let mut connection = held
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("a pooled connection");
+    let (rows, settled, distinct_prices, first, last, input, per_line): (
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+        i64,
+    ) = sqlx::query_as(REQUEST_LINES)
+        .bind(lease)
+        .bind(i64::from(DAEMON_SEQ_BASE))
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the lines read");
+    let lines = i64::try_from(LINES).expect("a test line count fits");
+    assert_eq!(rows, lines, "one row per request, none twice");
+    assert_eq!((first, last), (0, lines - 1), "none missing");
+    assert_eq!(input, lines * i64::from(INPUT_TOKENS));
+    assert_eq!(settled, rows, "every line is settled");
+    assert_eq!(distinct_prices, 1, "identical requests charge alike");
+    assert!(per_line > 0, "the seeded rate prices a request");
+
+    let total: i64 = sqlx::query_scalar(CHARGED)
+        .bind(lease)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the charge reads");
+    drop(connection);
+    assert_eq!(
+        held.fixtures.balance(&held.tenant).await,
+        Some(DEEP_POOL - total),
+        "the wallet pays each line once"
+    );
 }

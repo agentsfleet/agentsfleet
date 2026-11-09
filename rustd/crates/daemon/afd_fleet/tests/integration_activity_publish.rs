@@ -65,27 +65,7 @@ async fn test_first_chunk_records_active_lease_stages() {
     let _stages = DELIVERY_STAGES.lock().await;
     let capture = Capture::install();
     let run = held().await;
-    let mut connection = run
-        .fixtures
-        .database
-        .acquire()
-        .await
-        .expect("database connection");
-    sqlx::query(
-        "UPDATE runner.leases
-         SET created_at = clock_timestamp() - $2::interval,
-             event_created_at = clock_timestamp() - $3::interval,
-             lease_expires_at = clock_timestamp() + $4::interval
-         WHERE id = $1",
-    )
-    .bind(&run.issued.lease_id)
-    .bind(std::time::Duration::from_millis(100))
-    .bind(std::time::Duration::from_millis(200))
-    .bind(LEASE_LEFT)
-    .execute(&mut *connection)
-    .await
-    .expect("lease timings are current");
-    drop(connection);
+    backdate_lease(&run).await;
 
     let stages = [
         "lease_to_first_chunk",
@@ -108,43 +88,7 @@ async fn test_first_chunk_records_active_lease_stages() {
             "the active lease records exactly one {stage} sample"
         );
     }
-    let expired = held().await;
-    // Lapsed: its deadline is now behind the clock the activity target reads.
-    expired
-        .fixtures
-        .age(
-            Row::Lease(&expired.issued.lease_id),
-            "lease_expires_at",
-            LAPSE,
-        )
-        .await;
-    let target = expired
-        .leases
-        .load_activity_target(&expired.issued.lease_id, &expired.runner)
-        .await
-        .expect("the target lookup succeeds")
-        .expect("the held lease exists");
-    assert!(
-        !target.timing_eligible,
-        "the lapsed lease is not eligible for timing"
-    );
-    expired
-        .fixtures
-        .plane()
-        .activity(
-            &expired.runner,
-            expired.issued.lease_id.as_str(),
-            &[chunk()],
-        )
-        .await
-        .expect("an expired holder can still publish a cosmetic frame");
-    for (stage, baseline) in stages.into_iter().zip(before) {
-        assert_eq!(
-            capture.histogram_count(DELIVERY_STAGE, &[("stage", stage)]),
-            baseline + 1,
-            "an expired holder adds no {stage} sample"
-        );
-    }
+    let expired = assert_expired_not_timed(&capture, stages, before).await;
     run.fixtures.cleanup().await;
     expired.fixtures.cleanup().await;
 }
@@ -317,4 +261,73 @@ const fn chunk() -> ActivityFrame<'static> {
         stream_contiguous: true,
         stream_seq: 0,
     })
+}
+
+async fn assert_expired_not_timed(
+    capture: &Capture,
+    stages: [&str; 3],
+    before: Vec<u64>,
+) -> report_seed::Held {
+    let expired = held().await;
+    // Lapsed: its deadline is now behind the clock the activity target reads.
+    expired
+        .fixtures
+        .age(
+            Row::Lease(&expired.issued.lease_id),
+            "lease_expires_at",
+            LAPSE,
+        )
+        .await;
+    let target = expired
+        .leases
+        .load_activity_target(&expired.issued.lease_id, &expired.runner)
+        .await
+        .expect("the target lookup succeeds")
+        .expect("the held lease exists");
+    assert!(
+        !target.timing_eligible,
+        "the lapsed lease is not eligible for timing"
+    );
+    expired
+        .fixtures
+        .plane()
+        .activity(
+            &expired.runner,
+            expired.issued.lease_id.as_str(),
+            &[chunk()],
+        )
+        .await
+        .expect("an expired holder can still publish a cosmetic frame");
+    for (stage, baseline) in stages.into_iter().zip(before) {
+        assert_eq!(
+            capture.histogram_count(DELIVERY_STAGE, &[("stage", stage)]),
+            baseline + 1,
+            "an expired holder adds no {stage} sample"
+        );
+    }
+    expired
+}
+
+async fn backdate_lease(run: &report_seed::Held) {
+    let mut connection = run
+        .fixtures
+        .database
+        .acquire()
+        .await
+        .expect("database connection");
+    sqlx::query(
+        "UPDATE runner.leases
+         SET created_at = clock_timestamp() - $2::interval,
+             event_created_at = clock_timestamp() - $3::interval,
+             lease_expires_at = clock_timestamp() + $4::interval
+         WHERE id = $1",
+    )
+    .bind(&run.issued.lease_id)
+    .bind(std::time::Duration::from_millis(100))
+    .bind(std::time::Duration::from_millis(200))
+    .bind(LEASE_LEFT)
+    .execute(&mut *connection)
+    .await
+    .expect("lease timings are current");
+    drop(connection);
 }

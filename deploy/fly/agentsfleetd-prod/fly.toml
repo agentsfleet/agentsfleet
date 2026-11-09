@@ -51,6 +51,9 @@ primary_region = "iad"
 # server can give does not serve more traffic — it answers 503 to the request
 # that needed connection eighteen.
 [env]
+  AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR = "[::]:4443"
+  AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE = "/etc/agentsfleet/runner-stream/server-chain.pem"
+  AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE = "/etc/agentsfleet/runner-stream/server.key"
   DATABASE_POOL_SIZE_API = "5"
   # Clerk's public REST API base, versioned. Not a secret — Clerk's own host,
   # not a credential — so it lives here rather than in the 1Password-staged
@@ -83,3 +86,15 @@ primary_region = "iad"
   interval = "15s"
   timeout = "5s"
   grace_period = "30s"
+
+# Fly decodes the staged secrets into files before the application starts.
+# The certificate authority signing key is never loaded by a deployment job.
+[[files]]
+  guest_path = "/etc/agentsfleet/runner-stream/server-chain.pem"
+  secret_name = "RUNNER_STREAM_TLS_CERT_BASE64"
+  processes = ["app"]
+
+[[files]]
+  guest_path = "/etc/agentsfleet/runner-stream/server.key"
+  secret_name = "RUNNER_STREAM_TLS_KEY_BASE64"
+  processes = ["app"]

@@ -43,11 +43,14 @@ The rule `wf-action-pin` refuses a moving action ref, and Dependabot moves the p
 
 ## Why every build names its target
 
-`boring-sys`, which `tokio-quiche` needs for HTTP/3, generates its bindings with bindgen, and bindgen loads libclang at run time.
+`tokio-quiche` uses `boring-sys` for HTTP/3.
+Bindgen generates its bindings and loads libclang at run time.
+
 rustup's musl toolchain links build scripts statically, and a static binary cannot load a shared library.
 Cargo's host-only flags are still unstable, so the image sets `build.target` and `build.rustc-wrapper` in `$CARGO_HOME/config.toml`.
-`rustc-host-dynamic` links the rustc calls without `--target`, which are the host artifacts, against the dynamic C runtime.
-The shipped binary is a target artifact and stays static, so outputs land in `target/<triple>/<profile>/`.
+
+`rustc-host-dynamic` links host build scripts against the dynamic C runtime.
+The shipped binary remains static; outputs land in `target/<triple>/<profile>/`.
 
 ## Steps
 

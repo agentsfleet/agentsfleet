@@ -22,6 +22,8 @@ readonly HOST_STAGING_DIRS="$HOST_BIN_DIR $HOST_DEPLOY_DIR $HOST_TOOLBOX_DIR"
 # installs for the unit's EnvironmentFile=.
 readonly HOST_ENV_FILE="$HOST_ROOT/.env"
 readonly UNIT_ENV_FILE="/etc/default/agentsfleet-runner"
+readonly HOST_STREAM_CA_FILE="$HOST_ROOT/runner-stream-trust.pem"
+readonly UNIT_STREAM_CA_FILE="/etc/agentsfleet/runner-stream-trust.pem"
 
 readonly BINARY_NAME="agentsfleet-runner"
 readonly INSTALL_DIR="/usr/local/bin"

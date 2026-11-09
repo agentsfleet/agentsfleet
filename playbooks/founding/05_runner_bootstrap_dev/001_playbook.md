@@ -48,6 +48,8 @@ The last line is `PASS: agentsfleet-dev-runner-ant host preparation completed`.
 The script first refuses a host whose cgroup v2 lacks the `cpu`, `io`, `memory` or `pids` controller.
 It installs host packages, turns on IPv4 forwarding and creates deployment directories.
 
+The native connection gate requires OpenSSL 3.5 or newer with QUIC and hybrid key exchange, provided by Debian 13.
+
 It installs no runner binary, writes no token and starts no service.
 
 ### 3. Human and Agent prime the database

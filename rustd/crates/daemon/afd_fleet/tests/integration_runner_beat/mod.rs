@@ -114,24 +114,13 @@ async fn test_the_first_beat_reports_and_comes_online() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_steady_beat_writes_no_second_event() {
     let fixtures = Fixtures::create().await;
-    let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
-    let enrolled = fixtures
-        .runners()
-        .register(&request, fixtures.enrolled_at())
-        .await
-        .expect("enrolment must succeed");
-    let runner = enrolled.runner_id.clone();
+    let runner = enrolled_dev_runner(&fixtures).await;
 
     // The first beat transitions; the second is a heartbeat inside the window.
     for beat in 1..=2_u32 {
         fixtures
             .runners()
-            .heartbeat(
-                &enrolled.runner_id,
-                &NO_REPORT,
-                None,
-                fixtures.after(ONE_BEAT * beat),
-            )
+            .heartbeat(&runner, &NO_REPORT, None, fixtures.after(ONE_BEAT * beat))
             .await
             .expect("a beat must not fail");
     }
@@ -149,12 +138,7 @@ async fn test_a_steady_beat_writes_no_second_event() {
         .await;
     fixtures
         .runners()
-        .heartbeat(
-            &enrolled.runner_id,
-            &NO_REPORT,
-            None,
-            fixtures.after(ONE_BEAT * 3),
-        )
+        .heartbeat(&runner, &NO_REPORT, None, fixtures.after(ONE_BEAT * 3))
         .await
         .expect("a beat after a lapse must not fail");
 
@@ -234,13 +218,7 @@ async fn test_an_out_of_bounds_report_does_not_fail_the_beat() {
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_optional_heartbeat_failures_still_land_liveness() {
     let fixtures = Fixtures::create().await;
-    let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
-    let enrolled = fixtures
-        .runners()
-        .register(&request, fixtures.enrolled_at())
-        .await
-        .expect("enrolment must succeed");
-    let runner = enrolled.runner_id.clone();
+    let runner = enrolled_dev_runner(&fixtures).await;
     let (entropy, entropy_control) = Entropy::new_mocked();
     entropy_control.fail_next();
     let runners = Runners::new(fixtures.database.clone(), entropy);
@@ -262,7 +240,7 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
     let beat_at = fixtures.after(ONE_BEAT);
 
     let answered = runners
-        .heartbeat(&enrolled.runner_id, &inconsistent, None, beat_at)
+        .heartbeat(&runner, &inconsistent, None, beat_at)
         .await
         .expect("optional write failures must not fail liveness");
 
@@ -284,4 +262,14 @@ async fn test_optional_heartbeat_failures_still_land_liveness() {
     );
 
     fixtures.cleanup().await;
+}
+
+async fn enrolled_dev_runner(fixtures: &Fixtures) -> Uuid7 {
+    let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 1);
+    fixtures
+        .runners()
+        .register(&request, fixtures.enrolled_at())
+        .await
+        .expect("enrolment must succeed")
+        .runner_id
 }

@@ -52,7 +52,8 @@ export LOCAL_ACCEPTANCE_STATE="$DEV_STATE/acceptance"
 export LOCAL_ACCEPTANCE_UI_PORT="${ACCEPTANCE_LOCAL_UI_PORT:-$((DEV_PORT + 9000))}"
 export LOCAL_ACCEPTANCE_TLS_PORT="${ACCEPTANCE_LOCAL_TLS_PORT:-$((DEV_PORT + 10000))}"
 export LOCAL_ACCEPTANCE_UI_TLS_PORT="${ACCEPTANCE_LOCAL_UI_TLS_PORT:-$((DEV_PORT + 10001))}"
-export LOCAL_ACCEPTANCE_CA="$LOCAL_ACCEPTANCE_STATE/caddy-data/caddy/pki/authorities/local/root.crt"
+export LOCAL_ACCEPTANCE_RUNNER_STREAM_PORT="${ACCEPTANCE_LOCAL_RUNNER_STREAM_PORT:-$((DEV_PORT + 10003))}"
+export LOCAL_ACCEPTANCE_CA="$LOCAL_ACCEPTANCE_STATE/runner-stream/ca.pem"
 export NEXT_PUBLIC_API_URL="https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT"
 export APP_URL="https://localhost:$LOCAL_ACCEPTANCE_UI_TLS_PORT"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$DEV_SHARED/build}"
@@ -79,6 +80,14 @@ start_dashboard() {
 
 make --no-print-directory acceptance-build
 export LOCAL_DEV_BINARY="$DEV_ROOT/dist/acceptance/agentsfleetd"
+# Caddy issues the local leaf before the daemon's mandatory native TLS preflight.
+mkdir -p "$LOCAL_ACCEPTANCE_STATE/caddy-data" "$LOCAL_ACCEPTANCE_STATE/caddy-config"
+acceptance_proxy_config
+acceptance_proxy up --detach --wait
+acceptance_runner_stream_identity
+acceptance_daemon_environment
+export LOCAL_ACCEPTANCE_BOOTSTRAP_ENV_FILE="$LOCAL_DEV_ENV_FILE"
+export LOCAL_DEV_ENV_FILE="$LOCAL_ACCEPTANCE_STATE/daemon.env"
 make --no-print-directory _ensure-local-daemon
 acceptance_platform
 # Runtime model credentials now live in the local encrypted vault.
@@ -90,9 +99,6 @@ if (typeof token !== "string" || !/^[!-~]{1,4096}$/.test(token))
   throw new Error("local acceptance: invalid runner token in private registration file");
 process.stdout.write(token);
 ' "$ACCEPTANCE_LOCAL_RUNNER_RECORD")"
-mkdir -p "$LOCAL_ACCEPTANCE_STATE/caddy-data" "$LOCAL_ACCEPTANCE_STATE/caddy-config"
-acceptance_proxy_config
-acceptance_proxy up --detach --wait
 deadline=$(( $(date +%s) + DEV_READY_SECONDS ))
 until curl --silent --fail --max-time 2 --cacert "$LOCAL_ACCEPTANCE_CA" "https://localhost:$LOCAL_ACCEPTANCE_TLS_PORT/readyz" >/dev/null; do
   [ "$(date +%s)" -lt "$deadline" ] || dev_fail 'Caddy HTTPS readiness timed out; inspect docker compose logs'
@@ -108,6 +114,7 @@ export NODE_EXTRA_CA_CERTS="$LOCAL_ACCEPTANCE_STATE/client-ca.pem"
 start_dashboard
 printf 'AGENTSFLEET_API_URL=https://localhost:%s\nAGENTSFLEET_RUNNER_TOKEN=%s\nSSL_CERT_FILE=/var/lib/agentsfleet-runner/ca.pem\n' \
   "$LOCAL_ACCEPTANCE_TLS_PORT" "$ACCEPTANCE_RUNNER_TOKEN" >"$LOCAL_ACCEPTANCE_STATE/runner.env"
+acceptance_runner_stream_environment >>"$LOCAL_ACCEPTANCE_STATE/runner.env"
 start_runner
 
 export BASE_URL="https://localhost:$LOCAL_ACCEPTANCE_UI_TLS_PORT"

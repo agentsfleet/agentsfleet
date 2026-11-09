@@ -81,6 +81,10 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+afd_gateway.workspace = true
+afd_gate.workspace = true
+af_stream.workspace = true
+tokio-util.workspace = true
 # The in-process bus a live suite's publishers and streams share, and the
 # unreachable one the harness builds every other store over.
 afd_bus = { workspace = true, features = ["test-util"] }

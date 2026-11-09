@@ -46,21 +46,8 @@ async fn one_slack_request_is_one_attempt() {
     set_config(&fixtures, &fleet, WRITE_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &fleet).await;
 
-    // Keyed off the minted fleet, so no two runs of the suite share a key.
-    let first_key = format!("{fleet}:EvSlack01");
     let ledger = ledger(&fixtures);
-    let first = admit_mention(&ledger, &fleet, &workspace, &first_key).await;
-    let retried = admit_mention(&ledger, &fleet, &workspace, &first_key).await;
-    assert_eq!(
-        retried.stored.id, first.stored.id,
-        "a retry is the same event"
-    );
-    assert!(retried.replayed);
-    let second = admit_mention(&ledger, &fleet, &workspace, &format!("{fleet}:EvSlack02")).await;
-    assert_ne!(
-        second.stored.id, first.stored.id,
-        "a second mention is a second event"
-    );
+    let (first, second) = two_mentions(&ledger, &fleet, &workspace).await;
 
     // One lease: the fleet runs one event at a time, so the first is the one
     // leased, on the branch named for it, and no approval is asked for.
@@ -95,4 +82,27 @@ async fn one_slack_request_is_one_attempt() {
     assert_ne!(repair::branch_for(second.stored.id.as_str()), first_branch);
 
     fixtures.cleanup().await;
+}
+
+async fn two_mentions(
+    ledger: &Admissions,
+    fleet: &Uuid7,
+    workspace: &Uuid7,
+) -> (Admitted, Admitted) {
+    // Keyed off the minted fleet, so no two runs of the suite share a key.
+    let first_key = format!("{fleet}:EvSlack01");
+    let first = admit_mention(ledger, fleet, workspace, &first_key).await;
+    let retried = admit_mention(ledger, fleet, workspace, &first_key).await;
+    assert_eq!(
+        retried.stored.id, first.stored.id,
+        "a retry is the same event"
+    );
+    assert!(retried.replayed);
+    let second = admit_mention(ledger, fleet, workspace, &format!("{fleet}:EvSlack02")).await;
+    assert_ne!(
+        second.stored.id, first.stored.id,
+        "a second mention is a second event"
+    );
+
+    (first, second)
 }

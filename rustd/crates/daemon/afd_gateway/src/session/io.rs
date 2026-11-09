@@ -134,11 +134,12 @@ pub(super) async fn read_stream(
             () = stop.cancelled() => return Ok(()),
             frame = reader.next() => frame?.ok_or(ErrorKind::Closed)?,
         };
-        tokio::select! {
-            biased;
-            () = stop.cancelled() => return Ok(()),
-            result = incoming.send(IncomingFrame { kind, frame }) => { result.map_err(crate::error::closed_send)?; }
-        }
+        // Drain stops the next read, but a completed frame already belongs to this session.
+        // Dropping the receiver on hard shutdown still releases a blocked handoff.
+        incoming
+            .send(IncomingFrame { kind, frame })
+            .await
+            .map_err(crate::error::closed_send)?;
     }
 }
 
@@ -163,4 +164,114 @@ pub(super) fn writer(
         Ok(())
     });
     sender
+}
+
+#[cfg(test)]
+mod tests {
+    //! A fully read frame remains accepted even when drain interrupts its queued handoff.
+
+    use super::{IncomingFrame, read_stream};
+    use af_stream::{Budget, Reader};
+    use af_wire::protocol::StreamKind;
+    use serde_json::json;
+    use std::{
+        pin::Pin,
+        task::{Context, Poll},
+    };
+    use tokio::{
+        io::{AsyncRead, DuplexStream, ReadBuf},
+        sync::{mpsc, oneshot},
+        time::Instant,
+    };
+    use tokio_util::sync::CancellationToken;
+
+    type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
+
+    struct ObservedRead {
+        input: DuplexStream,
+        read: usize,
+        total: usize,
+        complete: Option<oneshot::Sender<()>>,
+    }
+
+    impl ObservedRead {
+        fn new(input: DuplexStream, total: usize, complete: oneshot::Sender<()>) -> Self {
+            Self {
+                input,
+                read: 0,
+                total,
+                complete: Some(complete),
+            }
+        }
+    }
+
+    impl AsyncRead for ObservedRead {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            buf: &mut ReadBuf<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            let before = buf.filled().len();
+            let result = Pin::new(&mut self.input).poll_read(cx, buf);
+            if matches!(result, Poll::Ready(Ok(()))) {
+                self.read += buf.filled().len() - before;
+                if self.read == self.total
+                    && let Some(complete) = self.complete.take()
+                {
+                    let _observer_closed = complete.send(());
+                }
+            }
+            result
+        }
+    }
+
+    #[tokio::test]
+    async fn drain_keeps_the_completed_read_waiting_behind_a_full_input_queue() -> TestResult {
+        let stop = CancellationToken::new();
+        let budget = Budget::default();
+        let deadline = Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT;
+        let frame = af_stream::encode(
+            &json!({"type":"ping", "request_id":7}),
+            &budget,
+            StreamKind::Control,
+            &stop,
+            deadline,
+        )
+        .await?;
+        let (mut writer, input) = tokio::io::duplex(1024);
+        let (complete, fully_read) = oneshot::channel();
+        let observed = ObservedRead::new(input, 2 * (frame.as_bytes().len() + 4), complete);
+        let input: Pin<Box<dyn AsyncRead + Send>> = Box::pin(observed);
+        let reader = Reader::new(
+            input,
+            budget.clone(),
+            StreamKind::Control,
+            stop.clone(),
+            af_core::timing::STREAM_ANSWER_TIMEOUT,
+        );
+        let (sender, mut receiver) = mpsc::channel::<IncomingFrame>(1);
+        let serving = tokio::spawn(read_stream(
+            reader,
+            StreamKind::Control,
+            sender,
+            stop.clone(),
+        ));
+        af_stream::write(&mut writer, &frame, &stop, deadline).await?;
+        af_stream::write(&mut writer, &frame, &stop, deadline).await?;
+        tokio::time::timeout_at(deadline, fully_read).await??;
+        stop.cancel();
+        for _ in 0..2 {
+            let accepted = tokio::time::timeout_at(deadline, receiver.recv())
+                .await?
+                .ok_or("fully read request discarded")?;
+            assert_eq!(accepted.kind, StreamKind::Control);
+            assert_eq!(
+                accepted.frame.decode::<serde_json::Value>()?,
+                json!({"type":"ping", "request_id":7})
+            );
+        }
+        serving.await??;
+        assert!(receiver.recv().await.is_none());
+        Ok(())
+    }
 }

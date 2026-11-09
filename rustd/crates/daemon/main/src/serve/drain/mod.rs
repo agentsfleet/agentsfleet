@@ -45,6 +45,9 @@ use std::time::Duration;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+mod guard;
+pub use guard::Guard;
+
 /// How long in-flight requests may take to finish before the drain gives up.
 ///
 /// A deadline at the call site, per Invariant 4. Shorter than the supervisor's
@@ -316,29 +319,6 @@ impl Drain {
 impl Default for Drain {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// One connection's claim on the drain, released by dropping it.
-///
-/// `Drop` rather than an explicit `release`, because the connection task can end
-/// by returning, by an error, or by being cancelled mid-await, and only `Drop`
-/// covers all three. A count that leaked on the cancelled path would make every
-/// drain after the first one wait out its whole bound.
-#[derive(Debug)]
-pub struct Guard {
-    live: Arc<AtomicUsize>,
-    idle: Arc<Notify>,
-}
-
-impl Drop for Guard {
-    fn drop(&mut self) {
-        // `fetch_sub` returns the PREVIOUS value, so 1 means this guard was the
-        // last one. Notifying only then keeps a busy server from waking the
-        // waiter on every completed request.
-        if self.live.fetch_sub(1, Ordering::AcqRel) == 1 {
-            self.idle.notify_waiters();
-        }
     }
 }
 

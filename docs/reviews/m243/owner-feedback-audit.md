@@ -12,7 +12,7 @@ executable: false
 
 This is a source audit of Indy's feedback on draft [PR 819](https://github.com/agentsfleet/agentsfleet/pull/819).
 The date records source reading; verification results are recorded separately below.
-The resume source has passing Rust lint and focused tests, while the complete repository verification remains unfinished.
+Historical results below belong to earlier checkpoints. The resumed implementation has not started its combined Make verification.
 
 Status meanings:
 
@@ -112,9 +112,9 @@ The numbers below match the 23 numbered comments Indy supplied.
 | Comment | Request | State | Change, source and remaining work |
 |---|---|---|---|
 | 1 | Explain `self.0` and initialization | Changed in source | [`Gateway`](../../../rustd/crates/daemon/afd_gateway/src/lib.rs) now names its shared field `inner: Arc<Inner>`. `new` initializes it; `in_flight` reads its task tracker. Provisional-task counting still needs shutdown tests. |
-| 2 | Explain `preflight::runner_stream` | Changed in source | Renamed the preflight module to [`runner_listener`](../../../rustd/crates/daemon/main/src/preflight/runner_listener.rs) and its type to `RunnerListenerConfig`. This parses daemon listener settings. `af_stream` owns the HTTP/2 and HTTP/3 transport abstraction. |
+| 2 | Explain `preflight::runner_stream` | Changed in source | Renamed the preflight module to [`runner_listener`](../../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) and its type to `RunnerListenerConfig`. This parses daemon listener settings. `af_stream` owns the HTTP/2 and HTTP/3 transport abstraction. |
 | 3 | Are certificate inputs post-quantum safe? | Changed in source; evidence pending | [`key_exchange`](../../../rustd/crates/protocol/af_stream/src/tls/key_exchange/mod.rs) now requires the hybrid group on both transports and ends. Classical certificate signatures remain a separate concern. Required tests have not run; production route evidence remains due. |
-| 4 | Standard human-readable and agent-readable errors | Partial | [`runner_listener.rs`](../../../rustd/crates/daemon/main/src/preflight/runner_listener.rs) now hoists actionable address, certificate and private-key messages into constants. Preflight retains the knob. Full error-code, cause-chain and wire-refusal review remains due. |
+| 4 | Standard human-readable and agent-readable errors | Partial | [`runner_listener.rs`](../../../rustd/crates/daemon/main/src/preflight/runner_listener/mod.rs) now hoists actionable address, certificate and private-key messages into constants. Preflight retains the knob. Full error-code, cause-chain and wire-refusal review remains due. |
 | 5 | Tracing across listener startup | Partial | [`serve/runner_stream.rs`](../../../rustd/crates/daemon/main/src/serve/runner_stream.rs) logs startup, stop and failure. Failure causes, connection correlation and negotiated-group observations still need completion. |
 | 6 | Copy and study Exonum and Codex without `.git` | Partial | Sparse source copies exist under ignored `.tmp/reference-sources/`. Exonum revision: `2d2fa22e5f5bc451d08c155c2398956f11dce06e`. Codex revision: `8703d32bd0ea5cf26768859a3dd476df906ba053`. Exonum cleanup ownership was read. A complete named comparison and application to listener supervision is still due. |
 | 7 | Why `STARTUP_DRAGONFLY_CONNECT`? | Explained; integration pending | [`main/src/error.rs`](../../../rustd/crates/daemon/main/src/error.rs) maps the existing `Queue` boot error to that code. Runner listener errors are separate. M244 owns the NATS replacement; this branch has not integrated that work yet. Renaming the old code alone would misdescribe the backend. |
@@ -393,3 +393,38 @@ Full Rust shards, frontend coverage and native integration were not rerun for th
 Immediately before publication, Claude reported the r2 builder image published for both architectures in issue 818 comment 6743710519.
 The native Linux CI reruns still need results; the earlier image-pull failures happened before publication.
 This update required only handoff corrections; the checked scheduler source is unchanged.
+
+### Nov 09 integrated implementation
+
+Indy required code completion before review and the combined Make lanes.
+All implementation proposals are integrated. `cargo check --workspace --all-targets --all-features --locked` passed on the combined working tree; code completion is recorded before review and Make verification.
+No resumed `make test*`, `make lint*` or native integration command has run.
+The following source changes supersede earlier partial implementation descriptions; runtime results remain due.
+
+| Recorded feedback | Integrated source |
+|---|---|
+| Drain queued frames before closing | Gateway readers hand off their last complete frame; the supervisor drains the finite queues under the existing per-operation limits before closing. Native drain cases cover both carriers. |
+| Stream liveness | `session/liveness.rs` tracks valid host heartbeats on the control lane. Two silent intervals end the session; pings and unrelated traffic do not extend that clock. |
+| Simple receiver and task ownership | Codex reference `e54a5713caf331f42a6eef0166186df5f7563c29` uses child cancellation plus bounded worker joining in `app-server-transport/src/transport/remote_control/websocket.rs`. Exonum `2d2fa22e5f5bc451d08c155c2398956f11dce06e` owns and prioritizes receivers in `exonum-node/src/events/mod.rs`. Source copies are under `/tmp/m243-reference-sources`, without Git metadata. This gateway preserves accepted queues during drain; Exonum ends aggregation when an input closes. |
+| Recovery and monotonic lease expiry | One absolute connection budget includes attempts and cleanup. Short sessions retain jitter history. Fleet and authoring renewal owners expose their last confirmed monotonic deadline; recovery cannot extend it. |
+| Retain known provider usage | Lease-owned typed receipts survive a canceled calling future and settle before the final report. The authoring gateway retains its existing tracked provider operation after the caller's answer deadline. |
+| No disk reports or compatibility fallback | Memory-only delivery remains owned by the worker. No spool, scanner, old report decoder or background receipt drainer was restored. Shutdown has a bounded delivery and cleanup grace. |
+| Typed failures and tracing | Existing error hulls retain timeout and numeric-conversion causes. Listener failures preserve registered codes and native causes. Native dispatch tasks inherit a connection span; runner transport spans pass the production exporter filter. |
+| Wiping and redaction | Final retained receipt owners wipe their provider result; authoring endings guard answers before fallible accounting; proxy credential assembly reserves once. Debug output omits receipt values. These checks cover named owners, not parser, header, TLS or kernel copies. Miri runtime evidence remains due and is not implied by source review. |
+| Fairness, concurrency and cost | Probe generations survive later hints until a durable oldest-first recovery claim covers them. Native fairness, late-answer, cancellation, idle, pressure and per-lease usage replay sources are written. Drain and saturation benchmarks exercise actual gateway session dispatch and count datastore operations. Measurements remain due. |
+| Delete unused code and keep Rust within size limits | The obsolete `Polled` wrapper and polling test helpers are deleted; callers use the native fixtures or direct optional selection. Mechanical extraction keeps changed first-party Rust files/functions within the prescribed limits without suppressions. |
+| Deployment belongs in this PR | Development and production workflows load `op://<vault>/agentsfleet-runner-stream/<field>`. Fly injects the chain/key files; runner bootstrap installs public trust and its URL. The credential gate excludes the signing key. Local acceptance uses its existing Caddy identity and a direct native listener. |
+| Vault decision | One item per environment holds the approved five fields; issuer and listener renew together after the ten-year lifetime. Indy confirmed the vaults are populated and private Fly routing is provisioned. Claude is checking deployed host connectivity on issue 818. |
+
+No operator vault read, key generation, secret printing or live deployment was performed.
+PR 819 stays draft until checks are green and Greptile threads are answered and resolved; Indy then authorizes removing draft status. Never merge it.
+
+### Combined verification started
+
+The full `make lint-all` lane passed: source rules, formatting, workspace Clippy, dependency checks, TypeScript, shell, workflows and deployment regressions.
+A later fixture review corrected optional native request identifiers and absent usage acknowledgements; final gates will recheck these corrections.
+The fresh standards follow-up reports no remaining findings in its inspected scope.
+Full unit, live integration, coverage, benchmarks and Miri results remain due.
+
+Indy accepted the daemon recovery poll for the crash-after-admission-commit/before-wake case.
+The active spec records the exact owner quote; runner lease polling is removed, while daemon discovery remains once per replica every five seconds.

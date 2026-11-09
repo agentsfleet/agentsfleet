@@ -28,6 +28,12 @@ pub use connection::ConnectionContext;
 pub use error::{Error, Result};
 pub use operation::Operation;
 
+/// In-process gateway sessions for local measurement and fixtures.
+#[cfg(feature = "test-util")]
+pub mod test_util {
+    pub use crate::session::in_process::Session;
+}
+
 /// Boot-selected handles; no service opens another pool or broker connection here.
 pub struct GatewayDependencies {
     /// Existing shared pool for gateway-owned recovery, cache and session registration SQL.

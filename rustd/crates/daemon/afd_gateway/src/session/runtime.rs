@@ -87,6 +87,7 @@ impl ConfirmedSession {
             connection: self.authority.connection().clone(),
             stop: self.context.native.stop.clone(),
             drain: CancellationToken::new(),
+            liveness: super::liveness::Liveness::default(),
             superseded: CancellationToken::new(),
             offers: Notify::new(),
             claims,
@@ -132,7 +133,7 @@ impl ConfirmedSession {
 }
 
 impl SessionServices {
-    fn connected(
+    pub(super) fn connected(
         gateway: crate::Gateway,
         handle: Arc<SessionHandle>,
         authority: afd_runner::capacity::authority::Authority,

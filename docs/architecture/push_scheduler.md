@@ -60,6 +60,18 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 | M246 | An owner tenant on `runner.runners`, a token overlap pair, and per-tenant runner settings. |
 | M247 | Cordon reason and time on `runner.runners`, and a predecessor link on `runner.leases`. |
 
+## Recovery and scheduling fairness
+
+The Bus keeps one bounded wake queue shared by producers and the gateway.
+A dropped notification or periodic database probe marks a recovery generation.
+That mark survives later locality hints and hosts with no free capacity.
+
+During recovery, admission selection orders by durable creation time and identifier across eligible fleets.
+It ignores fleet-locality hints until a durable claim covers that recovery generation.
+A claim for an older generation cannot clear a newer probe.
+
+Normal hints resume after recovery, preserving locality without starving an older unhinted fleet.
+
 ## Sequences
 
 ### A message arrives

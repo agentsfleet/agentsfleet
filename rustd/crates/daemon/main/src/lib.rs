@@ -19,9 +19,10 @@
 #[cfg(test)]
 use {
     af_context as _, af_egress as _, af_fleet_runtime as _, af_providers as _, af_webhook as _,
-    af_wire as _, afr_agent as _, afr_executor as _, afr_sandbox as _, afr_supervisor as _,
-    afr_telemetry as _, afr_tools as _, async_trait as _, futures_util as _, jiff_sqlx as _,
-    rcgen as _, rustls as _, serde_json as _, sqlx as _, tempfile as _, tokio_rustls as _,
+    af_wire as _, afd_admin as _, afr_agent as _, afr_executor as _, afr_sandbox as _,
+    afr_supervisor as _, afr_telemetry as _, afr_tools as _, async_trait as _, futures_util as _,
+    jiff_sqlx as _, rcgen as _, rustls as _, serde_json as _, sqlx as _, tempfile as _,
+    tokio_rustls as _,
 };
 
 pub mod banner;

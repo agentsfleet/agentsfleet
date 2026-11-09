@@ -93,18 +93,31 @@ pub const STREAM_HTTP3_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 pub const STREAM_HTTP2_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 /// Ownership confirmation and lane attachment share the remaining recovery budget.
 pub const STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(3);
+/// Complete carrier setup, ownership confirmation and database rebuild budget.
+pub const STREAM_RECOVERY_BUDGET: Duration = Duration::from_secs(7);
+/// Maximum initial reconnect jitter included in the lease's recovery relationship.
+pub const RECONNECT_JITTER_MAX: Duration = Duration::from_secs(2);
+/// A connection must remain usable this long before reconnect backoff resets.
+pub const STREAM_STABLE_RESET_AFTER: Duration = Duration::from_secs(60);
 /// One independent ready-work probe per daemon replica, regardless of broker traffic.
 pub const OFFER_FALLBACK_TICK: Duration = Duration::from_secs(5);
 
 const _: () = assert!(
     RENEWAL_TICK.as_nanos()
         + STREAM_ANSWER_TIMEOUT.as_nanos()
-        + STREAM_HTTP3_CONNECT_TIMEOUT.as_nanos()
-        + STREAM_HTTP2_CONNECT_TIMEOUT.as_nanos()
-        + STREAM_OPEN_TIMEOUT.as_nanos()
+        + RECONNECT_JITTER_MAX.as_nanos()
+        + STREAM_RECOVERY_BUDGET.as_nanos()
         + RENEWAL_WINDOW.as_nanos()
         < LEASE_TTL.as_nanos(),
     "a failed renewal and bounded reconnect must leave a complete renewal window"
+);
+
+const _: () = assert!(
+    STREAM_HTTP3_CONNECT_TIMEOUT.as_nanos()
+        + STREAM_HTTP2_CONNECT_TIMEOUT.as_nanos()
+        + STREAM_OPEN_TIMEOUT.as_nanos()
+        == STREAM_RECOVERY_BUDGET.as_nanos(),
+    "the complete reconnect budget includes both carriers and ownership rebuild"
 );
 
 /// One day.

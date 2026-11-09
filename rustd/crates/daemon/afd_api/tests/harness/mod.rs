@@ -239,6 +239,7 @@ const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 /// The seams a suite arranges, and the state the router is built over.
 #[derive(Debug)]
 pub(crate) struct Fleet {
+    native: Option<Db>,
     authoring: afd_authoring::Drafts,
     authoring_setup: afd_authoring::Setup,
     creations: afd_authoring::Creations,
@@ -327,5 +328,7 @@ mod fleet;
 mod fleet_access;
 mod fleet_credentials;
 mod fleet_seams;
+
+pub(crate) mod native;
 
 mod services;

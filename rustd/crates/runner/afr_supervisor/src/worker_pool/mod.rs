@@ -64,18 +64,7 @@ pub(crate) async fn serve(
             changed = assignment.changed() => if changed.is_err() { break; },
         }
     }
-    lessee.plane.stream.running.capacity(0);
-    while let Some(done) = workers.join_next().await {
-        if let Err(error) = done {
-            let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-            tracing::error!(event = "worker_panicked", error_code, error = %error);
-        }
-    }
-    drop(turns);
-    if let Err(error) = coordinator.await {
-        let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
-        tracing::error!(event = "fleet_turn_coordinator_failed", error_code, error = %error);
-    }
+    finish_pool(&lessee, turns, coordinator, &mut workers).await;
 }
 
 struct Worker {
@@ -157,3 +146,18 @@ impl Worker {
 
 #[cfg(test)]
 mod tests;
+
+async fn finish_pool(
+    lessee: &Lessee,
+    turns: FleetTurns,
+    coordinator: tokio::task::JoinHandle<()>,
+    workers: &mut JoinSet<()>,
+) {
+    lessee.plane.stream.running.capacity(0);
+    crate::shutdown::workers(&lessee.halt, workers).await;
+    drop(turns);
+    if let Err(error) = coordinator.await {
+        let error_code = error_code::INTERNAL_OPERATION_FAILED.as_str();
+        tracing::error!(event = "fleet_turn_coordinator_failed", error_code, error = %error);
+    }
+}

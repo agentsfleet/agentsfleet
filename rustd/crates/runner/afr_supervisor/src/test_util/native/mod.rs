@@ -47,6 +47,33 @@ impl NativeDaemon {
         H: Fn(Value) -> F + Send + Sync + 'static,
         F: Future<Output = ()> + Send,
     {
+        Self::start(healthy, Some(lease), observe).await
+    }
+
+    /// Serve idle native sessions without injecting a lease offer.
+    ///
+    /// # Errors
+    /// Preserves identity creation, listener binding and address failures.
+    pub async fn serve_idle<H, F>(
+        healthy: Healthy,
+        observe: H,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
+    where
+        H: Fn(Value) -> F + Send + Sync + 'static,
+        F: Future<Output = ()> + Send,
+    {
+        Self::start(healthy, None, observe).await
+    }
+
+    async fn start<H, F>(
+        healthy: Healthy,
+        lease: Option<Value>,
+        observe: H,
+    ) -> Result<Self, Box<dyn std::error::Error + Send + Sync>>
+    where
+        H: Fn(Value) -> F + Send + Sync + 'static,
+        F: Future<Output = ()> + Send,
+    {
         let identity = af_stream::test_util::IdentityFixture::new(vec!["localhost".into()])?;
         let listener = Listener::bind("[::1]:0".parse()?, identity.identity()).await?;
         let url = format!("https://localhost:{}", listener.local_addr()?.port());
@@ -55,7 +82,7 @@ impl NativeDaemon {
         let failure = Arc::new(parking_lot::Mutex::new(None));
         let peer = Arc::new(Peer {
             healthy,
-            lease: Mutex::new(Some(lease)),
+            lease: Mutex::new(lease),
             ready: Notify::new(),
             observe,
             workers: workers.clone(),

@@ -306,6 +306,8 @@ jobs:
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_PROD }}/planetscale-prod/migrator-connection-string
           NATS_URL: op://${{ vars.VAULT_PROD }}/nats-prod/api-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_PROD }}/encryption-master-key/credential
+          RUNNER_STREAM_CERTIFICATE_CHAIN: op://${{ vars.VAULT_PROD }}/agentsfleet-runner-stream/certificate-chain
+          RUNNER_STREAM_PRIVATE_KEY: op://${{ vars.VAULT_PROD }}/agentsfleet-runner-stream/private-key
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_PROD }}/auth-session-code-pepper/credential
           APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_PROD }}/approval-signing-secret/credential
           POSTHOG_API_KEY: op://${{ vars.VAULT_PROD }}/posthog-prod/credential
@@ -369,11 +371,17 @@ jobs:
           # encoding of it.
           otlp_ingest="$(printf '%s:%s' "$GRAFANA_OTLP_INSTANCE_ID" "$GRAFANA_OTLP_API_KEY" | base64 | tr -d '\n')"
           echo "::add-mask::$otlp_ingest"
+          stream_chain="$(printf '%s' "$RUNNER_STREAM_CERTIFICATE_CHAIN" | base64 | tr -d '\n')"
+          stream_key="$(printf '%s' "$RUNNER_STREAM_PRIVATE_KEY" | base64 | tr -d '\n')"
+          echo "::add-mask::$stream_chain"
+          echo "::add-mask::$stream_key"
           flyctl secrets set \
             DATABASE_URL_API="$DATABASE_URL_API" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             NATS_URL="$NATS_URL" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
+            RUNNER_STREAM_TLS_CERT_BASE64="$stream_chain" \
+            RUNNER_STREAM_TLS_KEY_BASE64="$stream_key" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
             APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET" \
             POSTHOG_API_KEY="$POSTHOG_API_KEY" \
@@ -540,6 +548,8 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
           TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
+          RUNNER_STREAM_CA_CERTIFICATE: op://${{ vars.VAULT_PROD }}/agentsfleet-runner-stream/ca-certificate
+          RUNNER_STREAM_SERVER_NAME: op://${{ vars.VAULT_PROD }}/agentsfleet-runner-stream/server-name
 
       - name: Parse canary host from fleet config
         id: canary
@@ -608,6 +618,8 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
           TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
+          RUNNER_STREAM_CA_CERTIFICATE: op://${{ vars.VAULT_PROD }}/agentsfleet-runner-stream/ca-certificate
+          RUNNER_STREAM_SERVER_NAME: op://${{ vars.VAULT_PROD }}/agentsfleet-runner-stream/server-name
 
       - name: Join Tailscale network
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0

@@ -9,6 +9,7 @@ acceptance_adapter() {
 acceptance_adapter_build() {
   : "${ACCEPTANCE_LOCAL_RUNNER_MACHINE:?dedicated OrbStack machine is required}"
   export ACCEPTANCE_RUNNER_MACHINE="$ACCEPTANCE_LOCAL_RUNNER_MACHINE"
+  export LOCAL_ACCEPTANCE_RUNNER_STREAM_HOST=host.orb.internal
 }
 
 acceptance_adapter_cleanup() { :; }
@@ -63,18 +64,28 @@ LINUX
   op run --env-file "$refs" -- bash "$DEV_ROOT/deploy/local/bootstrap.sh" sign "$DEV_ROOT" "$manifest"
 }
 
+acceptance_runner_stream_environment() {
+  local trust
+  trust="$(source "$DEV_ROOT/deploy/baremetal/layout.sh"; printf '%s' "$UNIT_STREAM_CA_FILE")"
+  # host.orb.internal reaches the Mac listener directly for TCP and UDP.
+  printf 'AGENTSFLEET_RUNNER_STREAM_URL=https://%s:%s\n' \
+    "$LOCAL_ACCEPTANCE_RUNNER_STREAM_HOST" "$LOCAL_ACCEPTANCE_RUNNER_STREAM_PORT"
+  printf 'AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE=%s\n' "$trust"
+}
+
 start_runner() {
   orb -m "$ACCEPTANCE_LOCAL_RUNNER_MACHINE" sudo bash -s -- "$DEV_ROOT" \
     "$ACCEPTANCE_LOCAL_TOOLBOX_DIR" "$LOCAL_ACCEPTANCE_STATE/runner.env" "$LOCAL_ACCEPTANCE_CA" "$LOCAL_ACCEPTANCE_TLS_PORT" <<'LINUX'
 set -euo pipefail
 root="$1" toolbox="$2" env_file="$3" ca="$4" port="$5"
 source "$root/deploy/baremetal/deploy.sh"
-check_deploy_inputs "$root/dist/acceptance/agentsfleet-runner" "$toolbox" "$env_file"
+check_deploy_inputs "$root/dist/acceptance/agentsfleet-runner" "$toolbox" "$env_file" "$ca"
 install -d -m 0755 "$HOST_DEPLOY_DIR" "$RUNNER_STORAGE_HOME_DEFAULT"
 for entry in "${HOST_DEPLOY_FILES[@]}"; do
   install -m "${entry##*:}" "$root/deploy/baremetal/${entry%:*}" "$HOST_DEPLOY_DIR/${entry%:*}"
 done
 install -m 0600 "$env_file" "$HOST_ENV_FILE"
+install -m 0644 "$ca" "$HOST_STREAM_CA_FILE"
 cat /etc/ssl/certs/ca-certificates.crt "$ca" >"$RUNNER_STORAGE_HOME_DEFAULT/ca.pem"
 chmod 0644 "$RUNNER_STORAGE_HOME_DEFAULT/ca.pem"
 printf '[Socket]\nListenStream=127.0.0.1:%s\n' "$port" >/run/systemd/system/agentsfleet-runner-tls.socket
@@ -87,9 +98,8 @@ bash "$HOST_DEPLOY_DIR/deploy.sh" runner "$(cat "$root/VERSION")" "$root/dist/ac
 LINUX
 }
 
-
 acceptance_proxy_config() {
-  printf 'https://localhost:443 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\nhttps://localhost:444 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\n' \
+  printf 'https://localhost:443, https://host.orb.internal:443 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\nhttps://localhost:444 {\n tls internal\n reverse_proxy host.docker.internal:%s\n}\n' \
     "$DEV_PORT" "$LOCAL_ACCEPTANCE_UI_PORT" >"$LOCAL_ACCEPTANCE_STATE/Caddyfile"
 }
 

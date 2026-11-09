@@ -76,23 +76,7 @@ async fn test_each_route_answers_as_its_verb() {
         .unwrap();
     plane.folds(&lease, 1, 0).await.unwrap();
 
-    let healthy = healthy();
-    let sent = drain(&mut calls);
-    assert_eq!(sent.len(), 9, "every request reached the daemon");
-    for call in sent {
-        let method = call.verb.method().http();
-        assert_eq!(
-            if call.path == af_wire::paths::RUNNER_STREAM {
-                healthy.to(Some(call.verb))
-            } else {
-                healthy.reply(method.as_str(), &call.path)
-            },
-            healthy.to(Some(call.verb)),
-            "{:?} at {}",
-            call.verb,
-            call.path
-        );
-    }
+    assert_routes(&drain(&mut calls));
 }
 
 #[tokio::test]
@@ -210,4 +194,23 @@ async fn the_native_fixture_authenticates_both_transports()
     }
     daemon.close().await?;
     Ok(())
+}
+
+fn assert_routes(sent: &[crate::client::Call]) {
+    let healthy = healthy();
+    assert_eq!(sent.len(), 9, "every request reached the daemon");
+    for call in sent {
+        let method = call.verb.method().http();
+        assert_eq!(
+            if call.path == af_wire::paths::RUNNER_STREAM {
+                healthy.to(Some(call.verb))
+            } else {
+                healthy.reply(method.as_str(), &call.path)
+            },
+            healthy.to(Some(call.verb)),
+            "{:?} at {}",
+            call.verb,
+            call.path
+        );
+    }
 }

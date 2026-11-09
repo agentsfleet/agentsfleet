@@ -213,11 +213,11 @@ check_env_file() {
   # check (`afr_supervisor::Config::from_env`) would catch this too, but a
   # 1/FAILURE systemd loop with `run_failed` is a confusing surface for an
   # operator — die here with the specific missing keys instead.
-  local required=(AGENTSFLEET_API_URL AGENTSFLEET_RUNNER_TOKEN)
+  local required=(AGENTSFLEET_API_URL AGENTSFLEET_RUNNER_TOKEN AGENTSFLEET_RUNNER_STREAM_URL AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE)
   local missing=()
   local k
   for k in "${required[@]}"; do
-    grep -qE "^${k}=" "$env_file" || missing+=("$k")
+    grep -qE "^${k}=.+$" "$env_file" || missing+=("$k")
   done
   if [[ ${#missing[@]} -gt 0 ]]; then
     die "missing required runner env vars in $env_file: ${missing[*]}"
@@ -232,7 +232,8 @@ check_env_file() {
 }
 
 sync_env() {
-  cp "$HOST_ENV_FILE" "$UNIT_ENV_FILE"
+  install -D -m 0644 "$HOST_STREAM_CA_FILE" "$UNIT_STREAM_CA_FILE"
+  install -m 0600 "$HOST_ENV_FILE" "$UNIT_ENV_FILE"
   log "Synced .env → ${UNIT_ENV_FILE}"
 }
 
@@ -247,6 +248,7 @@ check_deploy_inputs() {
   toolbox_set_files "$toolbox_dir" >/dev/null \
     || die "the toolbox under $toolbox_dir is not one complete set"
   check_env_file "$env_file"
+  [[ -s "${4:-$HOST_STREAM_CA_FILE}" ]] || die "missing runner stream public CA certificate"
 }
 
 # Stages the toolbox under `src` where the runner reads it at boot: under the

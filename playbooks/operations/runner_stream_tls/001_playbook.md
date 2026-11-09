@@ -97,6 +97,7 @@ Skip issuer generation for that environment.
    | `certificate-chain` | `server-chain.pem` |
    | `private-key` | `server.key`; daemon only; concealed |
    | `server-name` | `agentsfleetd-dev.internal` or `agentsfleetd-prod.internal` |
+   | `wireguard-config` | Existing DEV host configuration; concealed; DEV only |
 
    Runners receive only the public CA certificate and keep their existing bearer tokens.
 
@@ -110,7 +111,10 @@ openssl verify -CAfile ca.crt -verify_hostname agentsfleetd-dev.internal server.
 ```
 
 Expected output: `server.crt: OK`.
-These commands create local files; deployment and native runtime verification remain separate.
+The development and release workflows load the stored fields and deliver daemon certificate files and runner public trust.
+The runner deployment gate checks a recent native heartbeat after restart.
+
+DEV bootstrap also restores its private Fly tunnel and checks both native transports.
 
 ## Remove or undo
 
