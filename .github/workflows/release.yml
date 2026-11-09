@@ -300,6 +300,11 @@ jobs:
       DRAGONFLY_BUILD_CONTEXT: .
       DRAGONFLY_CONFIG: deploy/fly/dragonfly-prod/fly.toml
       DRAGONFLY_MACHINES: "1"
+      # The event bus (M244 §8): core NATS, three nodes, no volume.
+      NATS_APP: nats-prod
+      NATS_BUILD_CONTEXT: deploy/fly/nats-prod
+      NATS_CONFIG: deploy/fly/nats-prod/fly.toml
+      NATS_MACHINES: "3"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -314,6 +319,7 @@ jobs:
           DATABASE_URL_API: op://${{ vars.VAULT_PROD }}/planetscale-prod/api-connection-string
           DATABASE_URL_MIGRATOR: op://${{ vars.VAULT_PROD }}/planetscale-prod/migrator-connection-string
           DRAGONFLY_URL: op://${{ vars.VAULT_PROD }}/dragonfly-prod/api-url
+          NATS_URL: op://${{ vars.VAULT_PROD }}/nats-prod/api-url
           ENCRYPTION_MASTER_KEY: op://${{ vars.VAULT_PROD }}/encryption-master-key/credential
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_PROD }}/auth-session-code-pepper/credential
           APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_PROD }}/approval-signing-secret/credential
@@ -372,6 +378,19 @@ jobs:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_ORG: agentsfleet-prod
 
+      - name: Ensure the NATS cluster is serving
+        # Before the daemon: boot refuses, as UZ-STARTUP-004, a bus no seed
+        # answers for. The nodes take their password from the item the daemon
+        # dials with, staged before the app's first deploy applies it.
+        run: |
+          bash scripts/ensure_fly_app.sh --create-only "$NATS_APP"
+          flyctl secrets set NATS_URL="$NATS_URL" --stage --app "$NATS_APP"
+          bash scripts/ensure_fly_app.sh \
+            "$NATS_APP" "$NATS_BUILD_CONTEXT" "$NATS_MACHINES" "$NATS_CONFIG"
+        env:
+          FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
+          FLY_ORG: agentsfleet-prod
+
       - name: Prove the cluster is bootstrapped, not merely listening
         # Fly's check is TCP, which a node holding no DFLYCLUSTER CONFIG passes
         # happily. The daemon's preflight wants more than a listening socket,
@@ -392,6 +411,7 @@ jobs:
             DATABASE_URL_API="$DATABASE_URL_API" \
             DATABASE_URL_MIGRATOR="$DATABASE_URL_MIGRATOR" \
             DRAGONFLY_URL="$DRAGONFLY_URL" \
+            NATS_URL="$NATS_URL" \
             ENCRYPTION_MASTER_KEY="$ENCRYPTION_MASTER_KEY" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
             APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET" \
