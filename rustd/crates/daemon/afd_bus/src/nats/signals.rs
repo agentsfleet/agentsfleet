@@ -8,7 +8,7 @@
 use std::{
     sync::{
         Arc, Mutex, MutexGuard, PoisonError,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::{Duration, Instant},
 };
@@ -18,6 +18,7 @@ use bytes::Bytes;
 use futures_util::StreamExt as _;
 use tokio::sync::Notify;
 
+use af_core::error_code::{Coded as _, Logged};
 use af_observability::{metrics::label::bus::GapCause as Cause, producers};
 
 use super::{Tuning, debt::Debt, hub};
@@ -32,6 +33,8 @@ pub(super) struct Signals {
     /// frame reaches a subscriber ahead of the gap it is owed.
     blocked: AtomicBool,
     reconnected: AtomicBool,
+    /// Disconnects seen, so a payer can tell a later one overtook it.
+    disconnects: AtomicU64,
     slow: AtomicBool,
     wake: Notify,
     debt: Mutex<Debt>,
@@ -44,6 +47,7 @@ impl Signals {
             down: AtomicBool::new(false),
             blocked: AtomicBool::new(false),
             reconnected: AtomicBool::new(false),
+            disconnects: AtomicU64::new(0),
             slow: AtomicBool::new(false),
             wake: Notify::new(),
             debt: Mutex::new(Debt::new(tuning.debt_window(), tuning.debt_subjects_max)),
@@ -63,9 +67,13 @@ impl Signals {
                 // are paid, so an operator sees why before the gaps arrive.
                 let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
                 tracing::warn!(event = "bus_disconnected", error_code);
+                // Under the debt lock, which lifting the block also takes, so
+                // a disconnect that lands while markers are paid is never lost.
+                let mut debt = self.debt();
+                debt.disconnected(now);
+                self.disconnects.fetch_add(1, Ordering::AcqRel);
                 self.blocked.store(true, Ordering::Release);
                 self.down.store(true, Ordering::Release);
-                self.debt().disconnected(now);
             }
             Event::Connected => {
                 if self.down.swap(false, Ordering::AcqRel) {
@@ -80,6 +88,30 @@ impl Signals {
             }
             _ => {}
         }
+    }
+
+    /// Everything owed, as `pay` takes it; a test stands in for a payment.
+    #[cfg(test)]
+    pub(super) fn take_debt(&self) -> super::debt::Owed {
+        self.debt().take()
+    }
+
+    /// The disconnects seen so far, read before paying a reconnect's markers.
+    pub(super) fn disconnects(&self) -> u64 {
+        self.disconnects.load(Ordering::Acquire)
+    }
+
+    /// Lift the publish block once every marker is paid and no disconnect
+    /// landed since `before`; answers whether it lifted. A marker still owed
+    /// keeps publishes failing fast, so no frame reaches a subscriber ahead
+    /// of the gap it is owed.
+    pub(super) fn unblock_if_settled(&self, before: u64) -> bool {
+        let debt = self.debt();
+        let settled = debt.is_settled() && self.disconnects() == before;
+        if settled {
+            self.blocked.store(false, Ordering::Release);
+        }
+        settled
     }
 
     /// Whether a publish must fail now rather than queue behind an outage.
@@ -142,29 +174,45 @@ pub(super) async fn pay(client: &Client, signals: &Signals, everyone: &str) -> u
     let owed = signals.debt().take();
     let mut paid = 0;
     for subject in owed.subjects {
-        if mark(client, subject.clone(), signals.deadline)
-            .await
-            .is_ok()
-        {
-            paid += 1;
-        } else {
-            signals.debt().failed(&subject);
+        match mark(client, subject.clone(), signals.deadline).await {
+            Ok(()) => paid += 1,
+            Err(failure) => {
+                mark_failed(&failure);
+                signals.debt().failed(&subject);
+            }
         }
     }
     if owed.everyone {
-        if mark(client, everyone.to_owned(), signals.deadline)
-            .await
-            .is_ok()
-        {
-            paid += 1;
-        } else {
-            signals.debt().everyone();
+        match mark(client, everyone.to_owned(), signals.deadline).await {
+            Ok(()) => paid += 1,
+            Err(failure) => {
+                mark_failed(&failure);
+                signals.debt().everyone();
+            }
         }
     }
     if paid > 0 {
         tracing::info!(event = "bus_gap_marked", markers = paid);
     }
     paid
+}
+
+/// A marker that would not publish stays owed; the watcher retries it.
+fn mark_failed(failure: &crate::Error) {
+    let Logged { error_code, reason } = failure.logged();
+    tracing::warn!(event = "bus_gap_mark_failed", error_code, reason);
+}
+
+/// Pay what a reconnect owes and lift the block if nothing overtook it;
+/// answers when to try again, or `None` once settled.
+async fn settle(
+    client: &Client,
+    signals: &Signals,
+    everyone: &str,
+) -> Option<tokio::time::Instant> {
+    let before = signals.disconnects();
+    pay(client, signals, everyone).await;
+    (!signals.unblock_if_settled(before)).then(|| tokio::time::Instant::now() + signals.deadline)
 }
 
 /// Turn raised causes into gaps and markers until the adapter shuts down.
@@ -175,23 +223,39 @@ pub(super) async fn watch(
     mut everyone: Subscriber,
     everyone_subject: String,
 ) {
+    let mut retry: Option<tokio::time::Instant> = None;
     loop {
         tokio::select! {
             () = signals.wake.notified() => {
                 for cause in signals.raised() {
                     gap(&channels, cause);
                     if cause == Cause::Reconnect {
-                        pay(&client, &signals, &everyone_subject).await;
-                        signals.blocked.store(false, Ordering::Release);
+                        retry = settle(&client, &signals, &everyone_subject).await;
                     }
                 }
             }
-            next = everyone.next() => match next {
-                Some(_) => {
+            () = sleep_until_some(retry) => {
+                retry = settle(&client, &signals, &everyone_subject).await;
+            }
+            next = everyone.next() => {
+                if next.is_some() {
                     gap(&channels, Cause::PublishDebt);
+                } else {
+                    // Without the broadcast no hub hears a debt overflow, and
+                    // a later reconnect is never gapped: say so before stopping.
+                    let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+                    tracing::warn!(event = "bus_gap_watcher_stopped", error_code);
+                    return;
                 }
-                None => return,
-            },
+            }
         }
+    }
+}
+
+/// Sleeps until `at`, or forever when there is nothing to retry.
+async fn sleep_until_some(at: Option<tokio::time::Instant>) {
+    match at {
+        Some(at) => tokio::time::sleep_until(at).await,
+        None => std::future::pending().await,
     }
 }

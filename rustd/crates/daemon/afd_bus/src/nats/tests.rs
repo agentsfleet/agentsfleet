@@ -61,6 +61,43 @@ fn a_first_connect_raises_nothing() {
 }
 
 #[test]
+fn a_disconnect_during_the_payment_keeps_publishes_blocked() {
+    let signals = signals::Signals::new(&Tuning::default());
+    let now = Instant::now();
+    signals.observe(&Event::Disconnected, now);
+    signals.observe(&Event::Connected, now);
+    let before = signals.disconnects();
+    // The node drops again while the reconnect's markers are being paid.
+    signals.observe(&Event::Disconnected, now);
+    assert!(
+        !signals.unblock_if_settled(before),
+        "the later disconnect wins"
+    );
+    assert!(signals.blocked(), "publishes still fail fast");
+}
+
+#[test]
+fn a_settled_reconnect_lifts_the_block_and_an_owed_marker_keeps_it() {
+    let signals = signals::Signals::new(&Tuning::default());
+    let now = Instant::now();
+    signals.observe(&Event::Disconnected, now);
+    signals.observe(&Event::Connected, now);
+    signals.record("dev.t.af.fleet.a.tail", false, now);
+    let before = signals.disconnects();
+    assert!(
+        !signals.unblock_if_settled(before),
+        "a marker is still owed"
+    );
+    assert!(signals.blocked());
+    drop(signals.take_debt());
+    assert!(
+        signals.unblock_if_settled(before),
+        "nothing owed, nothing newer"
+    );
+    assert!(!signals.blocked());
+}
+
+#[test]
 fn a_reconnect_and_a_slow_consumer_each_raise_once() {
     let signals = signals::Signals::new(&Tuning::default());
     let now = Instant::now();
