@@ -62,8 +62,8 @@ Telling a caller which one it was would hand it a decryption oracle.
 | `map_err` elsewhere | 54 | 54 — all context-adding, correct |
 | Crates whose `source()` returned themselves | 4 | 0 |
 
-`af_core`, `af_crypto`, `afd_db`, `afd_dragonfly`, `afd_auth` gained the alias.
-`af_core`, `af_crypto`, `afd_db`, `afd_dragonfly` had `source()` corrected.
+`af_core`, `af_crypto`, `afd_db`, `afd_auth` gained the alias.
+`af_core`, `af_crypto`, `afd_db` had `source()` corrected.
 
 The corrected chain, from a real boot against a stopped Postgres:
 

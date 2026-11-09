@@ -103,7 +103,7 @@ Under `Policy::AppIngress` every `pull_request` action wakes the fleet except on
 Each producer calls `Admissions::admit`. The row carries producer identity, payload, original event time and any reply destination.
 An accepted message costs one write (`admit_one.sql`) and holds no fleet-row lock across round trips; a steer adds one read.
 
-Repeated producer identities return the existing admission. After commit, a bounded wake publish can prioritize its fleet on the next poll.
+Repeated producer identities return the existing admission. After commit, a wake ring on `af.wake.<shard>` starts an offer pass that puts its fleet first.
 
 ### The poll claims an admission and its fleet slot
 
@@ -137,7 +137,7 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
                       ◄── {status: ok, assigned_policy{worker_count, tier,
                            network_policy, registry_allowlist}, interval, woken}
                            worker_count clamped 1..=64; workers spawn to that count
-                           wake: held ≤10 s until a doorbell ring; woken ⇒ one idle worker polls now
+                           wake: held ≤10 s until a wake ring; woken ⇒ one idle worker polls now
 
  WORKER n ────────────► POST /v1/runners/me/leases {holds}   (sleep retry_after_ms ≥250 ms if null,
                       ◄── { lease, memory window }               or until a woken beat ends the pause)
@@ -187,7 +187,7 @@ Building the engine sweeps what a crashed run left ([`runner_execution.md`](./ru
 
 The daemon serves the 10 s cadence. It reconciles the report against the assignment into a `degraded` verdict ([Runner Fleet](./runner_fleet.md) §"Assigned policy and reconciliation (M148)"). The reply's `status` is always `ok`, so a running lease learns nothing of a kill from it ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause").
 
-While a worker is idle, the beat asks to be held (`wake`). The daemon holds it until the doorbell rings or the interval passes. A `woken` reply ends one idle worker's pause ([Runner Fleet](./runner_fleet.md) §"The held heartbeat").
+While a worker is idle, the beat asks to be held (`wake`). The daemon holds it until a wake ring or the interval passes. A `woken` reply ends one idle worker's pause ([Runner Fleet](./runner_fleet.md) §"The held heartbeat").
 
 **Worker pool.** Workers grow to the assigned count and are never killed.
 

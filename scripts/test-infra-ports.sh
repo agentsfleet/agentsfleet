@@ -64,8 +64,9 @@ DEFAULT_QSTASH=8080
 DEFAULT_API=7006
 DEFAULT_NATS=4222
 
-# Twelve ports per slot: Postgres, QStash and the cluster's eight, with two
-# spares; slot offset 1 is unused, so no port moves when the old Redis slot went. 750 slots keep the whole range inside 20000-28999.
+# Sixteen ports per slot: Postgres, QStash, the daemon API, mailpit's two and the
+# three NATS nodes, with spares. Slot offset 1 is unused, so no port moved when a
+# retired service went. 750 slots keep the whole range inside 20000-28999.
 SLOT_STRIDE=16
 SLOT_COUNT=750
 RANGE_START=20000

@@ -65,6 +65,12 @@ Each trap is enforced in its owner section; this list is the index.
 
 ## Topology
 
+Two stores back the runtime. Postgres holds every durable fact: admissions, events, leases, obligations, sessions and usage.
+
+Core NATS carries disposable signals on five subjects: fleet tail, draft events, wake ring, runner command and outbound wake. Production runs three nodes in one region (`iad`), with no JetStream and no key-value store.
+
+A lost signal costs latency, never work, because every reader can rebuild from Postgres. [`high_level.md`](./high_level.md#how-the-runtime-fits-together) draws the picture.
+
 The diagrams live with their flows. Each is the section's proof, so none is duplicated here:
 
 - coding fleet vs Fleet runtime: §The coding fleet and the Fleet runtime
@@ -80,8 +86,8 @@ The same sequence told for two fleets at once, a Pull Request and a Slack thread
 | Decision | Reason | Where |
 |---|---|---|
 | A narrative table and a usage table (`fleet.events` + `billing.usage_lines`) | different write authorities and retention rules | §The five durable stores |
-| `fleet:control` removed | no per-fleet threads left to run | §Two streams + one pub/sub channel |
-| One bus connection per process | idle cost tracks lease-poll frequency, not fleet count | §Connection topology; M80_002, M244 |
+| The per-fleet control channel removed | no per-fleet threads left to run | §Two streams + one pub/sub channel |
+| One bus connection per process | idle cost tracks the replica count, not fleet count | §Connection topology; M80_002, M244 |
 | A pool acquire answers a typed error, not an absent connection | `PoolTimeout` and `PoolUnavailable` are different operator pages | §The Postgres pool |
 | Statement bounds live on the login role | one `ALTER ROLE` covers every statement; no product statement carries its own override | §The Postgres pool; M242_001 |
 | Gap recovery is client-side, not server resume | no channel or frame-shape change; the durable table is the recovery source | §Two streams; M122 |
@@ -106,7 +112,7 @@ Headings are stable because specs cite them by text. Insert new sections; never 
 
 | Process | Role |
 |---|---|
-| **`agentsfleetd`** (`agentsfleetd serve`) | Owns Postgres, its NATS connection, the Vault and HTTP assignment. Producers commit admissions; lease polls claim ledger rows; reports commit results, usage and settlement together. The daemon publishes live activity and delivers outbound replies. Authoring model calls use daemon-held keys. |
+| **`agentsfleetd`** (`agentsfleetd serve`) | Owns Postgres, its NATS connection, the Vault and HTTP assignment. Producers commit admissions; offer passes claim ledger rows; reports commit results, usage and settlement together. The daemon publishes live activity and delivers outbound replies. Authoring model calls use daemon-held keys. |
 | **`agentsfleet-runner`** (host-resident daemon) | The plane that runs the work. Boots from an operator-installed `agt_r` token (env `AGENTSFLEET_RUNNER_TOKEN`, no self-register), then loops `heartbeat → lease → run → report → activity` over HTTPS carrying that token. Holds **zero datastore credentials**. A trusted supervisor runs the agent loop and holds the model key. A lease that needs one gets a sandbox (bubblewrap, Landlock, seccomp, cgroups) that runs tool calls and nothing else; the sandbox gets a network namespace of its own unless the runner's network policy is `allow_all`. Credential substitution happens in the supervisor at send time ([`runner_execution.md`](./runner_execution.md#process-model)). The supervisor forwards activity frames to `agentsfleetd` over the `activity` verb. |
 
 Streams and tables: §"Two streams + one pub/sub channel" and §"The five durable stores: who owns what".
@@ -147,7 +153,7 @@ admission statement -> fleet.admissions (stable event identity)
        +-> disposition: started | folded into the live run | queued
        |
        v
-lease poll -> indexed oldest unsettled admission per eligible fleet
+offer pass -> indexed oldest unsettled admission per eligible fleet
        |
        v
 claim transaction -> slot lock + exact head lock + matching fences
@@ -156,7 +162,7 @@ claim transaction -> slot lock + exact head lock + matching fences
 delivery transaction -> event history + delivered_at under current fences
        |
        v
-runner lease -> supervisor and sandbox -> terminal report
+lease offered down the runner stream -> supervisor and sandbox -> terminal report
        |            (a folded message is claimed at the next model call)
        v
 report transaction -> usage + terminal history + session checkpoint
@@ -167,7 +173,7 @@ report transaction -> usage + terminal history + session checkpoint
        +-> af.outbound.wake ping -> outbound worker claims the row -> connector thread
 ```
 
-A lost notification changes priority only. Every idle lease poll probes Postgres.
+A lost notification changes priority only. Each replica's recovery probe reads Postgres every 5 s (`OFFER_FALLBACK_TICK`).
 An expired slot exposes the same unsettled admission with its original event and billing identities.
 
 Outbound delivery claims durable `fleet.obligations` rows in Postgres.
@@ -270,7 +276,7 @@ Subject spellings come from `afd_bus::nats::spelling` (`rustd/crates/daemon/afd_
 | `fleet.obligations` | Postgres rows, claimed per lane | Outbound worker | Delivers replies; at most one row per `(provider, workspace_id)` lane is held at a time. |
 | `af.fleet.<fleet_id>.tail` | Core NATS subject | Each process's NATS hub | Live frames; a gap or reconnect recovers durable history through the events list. |
 | `af.draft.<draft_id>.events` | Core NATS subject | Draft progress stream | Authoring progress; a lost subscription sends `draft.resync`. |
-| `af.wake.<shard>` | Sixteen core NATS subjects | Runner wake listeners | Prioritizes fleets on subsequent polls. The local queue holds at most 64 distinct fleets by default. |
+| `af.wake.<shard>` | Sixteen core NATS subjects | The gateway's offer scheduler | Starts an offer pass and puts its fleet first. The local queue holds at most 64 distinct fleets by default. |
 | `af.runner.<runner_id>.cmd` | Core NATS subject | The runner's gateway session | `Recheck` or `Cancel` for one runner host; Postgres stays the authority (`afd_gateway/src/session/commands.rs`). |
 | `af.outbound.wake` | Core NATS subject | Outbound worker | Pings a claim after a report commits; a lost ping waits for the 30 s claim pass. |
 
@@ -293,8 +299,8 @@ The same backfill recovers them.
 ## Connection topology: the cutover collapsed the dedicated tier
 
 Each `agentsfleetd` process holds one NATS connection, opened by `afd_bus::nats::connect` at boot.
-A lease request probes the Postgres ledger and never waits on the bus.
-An empty response tells the runner when to poll again; the runner holds no bus connection.
+An offer pass probes the Postgres ledger and never waits on the bus.
+The runner holds no bus connection; work reaches it down its one stream.
 
 ```text
 agentsfleetd replica
@@ -652,9 +658,9 @@ A runner that disappears leaves an unsettled admission. Once its slot expires, a
 The admission keeps its original time and billing identities. The previous holder cannot settle through the newer fence.
 
 Approval resolution or expiry unparks eligible heads and attempts a wake notification.
-Every subsequent idle poll probes Postgres, so notification loss cannot leave that work stranded.
+The 5 s recovery probe reads Postgres too, so notification loss cannot leave that work stranded.
 
-See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) for budgets, polling costs and recovery limits.
+See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue) for budgets, probe costs and recovery limits.
 See [provider key boundaries](./billing_and_provider_keys.md#82-the-api_key-visibility-boundary) for plaintext ownership.
 The [runner sequence](./runner_execution.md#one-lease-end-to-end) owns sandbox startup, agent runs and teardown.
 
@@ -763,7 +769,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 | Layer | Tenant isolation mechanism |
 |---|---|
 | Postgres (`fleet.fleets`, `fleet.events`, etc.) | Enforced in the application, not by the database. `afd_tenant`'s `AUTHORIZE_WORKSPACE` resolves the caller's tenant and the workspace's owner in one statement, and `afd_http`'s ownership layer runs it in front of every route whose path carries a workspace, so no handler can forget it. Every control-plane statement filters by `workspace_id` or `fleet_id` explicitly. **No `ROW LEVEL SECURITY` policy is declared anywhere in `schema/`, and no `current_setting('app.workspace_id')` is read.** Re-adding database policies would need a transaction per request, because `sqlx` returns a connection to the pool between requests and a session-level setting would leak one tenant's identifier onto the next. |
-| NATS live activity (`af.fleet.<fleet_id>.tail`) | Subject named by fleet UUID (globally unique); no cross-tenant collision possible. NATS has no per-subject authorization here, so the protection is the same shape as the row above it: the subject is unguessable and every path to it goes through the ownership check. |
+| NATS live activity (`af.fleet.<fleet_id>.tail`) | Subject named by fleet UUID (globally unique); no cross-tenant collision possible. NATS has no per-subject authorization here. The protection has the row above's shape. The subject is unguessable, and every path to it passes the ownership check. |
 | Runner ↔ control plane | The `agt_r` token authenticates the runner per call, and a lease carries one fleet's event and scoped secrets ([`runner_fleet.md`](./runner_fleet.md) §"Registering a runner"). |
 | Runner supervisor and sandbox | Secrets stay in the supervisor, substituted at send time, and a sandbox holds no credential ([`runner_execution.md`](./runner_execution.md) §"Credentials"). |
 
@@ -773,7 +779,7 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 
 - `runner.fleet_slots` holds one slot per fleet. `Leases::select` in `afd_fleet` claims it atomically and bumps a monotonic `fencing_token`.
 
-  A runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, however many runners poll concurrently.
+  A runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, however many runners compete for it.
 - The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
 - A runner that loses the race for a Fleet simply gets no lease for it. It tries the next eligible fleet or backs off.
 - Durable fleet memory and bounded chat history can reach another runner’s next lease. Warm sandbox reuse is optional; session checkpoints are saved but not replayed into leases. [Workspace continuity](runner_execution.md#workspace-between-leases) owns these limits; sticky placement stays a hint, never ownership.
@@ -807,7 +813,7 @@ activation + initial admission -> commit together
 read back the same initial event -> Accepted
 read-back unavailable -> Pending; retry confirms the same event
 register schedules independently
-lost wake -> the next idle poll still reads the ledger
+lost wake -> the next 5 s recovery probe still reads the ledger
 ```
 
 Do not delete the retained fleet on setup failure. Do not claim activation after a zero-row update or submit another initial event on retry.

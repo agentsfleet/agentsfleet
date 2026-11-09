@@ -12,7 +12,7 @@ executable: false
 
 This page lists every input Indy supplies when M244 deploys, in order.
 Everything else is in the Pull Request and its workflows.
-It follows the decisions recorded in the [M244 spec](../../v2/active/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md#discovery-consult-log).
+It follows the decisions recorded in the [M244 spec](../../v2/done/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md#discovery-consult-log).
 
 ## Why it exists
 

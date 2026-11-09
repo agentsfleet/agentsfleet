@@ -7,6 +7,14 @@ This directory is the canonical reference for the v2 problem, thesis, runtime mo
 
 Product thesis: [`high_level.md`](./high_level.md).
 
+## How the system fits together
+
+`agentsfleetd` replicas serve the API and push work to runners. Each runner host holds one stream to one replica.
+
+Postgres holds every durable fact: admissions, events, leases, outbound obligations, sessions and usage. Core NATS carries disposable signals only, such as the live tail and the wake ring.
+
+A lost signal costs latency, never work, because every reader can rebuild its view from Postgres. [`high_level.md`](./high_level.md#how-the-runtime-fits-together) draws the picture, and [`datastore_scaling.md`](./datastore_scaling.md) owns the details.
+
 ---
 
 ## Why the doc is split this way
@@ -186,8 +194,8 @@ One-line definitions for quick lookup. The full, canonical definition lives in t
 | **Definition** | A validated description, instructions and fleet configuration stored in immutable revisions. [(more)](./fleet_definitions.md#validated-definition) |
 | **Producer** (`afd_admission::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `task_continuation` or `slack_mention`), stored on the admission with its dedup key. [(more)](./lease_flow.md#admission-commits-the-queue-row) |
 | **Admission** (`fleet.admissions`) | The ledger row that accepts one piece of work for a fleet, unique per `(producer, producer_key)` so a retried delivery is not run twice. [(more)](./lease_flow.md#admission-commits-the-queue-row) |
-| **Admissions queue** (`fleet.admissions`) | Unsettled admissions ordered by admission `sequence` within each fleet. Lease polls claim the oldest head under slot and admission fences. [(more)](./datastore_scaling.md#the-admissions-ledger-is-the-queue) |
-| **Wake notification** (`af.wake.<shard>`) | Sixteen NATS subjects prioritize a bounded local set of fleet notifications. Every idle poll still reads Postgres. [(more)](./runner_fleet.md#datastore-topology) |
+| **Admissions queue** (`fleet.admissions`) | Unsettled admissions ordered by admission `sequence` within each fleet. An offer pass claims the oldest head under slot and admission fences. [(more)](./datastore_scaling.md#the-admissions-ledger-is-the-queue) |
+| **Wake ring** (`af.wake.<shard>`) | A fleet hint on one of sixteen NATS subjects. It starts an offer pass; each replica's 5 s recovery probe covers a lost ring. [(more)](./runner_fleet.md#datastore-topology) |
 | **Affinity slot** (`runner.fleet_slots`) | One row per fleet that one runner at a time can claim; a won claim raises `fencing_token` and holds until `lease_expires_at`. [(more)](./lease_flow.md#the-poll-claims-an-admission-and-its-fleet-slot) |
 | **Fencing token** | The slot's `fencing_token` a won claim returns, copied onto the lease's `fencing_token`; a report carrying an older one is refused. [(more)](./runner_fleet.md#system-guarantees-read-this-first) |
 | **Lease** (`runner.leases`, `afd_fleet::lease::Leases`) | One runner's time-limited right to run one event, renewed while the run lasts. [(more)](./data_flow.md#one-active-lease-per-fleet-the-ownership-model) |

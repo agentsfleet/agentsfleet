@@ -78,7 +78,7 @@ Three shapes, and the tier is readable without opening the file.
 
 | Shape | Needs a live datastore | Lane | `#[ignore]` |
 |---|---|---|---|
-| `integration_<subject>.rs` | yes — Postgres, NATS, or a booted daemon | `make test-integration-rustd` | on every test in the file |
+| `integration_<subject>.rs` | yes: Postgres, NATS, or a booted daemon | `make test-integration-rustd` | on every test in the file |
 | `<subject>.rs` | no | `make test-unit-rustd` | on nothing in the file |
 | `*_suite.rs` | — | — | declares `#[path]` modules only, holds no test of its own |
 
@@ -110,7 +110,7 @@ The filename rule above decides the tier, and this rule decides the function nam
 
 From 08-27 onward the practice inverts, at 14%, 0%, 31% and 9% across 411 tests. The split is the same per crate.
 
-Every 100% crate (`afd_auth`, `afd_db`, `afd_identity`, the since-deleted Dragonfly crate, `afd_state`) predates the 27th. `afd_api` sits at 20%, and `afd_cron` and `af_webhook` at 0%.
+Every 100% crate (`afd_auth`, `afd_db`, `afd_identity`, a since-deleted datastore crate, `afd_state`) predates the 27th. `afd_api` sits at 20%, and `afd_cron` and `af_webhook` at 0%.
 
 **This rule is no licence to rename.** The prefixed crates are internally consistent, and their names are not wrong, only older. Touching one test in `af_crypto` does not oblige renaming its neighbours. A crate converts, if ever, in one deliberate commit of its own.
 

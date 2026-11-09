@@ -22,7 +22,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the lease reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
-| Lost wake recovery | next eligible lease poll | every poll probes PostgreSQL, with or without a wake notification | §Failure recovery model |
+| Lost wake recovery | the next recovery probe, at most 5 s later | each replica asks PostgreSQL for pending work every `OFFER_FALLBACK_TICK` (5 s), with or without a wake ring | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `async-nats`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Fleet** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
@@ -52,13 +52,13 @@ Each trap is enforced in its owner section; this list is the index.
 
 - `runner:enroll` is a token scope, not a Postgres role. It must not become a database `GRANT` (§Datastore role model).
 
-- A lost wake does not need a repair sweep; the next poll probes PostgreSQL (§Failure recovery model).
+- A lost wake needs no repair sweep; the next 5 s recovery probe reads PostgreSQL (§Failure recovery model).
 
 - Sandbox tiers are not egress policy. No tier substitutes for the egress model (§Sandbox tiers).
 
 - The live tail is never the source of truth; `report` is the durable system of record (§Live activity).
 
-- The doorbell only prioritizes candidates; the admissions ledger owns work (§Datastore topology).
+- The wake ring only prioritizes candidates; the admissions ledger owns work (§Datastore topology).
 
 - Not a general scheduler. No autoscale, no fairness engine, no arbitrary workload types (§Scope).
 
@@ -97,7 +97,7 @@ Deeper diagrams stay with their owner sections below; signal routes are in [obse
 | The runner holds zero datastore credentials | a compromised host cannot reach Postgres, NATS, or the Vault | §Why split; M80_002 |
 | Operator pre-mints `agt_r`; no host self-registration | no enrollment-grade credential ever touches a host (Option B, the GitLab-16 model) | §Registering a runner; M84_001 |
 | Typed columns + event log, not a `status` JSONB | one operator-intent dimension; JSONB conditions are for many writers | §Runner state; cross-validated Jun 2026 |
-| Lease expiry + fencing replaces `XAUTOCLAIM` | an off-platform processor was invisible to the old stream's consumer-idle timer | §Datastore topology; M80_001 |
+| Lease expiry + fencing reclaims stalled work | a broker-side idle timer cannot see an off-platform processor | §Datastore topology; M80_001 |
 | Slot and admission fences advance together | a stale runner must not settle a newer claim | §Datastore topology |
 | Cold-start reconciliation deferred | discovery scaffolding the future scheduler replaces (Indy-acked, M141_001 Discovery) | §Failure recovery model |
 | The agent loop runs in the supervisor; only tool calls cross into a per-lease sandbox | no model key or runner token enters a sandbox, and the supervisor keeps the network a sandbox may be denied | §The split; [`runner_execution.md`](./runner_execution.md) §Process model |
@@ -133,12 +133,12 @@ There is no runner the fleet cannot lose. Sticky routing (below) is a *performan
 
 ## Failure recovery model
 
-A runner's work becomes eligible when its slot expires. Another eligible runner must still poll; recovery time depends on available capacity and fleet selection.
+A runner's work becomes eligible when its slot expires. The next offer pass pushes it to another eligible runner; recovery time depends on available capacity and fleet selection.
 
 | Failure | Recovery | Durable guard |
 |---|---|---|
-| Runner dies mid-lease | A later poll claims the same unsettled admission after its 30-second slot expires. | The slot and admission receive a higher fence; the old holder cannot write. |
-| Wake notification lost | The next poll probes PostgreSQL without a hint. | Acceptance is already committed in `fleet.admissions`. |
+| Runner dies mid-lease | A later offer pass claims the same unsettled admission after its 30-second slot expires. | The slot and admission receive a higher fence; the old holder cannot write. |
+| Wake notification lost | The next 5 s recovery probe reads PostgreSQL without a hint. | Acceptance is already committed in `fleet.admissions`. |
 | Claim decoding fails | The transaction rolls back its slot and admission changes. | Both fences remain unchanged. |
 | Failure after claim commit | Release the claim where possible; otherwise wait for its deadline. | Every write verifies the current slot and admission fences. |
 | Report fails before commit | Retry the report; lease, usage and settlement all roll back. | No charge or terminal admission without the report transaction. |
@@ -201,7 +201,7 @@ If the platform ever needs a true control plane, that is a larger upfront conver
 
 The pre-cutover runtime ran one `agentsfleetd` binary as `serve` (the HTTP API) or `worker` (the coordination loop). The runtime also ran a standalone sandbox sidecar that owned sandboxing. Two facts made it impossible to run work on hosts the platform does not fully own:
 
-1. **The worker was welded to the datastores.** Each per-fleet worker thread opened its own Postgres pool and datastore connections. It ran about 15 write patterns on the per-event hot path and found its own work by `XREADGROUP` on `fleet:{id}:events`. It could not run anywhere it could not reach both datastores directly.
+1. **The worker was welded to the datastores.** Each per-fleet worker thread opened its own Postgres pool and datastore connections. It ran about 15 write patterns on the per-event hot path and read its own work from a per-fleet broker queue. It could not run anywhere it could not reach both datastores directly.
 
 2. **The connection budget grew with the fleet**. Every per-fleet thread held a dedicated blocking datastore connection, so the connection pool ceiling capped the fleet count, not compute.
 
@@ -209,9 +209,9 @@ The cutover moved running onto arbitrary hosts (bare metal, a Mac, a pod) that h
 
 ## The split: two binaries, no sidecar
 
-- **`agentsfleetd`** — the control plane. Owns Postgres, its NATS connection, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; outbound delivery claims `fleet.obligations` rows.
+- **`agentsfleetd`**: the control plane. Owns Postgres, its NATS connection, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; outbound delivery claims `fleet.obligations` rows.
 
-- **`agentsfleet-runner`** — the host-resident runner plane, one Rust binary. A trusted supervisor runs the lease loop and the agent loop, and each lease that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
+- **`agentsfleet-runner`**: the host-resident runner plane, one Rust binary. A trusted supervisor runs the lease loop and the agent loop, and each lease that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
 The BEFORE/NOW split diagram is front-loaded in §Topology.
 
@@ -837,7 +837,8 @@ A claim takes the fleet slot before its exact oldest unsettled admission. Both f
 Locked or parked heads cannot expose later admissions. A gate answer clears the park stamp and publishes a best-effort wake.
 
 The candidate query prefers held fleets and a recent wake hint, then the runner's previous fleet, with random ordering for the rest.
-It checks runner labels and live sandbox holds before attempting a claim. Every poll probes PostgreSQL; missing notifications cannot hide accepted work.
+It checks runner labels and live sandbox holds before attempting a claim.
+Each replica's 5 s recovery probe reads PostgreSQL, so missing notifications cannot hide accepted work.
 
 ## Sandbox tiers
 

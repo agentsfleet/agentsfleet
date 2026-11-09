@@ -10,9 +10,9 @@ executable: false
 
 ## Decision: core NATS carries signals, Postgres holds every fact
 
-Indy chose core NATS over Dragonfly on 2026-11-06.
+Indy chose core NATS for the bus on 2026-11-06.
 He said, "Yes i agree on NATS."
-The [M244 Discovery](../v2/active/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md#discovery-consult-log) records that approval and the measurements it depended on.
+The M244_001 spec's Discovery records that approval and the measurements it depended on.
 
 Postgres owns every durable fact and every compare-and-swap transition.
 Core NATS carries live activity, draft progress, wake notifications, runner commands and the outbound ping.
@@ -21,9 +21,10 @@ NATS runs without JetStream and without a key-value store, so it holds no state.
 Each signal is disposable because its durable authority and its recovery path live in Postgres.
 The [scheduler decisions](push_scheduler.md#decisions) list each subject and its backstop.
 
-M244 measured Dragonfly first, then NATS on the same laptop and code ([baselines](push_scheduler.md#m244-dragonfly-against-nats)).
+M244 measured both buses on the same laptop and code ([baselines](push_scheduler.md#m244-previous-broker-against-nats)).
 NATS met the bar on 15 of 16 tail rungs, and Indy accepted the one miss on 2026-11-09.
-In the kill drills, NATS viewers received `catching_up` within 0.3 s of a node stop; Dragonfly viewers saw only heartbeats during the outage.
+
+In the kill drills, NATS viewers received `catching_up` within 0.3 s of a node stop.
 
 | Decision | Requirement |
 |---|---|
@@ -48,8 +49,8 @@ The runtime pages ([`data_flow.md`](./data_flow.md), [`runner_fleet.md`](./runne
 A lost bus node must cost latency, never accepted work or an owed reply.
 Keeping every fact in Postgres makes that true: a viewer backfills from `fleet.events`, and a worker claims from `fleet.obligations`.
 
-Dragonfly held durable jobs beside its signals, and all four of its processes ran on one machine per environment.
-One machine loss therefore froze every viewer's tail with no signal (§"History: Dragonfly (2026-09-12 to 2026-11-09)").
+Before M244, the bus also held durable jobs, and all its nodes ran on one machine per environment.
+One machine loss froze every viewer's tail with no signal.
 
 ## Target design
 
@@ -70,16 +71,21 @@ The daemon reaches NATS over Fly's private network in plaintext `nats://`.
 ```text
 producer -> commit fleet.admissions -> publish af.wake.<shard>
                          |
-runner poll -> PostgreSQL head probe -> slot + admission claim
+wake ring or 5 s recovery probe -> offer pass -> Postgres head probe
                          |
-                  issue fenced lease
+              slot + admission claim
+                         |
+        fenced lease offered down the runner stream
                          |
 report -> usage + terminal event + settlement + delivery obligation
 ```
 
 A producer commits its identity and payload before reporting acceptance. A failed wake publish leaves that acceptance intact.
 
-Every poll probes PostgreSQL. The notification only prioritizes a recent fleet.
+A wake ring starts an offer pass, and the pass reads Postgres (`afd_gateway/src/scheduler/mod.rs`).
+
+Each replica also asks Postgres for pending work every 5 s (`OFFER_FALLBACK_TICK`, `afd_gateway/src/scheduler/recovery/mod.rs`).
+A lost ring therefore costs up to 5 s, never work.
 
 The candidate query first checks whether any unsettled admission exists. An empty ledger skips fleet scans.
 When work exists, it reads each eligible fleet's oldest unsettled admission through `idx_admissions_unsettled` on `(fleet_id, sequence)`.
@@ -92,7 +98,7 @@ Both discovery and claim probe these two scopes through `idx_approval_gates_pend
 One `NOT EXISTS` over `UNION ALL` keeps the probes correlated to the chosen head. Each branch limits its search to one blocker, including when many approvals match.
 
 Expired event approvals remain answerable; the resumed gate evaluation decides whether to proceed or refuse.
-A parked event finds its gate in `fleet.approval_gates` alone, so a long polling outage cannot erase that decision.
+A parked event finds its gate in `fleet.approval_gates` alone, so a long bus outage cannot erase that decision.
 
 The claim locks the slot and exact head with `SKIP LOCKED`, then checks whether that head can run and advances both fences together.
 A blocked or unavailable head returns no work, and the caller rolls back the slot claim.
@@ -117,7 +123,8 @@ The census publishes `agentsfleet_admission_backlog` and `agentsfleet_admission_
 The live tail publishes on `af.fleet.<fleet_id>.tail`. After a reconnect, a slow consumer or a gap marker, viewers receive `catching_up` and reload durable history.
 
 Wake notifications use sixteen `af.wake.<shard>` subjects, the shard a CRC-16/XMODEM of the fleet id (`afd_bus/src/wake/publish.rs`).
-Each replica keeps a local queue of at most 64 fleets by default; every poll still probes Postgres.
+Each replica keeps a local queue of at most 64 fleets by default (`afd_bus/src/wake/config.rs`).
+A full queue evicts its oldest fleet, and the 5 s recovery probe still finds that fleet's work.
 
 The report path writes the `fleet.obligations` row in its own transaction, then publishes `af.outbound.wake`.
 A worker claims the head row of each `(provider, workspace_id)` lane with `FOR UPDATE SKIP LOCKED` (`afd_outbound/src/obligation/sql/claim_heads.sql`).
@@ -206,38 +213,9 @@ The disposable stack used by `make test-integration-rustd` has separate project 
 Its schema resets and node-stop tests (`TEST_NATS_CONTROL`) must never use the shared development project.
 The [development notes](../development.md#shared-development-worktrees) explain startup, runner setup and failure recovery.
 
-## History: Dragonfly (2026-09-12 to 2026-11-09)
+## Upstash QStash
 
-Dragonfly replaced Redis on 2026-09-12 (M192_001 Discovery).
-Four self-hosted Dragonfly processes in one region became the destination on 2026-09-14, with Dragonfly Cloud Swarm as the later move.
-Dragonfly's own documentation says multi-shard server mode manages no failover, so self-hosting owed that operation.
-
-That trade failed on deployment shape.
-Both Fly configurations ran all four processes on one machine, so a machine loss cost every node.
-A cross-paired two-container layout was chosen on 2026-09-15 and never built.
-
-### A node aborted on a routine command (2026-09-14)
-
-Dragonfly v1.40.2 took a `SIGABRT` when `XGROUP CREATE … MKSTREAM` met a key already holding another type.
-Redis answers `WRONGTYPE` there; this server failed an internal assertion instead (`db_slice.cc:1176 Check failed: res.is_new`).
-A node could therefore die from ordinary client input, which is why node loss was never assumed rare.
-
-### What the cluster probe showed (2026-09-12)
-
-A four-node Dragonfly cluster was driven with the daemon's key and script shapes. Two results still shape the design:
-
-| Shape probed | On the cluster | Consequence that stands |
-|---|---|---|
-| One Lua script over a deduplication key and a stream key | `CROSSSLOT` | Acceptance identity moved to Postgres, as `fleet.admissions`. |
-| One `fleet:ready` hash for the deployment | One slot, one node, every poll and every mark | The admissions ledger replaced the index, and wake notifications split into sixteen shards. |
-
-### Upstash retirement (2026-09-17)
-
-Development moved off Upstash Redis on 2026-09-17, and Indy deleted the hosted `upstash-dev` database.
-Production never moved: `agentsfleetd-prod` had not deployed while Dragonfly served.
-Removing the `upstash-prod` vault item needs a fresh named approval.
-
-QStash is a different Upstash product and is not retired. It remains the cron trigger, so mentions of Upstash in the cron sections of these pages are correct.
+QStash is the cron trigger and stays in service. Mentions of Upstash in the cron sections of these pages are correct.
 
 ## Related pages
 

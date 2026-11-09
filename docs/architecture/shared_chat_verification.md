@@ -319,7 +319,7 @@ It does not claim that every unchanged operation has a new tracing span.
 | `afd_authoring` | Dispatch, receipt, private publisher and lease guards | Paired private preview traces; no connection held during provider or bus waits |
 | `af_crypto` | Secret ownership and hex decoding | Existing zeroize and hex implementations; no secret accessor logging |
 | `afd_sse` | Subscription tail and gap handling | Existing bounded hub subscription and coded close record retained |
-| `afd_bus` | Signal publication; it replaced the audited Dragonfly crate in M244 | A failed publish logs its error code and reason (`tail_frame_dropped`); no payload logging |
+| `afd_bus` | Signal publication over core NATS, since M244 | A failed publish logs its error code and reason (`tail_frame_dropped`); no payload logging |
 
 The error hull remains `af_core::error_shell!` with typed causes.
 The [Rust error standard](../RUST_ERROR_STANDARD.md) owns the crate exceptions and registry mapping.
@@ -337,17 +337,17 @@ Whole local acceptance, owner review and current Continuous Integration (CI) res
 | `fragmented_unicode_and_framing_are_decoded_by_the_sdk` | Native Rig decoding handles byte fragmentation and Unicode |
 | `reasoning_usage_without_text_prevents_reopening_a_truncated_turn` | A real HTTP provider reporting only reasoning usage caused a second send before the fix; the SDK guard now keeps one send and a typed transport failure |
 | Runtime privacy tests | Both reject a controlled deletion of the lease correlation field; SDK warnings remain filtered at trace level |
-| Private progress integration tests | Real Postgres and Dragonfly; Stop, deletion and membership revocation block later private frames |
+| Private progress integration tests | Real Postgres and a real broker; Stop, deletion and membership revocation block later private frames |
 | `idle_private_stream_sends_an_observable_heartbeat_and_still_rechecks_access` | Real HTTP stream received only a comment before the fix; all three stream privacy tests now pass with a named heartbeat and revocation checks |
 | `dispatch_deadline_upgrade_preserves_old_rows_and_old_writers` | Isolated Postgres migrates populated dispatches, preserves bounded deadlines and accepts the previous daemon's column list after upgrade |
 | Admission waiting regressions | Before the fix, the delayed 100-send case and independent-chat pool probe failed; all seven focused cases pass after the fix, including queued and current-sender cancellation |
-| `OutboundReader::drop_undeliverable` mutation | Deleting the whole method is caught by the existing real Dragonfly malformed-entry regression; one selected mutation, one caught |
+| `OutboundReader::drop_undeliverable` mutation | Deleting the whole method is caught by the existing real-broker malformed-entry regression; one selected mutation, one caught |
 | `hundred_pending_model_calls_release_the_pool_and_replay_without_resending` | All 100 physical sends entered before release; a fresh database query succeeded while they waited |
 | Same concurrency sample | 100 known receipts; replay kept physical sends at 100; p50 546.448 ms, p95 576.749 ms, p99 582.978 ms |
 | Editor UI tests | Save v2 closes the editor, preserves unsent runtime text and refreshes server data; conflicts retain edits |
 | Recent UI tests | Authorized union, stop/delete conflict behavior and unmount cancellation |
 | `make test-unit-all` | Rust runner 1,316, daemon 137 and daemon libraries 3,293; Python 25; app 3,973, website 133, command line 1,887 and design system 499 passed. The command-line suite retained 16 existing skips; all four package coverage gates passed at 100% |
-| `make test-integration-rustd` | 1,400 regular and three exclusive tests passed against isolated real Postgres and Dragonfly |
+| `make test-integration-rustd` | 1,400 regular and three exclusive tests passed against isolated real Postgres and a real broker |
 | tsrs migration | Six existing configurations passed with both compilers; both rejected the temporary type error. All 156 emitted command-line JavaScript files were byte-identical; the built command reports version 0.64.0 |
 | `make acceptance-local` | Recorded browser attempt: 103 passed, five failed, one skipped and five not run. Four failures reached provider refusals; the workspace-navigation failure passed its focused rerun after the existing helper awaited navigation |
 | `make acceptance-cli` | Deterministic lane: 209 passed. Live lane: 171 passed, three failed. Two turns reached provider refusals; the missing-model setup assertion passed its focused rerun after matching setup's `pending` state |
