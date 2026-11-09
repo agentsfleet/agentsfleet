@@ -30,6 +30,9 @@ pub(super) struct Debt {
     recent: HashMap<String, Instant>,
     /// When `recent` last refused a subject for lack of room.
     recent_overflow: Option<Instant>,
+    /// When the oldest entry of a full `recent` leaves the window. Until then
+    /// a prune frees nothing, so a full set is not rescanned on every publish.
+    recent_frees_at: Option<Instant>,
     owed: HashSet<String>,
     everyone: bool,
 }
@@ -42,6 +45,7 @@ impl Debt {
             max,
             recent: HashMap::new(),
             recent_overflow: None,
+            recent_frees_at: None,
             owed: HashSet::new(),
             everyone: false,
         }
@@ -53,10 +57,16 @@ impl Debt {
             *at = now;
             return;
         }
-        if self.recent.len() >= self.max {
+        if self.recent.len() >= self.max && self.recent_frees_at.is_none_or(|at| now >= at) {
             let window = self.window;
             self.recent
                 .retain(|_, at| now.saturating_duration_since(*at) <= window);
+            self.recent_frees_at = self
+                .recent
+                .values()
+                .min()
+                .and_then(|oldest| oldest.checked_add(window))
+                .and_then(|edge| edge.checked_add(Duration::from_nanos(1)));
         }
         if self.recent.len() >= self.max {
             self.recent_overflow = Some(now);
@@ -88,6 +98,7 @@ impl Debt {
         }
         self.recent.clear();
         self.recent_overflow = None;
+        self.recent_frees_at = None;
     }
 
     /// Hand the debt to the payer; anything it cannot pay comes back through
@@ -221,6 +232,39 @@ mod tests {
         let owed = debt.take();
         assert!(!owed.everyone, "stale entries were evicted, not overflowed");
         assert_eq!(owed.subjects, ["af.fleet.fresh.tail"]);
+    }
+
+    #[test]
+    fn a_full_set_makes_room_once_its_oldest_leaves_the_window() {
+        let start = Instant::now();
+        let mut debt = debt();
+        for index in 0..DEBT_SUBJECTS_MAX {
+            debt.published(&format!("af.fleet.{index}.tail"), start);
+        }
+        let inside = start + RECENT_WINDOW / 2;
+        debt.published("af.fleet.early.tail", inside);
+        assert_eq!(
+            debt.recent_overflow,
+            Some(inside),
+            "nothing could leave yet"
+        );
+        assert!(
+            debt.recent_frees_at
+                .is_some_and(|at| at > start + RECENT_WINDOW)
+        );
+
+        let past = start + RECENT_WINDOW + Duration::from_millis(1);
+        debt.published("af.fleet.late.tail", past);
+        assert!(
+            debt.recent.contains_key("af.fleet.late.tail"),
+            "the stale were pruned"
+        );
+        assert!(!debt.recent.contains_key("af.fleet.early.tail"));
+        debt.disconnected(past);
+        assert!(
+            debt.take().everyone,
+            "the refusal inside the window still owes everyone"
+        );
     }
 
     #[test]
