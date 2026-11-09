@@ -108,6 +108,7 @@ dev_snapshot() {
   fi
   local staging="$DEV_SHARED/infrastructure-new-$$"
   dev_directory "$staging"
+  mkdir -p "$staging"
   cp "$DEV_ROOT/compose.dev-infra.yml" "$staging/compose.yml"
   cat >"$staging/ports.env" <<EOF
 AGENTSFLEET_PG_HOST_PORT=$AGENTSFLEET_PG_HOST_PORT
@@ -132,7 +133,7 @@ dev_infra_up() {
       if [ "$state" = running ] && [ "$health" = unhealthy ]; then restart+=("$service"); fi
     done <<<"$status"
   fi
-  if [ "$count" = 7 ]; then
+  if [ "$count" = 6 ]; then
     printf 'Reusing shared infrastructure %s\n' "$DEV_PROJECT"
     return
   fi
