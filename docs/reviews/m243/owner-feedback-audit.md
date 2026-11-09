@@ -220,7 +220,8 @@ This publication is a source checkpoint, with no green-build or code-completion 
 
 Initial Orly review found ownership, cancellation, retry classification and zeroing failures.
 The corresponding source corrections and unrun regression cases are listed in the handoff.
-Positive-pass scheduling/coalescing, file lengths, native integration, benchmarks and final full-PR sign-off remain unfinished.
+Positive-pass scheduling/coalescing is implemented in the later Nov 09 checkpoint below.
+File lengths, native integration, benchmarks and final full-PR sign-off remain unfinished.
 
 ### Nov 09 resume results
 
@@ -355,3 +356,40 @@ M243 and its shipping gates remain incomplete; PR 819 stays draft under Indy's m
 Claude's separately published CI builder commits through `292424604` were preserved by fast-forward before the authoring commit.
 They change no Rust source, and their workflow references, playbook references, shellcheck and 21 hermetic builder cases pass locally.
 Full static builds and image publication remain Claude's work; no deployment or image publication was performed here.
+
+### Bounded scheduling follow-up
+
+The scheduler now awaits session-owned claims under one shared issuance budget.
+One wake can issue one lease; empty claims advance to other eligible hosts.
+Wakes received during a pass coalesce into one subsequent pass, and an uncertain claim outcome stops the current pass.
+The session's bounded queue retains its existing operation owner.
+
+Unchanged credit updates and periodic heartbeats no longer trigger extra empty claims.
+Successful issue updates waiting order; draining and superseded sessions are excluded.
+The independent five-second clock performs one probe per replica and requests a pass only on a positive result.
+
+The focused `afd_gateway` unit run passed 20 tests, with zero failures and one live test ignored.
+Ten new cases cover the pass budget, coalescing, empty walks, locality, waiting order, uncertain outcomes, shutdown eligibility, credit rises and replica probe frequency.
+A temporary extra lease of budget made the one-ring test fail at its assertion; the original budget was restored before the green run.
+
+The failure-design page now states memory-only report retries and Postgres settlement ownership.
+Fourteen changed first-party Rust files remain over the file-length ceiling; whole-PR review, live fairness/fault cases, benchmarks and shipping checks remain due.
+Integration remains paused until code completion, including the twelve written authoring cases.
+
+### Context-save pull
+
+At Indy's explicit request, Codex fetched GitHub and fast-forwarded to Claude's `3e3d8f1b0` with its local scheduler work preserved.
+The incoming licensed musl dependency patch and earlier CI changes were kept unchanged.
+The handoff separates this checkpoint's narrow checks from historical full Rust results and lists the fourteen first-party file-length findings.
+Indy clarified the order: finish code and review first, then combine native integration, full repository unit/coverage, benchmarks and shipping gates in final verification.
+The checkpoint push does not undraft the PR or lift the merge hold.
+
+After pulling `3e3d8f1b0`, `make lint-rustd` passed, including rustfmt and workspace Clippy.
+`cargo check --workspace --all-targets --all-features --locked` passed in 20.65 seconds.
+The final focused `cargo test -p afd_gateway --all-features --lib --locked` passed 20 tests with zero failures and one live test ignored.
+These results include the scheduler source and incoming dependency patch, with its recorded unused-import warning.
+Full Rust shards, frontend coverage and native integration were not rerun for this checkpoint; final combined verification remains due after code completion.
+
+Immediately before publication, Claude reported the r2 builder image published for both architectures in issue 818 comment 6743710519.
+The native Linux CI reruns still need results; the earlier image-pull failures happened before publication.
+This update required only handoff corrections; the checked scheduler source is unchanged.

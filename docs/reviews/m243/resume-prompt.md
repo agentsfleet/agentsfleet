@@ -30,11 +30,16 @@ Branch: feat/m243-runner-push-stream
 Existing draft PR: https://github.com/agentsfleet/agentsfleet/pull/819
 Coordination: https://github.com/agentsfleet/agentsfleet/issues/818
 Use the latest published context-save commit containing this prompt.
-The preceding published tip was Claude's 292424604; b5e971269 fixes the three unit failures.
-Claude's later musl-builder commits are preserved; image publication remains its owner task.
+The preceding incorporated tip was Claude's 3e3d8f1b0; b5e971269 fixes the
+three unit failures, and 9c2803f91 contains the authoring guard work.
+Claude's musl-builder and datagram-socket patch commits are preserved.
+Claude reports the r2 image published for both architectures in #818 comment
+6743710519. Its native Linux CI reruns/static-build results remain pending;
+local amd64 emulation builds were stopped. Check #818 for newer results.
 
 Reuse /workspace/agentsfleet-m243 if present. Otherwise fetch the published
 feature branch into an isolated worktree. Preserve the current work.
+Fetch the latest feature branch before editing and incorporate newer published work.
 
 Read first:
 1. AGENTS.md, .orly/LOCAL.md, .orly/AGENTS.md and the orly-build skill.
@@ -43,10 +48,12 @@ Read first:
 4. docs/architecture/runner_protocol.md.
 5. docs/v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md.
 
-M243 is incomplete. Workspace cargo check and make lint-all pass.
-The full Rust unit lane passed 5,380 tests before the authoring guard refactor;
-the affected library shard passed 3,531 again afterwards. Full repository
-verification, including frontend coverage and native integration, remains due.
+M243 is incomplete. Finish code/review first, then perform one combined final
+verification stage. The handoff records the current scheduler checkpoint checks.
+The preceding authoring checkpoint passed workspace cargo check and make
+lint-all. Full Rust units passed 5,380 before its guard refactor; the affected
+library shard passed 3,531 afterwards. These are historical scoped results,
+not a full repository verdict for the current scheduler/dependency changes.
 
 Indy explicitly authorized compilation, formatting, lint, tests and gates on
 Nov 09. That supersedes the earlier verification hold; do not ask again for
@@ -66,7 +73,12 @@ Then complete source and tests for listener drain, native child cleanup, reconne
 renewals/folds/report retries, remaining polling fixtures and benchmarks,
 failure/fairness/observability sources, full Orly Rust review including
 RS-SENTINEL and RS-UNWRAP, docs and generated OpenAPI reconciliation.
-The handoff records initial review fixes, unfinished Dimension 4.4 and file-length findings.
+Dimensions 4.4 and 4.5 now have bounded pass/probe source and passing focused
+unit cases. The scheduler awaits session-owned claims; wakes during a pass
+coalesce into one subsequent pass. The handoff records the exact check scope
+and the 14 changed first-party Rust files still over the file-length ceiling.
+Review queued-reader-frame semantics in SessionSupervisor::drain as a specific
+open question; do not describe it as a confirmed runtime bug without evidence.
 
 Reports and decision receipts retry only from caller memory until daemon
 acknowledgement. Postgres owns saved results and billing. No report spool,
