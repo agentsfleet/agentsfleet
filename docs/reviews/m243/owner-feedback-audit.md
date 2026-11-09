@@ -297,3 +297,13 @@ No unit suite was restarted for this documentation correction.
 
 Indy assigned the three remaining unit failures to Claude.
 Codex will continue M243 and pull Claude's updates only when Indy signals.
+
+
+### The three unit failures
+
+Claude fixed the three failures the handoff assigned: `e510404ba` for the HTTP/3 telemetry record and `743a64e89` for the two runner guard codes.
+No assertion, metric count, hybrid-group check or redaction check was weakened; the telemetry fix is in source.
+The [handoff](session-handoff.md#claudes-fixes-for-the-three-unit-failures) lists the targeted results.
+
+The full unit lane and the final Rust verification on the combined branch are still due.
+PR 819 remains draft, with merge held for Indy's listener, certificate and 1Password review.
