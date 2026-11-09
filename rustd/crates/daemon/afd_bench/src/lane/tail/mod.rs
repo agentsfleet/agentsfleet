@@ -78,6 +78,9 @@ const BUSY_US_PER_FRAME: &str = "busy_us_per_delivered_frame";
 /// Series key: publish-to-receive latency at the 95th percentile.
 const RECEIVE_P95_MS: &str = "receive_p95_ms";
 
+/// Series key: publish-to-receive latency at the 99th percentile.
+const RECEIVE_P99_MS: &str = "receive_p99_ms";
+
 /// Series key: the fraction of frames × viewers that arrived.
 const DELIVERED_FRACTION: &str = "delivered_fraction";
 
@@ -92,6 +95,9 @@ const HEAP_BYTES_PER_STREAM: &str = "heap_bytes_per_stream";
 
 /// Series key: publish-to-receive p95 of one frame per stream, per stream rung.
 const STREAM_RECEIVE_P95_MS: &str = "stream_receive_p95_ms";
+
+/// Series key: publish-to-receive p99 of one frame per stream, per stream rung.
+const STREAM_RECEIVE_P99_MS: &str = "stream_receive_p99_ms";
 
 /// Measurement key: frames × viewers that never arrived, over every rung,
 /// and timed frames a live stream never heard.
@@ -164,21 +170,23 @@ struct Totals {
 }
 
 /// The viewer rungs' series, in the order a summary line prints them.
-const VIEWER_COLUMNS: [&str; 6] = [
+const VIEWER_COLUMNS: [&str; 7] = [
     LADDER_VIEWERS,
     LADDER_PAYLOAD_BYTES,
     DELIVERED_FRACTION,
     ALLOCATIONS_PER_FRAME,
     BUSY_US_PER_FRAME,
     RECEIVE_P95_MS,
+    RECEIVE_P99_MS,
 ];
 
 /// The stream rungs' series, in the order a summary line prints them.
-const STREAM_COLUMNS: [&str; 4] = [
+const STREAM_COLUMNS: [&str; 5] = [
     LADDER_STREAMS,
     STREAMS_LIVE,
     HEAP_BYTES_PER_STREAM,
     STREAM_RECEIVE_P95_MS,
+    STREAM_RECEIVE_P99_MS,
 ];
 
 /// The headline totals, printed last.

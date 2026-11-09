@@ -112,10 +112,14 @@ BENCH_TARGET_OWNED ?= owned
 # file before `make/build.mk` defines `GIT_COMMIT`, so an immediate expansion
 # would bake in an EMPTY revision — and an empty revision is the one value a
 # lane must never be handed, since it would refuse every run.
+# The Bus a lane measures until Dragonfly goes (M244 §7): dragonfly | nats.
+BENCH_BUS ?= dragonfly
 BENCH_LANE_ENV = BENCH_PROFILE="$(PROFILE)" \
 	BENCH_DATABASE_URL="$(TEST_DATABASE_URL)" \
 	BENCH_DRAGONFLY_URL="$(TEST_DRAGONFLY_URL)" \
 	BENCH_DRAGONFLY_CA_CERT="$(TEST_DRAGONFLY_CA_CERT)" \
+	BENCH_BUS="$(BENCH_BUS)" \
+	BENCH_NATS_URL="$(TEST_NATS_URL)" \
 	BENCH_REVISION="$(GIT_COMMIT)" \
 	BENCH_DATASTORE_IMAGE="$(DATASTORE_IMAGE)" \
 	BENCH_TARGET_OWNED="$(BENCH_TARGET_OWNED)"
