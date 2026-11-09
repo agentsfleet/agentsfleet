@@ -141,7 +141,8 @@ impl Stage {
             .expect("the plane settles the report");
     }
 
-    pub(crate) async fn receipt(&self, event: &Uuid7) -> Option<String> {
+    /// The receipt of the row `event` owes, if the report owed one.
+    pub(crate) async fn receipt(&self, event: &Uuid7) -> Option<Uuid7> {
         let mut connection = self
             .fixtures
             .database
@@ -154,9 +155,9 @@ impl Stage {
         )
         .bind(&self.fleet)
         .bind(event)
-        .fetch_one(&mut *connection)
+        .fetch_optional(&mut *connection)
         .await
-        .expect("the report owed the thread's answer")
+        .expect("the obligation read answers")
     }
 
     /// Admits one event from `producer`, stating `reply`.
