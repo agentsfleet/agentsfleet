@@ -91,18 +91,24 @@ impl Config {
     }
 }
 
+/// The seeds' shared user and password, or none for an open server. A seed
+/// naming a user with no password, or seeds that disagree, are refused rather
+/// than dialled with an empty password that would fail as an unreachable seed.
 fn credentials_of(seeds: &[ServerAddr]) -> Result<Option<(String, String)>> {
-    let pair = |seed: &ServerAddr| {
-        seed.username().map(|user| {
-            (
-                user.to_owned(),
-                seed.password().unwrap_or_default().to_owned(),
-            )
-        })
+    let pair = |seed: &ServerAddr| -> Result<Option<(String, String)>> {
+        match (seed.username(), seed.password()) {
+            (Some(user), Some(password)) if !password.is_empty() => {
+                Ok(Some((user.to_owned(), password.to_owned())))
+            }
+            (None, None) => Ok(None),
+            _ => Err(ErrorKind::NatsCredentials.into()),
+        }
     };
-    let first = seeds.first().and_then(pair);
-    if seeds.iter().any(|seed| pair(seed) != first) {
-        return Err(ErrorKind::NatsCredentials.into());
+    let first = seeds.first().map(pair).transpose()?.flatten();
+    for seed in seeds {
+        if pair(seed)? != first {
+            return Err(ErrorKind::NatsCredentials.into());
+        }
     }
     Ok(first)
 }
@@ -156,6 +162,17 @@ mod tests {
             "no namespace keeps deployed subjects"
         );
         Ok(())
+    }
+
+    #[test]
+    fn a_user_without_a_password_is_refused() {
+        for seeds in [
+            "nats://agentsfleet@127.0.0.1:4222",
+            "nats://agentsfleet:@127.0.0.1:4222",
+        ] {
+            let refused = Config::from_env(&MapEnv::from_pairs([(URL_ENV, seeds)]));
+            assert!(refused.is_err(), "{seeds} names a user and no password");
+        }
     }
 
     #[test]

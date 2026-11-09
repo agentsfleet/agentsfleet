@@ -9,6 +9,15 @@
 //!
 //! Core NATS holds no state and acknowledges nothing, so every signal here is
 //! at most once. A gap tells the reader to backfill from Postgres.
+//!
+//! # A node that dies silently
+//!
+//! A host crash or a network split resets no connection. The client notices
+//! only when its pings go unanswered (every 60 s, stale after two), so frames
+//! published in the minutes before the noticed disconnect, older than the
+//! debt window, reach no reader and carry no gap. Their rows are in Postgres;
+//! a viewer sees them at its next `catching_up`. Accepted as a limit, with no
+//! shorter ping configured.
 
 mod config;
 mod debt;

@@ -291,6 +291,7 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 |------|------|-------|--------------------------------------------------|------|
 | Subscriber's node dies | failure | node loss, network blip | reconnect to a peer; viewers see `catching_up` and backfill | `node_kill_gaps_viewers_and_resumes` |
 | Publisher's node dies mid-flight | failure | node loss | recent subjects are marked; subscribers see `Gap` | `failed_publish_sends_a_gap_marker_on_reconnect` |
+| A node dies silently | failure | host crash or network split, with no connection reset | the client notices only when its pings go unanswered: async-nats pings every 60 s and declares the connection stale after 2 missed, so about 2 to 3 minutes. Subjects published in the 2 s before the noticed disconnect are marked; frames published earlier in that span are lost without a gap, and their rows are still in Postgres. Accepted by Indy, Nov 09, 2026 ("Document the limit only") | none: a silent loss needs a fault injector the lane does not have |
 | Slow consumer | capacity | hub pump stalls | every subscription on the client gaps | `slow_consumer_gaps_every_subscription_on_the_client` |
 | Interest not yet propagated | race | subscribe on another node | `catching_up` after subscribe; UI backfill | `frame_before_interest_is_covered_by_backfill` |
 | Unsuitable server | failure | JetStream on, no cluster, small payload | boot refuses with `UZ-STARTUP-004` | `boot_refuses_an_unsuitable_nats_server` |

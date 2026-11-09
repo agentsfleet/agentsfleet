@@ -41,7 +41,7 @@ pub(crate) enum ErrorKind {
         #[source]
         source: std::io::Error,
     },
-    #[error("Every NATS_URL seed must carry the same user and password.")]
+    #[error("Every NATS_URL seed must carry the same user and a non-empty password.")]
     NatsCredentials,
     #[error("AGENTSFLEET_DEV_NAMESPACE must be at most 64 letters, digits, '-' or '_'.")]
     NatsNamespace {
