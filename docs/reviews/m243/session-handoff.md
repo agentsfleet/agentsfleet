@@ -385,3 +385,23 @@ No unit suite was restarted for this documentation correction.
 
 Indy assigned the three remaining unit failures to Claude.
 Codex will continue M243 and pull Claude's updates only when Indy signals.
+
+### Claude's fixes for the three unit failures
+
+Claude fixed all three in its own worktree, on top of `5c03ead30`.
+
+| Test | Cause | Fix |
+|---|---|---|
+| `runner_plane::test_runner_bearer_state_matrix` | `25f5239e5` changed the wrong one of two matching assertions. | `743a64e89` expects `UZ-INTERNAL-001` again: a live runner reaches its handler and fails on the absent datastore. |
+| `runner_plane::the_native_stream_opening_is_guarded_like_every_other_runner_verb` | `NoWork::open` answers `INTERNAL_OPERATION_FAILED` with a 500. | `743a64e89` expects `UZ-INTERNAL-003`; the 401 and `UZ-RUN-001` checks are unchanged. |
+| `blackhole_fallback_cancellation_and_redaction_reach_exported_telemetry` | `h3/telemetry.rs` spawned the HTTP/3 security recorder as a bare task, which inherits neither the caller's span nor its subscriber. The HTTP/3 `runner_stream_tls_negotiated` record lost the session's fields and never reached the suite's scoped subscriber. | `e510404ba` runs that task in the current span and subscriber, as the HTTP/2 path's inline record does. No assertion changed. |
+
+Results, run from `rustd/` with `--all-features`, no debug info, no incremental compilation and two Cargo jobs:
+
+- `cargo test -p af_stream --test transport_observability`: 1 passed.
+  With `e510404ba` removed it fails at its negotiated-TLS assertion, so the fix is the cause.
+- `cargo test -p afd_api runner_plane::`: the runner plane suite passed 17, with 3 ignored.
+- `cargo fmt --check` and `cargo clippy --all-targets -D warnings` pass for `af_stream` and `afd_api`.
+
+The full `make test-unit-all` lane was not rerun here; one full Rust verification is still due on the combined branch.
+M243 remains incomplete.
