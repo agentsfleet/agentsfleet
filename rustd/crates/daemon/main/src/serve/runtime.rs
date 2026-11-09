@@ -15,7 +15,7 @@ use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 
 use super::clients::Clients;
-use super::optional::{announce_identity, open_live};
+use super::optional::{announce_identity, live_over};
 use crate::error::BootFailure;
 use crate::plane::{ServingPlane, Shared};
 use crate::preflight::BootConfig;
@@ -68,12 +68,12 @@ pub(super) async fn open_runtime(
     announce_identity(&capabilities);
     let kek = Arc::new(config.kek().clone());
     let broker = open_broker(config, &database, &kek, clients.broker).await;
-    let (bus, live) = open_live(config.redis(), queue.clone(), config.sse_max_streams()).await;
+    let bus = afd_bus::nats::connect(config.bus()).await?;
+    let live = live_over(&bus, config.sse_max_streams());
     let observed = live.clone();
     let plane = ServingPlane::new(crate::plane::PlaneParts {
         authoring_transport: clients.authoring,
         database: database.clone(),
-        queue: queue.clone(),
         bus: bus.clone(),
         // Cloned rather than moved: the outbound worker below opens its own
         // grant store over the same key, for the reason `crate::outbound`

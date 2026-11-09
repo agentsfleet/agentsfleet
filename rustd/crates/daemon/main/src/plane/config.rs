@@ -18,7 +18,6 @@ use af_observability::Analytics;
 use afd_connector::Dashboard;
 use afd_cron::SigningKeys;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 use afd_sse::Live;
 
 use crate::identity::{Capabilities, Sessions, SignupWriteback};
@@ -36,8 +35,6 @@ pub struct PlaneParts {
     pub authoring_transport: afd_authoring::Network,
     /// The API role's Postgres pool, open and proven.
     pub database: Db,
-    /// The API role's Dragonfly, open and proven.
-    pub queue: Dragonfly,
     /// One process-wide notification backend chosen during boot.
     pub bus: afd_bus::Handle,
     /// The master key every stored credential is sealed under.

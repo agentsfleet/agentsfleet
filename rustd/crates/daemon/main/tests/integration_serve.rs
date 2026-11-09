@@ -51,10 +51,16 @@ fn lane(knob: &str) -> String {
 
 /// An environment pointed at the lane's services, on an ephemeral port.
 fn lane_environment() -> MapEnv {
+    lane_environment_on(&lane("TEST_NATS_URL"))
+}
+
+/// The lane's environment with the bus seeds given.
+fn lane_environment_on(nats: &str) -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB).as_str()),
             ("DRAGONFLY_URL", lane(DRAGONFLY_LANE_KNOB).as_str()),
+            ("NATS_URL", nats),
             (
                 "DRAGONFLY_TLS_CA_CERT_FILE",
                 lane(DRAGONFLY_CA_LANE_KNOB).as_str(),
@@ -228,4 +234,32 @@ async fn test_a_second_boot_finds_nothing_left_behind() {
         );
         drop(booted);
     }
+}
+
+/// M244 Dimension 7.2: a bus no seed answers for refuses boot, naming the
+/// setting an operator has to fix.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn boot_names_nats_url_when_the_bus_is_unreachable() {
+    install_subscriber();
+    let env = lane_environment_on("nats://127.0.0.1:1");
+    let mut supervisor = Supervisor::new();
+    let Err(failure) = boot(&env, EPHEMERAL, &mut supervisor).await else {
+        panic!("a bus with no reachable seed must refuse boot");
+    };
+    assert_eq!(failure.phase(), "bus");
+    assert_eq!(
+        failure.code(),
+        af_core::error_code::STARTUP_DRAGONFLY_CONNECT
+    );
+    let mut chain = failure.to_string();
+    let mut source = std::error::Error::source(&failure);
+    while let Some(cause) = source {
+        chain = format!("{chain}: {cause}");
+        source = cause.source();
+    }
+    assert!(
+        chain.contains("NATS_URL"),
+        "the refusal names NATS_URL: {chain}"
+    );
 }

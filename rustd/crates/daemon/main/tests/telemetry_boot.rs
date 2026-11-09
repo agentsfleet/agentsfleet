@@ -32,6 +32,10 @@ fn environment(database: &str, queue: &str, endpoint: &str) -> MapEnv {
         ("DATABASE_URL_API", database.to_owned()),
         ("DRAGONFLY_URL", queue.to_owned()),
         (
+            "NATS_URL",
+            ProcessEnv.get("TEST_NATS_URL").expect("lane bus seeds"),
+        ),
+        (
             "DRAGONFLY_TLS_CA_CERT_FILE",
             ProcessEnv
                 .get("TEST_DRAGONFLY_CA_CERT")

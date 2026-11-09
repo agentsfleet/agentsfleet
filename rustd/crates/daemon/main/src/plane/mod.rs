@@ -128,7 +128,6 @@ impl ServingPlane {
         let PlaneParts {
             database,
             identity_webhook_secret,
-            queue,
             bus,
             kek,
             capabilities,
@@ -178,7 +177,14 @@ impl ServingPlane {
                 slack_api_base,
             },
         );
-        let mut leases = lease_plane(database.clone(), kek, providers, bus, broker, biller);
+        let mut leases = lease_plane(
+            database.clone(),
+            kek,
+            providers,
+            bus.clone(),
+            broker,
+            biller,
+        );
         let tasks = task_plane(
             &mut leases,
             task_admissions,
@@ -194,7 +200,7 @@ impl ServingPlane {
             activity,
             outbound,
             login: surfaces::login(login, &database),
-            probes: LiveDependencies::new(database.clone(), queue),
+            probes: LiveDependencies::new(database.clone(), bus),
             signup_writeback,
             authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
             runners: Runners::new(database, Entropy::new()),

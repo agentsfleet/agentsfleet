@@ -26,13 +26,14 @@ use crate::supervisor::Supervisor;
 const UNREACHABLE: &str = "http://127.0.0.1:1";
 
 /// Everything preflight requires before it will answer at all.
-fn required() -> [(&'static str, &'static str); 7] {
+fn required() -> [(&'static str, &'static str); 8] {
     [
         (
             "DATABASE_URL_API",
             "postgres://afd:afd@127.0.0.1:5432/agentsfleet",
         ),
         ("DRAGONFLY_URL", "redis://127.0.0.1:6379"),
+        ("NATS_URL", "nats://127.0.0.1:4222"),
         (
             "ENCRYPTION_MASTER_KEY",
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",

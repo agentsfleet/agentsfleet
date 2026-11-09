@@ -45,6 +45,7 @@ fn run(knobs: &[(&str, &str)]) -> Output {
     for knob in [DATABASE_KNOB, DRAGONFLY_KNOB, KEK_KNOB]
         .into_iter()
         .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
+        .chain(crate::support::BUS.map(|(name, _value)| name))
         .chain(crate::support::IDENTITY_KNOBS)
     {
         command.env_remove(knob);
@@ -119,6 +120,7 @@ fn test_preflight_lists_missing() {
     for knob in [DATABASE_KNOB, DRAGONFLY_KNOB, KEK_KNOB]
         .into_iter()
         .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
+        .chain(crate::support::BUS.map(|(name, _value)| name))
         .chain(crate::support::IDENTITY.map(|(knob, _value)| knob))
     {
         assert!(
@@ -141,6 +143,7 @@ fn test_boot_announces_itself_when_the_environment_is_complete() {
         (KEK_KNOB, GOOD_KEK),
     ];
     knobs.extend_from_slice(&crate::support::SESSION_PEPPER);
+    knobs.extend_from_slice(&crate::support::BUS);
     knobs.extend_from_slice(&crate::support::IDENTITY);
     let output = run(&knobs);
     let stdout = String::from_utf8_lossy(&output.stdout);

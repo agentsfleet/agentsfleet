@@ -29,7 +29,7 @@ if action == "up":
     time.sleep(float(os.getenv("FAKE_DOCKER_DELAY", "0.1")))
     state.write_text("ready")
 elif action == "ps" and state.exists():
-    for name in (["postgres"] if state.read_text() == "partial" else ["postgres", "dragonfly", "mailpit", "qstash"]):
+    for name in (["postgres"] if state.read_text() == "partial" else ["postgres", "dragonfly", "mailpit", "qstash", "nats-1", "nats-2", "nats-3"]):
         print(name, "running" if state.read_text() == "ready" else "exited", "unhealthy" if name == "postgres" and os.getenv("FAIL_HEALTH") else "healthy")
 elif action == "restart": state.write_text("ready")
 elif action == "exec":

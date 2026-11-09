@@ -169,6 +169,10 @@ pub(super) const WHY_PLATFORM_ADMIN: &str = "the workspace holding this deployme
 /// Why the daemon needs the API database role.
 pub(super) const WHY_DATABASE: &str = "the API role's Postgres connection URL";
 
+/// Why the daemon needs the event bus.
+pub(super) const WHY_NATS: &str =
+    "comma-separated NATS seed URLs with the credentials in the userinfo";
+
 /// Why the daemon needs the API Dragonfly role.
 pub(super) const WHY_DRAGONFLY: &str = "the API role's Dragonfly connection URL";
 

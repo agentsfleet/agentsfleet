@@ -40,6 +40,7 @@ pub struct IdentityConfig {
 pub struct BootConfig {
     pub(super) api_pool: PoolConfig,
     pub(super) redis: DragonflyConfig,
+    pub(super) bus: afd_bus::nats::Config,
     pub(super) kek: Kek,
     pub(super) session_code_pepper: SecretBytes,
     pub(super) app_url: Dashboard,
@@ -96,6 +97,12 @@ impl BootConfig {
     #[must_use]
     pub const fn redis(&self) -> &DragonflyConfig {
         &self.redis
+    }
+
+    /// Settings for the event bus: the NATS seeds and this deployment's namespace.
+    #[must_use]
+    pub const fn bus(&self) -> &afd_bus::nats::Config {
+        &self.bus
     }
 
     /// How many concurrent event streams this instance carries.

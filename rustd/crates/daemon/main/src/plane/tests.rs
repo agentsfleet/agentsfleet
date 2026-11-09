@@ -55,8 +55,7 @@ fn plane() -> ServingPlane {
         authoring_transport: afd_authoring::Network::new()
             .expect("fixed transport builds without a network request"),
         database,
-        bus: afd_bus::dragonfly::publisher(queue.clone()),
-        queue,
+        bus: afd_bus::dragonfly::publisher(queue),
         kek: Arc::new(Kek::from_bytes([0x2a; 32])),
         capabilities: Capabilities::Unconfigured(NoCapabilitySource),
         signup_writeback: SignupWriteback::Unconfigured(crate::identity::NoWriteback),
