@@ -171,9 +171,12 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
 /// the second is a `hello` carrying where every fleet stands now — the
 /// dropped frames are exactly the ones that moved the counters.
 #[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
-    let mut wall = Wall::open(Fixture::create().await).await;
+    // The in-process bus overflows a reader's buffer exactly; a broker's slow
+    // consumer notice arrives on its own clock, so it cannot be asserted on.
+    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens");
+    let mut wall = Wall::open_over(Fixture::create().await, bus).await;
     wall.publish(GAP_FRAMES).await;
 
     let mut heard = Vec::new();

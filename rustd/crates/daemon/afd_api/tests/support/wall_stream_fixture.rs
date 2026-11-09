@@ -223,8 +223,13 @@ pub(crate) struct Wall {
 
 impl Wall {
     pub(crate) async fn open(fixture: Fixture) -> Self {
+        Self::open_over(fixture, harness::bus().await).await
+    }
+
+    /// The same wall over `bus`, for a test that must control delivery, such
+    /// as overflowing a reader's buffer exactly.
+    pub(crate) async fn open_over(fixture: Fixture, bus: afd_bus::Handle) -> Self {
         fixture.seed().await;
-        let bus = harness::bus().await;
         let fleet = Fleet::live(
             fixture.database.clone(),
             SUBJECT,
