@@ -150,15 +150,18 @@ endef
 # TYPE` and exposes no subscriber marker, so a diff is the only way to name the
 # hub's connections at all. A sibling opening a connection inside that window
 # would be killed by it, which is why this cannot ride the parallel lane.
+# `integration_bus_exclusive` stops a real NATS node, which drops every
+# sibling's client on it.
 #
-# Still a hard gate: `_rust_lane` fails a selection that matched nothing, so a
-# renamed or deleted module here fails the lane rather than silently passing.
-EXCLUSIVE_FILTER := integration_hub_exclusive
+# Still a hard gate: `_rust_lane` fails a selection that matched nothing, so
+# deleting every module here fails the lane rather than silently passing.
+EXCLUSIVE_FILTER := integration_hub_exclusive integration_bus_exclusive
+EXCLUSIVE_SKIP := $(addprefix --skip ,$(EXCLUSIVE_FILTER))
 
 test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Dragonfly
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --skip $(EXCLUSIVE_FILTER))
+	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored $(EXCLUSIVE_SKIP))
 	@echo "→ [rustd] Running the tests that need the cluster to themselves..."; \
 	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 
@@ -389,7 +392,7 @@ ifneq ($(filter api,$(RUSTD_SHARD)),)
 endif
 ifneq ($(filter substrate,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard substrate: the remaining crates, then the suites that need the cluster alone..."; \
-	$(call _rust_lane,rustd-coverage-substrate.log,[rustd] coverage: substrate,$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --skip $(EXCLUSIVE_FILTER)); \
+	$(call _rust_lane,rustd-coverage-substrate.log,[rustd] coverage: substrate,$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored $(EXCLUSIVE_SKIP)); \
 	$(call _rust_lane,rustd-coverage-substrate-exclusive.log,[rustd] coverage: substrate (exclusive),$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 endif
 ifeq ($(_RUSTD_SHARD_ALL),yes)

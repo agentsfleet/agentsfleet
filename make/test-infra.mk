@@ -130,7 +130,10 @@ AGENTSFLEET_NATS_PORT_2 ?= $(shell echo $$(( $(AGENTSFLEET_NATS_BASE_PORT) + 1 )
 AGENTSFLEET_NATS_PORT_3 ?= $(shell echo $$(( $(AGENTSFLEET_NATS_BASE_PORT) + 2 )))
 export AGENTSFLEET_NATS_BASE_PORT AGENTSFLEET_NATS_PORT_2 AGENTSFLEET_NATS_PORT_3
 TEST_NATS_URL ?= nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_BASE_PORT),nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_PORT_2),nats://agentsfleet:agentsfleet@127.0.0.1:$(AGENTSFLEET_NATS_PORT_3)
-export TEST_NATS_URL
+# How a test stops and restarts one node: compose, with the verb appended
+# (`stop nats-2`, `up -d --wait nats-2`). Only the exclusive lane uses it.
+TEST_NATS_CONTROL ?= docker compose --project-directory $(CURDIR)
+export TEST_NATS_URL TEST_NATS_CONTROL
 
 # The invite email's sink: the port a suite's `smtp-relay` bag names, and the
 # API it reads the delivered message back from.
