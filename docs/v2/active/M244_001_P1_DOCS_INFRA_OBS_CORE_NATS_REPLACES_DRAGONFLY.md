@@ -177,9 +177,9 @@ This Section carries M241's old §6 and §7 as its own, on this milestone's star
 
 - **Dimension 1.1** — DONE — the summary carries p99 → Test `tail_summary_reports_p99` (unit): latencies 1..100 ms report p95 95 and p99 99.
 - **Dimension 1.2** — DONE — a rung with nothing timed reports no figure → Test `rung_without_frames_reports_no_p99` (unit): an empty rung writes no `p99_ms_` key, never 0.
-- **Dimension 1.3** — a late ring is missed, not delivered → Test `wake_past_deadline_counts_missed` (unit): a ring taken after 1 s counts in `wake_missed_hubs_1` and not in p99.
-- **Dimension 1.4** — the ringer never passes the hint cap → Test `wake_ringer_waits_at_window` (unit, paused time): with 64 untaken rings, the 65th waits.
-- **Dimension 1.5** — a live wake ladder delivers → Test `make bench-tail PROFILE=rig` (integration): the result holds `wake_p99_ms_hubs_4` and `wake_missed_hubs_4` 0.
+- **Dimension 1.3** — TRANSFERRED to M243 — a late ring is missed, not delivered → Test `wake_past_deadline_counts_missed` (unit): a ring taken after 1 s counts in `wake_missed_hubs_1` and not in p99.
+- **Dimension 1.4** — TRANSFERRED to M243 — the ringer never passes the hint cap → Test `wake_ringer_waits_at_window` (unit, paused time): with 64 untaken rings, the 65th waits.
+- **Dimension 1.5** — TRANSFERRED to M243 — a live wake ladder delivers → Test `make bench-tail PROFILE=rig` (integration): the result holds `wake_p99_ms_hubs_4` and `wake_missed_hubs_4` 0.
 - **Dimension 1.6** — the drill is recorded, frozen tail included → Test `broker_kill_drill_recorded` (manual): §Baselines holds "Dragonfly kill drill, run 1" and "run 2" with viewer outcomes, accepted steers, recovery seconds and commands. If no viewer receives `catching_up`, that is recorded as the defect §6 closes.
 - **Dimension 1.7** — Indy approves the bar before NATS runs → Test `broker_pass_bar_approved` (manual): his reply to `### Broker pass bar` is quoted in the Pull Request Session Notes.
 
@@ -413,6 +413,8 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
 - **Post-quantum TLS on rustls (Nov 09, 2026)** — the workspace pinned rustls with `default-features = false`, which drops its `prefer-post-quantum` default, so every rustls client (sqlx, reqwest, async-nats, lettre, object_store) offered classical X25519 first. `rustd/Cargo.toml` now enables the feature; `tls_posture::rustls_negotiates_the_hybrid_post_quantum_key_exchange` proves a handshake picks X25519MLKEM768 and fails as X25519 without it. BoringSSL stays in `af_stream` because tokio-quiche requires it.
   > Indy (Nov 09, 2026): "You said its a 1 line change - rustls prefer-post-quantum inside M244 so why need a spec?" — context: folded into M244 rather than a separate spec.
   > Indy (Nov 09, 2026): "Yes i would keep boringssl in runner and migrate later to 1 crate" — context: one TLS library is later work; sqlx, reqwest and async-nats have no BoringSSL backend, so the supported single-library route is rustls on AWS-LC with quinn for QUIC.
+- **Wake ladder transferred (Nov 09, 2026)** — Dimensions 1.3 to 1.5 move to M243, which owns the wake path (`afd_bus::wake`).
+  > Indy (Nov 09, 2026): "donot build one, since the M243 will do that"
 - **Model reviews** — none yet. The EGM spec review runs before this spec leaves `pending/`.
 - **Open blockers** — answered at CHORE(open) except item 2, which is Indy's action:
   1. Approve, at CHORE(open), edits to `deploy/fly/*` (new `nats-dev` and `nats-prod`, three machines each; `dragonfly-*` deleted) and to `.github/workflows/{deploy-dev-fly,release,test-integration-rustd,test-unit-rustd}.yml`.
