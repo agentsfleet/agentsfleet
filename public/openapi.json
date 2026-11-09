@@ -8738,11 +8738,12 @@
           {
             "name": "agentsfleet-runner-protocol",
             "in": "header",
-            "description": "agentsfleet.runner.v1",
+            "description": "Required runner protocol revision",
             "required": true,
             "schema": {
               "type": "string"
-            }
+            },
+            "example": "agentsfleet.runner.v1"
           },
           {
             "name": "agentsfleet-runner-kind",
