@@ -3,7 +3,7 @@
 use std::future::ready;
 use std::task::{Context, Poll, Waker};
 
-use crate::obligation::Claimed;
+use crate::obligation::Outgoing;
 use af_core::env::MapEnv;
 use afd_db::{
     Db,
@@ -21,7 +21,7 @@ use crate::poster::{Deliver, Posters, Verdict};
 struct UnusedPoster;
 
 impl Deliver for UnusedPoster {
-    fn deliver(&self, _job: &Claimed) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, _job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         ready(Verdict::Delivered)
     }
 }
@@ -111,8 +111,8 @@ async fn a_closed_full_lane_returns_the_waiting_job_to_its_replacement() {
     let delivered = received
         .try_recv()
         .expect("the replacement receives the waiting job");
-    assert_eq!(delivered.event_id, answer(next));
-    assert_eq!(delivered.answer, format!("answer {next}"));
+    assert_eq!(delivered.outgoing.event_id, answer(next));
+    assert_eq!(delivered.outgoing.answer, format!("answer {next}"));
     assert!(matches!(
         received.try_recv(),
         Err(mpsc::error::TryRecvError::Empty)
@@ -122,6 +122,7 @@ async fn a_closed_full_lane_returns_the_waiting_job_to_its_replacement() {
             lane.receiver
                 .try_recv()
                 .expect("original queued jobs survive")
+                .outgoing
                 .event_id,
             answer(n)
         );
@@ -148,6 +149,7 @@ async fn a_full_lane_waits_without_a_map_guard_then_publishes_once() {
         lane.receiver
             .try_recv()
             .expect("the first queued job remains")
+            .outgoing
             .event_id,
         answer(0)
     );
@@ -162,6 +164,7 @@ async fn a_full_lane_waits_without_a_map_guard_then_publishes_once() {
             lane.receiver
                 .try_recv()
                 .expect("each queued job arrives once")
+                .outgoing
                 .event_id,
             answer(n)
         );
@@ -191,6 +194,7 @@ async fn cancelling_a_full_lane_dispatch_leaves_no_job_or_reserved_capacity() {
             lane.receiver
                 .try_recv()
                 .expect("cancellation preserves queued jobs")
+                .outgoing
                 .event_id,
             answer(n)
         );
@@ -207,6 +211,7 @@ async fn cancelling_a_full_lane_dispatch_leaves_no_job_or_reserved_capacity() {
         lane.receiver
             .try_recv()
             .expect("a later send can use the lane")
+            .outgoing
             .event_id,
         answer(cancelled)
     );

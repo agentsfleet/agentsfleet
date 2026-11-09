@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use afd_outbound::{Claimed, Deliver, Verdict};
+use afd_outbound::{Deliver, Outgoing, Verdict};
 
 #[derive(Debug, Default)]
 struct Log {
@@ -103,7 +103,7 @@ fn started(log: &Mutex<Log>, workspace: &Uuid7, event: &Uuid7) {
 }
 
 impl Deliver for Recorder {
-    fn deliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         let (workspace, event) = (job.workspace_id.clone(), job.event_id.clone());
         let failing = self.failing.as_ref() == Some(&event);
         let refusing = self.refusing.as_ref() == Some(&event);

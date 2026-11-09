@@ -37,7 +37,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use afd_outbound::Claimed;
+use afd_outbound::Outgoing;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Verdict};
 use tokio::sync::Notify;
@@ -192,7 +192,7 @@ impl Scripted {
 }
 
 impl Deliver for Scripted {
-    fn deliver(&self, job: &Claimed) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         let at = Instant::now();
         let scripted = self.behaviour_of(job.fleet_id.as_str());
         let (delay, verdict) = match scripted {
@@ -204,8 +204,9 @@ impl Deliver for Scripted {
             None => (Duration::ZERO, Verdict::Delivered),
         };
         let settles = if let Some(behaviour) = scripted {
+            // One obligation per (fleet, event), so the event names the job.
             self.stamp(
-                job.id.as_str(),
+                job.event_id.as_str(),
                 behaviour,
                 at,
                 delay,

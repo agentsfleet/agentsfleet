@@ -25,7 +25,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_db::test_util::mint_id;
-use afd_outbound::Claimed;
+use afd_outbound::Outgoing;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Attempt, Deliver, Posters, Verdict, dispatch};
 
@@ -71,7 +71,7 @@ impl Scripted {
 }
 
 impl Deliver for Scripted {
-    fn deliver(&self, _job: &Claimed) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, _job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         let index = self.attempts.fetch_add(1, Ordering::Relaxed);
         if let Some((on, token)) = &self.cancel_on
             && index == *on
@@ -91,10 +91,8 @@ impl Deliver for Scripted {
     }
 }
 
-fn job() -> Claimed {
-    Claimed {
-        id: afd_db::test_util::mint_id(),
-        token: String::new(),
+fn job() -> Outgoing {
+    Outgoing {
         provider: "slack".to_owned(),
         destination: DESTINATION.to_owned(),
         workspace_id: mint_id(),

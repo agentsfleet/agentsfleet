@@ -135,7 +135,7 @@ async fn claim_once<S: Deliver + 'static>(
     via: Via,
 ) -> Option<i64> {
     let token = match entropy.uuid7(af_core::clock::now()) {
-        Ok(token) => token.as_str().to_owned(),
+        Ok(token) => token,
         Err(failure) => {
             report(EVENT_CLAIM_FAILED, &failure.into());
             return None;

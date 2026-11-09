@@ -87,7 +87,7 @@ impl Ingress {
         obligation::owe(
             connection.as_mut(),
             &row,
-            token.as_str(),
+            &token,
             Delivery {
                 fleet_id: owed.owner,
                 workspace_id: owed.workspace,

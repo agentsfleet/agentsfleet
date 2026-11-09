@@ -147,8 +147,8 @@ async fn a_renewal_that_finds_the_row_taken_ends_the_cycle() {
     let row = ledger.row(&event).await;
     assert!(!row.delivered, "the cycle ended before it could stamp");
     assert_eq!(
-        row.receipt.as_deref(),
-        Some("thief"),
+        row.receipt,
+        super::ledger::thief(),
         "the new holder keeps it"
     );
     ledger.cleanup().await;

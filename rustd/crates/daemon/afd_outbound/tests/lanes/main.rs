@@ -16,7 +16,7 @@
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use afd_outbound::{Claimed, IN_FLIGHT_DELIVERIES, Lanes, Posters};
+use afd_outbound::{Claimed, IN_FLIGHT_DELIVERIES, Lanes, Outgoing, Posters};
 use tokio_util::sync::CancellationToken;
 
 #[path = "../support/gated_poster.rs"]
@@ -79,13 +79,16 @@ fn event(w: usize, n: u32) -> Uuid7 {
 fn job(w: usize, n: u32) -> Box<Claimed> {
     Box::new(Claimed {
         id: event(w, n),
-        token: String::new(),
-        provider: PROVIDER.to_owned(),
-        destination: DESTINATION.to_owned(),
-        workspace_id: workspace(w),
-        fleet_id: id(FLEET_ID),
-        event_id: event(w, n),
-        answer: format!("answer {n} for workspace {w}"),
+        token: af_core::id::Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff")
+            .expect("a fixture token"),
+        outgoing: Outgoing {
+            provider: PROVIDER.to_owned(),
+            destination: DESTINATION.to_owned(),
+            workspace_id: workspace(w),
+            fleet_id: id(FLEET_ID),
+            event_id: event(w, n),
+            answer: format!("answer {n} for workspace {w}"),
+        },
     })
 }
 
