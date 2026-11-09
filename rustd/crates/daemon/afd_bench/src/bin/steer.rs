@@ -19,8 +19,9 @@ use afd_bench::profile::Parameter;
 
 /// Fleets to spread steers across when the caller does not say.
 ///
-/// Several, because a single fleet would measure one Dragonfly stream's key rather
-/// than the ingress path: appends to one key serialise on the server.
+/// Several, because a single fleet would measure one fleet row's lock rather
+/// than the ingress path: an admission locks its fleet's row, so appends to one
+/// fleet serialise in Postgres.
 const DEFAULT_FLEETS: u64 = 50;
 
 /// Submitters appending at once when the caller does not say.

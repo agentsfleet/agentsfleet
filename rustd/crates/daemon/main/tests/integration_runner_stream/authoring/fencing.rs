@@ -7,7 +7,7 @@ use afr_supervisor::test_util::Session;
 use agentsfleetd::supervisor::Supervisor;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn stale_connection_cannot_call_propose_renew_or_complete() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, false).await;
@@ -59,7 +59,7 @@ async fn stale_connection_cannot_call_propose_renew_or_complete() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn replacement_during_provider_http_withholds_text_and_keeps_known_usage() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;
@@ -105,7 +105,7 @@ async fn replacement_during_provider_http_withholds_text_and_keeps_known_usage()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn cancellation_during_provider_http_preserves_accounting_without_private_answer() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;

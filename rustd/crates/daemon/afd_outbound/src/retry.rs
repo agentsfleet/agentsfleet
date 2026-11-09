@@ -2,13 +2,9 @@
 //!
 //! # The whole schedule is `backon`'s, not this crate's
 //!
-//! `afd_fleet_lifecycle::install` writes a `Schedule` iterator adapter so
-//! `backon` drives its loop from `afd_dragonfly::Backoff`'s delays, and that is
-//! right THERE: those delays are shared with the subscription hub's reconnect,
-//! so the install and the pump recover from one Dragonfly outage on one proven
-//! curve. Nothing shares this curve. A vendor POST retry has no sibling to
-//! agree with, so the adapter would buy nothing and cost a jitter source, an
-//! `Iterator` impl and its own tests.
+//! A vendor POST retry has no sibling curve to agree with, so a hand-written
+//! schedule would buy nothing and cost a jitter source, an `Iterator` impl and
+//! its own tests.
 //!
 //! [`ExponentialBuilder`] already carries every part of it: the factor, the
 //! floor, the ceiling, the attempt count, and `with_jitter`. Writing those
@@ -25,8 +21,8 @@
 //! # The budget is small on purpose
 //!
 //! Three attempts, two sleeps, under a second of waiting. A longer budget does
-//! not buy reliability here, because the durable stream already provides it: a
-//! job this worker never acknowledges is redelivered to the next process. What
+//! not buy reliability here, because the claim already provides it: a row this
+//! worker stops renewing lapses, and the next claim pass retakes it. What
 //! the inline retry covers is the narrow case that budget suits — a 429, a
 //! brief 5xx — and holding the worker on one job for a minute would stall every
 //! answer behind it, because delivery is serial.
@@ -37,7 +33,7 @@ use backon::ExponentialBuilder;
 
 /// How many times one answer is offered before it is given up on.
 ///
-/// Three, because a crash is already covered by pending redelivery, so this
+/// Three, because a crash is already covered by the lapsed claim, so this
 /// budget only has to cover a transient.
 pub const DELIVERY_ATTEMPTS: usize = 3;
 

@@ -2,8 +2,8 @@
 //!
 //! The continuation row is a NEW event carrying `resumes_event_id`; the
 //! blocked row is never reopened. Both halves are proven here over live
-//! Postgres and Dragonfly: the row that appears, the row that does not change, and
-//! the idempotence that keeps a second answer from continuing the run twice.
+//! Postgres: the row that appears, the row that does not change, and the
+//! idempotence that keeps a second answer from continuing the run twice.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -24,7 +24,7 @@ const NOTE: &str = "looks right";
 
 /// Dimension 6.2 — an approval lands a continuation that resumes the blocked run.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -70,7 +70,7 @@ async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
 
 /// Dimension 6.2 — a denial continues nothing.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_denied_gate_continues_nothing() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -94,7 +94,7 @@ async fn a_denied_gate_continues_nothing() {
 
 /// Dimension 6.2 — a re-answered gate does not continue the run twice.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_second_answer_does_not_continue_the_run_again() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -130,7 +130,7 @@ async fn a_second_answer_does_not_continue_the_run_again() {
 
 /// Dimension 6.2's negative half — resolving a gate leaves the blocked row alone.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -182,7 +182,7 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
 /// event — so every gate kind now honours its answer end to end, which is the
 /// behaviour this test pins.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
     // this gate is past its window, so a sibling's sweep would take it.
     let _sweeper = sweeper_exclusive().await;
@@ -232,7 +232,7 @@ async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
 /// takes the already-resolved path. Without the retry landing it, the run a
 /// person approved would never restart.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -244,8 +244,8 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
     };
     let refusing = Inbox::new(
         lane.pool.clone(),
-        afd_bus::dragonfly::publisher(lane.queue.clone()),
-        Admissions::for_tests(lane.pool.clone(), lane.queue.clone()).with_budgets(full),
+        lane.bus.clone(),
+        Admissions::for_tests(lane.pool.clone(), lane.bus.clone()).with_budgets(full),
     );
     refusing
         .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)

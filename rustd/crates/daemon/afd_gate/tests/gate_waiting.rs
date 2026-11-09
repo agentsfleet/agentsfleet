@@ -2,9 +2,9 @@
 //!
 //! A unit file rather than a case inside the lifecycle suite: these are values
 //! with no datastore anywhere in reach, and the filename is what says so —
-//! `integration_gate_lifecycle.rs` needs Postgres and Dragonfly, this needs a
-//! compiler. Splitting them is what lets the unit lane run this one on a
-//! machine with Docker closed.
+//! `integration_gate_lifecycle.rs` needs Postgres, this needs a compiler.
+//! Splitting them is what lets the unit lane run this one on a machine with
+//! Docker closed.
 //!
 //! The names are wire-visible: an operator reads them in a queue listing, so a
 //! rename here is a rename in somebody's dashboard.

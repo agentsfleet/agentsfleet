@@ -70,7 +70,7 @@ pub const MAX_MS: &str = "max_ms";
 /// What a datastore was asked to do, and how long it spent doing it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct DatastoreCost {
-    /// Commands issued to Dragonfly, or round trips made to Postgres.
+    /// Round trips made to Postgres.
     pub operations: u64,
     /// Wall time spent waiting on them, where a lane measured it.
     ///
@@ -88,10 +88,9 @@ pub struct DatastoreCost {
 /// every lane renamed one on import.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct DatastoreCosts {
-    /// The Dragonfly half. The field name IS the JSON key every baseline in
-    /// bench/baselines/ is read by, so it moves with them or not at all.
-    pub dragonfly: DatastoreCost,
-    /// The Postgres half.
+    /// What Postgres was asked to do. The field name IS the JSON key every
+    /// baseline in bench/baselines/ is read by, so it moves with them or not
+    /// at all.
     pub postgres: DatastoreCost,
 }
 

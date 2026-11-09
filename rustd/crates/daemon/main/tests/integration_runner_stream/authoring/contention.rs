@@ -10,7 +10,7 @@ const CALLERS: usize = 100;
 const CONCURRENT_REPORTS: usize = 4;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn contending_completion_retries_share_one_saved_acknowledgement_and_charge() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, false).await;

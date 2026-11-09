@@ -3,7 +3,7 @@
 use super::{Fleet, Method, StatusCode, json_body, mint, send};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_applied_revision_records_its_origin_once() {
     for origin in ["cli", "dashboard", "chat"] {
         let fleet = Fleet::create().await;
@@ -48,7 +48,7 @@ async fn an_applied_revision_records_its_origin_once() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_improvement_advances_only_setup_and_replays_after_the_private_draft_closes() {
     let fleet = Fleet::create().await;
     let (draft, request) = fleet.improvement().await;

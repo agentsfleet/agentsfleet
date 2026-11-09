@@ -119,7 +119,7 @@ fn the_replay_identity_is_a_function_of_the_signed_bytes_alone() {
         id.chars()
             .all(|glyph| glyph.is_ascii_hexdigit() && !glyph.is_ascii_uppercase()),
         "lowercase hex, so a claim written by either daemon during a cutover \
-         is the same Dragonfly key"
+         is the same ledger key"
     );
 }
 

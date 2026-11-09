@@ -194,7 +194,7 @@ async fn a_fleet_killed_mid_run_with_room_still_renews() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_renewal_during_a_catalogue_fault_logs_its_tokens_unpriced() {
-    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let held = held_in(Fixtures::create_isolated().await).await;
     let plane = held.fixtures.plane();
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
@@ -231,7 +231,7 @@ async fn a_renewal_during_a_catalogue_fault_logs_its_tokens_unpriced() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged() {
-    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let held = held_in(Fixtures::create_isolated().await).await;
     set_fleet_config(&held, DEEP_DAILY_BUDGET).await;
     // A priced model, so the refusal below is the fault and not a missing rate.
     held.fixtures.seed_model_rate(PROVIDER, MODEL).await;

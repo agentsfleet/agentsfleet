@@ -12,7 +12,7 @@ use afd_db::test_util::mint_id;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
-use super::{Fallible, lane::Lane, queue::over_fake};
+use super::{Fallible, lane::Lane, queue::over_bus};
 
 /// A connector and a thread, as a producer owning a reply surface states them.
 pub(super) const CONNECTOR: &str = "slack";
@@ -64,7 +64,7 @@ async fn stamps(lane: &Lane, id: &Uuid7) -> Fallible<Stamps> {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let (_rings, admissions) = over_bus(&lane).await?;
     let key = mint_id();
 
     let first = admit(&admissions, steer(&lane, key.as_str(), ReplyTo::None)).await?;
@@ -90,7 +90,7 @@ async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let (_rings, admissions) = over_bus(&lane).await?;
 
     let admitted = admit(&admissions, steer(&lane, mint_id().as_str(), ReplyTo::None)).await?;
     let row = stamps(&lane, &admitted.stored.id).await?;
@@ -112,7 +112,7 @@ async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn two_admissions_in_one_instant_order_by_their_sequence() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let (_rings, admissions) = over_bus(&lane).await?;
     let (first_key, second_key) = (mint_id(), mint_id());
     let first = admissions
         .prepare(steer(&lane, first_key.as_str(), ReplyTo::None))

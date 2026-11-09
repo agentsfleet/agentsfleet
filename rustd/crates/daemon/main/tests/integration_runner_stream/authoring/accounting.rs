@@ -6,7 +6,7 @@ use af_wire::authoring::{FailureReason, Knowledge, Outcome, Report};
 use agentsfleetd::supervisor::Supervisor;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn unknown_completion_keeps_its_obligation_until_the_same_report_can_settle() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;
@@ -61,7 +61,7 @@ fn unknown_report(fixture: &AuthoringFixture) -> Report {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn completion_accounting_replays_after_private_draft_deletion_without_another_charge() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, false).await;

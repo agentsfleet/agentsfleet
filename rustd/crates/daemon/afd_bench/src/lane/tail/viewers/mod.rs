@@ -131,7 +131,7 @@ impl Rung {
 ///
 /// # Errors
 ///
-/// A publish Dragonfly refused, a viewer task that was lost, or a latency the
+/// A publish the Bus refused, a viewer task that was lost, or a latency the
 /// histogram would not hold.
 pub(super) async fn rung(
     live: &Live,

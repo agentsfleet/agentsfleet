@@ -104,9 +104,8 @@ impl Fixture {
         }
     }
 
-    /// The production router over this fixture's rows, its queue and its vault.
-    pub(super) async fn router(&self) -> axum::Router {
-        let queue = harness::connect_redis().await;
+    /// The production router over this fixture's rows, its bus and its vault.
+    pub(super) fn router(&self) -> axum::Router {
         harness::Fleet::live(
             self.database.clone(),
             &self.subject,
@@ -114,7 +113,7 @@ impl Fixture {
         )
         .with_owned_workspace(self.other_workspace.clone())
         .with_platform_admin(self.admin.clone())
-        .with_approval_queue(self.database.clone(), queue)
+        .with_approval_queue(self.database.clone(), harness::bus())
         .router()
     }
 

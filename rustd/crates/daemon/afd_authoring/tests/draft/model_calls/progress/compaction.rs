@@ -43,7 +43,7 @@ async fn checkpoint(f: &Fixture, attempt: &Attempt) -> Option<Value> {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn summary_progress_resumes_only_after_a_checkpoint_is_readable() {
     let (f, attempt, mut live) = ready().await;
     let request = model_calls::fixture::request(&attempt);
@@ -85,7 +85,7 @@ async fn summary_progress_resumes_only_after_a_checkpoint_is_readable() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn unusable_summary_reports_interruption_and_retains_known_usage_without_a_checkpoint() {
     let (f, attempt, mut live) = ready().await;
     let task = live.call(&f.runner, &attempt, model_calls::fixture::request(&attempt));
@@ -116,7 +116,7 @@ async fn unusable_summary_reports_interruption_and_retains_known_usage_without_a
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn stop_withholds_the_summary_ending_while_its_known_usage_still_settles() {
     let (f, attempt, mut live) = ready().await;
     let task = live.call(&f.runner, &attempt, model_calls::fixture::request(&attempt));
@@ -147,7 +147,7 @@ async fn stop_withholds_the_summary_ending_while_its_known_usage_still_settles()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn changed_or_removed_history_withholds_late_notes_but_settles_known_usage() {
     for remove in [false, true] {
         let (f, attempt, mut live) = ready().await;

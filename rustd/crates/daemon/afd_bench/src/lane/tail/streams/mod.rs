@@ -155,7 +155,7 @@ impl Watch {
 ///
 /// # Errors
 ///
-/// A publish Dragonfly refused, or a stream task that was lost.
+/// A publish the Bus refused, or a stream task that was lost.
 pub(super) async fn rung(
     live: &Live,
     publisher: &Handle,

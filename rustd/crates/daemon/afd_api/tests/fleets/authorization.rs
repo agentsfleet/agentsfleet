@@ -2,13 +2,12 @@
 //!
 //! # What this suite is for, and what it deliberately is not
 //!
-//! The install writes a row, creates a Dragonfly stream and a consumer group, and
-//! flips a status; the list is one statement; the PATCH is a transaction holding
-//! a row lock. None of that can be stubbed honestly, so the harness answers the
-//! refusal a datastore that would not answer gives, and what these tests pin is
-//! everything a request meets before either datastore is reached: the guard, the
-//! scope rung, the OWNERSHIP layer, the path identifiers, and every body and
-//! query refusal.
+//! The install writes a row and flips a status; the list is one statement; the
+//! PATCH is a transaction holding a row lock. None of that can be stubbed
+//! honestly, so the harness answers the refusal a datastore that would not
+//! answer gives, and what these tests pin is everything a request meets before
+//! the datastore is reached: the guard, the scope rung, the OWNERSHIP layer, the
+//! path identifiers, and every body and query refusal.
 //!
 //! # Dimension 3.3 lives here
 //!

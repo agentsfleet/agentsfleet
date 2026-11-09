@@ -20,8 +20,8 @@ use super::{
     DETAIL_GITHUB_RECONNECT, DETAIL_GRANT_REQUIRED, DETAIL_INTEGRATION_NOT_CONNECTED,
     DETAIL_LEASE_LOST, DETAIL_LEASE_MAX_RUNTIME, DETAIL_LEASE_NOT_FOUND, DETAIL_MESSAGE_LIMIT,
     DETAIL_MESSAGE_NO_CHANNEL, DETAIL_MINT_FAILED, DETAIL_MINT_UNCONFIGURED,
-    DETAIL_QUEUE_UNAVAILABLE, DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS,
-    DETAIL_STALE_FENCE, DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
+    DETAIL_REGISTRATION_FAILED, DETAIL_RENEWAL_NO_CREDITS, DETAIL_STALE_FENCE,
+    DETAIL_VAULT_DATA_INVALID, Error, ErrorKind,
 };
 
 impl Error {
@@ -59,7 +59,6 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
             | ErrorKind::Credential { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -127,7 +126,6 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
             | ErrorKind::Credential { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -210,7 +208,6 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
             | ErrorKind::Credential { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -288,7 +285,6 @@ impl Error {
             | ErrorKind::Context { .. }
             | ErrorKind::Gate { .. }
             | ErrorKind::Credential { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -355,7 +351,6 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
             | ErrorKind::Credential { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -422,7 +417,6 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
             | ErrorKind::Credential { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -552,7 +546,6 @@ impl Error {
             ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::ConfigUnreadable { .. }
             | ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::VaultDataInvalid => error_code::VAULT_DATA_INVALID,
@@ -628,7 +621,6 @@ impl Error {
             // `obligation::receipt`, and neither touches the stream.
             | ErrorKind::Outbound { .. }
             | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
-            ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
             ErrorKind::Billing { ref source } => source.detail(),
             ErrorKind::Credential { ref source } => source.detail(),
             ErrorKind::Gate { ref source } => source.detail(),

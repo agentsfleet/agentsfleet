@@ -2,13 +2,13 @@
 //!
 //! §5 shipped [`Dependencies`] as a trait and stopped there deliberately:
 //! routing and the response shape are `afd_api`'s, and what it MEANS to reach
-//! Postgres and Dragonfly belongs to whoever owns the connections. This is that
+//! Postgres and the bus belongs to whoever owns the connections. This is that
 //! half.
 //!
 //! # Both at once, and both bounded
 //!
 //! The two probes run concurrently. Sequentially, a Postgres that is timing out
-//! would delay the Dragonfly answer by the whole database budget, and `/readyz`
+//! would delay the bus answer by the whole database budget, and `/readyz`
 //! would take longer to say "not ready" the worse things got — the moment an
 //! orchestrator most needs a fast answer.
 //!
@@ -23,7 +23,7 @@
 //! `probe` cannot fail. An unreachable dependency is a `false`, because a third
 //! outcome beyond ready and not-ready is one an orchestrator has nothing to do
 //! with — and because the two fields stay separate all the way to the wire, a
-//! red database and a red queue remain different incidents.
+//! red database and a red bus remain different incidents.
 
 use std::time::Duration;
 

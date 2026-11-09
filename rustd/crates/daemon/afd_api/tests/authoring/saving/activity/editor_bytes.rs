@@ -9,7 +9,7 @@ const ANSWER_TEXT_BYTES: i32 = 112 * 1024;
 const CONTEXT_LIMIT_BYTES: usize = 4 * 1024 * 1024;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn editor_bounds_complete_response_bytes_without_losing_recent_turns() {
     let saved = Saved::create(json!({})).await;
     seed_conversations(&saved, &saved.case.router, &saved.case.base.token).await;

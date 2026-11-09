@@ -1,4 +1,4 @@
-//! The lane's database, its Dragonfly, and the rows a gate needs to exist.
+//! The lane's database, its bus, and the rows a gate needs to exist.
 //!
 //! Built on [`afd_db::test_util::TestDatabase`], which hands back the database
 //! the lane already migrated.
@@ -35,11 +35,12 @@
 //! resolved. Those two groups take [`sweeper_exclusive`] and run one at a time;
 //! everything else still runs concurrently.
 //!
-//! Dragonfly carries activity frames and wake notifications. Continuations
-//! commit to the admissions ledger; notification failure cannot undo them.
+//! Each lane's in-process bus carries activity frames and wake notifications,
+//! and a test subscribes through the same handle the inbox publishes on.
+//! Continuations commit to the admissions ledger; notification failure cannot
+//! undo them.
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 #![allow(
@@ -47,16 +48,12 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
-use std::time::Duration;
-
-use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use afd_approval::Inbox;
+use afd_bus::Handle;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TestDatabase, WorkspaceSeed};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_fleet_lifecycle::FleetStatus;
 use jiff::Timestamp;
 
@@ -67,12 +64,6 @@ mod read;
 mod seed;
 
 pub(crate) use self::seed::Window;
-
-/// The environment knob naming the lane's Dragonfly.
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-
-/// The environment knob naming its certificate authority.
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Serialises the tests the global sweeper cannot be isolated from.
 ///
@@ -101,14 +92,16 @@ pub(crate) const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 /// schema's `ck_*_id_uuidv7` admits it.
 const TENANT: &str = "0195b4ba-8d3a-7a11-8abc-000000000001";
 
-/// A migrated database, a queue, and one fleet to hang gates from.
+/// A migrated database, a bus, and one fleet to hang gates from.
 pub(crate) struct Lane {
     /// Held, not used: `TestDatabase::shared` is what resolves the lane's URL,
     /// and dropping it early would close nothing but would make the pool's
     /// provenance unreadable.
     _database: TestDatabase,
     pub(crate) pool: Db,
-    pub(crate) queue: Dragonfly,
+    /// The bus the lane's inbox and admissions publish on, and the one its
+    /// tests subscribe through.
+    pub(crate) bus: Handle,
     pub(crate) inbox: Inbox,
     /// The fleet every seeded gate belongs to.
     pub(crate) fleet: Uuid7,
@@ -135,19 +128,18 @@ impl Lane {
     async fn open(workspace: Uuid7, fleet: Uuid7) -> Self {
         let database = TestDatabase::shared();
         let pool = database.open(DbRole::Api, &[]).await;
-        let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config())
-            .await
-            .expect("the lane's Dragonfly must be reachable");
+        let (bus, _server) =
+            afd_bus::test_util::detached().expect("an in-process bus needs no broker");
 
         let lane = Self {
             inbox: Inbox::new(
                 pool.clone(),
-                afd_bus::dragonfly::publisher(queue.clone()),
-                afd_admission::Admissions::for_tests(pool.clone(), queue.clone()),
+                bus.clone(),
+                afd_admission::Admissions::for_tests(pool.clone(), bus.clone()),
             ),
             _database: database,
             pool,
-            queue,
+            bus,
             fleet,
             workspace,
             tenant: Uuid7::parse(TENANT).expect("the fixture tenant id is well formed"),
@@ -200,34 +192,6 @@ impl Lane {
         .await
         .expect("seeding a fleet");
     }
-}
-
-/// The lane's Dragonfly configuration.
-pub(crate) fn dragonfly_config() -> DragonflyConfig {
-    let url = ProcessEnv.get(DRAGONFLY_URL_KNOB).unwrap_or_else(|| {
-        panic!("{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`")
-    });
-    DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
-        .with_request_timeout(Duration::from_secs(5))
-}
-
-/// A queue that will not answer: a loopback port nobody listens on.
-///
-/// `Dragonfly::unreachable` opens no socket, and this address makes sure the
-/// first command opens none either. A handle over the LANE's Dragonfly would
-/// connect lazily and succeed, which is a live queue wearing a dead name; the
-/// lane's Dragonfly is shared by every test binary, so it is never the one taken
-/// down.
-const NOWHERE: &str = "redis://127.0.0.1:1";
-
-/// A handle over a Dragonfly that will not take a single command.
-pub(crate) fn dead_queue() -> Dragonfly {
-    Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail")
 }
 
 /// A fresh identifier, so no two fixtures can name each other's rows.

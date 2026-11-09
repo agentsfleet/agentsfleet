@@ -32,7 +32,7 @@ pub const ROWS_PER_RUNNER: u64 = 1;
 
 /// The actor every bench-written event carries, seeded or steered.
 ///
-/// One spelling, so a reader grepping a stream for bench entries has one
+/// One spelling, so a reader grepping the ledger for bench rows has one
 /// thing to grep for. It is a person's steer actor (`steer:<subject>`), because
 /// a live run folds only a person's messages, and the burst measures folds.
 pub const BENCH_ACTOR: &str = "steer:bench";
@@ -126,7 +126,7 @@ pub async fn empty_fleet(
 ///
 /// # Errors
 ///
-/// Whatever Postgres or Dragonfly refused, naming which.
+/// Whatever Postgres refused.
 pub async fn ready_fleet(
     database: &Db,
     bus: &Handle,
@@ -198,13 +198,13 @@ pub(crate) async fn rows(
 /// One event of `event_type` admitted onto the fleet, through the ledger's own
 /// write path.
 ///
-/// `Admissions::admit` is what ingress runs: it writes the `fleet.admissions`
-/// row, appends the entry under that row's id, records the receipt and marks
-/// the fleet ready. Seeding through it leaves exactly the state ingress leaves,
-/// so the lease path's delivery stamp meets a real row, as in production.
+/// `Admissions::admit` is what ingress runs: it commits the `fleet.admissions`
+/// row, then publishes a best-effort wake on the Bus. Seeding through it
+/// leaves exactly the state ingress leaves, so the lease path's delivery stamp
+/// meets a real row, as in production.
 ///
-/// A queue that refuses the append is the ledger's deferral, not an error: the
-/// row stands without a receipt and the run's ledger backlog shows it.
+/// A wake the Bus drops is not an error: the committed row is what the lease
+/// path reads, and the run's ledger backlog shows it until a lease delivers it.
 pub(crate) async fn enqueue(
     database: &Db,
     bus: &Handle,

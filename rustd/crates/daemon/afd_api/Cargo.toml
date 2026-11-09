@@ -21,6 +21,7 @@ test-util = [
   "afd_api_tenant/test-util",
   "afd_auth/test-util",
   "af_webhook/test-util",
+  "afd_bus/test-util",
   "af_core/test-util",
   "af_observability/test-util",
 ]
@@ -80,6 +81,8 @@ tracing.workspace = true
 # The route table is pure, so it needs no runtime to test — the admission layer
 # and the envelope writer bring tokio and the subscriber with them.
 [dev-dependencies]
+# The in-process bus a live suite's publishers and streams share, and the
+# unreachable one the harness builds every other store over.
 afd_bus = { workspace = true, features = ["test-util"] }
 garde.workspace = true
 af_context.workspace = true
@@ -159,9 +162,6 @@ hyper.workspace = true
 # transport-class refusal without a datastore, and the live suites seed their
 # fleets through `FleetSeed`.
 afd_db = { workspace = true, features = ["test-util"] }
-# The login surface and fleet setup reach a queue, so the harness needs
-# `Redis::unreachable` to build the real stores over one that answers nothing.
-afd_dragonfly = { workspace = true, features = ["test-util"] }
 # A library dependency too, but named again here for its feature: the thread
 # handler's page arithmetic is decided over `EventDetailRow`, which is
 # `#[non_exhaustive]`, so the unit tests need that crate's fixture seam.

@@ -84,7 +84,7 @@ async fn received(fixtures: &Fixtures) -> afd_fleet::lease::Acquired {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let acquired = received(&fixtures).await;
     let fleet = &acquired.fleet_id;
     let event = &acquired.event_id;
@@ -131,7 +131,7 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     // acknowledgement was lost comes back; without the `status = 'received'`
     // predicate the second pass would rewrite the row under a different label,
     // and the event that a human denied would carry a billing refusal instead.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let acquired = received(&fixtures).await;
     let fleet = &acquired.fleet_id;
     let event = &acquired.event_id;
@@ -167,7 +167,7 @@ async fn test_a_refusal_with_no_instruction_stores_null_rather_than_empty() {
     // pass every `IS NOT NULL` check and render as a blank instruction in the
     // dashboard, which reads as "we have nothing to tell you" rather than as
     // "there was nothing to tell".
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let acquired = received(&fixtures).await;
     let fleet = &acquired.fleet_id;
     let event = &acquired.event_id;

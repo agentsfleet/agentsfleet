@@ -7,7 +7,7 @@ use model_calls::compaction::competing;
 use sqlx::Connection as _;
 
 #[tokio::test]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn a_competing_checkpoint_withholds_late_notes_but_settles_known_usage() {
     let (f, attempt, mut live) = ready().await;
     let task = live.call(&f.runner, &attempt, model_calls::fixture::request(&attempt));
@@ -39,7 +39,7 @@ async fn a_competing_checkpoint_withholds_late_notes_but_settles_known_usage() {
 }
 
 #[tokio::test]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn a_failed_checkpoint_write_rolls_back_the_receipt_without_publishing_private_notes() {
     let (f, attempt, mut live) = ready_in(Fixture::isolated().await).await;
     let task = live.call(&f.runner, &attempt, model_calls::fixture::request(&attempt));

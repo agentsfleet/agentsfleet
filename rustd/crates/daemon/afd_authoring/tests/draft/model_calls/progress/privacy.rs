@@ -13,19 +13,19 @@ enum Revoke {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn stop_withholds_later_preview_and_retains_known_usage() {
     revoked(Revoke::Stop).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn deletion_withholds_later_preview_and_cannot_recreate_private_text() {
     revoked(Revoke::Delete).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn membership_revocation_withholds_later_preview_but_usage_still_settles() {
     revoked(Revoke::Membership).await;
 }

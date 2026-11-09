@@ -1,4 +1,4 @@
-//! Workspace stream opening over live Postgres and Dragonfly.
+//! Workspace stream opening over live Postgres and an in-process bus.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -23,7 +23,7 @@ use axum::body::BodyDataStream;
 use self::fixture::{Fixture, SUBJECT, Wall, data_of, next_chunk, open_stream, stream_ends};
 use self::harness::Fleet;
 
-/// More frames than the hub's per-subscriber queue (256) holds, so a body
+/// More frames than the bus's per-reader buffer (256) holds, so a body
 /// nobody reads falls behind and the fan-in reports the gap.
 const GAP_FRAMES: usize = 400;
 
@@ -70,18 +70,17 @@ async fn assert_revoked_wall_closes(body: &mut BodyDataStream) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_workspace_stream_announces_its_live_fleet_set() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let hub = harness::live_hub().await;
     let fleet = Fleet::live(
         fixture.database.clone(),
         SUBJECT,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())
-    .with_live_hub(hub.clone());
+    .with_live_bus(harness::bus());
     let ownership = fleet.ownership();
     let fleet_store = fleet.fleet_store();
     let router = fleet.router();
@@ -105,7 +104,6 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
     tokio::time::advance(Duration::from_secs(11)).await;
     assert_revoked_wall_closes(&mut body).await;
     drop(body);
-    hub.shutdown();
     tokio::time::resume();
     fixture.cleanup().await;
 }
@@ -119,7 +117,7 @@ async fn a_workspace_stream_announces_its_live_fleet_set() {
 /// out (`fleet_ids` carries the fleet added since the opening) and the map is
 /// empty, so a client leaves what it has standing.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
     let fixture = Fixture::with_pool(&[
         (POOL_SIZE_KNOB, ONE_CONNECTION),
@@ -173,7 +171,7 @@ async fn a_hello_whose_counters_read_is_refused_still_announces_the_set() {
 /// the second is a `hello` carrying where every fleet stands now — the
 /// dropped frames are exactly the ones that moved the counters.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_gap_is_followed_by_a_fresh_hello_with_the_fleets_counters() {
     let mut wall = Wall::open(Fixture::create().await).await;
     wall.publish(GAP_FRAMES).await;

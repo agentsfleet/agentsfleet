@@ -5,7 +5,7 @@ use af_core::id::Uuid7;
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn editor_context_requires_the_private_draft_write_scope() {
     use crate::authoring::send;
     use afd_auth::Scope;
@@ -31,7 +31,7 @@ async fn editor_context_requires_the_private_draft_write_scope() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn editor_context_combines_fleet_private_draft_and_receipts() {
     let saved = Saved::create(json!({})).await;
     let view = saved.get("/authoring-context").await;
@@ -54,7 +54,7 @@ async fn editor_context_combines_fleet_private_draft_and_receipts() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn editor_history_pages_bind_creator_and_never_expose_another_members_chat() {
     use crate::authoring::{privacy, send};
     use http::{Method, StatusCode};
@@ -93,7 +93,7 @@ async fn editor_history_pages_bind_creator_and_never_expose_another_members_chat
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn editor_returns_a_recent_window_with_a_reusable_message_boundary() {
     use crate::authoring::{json_body, send};
     use http::{Method, StatusCode};

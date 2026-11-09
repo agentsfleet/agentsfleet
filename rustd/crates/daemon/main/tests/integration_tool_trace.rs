@@ -90,7 +90,7 @@ fn fenced(sent: &Value, fence: u64) -> Value {
 /// Dimension 3.3. A settled report stores the trace beside its answer, with
 /// every call id fenced as the live frames carry it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_report_writes_tool_calls_with_result() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -116,7 +116,7 @@ async fn test_report_writes_tool_calls_with_result() {
 
 /// Dimension 3.2. A trace past a bound is dropped; the run still settles.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_oversize_tool_trace_dropped_report_settles() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -138,7 +138,7 @@ async fn test_oversize_tool_trace_dropped_report_settles() {
 
 /// Dimension 3.4. A report the fence refuses writes neither answer nor trace.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fenced_report_writes_no_tool_calls() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -218,7 +218,7 @@ pub(crate) async fn settle_with(
 /// Dimension 4.1. The single-event read serves the stored trace, and `null`
 /// for a row that recorded none.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_detail_serves_tool_calls() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
@@ -264,7 +264,7 @@ async fn test_event_detail_serves_tool_calls() {
 
 /// Dimension 4.3. The events list never carries the trace.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_list_omits_tool_calls() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
@@ -290,7 +290,7 @@ async fn test_event_list_omits_tool_calls() {
 
 /// Known zero calls stay distinct from unavailable data through the tenant API.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_reported_empty_trace_is_served_as_known_zero_calls() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;

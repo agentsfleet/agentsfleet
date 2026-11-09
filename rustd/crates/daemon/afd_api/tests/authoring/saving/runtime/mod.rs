@@ -48,8 +48,8 @@ impl Saved {
         let router = case
             .base
             .services(&Scope::ALL)
-            .with_fleet_queue(db.clone(), case.queue.clone())
-            .with_steering_queue(db, case.queue.clone())
+            .with_fleet_queue(db.clone(), case.bus.clone())
+            .with_steering_queue(db, case.bus.clone())
             .router();
         let workspace = format!("/v1/workspaces/{}", case.base.workspace.as_str());
         let thread = format!("{item}/messages");
@@ -149,7 +149,7 @@ impl Saved {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_saved_fleet_serves_messages_history_and_grants() {
     let saved = Saved::create().await;
     let grant = mint();

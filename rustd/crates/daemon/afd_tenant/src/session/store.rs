@@ -39,7 +39,7 @@ const CONTEXT_ABORT: &str = "abort device sessions";
 
 /// The store every device-login transition goes through.
 #[derive(Debug, Clone)]
-pub struct SessionStore {
+pub struct DeviceSessions {
     database: Db,
 }
 
@@ -84,7 +84,7 @@ pub(crate) enum Write {
     Consume,
 }
 
-impl SessionStore {
+impl DeviceSessions {
     /// Binds the store to the runtime pool.
     #[must_use]
     pub const fn new(database: Db) -> Self {

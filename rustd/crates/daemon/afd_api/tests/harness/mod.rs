@@ -12,7 +12,7 @@
 //! is the parity target, so a fake store would prove a handler against SQL
 //! nobody runs. Each store here therefore holds a pool over an address that
 //! answers nothing ([`afd_db::Db::unreachable`]) and, where it needs one, a
-//! queue built the same way ([`afd_dragonfly::Dragonfly::unreachable`]). That is
+//! bus that refuses the same way ([`afd_bus::test_util::unreachable`]). That is
 //! exactly what a datastore outage looks like from the request path, and it
 //! lets a suite prove the transport-class refusal (RULE ECL) without stopping a
 //! container.
@@ -63,8 +63,6 @@ use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_events::{History, Steer};
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
@@ -91,7 +89,6 @@ mod stubs_identity;
 mod stubs_ingress;
 mod stubs_provider;
 
-pub(crate) use self::readiness::unreachable_queue;
 use self::readiness::{NOWHERE_GITHUB, NOWHERE_SLACK, unreachable_pool};
 mod stubs_runner;
 mod stubs_tenant;
@@ -127,9 +124,9 @@ pub(crate) const SCHEDULE_DESTINATION: &str =
 pub(crate) const SCHEDULE_API_BASE: &str = "https://qstash.fixture.test/v2";
 
 pub(crate) use self::support::{
-    ERROR_CODE, assert_reached_the_verb, code_of, concrete_path, connect_redis, detail_of,
-    dragonfly_config, error_code, exchange, field_of, file_runner, items, json_body, live_hub,
-    presented, problem, refusal_code, runner_id, send, send_with_headers, tenant, text,
+    ERROR_CODE, assert_reached_the_verb, bus, code_of, concrete_path, detail_of, error_code,
+    exchange, field_of, file_runner, items, json_body, presented, problem, refusal_code, runner_id,
+    send, send_with_headers, tenant, text,
 };
 
 /// A Postgres nobody is listening on.
@@ -139,9 +136,6 @@ pub(crate) use self::support::{
 /// difference between a suite that runs in milliseconds and one that runs in
 /// acquire budgets.
 const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
-
-/// A Dragonfly nobody is listening on, for the same reason and on the same port.
-const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
 
 /// The pool knob naming how long an acquire may spend before it reports.
 const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
@@ -225,15 +219,14 @@ pub(crate) fn raw_secret_envelope(
 /// The production ingress over `database`, for a suite that drives one of its
 /// reads directly rather than through a delivery.
 ///
-/// Its vault seals under [`FIXTURE_KEK`] and its queue is
-/// [`unreachable_queue`]; the reads a suite runs through it reach neither.
+/// Its vault seals under [`FIXTURE_KEK`] and its bus is
+/// [`afd_bus::test_util::unreachable`]; the reads a suite runs through it
+/// reach neither.
 pub(crate) fn unreachable_ingress(database: Db) -> afd_ingress::Ingress {
-    let queue = Dragonfly::unreachable(&unreachable_queue())
-        .expect("a lazy manager opens no socket, so it cannot fail to open one");
     afd_ingress::Ingress::new(
         database.clone(),
         vault(database.clone()),
-        afd_admission::Admissions::for_tests(database, queue),
+        afd_admission::Admissions::for_tests(database, afd_bus::test_util::unreachable()),
     )
 }
 

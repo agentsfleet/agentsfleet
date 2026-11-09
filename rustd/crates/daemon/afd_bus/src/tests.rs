@@ -64,8 +64,8 @@ async fn reconnect_and_lag_cross_the_object_boundary_without_backend_types() -> 
     let subject = Subject::DraftEvents(Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000001")?);
     let mut first = bus.subscribe(&subject).await?;
     let mut second = bus.subscribe(&subject).await?;
-    server.confirm(&subject);
-    server.confirm(&subject);
+    server.gap(&subject);
+    server.gap(&subject);
     assert_eq!(first.recv().await?, Received::Gap);
     assert_eq!(second.recv().await?, Received::Gap);
     for _ in 0..513 {

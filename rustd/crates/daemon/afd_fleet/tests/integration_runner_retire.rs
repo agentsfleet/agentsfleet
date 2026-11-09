@@ -85,7 +85,7 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
 async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     // With a queue: this is the one retirement test that takes a lease, and
     // the lease path publishes to it.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
         tenant,

@@ -21,7 +21,6 @@ use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_db::Db;
-use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_gate::gate::Gates;
 use jiff::Timestamp;
 
@@ -31,9 +30,6 @@ use crate::lease::pull::LeaseService;
 use crate::lease::store::Leases;
 use afd_memory::Memories;
 
-/// A Dragonfly nobody listens on: port 1 is reserved and unbound.
-const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
-
 /// The instant every fixture here is stamped at.
 pub(crate) const AT: Timestamp = Timestamp::constant(1_767_225_600, 0);
 
@@ -42,19 +38,14 @@ pub(crate) fn database() -> Db {
     afd_db::test_util::unreachable_db()
 }
 
-/// A queue whose every command fails on connection refusal.
-pub(crate) fn queue() -> Dragonfly {
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE_QUEUE.to_owned());
-    Dragonfly::unreachable(&config).expect("a lazy manager opens no socket")
+/// A bus whose every publish and subscribe fails.
+pub(crate) fn bus() -> afd_bus::Handle {
+    afd_bus::test_util::unreachable()
 }
 
 /// A lease store over both.
 pub(crate) fn leases() -> Leases {
-    Leases::new(
-        database(),
-        afd_bus::dragonfly::publisher(queue()),
-        Entropy::new(),
-    )
+    Leases::new(database(), bus(), Entropy::new())
 }
 
 /// The whole lease plane over both.
@@ -67,11 +58,7 @@ pub(crate) fn plane() -> LeaseService {
     LeaseService {
         task_reports: None,
         leases: leases(),
-        gates: Gates::new(
-            database(),
-            afd_bus::dragonfly::publisher(queue()),
-            Entropy::new(),
-        ),
+        gates: Gates::new(database(), bus(), Entropy::new()),
         accounts: Accounts::new(database()),
         biller: Arc::new(biller()),
         memories: Memories::new(database(), Entropy::new()),

@@ -1,13 +1,8 @@
 //! Each Save owns its private draft, wallet and model.
 
 use super::super::{fixture::Fixture, json_body, mint, send, send_with_headers};
-use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::event::status::RECORDED;
 use afd_auth::Scope;
-use afd_dragonfly::{
-    Dragonfly,
-    config::{DragonflyConfig, DragonflyRole},
-};
 use afd_events::activity::{ACTOR_ACTIVITY, EVENT_TYPE_ACTIVITY};
 use axum::Router;
 use http::{Method, StatusCode, header};
@@ -16,7 +11,8 @@ use serde_json::{Value, json};
 pub(super) struct Case {
     pub(super) base: Fixture,
     pub(super) router: Router,
-    pub(super) queue: Dragonfly,
+    /// The bus every producer under test notifies through, and a test observes.
+    pub(super) bus: afd_bus::Handle,
 }
 
 impl Case {
@@ -26,24 +22,12 @@ impl Case {
 
     pub(super) async fn with_budgets(budgets: afd_admission::Budgets) -> Self {
         let base = Fixture::create().await;
-        let config = DragonflyConfig::from_url(
-            DragonflyRole::Default,
-            ProcessEnv
-                .get("TEST_DRAGONFLY_URL")
-                .expect("live cluster URL"),
-        );
-        let queue = afd_dragonfly::test_util::connect_live(&config)
-            .await
-            .expect("live cluster");
+        let bus = crate::harness::bus();
         let router = base
             .services(&Scope::ALL)
-            .with_fleet_queue_budgets(base.db.clone(), queue.clone(), budgets)
+            .with_fleet_queue_budgets(base.db.clone(), bus.clone(), budgets)
             .router();
-        Self {
-            base,
-            router,
-            queue,
-        }
+        Self { base, router, bus }
     }
 
     pub(super) fn collection(&self) -> String {

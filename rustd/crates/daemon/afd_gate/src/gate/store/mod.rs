@@ -1,5 +1,5 @@
 //! The reads a recorded gate is resolved through: the durable `approval_gates`
-//! row, and nothing else since M244 moved the event reference off Dragonfly.
+//! row, and nothing else.
 
 use std::sync::Arc;
 

@@ -156,7 +156,7 @@ fn breadcrumb(capture: &Capture, level: Level, owner: &Bound) -> CapturedEvent {
 #[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
 async fn test_a_rotated_refresh_token_is_written_back_before_the_mint_returns() {
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let handle = format!(
         r#"{{"integration":"zoho","refresh_token":"{POSTED}","accounts_base":"{EU_ACCOUNTS}"}}"#
     );
@@ -188,7 +188,7 @@ async fn test_a_handle_that_posted_no_refresh_token_is_left_as_stored() {
     // Nothing to compare the stored row against, so nothing is written: a
     // replacement with no posted value could overwrite a reconnect's token.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let handle = format!(r#"{{"integration":"zoho","accounts_base":"{EU_ACCOUNTS}"}}"#);
 
     let (owner, minted) = mint_rotating(&fixtures, &handle, During::Nothing).await;
@@ -206,7 +206,7 @@ async fn test_a_failed_write_back_still_hands_over_the_minted_token() {
     // The vendor already consumed the posted token and issued a working access
     // token; refusing now would cost the run a credential it holds.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let handle = format!(r#"{{"integration":"zoho","refresh_token":"{POSTED}"}}"#);
 
     let capture = Capture::install();

@@ -20,10 +20,6 @@
 //! `af_fleet_runtime::Error` lifts whole into `ConfigUnreadable`: a fleet whose
 //! stored config will not parse must not run under a config this daemon
 //! guessed at, and the parser's own error says which rule the document broke.
-//!
-//! `afd_db` and `afd_dragonfly` stay separate kinds because the two datastores
-//! fail independently, and a runner backs off the same way from either only
-//! when the code says which one went down.
 
 use super::{Error, ErrorKind};
 
@@ -42,7 +38,6 @@ af_core::error_lifts!(Error, ErrorKind:
     af_context::Error => Context,
     afd_db::Error => Datastore,
     afd_runner::Error => Runner,
-    afd_dragonfly::Error => Queue,
     afd_gate::Error => Gate,
     afd_credential::Error => Credential,
     afd_billing::Error => Billing,

@@ -68,7 +68,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
-    let run = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let run = held_in(Fixtures::create_isolated().await).await;
     run.fixtures
         .end_event(&run.fleet, &run.event_id, af_core::event::status::PROCESSED)
         .await;

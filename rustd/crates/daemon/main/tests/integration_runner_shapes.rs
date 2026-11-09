@@ -101,8 +101,8 @@ const MEMORY_SHAPE: &[&str] = &[
 ];
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows() {
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_cycle_settles_in_the_ledger_and_populates_rows() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     #[expect(
@@ -113,7 +113,7 @@ async fn test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows() {
     let lease_id = complete_cycle(&http, &run).await;
     assert_rows(&run, &lease_id).await;
     assert_values(&run, &lease_id).await;
-    assert_ledger_only_queue(&run).await;
+    assert_settled_in_the_ledger(&run).await;
     supervisor.shutdown().await;
     run.cleanup().await;
 }
@@ -198,23 +198,7 @@ async fn assert_values(run: &Scenario, lease_id: &str) {
     );
 }
 
-async fn assert_ledger_only_queue(run: &Scenario) {
-    let queue = afd_dragonfly::test_util::connect_live(&crate::e2e::dragonfly_config())
-        .await
-        .expect("live cluster");
-    for pattern in [
-        format!("fleet:{}:events", run.fleet),
-        "fleet:ready*".to_owned(),
-    ] {
-        assert!(
-            queue
-                .scan_keys(&pattern, 64)
-                .await
-                .expect("all primaries scanned")
-                .is_empty(),
-            "a completed cycle created the obsolete queue key {pattern}"
-        );
-    }
+async fn assert_settled_in_the_ledger(run: &Scenario) {
     let settled: bool = sqlx::query_scalar(
         "SELECT lease_fence IS NOT NULL AND delivered_at IS NOT NULL AND settled_at IS NOT NULL \
          FROM fleet.admissions WHERE id = $1 AND fleet_id = $2",

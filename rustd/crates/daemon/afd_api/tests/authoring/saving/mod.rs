@@ -1,4 +1,4 @@
-//! Save and recovery cross the actual HTTP, Postgres and Dragonfly boundaries.
+//! Save and recovery cross the actual HTTP, Postgres and bus boundaries.
 
 mod activity;
 mod chat_save;

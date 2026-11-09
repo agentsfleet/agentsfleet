@@ -21,17 +21,11 @@ const DAEMON: &str = env!("CARGO_BIN_EXE_agentsfleetd");
 /// The API role's Postgres knob.
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
-/// The API role's Dragonfly knob.
-const DRAGONFLY_KNOB: &str = "DRAGONFLY_URL";
-
 /// The master-key knob.
 const KEK_KNOB: &str = "ENCRYPTION_MASTER_KEY";
 
 /// A Postgres URL the resolver accepts.
 const GOOD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:5432/agentsfleet";
-
-/// A Dragonfly URL the resolver accepts.
-const GOOD_DRAGONFLY_URL: &str = "redis://127.0.0.1:6379";
 
 /// Sixty-four hex characters.
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
@@ -43,7 +37,7 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 /// green on their machine and nowhere else.
 fn run(knobs: &[(&str, &str)]) -> Output {
     let mut command = Command::new(DAEMON);
-    for knob in [DATABASE_KNOB, DRAGONFLY_KNOB, KEK_KNOB]
+    for knob in [DATABASE_KNOB, KEK_KNOB]
         .into_iter()
         .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
         .chain(crate::support::BUS.map(|(name, _value)| name))
@@ -62,10 +56,7 @@ fn run(knobs: &[(&str, &str)]) -> Output {
 #[test]
 fn test_boot_refuses_bad_kek() {
     for bad in [None, Some(""), Some("abcd"), Some("zz")] {
-        let mut knobs = vec![
-            (DATABASE_KNOB, GOOD_DATABASE),
-            (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
-        ];
+        let mut knobs = vec![(DATABASE_KNOB, GOOD_DATABASE)];
         knobs.extend_from_slice(&crate::support::IDENTITY);
         if let Some(value) = bad {
             knobs.push((KEK_KNOB, value));
@@ -103,7 +94,7 @@ fn test_boot_refuses_bad_kek() {
             format!("agentsfleetd {}", env!("CARGO_PKG_VERSION")),
             "a refusing process announces its identity and no more"
         );
-        for leaked in ["We flunked!", KEK_KNOB, "listening", "postgres:", "redis:"] {
+        for leaked in ["We flunked!", KEK_KNOB, "listening", "postgres:"] {
             assert!(
                 !stdout.contains(leaked),
                 "a boot result must not reach stdout: {leaked} in {stdout}"
@@ -119,7 +110,7 @@ fn test_preflight_lists_missing() {
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     assert!(!output.status.success(), "an empty environment cannot boot");
-    for knob in [DATABASE_KNOB, DRAGONFLY_KNOB, KEK_KNOB]
+    for knob in [DATABASE_KNOB, KEK_KNOB]
         .into_iter()
         .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
         .chain(crate::support::BUS.map(|(name, _value)| name))
@@ -140,11 +131,7 @@ fn test_preflight_lists_missing() {
 /// before anything opens a socket.
 #[test]
 fn test_boot_announces_itself_when_the_environment_is_complete() {
-    let mut knobs = vec![
-        (DATABASE_KNOB, GOOD_DATABASE),
-        (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
-        (KEK_KNOB, GOOD_KEK),
-    ];
+    let mut knobs = vec![(DATABASE_KNOB, GOOD_DATABASE), (KEK_KNOB, GOOD_KEK)];
     knobs.extend_from_slice(&crate::support::SESSION_PEPPER);
     knobs.extend_from_slice(&crate::support::BUS);
     knobs.extend_from_slice(&crate::support::IDENTITY);
@@ -166,7 +153,7 @@ fn test_boot_announces_itself_when_the_environment_is_complete() {
         "and the build, so a log says which one came up"
     );
     assert!(
-        stdout.contains("postgres:api") && stdout.contains("redis:api"),
+        stdout.contains("postgres:api"),
         "and which roles resolved, qualified by datastore: {stdout}"
     );
     assert!(

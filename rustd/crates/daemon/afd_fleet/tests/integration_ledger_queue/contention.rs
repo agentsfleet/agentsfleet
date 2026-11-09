@@ -37,10 +37,10 @@ async fn test_concurrent_claims_lease_one_row() {
     let event = enqueue(&fixtures, &fleet, &workspace).await;
     let replica = Leases::new(
         fixtures.open(DbRole::Api).await,
-        afd_bus::dragonfly::publisher(crate::queue::unreachable()),
+        afd_bus::test_util::unreachable(),
         af_crypto::entropy::Entropy::new(),
     );
-    let replicas = [fixtures.leases_with_dead_queue(), replica];
+    let replicas = [fixtures.leases_with_dead_bus(), replica];
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");
     let mut observer = owner.acquire().await.expect("reserved observer");

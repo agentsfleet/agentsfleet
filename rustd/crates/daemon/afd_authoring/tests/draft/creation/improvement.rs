@@ -60,7 +60,7 @@ const REVISION_MODEL: &str = "SELECT runtime_model_ref, \
      definition->'config'->'x-agentsfleet' ? 'model' FROM fleet.revisions WHERE fleet_id=$1";
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_improvement_chat_inherits_the_model_its_fleet_resolved_at_save() {
     let c = Case::create().await;
     let draft = c
@@ -120,7 +120,7 @@ async fn an_improvement_chat_inherits_the_model_its_fleet_resolved_at_save() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_paused_fleet_takes_the_revision_without_reinstalling_and_closes_the_chat() {
     let c = Case::create().await;
     let saved = active(&c, "improve-paused").await;
@@ -154,7 +154,7 @@ async fn a_paused_fleet_takes_the_revision_without_reinstalling_and_closes_the_c
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_killed_fleet_refuses_the_revision_and_keeps_its_head() {
     let c = Case::create().await;
     let saved = active(&c, "improve-killed").await;
@@ -194,7 +194,7 @@ async fn a_killed_fleet_refuses_the_revision_and_keeps_its_head() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_candidate_under_retired_policy_semantics_cannot_be_applied() {
     let c = Case::create().await;
     let saved = active(&c, "improve-policy").await;
@@ -229,7 +229,7 @@ async fn a_candidate_under_retired_policy_semantics_cannot_be_applied() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn two_applies_under_one_key_write_one_revision_and_the_waiter_replays_it() {
     use sqlx::Connection as _;
     let c = Case::create().await;
@@ -276,7 +276,7 @@ async fn two_applies_under_one_key_write_one_revision_and_the_waiter_replays_it(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_apply_that_loses_its_key_to_a_lapsed_claim_writes_no_revision() {
     let c = Case::create().await;
     let saved = active(&c, "improve-lost-key").await;

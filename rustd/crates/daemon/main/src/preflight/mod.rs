@@ -48,8 +48,8 @@ pub use self::knobs::{
 };
 
 use self::knobs::{
-    API_URL_DEFAULT, APP_URL_DEFAULT, POSTHOG_HOST_KNOB, POSTHOG_KEY_KNOB, WHY_DATABASE,
-    WHY_DRAGONFLY, WHY_NATS, WHY_SESSION_PEPPER,
+    API_URL_DEFAULT, APP_URL_DEFAULT, POSTHOG_HOST_KNOB, POSTHOG_KEY_KNOB, WHY_DATABASE, WHY_NATS,
+    WHY_SESSION_PEPPER,
 };
 
 use self::read::{classify, identity, is_set, read_kek, required};
@@ -60,7 +60,6 @@ use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::Dashboard;
 use afd_cron::SigningKeys;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 #[doc(inline)]
 pub use crate::error::{Fault, Refusal};
@@ -84,7 +83,6 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
 /// which is the order an operator sees them in.
 struct Readings {
     api_pool: Option<PoolConfig>,
-    redis: Option<DragonflyConfig>,
     bus: Option<afd_bus::nats::Config>,
     kek: Option<Kek>,
     session_code_pepper: Option<SecretBytes>,
@@ -105,7 +103,7 @@ struct Readings {
 /// Reads every knob in fault order, pushing a fault for each one that is
 /// unset where required or set and unusable.
 fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Readings {
-    let (api_pool, redis, bus) = datastores(env, faults);
+    let (api_pool, bus) = datastores(env, faults);
     let kek = read_kek(env, faults);
     let session_code_pepper = session_code_pepper(env, faults);
     // Both are optional-with-a-default and resolve identically, so the shape is
@@ -136,7 +134,6 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
     let checkpoint_storage = checkpoint::read(env, faults, platform_admin_workspace.as_ref());
     Readings {
         api_pool,
-        redis,
         bus,
         kek,
         session_code_pepper,
@@ -155,16 +152,12 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
     }
 }
 
-/// The API role's Postgres and Dragonfly, and the event bus, each a fault when
-/// unset or unusable.
+/// The API role's Postgres and the event bus, each a fault when unset or
+/// unusable.
 fn datastores<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,
-) -> (
-    Option<PoolConfig>,
-    Option<DragonflyConfig>,
-    Option<afd_bus::nats::Config>,
-) {
+) -> (Option<PoolConfig>, Option<afd_bus::nats::Config>) {
     let database_knob = DbRole::Api.url_knob();
     let api_pool = classify(
         faults,
@@ -174,14 +167,6 @@ fn datastores<E: EnvSource + ?Sized>(
         PoolConfig::resolve(env, DbRole::Api),
     );
 
-    let dragonfly_knob = DragonflyRole::Api.url_knob();
-    let redis = classify(
-        faults,
-        is_set(env, dragonfly_knob),
-        dragonfly_knob,
-        WHY_DRAGONFLY,
-        DragonflyConfig::resolve(env, DragonflyRole::Api),
-    );
     let bus = classify(
         faults,
         is_set(env, afd_bus::nats::URL_ENV),
@@ -189,7 +174,7 @@ fn datastores<E: EnvSource + ?Sized>(
         WHY_NATS,
         afd_bus::nats::Config::from_env(env),
     );
-    (api_pool, redis, bus)
+    (api_pool, bus)
 }
 
 /// The device-flow login pepper, required, as the bytes it is keyed with.
@@ -224,7 +209,6 @@ impl Readings {
     ) -> Result<BootConfig, Refusal> {
         let Self {
             api_pool,
-            redis,
             bus,
             kek,
             session_code_pepper,
@@ -243,7 +227,6 @@ impl Readings {
         } = self;
         match (
             api_pool,
-            redis,
             bus,
             kek,
             identity,
@@ -255,7 +238,6 @@ impl Readings {
         ) {
             (
                 Some(api_pool),
-                Some(redis),
                 Some(bus),
                 Some(kek),
                 Some(identity),
@@ -266,7 +248,6 @@ impl Readings {
                 Some(runner_listener),
             ) if faults.is_empty() => Ok(BootConfig {
                 api_pool,
-                redis,
                 bus,
                 kek,
                 session_code_pepper,

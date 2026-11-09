@@ -149,12 +149,6 @@ pub(crate) enum ErrorKind {
         source: afd_credential::Error,
     },
 
-    #[error("the queue backing the runner plane would not answer")]
-    Queue {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
-
     #[error("the billing store could not answer for the runner plane")]
     Billing {
         #[source]

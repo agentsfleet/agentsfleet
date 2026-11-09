@@ -36,7 +36,7 @@ mod redirect;
 /// A settled run's trace and one call's full record are read
 /// back through the tenant routes an operator's thread uses.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_definition_run_trace_is_readable() {
     let mut supervisor = Supervisor::new();
     let provider = provider_listener().await;
@@ -105,7 +105,7 @@ async fn assert_readable_record(
 /// and the trace holds what the thread shows: each call's status and exit
 /// code, the patch, and its `+N −M`.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_code_running_definition_roundtrip() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, FLEET, &[], None).await;

@@ -9,7 +9,7 @@
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::SecretBytes;
 use afd_tenant::session::input::Approval;
-use afd_tenant::session::{Fingerprint, SessionStore, Sessions};
+use afd_tenant::session::{DeviceSessions, Fingerprint, Sessions};
 use jiff::Timestamp;
 
 use crate::session_harness::SessionHarness;
@@ -23,14 +23,14 @@ pub(crate) const CODE: &str = "428193";
 /// The identity that approves them.
 pub(crate) const APPROVER: &str = "user_2abcDEF";
 
-/// A fixed instant, so nothing here depends on when it runs. The session
-/// lives in Dragonfly, so the daemon's clock stamps it, and this stands in.
+/// A fixed instant for the session identifier `open` mints, so nothing here
+/// depends on when it runs. The row's deadlines are the database clock's.
 pub(crate) const NOW: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
-/// The login surface, over the lane's queue.
+/// The login surface, over the lane's database.
 pub(crate) fn surface(harness: &SessionHarness) -> Sessions {
     Sessions::new(
-        SessionStore::new(harness.database.clone()),
+        DeviceSessions::new(harness.database.clone()),
         SecretBytes::new(b"c0ffee".repeat(8)),
         Entropy::new(),
         APP_URL,

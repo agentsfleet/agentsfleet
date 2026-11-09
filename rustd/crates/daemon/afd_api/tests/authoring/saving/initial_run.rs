@@ -14,7 +14,7 @@ const ADMISSIONS: &str = "SELECT count(*) FROM fleet.admissions WHERE fleet_id=$
 const RUN_NOW: &str = "Investigate the failed build.";
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn resume_after_reload_recovers_a_capacity_blocked_initial_run_once() {
     let logs = af_core::test_util::trace::Capture::install();
     let case = Case::with_budgets(afd_admission::Budgets {
@@ -26,7 +26,7 @@ async fn resume_after_reload_recovers_a_capacity_blocked_initial_run_once() {
     let healthy = case
         .base
         .services(&Scope::ALL)
-        .with_fleet_queue(case.base.db.clone(), case.queue.clone())
+        .with_fleet_queue(case.base.db.clone(), case.bus.clone())
         .router();
     let path = format!(
         "{}/{}",
@@ -103,19 +103,17 @@ async fn count(case: &Case, fleet: &Value) -> i64 {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_lost_notification_keeps_the_first_run_accepted_through_reload_and_retry() {
     let mut case = Case::create().await;
     let (_, mut request) = case.request().await;
     request["start"] = json!({"kind":"run_now","message":RUN_NOW});
     let key = mint();
     let (path, fleet) = retained(&case, key.as_str(), &request).await;
-    let queue = afd_dragonfly::Dragonfly::unreachable(&crate::harness::unreachable_queue())
-        .expect("lazy Dragonfly");
     case.router = case
         .base
         .services(&Scope::ALL)
-        .with_fleet_queue(case.base.db.clone(), queue)
+        .with_fleet_queue(case.base.db.clone(), afd_bus::test_util::unreachable())
         .router();
     case.fund().await;
     let interrupted = case.save(key.as_str(), &request).await;

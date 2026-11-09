@@ -1,6 +1,7 @@
-//! Raising the question: the durable gate row, and the reference that finds it.
+//! Raising the question: the durable gate row, which is also the reference
+//! every later poll finds it by.
 //!
-//! # Two writes, in an order that is a safety property
+//! # One write, then the announce, in an order that is a safety property
 //!
 //! The durable row goes down BEFORE anything points a human at it. That row is
 //! what a resolve updates and what the write-scoped mint spends against, so a
@@ -13,17 +14,6 @@
 //! Fail closed, default-deny. Never a silently released run, and never a
 //! question whose answer has nowhere to land. The caller answers no-work and
 //! the next poll tries again.
-//!
-//! # No pending summary, no staged notification
-//!
-//! A park writes no `fleet:gate:pending:{fleet}:{action}` summary and no
-//! `fleet:gate:notify:{fleet}:{action}` Slack message for a provider to pick
-//! up, because **nothing would read either one** — not the daemon, not the
-//! sweeper, not the resolver, not the tenant plane, not the web application.
-//! A write with no reader would add two round trips to every park, two key
-//! shapes for the sweeper and the resolver to agree on, and a `DEL` on the
-//! refusal path. Whether notification should be staged in Dragonfly at all is
-//! a separate question this module does not answer.
 
 use std::borrow::Cow;
 
@@ -49,9 +39,8 @@ const EVENT_PARK_PENDING: &str = "gate_pending";
 
 /// Which write could not be made, for the line an operator reads.
 ///
-/// Named rather than inlined at the two call sites: an operator responds to
-/// both the same way, but knowing WHICH store dropped is the difference between
-/// suspecting Postgres and suspecting Dragonfly.
+/// Named rather than inlined at the two call sites, which share it: the
+/// durable row is the only write a park makes.
 const WRITE_ROW: &str = "durable_row";
 
 /// The spend count a bounded approval opens at.
@@ -134,12 +123,12 @@ impl Gates {
 
     /// Tell the fleet's live tail a human has been asked, best-effort.
     ///
-    /// After both writes, so a watcher reacting to the frame finds the row it
-    /// names. The count rode the insert and the fleet's counters rode the
+    /// After the row insert, so a watcher reacting to the frame finds the row
+    /// it names. The count rode the insert and the fleet's counters rode the
     /// same connection, so the frame costs the park one publish; a read that
     /// did not answer sends the frame without its figures. A publish that
     /// fails costs the tail one frame and the park nothing — the row is down,
-    /// the reference is down, and the card is what the answer lands on.
+    /// and the card is what the answer lands on.
     async fn announce(&self, request: &Park<'_>, recorded: &Recorded) {
         let frame = TailFrame::GateOpened {
             gate_id: Cow::Borrowed(recorded.gate_id.as_str()),

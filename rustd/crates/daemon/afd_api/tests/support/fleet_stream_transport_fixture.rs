@@ -1,4 +1,4 @@
-//! Fixture-local pools and channels keep transport faults away from sibling tests.
+//! Fixture-local pools and buses keep transport faults away from sibling tests.
 
 use std::time::Duration;
 
@@ -6,8 +6,8 @@ use af_wire::report::Outcome;
 use afd_api_wire::tail::{FleetCounters, TailFrame, TailRow};
 
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
-use afd_dragonfly::{Dragonfly, SubscriptionHub};
+use afd_bus::Subject;
+use afd_bus::test_util::Server;
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
@@ -33,8 +33,10 @@ const MAX_VIEWERS: usize = 100;
 pub(super) struct Watched {
     fixture: Fixture,
     router: axum::Router,
-    publisher: FleetStreams,
-    pub(super) hub: SubscriptionHub,
+    /// The bus the router streams through, and the one a test publishes on.
+    pub(super) bus: afd_bus::Handle,
+    /// The bus's broker half, which counts the readers each viewer holds.
+    server: Server,
 }
 
 impl Watched {
@@ -45,25 +47,21 @@ impl Watched {
         ])
         .await;
         fixture.seed().await;
-        let hub = harness::live_hub().await;
-        let publisher = FleetStreams::new(
-            Dragonfly::connect(&harness::dragonfly_config())
-                .await
-                .expect("publisher"),
-        );
+        let (bus, server) =
+            afd_bus::test_util::detached().expect("an in-process bus opens no socket");
         let router = Fleet::live(
             fixture.database.clone(),
             SUBJECT,
             ScopeSet::from_scopes(&Scope::ALL),
         )
         .with_owned_workspace(fixture.workspace.clone())
-        .with_stream_capacity(hub.clone(), MAX_VIEWERS)
+        .with_stream_capacity(bus.clone(), MAX_VIEWERS)
         .router();
         Self {
             fixture,
             router,
-            publisher,
-            hub,
+            bus,
+            server,
         }
     }
 
@@ -71,8 +69,13 @@ impl Watched {
         &self.fixture.database
     }
 
-    pub(super) fn channel(&self) -> String {
-        fleet_activity_channel(self.fixture.fleet.as_str())
+    fn subject(&self) -> Subject {
+        Subject::FleetTail(self.fixture.fleet.clone())
+    }
+
+    /// How many viewers hold a subscription on the fleet's tail right now.
+    pub(super) fn readers(&self) -> usize {
+        self.server.readers(&self.subject())
     }
 
     fn events_path(&self) -> String {
@@ -106,25 +109,16 @@ impl Watched {
         response.into_body().into_data_stream()
     }
 
+    /// Reads each body's opening frames. The route subscribes before it
+    /// answers, so a body handed back by [`Self::open`] already receives what
+    /// the bus publishes next.
     pub(super) async fn ready(&self, bodies: &mut [axum::body::BodyDataStream]) {
-        let payload = json!({"kind":"ready"});
-        tokio::time::timeout(DELIVERY_BUDGET, async {
-            loop {
-                if self.publish(&payload).await == 1 {
-                    break;
-                }
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("Dragonfly acknowledges the first server-side subscription");
         for body in bodies {
             // The route announces itself before any activity, so every body
-            // opens with `hello` and this barrier's own payload is the SECOND
-            // frame. Asserted rather than skipped: a fixture that silently
-            // swallowed a frame would hide the opening frame going missing,
-            // and the opening frame is what tells a client watching a quiet
-            // fleet that its subscription attached.
+            // opens with `hello`. Asserted rather than skipped: a fixture that
+            // silently swallowed a frame would hide the opening frame going
+            // missing, and the opening frame is what tells a client watching a
+            // quiet fleet that its subscription attached.
             assert_frame(
                 &next_frame(body).await,
                 HELLO_SEQ,
@@ -132,33 +126,21 @@ impl Watched {
             );
             // Then one `catching_up`, so the client backfills whatever was
             // published before its interest reached the publisher (M244 §6).
+            // Still sequence zero: control frames are the server talking about
+            // the stream, so they spend no activity number.
             assert_frame(
                 &next_frame(body).await,
                 HELLO_SEQ,
                 &json!({"kind":"catching_up","dropped":0}),
             );
-            // Still sequence zero: control frames are the server talking about
-            // the stream, so they spend no activity number.
-            assert_frame(&next_frame(body).await, 0, &payload);
         }
     }
 
-    pub(super) async fn publish(&self, payload: &Value) -> i64 {
-        self.publisher
-            .publish(&self.channel(), &payload.to_string())
+    pub(super) async fn publish(&self, payload: &Value) {
+        self.bus
+            .publish(&self.subject(), &payload.to_string())
             .await
-            .expect("publish succeeds")
-    }
-
-    pub(super) async fn unsubscribed(&self) {
-        assert_eq!(self.hub.readers(&self.channel()), 0);
-        tokio::time::timeout(DELIVERY_BUDGET, async {
-            while self.publish(&json!({"kind":"closed"})).await != 0 {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("Dragonfly releases the last subscription after the body drops");
+            .expect("publish succeeds");
     }
 
     pub(super) async fn commit_without_publish(&self) -> String {
@@ -201,9 +183,7 @@ impl Watched {
     }
 
     pub(super) async fn cleanup(self) {
-        self.hub.shutdown();
         drop(self.router);
-        drop(self.publisher);
         self.fixture.cleanup().await;
     }
 }

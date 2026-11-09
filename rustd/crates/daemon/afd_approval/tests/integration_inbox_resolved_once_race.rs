@@ -33,7 +33,7 @@ const ROUNDS: usize = 8;
 /// Two concurrent resolutions: exactly one wins, the other is told the
 /// standing decision, and the row carries the winner's answer.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_resolution_happens_once_under_concurrent_resolves() {
     let lane = Lane::isolated().await;
     for _ in 0..ROUNDS {

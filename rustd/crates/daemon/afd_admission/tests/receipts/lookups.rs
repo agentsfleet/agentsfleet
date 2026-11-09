@@ -5,7 +5,7 @@ use afd_admission::{Reply as ReplyTo, sql};
 use afd_db::test_util::mint_id;
 
 use super::ledger::{CONNECTOR, THREAD, admit, steer};
-use super::{Fallible, lane::Lane, queue::over_fake};
+use super::{Fallible, lane::Lane, queue::over_bus};
 
 /// The lease path's two lookups key on the fleet and the row id: another
 /// fleet's id answers nothing, and a second delivery stamps nothing.
@@ -13,7 +13,7 @@ use super::{Fallible, lane::Lane, queue::over_fake};
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn destination_lookup_is_scoped_to_the_admission_and_fleet() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let (_rings, admissions) = over_bus(&lane).await?;
     let stated = ReplyTo::To {
         connector: CONNECTOR,
         address: THREAD,
@@ -49,7 +49,7 @@ async fn destination_lookup_is_scoped_to_the_admission_and_fleet() -> Fallible {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_inherited_destination_is_copied_from_the_named_row() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let (_rings, admissions) = over_bus(&lane).await?;
     let stated = ReplyTo::To {
         connector: CONNECTOR,
         address: THREAD,

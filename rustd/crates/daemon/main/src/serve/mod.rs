@@ -1,6 +1,6 @@
 //! Boot: what happens between a resolved environment and a served port.
 //!
-//! The order carries meaning — pools before Dragonfly before the router, and
+//! The order carries meaning — pools before the bus before the router, and
 //! nothing listening until all of them answered. Teardown ordering lives in
 //! types rather than in declaration order: [`Supervisor::shutdown`] consumes
 //! itself, so nothing borrowed can be dropped early, and [`Daemon::run`] tears
@@ -40,7 +40,6 @@ use af_core::env::EnvSource;
 use af_observability::{Analytics, Telemetry};
 use afd_api::{Admission, DEFAULT_MAX_IN_FLIGHT};
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 
 pub use self::accept::Acceptor;
 #[cfg(feature = "test-util")]
@@ -85,8 +84,8 @@ pub struct Booted {
     serving_failed: tokio_util::sync::CancellationToken,
     /// The Postgres pool, to be dropped only after shutdown returns.
     pub database: Db,
-    /// The Dragonfly client, likewise.
-    pub queue: Dragonfly,
+    /// The event bus, for a suite that publishes beside the running daemon.
+    pub bus: afd_bus::Handle,
     /// The accept loop's stop signal and its in-flight count, so the shutdown
     /// path can stop accepting and wait for live requests before the supervisor
     /// cancels anything. Cloned from the one the accept loop holds.
@@ -219,6 +218,7 @@ async fn serve_plane(
     // nothing is noticing dead runners. They take the analytics because the
     // authoring sweeper finishes interrupted chat messages, a funnel step.
     crate::sweepers::spawn(supervisor, &runtime.database, &analytics, task_owner);
+    let bus = runtime.bus.clone();
     spawn_background(
         supervisor,
         config,
@@ -254,7 +254,7 @@ async fn serve_plane(
         runner_stream_address,
         serving_failed,
         database: runtime.database,
-        queue: runtime.queue,
+        bus,
         drain,
     })
 }
@@ -359,7 +359,6 @@ fn show_banner(booted: &Booted) {
         &[
             format!("listening {}", booted.address),
             format!("postgres:{}", booted.database.role().tag()),
-            format!("redis:{}", booted.queue.role().tag()),
         ],
         std::process::id(),
     );

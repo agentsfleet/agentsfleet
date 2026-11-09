@@ -1,10 +1,10 @@
 //! The writes a won report owes, and which side of the commit each falls on.
 //!
-//! The terminal event row, the session checkpoint, the stream acknowledgement
-//! and the audit row that closes the lease's history. Two of them commit with
-//! the money; the other two run after it, each logged if it does not land.
+//! The terminal event row, the session checkpoint, and the audit row that
+//! closes the lease's history. Two of them commit with the money; the audit
+//! row runs after it, logged if it does not land.
 //!
-//! # Two of these are the report, and two are about it
+//! # Two of these are the report, and one is about it
 //!
 //! [`Leases::mark_terminal`] and [`Leases::checkpoint`] take the connection
 //! their caller is already inside, because the RESULT of a run and the money
@@ -14,20 +14,15 @@
 //! with the settle in [`Leases::commit_report`](crate::lease::commit) or
 //! neither does.
 //!
-//! [`Leases::acknowledge`] and [`Leases::record_released`] stay outside it, and
-//! not because they matter less. The acknowledgement is a QUEUE write, and no
-//! transaction spans Postgres and Dragonfly; putting it inside would mean
-//! acknowledging an entry a rollback then un-did, which is the one ordering
-//! that loses work outright. It therefore runs after the commit, where a
-//! failure leaves the entry pending and re-delivered rather than a result
-//! unrecoverable. The audit row is history — a datastore blip writing it must
-//! not fail a report whose money has committed.
+//! [`Leases::record_released`] stays outside it. The audit row is history, and
+//! a datastore blip writing it must not fail a report whose money has
+//! committed.
 //!
-//! Both post-commit writes are attempted, logged on failure, and never
+//! The post-commit write is attempted, logged on failure, and never
 //! propagated: by then the lease is `reported` and the wallet is drawn down, so
 //! failing the response would tell the runner to retry a report whose money
-//! cannot be charged twice. What an operator gets is a warn line naming which
-//! one did not land.
+//! cannot be charged twice. What an operator gets is a warn line naming the
+//! write that did not land.
 //!
 //! # The cap lands on a character boundary
 //!

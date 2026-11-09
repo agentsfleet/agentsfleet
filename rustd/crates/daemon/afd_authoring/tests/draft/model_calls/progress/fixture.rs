@@ -1,15 +1,10 @@
-//! Real SDK bytes and the real private bus; only the remote model is simulated.
+//! Real SDK bytes over an in-process private bus; only the remote model is simulated.
 
-use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use afd_authoring::{
     ModelCallInput, ModelCallResult, ModelCalls, ProviderRequest, ProviderResponse, Transport,
 };
-use afd_dragonfly::{
-    FleetStreams, Subscription, SubscriptionHub,
-    config::{DragonflyConfig, DragonflyRole},
-    hub::Received,
-};
+use afd_bus::{Message, Received, Subject, Subscription, test_util::Server};
 use bytes::Bytes;
 use futures_util::stream;
 use serde_json::{Value, json};
@@ -25,7 +20,6 @@ use tokio::sync::{Semaphore, mpsc};
 use crate::draft::{attempt::Attempt, fixture::Fixture};
 
 pub(super) const WAIT: Duration = Duration::from_secs(10);
-const HELLO: &str = "subscribed";
 const BARRIER: &str = "drained";
 
 #[derive(Debug)]
@@ -68,10 +62,9 @@ pub(super) struct Live {
     pub(super) provider: Arc<Provider>,
     pub(super) sender: mpsc::Sender<Bytes>,
     pub(super) calls: ModelCalls,
-    pub(super) hub: SubscriptionHub,
+    pub(super) server: Server,
     pub(super) reader: Subscription,
-    publisher: FleetStreams,
-    channel: String,
+    subject: Subject,
 }
 
 impl Live {
@@ -86,22 +79,9 @@ impl Live {
     }
 
     pub(super) async fn start(f: &Fixture, attempt: &Attempt) -> Self {
-        let url = ProcessEnv
-            .get("TEST_DRAGONFLY_URL")
-            .expect("Make integration lane");
-        let config = DragonflyConfig::from_url(DragonflyRole::Default, url);
-        let redis = afd_dragonfly::test_util::connect_live(&config)
-            .await
-            .expect("live bus");
-        let bus = afd_bus::dragonfly::publisher(redis.clone());
-        let publisher = FleetStreams::new(redis);
-        let hub = SubscriptionHub::start(config)
-            .await
-            .expect("live subscriptions");
-        let channel = afd_bus::test_util::physical_channel(&afd_bus::Subject::DraftEvents(
-            attempt.draft.id.clone(),
-        ));
-        let reader = hub.subscribe(&channel);
+        let (bus, server) = afd_bus::test_util::detached().expect("in-process bus");
+        let subject = Subject::DraftEvents(attempt.draft.id.clone());
+        let reader = bus.subscribe(&subject).await.expect("private subscription");
         let (sender, receiver) = mpsc::channel(8);
         let provider = Arc::new(Provider {
             receiver: Mutex::new(Some(receiver)),
@@ -111,33 +91,13 @@ impl Live {
         let calls = super::super::fixture::calls(f, attempt, Arc::clone(&provider))
             .await
             .with_progress(bus);
-        let mut live = Self {
+        Self {
             provider,
             sender,
             calls,
-            hub,
+            server,
             reader,
-            publisher,
-            channel,
-        };
-        tokio::time::timeout(WAIT, live.ready())
-            .await
-            .expect("subscription handshake");
-        live
-    }
-
-    async fn ready(&mut self) {
-        loop {
-            self.publisher
-                .publish(&self.channel, HELLO)
-                .await
-                .expect("subscribe probe");
-            if let Ok(Ok(Received::Message(message))) =
-                tokio::time::timeout(Duration::from_millis(100), self.reader.recv()).await
-            {
-                assert_eq!(message.payload.as_str(), HELLO);
-                return;
-            }
+            subject,
         }
     }
 
@@ -177,24 +137,15 @@ impl Live {
     }
 
     async fn next_payload(&mut self) -> String {
-        tokio::time::timeout(WAIT, async {
-            loop {
-                let message = message(self.reader.recv().await.expect("bus stays live"));
-                if message.payload.as_str() == HELLO {
-                    continue;
-                }
-                return message.payload.as_ref().clone();
-            }
-        })
-        .await
-        .expect("incremental text before completion")
+        let received = tokio::time::timeout(WAIT, self.reader.recv())
+            .await
+            .expect("incremental text before completion")
+            .expect("bus stays live");
+        message(received).payload.as_ref().clone()
     }
 
     pub(super) async fn drained(&mut self) {
-        self.publisher
-            .publish(&self.channel, BARRIER)
-            .await
-            .expect("same-slot barrier");
+        self.server.publish(&self.subject, BARRIER);
         let received = tokio::time::timeout(WAIT, self.reader.recv())
             .await
             .expect("bus drain")
@@ -208,7 +159,7 @@ impl Live {
     }
 }
 
-fn message(received: Received) -> Arc<afd_dragonfly::hub::Message> {
+fn message(received: Received) -> Arc<Message> {
     match received {
         Received::Message(message) => Some(message),
         Received::Gap | Received::Lagged(_) => None,

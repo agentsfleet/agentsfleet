@@ -51,9 +51,6 @@ const STATEMENTS_PER_LEASE: &str = "drain_statements_per_lease";
 /// Measurement key: transactions Postgres committed per lease issued.
 const COMMITS_PER_LEASE: &str = "drain_commits_per_lease";
 
-/// Measurement key: Dragonfly commands per lease issued.
-const DRAGONFLY_CALLS_PER_LEASE: &str = "drain_dragonfly_calls_per_lease";
-
 /// Measurement key: events the drain seeded, one per fleet.
 const EVENTS: &str = "drain_events";
 
@@ -79,9 +76,6 @@ pub const IDLE_STATEMENTS_PER_POLL: &str = "idle_statements_per_poll";
 
 /// Measurement key: Postgres commits per poll once every fleet drained.
 const IDLE_COMMITS_PER_POLL: &str = "idle_commits_per_poll";
-
-/// Measurement key: Dragonfly commands per poll once every fleet drained.
-const IDLE_DRAGONFLY_CALLS_PER_POLL: &str = "drain_idle_dragonfly_calls_per_poll";
 
 /// The task role a lost drain runner is reported under.
 const RUNNER_ROLE: &str = "drain runner";

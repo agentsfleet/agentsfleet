@@ -25,7 +25,7 @@ fn code(body: &Value) -> Option<&str> {
 /// set as empty, and a steer is admitted all the same, because nothing on the
 /// message path reads what a fleet declares may wake it.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_a_fleet_with_no_trigger_accepts_a_steer() {
     let saved = Saved::create().await;
 
@@ -53,7 +53,7 @@ async fn test_a_fleet_with_no_trigger_accepts_a_steer() {
 /// admitted the message, `true` for a repeat while the fleet runs and after it
 /// stopped.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_steer_202_names_a_replay() {
     let saved = Saved::create().await;
     let replayed = |body: &Value| body.get("replayed").and_then(Value::as_bool);
@@ -73,7 +73,7 @@ async fn test_steer_202_names_a_replay() {
 /// A retry of an admitted message is answered with its event even after the
 /// fleet stops taking work; new work and a changed message are refused.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_replay_bypasses_ingress_refusal() {
     let saved = Saved::create().await;
 
@@ -137,7 +137,7 @@ async fn assert_keyless_message_refused(saved: &Saved) {
 /// the same answer an unknown fleet gets — never a 409 that would tell the
 /// caller the id exists in another tenant's ledger.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_foreign_fleet_replay_is_not_found() {
     let owner = Saved::create().await;
     let (status, first) = owner.steer(&owner.thread, OPERATION, MESSAGE).await;
@@ -170,7 +170,7 @@ const STATUS_BLIND_KEY: &str =
 /// and the steering ledger live over an active fleet, a steer answers 202. The
 /// route once read the status first and answered 503 here.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_steer_reads_no_fleet_status_before_admitting() {
     let saved = Saved::create().await;
     let workspace = saved.case.base.workspace.clone();
@@ -181,7 +181,7 @@ async fn a_steer_reads_no_fleet_status_before_admitting() {
             "user_2statusblind",
             afd_auth::scope::ScopeSet::from_scopes(&[afd_auth::scope::Scope::FleetWrite]),
         )
-        .with_steering_queue(saved.case.base.db.clone(), saved.case.queue.clone())
+        .with_steering_queue(saved.case.base.db.clone(), saved.case.bus.clone())
         .router();
     let body = json!({"message": MESSAGE, "operation_id": FRESH_OPERATION}).to_string();
     let response = send(

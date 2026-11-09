@@ -63,7 +63,7 @@ pub(crate) struct Stage {
 }
 
 pub(crate) async fn stage() -> Stage {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     fixtures.seed_wallet(&tenant, DEEP_POOL).await;
     let leases = fixtures.leases();

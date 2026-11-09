@@ -1,9 +1,8 @@
 //! A FAKE provider token endpoint, on a loopback port.
 //!
-//! Named for what it is, beside `afd_dragonfly/tests/support/fake_redis/mod.rs`: this
-//! serves a fixture's answers, and a reader who took it for a real vendor
-//! client would look here for the daemon's own exchange, which lives in
-//! `afd_connector::Exchange`.
+//! Named for what it is: this serves a fixture's answers, and a reader who
+//! took it for a real vendor client would look here for the daemon's own
+//! exchange, which lives in `afd_connector::Exchange`.
 //!
 //! `Exchange::pointed_at` exists because a token endpoint is a `&'static str`
 //! in the registry and no test may post to Slack's. Pointing it here is what

@@ -3,36 +3,30 @@
 use super::{
     Fallible,
     lane::Lane,
-    queue::{admit_against, confirm, over_fake},
+    queue::{RING_FAILED, admit_against, confirm, over, over_bus, recording},
 };
-use crate::fake_redis::Reply;
-
-const REFUSED: &str = "-ERR notification unavailable\r\n";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn notification_failure_cannot_downgrade_committed_acceptance() -> Fallible {
     let lane = Lane::seed().await?;
-    let first = admit_against(&lane, &[("SPUBLISH", Reply::Raw(REFUSED))]).await?;
+    let admissions = over(&lane, afd_bus::test_util::unreachable());
+    let first = admit_against(&lane, &admissions).await;
     let id = first.admitted()?.stored.id.clone();
-    let (server, admissions) = over_fake(&lane, &[("SPUBLISH", Reply::Raw(REFUSED))]).await?;
-    let confirmed = confirm(&admissions, &lane).await?;
-    assert_eq!(confirmed.event_id, id);
-    assert_eq!(confirm(&admissions, &lane).await?, confirmed);
+    let confirmed = recording(async {
+        let once = confirm(&admissions, &lane).await?;
+        let again = confirm(&admissions, &lane).await?;
+        Fallible::<_>::Ok((once, again))
+    })
+    .await;
     assert_eq!(
-        server
-            .seen()
-            .iter()
-            .filter(|s| s.starts_with("SPUBLISH"))
-            .count(),
-        2
+        confirmed.count(RING_FAILED),
+        2,
+        "each confirmation rang, and each lost ring was logged"
     );
-    assert!(
-        !server
-            .seen()
-            .iter()
-            .any(|s| s.starts_with("XADD") || s.starts_with("HSET"))
-    );
+    let (once, again) = confirmed.outcome?;
+    assert_eq!(once.event_id, id);
+    assert_eq!(again, once);
     lane.cleanup().await;
     Ok(())
 }
@@ -41,7 +35,7 @@ async fn notification_failure_cannot_downgrade_committed_acceptance() -> Fallibl
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn confirming_an_absent_key_does_not_publish_or_create_work() -> Fallible {
     let lane = Lane::seed().await?;
-    let (server, admissions) = over_fake(&lane, &[]).await?;
+    let (mut rings, admissions) = over_bus(&lane).await?;
     assert_eq!(
         admissions
             .confirm(afd_admission::Producer::Steer, lane.fleet.as_str())
@@ -53,7 +47,7 @@ async fn confirming_an_absent_key_does_not_publish_or_create_work() -> Fallible 
         .fetch_one(&mut *lane.database.acquire().await?)
         .await?;
     assert_eq!(count, 0);
-    assert!(!server.seen().iter().any(|s| s.starts_with("SPUBLISH")));
+    assert_eq!(rings.taken().await?, Vec::<String>::new());
     lane.cleanup().await;
     Ok(())
 }

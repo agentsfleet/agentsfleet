@@ -99,7 +99,7 @@ async fn test_an_uninstalled_fleet_renews() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_gate_that_cannot_be_read_admits_the_run_and_names_itself() {
-    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let held = held_in(Fixtures::create_isolated().await).await;
     held.fixtures
         .native_config(&held.fleet, DEEP_DAILY_BUDGET)
         .await;

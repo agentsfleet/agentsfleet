@@ -147,16 +147,13 @@ pub(super) const SSE_MAX_STREAMS_KNOB: &str = "SSE_MAX_STREAMS";
 /// socket, nothing in this daemon raises `RLIMIT_NOFILE`, and a stock soft
 /// limit is 1,024. About 300 of those are spoken for before any stream — up
 /// to 256 admitted requests (`afd_http` `admission/mod.rs:62`), 20 per
-/// Postgres pool (`afd_db` `config.rs:52-60`), a dozen Dragonfly sockets and
-/// the runtime's own — which leaves room for 256 and not for the next rung.
+/// Postgres pool (`afd_db` `config.rs:52-60`), one NATS connection and the
+/// runtime's own — which leaves room for 256 and not for the next rung.
 ///
-/// The tail holds up well past that. `make bench-tail PROFILE=rig` (the tail
-/// lane's stream ladder, Sep 29, 2026, compose Postgres + four-process Dragonfly
-/// v2.0.0) at 256 streams: every stream reached and every frame delivered
-/// (`frames_undelivered=0`), publish-to-receive p95 0.143 ms against a 250 ms
-/// bound, 13,494 bytes of heap per stream — about 3.3 MiB in all against a
-/// 256 MiB bound. The ladder's 4,096 rung passed the same bounds, so a host
-/// with a raised descriptor limit can set the knob far higher.
+/// The tail holds up well past that. `make bench-tail PROFILE=rig` on NATS
+/// (Nov 09, 2026, `docs/architecture/push_scheduler.md` §Baselines) burst
+/// 4,096 streams at a p99 of 9.83 ms with no frame undelivered, so a host with
+/// a raised descriptor limit can set the knob far higher.
 pub(super) const SSE_MAX_STREAMS_DEFAULT: usize = 256;
 
 /// Why a stream ceiling that will not parse refuses boot.
@@ -172,9 +169,6 @@ pub(super) const WHY_DATABASE: &str = "the API role's Postgres connection URL";
 /// Why the daemon needs the event bus.
 pub(super) const WHY_NATS: &str =
     "comma-separated NATS seed URLs with the credentials in the userinfo";
-
-/// Why the daemon needs the API Dragonfly role.
-pub(super) const WHY_DRAGONFLY: &str = "the API role's Dragonfly connection URL";
 
 /// Why the daemon needs the master key.
 pub(super) const WHY_KEK: &str = "64 hex characters; every stored credential is sealed under it";

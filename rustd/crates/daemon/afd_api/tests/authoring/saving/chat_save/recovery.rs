@@ -5,7 +5,7 @@ use super::*;
 use af_core::id::Uuid7;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_committed_save_waits_for_restored_access_before_activation() {
     let mut case = Case::create().await;
     case.fund().await;

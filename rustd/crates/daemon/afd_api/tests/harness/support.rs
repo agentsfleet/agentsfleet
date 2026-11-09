@@ -4,21 +4,16 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use afd_auth::credential::{CredentialKind, Presented};
 use afd_auth::directory::{CredentialRecord, Liveness};
 use afd_auth::mock::MockDirectory;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::{Dragonfly, SubscriptionHub};
 use axum::Router;
 use axum::body::Body;
 use axum::response::Response;
 use http::{Method, Request, StatusCode};
 use serde_json::Value;
 use tower::ServiceExt as _;
-
-use std::time::Duration;
 
 /// The refusal envelope's registry-code field.
 ///
@@ -30,38 +25,11 @@ pub(crate) const ERROR_CODE: &str = "error_code";
 /// The field a page envelope carries its rows under.
 const ITEMS: &str = "items";
 
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
-
-/// The integration lane's one Dragonfly configuration.
-pub(crate) fn dragonfly_config() -> DragonflyConfig {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the panic carries the VarError beside the lane hint; ProcessEnv::get returns an Option and would drop it"
-    )]
-    let url = std::env::var(DRAGONFLY_URL_KNOB)
-        .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
-    DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
-        .with_connect_timeout(Duration::from_secs(5))
-        .with_request_timeout(Duration::from_secs(5))
-}
-
-/// A proven live connection using [`dragonfly_config`].
-pub(crate) async fn connect_redis() -> Dragonfly {
-    afd_dragonfly::test_util::connect_live(&dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly must be reachable")
-}
-
-/// The subscription hub a live stream reads through, over [`dragonfly_config`].
-///
-/// The caller shuts it down: a hub left running holds the lane's subscription
-/// connection past the test that opened it.
-pub(crate) async fn live_hub() -> SubscriptionHub {
-    SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's subscription connection starts")
+/// One in-process bus, for a test to hand every publisher under test and to
+/// subscribe through, so a publisher and its observer share one broker.
+pub(crate) fn bus() -> afd_bus::Handle {
+    let (bus, _server) = afd_bus::test_util::detached().expect("an in-process bus opens no socket");
+    bus
 }
 
 /// The tenant every fixture person acts in.

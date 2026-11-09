@@ -20,7 +20,7 @@ use crate::report::{Lane, Report};
 /// a test of whether provenance is required — `provenance::tests` owns that.
 const DESCRIBED: [(&str, &str); 3] = [
     (REVISION_VARIABLE, "0000000"),
-    (DATASTORE_IMAGE_VARIABLE, "dragonfly:test"),
+    (DATASTORE_IMAGE_VARIABLE, "nats:test"),
     (OWNED_VARIABLE, OWNED_VALUE),
 ];
 

@@ -27,7 +27,7 @@ mod recovery;
 mod replay;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_addressed_repair_reads_evidence_before_draft() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
@@ -98,7 +98,7 @@ async fn assert_existing_draft_is_returned_without_writes(run: &crate::e2e::Scen
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_required_ci_log_failure_prevents_all_repair_writes() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;

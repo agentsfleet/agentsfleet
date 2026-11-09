@@ -30,12 +30,6 @@ use crate::support::install_subscriber;
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
-/// Where the lane publishes the TLS Dragonfly it brought up.
-const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
-
-/// Where the lane extracted the Dragonfly certificate authority to.
-const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
-
 /// The port that asks the kernel to choose one.
 const EPHEMERAL: u16 = 0;
 
@@ -59,12 +53,7 @@ fn lane_environment_on(nats: &str) -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", lane(DATABASE_LANE_KNOB).as_str()),
-            ("DRAGONFLY_URL", lane(DRAGONFLY_LANE_KNOB).as_str()),
             ("NATS_URL", nats),
-            (
-                "DRAGONFLY_TLS_CA_CERT_FILE",
-                lane(DRAGONFLY_CA_LANE_KNOB).as_str(),
-            ),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
@@ -110,14 +99,14 @@ async fn get_status(address: std::net::SocketAddr, path: &str) -> u16 {
 /// `agentsfleetd serve`. Same claim, driven in-process so the port is
 /// ephemeral and the teardown is asserted rather than left to a signal.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_boot_to_ready_on_compose() {
     install_subscriber();
 
     let mut supervisor = Supervisor::new();
     let booted = boot(&lane_environment(), EPHEMERAL, &mut supervisor)
         .await
-        .expect("the lane's Postgres and Dragonfly are up");
+        .expect("the lane's Postgres and NATS are up");
 
     assert_supervises_every_task(&supervisor);
     assert_ne!(
@@ -209,7 +198,7 @@ async fn assert_tears_down_promptly(supervisor: Supervisor, booted: &agentsfleet
 /// Cheap, and it catches the failure that a single-boot test cannot see: a
 /// connection, advisory lock or consumer group the first boot did not release.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_second_boot_finds_nothing_left_behind() {
     install_subscriber();
 
@@ -239,7 +228,7 @@ async fn test_a_second_boot_finds_nothing_left_behind() {
 /// M244 Dimension 7.2: a bus no seed answers for refuses boot, naming the
 /// setting an operator has to fix.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn boot_names_nats_url_when_the_bus_is_unreachable() {
     install_subscriber();
     let env = lane_environment_on("nats://127.0.0.1:1");
@@ -248,10 +237,7 @@ async fn boot_names_nats_url_when_the_bus_is_unreachable() {
         panic!("a bus with no reachable seed must refuse boot");
     };
     assert_eq!(failure.phase(), "bus");
-    assert_eq!(
-        failure.code(),
-        af_core::error_code::STARTUP_DRAGONFLY_CONNECT
-    );
+    assert_eq!(failure.code(), af_core::error_code::STARTUP_BUS_CONNECT);
     let mut chain = failure.to_string();
     let mut source = std::error::Error::source(&failure);
     while let Some(cause) = source {

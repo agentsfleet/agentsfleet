@@ -177,7 +177,7 @@ pub(crate) async fn seal_slack_grant(run: &Scenario) {
 pub(crate) async fn enqueue_from_thread(run: &Scenario) -> Uuid7 {
     let address = json!({"team_id": "T0FIXTURE", "channel_id": CHANNEL, "thread_ts": THREAD});
     let address = address.to_string();
-    let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.queue.clone())
+    let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone())
         .admit(Admission {
             producer: Producer::Steer,
             key: Key::Unrepeatable,

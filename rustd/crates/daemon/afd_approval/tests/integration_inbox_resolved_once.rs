@@ -42,7 +42,7 @@ async fn resolved_at(lane: &Lane, action: &Uuid7) -> Option<Timestamp> {
 
 /// A gate answered once keeps the instant and the decider of that answer.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_resolution_happens_once() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -93,7 +93,7 @@ async fn test_resolution_happens_once() {
 
 /// The schema refuses to rewrite a resolved gate, guard or no guard.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_resolved_gate_refuses_an_unguarded_rewrite() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -125,7 +125,7 @@ async fn a_resolved_gate_refuses_an_unguarded_rewrite() {
 /// later answer is told so, and the standing answer owes the run neither a
 /// wake nor a continuation, because there is no run left to move on.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_auto_killed_gate_owes_its_run_nothing() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;

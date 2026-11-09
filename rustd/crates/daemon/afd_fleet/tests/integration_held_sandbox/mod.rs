@@ -125,7 +125,7 @@ fn beat<'a>(holds: &'a [&'a str]) -> HeartbeatRequest<'a> {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_stores_hold_under_fencing() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     let until = fixtures.after(SANDBOX_HOLD_IDLE);
@@ -170,7 +170,7 @@ async fn test_report_stores_hold_under_fencing() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_heartbeat_clears_dropped_holds() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (kept, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let (dropped, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
@@ -199,7 +199,7 @@ async fn test_heartbeat_clears_dropped_holds() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_inactive_fleet_hold_destroyed() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [runner, other]) = seeded_parts::<2>(&fixtures).await;
     let (foreign, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();

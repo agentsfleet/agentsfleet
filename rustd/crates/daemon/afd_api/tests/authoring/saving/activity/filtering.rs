@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn receipt_filters_decode_and_validate_before_reading() {
     let saved = Saved::create(json!({})).await;
     let encoded = saved.get("/messages?event_type=%61ctivity&limit=25").await;
@@ -38,7 +38,7 @@ async fn receipt_filters_decode_and_validate_before_reading() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn busy_fleets_keep_exact_receipts_across_filtered_pages() {
     let saved = Saved::create(json!({})).await;
     for index in 0..26 {

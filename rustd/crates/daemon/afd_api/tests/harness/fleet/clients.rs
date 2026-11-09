@@ -33,7 +33,7 @@ pub(super) fn interjector(database: &Db) -> afd_outbound::Interjector {
 
 pub(super) fn logins(database: &Db) -> Logins {
     Logins::new(
-        afd_tenant::session::SessionStore::new(database.clone()),
+        afd_tenant::session::DeviceSessions::new(database.clone()),
         SecretBytes::new(FIXTURE_PEPPER.to_vec()),
         Entropy::new(),
         FIXTURE_APP_URL,

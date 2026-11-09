@@ -118,11 +118,12 @@ async fn a_poll_crosses_the_partition_and_the_stream(run: &Scenario) -> (String,
 ///
 /// # The hazard
 ///
-/// `SPUBLISH` delivers to the shard that owns the channel's slot, and
-/// `SSUBSCRIBE` only hears the shard it is attached to. A publisher and a
-/// subscriber that disagree about which node owns the channel produce exactly
-/// no symptom: the publish succeeds, the subscribe succeeds, and the dashboard
-/// is silent. Asserted through the bus subscription because that is the consumer
+/// The daemon publishes on whichever NATS node its connection holds, and the
+/// subscriber may be attached to another. The cluster carries the frame across
+/// only once the subscriber's interest has reached the publisher's node. A
+/// route that never carries it produces exactly no symptom: the publish
+/// succeeds, the subscribe succeeds, and the dashboard is silent. Asserted
+/// through the bus subscription because that is the consumer
 /// the live tail actually runs on — a raw subscribe would agree with a
 /// publisher that had drifted from its only reader.
 async fn a_frame_crosses_the_shard_to_its_subscriber(
@@ -134,8 +135,8 @@ async fn a_frame_crosses_the_shard_to_its_subscriber(
     // arrives late, so a subscription opened afterwards would prove a drop
     // that never happened.
     let mut tail = crate::tail::tail_of(&run.fleet).await;
-    // The pump registers the subscription asynchronously; publishing in the
-    // same instant can legitimately beat it to the server.
+    // The interest reaches the cluster asynchronously; publishing in the same
+    // instant can legitimately beat it to the daemon's node.
     settle().await;
 
     let forwarded = post(

@@ -1,22 +1,15 @@
-//! Each setup owns its Postgres rows and Dragonfly stream, including on retry.
+//! Each setup owns its Postgres rows and its bus, including on retry.
 
 use super::super::{
     fixture::{Fixture, now},
     mint,
 };
-use af_core::{
-    env::{EnvSource as _, ProcessEnv},
-    id::Uuid7,
-};
+use af_core::id::Uuid7;
 use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_admission::Admissions;
 use afd_authoring::{
     Creations, SavedFleet, Setup,
     types::{DraftPatch, SaveFleet, SaveSource, Start},
-};
-use afd_dragonfly::{
-    Dragonfly,
-    config::{DragonflyConfig, DragonflyRole},
 };
 use serde_json::json;
 use std::sync::Arc;
@@ -39,44 +32,32 @@ pub(super) struct Case {
     pub(super) base: Fixture,
     pub(super) setup: Setup,
     pub(super) creations: Creations,
-    pub(super) queue: Dragonfly,
+    pub(super) bus: afd_bus::Handle,
 }
 
 impl Case {
     pub(super) async fn create() -> Self {
-        Self::over(Fixture::create().await).await
+        Self::over(Fixture::create().await)
     }
 
     /// A case with a database of its own, for a proof whose fault would reach
     /// every other proof's rows.
     pub(super) async fn isolated() -> Self {
-        Self::over(Fixture::isolated().await).await
+        Self::over(Fixture::isolated().await)
     }
 
-    async fn over(base: Fixture) -> Self {
-        let config = DragonflyConfig::from_url(
-            DragonflyRole::Default,
-            ProcessEnv
-                .get("TEST_DRAGONFLY_URL")
-                .expect("live queue URL"),
-        );
-        let queue = afd_dragonfly::test_util::connect_live(&config)
-            .await
-            .expect("live cluster");
+    fn over(base: Fixture) -> Self {
+        let (bus, _server) = afd_bus::test_util::detached().expect("in-process bus");
         let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
             .expect("fixture encryption key");
         let setup = Setup::new(base.drafts.clone(), Arc::new(key));
-        let admissions = Admissions::new(
-            base.db.clone(),
-            afd_bus::dragonfly::publisher(queue.clone()),
-            Entropy::new(),
-        );
+        let admissions = Admissions::new(base.db.clone(), bus.clone(), Entropy::new());
         let creations = Creations::new(setup.clone(), admissions);
         Self {
             base,
             setup,
             creations,
-            queue,
+            bus,
         }
     }
 

@@ -31,7 +31,7 @@ const OWN_FLEETS: usize = 3;
 const MAX_PAGES: usize = 16;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn the_fleet_page_walks_one_workspace_and_both_statements_read_rows_alike() {
     let lane = Lane::create().await;
     let mut own = Vec::new();

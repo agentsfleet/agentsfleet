@@ -12,7 +12,7 @@ use crate::abort::Abort;
 use af_crypto::entropy::Entropy;
 use afd_admission::Admissions;
 
-use crate::datastores::{Datastores, dragonfly_calls};
+use crate::datastores::Datastores;
 use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::joined;
@@ -34,9 +34,6 @@ const FAILURES: &str = "failures";
 
 /// Measurement key: the fraction of everything tried that the path refused.
 const ERROR_RATE: &str = "error_rate";
-
-/// Measurement key: Dragonfly commands each accepted steer cost.
-const DRAGONFLY_CALLS_PER_STEER: &str = "dragonfly_calls_per_steer";
 
 /// Measurement key: Postgres commits per accepted steer, including amortized sampling.
 const POSTGRES_TRANSACTIONS_PER_STEER: &str = "postgres_transactions_per_steer";
@@ -118,7 +115,6 @@ pub async fn run(
 struct Submitted {
     outcomes: Outcomes,
     length: Duration,
-    dragonfly_calls: u64,
     postgres: StatementCost,
     depth: Vec<f64>,
 }
@@ -143,15 +139,11 @@ async fn submit(
         Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new()),
         stop.clone(),
     ));
-    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let postgres_before = statements::read(&stores.database).await?;
     let started = Instant::now();
     let outcomes = append_all(stores, slices, started + parameters.window, abort).await?;
     // The window is the submitters', measured the instant they are all back.
     let length = started.elapsed();
-    let dragonfly_calls = dragonfly_calls(&stores.queue)
-        .await?
-        .saturating_sub(dragonfly_before);
     let postgres = statements::read(&stores.database)
         .await?
         .since(postgres_before);
@@ -161,7 +153,6 @@ async fn submit(
     Ok(Submitted {
         outcomes,
         length,
-        dragonfly_calls,
         postgres,
         depth,
     })
@@ -272,10 +263,6 @@ impl Submitted {
         report.measurement(FAILURES, count(self.outcomes.failures));
         report.measurement(ERROR_RATE, self.outcomes.failure_fraction());
         report.measurement(
-            DRAGONFLY_CALLS_PER_STEER,
-            ratio(self.dragonfly_calls, self.outcomes.successes),
-        );
-        report.measurement(
             POSTGRES_TRANSACTIONS_PER_STEER,
             ratio(self.postgres.commits, self.outcomes.successes),
         );
@@ -287,10 +274,6 @@ impl Submitted {
             .series
             .insert(BACKLOG_DEPTH.to_owned(), self.depth.clone());
         report.datastores = DatastoreCosts {
-            dragonfly: DatastoreCost {
-                operations: self.dragonfly_calls,
-                time_ms: None,
-            },
             postgres: DatastoreCost {
                 operations: self.postgres.commits,
                 time_ms: None,

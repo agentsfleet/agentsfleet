@@ -19,7 +19,7 @@ const RESTORE_SETTLE: &str = "DROP TRIGGER refuse_admission_settlement ON fleet.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_once() {
-    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let held = held_in(Fixtures::create_isolated().await).await;
     let owner = held.fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");
     sqlx::raw_sql(FAIL_SETTLE)
@@ -62,7 +62,7 @@ async fn failed_admission_settlement_rolls_back_the_report_and_retry_settles_onc
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
-    let held = held_in(Fixtures::create_isolated_with_queue().await).await;
+    let held = held_in(Fixtures::create_isolated().await).await;
     let mut connection = held.fixtures.database.acquire().await.expect("database");
     sqlx::query("UPDATE fleet.admissions SET lease_fence = lease_fence + 1 WHERE id = $1")
         .bind(&held.event_id)
@@ -100,7 +100,7 @@ async fn a_report_cannot_settle_an_admission_with_a_different_fence() {
 }
 
 async fn commit(held: &Held) -> afd_fleet::Result<Committed> {
-    let leases = held.fixtures.leases_with_dead_queue();
+    let leases = held.fixtures.leases_with_dead_bus();
     let lease = leases
         .load_for_report(&held.lease_key, &held.runner)
         .await?

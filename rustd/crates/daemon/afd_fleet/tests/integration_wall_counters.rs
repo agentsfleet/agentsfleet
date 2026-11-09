@@ -1,4 +1,4 @@
-//! §1's receive half against live Postgres and Dragonfly: an event that parks is
+//! §1's receive half against live Postgres: an event that parks is
 //! still counted, and moves no budget.
 //!
 //! The receive is the one frame whose counters cannot ride its own statement:
@@ -24,14 +24,11 @@ use std::time::Duration;
 
 use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
-use afd_dragonfly::hub::Received;
-use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
-use afd_dragonfly::{Subscription, SubscriptionHub};
+use afd_bus::{Received, Subject, Subscription};
 use afd_fleet::lease::Delivery;
 use afd_fleet::lease::envelope::Acquired;
 use sqlx::Row as _;
 
-use crate::queue;
 use crate::seed::{Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -47,9 +44,6 @@ const EVENT_RECEIVED: &str = "event_received";
 /// The frame kind a closing would publish, and which a park never does.
 const EVENT_COMPLETE: &str = "event_complete";
 
-/// The probe the test publishes until Dragonfly reports a subscriber.
-const PROBE: &str = r#"{"kind":"probe"}"#;
-
 /// A seeded fleet whose narrative log this test opens and then leaves parked.
 struct Parked {
     fixtures: Fixtures,
@@ -63,17 +57,19 @@ struct Parked {
 /// the pull hands the frame — the row is then left open, which is what a
 /// park is from the tail's point of view: nothing closes it.
 async fn parked() -> Parked {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
         fleet,
         ..
     } = seeded::<1>(&fixtures).await;
-    let hub = SubscriptionHub::start(queue::config())
+    // The in-process bus registers the reader before `subscribe` returns, so a
+    // frame published afterwards cannot race the subscription.
+    let tail = fixtures
+        .bus()
+        .subscribe(&Subject::FleetTail(fleet.clone()))
         .await
-        .expect("a live hub");
-    let tail = hub.subscribe(&fleet_activity_channel(fleet.as_str()));
-    await_subscribed(&fixtures, fleet.as_str()).await;
+        .expect("the tail subscribes");
 
     let now = fixtures.enrolled_at();
     let leases = fixtures.leases();
@@ -106,37 +102,14 @@ async fn parked() -> Parked {
     }
 }
 
-/// Publishes a probe until Dragonfly reports one subscriber on the channel, so a
-/// frame published afterwards cannot be lost to a subscription still in flight.
-async fn await_subscribed(fixtures: &Fixtures, fleet: &str) {
-    let publisher = FleetStreams::new(fixtures.queue().clone());
-    let channel = fleet_activity_channel(fleet);
-    tokio::time::timeout(DELIVERY_BUDGET, async {
-        while publisher
-            .publish(&channel, PROBE)
-            .await
-            .expect("the probe publishes")
-            < 1
-        {
-            tokio::task::yield_now().await;
-        }
-    })
-    .await
-    .expect("Dragonfly acknowledges the subscription");
-}
-
-/// The next non-probe frame on the tail, decoded.
+/// The next frame on the tail, decoded.
 async fn next_frame(tail: &mut Subscription) -> serde_json::Value {
     tokio::time::timeout(DELIVERY_BUDGET, async {
         loop {
-            let Received::Message(message) = tail.recv().await.expect("the hub is up") else {
+            let Received::Message(message) = tail.recv().await.expect("the bus is up") else {
                 continue;
             };
-            let frame: serde_json::Value =
-                serde_json::from_str(&message.payload).expect("a frame is JSON");
-            if frame.pointer("/kind").and_then(serde_json::Value::as_str) != Some("probe") {
-                return frame;
-            }
+            return serde_json::from_str(&message.payload).expect("a frame is JSON");
         }
     })
     .await

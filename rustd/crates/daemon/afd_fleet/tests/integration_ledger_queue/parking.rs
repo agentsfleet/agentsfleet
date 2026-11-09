@@ -29,7 +29,7 @@ async fn an_answer_during_the_park_lock_wait_cannot_strand_the_admission() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let acquired = next(&leases, &runner).await.expect("claim");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     let mut connection = fixtures.database.acquire().await.expect("blocker");
@@ -84,7 +84,7 @@ async fn a_stale_claim_cannot_park_or_release_its_replacement() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner, rival]) = seeded_parts::<2>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let old = next(&leases, &runner).await.expect("first claim");
     seed_gate(&fixtures, &fleet, &workspace).await;
     fixtures
@@ -130,11 +130,11 @@ async fn answer_while_blocked(
     blocker: sqlx::Transaction<'_, sqlx::Postgres>,
 ) {
     wait_for_park(fixtures, pid).await;
-    let queue = crate::queue::unreachable();
+    let bus = afd_bus::test_util::unreachable();
     let inbox = Inbox::new(
         fixtures.database.clone(),
-        afd_bus::dragonfly::publisher(queue.clone()),
-        Admissions::for_tests(fixtures.database.clone(), queue),
+        bus.clone(),
+        Admissions::for_tests(fixtures.database.clone(), bus),
     );
     let answer = inbox
         .resolve(

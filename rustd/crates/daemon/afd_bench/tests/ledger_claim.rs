@@ -21,10 +21,10 @@ const RUNNERS: u64 = 8;
 #[ignore = "needs the exclusive benchmark rig; run after make bench-lease"]
 async fn test_ledger_claim_lane_reports_round_trips() {
     let lane = database().await;
-    let queue = af_core::env::ProcessEnv
-        .get("TEST_DRAGONFLY_URL")
-        .expect("test cluster URL");
-    let stores = Datastores::open(&lane.url(), &queue, None)
+    let seeds = af_core::env::ProcessEnv
+        .get("TEST_NATS_URL")
+        .expect("the test cluster's NATS seeds");
+    let stores = Datastores::open(&lane.url(), &seeds)
         .await
         .expect("the benchmark rig answers");
     let prefix = RunPrefix::mint();

@@ -16,10 +16,7 @@ use crate::error::{Error, ErrorKind};
 fn complete() -> BTreeMap<&'static str, String> {
     BTreeMap::from([
         (REVISION_VARIABLE, "3643941ca".to_owned()),
-        (
-            DATASTORE_IMAGE_VARIABLE,
-            "docker.dragonflydb.io/dragonflydb/dragonfly:v1.40.2".to_owned(),
-        ),
+        (DATASTORE_IMAGE_VARIABLE, "nats:2.15.2-alpine".to_owned()),
         (OWNED_VARIABLE, OWNED_VALUE.to_owned()),
     ])
 }
@@ -38,10 +35,7 @@ fn read(environment: &BTreeMap<&'static str, String>) -> Result<Provenance, Erro
 fn a_complete_environment_is_read_whole() {
     let provenance = read(&complete()).expect("a complete environment is readable");
     assert_eq!(provenance.revision, "3643941ca");
-    assert_eq!(
-        provenance.datastore_image,
-        "docker.dragonflydb.io/dragonflydb/dragonfly:v1.40.2"
-    );
+    assert_eq!(provenance.datastore_image, "nats:2.15.2-alpine");
     assert!(provenance.owned);
 }
 

@@ -15,12 +15,12 @@
 //! the reason string is for, since the only reader of the body is a scheduler
 //! that will never look at it.
 //!
-//! # Why this suite needs a queue and the others do not
+//! # Why this suite has a bus and the others do not
 //!
 //! The accepted fire is the only path here that WRITES, and what it answers is
-//! the identifier of the entry it wrote. `Fleet::live` points the appender at a
-//! Dragonfly nothing resolves; `with_live_fire` is the seam that gives it one that
-//! takes the append, which is also what makes the retry case reachable at all.
+//! the identifier of the entry it wrote. `Fleet::live` points the ledger's wake
+//! at a bus nothing reaches; `with_live_fire` is the seam that gives it one that
+//! takes the wake, so an accepted fire runs the path a deployment runs.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -97,7 +97,7 @@ fn ignored(document: &Value) -> &str {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_fire_for_a_schedule_this_daemon_no_longer_holds_is_dropped() {
     // A real callback: the scheduler was correctly told to send it, and the
     // schedule has since been deleted here. Its own reason rather than the
@@ -121,7 +121,7 @@ async fn a_fire_for_a_schedule_this_daemon_no_longer_holds_is_dropped() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_paused_schedules_fire_is_acknowledged_and_dropped() {
     // The scheduler not yet knowing. A pause is written here first and pushed
     // upstream after, so a fire arriving in that window is expected — and
@@ -146,7 +146,7 @@ async fn a_paused_schedules_fire_is_acknowledged_and_dropped() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_halted_fleets_fire_is_dropped_for_the_fleets_own_reason() {
     // The other half, and a different fact: the schedule is exactly as its
     // owner wants it, and an operator has stopped everything the fleet does.
@@ -176,7 +176,7 @@ async fn a_halted_fleets_fire_is_dropped_for_the_fleets_own_reason() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_verified_fire_lands_on_the_stream_and_answers_the_event_it_wrote() {
     // The one accepted path, and the only one that writes. 202 rather than 200
     // is the distinction the scheduler cannot see but an operator can: this
@@ -218,7 +218,7 @@ async fn a_verified_fire_lands_on_the_stream_and_answers_the_event_it_wrote() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_retried_fire_answers_the_first_attempts_event_rather_than_a_second() {
     // The scheduler retries whatever it did not get a 2xx for, repeating its
     // own message id. Without the claim the retry is a second run of the same
@@ -249,7 +249,7 @@ async fn a_retried_fire_answers_the_first_attempts_event_rather_than_a_second() 
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn two_fires_of_one_schedule_are_two_events() {
     // The other side of the claim key. It is scoped by message id precisely so
     // that a schedule firing twice on two ticks is two runs; a key that was the

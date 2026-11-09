@@ -12,7 +12,7 @@ use agentsfleetd::supervisor::Supervisor;
 use hyper::Method;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_reconcile_uncertain_repair_writes() {
     for loss in [Acknowledgement::LoseRef, Acknowledgement::LoseDraft] {
         for readback in [Readback::Exact, Readback::Forbidden, Readback::WrongHead] {

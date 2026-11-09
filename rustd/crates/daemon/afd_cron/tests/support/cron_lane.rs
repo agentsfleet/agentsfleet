@@ -17,7 +17,6 @@
 
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 // `allow`, not `expect`: this module is compiled once per test binary and each
@@ -29,15 +28,12 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
-use af_core::env::{EnvSource, ProcessEnv};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_cron::{NewSchedule, Refused, Schedule, Schedules, Source};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use jiff::Timestamp;
 
 /// The instant the seeded rows are stamped with, and the one a create mints
@@ -47,19 +43,12 @@ pub(crate) const SEED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 /// The status the fixture fleet is seeded live under.
 const FLEET_ACTIVE: &str = "active";
 
-/// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-
-/// The knob carrying the lane's CA bundle, where the lane speaks TLS.
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
-
-/// How long anything crossing a datastore is given before the test fails.
-const REQUEST_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
-
 /// A tenant, workspace and fleet nothing else in the suite addresses.
 pub(crate) struct CronLane {
     lane: TestDatabase,
     pub(crate) database: Db,
+    /// The in-process bus every ledger this lane builds publishes on.
+    bus: afd_bus::Handle,
     pub(crate) store: Schedules,
     pub(crate) tenant: Uuid7,
     pub(crate) workspace: Uuid7,
@@ -71,10 +60,12 @@ impl CronLane {
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
+        let (bus, _server) = afd_bus::test_util::detached().expect("in-process bus");
         let seeded = Self {
             lane,
             store: Schedules::new(database.clone(), Entropy::new()),
             database,
+            bus,
             tenant: mint_id(),
             workspace: mint_id(),
             fleet: mint_id(),
@@ -172,35 +163,12 @@ impl CronLane {
             .expect("the lane's Postgres must answer")
     }
 
-    /// The lane's Dragonfly, opened on demand.
-    ///
-    /// Not held on the struct: only the fire suite needs a queue, and opening
-    /// one for every store and fence case would make a datastore lane out of a
-    /// Postgres lane for no gain.
     /// The admission ledger every fire in this suite writes through.
     ///
-    /// Built from the lane's own pool and a live queue, so a test names what it
-    /// is exercising rather than restating how a ledger is assembled.
-    pub(crate) async fn admissions(&self) -> afd_admission::Admissions {
-        afd_admission::Admissions::for_tests(self.database.clone(), Self::queue().await)
-    }
-
-    pub(crate) async fn queue() -> Dragonfly {
-        afd_dragonfly::test_util::connect_live(&Self::redis())
-            .await
-            .expect("the lane's Dragonfly must be reachable")
-    }
-
-    /// The lane's Dragonfly configuration.
-    pub(crate) fn redis() -> DragonflyConfig {
-        let url = ProcessEnv.get(DRAGONFLY_URL_KNOB).unwrap_or_else(|| {
-            panic!(
-                "{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`"
-            )
-        });
-        DragonflyConfig::from_url(DragonflyRole::Default, url)
-            .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
-            .with_request_timeout(REQUEST_BUDGET)
+    /// Built from the lane's own pool and its bus, so a test names what it is
+    /// exercising rather than restating how a ledger is assembled.
+    pub(crate) fn admissions(&self) -> afd_admission::Admissions {
+        afd_admission::Admissions::for_tests(self.database.clone(), self.bus.clone())
     }
 
     /// One connection on the lane, for the direct reads a case needs.

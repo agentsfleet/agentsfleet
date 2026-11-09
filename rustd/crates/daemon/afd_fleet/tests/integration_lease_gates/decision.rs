@@ -26,7 +26,7 @@ struct Issued {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn issued_selection_survives_edits_revocation_and_catalogue_removal() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let mut model = DecisionModelFixture::create(&fixtures.database)
         .await
         .expect("reviewed decision model fixture");
@@ -77,7 +77,7 @@ async fn issued_selection_survives_edits_revocation_and_catalogue_removal() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn profile_snapshot_does_not_reverse_model_then_runner_lock_order() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let model = DecisionModelFixture::create(&fixtures.database)
         .await
         .expect("reviewed decision model fixture");

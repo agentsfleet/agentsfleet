@@ -43,7 +43,7 @@ use jiff::Timestamp;
 
 pub use self::state::SessionStatus;
 use self::state::{AbortReason, ApproveOutcome, VerifyOutcome};
-pub use self::store::{CONSUME_REPLAY_WINDOW, MAX_VERIFY_ATTEMPTS, SESSION_TTL, SessionStore};
+pub use self::store::{CONSUME_REPLAY_WINDOW, DeviceSessions, MAX_VERIFY_ATTEMPTS, SESSION_TTL};
 
 use crate::Result;
 use crate::error;
@@ -63,7 +63,7 @@ const LOGIN_PATH: &str = "/cli-auth/";
 /// which is what lets the composition root hand one to the router by value.
 #[derive(Debug, Clone)]
 pub struct Sessions {
-    store: SessionStore,
+    store: DeviceSessions,
     code_pepper: SecretBytes,
     entropy: Entropy,
     app_url: String,
@@ -78,7 +78,7 @@ impl Sessions {
     /// daemon concatenates.
     #[must_use]
     pub fn new(
-        store: SessionStore,
+        store: DeviceSessions,
         code_pepper: SecretBytes,
         entropy: Entropy,
         app_url: &str,

@@ -31,7 +31,7 @@ async fn deadline_case(first_gate_first: bool) {
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let head = enqueue(&fixtures, &fleet, &workspace).await;
     let later = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &runner).await.expect("initial head");
     let other = scoped_gate(&fixtures, &fleet, &workspace, &head).await;
     let specific = scoped_gate(&fixtures, &fleet, &workspace, &head).await;
@@ -81,11 +81,11 @@ async fn assert_answerable(fixtures: &Fixtures, fleet: &Uuid7, specific: &Uuid7)
 }
 
 async fn approve(fixtures: &Fixtures, action: &Uuid7) {
-    let queue = crate::queue::unreachable();
+    let bus = afd_bus::test_util::unreachable();
     let inbox = Inbox::new(
         fixtures.database.clone(),
-        afd_bus::dragonfly::publisher(queue.clone()),
-        Admissions::for_tests(fixtures.database.clone(), queue),
+        bus.clone(),
+        Admissions::for_tests(fixtures.database.clone(), bus),
     );
     assert!(matches!(
         inbox
@@ -111,7 +111,7 @@ async fn standing_access_waits_for_an_answer_after_its_card_deadline() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let head = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &runner).await.expect("initial head");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     leases

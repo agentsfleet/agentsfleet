@@ -23,9 +23,8 @@ use afd_db::Db;
 /// Cheap to clone: `Db` is a handle over an `Arc`-backed pool, so every clone
 /// shares one connection set.
 ///
-/// No queue. Every money decision is Postgres alone — which is worth stating,
-/// because it is what lets the whole gate pass be proven against a database
-/// with no Dragonfly in the picture.
+/// No bus. Every money decision is Postgres alone, which lets the whole gate
+/// pass be proven against a database and nothing else.
 #[derive(Debug, Clone)]
 pub struct Accounts {
     database: Db,

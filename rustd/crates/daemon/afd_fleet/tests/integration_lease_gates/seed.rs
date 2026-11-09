@@ -151,12 +151,9 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &Uuid
 
 /// Raises one gate over `ready`'s event, answered as `status` names.
 ///
-/// Two writes, because the gate is two things. The DECISION is a
-/// `fleet.approval_gates` row keyed by `action_id`; the REFERENCE that
-/// points a poll at it is a Dragonfly key, and `Gates::check` reads the
-/// reference first, then recovers it from the durable row on a cache miss.
-///
-/// The row is the reference: `Gates::recorded` finds the gate by its event.
+/// One write: the gate is a `fleet.approval_gates` row keyed by `action_id`,
+/// and the row is also the reference a poll follows: `Gates::recorded` finds
+/// the gate by its event.
 ///
 /// The gate expires one [`GATE_WINDOW`] after the database's `now()`.
 pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) -> Uuid7 {

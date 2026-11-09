@@ -141,14 +141,10 @@ pub(super) async fn enrol(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uu
         .register(&request, now)
         .await
         .expect("enrolment must succeed");
-    afd_fleet::lease::Leases::new(
-        booted.database.clone(),
-        afd_bus::dragonfly::publisher(booted.queue.clone()),
-        Entropy::new(),
-    )
-    .claim(fleet, &enrolled.runner_id, std::time::Duration::ZERO)
-    .await
-    .expect("the affinity claim runs")
-    .expect("a freshly installed fleet is unclaimed");
+    afd_fleet::lease::Leases::new(booted.database.clone(), booted.bus.clone(), Entropy::new())
+        .claim(fleet, &enrolled.runner_id, std::time::Duration::ZERO)
+        .await
+        .expect("the affinity claim runs")
+        .expect("a freshly installed fleet is unclaimed");
     (enrolled.runner_id, enrolled.token.expose().to_owned())
 }

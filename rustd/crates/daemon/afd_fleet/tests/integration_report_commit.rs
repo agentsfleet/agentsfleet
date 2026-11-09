@@ -24,7 +24,7 @@ async fn test_report_persists_result_with_settlement_atomically() {
     let lease_id = &held.issued.lease_id;
     let settled_at = held.now;
     let from = held.run_a_slice().await;
-    let leases = held.fixtures.leases_with_dead_queue();
+    let leases = held.fixtures.leases_with_dead_bus();
     let lease = leases
         .load_for_report(lease_id, &held.runner)
         .await
@@ -171,7 +171,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     let lease_id = &held.issued.lease_id;
     let settled_at = held.now;
     let from = held.run_a_slice().await;
-    let leases = held.fixtures.leases_with_dead_queue();
+    let leases = held.fixtures.leases_with_dead_bus();
     let lease = leases
         .load_for_report(lease_id, &held.runner)
         .await

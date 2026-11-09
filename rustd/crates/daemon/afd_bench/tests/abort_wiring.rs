@@ -20,26 +20,16 @@ use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_bench::abort::{Abort, MINIMUM_SAMPLE};
 use afd_bench::lane::lease::drive::{Shared, poll_until};
-use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_fleet::lease::Leases;
-
-/// Port 1 is reserved and unbound on every platform this builds for, so a
-/// command fails on refusal in microseconds rather than waiting out a timeout.
-const NOWHERE: &str = "redis://127.0.0.1:1";
 
 /// Any v7-shaped runner id; the pass never reaches the row it would name.
 const RUNNER: &str = "0195b4ba-8d3a-7001-8abc-000000000001";
 
 #[tokio::test]
 async fn test_a_run_aborts_when_the_target_starts_failing() {
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail");
     let leases = Leases::new(
         afd_db::test_util::unreachable_db(),
-        afd_bus::dragonfly::publisher(queue),
+        afd_bus::test_util::unreachable(),
         Entropy::new(),
     );
     let runner = Uuid7::parse(RUNNER).expect("a v7 spelling");

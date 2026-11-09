@@ -199,8 +199,8 @@ async fn a_gap_in_the_tail_is_announced() -> TestResult {
         tail.next().await.ok_or("the opening")?;
     }
     // The first confirmation is the subscription's own; a repeat is a gap.
-    server.confirm(&Subject::FleetTail(fleet.clone()));
-    server.confirm(&Subject::FleetTail(fleet));
+    server.gap(&Subject::FleetTail(fleet.clone()));
+    server.gap(&Subject::FleetTail(fleet));
     let gap = tokio::time::timeout(Duration::from_secs(1), tail.next())
         .await?
         .ok_or("the gap")?;

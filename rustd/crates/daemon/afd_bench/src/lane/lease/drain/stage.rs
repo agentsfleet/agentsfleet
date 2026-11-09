@@ -58,7 +58,7 @@ pub(super) struct Staged {
 ///
 /// # Errors
 ///
-/// Whatever Postgres or Dragonfly refused, a credential that would not seal,
+/// Whatever Postgres refused, a credential that would not seal,
 /// and a platform default another run already holds.
 pub(super) async fn stage(
     stores: &Datastores,
@@ -108,13 +108,13 @@ async fn fund(stores: &Datastores, fleets: &[SeededFleet]) -> Result<()> {
 }
 
 impl Staged {
-    /// The daemon's lease plane over the lane's pool and queue.
+    /// The daemon's lease plane over the lane's pool and Bus.
     pub(super) fn plane(&self, stores: &Datastores) -> LeaseService {
         plane(stores, &self.kek)
     }
 }
 
-/// The daemon's lease plane over the lane's pool and queue, resolving the
+/// The daemon's lease plane over the lane's pool and Bus, resolving the
 /// platform credential sealed under `kek`.
 ///
 /// Composed the way the daemon's root composes it, with a broker over a

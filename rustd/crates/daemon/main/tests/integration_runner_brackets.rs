@@ -32,7 +32,7 @@ use crate::wire::{capable_beat, field, report_body, wait_without_offer};
 /// frame that names it, so a watcher reacting to the frame can never find
 /// the row missing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_bracket_frames_open_and_close_a_run() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -108,7 +108,7 @@ async fn test_bracket_frames_open_and_close_a_run() {
 /// the tail rather than from a reload — the row was opened by the same poll,
 /// so both brackets arrive from one request.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_refused_lease_closes_the_run_on_the_tail() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

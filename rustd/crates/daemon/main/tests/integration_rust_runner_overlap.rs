@@ -122,7 +122,7 @@ async fn chunk_arrived(tail: &mut crate::tail::Tail) -> Option<Instant> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_chat_streams_before_sandbox_ready() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

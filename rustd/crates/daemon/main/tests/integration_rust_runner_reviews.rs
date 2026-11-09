@@ -32,7 +32,7 @@ const REVIEWS: &str = "/repos/agentsfleet/linkwarden/pulls/7/reviews";
 /// posts nothing. No write rule admits a review post yet, so today the post
 /// is refused before it leaves and the refusal is what the model reads.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_pr_reviewer_posts_one_review() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, "github-pr-reviewer", &[], None).await;

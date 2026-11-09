@@ -45,7 +45,7 @@ async fn refuses(cases: impl FnOnce(&Leased) -> Vec<Case>) {
 
 /// A lease the path does not name properly, or that is not this runner's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedules_refuse_a_lease_that_is_not_held() {
     refuses(|leased| {
         vec![
@@ -71,7 +71,7 @@ async fn test_schedules_refuse_a_lease_that_is_not_held() {
 
 /// A body this verb cannot read, or one naming a field it does not take.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedules_refuse_a_body_they_do_not_take() {
     refuses(|leased| {
         let fence = leased.fence;
@@ -122,7 +122,7 @@ async fn test_schedules_refuse_a_body_they_do_not_take() {
 /// A schedule the path does not name properly, or that the fleet does not
 /// hold.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedules_refuse_a_schedule_that_is_not_held() {
     refuses(|leased| {
         let fence = json!({"fencing_token": leased.fence});
@@ -169,7 +169,7 @@ async fn test_schedules_refuse_a_schedule_that_is_not_held() {
 
 /// A runs page asked for with a size or a cursor this daemon does not serve.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedule_runs_refuse_a_page_they_do_not_serve() {
     refuses(|leased| {
         let runs = leased.fenced(&format!("/{UNKNOWN}/runs"));

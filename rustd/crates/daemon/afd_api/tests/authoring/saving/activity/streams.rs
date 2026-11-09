@@ -1,61 +1,34 @@
-//! Probe subscription readiness and use ordered markers to detect extra notices.
+//! Use an ordered marker to detect extra notices.
 
 use super::fixture::Saved;
-use af_core::{
-    env::{EnvSource as _, ProcessEnv},
-    id::Uuid7,
-};
-use afd_dragonfly::{
-    Subscription, SubscriptionHub,
-    config::{DragonflyConfig, DragonflyRole},
-    hub::Received,
-    streams::{FleetStreams, fleet_activity_channel},
-};
+use af_core::id::Uuid7;
+use afd_bus::{Received, Subject, Subscription};
 use serde_json::{Value, json};
 use std::time::Duration;
 
 const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
-const PROBE: &str = "receipt-subscription-ready";
 const FINISHED: &str = "receipt-writes-finished";
 
 pub(super) struct Reader {
-    hub: SubscriptionHub,
     subscription: Subscription,
-    publisher: FleetStreams,
-    fleet: Uuid7,
+    bus: afd_bus::Handle,
+    subject: Subject,
 }
 
 impl Reader {
     pub(super) async fn open(saved: &Saved, fleet: &Uuid7) -> Self {
-        let config = DragonflyConfig::from_url(
-            DragonflyRole::Default,
-            ProcessEnv
-                .get("TEST_DRAGONFLY_URL")
-                .expect("live cluster URL"),
-        );
-        let hub = SubscriptionHub::start(config).await.expect("live hub");
-        let reader = hub.subscribe(&fleet_activity_channel(fleet.as_str()));
-        let mut stream = Self {
-            hub,
-            subscription: reader,
-            publisher: FleetStreams::new(saved.case.queue.clone()),
-            fleet: fleet.clone(),
-        };
-        tokio::time::timeout(DELIVERY_BUDGET, async {
-            while stream
-                .publisher
-                .publish_tail(stream.fleet.as_str(), PROBE)
-                .await
-                .expect("subscription probe")
-                == 0
-            {
-                tokio::task::yield_now().await;
-            }
-        })
-        .await
-        .expect("subscription confirmed before mutation");
-        assert_eq!(stream.receive().await, PROBE);
-        stream
+        let subject = Subject::FleetTail(fleet.clone());
+        let subscription = saved
+            .case
+            .bus
+            .subscribe(&subject)
+            .await
+            .expect("the in-process bus subscribes");
+        Self {
+            subscription,
+            bus: saved.case.bus.clone(),
+            subject,
+        }
     }
 
     pub(super) async fn changed(&mut self) {
@@ -64,8 +37,8 @@ impl Reader {
     }
 
     pub(super) async fn quiet(&mut self) {
-        self.publisher
-            .publish_tail(self.fleet.as_str(), FINISHED)
+        self.bus
+            .publish(&self.subject, FINISHED)
             .await
             .expect("ordered end marker");
         assert_eq!(
@@ -84,11 +57,5 @@ impl Reader {
             panic!("a published message, not a gap");
         };
         message.payload.as_ref().clone()
-    }
-}
-
-impl Drop for Reader {
-    fn drop(&mut self) {
-        self.hub.shutdown();
     }
 }

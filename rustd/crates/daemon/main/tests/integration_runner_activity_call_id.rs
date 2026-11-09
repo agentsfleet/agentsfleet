@@ -29,7 +29,7 @@ const CALL_ID: &str = "3";
 /// lease as `{fence}:{call_id}`; a frame without one, or with any unknown
 /// field, refuses the batch.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_activity_carries_a_required_call_id() {
     let mut supervisor = Supervisor::new();
     let mut tailed = Tailed::open(&mut supervisor).await;
@@ -72,7 +72,7 @@ async fn test_activity_carries_a_required_call_id() {
 /// A completion's outcome reaches a subscriber field for field; an edge past
 /// its bound refuses the batch and publishes nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_activity_tool_outcome_reaches_channel() {
     let mut supervisor = Supervisor::new();
     let mut tailed = Tailed::open(&mut supervisor).await;

@@ -31,11 +31,11 @@ async fn a_gap_is_catching_up_with_nothing_counted_and_no_sequence_spent() -> Te
     let (bus, server) = test_util::detached()?;
     let subject = Subject::FleetTail(Uuid7::parse(FLEET)?);
     let mut frames = Box::pin(tail(bus.subscribe(&subject).await?));
-    server.confirm(&subject);
+    server.gap(&subject);
     server.publish(&subject, CHUNK);
     assert_eq!(next(&mut frames).await.seq, 0);
 
-    server.confirm(&subject);
+    server.gap(&subject);
     let gap = next(&mut frames).await;
     assert_eq!((gap.seq, gap.kind.as_ref()), (0, KIND_CATCHING_UP));
     assert_eq!(gap.data, r#"{"kind":"catching_up","dropped":0}"#);

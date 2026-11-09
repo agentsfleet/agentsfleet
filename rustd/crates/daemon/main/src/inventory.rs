@@ -16,7 +16,7 @@
 //! checked in `tests/daemon.rs`, which asserts by name that boot supervises
 //! exactly the tasks named here.
 
-/// The supervised name for the Dragonfly pub/sub pump.
+/// The supervised name for the task that shuts the bus down on cancellation.
 pub const HUB_PUMP: &str = "hub_pump";
 
 /// The supervised name for the span exporter's flush loop.
@@ -32,9 +32,7 @@ pub const ANALYTICS_FLUSH: &str = "analytics_flush";
 /// The task that delivers a fleet's answer back through the connector the
 /// question arrived on.
 ///
-/// Named for the stream it reads rather than for a verb, because that is what
-/// an operator correlating a supervised task with a Dragonfly key needs it to
-/// match — see [`crate::outbound`].
+/// It claims rows of `fleet.obligations`; see [`crate::outbound`].
 pub const OUTBOUND_WORKER: &str = crate::outbound::OUTBOUND_WORKER;
 
 /// Every long-lived task a fully booted daemon supervises, in spawn order.

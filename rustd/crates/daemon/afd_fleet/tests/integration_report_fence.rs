@@ -28,7 +28,7 @@ use crate::rows::{LAPSE, Row};
 async fn test_a_superseded_report_commits_nothing() {
     let held = held().await;
     let lease_id = &held.issued.lease_id;
-    let leases = held.fixtures.leases_with_dead_queue();
+    let leases = held.fixtures.leases_with_dead_bus();
     let lease = leases
         .load_for_report(lease_id, &held.runner)
         .await

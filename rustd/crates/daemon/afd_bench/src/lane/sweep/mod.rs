@@ -8,11 +8,10 @@
 //! which is why a lane sweeps on every exit path rather than only the happy
 //! one.
 //!
-//! # Dragonfly first, then Postgres, then the parents
+//! # Children first, then the parents
 //!
-//! The fleet ids come from Postgres, so the Dragonfly half has to happen while the
-//! rows still exist. After that the order is forced by the foreign keys:
-//! fleets reference workspaces, workspaces reference tenants.
+//! The order is forced by the foreign keys: fleets reference workspaces,
+//! workspaces reference tenants.
 
 use af_core::id::Uuid7;
 use afd_db::Db;
@@ -48,7 +47,7 @@ fn like(prefix: &RunPrefix) -> String {
 ///
 /// # Errors
 ///
-/// Whatever Postgres or Dragonfly refused. A sweep that cannot finish is reported
+/// Whatever Postgres refused. A sweep that cannot finish is reported
 /// rather than swallowed: the whole point of the count in the result file is
 /// that somebody can see it did not match.
 pub async fn everything(database: &Db, prefix: &RunPrefix) -> Result<u64> {
