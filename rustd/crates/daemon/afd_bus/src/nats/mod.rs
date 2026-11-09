@@ -185,6 +185,12 @@ impl Bus for Adapter {
         Ok(opened.reader.into_subscription())
     }
 
+    async fn connected(&self) -> bool {
+        self.live.read().await.as_ref().is_some_and(|live| {
+            live.client.connection_state() == async_nats::connection::State::Connected
+        })
+    }
+
     async fn shutdown(&self) -> Result<()> {
         let Some(live) = self.live.write().await.take() else {
             return Ok(());

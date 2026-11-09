@@ -45,6 +45,13 @@ pub trait Bus: Debug + Send + Sync {
     /// # Errors
     /// Returns a native shutdown failure; the caller supplies the drain deadline.
     async fn shutdown(&self) -> Result<()>;
+    /// Whether the adapter holds a live connection right now.
+    ///
+    /// `/readyz` reports it and never gates on it. The default answers `true`
+    /// for an adapter with no connection to lose, such as a test double.
+    async fn connected(&self) -> bool {
+        true
+    }
 }
 
 /// Shared process-wide adapter, with no broker type at a domain call site.
@@ -88,6 +95,11 @@ impl Handle {
     /// Preserves an adapter shutdown failure, including an interrupted drain.
     pub async fn shutdown(&self) -> Result<()> {
         self.0.shutdown().await
+    }
+
+    /// Whether the adapter holds a live connection right now; see [`Bus::connected`].
+    pub async fn connected(&self) -> bool {
+        self.0.connected().await
     }
 
     /// Announce an already-committed fact; a lost announcement cannot roll it back.

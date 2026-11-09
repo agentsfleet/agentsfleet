@@ -70,6 +70,7 @@ pub(crate) fn daemon_environment(
         [
             ("DATABASE_URL_API", database),
             ("DRAGONFLY_URL", lane(DRAGONFLY_LANE_KNOB).as_str()),
+            ("NATS_URL", lane("TEST_NATS_URL").as_str()),
             (
                 "DRAGONFLY_TLS_CA_CERT_FILE",
                 lane(DRAGONFLY_CA_LANE_KNOB).as_str(),

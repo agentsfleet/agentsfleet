@@ -37,6 +37,7 @@ dev_identity() {
   local base=$((DEV_INFRA_PORT_START + 16#$DEV_REPO_ID % DEV_INFRA_SLOTS * DEV_INFRA_STRIDE))
   export AGENTSFLEET_PG_HOST_PORT="$base" AGENTSFLEET_DRAGONFLY_BASE_PORT="$((base + 1))" AGENTSFLEET_DRAGONFLY_LAST_PORT="$((base + 5))"
   export AGENTSFLEET_QSTASH_HOST_PORT="$((base + 10))" AGENTSFLEET_MAILPIT_SMTP_PORT="$((base + 11))" AGENTSFLEET_MAILPIT_UI_PORT="$((base + 12))"
+  export AGENTSFLEET_NATS_BASE_PORT="$((base + 13))" AGENTSFLEET_NATS_PORT_2="$((base + 14))" AGENTSFLEET_NATS_PORT_3="$((base + 15))"
 }
 
 dev_stack_paths() {
@@ -117,6 +118,9 @@ AGENTSFLEET_DRAGONFLY_LAST_PORT=$AGENTSFLEET_DRAGONFLY_LAST_PORT
 AGENTSFLEET_QSTASH_HOST_PORT=$AGENTSFLEET_QSTASH_HOST_PORT
 AGENTSFLEET_MAILPIT_SMTP_PORT=$AGENTSFLEET_MAILPIT_SMTP_PORT
 AGENTSFLEET_MAILPIT_UI_PORT=$AGENTSFLEET_MAILPIT_UI_PORT
+AGENTSFLEET_NATS_BASE_PORT=$AGENTSFLEET_NATS_BASE_PORT
+AGENTSFLEET_NATS_PORT_2=$AGENTSFLEET_NATS_PORT_2
+AGENTSFLEET_NATS_PORT_3=$AGENTSFLEET_NATS_PORT_3
 EOF
   mv "$staging" "$DEV_INFRA"
 }
@@ -127,12 +131,12 @@ dev_infra_up() {
   status="$(dev_compose ps --all --format '{{.Service}} {{.State}} {{.Health}}')"
   if [ -n "$status" ]; then
     while read -r service state health; do
-      case "$service" in postgres|dragonfly|mailpit|qstash) ;; *) dev_fail 'unexpected shared service' ;; esac
+      case "$service" in postgres|dragonfly|mailpit|qstash|nats-1|nats-2|nats-3) ;; *) dev_fail 'unexpected shared service' ;; esac
       if [ "$state" = running ] && [ "$health" = healthy ]; then count=$((count + 1)); fi
       if [ "$state" = running ] && [ "$health" = unhealthy ]; then restart+=("$service"); fi
     done <<<"$status"
   fi
-  if [ "$count" = 4 ]; then
+  if [ "$count" = 7 ]; then
     printf 'Reusing shared infrastructure %s\n' "$DEV_PROJECT"
     return
   fi

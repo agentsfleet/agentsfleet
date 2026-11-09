@@ -148,6 +148,9 @@ pub enum BootFailure {
     /// Dragonfly would not answer.
     #[error("agentsfleetd cannot boot: the API queue would not answer")]
     Queue(#[from] afd_dragonfly::Error),
+    /// No NATS seed answered, or the server failed the boot check.
+    #[error("agentsfleetd cannot boot: the event bus would not answer")]
+    Bus(#[from] afd_bus::Error),
     /// The port could not be bound.
     #[error("agentsfleetd cannot listen")]
     Listen(#[from] std::io::Error),
@@ -201,6 +204,7 @@ impl BootFailure {
             Self::Environment(_) => "preflight",
             Self::Database(_) => "database",
             Self::Queue(_) => "queue",
+            Self::Bus(_) => "bus",
             Self::Listen(_) => "listen",
             Self::Exporter(_) | Self::Contract(_) => "telemetry",
             Self::HttpClient(_) => "http_client",
@@ -217,7 +221,7 @@ impl BootFailure {
         match *self {
             Self::Environment(_) => af_core::error_code::STARTUP_ENV_CHECK,
             Self::Database(_) => af_core::error_code::STARTUP_DB_CONNECT,
-            Self::Queue(_) => af_core::error_code::STARTUP_DRAGONFLY_CONNECT,
+            Self::Queue(_) | Self::Bus(_) => af_core::error_code::STARTUP_DRAGONFLY_CONNECT,
             Self::Listen(_) | Self::Exporter(_) | Self::Contract(_) | Self::HttpClient(_) => {
                 af_core::error_code::INTERNAL_OPERATION_FAILED
             }

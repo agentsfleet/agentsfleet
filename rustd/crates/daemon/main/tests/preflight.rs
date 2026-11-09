@@ -38,6 +38,7 @@ fn env_with(extra: [(&str, &str); 3]) -> MapEnv {
         extra
             .into_iter()
             .chain(crate::support::SESSION_PEPPER)
+            .chain(crate::support::BUS)
             .chain(crate::support::IDENTITY),
     )
 }
@@ -68,6 +69,7 @@ fn test_preflight_lists_missing() {
         ENCRYPTION_MASTER_KEY_KNOB,
         SESSION_CODE_PEPPER_KNOB,
     ];
+    expected.extend(crate::support::BUS.map(|(name, _value)| name));
     expected.extend(crate::support::IDENTITY.map(|(knob, _value)| knob));
     expected.sort_unstable();
     assert_eq!(
@@ -194,6 +196,7 @@ fn test_preflight_requires_the_login_pepper() {
             (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
         ]
         .into_iter()
+        .chain(crate::support::BUS)
         .chain(crate::support::IDENTITY),
     );
 
