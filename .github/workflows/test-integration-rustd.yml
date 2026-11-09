@@ -1,6 +1,6 @@
 name: test-integration-rustd
 
-# The Rust substrate against live Postgres and Redis.
+# The Rust substrate against live Postgres and NATS.
 #
 # A separate workflow rather than a job in `test.yml`, on purpose. That file's
 # `test` aggregate is a required check and carries no `services:` block;
@@ -11,7 +11,7 @@ name: test-integration-rustd
 #
 # The services come from `docker compose` via `make/test-infra.mk`, not from a
 # `services:` block, so CI boots exactly what a developer boots — the same
-# compose file, the same reset, the same Redis TLS certificate extraction. A
+# compose file, the same reset. A
 # `services:` block would be a second definition of the environment that drifts
 # from the first one silently.
 

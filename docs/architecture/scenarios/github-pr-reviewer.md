@@ -111,8 +111,8 @@ install, App callback and reconnect, and ingress filtering by installation,
 repository, event and grant. It also covers instructions delivery per lease,
 the diff read, and the local repository-bound `pull_request` suite.
 
-That suite ran against the integration lane's real Postgres and Dragonfly when
-this was recorded; the lane runs NATS since M244.
+That suite ran against the integration lane's real Postgres and the previous
+broker when this was recorded; the lane runs NATS since M244.
 
 Three remain open, and the scenario is not fixed until the first two pass:
 

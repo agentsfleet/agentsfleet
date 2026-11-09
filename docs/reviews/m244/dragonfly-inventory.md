@@ -16,7 +16,7 @@ Paths are under `rustd/crates/daemon/` unless they start with another root.
 
 ## Why it exists
 
-The [M244 spec](../../v2/active/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md) deletes Dragonfly.
+The [M244 spec](../../v2/done/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md) deletes Dragonfly.
 Each job must first move to core NATS, if it is a disposable signal, or to Postgres, if it is a durable or compare-and-swap fact.
 This page is the checklist §7's deletion is graded against.
 

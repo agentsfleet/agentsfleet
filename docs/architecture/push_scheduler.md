@@ -13,9 +13,9 @@ The specs quote his words.
 | Messages fold into a running run | A person's message in the run's conversation joins that run before its next model call. A call in flight is never interrupted. A message no person sent, such as a webhook, waits for a run of its own and is never passed. Revised Nov 08, 2026: a plain run takes a durable task's rule (M242_002 Discovery). |
 | Runners hold one stream | A runner host keeps one outbound connection to `agentsfleetd`. Work is pushed down it; nothing polls. |
 | Direct HTTP/3 with HTTP/2 fallback | The runner initiates a session to a reachable daemon endpoint. Fly-hosted services can use private networking; external operators supply connectivity and trusted certificates. Cloudflare and WebSocket are not required. See [the implementation design](runner_protocol.md), revised Nov 08, 2026. |
-| Core NATS replaces Dragonfly | NATS carries signals only: no JetStream, no KV. Every durable fact moves to Postgres first. |
+| Core NATS is the bus | NATS carries signals only: no JetStream, no key-value (KV) store. Every durable fact lives in Postgres. |
 | Durable tasks are on by default | `durable_tasks_v1` is the default. A failed host's run restarts elsewhere from the current turn's last checkpoint. |
-| Tenants run their own runners | Self-hosted runners point at the cloud daemon through its API. They never connect to the broker. |
+| Tenants run their own runners | Self-hosted runners point at the cloud daemon through its API. They never connect to NATS. |
 | Placement uses labels; respawn across owners is a tenant setting | The setting has three options: only my runners; mine, then platform hosts; any runner with matching labels. |
 | Order and fairness | Strict order within a fleet; roughly fair across fleets. A small budget overrun is accepted. |
 | Build small | The smallest version first, measured, then improved. |
@@ -28,7 +28,7 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 
 | Rule | Where it is written | Retired by |
 |---|---|---|
-| Dragonfly is the only datastore, cluster-only | `.orly/LOCAL.md`, `datastore_scaling.md` | M244, done: both pages now name core NATS and Postgres |
+| A cluster-only broker is the only datastore | `.orly/LOCAL.md`, `datastore_scaling.md` | M244, done: both pages now name core NATS and Postgres |
 | A runner polls; there is no cancel channel | `runner_fleet.md` | M243 |
 | The lease path is not a general scheduler | `runner_fleet.md` | M243 |
 | Config is never cached | `runner_fleet.md` | M245 |
@@ -147,7 +147,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | Subject | A lost message costs | Backstop |
 |---|---|---|
 | `af.fleet.<id>.tail`, `af.draft.<id>.events` | Frames missing on screen | Gap signal, then a backfill from Postgres |
-| `af.wake.<shard>` | Work offered late | The gateway's periodic offer tick |
+| `af.wake.<shard>` | Work offered up to 5 s late | Each replica's 5 s recovery probe (`OFFER_FALLBACK_TICK`) |
 | `af.runner.<id>.cmd` | A cancel or folded input delayed | The cancel mark, and pending input read at each model call |
 | Outbound ping | A reply sent late | The 30 s obligations scan |
 
@@ -157,8 +157,8 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 |---|---|---|
 | M241 | This page, honest counters, statements per chat by path, the burst bench | Baselines below |
 | M242 | One-statement intake; folding with a disposition | One write statement per accepted message; a live run takes a person's mid-run message in its conversation |
-| M243 | One runner stream; the Bus seam with a Dragonfly implementation | Activity path near 0 statements; no poll; reconnect and revocation tests |
-| M244 | Core NATS behind the Bus; durable jobs in Postgres; Dragonfly deleted | Tail and wake p99 and a kill drill, Dragonfly then NATS |
+| M243 | One runner stream; the Bus seam | Activity path near 0 statements; no poll; reconnect and revocation tests |
+| M244 | Core NATS behind the Bus; durable jobs in Postgres | Tail p99 and a kill drill on both buses |
 | M245 | Revision-keyed caches, a one-statement report, batched renewal | 15 to 20 statements per chat |
 | M246 | Tenant-owned runners, a hard ownership filter, the respawn setting | Cross-tenant placement refused; no platform key leaves the daemon |
 | M247 | Hold-aware capacity, auto-cordon, checkpoint respawn | A killed host's run restarts elsewhere, settled once |
@@ -190,7 +190,7 @@ The headline is drain leases per second: 82.51, between 80.43 and 84.08. The med
 | other | 0.08 | 0.075 | 0.08 |
 | total | 115.025 | 114.875 | 115.025 |
 
-The `task` path holds the durable-task reads PR #803 added to issue, renewal and report. A chat also costs 77.2 commits and 43.1 Dragonfly calls. Lease p95 is 44.1 ms and report p95 is 21.5 ms.
+The `task` path holds the durable-task reads PR #803 added to issue, renewal and report. A chat also costs 77.2 commits. Lease p95 is 44.1 ms and report p95 is 21.5 ms.
 
 A burst (`BENCH_SHAPE=burst`) sends 10 messages a second to each of 50 fleets for 60 s. Runners hold each lease for a 2 s turn. Today each message is a run of its own, so most wait.
 
@@ -219,21 +219,23 @@ The 3 s one-fleet window scattered from 210 to 837 on the branch, so the 10 s ru
 
 A burst on the branch measured pickup p95 at 54.7 s, unchanged from M241, because that branch did not fold messages yet.
 
-M244 measured tail p99 and the broker-kill drill on Dragonfly and then on NATS, against the same code (below). The wake ladder moved to M243.
+M244 measured tail p99 and the broker-kill drill on both buses, against the same code (below). The wake ladder moved to M243.
 
-### M244: Dragonfly against NATS
+### M244: previous broker against NATS
 
-Measured on Indy's laptop on Nov 09, 2026, with `make bench-tail PROFILE=rig`: three interleaved Dragonfly and NATS pairs, each on a reset rig. The tree was this branch at `514f37420` with the tail-lane method of `fb2f55801` and the publish-record fix of `202b08ffd`.
+Measured on Indy's laptop on Nov 09, 2026, with `make bench-tail PROFILE=rig`: three interleaved pairs, one run on each bus, each on a reset rig. The tree was this branch at `514f37420` with the tail-lane method of `fb2f55801` and the publish-record fix of `202b08ffd`.
 
 Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, is committed as `tail.rig.json`.
 
-The method keeps one frame in flight on the viewer ladder, so a frame's time is one trip through the bus and the fan-out. The stream ladder publishes to every stream at once and times each stream from the burst's start. Indy chose it after the first pass, where a 64-frame window let NATS's non-blocking publish queue ahead and measured the queue instead.
+The viewer ladder keeps one frame in flight, so a frame's time is one trip through the bus and the fan-out. The stream ladder publishes to every stream at once and times each stream from the burst's start.
+
+Indy chose this method after the first run. There, a 64-frame window let NATS's non-blocking publish queue ahead, so the run measured the queue.
 
 ### Broker pass bar
 
-The bar, per rung: NATS p99 at most the greater of Dragonfly's p99 plus 10% and Dragonfly's p99 plus 1 ms.
+The bar, per rung: NATS p99 at most the greater of the previous broker's p99 plus 10% and its p99 plus 1 ms.
 
-| Viewers | Frame | Dragonfly p99 (ms) | NATS p99 (ms) | Bar (ms) | Verdict |
+| Viewers | Frame | Previous broker p99 (ms) | NATS p99 (ms) | Bar (ms) | Verdict |
 |---|---|---|---|---|---|
 | 1 | 200 B | 0.35 | 0.79 | 1.35 | pass |
 | 1 | 4 KiB | 0.56 | 0.50 | 1.56 | pass |
@@ -248,7 +250,7 @@ The bar, per rung: NATS p99 at most the greater of Dragonfly's p99 plus 10% and 
 | 1,024 | 4 KiB | 3.18 | 3.09 | 4.18 | pass |
 | 1,024 | 64 KiB | 3.39 | 3.35 | 4.39 | pass |
 
-| Streams bursting at once | Dragonfly p99 (ms) | NATS p99 (ms) | Bar (ms) | Verdict |
+| Streams bursting at once | Previous broker p99 (ms) | NATS p99 (ms) | Bar (ms) | Verdict |
 |---|---|---|---|---|
 | 64 | 0.87 | 0.84 | 1.87 | pass |
 | 256 | 1.53 | 1.78 | 2.53 | pass |
@@ -265,9 +267,9 @@ A size sweep ruled out the client's 65,535-byte read buffer, and the cause is op
 
 Two runs per bus, on the local daemon (`make up`). Two viewers watched one fleet's stream with one steer every 10 s, while the bus stopped for 60 s and then started. For NATS the stopped node was the one the daemon held, `nats-3` then `nats-2`.
 
-| | Dragonfly, runs 1 and 2 | NATS, runs 1 and 2 |
+| | Previous broker, runs 1 and 2 | NATS, runs 1 and 2 |
 |---|---|---|
 | During the outage | heartbeats only | every steer reached both viewers live |
 | `catching_up` | 2.8 to 3.0 s after the container restarted | 0.25 to 0.3 s after the node stopped |
 | Steers in `fleet.admissions` | 19 of 19 per run | 19 of 19 per run |
-| Recovery | waited for Dragonfly | the daemon moved to a surviving node |
+| Recovery | waited for the bus container to restart | the daemon moved to a surviving node |

@@ -129,8 +129,8 @@ BENCH_LANE_RUN := cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo
 # does (`$(TEST_STATE_DEP)`, then `_migrate-test-db`, which depends on the
 # reset, so `make -j` cannot run the two side by side). The migration gives a
 # fresh worktree the schema its seed needs (`identity.tenants`); the reset clears
-# the readiness marks the integration suite leaves in `fleet:ready`, which a
-# lease run would otherwise meet in every idle window. Only an owned rig: a dev
+# the unsettled `fleet.admissions` rows the integration suite leaves, which a
+# lease run would otherwise meet as candidates in every idle window. Only an owned rig: a dev
 # or prod profile points at a deployed database, and a rig whose
 # BENCH_TARGET_OWNED is overridden is not this run's to reset (see above), so a
 # bench never resets or migrates either.

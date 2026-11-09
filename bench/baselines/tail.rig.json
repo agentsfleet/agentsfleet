@@ -3,7 +3,7 @@
   "profile": "rig",
   "provenance": {
     "revision": "514f37420",
-    "datastore_image": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2",
+    "datastore_image": "nats:2.15.2-alpine",
     "owned": true
   },
   "created": true,

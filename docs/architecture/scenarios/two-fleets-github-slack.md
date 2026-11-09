@@ -22,7 +22,7 @@ The words this page leans on; the rest are in [`../README.md`](../README.md) §"
 | **`agentsfleet-runner`** | The worker on a host. Asks for work, runs the agent loop, reports back; holds no datastore credential. |
 | **Admission** | "We accepted this job", a `fleet.admissions` row committed **before** the sender hears yes. |
 | **Queue** | Unsettled `fleet.admissions` rows, oldest first within each fleet. |
-| **Doorbell** | Best-effort fleet hints on sixteen `af.wake.<shard>` NATS subjects. Every idle poll also probes Postgres. |
+| **Wake ring** | A best-effort fleet hint on one of sixteen `af.wake.<shard>` NATS subjects. It starts an offer pass; a 5 s recovery probe on each replica covers a lost ring. |
 | **Lease** | A time-limited permission to run one job for one fleet, carrying a **fencing token** that only goes up, so a stale worker cannot overwrite a newer one. |
 | **Report** | The worker handing the answer back; settles money, history and the bookmark in one transaction. |
 | **Obligation** | "We still owe someone this answer", a `fleet.obligations` row, written only when the job came from somewhere a reply can go. |
@@ -90,7 +90,7 @@ GitHub pull_request -> verified App delivery -> matching fleet A
                                       202 {matched: 1, enqueued: 1}
 ```
 
-The admission is the queued job. A lost notification leaves it available to the next idle poll.
+The admission is the queued job. A lost wake ring leaves it for the next 5 s recovery probe.
 
 ## 3. Trigger two: a Slack mention wakes fleet B
 
@@ -123,7 +123,7 @@ person -> POST fleet messages -> commit a second admission for fleet A
 
 All six producers use the same ledger shape. Actor and event type describe the job; the admission row owns its stable identity.
 
-## 5. The waiting room: inboxes, shelves and doorbells
+## 5. The waiting room: inboxes, shelves and wake rings
 
 Fleet A has two unsettled admissions and fleet B has one.
 Postgres orders each fleet's queue by admission `sequence`.
@@ -137,16 +137,18 @@ NATS af.wake.<shard>
   sixteen subjects -> each daemon's queue of at most 64 distinct fleets
 ```
 
-Hints prioritize candidate selection. Every idle poll probes the ledger even if all notifications are lost.
-[The queue design](../datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the limits and polling costs.
+A wake ring starts an offer pass and puts its fleet first.
+Each replica's recovery probe reads the ledger every 5 s, even if every ring is lost.
+[The queue design](../datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the limits and probe costs.
 
 ## 6. Pickup: two runners, two leases
 
-Each runner polls for work. Eligible fleets must be active, match runner labels and have an available slot.
+Each runner holds one stream to `agentsfleetd`, and the offer pass pushes work down it.
+Eligible fleets must be active, match runner labels and have an available slot.
 
 ```text
-runner R1 -> poll -> fleet A's oldest admission (PR opened)
-runner R2 -> poll -> fleet B's oldest admission (Slack mention)
+offer pass -> runner R1's stream <- fleet A's oldest admission (PR opened)
+offer pass -> runner R2's stream <- fleet B's oldest admission (Slack mention)
 
 for each claim:
   lock slot and exact oldest head with SKIP LOCKED
@@ -295,15 +297,17 @@ A browser's `EventSource` cannot send an `Authorization` header, so the dashboar
                        |
                        +-> each admission attempts a wake notification
 
- R1  poll -> Postgres -> claim A#1 + A's slot -> run -> report A#1
- R2  poll -> Postgres -> claim B#1 + B's slot -> run -> report B#1
+ R1  offer -> Postgres -> claim A#1 + A's slot -> run -> report A#1
+ R2  offer -> Postgres -> claim B#1 + B's slot -> run -> report B#1
              |                                           |
              |       both fleets can run concurrently    +-> thread reply
              v
  A#2 waits while A's slot is held
-     -> slot freed -> next poll claims A#2 -> run -> report A#2
+     -> slot freed -> next offer claims A#2 -> run -> report A#2
 
  You  <--- live activity frames; A#2's answer reaches the CLI stream
 ```
 
-**A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and each slice one `billing.usage_lines` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").
+**A runner that dies mid-job:** its lease expires 30 s after its last renew. The next offer pass **reclaims** the job: the same history row, a new lease under a higher fencing token.
+
+A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and each slice one `billing.usage_lines` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").

@@ -62,7 +62,7 @@ This view points in the *opposite* direction from the temporal sequence below, b
 │   │     status, cli_public_key, dashboard_public_key,           │  │
 │   │     ciphertext, nonce,                                      │  │
 │   │     verification_code_hmac  ◄── HMAC-SHA256(                │  │
-│   │     verification_attempts (≤5)        AUTH_SESSION_CODE_    │  │
+│   │     verification_attempt_count (≤5)   AUTH_SESSION_CODE_    │  │
 │   │     created_at, expires_at            PEPPER,               │  │
 │   │   ────────────────────────────         session_id ‖ code)   │  │
 │   │   Nothing in this row decrypts the JWT.                     │  │
