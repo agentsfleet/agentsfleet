@@ -93,10 +93,7 @@ fn rung_of(latencies: impl IntoIterator<Item = core::time::Duration>) -> Rung {
 
 /// The one value a rung wrote under `key`.
 fn only(report: &Report, key: &str) -> Option<f64> {
-    report
-        .series
-        .get(key)
-        .and_then(|series| series.first().copied())
+    report.series.get(key)?.first().copied()
 }
 
 /// M244 Dimension 1.1: the summary carries p99 beside p95.
