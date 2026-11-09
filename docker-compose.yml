@@ -232,7 +232,7 @@ services:
       - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
       - --no_advertise=true
     ports:
-      - "${AGENTSFLEET_NATS_BASE_PORT:-4222}:4222"
+      - "127.0.0.1:${AGENTSFLEET_NATS_BASE_PORT:-4222}:4222"
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8222/healthz"]
       interval: 1s
@@ -251,7 +251,7 @@ services:
       - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
       - --no_advertise=true
     ports:
-      - "${AGENTSFLEET_NATS_PORT_2:-4223}:4222"
+      - "127.0.0.1:${AGENTSFLEET_NATS_PORT_2:-4223}:4222"
   nats-3:
     <<: *nats
     command:
@@ -265,7 +265,7 @@ services:
       - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
       - --no_advertise=true
     ports:
-      - "${AGENTSFLEET_NATS_PORT_3:-4224}:4222"
+      - "127.0.0.1:${AGENTSFLEET_NATS_PORT_3:-4224}:4222"
 
 volumes:
   postgres-data:
