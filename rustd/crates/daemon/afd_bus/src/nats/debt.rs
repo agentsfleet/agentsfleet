@@ -112,6 +112,11 @@ impl Debt {
         }
     }
 
+    /// Whether nothing is owed: every named marker and the broadcast are paid.
+    pub(super) fn is_settled(&self) -> bool {
+        self.owed.is_empty() && !self.everyone
+    }
+
     /// Owe every subscriber a gap, as when the broadcast marker failed.
     pub(super) const fn everyone(&mut self) {
         self.everyone = true;
