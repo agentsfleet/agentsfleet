@@ -16,8 +16,9 @@
 
 use std::time::Duration;
 
-use afd_dragonfly::Subscription;
-use afd_dragonfly::hub::Received;
+use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
+use af_core::id::Uuid7;
+use afd_bus::{Handle, Received, Subject, Subscription};
 use serde_json::Value;
 
 use crate::e2e::Scenario;
@@ -43,6 +44,34 @@ pub(crate) const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
 /// runtime to prove something that is already decided by the time the response
 /// status is read.
 pub(crate) const SILENCE_WINDOW: Duration = Duration::from_millis(750);
+
+/// One fleet's live tail on the lane's bus, subscribed as the dashboard's
+/// stream subscribes, with the connection held for as long as the tail is read.
+pub(crate) struct Tail {
+    _bus: Handle,
+    subscription: Subscription,
+}
+
+/// Subscribe to `fleet`'s tail. No namespace: the daemon a scenario boots
+/// reads only the environment the scenario hands it, which sets none.
+pub(crate) async fn tail_of(fleet: &Uuid7) -> Tail {
+    let seeds = ProcessEnv
+        .get("TEST_NATS_URL")
+        .expect("TEST_NATS_URL is unset: run through make test-integration-rustd");
+    let env = MapEnv::from_pairs([(afd_bus::nats::URL_ENV, seeds.as_str())]);
+    let config = afd_bus::nats::Config::from_env(&env).expect("the lane publishes usable seeds");
+    let bus = afd_bus::nats::connect(&config)
+        .await
+        .expect("the lane's NATS accepts a subscriber");
+    let subscription = bus
+        .subscribe(&Subject::FleetTail(fleet.clone()))
+        .await
+        .expect("the lane's NATS takes the subscription");
+    Tail {
+        _bus: bus,
+        subscription,
+    }
+}
 
 /// Beats, polls, and answers the lease the seeded event produced.
 ///
@@ -73,18 +102,20 @@ pub(crate) async fn settle() {
 }
 
 /// The next frame on the tail, as JSON, or `None` if none arrives in time.
-pub(crate) async fn next_frame(tail: &mut Subscription) -> Option<Value> {
+pub(crate) async fn next_frame(tail: &mut Tail) -> Option<Value> {
     received(tail, FRAME_DEADLINE).await
 }
 
 /// Asserts nothing arrives within the shorter window.
-pub(crate) async fn silence(tail: &mut Subscription) -> Option<Value> {
+pub(crate) async fn silence(tail: &mut Tail) -> Option<Value> {
     received(tail, SILENCE_WINDOW).await
 }
 
 /// One message off the tail within `budget`, parsed.
-async fn received(tail: &mut Subscription, budget: Duration) -> Option<Value> {
-    let received = tokio::time::timeout(budget, tail.recv()).await.ok()?;
+async fn received(tail: &mut Tail, budget: Duration) -> Option<Value> {
+    let received = tokio::time::timeout(budget, tail.subscription.recv())
+        .await
+        .ok()?;
     let Received::Message(message) = received.expect("the subscription stays live") else {
         // A lag or gap notice is not a frame this suite published; treat it as
         // nothing having arrived rather than as the message it was waiting for.

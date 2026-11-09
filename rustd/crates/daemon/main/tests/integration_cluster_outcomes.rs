@@ -17,9 +17,9 @@
 //! - a poll reads a readiness partition on one node and the fleet's stream on
 //!   another, so a driver that could not follow the second returns no work
 //!   from a fleet that has some;
-//! - a live frame is `SPUBLISH`ed, which is SHARD-scoped, so a subscriber
-//!   attached to the wrong node hears silence and the dashboard goes quiet
-//!   with nothing in any log;
+//! - a live frame is published on whichever bus node the daemon holds, so a
+//!   subscriber attached to another node that missed it hears silence and the
+//!   dashboard goes quiet with nothing in any log;
 //! - a settlement commits in PostgreSQL and acknowledges in the queue, and
 //!   those are now two different machines.
 //!
@@ -39,11 +39,10 @@
 
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
-use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{Scenario, dragonfly_config, scenario};
+use crate::e2e::{Scenario, scenario};
 use crate::reads::{
     balance, counter_column, lease_column, ledger_rows, relay_settled, unsettled_lines,
 };
@@ -60,12 +59,6 @@ const SUPPORTED_EVENT: EventType = EventType::Chat;
 
 /// The text a forwarded chunk carries.
 const CHUNK_TEXT: &str = "the cluster carried this across a shard";
-
-/// The activity channel a fleet's live tail is published on, either side of
-/// the fleet id. Spelled here because the hub takes the whole channel name and
-/// a test that guessed it would agree with nothing.
-const CHANNEL_PREFIX: &str = "fleet:";
-const CHANNEL_SUFFIX: &str = ":activity";
 
 /// A runner that has proven its capabilities is leasable; one that has not
 /// reads degraded and is correctly answered no-work, which would make every
@@ -135,7 +128,7 @@ async fn a_poll_crosses_the_partition_and_the_stream(
 /// `SSUBSCRIBE` only hears the shard it is attached to. A publisher and a
 /// subscriber that disagree about which node owns the channel produce exactly
 /// no symptom: the publish succeeds, the subscribe succeeds, and the dashboard
-/// is silent. Asserted through `SubscriptionHub` because that is the consumer
+/// is silent. Asserted through the bus subscription because that is the consumer
 /// the live tail actually runs on — a raw subscribe would agree with a
 /// publisher that had drifted from its only reader.
 async fn a_frame_crosses_the_shard_to_its_subscriber(
@@ -146,10 +139,7 @@ async fn a_frame_crosses_the_shard_to_its_subscriber(
     // Subscribed BEFORE the forward: pub/sub keeps nothing for a reader that
     // arrives late, so a subscription opened afterwards would prove a drop
     // that never happened.
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the dashboard's hub connects to the lane's cluster");
-    let mut tail = hub.subscribe(&format!("{CHANNEL_PREFIX}{}{CHANNEL_SUFFIX}", run.fleet));
+    let mut tail = crate::tail::tail_of(&run.fleet).await;
     // The pump registers the subscription asynchronously; publishing in the
     // same instant can legitimately beat it to the server.
     settle().await;
