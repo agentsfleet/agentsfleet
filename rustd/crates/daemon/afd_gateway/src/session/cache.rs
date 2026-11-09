@@ -37,7 +37,9 @@ impl CachedLeases {
 pub(super) struct LeaseCache(RwLock<CachedLeases>);
 
 impl Default for LeaseCache {
-    fn default() -> Self { Self(RwLock::new(CachedLeases::default())) }
+    fn default() -> Self {
+        Self(RwLock::new(CachedLeases::default()))
+    }
 }
 
 impl LeaseCache {
@@ -65,7 +67,9 @@ impl LeaseCache {
             current.records = snapshot.into_records();
         } else {
             for id in cancelled {
-                if let Some(record) = current.records.get_mut(id) { record.cancelled = true; }
+                if let Some(record) = current.records.get_mut(id) {
+                    record.cancelled = true;
+                }
             }
         }
         current.revision = current.revision.wrapping_add(1);
@@ -78,14 +82,19 @@ impl LeaseCache {
 
     /// Expired and cancelled targets never authorize publication, regardless of connection health.
     pub(super) fn target(&self, lease: &Uuid7, now: Timestamp) -> Option<Target> {
-        self.0.read().records.get(lease)
+        self.0
+            .read()
+            .records
+            .get(lease)
             .filter(|record| !record.cancelled && record.expires_at > now)
             .and_then(|record| record.target.clone())
     }
 
     /// Late acknowledgements cannot shorten a newer confirmed deadline.
     pub(super) fn renew(&self, lease: &Uuid7, expires_at: Timestamp) {
-        self.update(lease, |record| record.expires_at = record.expires_at.max(expires_at));
+        self.update(lease, |record| {
+            record.expires_at = record.expires_at.max(expires_at)
+        });
     }
 
     /// Removing the record advances the revision so an older refresh cannot recreate it.
@@ -96,7 +105,9 @@ impl LeaseCache {
     }
 
     /// Cancellation is monotonic for this unique lease identifier.
-    pub(super) fn cancel(&self, lease: &Uuid7) { self.update(lease, |record| record.cancelled = true); }
+    pub(super) fn cancel(&self, lease: &Uuid7) {
+        self.update(lease, |record| record.cancelled = true);
+    }
 
     fn update(&self, lease: &Uuid7, change: impl FnOnce(&mut LeaseRecord)) {
         let mut state = self.0.write();
@@ -107,16 +118,23 @@ impl LeaseCache {
     }
 
     /// Only the runner's opening list needs reconciliation; absent database leases are never replayed.
-    pub(super) fn reconciliation(&self, running: &[Uuid7], now: Timestamp) -> Vec<(Uuid7, &'static str)> {
+    pub(super) fn reconciliation(
+        &self,
+        running: &[Uuid7],
+        now: Timestamp,
+    ) -> Vec<(Uuid7, &'static str)> {
         let state = self.0.read();
-        running.iter().filter_map(|id| {
-            let code = match state.records.get(id) {
-                Some(record) if record.cancelled => error_code::RUN_LEASE_CANCELLED,
-                Some(record) if record.expires_at > now => return None,
-                _ => error_code::RUN_LEASE_LOST,
-            };
-            Some((id.clone(), code.as_str()))
-        }).collect()
+        running
+            .iter()
+            .filter_map(|id| {
+                let code = match state.records.get(id) {
+                    Some(record) if record.cancelled => error_code::RUN_LEASE_CANCELLED,
+                    Some(record) if record.expires_at > now => return None,
+                    _ => error_code::RUN_LEASE_LOST,
+                };
+                Some((id.clone(), code.as_str()))
+            })
+            .collect()
     }
 }
 

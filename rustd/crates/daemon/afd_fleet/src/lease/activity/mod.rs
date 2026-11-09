@@ -235,7 +235,8 @@ impl crate::lease::pull::LeaseService {
         else {
             return Err(crate::error::lease_not_found());
         };
-        self.activity_for_target(runner_id, lease_id, &target, frames).await
+        self.activity_for_target(runner_id, lease_id, &target, frames)
+            .await
     }
 
     /// Publish from a session's confirmed target without another lease-target lookup.
@@ -244,7 +245,10 @@ impl crate::lease::pull::LeaseService {
     /// # Errors
     /// Preserves failures to retain durable task observations.
     pub async fn activity_for_target(
-        &self, runner_id: &Uuid7, lease_id: &Uuid7, target: &Target,
+        &self,
+        runner_id: &Uuid7,
+        lease_id: &Uuid7,
+        target: &Target,
         frames: &[ActivityFrame<'_>],
     ) -> Result<()> {
         let retained: Vec<_> = frames

@@ -58,7 +58,9 @@ use super::refusable::{Refusable, log_refusal, refuse};
 pub struct Refusal(Box<Response>);
 
 impl From<Response> for Refusal {
-    fn from(response: Response) -> Self { Self(Box::new(response)) }
+    fn from(response: Response) -> Self {
+        Self(Box::new(response))
+    }
 }
 
 impl Refusal {

@@ -240,14 +240,8 @@ async fn test_settle_drops_dead_lease_details() {
     );
 
     plant_dead_record(&run, fence - 1).await;
-    let settled = post(
-        &http,
-        &run,
-        REPORTS,
-        &report_body(&lease_id, &run.event_id, fence),
-    )
-    .await;
-    assert_eq!(settled.status().as_u16(), 200);
+    let settled = crate::wire::report(&run, &report_body(&lease_id, &run.event_id, fence)).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(rows_at(&run, fence - 1).await, 0, "settlement drops it too");
     assert_eq!(rows_at(&run, fence).await, 1, "the settling lease's stays");
     supervisor.shutdown().await;

@@ -93,17 +93,22 @@ impl Handle {
     ///
     /// # Errors
     /// Returns the original serialization or broker failure; no boolean represents failure.
-    pub async fn publish_frame<F: Serialize + Sync>(&self, subject: &Subject, frame: &F) -> Result<()> {
+    pub async fn publish_frame<F: Serialize + Sync>(
+        &self,
+        subject: &Subject,
+        frame: &F,
+    ) -> Result<()> {
         let payload = serde_json::to_string(frame)?;
         self.publish(subject, &payload).await
     }
-
 }
 
 /// Consume a notification outcome after a durable commit without changing that commit's answer.
 /// This observer records failure; publishers themselves always return Result to their caller.
 pub fn observe_notification(subject: &Subject, outcome: Result<()>) {
-    if let Err(error) = outcome { dropped(subject, &error); }
+    if let Err(error) = outcome {
+        dropped(subject, &error);
+    }
 }
 
 fn dropped(subject: &Subject, error: &Error) {

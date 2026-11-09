@@ -67,7 +67,11 @@ async fn daemon() -> (String, mpsc::UnboundedReceiver<Seen>) {
 }
 
 fn api(base: &str, token: &str) -> crate::Result<HttpRunnerApi> {
-    let env = af_core::env::MapEnv::from_pairs([(ENV_API_URL, base), (ENV_RUNNER_TOKEN, token)]);
+    let env = af_core::env::MapEnv::from_pairs([
+        (ENV_API_URL, base),
+        (ENV_RUNNER_TOKEN, token),
+        (crate::config::ENV_STREAM_URL, "https://localhost:4443"),
+    ]);
     HttpRunnerApi::new(&Config::from_env(&env)?)
 }
 
@@ -87,7 +91,7 @@ fn test_reply_body_is_a_zeroing_buffer() {
         &body.bytes
     }
     let body = super::Body {
-        verb: super::Verb::Lease,
+        verb: super::Verb::Heartbeat,
         bytes: zeroize::Zeroizing::new(b"{}".to_vec()),
     };
     assert_eq!(bytes_of(&body).as_slice(), b"{}");

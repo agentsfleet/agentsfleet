@@ -21,7 +21,7 @@ use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_sse::{StreamLimit, Live};
+use afd_sse::{Live, StreamLimit};
 
 use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
 

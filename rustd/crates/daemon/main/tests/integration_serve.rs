@@ -67,6 +67,7 @@ fn lane_environment() -> MapEnv {
         // than used, so well-formed is enough and nothing here reaches the
         // issuer or takes a digest.
         .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::runner_stream::environment())
         .chain(crate::support::IDENTITY),
     )
 }

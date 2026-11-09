@@ -23,10 +23,22 @@ async fn test_completed_event_redelivery_does_not_execute() {
     let answer = run
         .fixtures
         .plane()
-        .lease(&run.spare, &[fleet], false, run.now)
+        .poll_with(
+            afd_fleet::lease::OfferRequest {
+                runner: &run.spare,
+                held: &[fleet],
+                degraded: false,
+                now: run.now,
+            },
+            None,
+            |_lease, _metadata| (),
+        )
         .await
         .expect("poll");
-    assert!(answer.contains("\"lease\":null"), "{answer}");
+    assert!(
+        matches!(answer, afd_fleet::lease::pull::Polled::Empty),
+        "{answer:?}"
+    );
     let mut connection = run.fixtures.database.acquire().await.expect("database");
     let settled: bool =
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
@@ -73,7 +85,7 @@ async fn terminal_redelivery_cannot_settle_after_its_claim_is_superseded() {
     let answer = run
         .fixtures
         .plane()
-        .lease_claimed(run.acquired.clone(), &run.runner, run.now)
+        .claim_selected(run.acquired.clone(), &run.runner, run.now)
         .await
         .expect("stale terminal completion is harmless");
     assert!(answer.contains("\"lease\":null"));

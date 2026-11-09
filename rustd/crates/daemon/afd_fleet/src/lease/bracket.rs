@@ -112,7 +112,11 @@ impl Leases {
     ///
     /// # Errors
     /// Retains serialization and broker failures after the durable report committed.
-    pub async fn publish_completion(&self, closed: &Closed, final_reply: Option<&str>) -> afd_bus::Result<()> {
+    pub async fn publish_completion(
+        &self,
+        closed: &Closed,
+        final_reply: Option<&str>,
+    ) -> afd_bus::Result<()> {
         let frame = TailFrame::EventComplete {
             event: Box::new(TailRow::from(closed.row.summary())),
             final_reply: inline_final_reply(final_reply),

@@ -1,9 +1,9 @@
-//! One TLS 1.3 preference and the key exchange actually negotiated by `BoringSSL`.
+//! The runner channel requires hybrid key agreement under TLS 1.3.
 
-use boring::ssl::{SslContextBuilder, SslInfoCallbackMode, SslRef, SslVersion};
-use tokio::sync::watch;
+use af_observability::metrics::label::fleet::{StreamKeyExchange, StreamPeer};
+use boring::ssl::{SslContextBuilder, SslRef, SslVersion};
 
-use crate::Result;
+use crate::{Result, Transport, error::ErrorKind};
 
 /// Finite public algorithm labels; these contain no key material.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,7 +20,7 @@ pub enum KeyExchange {
     Other,
 }
 
-const PREFERENCE: [(KeyExchange, &str); 4] = [
+const RECOGNIZED: [(KeyExchange, &str); 4] = [
     (KeyExchange::X25519MlKem768, "X25519MLKEM768"),
     (KeyExchange::X25519, "X25519"),
     (KeyExchange::P256, "P-256"),
@@ -43,7 +43,7 @@ impl KeyExchange {
 
 impl From<&SslRef> for KeyExchange {
     fn from(ssl: &SslRef) -> Self {
-        match PREFERENCE
+        match RECOGNIZED
             .into_iter()
             .find(|(_, name)| Some(*name) == ssl.curve_name())
         {
@@ -53,20 +53,46 @@ impl From<&SslRef> for KeyExchange {
     }
 }
 
-pub(crate) fn prefer(context: &mut SslContextBuilder) -> Result<()> {
+pub(crate) const REQUIRED_GROUP: &str = "X25519MLKEM768";
+
+pub(crate) fn require_context(context: &mut SslContextBuilder) -> Result<()> {
     context.set_min_proto_version(Some(SslVersion::TLS1_3))?;
-    context.set_curves_list(&PREFERENCE.map(|(_, name)| name).join(":"))?;
+    context.set_curves_list(REQUIRED_GROUP)?;
     Ok(())
 }
 
-pub(crate) fn observe(context: &mut SslContextBuilder) -> watch::Receiver<Option<KeyExchange>> {
-    let (sender, receiver) = watch::channel(None);
-    context.set_info_callback(move |ssl, mode, _value| {
-        if mode == SslInfoCallbackMode::HANDSHAKE_DONE {
-            sender.send_replace(Some(KeyExchange::from(ssl)));
+/// QUIC acceptors expose this object before consuming the first Initial packet.
+/// Configure the actual session rather than a hook that can select a default context.
+pub(crate) fn require_session(ssl: &mut SslRef) -> Result<()> {
+    ssl.set_min_proto_version(Some(SslVersion::TLS1_3))?;
+    ssl.set_curves_list(REQUIRED_GROUP)?;
+    Ok(())
+}
+
+impl KeyExchange {
+    pub(crate) fn require(self, transport: Transport, peer: StreamPeer) -> Result<Self> {
+        crate::telemetry::security(transport, peer, self);
+        self.check()
+    }
+
+    pub(crate) fn check(self) -> Result<Self> {
+        if self != Self::X25519MlKem768 {
+            return Err(ErrorKind::KeyExchangeRefused { negotiated: self }.into());
         }
-    });
-    receiver
+        Ok(self)
+    }
+}
+
+impl From<KeyExchange> for StreamKeyExchange {
+    fn from(group: KeyExchange) -> Self {
+        match group {
+            KeyExchange::X25519MlKem768 => Self::X25519MlKem768,
+            KeyExchange::X25519 => Self::X25519,
+            KeyExchange::P256 => Self::P256,
+            KeyExchange::P384 => Self::P384,
+            KeyExchange::Other => Self::Other,
+        }
+    }
 }
 
 #[cfg(test)]

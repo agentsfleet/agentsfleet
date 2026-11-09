@@ -57,7 +57,7 @@ async fn assert_failed_park_recovers(injection: &'static str) {
 
     let failure = fixtures
         .plane()
-        .lease_claimed(claimed, &seeded.runner, fixtures.enrolled_at())
+        .claim_selected(claimed, &seeded.runner, fixtures.enrolled_at())
         .await
         .expect_err("the park transaction fails");
     assert_original_park_error(&failure);

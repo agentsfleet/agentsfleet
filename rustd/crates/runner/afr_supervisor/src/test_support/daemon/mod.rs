@@ -11,6 +11,18 @@ use super::Answer;
 use crate::client::{Call, ControlPlane, RunnerApi};
 use crate::error;
 
+mod stream;
+
+#[derive(Debug)]
+struct SharedApi(std::sync::Arc<dyn RunnerApi>);
+
+#[async_trait::async_trait]
+impl RunnerApi for SharedApi {
+    async fn send(&self, call: Call) -> crate::Result<Bytes> {
+        self.0.send(call).await
+    }
+}
+
 const TEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(crate) async fn bounded<T>(operation: &str, future: impl Future<Output = T>) -> T {
@@ -94,7 +106,18 @@ where
     F: Fn(&Call) -> Answer + Send + Sync + 'static,
 {
     let (api, calls) = fake(answer);
-    (ControlPlane::new(Box::new(api)), calls)
+    let api: std::sync::Arc<dyn RunnerApi> = std::sync::Arc::new(api);
+    let stream = stream::start(std::sync::Arc::clone(&api));
+    (ControlPlane::new(Box::new(SharedApi(api)), stream), calls)
+}
+
+/// Task HTTP boundaries use a real client while session operations keep their scripted frame path.
+pub(crate) fn plane_with_http<F>(api: Box<dyn RunnerApi>, answer: F) -> (ControlPlane, Calls)
+where
+    F: Fn(&Call) -> Answer + Send + Sync + 'static,
+{
+    let (native, calls) = plane(answer);
+    (ControlPlane::new(api, native.stream), calls)
 }
 
 fn fake<F>(answer: F) -> (FakeApi<F>, Calls)

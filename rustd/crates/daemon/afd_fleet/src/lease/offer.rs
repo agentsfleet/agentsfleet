@@ -25,6 +25,6 @@ pub struct Offered {
     pub lease_id: Uuid7,
     /// Last confirmed deadline; transport activity cannot extend it.
     pub expires_at: Timestamp,
-    /// Fleet activity target; private authoring uses its existing HTTP operations.
+    /// Fleet activity target; authoring retains its private domain activity owner.
     pub target: Option<Target>,
 }

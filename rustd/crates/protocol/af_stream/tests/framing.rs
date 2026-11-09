@@ -3,7 +3,7 @@
 use std::{error::Error as _, time::Duration};
 
 use af_stream::{Budget, Reader, Reason, write};
-use af_wire::protocol::{StreamKind, MESSAGE_BYTES_MAX, Up};
+use af_wire::protocol::{MESSAGE_BYTES_MAX, StreamKind, Up};
 use tokio::{
     io::{AsyncRead, AsyncWrite, AsyncWriteExt as _},
     time::Instant,

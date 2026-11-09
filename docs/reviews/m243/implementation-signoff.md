@@ -32,6 +32,18 @@ HTTP/3 can keep loss on the reports stream from blocking the control stream's or
 Both streams still share congestion limits, bandwidth and the daemon's capacity.
 An unavailable daemon, database or network can still stop work.
 
+## Nov 09 owner correction: reports and billing
+
+Indy rejected completed-report files and all backward-format retries.
+His selected answer was: "Remove runner disk storage; retry from memory".
+Postgres owns saved completion and billing records; runner memory holds only unacknowledged results.
+Task-decision receipts also remain in the calling task until the daemon acknowledges them.
+Process loss can lose uncommitted results and usage; no file recovery or trace-based billing is promised.
+
+The [owner feedback audit](owner-feedback-audit.md) records each supplied comment, its source evidence and unfinished work.
+Changes after checkpoint `a0a8cf3b7` remain unverified.
+Historical test results below do not verify the current source.
+
 ## Why it exists
 
 M243 moves work delivery, renewal, reports, folded input and progress onto a session with one opening authentication.
@@ -42,7 +54,28 @@ The existing `guffbolt` loop remains independent of network transport and model 
 The [reference study](transport-and-toon-research.md) explains the Quiche recommendation and TOON's narrower use for model input.
 The [failure design](failure-and-observability.md) defines recovery and verification.
 
-### Current evidence
+## Nov 09 context save and authoring scope correction
+
+Indy requested authoring jobs on the same runner stream.
+The original decision to retain four authoring HTTP calls is superseded.
+Model calls, proposals, authoring renewals and final authoring reports now belong to M243's transport migration.
+
+Wire variants, runner commands, daemon dispatch and connection-authority checks are written.
+The four authoring HTTP routes are removed; fixture migration and native integration evidence remain unfinished.
+Compilation still fails in kernel examples referencing removed report routes; this checkpoint is not ready to undraft.
+
+Read the [current handoff](session-handoff.md) and [resume prompt](resume-prompt.md) before continuing in a new session.
+The [owner feedback audit](owner-feedback-audit.md) maps supplied comments to source changes and remaining evidence.
+Indy subsequently authorized compilation, formatting, lint and tests. The handoff records actual passing checks and compiler failures.
+
+M246 extends M243's authentication, recheck and revocation interface.
+Independent tenant-management work can prepare separately; final integration still requires the completed M243 contract.
+The [parallel preparation prompt](m246-parallel-prompt.md) preserves M246's unresolved owner decisions.
+
+### Historical evidence before this context save
+
+The following table records earlier revisions only.
+It does not verify this checkpoint or certify the current source.
 
 | Item | Checked state |
 |---|---|
@@ -151,7 +184,7 @@ flowchart BT
     stream[af_stream: framing, TLS, native HTTP/3 and HTTP/2]
     bus[afd_bus: notification boundary]
     gateway[afd_gateway: session and offer decisions]
-    runner[afr_supervisor: host lifecycle and durable reports]
+    runner[afr_supervisor: host lifecycle and memory-only report retries]
     api[afd_api_runner and daemon/main: HTTP entry and boot]
     stream --> core
     stream --> wire
@@ -175,7 +208,7 @@ Indy's approval includes the additional shared carrier crate.
 | **New `afd_bus`**, under `daemon/` | Object-safe `Bus`, cloneable `Handle`, `Subject`, `Command`, `Subscription`, `Received`; Dragonfly adapter and wake notifications |
 | **New `afd_gateway`**, under `daemon/` | Concrete `Gateway`, `ConnectionContext`, `Session`, `LiveLease`, `Registry`; consumes the domain's proven authority |
 | Existing `afd_runner` | `capacity::authority::{Authority, Decision, Refusal}`; guarded acquisition and grant-time credential checks |
-| `afr_supervisor` | `Downlink`, cloneable `StreamHandle`, `Pending`, `Uplink`; offers feed existing workers, reports retain their durable spool |
+| `afr_supervisor` | `Downlink`, cloneable `StreamHandle`, `Pending`, `Uplink`; offers feed workers; pending reports remain in worker memory |
 | Existing domain crates | Host locks, claim, renewal, billing, task activity, authoring and reports retain their owning services |
 
 | Dependency | Proposed use |
@@ -190,7 +223,7 @@ Indy's approval includes the additional shared carrier crate.
 | Existing async-trait 0.1.92 | Object-safe broker methods selected once at boot |
 | Existing `tracing`, `af_observability`, backon 1.6.0 | Trace context, declared metric families and bounded reconnect scheduling |
 | Existing SQLx and `af_core/sqlx` | Native `Uuid7` rows and parameters after the data-layer follow-up lands |
-| Existing rcgen 0.14.10 and tempfile 3.27.0, test dependencies | Create test certificate chains and isolated spool fixtures |
+| Existing rcgen 0.14.10 and tempfile 3.27.0, test dependencies | Create test certificate chains and isolated repository fixtures |
 
 No RustAPI framework, Neqo server or TOON dependency enters the M243 production dependency graph.
 No WebSocket carrier or Cloudflare service enters the design.

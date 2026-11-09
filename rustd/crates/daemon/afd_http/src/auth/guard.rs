@@ -1,10 +1,14 @@
 //! One middleware proves a principal through its selected strategy, then checks scope.
 
 use afd_auth::gate::require_scope;
-use axum::{extract::{Request, State}, middleware::Next, response::{IntoResponse as _, Response}};
+use axum::{
+    extract::{Request, State},
+    middleware::Next,
+    response::{IntoResponse as _, Response},
+};
 
-use crate::{envelope::ProblemResponse, request_id::RequestId, route::RouteMeta};
 use super::RequestAuthentication;
+use crate::{envelope::ProblemResponse, request_id::RequestId, route::RouteMeta};
 
 /// Authentication strategy and route policy, selected together when the route is mounted.
 #[derive(Debug, Clone)]
@@ -16,7 +20,10 @@ pub struct Gate<A> {
 impl<A> Gate<A> {
     /// Bind a concrete strategy to the route that declares its required scopes.
     pub const fn new(authentication: A, meta: RouteMeta) -> Self {
-        Self { authentication, meta }
+        Self {
+            authentication,
+            meta,
+        }
     }
 }
 
@@ -27,14 +34,23 @@ pub async fn prove<A: RequestAuthentication>(
     next: Next,
 ) -> Response {
     let (mut parts, body) = request.into_parts();
-    let principal = match gate.authentication.authenticate(&mut parts, gate.meta).await {
+    let principal = match gate
+        .authentication
+        .authenticate(&mut parts, gate.meta)
+        .await
+    {
         Ok(Some(principal)) => principal,
         Err(refusal) => return refusal.into_response(),
         Ok(None) => return next.run(Request::from_parts(parts, body)).await,
     };
     let required = gate.meta.scopes.required(&parts.method);
     if let Err(denied) = require_scope(&principal, required) {
-        return reject(gate.meta, denied.code(), denied.to_string(), "capability_refused");
+        return reject(
+            gate.meta,
+            denied.code(),
+            denied.to_string(),
+            "capability_refused",
+        );
     }
     parts.extensions.insert(principal.clone());
     let mut response = next.run(Request::from_parts(parts, body)).await;

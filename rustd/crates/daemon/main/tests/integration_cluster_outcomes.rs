@@ -49,7 +49,7 @@ use crate::reads::{
 };
 use crate::tail::{next_frame, settle};
 use crate::wire::{
-    capable_beat, field, json, poll_for_lease, poll_for_seeded_lease, post, report_body,
+    capable_beat, field, json, post, report_body, wait_for_offer, wait_for_seeded_offer,
 };
 
 /// The event type the daemon has an execution path for, so an extra append is
@@ -71,14 +71,13 @@ const CHANNEL_SUFFIX: &str = ":activity";
 /// reads degraded and is correctly answered no-work, which would make every
 /// arm below pass for the wrong reason.
 async fn prove_capabilities(http: &reqwest::Client, run: &Scenario) {
-    let beat = post(http, run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(
-        beat.status().as_u16(),
-        200,
-        "a heartbeat is accepted on the documented path"
+    let beat = crate::wire::heartbeat(run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
     );
     assert_eq!(
-        field(&json(beat).await, "degraded"),
+        field(&beat, "degraded"),
         &json!(false),
         "and the proven capabilities clear the degraded verdict"
     );
@@ -119,12 +118,12 @@ async fn a_poll_crosses_the_partition_and_the_stream(
     run: &Scenario,
 ) -> (String, u64) {
     // WHICH fleet answers is a rotation's question, not one request's: the
-    // index is sixteen partitions and a poll reads one. `poll_for_seeded_lease`
+    // index is sixteen partitions and a poll reads one. `wait_for_seeded_offer`
     // turns the rotation and stops on this scenario's own event, which is the
     // OLDEST entry on this fleet's stream — so a lease coming back at all is
     // the stream read having followed the partition read to a different node
     // rather than answering from whatever was local.
-    poll_for_seeded_lease(http, run).await
+    wait_for_seeded_offer(run).await
 }
 
 /// A frame the daemon publishes reaches a subscriber that attached elsewhere.
@@ -204,10 +203,10 @@ async fn a_report_settles_once_across_both_stores(
     let before = balance(run).await;
     let report = report_body(lease_id, &run.event_id, fence);
 
-    let settled = post(http, run, "/v1/runners/me/reports", &report).await;
-    assert_eq!(settled.status().as_u16(), 200, "the report is accepted");
+    let settled = crate::wire::report(run, &report).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(
-        json(settled).await,
+        settled.expect("the native report is acknowledged"),
         json!({"ok": true}),
         "and answers in the shape a runner parses"
     );
@@ -234,13 +233,8 @@ async fn a_report_settles_once_across_both_stores(
         "a priced run draws the wallet down: {before:?} → {after:?}"
     );
 
-    let repeated = post(http, run, "/v1/runners/me/reports", &report).await;
-    assert_eq!(
-        repeated.status().as_u16(),
-        200,
-        "a repeat is acknowledged rather than refused — a runner replays because \
-         it did not hear the first answer, and refusing teaches it to retry forever"
-    );
+    let repeated = crate::wire::report(run, &report).await;
+    assert!(repeated.is_ok(), "native report refused: {repeated:?}");
     assert_eq!(
         ledger_rows(run).await,
         logged,
@@ -277,7 +271,7 @@ async fn the_fleet_is_still_discoverable_for_its_remaining_work(
     // A rotation rather than one request: the second event is discoverable
     // only on the poll that samples its partition, and the helper carries the
     // diagnosis if no poll in the budget is handed it.
-    let (_lease_id, _fence) = poll_for_lease(http, run, second_event).await;
+    let (_lease_id, _fence) = wait_for_offer(run, second_event).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

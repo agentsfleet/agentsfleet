@@ -1,4 +1,4 @@
-//! Real TLS peers exercise preference, interoperability and the protocol minimum.
+//! Real TLS peers refuse classical-only key agreement and obsolete protocol versions.
 
 use std::{path::Path, time::Duration};
 
@@ -11,17 +11,57 @@ use crate::tls::Trust;
 type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::test]
-async fn tls13_classical_peers_remain_identified_when_they_cannot_offer_the_hybrid() -> TestResult {
-    for (name, expected) in [
-        ("X25519", KeyExchange::X25519),
-        ("P-256", KeyExchange::P256),
-        ("P-384", KeyExchange::P384),
-    ] {
-        let (client, server) = negotiate(name, SslVersion::TLS1_3).await?;
-        assert_eq!(client, expected);
-        assert_eq!(server, expected);
-        assert_ne!(client.as_str(), KeyExchange::X25519MlKem768.as_str());
+async fn connector_refuses_every_classical_only_tls13_peer() -> TestResult {
+    for group in ["X25519", "P-256", "P-384"] {
+        let Err(_refused) = negotiate(group, SslVersion::TLS1_3).await else {
+            return Err(format!("classical-only peer {group} was accepted").into());
+        };
     }
+    Ok(())
+}
+
+#[tokio::test]
+async fn connector_and_acceptor_negotiate_the_required_hybrid() -> TestResult {
+    let (client, server) = negotiate(super::REQUIRED_GROUP, SslVersion::TLS1_3).await?;
+    assert_eq!(client, KeyExchange::X25519MlKem768);
+    assert_eq!(server, KeyExchange::X25519MlKem768);
+    Ok(())
+}
+
+#[tokio::test]
+async fn daemon_acceptor_refuses_an_x25519_only_client() -> TestResult {
+    let directory = tempfile::tempdir()?;
+    let _files = peer(directory.path(), super::REQUIRED_GROUP, SslVersion::TLS1_3)?;
+    let identity = crate::tls::Identity::new(
+        directory.path().join("certificate.pem"),
+        directory.path().join("key.pem"),
+    );
+    let acceptor = identity.h2()?;
+    let mut connector = Trust::with_roots(directory.path().join("certificate.pem"))
+        .h2()?
+        .configure()?;
+    connector.set_curves_list("X25519")?;
+    let listener = TcpListener::bind("[::1]:0").await?;
+    let address = listener.local_addr()?;
+    let server = async {
+        let (socket, _peer) = listener.accept().await?;
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
+            tokio_boring::accept(&acceptor, socket).await.is_err(),
+        )
+    };
+    let client = async {
+        let socket = TcpStream::connect(address).await?;
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(
+            tokio_boring::connect(connector, "localhost", socket)
+                .await
+                .is_err(),
+        )
+    };
+    let (client_refused, server_refused) = tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::try_join!(client, server)
+    })
+    .await??;
+    assert!(client_refused && server_refused);
     Ok(())
 }
 
@@ -71,7 +111,8 @@ fn peer(directory: &Path, group: &str, version: SslVersion) -> TestResult<SslAcc
     let certificate = directory.join("certificate.pem");
     let key = directory.join("key.pem");
     std::fs::write(&certificate, identity.cert.pem())?;
-    std::fs::write(&key, identity.signing_key.serialize_pem())?;
+    let private = zeroize::Zeroizing::new(identity.signing_key.serialize_pem());
+    std::fs::write(&key, private.as_bytes())?;
     let mut context = SslAcceptor::mozilla_intermediate_v5(SslMethod::tls())?;
     context.set_min_proto_version(Some(version))?;
     context.set_max_proto_version(Some(version))?;

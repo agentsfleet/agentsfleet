@@ -57,7 +57,9 @@ impl Services for ServingPlane {
     type Leases = LeaseService;
     type RunnerStreams = afd_gateway::Gateway;
 
-    fn runner_streams(&self) -> &Self::RunnerStreams { &self.runner_streams }
+    fn runner_streams(&self) -> &Self::RunnerStreams {
+        &self.runner_streams
+    }
     type Sessions = Logins;
     type Workspaces = Workspaces;
     type Fleets = Fleets;

@@ -14,7 +14,7 @@ use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_db::test_util::WalletSeed;
-use afd_fleet::lease::{Leases, LeaseService};
+use afd_fleet::lease::{LeaseService, Leases};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
 

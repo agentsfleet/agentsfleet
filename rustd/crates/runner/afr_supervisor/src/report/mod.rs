@@ -1,5 +1,7 @@
 //! A lease's terminal report, built from how its run ended.
 
+pub(crate) mod delivery;
+
 use std::borrow::Cow;
 use std::time::Duration;
 
@@ -76,7 +78,7 @@ pub(crate) fn report<'a>(
     ending: &'a Ending,
     meter: &Meter,
     wall: Duration,
-    trace: Option<&'a str>,
+    trace: Option<af_wire::tool_trace::RawToolTrace<'a>>,
     held_until: Option<Timestamp>,
 ) -> ReportRequest<'a> {
     let (outcome, failure_reason, failure_detail) = verdict(ending);
@@ -114,7 +116,7 @@ pub(crate) fn report<'a>(
             last_event_id: Cow::Borrowed(&lease.event.event_id),
             last_response: response_text,
         },
-        tool_calls: trace.and_then(|encoded| serde_json::from_str(encoded).ok()),
+        tool_calls: trace,
         // The wire still spells this instant as epoch milliseconds.
         held_until,
         // Only a processed run's folds settle with its answer; any other

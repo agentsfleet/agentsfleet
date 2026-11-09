@@ -141,7 +141,12 @@ impl Leases {
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
             decision_snapshot: decision.as_deref(),
-        }).insert(&mut transaction).await? else { return Ok(None); };
+        })
+        .insert(&mut transaction)
+        .await?
+        else {
+            return Ok(None);
+        };
         // The returned timestamp proves the fenced lease and its lifetime tally were written together.
         // The host lock still protects the optimistic choice version.
         if !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await? {

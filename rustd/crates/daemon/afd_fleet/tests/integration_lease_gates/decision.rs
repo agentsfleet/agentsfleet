@@ -4,10 +4,7 @@ use afd_admin::test_util::DecisionModelFixture;
 use std::{borrow::Cow, time::Duration};
 
 use af_core::{clock, id::Uuid7};
-use af_wire::{
-    decision::DecisionAssignment,
-    lease::{LeaseResponse, TaggedLease},
-};
+use af_wire::{decision::DecisionAssignment, lease::TaggedLease};
 use afd_db::Db;
 use afd_runner::RunnerEdit;
 use garde::Validate as _;
@@ -158,18 +155,15 @@ async fn issue(fixtures: &Fixtures, case: &Ready) -> Issued {
     decode(&answer)
 }
 
-fn decode(answer: &str) -> Issued {
-    let response: LeaseResponse<'_> = serde_json::from_str(answer).expect("typed issued lease");
-    response
-        .lease
-        .and_then(|lease| match lease {
-            TaggedLease::Fleet(lease) => Some(Issued {
-                id: Uuid7::parse(&lease.lease_id).expect("the lease names a UUIDv7"),
-                decision: lease.decision,
-            }),
-            TaggedLease::Authoring(_) => None,
-        })
-        .expect("fleet work was issued")
+fn decode(answer: &Option<serde_json::Value>) -> Issued {
+    let body = answer.as_ref().expect("fleet work was issued").to_string();
+    match serde_json::from_str::<TaggedLease<'_>>(&body).expect("typed issued lease") {
+        TaggedLease::Fleet(lease) => Issued {
+            id: Uuid7::parse(&lease.lease_id).expect("the lease names a UUIDv7"),
+            decision: lease.decision,
+        },
+        TaggedLease::Authoring(_) => panic!("the selected admission grants fleet work"),
+    }
 }
 
 async fn revise_and_check(

@@ -5,14 +5,22 @@ use std::sync::Arc;
 use af_core::timing::{READY_WAKE_DEADLINE, STREAM_ANSWER_TIMEOUT};
 use afd_bus::{Command, Received, Subject};
 
-use crate::{Gateway, Operation, Result};
 use super::{SessionHandle, SessionServices};
+use crate::{Gateway, Operation, Result};
 
 /// Announce committed ownership with a bounded best-effort publish.
 pub(super) async fn announce(gateway: &Gateway, runner: &af_core::id::Uuid7) -> Result<()> {
-    let publish = gateway.0.dependencies.bus.publish_frame(&Subject::RunnerCommand(runner.clone()), &Command::Recheck);
-    tokio::time::timeout(READY_WAKE_DEADLINE, publish).await
-        .map_err(|source| crate::error::ErrorKind::Timeout { operation: Operation::Recheck, source })??;
+    let publish = gateway
+        .inner
+        .dependencies
+        .bus
+        .publish_frame(&Subject::RunnerCommand(runner.clone()), &Command::Recheck);
+    tokio::time::timeout(READY_WAKE_DEADLINE, publish)
+        .await
+        .map_err(|source| crate::error::ErrorKind::Timeout {
+            operation: Operation::Recheck,
+            source,
+        })??;
     Ok(())
 }
 
@@ -21,11 +29,20 @@ pub(super) async fn listen(services: Arc<SessionServices>) -> Result<()> {
     let mut retry = std::time::Duration::from_millis(100);
     let mut lost = false;
     loop {
-        if services.handle.stop.is_cancelled() { return Ok(()); }
-        let subscription = services.operation(Operation::Recheck, async {
-            Ok(services.gateway.0.dependencies.bus.subscribe(
-                &Subject::RunnerCommand(services.handle.runner.clone())).await?)
-        }).await;
+        if services.handle.stop.is_cancelled() {
+            return Ok(());
+        }
+        let subscription = services
+            .operation(Operation::Recheck, async {
+                Ok(services
+                    .gateway
+                    .inner
+                    .dependencies
+                    .bus
+                    .subscribe(&Subject::RunnerCommand(services.handle.runner.clone()))
+                    .await?)
+            })
+            .await;
         if let Ok(mut subscription) = subscription {
             services.handle.command(Command::Recheck);
             lost = false;
@@ -35,8 +52,17 @@ pub(super) async fn listen(services: Arc<SessionServices>) -> Result<()> {
                 Err(error) => services.gateway.observe(&error, Operation::Recheck),
             }
         }
-        if !lost { services.handle.command(Command::Recheck); lost = true; }
-        let stagger = services.handle.runner.as_str().bytes().fold(0_u64, |sum, byte| sum + u64::from(byte)) % 251;
+        if !lost {
+            services.handle.command(Command::Recheck);
+            lost = true;
+        }
+        let stagger = services
+            .handle
+            .runner
+            .as_str()
+            .bytes()
+            .fold(0_u64, |sum, byte| sum + u64::from(byte))
+            % 251;
         tokio::select! {
             biased;
             () = services.handle.stop.cancelled() => return Ok(()),
@@ -79,13 +105,22 @@ impl SessionServices {
     }
 
     async fn check_cancellation(&self, lease: &af_core::id::Uuid7) -> Result<()> {
-        let cancelled = self.operation(Operation::Recheck, async {
-            Ok(sqlx::query_scalar::<_, bool>(include_str!("sql/select_lease_cancellation.sql"))
-                .bind(lease).bind(&self.handle.runner)
-                .fetch_optional(&mut *self.leases.leases.pool().acquire().await?).await?)
-        }).await?;
+        let cancelled = self
+            .operation(Operation::Recheck, async {
+                Ok(
+                    sqlx::query_scalar::<_, bool>(include_str!(
+                        "sql/select_lease_cancellation.sql"
+                    ))
+                    .bind(lease)
+                    .bind(&self.handle.runner)
+                    .fetch_optional(&mut *self.leases.leases.pool().acquire().await?)
+                    .await?,
+                )
+            })
+            .await?;
         if cancelled == Some(true) {
-            self.cancel(lease, af_core::error_code::RUN_LEASE_CANCELLED.as_str()).await?;
+            self.cancel(lease, af_core::error_code::RUN_LEASE_CANCELLED.as_str())
+                .await?;
         }
         Ok(())
     }

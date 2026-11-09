@@ -20,6 +20,8 @@ use crate::{
 struct Session<S> {
     service: S,
     stop: CancellationToken,
+    abort: CancellationToken,
+    accepting: CancellationToken,
 }
 
 impl<S> Session<S>
@@ -33,14 +35,18 @@ where
     async fn serve(self, socket: TcpStream, tls: &boring::ssl::SslAcceptor) -> Result<()> {
         socket.set_nodelay(true)?;
         let deadline = Instant::now() + Duration::from_secs(5);
-        let tls = within(&self.stop, deadline, Stage::Handshake, async {
+        let tls = within(&self.abort, deadline, Stage::Handshake, async {
             Ok(tokio_boring::accept(tls, socket).await?)
         })
         .await?;
+        crate::tls::KeyExchange::from(tls.ssl()).require(
+            Transport::H2,
+            af_observability::metrics::label::fleet::StreamPeer::Server,
+        )?;
         if tls.ssl().selected_alpn_protocol() != Some(b"h2".as_slice()) {
             return Err(ErrorKind::Protocol.into());
         }
-        let executor = super::executor::Executor::new(self.stop.clone());
+        let executor = super::executor::Executor::new(self.abort.clone());
         let ready = std::sync::Arc::new(tokio::sync::Notify::new());
         let service = router(
             self.service,
@@ -54,28 +60,27 @@ where
             .max_header_list_size(crate::HEADER_BYTES)
             .max_send_buf_size(crate::CHUNK_BYTES)
             .serve_connection(TokioIo::new(tls), service);
-        executor
-            .run(drive(connection, ready, &self.stop, deadline))
-            .await
+        executor.run(async {
+            tokio::pin!(connection);
+            let opening = within(&self.abort, deadline, Stage::Open, async { ready.notified().await; Ok(()) });
+            tokio::pin!(opening);
+            let stopping = async {
+                tokio::select! { () = self.accepting.cancelled() => {}, () = self.stop.cancelled() => {} }
+            };
+            tokio::pin!(stopping);
+            let mut opened = false;
+            loop {
+                tokio::select! {
+                    result = &mut connection => return Ok(result?),
+                    () = &mut stopping => {
+                        connection.as_mut().graceful_shutdown();
+                        return Ok(connection.await?);
+                    }
+                    result = &mut opening, if !opened => { result?; opened = true; }
+                }
+            }
+        }).await
     }
-}
-
-async fn drive(
-    connection: impl Future<Output = Result<(), hyper::Error>>,
-    ready: std::sync::Arc<tokio::sync::Notify>,
-    stop: &CancellationToken,
-    deadline: Instant,
-) -> Result<()> {
-    tokio::pin!(connection);
-    let opening = within(stop, deadline, Stage::Open, async {
-        ready.notified().await;
-        Ok(())
-    });
-    tokio::select! {
-        result = &mut connection => return Ok(result?),
-        result = opening => result?,
-    }
-    Ok(connection.await?)
 }
 
 fn router<S>(
@@ -125,7 +130,8 @@ pub(crate) async fn serve<M, S>(
     listener: TcpListener,
     identity: Identity,
     make: M,
-    stop: CancellationToken,
+    accepting: CancellationToken,
+    abort: CancellationToken,
 ) -> Result<()>
 where
     M: Fn(ConnectionInfo) -> S + Send + Sync,
@@ -137,25 +143,34 @@ where
 {
     let tls = std::sync::Arc::new(identity.h2()?);
     let mut workers = JoinSet::new();
-    loop {
+    let result = loop {
         tokio::select! {
             biased;
-            () = stop.cancelled() => break,
+            () = accepting.cancelled() => break Ok(()),
+            () = abort.cancelled() => break Ok(()),
             result = workers.join_next(), if !workers.is_empty() => {
                 if let Some(Err(source)) = result { crate::server::observe(Err(source.into()), Transport::H2); }
             }
             accepted = listener.accept(), if workers.len() < 512 => {
-                let (socket, peer) = accepted?;
-                let child = stop.child_token();
+                let (socket, peer) = match accepted {
+                    Ok(accepted) => accepted,
+                    Err(source) => break Err(source.into()),
+                };
+                let driver_abort = abort.child_token();
+                let child = driver_abort.child_token();
+                let accepting = accepting.clone();
                 let service = make(ConnectionInfo { transport: Transport::H2, peer, stop: child.clone(), native_stats: None });
                 let tls = std::sync::Arc::clone(&tls);
                 workers.spawn(async move {
                     let _guard = child.clone().drop_guard();
-                    crate::server::observe(Session { service, stop: child.clone() }.serve(socket, &tls).await, Transport::H2);
+                    crate::server::observe(Session { service, stop: child.clone(), abort: driver_abort, accepting }.serve(socket, &tls).await, Transport::H2);
                 });
             }
         }
+    };
+    if result.is_err() {
+        abort.cancel();
     }
-    crate::server::finish(&mut workers).await;
-    Ok(())
+    crate::server::finish(&mut workers, &abort, Transport::H2).await;
+    result
 }

@@ -101,10 +101,6 @@ fn label_products() -> Vec<(&'static str, usize)> {
             fleet_labels::ReportAnswer::ALL.len(),
         ),
         (
-            fleet::RUNNER_WAKE_ANSWERS_TOTAL.wire_name(),
-            fleet_labels::WakeAnswer::ALL.len(),
-        ),
-        (
             fleet::LEASE_HISTORY_CUTS_TOTAL.wire_name(),
             fleet_labels::HistoryCut::ALL.len(),
         ),
@@ -136,11 +132,18 @@ fn label_products() -> Vec<(&'static str, usize)> {
     products
 }
 
-fn stream_products() -> [(&'static str, usize); 8] {
+fn stream_products() -> [(&'static str, usize); 9] {
     let attempts =
         fleet_labels::StreamTransport::ALL.len() * fleet_labels::StreamOutcome::ALL.len();
     [
         (fleet::RUNNER_STREAM_CONNECT_TOTAL.wire_name(), attempts),
+        (
+            fleet::RUNNER_STREAM_TLS_HANDSHAKES_TOTAL.wire_name(),
+            fleet_labels::StreamTransport::ALL.len()
+                * fleet_labels::StreamPeer::ALL.len()
+                * fleet_labels::StreamKeyExchange::ALL.len()
+                * fleet_labels::StreamTlsOutcome::ALL.len(),
+        ),
         (fleet::RUNNER_STREAM_CONNECT_SECONDS.wire_name(), attempts),
         (
             fleet::RUNNER_STREAM_OPERATION_SECONDS.wire_name(),

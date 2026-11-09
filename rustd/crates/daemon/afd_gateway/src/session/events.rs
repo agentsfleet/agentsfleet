@@ -1,11 +1,14 @@
 //! Typed event selection is separate from session decisions, following Exonum's handler pattern.
 
-use std::ops::ControlFlow;
-use afd_bus::Command;
-use af_wire::protocol::StreamKind;
-use tokio::{sync::mpsc, task::{JoinError, JoinSet}};
-use crate::{Result, error::ErrorKind};
 use super::{io::IncomingFrame, streams::StreamReceivers, supervisor::SessionSupervisor};
+use crate::{Result, error::ErrorKind};
+use af_wire::protocol::StreamKind;
+use afd_bus::Command;
+use std::ops::ControlFlow;
+use tokio::{
+    sync::mpsc,
+    task::{JoinError, JoinSet},
+};
 
 /// Events carry their domain meaning; command variants are not reduced to an anonymous wake.
 pub(super) enum SessionEvent {
@@ -18,9 +21,17 @@ pub(super) enum SessionEvent {
     Disconnected,
 }
 
-pub(super) enum OperationCompletion { Request, Offer, Command }
+pub(super) enum OperationCompletion {
+    Request,
+    Offer,
+    Command,
+}
 
-pub(super) enum ShutdownReason { Drain, Superseded, Disconnected }
+pub(super) enum ShutdownReason {
+    Drain,
+    Superseded,
+    Disconnected,
+}
 
 /// The handler owns state transitions; the event source owns asynchronous selection.
 pub(super) trait EventHandler {
@@ -35,7 +46,9 @@ pub(super) struct EventSource {
 impl EventSource {
     /// Control remains independent of data queues; background signals cannot spawn duplicate jobs.
     pub(super) async fn next(
-        &mut self, session: &mut SessionSupervisor, workers: &mut JoinSet<Result<()>>,
+        &mut self,
+        session: &mut SessionSupervisor,
+        workers: &mut JoinSet<Result<()>>,
     ) -> Result<SessionEvent> {
         let handle = &session.services.handle;
         tokio::select! {
@@ -59,11 +72,15 @@ impl EventSource {
 }
 
 fn frame_event(frame: Option<IncomingFrame>) -> Result<SessionEvent> {
-    frame.map(SessionEvent::Frame).ok_or_else(|| ErrorKind::Closed.into())
+    frame
+        .map(SessionEvent::Frame)
+        .ok_or_else(|| ErrorKind::Closed.into())
 }
 
 /// Name the three task exit layers rather than hiding them in chained question marks.
-pub(super) fn join_result<T>(joined: Option<std::result::Result<Result<T>, JoinError>>) -> Result<T> {
+pub(super) fn join_result<T>(
+    joined: Option<std::result::Result<Result<T>, JoinError>>,
+) -> Result<T> {
     let task = joined.ok_or(ErrorKind::Closed)?;
     let operation = task?;
     operation

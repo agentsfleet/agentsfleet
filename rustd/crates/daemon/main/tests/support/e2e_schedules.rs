@@ -28,7 +28,7 @@ use crate::tail::lease;
 /// How long a held sync lease outlives the database clock: past the case.
 const SYNC_HOLD: std::time::Duration = std::time::Duration::from_secs(60);
 use crate::verbs::{FakeQStash, QSTASH_TOKEN, send};
-use crate::wire::{post, report_body};
+use crate::wire::report_body;
 
 /// The expression and zone every created schedule here fires on.
 pub(crate) const WEEKLY: &str = "0 9 * * 1";
@@ -132,8 +132,8 @@ impl Leased {
     /// Settles the held lease, so the fleet takes its next event.
     pub(crate) async fn settle(&self) {
         let report = report_body(self.lease_id.as_str(), &self.run.event_id, self.fence);
-        let reported = post(&self.http, &self.run, REPORTS, &report).await;
-        assert_eq!(reported.status().as_u16(), 200, "the held lease settles");
+        let reported = crate::wire::report(&self.run, &report).await;
+        assert!(reported.is_ok(), "native report refused: {reported:?}");
     }
 
     /// Runs `schedule` now under this lease's fence.

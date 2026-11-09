@@ -1,29 +1,53 @@
 //! Completion observations follow durable settlement and retain replay suppression.
 
-use std::time::{Duration, SystemTime};
-use af_observability::{Analytics, Delivery, Segments, Telemetry,
-    metrics::label::{cost::ErrorType, fleet::ReportAnswer},
-    producers::{cost::{self, Spend}, fleet::{report_answered, runner}}};
-use af_wire::report::{Outcome, ReportRequest, RunSegments};
-use jiff::Timestamp;
 use super::{Reconciled, RunTokens};
 use crate::Result;
+use af_observability::{
+    Analytics, Delivery, Segments, Telemetry,
+    metrics::label::{cost::ErrorType, fleet::ReportAnswer},
+    producers::{
+        cost::{self, Spend},
+        fleet::{report_answered, runner},
+    },
+};
+use af_wire::report::{Outcome, ReportRequest, RunSegments};
+use jiff::Timestamp;
+use std::time::{Duration, SystemTime};
 
 /// Describe one saved result; a replay acknowledges success without counting the run again.
-#[expect(clippy::disallowed_methods, reason = "delivery spans end at full SystemTime precision")]
-pub fn observe(analytics: &Analytics, settled: &Reconciled, request: &ReportRequest<'_>,
-    runner_id: &str, received: Timestamp) -> Result<()> {
-    if settled.repeated { report_answered(ReportAnswer::Repeated); return Ok(()); }
+#[expect(
+    clippy::disallowed_methods,
+    reason = "delivery spans end at full SystemTime precision"
+)]
+pub fn observe(
+    analytics: &Analytics,
+    settled: &Reconciled,
+    request: &ReportRequest<'_>,
+    runner_id: &str,
+    received: Timestamp,
+) -> Result<()> {
+    if settled.repeated {
+        report_answered(ReportAnswer::Repeated);
+        return Ok(());
+    }
     let usage = UsageCounts::try_from(&settled.tokens)?;
     report_answered(ReportAnswer::Settled);
     analytics.report(&Telemetry::FleetCompleted {
-        actor: settled.workspace_id.as_str().to_owned(), workspace_id: settled.workspace_id.as_str().to_owned(),
-        fleet_id: settled.fleet_id.as_str().to_owned(), event_id: settled.event_id.as_str().to_owned(),
-        tokens: request.tokens, wall_ms: request.telemetry.wall_ms, exit_status: request.outcome.as_str().to_owned(),
+        actor: settled.workspace_id.as_str().to_owned(),
+        workspace_id: settled.workspace_id.as_str().to_owned(),
+        fleet_id: settled.fleet_id.as_str().to_owned(),
+        event_id: settled.event_id.as_str().to_owned(),
+        tokens: request.tokens,
+        wall_ms: request.telemetry.wall_ms,
+        exit_status: request.outcome.as_str().to_owned(),
         time_to_first_token_ms: u64::from(request.telemetry.time_to_first_token_ms),
     });
-    let ended = settled.completed_at.map_or_else(SystemTime::now, SystemTime::from);
-    let complete = settled.completed_at.map(|completed| af_core::clock::elapsed(received, completed));
+    let ended = settled
+        .completed_at
+        .map_or_else(SystemTime::now, SystemTime::from);
+    let complete = settled
+        .completed_at
+        .map(|completed| af_core::clock::elapsed(received, completed));
     delivery_of(settled, request, complete, &usage).record(ended);
     meter(settled, request, runner_id, &usage);
     Ok(())
@@ -60,7 +84,11 @@ fn meter(settled: &Reconciled, request: &ReportRequest<'_>, runner_id: &str, usa
 ///
 /// Input is the whole prompt for the reason [`delivery_of`] gives; the cache
 /// reads are recorded again as their own subset family.
-fn spend_of<'a>(settled: &'a Reconciled, request: &ReportRequest<'_>, usage: &UsageCounts) -> Spend<'a> {
+fn spend_of<'a>(
+    settled: &'a Reconciled,
+    request: &ReportRequest<'_>,
+    usage: &UsageCounts,
+) -> Spend<'a> {
     Spend {
         model: &settled.model,
         posture: &settled.posture,
@@ -127,14 +155,21 @@ fn segments_of(
 }
 
 /// Conversion happens once before any observation, retaining malformed saved data as an error.
-struct UsageCounts { prompt: u64, cached: u64, output: u64 }
+struct UsageCounts {
+    prompt: u64,
+    cached: u64,
+    output: u64,
+}
 
 impl TryFrom<&RunTokens> for UsageCounts {
     type Error = crate::Error;
 
     fn try_from(tokens: &RunTokens) -> Result<Self> {
-        Ok(Self { prompt: u64::try_from(tokens.prompt())?,
-            cached: u64::try_from(tokens.cached_input_tokens)?, output: u64::try_from(tokens.output_tokens)? })
+        Ok(Self {
+            prompt: u64::try_from(tokens.prompt())?,
+            cached: u64::try_from(tokens.cached_input_tokens)?,
+            output: u64::try_from(tokens.output_tokens)?,
+        })
     }
 }
 

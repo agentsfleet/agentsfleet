@@ -1,6 +1,6 @@
 //! Bound serialization and every in-progress frame write.
 
-use af_wire::protocol::{StreamKind, MESSAGE_BYTES_MAX};
+use af_wire::protocol::{MESSAGE_BYTES_MAX, StreamKind};
 use serde::Serialize;
 use tokio::io::{AsyncWrite, AsyncWriteExt as _};
 use tokio::time::Instant;
@@ -17,7 +17,10 @@ pub(super) struct Buffer(Zeroizing<Vec<u8>>);
 pub(super) const ENCODING_BYTES: usize = MESSAGE_BYTES_MAX * 2;
 
 impl Buffer {
-    pub(super) fn finish(self, mut reservation: tokio::sync::OwnedSemaphorePermit) -> Result<OwnedFrame> {
+    pub(super) fn finish(
+        self,
+        mut reservation: tokio::sync::OwnedSemaphorePermit,
+    ) -> Result<OwnedFrame> {
         let allocation = Length::prove(self.0.capacity())?;
         let _unused = reservation.split(ENCODING_BYTES - allocation.bytes);
         Ok(OwnedFrame {
@@ -40,8 +43,10 @@ impl std::io::Write for Buffer {
         if needed > self.0.capacity() {
             let capacity = needed.max(self.0.capacity() * 2).min(MESSAGE_BYTES_MAX);
             // Vec's automatic doubling could otherwise exceed the frame ceiling.
-            let additional = capacity - self.0.len();
-            self.0.reserve_exact(additional);
+            let mut grown = Zeroizing::new(Vec::with_capacity(capacity));
+            grown.extend_from_slice(&self.0);
+            // Replacing the owner wipes the previous plaintext allocation before freeing it.
+            self.0 = grown;
         }
         self.0.extend_from_slice(buf);
         Ok(buf.len())

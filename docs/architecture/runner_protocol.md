@@ -1,7 +1,7 @@
 # Runner stream protocol
 
-This page records the M243 implementation design. The transport and gateway are not implemented yet.
-The active M243 specification holds the acceptance tests and progress.
+This page records the M243 implementation design and unfinished working source.
+The active M243 specification holds acceptance criteria; current source remains unverified.
 
 ## Connection direction and deployment
 
@@ -22,6 +22,8 @@ External runner ----- operator-provided reachability -> configured daemon endpoi
 User Datagram Protocol (UDP) carries HTTP/3 through QUIC.
 Transmission Control Protocol (TCP) carries HTTP/2.
 Transport Layer Security (TLS) verifies the daemon's identity on both paths.
+Both binaries require TLS 1.3 with `X25519MLKEM768` hybrid key exchange.
+A peer offering only classical groups is refused on either carrier; transport fallback never relaxes this requirement.
 
 Cloudflare is not a dependency of either path.
 Private Fly routing is the supported hosted deployment path for M243.
@@ -158,6 +160,12 @@ The reports stream carries reports and their acknowledgements; the activity stre
 
 Wrong-stream messages are protocol errors.
 
+Availability uses `ready { credits, revision, observed_offers }` on control.
+`credits` is the number of currently idle workers; the other fields identify the update and the number of work offers received in this session.
+The daemon ignores older revisions and deducts offers sent but not yet observed.
+Each offer consumes one worker, so another free worker can receive work immediately.
+The counters restart with the new session after reconnect; running leases remain included in occupied capacity.
+
 Each message is a four-byte, unsigned big-endian length followed by UTF-8 JSON.
 The length covers only the JSON bytes, with a maximum of 2 MiB.
 The reader validates that prefix before reserving memory and reading into one zeroing payload buffer.
@@ -180,7 +188,7 @@ Renewals, ping and cancellation receive control service ahead of ordinary heartb
 Large offers and folded inputs remain on the independently flow-controlled work stream.
 Reports use a separate bounded writer and cannot queue ahead of control.
 
-Activity drops beyond its cap, while reports remain durably spooled.
+Activity drops beyond its cap. Each worker retains its pending report in memory until the daemon acknowledges it.
 
 Data writes use chunks of at most 16 KiB and bounded per-stream flow-control windows.
 The connection receive window exceeds the combined data-stream windows, preserving control credit.
@@ -334,9 +342,17 @@ Postgres holds live leases, connection ownership and cancellation markers.
 Reconnect compares the runner's running leases with that authority.
 Missing, cancelled or superseded leases receive cancellation; valid leases retain their confirmed deadlines.
 
-Each report reaches durable runner storage before transmission.
-The runner removes it only after the matching acknowledgement or a terminal refusal.
-An acknowledgement lost after commit causes an idempotent retry, not another charge.
+Postgres is the only saved store for completed reports and their billing settlement.
+Each worker retains its current-format report in memory until acknowledgement or a terminal refusal.
+The occupied worker slot bounds pending report count; a disconnect retries the same report.
+An acknowledgement lost after commit causes an idempotent retry, without another charge.
+Process loss before the commit can lose the unsent answer and usage.
+The runner writes no report files and loads no reports from an earlier process.
+
+Task-decision issuance commits in Postgres before the runner receives permission for a provider call.
+The caller retains its receipt in memory and retries that receipt until acknowledged.
+A repeated reservation never grants another physical call.
+A process lost before recording the receipt can leave unknown provider usage; files and traces do not settle that uncertainty.
 
 A kill marks the affected leases in its transaction before publishing cancellation.
 Renewal and reconnect read the marker when a notification is lost.
@@ -449,3 +465,9 @@ External operators meet the documented routing, certificate and carrier prerequi
 Certificate delivery remains a deployment decision requiring a concrete reviewed patch.
 
 No production deployment or configuration change is authorized by this page.
+
+## Authoring operations on the native session
+
+Authoring uses the same connection as fleet execution. The work lane carries bounded authoring model requests/results and acknowledged proposals; control carries authoring renewals; reports carries authoring completion and accounting acknowledgements. The former four authoring machine HTTP routes are deleted. Browser setup-chat routes keep their current user authentication.
+
+A model request retains one physical dispatch identifier and the existing provider answer budget, independently of control responsiveness. It is never automatically redispatched after a disconnect. Model credentials and Postgres writes stay in the daemon. The transport migration does not claim a measured reduction in provider response time.

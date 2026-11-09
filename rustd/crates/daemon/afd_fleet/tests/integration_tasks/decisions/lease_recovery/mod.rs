@@ -20,8 +20,7 @@ async fn reclaimed_task_attaches_to_one_ordinary_lease_with_original_generation_
         support::expire(case).await;
         let acquired = support::claim(case).await;
         let fence = acquired.fence.as_i64();
-        let response = reclaimed(case, acquired).await;
-        let lease = response.get("lease").expect("lease envelope");
+        let lease = reclaimed(case, acquired).await;
         assert_eq!(
             lease.pointer("/task/task_id"),
             Some(&serde_json::json!(task.task_id))
@@ -69,9 +68,8 @@ async fn changed_setup_blocks_reclaimed_task_without_issuing_another_lease() {
         let config = serde_json::json!({"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],
             "budget":{"daily_nanos":"900000000"},"decision_policy":super::fixture::policy()}});
         case.held.fixtures.native_config(&case.held.fleet, &config.to_string()).await;
-        let body = case.held.fixtures.plane().lease_claimed(acquired, &case.held.runner, af_core::clock::now()).await.expect("changed authority is a native refusal");
-        let response: Value = serde_json::from_str(&body).expect("native no-work response");
-        assert!(response.get("lease").expect("lease field").is_null());
+        let body = case.held.fixtures.plane().claim_selected(acquired, &case.held.runner, af_core::clock::now()).await.expect("changed authority is a native refusal");
+        assert!(body.is_none());
         support::assert_blocked(case, &task_id).await;
         fixture.model.finish().await.expect("model fixture cleanup");
     }).await;
@@ -86,11 +84,10 @@ pub(super) async fn reclaimed(
         .held
         .fixtures
         .plane()
-        .lease_claimed(acquired, &case.held.runner, af_core::clock::now())
+        .claim_selected(acquired, &case.held.runner, af_core::clock::now())
         .await
         .expect("ordinary reclaim and full issuance");
-    let response: Value = serde_json::from_str(&body).expect("native lease response");
-    let lease = response.get("lease").expect("lease envelope");
+
     let reasons: Vec<_> = capture
         .events()
         .into_iter()
@@ -102,7 +99,6 @@ pub(super) async fn reclaimed(
         })
         .filter_map(|event| event.field("reason").map(str::to_owned))
         .collect();
-    assert!(!lease.is_null(), "ordinary task lease refused: {reasons:?}");
     drop(capture);
-    response
+    body.unwrap_or_else(|| panic!("ordinary task lease refused: {reasons:?}"))
 }

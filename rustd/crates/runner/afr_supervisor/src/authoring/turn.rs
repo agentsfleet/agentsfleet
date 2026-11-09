@@ -19,7 +19,9 @@ impl Turn<'_> {
     pub(super) async fn run(&self) -> Result<Ending> {
         let mut messages = self.context()?;
         let mut activity_sequence = 1;
-        for call_index in 1..=u32::try_from(self.lease.limits.max_calls.min(8)).unwrap_or(0) {
+        let max_calls = u32::try_from(self.lease.limits.max_calls.min(8))
+            .map_err(|_negative| error::config("the authoring call allowance is invalid"))?;
+        for call_index in 1..=max_calls {
             let meter = self.observed.snapshot()?;
             let budget = u64::try_from(self.lease.limits.output_per_turn)
                 .map_err(|_negative| error::config("the authoring output allowance is invalid"))?;

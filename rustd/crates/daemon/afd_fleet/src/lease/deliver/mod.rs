@@ -19,12 +19,12 @@ use jiff::Timestamp;
 use afd_approval::{Origin, Requested, Wanted};
 
 use crate::error::Result;
-use crate::lease::answer::{EVENT_LEASED, no_work};
 use crate::lease::Offered;
-use af_wire::lease::LeasePayload;
+use crate::lease::answer::{EVENT_LEASED, no_work};
 use crate::lease::envelope::Acquired;
-use crate::lease::pull::{AdmittedFleetWork, Leased, LeaseService, Step};
+use crate::lease::pull::{AdmittedFleetWork, LeaseService, Leased, Step};
 use af_core::event::label;
+use af_wire::lease::LeasePayload;
 use afd_gate::policy::build::{self, Assembled};
 use afd_gate::policy::repair;
 
@@ -94,7 +94,7 @@ impl LeaseService {
                         reason,
                     )
                     .await
-                    .map(Step::Stop);
+                    .map(|()| Step::Stop);
             }
             // Anything else is a fault the next poll may not meet, so it is
             // raised rather than ending the event for good.
@@ -143,9 +143,10 @@ impl LeaseService {
             Ungranted::Ends => self
                 .refused(acquired, label::GRANT_DENIED, runner_id, &reason)
                 .await
-                .map(Step::Stop),
+                .map(|()| Step::Stop),
             waits @ (Ungranted::Parks | Ungranted::Retries) => {
-                no_work(runner_id, &reason).map(|answer| waits.ending(answer))
+                no_work(runner_id, &reason);
+                Ok(waits.ending())
             }
         }
     }
@@ -252,10 +253,10 @@ impl Ungranted {
     /// The step an ungranted delivery takes once its answer is rendered: an
     /// open card parks it, and anything else stops it — for the next poll to
     /// ask again, or, for [`Ungranted::Ends`], after the refusal was written.
-    const fn ending<T>(self, answer: String) -> Step<Leased<T>> {
+    const fn ending<T>(self) -> Step<Leased<T>> {
         match self {
-            Self::Parks => Step::Park(answer),
-            Self::Retries | Self::Ends => Step::Stop(answer),
+            Self::Parks => Step::Park,
+            Self::Retries | Self::Ends => Step::Stop,
         }
     }
 }

@@ -1,7 +1,7 @@
 //! A chat lease's earlier turns, as the plane hands them to a runner.
 //!
 //! `integration_lease_history.rs` proves the read; these drive the path around
-//! it: `LeaseService::lease_claimed` issues a lease, `LeaseService::report` ends it, and the
+//! it: `LeaseService::claim_selected` issues a lease, `LeaseService::report` ends it, and the
 //! next lease's payload carries what that report left. They live under this
 //! suite because an issued lease needs the provider seed only it owns.
 

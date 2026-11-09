@@ -25,7 +25,7 @@ pub(super) async fn assert_unknown_credential_is_refused(http: &reqwest::Client,
 
 pub(super) async fn assert_unsupported_event_ends(http: &reqwest::Client, run: &Scenario) {
     let unsupported = run.enqueue_unsupported_event("future_event_type").await;
-    let ended = poll_until(http, run, || async {
+    let ended = wait_without_offer(run, || async {
         event_column(run, &unsupported, "status").await.as_deref() == Some("gate_blocked")
     })
     .await;

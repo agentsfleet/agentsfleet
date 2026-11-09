@@ -1,10 +1,10 @@
 //! Request identifiers and worker permits are returned by Drop on every exit path.
 
-use std::{num::NonZeroU64, sync::Arc};
+use crate::{Result, error::ErrorKind};
 use af_wire::protocol::{PENDING_MAX, StreamKind};
 use dashmap::DashSet;
+use std::{num::NonZeroU64, sync::Arc};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
-use crate::{Result, error::ErrorKind};
 
 /// Separate operation slots preserve control capacity when reports or activity are slow.
 pub(super) struct RequestSlots {
@@ -16,19 +16,30 @@ pub(super) struct RequestSlots {
 
 impl Default for RequestSlots {
     fn default() -> Self {
-        Self { control: Arc::new(Semaphore::new(PENDING_MAX - 32)),
-            reports: Arc::new(Semaphore::new(8)), work: Arc::new(Semaphore::new(8)),
-            activity: Arc::new(Semaphore::new(16)) }
+        Self {
+            control: Arc::new(Semaphore::new(
+                PENDING_MAX - af_wire::protocol::LEASES_MAX - 24,
+            )),
+            reports: Arc::new(Semaphore::new(8)),
+            work: Arc::new(Semaphore::new(af_wire::protocol::LEASES_MAX)),
+            activity: Arc::new(Semaphore::new(16)),
+        }
     }
 }
 
 impl RequestSlots {
     fn pool(&self, kind: StreamKind) -> &Arc<Semaphore> {
-        match kind { StreamKind::Control => &self.control, StreamKind::Reports => &self.reports,
-            StreamKind::Work => &self.work, StreamKind::Activity => &self.activity }
+        match kind {
+            StreamKind::Control => &self.control,
+            StreamKind::Reports => &self.reports,
+            StreamKind::Work => &self.work,
+            StreamKind::Activity => &self.activity,
+        }
     }
 
-    pub(super) fn available(&self, kind: StreamKind) -> bool { self.pool(kind).available_permits() > 0 }
+    pub(super) fn available(&self, kind: StreamKind) -> bool {
+        self.pool(kind).available_permits() > 0
+    }
 
     pub(super) fn admit(&self, kind: StreamKind) -> Option<OwnedSemaphorePermit> {
         Arc::clone(self.pool(kind)).try_acquire_owned().ok()
@@ -40,9 +51,17 @@ impl RequestSlots {
 pub(super) struct RequestTracker(DashSet<NonZeroU64>);
 
 impl RequestTracker {
-    pub(super) fn register(self: &Arc<Self>, id: Option<NonZeroU64>) -> Result<RequestRegistration> {
-        if id.is_some_and(|id| !self.0.insert(id)) { return Err(ErrorKind::Protocol.into()); }
-        Ok(RequestRegistration { tracker: Arc::clone(self), id })
+    pub(super) fn register(
+        self: &Arc<Self>,
+        id: Option<NonZeroU64>,
+    ) -> Result<RequestRegistration> {
+        if id.is_some_and(|id| !self.0.insert(id)) {
+            return Err(ErrorKind::Protocol.into());
+        }
+        Ok(RequestRegistration {
+            tracker: Arc::clone(self),
+            id,
+        })
     }
 }
 
@@ -53,15 +72,17 @@ pub(super) struct RequestRegistration {
 
 impl Drop for RequestRegistration {
     fn drop(&mut self) {
-        if let Some(id) = self.id { self.tracker.0.remove(&id); }
+        if let Some(id) = self.id {
+            self.tracker.0.remove(&id);
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{num::NonZeroU64, sync::Arc};
     use super::{RequestSlots, RequestTracker};
     use af_wire::protocol::StreamKind;
+    use std::{num::NonZeroU64, sync::Arc};
 
     /// Every return path releases identity, including an aborted worker unwinding its future.
     #[test]
@@ -79,7 +100,9 @@ mod tests {
     fn activity_pressure_leaves_control_request_capacity_available() {
         let slots = RequestSlots::default();
         let mut held = Vec::new();
-        while let Some(permit) = slots.admit(StreamKind::Activity) { held.push(permit); }
+        while let Some(permit) = slots.admit(StreamKind::Activity) {
+            held.push(permit);
+        }
         assert!(!slots.available(StreamKind::Activity));
         assert!(slots.admit(StreamKind::Control).is_some());
         drop(held);

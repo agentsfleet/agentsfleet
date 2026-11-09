@@ -11,6 +11,17 @@ fn fleet(number: usize) -> TestResult<Uuid7> {
 }
 
 #[test]
+fn scheduling_can_read_locality_without_spending_the_placements_reminder() -> TestResult {
+    let wake = Wake::default();
+    let id = fleet(7)?;
+    wake.ring(id.clone());
+    assert_eq!(wake.fleets(), std::collections::HashSet::from([id.clone()]));
+    assert_eq!(wake.take(), Some(id));
+    assert!(wake.fleets().is_empty());
+    Ok(())
+}
+
+#[test]
 fn configured_capacity_is_applied_and_invalid_settings_fail() -> TestResult {
     use af_core::env::MapEnv;
     for raw in ["0", "65537", "-1", "not-a-number"] {

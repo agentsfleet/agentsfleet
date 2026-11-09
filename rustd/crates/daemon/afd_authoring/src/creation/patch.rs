@@ -111,7 +111,9 @@ impl Creations {
         let bus = self.activity_streams();
         for (runner, lease_id) in cancelled {
             let subject = afd_bus::Subject::RunnerCommand(runner);
-            let publication = bus.publish_frame(&subject, &afd_bus::Command::Cancel { lease_id }).await;
+            let publication = bus
+                .publish_frame(&subject, &afd_bus::Command::Cancel { lease_id })
+                .await;
             afd_bus::observe_notification(&subject, publication);
         }
     }

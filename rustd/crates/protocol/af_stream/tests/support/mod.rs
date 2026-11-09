@@ -89,6 +89,7 @@ impl Fixture {
                 })
             },
             stop.clone(),
+            stop.clone(),
         ));
         Ok(Host {
             endpoint,

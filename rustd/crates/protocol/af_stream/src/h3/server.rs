@@ -23,7 +23,8 @@ pub(crate) async fn serve<M, S>(
     socket: UdpSocket,
     identity: Identity,
     make: M,
-    stop: CancellationToken,
+    accepting: CancellationToken,
+    abort: CancellationToken,
 ) -> Result<()>
 where
     M: Fn(ConnectionInfo) -> S + Send + Sync,
@@ -35,23 +36,30 @@ where
 {
     let mut incoming = listen(socket, &identity)?;
     let mut workers = JoinSet::new();
-    loop {
+    let result = loop {
         tokio::select! {
             biased;
-            () = stop.cancelled() => break,
+            () = accepting.cancelled() => break Ok(()),
+            () = abort.cancelled() => break Ok(()),
             result = workers.join_next(), if !workers.is_empty() => {
                 if let Some(Err(source)) = result { crate::server::observe(Err(source.into()), Transport::H3); }
             }
             accepted = incoming.next(), if workers.len() < 512 => match accepted {
-                Some(Ok(accepted)) => { workers.spawn(Session::new(accepted, &make, stop.child_token()).serve()); }
+                Some(Ok(accepted)) => match Session::new(accepted, &make, accepting.clone(), abort.child_token()) {
+                    Ok(session) => { workers.spawn(session.serve()); }
+                    Err(error) => crate::server::observe(Err(error), Transport::H3),
+                },
                 Some(Err(source)) => crate::server::observe(Err(ErrorKind::QuicListener { source }.into()), Transport::H3),
-                None => return Err(ErrorKind::Closed { stage: Stage::Connect }.into()),
+                None => break Err(ErrorKind::Closed { stage: Stage::Connect }.into()),
             }
         }
-    }
+    };
     drop(incoming);
-    crate::server::finish(&mut workers).await;
-    Ok(())
+    if result.is_err() {
+        abort.cancel();
+    }
+    crate::server::finish(&mut workers, &abort, Transport::H3).await;
+    result
 }
 
 fn listen(
@@ -77,6 +85,9 @@ struct Session<S> {
     controller: ServerH3Controller,
     service: S,
     stop: CancellationToken,
+    accepting: CancellationToken,
+    abort: CancellationToken,
+    driver_stop: CancellationToken,
     completion: tokio::sync::oneshot::Receiver<()>,
     observed: tokio_util::task::AbortOnDropHandle<()>,
     handlers: JoinSet<Result<()>>,
@@ -93,14 +104,23 @@ where
     S::Future: Send + 'static,
 {
     fn new(
-        accepted: Accepted,
+        mut accepted: Accepted,
         make: &impl Fn(ConnectionInfo) -> S,
-        stop: CancellationToken,
-    ) -> Self {
-        let guard = stop.clone().drop_guard();
+        accepting: CancellationToken,
+        abort: CancellationToken,
+    ) -> Result<Self> {
+        crate::tls::key_exchange::require_session(accepted.ssl_mut())?;
+        let stop = abort.child_token();
+        let driver_stop = abort.child_token();
+        let guard = abort.clone().drop_guard();
         let (driver, controller) = ServerH3Driver::new(super::settings());
-        let (driver, completion, stats) = super::driver::Driver::new(driver, stop.clone());
-        let observed = super::telemetry::observe(stats.clone());
+        let (driver, completion, stats, security) =
+            super::driver::Driver::new(driver, driver_stop.clone());
+        let observed = super::telemetry::observe(
+            stats.clone(),
+            security,
+            af_observability::metrics::label::fleet::StreamPeer::Server,
+        );
         let service = make(ConnectionInfo {
             transport: Transport::H3,
             peer: accepted.peer_addr(),
@@ -108,23 +128,46 @@ where
             native_stats: Some(stats),
         });
         let _native = accepted.start(driver);
-        Self {
+        Ok(Self {
             controller,
             service,
             stop,
+            accepting,
+            abort,
+            driver_stop,
             completion,
             observed,
             handlers: JoinSet::new(),
             opened: 0,
             _guard: guard,
-        }
+        })
     }
 
     async fn serve(mut self) {
         let result = self.run().await;
         self.stop.cancel();
-        self.handlers.shutdown().await;
-        let _worker_dropped = self.completion.await;
+        let finished = async {
+            while let Some(done) = self.handlers.join_next().await {
+                match done {
+                    Ok(result) => crate::server::observe(result, Transport::H3),
+                    Err(source) => crate::server::observe(Err(source.into()), Transport::H3),
+                }
+            }
+        };
+        tokio::select! {
+            () = finished => {},
+            () = self.abort.cancelled() => self.handlers.shutdown().await,
+        }
+        // Dropping the controller asks the native driver to close once its streams are done.
+        // Enqueuing an HTTP body is not evidence that QUIC has consumed its final bytes.
+        drop(self.controller);
+        tokio::select! {
+            _worker_dropped = &mut self.completion => {},
+            () = self.abort.cancelled() => {
+                self.driver_stop.cancel();
+                let _worker_dropped = self.completion.await;
+            }
+        }
         if let Err(error) = self.observed.await {
             crate::server::observe(Err(error.into()), Transport::H3);
         }
@@ -132,10 +175,15 @@ where
     }
 
     async fn run(&mut self) -> Result<()> {
+        let mut draining = false;
         loop {
             tokio::select! {
                 biased;
                 () = self.stop.cancelled() => return Ok(()),
+                () = self.accepting.cancelled(), if !draining => {
+                    draining = true;
+                    if self.opened == 0 { return Ok(()); }
+                }
                 result = crate::jobs::completed(&mut self.handlers), if !self.handlers.is_empty() => result?,
                 event = self.controller.event_receiver_mut().recv() => {
                     let event = event.ok_or(ErrorKind::Closed { stage: Stage::Read })?;

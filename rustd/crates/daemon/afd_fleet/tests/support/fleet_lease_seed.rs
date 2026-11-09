@@ -104,7 +104,6 @@ async fn reports_capable(fixtures: &Fixtures, runner: &Uuid7) {
         selftest: None,
         holds: HeldFleets(Vec::new()),
         closing: false,
-        wake: false,
     };
     let held = prove(request.holds.clone());
     fixtures

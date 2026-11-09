@@ -54,26 +54,8 @@ pub enum RunnerRoute {
     TaskCheckpointPin,
     /// Record one original-owner decision result, including late usage.
     TaskDecision,
-    /// The runner's heartbeat.
-    Heartbeat,
-    /// Claiming a lease.
-    Lease,
-    /// Reporting on a lease.
-    Report,
     /// Minting the per-lease credentials a fleet needs.
     CredentialsMint,
-    /// Reporting activity against a held lease.
-    Activity,
-    /// Version-bound private setup proposals and progress.
-    AuthoringActivity,
-    /// Scoped daemon provider invocation without a raw provider key.
-    AuthoringModelCalls,
-    /// Renewing private authoring with the shared host capacity guard.
-    AuthoringRenew,
-    /// Terminal answer or content-free accounting recovery for private work.
-    AuthoringReports,
-    /// Renewing a held lease.
-    Renew,
     /// Loading a fleet's memory at lease start.
     MemoryHydrate,
     /// Writing a fleet's memory back.
@@ -91,8 +73,6 @@ pub enum RunnerRoute {
     ScheduleRuns,
     /// A line said to the event's thread before the answer.
     Messages,
-    /// The messages the fleet received while the run works, claimed for it.
-    Folds,
 }
 
 impl RunnerRoute {
@@ -115,16 +95,7 @@ impl RunnerRoute {
         Self::TaskCheckpointAuthorizations,
         Self::TaskCheckpointPin,
         Self::TaskDecision,
-        Self::Heartbeat,
-        Self::Lease,
-        Self::Report,
         Self::CredentialsMint,
-        Self::Activity,
-        Self::AuthoringActivity,
-        Self::AuthoringModelCalls,
-        Self::AuthoringRenew,
-        Self::AuthoringReports,
-        Self::Renew,
         Self::MemoryHydrate,
         Self::MemoryCapture,
         Self::MemoryRecall,
@@ -133,7 +104,6 @@ impl RunnerRoute {
         Self::Schedule,
         Self::ScheduleRuns,
         Self::Messages,
-        Self::Folds,
     ];
 
     /// The verbs this route identity serves.
@@ -157,16 +127,7 @@ impl RunnerRoute {
                 &[Verb::Get]
             }
             Self::Stream
-            | Self::Heartbeat
-            | Self::Lease
-            | Self::Report
             | Self::CredentialsMint
-            | Self::Activity
-            | Self::AuthoringActivity
-            | Self::AuthoringModelCalls
-            | Self::AuthoringRenew
-            | Self::AuthoringReports
-            | Self::Renew
             | Self::MemoryCapture
             | Self::MemoryRecall
             | Self::ToolCalls
@@ -176,8 +137,7 @@ impl RunnerRoute {
             | Self::TaskCheckpoints
             | Self::TaskCheckpointUploads
             | Self::TaskCheckpointAuthorizations
-            | Self::Messages
-            | Self::Folds => &[Verb::Post],
+            | Self::Messages => &[Verb::Post],
         }
     }
 
@@ -205,16 +165,7 @@ impl RunnerRoute {
             Self::TaskCheckpointAuthorizations => paths::LEASE_TASK_CHECKPOINT_AUTHORIZATIONS,
             Self::TaskCheckpointPin => paths::LEASE_TASK_CHECKPOINT_PIN,
             Self::TaskDecision => paths::LEASE_TASK_DECISION,
-            Self::Heartbeat => paths::RUNNER_HEARTBEATS,
-            Self::Lease => paths::RUNNER_LEASES,
-            Self::Report => paths::RUNNER_REPORTS,
             Self::CredentialsMint => paths::RUNNER_CREDENTIALS_MINT,
-            Self::Activity => paths::LEASE_ACTIVITY,
-            Self::AuthoringActivity => paths::AUTHORING_ACTIVITY,
-            Self::AuthoringModelCalls => paths::AUTHORING_MODEL_CALLS,
-            Self::AuthoringRenew => paths::AUTHORING_RENEW,
-            Self::AuthoringReports => paths::AUTHORING_REPORTS,
-            Self::Renew => paths::LEASE_RENEW,
             Self::MemoryHydrate | Self::MemoryCapture => paths::RUNNER_MEMORY_FLEET,
             Self::MemoryRecall => paths::RUNNER_MEMORY_RECALL,
             Self::ToolCalls => paths::LEASE_TOOL_CALLS,
@@ -222,11 +173,13 @@ impl RunnerRoute {
             Self::Schedule => paths::LEASE_SCHEDULE,
             Self::ScheduleRuns => paths::LEASE_SCHEDULE_RUNS,
             Self::Messages => paths::LEASE_MESSAGES,
-            Self::Folds => paths::LEASE_FOLDS,
         };
         RouteMeta::new(
             Guard::RunnerBearer,
-            match self { Self::Stream => RouteClass::Stream, _ => RouteClass::Api },
+            match self {
+                Self::Stream => RouteClass::Stream,
+                _ => RouteClass::Api,
+            },
             template,
             Scopes::Always(RUNNER_SELF),
         )

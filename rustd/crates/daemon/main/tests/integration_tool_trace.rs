@@ -29,7 +29,7 @@ use crate::e2e_seed_keys::seed_tenant_key;
 use crate::integration_tenant_registry::{mint_tenant_token, provider_listener};
 use crate::reads::event_column;
 use crate::tail::lease;
-use crate::wire::{field, json as body_of, post, report_body};
+use crate::wire::{field, json as body_of, report_body};
 
 /// The report verb every case here settles through.
 pub(crate) const REPORTS: &str = "/v1/runners/me/reports";
@@ -101,14 +101,9 @@ async fn test_report_writes_tool_calls_with_result() {
     let (lease_id, fence) = lease(&http, &run).await;
 
     let sent = trace(2);
-    let settled = post(
-        &http,
-        &run,
-        REPORTS,
-        &report_with(&lease_id, &run, fence, sent.clone()),
-    )
-    .await;
-    assert_eq!(settled.status().as_u16(), 200, "the report settles");
+    let settled =
+        crate::wire::report(&run, &report_with(&lease_id, &run, fence, sent.clone())).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
 
     assert_eq!(stored_trace(&run).await, Some(fenced(&sent, fence)));
     assert_eq!(
@@ -133,18 +128,8 @@ async fn test_oversize_tool_trace_dropped_report_settles() {
     let (lease_id, fence) = lease(&http, &run).await;
 
     let over = trace(TRACE_MAX_CALLS + 1);
-    let settled = post(
-        &http,
-        &run,
-        REPORTS,
-        &report_with(&lease_id, &run, fence, over),
-    )
-    .await;
-    assert_eq!(
-        settled.status().as_u16(),
-        200,
-        "a bad trace never refuses the report"
-    );
+    let settled = crate::wire::report(&run, &report_with(&lease_id, &run, fence, over)).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(stored_trace(&run).await, None, "the trace is not stored");
     assert_eq!(
         event_column(&run, &run.event_id, "status").await.as_deref(),
@@ -179,13 +164,7 @@ async fn test_fenced_report_writes_no_tool_calls() {
     .expect("the sequence moves past the lease");
     drop(connection);
 
-    let refused = post(
-        &http,
-        &run,
-        REPORTS,
-        &report_with(&lease_id, &run, fence, trace(2)),
-    )
-    .await;
+    let refused = crate::wire::report(&run, &report_with(&lease_id, &run, fence, trace(2))).await;
     assert_eq!(
         refused.status().as_u16(),
         409,
@@ -236,7 +215,7 @@ pub(crate) async fn settle_with(
     tool_calls: Value,
 ) {
     let body = report_with(&lease_id, run, fence, tool_calls);
-    assert_eq!(post(http, run, REPORTS, &body).await.status().as_u16(), 200);
+    assert_eq!(crate::wire::report(run, &body).await.status().as_u16(), 200);
 }
 
 /// Dimension 4.1. The single-event read serves the stored trace, and `null`

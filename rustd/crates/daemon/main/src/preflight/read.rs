@@ -220,9 +220,17 @@ pub(super) fn sse_max_streams<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<F
 }
 
 /// A set but invalid scheduling capacity refuses boot; it never silently selects another capacity.
-pub(super) fn runner_wake<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<afd_bus::wake::Wake> {
-    classify(faults, true, afd_bus::wake::ENV_WAKE_QUEUE_CAPACITY,
-        "a scheduling queue capacity between 1 and 65536", afd_bus::wake::Wake::from_env(env))
+pub(super) fn runner_wake<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<afd_bus::wake::Wake> {
+    classify(
+        faults,
+        true,
+        afd_bus::wake::ENV_WAKE_QUEUE_CAPACITY,
+        "a scheduling queue capacity between 1 and 65536",
+        afd_bus::wake::Wake::from_env(env),
+    )
 }
 
 /// The Slack base `SLACK_API_URL` names, or `None` when it is unset.
@@ -290,7 +298,15 @@ pub(super) fn platform_admin_workspace<E: EnvSource + ?Sized>(
 }
 
 /// Invalid frame memory settings join the other startup faults before sockets open.
-pub(super) fn frame_memory<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Option<af_stream::MemoryLimits> {
-    classify(faults, true, "AGENTSFLEET_RUNNER_FRAME_MEMORY",
-        "control and data frame budgets between 12 and 512 MiB", af_stream::MemoryLimits::from_env(env))
+pub(super) fn frame_memory<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<af_stream::MemoryLimits> {
+    classify(
+        faults,
+        true,
+        "AGENTSFLEET_RUNNER_FRAME_MEMORY",
+        "control and data frame budgets between 12 and 512 MiB",
+        af_stream::MemoryLimits::from_env(env),
+    )
 }

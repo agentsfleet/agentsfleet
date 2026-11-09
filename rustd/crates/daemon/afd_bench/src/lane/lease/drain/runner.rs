@@ -9,9 +9,10 @@ use af_core::clock;
 use af_core::id::Uuid7;
 use af_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 use af_wire::fold::FoldRequest;
-use af_wire::lease::{LeasePayload, LeaseResponse};
+use af_wire::lease::LeasePayload;
 use af_wire::report::{Outcome, RenewRequest, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use afd_fleet::lease::LeaseService;
+use afd_fleet::lease::pull::Polled;
+use afd_fleet::lease::{LeaseService, OfferRequest};
 
 use super::burst::Pickups;
 use super::turn::Turn;
@@ -117,16 +118,33 @@ pub(super) async fn drive(plane: &LeaseService, runner: &Uuid7, shared: &Shared)
 }
 
 /// Keep each refusal's cause intact before the driver counts it.
-async fn step(plane: &LeaseService, runner: &Uuid7, shared: &Shared, tally: &mut Tally) -> Result<()> {
+async fn step(
+    plane: &LeaseService,
+    runner: &Uuid7,
+    shared: &Shared,
+    tally: &mut Tally,
+) -> Result<()> {
     let started = Instant::now();
-    let answer = plane.lease(runner, &[], false, clock::now()).await?;
+    let offered = plane
+        .poll_with(
+            OfferRequest {
+                runner,
+                held: &[],
+                degraded: false,
+                now: clock::now(),
+            },
+            None,
+            |lease, _metadata| serde_json::to_vec(&lease),
+        )
+        .await?;
     let took = started.elapsed();
     shared.abort.record(true);
-    let response: LeaseResponse<'_> =
-        serde_json::from_str(&answer).map_err(|source| ErrorKind::LeaseUnreadable { source })?;
-    let Some(af_wire::lease::TaggedLease::Fleet(lease)) = response.lease else {
+    let Polled::Lease(bytes) = offered else {
         return Ok(());
     };
+    let bytes = bytes.map_err(|source| ErrorKind::LeaseUnreadable { source })?;
+    let lease: LeasePayload<'_> =
+        serde_json::from_slice(&bytes).map_err(|source| ErrorKind::LeaseUnreadable { source })?;
     tally.leased += 1;
     tally.lease_latency.record(took)?;
     if let Some(pickups) = &shared.pickups {

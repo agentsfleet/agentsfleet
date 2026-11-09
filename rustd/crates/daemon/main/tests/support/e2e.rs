@@ -157,6 +157,7 @@ pub(crate) struct Scenario {
     pub(crate) runner_id: Uuid7,
     /// Its bearer token, revealed once at enrolment.
     pub(crate) token: String,
+    pub(crate) native: tokio::sync::OnceCell<afr_supervisor::test_util::Session>,
     /// The instant the seed was stamped with.
     pub(crate) seeded_at: Timestamp,
     /// This scenario's hold on the platform default, released after the daemon
@@ -246,6 +247,7 @@ pub(crate) async fn scenario_with(
         event_id,
         runner_id: enrolled.runner_id,
         token: enrolled.token.expose().to_owned(),
+        native: tokio::sync::OnceCell::new(),
         seeded_at: now,
         booted,
         _default: default,

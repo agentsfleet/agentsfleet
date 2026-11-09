@@ -234,8 +234,14 @@ async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
     // Returns, rather than erroring or hanging: the queue is asked once and its
     // refusal is accounted in the log, not on the verb.
     let publication = plane.leases.publish_completion(&closed, None).await;
-    assert!(publication.is_err(), "the unavailable bus must remain an explicit publication error");
-    afd_bus::observe_notification(&afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()), publication);
+    assert!(
+        publication.is_err(),
+        "the unavailable bus must remain an explicit publication error"
+    );
+    afd_bus::observe_notification(
+        &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+        publication,
+    );
 }
 
 /// Dimension 1.3 — the closing counts the fleet's pending gates, and only

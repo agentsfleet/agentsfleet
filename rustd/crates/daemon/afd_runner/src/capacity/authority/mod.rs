@@ -76,11 +76,15 @@ impl fmt::Debug for Prepared {
 impl Prepared {
     /// Prospective owner, recorded by the runner before it confirms.
     #[must_use]
-    pub const fn connection(&self) -> &Uuid7 { &self.connection }
+    pub const fn connection(&self) -> &Uuid7 {
+        &self.connection
+    }
 
     /// Owner observed while checking the opening; confirmation compares it again.
     #[must_use]
-    pub const fn previous(&self) -> Option<&Uuid7> { self.previous.as_ref() }
+    pub const fn previous(&self) -> Option<&Uuid7> {
+        self.previous.as_ref()
+    }
 }
 
 #[derive(sqlx::FromRow)]
@@ -101,7 +105,9 @@ impl fmt::Debug for Authority {
 }
 
 impl Authority {
-    pub(crate) const fn digest(&self) -> &Digest { &self.digest }
+    pub(crate) const fn digest(&self) -> &Digest {
+        &self.digest
+    }
 
     /// Enrolled host whose transactions this connection may authorize.
     #[must_use]
@@ -156,7 +162,10 @@ impl Runners {
         previous: Option<&Uuid7>,
         now: Timestamp,
     ) -> Result<Decision<Authority>> {
-        match self.prepare_connection(runner, digest, previous, None, now).await? {
+        match self
+            .prepare_connection(runner, digest, previous, None, now)
+            .await?
+        {
             Decision::Allowed(prepared) => self.confirm_connection(prepared).await,
             Decision::Refused(refusal) => Ok(Decision::Refused(refusal)),
         }
@@ -186,9 +195,15 @@ impl Runners {
             .await
             .map_err(query(sql::CONTEXT))?;
         Ok(match row {
-            None | Some(Preparatory { credential_matches: false, .. }) => Decision::Refused(Refusal::Credential),
+            None
+            | Some(Preparatory {
+                credential_matches: false,
+                ..
+            }) => Decision::Refused(Refusal::Credential),
             Some(Preparatory { active: false, .. }) => Decision::Refused(Refusal::Revoked),
-            Some(Preparatory { can_resume: false, .. }) => Decision::Refused(Refusal::Superseded),
+            Some(Preparatory {
+                can_resume: false, ..
+            }) => Decision::Refused(Refusal::Superseded),
             Some(row) => Decision::Allowed(Prepared {
                 runner: runner.clone(),
                 previous: row.connection_id,

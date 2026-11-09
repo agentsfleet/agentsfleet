@@ -87,8 +87,12 @@ async fn gate_cards(run: &Scenario) -> i64 {
 }
 
 /// Poll until the durable outcome is visible, checking that no run was issued.
-async fn poll_until<F, Fut>(http: &reqwest::Client, run: &Scenario, awaited: &str, mut reached: F)
-where
+async fn wait_without_offer<F, Fut>(
+    http: &reqwest::Client,
+    run: &Scenario,
+    awaited: &str,
+    mut reached: F,
+) where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
@@ -143,12 +147,9 @@ async fn fencing_token(run: &Scenario) -> i64 {
 /// first iteration — which usually sampled some other partition — and the
 /// assertion then reads a row no poll revisited. The claim counter cannot be
 /// true in advance, because the caller reads it first.
-async fn poll_until_reached(http: &reqwest::Client, run: &Scenario, awaited: &str) {
+async fn wait_without_offer_reached(http: &reqwest::Client, run: &Scenario, awaited: &str) {
     let before = fencing_token(run).await;
-    poll_until(http, run, awaited, || async {
-        fencing_token(run).await > before
-    })
-    .await;
+    wait_without_offer(run, awaited, || async { fencing_token(run).await > before }).await;
 }
 
 async fn deny(run: &Scenario) {
@@ -188,9 +189,12 @@ async fn refusal_drains(preended: bool) {
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
     )]
     let http = reqwest::Client::new();
-    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(beat.status().as_u16(), 200);
-    poll_until_reached(&http, &run, "the gate never saw this fleet").await;
+    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
+    );
+    wait_without_offer_reached(&http, &run, "the gate never saw this fleet").await;
     // Asserted rather than waited on: the wait above proves a poll reached the
     // fleet, and THIS is what that poll had to do once it did.
     assert_eq!(
@@ -208,7 +212,7 @@ async fn refusal_drains(preended: bool) {
             .execute(&mut *run.booted.database.acquire().await.expect("database"))
             .await.expect("terminal narrative");
     }
-    poll_until_reached(&http, &run, "no poll revisited the denied event").await;
+    wait_without_offer_reached(&http, &run, "no poll revisited the denied event").await;
     let first_label = event_column(&run, &run.event_id, LABEL).await;
     let settled: bool =
         sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
@@ -217,7 +221,7 @@ async fn refusal_drains(preended: bool) {
             .await
             .expect("queue state");
     let second = run.enqueue_event(EventType::Chat).await;
-    poll_until_reached(&http, &run, "no poll reached the fleet's next event").await;
+    wait_without_offer_reached(&http, &run, "no poll reached the fleet's next event").await;
     let second_label = event_column(&run, &second, LABEL).await;
     supervisor.shutdown().await;
     run.cleanup().await;

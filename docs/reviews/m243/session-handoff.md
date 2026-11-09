@@ -10,137 +10,295 @@ executable: false
 
 ## What it is
 
-Resume M243 from the commit introducing this file, on `feat/m243-runner-push-stream`.
-The existing draft is [PR 819](https://github.com/agentsfleet/agentsfleet/pull/819).
-Coordination with Claude's M244 is [issue 818](https://github.com/agentsfleet/agentsfleet/issues/818).
+This file accompanies Indy's requested context-save checkpoint on draft [PR 819](https://github.com/agentsfleet/agentsfleet/pull/819).
+Resume the feature branch at the commit containing this file, or a later explicitly published checkpoint.
+The preceding published checkpoint was `a0a8cf3b766d74fb7984d332cbe5cc49010bc0a0`.
 
-This is an unverified source checkpoint requested by Indy for review and a new session.
-M243 is not code complete, ready for merge or a final benchmark baseline.
-Do not infer a pass from source changes or reuse older gate results for this checkpoint.
-
-## Why it exists
-
-Indy requested code completion before local verification, followed by a review checkpoint and context handoff.
-The source review uses Orly's Rust and error standards, including RS-SENTINEL and RS-UNWRAP.
-A completed formal review and verification pass remain due.
-
-## How to resume
-
-Read `AGENTS.md`, `.orly/LOCAL.md`, the `orly-build` skill and the active M243 spec before editing.
-Reuse the existing worktree when available; otherwise fetch the published feature branch into an isolated worktree.
-Do not restart from main or rebase and force-push this published branch.
+**The implementation is incomplete and has no passing full compilation, lint or test lane.**
+Authoring daemon dispatch is written; kernel examples and remaining fixtures still need migration.
+Do not present this source checkpoint as usable, code complete, ready to undraft or a benchmark baseline.
 
 | Context | Value |
 |---|---|
-| Existing worktree | `/workspace/agentsfleet-m243` |
+| Repository | `agentsfleet/agentsfleet` |
 | Branch | `feat/m243-runner-push-stream` |
-| Refreshed main | `61820b66a765a2aa87684251b07aebebd2c20955` |
-| Previous pushed checkpoint | `0b87ec9ca597ac8909f76c6ef2ae90e0c2c554d8` |
-| Active spec | `docs/v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md` |
-| Review guide | `docs/reviews/m243/implementation-signoff.md`, Nov 09 review checkpoint |
-| Exact inventory | `docs/reviews/m243/files.tsv` |
-| Canonical design | `docs/architecture/runner_protocol.md` |
+| Worktree | `/workspace/agentsfleet-m243` |
+| Existing draft | [PR 819](https://github.com/agentsfleet/agentsfleet/pull/819) |
+| M244 coordination | [Issue 818](https://github.com/agentsfleet/agentsfleet/issues/818), Claude's subsequent PR 820 |
+| Fetched main | `61820b66a765a2aa87684251b07aebebd2c20955` |
+| Resume prompt | [Copy-ready M243 prompt](resume-prompt.md) |
+| Separate M246 preparation | [M246 parallel prompt](m246-parallel-prompt.md) |
 
-### Persistent owner instructions
+Reuse this worktree if available.
+Otherwise fetch the published feature branch into an isolated worktree.
+Do not restart M243 from main, discard this source, rebase the published branch or force-push it.
 
-- Finish the implementation before starting local verification.
-- Ask Indy before lint, unit tests, Cargo checks, gates or other verification commands.
-- Commit and push source checkpoints to the existing draft; keep them clearly unverified.
-- Hold merge for Indy's listener, certificate and 1Password review.
-- Ask before repository scripts, workflow or deployment edits, unlisted tables or SQL casts.
-- Use native UUIDv7 bindings and rows, `event_id`, and owning table schema files.
-- Remove legacy polling paths in the final implementation; add no compatibility aliases.
-- Keep HTTP/3 preferred on a new connection, with HTTP/2 fallback and no hot transport switching.
-- Keep private Fly routing and document external runner prerequisites; do not add Cloudflare dependence.
-- Read issue 813 before every push and keep Claude informed on issue 818.
+## Why it exists
 
-### Written in this checkpoint
+Indy requested a context save before continuing in a new cloud session.
+He also requested an audit tying every supplied comment to source changes and unfinished work.
+The [owner feedback audit](owner-feedback-audit.md) distinguishes source edits from runtime evidence.
 
-- `LeaseService`, `AdmittedFleetWork`, `GatewayDependencies`, `StreamLimit` and `StreamPermit` replace ambiguous names without aliases.
-- `http_services.rs` and `lease_service.rs` replace the old service-trait and adapter filenames.
-- `StreamKind` replaces the protocol enum; the selector header is `agentsfleet-runner-kind`.
-- Route-selected `RequestAuthentication` returns `Result<Option<Principal>, Refusal>` and preserves the common scope check.
-- Native control proves its bearer once; secondary streams require the same physical connection's server-created binding.
-- `prepared`, `confirm` and `welcome` separate proposed from committed ownership and allow lost-welcome recovery.
-- `SessionEvent`, `EventSource`, `EventHandler` and `SessionSupervisor` separate event selection, decisions and supervised effects.
-- Request identifiers and operation slots return through `Drop`; each request frame is decoded once.
-- `LeaseCache` validates complete snapshots and protects concurrent updates with a short nonpoisoning lock and revision check.
-- Memory budgets use `AGENTSFLEET_RUNNER_CONTROL_MEMORY_MIB` and `AGENTSFLEET_RUNNER_DATA_MEMORY_MIB`.
-- Startup rejects invalid settings; wake capacity uses `AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`.
-- The independent recovery probe runs once per replica every five seconds; subscription retries do not multiply database passes.
-- Typed `Cancel` confirms its durable lease marker; gaps and overflow request a complete `Recheck`.
-- Offer serialization borrows an encoder while policy inputs live and carries its exact target without another target query.
-- Lease insertion returns the saved `created_at` in its existing statement; census uses the unchanged full-precision database clock.
-- `Handle::publish_frame` and completion publication return `Result<()>`; post-commit callers explicitly observe notification outcomes.
-- Invalid saved usage and benchmark concurrency conversions remain errors rather than fabricated zero or maximum values.
-- New test sources cover cache races, request ownership, control isolation and memory configuration.
+The [implementation guide](implementation-signoff.md) contains historical evidence from earlier revisions.
+Those results do not verify this checkpoint.
+The date above records source reading. The check results below state exactly what ran.
 
-`parking_lot 0.12.5` was already locked transitively and is now a direct gateway dependency.
-`cargo update --workspace --offline` added the gateway's lockfile entry without compiling Rust.
-This was dependency-artifact generation, not a verification result.
+## How it behaves
 
-### Next implementation work
+### Read first
 
-1. Finish the standards review of the full PR diff and inspect new generic and ownership boundaries for compile issues.
-2. Wire and supervise the private native listener, gateway scheduler and graceful drain in the daemon runtime.
-3. Implement runner downlink and uplink ownership, four streams, pending replies, reconnect and proposal retention.
-4. Feed worker offers, batch renewals, cancellation, folds and durable report replay through that session.
-5. Respect configured proxies and trusted certificates; exercise HTTP/3 failure, HTTP/2 fallback and address failover later.
-6. Remove the six polling routes, old heartbeat holding, obsolete client methods, fields and tests.
-7. Complete failure, fairness, observability and dense idle-workload benchmark sources.
-8. Reconcile canonical architecture pages, generated OpenAPI and the final exact file inventory.
-9. Tell Indy when code is complete; seek approval before running the required verification lanes.
+1. `AGENTS.md`, `.orly/LOCAL.md`, `.orly/AGENTS.md` and `.orly/skills/orly-build/SKILL.md`.
+2. This handoff, the [owner feedback audit](owner-feedback-audit.md) and the latest corrections in the [implementation guide](implementation-signoff.md).
+3. [Runner protocol](../../architecture/runner_protocol.md) and [failure design](failure-and-observability.md).
+4. [Active M243 specification](../../v2/active/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md).
+5. Orly Rust, errors, code, tests, authentication, logging, HTTP and documentation standards for changed files.
+6. Issue 818 and its current comments; read issue 813 before every push.
 
-Do not restore old held-heartbeat wiring to fix the current failed integration test.
-Replace it with the native-session path and port its assertions.
-The UUIDv7 fixture correction is written but has no passing result for this checkpoint.
+### Owner instructions that still apply
 
-### Remaining verification and review
+- Indy explicitly authorized compilation, formatting, lint, tests and gates on Nov 09 so this checkpoint can become green. Do not ask again for those routine checks.
+- Keep PR 819 draft. Hold merge for Indy's listener, certificate and 1Password review.
+- Tell Indy when the code is complete. Do not reuse earlier results to make that claim.
+- Ask before new repository scripts, workflow or deployment edits, unlisted tables or SQL casts.
+- Keep native UUIDv7 database bindings, `event_id`, owning table files and the shared Bus abstraction.
+- Keep HTTP/3 preference with HTTP/2 fallback after eligible transport failures. Do not add hot transport switching.
+- Require `X25519MLKEM768` on both ends and carriers. Transport fallback must not weaken cryptography.
+- Keep private Fly routing. External runners need an explicit route to the private listener.
+- Remove obsolete polling, old report shapes and compatibility retries. Add no aliases or legacy delivery path.
+- Postgres owns saved results and billing. Unacknowledged results stay only in caller memory.
+- Preserve M244's work and coordinate overlapping interfaces on issue 818.
 
-The required repository lanes remain `make lint-all`, `make test-unit-all`, `make test-integration-rustd` and `make check-version`.
-Final Rust coverage requires 98% overall and 97.5% changed lines; TypeScript gates require their declared 100% floors.
-Do not lower floors, add exclusions, suppress findings or claim these gates passed on this checkpoint.
+### Completed-report storage removal
 
-The last completed coverage report was 98.2726% overall and 87.1031% changed lines at an earlier revision.
-The changed-line gate failed then and has no newer completed graded result.
-Query plans, new gateway behavior, actual linked musl transports and private Fly reachability still need evidence.
+The source deletes `afr_supervisor/src/report_spool/` and `src/drainer/`, including authoring and task-decision receipt files.
+It also removes startup replay, quarantine, encryption helpers, directory creation and old-shape field-stripping retries.
+Do not restore these to repair unfinished fixtures.
 
-### Coordination with Claude
+`lease_loop/settle.rs` retains one `Zeroizing<Vec<u8>>` report buffer in its worker until delivery ends.
+`report/delivery.rs` retries the current operation from that caller.
+`authoring/mod.rs::Pending` clears its private answer on drop; no separate `authoring/report.rs` remains.
 
-Claude owns M244, PR 820, NATS and the tail benchmark behavior.
-He was told to commit his benchmark changes; preserve them when merging the mechanical public-name edits.
-Issue 818 records that Indy approved NATS and accepted one benchmark miss; do not repeat superseded speed claims.
+```text
+worker finishes -> result in caller memory -> daemon -> Postgres commit
+                            ^                   |
+                            +------ retry ------+  if acknowledgement is lost
 
-The newly published `Handle::publish_frame` result type is an interface change for M244 callers.
-Preserve connection authority and `for_connection` when adopting M244's constructor changes.
-Claude now proceeds with NATS startup and consumer changes without waiting for M243.
-He holds Dragonfly deletion until this checkpoint is published.
-Preserve the new wake and frame-memory preflight fields when merging his startup changes.
-A requested round-one review of PR 820 remains outstanding.
+acknowledgement -> return from delivery -> drop pending memory
+process loss before commit -> an unsent result or usage can be lost
+```
 
-### Environment and operations
+Task-decision receipts likewise stay in their calling future until acknowledgement.
+Postgres issuance precedes provider dispatch; receipt delivery retries must not dispatch another provider call.
+Named zeroing owners do not prove wiping every serializer, TLS or operating-system copy; whole-PR ownership review remains due.
 
-The current cloud worktree's build target was cleaned after disk exhaustion.
-No local test or lint lane is running.
-Use two Cargo jobs, no development or test debug information, and no incremental compilation when verification is approved.
+The audit records storage provenance: original commit `830cb0c4b8711c9bfd97aae81d8a450cc56e1eb6` is already an ancestor of main.
+The old report-spool module was identical on main and checkpoint `a0a8cf3b7`.
+No approval for retaining it in M243 was established; Indy explicitly rejected that approach.
 
-Kernel tests need umask 022 and the existing Docker environment setup.
-Do not treat a datastore environment-variable failure as a product test result.
-Use Make's exported test environment and reset discipline for any later integration claim.
+### First resume tasks: compile the complete native path and migrate its fixtures
 
-No Fly secret or 1Password item has been written by this task.
-The certificate instructions remain draft in `playbooks/operations/runner_stream_tls/001_playbook.md`.
-Finish exact listener configuration and delivery instructions before asking Indy to provision anything.
+The four authoring daemon handlers are now written in `afd_gateway/src/session/dispatch/authoring.rs`.
+Gateway composition shares `ModelCalls` and `Creations` alongside `Drafts`.
+The four authoring HTTP adapters, route variants and OpenAPI source entries are deleted.
+
+| Operation | Wire exchange | Stream |
+|---|---|---|
+| Daemon-owned model invocation | `AuthoringModel` / `AuthoringModelResult` | work |
+| Proposal and progress receipt | `AuthoringActivity` / `AuthoringActivityAck` | work |
+| Authoring lease extension | `AuthoringRenew` / `AuthoringRenewed` | control |
+| Final authoring answer and usage | `AuthoringReport` / `AuthoringReportAck` | reports |
+
+This supersedes the original M243 decision to retain those four HTTP calls.
+M245, M246 and M247 do not already own this migration.
+Browser fleet-setup chat remains its browser API; its runner job uses the native channel.
+
+`Drafts::check_connection` checks the current credential and owner under the host lock after the existing draft/attempt guard.
+Model reservation, proposal receipt replay and completion accounting use that check.
+`ModelCalls::for_connection` and `Creations::for_connection` retain it through their existing domain operations.
+
+The model answer deadline preserves 310 seconds, while writes retain the shorter transport deadline.
+Work operation slots now permit the protocol's worker maximum while preserving independent control capacity and the total pending bound.
+Do not repeat an uncertain physical provider call automatically.
+
+Runner commands share a lifetime-independent `Command: Send + Sync` computation with bounded verb observations.
+Authoring requests and fleet reports borrow their caller's payload through `Cow` during encoding.
+The gateway decodes native definition types and consumes owned payloads; no HTTP tunnel or old-shape retry was added.
+
+The latest complete unit-lane attempt stops during compilation of sandbox kernel examples.
+They still import or use the deleted `RUNNER_REPORTS` constant:
+
+- `afr_sandbox/examples/kernel_lane/supervisor_checks.rs`.
+- `afr_sandbox/examples/kernel_lane/supervisor_plane.rs`.
+- `afr_sandbox/examples/kernel_lane/supervisor_recovery/mod.rs`.
+
+Migrate those examples to native sessions; do not restore polling/report-route constants to silence the compiler.
+Continue any remaining runner test signature fixes after that build reaches them.
+The ignored `.tmp/rustd-unit-runner.log` contains this machine's latest attempt; reproduce it in a fresh checkout.
+
+A test-only `afr_supervisor::test_util::Session` now uses the production downlink, correlation and recovery owners.
+It receives offers, retains registrations until report acknowledgement and exposes typed native operations.
+`main/tests/support/runner_stream.rs::client` shares that session through the scenario's `OnceCell`.
+
+Native heartbeat/report calls were ported in fifteen end-to-end fixture files.
+`e2e_wire.rs` now waits for pushed offers and durable refusals without issuing polling requests.
+That conversion is unfinished: finish remaining assertions, imports, helper signatures and direct old-route calls before claiming runtime coverage.
+
+Other per-lease APIs still use HTTP: task decisions, checkpoints, memory, tools, schedules, messages and credentials.
+This checkpoint does not claim every runner operation has migrated.
+Do not restore the four authoring routes as compatibility fallback.
+
+### Other source changes since the preceding checkpoint
+
+| Area | Written source and remaining evidence |
+|---|---|
+| Startup | Native listener and scheduler join daemon supervision; preflight is named `runner_listener`. Structured startup observations exist. |
+| Drain | `Listener::serve(make, accepting, abort)` separates stopping accepts from hard cancellation. Main drain waits for gateway work and native owner closure under one deadline. |
+| Native cleanup | H2 uses graceful shutdown; H3 drops the acceptor while keeping existing routing, then closes the controller before awaiting native completion. Final flush and cleanup remain unproved. |
+| Runner session | Downlink owns opening/recovery; uplink owns bounded writes and typed request computation. Four streams, reply permits, cancellation and policy delivery have source wiring. |
+| Renewals | One host ticker snapshots live meters. A bounded DashMap registry releases guards before meter reads and watch updates. |
+| Credit race | Ready includes a revision and observed-offer count. The daemon deducts unseen offers and ignores stale revisions. Other free workers remain immediately eligible. |
+| TLS | Connectors and acceptors require the hybrid group. Source tests cover classical rejection and wrong hostnames. Bounded daemon-side group observations are added. |
+| Proxy | Standard hyper-util bypass matching, `TryFrom` conversions and a named async CONNECT operation replace ad hoc parsing. Explicit proxy selection uses H2. |
+| Polling | Six fleet handlers and runtime polling methods are deleted. `LeaseRequest`, `LeaseResponse`, held-heartbeat knobs, doorbell modules and obsolete wake-answer metrics are removed. |
+| Lease values | `TaggedLease` lives in `af_wire/src/lease/mod.rs`. The temporary `lease/tagged.rs` does not remain. |
+| Wake | Placement and scheduler share the Bus-owned bounded wake queue. A live two-adapter wake test is written, without a passing result. |
+| Worker tests | Pushed-offer sources replace polling cases. They include two free workers and B starting while A awaits its report acknowledgement. |
+
+### Remaining source migration and review
+
+1. Finish the kernel example and end-to-end fixture migration above, then rerun the complete Rust build and unit lanes.
+2. Migrate remaining `LeaseResponse`, `Verb::Lease`, `.lease()`, `.claim()` and deleted path-constant callers in tests, examples and benchmarks.
+3. Port HTTP-only fixture constructors through the native test seam. Supply required stream configuration in external fixtures.
+4. Replace held-heartbeat end-to-end tests and stale downlink policy tests with session behavior.
+5. Replace drain and saturation benchmark polling. Dense idle workloads, fairness and fault matrices still need source coverage.
+6. Add and run authoring native integration cases, connection fencing, provider-dispatch replay, cancellation, renewals, folds and report retry cases.
+7. Review worker policy changes while waiting for offers and shutdown bounds during a report outage.
+8. Complete the whole-PR Rust review, including RS-SENTINEL, RS-UNWRAP, public docs, function sizes and causes.
+9. Reconcile manifest changes and Cargo.lock only when the permitted dependency-generation step is clear.
+10. Reconcile canonical and public docs; generate OpenAPI through its generator after approval, never by hand.
+
+Tool-trace parsing now returns its error, and invalid authoring call limits no longer become zero-call runs.
+Remaining examples include `report_workers` saturation and listener failure handling that drops typed causes.
+Main's terminal `BootFailure` and `MigrateFailure` are deliberate exceptions in `RUST_ERROR_STANDARD.md`; do not migrate them unnecessarily.
+
+`claim_selected` now returns a direct optional tagged lease in test utilities.
+Its encoder closure may require explicit argument types when the daemon libraries compile.
+Reconcile all rewritten test modules with their test-only unwrap policy.
+
+### TLS deployment and certificates still open
+
+The source does not prove where production TLS ends.
+Define the private hostname, direct TCP/UDP exposure and native acceptor termination before claiming the hybrid policy applies in production.
+No deployment or workflow file was changed for this checkpoint.
+
+Pinned Quiche 0.30.0 sets SNI and `X509_VERIFY_PARAM_set1_host` in `src/tls/mod.rs::set_host_name`.
+Wrong-host rejection test sources exist for both carriers, without runtime results.
+HTTP/2 pre-negotiation rejection telemetry remains incomplete.
+
+Certificate issuer, root delivery and reload before expiry still need a concrete lifecycle design and Indy's review.
+The extra-root file option does not establish live fleet rotation.
+Do not write Fly secrets or 1Password items without that review.
+
+### Coordination and research
+
+Claude's M244 is PR 820, subsequent to M243; preserve its NATS startup, live-tail and benchmark work.
+Shared overlap includes Bus connection observations, publication results, stream admission names, startup composition and Cargo files.
+Do not import M244's entire deployment migration to close this checkpoint.
+
+Read issue 818 for newer revisions and agreed ownership.
+The last ownership question concerned wake-benchmark dimensions: one-second misses, at most 64 unanswered requests and one/two/four replicas.
+Those extra dimensions were not silently accepted into M243; check the issue and ask Indy before assigning them.
+
+Ignored reference exports are not repository files and will not exist in a fresh cloud checkout.
+They were copied without `.git` under `.tmp/reference-sources/` from these revisions:
+
+- Exonum: `2d2fa22e5f5bc451d08c155c2398956f11dce06e`.
+- OpenAI Codex: `8703d32bd0ea5cf26768859a3dd476df906ba053`.
+
+Exonum informed event selection/handler separation and cleanup on every exit path.
+Codex informed explicit cancellation and distinguishing a queued write from a completed write.
+Pinned tokio-quiche 0.20.1, BoringSSL bindings 5.4.0 and Quiche 0.30.0 informed native ownership and TLS configuration.
+
+### M246 can prepare independently
+
+The M246 spec depends on M243's once-per-connection authentication, periodic recheck and revoke-driven closure.
+Its token overlap and reload behavior extends that interface.
+Enrollment, tenant ownership, placement policy and management UI can prepare in another worktree.
+
+Final stream integration and merge still depend on the completed M243 interface.
+M245 is not an explicit dependency in M246.
+M246 also retains two owner decisions in Discovery; its separate prompt preserves those questions without choosing defaults for Indy.
+
+### Standards-review corrections written in this checkpoint
+
+The Orly standards reviewer read the moving PR source and reported concrete failures.
+This is an initial source review, without final sign-off or runtime proof.
+The following fixes are written:
+
+- Registry insertion and superseding hold the database host lock while proving the confirmed owner.
+- A live regression models A committing, B registering, then delayed A attempting registration.
+- Candidate sorting captures keys once, avoiding changing comparison keys during concurrent policy updates.
+- A known-fleet wake now notifies every eligible candidate, rather than only as many hosts as fleet hints.
+- Proxy CONNECT preserves its status; 429 and server failures remain retryable, while authentication/policy refusals remain terminal.
+- Frame growth copies into another zeroing owner before dropping the previous allocation.
+- Authoring command payloads borrow private data instead of making an extra ordinary owned clone.
+- Worker panic observations record bounded flags and an error code, without formatting arbitrary panic text.
+- Overflow of late-cancellation tombstones requests recovery instead of permanently halting the runner.
+- Tool-trace parse errors propagate, and invalid call allowances no longer become zero.
+- Waiting workers recheck policy changes while awaiting offers.
+
+These regression sources have not passed a test lane.
+The scheduler's positive-pass issuance budget and coalescing in M243 Dimension 4.4 remain unfinished.
+Notifying all candidates closes the wrong-host delay but does not establish that acceptance result.
+
+File-length review also remains due.
+Newly oversized files include `downlink/mod.rs`, `main/src/serve/mod.rs` and `main/src/serve/drain/mod.rs`.
+Several earlier touched domain files exceed 350 lines too; a green Clippy run would not prove this review rule satisfied.
+
+### Cloud build tools used here
+
+This cloud image lacked cmake and libclang.
+A user-owned virtual environment at `/workspace/.cloud-tools/native-build` supplies cmake 4.4.4 and libclang 18.1.1.
+The library path is `/workspace/.cloud-tools/native-build/lib/python3.12/site-packages/clang/native`.
+
+Rust lanes used that environment's `bin` directory on PATH and the library path through `LIBCLANG_PATH`.
+`BINDGEN_EXTRA_CLANG_ARGS` included `-I/usr/lib/gcc/x86_64-linux-gnu/14/include` for builtin C headers.
+Keep two Cargo jobs, zero development/test debug info and incremental compilation disabled, as `.orly/LOCAL.md` requires.
+
+These tools are machine setup outside the repository; a fresh cloud session must inspect its own installed tools.
+Root and CLI Bun dependencies were installed from their frozen lockfiles.
+Remaining UI package installs, CLI build and live-datastore setup may still be needed before the full repository lanes.
 
 ## Limits
 
-This handoff preserves task state and decisions; it is not a merge recommendation or a completed milestone report.
-Keep the draft description and issue 818 current after each material push.
-Retain `Closes #818` in the PR description.
+Indy initially held verification, then approved publication scans and explicitly authorized compilation, lint and tests.
+His latest steering prioritizes committing, pushing and handing off the actual work.
+This checkpoint records current failures and must remain draft.
+
+| Command | Actual result |
+|---|---|
+| `orly doctor` | Passed: local rules match and Codex tools are installed. |
+| `orly gate work --accept-dirty` | Passed: four configured commands declared. This does not compile or test the source. |
+| `gitleaks protect --staged --redact --verbose --no-banner` | Passed on the final staged checkpoint before commit. |
+| `make lint-source` | Passed: 44 rule tests and source scan after the source changes. |
+| `cargo fmt --all` | Completed successfully after the last source edit. |
+| `make lint-rustd` | Failed at rustfmt before the formatting pass. No completed Clippy/shear result. |
+| `make test-unit-rustd` | Fails during compilation; latest recorded blockers are kernel example references to removed report routes. No completed unit lane. |
+| Full unit, integration, version and shipping gates | Not passed for this checkpoint. |
+
+There are no active Git hooks in this checkout; only sample hooks exist.
+Manual publication checks are required; do not claim hooks ran.
+No deployment, workflow, Fly secret or 1Password write was made.
+
+Keep the repository lanes and coverage floors unchanged.
+Earlier changed-line coverage failed and does not verify this checkpoint.
+Production private routing, certificate lifecycle and handshake evidence remain open for Indy's review.
 
 ## Related pages
 
-- [Implementation review](implementation-signoff.md)
-- [Transport research](transport-and-toon-research.md)
-- [Failure and observability](failure-and-observability.md)
+- [Resume M243 prompt](resume-prompt.md)
+- [Separate M246 preparation prompt](m246-parallel-prompt.md)
+- [Owner feedback audit](owner-feedback-audit.md)
+- [Implementation guide and historical evidence](implementation-signoff.md)
+- [File inventory](files.tsv)
 - [Runner protocol](../../architecture/runner_protocol.md)

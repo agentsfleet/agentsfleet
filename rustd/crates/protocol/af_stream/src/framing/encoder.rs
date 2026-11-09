@@ -4,7 +4,10 @@ use af_wire::protocol::StreamKind;
 use tokio::{sync::OwnedSemaphorePermit, time::Instant};
 use tokio_util::sync::CancellationToken;
 
-use super::{Budget, OwnedFrame, writer::{Buffer, ENCODING_BYTES}};
+use super::{
+    Budget, OwnedFrame,
+    writer::{Buffer, ENCODING_BYTES},
+};
 use crate::Result;
 
 /// A bounded writer whose allocation stays charged through payload assembly.
@@ -32,7 +35,10 @@ impl Encoder {
         deadline: Instant,
     ) -> Result<Self> {
         let reservation = budget.reserve(kind, ENCODING_BYTES, stop, deadline).await?;
-        Ok(Self { buffer: Buffer::default(), reservation })
+        Ok(Self {
+            buffer: Buffer::default(),
+            reservation,
+        })
     }
 
     /// Transfer the serialized payload and its retained allocation charge together.

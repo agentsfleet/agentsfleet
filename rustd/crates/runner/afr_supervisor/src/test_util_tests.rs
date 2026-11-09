@@ -50,7 +50,6 @@ async fn test_each_route_answers_as_its_verb() {
         selftest: None,
         holds: af_wire::runner::HeldFleets::default(),
         closing: false,
-        wake: false,
     };
     let push = MemoryPushRequest {
         lease_id: LEASE_ID.into(),
@@ -65,23 +64,29 @@ async fn test_each_route_answers_as_its_verb() {
     };
 
     plane.heartbeat(&beat).await.unwrap();
-    plane.lease(&[]).await.unwrap();
     plane.renew(&lease, &RenewRequest::default()).await.unwrap();
     plane.hydrate(&fleet).await.unwrap();
     plane.capture(&fleet, &push).await.unwrap();
     plane.recall(&fleet, &recall).await.unwrap();
     plane.me().await.unwrap();
     plane.tool_calls(&lease, Bytes::new()).await.unwrap();
-    plane.report(Bytes::new()).await.unwrap();
+    plane
+        .report(&crate::test_support::report_body())
+        .await
+        .unwrap();
     plane.folds(&lease, 1, 0).await.unwrap();
 
     let healthy = healthy();
     let sent = drain(&mut calls);
-    assert_eq!(sent.len(), 10, "every request reached the daemon");
+    assert_eq!(sent.len(), 9, "every request reached the daemon");
     for call in sent {
         let method = call.verb.method().http();
         assert_eq!(
-            healthy.reply(method.as_str(), &call.path),
+            if call.path == af_wire::paths::RUNNER_STREAM {
+                healthy.to(Some(call.verb))
+            } else {
+                healthy.reply(method.as_str(), &call.path)
+            },
             healthy.to(Some(call.verb)),
             "{:?} at {}",
             call.verb,

@@ -4,7 +4,7 @@ use super::{ack, json, lease, result, rig, run};
 use crate::{client::Verb, test_support::Answer};
 
 #[tokio::test]
-async fn an_unavailable_model_route_is_called_once_and_spools_unknown_usage() {
+async fn an_unavailable_model_route_is_called_once_and_reports_unknown_usage() {
     let mut rig = rig(|call| match call.verb {
         Verb::AuthoringModel => Answer::Fail(crate::error::unavailable(call.verb, 503)),
         Verb::AuthoringReport => ack(),

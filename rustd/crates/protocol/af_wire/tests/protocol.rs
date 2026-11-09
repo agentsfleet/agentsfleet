@@ -115,7 +115,8 @@ fn message_kinds_select_their_stream_and_pending_answer() -> serde_json::Result<
     let ping: Up<'_> = serde_json::from_str(r#"{"type":"ping","request_id":7}"#)?;
     assert_eq!(ping.stream_kind(), StreamKind::Control);
     assert_eq!(ping.request_id().map(std::num::NonZeroU64::get), Some(7));
-    let ready: Up<'_> = serde_json::from_str(r#"{"type":"ready","credits":1}"#)?;
+    let ready: Up<'_> =
+        serde_json::from_str(r#"{"type":"ready","credits":1,"revision":1,"observed_offers":0}"#)?;
     assert_eq!(ready.request_id(), None);
     let cancel: Down<'_> = serde_json::from_str(
         r#"{"type":"cancel","lease_id":"019a3c00-0000-7000-8000-000000000001","error_code":"UZ-RUN-022"}"#,

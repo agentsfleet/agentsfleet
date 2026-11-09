@@ -43,18 +43,14 @@ async fn a_plain_answer_uses_only_the_canonical_scoped_route_and_private_report(
     assert_eq!(report["usage"]["calls"], 1);
     assert_eq!(rig.prepared.load(Ordering::SeqCst), 0);
     assert_eq!(rig.runs.load(Ordering::SeqCst), 0);
-    // The drainer runs beside this check and removes an entry once its report
-    // settles, so an entry can vanish between the listing and the read. A
-    // removed entry holds no secret; every entry still on disk is checked.
-    let saved = std::fs::read_dir(rig.home.spool().join("authoring")).unwrap();
-    for entry in saved.flatten().filter(|entry| entry.path().is_dir()) {
-        let accounting = match std::fs::read_to_string(entry.path().join("accounting.json")) {
-            Ok(accounting) => accounting,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(error) => panic!("a saved entry could not be read: {error}"),
-        };
-        assert!(!accounting.contains(&"a".repeat(43)));
-    }
+    assert!(
+        !rig.home
+            .sandboxes()
+            .parent()
+            .unwrap()
+            .join("spool")
+            .exists()
+    );
 }
 
 #[tokio::test]

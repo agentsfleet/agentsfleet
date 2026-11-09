@@ -23,7 +23,11 @@ pub(crate) enum ErrorKind {
     #[error("Send runner stream header '{header}' exactly once.")]
     RepeatedHeader { header: &'static str },
     #[error("Runner stream header '{header}' must contain valid text.")]
-    HeaderEncoding { header: &'static str, #[source] source: http::header::ToStrError },
+    HeaderEncoding {
+        header: &'static str,
+        #[source]
+        source: http::header::ToStrError,
+    },
     #[error("Runner and daemon use different stream protocols. Update them to matching versions.")]
     UnsupportedVersion,
     #[error("Choose a runner stream kind: control, work, reports or activity.")]
@@ -33,7 +37,10 @@ pub(crate) enum ErrorKind {
     #[error("Send the bearer only on control; secondary streams use the authenticated session.")]
     UnexpectedBearer,
     #[error("The runner session header must contain a valid UUIDv7 identifier.")]
-    SessionIdentifier { #[source] source: af_core::error::Error },
+    SessionIdentifier {
+        #[source]
+        source: af_core::error::Error,
+    },
     #[error("This stream does not belong to the authenticated connection.")]
     Binding,
     #[error("The {kind:?} kind is already attached to this connection.")]
@@ -45,35 +52,81 @@ pub(crate) enum ErrorKind {
     #[error("The runner stream no longer has permission to serve this host.")]
     Authority { refusal: Refusal },
     #[error("The runner stream could not read an HTTP header.")]
-    Header { #[source] source: http::header::ToStrError },
+    Header {
+        #[source]
+        source: http::header::ToStrError,
+    },
     #[error("The runner stream contains an invalid identifier.")]
-    Identifier { #[source] source: af_core::error::Error },
+    Identifier {
+        #[source]
+        source: af_core::error::Error,
+    },
     #[error("The runner stream message is outside its supported bounds.")]
-    Bounds { #[source] source: garde::Report },
+    Bounds {
+        #[source]
+        source: garde::Report,
+    },
     #[error("The runner stream message could not be read as JSON.")]
-    Json { #[source] source: serde_json::Error },
+    Json {
+        #[source]
+        source: serde_json::Error,
+    },
     #[error("The runner stream transport could not complete the operation.")]
-    Transport { #[source] source: af_stream::Error },
+    Transport {
+        #[source]
+        source: af_stream::Error,
+    },
     #[error("The runner stream timed out while {operation}.")]
-    Timeout { operation: Operation, #[source] source: tokio::time::error::Elapsed },
+    Timeout {
+        operation: Operation,
+        #[source]
+        source: tokio::time::error::Elapsed,
+    },
     #[error("The runner stream could not read or write its body.")]
-    Io { #[source] source: std::io::Error },
+    Io {
+        #[source]
+        source: std::io::Error,
+    },
     #[error("The runner stream could not read its durable state.")]
-    Database { #[source] source: afd_db::Error },
+    Database {
+        #[source]
+        source: afd_db::Error,
+    },
     #[error("The notification broker is unavailable. Database recovery remains active.")]
-    Bus { #[source] source: afd_bus::Error },
+    Bus {
+        #[source]
+        source: afd_bus::Error,
+    },
     #[error("The runner stream database statement could not complete.")]
-    Query { #[source] source: sqlx::Error },
+    Query {
+        #[source]
+        source: sqlx::Error,
+    },
     #[error("The runner service could not complete the operation.")]
-    Runner { #[source] source: afd_runner::Error },
+    Runner {
+        #[source]
+        source: afd_runner::Error,
+    },
     #[error("The fleet service could not complete the operation.")]
-    Fleet { #[source] source: afd_fleet::Error },
+    Fleet {
+        #[source]
+        source: afd_fleet::Error,
+    },
     #[error("The authoring service could not complete the operation.")]
-    Authoring { #[source] source: afd_authoring::Error },
+    Authoring {
+        #[source]
+        source: afd_authoring::Error,
+    },
     #[error("The runner stream worker stopped before completing its work.")]
-    Worker { #[source] source: tokio::task::JoinError },
+    Worker {
+        #[source]
+        source: tokio::task::JoinError,
+    },
     #[error("The runner stream could not construct its HTTP response.")]
-    Http { #[source] source: http::Error },
+    Http {
+        #[source]
+        source: http::Error,
+    },
 }
 
 af_core::error_lifts!(Error, ErrorKind:
@@ -99,10 +152,15 @@ impl Error {
     pub fn response(&self) -> axum::response::Response {
         use axum::response::IntoResponse as _;
         if let ErrorKind::Capacity { carrying, capacity } = self.kind() {
-            return afd_http::handler::Refusal::at_stream_ceiling(*carrying, *capacity).into_response();
+            return afd_http::handler::Refusal::at_stream_ceiling(*carrying, *capacity)
+                .into_response();
         }
-        afd_http::envelope::ProblemResponse::new(self.code(), self.detail().into_owned(),
-            afd_http::request_id::RequestId::mint()).into_response()
+        afd_http::envelope::ProblemResponse::new(
+            self.code(),
+            self.detail().into_owned(),
+            afd_http::request_id::RequestId::mint(),
+        )
+        .into_response()
     }
 
     /// Registered classification used by agents and HTTP problem responses.
@@ -111,13 +169,19 @@ impl Error {
         match self.kind() {
             ErrorKind::Authority { refusal } => refusal.code(),
             ErrorKind::UnsupportedVersion => error_code::RUN_PROTOCOL_UNSUPPORTED,
-            ErrorKind::Identifier { .. }
-            | ErrorKind::SessionIdentifier { .. } => error_code::UUIDV7_INVALID_ID_SHAPE,
-            ErrorKind::MissingHeader { .. } | ErrorKind::RepeatedHeader { .. }
-            | ErrorKind::HeaderEncoding { .. } | ErrorKind::UnknownStream
-            | ErrorKind::ControlBearerMissing | ErrorKind::UnexpectedBearer
-            | ErrorKind::Protocol | ErrorKind::DuplicateStream { .. }
-            | ErrorKind::Header { .. } | ErrorKind::Bounds { .. }
+            ErrorKind::Identifier { .. } | ErrorKind::SessionIdentifier { .. } => {
+                error_code::UUIDV7_INVALID_ID_SHAPE
+            }
+            ErrorKind::MissingHeader { .. }
+            | ErrorKind::RepeatedHeader { .. }
+            | ErrorKind::HeaderEncoding { .. }
+            | ErrorKind::UnknownStream
+            | ErrorKind::ControlBearerMissing
+            | ErrorKind::UnexpectedBearer
+            | ErrorKind::Protocol
+            | ErrorKind::DuplicateStream { .. }
+            | ErrorKind::Header { .. }
+            | ErrorKind::Bounds { .. }
             | ErrorKind::Json { .. } => error_code::INVALID_REQUEST,
             ErrorKind::Binding => error_code::AUTH_FORBIDDEN,
             ErrorKind::Capacity { .. } => error_code::SSE_STREAM_CAP,
@@ -128,8 +192,11 @@ impl Error {
             ErrorKind::Bus { source } => source.code(),
             ErrorKind::Query { .. } => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Transport { source } => source.code(),
-            ErrorKind::Closed | ErrorKind::Timeout { .. } | ErrorKind::Io { .. }
-            | ErrorKind::Worker { .. } | ErrorKind::Http { .. } => error_code::INTERNAL_OPERATION_FAILED,
+            ErrorKind::Closed
+            | ErrorKind::Timeout { .. }
+            | ErrorKind::Io { .. }
+            | ErrorKind::Worker { .. }
+            | ErrorKind::Http { .. } => error_code::INTERNAL_OPERATION_FAILED,
         }
     }
 
@@ -168,22 +235,44 @@ impl Error {
     #[must_use]
     pub fn retryable(&self) -> bool {
         match self.kind() {
-            ErrorKind::Authority { .. } | ErrorKind::Protocol | ErrorKind::UnsupportedVersion
-            | ErrorKind::MissingHeader { .. } | ErrorKind::RepeatedHeader { .. }
-            | ErrorKind::HeaderEncoding { .. } | ErrorKind::UnknownStream
-            | ErrorKind::ControlBearerMissing | ErrorKind::UnexpectedBearer
+            ErrorKind::Authority { .. }
+            | ErrorKind::Protocol
+            | ErrorKind::UnsupportedVersion
+            | ErrorKind::MissingHeader { .. }
+            | ErrorKind::RepeatedHeader { .. }
+            | ErrorKind::HeaderEncoding { .. }
+            | ErrorKind::UnknownStream
+            | ErrorKind::ControlBearerMissing
+            | ErrorKind::UnexpectedBearer
             | ErrorKind::SessionIdentifier { .. }
-            | ErrorKind::Binding | ErrorKind::DuplicateStream { .. }
-            | ErrorKind::Header { .. } | ErrorKind::Identifier { .. }
-            | ErrorKind::Bounds { .. } | ErrorKind::Json { .. } => false,
-            ErrorKind::Transport { source } => matches!(source.reason(), af_stream::Reason::Network
-                | af_stream::Reason::Timeout | af_stream::Reason::Closed | af_stream::Reason::Worker),
+            | ErrorKind::Binding
+            | ErrorKind::DuplicateStream { .. }
+            | ErrorKind::Header { .. }
+            | ErrorKind::Identifier { .. }
+            | ErrorKind::Bounds { .. }
+            | ErrorKind::Json { .. } => false,
+            ErrorKind::Transport { source } => matches!(
+                source.reason(),
+                af_stream::Reason::Network
+                    | af_stream::Reason::Timeout
+                    | af_stream::Reason::Closed
+                    | af_stream::Reason::Worker
+            ),
             ErrorKind::Fleet { .. } | ErrorKind::Authoring { .. } | ErrorKind::Runner { .. } => {
-                matches!(af_core::problem::Problem::of(self.code()).status(), 408 | 429 | 500..=599)
+                matches!(
+                    af_core::problem::Problem::of(self.code()).status(),
+                    408 | 429 | 500..=599
+                )
             }
-            ErrorKind::Capacity { .. } | ErrorKind::Closed | ErrorKind::Timeout { .. }
-            | ErrorKind::Io { .. } | ErrorKind::Database { .. } | ErrorKind::Query { .. }
-            | ErrorKind::Bus { .. } | ErrorKind::Worker { .. } | ErrorKind::Http { .. } => true,
+            ErrorKind::Capacity { .. }
+            | ErrorKind::Closed
+            | ErrorKind::Timeout { .. }
+            | ErrorKind::Io { .. }
+            | ErrorKind::Database { .. }
+            | ErrorKind::Query { .. }
+            | ErrorKind::Bus { .. }
+            | ErrorKind::Worker { .. }
+            | ErrorKind::Http { .. } => true,
         }
     }
 
@@ -192,24 +281,39 @@ impl Error {
     pub fn reason(&self) -> &'static str {
         match self.kind() {
             ErrorKind::UnsupportedVersion => "protocol_version",
-            ErrorKind::MissingHeader { .. } | ErrorKind::RepeatedHeader { .. }
-            | ErrorKind::HeaderEncoding { .. } | ErrorKind::UnknownStream
-            | ErrorKind::ControlBearerMissing | ErrorKind::UnexpectedBearer
-            | ErrorKind::SessionIdentifier { .. } | ErrorKind::Header { .. } => "metadata",
-            ErrorKind::Protocol | ErrorKind::Identifier { .. } | ErrorKind::Json { .. } => "protocol",
+            ErrorKind::MissingHeader { .. }
+            | ErrorKind::RepeatedHeader { .. }
+            | ErrorKind::HeaderEncoding { .. }
+            | ErrorKind::UnknownStream
+            | ErrorKind::ControlBearerMissing
+            | ErrorKind::UnexpectedBearer
+            | ErrorKind::SessionIdentifier { .. }
+            | ErrorKind::Header { .. } => "metadata",
+            ErrorKind::Protocol | ErrorKind::Identifier { .. } | ErrorKind::Json { .. } => {
+                "protocol"
+            }
             ErrorKind::Binding | ErrorKind::DuplicateStream { .. } => "binding",
-            ErrorKind::Authority { refusal: Refusal::Credential } => "credential",
-            ErrorKind::Authority { refusal: Refusal::Revoked } => "revoked",
-            ErrorKind::Authority { refusal: Refusal::Superseded } => "superseded",
+            ErrorKind::Authority {
+                refusal: Refusal::Credential,
+            } => "credential",
+            ErrorKind::Authority {
+                refusal: Refusal::Revoked,
+            } => "revoked",
+            ErrorKind::Authority {
+                refusal: Refusal::Superseded,
+            } => "superseded",
             ErrorKind::Bounds { .. } => "bounds",
             ErrorKind::Transport { source } => source.reason().as_str(),
-            ErrorKind::Timeout { .. } => "timeout", ErrorKind::Closed => "closed",
-            ErrorKind::Io { .. } => "network", ErrorKind::Worker { .. } => "worker",
+            ErrorKind::Timeout { .. } => "timeout",
+            ErrorKind::Closed => "closed",
+            ErrorKind::Io { .. } => "network",
+            ErrorKind::Worker { .. } => "worker",
             ErrorKind::Database { .. } | ErrorKind::Query { .. } => "database",
             ErrorKind::Bus { .. } => "broker",
             ErrorKind::Capacity { .. } => "capacity",
-            ErrorKind::Runner { .. } | ErrorKind::Fleet { .. }
-            | ErrorKind::Authoring { .. } => "service",
+            ErrorKind::Runner { .. } | ErrorKind::Fleet { .. } | ErrorKind::Authoring { .. } => {
+                "service"
+            }
             ErrorKind::Http { .. } => "internal",
         }
     }

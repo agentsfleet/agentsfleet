@@ -90,7 +90,7 @@ async fn test_tool_call_details_refused_for_a_lease_not_held() {
     let (status, _) = post_records(&http, &run, (unknown.as_str(), fence), &calls).await;
     assert_eq!(status, 404, "an unknown lease is not found");
     let report = report_with(unknown.as_str(), &run, fence, trace(1));
-    let refused = post(&http, &run, REPORTS, &report).await;
+    let refused = crate::wire::report(&run, &report).await;
     assert_eq!(
         refused.status().as_u16(),
         404,
@@ -233,18 +233,8 @@ async fn test_nul_tool_trace_dropped_report_settles() {
 
     let mut sent = trace(1);
     sent["calls"][0]["output_head"] = json!("bin\u{0}ary");
-    let settled = post(
-        &http,
-        &run,
-        REPORTS,
-        &report_with(&lease_id, &run, fence, sent),
-    )
-    .await;
-    assert_eq!(
-        settled.status().as_u16(),
-        200,
-        "the answer is never lost to its trace"
-    );
+    let settled = crate::wire::report(&run, &report_with(&lease_id, &run, fence, sent)).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(stored_trace(&run).await, None);
     assert_eq!(
         event_column(&run, &run.event_id, "status").await.as_deref(),

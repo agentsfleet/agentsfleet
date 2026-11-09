@@ -49,7 +49,10 @@ impl LeaseService {
             // stopped fleet means an operator paused it in the window between
             // selection and this read. The pass frees the claim; the pause
             // already cleared the mark.
-            Ok(None) => no_work(runner_id, FLEET_STOPPED).map(Step::Stop),
+            Ok(None) => {
+                no_work(runner_id, FLEET_STOPPED);
+                Ok(Step::Stop)
+            }
             // One fleet's unreadable document is that fleet's fault and not
             // this runner's, which is the whole of `refuse_unreadable_config`.
             Err(changed) if changed.code() == af_core::error_code::TASK_INVALID_TARGET => {
@@ -57,13 +60,13 @@ impl LeaseService {
                 no_work(
                     runner_id,
                     "the task's accepted setup no longer fits current authority",
-                )
-                .map(Step::Stop)
+                );
+                Ok(Step::Stop)
             }
             Err(unreadable) if unreadable.is_config_permanent() => self
                 .refuse_unreadable_config(acquired, runner_id, &unreadable)
                 .await
-                .map(Step::Stop),
+                .map(|()| Step::Stop),
             Err(outage) => Err(outage),
         }
     }
@@ -79,12 +82,15 @@ impl LeaseService {
         runner_id: &Uuid7,
     ) -> Result<Step<AdmittedFleetWork>> {
         match declined {
-            Declined::Await(waiting) => waited(runner_id, waiting),
+            Declined::Await(waiting) => Ok(waited(runner_id, waiting)),
             Declined::Refuse(refusal) => self
                 .refused(acquired, refusal.label, runner_id, refusal.detail)
                 .await
-                .map(Step::Stop),
-            Declined::Retry(transient) => no_work(runner_id, transient.at).map(Step::Stop),
+                .map(|()| Step::Stop),
+            Declined::Retry(transient) => {
+                no_work(runner_id, transient.at);
+                Ok(Step::Stop)
+            }
         }
     }
 
@@ -100,14 +106,17 @@ impl LeaseService {
         label: &'static str,
         runner_id: &Uuid7,
         reason: &str,
-    ) -> Result<String> {
+    ) -> Result<()> {
         let ended = self
             .leases
             .block(acquired, Refusal { label, detail: "" })
             .await?;
         if let crate::lease::event::Ended::Now(closed) = ended {
             let publication = self.leases.publish_completion(&closed, None).await;
-            afd_bus::observe_notification(&afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()), publication);
+            afd_bus::observe_notification(
+                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                publication,
+            );
         }
         let runner_id_field = runner_id.as_str();
         let fleet_id_field = acquired.fleet_id.as_str();
@@ -121,7 +130,8 @@ impl LeaseService {
             reason,
             "the event was ended at a gate"
         );
-        no_work(runner_id, label)
+        no_work(runner_id, label);
+        Ok(())
     }
 
     /// One fleet's unreadable configuration ends THAT fleet's event, and
@@ -159,7 +169,7 @@ impl LeaseService {
         acquired: &Acquired,
         runner_id: &Uuid7,
         fault: &Error,
-    ) -> Result<String> {
+    ) -> Result<()> {
         let Logged {
             error_code: config_error_code,
             reason,
@@ -202,7 +212,8 @@ impl LeaseService {
                     "a fleet with an unreadable config could not be ended; it \
                      will be offered again"
                 );
-                no_work(runner_id, label::CONFIG_UNREADABLE)
+                no_work(runner_id, label::CONFIG_UNREADABLE);
+                Ok(())
             }
         }
     }
@@ -217,7 +228,7 @@ impl LeaseService {
         acquired: &Acquired,
         runner_id: &Uuid7,
         reason: &str,
-    ) -> Result<String> {
+    ) -> Result<()> {
         let received = self.leases.record_received(acquired).await?;
         if received.delivery == Delivery::First {
             self.leases

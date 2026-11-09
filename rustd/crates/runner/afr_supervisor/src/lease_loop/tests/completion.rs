@@ -1,30 +1,25 @@
 use super::*;
 
 #[tokio::test(start_paused = true)]
-async fn test_memory_push_fenced_before_report() {
+async fn completed_report_carries_memory_and_fence_without_a_separate_push() {
     let mut rig = rig(healthy, FakeEngine::default(), Behaviour::Answer);
-
     rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
-
     let calls = rig.calls();
-    let pushed = position(&calls, Verb::Capture).unwrap();
-    assert!(position(&calls, Verb::Hydrate).unwrap() < pushed);
-    assert!(
-        pushed < position(&calls, Verb::Report).unwrap(),
-        "memory is pushed before the report"
-    );
-    let push: serde_json::Value =
-        serde_json::from_slice(calls[pushed].body.as_ref().unwrap()).unwrap();
-    assert_eq!(push["fencing_token"], FENCING);
-    assert_eq!(push["memory"][0]["key"], "k");
-    assert_eq!(reported(&calls)[OUTCOME], PROCESSED);
-    assert!(
-        position(&calls, Verb::Activity).is_some(),
-        "the run's chunk reached the live tail"
-    );
+    let report = reported(&calls);
+    assert!(position(&calls, Verb::Capture).is_none());
+    assert_eq!(report["fencing_token"], FENCING);
+    assert_eq!(report["memory"][0]["key"], "k");
+    assert_eq!(report[OUTCOME], PROCESSED);
+    assert!(position(&calls, Verb::Activity).is_some());
     assert_eq!(rig.destroyed.load(Ordering::SeqCst), 1);
-    let pending = ReportSpool::new(&rig.home).pending().await.unwrap();
-    assert!(pending.is_empty(), "{pending:?}");
+    assert!(
+        !rig.home
+            .sandboxes()
+            .parent()
+            .unwrap()
+            .join("spool")
+            .exists()
+    );
 }
 
 #[tokio::test(start_paused = true)]

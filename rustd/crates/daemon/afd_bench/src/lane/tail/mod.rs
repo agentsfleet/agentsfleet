@@ -41,7 +41,7 @@ mod publish;
 mod streams;
 mod viewers;
 
-use afd_sse::{StreamLimit, Live};
+use afd_sse::{Live, StreamLimit};
 
 use crate::allocations;
 use crate::datastores::Datastores;
@@ -124,10 +124,7 @@ pub async fn run(
         .unwrap_or(0);
     profile.check(Parameter::Concurrency, widest)?;
     let bus = stores.bus.clone();
-    let live = Live::new(
-        bus.clone(),
-        StreamLimit::new(usize::try_from(widest)?),
-    );
+    let live = Live::new(bus.clone(), StreamLimit::new(usize::try_from(widest)?));
     let publisher = bus.clone();
     let counting = allocations::installed();
     let mut report = Report::new(Lane::Tail, profile, provenance);
