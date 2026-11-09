@@ -26,7 +26,8 @@ pub(super) struct Running {
     pub(super) f: Fixture,
     pub(super) router: Router,
     pub(super) token: String,
-    pub(super) path: String,
+    pub(super) operation: crate::harness::native::Operation,
+    pub(super) lease: Uuid7,
     pub(super) draft: Uuid7,
 }
 
@@ -63,7 +64,8 @@ impl Running {
             f,
             router,
             token,
-            path: format!("/v1/runners/me/authoring-leases/{lease}/activity"),
+            operation: crate::harness::native::Operation::Activity(lease.clone()),
+            lease,
             draft,
         }
     }

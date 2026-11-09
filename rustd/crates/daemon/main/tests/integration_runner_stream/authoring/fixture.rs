@@ -1,6 +1,6 @@
 //! A production daemon and native runner share one authoring lease.
 
-use af_core::{clock, env::MapEnv, id::Uuid7};
+use af_core::{clock, id::Uuid7};
 use af_crypto::entropy::Entropy;
 use af_wire::{authoring as wire, lease::TaggedLease, protocol::Down};
 use afd_authoring::{
@@ -9,17 +9,13 @@ use afd_authoring::{
 };
 use afd_db::test_util::{OwnedRows, mint_id};
 use afd_runner::{Runners, capacity::authority::Decision};
-use afr_supervisor::{
-    config::{self, Config},
-    test_util::Session,
-};
-use agentsfleetd::{
-    serve::{Booted, boot_with_authoring_boundary},
-    supervisor::Supervisor,
-};
+use afr_supervisor::{config::Config, test_util::Session};
+use agentsfleetd::{serve::Booted, supervisor::Supervisor};
 use std::sync::Arc;
 
-use super::{DEADLINE, provider::Provider, seed::Rows};
+use super::{DEADLINE, decision::Boundary, provider::Provider, seed::Rows};
+
+mod connection;
 
 /// Test-only owner of a real daemon, native session, provider HTTP boundary and seeded rows.
 pub(super) struct AuthoringFixture {
@@ -33,27 +29,39 @@ pub(super) struct AuthoringFixture {
     pub(super) drafts: Drafts,
     pub(super) provider: Provider,
     cleanup: OwnedRows,
+    decision: Option<afd_admin::test_util::DecisionModelFixture>,
     _exclusive: tokio::sync::MutexGuard<'static, ()>,
 }
 
 impl AuthoringFixture {
     pub(super) async fn start(supervisor: &mut Supervisor, blocked: bool) -> Self {
+        Self::configured(supervisor, blocked, None).await
+    }
+
+    pub(super) async fn with_decision(supervisor: &mut Supervisor, boundary: &Boundary) -> Self {
+        Self::configured(supervisor, true, Some(boundary)).await
+    }
+
+    async fn configured(
+        supervisor: &mut Supervisor,
+        blocked: bool,
+        boundary: Option<&Boundary>,
+    ) -> Self {
         crate::support::install_subscriber();
         let exclusive = crate::e2e::SCENARIOS.lock().await;
-        let (booted, provider) = boot(supervisor, blocked).await;
-        let rows = Rows::seed(&booted.database).await;
-        let runners = Runners::new(booted.database.clone(), Entropy::new());
-        let registered = runners
-            .register(&crate::e2e_seed::enrolment(), clock::now())
-            .await
-            .expect("register native runner");
-        let token = registered.token.expose().to_owned();
-        let config = native_config(&booted, &token);
-        let session = Session::connect(&config).await.expect("native connection");
-        session.capacity(1);
-        let beat_bytes = serde_json::to_vec(&crate::wire::capable_beat()).expect("capability JSON");
-        let beat = serde_json::from_slice(&beat_bytes).expect("capability report");
-        session.heartbeat(&beat).await.expect("native heartbeat");
+        let (booted, provider) = connection::boot(supervisor, blocked, boundary).await;
+        let decision = match boundary {
+            Some(boundary) => Some(boundary.model(&booted.database).await),
+            None => None,
+        };
+        let workspace = boundary.map(|boundary| boundary.workspace.clone());
+        let rows = Rows::seed(&booted.database, workspace).await;
+        let (runner, token, config, session) = connection::connect(&booted).await;
+        if let (Some(boundary), Some(model)) = (boundary, decision.as_ref()) {
+            boundary
+                .assign(&booted.database, &runner, &model.model.id)
+                .await;
+        }
         let drafts = Drafts::new(
             booted.database.clone(),
             Entropy::new(),
@@ -62,11 +70,11 @@ impl AuthoringFixture {
             )),
         );
         let lease = queue(&drafts, &rows, &session).await;
-        let cleanup = rows.owned_rows(&registered.runner_id);
+        let cleanup = rows.owned_rows(&runner);
         Self {
             booted,
             rows,
-            runner: registered.runner_id,
+            runner,
             token,
             session,
             config,
@@ -74,6 +82,7 @@ impl AuthoringFixture {
             drafts,
             provider,
             cleanup,
+            decision,
             _exclusive: exclusive,
         }
     }
@@ -112,7 +121,7 @@ impl AuthoringFixture {
         config
             .as_object_mut()
             .expect("setup config object")
-            .insert("name".into(), serde_json::json!("Support triage"));
+            .insert("name".into(), serde_json::json!("support-triage"));
         let definition = crate::e2e_native::definition(
             &serde_json::to_string(&config).expect("purpose-named setup config"),
             "Review incoming support requests.",
@@ -175,6 +184,9 @@ impl AuthoringFixture {
         }
         supervisor.shutdown().await;
         self.provider.close().await;
+        if let Some(model) = self.decision.take() {
+            super::decision::finish_model(&self.booted.database, &self.runner, model).await;
+        }
         self.cleanup
             .finish()
             .await
@@ -223,36 +235,4 @@ async fn queue(drafts: &Drafts, rows: &Rows, session: &Session) -> wire::Lease<s
     .expect("expected authoring offer");
     assert_eq!(lease.draft_id, created.draft.id.as_str());
     lease
-}
-
-fn native_config(booted: &Booted, token: &str) -> Config {
-    let api = format!("http://{}", booted.address);
-    let origin = format!("https://localhost:{}", booted.runner_stream_address.port());
-    let root = crate::support::runner_stream::root_file()
-        .to_string_lossy()
-        .into_owned();
-    Config::from_env(&MapEnv::from_pairs([
-        (config::ENV_API_URL, api.as_str()),
-        (config::ENV_RUNNER_TOKEN, token),
-        (config::ENV_STREAM_URL, origin.as_str()),
-        (config::ENV_STREAM_CA, root.as_str()),
-    ]))
-    .expect("native runner configuration")
-}
-
-async fn boot(supervisor: &mut Supervisor, blocked: bool) -> (Booted, Provider) {
-    let provider = Provider::open(blocked).await;
-    let transport = afd_authoring::Network::new()
-        .expect("guarded client")
-        .with_test_endpoint(provider.endpoint.clone())
-        .expect("provider boundary");
-    let env = crate::e2e::daemon_environment(
-        &crate::e2e::lane(crate::e2e::DATABASE_LANE_KNOB),
-        None,
-        &[],
-    );
-    let booted = boot_with_authoring_boundary(&env, 0, supervisor, transport)
-        .await
-        .expect("daemon boot");
-    (booted, provider)
 }

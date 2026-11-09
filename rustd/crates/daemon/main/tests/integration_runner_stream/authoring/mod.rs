@@ -3,6 +3,8 @@
 
 mod accounting;
 mod contention;
+mod deadline;
+mod decision;
 mod expiry;
 mod fencing;
 mod fixture;

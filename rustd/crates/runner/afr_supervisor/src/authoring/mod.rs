@@ -16,12 +16,26 @@ use af_crypto::entropy::Entropy;
 use af_wire::authoring::{Accounting, FailureReason, Lease, Outcome, Report, Reported};
 use serde_json::Value;
 use tokio::time::Instant;
-use zeroize::Zeroize as _;
+use zeroize::Zeroize;
 
 struct Ending {
     outcome: Outcome,
     reason: Option<FailureReason>,
     answer: Option<String>,
+}
+
+impl Zeroize for Ending {
+    fn zeroize(&mut self) {
+        if let Some(answer) = &mut self.answer {
+            answer.zeroize();
+        }
+    }
+}
+
+impl Drop for Ending {
+    fn drop(&mut self) {
+        self.zeroize();
+    }
 }
 
 impl Ending {
@@ -78,7 +92,7 @@ impl Lessee {
         // Polled in order: renewal stops at the same attempt end, so the
         // deadline is checked first and a turn that reaches it reports
         // `timed_out`, never a lost slot.
-        let ending = tokio::select! {
+        let mut ending = tokio::select! {
             biased;
             () = tokio::time::sleep_until(deadline) => { observed.uncertain()?; Ending::timed_out() },
             result = turn.run() => match result {
@@ -106,7 +120,7 @@ impl Lessee {
             &id,
             Report::Terminal {
                 accounting,
-                answer: ending.answer,
+                answer: ending.answer.take(),
             },
         )
         .await
@@ -172,3 +186,6 @@ async fn acknowledged_report(
     })
     .await
 }
+
+#[cfg(test)]
+mod ownership_tests;

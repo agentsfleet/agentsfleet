@@ -246,21 +246,7 @@ async fn concurrent_retries_open_one_card_for_the_one_missing_grant() {
 async fn a_stored_token_for_an_unrouted_integration_needs_no_connection_or_grant() {
     use afd_authoring::types::{CheckKind, CheckState};
     let c = Case::create().await;
-    let raw = serde_json::value::RawValue::from_string(
-        json!({"integration":"pagerduty","token":"pd-fixture-token"}).to_string(),
-    )
-    .expect("handle JSON");
-    let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
-        .expect("fixture key");
-    Vault::new(c.base.db.clone(), Arc::new(key), Entropy::new())
-        .create(
-            &c.base.workspace,
-            &SecretName::parse("pagerduty").expect("handle name"),
-            &SecretBody::parse(&raw).expect("handle object"),
-            now(),
-        )
-        .await
-        .expect("seal a stored token");
+    store_unrouted_token(&c).await;
     let (draft, _) = c.request("stored-token", Start::None).await;
     let current = c
         .setup
@@ -294,4 +280,22 @@ async fn a_stored_token_for_an_unrouted_integration_needs_no_connection_or_grant
     assert_eq!(about(CheckKind::Connection), []);
     assert_eq!(about(CheckKind::Grant), []);
     c.cleanup().await;
+}
+
+async fn store_unrouted_token(c: &Case) {
+    let raw = serde_json::value::RawValue::from_string(
+        json!({"integration":"pagerduty","token":"pd-fixture-token"}).to_string(),
+    )
+    .expect("handle JSON");
+    let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
+        .expect("fixture key");
+    Vault::new(c.base.db.clone(), Arc::new(key), Entropy::new())
+        .create(
+            &c.base.workspace,
+            &SecretName::parse("pagerduty").expect("handle name"),
+            &SecretBody::parse(&raw).expect("handle object"),
+            now(),
+        )
+        .await
+        .expect("seal a stored token");
 }

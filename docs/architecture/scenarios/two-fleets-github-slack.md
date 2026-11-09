@@ -160,7 +160,7 @@ for each claim:
 
 Only one active lease can hold a fleet. The steer waits behind A's Pull Request job until settlement releases its slot.
 
-A parked or locked head cannot be skipped within that fleet. See [claim ordering](../lease_flow.md#the-poll-claims-an-admission-and-its-fleet-slot).
+A parked or locked head cannot be skipped within that fleet. See [claim ordering](../lease_flow.md#the-gateway-claims-an-admission-and-its-fleet-slot).
 
 ## 7. Execute: inside the runner
 

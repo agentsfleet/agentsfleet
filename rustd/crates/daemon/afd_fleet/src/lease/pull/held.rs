@@ -14,7 +14,6 @@ use af_wire::lease::LeasePayload;
 use jiff::Timestamp;
 
 use super::LeaseService;
-use super::Polled;
 use super::step::{Leased, Step};
 use crate::error::Result;
 use crate::lease::Offered;
@@ -36,7 +35,7 @@ impl LeaseService {
         now: Timestamp,
         began: Instant,
         emit: &mut F,
-    ) -> Result<Polled<T>>
+    ) -> Result<Option<T>>
     where
         T: Send,
         F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
@@ -59,10 +58,10 @@ impl LeaseService {
             Err(fault) => Err(fault),
         };
         match pass {
-            Ok(Step::Go(Leased(answer))) => Ok(Polled::Lease(answer)),
+            Ok(Step::Go(Leased(answer))) => Ok(Some(answer)),
             Ok(Step::Stop) => {
                 self.let_go(&held).await;
-                Ok(Polled::Empty)
+                Ok(None)
             }
             Ok(Step::Park) => {
                 if let Err(fault) = self
@@ -73,7 +72,7 @@ impl LeaseService {
                     self.let_go(&held).await;
                     return Err(fault);
                 }
-                Ok(Polled::Empty)
+                Ok(None)
             }
             Err(fault) => {
                 self.let_go(&held).await;

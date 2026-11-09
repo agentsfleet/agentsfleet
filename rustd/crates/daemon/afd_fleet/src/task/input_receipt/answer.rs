@@ -5,6 +5,7 @@ use crate::{
     error::query,
     lease::{
         Leases,
+        obligation::ReplyDestination,
         verdict::{Terminal, Verdict},
     },
     task::{TaskRefusal, Tasks, guard::LeaseRow},
@@ -44,6 +45,34 @@ pub(super) async fn finish(
         return Ok(None);
     }
     let answer = rows.into_iter().flatten().collect::<Vec<_>>().join("\n\n");
+    let closed = complete_history(tasks, connection, current, input, &answer).await?;
+    let reply =
+        Leases::reply_destination(connection, &current.fleet_id, &input.source_admission_id)
+            .await?;
+    let owed = owe_reply(tasks, connection, current, input, &answer, reply.as_ref()).await?;
+    sqlx::query(include_str!("sql/settle_source.sql"))
+        .bind(crate::task::guard::wire(&input.source_admission_id)?)
+        .bind(&current.fleet_id)
+        .bind(&current.workspace_id)
+        .execute(connection)
+        .await
+        .map_err(query(
+            "settle an input only after every accepted item has its own reply",
+        ))?;
+    Ok(Some(Completion {
+        closed,
+        owed,
+        answer,
+    }))
+}
+
+async fn complete_history(
+    tasks: &Tasks,
+    connection: &mut PgConnection,
+    current: &LeaseRow,
+    input: &TaskInputReceiptInput,
+    answer: &str,
+) -> Result<Option<afd_events::Closed>> {
     let source: Source = sqlx::query_as(include_str!("sql/source.sql"))
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
         .bind(&current.fleet_id)
@@ -67,7 +96,7 @@ pub(super) async fn finish(
         .fetch_one(&mut *connection)
         .await
         .map_err(query("open accepted input history before completing it"))?;
-    let closed = tasks
+    tasks
         .leases
         .mark_terminal(
             connection,
@@ -75,17 +104,24 @@ pub(super) async fn finish(
             &crate::task::guard::wire(&input.source_admission_id)?,
             Terminal {
                 verdict: Verdict::Succeeded,
-                response_text: &answer,
+                response_text: answer,
                 tokens: 0,
                 wall_ms: 0,
                 tool_calls: None,
             },
         )
-        .await?;
-    let reply =
-        Leases::reply_destination(connection, &current.fleet_id, &input.source_admission_id)
-            .await?;
-    let owed = if let Some(reply) = &reply {
+        .await
+}
+
+async fn owe_reply(
+    tasks: &Tasks,
+    connection: &mut PgConnection,
+    current: &LeaseRow,
+    input: &TaskInputReceiptInput,
+    answer: &str,
+    reply: Option<&ReplyDestination>,
+) -> Result<Option<Uuid7>> {
+    let owed = if let Some(reply) = reply {
         tasks
             .leases
             .owe_delivery(
@@ -96,7 +132,7 @@ pub(super) async fn finish(
                     provider: reply.provider,
                     destination: &reply.address,
                     event_id: &crate::task::guard::wire(&input.source_admission_id)?,
-                    answer: &answer,
+                    answer,
                 },
                 clock::now(),
             )
@@ -104,20 +140,7 @@ pub(super) async fn finish(
     } else {
         None
     };
-    sqlx::query(include_str!("sql/settle_source.sql"))
-        .bind(crate::task::guard::wire(&input.source_admission_id)?)
-        .bind(&current.fleet_id)
-        .bind(&current.workspace_id)
-        .execute(connection)
-        .await
-        .map_err(query(
-            "settle an input only after every accepted item has its own reply",
-        ))?;
-    Ok(Some(Completion {
-        closed,
-        owed,
-        answer,
-    }))
+    Ok(owed)
 }
 
 impl Completion {

@@ -25,7 +25,7 @@ impl LeaseService {
             ))
             .map_err(af_core::json::Unreadable::from)
         };
-        match self
+        Ok(self
             .run_claimed_with(
                 acquired,
                 runner_id,
@@ -34,9 +34,6 @@ impl LeaseService {
                 &mut encode,
             )
             .await?
-        {
-            super::Polled::Lease(payload) => Ok(Some(payload?)),
-            super::Polled::Empty => Ok(None),
-        }
+            .transpose()?)
     }
 }

@@ -21,6 +21,9 @@ impl LeaseRun<'_> {
         fate: &Fate,
         settling: &Stopwatch<'_>,
     ) -> Result<()> {
+        self.decisions
+            .settle(&self.lessee.plane, &self.lessee.halt, &self.ids.lease)
+            .await?;
         let (memory, trace) = match ending {
             Ending::Ran { output, .. } => {
                 self.post_records(&mem::take(&mut output.records)).await;

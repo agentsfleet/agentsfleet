@@ -93,16 +93,38 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     };
     assert!(!delivered, "seeded work is still waiting");
     drop(connection);
+    assert_delivery_receipts(&database, &bus, &prefix, admission).await;
+    let delivered: bool =
+        sqlx::query_scalar("SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
+            .bind(admission)
+            .fetch_one(&mut *database.acquire().await.expect("connection"))
+            .await
+            .expect("durable delivery");
+    assert!(delivered);
+    sweep::everything(&database, &prefix)
+        .await
+        .expect("owned fixtures sweep");
+}
+
+async fn assert_delivery_receipts(
+    database: &afd_db::Db,
+    bus: &afd_bus::Handle,
+    prefix: &RunPrefix,
+    admission: &Uuid7,
+) {
     let runner = super::runner(
-        &database,
+        database,
         &prefix.name("proof-host"),
-        &placement_tag(&prefix),
+        &placement_tag(prefix),
         SEEDED_AT,
     )
     .await
     .expect("fixture runner");
-    let leases =
-        afd_fleet::lease::Leases::new(database.clone(), bus, af_crypto::entropy::Entropy::new());
+    let leases = afd_fleet::lease::Leases::new(
+        database.clone(),
+        bus.clone(),
+        af_crypto::entropy::Entropy::new(),
+    );
     let acquired = leases
         .select(&runner, &[])
         .await
@@ -119,14 +141,4 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
         .expect("repeat delivery");
     assert_eq!(first.delivery, afd_fleet::lease::Delivery::First);
     assert_eq!(again.delivery, afd_fleet::lease::Delivery::Repeat);
-    let delivered: bool =
-        sqlx::query_scalar("SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
-            .bind(admission)
-            .fetch_one(&mut *database.acquire().await.expect("connection"))
-            .await
-            .expect("durable delivery");
-    assert!(delivered);
-    sweep::everything(&database, &prefix)
-        .await
-        .expect("owned fixtures sweep");
 }

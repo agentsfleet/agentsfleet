@@ -3,6 +3,7 @@
 mod connect;
 mod dispatch;
 mod io;
+mod observation;
 pub(crate) mod pending;
 pub(crate) mod policy;
 mod reconnect;
@@ -19,6 +20,7 @@ use tokio::{
     time::Instant,
 };
 use tokio_util::sync::CancellationToken;
+use tracing::Instrument as _;
 
 use crate::{
     Result,
@@ -29,7 +31,7 @@ use crate::{
 };
 use connect::Connected;
 use dispatch::{Dispatch, Progress};
-use reconnect::{Preference, Resume};
+use reconnect::{Preference, Recovery, Resume};
 use running::{LeaseRegistration, Running};
 
 #[derive(Debug)]
@@ -95,13 +97,22 @@ impl Downlink {
         let (input, output) = Budget::duplex(af_stream::MemoryLimits::default());
         let mut resume = Resume::default();
         let mut preference = Preference::default();
-        let mut retries = crate::client::endless();
+        let mut retries = Recovery::new(crate::client::backoff());
+        let mut outage = observation::Outage::new();
         loop {
             if halt.serving().is_cancelled() {
                 return Ok(());
             }
+            let attempt = af_crypto::entropy::Entropy::new().uuid7(af_core::clock::now())?;
+            let span = tracing::info_span!(target: af_observability::semconv::RUNNER_SCOPE_NAME,
+                "runner.connection", attempt_id = %attempt, connection_id = tracing::field::Empty,
+                transport = tracing::field::Empty, recovery = tracing::field::Empty,
+                outcome = tracing::field::Empty, disconnected_seconds = tracing::field::Empty);
             let stop = halt.serving().child_token();
-            let deadline = Instant::now() + af_core::timing::STREAM_PING_INTERVAL;
+            let deadline = self
+                .handle
+                .renewing
+                .recovery_deadline(Instant::now() + af_core::timing::STREAM_RECOVERY_BUDGET);
             let opening = connect::Opening {
                 config: &self.config,
                 authorization: &self.authorization,
@@ -111,52 +122,84 @@ impl Downlink {
                 stop: &stop,
                 deadline,
             };
-            let opened = opening.open(&mut resume, &mut preference).await;
-            let result = match opened {
-                Ok(connection) => {
-                    retries = crate::client::endless();
-                    self.serve(connection, output.clone(), stop.clone()).await
-                }
-                Err(error) => Err(error),
-            };
-            stop.cancel();
-            self.current.send_replace(None);
+            let (result, connected_for) = self
+                .connection_attempt(&opening, &mut resume, &mut preference, &mut outage)
+                .instrument(span.clone())
+                .await;
             if halt.serving().is_cancelled() {
+                span.record("outcome", "stopped");
                 return Ok(());
             }
-            match result {
-                Ok(Progress::Halt(code)) => {
-                    self.running.cancel_all();
-                    let failure = ErrorKind::StreamRefused {
-                        code,
-                        retryable: false,
-                    }
-                    .into();
-                    if !halt.stops_on(&failure) {
-                        halt.stop();
-                    }
-                    return Err(failure);
-                }
-                Err(error) if !error.is_retryable() => {
-                    self.running.cancel_all();
-                    if !halt.stops_on(&error) {
-                        halt.stop();
-                    }
-                    return Err(error);
-                }
-                Err(error) => {
-                    let error_code = error.code().as_str();
-                    tracing::warn!(event = "runner_stream_reconnecting", error_code);
-                }
-                Ok(_) => {
-                    tracing::info!(event = "runner_stream_reconnecting", reason = "drain");
-                }
-            }
-            let Some(pause) = retries.next() else {
-                return Err(ErrorKind::StreamProtocol.into());
-            };
+            self.retry(halt, &span, &mut outage, result)?;
+            let pause = retries.after(connected_for)?;
             tokio::select! { () = halt.serving().cancelled() => return Ok(()), () = tokio::time::sleep(pause) => {} }
         }
+    }
+
+    fn retry(
+        &self,
+        halt: &Halt,
+        span: &tracing::Span,
+        outage: &mut observation::Outage,
+        result: Result<Progress>,
+    ) -> Result<()> {
+        outage.disconnected(span);
+        match result {
+            Ok(Progress::Halt(code)) => {
+                let failure = ErrorKind::StreamRefused {
+                    code,
+                    retryable: false,
+                }
+                .into();
+                Err(self.refuse(halt, span, failure))
+            }
+            Err(error) if !error.is_retryable() => Err(self.refuse(halt, span, error)),
+            Err(error) => {
+                let error_code = error.code().as_str();
+                span.record("outcome", "retrying");
+                span.in_scope(|| tracing::warn!(event = "runner_stream_reconnecting", error_code));
+                Ok(())
+            }
+            Ok(_) => {
+                span.record("outcome", "drain");
+                span.in_scope(|| {
+                    tracing::info!(event = "runner_stream_reconnecting", reason = "drain");
+                });
+                Ok(())
+            }
+        }
+    }
+
+    fn refuse(&self, halt: &Halt, span: &tracing::Span, failure: crate::Error) -> crate::Error {
+        span.record("outcome", "refused");
+        self.running.cancel_all();
+        if !halt.stops_on(&failure) {
+            halt.stop();
+        }
+        failure
+    }
+
+    async fn connection_attempt(
+        &self,
+        opening: &connect::Opening<'_>,
+        resume: &mut Resume,
+        preference: &mut Preference,
+        outage: &mut observation::Outage,
+    ) -> (Result<Progress>, Option<std::time::Duration>) {
+        let answer = match opening.open(resume, preference).await {
+            Ok(connection) => {
+                outage.connected(connection.connection.transport());
+                let opened_at = Instant::now();
+                let result = self
+                    .serve(connection, opening.output.clone(), opening.stop.clone())
+                    .await;
+                (result, Some(opened_at.elapsed()))
+            }
+            Err(error) => (Err(error), None),
+        };
+        opening.stop.cancel();
+        self.current.send_replace(None);
+        answer
     }
 
     async fn serve(
@@ -186,7 +229,7 @@ impl Downlink {
             &mut workers,
         );
         self.current.send_replace(Some(Arc::clone(&sender)));
-        workers.spawn(io::ping(self.handle.clone(), stop.clone()));
+        io::track(&mut workers, io::ping(self.handle.clone(), stop.clone()));
         let mut dispatch = Dispatch {
             requests: &requests,
             running: &self.running,
@@ -205,6 +248,18 @@ impl Downlink {
                 &stop,
             )
             .await;
+        self.finish(connection, workers, &requests, &stop, result)
+            .await
+    }
+
+    async fn finish(
+        &self,
+        connection: af_stream::Connection,
+        mut workers: JoinSet<Result<()>>,
+        requests: &pending::Requests,
+        stop: &CancellationToken,
+        result: Result<Progress>,
+    ) -> Result<Progress> {
         self.current.send_replace(None);
         stop.cancel();
         requests.close();
@@ -280,3 +335,6 @@ impl Downlink {
         }
     }
 }
+
+#[cfg(all(test, feature = "test-util"))]
+mod telemetry_tests;

@@ -136,7 +136,7 @@ pub(crate) async fn report(run: &Scenario, body: &Value) -> afr_supervisor::Resu
     Ok(serde_json::to_value(response).expect("the report response encodes"))
 }
 
-/// How many fleet ids a failed poll names before it stops listing them.
+/// How many unrelated fleet identifiers a missing-offer diagnostic names.
 const NAMED_ELSEWHERE: usize = 8;
 
 /// Why [`wait_for_offer`] came back empty-handed, from what it was handed.
@@ -184,27 +184,6 @@ where
     }
 }
 
-/// Asserts the answer carries no lease for the fleet under test.
-///
-/// Scoped to that fleet rather than asserting `lease: null`, because a lease
-/// for ANOTHER fleet is the shared lane rather than a defect: this database
-/// carries every earlier suite's fleets, and the reclaim sweeper re-marks any
-/// whose stream still holds work. A scenario's runner is placed only on its own
-/// tagged fleet and on fleets that require no tag, so such a lease is an
-/// untagged leftover. It takes one of the runner's worker slots and is left
-/// alone: handing it back would mean reporting an event this suite does not
-/// own, to a fleet another crate's suite may be waiting on.
-pub(crate) fn assert_no_lease_for_fleet_under_test(run: &Scenario, body: &Value) {
-    let Some(lease) = body.get("lease").filter(|value| !value.is_null()) else {
-        return;
-    };
-    assert_ne!(
-        field(field(lease, "event"), "fleet_id"),
-        &json!(run.fleet),
-        "the daemon must not hand out the work under test"
-    );
-}
-
 /// The report one completed run sends.
 ///
 /// A builder because both tests send the identical body and the replay case
@@ -239,12 +218,6 @@ pub(crate) async fn get(http: &reqwest::Client, run: &Scenario, path: &str) -> r
         .send()
         .await
         .expect("the booted daemon answers")
-}
-
-/// The claim body a fleet worker sends: it implements the fleet protocol only,
-/// and `accepted_kinds` is required on the claim.
-pub(crate) fn fleet_poll() -> Value {
-    json!({"accepted_kinds": af_wire::lease::AcceptedKinds::FLEET})
 }
 
 /// A `POST` carrying the scenario's runner credential and a JSON body.
@@ -291,4 +264,11 @@ pub(crate) async fn json(response: reqwest::Response) -> Value {
             String::from_utf8_lossy(&bytes)
         )
     })
+}
+
+/// Read an expected native response path; missing fields must fail the fixture.
+pub(crate) fn pointer<'a>(value: &'a Value, path: &str) -> &'a Value {
+    value
+        .pointer(path)
+        .unwrap_or_else(|| panic!("native response lacks {path}"))
 }

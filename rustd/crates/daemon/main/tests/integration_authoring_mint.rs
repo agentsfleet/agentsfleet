@@ -84,31 +84,7 @@ async fn authoring_lease_cannot_mint_a_runtime_credential_live_or_revoked() {
     let run = scenario(&mut supervisor).await;
     let http = client();
     let (attempt, authoring_lease, runtime_lease) = (mint_id(), mint_id(), mint_id());
-    let (creator, draft) = (mint_id(), mint_id());
-    let ids = [
-        &attempt,
-        &authoring_lease,
-        &run.runner_id,
-        &run.workspace,
-        &run.tenant,
-        &creator,
-        &draft,
-    ];
-    execute(&run, AUTHORING, &ids).await;
-    // The runtime lease executes an event of its own id.
-    FleetEventSeed::new(&run.fleet, &run.workspace, &runtime_lease, EVENT)
-        .insert(&mut *run.booted.database.acquire().await.expect("connection"))
-        .await
-        .expect("the runtime lease's event seeds");
-    let ids = [
-        &runtime_lease,
-        &run.runner_id,
-        &run.fleet,
-        &run.workspace,
-        &run.tenant,
-        &runtime_lease,
-    ];
-    execute(&run, RUNTIME, &ids).await;
+    seed_leases(&run, &attempt, &authoring_lease, &runtime_lease).await;
 
     let (status, control) = mint(&http, &run, runtime_lease.as_str()).await;
     // Past the lease lookup and stopped one gate later, at the grant.
@@ -168,28 +144,60 @@ async fn a_lease_id_that_is_not_an_identifier_is_a_bad_request_not_a_server_erro
             &json!(INVALID_REQUEST.as_str())
         );
     }
-    // The lease routes that once handed their path id to a `::uuid` cast:
-    // malformed is the caller's mistake, well-formed and unknown is hidden.
-    for (suffix, body) in [
-        ("renew", json!({})),
-        ("activity", json!({"frames": []})),
-        ("tool-calls", json!({"fencing_token": 7, "calls": []})),
+    // The retained tool-call route validates its identifier before looking up a lease.
+    for (lease, status, code) in [
+        ("x".to_owned(), 400, INVALID_REQUEST),
+        (mint_id().to_string(), 404, RUN_LEASE_NOT_FOUND),
     ] {
-        for (lease, status, code) in [
-            ("x".to_owned(), 400, INVALID_REQUEST),
-            (mint_id().to_string(), 404, RUN_LEASE_NOT_FOUND),
-        ] {
-            let path = format!("/v1/runners/me/leases/{lease}/{suffix}");
-            let response = post(&http, &run, &path, &body).await;
-            assert_eq!(response.status().as_u16(), status, "{suffix} {lease}");
-            let answer = json(response).await;
-            assert_eq!(
-                field(&answer, "error_code"),
-                &json!(code.as_str()),
-                "{suffix} {lease}"
-            );
-        }
+        let path = format!("/v1/runners/me/leases/{lease}/tool-calls");
+        let response = post(
+            &http,
+            &run,
+            &path,
+            &json!({"fencing_token": 7, "calls": []}),
+        )
+        .await;
+        assert_eq!(response.status().as_u16(), status, "tool-calls {lease}");
+        let answer = json(response).await;
+        assert_eq!(
+            field(&answer, "error_code"),
+            &json!(code.as_str()),
+            "tool-calls {lease}"
+        );
     }
     supervisor.shutdown().await;
     run.cleanup().await;
+}
+
+async fn seed_leases(
+    run: &Scenario,
+    attempt: &Uuid7,
+    authoring_lease: &Uuid7,
+    runtime_lease: &Uuid7,
+) {
+    let (creator, draft) = (mint_id(), mint_id());
+    let ids = [
+        attempt,
+        authoring_lease,
+        &run.runner_id,
+        &run.workspace,
+        &run.tenant,
+        &creator,
+        &draft,
+    ];
+    execute(run, AUTHORING, &ids).await;
+    // The runtime lease executes an event of its own id.
+    FleetEventSeed::new(&run.fleet, &run.workspace, runtime_lease, EVENT)
+        .insert(&mut *run.booted.database.acquire().await.expect("connection"))
+        .await
+        .expect("the runtime lease's event seeds");
+    let ids = [
+        runtime_lease,
+        &run.runner_id,
+        &run.fleet,
+        &run.workspace,
+        &run.tenant,
+        runtime_lease,
+    ];
+    execute(run, RUNTIME, &ids).await;
 }

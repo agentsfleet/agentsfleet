@@ -27,7 +27,14 @@ async fn exercise(mode: &'static str) {
     let mut server = server::Server::start(mode).await;
     let host = Host::new();
     let lease_id = af_core::id::Uuid7::parse(LEASE_ID).unwrap();
-    let verbs = FencedVerbs::new(&server.plane, &lease_id, FENCING, &host.halt, &host.stop);
+    let verbs = FencedVerbs::new(
+        &server.plane,
+        &lease_id,
+        FENCING,
+        &host.halt,
+        &host.stop,
+        &host.decisions,
+    );
     let model = model::Model::default();
     let engine = afr_agent::Loop::new(afr_tools::Catalog::new(vec![]), model.clone());
     let lease = fixture::lease();

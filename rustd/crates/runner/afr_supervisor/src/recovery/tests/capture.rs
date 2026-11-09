@@ -207,22 +207,7 @@ fn assert_captured_boundary(
     state: &Arc<Mutex<Archive>>,
     saved: &CheckpointPlan,
 ) {
-    let registration: Vec<CheckpointObjectsInput> = requests
-        .iter()
-        .filter(|call| call.verb == Verb::TaskCheckpointObjectsRegister)
-        .map(body)
-        .collect();
-    assert_eq!(registration.len(), 1);
-    assert_eq!(
-        registration.first().unwrap().objects.len(),
-        2,
-        "shared file bytes and history have separate identities"
-    );
-    assert!(
-        !requests
-            .iter()
-            .any(|call| call.verb == Verb::TaskCheckpointUploads)
-    );
+    assert_registered(requests);
     let state = state.lock().unwrap();
     let page = state.pages.get(PAGE).unwrap();
     let files: Vec<_> = page
@@ -295,4 +280,23 @@ fn acknowledgement_reply(call: &Call, archive: &mut Archive, fault: &str) -> Opt
         return Some(json(&saved));
     }
     None
+}
+
+fn assert_registered(requests: &[Call]) {
+    let registration: Vec<CheckpointObjectsInput> = requests
+        .iter()
+        .filter(|call| call.verb == Verb::TaskCheckpointObjectsRegister)
+        .map(body)
+        .collect();
+    assert_eq!(registration.len(), 1);
+    assert_eq!(
+        registration.first().unwrap().objects.len(),
+        2,
+        "shared file bytes and history have separate identities"
+    );
+    assert!(
+        !requests
+            .iter()
+            .any(|call| call.verb == Verb::TaskCheckpointUploads)
+    );
 }

@@ -33,14 +33,9 @@ async fn refuse_and_retry(at_commit: bool) {
     let (path, token, report) = finish_request(&mut case, &before).await;
     refuse_save(&case, &path, &token, &report, &item, at_commit).await;
     for _ in 0..2 {
-        let response = send(
-            &case.router,
-            Method::POST,
-            &path,
-            Some(&token),
-            &report.to_string(),
-        )
-        .await;
+        let response =
+            crate::harness::native::send(&case.router, &path, Some(&token), &report.to_string())
+                .await;
         assert_eq!(response.status(), StatusCode::OK);
     }
     assert_eq!(counts(&case).await, (1, 2, 1));
@@ -70,7 +65,7 @@ async fn counts(case: &Case) -> (i64, i64, i64) {
 
 async fn refuse_save(
     case: &Case,
-    path: &str,
+    path: &crate::harness::native::Operation,
     token: &str,
     report: &Value,
     item: &str,
@@ -81,14 +76,8 @@ async fn refuse_save(
     } else {
         Refusal::install(case.base.owner_url(), &case.base.workspace, "setup_saved").await
     };
-    let response = send(
-        &case.router,
-        Method::POST,
-        path,
-        Some(token),
-        &report.to_string(),
-    )
-    .await;
+    let response =
+        crate::harness::native::send(&case.router, path, Some(token), &report.to_string()).await;
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     fault.assert_fired_once().await;
     assert_eq!(counts(case).await, (0, 0, 0));

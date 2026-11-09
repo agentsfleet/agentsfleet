@@ -22,14 +22,13 @@ use afd_gate::gate::{Check, Gates};
 #[cfg(feature = "test-util")]
 mod claimed;
 mod held;
-mod poll;
 mod refuse;
+mod select;
 mod step;
 #[cfg(all(test, feature = "test-util"))]
 mod tests;
 
 pub(in crate::lease) use self::step::{Leased, Step, claim_lost};
-pub use poll::Polled;
 
 /// A finished event's redelivery was acknowledged and not executed.
 const EVENT_TERMINAL_SUPPRESSED: &str = "terminal_redelivery_suppressed";

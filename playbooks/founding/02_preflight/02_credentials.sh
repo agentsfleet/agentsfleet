@@ -167,6 +167,13 @@ check_port_ref() {
   fi
 }
 
+check_runner_stream() {
+  local vault="$1" field
+  for field in certificate-chain private-key ca-certificate server-name; do
+    check_ref "op://$vault/agentsfleet-runner-stream/$field"
+  done
+}
+
 check_prod() {
   local v="$vault_prod"
   echo "-- checking PROD vault: $v ($stage)"
@@ -200,6 +207,7 @@ check_prod() {
   check_ref "op://$v/fly-api-token/credential"
 
   if [ "$stage" = "deployment" ]; then
+    check_runner_stream "$v"
     # Browser callbacks bind workspace intent with this agentsfleet-owned
     # signing key. It is a Fly boot secret, not a provider app bag.
     check_ref "op://$v/approval-signing-secret/credential"
@@ -259,6 +267,7 @@ check_dev() {
   check_url_ref "op://$vault_prod/discord-ci-webhook/credential"
 
   if [ "$stage" = "deployment" ]; then
+    check_runner_stream "$v"
     check_ref "op://$v/approval-signing-secret/credential"
     check_ref "op://$v/planetscale-dev/api-connection-string"
     check_ref "op://$v/planetscale-dev/migrator-connection-string"

@@ -60,89 +60,10 @@ const fn deadline(renewed: &Renewed) -> Option<Timestamp> {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_renew_clamps_to_the_hard_ceiling() {
-    let Held {
-        fixtures,
-        leases,
-        runner,
-        issued,
-        fleet,
-        now,
-        lease_key,
-        pricing,
-        ..
-    } = held().await;
-    let lease = &issued.lease_id;
-
-    // An ordinary renewal, well inside the ceiling: the TTL arm wins. Renewal
-    // reads the database clock and stamps that instant as the meter's next
-    // start, so the deadline is stated against the stamp it wrote.
-    let early = extend(&leases, lease, &runner, (&lease_key, &pricing), now)
-        .await
-        .expect("the extend must reach the datastore");
-    let renewed_at = fixtures.metered_since(&fleet).await;
-    assert_eq!(
-        deadline(&early),
-        Some(af_core::clock::after(renewed_at, LEASE_TTL)),
-        "with hours of budget left, a renewal takes the full lease TTL"
-    );
-    assert_eq!(
-        fixtures
-            .instant(Row::Slot(&fleet), "lease_expires_at")
-            .await,
-        Some(af_core::clock::after(renewed_at, LEASE_TTL)),
-        "the SLOT moves with the lease — advancing one without the other is what \
-         gets a healthy run reclaimed mid-flight"
-    );
-
-    // The run has been going almost its whole budget: the ceiling now falls
-    // inside the TTL window of the database clock, so the ceiling arm wins.
-    let nearly_spent = MAX_RUNTIME.saturating_sub(LEASE_TTL / 2);
-    fixtures
-        .age(Row::Lease(lease), "created_at", nearly_spent)
-        .await;
-    let started = fixtures
-        .instant(Row::Lease(lease), "created_at")
-        .await
-        .expect("the lease row carries its start");
-    let ceiling = af_core::clock::after(started, MAX_RUNTIME);
-
-    let clamped = extend(&leases, lease, &runner, (&lease_key, &pricing), now)
-        .await
-        .expect("the extend must reach the datastore");
-    assert_eq!(
-        deadline(&clamped),
-        Some(ceiling),
-        "inside the last TTL of its budget, a run is given the remainder and not a fresh window"
-    );
-    assert_eq!(
-        fixtures
-            .instant(Row::Lease(lease), "lease_expires_at")
-            .await,
-        Some(ceiling),
-        "the clamped instant is what the row carries, so the runner's kill deadline is the real one"
-    );
-
-    // Past the ceiling by the database clock, the guard's `capped > now`
-    // fails and nothing moves.
-    fixtures
-        .age(Row::Lease(lease), "created_at", LEASE_TTL)
-        .await;
-    assert_eq!(
-        extend(&leases, lease, &runner, (&lease_key, &pricing), now)
-            .await
-            .expect("a capped renewal is an answer, not a fault"),
-        Renewed::MaxRuntime,
-        "past its ceiling a run cannot renew at all — it stops and reports"
-    );
-    assert_eq!(
-        fixtures
-            .instant(Row::Lease(lease), "lease_expires_at")
-            .await,
-        Some(ceiling),
-        "and the refused renewal advanced nothing"
-    );
-
-    fixtures.cleanup().await;
+    let held = held().await;
+    assert_full_ttl(&held).await;
+    assert_hard_ceiling(&held).await;
+    held.fixtures.cleanup().await;
 }
 
 /// Dimension 3.4b — a renewal for a lease that is no longer ours is LOST.
@@ -220,10 +141,7 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
     // refuse and this test asserting the wrong code for the right outcome.
     fixtures.seed_model_rate(PROVIDER, MODEL).await;
     let lease = &issued.lease_id;
-    let original = fixtures
-        .instant(Row::Lease(lease), "lease_expires_at")
-        .await
-        .expect("the issued lease has a deadline");
+    let original = issued_deadline(&fixtures, lease).await;
     let plane = fixtures.plane();
 
     // The pool runs dry mid-run. Nothing about the lease changes; the gate is
@@ -254,4 +172,109 @@ async fn test_renew_coverage_refuses_an_empty_wallet() {
     );
 
     fixtures.cleanup().await;
+}
+
+async fn issued_deadline(fixtures: &crate::support::Fixtures, lease: &Uuid7) -> Timestamp {
+    fixtures
+        .instant(Row::Lease(lease), "lease_expires_at")
+        .await
+        .expect("the issued lease has a deadline")
+}
+
+async fn assert_full_ttl(held: &Held) {
+    let fixtures = &held.fixtures;
+    let lease = &held.issued.lease_id;
+    let early = extend(
+        &held.leases,
+        lease,
+        &held.runner,
+        (&held.lease_key, &held.pricing),
+        held.now,
+    )
+    .await
+    .expect("the extend must reach the datastore");
+    let renewed_at = fixtures.metered_since(&held.fleet).await;
+    assert_eq!(
+        deadline(&early),
+        Some(af_core::clock::after(renewed_at, LEASE_TTL)),
+        "with hours of budget left, a renewal takes the full lease TTL"
+    );
+    assert_eq!(
+        fixtures
+            .instant(Row::Slot(&held.fleet), "lease_expires_at")
+            .await,
+        Some(af_core::clock::after(renewed_at, LEASE_TTL)),
+        "the SLOT moves with the lease — advancing one without the other is what \
+         gets a healthy run reclaimed mid-flight"
+    );
+}
+
+async fn assert_hard_ceiling(held: &Held) {
+    let fixtures = &held.fixtures;
+    let lease = &held.issued.lease_id;
+    // The run has been going almost its whole budget: the ceiling now falls
+    // inside the TTL window of the database clock, so the ceiling arm wins.
+    let nearly_spent = MAX_RUNTIME.saturating_sub(LEASE_TTL / 2);
+    fixtures
+        .age(Row::Lease(lease), "created_at", nearly_spent)
+        .await;
+    let started = fixtures
+        .instant(Row::Lease(lease), "created_at")
+        .await
+        .expect("the lease row carries its start");
+    let ceiling = af_core::clock::after(started, MAX_RUNTIME);
+
+    let clamped = extend(
+        &held.leases,
+        lease,
+        &held.runner,
+        (&held.lease_key, &held.pricing),
+        held.now,
+    )
+    .await
+    .expect("the extend must reach the datastore");
+    assert_eq!(
+        deadline(&clamped),
+        Some(ceiling),
+        "inside the last TTL of its budget, a run is given the remainder and not a fresh window"
+    );
+    assert_eq!(
+        fixtures
+            .instant(Row::Lease(lease), "lease_expires_at")
+            .await,
+        Some(ceiling),
+        "the clamped instant is what the row carries, so the runner's kill deadline is the real one"
+    );
+
+    assert_past_ceiling(held, ceiling).await;
+}
+
+async fn assert_past_ceiling(held: &Held, ceiling: Timestamp) {
+    let fixtures = &held.fixtures;
+    let lease = &held.issued.lease_id;
+    // Past the ceiling by the database clock, the guard's `capped > now`
+    // fails and nothing moves.
+    fixtures
+        .age(Row::Lease(lease), "created_at", LEASE_TTL)
+        .await;
+    assert_eq!(
+        extend(
+            &held.leases,
+            lease,
+            &held.runner,
+            (&held.lease_key, &held.pricing),
+            held.now
+        )
+        .await
+        .expect("a capped renewal is an answer, not a fault"),
+        Renewed::MaxRuntime,
+        "past its ceiling a run cannot renew at all — it stops and reports"
+    );
+    assert_eq!(
+        fixtures
+            .instant(Row::Lease(lease), "lease_expires_at")
+            .await,
+        Some(ceiling),
+        "and the refused renewal advanced nothing"
+    );
 }

@@ -56,6 +56,21 @@ impl ModelCalls {
         } else {
             Disposition::Stale
         };
+        let charged = self
+            .record_evaluation(&mut tx, prepared, evaluation, disposition)
+            .await?;
+        tx.commit().await.map_err(query(CONTEXT))?;
+        tracing::info!(event = "setup_edit_intent", dispatch_id = %prepared.request.call_id,
+            disposition = disposition.as_str(), usage_known = charged.is_some());
+        Ok(disposition)
+    }
+    async fn record_evaluation(
+        &self,
+        tx: &mut sqlx::PgConnection,
+        prepared: &Prepared,
+        evaluation: Evaluation,
+        disposition: Disposition,
+    ) -> Result<Option<i64>> {
         let usage = evaluation.usage.or_else(|| {
             (!evaluation.sent).then_some(DecisionUsage {
                 input_tokens: 0,
@@ -91,10 +106,7 @@ impl ModelCalls {
             )
             .await?;
         }
-        tx.commit().await.map_err(query(CONTEXT))?;
-        tracing::info!(event = "setup_edit_intent", dispatch_id = %prepared.request.call_id,
-            disposition = disposition.as_str(), usage_known = charged.is_some());
-        Ok(disposition)
+        Ok(charged)
     }
 }
 

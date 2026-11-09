@@ -159,11 +159,13 @@ fn assert_supervises_every_task(supervisor: &Supervisor) {
             agentsfleetd::sweepers::BILLING,
             agentsfleetd::inventory::BUS_SHUTDOWN,
             agentsfleetd::inventory::OUTBOUND_WORKER,
+            "runner_stream_scheduler",
+            "runner_stream_listener",
             agentsfleetd::serve::ACCEPT_LOOP,
             agentsfleetd::inventory::ANALYTICS_FLUSH,
         ],
-        "a booted daemon supervises its pump, its sweepers, outbound \
-         delivery, its accept loop and its analytics flush"
+        "a booted daemon supervises its pump, its sweepers, outbound delivery, \
+         its native scheduler and listener, its accept loop and its analytics flush"
     );
 }
 

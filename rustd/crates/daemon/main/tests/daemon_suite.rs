@@ -78,7 +78,7 @@ mod wire;
 
 #[path = "binary.rs"]
 mod binary;
-#[path = "cli.rs"]
+#[path = "cli/mod.rs"]
 mod cli;
 #[path = "daemon.rs"]
 mod daemon;
@@ -88,7 +88,7 @@ mod integration_cli;
 mod integration_cluster_outcomes;
 #[path = "integration_readyz.rs"]
 mod integration_readyz;
-#[path = "integration_runner_activity.rs"]
+#[path = "integration_runner_activity/mod.rs"]
 mod integration_runner_activity;
 #[path = "integration_runner_activity_call_id.rs"]
 mod integration_runner_activity_call_id;

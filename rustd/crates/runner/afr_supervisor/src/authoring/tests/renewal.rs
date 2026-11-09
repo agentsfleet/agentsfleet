@@ -184,3 +184,35 @@ async fn a_turn_that_reaches_its_attempt_end_reports_timed_out() {
     assert_eq!(report["outcome"], "timed_out");
     assert_eq!(report["failure_reason"], "attempt_timed_out");
 }
+
+#[tokio::test(start_paused = true)]
+async fn reconnect_uses_the_live_authoring_deadline_and_recovers_freely_after_expiry() {
+    let (plane, _calls) = plane(|_call| Answer::Stall);
+    let id = Uuid7::parse(super::LEASE).unwrap();
+    let slot = lease_until("1970-01-01T00:00:03Z", "1970-01-01T00:05:00Z");
+    let observed = Observed::new();
+    let wall = clock();
+    let started = Instant::now();
+    let observe = async {
+        assert_eq!(
+            plane
+                .stream
+                .renewing
+                .recovery_deadline(started + Duration::from_secs(7)),
+            started + Duration::from_secs(3)
+        );
+    };
+    let (ended, ()) = tokio::join!(
+        renew::keep(&plane, &id, &slot, wall.as_ref(), &observed),
+        observe
+    );
+    assert!(ended.is_err());
+    assert_eq!(started.elapsed(), Duration::from_secs(3));
+    assert_eq!(
+        plane
+            .stream
+            .renewing
+            .recovery_deadline(Instant::now() + Duration::from_secs(7)),
+        started + Duration::from_secs(10)
+    );
+}

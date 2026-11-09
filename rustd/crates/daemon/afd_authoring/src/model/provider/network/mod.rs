@@ -39,6 +39,14 @@ impl Network {
         })
     }
 
+    /// Supplies a test-owned TLS client for the separate setup decision boundary.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn with_test_decision_client(mut self, client: reqwest::Client) -> Self {
+        self.client = client;
+        self
+    }
+
     /// Directs provider HTTP to an explicit integration-test boundary.
     /// The guarded client used by decisions and GitHub remains unchanged.
     ///

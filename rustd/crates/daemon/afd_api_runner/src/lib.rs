@@ -25,9 +25,7 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
     match verb {
         RunnerRoute::SelfRecord => get(handler::runner::self_record::handle::<D>),
         RunnerRoute::Stream => post(handler::runner::stream::handle::<D>),
-        RunnerRoute::ContextCheckpoint => {
-            get(handler::runner::context::load::<D>).put(handler::runner::context::put::<D>)
-        }
+        RunnerRoute::ContextCheckpoint => context_checkpoint_handler::<D>(),
         RunnerRoute::TaskCheckpoints => post(handler::runner::task_checkpoints::plan::handle::<D>),
         RunnerRoute::TaskCheckpoint => {
             patch(handler::runner::task_checkpoints::commit::handle::<D>)
@@ -76,4 +74,8 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
 /// Returns the unauthenticated runner-enrolment handler.
 pub fn enrolment_handler<D: Services>() -> MethodRouter<Arc<D>> {
     post(handler::runner::enrolment::handle::<D>)
+}
+
+fn context_checkpoint_handler<D: Services>() -> MethodRouter<Arc<D>> {
+    get(handler::runner::context::load::<D>).put(handler::runner::context::put::<D>)
 }

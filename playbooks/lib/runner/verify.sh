@@ -19,8 +19,11 @@ verify_files_and_service() {
   runner_remote "
     set -e
     test \"\$(stat -c %a $HOST_ENV_FILE)\" = 600
+    test \"\$(stat -c %a $UNIT_ENV_FILE)\" = 600
     test -x $HOST_DEPLOY_DIR/deploy.sh
     test -x $INSTALL_DIR/$BINARY_NAME
+    test -r $UNIT_STREAM_CA_FILE
+    grep -q '^AGENTSFLEET_RUNNER_STREAM_URL=' $UNIT_ENV_FILE
     test -f $SYSTEMD_DIR/$SERVICE_NAME
     systemctl is-enabled --quiet $SERVICE_NAME
     test \"\$(systemctl is-active $SERVICE_NAME)\" = active
@@ -111,13 +114,54 @@ verify_control_plane() {
   return 1
 }
 
+# These probes open no authenticated session: verify the private route and
+# each hybrid TLS carrier; the existing heartbeat check proves framed traffic.
+verify_private_stream() {
+  [ "$ENV" = dev ] || return 0
+  runner_remote "getent ahosts agentsfleetd-dev.internal >/dev/null"
+  runner_remote "curl -sf -m $READYZ_TIMEOUT_SECONDS http://agentsfleetd-dev.internal:3000/readyz >/dev/null"
+  runner_require_native_tls
+  local carrier protocol
+  for carrier in h2 h3; do
+    protocol=-tls1_3
+    # OpenSSL rejects -quic combined with -tls1_3; QUIC already uses TLS 1.3.
+    [ "$carrier" != h3 ] || protocol=-quic
+    if ! runner_remote "
+      set -e
+      summary=\$(timeout $READYZ_TIMEOUT_SECONDS openssl s_client -brief -verify_return_error \
+        -verify_hostname agentsfleetd-dev.internal -servername agentsfleetd-dev.internal \
+        -CAfile '$UNIT_STREAM_CA_FILE' -groups X25519MLKEM768 \
+        $protocol -alpn $carrier -connect agentsfleetd-dev.internal:4443 </dev/null 2>&1)
+      printf '%s\\n' \"\$summary\" |
+        grep -E '^(CONNECTION ESTABLISHED|Protocol version:|Verification:|Negotiated TLS1.3 group:|Peer Temp Key:)'
+      printf '%s\\n' \"\$summary\" | grep -Fx 'CONNECTION ESTABLISHED' >/dev/null
+      printf '%s\\n' \"\$summary\" | grep -Fx 'Protocol version: TLSv1.3' >/dev/null
+      printf '%s\\n' \"\$summary\" | grep -Fx 'Verification: OK' >/dev/null
+      printf '%s\\n' \"\$summary\" |
+        grep -E '^(Negotiated TLS1.3 group:|Peer Temp Key:) X25519MLKEM768(,.*)?$' >/dev/null
+    "; then
+      echo "ERROR: private runner $carrier TLS/ALPN connection failed; check the route/listener and OpenSSL 3.5+ QUIC/hybrid support" >&2
+      return 1
+    fi
+    echo "  ✓ private runner $carrier: verified hybrid TLS, ALPN $carrier offered"
+  done
+}
+
 # The host's own token, proved against the control plane: `GET /v1/runners/me`
 # answers 200 only for a token the daemon accepts, and reading it moves no
 # liveness, so the check cannot mask a dead runner. The token never leaves the
 # host: the remote shell reads it from the unit's environment file, and curl's
 # error line names the status, never the header.
 verify_runner_identity() {
-  runner_remote "sudo sh -c 'set -a; . $UNIT_ENV_FILE; set +a; curl -fsS -o /dev/null -m $READYZ_TIMEOUT_SECONDS -H \"Authorization: Bearer \$AGENTSFLEET_RUNNER_TOKEN\" \"\$AGENTSFLEET_API_URL/v1/runners/me\"'"
+  runner_remote "
+    set -e
+    response=\$(sudo sh -c 'set -a; . $UNIT_ENV_FILE; set +a; curl -fsS -m $READYZ_TIMEOUT_SECONDS -H \"Authorization: Bearer \$AGENTSFLEET_RUNNER_TOKEN\" \"\$AGENTSFLEET_API_URL/v1/runners/me\"')
+    printf '%s\\n' \"\$response\" |
+      jq -e '.last_seen_at | sub(\"\\\\.[0-9]+Z$\"; \"Z\") | fromdateiso8601 | now - . | . >= -5 and . <= 20' >/dev/null
+  " || {
+    echo 'ERROR: runner authentication or recent native stream heartbeat verification failed' >&2
+    return 1
+  }
 }
 
 main() {
@@ -130,6 +174,7 @@ main() {
   verify_files_and_service
   verify_cgroup_controllers
   verify_control_plane
+  verify_private_stream
   verify_runner_identity
 
   echo "PASS: $RUNNER_ITEM is ready"

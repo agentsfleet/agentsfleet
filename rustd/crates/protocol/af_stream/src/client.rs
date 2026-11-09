@@ -161,7 +161,7 @@ impl Connection {
                     crate::h2::connect(endpoint, trust, stop.clone(), deadline).await?
                 }
                 Transport::H3 => {
-                    crate::h3::connect(endpoint, trust, stop.clone(), deadline).await?
+                    crate::h3::connect(endpoint, trust, parent, stop.clone(), deadline).await?
                 }
             };
             let _stop = guard.disarm();

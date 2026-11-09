@@ -114,12 +114,7 @@ impl Leases {
         let Some(capacity) = self.lock_host_capacity(&mut transaction, runner_id).await? else {
             return Ok(None);
         };
-        if !capacity.can_claim()
-            || acquired.leased_until <= capacity.now()
-            || self
-                .ticket()
-                .is_some_and(|ticket| !ticket.permits(capacity, LeaseKind::Fleet))
-        {
+        if !self.permits_issue(capacity, acquired) {
             return Ok(None);
         }
         let (lease_id, event_row_id) = self.mint(now)?;
@@ -170,6 +165,14 @@ impl Leases {
             expires_at,
             execution_deadline,
         }))
+    }
+
+    fn permits_issue(&self, capacity: afd_runner::capacity::Capacity, acquired: &Acquired) -> bool {
+        capacity.can_claim()
+            && acquired.leased_until > capacity.now()
+            && self
+                .ticket()
+                .is_none_or(|ticket| ticket.permits(capacity, LeaseKind::Fleet))
     }
 
     /// Draw the independent lease and audit identities.

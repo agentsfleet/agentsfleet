@@ -67,13 +67,7 @@ fn plane() -> ServingPlane {
         platform_admin_workspace: None,
         checkpoint_storage: None,
         identity_webhook_secret: None,
-        schedule: crate::plane::ScheduleConfig {
-            client: reqwest::Client::new(),
-            token: SecretString::new(String::new()),
-            destination: SCHEDULE_DESTINATION.to_owned(),
-            api_base: String::new(),
-            keys: None,
-        },
+        schedule: schedule(),
         analytics: Analytics::silent(),
         slack_api_base: String::new(),
         vendor_client: reqwest::Client::new(),
@@ -84,6 +78,16 @@ fn plane() -> ServingPlane {
             api_url: DEPLOYMENT.into(),
         },
     })
+}
+
+fn schedule() -> crate::plane::ScheduleConfig {
+    crate::plane::ScheduleConfig {
+        client: reqwest::Client::new(),
+        token: SecretString::new(String::new()),
+        destination: SCHEDULE_DESTINATION.to_owned(),
+        api_base: String::new(),
+        keys: None,
+    }
 }
 
 #[tokio::test]

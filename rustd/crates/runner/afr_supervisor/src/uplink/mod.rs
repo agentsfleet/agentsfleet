@@ -101,7 +101,15 @@ impl StreamHandle {
         tokio::select! {
             biased;
             () = session.stop.cancelled() => Err(ErrorKind::Disconnected.into()),
-            result = tokio::time::timeout_at(deadline, operation) => result?,
+            result = tokio::time::timeout_at(deadline, operation) => match result {
+                Ok(answer) => answer,
+                Err(timeout) => {
+                    // A missing answer invalidates this connection's delivery path.
+                    // Dropping an individual caller still only drops its registration.
+                    session.stop.cancel();
+                    Err(timeout.into())
+                }
+            },
         }
     }
 

@@ -87,9 +87,19 @@ pub(crate) async fn attach(
     {
         return Ok(None);
     }
+    attach_task(connection, acquired, lease, &task_id, revision).await
+}
+
+async fn attach_task(
+    connection: &mut PgConnection,
+    acquired: &Acquired,
+    lease: &Uuid7,
+    task_id: &Uuid7,
+    revision: Option<&crate::lease::installed::IssueRevision>,
+) -> Result<Option<(Option<TaskContext<'static>>, jiff::Timestamp)>> {
     let task = task_id.clone();
     let _locked: Option<String> = sqlx::query_scalar(super::sql::LOCK_TASK)
-        .bind(&task_id)
+        .bind(task_id)
         .bind(&acquired.fleet_id)
         .bind(&acquired.workspace_id)
         .fetch_optional(&mut *connection)
@@ -98,7 +108,7 @@ pub(crate) async fn attach(
     let deadline: Option<jiff_sqlx::Timestamp> =
         sqlx::query_scalar(include_str!("sql/issue_lease.sql"))
             .bind(lease)
-            .bind(&task_id)
+            .bind(task_id)
             .bind(TaskState::Ready.as_str())
             .bind(TaskState::Running.as_str())
             .bind(revision.and_then(|proof| proof.task_generation))

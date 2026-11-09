@@ -16,7 +16,7 @@ use afd_db::Db;
 use super::clients::Clients;
 use super::optional::announce_identity;
 use crate::error::BootFailure;
-use crate::plane::{ServingPlane, Shared};
+use crate::plane::Shared;
 use crate::preflight::BootConfig;
 use crate::supervisor::Supervisor;
 
@@ -54,6 +54,8 @@ pub(super) struct Runtime {
     pub(super) outbound_client: reqwest::Client,
 }
 
+mod plane;
+
 pub(super) async fn open_runtime(
     config: &BootConfig,
     analytics: &Analytics,
@@ -72,31 +74,18 @@ pub(super) async fn open_runtime(
     let bus = afd_bus::nats::connect(config.bus()).await?;
     let live = live_over(&bus, config.sse_max_streams());
     let observed = live.clone();
-    let plane = ServingPlane::new(crate::plane::PlaneParts {
-        authoring_transport,
-        database: database.clone(),
-        bus: bus.clone(),
-        runner_wake: config.runner_wake().clone(),
-        frame_memory: config.frame_memory(),
-        // Cloned rather than moved: the outbound worker below opens its own
-        // grant store over the same key, for the reason `crate::outbound`
-        // gives — it runs beside the plane, not through it.
-        kek: Arc::clone(&kek),
-        capabilities,
-        signup_writeback,
-        sessions,
-        platform_admin_workspace: config.platform_admin_workspace().cloned(),
-        checkpoint_storage: config.checkpoint_storage().cloned(),
-        identity_webhook_secret: identity_webhook_secret(config),
+    let plane = plane::build(plane::Inputs {
+        config,
+        analytics,
+        database: &database,
+        bus: &bus,
+        kek: &kek,
+        identity: (capabilities, sessions, signup_writeback),
         broker,
         live,
-        analytics: analytics.clone(),
-        // The same base the outbound worker posts answers to, so an interim
-        // line and the answer it precedes land in the same Slack.
-        slack_api_base: config.slack_api_base().to_owned(),
+        authoring_transport,
         vendor_client: clients.plane,
-        schedule: schedule_config(config, clients.schedule),
-        login: login_config(config),
+        schedule_client: clients.schedule,
     });
     #[cfg(feature = "test-util")]
     let plane = plane.with_connector_endpoint(config.connector_endpoint());

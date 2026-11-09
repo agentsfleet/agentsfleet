@@ -20,11 +20,12 @@ impl Turn<'_> {
         let mut messages = self.context()?;
         let mut activity_sequence = 1;
         let max_calls = u32::try_from(self.lease.limits.max_calls.min(8))
-            .map_err(|_negative| error::config("the authoring call allowance is invalid"))?;
+            .map_err(|source| error::boundary("the authoring call allowance is invalid", source))?;
         for call_index in 1..=max_calls {
             let meter = self.observed.snapshot()?;
-            let budget = u64::try_from(self.lease.limits.output_per_turn)
-                .map_err(|_negative| error::config("the authoring output allowance is invalid"))?;
+            let budget = u64::try_from(self.lease.limits.output_per_turn).map_err(|source| {
+                error::boundary("the authoring output allowance is invalid", source)
+            })?;
             let remaining = budget.saturating_sub(meter.output_tokens.unwrap_or(budget));
             if remaining == 0 {
                 break;
@@ -38,8 +39,11 @@ impl Turn<'_> {
                 request: ModelRequest {
                     supports_compaction: true,
                     messages: messages.clone(),
-                    max_output_tokens: u32::try_from(remaining).map_err(|_overflow| {
-                        error::config("the authoring output allowance exceeds the wire bound")
+                    max_output_tokens: u32::try_from(remaining).map_err(|source| {
+                        error::boundary(
+                            "the authoring output allowance exceeds the wire bound",
+                            source,
+                        )
                     })?,
                 },
             };

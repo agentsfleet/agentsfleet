@@ -1,5 +1,8 @@
 //! A fresh native dispatch permits one provider call; receipts precede usable answers.
 
+mod pending;
+pub(crate) use pending::PendingDecisions;
+
 use super::FencedVerbs;
 use crate::{Result, error};
 use af_core::id::Uuid7;
@@ -117,21 +120,11 @@ impl FencedVerbs<'_> {
         })
         .validate()?
         .into_inner();
-        // The result remains in this call's memory until PostgreSQL acknowledges it.
-        // Retrying this receipt never repeats the provider request.
-        let result = crate::report::delivery::until_acknowledged(self.halt, || async {
-            let result = self
-                .plane
-                .task_decision_record(self.lease_id, &call, &input)
-                .await?;
-            if result.call_id != call.as_str() {
-                return Err(error::config(
-                    "decision receipt acknowledgement names another call",
-                ));
-            }
-            Ok(Some(result))
-        })
-        .await?;
+        let input = self.decisions.retain(call.clone(), input)?;
+        let result = self
+            .decisions
+            .record(self.plane, self.halt, self.lease_id, &call, &input)
+            .await?;
         progress.phase = if result.state == DecisionCallState::Known {
             af_wire::activity::TaskActivityPhase::Recorded
         } else {

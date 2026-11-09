@@ -147,3 +147,37 @@ fn bounded_queue_keeps_recent_fleets_and_a_duplicate_still_advances_the_generati
     assert_eq!(remaining.last().cloned(), Some(newest));
     Ok(())
 }
+
+#[test]
+fn a_recovery_request_survives_unrelated_locality_hints()
+-> crate::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let wake = Wake::default();
+    assert!(wake.recovery().is_none());
+    wake.recheck();
+    let recovery = wake.recovery().ok_or("recovery generation missing")?;
+    let fleet = Uuid7::parse("0195b4ba-8d3a-7000-8000-000000000001")?;
+    wake.ring(fleet.clone());
+    assert_eq!(wake.take(), Some(fleet));
+    assert_eq!(wake.recovery(), Some(recovery));
+    wake.recovered(recovery);
+    assert!(wake.recovery().is_none());
+    Ok(())
+}
+
+#[test]
+fn an_old_claim_cannot_clear_a_newer_recovery_generation()
+-> crate::Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let wake = Wake::default();
+    wake.recheck();
+    let older = wake.recovery().ok_or("first recovery generation missing")?;
+    wake.recheck();
+    let newer = wake
+        .recovery()
+        .ok_or("second recovery generation missing")?;
+    assert_ne!(older, newer);
+    wake.recovered(older);
+    assert_eq!(wake.recovery(), Some(newer));
+    wake.recovered(newer);
+    assert!(wake.recovery().is_none());
+    Ok(())
+}

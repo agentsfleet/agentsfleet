@@ -42,11 +42,13 @@ KillMode=mixed
 
 # Required runner config — provisioned per host into the env file below by the
 # runner bootstrap playbook (never committed; the runner-token is a secret).
-# The environment carries ONLY the bootstrap trio; everything else (sandbox
+# The environment carries bootstrap and stream connection settings; everything else (sandbox
 # tier, network policy, registry allowlist, worker count) is ASSIGNED by the
 # control plane per runner and delivered with its identity — change it from
 # the dashboard, never from this file:
 #   AGENTSFLEET_API_URL       — agentsfleetd HTTPS API base, e.g. https://api.agentsfleet.net
+#   AGENTSFLEET_RUNNER_STREAM_URL — private HTTPS origin, e.g. https://agentsfleetd-prod.internal:4443
+#   AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE — public CA file installed by deployment
 #   AGENTSFLEET_RUNNER_TOKEN  — pre-minted `agt_r…` token (Option B): the platform
 #                          admin mints it via `POST /v1/runners` on the live
 #                          control plane and stores it in 1Password under

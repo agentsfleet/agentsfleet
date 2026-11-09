@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use af_wire::event::EventType;
@@ -49,7 +48,7 @@ pub(super) struct Staged {
     /// The fleets, one event each.
     pub(super) fleets: Vec<SeededFleet>,
     /// The runners that drain them.
-    pub(super) runners: Vec<Uuid7>,
+    pub(super) runners: Vec<super::super::seed::RunnerIdentity>,
     /// The key the platform credential is sealed under.
     kek: Arc<Kek>,
 }
@@ -87,7 +86,7 @@ pub(super) async fn stage(
     }
     for index in 0..parameters.runners {
         let host = prefix.name(&format!("{HOST_SUFFIX}-{index}"));
-        let runner = seed::runner(&stores.database, &host, &tag, SEEDED_AT).await?;
+        let runner = seed::runner_identity(&stores.database, &host, &tag, 1, SEEDED_AT).await?;
         staged.runners.push(runner);
         ledger.created(ROWS_PER_RUNNER);
     }
@@ -108,9 +107,20 @@ async fn fund(stores: &Datastores, fleets: &[SeededFleet]) -> Result<()> {
 }
 
 impl Staged {
-    /// The daemon's lease plane over the lane's pool and Bus.
-    pub(super) fn plane(&self, stores: &Datastores) -> LeaseService {
-        plane(stores, &self.kek)
+    /// One in-process gateway session per seeded runner, over the lane's pool and Bus.
+    pub(super) async fn sessions(
+        &self,
+        stores: &Datastores,
+    ) -> Result<Vec<afd_gateway::test_util::Session>> {
+        let (gateway, _) = super::session::gateway(stores, &self.kek)?;
+        let mut sessions = Vec::with_capacity(self.runners.len());
+        for runner in &self.runners {
+            sessions.push(
+                super::session::open(&gateway, runner, af_wire::lease::AcceptedKinds::FLEET, 1)
+                    .await?,
+            );
+        }
+        Ok(sessions)
     }
 }
 

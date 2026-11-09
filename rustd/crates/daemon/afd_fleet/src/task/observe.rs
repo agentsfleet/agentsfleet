@@ -74,3 +74,31 @@ fn failure(error: &Error) -> TaskOutcome {
         _ => TaskOutcome::Failed,
     }
 }
+
+/// Box the measured operation at the lifecycle boundary, where object-safe dispatch requires it.
+pub(super) fn call<'a, T: 'a>(
+    operation: TaskOperation,
+    work: impl Future<Output = Result<T>> + Send + 'a,
+) -> super::TaskFuture<'a, T> {
+    Box::pin(measure(operation, work, |_| TaskOutcome::Accepted))
+}
+
+/// Keep the operation's span attached for every poll, including cancellation and completion.
+pub(super) fn traced<'a, T: 'a>(
+    operation: TaskOperation,
+    work: impl Future<Output = Result<T>> + Send + 'a,
+    success: impl FnOnce(&T) -> TaskOutcome + Send + 'a,
+    span: tracing::Span,
+) -> super::TaskFuture<'a, T> {
+    use tracing::Instrument as _;
+    Box::pin(measure(operation, work, success).instrument(span))
+}
+
+/// Record an accepted successful result while retaining its original operation span.
+pub(super) fn trace<'a, T: 'a>(
+    operation: TaskOperation,
+    work: impl Future<Output = Result<T>> + Send + 'a,
+    span: tracing::Span,
+) -> super::TaskFuture<'a, T> {
+    traced(operation, work, |_| TaskOutcome::Accepted, span)
+}

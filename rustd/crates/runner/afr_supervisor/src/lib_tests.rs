@@ -56,3 +56,50 @@ async fn an_unreachable_daemon_is_retried_until_shutdown() {
     })
     .await;
 }
+
+#[tokio::test]
+async fn shutdown_during_a_blackholed_handshake_finishes_cleanly() {
+    bounded(
+        "shutdown during a handshake",
+        Box::pin(async {
+            let blackhole = tokio::net::UdpSocket::bind("127.0.0.1:0").await.unwrap();
+            let origin = format!(
+                "https://127.0.0.1:{}",
+                blackhole.local_addr().unwrap().port()
+            );
+            let root = tempfile::tempdir().unwrap();
+            let env = af_core::env::MapEnv::from_pairs([
+                (crate::config::ENV_API_URL, "http://127.0.0.1:1"),
+                (crate::config::ENV_STREAM_URL, origin.as_str()),
+                (crate::config::ENV_RUNNER_TOKEN, "agt_r_fixture"),
+                (
+                    crate::config::ENV_STORAGE_HOME,
+                    root.path().to_str().unwrap(),
+                ),
+            ]);
+            let (config, home) = crate::boot(&env).unwrap();
+            let shutdown = CancellationToken::new();
+            let cancel = async {
+                let mut packet = [0; 2048];
+                blackhole.recv(&mut packet).await.unwrap();
+                shutdown.cancel();
+            };
+            let (result, ()) = tokio::join!(
+                run(
+                    &config,
+                    home,
+                    Box::new(FakeEngine::default()),
+                    Box::new(FakeAgent::new(Behaviour::Answer)),
+                    probe(),
+                    shutdown.clone()
+                ),
+                cancel
+            );
+            assert!(
+                result.is_ok(),
+                "caller shutdown during a native handshake must succeed: {result:?}"
+            );
+        }),
+    )
+    .await;
+}

@@ -49,6 +49,7 @@ mod records;
 mod recovery;
 mod renew;
 mod report;
+mod shutdown;
 mod storage_home;
 mod turns;
 mod uplink;
@@ -123,6 +124,10 @@ pub fn boot(env: &impl EnvSource) -> Result<(Config, StorageHome)> {
 
 /// Runs the supervisor against the configured daemon until `shutdown`, or
 /// until the daemon says stop.
+///
+/// Caller shutdown retains accepted work and memory-only delivery for
+/// [`af_core::timing::LEASE_TTL`], then stops remaining work. Process exit
+/// after that grace can lose reports or usage that the daemon has not acknowledged.
 ///
 /// # Errors
 /// A client that cannot be built, or a daemon that refused this runner's
@@ -210,13 +215,22 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         halt: Halt::new(shutdown),
         whoami: Whoami::default(),
     });
+    serve_composed(lessee, downlink, offers, &probe).await
+}
+
+async fn serve_composed(
+    lessee: Arc<Lessee>,
+    downlink: downlink::Downlink,
+    offers: tokio::sync::mpsc::Receiver<downlink::Offered>,
+    probe: &HostProbe,
+) -> Result<()> {
     let (assignment, watching) = watch::channel(Assignment::initial());
-    let heartbeat = Heartbeat::new(&lessee.plane, &probe, &lessee.holds)
-        .keep_beating(&assignment, &lessee.halt);
+    let heartbeat =
+        Heartbeat::new(&lessee.plane, probe, &lessee.holds).keep_beating(&assignment, &lessee.halt);
     let pool = worker_pool::serve(Arc::clone(&lessee), watching, offers);
-    let duties = async {
+    let duties = shutdown::finish(&lessee.halt, async {
         tokio::join!(heartbeat, pool);
-    };
+    });
     tokio::pin!(duties);
     // The connection remains available while accepted workers finish and their reports settle.
     let session_stop = CancellationToken::new();
@@ -249,3 +263,6 @@ pub(crate) fn byte_count(len: usize) -> u64 {
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "test-util"))]
+mod native_flow_tests;
