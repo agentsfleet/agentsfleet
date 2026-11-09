@@ -20,6 +20,7 @@ mod tuning;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use af_core::error_code::{Coded as _, Logged};
 use async_nats::{Client, ConnectOptions};
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -41,6 +42,30 @@ const GAP_ALL: &str = "af.bus.gap";
 /// `UZ-STARTUP-004` when no seed answers within the connect deadline or the
 /// server fails the boot check.
 pub async fn connect(config: &Config) -> Result<Handle> {
+    let seeds = config.seeds.len();
+    let timeout_ms = config.tuning().connect_timeout().as_millis();
+    tracing::info!(seeds, timeout_ms, event = "bus_connect_started");
+    let started = Instant::now();
+    let outcome = connect_inner(config).await;
+    let duration_ms = started.elapsed().as_millis();
+    match &outcome {
+        Ok(_bus) => tracing::info!(seeds, duration_ms, event = "bus_connect_completed"),
+        Err(failure) => {
+            let Logged { error_code, reason } = failure.logged();
+            tracing::warn!(
+                seeds,
+                duration_ms,
+                error_code,
+                reason,
+                event = "bus_connect_failed"
+            );
+        }
+    }
+    outcome
+}
+
+/// The connect itself, so [`connect`] logs one outcome on every exit path.
+async fn connect_inner(config: &Config) -> Result<Handle> {
     let tuning = config.tuning();
     let signals = Arc::new(Signals::new(tuning));
     let observer = Arc::clone(&signals);

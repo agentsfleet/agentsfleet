@@ -59,6 +59,10 @@ impl Signals {
     pub(super) fn observe(&self, event: &Event, now: Instant) {
         match event {
             Event::Disconnected => {
+                // Publishes fail fast from here until the reconnect's markers
+                // are paid, so an operator sees why before the gaps arrive.
+                let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+                tracing::warn!(event = "bus_disconnected", error_code);
                 self.blocked.store(true, Ordering::Release);
                 self.down.store(true, Ordering::Release);
                 self.debt().disconnected(now);
@@ -111,7 +115,13 @@ pub(super) fn gap(channels: &hub::Channels, cause: Cause) -> usize {
     let subscriptions = channels.gap_all();
     producers::bus::gaps(cause, u64::try_from(subscriptions).unwrap_or(u64::MAX));
     let cause_label = cause.as_str();
-    tracing::warn!(event = "bus_gap_sent", cause = cause_label, subscriptions);
+    let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+    tracing::warn!(
+        event = "bus_gap_sent",
+        error_code,
+        cause = cause_label,
+        subscriptions
+    );
     subscriptions
 }
 

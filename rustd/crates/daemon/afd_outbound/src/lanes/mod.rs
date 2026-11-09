@@ -300,7 +300,14 @@ impl<S: Deliver + 'static> Inner<S> {
     fn lapsed(job: &Claimed, write: &'static str) {
         let provider = job.provider.as_str();
         let fleet_id = job.fleet_id.as_str();
-        tracing::warn!(provider, fleet_id, write, event = EVENT_CLAIM_LAPSED);
+        let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        tracing::warn!(
+            error_code,
+            provider,
+            fleet_id,
+            write,
+            event = EVENT_CLAIM_LAPSED
+        );
     }
 
     async fn count_cycle(&self, job: &Claimed) -> Option<i64> {
