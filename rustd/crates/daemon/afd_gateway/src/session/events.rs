@@ -1,12 +1,13 @@
 //! Typed event selection is separate from session decisions, following Exonum's handler pattern.
 
+use super::offers::OfferTrigger;
 use super::{io::IncomingFrame, streams::StreamReceivers, supervisor::SessionSupervisor};
 use crate::{Result, error::ErrorKind};
 use af_wire::protocol::StreamKind;
 use afd_bus::Command;
 use std::ops::ControlFlow;
 use tokio::{
-    sync::mpsc,
+    sync::{mpsc, oneshot},
     task::{JoinError, JoinSet},
 };
 
@@ -15,7 +16,7 @@ pub(super) enum SessionEvent {
     Frame(IncomingFrame),
     Completed(OperationCompletion),
     Command(Command),
-    OfferRequested,
+    OfferRequested(OfferTrigger),
     DrainRequested,
     Superseded,
     Disconnected,
@@ -42,6 +43,7 @@ pub(super) trait EventHandler {
 pub(super) struct EventSource {
     pub(super) frames: StreamReceivers,
     pub(super) commands: mpsc::Receiver<Command>,
+    pub(super) claims: mpsc::Receiver<oneshot::Sender<bool>>,
 }
 
 impl EventSource {
@@ -64,7 +66,10 @@ impl EventSource {
             }
             () = handle.rechecks.notified(), if !session.command_running => Ok(SessionEvent::Command(Command::Recheck)),
             frame = self.frames.control.recv(), if session.slots.available(StreamKind::Control) => frame_event(frame),
-            () = handle.offers.notified(), if !session.offer_running => Ok(SessionEvent::OfferRequested),
+            claim = self.claims.recv(), if !session.offer_running => {
+                Ok(SessionEvent::OfferRequested(OfferTrigger::Pass(claim.ok_or(ErrorKind::Closed)?)))
+            }
+            () = handle.offers.notified(), if !session.offer_running => Ok(SessionEvent::OfferRequested(OfferTrigger::Ready)),
             frame = self.frames.reports.recv(), if session.slots.available(StreamKind::Reports) => frame_event(frame),
             frame = self.frames.work.recv(), if session.slots.available(StreamKind::Work) => frame_event(frame),
             frame = self.frames.activity.recv() => frame_event(frame),

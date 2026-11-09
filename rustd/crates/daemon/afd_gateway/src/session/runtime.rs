@@ -26,7 +26,8 @@ impl ConfirmedSession {
     /// Registration and the admission permit live until every supervised task has joined.
     async fn run(mut self) -> Result<()> {
         let (commands_tx, commands_rx) = mpsc::channel(PENDING_MAX);
-        let handle = Arc::new(self.handle(commands_tx));
+        let (claims_tx, claims_rx) = mpsc::channel(1);
+        let handle = Arc::new(self.handle(commands_tx, claims_tx));
         let _registration = self
             .gateway
             .inner
@@ -48,42 +49,14 @@ impl ConfirmedSession {
             deadline: self.deadline,
         };
         let mut streams = SessionStreams::attach(self.io, self.attachments, setup).await?;
-        let services = Arc::new(SessionServices {
-            gateway: self.gateway.clone(),
-            handle: Arc::clone(&handle),
-            leases: self
-                .gateway
-                .inner
-                .dependencies
-                .leases
-                .clone()
-                .for_connection(self.authority.clone()),
-            drafts: self
-                .gateway
-                .inner
-                .dependencies
-                .drafts
-                .clone()
-                .for_connection(self.authority.clone()),
-            models: self
-                .gateway
-                .inner
-                .dependencies
-                .models
-                .clone()
-                .for_connection(self.authority.clone()),
-            creations: self
-                .gateway
-                .inner
-                .dependencies
-                .creations
-                .clone()
-                .for_connection(self.authority.clone()),
-            authority: self.authority,
-            cache: self.cache,
-            output: streams.writers,
-            accepted: self.hello.accepted,
-        });
+        let services = Arc::new(SessionServices::connected(
+            self.gateway.clone(),
+            Arc::clone(&handle),
+            self.authority,
+            self.cache,
+            streams.writers,
+            self.hello.accepted,
+        ));
         reconcile(&services, &self.hello.running).await?;
         streams
             .workers
@@ -92,6 +65,7 @@ impl ConfirmedSession {
         let mut events = EventSource {
             frames: streams.frames,
             commands: commands_rx,
+            claims: claims_rx,
         };
         let result = supervisor
             .run(&mut events, &mut streams.workers, &streams.read_stop)
@@ -103,7 +77,11 @@ impl ConfirmedSession {
         result
     }
 
-    fn handle(&self, commands: mpsc::Sender<afd_bus::Command>) -> SessionHandle {
+    fn handle(
+        &self,
+        commands: mpsc::Sender<afd_bus::Command>,
+        claims: mpsc::Sender<tokio::sync::oneshot::Sender<bool>>,
+    ) -> SessionHandle {
         SessionHandle {
             runner: self.runner.id().clone(),
             connection: self.authority.connection().clone(),
@@ -111,6 +89,7 @@ impl ConfirmedSession {
             drain: CancellationToken::new(),
             superseded: CancellationToken::new(),
             offers: Notify::new(),
+            claims,
             rechecks: Notify::new(),
             commands,
             snapshot: parking_lot::Mutex::new(SchedulingState {
@@ -149,6 +128,43 @@ impl ConfirmedSession {
         )
         .await?;
         Ok(())
+    }
+}
+
+impl SessionServices {
+    fn connected(
+        gateway: crate::Gateway,
+        handle: Arc<SessionHandle>,
+        authority: afd_runner::capacity::authority::Authority,
+        cache: super::cache::LeaseCache,
+        output: super::StreamWriters,
+        accepted: af_wire::lease::AcceptedKinds,
+    ) -> Self {
+        let dependencies = &gateway.inner.dependencies;
+        Self {
+            leases: dependencies
+                .leases
+                .clone()
+                .for_connection(authority.clone()),
+            drafts: dependencies
+                .drafts
+                .clone()
+                .for_connection(authority.clone()),
+            models: dependencies
+                .models
+                .clone()
+                .for_connection(authority.clone()),
+            creations: dependencies
+                .creations
+                .clone()
+                .for_connection(authority.clone()),
+            authority,
+            cache,
+            output,
+            accepted,
+            handle,
+            gateway,
+        }
     }
 }
 

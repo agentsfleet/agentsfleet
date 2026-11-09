@@ -7,6 +7,7 @@ mod dispatch;
 mod events;
 mod io;
 mod offer;
+mod offers;
 mod opening;
 mod requests;
 mod runtime;
@@ -22,7 +23,7 @@ use afd_runner::capacity::authority::{Authority, Prepared};
 use afd_sse::StreamPermit;
 use parking_lot::Mutex;
 use tokio::{
-    sync::{Notify, mpsc},
+    sync::{Notify, mpsc, oneshot},
     time::Instant,
 };
 use tokio_util::sync::CancellationToken;
@@ -56,16 +57,17 @@ impl SchedulingState {
         credits: usize,
         revision: NonZeroU64,
         observed_offers: u64,
-    ) -> crate::Result<()> {
+    ) -> crate::Result<bool> {
         if self
             .ready_revision
             .is_some_and(|current| revision <= current)
         {
-            return Ok(());
+            return Ok(false);
         }
         if observed_offers < self.offers_seen || observed_offers > self.offers_sent {
             return Err(crate::error::ErrorKind::Protocol.into());
         }
+        let previous = if self.ready { self.credits } else { 0 };
         let unseen = self.offers_sent - observed_offers;
         // The comparison proves any subsequent narrowing fits the supplied usize capacity.
         self.credits = if unseen >= credits as u64 {
@@ -76,7 +78,7 @@ impl SchedulingState {
         self.offers_seen = observed_offers;
         self.ready_revision = Some(revision);
         self.ready = true;
-        Ok(())
+        Ok(self.credits > previous)
     }
 
     fn issued(&mut self) -> crate::Result<()> {
@@ -85,6 +87,7 @@ impl SchedulingState {
             .checked_add(1)
             .ok_or(crate::error::ErrorKind::Protocol)?;
         self.credits = self.credits.saturating_sub(1);
+        self.last_offer = Instant::now();
         Ok(())
     }
 }
@@ -99,6 +102,7 @@ pub(crate) struct SessionHandle {
     pub(crate) drain: CancellationToken,
     superseded: CancellationToken,
     offers: Notify,
+    claims: mpsc::Sender<oneshot::Sender<bool>>,
     rechecks: Notify,
     commands: mpsc::Sender<afd_bus::Command>,
 }
@@ -112,12 +116,15 @@ impl SessionHandle {
     }
 
     pub(crate) fn request_offer(&self) {
-        self.snapshot.lock().last_offer = Instant::now();
         self.offers.notify_one();
     }
 
     pub(crate) fn supersede(&self) {
         self.superseded.cancel();
+    }
+
+    pub(crate) fn is_superseded(&self) -> bool {
+        self.superseded.is_cancelled()
     }
 }
 
@@ -184,8 +191,16 @@ mod credits_tests;
 #[cfg(test)]
 impl SessionHandle {
     pub(crate) fn fixture(runner: Uuid7, connection: Uuid7) -> Arc<Self> {
+        Self::fixture_with_claims(runner, connection).0
+    }
+
+    pub(crate) fn fixture_with_claims(
+        runner: Uuid7,
+        connection: Uuid7,
+    ) -> (Arc<Self>, mpsc::Receiver<oneshot::Sender<bool>>) {
         let (commands, _) = mpsc::channel(1);
-        Arc::new(Self {
+        let (claims, requests) = mpsc::channel(1);
+        let session = Arc::new(Self {
             runner,
             connection,
             snapshot: Mutex::new(SchedulingState {
@@ -202,12 +217,10 @@ impl SessionHandle {
             drain: CancellationToken::new(),
             superseded: CancellationToken::new(),
             offers: Notify::new(),
+            claims,
             rechecks: Notify::new(),
             commands,
-        })
-    }
-
-    pub(crate) fn is_superseded(&self) -> bool {
-        self.superseded.is_cancelled()
+        });
+        (session, requests)
     }
 }

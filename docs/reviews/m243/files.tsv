@@ -381,7 +381,9 @@ CREATE	rustd/crates/daemon/afd_gateway/src/operation.rs	absent	Typed runner sess
 CREATE	rustd/crates/daemon/afd_gateway/src/registry/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
 CREATE	rustd/crates/daemon/afd_gateway/src/registry/tests.rs	absent	Native runner source, fixture migration, review correction or context-save evidence
 CREATE	rustd/crates/daemon/afd_gateway/src/scheduler/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
-CREATE	rustd/crates/daemon/afd_gateway/src/scheduler/recovery.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/scheduler/recovery/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/scheduler/recovery/tests.rs	absent	Replica probe clock and real session queue dispatch under paused time
+CREATE	rustd/crates/daemon/afd_gateway/src/scheduler/tests.rs	absent	Bounded issuance passes; coalescing; locality; empty and uncertain outcomes
 CREATE	rustd/crates/daemon/afd_gateway/src/scheduler/subscriptions.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
 CREATE	rustd/crates/daemon/afd_gateway/src/service.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
 CREATE	rustd/crates/daemon/afd_gateway/src/session/cache/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
@@ -400,6 +402,7 @@ CREATE	rustd/crates/daemon/afd_gateway/src/session/events.rs	absent	Typed runner
 CREATE	rustd/crates/daemon/afd_gateway/src/session/io.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
 CREATE	rustd/crates/daemon/afd_gateway/src/session/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
 CREATE	rustd/crates/daemon/afd_gateway/src/session/offer.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
+CREATE	rustd/crates/daemon/afd_gateway/src/session/offers.rs	absent	Bounded scheduler claim requests and one-shot outcomes owned by the native session
 CREATE	rustd/crates/daemon/afd_gateway/src/session/opening/confirmation.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
 CREATE	rustd/crates/daemon/afd_gateway/src/session/opening/control.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint
 CREATE	rustd/crates/daemon/afd_gateway/src/session/opening/mod.rs	absent	Typed runner session ownership, bounded effects, durable cache, and recovery; unverified source checkpoint

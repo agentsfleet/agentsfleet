@@ -48,11 +48,14 @@ impl SessionServices {
                 revision,
                 observed_offers,
             } => {
-                self.handle
-                    .snapshot
-                    .lock()
-                    .availability(credits, revision, observed_offers)?;
-                self.handle.request_offer();
+                let increased =
+                    self.handle
+                        .snapshot
+                        .lock()
+                        .availability(credits, revision, observed_offers)?;
+                if increased {
+                    self.handle.request_offer();
+                }
             }
             Up::AuthoringModel {
                 request_id,

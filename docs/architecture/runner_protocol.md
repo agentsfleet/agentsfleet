@@ -266,6 +266,15 @@ The recovery probe runs once per replica every five seconds, independently of no
 It asks whether any pending work merits a claim pass, covering lost disposable notifications.
 Subscription retries do not create additional database passes for the same outage.
 
+The scheduler in `afd_gateway/src/scheduler/mod.rs` owns one notification pass at a time.
+A pass spends one lease per wake generation, walks locality-first candidates in waiting order and advances to the next host after an empty claim.
+Wakes received during a pass form one subsequent pass.
+Each claim returns through the session's bounded request queue, so the scheduler observes the outcome before spending another lease.
+
+An uncertain claim outcome ends that pass, because the transaction may already have issued its lease.
+Only newly available worker capacity or recovery from degraded status starts an independent session pass.
+Successful issue updates waiting order; empty notifications and unchanged heartbeat capacity do not.
+
 ## Rust boundaries and file owners
 
 Indy approved implementation and continuation to one pull request on Nov 08, 2026.
@@ -283,7 +292,7 @@ New dependencies land with their first production callers.
 | Dragonfly bus adapter | `rustd/crates/daemon/afd_bus/src/dragonfly/mod.rs` |
 | Wake notifications | `rustd/crates/daemon/afd_bus/src/wake/mod.rs` |
 | Gateway composition and errors | `rustd/crates/daemon/afd_gateway/src/lib.rs`, `error/mod.rs` |
-| Session registry and offer passes | `rustd/crates/daemon/afd_gateway/src/registry/mod.rs`, `scheduler/mod.rs`, `scheduler/recovery.rs`, `scheduler/subscriptions.rs` |
+| Session registry and offer passes | `rustd/crates/daemon/afd_gateway/src/registry/mod.rs`, `scheduler/mod.rs`, `scheduler/recovery/mod.rs`, `scheduler/subscriptions.rs` |
 | Session opening, messages and authority checks | `rustd/crates/daemon/afd_gateway/src/session/mod.rs`, `opening/mod.rs`, `opening/`, `runtime.rs`, `events.rs`, `supervisor.rs`, `dispatch/` |
 | Shared framing and byte budgets | `rustd/crates/protocol/af_stream/src/framing/mod.rs`, `reader.rs`, `writer.rs`, `encoder.rs`, `budget.rs`, `memory.rs` |
 | Native HTTP/2 transport | `rustd/crates/protocol/af_stream/src/h2/mod.rs`, `client.rs`, `server.rs` |
