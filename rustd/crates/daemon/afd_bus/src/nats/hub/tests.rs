@@ -5,7 +5,7 @@ use async_nats::HeaderMap;
 use bytes::Bytes;
 use tokio::sync::oneshot;
 
-use super::{Channels, Delivery, GAP_HEADER, GAP_VALUE, classify};
+use super::{Channels, Delivery, GAP_HEADER, GAP_VALUE, Pump, classify};
 use crate::{Message, Received, Subject};
 
 type TestResult = Result<(), Box<dyn std::error::Error + Send + Sync>>;
@@ -82,7 +82,7 @@ fn a_payload_that_is_not_utf8_is_dropped() -> TestResult {
 async fn readers_share_one_channel_and_one_payload() -> TestResult {
     let channels = Arc::new(Channels::new(8));
     let first = channels.open(PHYSICAL);
-    let (sender, _) = first.pump.ok_or("the first reader opens the channel")?;
+    let Pump { sender, .. } = first.pump.ok_or("the first reader opens the channel")?;
     let second = channels.open(PHYSICAL);
     assert!(second.pump.is_none(), "the second reader joins");
     assert_eq!(channels.readers(PHYSICAL), 2);
@@ -104,7 +104,11 @@ async fn readers_share_one_channel_and_one_payload() -> TestResult {
 async fn the_last_reader_stops_the_pump() -> TestResult {
     let channels = Arc::new(Channels::new(8));
     let opened = channels.open(PHYSICAL);
-    let (_sender, generation) = opened.pump.ok_or("opened")?;
+    let Pump {
+        sender: _sender,
+        generation,
+        ..
+    } = opened.pump.ok_or("opened")?;
     let (pump, mut stopped) = pending_pump();
     channels.started(PHYSICAL, generation, pump);
     let joined = channels.open(PHYSICAL).reader;
@@ -129,7 +133,11 @@ async fn the_last_reader_stops_the_pump() -> TestResult {
 async fn a_pump_started_after_its_readers_left_stops_at_once() -> TestResult {
     let channels = Arc::new(Channels::new(8));
     let opened = channels.open(PHYSICAL);
-    let (_sender, generation) = opened.pump.ok_or("opened")?;
+    let Pump {
+        sender: _sender,
+        generation,
+        ..
+    } = opened.pump.ok_or("opened")?;
     drop(opened.reader);
     let (pump, stopped) = pending_pump();
     channels.started(PHYSICAL, generation, pump);
@@ -158,7 +166,7 @@ async fn a_gap_reaches_every_reader_of_every_subject() -> TestResult {
 async fn a_slow_reader_is_told_how_many_it_lost() -> TestResult {
     let channels = Arc::new(Channels::new(4));
     let opened = channels.open(PHYSICAL);
-    let (sender, _) = opened.pump.ok_or("opened")?;
+    let Pump { sender, .. } = opened.pump.ok_or("opened")?;
     let mut reader = opened.reader;
     for _ in 0..6 {
         sender.send(Delivery::Gap)?;
@@ -172,7 +180,9 @@ async fn a_slow_reader_is_told_how_many_it_lost() -> TestResult {
 async fn an_ended_pump_closes_its_readers_and_a_new_reader_reopens() -> TestResult {
     let channels = Arc::new(Channels::new(8));
     let opened = channels.open(PHYSICAL);
-    let (sender, generation) = opened.pump.ok_or("opened")?;
+    let Pump {
+        sender, generation, ..
+    } = opened.pump.ok_or("opened")?;
     let mut subscription = opened.reader.into_subscription();
     channels.ended(PHYSICAL, generation);
     drop(sender);
@@ -184,7 +194,9 @@ async fn an_ended_pump_closes_its_readers_and_a_new_reader_reopens() -> TestResu
         return Err("a closed subscription stays closed".into());
     };
     let reopened = channels.open(PHYSICAL);
-    let (_, next) = reopened.pump.ok_or("a fresh channel needs a fresh pump")?;
+    let Pump {
+        generation: next, ..
+    } = reopened.pump.ok_or("a fresh channel needs a fresh pump")?;
     assert_ne!(next, generation);
     channels.ended(PHYSICAL, generation);
     assert_eq!(
@@ -199,7 +211,7 @@ async fn an_ended_pump_closes_its_readers_and_a_new_reader_reopens() -> TestResu
 fn a_stale_reader_leaves_the_reopened_channel_alone() -> TestResult {
     let channels = Arc::new(Channels::new(8));
     let first = channels.open(PHYSICAL);
-    let (_, generation) = first.pump.ok_or("opened")?;
+    let Pump { generation, .. } = first.pump.ok_or("opened")?;
     channels.ended(PHYSICAL, generation);
     let second = channels.open(PHYSICAL);
     assert!(
@@ -221,7 +233,9 @@ fn a_stale_reader_leaves_the_reopened_channel_alone() -> TestResult {
 async fn close_ends_every_channel() -> TestResult {
     let channels = Arc::new(Channels::new(8));
     let opened = channels.open(PHYSICAL);
-    let (sender, generation) = opened.pump.ok_or("opened")?;
+    let Pump {
+        sender, generation, ..
+    } = opened.pump.ok_or("opened")?;
     let (pump, _stopped) = pending_pump();
     channels.started(PHYSICAL, generation, pump);
     let pumps = channels.close();
@@ -269,5 +283,64 @@ fn concurrent_openers_make_exactly_one_pump() -> TestResult {
     assert_eq!(channels.readers(PHYSICAL), OPENERS);
     drop(readers);
     assert_eq!(channels.readers(PHYSICAL), 0);
+    Ok(())
+}
+
+#[tokio::test]
+async fn joiners_wait_for_the_openers_subscription_then_all_pass() -> TestResult {
+    const JOINERS: usize = 16;
+    let channels = Arc::new(Channels::new(8));
+    let opened = channels.open(PHYSICAL);
+    let pump = opened.pump.ok_or("the first reader opens the channel")?;
+    let barrier = Arc::new(tokio::sync::Barrier::new(JOINERS + 1));
+    let mut joiners = tokio::task::JoinSet::new();
+    for _ in 0..JOINERS {
+        let channels = Arc::clone(&channels);
+        let barrier = Arc::clone(&barrier);
+        joiners.spawn(async move {
+            barrier.wait().await;
+            let mut joined = channels.open(PHYSICAL);
+            let queued = joined.subscribed.wait_for(|queued| *queued).await.is_ok();
+            (joined.pump.is_none() && queued, joined.reader)
+        });
+    }
+    barrier.wait().await;
+    while channels.readers(PHYSICAL) < JOINERS + 1 {
+        tokio::task::yield_now().await;
+    }
+    assert!(
+        joiners.try_join_next().is_none(),
+        "every joiner waits while the subscription is unqueued"
+    );
+    pump.subscribed.send_replace(true);
+    let mut readers = Vec::new();
+    while let Some(joined) = joiners.join_next().await {
+        let (passed, reader) = joined?;
+        assert!(
+            passed,
+            "each joiner shares the channel and passes once it is queued"
+        );
+        readers.push(reader);
+    }
+    assert_eq!(readers.len(), JOINERS);
+    drop(pump);
+    let mut late = channels.open(PHYSICAL);
+    late.subscribed.wait_for(|queued| *queued).await?;
+    Ok(())
+}
+
+#[tokio::test]
+async fn joiners_fail_when_their_opener_gives_up() -> TestResult {
+    let channels = Arc::new(Channels::new(8));
+    let opened = channels.open(PHYSICAL);
+    let mut first = channels.open(PHYSICAL);
+    let mut second = channels.open(PHYSICAL);
+    drop(opened.pump);
+    for joined in [&mut first, &mut second] {
+        let Err(source) = joined.subscribed.wait_for(|queued| *queued).await else {
+            return Err("a joiner whose opener gave up must fail".into());
+        };
+        assert_eq!(crate::Error::from(source).reason(), "backend");
+    }
     Ok(())
 }

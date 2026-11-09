@@ -1,9 +1,11 @@
 //! One native subscription per subject, fanned out to every local reader.
 //!
 //! The first reader of a subject subscribes natively and starts its pump; every
-//! later reader gets a broadcast receiver on the same channel. The last reader's
-//! drop aborts the pump, and dropping the native subscriber unsubscribes it. A
-//! gap reaches every reader of a subject at once, so a backfill closes it.
+//! later reader gets a broadcast receiver on the same channel, and waits until
+//! the first reader's subscription is queued on the connection. The last
+//! reader's drop aborts the pump, and dropping the native subscriber
+//! unsubscribes it. A gap reaches every reader of a subject at once, so a
+//! backfill closes it.
 
 use std::{
     collections::HashMap,
@@ -12,7 +14,10 @@ use std::{
 
 use async_nats::Subscriber;
 use futures_util::StreamExt as _;
-use tokio::{sync::broadcast, task::JoinHandle};
+use tokio::{
+    sync::{broadcast, watch},
+    task::JoinHandle,
+};
 
 use crate::{Message, Received, Result, Subject, Subscription, error::ErrorKind};
 
@@ -55,6 +60,7 @@ struct Channel {
     readers: usize,
     generation: u64,
     pump: Option<JoinHandle<()>>,
+    subscribed: watch::Receiver<bool>,
 }
 
 #[derive(Debug, Default)]
@@ -80,13 +86,27 @@ pub(super) struct Reader {
     receiver: broadcast::Receiver<Delivery>,
 }
 
-/// A new channel's sender, for its pump.
+/// What the first reader of a subject needs to start its channel.
+#[derive(Debug)]
+pub(super) struct Pump {
+    /// What the pump publishes through.
+    pub(super) sender: broadcast::Sender<Delivery>,
+    /// The channel this pump belongs to.
+    pub(super) generation: u64,
+    /// Raised once the native subscription is queued on the connection.
+    /// Dropping it unraised fails every reader still waiting on it.
+    pub(super) subscribed: watch::Sender<bool>,
+}
+
+/// A reader's place on a channel, and the pump when it opened the channel.
 #[derive(Debug)]
 pub(super) struct Opened {
     /// The reader that asked.
     pub(super) reader: Reader,
-    /// The pump's sender and generation; `None` when the subject already had one.
-    pub(super) pump: Option<(broadcast::Sender<Delivery>, u64)>,
+    /// `None` when the subject already had a pump.
+    pub(super) pump: Option<Pump>,
+    /// True once the channel's native subscription is queued on the connection.
+    pub(super) subscribed: watch::Receiver<bool>,
 }
 
 impl Channels {
@@ -114,29 +134,41 @@ impl Channels {
     }
 
     /// Join a subject, or open it when this is its first reader. The opener
-    /// receives the sender its pump publishes through.
+    /// receives the pump half; every reader receives the subscribed signal.
     #[must_use]
     pub(super) fn open(self: &Arc<Self>, physical: &str) -> Opened {
         let mut state = self.lock();
         if let Some(channel) = state.channels.get_mut(physical) {
             channel.readers += 1;
             let reader = self.reader(physical, channel);
-            return Opened { reader, pump: None };
+            let subscribed = channel.subscribed.clone();
+            return Opened {
+                reader,
+                pump: None,
+                subscribed,
+            };
         }
         state.next_generation += 1;
         let generation = state.next_generation;
         let (sender, _) = broadcast::channel(self.capacity);
+        let (raise, subscribed) = watch::channel(false);
         let channel = Channel {
             sender: sender.clone(),
             readers: 1,
             generation,
             pump: None,
+            subscribed: subscribed.clone(),
         };
         let reader = self.reader(physical, &channel);
         state.channels.insert(physical.to_owned(), channel);
         Opened {
             reader,
-            pump: Some((sender, generation)),
+            pump: Some(Pump {
+                sender,
+                generation,
+                subscribed: raise,
+            }),
+            subscribed,
         }
     }
 

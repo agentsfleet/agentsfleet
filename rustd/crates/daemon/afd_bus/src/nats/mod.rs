@@ -195,28 +195,43 @@ impl Bus for Adapter {
         let live = self.live.read().await;
         let live = live.as_ref().ok_or(ErrorKind::Closed)?;
         let physical = self.physical(subject);
-        let opened = live.channels.open(&physical);
-        if let Some((sender, generation)) = opened.pump {
+        let hub::Opened {
+            reader,
+            pump,
+            mut subscribed,
+        } = live.channels.open(&physical);
+        if let Some(pump) = pump {
             let native = match live.client.subscribe(physical.clone()).await {
                 Ok(native) => native,
                 Err(source) => {
-                    live.channels.ended(&physical, generation);
+                    live.channels.ended(&physical, pump.generation);
                     return Err(source.into());
                 }
             };
             let task = tokio::spawn(hub::pump(
                 native,
-                sender,
+                pump.sender,
                 subject.clone(),
                 Arc::clone(&live.channels),
                 physical.clone(),
-                generation,
+                pump.generation,
             ));
-            live.channels.started(&physical, generation, task);
+            live.channels.started(&physical, pump.generation, task);
+            pump.subscribed.send_replace(true);
         }
-        // The server holds the interest once the flush returns.
-        tokio::time::timeout(self.deadline, live.client.flush()).await??;
-        Ok(opened.reader.into_subscription())
+        // The client writes commands in order, and `flush` returns once they
+        // leave the socket, not once the server answers: every reader returns
+        // with the channel's subscription on the wire. A joiner waits for its
+        // opener to queue it; an opener that fails or is cancelled drops the
+        // signal, and its joiners fail. The interest reaches the cluster after
+        // this returns, which is why a live stream backfills once subscribed.
+        tokio::time::timeout(self.deadline, async {
+            subscribed.wait_for(|queued| *queued).await?;
+            live.client.flush().await?;
+            Ok::<_, crate::Error>(())
+        })
+        .await??;
+        Ok(reader.into_subscription())
     }
 
     async fn connected(&self) -> bool {
