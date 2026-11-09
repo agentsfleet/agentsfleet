@@ -89,6 +89,7 @@ async fn test_readyz_is_red_and_says_which_dependency() {
 /// every signal the bus carries, so the outage costs latency only.
 #[tokio::test]
 async fn test_readyz_stays_green_and_reports_a_red_bus() {
+    let capture = af_core::test_util::trace::Capture::install();
     let degraded = send(
         Method::GET,
         "/readyz",
@@ -104,6 +105,12 @@ async fn test_readyz_stays_green_and_reports_a_red_bus() {
     assert_eq!(body["ready"], true);
     assert_eq!(body["database"], true);
     assert_eq!(body["queue"], false, "the outage is still visible");
+    let logged = capture.only("bus_unavailable_at_readyz");
+    assert_eq!(logged.level, tracing::Level::WARN, "an operator sees it");
+    assert_eq!(
+        logged.field("error_code"),
+        Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+    );
 }
 
 /// Only the database gates readiness.

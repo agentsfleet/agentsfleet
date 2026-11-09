@@ -110,6 +110,9 @@ async fn reconnect_gaps_every_subscription() -> TestResult {
 #[test]
 #[ignore = "needs live NATS: make test-integration-rustd"]
 fn slow_consumer_gaps_every_subscription_on_the_client() -> TestResult {
+    let metrics = af_observability::test_util::Capture::install();
+    let slow_gaps = || metrics.sum("agentsfleet_bus_gaps_total", &[("cause", "slow_consumer")]);
+    let counted = slow_gaps();
     let seeds = seeds()?;
     let ns = namespace();
     let node = seeds.first().ok_or("node 1")?.clone();
@@ -166,6 +169,10 @@ fn slow_consumer_gaps_every_subscription_on_the_client() -> TestResult {
         }
         assert!(saw_gap, "the held subscription is told it lost frames");
         assert_eq!(next(&mut quiet).await?, Received::Gap, "so is every other");
+        assert!(
+            slow_gaps() - counted >= 2,
+            "each subscription on the client counts as told"
+        );
         subscriber.shutdown().await?;
         Ok(())
     })
@@ -201,6 +208,9 @@ async fn failed_publish_sends_a_gap_marker_on_reconnect() -> TestResult {
 #[tokio::test]
 #[ignore = "needs live NATS: make test-integration-rustd"]
 async fn an_overflowing_debt_gaps_every_hub_through_the_broadcast() -> TestResult {
+    let metrics = af_observability::test_util::Capture::install();
+    let debt_gaps = || metrics.sum("agentsfleet_bus_gaps_total", &[("cause", "publish_debt")]);
+    let counted = debt_gaps();
     let seeds = seeds()?;
     let ns = namespace();
     let first = seeds.first().ok_or("node 1")?;
@@ -223,6 +233,10 @@ async fn an_overflowing_debt_gaps_every_hub_through_the_broadcast() -> TestResul
     assert!(
         before.contains(&Received::Gap),
         "a subject the publisher never named still gaps: {before:?}"
+    );
+    assert!(
+        debt_gaps() - counted >= 1,
+        "the subscriber's hub counts the broadcast gap"
     );
     publisher.shutdown().await?;
     subscriber.shutdown().await?;
