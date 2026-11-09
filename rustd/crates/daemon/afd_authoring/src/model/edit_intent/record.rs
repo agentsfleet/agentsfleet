@@ -26,7 +26,11 @@ impl ModelCalls {
     ) -> Result<Disposition> {
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let fresh = match guard::publication(&mut tx, runner, lease, counters).await {
+        let fresh = match self
+            .drafts
+            .publication(&mut tx, runner, lease, counters)
+            .await
+        {
             Ok(current) => {
                 current.draft.candidate_revision == prepared.candidate_revision
                     && afd_runner::decision_assignment_on(&mut tx, runner)

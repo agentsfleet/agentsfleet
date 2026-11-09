@@ -56,7 +56,9 @@ Postgres holds cancellation markers and connection ownership, so a lost publish 
 Pub/sub moves behind `afd_bus::Bus`, with Dragonfly as its first implementation and NATS added by M244.
 
 The gateway claims work when a notification arrives or credits rise.
-The poll, held heartbeat, per-flush activity posts and six retired routes are deleted.
+The poll, held heartbeat, per-flush activity posts and ten retired routes are deleted.
+The Nov 09 authoring correction also moves model calls, proposals, renewal and completion onto this native session.
+Postgres retains saved results and accounting; unacknowledged runner reports remain only in memory.
 Connection failures, fallback, disconnected duration and recovery are measured and traced.
 
 **Design flow:**
@@ -384,6 +386,18 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
   - up: `hello{request_id, accepted_kinds, running[lease_id], credits}`, `ready{credits}`, `heartbeat{request_id, HeartbeatRequest without wake}`, `ping{request_id}`, `renew_batch{request_id, leases[{lease_id, RenewRequest}]}` (`Up::RenewBatch`), `activity{lease_id, frames}`, `report{request_id, ReportRequest}`, `folds{request_id, lease_id, FoldRequest}`.
   - down: `welcome{request_id, connection_id, heartbeat_interval_ms}`, `offer{TaggedLease}`, `heartbeat{request_id, HeartbeatResponse without woken}`, `pong{request_id}`, `renewed{request_id, leases[{lease_id, RenewResponse | refusal}]}`, `report_ack{request_id, lease_id, ReportResponse | refusal}`, `folded{request_id, lease_id, FoldResponse | refusal}`, `cancel{lease_id, error_code}`, `go_away{error_code?}`. Every answerable up message carries the same positive request identifier; ready and activity need no reply.
 
+The Nov 09 authoring correction adds four correlated exchanges, each carrying `request_id`, `lease_id` and its current operation body.
+Work carries `authoring_model` / `authoring_model_result` and `authoring_activity` / `authoring_activity_ack`.
+Control carries `authoring_renew` / `authoring_renewed`; reports carries `authoring_report` / `authoring_report_ack`.
+
+Each authoring mutation checks the current connection owner and credential under the host lock.
+The provider receipt checks authority again after physical HTTP finishes, retaining known usage while withholding fenced private output.
+Accepted provider work stays tracked after a native disconnect, bounded by the original operation deadline and daemon shutdown.
+
+The same native-session integration cases check saved model results, proposal receipt identity, renewal alongside blocked model HTTP and completion replay.
+Further cases cover lost replies, changed replay content, private deletion, pending accounting, credential replacement and connection fencing.
+These cases remain unverified until the code-completion review is finished and integration verification resumes.
+
 ```
 ↑ {"type":"hello","accepted_kinds":["fleet","authoring"],"running":[],"credits":4}
 ↓ {"type":"welcome","heartbeat_interval_ms":10000}
@@ -395,7 +409,7 @@ The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives
 - **Schema:** `runner.leases.cancel_requested_at TIMESTAMPTZ(3) NULL`; `runner.runners.connection_id UUID NULL`, with a UUIDv7 check when set.
 - **Error codes:** UZ-RUN-021 "Runner stream superseded" (409); UZ-RUN-022 "Lease cancelled" (409); UZ-RUN-023 "Runner protocol unsupported" (400).
 - **Timing** (`af_core/src/timing.rs`): `STREAM_PING_INTERVAL` 15 s; `STREAM_ANSWER_TIMEOUT` 5 s; `RECONNECT_JITTER_MAX` 2 s; `STREAM_RECOVERY_BUDGET` 7 s, comprising HTTP/3 setup 2 s, HTTP/2 setup 2 s and opening/rebuild 3 s; `STREAM_STABLE_RESET_AFTER` 60 s; `OFFER_FALLBACK_TICK` 5 s; `PROXY_IDLE_FLOOR` 60 s. Assert `RENEWAL_TICK + STREAM_ANSWER_TIMEOUT + RECONNECT_JITTER_MAX + STREAM_RECOVERY_BUDGET < LEASE_TTL − RENEWAL_WINDOW`. Preserve the ping, heartbeat, fallback and drain relations; cap every recovery attempt by the lease's remaining safe lifetime.
-- **Removed:** the six routes in §7, and `retry_after_ms` with `LeaseResponse`.
+- **Removed:** the six routes in §7, the four authoring lease routes, and `retry_after_ms` with `LeaseResponse`.
 
 ## Failure Modes
 
@@ -486,8 +500,7 @@ Schema this milestone leaves with no runtime reader or writer is removed from it
 
 - One statement per host renewal: M245. Each lease keeps its own renewal statements here.
 - The NATS implementation behind `afd_bus`: M244.
-- The authoring lease's per-lease routes (renew, activity, model calls, reports): they stay HTTP with per-request auth. Authoring leases still arrive as offers.
-  - A pause that cancels a running lease: pause keeps today's behaviour.
+- A pause that cancels a running lease: pause keeps today's behaviour.
 - Aiming a ring at one eligible runner: an empty pass still costs one claim per session with credits, as each ring costs today, counted by `agentsfleet_runner_offer_claims_total`. Not planned until that count matters.
 - Customer-runner trust (M246) and the lapsed-host respawn signal (M247).
 - Deployment changes without a concrete reviewed patch. Private Fly routing needs deployment evidence; a hosted public ingress deployment is outside M243.

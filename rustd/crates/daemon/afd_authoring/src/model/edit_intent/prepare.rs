@@ -24,7 +24,10 @@ impl ModelCalls {
     ) -> Result<Option<Prepared>> {
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let guarded = guard::publication(&mut tx, runner, lease, counters).await?;
+        let guarded = self
+            .drafts
+            .publication(&mut tx, runner, lease, counters)
+            .await?;
         let prepared = self.edit_inputs(&mut tx, runner, request, &guarded).await;
         let prepared = match prepared {
             Ok(prepared) => Some(prepared),

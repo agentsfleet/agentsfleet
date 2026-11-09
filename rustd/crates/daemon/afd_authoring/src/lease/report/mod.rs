@@ -47,9 +47,11 @@ impl Drafts {
             .await
             .map_err(query(CONTEXT))?;
         let mut owed = Owed::default();
-        let private = prepare::publication(&mut tx, runner, lease, &prepared, &mut owed).await?;
-        let attempt = guard::accounting(&mut tx, runner, lease, &prepared.counters).await?;
-        self.check_connection(&mut tx, runner).await?;
+        let private =
+            prepare::publication(self, &mut tx, runner, lease, &prepared, &mut owed).await?;
+        let attempt = self
+            .accounting(&mut tx, runner, lease, &prepared.counters)
+            .await?;
         let ack = match receipt::find(&mut tx, &attempt, &prepared).await? {
             Some(saved) if saved.settled => saved,
             Some(saved) => {

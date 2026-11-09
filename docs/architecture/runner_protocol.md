@@ -154,11 +154,24 @@ A secondary stream must match that context, its current session and its declared
 
 The server rejects duplicate streams, missing context, another connection's identifier, cancelled bindings and secondary bearer-token authentication.
 One session reserves one `StreamPermit` from the shared `StreamLimit`, covering all four streams.
-Closing the native connection cancels all four requests and their pending operations.
+Closing the native connection cancels all four requests and their pending replies.
+An accepted authoring model call remains tracked by the daemon until its bounded provider operation records a receipt.
+Disconnecting cannot discard known usage or authorize another physical model dispatch.
 
-The control stream carries hello, preparation, confirmation, welcome, credits, heartbeat, ping, renewal, cancellation and drain.
-The work stream carries offers and folded-input requests and answers.
-The reports stream carries reports and their acknowledgements; the activity stream carries activity without acknowledgements.
+The control stream carries hello, preparation, confirmation, welcome, credits, heartbeat, ping, renewal, authoring renewal, cancellation and drain.
+The work stream carries offers, folded-input requests and answers, authoring model calls and results, and authoring proposals with their receipts.
+The reports stream carries fleet and authoring reports and their acknowledgements; the activity stream carries fleet activity without acknowledgements.
+
+Authoring uses the same connection authority as fleet work.
+Model dispatch, proposal receipt replay, renewal and completion check the current owner and credential under the host lock.
+The daemon checks that authority again before publishing provider output or saving a private model result.
+A fenced result retains authoritative usage while withholding private text and its provider continuation.
+
+Postgres owns model results, proposal receipts, completion acknowledgements and billing lines.
+The runner retains only unacknowledged requests and reports in memory.
+A retry uses the original dispatch, activity or report identity; changed content is refused.
+Unresolved accounting keeps the worker occupied until authoritative provider usage permits settlement.
+Content-free accounting replay remains available after private draft deletion.
 
 Wrong-stream messages are protocol errors.
 

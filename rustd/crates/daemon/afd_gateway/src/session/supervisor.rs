@@ -71,11 +71,21 @@ impl SessionSupervisor {
         };
         let services = Arc::clone(&self.services);
         let requests = Arc::clone(&self.requests);
-        self.jobs.spawn(async move {
+        let work = frame.kind == StreamKind::Work;
+        let gateway = services.gateway.clone();
+        let request = async move {
             let _permit = permit;
             services.dispatch(frame, &requests).await?;
             Ok(OperationCompletion::Request)
-        });
+        };
+        if work {
+            // A physical provider call must finish its receipt after the session closes.
+            // The tracked request retains its frame charge, slot and request registration.
+            let owner = gateway.inner.tasks.spawn(request);
+            self.jobs.spawn(async move { owner.await? });
+        } else {
+            self.jobs.spawn(request);
+        }
         Ok(())
     }
 

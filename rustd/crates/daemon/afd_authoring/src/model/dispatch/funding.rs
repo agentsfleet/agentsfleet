@@ -31,7 +31,10 @@ impl ModelCalls {
         let (mut attempt, mut funding) = {
             let mut connection = self.drafts.database.acquire().await?;
             let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-            let guarded = guard::bound(&mut tx, runner, lease, counters).await?;
+            let guarded = self
+                .drafts
+                .invocation(&mut tx, runner, lease, counters)
+                .await?;
             capability::check(&guarded.attempt, request)?;
             guard::current_model(&mut tx, &guarded).await?;
             if i64::from(request.call_index) != i64::from(guarded.attempt.call_count) + 1 {

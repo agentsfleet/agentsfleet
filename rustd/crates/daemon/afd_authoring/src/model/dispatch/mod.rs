@@ -165,8 +165,10 @@ impl ModelCalls {
         let held = self.funding(runner, lease, request, counters).await;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let guarded = guard::bound(&mut tx, runner, lease, counters).await?;
-        self.drafts.check_connection(&mut tx, runner).await?;
+        let guarded = self
+            .drafts
+            .invocation(&mut tx, runner, lease, counters)
+            .await?;
         capability::check(&guarded.attempt, request)?;
         if guarded.attempt.usage_unknown
             || guarded.attempt.status == crate::lease::Status::AwaitingAccounting

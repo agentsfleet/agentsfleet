@@ -240,10 +240,10 @@ The current protocol declares all four stream kinds.
 
 | Stream kind | Messages |
 |---|---|
-| `control` | Hello/welcome, credits, heartbeat, ping/pong, renewal batches, cancel and `go_away` |
-| `work` | Offers and folded-input requests/answers |
-| `reports` | Durable reports and matching acknowledgements |
-| `activity` | Bounded live progress |
+| `control` | Hello/welcome, credits, heartbeat, ping/pong, renewal batches, authoring renewal, cancel and `go_away` |
+| `work` | Offers, folded-input requests/answers, authoring model calls/results and authoring activity/proposal receipts |
+| `reports` | Fleet and authoring reports with matching acknowledgements |
+| `activity` | Bounded fleet live progress |
 
 These are proposed signatures, not compiled implementation claims.
 Each fallible crate uses the repository's generated error shell and local `Result` alias.

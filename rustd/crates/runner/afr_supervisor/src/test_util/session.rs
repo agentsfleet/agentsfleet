@@ -131,6 +131,58 @@ impl Session {
         self.plane.folds(lease, fence, after).await?.decode()
     }
 
+    /// Invoke a model through the same native connection as the lease offer.
+    ///
+    /// # Errors
+    /// Preserves native transport failures and coded authoring refusals.
+    pub async fn authoring_model(
+        &self,
+        lease: &Uuid7,
+        request: &af_wire::authoring::ModelCall,
+    ) -> Result<af_wire::authoring::ModelResult> {
+        self.plane.authoring_model(lease, request).await
+    }
+
+    /// Submit a proposal and receive its durable activity receipt.
+    ///
+    /// # Errors
+    /// Preserves native transport failures and coded authoring refusals.
+    pub async fn authoring_activity(
+        &self,
+        lease: &Uuid7,
+        request: &af_wire::authoring::ActivityRequest,
+    ) -> Result<af_wire::authoring::ActivityAccepted> {
+        self.plane.authoring_activity(lease, request).await
+    }
+
+    /// Renew the authoring lease under this connection's authority.
+    ///
+    /// # Errors
+    /// Preserves native transport failures and coded authoring refusals.
+    pub async fn authoring_renew(
+        &self,
+        lease: &Uuid7,
+        request: &af_wire::authoring::Renew,
+    ) -> Result<af_wire::authoring::Renewed> {
+        self.plane.authoring_renew(lease, request).await
+    }
+
+    /// Complete authoring, retaining the worker until accounting is settled.
+    ///
+    /// # Errors
+    /// Preserves native transport failures and coded settlement refusals.
+    pub async fn authoring_report(
+        &self,
+        lease: &Uuid7,
+        request: &af_wire::authoring::Report,
+    ) -> Result<af_wire::authoring::Reported> {
+        let result = self.plane.authoring_report(lease, request).await?;
+        if result.settled {
+            self.held.lock().remove(lease);
+        }
+        Ok(result)
+    }
+
     /// Stop recovery and join the downlink and native child tasks.
     ///
     /// # Errors
@@ -139,6 +191,11 @@ impl Session {
         self.halt.stop();
         tokio::time::timeout(af_core::timing::STREAM_ANSWER_TIMEOUT, &mut self.owner).await???;
         Ok(())
+    }
+
+    /// Interrupt native I/O while an integration test retains its outstanding request future.
+    pub fn disconnect(&self) {
+        self.halt.stop();
     }
 }
 
