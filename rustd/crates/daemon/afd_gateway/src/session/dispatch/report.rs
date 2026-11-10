@@ -24,7 +24,7 @@ impl SessionServices {
                 let received = self.gateway.inner.dependencies.wall_clock.now();
                 let settled = self
                     .leases
-                    .report_timed(&self.handle.runner, request, received, &mut clock)
+                    .report(&self.handle.runner, request, received, &mut clock)
                     .await?;
                 if let Err(error) = afd_fleet::lease::report::observe(
                     &self.gateway.inner.dependencies.analytics,

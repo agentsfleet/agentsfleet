@@ -75,7 +75,12 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     let log = Capture::install();
     held.fixtures
         .plane()
-        .report(&held.runner, &report, held.now)
+        .report(
+            &held.runner,
+            &report,
+            held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("a catalogue fault does not stop the report");
     let warned = log.only("lease_tokens_unpriced");

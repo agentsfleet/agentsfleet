@@ -1,4 +1,4 @@
-//! `M233_002` §1 — the daemon's verb spans leave through the installed exporter.
+//! The daemon's verb spans leave through the installed exporter.
 //!
 //! A binary of its own: a verb span goes out through the process-wide tracer,
 //! and `daemon_suite` holds tests that install their own while others run.
@@ -185,7 +185,7 @@ async fn one_chat(supervisor: &mut Supervisor, endpoint: &str) -> e2e::Scenario 
     run
 }
 
-/// Dimension 1.5: a clock built before `telemetry::install` still reaches the
+/// A clock built before `telemetry::install` still reaches the
 /// installed exporter, because it asks for the tracer when it records.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "stands up a collector on a real socket: make test-integration-rustd"]
@@ -217,7 +217,7 @@ async fn test_verb_span_reaches_exporter_through_global_provider() {
     );
 }
 
-/// Dimension 1.3, through the real stack: one chat's offer and report spans
+/// Through the real stack, one chat's offer and report spans
 /// carry its event and fleet, each with every stage it reached.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -282,8 +282,9 @@ async fn test_event_identity_joins_the_verb_spans() {
     run.cleanup().await;
 }
 
-/// Dimension 1.2: once the one event is reported, the gateway's later offer
-/// passes select nothing and record nothing; the only offer span is the claim.
+/// Once the one event is reported, the gateway's later offer passes select
+/// nothing and record nothing: every offer span reached `claim`, and only one
+/// names this chat's event.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_empty_offer_pass_records_no_span() {
@@ -298,7 +299,94 @@ async fn test_empty_offer_pass_records_no_span() {
     .await;
 
     let offers: Vec<_> = exported.named(semconv::SPAN_FLEET_OFFER).collect();
-    assert_eq!(offers.len(), 1, "an empty pass recorded a span: {offers:?}");
+    for offer in &offers {
+        assert!(
+            attribute(offer, semconv::ATTR_OFFER_CLAIM_MS).is_some(),
+            "an empty pass recorded a span: {offer:?}"
+        );
+    }
+    let event = run.event_id.to_string();
+    let ours = offers
+        .iter()
+        .filter(|offer| attribute(offer, semconv::ATTR_EVENT_ID) == Some(event.as_str()))
+        .count();
+    assert_eq!(ours, 1, "one offer span names the chat's event: {offers:?}");
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+/// The runner's memory verbs, a capture then a fallback hydrate on a live
+/// lease, each record their span under the fleet with both of their stages.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_memory_verbs_record_their_spans() {
+    let _owner = SERIAL.lock().await;
+    let (endpoint, mut received) = collector().await;
+    let mut supervisor = Supervisor::new();
+    let run = e2e::scenario_with(
+        &mut supervisor,
+        None,
+        &exporting_to(&endpoint),
+        e2e_seed::FLEET_CONFIG_JSON,
+    )
+    .await;
+    let (lease_id, fence) = tail::lease(&run).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
+    let http = reqwest::Client::new();
+    let path = format!("/v1/runners/me/memory/{}", run.fleet);
+    let push = serde_json::json!({
+        "lease_id": lease_id,
+        "fencing_token": fence,
+        "memory": [{"key": "span-probe", "content": "remembered", "category": wire::MEMORY_CATEGORY}],
+    });
+    let captured = wire::post(&http, &run, &path, &push).await;
+    assert_eq!(captured.status().as_u16(), 200, "the capture lands");
+    let hydrated = wire::get(&http, &run, &path).await;
+    assert_eq!(hydrated.status().as_u16(), 200, "the hydrate answers");
+
+    let fleet = run.fleet.to_string();
+    let ours = |seen: &Exported, name: &str| {
+        seen.named(name)
+            .any(|span| attribute(span, semconv::ATTR_AGENT_ID) == Some(fleet.as_str()))
+    };
+    let exported = exported_until(&mut received, |seen| {
+        ours(seen, semconv::SPAN_FLEET_CAPTURE) && ours(seen, semconv::SPAN_FLEET_HYDRATE)
+    })
+    .await;
+    for (name, stages) in [
+        (
+            semconv::SPAN_FLEET_CAPTURE,
+            [
+                semconv::ATTR_CAPTURE_FENCE_MS,
+                semconv::ATTR_CAPTURE_MEMORY_WRITE_MS,
+            ],
+        ),
+        (
+            semconv::SPAN_FLEET_HYDRATE,
+            [
+                semconv::ATTR_HYDRATE_FENCE_MS,
+                semconv::ATTR_HYDRATE_MEMORY_READ_MS,
+            ],
+        ),
+    ] {
+        let span = exported
+            .named(name)
+            .find(|span| attribute(span, semconv::ATTR_AGENT_ID) == Some(fleet.as_str()))
+            .unwrap_or_else(|| panic!("no {name} span names fleet {fleet}: {exported:?}"));
+        for stage in stages {
+            assert!(
+                attribute(span, stage).is_some(),
+                "{name} lacks {stage}: {span:?}"
+            );
+        }
+    }
+    let body = wire::report_body(&lease_id, &run.event_id, fence);
+    wire::report(&run, &body)
+        .await
+        .expect("the native report is acknowledged");
     supervisor.shutdown().await;
     run.cleanup().await;
 }

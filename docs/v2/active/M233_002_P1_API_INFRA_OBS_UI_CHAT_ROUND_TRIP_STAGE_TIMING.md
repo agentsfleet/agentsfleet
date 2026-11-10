@@ -88,6 +88,9 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 a
 | `rustd/crates/daemon/main/Cargo.toml` | EDIT | §1: the export tests' own `[[test]]` binary, which owns the global tracer (`telemetry_boot`'s pattern) |
 | `rustd/crates/daemon/afd_fleet/src/lease/pull/select.rs`, `pull/held.rs` | EDIT | §1: the offer clock's path to `admit_claimed`, and its `claim` and `admit` marks |
 | `rustd/crates/daemon/afd_fleet/src/lease/memory.rs` | EDIT | §1: the hydrate and capture clocks, where the fence and the memory call run |
+| `rustd/crates/daemon/afd_fleet/src/lease/pull/claimed.rs`, `pull/tests.rs`, `report/memory.rs`, `rustd/crates/daemon/afd_fleet/tests/**` | EDIT | §1, review (NLG): the claim and report signatures take the clock in place; fixtures and the report's inline capture pass `VerbClock::untimed()` |
+| `rustd/crates/protocol/af_observability/src/semconv/verb.rs`, `semconv/runner_span.rs` | CREATE | review (FLL): the verb and runner span vocabularies, moved out of `semconv/mod.rs` and re-exported |
+| `ui/packages/app/lib/streaming/send-marks.ts`, `fleet-stream-reply-registry.marks.test.ts`, `ui/packages/app/tests/helpers/send-marks-fixtures.ts` | CREATE | review (TS-SHAPE, FLL): the pending-send marks as a class with a reset, their tests through `dispatchReplyFrame`, and shared frame fixtures |
 | `rustd/crates/runner/afr_supervisor/src/lease_loop/segments.rs`, `identity/mod.rs`, `lease_loop/tests/mod.rs`, `lease_loop/tests/span_segments.rs` | EDIT, CREATE | §2: `runner.lease` declares and records the ten segments |
 | `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/messages/route.ts`, `ui/packages/app/tests/steer-route.test.ts` | EDIT | §3: time `credential()` and the upstream call; answer `Server-Timing` |
 | `ui/packages/app/components/domain/useFleetMessageDelivery.ts`, `useFleetMessageDelivery.test.tsx`, `ui/packages/app/lib/streaming/fleet-stream-reply-registry.ts` | EDIT | §3: the four `performance` marks for one send |
@@ -150,10 +153,10 @@ Steer's authentication runs in extractors before the clock starts, so the daemon
 
 - **Dimension 1.1** — DONE — each reached stage is written once → Test `verb_clock_writes_each_reached_stage_once` (unit, in-memory exporter): a report reaching all six stages exports one `fleet.report` span with six stage attributes. A report refused at `load` exports one span with `load_ms` only.
 - **Dimension 1.2** — DONE — an empty offer pass records nothing → Test `empty_offer_pass_records_no_span` (integration, live Postgres, in-memory exporter): a pass that selects no candidate exports zero spans. A pass that recorded a `claim`-only span would fail it.
-- **Dimension 1.3** — PARTIAL (offer and report joined live; steer covered by its unit test, no person-steer fixture) — one chat's spans join by event → Test `event_identity_joins_the_verb_spans` (integration, `session/verb_span_tests.rs`, live Postgres and a gateway session from `afd_gateway` `test_util`): one chat exports `fleet.steer`, `fleet.offer` and `fleet.report` with one `agentsfleet.event.id`. A fallback hydrate joins by `gen_ai.agent.id`.
+- **Dimension 1.3** — PARTIAL (offer and report joined live; steer covered by its unit test, no person-steer fixture) — one chat's spans join by event → Test `event_identity_joins_the_verb_spans` (integration, `daemon/main/tests/integration_verb_span_export.rs`, live Postgres and NATS through the e2e scenario's gateway session): one chat exports `fleet.steer`, `fleet.offer` and `fleet.report` with one `agentsfleet.event.id`. A fallback hydrate joins by `gen_ai.agent.id`.
 - **Dimension 1.4** — DONE — a verb span carries no payload → Test `verb_span_carries_only_declared_keys` (unit): a steer whose message is `secret-probe-7f3a` exports no attribute outside `semconv`'s verb keys, and no value containing the probe.
 - **Dimension 1.5** — DONE — the span reaches the installed exporter → Test `verb_span_reaches_exporter_through_global_provider` (integration, `daemon/main/tests/integration_verb_span_export.rs`): after `telemetry::install` with an in-memory exporter, a recorded steer span is exported. A clock that took its tracer before the install exports nothing and fails it.
-- **Dimension 1.6** — DONE — the stages account for the span → Test `verb_stage_attributes_account_for_the_span` (unit, injected clock): stages summing 96 ms in a 100 ms span pass; 80 ms in 100 ms fails, because the residual exceeds the larger of 10% and 5 ms.
+- **Dimension 1.6** — DONE — the stages account for the span → Test `verb_stage_attributes_account_for_the_span` (unit, injected clock): stages summing 96 ms in a 100 ms span leave a residual within the larger of 10% and 5 ms.
 
 ### §2 — The runner's segments reach Grafana
 
@@ -321,6 +324,12 @@ N/A: nothing is deleted. The old default's span layer move and its `stage_clock`
 - **Patch-vs-refactor verdict:** a patch; §1 adds one module and marks, and §2's infrastructure is shipped.
 
 ## Discovery (consult log)
+
+- **Review decisions, Nov 10, 2026** (gstack review and `orly-standards-reviewer`):
+  > Indy (Nov 10, 2026): chose "Change in place (Recommended)" — context: rule NLG; the untimed twins (`report`, `claim_with`, `claim_fleet_with`, `run_claimed_with`) are replaced by one signature taking the clock, and their test callers in `afd_fleet` pass `VerbClock::untimed()`.
+  > Indy (Nov 10, 2026): chose "Hydrate+capture now (Recommended)" — context: no test drove the handlers' clock wiring; live `fleet.hydrate` and `fleet.capture` tests are added, and the steer handler's end-to-end span test is deferred because no fixture sends a steer as a signed-in person.
+  > Indy (Nov 10, 2026): chose "Class + new test file (Recommended)" — context: rule TS-SHAPE; the browser's pending-send map becomes a class with a reset, and the mark tests move to `fleet-stream-reply-registry.marks.test.ts` with one test through `dispatchReplyFrame`.
+  > Indy (Nov 10, 2026): chose "Yes, both (Recommended)" — context: `record_on` stays private as in `delivery/mod.rs`; the empty-offer test asserts every offer span carries `claim`, and a test holds each verb's stage keys to that verb's prefix.
 
 - **Files Changed widened at EXECUTE, Nov 10, 2026:**
   > Indy (Nov 10, 2026): chose "Yes, all 7 (Recommended)" — context: §1's marks cannot reach `admit_claimed` without `pull/select.rs` and `pull/held.rs`, hydrate's and capture's stages run inside `afd_fleet`'s `lease/memory.rs` behind the `Leasing` trait, and the export test needs a `daemon_suite.rs` registration.

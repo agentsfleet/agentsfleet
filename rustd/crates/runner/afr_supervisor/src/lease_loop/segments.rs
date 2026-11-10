@@ -31,7 +31,11 @@ use std::time::Duration;
 
 use af_core::clock::saturating_millis;
 use af_core::spelling::to_spelling;
-use af_observability::semconv::RUNNER_SEGMENT_KEYS;
+use af_observability::semconv::{
+    ATTR_RUNNER_CHECKOUT_MS, ATTR_RUNNER_EGRESS_MS, ATTR_RUNNER_FIRST_TOKEN_MS,
+    ATTR_RUNNER_MEMORY_MS, ATTR_RUNNER_MODEL_MS, ATTR_RUNNER_PREPARE_MS, ATTR_RUNNER_REPORT_MS,
+    ATTR_RUNNER_SANDBOX_MS, ATTR_RUNNER_SANDBOX_WAIT_MS, ATTR_RUNNER_TOOLS_MS,
+};
 use af_wire::report::RunSegments;
 use tokio::time::Instant;
 use tracing::Span;
@@ -76,18 +80,18 @@ impl Segments {
     /// segment that never ran writes nothing, so the span never says zero.
     pub(super) fn record(&self, span: &Span) {
         let ran = [
-            self.memory,
-            self.sandbox,
-            self.egress,
-            self.prepare,
-            self.checkout,
-            self.sandbox_wait,
-            self.model,
-            self.tools,
-            self.report,
-            self.first_token,
+            (ATTR_RUNNER_MEMORY_MS, self.memory),
+            (ATTR_RUNNER_SANDBOX_MS, self.sandbox),
+            (ATTR_RUNNER_EGRESS_MS, self.egress),
+            (ATTR_RUNNER_PREPARE_MS, self.prepare),
+            (ATTR_RUNNER_CHECKOUT_MS, self.checkout),
+            (ATTR_RUNNER_SANDBOX_WAIT_MS, self.sandbox_wait),
+            (ATTR_RUNNER_MODEL_MS, self.model),
+            (ATTR_RUNNER_TOOLS_MS, self.tools),
+            (ATTR_RUNNER_REPORT_MS, self.report),
+            (ATTR_RUNNER_FIRST_TOKEN_MS, self.first_token),
         ];
-        for (key, elapsed) in RUNNER_SEGMENT_KEYS.into_iter().zip(ran) {
+        for (key, elapsed) in ran {
             if let Some(elapsed) = elapsed {
                 span.record(key, saturating_millis(elapsed));
             }

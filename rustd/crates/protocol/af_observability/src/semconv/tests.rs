@@ -89,9 +89,9 @@ fn no_key_is_spelled_twice() {
     }
 }
 
-/// Every delivery-span key lives in a namespace this product owns.
+/// Every span key lives in a namespace this product owns.
 #[test]
-fn every_delivery_span_key_is_namespaced() {
+fn every_span_key_is_namespaced() {
     for key in DELIVERY_SPAN_KEYS
         .iter()
         .chain(RUNNER_SPAN_KEYS)

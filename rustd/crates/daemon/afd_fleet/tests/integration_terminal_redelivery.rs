@@ -26,6 +26,7 @@ async fn test_completed_event_redelivery_does_not_execute() {
                 now: run.now,
             },
             None,
+            &mut af_observability::verb_span::VerbClock::untimed(),
             |_lease, _metadata| (),
         )
         .await
@@ -140,6 +141,7 @@ async fn reclaim_terminal(run: &Held) -> Option<()> {
                 now: run.now,
             },
             None,
+            &mut af_observability::verb_span::VerbClock::untimed(),
             |_lease, _metadata| (),
         )
         .await

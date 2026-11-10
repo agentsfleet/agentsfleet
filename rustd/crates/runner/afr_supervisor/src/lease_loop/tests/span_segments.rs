@@ -1,4 +1,4 @@
-//! Dimension 2.5: the lease's span carries the segments it reached, and only
+//! The lease's span carries the segments it reached, and only
 //! those, under the keys `semconv` declares.
 #![expect(
     clippy::unwrap_used,
@@ -64,6 +64,38 @@ fn test_lease_span_records_existing_segments() {
         written, 3,
         "only reached segments are written: {recorded:?}"
     );
+}
+
+/// Each of the ten segments lands under its own key: distinct durations make
+/// a key paired with the wrong segment fail.
+#[test]
+fn test_each_segment_lands_under_its_own_key() {
+    let capture = Capture::install();
+    let span = lease_span(None, &lease(LEASE_ID, FLEET_ID));
+    let ms = Duration::from_millis;
+    let segments = Segments {
+        memory: Some(ms(1)),
+        sandbox: Some(ms(2)),
+        egress: Some(ms(3)),
+        prepare: Some(ms(4)),
+        checkout: Some(ms(5)),
+        sandbox_wait: Some(ms(6)),
+        model: Some(ms(7)),
+        tools: Some(ms(8)),
+        report: Some(ms(9)),
+        first_token: Some(ms(10)),
+    };
+
+    segments.record(&span);
+
+    let recorded = the_lease_span(&capture);
+    let read: Vec<Option<&str>> = RUNNER_SEGMENT_KEYS
+        .iter()
+        .map(|key| recorded.field(key))
+        .collect();
+    let expected: Vec<String> = (1..=10).map(|n: u32| n.to_string()).collect();
+    let expected: Vec<Option<&str>> = expected.iter().map(|n| Some(n.as_str())).collect();
+    assert_eq!(read, expected, "segments in RUNNER_SEGMENT_KEYS order");
 }
 
 /// A lease run to its report writes onto its span the segments its last line

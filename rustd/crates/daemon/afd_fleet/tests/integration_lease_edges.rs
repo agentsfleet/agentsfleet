@@ -136,7 +136,12 @@ async fn test_a_renewal_its_host_or_its_lease_no_longer_allows_is_lost() {
     )
     .await;
     plane
-        .report(&held.runner, &processed(&held, None), held.now)
+        .report(
+            &held.runner,
+            &processed(&held, None),
+            held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("the healthy host reports");
     let reported = plane
@@ -207,7 +212,12 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
     let reconciled = held
         .fixtures
         .plane()
-        .report(&held.runner, &failed, held.now)
+        .report(
+            &held.runner,
+            &failed,
+            held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("a settled report is not failed by its metrics");
 
@@ -249,6 +259,7 @@ async fn test_a_runner_with_no_lease_or_no_host_row_gets_no_work() {
                 now: held.now,
             },
             AcceptedKinds::ALL,
+            &mut af_observability::verb_span::VerbClock::untimed(),
             |_lease, _metadata| (),
         )
         .await

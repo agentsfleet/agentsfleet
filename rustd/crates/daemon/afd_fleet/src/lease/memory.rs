@@ -71,7 +71,6 @@ impl LeaseService {
         fleet_id: &Uuid7,
     ) -> Result<MemoryHydrateResponse<'static>> {
         let mut clock = VerbClock::<HydrateStage>::start();
-        clock.agent(fleet_id.as_str());
         let fenced = self.leases.live_fence_for_fleet(runner_id, fleet_id).await;
         clock.mark(HydrateStage::Fence);
         let Some(fence) = fenced? else {
@@ -80,6 +79,8 @@ impl LeaseService {
         if !fence.current() {
             return Err(superseded(fleet_id, None, fence));
         }
+        // Named only once the fence proves the lease is this runner's.
+        clock.agent(fleet_id.as_str());
         let window = self.memories.hydrate(fleet_id).await;
         clock.mark(HydrateStage::MemoryRead);
         Ok(window?)
@@ -108,26 +109,14 @@ impl LeaseService {
             fencing_token: request.fencing_token,
         };
         let mut clock = VerbClock::<CaptureStage>::start();
-        clock.agent(fleet_id.as_str());
-        self.capture_timed(holder, &request.memory, now, &mut clock)
+        self.capture_for(holder, &request.memory, now, &mut clock)
             .await
     }
 
     /// [`LeaseService::capture`]'s fence and write, for a caller holding the parts
     /// rather than a push body: the report verb, whose body carries the run's
-    /// memory beside its result.
+    /// memory beside its result. Marks the fence and the write on `clock`.
     pub(crate) async fn capture_for(
-        &self,
-        holder: Holder<'_>,
-        memory: &[MemoryDelta<'_>],
-        now: Timestamp,
-    ) -> Result<Captured> {
-        let mut untimed = VerbClock::untimed();
-        self.capture_timed(holder, memory, now, &mut untimed).await
-    }
-
-    /// [`Self::capture_for`], marking the fence and the write on `clock`.
-    async fn capture_timed(
         &self,
         holder: Holder<'_>,
         memory: &[MemoryDelta<'_>],
@@ -145,6 +134,7 @@ impl LeaseService {
             .await;
         clock.mark(CaptureStage::Fence);
         fenced?;
+        clock.agent(fleet_id.as_str());
         let written = self.memories.capture(fleet_id, memory, now).await;
         clock.mark(CaptureStage::MemoryWrite);
         let counted = written?;

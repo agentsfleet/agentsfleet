@@ -39,7 +39,9 @@ use af_wire::report::ReportRequest;
 use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found};
+use crate::lease::commit::{Committed, TerminalReport};
 use crate::lease::pull::LeaseService;
+use crate::lease::settle::Reported;
 use crate::lease::usage::Pricing;
 
 use assembly::{Subject, posture_of, stored_trace, terminal};
@@ -69,23 +71,10 @@ impl LeaseService {
     /// reports a datastore that would not answer, in which case the lease is
     /// left `active` for the runner to re-report against and nothing was
     /// logged.
-    pub async fn report(
-        &self,
-        runner_id: &Uuid7,
-        request: &ReportRequest<'_>,
-        now: Timestamp,
-    ) -> Result<Reconciled> {
-        let mut untimed = VerbClock::untimed();
-        self.report_timed(runner_id, request, now, &mut untimed)
-            .await
-    }
-
-    /// [`Self::report`], marking each stage it reaches on `clock`: the load,
-    /// the preparation, the capture, the commit and the announce.
     ///
-    /// # Errors
-    /// As [`Self::report`].
-    pub async fn report_timed(
+    /// Marks each stage it reaches on `clock`: the load, the preparation, the
+    /// capture, the commit and the announce.
+    pub async fn report(
         &self,
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
@@ -134,27 +123,38 @@ impl LeaseService {
 
         report.task_settlement = task_settlement;
         clock.mark(ReportStage::Prepare);
-        // Boxed: the capture's state would otherwise ride inside every report
-        // future, past the large-future bound, for a step most reports skip.
-        Box::pin(self.capture_reported(runner_id, &lease, request, now)).await;
-        clock.mark(ReportStage::Capture);
-        let committed = self.leases.commit_report(report).await;
-        clock.mark(ReportStage::Commit);
+        let committed = self
+            .commit_reported(report, &lease, (runner_id, request, now), clock)
+            .await?;
+        let context = finalize::Context {
+            runner_id,
+            request,
+            lease_id,
+            now,
+        };
         let reconciled = self
-            .finalize_report(
-                lease,
-                committed?,
-                task_plan.as_ref(),
-                finalize::Context {
-                    runner_id,
-                    request,
-                    lease_id,
-                    now,
-                },
-            )
+            .finalize_report(lease, committed, task_plan.as_ref(), context)
             .await;
         clock.mark(ReportStage::Announce);
         reconciled
+    }
+
+    /// The inline memory capture and the commit, each marked on `clock` as it
+    /// ends; the commit consumes the report, so the lease is free after.
+    async fn commit_reported(
+        &self,
+        report: TerminalReport<'_>,
+        lease: &Reported,
+        (runner_id, request, now): (&Uuid7, &ReportRequest<'_>, Timestamp),
+        clock: &mut VerbClock<ReportStage>,
+    ) -> Result<Committed> {
+        // Boxed: the capture's state would otherwise ride inside every report
+        // future, past the large-future bound, for a step most reports skip.
+        Box::pin(self.capture_reported(runner_id, lease, request, now)).await;
+        clock.mark(ReportStage::Capture);
+        let committed = self.leases.commit_report(report).await;
+        clock.mark(ReportStage::Commit);
+        committed
     }
 }
 

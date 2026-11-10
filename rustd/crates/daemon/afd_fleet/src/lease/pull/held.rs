@@ -29,31 +29,14 @@ struct Held {
 }
 
 impl LeaseService {
-    /// [`Self::run_claimed_timed`] with no clock, for the fixtures that drive
-    /// a claimed pass directly; production passes carry the offer's clock.
-    #[cfg(feature = "test-util")]
+    /// Runs a claimed pass, marking the admission, the issue and the offer's
+    /// encoding on `clock`: the issue ends where `emit` is called.
     pub(super) async fn run_claimed_with<T, F>(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
         now: Timestamp,
         began: Instant,
-        emit: &mut F,
-    ) -> Result<Option<T>>
-    where
-        T: Send,
-        F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
-    {
-        let mut untimed = VerbClock::untimed();
-        let claimed = (acquired, runner_id, now, began);
-        self.run_claimed_timed(claimed, &mut untimed, emit).await
-    }
-
-    /// [`Self::run_claimed_with`], marking the admission, the issue and the
-    /// offer's encoding on `clock`: the issue ends where `emit` is called.
-    pub(super) async fn run_claimed_timed<T, F>(
-        &self,
-        (acquired, runner_id, now, began): (Acquired, &Uuid7, Timestamp, Instant),
         clock: &mut VerbClock<OfferStage>,
         emit: &mut F,
     ) -> Result<Option<T>>
@@ -141,6 +124,7 @@ mod tests {
                 &test_dead::id(9),
                 test_dead::AT,
                 std::time::Instant::now(),
+                &mut af_observability::verb_span::VerbClock::untimed(),
                 &mut |_lease, _metadata| (),
             )
             .await
