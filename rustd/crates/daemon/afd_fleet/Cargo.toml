@@ -67,6 +67,8 @@ const_format.workspace = true
 # other: telemetry knows nothing about leases or memory, and the counts below exist only
 # where the work happens.
 af_observability.workspace = true
+# The per-replica definition cache, keyed by revision id (M245 §3).
+moka.workspace = true
 # Identifiers, the clock, the error-code registry, and the bounded primitives.
 afd_billing.workspace = true
 # The only writer of `connector.integration_grants`. A delivery that finds no grant

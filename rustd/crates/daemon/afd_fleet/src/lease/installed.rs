@@ -7,19 +7,23 @@
 //! lease is built from — the config the gates judge against, the prose the run
 //! is given, and the session it continues.
 //!
-//! # Why the config is re-read per lease and never cached
+//! # Why the parse is cached by revision id and nothing else
 //!
 //! A fleet's config is what the money gates price, what the approval gate
 //! judges, and what the execution policy is assembled from. An operator who
 //! narrows a fleet's tools or lowers its budget expects the NEXT run to obey
-//! the change; a cache would make that "some later run, once an entry expired",
-//! and the window would be invisible. The read costs one round trip on a path
-//! that already makes several.
+//! the change. The claim read returns the revision id beside the document, and
+//! the parse is cached under that id ([`crate::lease::cache`]). Revisions are
+//! append-only, so a cached entry can only answer for the document it was
+//! parsed from, and an edit is a new head revision whose id misses. A cache on
+//! a timer would make that "some later run, once an entry expired", and the
+//! window would be invisible.
 
 use af_core::id::Uuid7;
 use af_fleet_runtime::{Definition, FleetConfig, definition::POLICY_SEMANTICS};
 
 use crate::error::{Result, query};
+use crate::lease::cache::{Definitions, RevisionKey};
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -110,10 +114,11 @@ impl Leases {
         event: Option<&Uuid7>,
     ) -> Result<Option<Installed>> {
         let mut connection = self.pool().acquire().await?;
-        Self::installed_on(&mut connection, fleet_id, event).await
+        Self::installed_on(self.definitions(), &mut connection, fleet_id, event).await
     }
 
     pub(crate) async fn installed_on(
+        definitions: &Definitions,
         connection: &mut sqlx::PgConnection,
         fleet_id: &Uuid7,
         event: Option<&Uuid7>,
@@ -146,9 +151,13 @@ impl Leases {
         if policy.as_deref() != Some(POLICY_SEMANTICS) {
             return Err(crate::error::ErrorKind::SetupUnavailable.into());
         }
-        let definition =
-            Definition::parse(&document.ok_or(crate::error::ErrorKind::SetupUnavailable)?)?;
-        definition.validate_for_save()?;
+        let document = document.ok_or(crate::error::ErrorKind::SetupUnavailable)?;
+        let revision = revision_id
+            .clone()
+            .ok_or(crate::error::ErrorKind::SetupUnavailable)?;
+        let definition = definitions
+            .get_or_parse(&RevisionKey::observed(revision), &document, parse_for_save)
+            .await?;
         if task_generation.is_some() {
             let current = Definition::parse(
                 &current_definition.ok_or(crate::error::ErrorKind::SetupUnavailable)?,
@@ -212,6 +221,15 @@ impl Leases {
             })
             .transpose()
     }
+}
+
+/// A stored setup as a lease runs it: parsed, then checked as a save would be.
+///
+/// Cached only once both pass, so a cache hit never skips the check.
+fn parse_for_save(document: &str) -> Result<Definition> {
+    let definition = Definition::parse(document)?;
+    definition.validate_for_save()?;
+    Ok(definition)
 }
 
 /// [`sql::fleet::SELECT_FLEET_WITH_SESSION`]'s row: the fleet, its head

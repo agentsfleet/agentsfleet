@@ -946,6 +946,7 @@ dependencies = [
  "jiff",
  "jiff-sqlx",
  "jsonwebtoken",
+ "moka",
  "object_store",
  "quick-xml",
  "rcgen",

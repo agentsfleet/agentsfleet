@@ -154,7 +154,14 @@ impl crate::lease::Leases {
             .fetch_optional(&mut *tx)
             .await
             .map_err(query("hold claimed slot before authority refusal"))?;
-        match Self::installed_on(&mut tx, &acquired.fleet_id, Some(&acquired.event_id)).await {
+        match Self::installed_on(
+            self.definitions(),
+            &mut tx,
+            &acquired.fleet_id,
+            Some(&acquired.event_id),
+        )
+        .await
+        {
             Err(fault) if fault.code() == af_core::error_code::TASK_INVALID_TARGET => (),
             Err(fault) => return Err(fault),
             Ok(_) => return Ok(()),

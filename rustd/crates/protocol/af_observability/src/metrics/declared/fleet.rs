@@ -42,6 +42,13 @@ pub const LEASE_HELD_CLAIMS_TOTAL: Declared<CounterKind> =
 pub const STEER_DISPOSITIONS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_steer_dispositions_total");
 
+/// Lease-path cache lookups; misses over lookups is the read rate a cache
+/// leaves on its path.
+///
+/// Labels: `cache`, `outcome`.
+pub const LEASE_CACHE_LOOKUPS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_lease_cache_lookups_total");
+
 /// Messages live runs took from their fleets, claimed and settled.
 pub const LEASE_FOLDS_TOTAL: Declared<CounterKind> = Declared::new("agentsfleet_lease_folds_total");
 

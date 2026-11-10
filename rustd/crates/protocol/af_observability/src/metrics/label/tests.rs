@@ -204,6 +204,8 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         set!(crate::metrics::label::fleet::SignupFailure),
         set!(crate::metrics::label::fleet::HistoryCut),
         set!(crate::metrics::label::fleet::HeldClaim),
+        set!(crate::metrics::label::fleet::LeaseCache),
+        set!(crate::metrics::label::fleet::CacheOutcome),
         set!(crate::metrics::label::fleet::AdmissionOutcome),
         set!(crate::metrics::label::http::Signal),
         set!(crate::metrics::label::http::DiscardReason),
@@ -286,8 +288,12 @@ fn http_products() -> [(&'static str, usize); 2] {
     ]
 }
 
-fn fleet_products() -> [(&'static str, usize); 8] {
+fn fleet_products() -> [(&'static str, usize); 9] {
     [
+        (
+            fleet::LEASE_CACHE_LOOKUPS_TOTAL.wire_name(),
+            fleet_labels::LeaseCache::ALL.len() * fleet_labels::CacheOutcome::ALL.len(),
+        ),
         (
             fleet::SIGNUP_FAILED_TOTAL.wire_name(),
             fleet_labels::SignupFailure::ALL.len(),

@@ -24,6 +24,8 @@ pub struct Leases {
     wake: Wake,
     ticket: Option<afd_runner::capacity::choice::Ticket>,
     authority: Option<afd_runner::capacity::authority::Authority>,
+    /// Parsed definitions by revision id, shared by every clone of this store.
+    definitions: crate::lease::cache::Definitions,
 }
 
 impl Leases {
@@ -37,7 +39,13 @@ impl Leases {
             wake: Wake::default(),
             ticket: None,
             authority: None,
+            definitions: crate::lease::cache::Definitions::default(),
         }
+    }
+
+    /// The parsed definitions this replica holds, by revision id.
+    pub(crate) const fn definitions(&self) -> &crate::lease::cache::Definitions {
+        &self.definitions
     }
 
     /// Bind streamed lease operations to the credential and owner acquired at opening.
