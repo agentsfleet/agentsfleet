@@ -45,7 +45,7 @@ pub(super) async fn owed(fixture: &Fixture) -> Vec<Owed> {
 /// in, and no event is admitted. Slack's retry of it owes it again: notices
 /// carry no dedupe key (Indy, Nov 08, 2026).
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_retried_notice_is_owed_again() {
     let fixture = Fixture::create().await;
     fixture.seed().await;

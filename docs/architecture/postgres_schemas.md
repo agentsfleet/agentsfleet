@@ -132,6 +132,7 @@ there is no generic repository trait.
 | `api_keys` | Tenant automation tokens, hash only; outlive the admin who made them |  |
 | `cli_credentials` | One live CLI login per machine, hash only | (metadata columns are in §Settled) |
 | `user_preferences` | Small dashboard settings per (user, workspace) |  |
+| `device_sessions` | One CLI device login in flight; ciphertext sealed to the CLI, code kept as a peppered HMAC | no foreign key: a session exists before any user does; operator roles revoked (M244) |
 
 `invites.resolved_at` is NULL while an invite is pending and is set on accept or revoke. The
 "one pending invite per address" unique index and the "what is waiting for me" index read
@@ -233,7 +234,7 @@ there is no generic repository trait.
 | `events` | One row per delivery into the fleet | `UNIQUE(fleet_id, event_id)`; `task_activity` keeps an array of at most 128 public stages / 120 KB; native sequence and truncation are separate typed columns, within the public 128 KiB ceiling |
 | `admissions` | Sole work queue; retries cannot duplicate work; claims and reports fence each row | optional task/item association; `input_claim_lease_id` and `input_claim_fence` stamp a message a live run claimed |
 | `approval_gates` | A risky action waiting for a person |  |
-| `obligations` | An answer owed to a destination until delivered or abandoned |  |
+| `obligations` | An answer owed to a destination until delivered or abandoned | The outbound queue: a worker claims lane heads with its token in `receipt` until `claim_expires_at`; `next_attempt_at` defers a released row |
 | `tool_calls` | Full arguments and output of each tool call |  |
 | `activity_counters` | Trigger-maintained dashboard totals |  |
 
@@ -281,6 +282,7 @@ leaves the index once metering reaches its expiry, so the index holds only the b
 | `person_links` | OAuth-proved Slack person → current workspace member; installation deletion cascades the link |
 | `channels` | Stable Slack channel notice owner; current workspace/team checks reject stale bindings |
 | `integration_grants` | Whether a fleet may use a service; deny is stored as revoked |
+| `oauth_nonces` | A connect's single-use state nonce, as its SHA-256 under its provider; spent by `DELETE … RETURNING`, refused after ten minutes (M244) |
 
 ## model
 
@@ -333,6 +335,8 @@ that reads them (rule 7).
 | Fleet (purge) | revisions, sessions, events, tool calls, admissions, gates, obligations, schedules, grants, channels, memory, slot, live (`active`) runner leases; task objectives, interpreted text, input replies, private effect payloads, task checkpoints/pages/pins/refs | usage lines; settled runner leases for their 30-day window; opaque decision/effect/adoption/checkpoint-operation receipts; expiring encrypted effect read custody; independently kept workspace repository bases/objects; linked drafts have fleet references set NULL | Unreferenced objects enter guarded storage collection; remote purge stays tracked through acknowledgement |
 | Workspace | drafts, fleets (as above), installs, secrets, preferences; private repository bases/pages, identity keys, object keys/metadata and quota | attempts, usage lines; opaque task/effect/checkpoint-operation and storage-purge receipts; expiring encrypted effect read custody | Authoring private results; each removed object first records its location and charged bytes for remote cleanup |
 | Tenant (account erasure) | workspaces (as above), users, wallet, tenant models, selection, invites, api keys | attempts, usage lines (opaque identifiers only) | `dispatches.result` and `dispatches.native_reply` of its attempts |
+| Device session (past `expires_at`) | nothing: the row stays, and every read refuses it | none | none; the row holds a sealed ciphertext and a code digest |
+| OAuth nonce (spent at the callback, or presented past `expires_at`) | the row, at its spend; one never presented stays | none | none; the row holds only a digest |
 | Runner (record retired after revoke) | leases, history, lifetime counters | attempts (`runner_id` set NULL), usage lines; slots (`last_runner_id` set NULL) | none |
 
 ## vault and memory

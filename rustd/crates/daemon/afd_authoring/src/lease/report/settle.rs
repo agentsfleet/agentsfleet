@@ -1,6 +1,6 @@
 //! Final settlement: the attempt's usage lines and its replay acknowledgement
-//! commit together; the billing relay moves the money from those lines
-//! (billing §11).
+//! commit together; the billing relay moves the money from those lines (the
+//! one billing lifecycle of `docs/architecture/billing_and_provider_keys.md`).
 
 use af_core::clock;
 use af_wire::authoring::{Knowledge, Outcome, Report, Reported};

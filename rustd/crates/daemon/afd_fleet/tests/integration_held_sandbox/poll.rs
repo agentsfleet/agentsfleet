@@ -11,7 +11,7 @@ use afd_db::test_util::mint_id;
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_naming_a_held_fleet_wins_another_runner_nothing() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder, other],
         fleet,
@@ -41,7 +41,7 @@ async fn test_naming_a_held_fleet_wins_another_runner_nothing() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_an_idle_poll_examines_no_candidates() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _, _, [holder]) = seeded_parts::<1>(&fixtures).await;
     let (polled, cost) = fixtures
         .leases()
@@ -55,7 +55,7 @@ async fn test_an_idle_poll_examines_no_candidates() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_stale_notification_does_not_hide_unnotified_work() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
         fleet,

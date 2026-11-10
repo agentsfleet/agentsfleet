@@ -82,7 +82,7 @@ async fn seed_unreadable_fleet(run: &Scenario) -> Uuid7 {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_an_unreadable_config_refuses_its_own_fleet_only() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

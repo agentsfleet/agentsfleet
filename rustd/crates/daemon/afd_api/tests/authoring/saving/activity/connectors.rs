@@ -11,7 +11,7 @@ use afd_connector::{
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn connector_receipts_announce_after_landing_but_not_after_ownership_rollback() {
     let saved = Saved::create(json!({"credentials":[Provider::GitHub.grant_key()]})).await;
     let other = Saved::create(json!({})).await;
@@ -73,7 +73,7 @@ async fn assert_ownership_rollback(saved: &Saved, other: &Saved, reader: &mut Re
 fn grants(saved: &Saved) -> Grants {
     Grants::new(
         crate::harness::vault(saved.case.base.db.clone())
-            .with_activity_streams(afd_bus::dragonfly::publisher(saved.case.queue.clone())),
+            .with_activity_streams(saved.case.bus.clone()),
         saved.case.base.db.clone(),
         Entropy::new(),
     )

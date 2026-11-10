@@ -1,6 +1,6 @@
 use super::{Archetype, Provider};
 
-/// No two providers share a state domain or a nonce namespace.
+/// No two providers share a state domain or a stored nonce provider id.
 ///
 /// Worth a double loop: a shared pair lets one connector's signed state
 /// verify AND consume under another's callback, which is a cross-connector
@@ -15,7 +15,8 @@ fn no_two_providers_share_a_state_domain_or_nonce_namespace() {
                 "`{one}` and `{other}` sign in one domain",
             );
             assert_ne!(
-                a.nonce_prefix, b.nonce_prefix,
+                one.id(),
+                other.id(),
                 "`{one}` and `{other}` consume one nonce namespace",
             );
         }
@@ -26,13 +27,13 @@ fn no_two_providers_share_a_state_domain_or_nonce_namespace() {
 ///
 /// An empty domain prefix is a degenerate binding rather than a typo: it
 /// removes the separation the HMAC gets from being domain-scoped, and an
-/// empty nonce prefix puts every provider's slots in one namespace.
+/// empty provider id puts every provider's nonces in one namespace.
 #[test]
 fn every_state_binding_names_both_of_its_halves() {
     for provider in Provider::ALL.iter().copied() {
         let binding = provider.state_binding();
         assert!(!binding.domain_prefix.is_empty(), "`{provider}` domain");
-        assert!(!binding.nonce_prefix.is_empty(), "`{provider}` nonce");
+        assert!(!provider.id().is_empty(), "`{provider}` nonce");
     }
 }
 

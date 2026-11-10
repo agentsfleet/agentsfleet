@@ -57,7 +57,7 @@ impl Visit for IsTenantRead {
 async fn test_issue_reads_the_tenant_once() {
     // The provider resolves against the payer and the money gates bill it, and
     // both used to read it; a second read could only disagree with the first.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;

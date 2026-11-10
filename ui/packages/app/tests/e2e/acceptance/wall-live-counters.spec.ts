@@ -72,7 +72,7 @@ const CONTROL_PREFIX = "wall-live-control-";
 const SWEEP_PREFIX = TEMPLATE;
 
 const RENDER_TIMEOUT_MS = 15_000;
-// The frame has to cross the daemon, Redis and one SSE hop after the terminal
+// The frame has to cross the daemon, NATS and one SSE hop after the terminal
 // row lands. Generous, because a slow relay here is not the claim under test —
 // the claim is that the figure moves at all.
 const COUNTER_TIMEOUT_MS = 60_000;

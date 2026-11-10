@@ -323,7 +323,7 @@ impl Profile {
 /// The datastores a lane opens.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Target {
-    /// The compose Postgres and Dragonfly `make/test-infra.mk` starts.
+    /// The compose Postgres and NATS `make/test-infra.mk` starts.
     Rig,
     /// A deployed environment, reached at this address.
     Deployed {

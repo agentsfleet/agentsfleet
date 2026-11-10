@@ -8,7 +8,7 @@ use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
 use std::time::Duration;
 
-use crate::e2e::{Scenario, dragonfly_config, scenario};
+use crate::e2e::{Scenario, scenario};
 use crate::integration_runner_stream::raw::Native;
 use crate::tail::{FRAME_DEADLINE, SILENCE_WINDOW, lease, settle};
 
@@ -32,9 +32,9 @@ impl Tailed {
             .await
             .expect("the issuing session stops before reconnect");
         let native = Native::connect(&run, Transport::H2).await;
-        let bus = afd_bus::dragonfly::connect(run.booted.queue.clone(), dragonfly_config())
+        let bus = afd_bus::test_util::lane()
             .await
-            .expect("the production Bus subscriber opens");
+            .expect("the lane's NATS: run through make test-integration-rustd");
         let tail = bus
             .subscribe(&Subject::FleetTail(run.fleet.clone()))
             .await

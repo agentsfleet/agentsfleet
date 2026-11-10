@@ -20,7 +20,6 @@ fn window(statements: u64) -> Result<Window> {
             candidates: 12,
         },
         statements,
-        dragonfly_calls: 0,
     })
 }
 

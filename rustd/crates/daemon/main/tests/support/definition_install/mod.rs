@@ -158,7 +158,7 @@ async fn boot_minting(
     } else {
         boot_with_exchanger(&env, EPHEMERAL, supervisor, Arc::new(MintedToken)).await
     };
-    boot.expect("the lane's Postgres and Dragonfly are up")
+    boot.expect("the lane's Postgres and NATS are up")
 }
 
 /// Seals the GitHub handle for a fresh installation, lands that

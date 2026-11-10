@@ -52,3 +52,14 @@ pub const RELEASE_OTHER_INSTALLS: &str = include_str!("sql/release_other_install
 /// remove a row another workspace owns, and the two-column predicate is what
 /// makes that a property of the statement rather than of the caller.
 pub const DELETE_WORKSPACE_INSTALLS: &str = include_str!("sql/delete_workspace_installs.sql");
+
+/// Remembers a connect's nonce digest until the state expires.
+///
+/// `$1` id · `$2` provider · `$3` SHA-256 of the nonce · `$4` time to live.
+pub const INSERT_OAUTH_NONCE: &str = include_str!("sql/insert_oauth_nonce.sql");
+
+/// Spends a nonce once: `DELETE … RETURNING` answers exactly one caller, and an
+/// expired row answers nobody.
+///
+/// `$1` provider · `$2` SHA-256 of the nonce.
+pub const SPEND_OAUTH_NONCE: &str = include_str!("sql/spend_oauth_nonce.sql");

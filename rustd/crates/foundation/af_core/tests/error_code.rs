@@ -42,7 +42,7 @@ fn assert_every_named_code_is_registered() {
         error_code::INTERNAL_DB_UNAVAILABLE,
         error_code::INTERNAL_DB_QUERY,
         error_code::STARTUP_MIGRATION_CHECK,
-        error_code::STARTUP_DRAGONFLY_CONNECT,
+        error_code::STARTUP_BUS_CONNECT,
         error_code::AUTH_INSUFFICIENT_SCOPE,
         error_code::AUTH_UNAUTHORIZED,
         error_code::AUTH_TOKEN_EXPIRED,

@@ -3,8 +3,8 @@
 //! The table itself lives in [`afd_outbound::obligation`], which owns every
 //! statement that touches `fleet.obligations`. This module is the seam: it
 //! mints the row's identifier from this store's entropy, calls the owner's verb
-//! on the transaction's own connection, and hands the queue append back to the
-//! post-commit path.
+//! on the transaction's own connection, and hands the new row's identifier back
+//! so the post-commit path can ring the outbound workers' wake.
 //!
 //! Not `super::deliver`, which is the inbound half — what an admitted claim
 //! becomes when a runner takes it. This is the outbound one: the record that an
@@ -20,7 +20,6 @@
 
 use af_core::id::Uuid7;
 use afd_connector::Provider;
-use afd_dragonfly::OutboundJob;
 use afd_outbound::obligation::{self, Delivery};
 use jiff::Timestamp;
 use sqlx::PgConnection;
@@ -34,6 +33,9 @@ const CONTEXT_REPLY: &str = "read reply destination";
 
 /// Logged when a stored connector id names no connector.
 const EVENT_REPLY_PROVIDER_UNKNOWN: &str = "report_reply_provider_unknown";
+
+/// Logged when the bus refuses the outbound workers' wake.
+pub(crate) const EVENT_OUTBOUND_WAKE_LOST: &str = "outbound_wake_lost";
 
 /// Where a settled event's answer goes, as its producer recorded it.
 ///
@@ -51,9 +53,9 @@ pub struct ReplyDestination {
 impl ReplyDestination {
     /// The answer `lease` owes here, in the shape the ledger's verbs take.
     ///
-    /// The owe inside the report's transaction and the queue append after the
-    /// commit both build it from here, so the row and the queue entry cannot
-    /// disagree about where the answer goes.
+    /// The row is the only record of where the answer goes: the wake that
+    /// follows the commit carries the row's identifier and nothing else, so
+    /// a worker reads the destination from what was committed.
     #[must_use]
     pub(crate) fn delivery<'a>(&'a self, lease: &'a Reported, answer: &'a str) -> Delivery<'a> {
         Delivery {
@@ -67,16 +69,15 @@ impl ReplyDestination {
     }
 }
 
-/// An answer this report newly owed, and where it is owed.
+/// An answer this report newly owed.
 ///
-/// Carried out of the transaction to the append that follows the commit, so
-/// the queue entry is addressed from what was committed rather than re-read.
+/// Carried out of the transaction to the wake that follows the commit. The
+/// wake names only the row: a worker claims it and reads where it is owed
+/// from what was committed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Owing {
     /// The obligation row this report wrote.
     pub obligation: Uuid7,
-    /// Where it is owed.
-    pub reply: ReplyDestination,
 }
 
 impl Leases {
@@ -129,9 +130,9 @@ impl Leases {
     /// "committed and charged" and "a delivery is owed" the same instant.
     ///
     /// Answers the row this call created, or `None` when nothing is newly owed
-    /// — an empty answer, or a repeat that conflicted. The caller appends only
-    /// what it actually wrote, so a replayed report cannot put a second entry on
-    /// the queue for an answer already in flight.
+    /// — an empty answer, or a repeat that conflicted. The caller wakes the
+    /// outbound workers only for what it actually wrote, so a replayed report
+    /// cannot ring for an answer already in flight.
     ///
     /// # Errors
     /// Reports an entropy source that could not produce the row's identifier,
@@ -143,25 +144,37 @@ impl Leases {
         now: Timestamp,
     ) -> Result<Option<Uuid7>> {
         let row_id = self.entropy().uuid7(now)?;
-
-        let written = obligation::owe(connection, &row_id, delivery).await?;
+        // The report's own token, so no holder's write matches it until a
+        // claim replaces it.
+        let token = self.entropy().uuid7(now)?;
+        let written = obligation::owe(connection, &row_id, &token, delivery).await?;
         Ok(written.then_some(row_id))
     }
 
-    /// Append an owed answer to the delivery queue, then receipt the row.
+    /// Ping the outbound workers that an owed answer committed.
     ///
-    /// The second and third of the three steps, run after the transaction
-    /// committed the first. Both are allowed to fail: what they leave behind is
-    /// a committed obligation with no receipt, which is precisely the set the
-    /// producer re-appends. That is why this is the fast path and not the only
-    /// path — losing it costs an answer some latency and never the answer.
-    ///
-    /// # Errors
-    /// Reports a queue that would not accept the entry, and a datastore that
-    /// would not record the receipt.
-    pub async fn queue_delivery(&self, owed: &Uuid7, delivery: Delivery<'_>) -> Result<()> {
-        let entry = self.outbound().enqueue(OutboundJob::from(delivery)).await?;
-        obligation::receipt(self.pool(), owed, entry.as_str()).await?;
-        Ok(())
+    /// At most once: a lost ping costs the answer up to one claim pass of
+    /// latency and never the answer, because the row is free to claim the
+    /// moment its report committed. So a refusal is logged here, once, and
+    /// never returned: no caller could do more with it.
+    pub async fn wake_delivery(&self, owed: &Uuid7) {
+        if let Err(error) = self
+            .streams()
+            .publish(&afd_bus::Subject::OutboundWake, owed.as_str())
+            .await
+        {
+            let error_code = error.code().as_str();
+            let reason = error.reason();
+            tracing::warn!(
+                event = EVENT_OUTBOUND_WAKE_LOST,
+                error_code,
+                reason,
+                "the answer waits for the next claim pass"
+            );
+        }
     }
 }
+
+#[cfg(all(test, feature = "test-util"))]
+#[path = "obligation_tests.rs"]
+mod tests;

@@ -7,9 +7,9 @@
 //! `afd_ingress`'s app resolution read zero covered lines: nothing runs them.
 //!
 //! This fixture is the other half. The router is the production one over a live
-//! Postgres and a live Dragonfly, so a delivery here resolves its binding out of
-//! `fleet.fleets`, opens its secret out of `vault.secrets`, and lands its claim
-//! in the queue exactly as the daemon does it.
+//! Postgres and the lane's NATS, so a delivery here resolves its binding out
+//! of `fleet.fleets`, opens its secret out of `vault.secrets`, and lands its
+//! claim in the admission ledger exactly as the daemon does it.
 
 use af_core::id::Uuid7;
 use af_core::money::NANOS_PER_USD;
@@ -17,7 +17,6 @@ use af_fleet_runtime::test_util::FixtureSetup;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FIXTURE_SETUP_MODEL_REF, FleetSeed, SetupRevision, TestDatabase, mint_id};
-use afd_dragonfly::Dragonfly;
 use afd_tenant::test_util::{Signup, sign_up};
 use afd_vault::{SecretBody, SecretName};
 
@@ -78,7 +77,7 @@ pub(super) enum Secret {
 pub(super) struct Fixture {
     lane: TestDatabase,
     database: Db,
-    queue: Dragonfly,
+    bus: afd_bus::Handle,
     subject: String,
     tenant: Uuid7,
     pub(super) workspace: Uuid7,
@@ -92,7 +91,7 @@ impl Fixture {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            queue: harness::connect_redis().await,
+            bus: harness::bus().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
             workspace: mint_id(),
@@ -109,7 +108,7 @@ impl Fixture {
             &self.subject,
             afd_auth::scope::ScopeSet::from_scopes(&afd_auth::scope::Scope::ALL),
         )
-        .with_live_ingress(self.database.clone(), self.queue.clone())
+        .with_live_ingress(self.database.clone(), self.bus.clone())
         .with_platform_admin(self.workspace.clone())
         .router()
     }

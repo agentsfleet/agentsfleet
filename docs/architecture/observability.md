@@ -52,7 +52,7 @@ names; §Label registry explains each divergence, and
 The registry is built from that file, and `test_metric_family_registry_parity`
 grades the two against each other both ways. The prefix rule covers exported
 metric families only. It does not rename `fleet_id`, log event names,
-`EventKind` tags, or the Dragonfly consumer group.
+or `EventKind` tags.
 
 **One registry row is the whole family**. A census row declares wire name, kind, number type, unit, temporality, labels, histogram bounds and series ceiling once. Producer code names the family through a `Declared<Kind>`
 constant and claims an OpenTelemetry instrument from `Instruments`, both in
@@ -65,7 +65,7 @@ asked for. Label values come from closed enums in the crate's label registry.
 Two labels are open: `runner_id`, bounded by the runner slot table, and the
 cost families' `gen_ai.request.model`, bounded by the model catalogue
 (§Label registry). A gauge's callback only loads a value from the crate's
-observed-value cell and never touches Dragonfly or a lock. The callback runs
+observed-value cell and never touches the bus or a lock. The callback runs
 under the OpenTelemetry software development kit (SDK)'s pipeline lock, and a
 stall there silences every family at once.
 
@@ -234,7 +234,7 @@ The daemon's `agentsfleet_otlp_entries_discarded_total` counts loss before the
 collector and cannot see loss inside it.
 
 There is also no `hostmetrics` receiver, so `agentsfleetd`, `otelcol` and
-Dragonfly report no processor, memory, disk or network usage. The single
+the NATS nodes report no processor, memory, disk or network usage. The single
 resource reading anywhere in the deployment is
 `agentsfleet_process_resident_memory_bytes`, which the daemon takes from its own
 `/proc/self/statm`.
@@ -515,7 +515,7 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 | Step | Logs | Metrics | Trace |
 |---|---|---|---|
 | Steer admitted (`afd_api_tenant` steer handler, `afd_admission`) | `fleet_steer_failed` on refusal | `agentsfleet_admissions_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | request span only |
-| Doorbell ring (`afd_dragonfly` doorbell) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
+| Wake ring (`afd_bus::wake`) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
 | Held heartbeat (`afd_api_runner` heartbeat, `wake.rs`) | `runner_wake_refused` | `agentsfleet_runner_wake_answers_total{reason}` | request span only |
 | Lease issued (`afd_fleet` lease delivery) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_lease}` | request span only |
 | Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_lease_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |

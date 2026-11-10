@@ -8,7 +8,7 @@
 //!
 //! Only the fleets the caller may read are ever subscribed, so a frame from
 //! another workspace is not delivered and then discarded — it never arrives.
-//! There is deliberately no pattern subscribe: `PSUBSCRIBE fleet:*` would put
+//! There is deliberately no wildcard subscribe: `af.fleet.*.tail` would put
 //! every tenant's frames on one firehose and make tenant isolation a matter of
 //! discipline rather than of what is attached.
 //!
@@ -263,6 +263,7 @@ mod tests {
     use std::collections::BTreeSet;
 
     use af_core::id::Uuid7;
+    use af_core::test_util::trace::Capture;
     use afd_bus::{Subject, test_util};
 
     const FLEET: &str = "0195b4ba-8d3a-7000-8abc-000000000001";
@@ -293,8 +294,7 @@ mod tests {
             1
         );
         let channel = Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet"));
-        server.confirm(&channel);
-        server.confirm(&channel);
+        server.gap(&channel);
 
         let frame = fan_in.next_frame().await;
         assert_eq!(frame.kind, crate::frame::KIND_CATCHING_UP);
@@ -321,6 +321,57 @@ mod tests {
             fan_in.fleets(),
             [FLEET],
             "the set stays what the caller attached"
+        );
+    }
+
+    /// A name that is not a fleet identifier has no channel to attach, so it
+    /// is skipped and the fleets beside it still attach.
+    #[tokio::test]
+    async fn a_name_that_is_no_fleet_identifier_is_skipped() {
+        let (bus, server) = test_util::detached().expect("fixture bus");
+        let mut fan_in = FanIn::new(Some(bus));
+
+        let delta = fan_in
+            .sync_to(&BTreeSet::from([
+                "not-a-fleet".to_owned(),
+                FLEET.to_owned(),
+            ]))
+            .await;
+
+        assert_eq!(delta.attached, 1);
+        assert_eq!(fan_in.fleets(), [FLEET]);
+        let channel = Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet"));
+        assert_eq!(server.readers(&channel), 1);
+    }
+
+    /// A fleet whose subscription the bus refuses is left out of this tick,
+    /// with the refusal's code in the log, and the next tick tries it again.
+    #[tokio::test]
+    async fn a_refused_subscription_is_logged_and_left_for_the_next_tick() {
+        let mut fan_in = FanIn::new(Some(test_util::unreachable()));
+        let wanted = BTreeSet::from([FLEET.to_owned()]);
+        let capture = Capture::install();
+
+        let delta = fan_in.sync_to(&wanted).await;
+
+        assert_eq!(delta, super::Delta::default(), "nothing attached");
+        assert_eq!(fan_in.fleets(), [] as [String; 0]);
+        let refused = capture.only("sse_subscription_unavailable");
+        assert_eq!(refused.level, tracing::Level::WARN);
+        assert_eq!(
+            refused.field("error_code"),
+            Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
+        assert_eq!(refused.field("reason"), Some("backend"));
+        fan_in.sync_to(&wanted).await;
+        assert_eq!(
+            capture
+                .events()
+                .iter()
+                .filter(|event| event.field("event") == Some("sse_subscription_unavailable"))
+                .count(),
+            2,
+            "a fleet left unattached is tried again on the next tick"
         );
     }
 

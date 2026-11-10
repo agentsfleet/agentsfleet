@@ -27,16 +27,17 @@ async fn collect(
     Json(serde_json::json!({}))
 }
 
-fn environment(database: &str, queue: &str, endpoint: &str) -> MapEnv {
+fn environment(database: &str, endpoint: &str) -> MapEnv {
+    let bus = afd_bus::test_util::lane_url()
+        .expect("the lane's NATS seeds: run through make test-integration-rustd");
+    environment_over(database, &bus, endpoint)
+}
+
+/// The same environment with `bus` as the seed list.
+fn environment_over(database: &str, bus: &str, endpoint: &str) -> MapEnv {
     let pairs: Vec<_> = [
         ("DATABASE_URL_API", database.to_owned()),
-        ("DRAGONFLY_URL", queue.to_owned()),
-        (
-            "DRAGONFLY_TLS_CA_CERT_FILE",
-            ProcessEnv
-                .get("TEST_DRAGONFLY_CA_CERT")
-                .expect("lane queue trust"),
-        ),
+        ("NATS_URL", bus.to_owned()),
         (
             "ENCRYPTION_MASTER_KEY",
             support::SESSION_PEPPER
@@ -156,15 +157,10 @@ async fn boot_exports_live_snapshots_and_flushes_before_returning_a_dependency_f
     assert!(agentsfleetd::logs::install(&MapEnv::default()));
     let (endpoint, mut received, collector) = collector().await;
     let database = ProcessEnv.get("TEST_DATABASE_URL").expect("lane database");
-    let queue = ProcessEnv.get("TEST_DRAGONFLY_URL").expect("lane queue");
     let mut supervisor = Supervisor::new();
-    let booted = agentsfleetd::serve::boot(
-        &environment(&database, &queue, &endpoint),
-        0,
-        &mut supervisor,
-    )
-    .await
-    .expect("real daemon boot");
+    let booted = agentsfleetd::serve::boot(&environment(&database, &endpoint), 0, &mut supervisor)
+        .await
+        .expect("real daemon boot");
 
     live_samples(&mut received).await;
     let report = supervisor.shutdown().await;
@@ -174,17 +170,14 @@ async fn boot_exports_live_snapshots_and_flushes_before_returning_a_dependency_f
 
     let mut failed = Supervisor::new();
     let failure = agentsfleetd::serve::boot(
-        &environment(&database, "redis://127.0.0.1:1", &endpoint),
+        &environment_over(&database, "nats://127.0.0.1:1", &endpoint),
         0,
         &mut failed,
     )
     .await
-    .expect_err("an unreachable queue refuses boot after the database opened");
-    assert!(matches!(failure, BootFailure::Queue(_)));
-    assert_eq!(
-        failure.code(),
-        af_core::error_code::STARTUP_DRAGONFLY_CONNECT
-    );
+    .expect_err("an unreachable bus refuses boot after the database opened");
+    assert!(matches!(failure, BootFailure::Bus(_)));
+    assert_eq!(failure.code(), af_core::error_code::STARTUP_BUS_CONNECT);
     assert_eq!(failed.inventory(), Vec::<&str>::new());
     // The flush has finished when boot returns; do not await another export.
     let mut initialized = false;

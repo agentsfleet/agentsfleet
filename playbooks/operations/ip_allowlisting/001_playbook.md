@@ -12,7 +12,7 @@ executable: false
 
 Restricts each PlanetScale database to the `agentsfleetd` Fly.io static egress addresses.
 Add only control-plane egress; never add a runner-host address, because `agentsfleet-runner` holds no datastore credential.
-Dragonfly needs no allowlist: it runs on Fly [private networking (6PN)](https://fly.io/docs/networking/private-networking/) with no public endpoint.
+NATS needs no allowlist: it runs on Fly [private networking (6PN)](https://fly.io/docs/networking/private-networking/) with no public endpoint.
 
 ## Before you begin
 

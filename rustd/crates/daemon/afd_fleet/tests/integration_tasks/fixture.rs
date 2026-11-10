@@ -40,7 +40,7 @@ impl Case {
         let actor = afd_events::steer_actor("native_task_owner");
         let request = json!({"message": GOALS.join("; ")}).to_string();
         let held = held_admission(
-            Fixtures::create_in_with_queue(lane.shared_handle()).await,
+            Fixtures::create_in(lane.shared_handle()).await,
             &actor,
             &request,
         )
@@ -72,7 +72,7 @@ impl Case {
         };
         let admissions = Admissions::new(
             held.fixtures.database.clone(),
-            afd_bus::dragonfly::publisher(held.fixtures.queue().clone()),
+            held.fixtures.bus().clone(),
             Entropy::new(),
         );
         let tasks = Tasks::new(

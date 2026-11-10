@@ -113,7 +113,7 @@ pub(crate) async fn leased(
 /// Dimensions 1.1 and 1.3. A valid post stores one row per record, and the
 /// same post again changes nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_details_stored_under_fence() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -127,7 +127,7 @@ async fn test_tool_call_details_stored_under_fence() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_details_retry_is_idempotent() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -143,7 +143,7 @@ async fn test_tool_call_details_retry_is_idempotent() {
 
 /// Dimension 1.2. A holder the fleet has moved past keeps nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_stale_fence_tool_call_details_refused() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -162,7 +162,7 @@ async fn test_stale_fence_tool_call_details_refused() {
 
 /// Dimension 1.4. One record over a bound is skipped; the rest are kept.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_over_bound_tool_call_detail_skipped() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -179,7 +179,7 @@ async fn test_over_bound_tool_call_detail_skipped() {
 
 /// Dimension 1.5. An event keeps at most 1 MiB of records.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_detail_budget_caps_records() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -226,7 +226,7 @@ async fn plant_dead_record(run: &Scenario, fence: u64) {
 /// Dimension 1.6. Settlement keeps only the settling fence's records, and the
 /// current lease's first post already clears a dead lease's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_settle_drops_dead_lease_details() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -268,7 +268,7 @@ async fn tenant_status(
 /// Dimensions 2.1 and 2.2. A member reads a kept call in full; an unknown
 /// call, another fleet, and a call id that is not one each answer 404.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_member_reads_tool_call_detail() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
@@ -299,7 +299,7 @@ async fn test_member_reads_tool_call_detail() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_detail_absent_is_not_found() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;

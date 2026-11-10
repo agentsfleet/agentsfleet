@@ -103,7 +103,6 @@ After a database wipe, existing Clerk users need a signed signup-event replay; s
 - Resolve a [failed migration](./operations/failed_migration/001_playbook.md) before priming.
 - A [region move](./operations/database_region_move/001_playbook.md) copies a database with matching schema history. It does not rebuild old rows into a new schema.
 - [Database teardown](./operations/teardown/database/001_playbook.md) deletes application data permanently and needs its own approval.
-- [Dragonfly teardown](./operations/teardown/dragonfly/001_playbook.md) deletes queued work and deduplication state. Stop every writer and verify every cluster member.
 - [User teardown](./operations/teardown/user/001_playbook.md) documents the unsupported purge path. Deleting a Clerk identity leaves its database rows.
 
 ## On-demand operations
@@ -129,7 +128,6 @@ After a database wipe, existing Clerk users need a signed signup-event replay; s
 | `slack_incident_drill` | Set up and audit the development-first Linkwarden Slack incident drill |
 | `smtp_relay_registration` | Register the relay that sends invite emails |
 | `teardown/database` | Empty a database (destructive) |
-| `teardown/dragonfly` | Empty the Dragonfly cluster (destructive) |
 | `teardown/user` | Delete a development user and verify purge |
 | `zoho_app_registration` | Register the platform Zoho Desk app |
 

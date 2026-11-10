@@ -111,13 +111,13 @@ async fn an_unknown_protocol_version_is_refused() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_stream_past_the_ceiling_is_refused_with_retry() {
     let enrolled = Routed::create().await;
-    let hub = harness::live_hub().await;
+    let bus = harness::bus().await;
     let router = enrolled
         .services()
-        .with_stream_capacity(hub.clone(), 1)
+        .with_stream_capacity(bus.clone(), 1)
         .router();
     let body = stream_fixture::open_stream(&router, &enrolled.fixture).await;
     let response = Session::opening(&router, &enrolled.token, af_wire::protocol::VERSION).await;
@@ -138,6 +138,6 @@ async fn a_stream_past_the_ceiling_is_refused_with_retry() {
     );
     drop(body);
     drop(router);
-    hub.stopped().await;
+    bus.shutdown().await.expect("the lane bus closes");
     enrolled.cleanup().await;
 }

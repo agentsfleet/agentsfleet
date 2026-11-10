@@ -11,7 +11,6 @@ use afd_auth::scope::{Scope, ScopeSet, TENANT_OWNER_GRANT};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
-use afd_dragonfly::{Dragonfly, SubscriptionHub};
 use afd_events::ACTOR_PREFIX;
 use afd_tenant::test_util::{Signup, delete_accounts, sign_up};
 use afd_tenant::workspace::access::ROLE_MEMBER;
@@ -181,26 +180,22 @@ impl Members {
         self.fleet(who, scopes).router()
     }
 
-    /// The same, able to steer and stream through `queue` and `hub`.
+    /// The same, able to steer and stream through `bus`.
     pub(crate) fn live_router(
         &self,
         who: &Person,
         scopes: ScopeSet,
-        queue: Dragonfly,
-        hub: SubscriptionHub,
+        bus: afd_bus::Handle,
     ) -> Router {
         self.fleet(who, scopes)
-            .with_steering_queue(self.database.clone(), queue)
-            .with_live_hub(hub)
+            .with_steering_queue(self.database.clone(), bus.clone())
+            .with_live_bus(bus)
             .router()
     }
 
-    /// A router for `who` over the lane's Dragonfly, and the hub its streams
-    /// read through, which the caller shuts down.
-    pub(crate) async fn live(&self, who: &Person, scopes: ScopeSet) -> (Router, SubscriptionHub) {
-        let hub = harness::live_hub().await;
-        let router = self.live_router(who, scopes, harness::connect_redis().await, hub.clone());
-        (router, hub)
+    /// A router for `who` over a lane NATS connection of its own.
+    pub(crate) async fn live(&self, who: &Person, scopes: ScopeSet) -> Router {
+        self.live_router(who, scopes, harness::bus().await)
     }
 
     /// John's fleets, under his workspace.

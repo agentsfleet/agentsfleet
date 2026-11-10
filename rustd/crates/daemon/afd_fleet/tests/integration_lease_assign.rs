@@ -35,7 +35,7 @@ use crate::rows::{LAPSE, Row};
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_select_assigns_a_ready_fleets_event() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
         event_id,
@@ -79,7 +79,7 @@ async fn test_select_assigns_a_ready_fleets_event() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_fleet_is_discovered_without_any_notification() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
         fleet,
@@ -122,7 +122,7 @@ async fn test_a_fleet_is_discovered_without_any_notification() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_second_runner_is_refused_while_the_claim_is_live() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,

@@ -18,7 +18,7 @@
 //!
 //! # Where row shapes are checked
 //!
-//! `test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows`, in
+//! `test_cycle_settles_in_the_ledger_and_populates_rows`, in
 //! `integration_runner_shapes.rs`, pins each
 //! statement's own output as a recorded shape: every row carries the columns
 //! its statement was written to fill.
@@ -53,7 +53,7 @@ use crate::wire::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_suite_vs_rust_daemon() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

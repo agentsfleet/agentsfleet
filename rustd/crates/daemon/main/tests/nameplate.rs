@@ -146,7 +146,7 @@ fn test_the_coloured_form_is_two_lines_between_blank_ones() {
 fn test_the_nameplate_reports_no_runtime_state() {
     let coloured = render(Style::Coloured, VERSION, Some(80));
 
-    for forbidden in ["pid", "listening", "postgres", "redis", "localhost"] {
+    for forbidden in ["pid", "listening", "postgres", "nats", "localhost"] {
         assert!(
             !coloured.contains(forbidden),
             "the nameplate is not a status display: {forbidden}"

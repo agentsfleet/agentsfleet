@@ -35,9 +35,9 @@ const NOTE: &str = "looks right";
 /// The resolver a swept gate records, mirrored from the store.
 const SWEEPER: &str = "system:approval_gate_sweeper";
 
-/// Dimension 6.1 — one gate, two answers, exactly one decision.
+/// One gate, two answers, exactly one decision.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn two_operators_answering_one_gate_resolve_to_one_decision() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -75,9 +75,9 @@ async fn two_operators_answering_one_gate_resolve_to_one_decision() {
     assert_eq!(losers, 1, "the losing answer reports the standing decision");
 }
 
-/// Dimension 6.1 — a second decision on a settled gate never rewrites it.
+/// A second decision on a settled gate never rewrites it.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_settled_gate_keeps_its_first_answer() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -113,9 +113,9 @@ async fn a_settled_gate_keeps_its_first_answer() {
     assert_eq!(lane.status_of(&action).await, "approved");
 }
 
-/// Dimension 6.1 — the fleet filter is an authorization, not a convenience.
+/// The fleet filter is an authorization, not a convenience.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decision_scoped_to_another_fleet_resolves_nothing() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -152,9 +152,9 @@ async fn a_decision_scoped_to_another_fleet_resolves_nothing() {
     );
 }
 
-/// Dimension 6.1 — the queue read is scoped to its own workspace.
+/// The queue read is scoped to its own workspace.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn one_workspaces_queue_never_shows_anothers_gate() {
     let mine = Lane::isolated().await;
     let theirs = Lane::isolated().await;
@@ -183,7 +183,7 @@ async fn one_workspaces_queue_never_shows_anothers_gate() {
 
 /// A gate id from another workspace reads as absent, not as forbidden.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_gate_id_from_another_workspace_is_indistinguishable_from_absent() {
     let mine = Lane::isolated().await;
     let theirs = Lane::isolated().await;
@@ -214,9 +214,9 @@ async fn a_gate_id_from_another_workspace_is_indistinguishable_from_absent() {
     assert!(found.is_none(), "another workspace's gate is not visible");
 }
 
-/// Dimension 6.3 — the sweeper takes gates whose window closed, and only those.
+/// The sweeper takes gates whose window closed, and only those.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
     // the sweep is global; a sibling's lapsed gate is in its statement.
     let _sweeper = sweeper_exclusive().await;
@@ -242,7 +242,7 @@ async fn the_sweeper_expires_only_the_gates_whose_window_closed() {
 
 /// Expiry clears the durable park so the fleet can lease its oldest row.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_expired_gate_wakes_its_fleet() {
     // the sweep is global; a sibling's lapsed gate is in its statement.
     let _sweeper = sweeper_exclusive().await;
@@ -259,9 +259,9 @@ async fn an_expired_gate_wakes_its_fleet() {
     );
 }
 
-/// Dimension 6.3 — an answer that landed first outranks the clock.
+/// An answer that landed first outranks the clock.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_gate_answered_before_the_deadline_is_not_swept() {
     // the sweep is global; a sibling's lapsed gate is in its statement.
     let _sweeper = sweeper_exclusive().await;
@@ -283,9 +283,9 @@ async fn a_gate_answered_before_the_deadline_is_not_swept() {
     );
 }
 
-/// Dimension 6.3 — a swept gate records who took it and why.
+/// A swept gate records who took it and why.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_swept_gate_says_the_system_took_it() {
     // the sweep is global; a sibling's lapsed gate is in its statement.
     let _sweeper = sweeper_exclusive().await;

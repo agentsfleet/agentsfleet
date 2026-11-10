@@ -17,7 +17,7 @@
 //! # What this module does not do
 //!
 //! It does not park an event, raise a card, count an anomaly, or read a
-//! recorded gate. Every one of those is Dragonfly or Postgres, and every one of
+//! recorded gate. Every one of those is Postgres or the bus, and every one of
 //! them is downstream of a decision made here — [`park`](Gates::park),
 //! [`pause`](Gates::pause) and [`anomaly`](Gates::anomaly) are the sibling
 //! modules that do them. [`route`] is the ordering those I/O outcomes compose
@@ -52,14 +52,14 @@ use serde_json::Value;
 
 pub use self::anomaly::Anomaly;
 pub use self::claim::{Claim, MAX_EVIDENCE_BYTES, MAX_PROPOSED_ACTION_BYTES, NO_EVIDENCE};
-pub use self::decision::{Answer, DECISION_APPROVE, DECISION_DENY};
+pub use self::decision::Answer;
 pub use self::detail::Stated;
 pub use self::park::{Park, Parked};
 pub use self::pass::{Check, Refused, Verdict, Waiting};
 pub use self::pause::Trigger;
 pub use self::pending::{Evaluation, GateRef, evaluate};
 pub use self::route::{RefState, Route, route};
-pub use self::store::{Gates, key};
+pub use self::store::Gates;
 
 /// The rule field that matches any tool, or any action.
 const WILDCARD: &str = "*";

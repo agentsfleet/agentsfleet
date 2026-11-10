@@ -16,8 +16,8 @@
 
 use std::time::Duration;
 
-use afd_dragonfly::Subscription;
-use afd_dragonfly::hub::Received;
+use af_core::id::Uuid7;
+use afd_bus::{Handle, Received, Subject, Subscription};
 use serde_json::Value;
 
 use crate::e2e::Scenario;
@@ -31,8 +31,8 @@ use crate::wire::{capable_beat, wait_for_seeded_offer};
 /// here would make the suite fail on a loaded machine and read as a lost frame.
 pub(crate) const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 
-/// How long the hub's pump is given to register a subscription with Dragonfly
-/// before the suite publishes; see [`settle`].
+/// How long a subscription is given to reach every node of the lane's NATS
+/// cluster before the suite publishes; see [`settle`].
 pub(crate) const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
 
 /// How long the "nothing was published" arms wait before believing it.
@@ -43,6 +43,29 @@ pub(crate) const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
 /// runtime to prove something that is already decided by the time the response
 /// status is read.
 pub(crate) const SILENCE_WINDOW: Duration = Duration::from_millis(750);
+
+/// One fleet's live tail on the lane's bus, subscribed as the dashboard's
+/// stream subscribes, with the connection held for as long as the tail is read.
+pub(crate) struct Tail {
+    _bus: Handle,
+    subscription: Subscription,
+}
+
+/// Subscribe to `fleet`'s tail. No namespace: the daemon a scenario boots
+/// reads only the environment the scenario hands it, which sets none.
+pub(crate) async fn tail_of(fleet: &Uuid7) -> Tail {
+    let bus = afd_bus::test_util::lane()
+        .await
+        .expect("the lane's NATS: run through make test-integration-rustd");
+    let subscription = bus
+        .subscribe(&Subject::FleetTail(fleet.clone()))
+        .await
+        .expect("the lane's NATS takes the subscription");
+    Tail {
+        _bus: bus,
+        subscription,
+    }
+}
 
 /// Beats, polls, and answers the lease the seeded event produced.
 ///
@@ -59,11 +82,12 @@ pub(crate) async fn lease(run: &Scenario) -> (String, u64) {
     wait_for_seeded_offer(run).await
 }
 
-/// Gives the hub's pump time to register the subscription with Dragonfly.
+/// Gives the subscription time to reach every node of the lane's NATS cluster.
 ///
-/// `subscribe` queues a command for the pump rather than round-tripping, so a
-/// publish issued in the same instant can beat the `SUBSCRIBE` to the server
-/// and be legitimately missed. This is the one place in these suites where a
+/// `subscribe` returns once its `SUB` leaves the socket, not once the server
+/// answers, and a daemon connected to another node learns of the interest
+/// later still. A publish issued in the same instant can therefore be
+/// legitimately missed. This is the one place in these suites where a
 /// sleep is the honest tool: there is no acknowledgement to await, and the
 /// alternative — publishing until something arrives — would make the
 /// "nothing was published" arms unprovable.
@@ -72,18 +96,20 @@ pub(crate) async fn settle() {
 }
 
 /// The next frame on the tail, as JSON, or `None` if none arrives in time.
-pub(crate) async fn next_frame(tail: &mut Subscription) -> Option<Value> {
+pub(crate) async fn next_frame(tail: &mut Tail) -> Option<Value> {
     received(tail, FRAME_DEADLINE).await
 }
 
 /// Asserts nothing arrives within the shorter window.
-pub(crate) async fn silence(tail: &mut Subscription) -> Option<Value> {
+pub(crate) async fn silence(tail: &mut Tail) -> Option<Value> {
     received(tail, SILENCE_WINDOW).await
 }
 
 /// One message off the tail within `budget`, parsed.
-async fn received(tail: &mut Subscription, budget: Duration) -> Option<Value> {
-    let received = tokio::time::timeout(budget, tail.recv()).await.ok()?;
+async fn received(tail: &mut Tail, budget: Duration) -> Option<Value> {
+    let received = tokio::time::timeout(budget, tail.subscription.recv())
+        .await
+        .ok()?;
     let Received::Message(message) = received.expect("the subscription stays live") else {
         // A lag or gap notice is not a frame this suite published; treat it as
         // nothing having arrived rather than as the message it was waiting for.

@@ -13,7 +13,7 @@ use crate::wire::field;
 const CALL_ID: &str = "3";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_activity_carries_a_required_call_id() {
     let mut supervisor = Supervisor::new();
     let mut tailed = Tailed::open(&mut supervisor).await;
@@ -60,7 +60,7 @@ async fn test_activity_carries_a_required_call_id() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_activity_tool_outcome_reaches_channel() {
     let mut supervisor = Supervisor::new();
     let mut tailed = Tailed::open(&mut supervisor).await;

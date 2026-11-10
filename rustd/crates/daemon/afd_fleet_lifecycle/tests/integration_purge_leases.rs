@@ -49,7 +49,7 @@ VALUES
 const LEASE_EXISTS: &str = "SELECT EXISTS (SELECT 1 FROM runner.leases WHERE id = $1)";
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn a_purge_deletes_the_live_lease_and_keeps_the_settled_one() {
     let lane = Lane::create().await;
     let fleet = lane.fleet().await;

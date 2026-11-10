@@ -58,6 +58,6 @@ async fn measure() -> Result<String> {
     // The sweep runs whether the lane succeeded or not; `cli::finish` reports
     // the lane's failure first when both failed.
     let measured = outbound::run(profile, provenance, parameters, &stores, &prefix).await;
-    let swept = sweep::outbound_stream(&stores.queue, &prefix).await;
+    let swept = sweep::everything(&stores.database, &prefix).await;
     cli::finish(Lane::Outbound, profile, measured, swept)
 }

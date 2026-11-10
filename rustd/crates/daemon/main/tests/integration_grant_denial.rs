@@ -45,8 +45,7 @@ async fn connect_and_declare(run: &Scenario) {
     // Prefer this fixture's fleet over unrelated ready marks left by other suites.
     Leases::new(
         run.booted.database.clone(),
-        run.booted.queue.clone(),
-        afd_bus::dragonfly::publisher(run.booted.queue.clone()),
+        run.booted.bus.clone(),
         Entropy::new(),
     )
     .claim(&run.fleet, &run.runner_id, std::time::Duration::ZERO)
@@ -81,10 +80,7 @@ where
         .execute(&mut *run.booted.database.acquire().await.expect("connection"))
         .await
         .expect("expire the previous no-work claim");
-        afd_bus::wake::publish(
-            &afd_bus::dragonfly::publisher(run.booted.queue.clone()),
-            run.fleet.clone(),
-        ).await;
+        afd_bus::wake::publish(&run.booted.bus, run.fleet.clone()).await;
         reached.await
         }
     })
@@ -106,8 +102,8 @@ async fn deny(run: &Scenario) {
     );
     Inbox::new(
         run.booted.database.clone(),
-        afd_bus::dragonfly::publisher(run.booted.queue.clone()),
-        afd_admission::Admissions::for_tests(run.booted.database.clone(), run.booted.queue.clone()),
+        run.booted.bus.clone(),
+        afd_admission::Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone()),
     )
     .resolve(
         actions.first().expect("card").as_str(),

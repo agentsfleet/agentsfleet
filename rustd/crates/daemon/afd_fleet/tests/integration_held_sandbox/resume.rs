@@ -36,7 +36,7 @@ async fn resumes(leases: &Leases, fleet: &Uuid7, runner: &Uuid7) -> bool {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_the_holders_claim_on_a_live_hold_resumes_it() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
@@ -49,7 +49,7 @@ async fn test_the_holders_claim_on_a_live_hold_resumes_it() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_claim_after_the_hold_lapsed_builds_fresh() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let (never_held, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
@@ -73,7 +73,7 @@ async fn test_a_claim_after_the_hold_lapsed_builds_fresh() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_claim_after_another_runner_ran_the_fleet_builds_fresh() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
@@ -109,7 +109,7 @@ async fn test_a_claim_after_another_runner_ran_the_fleet_builds_fresh() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder],
         fleet,

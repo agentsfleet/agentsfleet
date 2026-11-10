@@ -106,7 +106,7 @@ async fn offered(session: &Session) -> Proof<Lease> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn opening_reconciles_retained_missing_and_cancelled_work_without_reoffering_omitted_work()
 -> Proof {
     for transport in [Transport::H2, Transport::H3] {
@@ -143,7 +143,7 @@ async fn reconcile(transport: Transport) -> Proof {
         return Err("an omitted live lease cannot be offered before its expiry".into());
     }
     expire(&case.run, omitted_fleet, &omitted.id).await?;
-    let bus = afd_bus::dragonfly::publisher(case.run.booted.queue.clone());
+    let bus = case.run.booted.bus.clone();
     afd_bus::wake::publish(&bus, omitted_fleet.clone()).await;
     let offered = current.expect(StreamKind::Work, "offer").await;
     assert_eq!(

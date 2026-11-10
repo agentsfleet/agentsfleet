@@ -83,7 +83,7 @@ pub(crate) async fn approve<D: Services>(
 
     match services
         .sessions()
-        .approve(&session_id, &approval, dashboard.subject(), services.now())
+        .approve(&session_id, &approval, dashboard.subject())
         .await
     {
         Ok(()) => {
@@ -158,7 +158,7 @@ pub(crate) async fn verify<D: Services>(
 
     match services
         .sessions()
-        .verify(&session_id, &code, &fingerprint, services.now())
+        .verify(&session_id, &code, &fingerprint)
         .await
     {
         Ok(redeemed) => {

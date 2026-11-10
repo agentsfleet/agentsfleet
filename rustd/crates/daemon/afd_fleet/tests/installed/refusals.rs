@@ -7,7 +7,7 @@ use af_fleet_runtime::definition::POLICY_SEMANTICS;
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn missing_native_revision_is_permanent_even_if_old_projection_exists() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let held = seeded::<0>(&fixtures).await;
     // The seed saves a native revision; deselect it, so the fleet has none.
     sqlx::query("UPDATE fleet.fleets SET head_revision_id = NULL WHERE id = $1")
@@ -27,7 +27,7 @@ async fn missing_native_revision_is_permanent_even_if_old_projection_exists() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn malformed_native_definition_refuses_instead_of_using_a_valid_projection() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let held = seeded::<0>(&fixtures).await;
     fixtures.native_definition(&held.fleet, &definition()).await;
     let model = Some(afd_credential::provider::PLATFORM_MODEL_REF);
@@ -46,7 +46,7 @@ async fn malformed_native_definition_refuses_instead_of_using_a_valid_projection
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn old_policy_or_missing_model_cannot_execute() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let held = seeded::<0>(&fixtures).await;
     fixtures.native_definition(&held.fleet, &definition()).await;
     let stored = serde_json::to_string(&definition()).expect("Definition JSON");

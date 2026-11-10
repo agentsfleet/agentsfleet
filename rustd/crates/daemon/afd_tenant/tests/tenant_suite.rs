@@ -19,7 +19,7 @@
 //! # Three helpers that were all called `support`
 //!
 //! Each suite declared its own helper under the name `support`, and they were
-//! three DIFFERENT files — `apikey_lane`, `dragonfly_harness`, `preference_lane`.
+//! three DIFFERENT files — `apikey_lane`, `session_harness`, `preference_lane`.
 //! One binary means one namespace, so each is declared here under the name of
 //! the file it actually is. That is the only edit the suites needed.
 
@@ -41,13 +41,13 @@ mod access_lane;
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 mod apikey_lane;
-#[path = "support/dragonfly_harness.rs"]
+#[path = "support/session_harness.rs"]
 #[allow(
     clippy::expect_used,
     clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-mod dragonfly_harness;
+mod session_harness;
 // Carries its own `#![expect]`, carved with the code from the suite that
 // declared it, so it needs no allowance here.
 #[path = "support/device_flow_lane.rs"]
@@ -72,6 +72,8 @@ mod integration_device_flow;
 mod integration_device_flow_lifecycle;
 #[path = "integration_device_flow_races.rs"]
 mod integration_device_flow_races;
+#[path = "integration_device_sessions_contention.rs"]
+mod integration_device_sessions_contention;
 #[path = "integration_identity.rs"]
 mod integration_identity;
 #[path = "integration_invite_resolved_once.rs"]

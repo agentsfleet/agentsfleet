@@ -35,8 +35,9 @@ dev_identity() {
   DEV_BINARY="$DEV_STATE/build/debug/agentsfleetd"
   DEV_LOG="$DEV_STATE/daemon.log"
   local base=$((DEV_INFRA_PORT_START + 16#$DEV_REPO_ID % DEV_INFRA_SLOTS * DEV_INFRA_STRIDE))
-  export AGENTSFLEET_PG_HOST_PORT="$base" AGENTSFLEET_DRAGONFLY_BASE_PORT="$((base + 1))" AGENTSFLEET_DRAGONFLY_LAST_PORT="$((base + 5))"
+  export AGENTSFLEET_PG_HOST_PORT="$base"
   export AGENTSFLEET_QSTASH_HOST_PORT="$((base + 10))" AGENTSFLEET_MAILPIT_SMTP_PORT="$((base + 11))" AGENTSFLEET_MAILPIT_UI_PORT="$((base + 12))"
+  export AGENTSFLEET_NATS_BASE_PORT="$((base + 13))" AGENTSFLEET_NATS_PORT_2="$((base + 14))" AGENTSFLEET_NATS_PORT_3="$((base + 15))"
 }
 
 dev_stack_paths() {
@@ -107,16 +108,16 @@ dev_snapshot() {
   fi
   local staging="$DEV_SHARED/infrastructure-new-$$"
   dev_directory "$staging"
-  mkdir -p "$staging/scripts"
+  mkdir -p "$staging"
   cp "$DEV_ROOT/compose.dev-infra.yml" "$staging/compose.yml"
-  cp "$DEV_ROOT/scripts/dragonfly-cluster.sh" "$staging/scripts/dragonfly-cluster.sh"
   cat >"$staging/ports.env" <<EOF
 AGENTSFLEET_PG_HOST_PORT=$AGENTSFLEET_PG_HOST_PORT
-AGENTSFLEET_DRAGONFLY_BASE_PORT=$AGENTSFLEET_DRAGONFLY_BASE_PORT
-AGENTSFLEET_DRAGONFLY_LAST_PORT=$AGENTSFLEET_DRAGONFLY_LAST_PORT
 AGENTSFLEET_QSTASH_HOST_PORT=$AGENTSFLEET_QSTASH_HOST_PORT
 AGENTSFLEET_MAILPIT_SMTP_PORT=$AGENTSFLEET_MAILPIT_SMTP_PORT
 AGENTSFLEET_MAILPIT_UI_PORT=$AGENTSFLEET_MAILPIT_UI_PORT
+AGENTSFLEET_NATS_BASE_PORT=$AGENTSFLEET_NATS_BASE_PORT
+AGENTSFLEET_NATS_PORT_2=$AGENTSFLEET_NATS_PORT_2
+AGENTSFLEET_NATS_PORT_3=$AGENTSFLEET_NATS_PORT_3
 EOF
   mv "$staging" "$DEV_INFRA"
 }
@@ -127,12 +128,12 @@ dev_infra_up() {
   status="$(dev_compose ps --all --format '{{.Service}} {{.State}} {{.Health}}')"
   if [ -n "$status" ]; then
     while read -r service state health; do
-      case "$service" in postgres|dragonfly|mailpit|qstash) ;; *) dev_fail 'unexpected shared service' ;; esac
+      case "$service" in postgres|mailpit|qstash|nats-1|nats-2|nats-3) ;; *) dev_fail 'unexpected shared service' ;; esac
       if [ "$state" = running ] && [ "$health" = healthy ]; then count=$((count + 1)); fi
       if [ "$state" = running ] && [ "$health" = unhealthy ]; then restart+=("$service"); fi
     done <<<"$status"
   fi
-  if [ "$count" = 4 ]; then
+  if [ "$count" = 6 ]; then
     printf 'Reusing shared infrastructure %s\n' "$DEV_PROJECT"
     return
   fi
@@ -171,6 +172,7 @@ dev_stack_select() {
 
 dev_owners() {
   DEV_LIVE_ROOTS=''
+  DEV_RUNNING_ROOTS=''
   local owner marker root state
   for owner in "$DEV_SHARED"/worktrees/*; do
     [ -e "$owner" ] || [ -L "$owner" ] || continue
@@ -186,16 +188,33 @@ dev_owners() {
       state=live
       DEV_LIVE_ROOTS="${DEV_LIVE_ROOTS}${root}"$'\n'
     fi
+    if dev_owner_running "$owner"; then
+      DEV_RUNNING_ROOTS="${DEV_RUNNING_ROOTS}${root}"$'\n'
+    fi
     printf '  worktree %s: %s (%s)\n' "${owner##*/}" "$root" "$state"
   done
+}
+
+dev_owner_running() {
+  local record="$1/daemon.pid" pid
+  [ -s "$record" ] && [ ! -L "$record" ] || return 1
+  pid="$(sed -n '1p' "$record")"
+  case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+  kill -0 "$pid" 2>/dev/null || return 1
+  [ "$(dev_process_stamp "$pid" 2>/dev/null)" = "$(sed -n '2p' "$record")" ]
 }
 
 dev_stack_down() (
   dev_stack_select "$1"
   dev_lock "$DEV_SHARED/infrastructure.lock"
   dev_owners
-  [ -z "$DEV_LIVE_ROOTS" ] || dev_fail "refusing teardown; live worktrees remain:"$'\n'"$DEV_LIVE_ROOTS"
+  # A worktree that still exists may tear the stack down; one whose daemon
+  # still runs may not. The next `make up` rebuilds the stack from the
+  # checkout's compose file, which is how a stack gains a new service, such as
+  # the event bus (Indy, M244, Nov 09, 2026).
+  [ -z "$DEV_RUNNING_ROOTS" ] || dev_fail "refusing teardown; daemons still run in:"$'\n'"$DEV_RUNNING_ROOTS"
   dev_compose down --volumes
+  rm -rf -- "$DEV_INFRA"
 )
 
 dev_stack_status() (

@@ -17,7 +17,7 @@ use serde_json::json;
 // why_new=capacity-store tests bypass the native gateway and claim owner;
 // seam=real daemons and Postgres locks; direct row replacement models lost notifications.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn stale_native_grants_cannot_survive_rotation_or_supersession_at_the_host_lock() -> TestResult
 {
     for transport in [Transport::H2, Transport::H3] {

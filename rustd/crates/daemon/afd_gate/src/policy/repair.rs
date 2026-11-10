@@ -8,8 +8,8 @@
 //! The identifier is TEXT, and that is not an encoding detail to route around.
 //! `fleet.events` names a delivery by `(fleet_id, event_id)`; its `id UUID` is a
 //! row key Postgres mints for tool calls and leases to point at, never the
-//! event's identifier. Admission mints the key as `<millis>-<sequence>`, the shape
-//! a Dragonfly stream entry id has, because every surface that renders, sorts or
+//! event's identifier. Admission mints the key as `<millis>-<sequence>`, because
+//! every surface that renders, sorts or
 //! pages on event ids was written against it. So there is no `Uuid7` in the
 //! system that identifies a fleet event, and a version of this function that
 //! asked for one could only ever be handed something else.

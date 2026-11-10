@@ -77,12 +77,6 @@ pub(crate) enum ErrorKind {
         source: afd_vault::Error,
     },
 
-    #[error("the store holding the connect nonce would not answer")]
-    Queue {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
-
     /// The entropy source would not answer, or produced no usable value.
     ///
     /// One kind for both halves of a mint, because a caller does the same thing
@@ -173,7 +167,6 @@ impl Error {
             ErrorKind::Vault { source } => source.referenced_by(),
             ErrorKind::Datastore { .. }
             | ErrorKind::Query { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::IdentifierShape { .. }
             | ErrorKind::VendorUnreachable { .. }
@@ -189,12 +182,6 @@ impl Error {
     fn answer(&self) -> (ErrorCode, &'static str) {
         match self.kind() {
             ErrorKind::Datastore { .. } => (
-                error_code::INTERNAL_DB_UNAVAILABLE,
-                detail::DATABASE_UNAVAILABLE,
-            ),
-            // A queue that is GONE is the same outage a caller retries against,
-            // so it answers the unavailable code rather than a generic 500.
-            ErrorKind::Queue { source } if source.is_unavailable() => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 detail::DATABASE_UNAVAILABLE,
             ),
@@ -222,8 +209,7 @@ impl Error {
                 error_code::SECRET_REFERENCED_BY_MODEL_ENTRIES,
                 detail::GRANT_STILL_REFERENCED,
             ),
-            ErrorKind::Queue { .. }
-            | ErrorKind::Vault { .. }
+            ErrorKind::Vault { .. }
             | ErrorKind::Entropy { .. }
             | ErrorKind::IdentifierShape { .. } => (
                 error_code::INTERNAL_OPERATION_FAILED,

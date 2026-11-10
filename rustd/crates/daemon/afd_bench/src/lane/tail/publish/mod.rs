@@ -20,9 +20,12 @@ pub(super) const FRAME_KIND: &str = "bench_frame";
 
 /// How far the publisher may run ahead of the slowest viewer, in frames.
 ///
-/// A quarter of the hub's per-channel buffer: far enough that the pipeline
-/// stays full, short enough that no viewer can be lapped into a lag notice.
-pub(super) const WINDOW: u64 = 64;
+/// One: each frame is published only once every viewer holds the one before,
+/// so a frame's latency is one trip through the bus and the fan-out. A wider
+/// window measured queueing instead, and unevenly: a bus whose publish waits
+/// for the server's reply paced itself, while one whose publish returns at
+/// once ran the whole window ahead.
+pub(super) const WINDOW: u64 = 1;
 
 /// The kind a readiness probe carries.
 pub(super) const PROBE_KIND: &str = "bench_probe";

@@ -212,7 +212,7 @@ async fn append_one(
     }
 }
 
-/// The intake over the lane's pool and queue.
+/// The intake over the lane's pool and Bus.
 fn admissions(stores: &Datastores) -> Admissions {
     Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new())
 }

@@ -15,11 +15,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{dragonfly_config, scenario};
+use crate::e2e::scenario;
 use crate::reads::event_column;
 use crate::tail::{lease, next_frame, settle};
 use crate::wire::{capable_beat, field, report_body, wait_without_offer};
@@ -33,17 +32,14 @@ use crate::wire::{capable_beat, field, report_body, wait_without_offer};
 /// frame that names it, so a watcher reacting to the frame can never find
 /// the row missing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_bracket_frames_open_and_close_a_run() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
 
     // Subscribed BEFORE the lease: the opening bracket is published by the
     // claim itself, and pub/sub keeps nothing for a reader that arrives late.
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
+    let mut tail = crate::tail::tail_of(&run.fleet).await;
     settle().await;
 
     let (lease_id, fence) = lease(&run).await;
@@ -70,15 +66,12 @@ async fn test_bracket_frames_open_and_close_a_run() {
 /// An exhausted tenant's admission ends the event `gate_blocked`. The same
 /// claim opens and closes its row, so a tail watcher receives both brackets.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_refused_lease_closes_the_run_on_the_tail() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
 
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
+    let mut tail = crate::tail::tail_of(&run.fleet).await;
     settle().await;
 
     run.drain_wallet().await;

@@ -116,7 +116,7 @@ pub fn elapsed(then: Timestamp, now: Timestamp) -> Duration {
 }
 
 /// A span in whole milliseconds, saturated rather than wrapped, for the wire
-/// fields that spell a span as a count (`retry_after_ms`, a Redis `PX`).
+/// fields that spell a span as a count (`retry_after_ms`).
 #[must_use]
 pub fn saturating_millis(span: Duration) -> u64 {
     u64::try_from(span.as_millis()).unwrap_or(u64::MAX)

@@ -10,7 +10,7 @@ use std::error::Error as _;
 use tokio::{sync::Semaphore, time::Instant};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn known_usage_survives_the_model_answer_deadline_during_its_edit_check() {
     let boundary = Boundary::open().await;
     let mut supervisor = Supervisor::new();

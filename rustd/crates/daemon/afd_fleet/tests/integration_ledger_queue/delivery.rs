@@ -26,12 +26,12 @@ const RESTORE_DELIVERY: &str = "DROP TRIGGER refuse_delivery ON fleet.admissions
 // or optional counter read rolls back delivery; why_new=success misses SQL faults;
 // seam=none; no_claim=every failure ordinal.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_failed_delivery_stamp_rolls_back_narrative_and_counters_then_retries_once() {
-    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let acquired = next(&leases, &runner).await.expect("claim");
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut connection = owner.acquire().await.expect("owner");
@@ -87,7 +87,7 @@ async fn assert_stamp_failure_rolls_back(
         "{failure}"
     );
     let failure = fixtures
-        .plane_with_dead_queue()
+        .plane_with_dead_bus()
         .claim_selected(acquired.clone(), runner, fixtures.enrolled_at())
         .await
         .expect_err("a failed delivery cannot issue a lease");
@@ -143,14 +143,15 @@ async fn receive_with_counter_read_refused(
 // blocks the event foreign key; why_new=serial delivery misses producer locks;
 // seam=none; no_claim=every possible deadlock cycle.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn first_delivery_finishes_while_a_producer_holds_the_fleet_budget_lock() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let acquired = next(&leases, &runner).await.expect("claim");
-    let admissions = Admissions::for_tests(fixtures.database.clone(), crate::queue::unreachable());
+    let admissions =
+        Admissions::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
     let prepared = admissions
         .prepare(Admission {
             producer: Producer::Steer,

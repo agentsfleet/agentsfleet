@@ -30,9 +30,6 @@ use clap::Parser as _;
 /// A Postgres URL that parses and points at nothing listening.
 const DEAD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable";
 
-/// A Dragonfly URL that parses and points at nothing listening.
-const DEAD_DRAGONFLY_URL: &str = "redis://127.0.0.1:1";
-
 /// Sixty-four hex characters.
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -44,13 +41,13 @@ fn parses_but_dead() -> MapEnv {
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", DEAD_DATABASE),
-            ("DRAGONFLY_URL", DEAD_DRAGONFLY_URL),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
         .into_iter()
         // Required at boot, and — like everything else in this fixture —
         // resolved rather than used.
         .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::BUS)
         .chain(crate::support::runner_stream::environment())
         // The provider is required at boot, and — like the datastores above —
         // resolved rather than dialled, so a well-formed value is enough here.

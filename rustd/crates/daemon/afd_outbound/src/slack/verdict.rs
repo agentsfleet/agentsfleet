@@ -4,8 +4,8 @@
 //! Split from [`super`], which holds the poster, so the vendor call and the
 //! classification of its answer read apart. Nothing here makes a request.
 
+use crate::obligation::Outgoing;
 use afd_connector::slack::Thread;
-use afd_dragonfly::OutboundDelivery;
 
 use super::{
     Accepted, REASON_ADDRESS_UNREADABLE, STATUS_OK, STATUS_SERVER_ERROR_FLOOR,
@@ -19,7 +19,7 @@ use crate::poster::Verdict;
 /// answer for all of them, because a caller does the same thing with each: the
 /// job names nowhere this poster can post, and no retry changes that. Nothing
 /// has been read or requested when it answers.
-pub(super) fn destination(job: &OutboundDelivery) -> Result<Thread, Verdict> {
+pub(super) fn destination(job: &Outgoing) -> Result<Thread, Verdict> {
     Thread::parse(&job.destination)
         .ok_or_else(|| failed(job, REASON_ADDRESS_UNREADABLE, Verdict::Permanent))
 }
@@ -63,7 +63,7 @@ pub(super) const fn verdict_of(status: u16) -> Verdict {
 ///
 /// The event goes to the operator and never to Slack. One site, so a failure
 /// added later cannot be the one that forgets to say anything.
-pub(super) fn failed(job: &OutboundDelivery, event: &'static str, verdict: Verdict) -> Verdict {
+pub(super) fn failed(job: &Outgoing, event: &'static str, verdict: Verdict) -> Verdict {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let error_code = af_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
     let workspace_id = job.workspace_id.as_str();

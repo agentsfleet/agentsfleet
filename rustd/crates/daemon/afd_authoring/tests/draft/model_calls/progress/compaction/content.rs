@@ -5,7 +5,7 @@ use af_wire::context::ContextState;
 
 // Value: native reasoning can accompany valid notes without escaping to the runner.
 #[tokio::test]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn summary_reasoning_is_private_and_a_tool_call_with_valid_notes_is_refused() {
     for tool in [false, true] {
         let (f, attempt, mut live) = ready().await;

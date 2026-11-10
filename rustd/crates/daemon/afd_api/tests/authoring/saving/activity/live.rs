@@ -6,7 +6,7 @@ use http::{Method, StatusCode};
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn activation_notifies_an_open_chat_and_retry_remains_quiet() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     assert_eq!(
@@ -26,7 +26,7 @@ async fn activation_notifies_an_open_chat_and_retry_remains_quiet() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn access_changes_notify_only_dependent_fleets_in_the_owning_workspace() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     let other = Saved::create(json!({"credentials":[SERVICE]})).await;
@@ -93,7 +93,7 @@ async fn access_readers(saved: &Saved, other: &Saved) -> ([Uuid7; 3], [Reader; 5
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn memory_changes_notify_the_open_fleet_once_and_replays_stay_quiet() {
     let saved = Saved::create(json!({})).await;
     let neighbor = saved.neighbor("Support triage", json!({})).await;

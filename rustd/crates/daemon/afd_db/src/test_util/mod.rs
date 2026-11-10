@@ -25,11 +25,6 @@
 //! is the isolation that does the work; a database per test was belt over
 //! braces, and the braces are the ones holding.
 //!
-//! It is the same isolation the Dragonfly side has always relied on, for the reason
-//! it has always relied on it: Dragonfly has no per-test database, so suites
-//! namespace their keys by the identifiers they mint. That worked. This is the
-//! same argument applied to Postgres.
-//!
 //! **The obligation it puts on a test:** assert on rows you MINTED, never on a
 //! table's whole contents. A count must carry a workspace or a tenant in its
 //! predicate. `SELECT count(*) FROM …` with no `WHERE` is a test that will pass

@@ -22,7 +22,7 @@ const CUT: Duration = STREAM_ANSWER_TIMEOUT.saturating_add(Duration::from_secs(1
 // why_new=the retained-report case completes its engine before it needs another grant;
 // seam=real production runner, physical process, faulted carriers and Postgres.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_bounded_native_outage_renews_before_its_confirmed_deadline() {
     for carrier in [Transport::H2, Transport::H3] {
         renewed_before_expiry(carrier).await;
@@ -61,7 +61,7 @@ async fn renewed_before_expiry(carrier: Transport) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_blackholed_native_runner_reconnects_and_settles_its_memory_report_once() {
     for carrier in [Transport::H2, Transport::H3] {
         bounded(carrier).await;
@@ -108,7 +108,7 @@ async fn bounded(carrier: Transport) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_sustained_native_outage_never_extends_the_running_process_deadline() {
     for carrier in [Transport::H2, Transport::H3] {
         sustained(carrier).await;

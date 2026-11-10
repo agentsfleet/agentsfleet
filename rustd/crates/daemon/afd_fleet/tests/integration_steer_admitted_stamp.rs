@@ -46,7 +46,7 @@ const ADMITTED_EARLIER: std::time::Duration = std::time::Duration::from_secs(60)
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let steer = Steer::new(ledger(&fixtures));
     let mut admitted = Vec::with_capacity(WAITING);
@@ -123,7 +123,7 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_webhook_row_keeps_the_lease_instant() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let key = producer_key(&fleet, "lease-instant");
     ledger(&fixtures)

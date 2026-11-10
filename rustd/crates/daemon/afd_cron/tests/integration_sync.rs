@@ -12,8 +12,8 @@
 //! # The scheduler is real, and it is local
 //!
 //! `docker-compose.yml`'s `qstash` service runs Upstash's own dev server with
-//! deterministic credentials, and `make/test-infra.mk` starts it beside Postgres
-//! and Dragonfly. This suite reads the two knobs that lane exports and SELF-SKIPS
+//! deterministic credentials, and `make/test-infra.mk` starts it beside
+//! Postgres. This suite reads the two knobs that lane exports and SELF-SKIPS
 //! when they are unset, so `cargo test` outside the lane stays green without
 //! silently pretending to have proved any of this.
 //!
@@ -50,12 +50,12 @@ use self::support::CronLane;
 /// A base no scheduler listens on, for the outage half.
 ///
 /// `.test` is reserved and resolves nowhere, so this fails as a TRANSPORT
-/// failure — the case Dimension 3.3 is about — rather than as a refusal from
+/// failure — the outage case this suite is about — rather than as a refusal from
 /// something that answered.
 const UNREACHABLE_BASE: &str = "https://qstash.unreachable.test/v2";
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn a_real_scheduler_accepts_the_push_and_the_row_records_it() {
     let Some((url, token)) = live() else {
         return;
@@ -112,7 +112,7 @@ async fn claimed_for_deletion(lane: &CronLane, schedule: &Schedule, claim: &Uuid
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn the_scheduler_key_is_adopted_and_a_delete_names_it() {
     // The whole point of the suite. A create invents `provider_schedule_id`
     // locally; the scheduler files the schedule under its own id. Unless the
@@ -169,13 +169,13 @@ async fn the_scheduler_key_is_adopted_and_a_delete_names_it() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 #[expect(
     clippy::disallowed_methods,
     reason = "the client aims at a `.test` host that resolves nowhere, so it never connects"
 )]
 async fn a_scheduler_that_cannot_be_reached_keeps_its_reason_on_the_row() {
-    // Dimension 3.3's half that needs no vendor: the store and the upstream
+    // The outage half that needs no vendor: the store and the upstream
     // diverge, and the row says so in a way the next `:sync` can act on.
     let lane = CronLane::open().await;
     let created = lane.settled("key-live-outage", "0 6 * * *").await;
@@ -220,7 +220,7 @@ async fn a_scheduler_that_cannot_be_reached_keeps_its_reason_on_the_row() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn a_push_under_a_lost_fence_changes_nothing() {
     // The store half of 3.1 that a single-syncer test cannot reach: a syncer
     // whose fence was taken while it was talking to a REAL scheduler must not

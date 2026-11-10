@@ -14,6 +14,11 @@ pub(crate) fn role_unknown(stored: &str) -> Error {
     })
 }
 
+/// Reports a device session row this build cannot read, naming what about it.
+pub(crate) fn session_unreadable(what: impl Into<Box<str>>) -> Error {
+    Error::new(ErrorKind::SessionUnreadable { what: what.into() })
+}
+
 /// Refuses a device-flow field this daemon will not store.
 pub(crate) fn session_field(field: SessionField) -> Error {
     Error::new(ErrorKind::SessionFieldInvalid { field })

@@ -20,7 +20,7 @@ const UNHELD_LEASE: &str = "0195b4ba-8d3a-7fff-8abc-ffffffffffff";
 
 /// A valid batch publishes; malformed and unowned activity have no effect.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_activity_publish() {
     let mut supervisor = Supervisor::new();
     let mut tailed = Tailed::open(&mut supervisor).await;
@@ -49,7 +49,7 @@ async fn test_activity_publish() {
 
 /// A rendering failure drops that frame while a later valid frame still publishes.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_activity_drops_a_frame_it_cannot_render() {
     let mut supervisor = Supervisor::new();
     let mut tailed = Tailed::open(&mut supervisor).await;
@@ -83,7 +83,7 @@ async fn test_activity_drops_a_frame_it_cannot_render() {
 
 /// An unowned frame cannot publish, and the same connection still serves its real lease.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unowned_native_activity_frame_reaches_no_tail() {
     let mut supervisor = Supervisor::new();
     let mut tailed = Tailed::open(&mut supervisor).await;

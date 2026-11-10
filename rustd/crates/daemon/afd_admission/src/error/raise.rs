@@ -135,8 +135,8 @@ impl sqlx::error::DatabaseError for LockWaitExpired {
 
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
-/// The seam `afd_db`, `afd_dragonfly`, `afd_ingress` and `afd_cron` already
-/// carry, and for their argument: the accessors on an error type — its code,
+/// The seam `afd_db`, `afd_ingress` and `afd_cron` already carry, and for
+/// their argument: the accessors on an error type — its code,
 /// its sentence, its rendering, whether a retry could help — are what a
 /// person reads at three in the morning and are exactly what the happy path
 /// never touches. A sample built here rather than in the suite means adding a

@@ -33,7 +33,7 @@ pub(crate) async fn enqueue(
     workspace: &Uuid7,
     event_type: EventType,
 ) -> Uuid7 {
-    let admitted = Admissions::for_tests(booted.database.clone(), booted.queue.clone())
+    let admitted = Admissions::for_tests(booted.database.clone(), booted.bus.clone())
         .admit(Admission {
             producer: Producer::Steer,
             key: Key::Unrepeatable,

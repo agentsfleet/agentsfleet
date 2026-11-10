@@ -37,7 +37,6 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
             | ErrorKind::Credential { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -104,7 +103,6 @@ impl Error {
             | ErrorKind::Runner { .. }
             | ErrorKind::Gate { .. }
             | ErrorKind::Credential { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Billing { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
