@@ -93,7 +93,9 @@ impl Healthy {
                 | Verb::TaskCheckpointObjectsRegister
                 | Verb::TaskCheckpointUploads
                 | Verb::TaskCheckpointAuthorizations
-                | Verb::TaskCheckpointPin,
+                | Verb::TaskCheckpointPin
+                // The native opening is a stream, never an HTTP fixture route.
+                | Verb::Open,
             ) => Value::Null,
             Some(Verb::ContextLoad | Verb::ContextCommit) => serde_json::json!({}),
             Some(Verb::Heartbeat) => self.heartbeat(),

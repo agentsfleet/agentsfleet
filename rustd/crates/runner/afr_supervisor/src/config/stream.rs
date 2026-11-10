@@ -23,7 +23,14 @@ impl StreamConfig {
     pub(super) fn from_env(env: &impl EnvSource) -> Result<Self> {
         let origin = optional(env, ENV_STREAM_URL)
             .ok_or_else(|| error::config("AGENTSFLEET_RUNNER_STREAM_URL is not set"))?;
-        let endpoint = Endpoint::parse(&origin)?.with_environment_route(env)?;
+        let endpoint = Endpoint::parse(&origin)
+            .map_err(|source| {
+                error::boundary(
+                    "AGENTSFLEET_RUNNER_STREAM_URL must be an HTTPS origin with no credentials, path, query or fragment",
+                    source,
+                )
+            })?
+            .with_environment_route(env)?;
         let trust = optional(env, ENV_STREAM_CA).map_or_else(Trust::default, |path| {
             Trust::with_roots(PathBuf::from(path.as_ref()))
         });

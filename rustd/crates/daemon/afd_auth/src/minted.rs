@@ -20,7 +20,7 @@
 //! is the marker and nothing else, which is what the parameter says.
 
 use af_crypto::entropy::Entropy;
-use af_crypto::secret::SecretString;
+use af_crypto::secret::{SecretString, Zeroizing};
 use std::fmt;
 
 use crate::credential::CredentialKind;
@@ -59,8 +59,8 @@ impl Minted {
     /// is not degraded to a weaker source: a predictable credential is one an
     /// attacker mints for themselves.
     pub fn draw(kind: CredentialKind, entropy: &Entropy) -> af_crypto::error::Result<Self> {
-        let mut raw = [0u8; TOKEN_RANDOM_BYTES];
-        entropy.fill(&mut raw)?;
+        let mut raw = Zeroizing::new([0u8; TOKEN_RANDOM_BYTES]);
+        entropy.fill(&mut *raw)?;
         // Every class this crate mints carries a marker; the session bearer is
         // the only kind that does not, and nothing mints one of those — the
         // identity provider does.
@@ -68,7 +68,12 @@ impl Minted {
         // `hex` rather than a `write!` loop: the encoding is not this crate's
         // problem, and a hand-written one is a place for a `{:x}` to lose a
         // leading zero. Lower-case, matching every stored credential column.
-        let token = SecretString::new(format!("{marker}{}", hex::encode(raw)));
+        let hexed = Zeroizing::new(hex::encode(raw.as_slice()));
+        // Sized before pushing, so growth never frees an unwiped copy of the token.
+        let mut token = String::with_capacity(marker.len() + hexed.len());
+        token.push_str(marker);
+        token.push_str(&hexed);
+        let token = SecretString::new(token);
         // Over the WHOLE value, marker included, through the same function that
         // hashes what the holder later presents — a digest taken over anything
         // else stores a value no lookup will ever match.

@@ -40,6 +40,8 @@ impl Method {
 /// One runner verb.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Verb {
+    /// The authenticated opening of the native runner stream.
+    Open,
     /// Liveness, capability, assignment.
     Heartbeat,
     /// Private run working notes, loaded under a live fence.
@@ -126,7 +128,8 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 40] = [
+    pub(crate) const ALL: [Self; 41] = [
+        Self::Open,
         Self::Heartbeat,
         Self::ContextLoad,
         Self::ContextCommit,
@@ -187,7 +190,8 @@ impl Verb {
             | Self::TaskCheckpointCommit
             | Self::TaskCheckpointPin => Method::Patch,
             Self::ScheduleDelete => Method::Delete,
-            Self::Heartbeat
+            Self::Open
+            | Self::Heartbeat
             | Self::AuthoringModel
             | Self::AuthoringActivity
             | Self::AuthoringRenew
@@ -217,6 +221,7 @@ impl Verb {
     /// The verb as a log line and an error name it.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
+            Self::Open => "stream_open",
             Self::Heartbeat => "heartbeat",
             Self::ContextLoad => "context_load",
             Self::ContextCommit => "context_commit",
@@ -266,6 +271,7 @@ impl Verb {
             Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
             Self::ContextLoad
             | Self::ContextCommit
+            | Self::Open
             | Self::Heartbeat
             | Self::AuthoringModel
             | Self::AuthoringActivity

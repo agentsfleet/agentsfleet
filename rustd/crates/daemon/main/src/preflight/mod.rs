@@ -238,7 +238,7 @@ impl Readings {
                 qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
                 qstash_url: optional(env, QSTASH_URL_KNOB),
                 slack_api_url,
-                identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
+                identity_webhook_secret: optional_secret(env, IDENTITY_WEBHOOK_SECRET_KNOB),
                 qstash_keys: signing_keys(env),
                 sse_max_streams,
                 runner_wake,

@@ -54,10 +54,8 @@ async fn a_changed_dispatch_identity_cannot_publish_the_returned_private_text() 
         })
         .await;
     let failure = result.unwrap_err();
-    assert_eq!(
-        failure.code(),
-        af_core::error_code::RUN_PROTOCOL_UNSUPPORTED
-    );
+    // The mismatched reply closes the session; the waiting caller sees its stream cut.
+    assert_eq!(failure.code(), af_core::error_code::RUN_STREAM_DISCONNECTED);
     let calls = rig.calls();
     assert_eq!(
         calls

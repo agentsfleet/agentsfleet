@@ -74,3 +74,23 @@ fn unexpected_success_still_fails_and_expected_shutdown_does_not() {
         Some("listener")
     );
 }
+
+#[test]
+fn a_failure_during_drain_keeps_its_cause_without_failing_the_daemon() {
+    let logs = Capture::install();
+    let stop = CancellationToken::new();
+    stop.cancel();
+    let failed = CancellationToken::new();
+    let error = af_stream::Error::from(std::io::Error::from(std::io::ErrorKind::ConnectionReset));
+    finished(&Err(error), "listener", &stop, &failed);
+    assert!(!failed.is_cancelled(), "drain decides the exit status");
+    let line = logs.only("runner_stream_component_stopped");
+    assert_eq!(
+        line.field("error_code"),
+        Some(error_code::INTERNAL_OPERATION_FAILED.as_str())
+    );
+    assert!(
+        line.field("reason")
+            .is_some_and(|reason| reason.contains("connection reset"))
+    );
+}

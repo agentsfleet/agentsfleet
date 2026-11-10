@@ -33,7 +33,7 @@ async fn known_usage_survives_the_model_answer_deadline_during_its_edit_check() 
     );
     let error =
         result.expect_err("the caller's answer budget expires while the decision is blocked");
-    assert_eq!(error.code(), error_code::RUN_PROTOCOL_UNSUPPORTED);
+    assert_eq!(error.code(), error_code::RUN_STREAM_DISCONNECTED);
     assert!(
         error
             .source()

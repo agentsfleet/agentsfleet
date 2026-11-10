@@ -50,7 +50,7 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
     let audience = required(env, faults, OIDC_AUDIENCE_KNOB, WHY_AUDIENCE);
     let api_base = required(env, faults, PROVIDER_API_BASE_KNOB, WHY_API_BASE)
         .and_then(|raw| provider_api_base(raw, faults));
-    let raw_secret = required(env, faults, PROVIDER_SECRET_KNOB, WHY_SECRET);
+    let raw_secret = required_secret(env, faults, PROVIDER_SECRET_KNOB, WHY_SECRET);
     let transport = identity_transport(env, faults);
 
     let secret = raw_secret.and_then(|raw| {
@@ -59,7 +59,7 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
             true,
             PROVIDER_SECRET_KNOB,
             WHY_SECRET,
-            ProviderSecret::new(&raw),
+            ProviderSecret::new(raw.expose()),
         )
     });
 
@@ -132,6 +132,20 @@ pub(super) fn required<E: EnvSource + ?Sized>(
     why: &'static str,
 ) -> Option<String> {
     let value = optional(env, knob).map(String::from);
+    if value.is_none() {
+        faults.push(Fault::Missing { knob, why });
+    }
+    value
+}
+
+/// A required secret knob, owned by a wiping string from its first read.
+pub(super) fn required_secret<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+    knob: &'static str,
+    why: &'static str,
+) -> Option<af_crypto::secret::SecretString> {
+    let value = super::optional_secret(env, knob);
     if value.is_none() {
         faults.push(Fault::Missing { knob, why });
     }
