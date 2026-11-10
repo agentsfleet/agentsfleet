@@ -62,6 +62,8 @@ mod platform_model;
 pub mod refusal;
 mod rows;
 mod runner;
+// Statements a test's window sent, from `pg_stat_statements`.
+pub mod statements;
 mod unreachable;
 
 pub use self::billing::WalletSeed;
