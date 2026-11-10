@@ -51,6 +51,8 @@ jsonwebtoken.workspace = true
 # The broker's short-lived credential cache. A mint that already happened for
 # this workspace and handle is not re-run inside its TTL.
 moka = { workspace = true, features = ["future"] }
+# The platform key cache counts its lookups (M245 §3).
+af_observability.workspace = true
 reqwest.workspace = true
 sha2.workspace = true
 # A credential's bytes are wiped when the value holding them is dropped.

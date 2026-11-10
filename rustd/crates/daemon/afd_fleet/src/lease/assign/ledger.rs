@@ -16,6 +16,7 @@ use crate::lease::installed::FleetWithSession;
 use crate::lease::reclaim::Reused;
 use crate::lease::sql::{self, queue};
 use crate::lease::store::Leases;
+use afd_credential::provider::cache::PlatformKeyKey;
 
 /// Query context shared by the claim's transaction operations.
 const CONTEXT: &str = "admissions ledger claim";
@@ -64,6 +65,9 @@ struct OpenedRow {
     event_status: String,
     event_count: i64,
     budget_used_nanos: i64,
+    catalogue_version: i64,
+    platform_secret_id: Option<Uuid7>,
+    platform_secret_version: Option<i64>,
 }
 
 impl Leases {
@@ -179,7 +183,13 @@ impl Admission {
             event_status,
             event_count,
             budget_used_nanos,
+            catalogue_version,
+            platform_secret_id,
+            platform_secret_version,
         } = self.opened;
+        let platform_key = platform_secret_id
+            .zip(platform_secret_version)
+            .map(|(secret, version)| PlatformKeyKey::observed(catalogue_version, secret, version));
         let delivery = if inserted {
             Delivery::First
         } else if event_status == af_core::event::status::RECEIVED {
@@ -199,6 +209,8 @@ impl Admission {
                 opened_at,
             },
             tenant_id: self.tenant_id,
+            catalogue_version,
+            platform_key,
             memory_reads_workspace: self.memory.memory_reads_workspace,
             memory_publishes_workspace: self.memory.memory_publishes_workspace,
             setup: self.setup,

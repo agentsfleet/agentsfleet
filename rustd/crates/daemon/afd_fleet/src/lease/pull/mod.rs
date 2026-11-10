@@ -171,7 +171,11 @@ impl LeaseService {
         };
         let resolved = self
             .providers
-            .resolve_reference(&tenant, &installed.runtime_model_ref)
+            .resolve_observed(
+                &tenant,
+                &installed.runtime_model_ref,
+                acquired.opened.platform_key.as_ref(),
+            )
             .await?;
         let gated = self.gated(&acquired, &installed, tenant, &resolved, now);
         let billed = match gated.await?.admitted() {

@@ -118,6 +118,15 @@ WITH fleet AS MATERIALIZED (
    AND r.fleet_id = f.id
   LEFT JOIN fleet.revisions current ON current.id = f.head_revision_id AND current.fleet_id = f.id
   LEFT JOIN fleet.sessions s ON s.fleet_id = f.id
+), catalogue AS MATERIALIZED (
+  SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1
+), platform AS MATERIALIZED (
+  -- The active default's secret, chosen as the platform resolution chooses it.
+  SELECT s.id AS platform_secret_id, s.resource_version AS platform_secret_version
+  FROM model.platform_defaults p
+  JOIN vault.secrets s ON s.workspace_id = p.source_workspace_id AND s.key_name = p.provider
+  WHERE p.active AND s.meta_has_key AND s.meta_provider = p.provider
+  ORDER BY p.provider LIMIT 1
 ), tally AS (
   INSERT INTO runner.lifetime_counters AS c
     (runner_id, acquired_count, succeeded_count, failed_count, expired_count,
@@ -137,10 +146,13 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        i.definition, i.runtime_model_ref, i.context_json, i.policy_semantics,
        i.revision_id, i.task_generation, i.current_definition,
        o.inserted, o.created_at AS opened_at, o.status AS event_status,
-       k.event_count, k.budget_used_nanos
+       k.event_count, k.budget_used_nanos,
+       (SELECT resource_version FROM catalogue) AS catalogue_version,
+       pl.platform_secret_id, pl.platform_secret_version
 FROM stamped a CROSS JOIN slot
 LEFT JOIN prior_lease b ON true
 CROSS JOIN fleet f
 CROSS JOIN opened o
 CROSS JOIN counters k
 CROSS JOIN installed i
+LEFT JOIN platform pl ON true

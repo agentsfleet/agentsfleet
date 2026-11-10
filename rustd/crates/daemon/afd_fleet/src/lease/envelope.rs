@@ -85,6 +85,12 @@ pub struct Opened {
     /// The payer: `fleet.fleets.tenant_id`, which the workspace's tenant key
     /// constrains to the workspace's own tenant.
     pub tenant_id: Uuid7,
+    /// The catalogue version the claim read, which prices and platform
+    /// resolutions are keyed on.
+    pub catalogue_version: i64,
+    /// The active platform default's versions, when one is active: the key the
+    /// platform resolution is cached under.
+    pub platform_key: Option<afd_credential::provider::cache::PlatformKeyKey>,
     /// Whether the fleet's runs read workspace-shared memory.
     pub memory_reads_workspace: bool,
     /// Whether the fleet's runs publish to workspace-shared memory.
@@ -105,6 +111,8 @@ impl Opened {
                 opened_at: Timestamp::UNIX_EPOCH,
             },
             tenant_id,
+            catalogue_version: 0,
+            platform_key: None,
             memory_reads_workspace: false,
             memory_publishes_workspace: false,
             setup: FleetWithSession::unread(workspace_id),
