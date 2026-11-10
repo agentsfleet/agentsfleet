@@ -164,9 +164,10 @@ impl Error {
             } => *code,
             ErrorKind::Disconnected
             | ErrorKind::StreamTimeout { .. }
-            | ErrorKind::StreamDisconnected { .. }
-            | ErrorKind::StreamProtocolSource { .. }
-            | ErrorKind::StreamProtocol => error_code::RUN_PROTOCOL_UNSUPPORTED,
+            | ErrorKind::StreamDisconnected { .. } => error_code::RUN_STREAM_DISCONNECTED,
+            ErrorKind::StreamProtocolSource { .. } | ErrorKind::StreamProtocol => {
+                error_code::RUN_PROTOCOL_UNSUPPORTED
+            }
             ErrorKind::Refused {
                 status: UNAUTHORIZED,
                 ..

@@ -50,7 +50,7 @@ async fn ownership_opening_cannot_spend_the_ping_interval_on_either_carrier() {
             error.kind(),
             crate::error::ErrorKind::StreamTimeout { .. }
         ));
-        assert_eq!(error.code(), af_core::error_code::RUN_PROTOCOL_UNSUPPORTED);
+        assert_eq!(error.code(), af_core::error_code::RUN_STREAM_DISCONNECTED);
         assert!(started.elapsed() >= af_core::timing::STREAM_OPEN_TIMEOUT);
         daemon.close().await.unwrap();
         connection

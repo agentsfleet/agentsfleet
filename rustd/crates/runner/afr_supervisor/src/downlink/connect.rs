@@ -239,7 +239,10 @@ impl Opening<'_> {
         let status = response.status();
         if !status.is_success() {
             if status.is_server_error() || status == http::StatusCode::TOO_MANY_REQUESTS {
-                return Err(ErrorKind::Disconnected.into());
+                return Err(error::unavailable(
+                    crate::client::Verb::Open,
+                    status.as_u16(),
+                ));
             }
             let mut body = Vec::new();
             tokio::time::timeout_at(
@@ -252,7 +255,7 @@ impl Opening<'_> {
             )
             .await??;
             return Err(error::refused_with_body(
-                crate::client::Verb::Heartbeat,
+                crate::client::Verb::Open,
                 status.as_u16(),
                 &body,
             ));

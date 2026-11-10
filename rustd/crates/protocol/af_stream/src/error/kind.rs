@@ -22,6 +22,8 @@ pub(crate) enum ErrorKind {
     },
     #[error("The runner message does not match the stream protocol.")]
     Protocol,
+    #[error("The stream URL must be an HTTPS origin with no credentials, path, query or fragment.")]
+    Origin,
     #[error("The message body could not be read.")]
     Body {
         #[source]
