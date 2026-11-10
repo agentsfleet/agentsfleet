@@ -23,6 +23,7 @@ SUBCOMMANDS
                sign-ins, and clear local state (other machines stay signed in)
   whoami       Show who this terminal is signed in as
   doctor       Diagnose CLI configuration and connectivity
+  pet          Watch Scout, your terminal owl, for five seconds
   workspace    Manage workspaces
   grant        Manage integration grants
   api-key      Manage tenant API keys

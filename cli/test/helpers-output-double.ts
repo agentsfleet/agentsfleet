@@ -53,7 +53,7 @@ export const outputDouble = (
   stdoutIsTty: options.stdoutIsTty ?? false,
   intro: () => Effect.void,
   info: () => Effect.void,
-  progress: () => Effect.succeed(() => undefined),
+  progress: () => Effect.void,
   success: () => Effect.void,
   warn: () => Effect.void,
   error: () => Effect.void,

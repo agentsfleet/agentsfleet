@@ -696,3 +696,11 @@ The CLI and browser use the same bounded states and preserve identity across rec
 Show preparation, scanning, upload, verification and restoration separately.
 Display acknowledged bytes against known missing bytes, with reused bytes separate and retries deduplicated.
 Coalesce attached transfer updates to at most once per second; confirm saved work only after manifest commit.
+
+### Terminal progress
+
+Platform requests show a nine-column ASCII owl in the existing pulse color that flaps and blinks while waiting.
+`agentsfleet pet` plays a five-second preview without signing in or contacting the API.
+The shared progress renderer uses an Effect scope to stop the animation and clear the line before a result or error.
+JSON and redirected output contain no animation.
+Set `AGENTSFLEET_REDUCED_MOTION=1` for a static status; continuous integration, `TERM=dumb`, and terminals too narrow for the status also use static text.

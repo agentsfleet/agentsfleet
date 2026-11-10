@@ -19,8 +19,10 @@ export const platformRequest = Effect.fn("platform.request")(function* (request:
   const http = yield* HttpClient;
   const token = yield* resolveAuthToken;
   const output = yield* Output;
-  return yield* Effect.acquireUseRelease(output.progress("Contacting platform…"),
-    () => http.request<unknown>({...request, token}), stop => Effect.sync(stop));
+  return yield* Effect.scoped(Effect.gen(function* () {
+    yield* output.progress("Contacting platform…");
+    return yield* http.request<unknown>({...request, token});
+  }));
 });
 
 export function decodePlatform<T>(schema: Schema.Codec<T, unknown>, value: unknown) {

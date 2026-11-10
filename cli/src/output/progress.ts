@@ -1,15 +1,27 @@
 import type {WritableStreamLike} from "./capability.ts";
+import {Effect} from "effect";
+import {palette} from "./palette.ts";
+import {REDUCED_MOTION_ENV} from "../constants/env.ts";
 
-const FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
-const FRAME_MS = 80;
+const FRAMES = [" ,(o,o), ", " /(o,o)\\ ", " \\(o,o)/ ", " /(o,o)\\ ", " ,(o,o), ", " ,(o,o), ", " ,(-,-), ", " ,(o,o), "] as const;
+const FRAME_MS = 250;
 
-/** The caller owns the returned cleanup and runs it before rendering the result. */
-export function startProgress(stream: WritableStreamLike, label: string, enabled: boolean): () => void {
-  if (!enabled || !stream.isTTY) return () => undefined;
-  let frame = 0;
-  const draw = () => {stream.write(`\r${FRAMES[frame % FRAMES.length]} ${label}`); frame += 1;};
-  draw();
-  const timer = setInterval(draw, FRAME_MS);
-  timer.unref();
-  return () => {clearInterval(timer); stream.write(`\r${" ".repeat(label.length + 2)}\r`);};
+/** The request scope interrupts the animation before clearing its status line. */
+export function startProgress(stream: WritableStreamLike, label: string, enabled: boolean, env: NodeJS.ProcessEnv = process.env) {
+  return Effect.gen(function* () {
+    if (!enabled || !stream.isTTY) return;
+    const width = label.length + FRAMES[0].length + 1;
+    if (env[REDUCED_MOTION_ENV] || env.CI || env.TERM === "dumb" || (stream.columns !== undefined && stream.columns <= width)) {
+      stream.write(`${label}\n`);
+      return;
+    }
+    let frame = 0;
+    const frames = FRAMES.map(value => palette.pulse(value, {env, stream}));
+    const draw = Effect.sync(() => {stream.write(`\r${frames[frame % frames.length]} ${label}`); frame += 1;});
+    yield* Effect.addFinalizer(() => Effect.sync(() => {
+      stream.write(`\r${" ".repeat(width)}\r`);
+    }));
+    yield* draw;
+    yield* Effect.forkScoped(Effect.forever(Effect.sleep(FRAME_MS).pipe(Effect.andThen(draw))));
+  });
 }
