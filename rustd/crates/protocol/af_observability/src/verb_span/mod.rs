@@ -213,6 +213,33 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         self.agent_id = Some(agent_id.to_owned());
     }
 
+    /// Records the span so far and starts a fresh one in its place, timed or
+    /// untimed as this clock is: one pass that serves a second offer.
+    pub fn restart(&mut self) {
+        if !self.discarded {
+            self.restart_on(&opentelemetry::global::tracer(semconv::SCOPE_NAME));
+        }
+        self.reset();
+    }
+
+    /// [`Self::restart`] against a tracer the caller names.
+    fn restart_on<T: Tracer>(&mut self, tracer: &T) {
+        self.record_on(tracer);
+        self.discarded = false;
+        self.reset();
+    }
+
+    /// Back to a fresh start, keeping whether this clock records.
+    fn reset(&mut self) {
+        let now = self.ticks.monotonic();
+        self.started_at = self.ticks.wall();
+        self.started = now;
+        self.last = now;
+        self.stages.clear();
+        self.event_id = None;
+        self.agent_id = None;
+    }
+
     /// This verb has nothing to describe; dropping records no span.
     pub fn discard(&mut self) {
         self.discarded = true;

@@ -39,12 +39,13 @@ impl LeaseService {
         for kind in ticket.order() {
             match kind {
                 LeaseKind::Authoring => {
+                    // A fleet claim the gates refused earlier in this pass
+                    // keeps its own span; this claim starts a fresh one, so
+                    // its own database time is its `claim` stage.
+                    if !clock.reached_nothing() {
+                        clock.restart();
+                    }
                     if let Some(lease) = drafts.claim_offered(request.runner, ticket).await? {
-                        // A fleet claim the gates refused earlier in this pass
-                        // keeps its own span; this offer starts a fresh one.
-                        if !clock.reached_nothing() {
-                            *clock = VerbClock::start();
-                        }
                         clock.mark(OfferStage::Claim);
                         let metadata = Offered {
                             lease_id: Uuid7::parse(&lease.lease_id)?,
