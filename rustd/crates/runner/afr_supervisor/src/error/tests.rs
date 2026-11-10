@@ -150,3 +150,19 @@ fn a_git_failure_names_the_repository_and_keeps_the_librarys_reason() {
     let cause = std::error::Error::source(&failure).unwrap();
     assert_eq!(cause.to_string(), "no branch");
 }
+
+#[test]
+fn transport_loss_and_protocol_breaks_log_different_codes_and_retry_differently() {
+    let lost = raise::stream_disconnected(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+    assert_eq!(lost.code(), error_code::RUN_STREAM_DISCONNECTED);
+    assert!(lost.is_retryable(), "a lost stream reconnects");
+    assert_eq!(lost.refusal_code(), None);
+    let broken = raise::stream_protocol(std::io::Error::other("fixture frame"));
+    assert_eq!(broken.code(), error_code::RUN_PROTOCOL_UNSUPPORTED);
+    assert!(!broken.is_retryable(), "a protocol break never retries");
+    let busy = raise::unavailable(Verb::Open, 503);
+    assert!(busy.is_retryable(), "an overloaded opening retries");
+    assert_eq!(busy.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert_eq!(busy.refusal_status(), None);
+    assert_eq!(Verb::Open.to_string(), "stream_open");
+}

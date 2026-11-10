@@ -12,6 +12,8 @@ af_core::error_shell!(
 
 mod classify;
 mod kind;
+#[cfg(test)]
+mod tests;
 
 pub(crate) use kind::ErrorKind;
 
