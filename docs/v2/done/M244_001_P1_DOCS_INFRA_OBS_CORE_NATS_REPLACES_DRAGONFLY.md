@@ -113,7 +113,8 @@ Discovery search: `git grep -l -i dragonfly -- ':!docs/v2'` found 541 files outs
 | `rustd/crates/foundation/af_core/src/error_code/request.rs`, `problem/request.rs`, `error_code/mod.rs` | EDIT | §7: `STARTUP_DRAGONFLY_CONNECT` becomes `STARTUP_BUS_CONNECT`; code `UZ-STARTUP-004` and its title stay; the hint names `NATS_URL` |
 | `rustd/crates/protocol/af_observability/src/metrics/declared/`, `producers/`, `tests/producers_drive.rs` | EDIT | §2, §4: two families and their producers |
 | `rustd/crates/daemon/afd_bench/src/lane/tail/{viewers,wake}/`, `lane/tail/mod.rs`, `lane/outbound/`, `lane/cardinality/capacity.rs`, `lane/sweep/mod.rs`, `src/bin/tail.rs`, `Cargo.toml`, `tests/` | EDIT, CREATE | §1 p99 and the wake ladder; §2 `BENCH_BUS`; §4 the outbound lane drives claims; §7 the Dragonfly sample and raw `redis` go |
-| `bench/baselines/tail.rig.json`, `bench/baselines/outbound.rig.json` | EDIT | §3, §4: NATS-era median runs |
+| `bench/baselines/tail.rig.json`, `bench/baselines/outbound.rig.json`, `bench/baselines/lease.rig.json` | EDIT | §1, §3, §4, §9: NATS-era median runs, the wake ladder and the drain's idle window |
+| `rustd/crates/daemon/afd_bench/src/lane/lease/drain/` | EDIT | §9: the drain reads `afd_gateway`'s test session and reports idle totals |
 | `docker-compose.yml`, `compose.dev-infra.yml` | EDIT | §2 three NATS nodes; mailpit owns the daemon's network namespace; §7 the Dragonfly service goes |
 | `make/test-infra.mk`, `make/test-integration-rustd.mk`, `make/bench.mk` | EDIT | §2 `TEST_NATS_URL`, `TEST_NATS_CONTROL`, the exclusive filter; §7 every `TEST_DRAGONFLY_*` goes |
 | `scripts/test-infra-ports.sh`, `scripts/local-dev.sh`, `local-dev-state.sh`, `local-dev-test.sh`, `local-dev-live-test.sh`, `ensure_fly_app.sh` | EDIT | §2, §7: NATS ports and seeds |
@@ -177,9 +178,9 @@ This Section carries M241's old §6 and §7 as its own, on this milestone's star
 
 - **Dimension 1.1** — DONE — the summary carries p99 → Test `tail_summary_reports_p99` (unit): latencies 1..100 ms report p95 95 and p99 99.
 - **Dimension 1.2** — DONE — a rung with nothing timed reports no figure → Test `rung_without_frames_reports_no_p99` (unit): an empty rung writes no `p99_ms_` key, never 0.
-- **Dimension 1.3** — TRANSFERRED to M243 — a late ring is missed, not delivered → Test `wake_past_deadline_counts_missed` (unit): a ring taken after 1 s counts in `wake_missed_hubs_1` and not in p99.
-- **Dimension 1.4** — TRANSFERRED to M243 — the ringer never passes the hint cap → Test `wake_ringer_waits_at_window` (unit, paused time): with 64 untaken rings, the 65th waits.
-- **Dimension 1.5** — TRANSFERRED to M243 — a live wake ladder delivers → Test `make bench-tail PROFILE=rig` (integration): the result holds `wake_p99_ms_hubs_4` and `wake_missed_hubs_4` 0.
+- **Dimension 1.3** — PENDING — a late ring is missed, not delivered → Test `wake_past_deadline_counts_missed` (unit): a ring taken after 1 s counts in `wake_missed_hubs_1` and not in p99.
+- **Dimension 1.4** — PENDING — the ringer never passes the hint cap → Test `wake_ringer_waits_at_window` (unit, paused time): with 64 untaken rings, the 65th waits.
+- **Dimension 1.5** — PENDING — a live wake ladder delivers → Test `make bench-tail PROFILE=rig` (integration): the result holds `wake_p99_ms_hubs_4` and `wake_missed_hubs_4` 0.
 - **Dimension 1.6** — DONE — the drill is recorded, frozen tail included → Test `broker_kill_drill_recorded` (manual): §Baselines holds "Dragonfly kill drill, run 1" and "run 2" with viewer outcomes, accepted steers, recovery seconds and commands. If no viewer receives `catching_up`, that is recorded as the defect §6 closes.
 - **Dimension 1.7** — DONE — Indy approves the bar before NATS runs → Test `broker_pass_bar_approved` (manual): his reply to `### Broker pass bar` is quoted in the Pull Request Session Notes.
 
@@ -276,6 +277,14 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 - **Dimension 8.2** — DEFERRED to the post-merge deploy (Indy, Nov 09, 2026: "I preseume standing up the nats in fly will be needed, this can be dealt with in the morning when indy is up.") — dev survives a machine stop → Test `dev_machine_kill_drill` (manual): `fly machine stop` on one `nats-dev` machine; two viewers receive `catching_up` and resume within 10 s.
 - **Dimension 8.3** — DEFERRED to the post-merge deploy (Indy, Nov 09, 2026: "I preseume standing up the nats in fly will be needed, this can be dealt with in the morning when indy is up.") — the old apps are gone → Test `dragonfly_apps_destroyed` (manual): Indy runs the destroy; `fly apps list` output in the Session Notes names neither.
 
+### §9 — The drain bench proves the stream's cost (from M243 §8)
+
+The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives an `afd_gateway` session in process, from `afd_gateway`'s `test_util`: offers in; renewal batches, M242_002's folds requests, 40 activity frames and a report up. M241's statement paths classify the result unchanged. The idle window keeps every simulated runner's session connected with credits and no admissions for `IDLE_WINDOW`, and records `drain_idle_statements`; the per-poll keys go, since no poll exists. Heartbeats and the per-replica recovery probe sit outside the bench, which runs no registry. Three interleaved runs follow a reset rig; the median run is copied to `bench/baselines/lease.rig.json`, and the other two values go into `scaling.md` §"Core NATS baselines (M244)".
+
+- **Dimension 9.1** — PENDING — a streamed chat's activity path is near zero and an idle host costs nothing → Test `make bench-lease PROFILE=rig` (integration): `drain_statements_per_lease_activity` is under 1, against M241's 40, and `drain_idle_statements` is 0. M243's second key, idle Dragonfly calls, has no subject left: M244 deleted that store.
+- **Dimension 9.2** — PENDING — an idle window with no polls reports totals, never a ratio → Test `an_idle_window_reports_totals_not_ratios` (unit): a window of 0 polls writes `drain_idle_statements` 0 and no `idle_statements_per_poll` key.
+- **Dimension 9.3** — PENDING — baselines are median runs → Test `baselines_are_median_runs` (manual): the baselines section lists three values per headline key, and the committed file holds the middle one.
+
 ## Interfaces
 
 - **Subjects:** `af.fleet.<fleet_id>.tail`, `af.draft.<draft_id>.events`, `af.wake.<shard>` (16 shards, CRC-16/XMODEM of the fleet id, as `doorbell/mod.rs` computes), `af.runner.<runner_id>.cmd`, `af.outbound.wake`. A dev namespace prefixes `dev.<ns>.`. A gap marker is an empty message with header `Af-Gap: 1`; `af.bus.gap` carries the overflow marker every hub reads.
@@ -330,7 +339,7 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 |---|--------------------------------|---------------------|----------|----------|-----------------|
 | R1 | The Dragonfly baseline, drill and bar are recorded first (§1) | `grep -c "^### Broker pass bar" docs/architecture/push_scheduler.md` | `1` | P0 | |
 | R2 | NATS meets the bar on the same laptop (§3) | `grep -c "^Verdict: NATS passes" docs/architecture/push_scheduler.md` | `1` | P0 | |
-| R3 | Tail p99 is a lane baseline (§1, §3); the wake half TRANSFERRED to M243 with Dimension 1.5 (Discovery, Nov 09, 2026) | `grep -c stream_receive_p99_ms bench/baselines/tail.rig.json` | `1` or more | P0 | |
+| R3 | Tail p99 and wake p99 are lane baselines (§1, §3) | `grep -c -e stream_receive_p99_ms -e wake_p99_ms_hubs_4 bench/baselines/tail.rig.json` | `2` or more | P0 | |
 | R4 | No JetStream code exists (Invariant 1) | `git grep -n "async_nats::jetstream" -- rustd` | no output | P0 | |
 | R5 | Dragonfly is gone from code and tooling (§7) | `git grep -n -i dragonfly -- rustd make scripts docker-compose.yml compose.dev-infra.yml cli README.md .orly/LOCAL.md` | no output | P0 | |
 | R6 | The crate and its environment variables are gone everywhere (§7, §8) | `git grep -n -w -e afd_dragonfly -e DRAGONFLY_URL -e TEST_DRAGONFLY_URL -- . ':!docs/v2' ':!docs/reviews' ':!bench/baselines' ':!playbooks/operations/acceptance' ':!docs/RUST_ERROR_STANDARD.md'` | no output | P0 | |
@@ -338,6 +347,8 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 | R8 | The repository rule names NATS (§7) | `grep -c "NATS_URL" .orly/LOCAL.md` | `1` or more | P0 | |
 | R9 | Sessions and nonces are Postgres slots (§5) | `grep -c -e identity_device_sessions -e connector_oauth_nonces rustd/crates/daemon/afd_db/src/migration.rs` | `2` | P0 | |
 | R10 | Claims read the open-lane index (§4) | `git grep -c -w idx_obligations_open_lane -- schema` | one slot, count `1` | P1 | |
+| R11 | A streamed chat's activity path is near zero (§9) | `jq -e ".measurements.drain_statements_per_lease_activity < 1" bench/baselines/lease.rig.json` | `true` | P0 | |
+| R12 | An idle host costs no statement (§9) | `jq -e ".measurements.drain_idle_statements == 0" bench/baselines/lease.rig.json` | `true` | P0 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
@@ -414,8 +425,11 @@ N/A: no user surface. Routes, frames, CLI commands and error titles are unchange
 - **Post-quantum TLS on rustls (Nov 09, 2026)** — the workspace pinned rustls with `default-features = false`, which drops its `prefer-post-quantum` default, so every rustls client (sqlx, reqwest, async-nats, lettre, object_store) offered classical X25519 first. `rustd/Cargo.toml` now enables the feature; `tls_posture::rustls_negotiates_the_hybrid_post_quantum_key_exchange` proves a handshake picks X25519MLKEM768 and fails as X25519 without it. BoringSSL stays in `af_stream` because tokio-quiche requires it.
   > Indy (Nov 09, 2026): "You said its a 1 line change - rustls prefer-post-quantum inside M244 so why need a spec?" — context: folded into M244 rather than a separate spec.
   > Indy (Nov 09, 2026): "Yes i would keep boringssl in runner and migrate later to 1 crate" — context: one TLS library is later work; sqlx, reqwest and async-nats have no BoringSSL backend, so the supported single-library route is rustls on AWS-LC with quinn for QUIC.
-- **Wake ladder transferred (Nov 09, 2026)** — Dimensions 1.3 to 1.5 move to M243, which owns the wake path (`afd_bus::wake`).
+- **Wake ladder transferred (Nov 09, 2026)**, superseded Nov 10 below — Dimensions 1.3 to 1.5 moved to M243, which owns the wake path (`afd_bus::wake`).
   > Indy (Nov 09, 2026): "donot build one, since the M243 will do that"
+- **Both benches return to M244 (Nov 10, 2026)** — M243's spec never carried the wake ladder, and M243 had deferred its §8 drain bench here, so each spec named the other. Indy ruled that M244 owns both: Dimensions 1.3 to 1.5 and R3's wake half are M244's again, and M243's §8 becomes §9 with R11 and R12. M243 marks its §8, R11 and R12 `MOVED to M244_001`.
+  > Indy (Nov 10, 2026), to M243's session: chose "M244 owns both". Earlier, on M243's §8: "Why do we need this? i have 244 bench it"
+  > Indy (Nov 10, 2026), to M244's session: chose "Yes, M244 owns both" — context: build the wake ladder and take the drain rows in #820; #820 stays in draft until they are green.
 - **Lock before the clock (Nov 09, 2026)** — the standards review found the nonce spend, the session approve and the owned-session abort reading `clock_timestamp()` in a WHERE that can run before the row lock, so a row that expires during the lock wait could be accepted.
   > Indy (Nov 09, 2026): chose "Follow the standard" — context: the session approve and abort lock first, then read the clock once, as `lock_session.sql` does. The nonce spend cannot: `connector.oauth_nonces` is immutable, so the runtime role has no `UPDATE` grant and Postgres refuses it any row lock (42501). So the spend deletes first and reads the clock after: its `DELETE` is the lock.
   > Indy (Nov 09, 2026): "yes make it" — context: an expired nonce presented to the spend is now removed rather than left for the sweep.
