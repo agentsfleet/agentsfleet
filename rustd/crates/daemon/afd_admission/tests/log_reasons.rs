@@ -1,7 +1,7 @@
-//! What an admission says when neither datastore answers.
+//! What an admission says when neither Postgres nor the bus answers.
 //!
 //! No datastore, deliberately: the pool points at a reserved port and the
-//! queue at a loopback port nobody listens on. One admission walks two
+//! bus is one no broker answers for. One admission walks two
 //! failure arms in order — the deployment ceiling the pool would not count,
 //! and the row the pool would not commit — and each says why in a `reason` free of the registry code, which
 //! the refusal line carries in its own field, and of a captured backtrace.
@@ -15,11 +15,6 @@ use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-
-/// A queue address nothing listens on.
-const NOWHERE: &str = "redis://127.0.0.1:1";
 
 /// The fleet and workspace the admission names; nothing answers, so any will do.
 const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee2";
@@ -41,12 +36,10 @@ fn told_reason(capture: &Capture, event: &str) -> String {
 #[tokio::test]
 async fn a_refused_admission_reason_carries_no_code_prefix() {
     let capture = Capture::install();
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail");
-    let admissions = Admissions::for_tests(afd_db::test_util::unreachable_db(), queue);
+    let admissions = Admissions::for_tests(
+        afd_db::test_util::unreachable_db(),
+        afd_bus::test_util::unreachable(),
+    );
     let fleet = Uuid7::parse(FLEET).expect("a canonical fleet identifier");
 
     let refused = admissions

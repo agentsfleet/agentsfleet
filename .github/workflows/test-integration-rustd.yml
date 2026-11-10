@@ -1,6 +1,6 @@
 name: test-integration-rustd
 
-# The Rust substrate against live Postgres and Redis.
+# The Rust substrate against live Postgres and NATS.
 #
 # A separate workflow rather than a job in `test.yml`, on purpose. That file's
 # `test` aggregate is a required check and carries no `services:` block;
@@ -11,7 +11,7 @@ name: test-integration-rustd
 #
 # The services come from `docker compose` via `make/test-infra.mk`, not from a
 # `services:` block, so CI boots exactly what a developer boots — the same
-# compose file, the same reset, the same Redis TLS certificate extraction. A
+# compose file, the same reset. A
 # `services:` block would be a second definition of the environment that drifts
 # from the first one silently.
 
@@ -48,8 +48,8 @@ jobs:
       - id: shards
         run: echo "shards=$(make -s --no-print-directory rustd-coverage-shards | jq -Rc 'split(" ")')" >> "$GITHUB_OUTPUT"
 
-  # One shard per runner, each with its own compose Postgres and Dragonfly, so
-  # no shard's tests share a database or a ready stream with another's. A shard
+  # One shard per runner, each with its own compose Postgres and NATS, so no
+  # shard's tests share a database or a bus with another's. A shard
   # grades nothing: its tests cover only part of the lines, and the floor is a
   # claim about all of them (the merge job below).
   shard:
@@ -112,10 +112,10 @@ jobs:
       - name: Install the seeder's dependencies
         run: bun install --frozen-lockfile
       # `_reset-test-db` brings compose up, waits for healthchecks, drops
-      # schemas and flushes Dragonfly. KEEP_TEST_STATE is never set here: a
+      # schemas. KEEP_TEST_STATE is never set here: a
       # green run under it would prove nothing about a clean checkout.
       # The memory line is the headroom any change to CARGO_BUILD_JOBS is
-      # judged against: the whole runner, Postgres and Dragonfly included,
+      # judged against: the whole runner, Postgres and NATS included,
       # sampled every five seconds while the shard builds and runs.
       - name: Measure shard ${{ matrix.shard }} against live datastores
         run: |
@@ -137,11 +137,10 @@ jobs:
           retention-days: 3
       - name: Show datastore logs when the shard fails
         if: failure()
-        # `dragonfly`, not `redis`. The service was renamed with the store and
-        # this line was not, so the one step whose whole job is explaining a
-        # failed suite exited 1 with `no such service: redis` and printed no
-        # logs at all -- a diagnostic that fails exactly when it is needed.
-        run: docker compose logs --tail 200 postgres dragonfly
+        # Every service the lane starts, by its compose name: a name that
+        # does not exist fails this step and prints no logs at all, which is
+        # a diagnostic that fails exactly when it is needed.
+        run: docker compose logs --tail 200 postgres nats-1 nats-2 nats-3
 
   # The kernel lane, as root on the hosted runner, which is a virtual machine
   # of its own: no nested virtualization is needed, only what a runner host is

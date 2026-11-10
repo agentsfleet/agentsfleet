@@ -32,7 +32,7 @@ const PROBES: &str = "SELECT calls FROM pg_stat_statements \
 const PROBE_PATTERN: &str = "%FROM fleet.admissions a%FROM authoring.drafts d%";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_thousand_eligible_fleets_make_old_work_progress_while_hot_notifications_continue() {
     let mut supervisor = Supervisor::new();
     let (database, owner, mut run) = setup(&mut supervisor).await;
@@ -124,7 +124,7 @@ impl Population {
             let source = Hot {
                 admissions: Admissions::for_tests(
                     run.booted.database.clone(),
-                    run.booted.queue.clone(),
+                    run.booted.bus.clone(),
                 ),
                 fleet: fleet.clone(),
                 workspace,

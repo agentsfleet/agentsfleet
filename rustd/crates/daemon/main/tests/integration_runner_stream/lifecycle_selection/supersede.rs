@@ -10,7 +10,7 @@ use af_stream::Transport;
 use agentsfleetd::supervisor::Supervisor;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_superseded_runner_stops_without_opening_another_connection() {
     for transport in [Transport::H2, Transport::H3] {
         superseded(transport).await;

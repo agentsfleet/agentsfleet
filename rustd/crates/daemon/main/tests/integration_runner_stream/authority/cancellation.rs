@@ -13,7 +13,7 @@ use std::sync::atomic::Ordering;
 // why_new=the authoring store's publisher test has no gateway or native consumer;
 // seam=two production daemons, authenticated HTTP, real Bus and Postgres.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_kill_on_another_replica_cancels_and_settles_the_native_lease() -> TestResult {
     for transport in [Transport::H2, Transport::H3] {
         let fixture = Fixture::start().await?;
@@ -37,7 +37,7 @@ async fn a_kill_on_another_replica_cancels_and_settles_the_native_lease() -> Tes
 // why_new=single-lease refusal tests cannot show independent sibling renewal;
 // seam=real creator mutation and Postgres, with only its runner command dropped.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_lost_cancel_refuses_its_lease_and_renews_its_sibling_in_one_batch() -> TestResult {
     for transport in [Transport::H2, Transport::H3] {
         let mut fixture = Fixture::start().await?;

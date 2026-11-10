@@ -15,21 +15,15 @@ fn first_db_error() -> Result<afd_db::Error, &'static str> {
         .ok_or("database test utility exposes no error")
 }
 
-/// The datastore, queue and store-backed crates' failures, lifted.
-fn lifted_stores() -> Result<[Error; 7], &'static str> {
+/// The datastore and store-backed crates' failures, lifted.
+fn lifted_stores() -> Result<[Error; 6], &'static str> {
     let database = afd_db::error::one_of_each_kind()
         .into_iter()
         .find(|(kind, _error)| *kind == "datastore unavailable")
         .map(|(_kind, error)| error)
         .ok_or("database test utility has no outage kind")?;
-    let queue = afd_dragonfly::error::one_of_each_kind()
-        .into_iter()
-        .next()
-        .map(|(_kind, error)| error)
-        .ok_or("queue test utility exposes no error")?;
     Ok([
         Error::from(database),
-        Error::from(queue),
         Error::from(afd_gate::Error::from(first_db_error()?)),
         Error::from(afd_credential::Error::from(first_db_error()?)),
         Error::from(afd_billing::Error::from(first_db_error()?)),

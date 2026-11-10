@@ -49,12 +49,6 @@ use crate::support::install_subscriber;
 /// Where the lane publishes the Postgres it brought up.
 pub(crate) const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
-/// Where the lane publishes the TLS Dragonfly it brought up.
-pub(crate) const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
-
-/// Where the lane extracted the Dragonfly certificate authority to.
-pub(crate) const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
-
 /// The port that asks the kernel to choose one.
 ///
 /// Bind-and-hold: `boot` binds the listener itself and reports the address it
@@ -101,21 +95,6 @@ pub(crate) fn lane(knob: &str) -> String {
     ProcessEnv.get(knob).unwrap_or_else(|| {
         panic!("{knob} is unset — run these through `make test-integration-rustd`")
     })
-}
-
-/// The lane's Dragonfly, as a configuration a second client can be built from.
-///
-/// The activity suite needs a SUBSCRIBER alongside the daemon's own connection,
-/// and `Booted` hands out a `Dragonfly` rather than the config it was opened with —
-/// so the knobs are read again here rather than reached back through the
-/// daemon. Same three values `daemon_environment` passes it, which is what
-/// keeps the subscriber pointed at the server the publish lands on.
-pub(crate) fn dragonfly_config() -> afd_dragonfly::DragonflyConfig {
-    afd_dragonfly::DragonflyConfig::from_url(
-        afd_dragonfly::DragonflyRole::Default,
-        lane(DRAGONFLY_LANE_KNOB),
-    )
-    .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_LANE_KNOB).map(Into::into))
 }
 
 /// A fleet, workspace and tenant no other scenario in this lane will name.
@@ -341,5 +320,5 @@ async fn scenario_boot(
         supervisor,
     )
     .await
-    .expect("the lane's Postgres and Dragonfly are up")
+    .expect("the lane's Postgres and NATS are up")
 }

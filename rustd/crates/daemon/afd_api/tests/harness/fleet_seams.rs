@@ -50,14 +50,14 @@ impl Fleet {
         self
     }
 
-    /// Runs the device-flow service over a live, test-owned Dragonfly connection.
+    /// Runs the device-flow service over a live, test-owned Postgres pool.
     ///
-    /// Only the session service is replaced. The remaining queue-backed seams
+    /// Only the session service is replaced. The remaining store-backed seams
     /// stay unreachable so a device-flow proof cannot accidentally broaden
     /// into a fleet, approval, or event integration test.
-    pub(crate) fn with_session_queue(mut self, queue: Dragonfly) -> Self {
+    pub(crate) fn with_session_store(mut self, database: Db) -> Self {
         self.logins = Logins::new(
-            afd_dragonfly::SessionStore::new(queue),
+            afd_tenant::session::DeviceSessions::new(database),
             SecretBytes::new(FIXTURE_PEPPER.to_vec()),
             Entropy::new(),
             FIXTURE_APP_URL,
@@ -65,17 +65,17 @@ impl Fleet {
         self
     }
 
-    /// Runs approval decisions over the live queue paired with `database`.
-    pub(crate) fn with_approval_queue(mut self, database: Db, queue: Dragonfly) -> Self {
-        let ledger = fleet::admissions(&database, &queue);
-        self.approvals = Inbox::new(database, afd_bus::dragonfly::publisher(queue), ledger);
+    /// Runs approval decisions over `database`, notifying through `bus`.
+    pub(crate) fn with_approval_queue(mut self, database: Db, bus: afd_bus::Handle) -> Self {
+        let ledger = fleet::admissions(&database, &bus);
+        self.approvals = Inbox::new(database, bus, ledger);
         self
     }
 
     /// Runs the connect flow over live stores and a vendor a test can answer.
     ///
     /// Three seams move together and none of them is optional. The nonce slot
-    /// lives in the QUEUE, so a spend against an unreachable one proves nothing
+    /// lives in POSTGRES, so a spend against an unreachable pool proves nothing
     /// about single use. The grant is sealed in the VAULT, so its landing is
     /// only observable over a live pool. And the token exchange posts to the
     /// provider's own endpoint, which no test may reach — `Exchange::pointed_at`
@@ -84,7 +84,7 @@ impl Fleet {
     pub(crate) fn with_live_connectors(
         mut self,
         database: Db,
-        queue: Dragonfly,
+        bus: afd_bus::Handle,
         vendor: String,
     ) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
@@ -96,48 +96,47 @@ impl Fleet {
             )),
             Grants::new(
                 SecretVault::new(database.clone(), Arc::clone(&kek), Entropy::new())
-                    .with_activity_streams(afd_bus::dragonfly::publisher(queue.clone())),
-                database,
+                    .with_activity_streams(bus),
+                database.clone(),
                 Entropy::new(),
             ),
             Exchange::new(reqwest::Client::new()).pointed_at(vendor),
             reqwest::Client::new(),
-            queue,
+            database,
             Entropy::new(),
         );
         self
     }
 
-    /// Runs native setup and purge over a live queue and database.
-    pub(crate) fn with_fleet_queue(self, database: Db, queue: Dragonfly) -> Self {
-        self.with_fleet_queue_budgets(database, queue, afd_admission::Budgets::default())
+    /// Runs native setup and purge over a live database, notifying through `bus`.
+    pub(crate) fn with_fleet_queue(self, database: Db, bus: afd_bus::Handle) -> Self {
+        self.with_fleet_queue_budgets(database, bus, afd_admission::Budgets::default())
     }
 
     /// Refuses real admissions under explicit small ceilings, without stubbing the ledger.
     pub(crate) fn with_fleet_queue_budgets(
         mut self,
         database: Db,
-        queue: Dragonfly,
+        bus: afd_bus::Handle,
         budgets: afd_admission::Budgets,
     ) -> Self {
-        let streams = afd_bus::dragonfly::publisher(queue.clone());
-        self.secrets = self.secrets.with_activity_streams(streams.clone());
-        self.memories = self.memories.with_activity_streams(streams);
+        self.secrets = self.secrets.with_activity_streams(bus.clone());
+        self.memories = self.memories.with_activity_streams(bus.clone());
         self.creations = afd_authoring::Creations::new(
             self.authoring_setup.clone(),
-            afd_admission::Admissions::for_tests(database.clone(), queue).with_budgets(budgets),
+            afd_admission::Admissions::for_tests(database.clone(), bus).with_budgets(budgets),
         );
         self.fleets = Fleets::new(database);
         self
     }
 
-    /// Runs the signed-ingress routes over a live database and queue.
+    /// Runs the signed-ingress routes over a live database and `bus`.
     ///
     /// Resolve bindings and secrets through production stores, then commit the
-    /// admission. Dragonfly receives the notification after acceptance.
-    pub(crate) fn with_live_ingress(mut self, database: Db, queue: Dragonfly) -> Self {
+    /// admission. The bus receives the notification after acceptance.
+    pub(crate) fn with_live_ingress(mut self, database: Db, bus: afd_bus::Handle) -> Self {
         let kek = Arc::new(Kek::from_bytes(FIXTURE_KEK));
-        let ledger = afd_admission::Admissions::for_tests(database.clone(), queue);
+        let ledger = afd_admission::Admissions::for_tests(database.clone(), bus);
         self.ingress = HarnessIngress::Unreachable(Box::new(Ingress::new(
             database.clone(),
             SecretVault::new(database, kek, Entropy::new()),
@@ -146,9 +145,9 @@ impl Fleet {
         self
     }
 
-    /// Admit a verified schedule fire to the live ledger and notify through Dragonfly.
-    pub(crate) fn with_live_fire(mut self, database: Db, queue: Dragonfly) -> Self {
-        let ledger = afd_admission::Admissions::for_tests(database.clone(), queue);
+    /// Admit a verified schedule fire to the live ledger and notify through `bus`.
+    pub(crate) fn with_live_fire(mut self, database: Db, bus: afd_bus::Handle) -> Self {
+        let ledger = afd_admission::Admissions::for_tests(database.clone(), bus);
         self.schedules = SchedulePlane::new(
             ScheduleService::new(
                 CronSchedules::new(database, Entropy::new()),
@@ -166,14 +165,14 @@ impl Fleet {
     }
 
     /// Admit fleet messages to the live ledger and send wake notifications.
-    pub(crate) fn with_steering_queue(mut self, database: Db, queue: Dragonfly) -> Self {
-        self.steering = Steer::new(afd_admission::Admissions::for_tests(database, queue));
+    pub(crate) fn with_steering_queue(mut self, database: Db, bus: afd_bus::Handle) -> Self {
+        self.steering = Steer::new(afd_admission::Admissions::for_tests(database, bus));
         self
     }
 
-    /// Runs stream handlers through a live shared subscription connection.
-    pub(crate) fn with_live_hub(self, hub: afd_dragonfly::SubscriptionHub) -> Self {
-        self.with_stream_capacity(hub, DEFAULT_STREAM_CEILING)
+    /// Runs stream handlers through `bus`, the one their publishers share.
+    pub(crate) fn with_live_bus(self, bus: afd_bus::Handle) -> Self {
+        self.with_stream_capacity(bus, DEFAULT_STREAM_CEILING)
     }
 
     /// An instance reporting `ready` to `/readyz`.

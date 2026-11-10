@@ -1,5 +1,5 @@
-//! What the inbox's live-tail suites all need: the two reads, and the values
-//! the fixtures write.
+//! What the inbox's live-tail suites all need: the subscription, the two reads,
+//! and the values the fixtures write.
 //!
 //! Split from `integration_inbox_tail.rs` when that file passed the 350-line
 //! cap. The suites divide by CONCERN — announcement, continuation, runless —
@@ -9,8 +9,7 @@
 
 use std::time::Duration;
 
-use afd_dragonfly::Subscription;
-use afd_dragonfly::hub::Received;
+use afd_bus::{Received, Subject, Subscription};
 use serde_json::Value;
 
 use crate::lane::Lane;
@@ -38,8 +37,14 @@ pub(crate) const CONTINUATION_BODY: &str = "{}";
 /// How long a published frame is given to reach the subscriber.
 pub(crate) const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 
-/// How long the hub's pump is given to register the subscription with Dragonfly.
-pub(crate) const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
+/// The lane's fleet's live tail. The bus registers the reader before this
+/// returns, so every frame published after it reaches the tail.
+pub(crate) async fn tail(lane: &Lane) -> Subscription {
+    lane.bus
+        .subscribe(&Subject::FleetTail(lane.fleet.clone()))
+        .await
+        .expect("the lane's bus takes a subscriber")
+}
 
 /// The next frame on the tail, as JSON, or `None` if none arrives in time.
 pub(crate) async fn next_frame(tail: &mut Subscription) -> Option<Value> {

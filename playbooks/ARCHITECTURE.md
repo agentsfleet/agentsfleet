@@ -28,10 +28,10 @@ client → Cloudflare edge → cloudflared-<env> on Fly.io → agentsfleetd-<env
 - The API `fly.toml` files declare neither `[http_service]` nor `[[services]]`, so Fly publishes no API origin.
 - Every API and connector config sets `[[restart]] policy = "always"`.
 - 6PN traffic skips Fly's public proxy, so the development workflow starts API machines before it polls the Cloudflare route.
-- `/healthz` proves the process answers HTTP. `/readyz` proves PostgreSQL and the Dragonfly cluster are reachable.
+- `/healthz` proves the process answers HTTP. `/readyz` gates on PostgreSQL and reports the NATS bus without gating on it, because every bus signal has a PostgreSQL backstop.
 - Fly checks `/readyz` privately. Continuous Integration (CI) checks both endpoints through Cloudflare.
 - `agentsfleet-runner` runs on its own host and calls the public API over HTTPS with a runner token.
-- A runner holds no PostgreSQL or Dragonfly credential and joins no datastore allowlist.
+- A runner holds no PostgreSQL or NATS credential and joins no datastore allowlist.
 
 ## Limits
 

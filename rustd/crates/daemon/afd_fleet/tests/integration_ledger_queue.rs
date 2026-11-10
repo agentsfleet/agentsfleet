@@ -1,4 +1,4 @@
-//! Ledger claims use real runtime-role transactions and no working Dragonfly.
+//! Ledger claims use real runtime-role transactions and a bus that never answers.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -79,11 +79,11 @@ async fn next(leases: &Leases, runner: &Uuid7) -> Option<Acquired> {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_rows_lease_in_order_behind_a_park() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let mut events = Vec::new();
     for _ in 0..3 {
         events.push(enqueue(&fixtures, &fleet, &workspace).await);
@@ -140,13 +140,13 @@ async fn finish(leases: &Leases, connection: &mut sqlx::PgConnection, acquired: 
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let head = enqueue(&fixtures, &fleet, &workspace).await;
     let _later = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let mut connection = fixtures
         .database
         .acquire()
@@ -178,7 +178,7 @@ async fn test_locked_head_does_not_expose_the_next_row_or_keep_a_slot() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
@@ -195,7 +195,7 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
         .execute(&mut *connection)
         .await
         .expect("inject decode failure");
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let refused = leases
         .select(&runner, &[])
         .await
@@ -222,12 +222,12 @@ async fn test_claim_decode_fault_rolls_back_both_the_fence_and_the_admission() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_locked_slot_is_skipped_without_changing_the_admission() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &runner).await.expect("first claim");
     let mut connection = fixtures.database.acquire().await.expect("database");
     sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at = now()-interval '1 second' WHERE fleet_id=$1")

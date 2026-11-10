@@ -56,7 +56,7 @@ async fn assert_never_offered(run: &Scenario, why: &str) {
 /// again once the label is edited away — with the runner never restarted or
 /// re-enrolled.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

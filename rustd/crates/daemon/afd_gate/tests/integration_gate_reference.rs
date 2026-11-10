@@ -1,4 +1,6 @@
-//! A lost cache reference cannot erase an event's durable approval decision.
+//! An event's gate is found from `approval_gates` alone, so a re-encounter keeps
+//! the original question, its deadline and its late answer, with no cache in
+//! front of the table.
 #![cfg(feature = "test-util")]
 
 #[path = "support/gate_fixture.rs"]
@@ -7,53 +9,25 @@ mod fixture;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_gate::gate::{Gates, Refused, Verdict, Waiting, key};
+use afd_gate::gate::{Gates, Refused, Verdict, Waiting};
 
-use fixture::{Fixture, NOW, config, config_gates, connect_redis};
+use fixture::{Fixture, NOW, bus, config, config_gates};
 
 const APPROVE_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
-/// Keep the deliberately corrupt key alive for the immediate recovery check.
-const CORRUPT_REFERENCE_SECONDS: i64 = 60;
-
-// Value: protects=cache loss cannot bypass, duplicate or restart a durable gate;
-// fails_when=an absent reference means first encounter; seam=Postgres and Dragonfly.
+// Value: protects=a re-encounter cannot bypass, duplicate or restart a durable
+// gate; fails_when=a missing cache meant a first encounter; seam=Postgres.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn missing_and_corrupt_references_preserve_deadlines_and_late_answers() {
-    for corrupt in [false, true] {
-        reference_case(corrupt).await;
-    }
-}
-
-async fn reference_case(corrupt: bool) {
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_reencountered_event_keeps_its_deadline_and_late_answer() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let queue = connect_redis().await;
-    let gates = Gates::new(
-        fixture.database.clone(),
-        queue.clone(),
-        afd_bus::dragonfly::publisher(queue.clone()),
-        Entropy::new(),
-    );
+    let gates = Gates::new(fixture.database.clone(), bus().await, Entropy::new());
     let ruled = config_gates(APPROVE_CHAT);
     let event = &mint_id();
     assert_eq!(
         gates.check(fixture.check(event, &ruled), NOW).await,
         Verdict::Await(Waiting::Parked)
     );
-    let reference = key::event_ref(fixture.fleet.as_str(), event.as_str());
-    if corrupt {
-        let corrupted = queue
-            .set_for(&reference, "invalid reference", CORRUPT_REFERENCE_SECONDS)
-            .await;
-        assert!(corrupted.is_ok(), "corrupt cached reference: {corrupted:?}");
-    } else {
-        let removed = queue.spend_key(&reference).await;
-        assert!(
-            matches!(removed, Ok(true)),
-            "remove cached reference: {removed:?}"
-        );
-    }
     for policy in [&ruled, &config(false)] {
         assert_eq!(
             gates.check(fixture.check(event, policy), NOW).await,

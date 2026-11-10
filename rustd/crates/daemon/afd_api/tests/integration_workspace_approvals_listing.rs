@@ -35,7 +35,7 @@ const SHARED_INSTANT: i64 = 2;
 /// `limit` and `cursor` had every one of them ignored, which reads as a filter
 /// that silently does nothing and a queue that stops at its first page.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_inbox_narrows_by_filter_and_pages_by_cursor() {
     let fixture = Fixture::create_as(LISTING_SUBJECT).await;
     fixture.seed().await;
@@ -46,14 +46,13 @@ async fn the_inbox_narrows_by_filter_and_pages_by_cursor() {
     let third = fixture.seed_gate("tool", SHARED_INSTANT).await;
     let other_fleet = fixture.seed_second_fleet().await;
     let elsewhere = fixture.seed_gate_for(&other_fleet, "tool", 4).await;
-    let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
         LISTING_SUBJECT,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), queue)
+    .with_approval_queue(fixture.database.clone(), harness::bus().await)
     .router();
     let collection = format!("/v1/workspaces/{}/approvals", fixture.workspace.as_str());
 

@@ -20,7 +20,7 @@ No application code deploys here, and no public domain is proven live.
 | Fly.io tunnel app | `cloudflared-dev` | `cloudflared-prod` |
 | API domain | `api-dev.agentsfleet.net` | `api.agentsfleet.net` |
 | Dashboard domain | `app-dev.agentsfleet.net` | `app.agentsfleet.net` |
-| 1Password items | `planetscale-dev`, `dragonfly-dev`, `clerk-dev` | `planetscale-prod`, `dragonfly-prod`, `clerk-prod` |
+| 1Password items | `planetscale-dev`, `nats-dev`, `clerk-dev` | `planetscale-prod`, `nats-prod`, `clerk-prod` |
 | Cloudflare R2 item | `cloudflare-r2` | `cloudflare-r2` |
 
 ## Before you begin
@@ -42,7 +42,7 @@ fly apps create agentsfleetd-prod --org agentsfleet-prod
 fly apps create cloudflared-prod --org agentsfleet-prod
 ```
 
-The deploy workflows create `otelcol-<env>` and `dragonfly-<env>` themselves with `scripts/ensure_fly_app.sh --create-only`.
+The deploy workflows create `otelcol-<env>` and `nats-<env>` themselves with `scripts/ensure_fly_app.sh --create-only`.
 
 A new organization refuses to deploy until it can pay.
 Both organizations are linked to the Billing Organization `personal`, which holds the prepaid credits.
@@ -75,7 +75,7 @@ Write each token straight from the command output into 1Password, never into a l
 Once both pipelines are green, revoke a superseded token.
 `fly tokens list --org personal --scope org` names it; `fly tokens revoke <ID>` removes it.
 
-The checked-in app definitions under `deploy/fly/` are canonical: `agentsfleetd-<env>/fly.toml`, `cloudflared-<env>/`, `otelcol-<env>/` and `dragonfly-<env>/`.
+The checked-in app definitions under `deploy/fly/` are canonical: `agentsfleetd-<env>/fly.toml`, `cloudflared-<env>/`, `otelcol-<env>/` and `nats-<env>/`.
 The release workflow scales `agentsfleetd-prod` to exactly three machines and fails unless all three run.
 
 ### 2. Create datastores
@@ -85,7 +85,7 @@ The Human creates separate development and production PlanetScale databases, the
 ```text
 planetscale-<env>/api-connection-string
 planetscale-<env>/migrator-connection-string
-dragonfly-<env>/api-url
+nats-<env>/api-url
 ```
 
 Create each PlanetScale Postgres database in `us-east` (AWS us-east-1), the metro of Fly `iad`.
@@ -102,8 +102,8 @@ Past that ceiling Postgres refuses with `53300 too_many_connections`.
 
 The daemon then reports a stall, `UZ-INTERNAL-001` (`the pool held <N> of <M>`), not an outage.
 
-The Dragonfly `api-url` is the cluster seed on Fly's private network: `redis://:<PASSWORD>@dragonfly-<env>.internal:7001`.
-There is no second, root-level Dragonfly credential.
+The NATS `api-url` is the cluster seed on Fly's private network: `nats://agentsfleet:<PASSWORD>@nats-<env>.internal:4222`.
+The daemon and every NATS node read this one credential; there is no second, root-level NATS credential.
 
 Never apply schema files by hand.
 The migration runner applies `schema/*.sql` in order during deployment, starting with `schema/20261108120000_schemas.sql`.

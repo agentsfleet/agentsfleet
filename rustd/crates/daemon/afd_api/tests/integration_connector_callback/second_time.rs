@@ -16,11 +16,11 @@
 use super::*;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_replayed_callback_is_refused_without_redeeming_the_code_again() {
-    // The single-use slot, against the Dragonfly that holds it. Without it, anyone
-    // who saw a callback URL — a browser history, a proxy log, a referrer —
-    // could replay it, and each replay would redeem the code again.
+    // The single-use slot, against the Postgres row that holds it. Without it,
+    // anyone who saw a callback URL — a browser history, a proxy log, a
+    // referrer — could replay it, and each replay would redeem the code again.
     let fixture = Fixture::create().await;
     fixture.seed().await;
     let provider = FakeProvider::answering(&[&slack_answer(&fixture, BOT_TOKEN)]).await;
@@ -54,7 +54,7 @@ async fn a_replayed_callback_is_refused_without_redeeming_the_code_again() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_reconnect_replaces_the_sealed_grant_rather_than_refusing() {
     // A person re-authorising an integration whose token was revoked presses
     // the same button, and the name is already taken. Refusing would leave the

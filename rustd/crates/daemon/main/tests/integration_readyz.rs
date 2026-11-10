@@ -1,8 +1,8 @@
-//! Dimension 7.3 — `/readyz` goes red for a dependency, `/healthz` never does.
+//! `/readyz` goes red for a dependency, `/healthz` never does.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`, which supplies `TEST_DATABASE_URL` and
-//! `TEST_DRAGONFLY_URL`.
+//! [`afd_bus::test_util::LANE_URL_ENV`].
 //!
 //! # "Stopped Postgres", without stopping Postgres
 //!
@@ -18,9 +18,10 @@
 //! against sqlx's own reconnect timing.
 //!
 //! What the substitution does NOT cover is the transition — the seconds during
-//! which sqlx still holds sockets to a dead server. That belongs to §2's fault
-//! lane, which owns a proxy that can break a live connection mid-flight, and it
-//! is `test_pool_error_classes` there rather than a second copy here.
+//! which sqlx still holds sockets to a dead server. That belongs to the
+//! database's fault lane, which owns a proxy that can break a live connection
+//! mid-flight, and it is `test_pool_error_classes` there rather than a second
+//! copy here.
 //!
 //! # Why both probes, in one test
 //!
@@ -40,20 +41,12 @@ use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
 use afd_api::router::Dependencies as _;
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{CA_CERT_FILE_KNOB, DragonflyConfig, DragonflyRole};
 use agentsfleetd::probes::LiveDependencies;
 
 use crate::support::install_subscriber;
 
 /// Where the lane publishes the Postgres it brought up.
 const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
-
-/// Where the lane publishes the TLS Dragonfly it brought up.
-const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
-
-/// Where the lane extracted the Dragonfly certificate authority to.
-const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// Reads a lane knob, failing with the command that sets it.
 fn lane(knob: &str) -> String {
@@ -62,38 +55,29 @@ fn lane(knob: &str) -> String {
     })
 }
 
-/// A connected pool and Dragonfly client, both proven to answer.
-async fn connected() -> (Db, Dragonfly) {
+/// A connected pool and event bus, both proven to answer.
+async fn connected() -> (Db, afd_bus::Handle) {
     install_subscriber();
-
     let db_env = MapEnv::from_pairs([(DbRole::Api.url_knob(), lane(DATABASE_LANE_KNOB).as_str())]);
     let db_config = PoolConfig::resolve(&db_env, DbRole::Api)
         .expect("the lane publishes a usable database URL");
     let database = Db::connect(&db_config)
         .await
         .expect("the lane's Postgres is up");
-
-    let dragonfly_env = MapEnv::from_pairs([
-        (
-            DragonflyRole::Api.url_knob(),
-            lane(DRAGONFLY_LANE_KNOB).as_str(),
-        ),
-        (CA_CERT_FILE_KNOB, lane(DRAGONFLY_CA_LANE_KNOB).as_str()),
-    ]);
-    let dragonfly_config = DragonflyConfig::resolve(&dragonfly_env, DragonflyRole::Api)
-        .expect("the lane publishes a usable Dragonfly URL");
-    // Through the admission gate, like every other lane harness: the handshake
-    // is the expensive part and it queues behind the rest of the suite.
-    let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config)
+    let bus = afd_bus::test_util::lane_in(&namespace())
         .await
-        .expect("the lane's Dragonfly is up");
-
-    (database, queue)
+        .expect("the lane's NATS is up");
+    (database, bus)
 }
 
-/// The dimension: a dependency goes away, readiness follows, liveness does not.
+/// This suite's own subject namespace, so no other suite reads its traffic.
+fn namespace() -> String {
+    format!("readyz_{}", std::process::id())
+}
+
+/// A dependency goes away, readiness follows, liveness does not.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_readyz_dependency_probe() {
     let (database, queue) = connected().await;
 
@@ -104,7 +88,7 @@ async fn test_readyz_dependency_probe() {
         inputs.database,
         "the lane's Postgres answered at connect; it must answer a probe"
     );
-    assert!(inputs.queue, "the lane's Dragonfly answered at connect");
+    assert!(inputs.queue, "the lane's NATS answered at connect");
     assert!(
         afd_api::router::ready_decision(inputs),
         "both dependencies up is ready"
@@ -120,13 +104,55 @@ async fn test_readyz_dependency_probe() {
     );
     assert!(
         inputs.queue,
-        "Dragonfly is untouched — a red database and a red queue are different incidents, \
+        "the bus is untouched — a red database and a red bus are different incidents, \
          and collapsing them means reading logs to learn which"
     );
     assert!(
         !afd_api::router::ready_decision(inputs),
-        "one dependency down is not ready"
+        "a database that is down is not ready"
     );
+}
+
+/// A bus that answers nothing leaves the instance ready.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn readyz_stays_ready_through_a_bus_outage() {
+    let (database, _bus) = connected().await;
+    let seeds = afd_bus::test_util::lane_seeds().expect("the lane exports its seeds");
+    let first = seeds.first().expect("the lane exports a seed");
+    let port = afd_bus::test_util::port_of(first).expect("a seed names its port");
+    let proxy = afd_bus::test_util::Proxy::start(port)
+        .await
+        .expect("a free local port");
+    let through = afd_bus::test_util::via(first, proxy.port()).expect("a seed through the proxy");
+    let bus = afd_bus::test_util::dial(
+        &through,
+        Some(&namespace()),
+        afd_bus::nats::Tuning::default(),
+    )
+    .await
+    .expect("the lane's NATS answers through the proxy");
+    let probes = LiveDependencies::new(database, bus.clone());
+    assert!(probes.probe().await.queue, "connected through the proxy");
+
+    // Every connection drops, and every reconnect is refused.
+    proxy.cut().await;
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    let mut inputs = probes.probe().await;
+    while inputs.queue && tokio::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        inputs = probes.probe().await;
+    }
+    assert!(inputs.database, "the lane's Postgres answers");
+    assert!(
+        !inputs.queue,
+        "a bus whose every seed is gone is reported down"
+    );
+    assert!(
+        afd_api::router::ready_decision(inputs),
+        "Postgres backs every bus signal, so readiness holds"
+    );
+    let _ = bus.shutdown().await;
 }
 
 /// The probe answers within its own deadline rather than hanging.
@@ -135,7 +161,7 @@ async fn test_readyz_dependency_probe() {
 /// and it restarts the instance over someone else's outage. The bound is the
 /// difference between reporting a dependency outage and becoming one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_readyz_answers_within_its_deadline() {
     let (database, queue) = connected().await;
     database.close().await;

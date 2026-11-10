@@ -11,7 +11,7 @@ use std::time::Duration;
 const BOUND: Duration = Duration::from_secs(30);
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_second_improvement_cannot_overwrite_a_changed_base_or_reuse_another_key() {
     let fleet = Fleet::create().await;
     let (_, first) = fleet.improvement().await;
@@ -45,7 +45,7 @@ async fn a_second_improvement_cannot_overwrite_a_changed_base_or_reuse_another_k
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn rename_and_stop_preserve_setup_and_resume_rechecks_the_removed_model() {
     let fleet = Fleet::create().await;
     let response = fleet
@@ -94,7 +94,7 @@ async fn rename_and_stop_preserve_setup_and_resume_rechecks_the_removed_model() 
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_stale_review_digest_refuses_apply_without_side_effects_or_spending_its_key() {
     let fleet = Fleet::create().await;
     let (draft, reviewed) = fleet.improvement().await;
@@ -128,7 +128,7 @@ async fn a_stale_review_digest_refuses_apply_without_side_effects_or_spending_it
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn rival_applies_on_one_base_leave_exactly_one_winner_and_refuse_the_rest() {
     const RIVALS: usize = 4;
     let fleet = Fleet::create().await;

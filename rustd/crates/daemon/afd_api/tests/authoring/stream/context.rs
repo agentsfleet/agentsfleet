@@ -31,7 +31,7 @@ async fn private_summary_status_arrives_incrementally_without_changing_saved_his
     let messages = crate::harness::json_body(response).await;
     assert!(!messages.to_string().contains("summarizing"));
     drop(body);
-    assert_eq!(live.hub.readers(&live.channel()), 0);
+    assert_eq!(live.readers(), 0);
     live.cleanup().await;
 }
 
@@ -80,7 +80,7 @@ async fn stopping_a_message_withholds_its_buffered_summary_notice() {
         "{received}"
     );
     assert!(!received.contains("resuming"));
-    live.server.publish(&live.channel(), "{\"invalid\":true}");
+    live.server.publish(&live.subject(), "{\"invalid\":true}");
     drop(body);
     live.cleanup().await;
 }

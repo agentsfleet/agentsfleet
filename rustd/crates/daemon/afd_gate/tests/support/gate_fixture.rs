@@ -1,5 +1,5 @@
 //! The scope a gate test parks in: a tenant, a workspace, a fleet, and the
-//! two datastores the gate plane needs. Shared by the lifecycle suite and the
+//! Postgres and NATS the gate plane needs. Shared by the lifecycle suite and the
 //! live-tail suite, so each compiles its own copy and uses a subset.
 #![allow(
     dead_code,
@@ -10,16 +10,11 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use std::time::Duration;
-
-use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use af_fleet_runtime::FleetConfig;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_fleet_lifecycle::FleetStatus;
 use afd_gate::gate::Check;
 use jiff::Timestamp;
@@ -27,8 +22,6 @@ use jiff::Timestamp;
 /// The instant a park mints its identifiers at. Only identifiers: every stamp
 /// and deadline on a gate is the database's.
 pub(crate) const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 pub(crate) fn config(repository_write: bool) -> FleetConfig {
     let repository = if repository_write {
@@ -49,23 +42,14 @@ pub(crate) fn config_gates(gates: &str) -> FleetConfig {
     FleetConfig::stored(&document).expect("the gate policy fixture resolves")
 }
 
-pub(crate) fn dragonfly_config() -> DragonflyConfig {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the panic carries the VarError (unset, or not Unicode); an EnvSource answers an Option and would drop which one it was"
-    )]
-    let url = std::env::var(DRAGONFLY_URL_KNOB)
-        .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
-    DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
-        .with_connect_timeout(Duration::from_secs(5))
-        .with_request_timeout(Duration::from_secs(5))
-}
-
-pub(crate) async fn connect_redis() -> Dragonfly {
-    afd_dragonfly::test_util::connect_live(&dragonfly_config())
+/// The lane's NATS, which the gate plane publishes on.
+///
+/// One per test: clones share the connection, so a subscribe then a publish
+/// stay ordered.
+pub(crate) async fn bus() -> afd_bus::Handle {
+    afd_bus::test_util::lane()
         .await
-        .expect("the lane's Dragonfly must be reachable")
+        .expect("the lane's NATS: run through make test-integration-rustd")
 }
 
 pub(crate) struct Fixture {

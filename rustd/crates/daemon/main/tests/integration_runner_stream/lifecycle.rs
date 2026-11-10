@@ -13,7 +13,7 @@ use super::raw::Native;
 use crate::e2e::scenario;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn application_pings_do_not_keep_a_heartbeat_silent_native_session_alive() {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();
@@ -48,7 +48,7 @@ async fn application_pings_do_not_keep_a_heartbeat_silent_native_session_alive()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_second_native_connection_supersedes_the_first_on_each_transport() {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();
@@ -85,7 +85,7 @@ async fn a_second_native_connection_supersedes_the_first_on_each_transport() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_durable_revocation_closes_at_the_next_native_heartbeat_without_a_push() {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();

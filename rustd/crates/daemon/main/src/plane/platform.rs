@@ -7,7 +7,6 @@ use std::sync::Arc;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 use afd_mail::InviteMailer;
 use afd_vault::Vault as SecretVault;
 
@@ -28,7 +27,6 @@ use afd_vault::Vault as SecretVault;
 pub(super) fn connect_flow(
     database: &Db,
     kek: &Arc<Kek>,
-    queue: &Dragonfly,
     bus: &afd_bus::Handle,
     vendor_client: reqwest::Client,
 ) -> afd_connector::Connectors {
@@ -46,7 +44,7 @@ pub(super) fn connect_flow(
         ),
         afd_connector::Exchange::new(vendor_client.clone()),
         vendor_client,
-        queue.clone(),
+        database.clone(),
         Entropy::new(),
     )
 }

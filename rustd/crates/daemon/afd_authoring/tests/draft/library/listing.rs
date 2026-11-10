@@ -1,6 +1,5 @@
 //! A Library page is one statement at any page size: every card arrives joined
-//! to its head, and a keyset walk stays coherent when a card goes mid-walk
-//! (spec Dimension 7.2).
+//! to its head, and a keyset walk stays coherent when a card goes mid-walk.
 
 use super::Case;
 use af_core::test_util::trace::Capture;

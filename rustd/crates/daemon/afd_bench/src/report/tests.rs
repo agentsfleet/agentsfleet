@@ -69,10 +69,6 @@ fn filled_report() -> Report {
     report.measurement(RATE_PER_SECOND, 812.5);
     report.measurement(P95_MS, 14.25);
     report.datastores = DatastoreCosts {
-        dragonfly: super::DatastoreCost {
-            operations: 4_000,
-            time_ms: Some(120.0),
-        },
         postgres: super::DatastoreCost {
             operations: 2_100,
             time_ms: Some(640.0),
@@ -128,7 +124,6 @@ fn test_a_result_carries_every_block_a_reader_needs() {
             "the rubric greps {block} out of every result"
         );
     }
-    assert_eq!(parsed["datastores"]["dragonfly"]["operations"], 4_000);
     assert_eq!(parsed["datastores"]["postgres"]["operations"], 2_100);
     assert_eq!(parsed["fixture"]["created"], parsed["fixture"]["swept"]);
 }

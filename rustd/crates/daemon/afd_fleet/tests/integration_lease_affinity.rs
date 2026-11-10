@@ -91,9 +91,9 @@ async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
 /// an error, because a loser that saw a failure would back off instead of
 /// moving to the next candidate.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_lease_affinity_race() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
@@ -142,9 +142,9 @@ async fn test_lease_affinity_race() {
 /// indistinguishable from the dead holder it displaced, and §3's report could
 /// not tell a stale writer from the live one.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_reclaim_bumps_fence() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
@@ -196,9 +196,9 @@ async fn test_reclaim_bumps_fence() {
 /// This is the failure the guard exists for: without it a dead runner's late
 /// release would hand a fleet that is actively being worked to a second runner.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_superseded_holder_cannot_release_the_live_slot() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures

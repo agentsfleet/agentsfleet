@@ -89,7 +89,7 @@ pub(crate) struct Held {
 
 /// Runs §2 far enough to leave one active lease on one funded fleet.
 pub(crate) async fn held() -> Held {
-    held_in(Fixtures::create_with_queue().await).await
+    held_in(Fixtures::create().await).await
 }
 
 /// [`held`], over `fixtures`: a private database for a test that breaks a

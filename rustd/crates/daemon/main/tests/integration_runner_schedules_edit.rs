@@ -25,7 +25,7 @@ use crate::verbs::{FakeQStash, Told};
 /// Dimension 1.4. A person's schedule is the fleet's to read, not to change or
 /// delete.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_cannot_touch_human_schedules() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -73,7 +73,7 @@ async fn test_fleet_cannot_touch_human_schedules() {
 /// schedule answers every verb exactly as one that never existed, and nothing
 /// is admitted, changed or told to the scheduler.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_cannot_reach_another_fleets_schedule() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -110,7 +110,7 @@ async fn test_fleet_cannot_reach_another_fleets_schedule() {
 
 /// Dimension 1.8. A delete removes the schedule from `QStash`, then the row.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_deletes_its_schedule() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -137,7 +137,7 @@ async fn test_fleet_deletes_its_schedule() {
 
 /// The REST guide's PATCH rule: the same body twice leaves the same schedule.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_schedule_patch_is_idempotent() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;

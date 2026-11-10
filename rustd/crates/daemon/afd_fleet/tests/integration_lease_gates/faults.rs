@@ -23,7 +23,7 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     // A payer read that fails is neither an owner-less workspace to refuse nor
     // a tenant to bill: the pass answers no work, the event stays runnable,
     // and the claim is freed so the next poll can read the payer again.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let claimed = claim(&fixtures, &seeded).await;
@@ -85,7 +85,7 @@ async fn assert_claim_freed(fixtures: &Fixtures, fleet: &Uuid7) {
 async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
     // The first pass ends the event; the second finds the row already ended
     // and must neither reopen it nor answer anything but no work.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     fixtures
         .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
@@ -114,7 +114,7 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     let claimed = claim(&fixtures, &seeded).await;
     fixtures
@@ -160,7 +160,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recorded() {
-    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let fixtures = Fixtures::create_isolated().await;
     let seeded = ready(&fixtures).await;
     fixtures
         .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
@@ -201,7 +201,7 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     // Every gate admits the run, and by the time the lease row is written a
     // second runner holds the slot. The fenced insert writes nothing, and the
     // pass answers no work rather than a lease two runners would execute.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner, rival]) = seeded_parts::<2>(&fixtures).await;
     let seeded = ready_in(&fixtures, &workspace, runner, fleet, tenant).await;
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
@@ -240,7 +240,7 @@ async fn should_write_no_lease_when_the_pass_outlived_its_claim() {
     // Every gate admits the run and no rival takes the slot, but the claim's
     // own deadline passed while the gates ran. The issue refuses a claim past
     // its lapse rather than write a lease another runner may soon hold.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;

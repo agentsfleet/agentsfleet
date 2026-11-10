@@ -157,7 +157,7 @@ async fn finish_setup(
 // Value: protects=returning a saved setup to editing never restores old authority;
 // fails_when=creation loses the watermark or late reports append a private answer.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn save_after_stop_keeps_old_reports_accounting_only() {
     for activate in [false, true] {
         let c = Case::create().await;

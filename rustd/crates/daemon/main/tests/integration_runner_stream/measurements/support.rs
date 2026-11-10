@@ -2,10 +2,7 @@
 
 use super::super::raw::Native;
 use super::Result;
-use crate::{
-    e2e::{Scenario, dragonfly_config},
-    wire,
-};
+use crate::{e2e::Scenario, wire};
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
 use af_wire::protocol::StreamKind;
 use afd_bus::{Handle, Received, Subject, Subscription};
@@ -119,7 +116,7 @@ pub(super) struct Tail {
 
 impl Tail {
     pub(super) async fn open(run: &Scenario) -> Result<Self> {
-        let bus = afd_bus::dragonfly::connect(run.booted.queue.clone(), dragonfly_config()).await?;
+        let bus = afd_bus::test_util::lane().await?;
         let subscription = bus
             .subscribe(&Subject::FleetTail(run.fleet.clone()))
             .await?;

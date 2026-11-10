@@ -36,13 +36,10 @@ afd_auth.workspace = true
 afd_admin.workspace = true
 # Entropy for the identifiers these stores mint.
 af_crypto.workspace = true
+# The replay check compares a stored digest in constant time.
+subtle.workspace = true
 # The Postgres pool the api-key, workspace and credential rows are read through.
 afd_db.workspace = true
-# The device-flow login surface is Redis-backed; nothing here reaches Postgres
-# for it.
-afd_dragonfly.workspace = true
-# Lower-case hex for the fingerprint digest, rather than a hand-written render.
-hex.workspace = true
 # Instants: `TIMESTAMPTZ(3)` columns decode to and bind from `jiff::Timestamp`
 # through jiff-sqlx.
 jiff.workspace = true
@@ -73,8 +70,6 @@ test-util = [
   # The scripted entropy a suite pins a generated workspace name with.
   "af_crypto/test-util",
   "afd_db/test-util",
-  # The queue refusal a stubbed device-flow surface answers with.
-  "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]
@@ -95,9 +90,6 @@ futures-util = { workspace = true }
 af_core = { workspace = true, features = ["test-util"] }
 # The fleet row the preference suite seeds (`afd_db::test_util::FleetSeed`).
 afd_db = { workspace = true, features = ["test-util"] }
-# Reads a stored session envelope back, so the suite asserts on what Redis holds
-# rather than on what this crate says it wrote.
-serde_json.workspace = true
 # The parser the invite route injects into `Email::parse`, so the address
 # tests run the composition the route runs. A dev-dependency only: the store
 # itself links no mail client.

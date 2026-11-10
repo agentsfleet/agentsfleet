@@ -93,14 +93,9 @@ impl Fixture {
             &model.model.id,
         );
         let [runner, other] = enroll(&database, &owner, &model.model.id).await;
-        let queue = harness::connect_redis().await;
-        let admissions = Admissions::for_tests(database.clone(), queue.clone());
-        let leases = Leases::new(
-            database.clone(),
-            (queue).clone(),
-            afd_bus::dragonfly::publisher(queue),
-            Entropy::new(),
-        );
+        let bus = harness::bus().await;
+        let admissions = Admissions::for_tests(database.clone(), bus.clone());
+        let leases = Leases::new(database.clone(), bus, Entropy::new());
         let lease = acquire(&leases, &admissions, &owner, &runner).await;
         let key = format!("decision-http-fixture-{}", mint_id());
         save_key(&database, &owner.workspace, &key).await;

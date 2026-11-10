@@ -15,7 +15,7 @@ use afd_fleet::lease::Leases;
 
 use super::drive::{self, Shared};
 use crate::abort::Abort;
-use crate::datastores::{Datastores, dragonfly_calls};
+use crate::datastores::Datastores;
 use crate::error::Result;
 use crate::instrument::{LeaseInstrument, PollCounters};
 use crate::lane::joined;
@@ -54,7 +54,6 @@ pub(super) struct Window {
     /// Statements Postgres executed in the window, from `pg_stat_statements`:
     /// every crate's, which a tally kept by the poll never was.
     statements: u64,
-    dragonfly_calls: u64,
 }
 
 /// What both of a run's windows drive and read: the same runners, the same
@@ -64,7 +63,7 @@ pub(super) struct Pollers<'run> {
     pub(super) instrument: &'run LeaseInstrument,
     /// The lease path under measurement.
     pub(super) leases: &'run Leases,
-    /// The datastores, for Dragonfly's command count.
+    /// The datastores, for the statement count.
     pub(super) stores: &'run Datastores,
     /// The enrolled runners, one polling task each.
     pub(super) runners: &'run [Uuid7],
@@ -82,7 +81,6 @@ impl Pollers<'_> {
         statements::install(&self.stores.database).await?;
         let statements_before = statements::read(&self.stores.database).await?;
         let before = self.instrument.read()?;
-        let dragonfly_before = dragonfly_calls(&self.stores.queue).await?;
         let started = Instant::now();
         let shared = Arc::new(Shared {
             deadline: started + window,
@@ -104,9 +102,6 @@ impl Pollers<'_> {
                 .await?
                 .since(statements_before)
                 .statements,
-            dragonfly_calls: dragonfly_calls(&self.stores.queue)
-                .await?
-                .saturating_sub(dragonfly_before),
         })
     }
 }
@@ -159,13 +154,9 @@ impl Window {
             ratio(self.counters.candidates, self.counters.polls),
         );
         // No `time_ms`: this lane times the poll end to end, which is already
-        // the p95, and splitting that between the two datastores would need a
-        // timer inside the pass rather than around it.
+        // the p95, and splitting out Postgres's share would need a timer
+        // inside the pass rather than around it.
         report.datastores = DatastoreCosts {
-            dragonfly: DatastoreCost {
-                operations: self.dragonfly_calls,
-                time_ms: None,
-            },
             postgres: DatastoreCost {
                 operations: self.statements,
                 time_ms: None,

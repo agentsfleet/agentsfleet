@@ -1,25 +1,19 @@
-//! Dimension 4.1's failure mode — the live tail is best-effort, and proves it.
+//! The live tail is best-effort, and this suite proves it.
 //!
-//! One claim, and it is the one a runner's whole run depends on: a queue that
+//! One claim, and it is the one a runner's whole run depends on: a bus that
 //! will not take a telemetry frame must not fail the verb that forwarded it.
 //! The runner counts consecutive rejections toward a self-termination ceiling,
 //! so a publish failure answered as an error walks a healthy fleet's hosts to
 //! shutdown one beat at a time — for a frame nobody was necessarily reading.
 //!
-//! # How the outage is injected, and why not by taking Dragonfly away
+//! # How the outage is injected
 //!
-//! `Fixtures::plane_with_dead_queue` hands this suite a store over LIVE
-//! Postgres and a Dragonfly that will not answer. That combination is the shape a
-//! partial outage actually takes, and it is the only one that reaches the
-//! publish at all: a fixture with both datastores gone would refuse at the
-//! first row read, never get a target, and prove nothing about the queue.
-//!
-//! The obvious injections — `docker compose pause redis`, killing the server,
-//! dropping the port — were not used, and the reason is not tooling. The lane's
-//! Dragonfly is SHARED by every test binary `cargo test` runs in parallel, so any
-//! of them fails unrelated suites at the same instant. `Dragonfly::unreachable`
-//! skips the ping `connect` performs and hands back a lazy handle pointed at a
-//! closed port, so exactly one test's commands fail and nobody else notices.
+//! `Fixtures::plane_with_dead_bus` hands this suite a store over LIVE
+//! Postgres and a bus that will not answer (`afd_bus::test_util::unreachable`).
+//! That combination is the shape a partial outage actually takes, and it is the
+//! only one that reaches the publish at all: a fixture with both gone would
+//! refuse at the first row read, never get a target, and prove nothing about
+//! the publish. The dead bus is this test's own, so no other suite notices.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without needing datastores, and `make test-integration-rustd` — which runs
@@ -52,9 +46,9 @@ mod task_history;
 const LEASE_LEFT: std::time::Duration = std::time::Duration::from_secs(60);
 use crate::rows::{LAPSE, Row};
 
-/// The text the forwarded frame carries. Never read back — the queue it would
+/// The text the forwarded frame carries. Never read back — the bus it would
 /// have gone to is not answering, which is the point.
-const CHUNK_TEXT: &str = "the fleet said this into a queue that is not there";
+const CHUNK_TEXT: &str = "the fleet said this into a bus that is not there";
 
 /// The four closed stages share one histogram family.
 const DELIVERY_STAGE: &str = "agentsfleet_fleet_delivery_stage_seconds";
@@ -99,7 +93,7 @@ async fn test_first_chunk_records_active_lease_stages() {
     expired.fixtures.cleanup().await;
 }
 
-/// Dimension 4.1 (failure mode) — an unreachable queue does not fail the verb.
+/// An unreachable bus does not fail the verb.
 ///
 /// The runner is told the frames were RECEIVED, because they were: the lease
 /// resolved, the runner owns it, and everything after that is telemetry. What
@@ -107,10 +101,10 @@ async fn test_first_chunk_records_active_lease_stages() {
 /// in its log, not on the runner's wire.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_activity_publish_redis_down() {
+async fn test_activity_publish_bus_down() {
     let _stages = DELIVERY_STAGES.lock().await;
     let run = held().await;
-    let plane = run.fixtures.plane_with_dead_queue();
+    let plane = run.fixtures.plane_with_dead_bus();
 
     let forwarded = plane
         .activity(&run.runner, run.issued.lease_id.as_str(), &[chunk()])
@@ -118,15 +112,15 @@ async fn test_activity_publish_redis_down() {
 
     assert!(
         forwarded.is_ok(),
-        "a queue that would not take the frame is NOT an error: the runner \
+        "a bus that would not take the frame is NOT an error: the runner \
          counts consecutive rejections toward self-termination, so a telemetry \
          outage answered as a refusal walks healthy hosts to shutdown"
     );
 }
 
-/// Dimension 4.1 (failure mode) — the ownership check still runs first.
+/// With an unreachable bus, the ownership check still runs first.
 ///
-/// The half a "never fails" claim could quietly break. If an unreachable queue
+/// The half a "never fails" claim could quietly break. If an unreachable bus
 /// short-circuited the verb, a runner naming a lease it does not hold would get
 /// the same `Ok` as the holder — and the check that stops one fleet writing
 /// into another's tail would be gone precisely when nobody could see the tail
@@ -134,9 +128,9 @@ async fn test_activity_publish_redis_down() {
 /// so it must still refuse.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_activity_with_a_dead_queue_still_refuses_a_lease_the_runner_does_not_hold() {
+async fn test_activity_with_a_dead_bus_still_refuses_a_lease_the_runner_does_not_hold() {
     let run = held().await;
-    let plane = run.fixtures.plane_with_dead_queue();
+    let plane = run.fixtures.plane_with_dead_bus();
 
     let refusal = plane
         .activity(&run.spare, run.issued.lease_id.as_str(), &[chunk()])
@@ -154,28 +148,28 @@ async fn test_activity_with_a_dead_queue_still_refuses_a_lease_the_runner_does_n
 /// runner's frames are.
 ///
 /// The refusal is written over live Postgres and answers the closing it
-/// wrote; announcing that closing on a queue that will not take it must cost
+/// wrote; announcing that closing on a bus that will not take it must cost
 /// the tail one frame and the verb nothing — the row stands, and the client's
 /// reconnect backfill carries it. A panic or a hang here would turn a telemetry
 /// outage into a lease verb that never answers its runner.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
+async fn test_bracket_publish_bus_down_does_not_fail_the_closing() {
     let run = held().await;
-    let plane = run.fixtures.plane_with_dead_queue();
+    let plane = run.fixtures.plane_with_dead_bus();
 
     let ended = plane
         .leases
         .block(&run.acquired, Refusal::labelled(label::APPROVAL_DENIED))
         .await
-        .expect("the refusal writes over live Postgres whatever the queue does");
+        .expect("the refusal writes over live Postgres whatever the bus does");
     let closed = match ended {
         Ended::Now(closed) => closed,
         Ended::Already => unreachable!("a held run's row is still open"),
     };
     assert_eq!(closed.row.status, af_core::event::status::GATE_BLOCKED);
 
-    // Returns, rather than erroring or hanging: the queue is asked once and its
+    // Returns, rather than erroring or hanging: the bus is asked once and its
     // refusal is accounted in the log, not on the verb.
     let publication = plane.leases.publish_completion(&closed, None).await;
     assert!(
@@ -188,8 +182,7 @@ async fn test_bracket_publish_redis_down_does_not_fail_the_closing() {
     );
 }
 
-/// Dimension 1.3 — the closing counts the fleet's pending gates, and only
-/// those.
+/// The closing counts the fleet's pending gates, and only those.
 ///
 /// The count on a completion is what the strip shows beside "approvals
 /// waiting", so it is proven off zero: one pending gate and one answered gate

@@ -49,9 +49,8 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What the lease verb acts through.
     ///
     /// An associated type for the reason [`Services::Auth`] is one: the
-    /// concrete plane holds a Dragonfly connection that is opened by CONNECTING,
-    /// so a suite proving the router's refusal matrix cannot construct one and
-    /// must not need to. The binary supplies `afd_fleet::lease::LeaseService`; a test
+    /// concrete plane holds a bus connection beside its stores, so a suite
+    /// proving the router's refusal matrix must not need to construct one. The binary supplies `afd_fleet::lease::LeaseService`; a test
     /// supplies whatever answers.
     type Leases: Leasing;
 
@@ -75,7 +74,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What the device-flow login surface acts through.
     ///
     /// An associated type for the reason [`Services::Leases`] is one: the
-    /// concrete surface holds a Dragonfly connection opened by CONNECTING, and a
+    /// concrete surface holds its store, a pepper and an entropy source, and a
     /// suite proving the router's refusal matrix must not need one.
     type Sessions: DeviceFlow;
 
@@ -85,8 +84,8 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What decides whose workspace a request is acting in.
     ///
     /// A concrete type where [`Services::Leases`] is an associated one, and the
-    /// difference is what each is over: a lease plane holds a Dragonfly connection
-    /// opened by CONNECTING, while this holds a Postgres pool, which
+    /// difference is what each is over: a lease plane holds a bus connection
+    /// beside its stores, while this holds a Postgres pool, which
     /// `afd_db::Db::unreachable` already lets a suite build without a server.
     /// The seam is inside the type, so it does not also need to be a parameter
     /// on this trait.
@@ -97,11 +96,9 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
 
     /// What the workspace fleets surface acts through.
     ///
-    /// An associated type for the reason [`Services::Leases`] is one: the
-    /// concrete store holds a Dragonfly connection opened by CONNECTING — the
-    /// install's whole guarantee is that a stream exists before the 201 — so a
-    /// suite proving the refusal matrix in front of these verbs cannot build
-    /// one and must not need to.
+    /// An associated type for the reason [`Services::Leases`] is one: a suite
+    /// proving the refusal matrix in front of these verbs substitutes its own
+    /// store and must not need the concrete one.
     type Fleets: WorkspaceFleets;
 
     /// The workspace's fleets: list, install, read, edit, purge.
@@ -119,8 +116,8 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What the workspace secret surface acts through.
     ///
     /// A concrete type where [`Services::Fleets`] is an associated one, and the
-    /// difference is what each of them is over. The fleets store holds a Dragonfly
-    /// connection opened by CONNECTING, so a suite cannot build one; the vault
+    /// difference is what each of them is over. A suite substitutes the fleets
+    /// store whole; the vault
     /// holds a Postgres pool, an entropy source and a key, and every one of
     /// those has a seam a suite drives it through — `afd_db::Db::unreachable`,
     /// `Entropy::new_mocked` and `Kek::from_bytes`. The seam is inside the
@@ -144,8 +141,8 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// A concrete type for the reason [`Services::Approvals`] is one: a
     /// Postgres pool and nothing else, with `afd_db::Db::unreachable` as the
     /// seam. Separate from the inbox beside it because the two are separate
-    /// stores over separate tables — the queue also holds a Dragonfly connection,
-    /// for a continuation a grant decision never lands.
+    /// stores over separate tables — the queue also holds a bus connection, for
+    /// a continuation a grant decision never lands.
     type Grants: FleetGrants;
 
     /// A fleet's standing permissions to reach a third party.
@@ -165,7 +162,7 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What the schedules surface and the fire ingress act through.
     ///
     /// An associated type for the reason [`Services::Ingress`] is one: the
-    /// concrete plane holds a Dragonfly connection and an outbound HTTP client, so
+    /// concrete plane holds a bus connection and an outbound HTTP client, so
     /// a suite proving the refusal matrix in front of these routes cannot build
     /// one and must not need to.
     type Schedules: FleetSchedules;
@@ -190,10 +187,9 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What the signed-ingress routes act through.
     ///
     /// An associated type for the reason [`Services::Fleets`] is one: the
-    /// concrete store holds a Dragonfly connection opened by CONNECTING — the
-    /// delivery's at-most-once claim and its append are one Lua script on it —
-    /// so a suite proving the refusal matrix in front of these routes cannot
-    /// build one and must not need to.
+    /// concrete store holds the admission ledger and the bus it notifies
+    /// through, so a suite proving the refusal matrix in front of these routes
+    /// must not need to build one.
     type Ingress: WebhookIngress;
 
     /// What a signed delivery is resolved, verified and appended through.
@@ -231,10 +227,9 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What the connector routes act through.
     ///
     /// An associated type for the reason [`Services::Ingress`] is one: the
-    /// concrete flow holds a Dragonfly connection opened by CONNECTING — a
-    /// round-trip's single-use slot lives there — so a suite proving the
-    /// refusal matrix in front of these routes cannot build one and must not
-    /// need to.
+    /// concrete flow holds an outbound HTTP client and the pool a round-trip's
+    /// single-use slot lives in, so a suite proving the refusal matrix in front
+    /// of these routes must not need to build one.
     type Connectors: WorkspaceConnectors;
 
     /// What a connect is started, finished, read and forgotten through.
@@ -268,10 +263,10 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What both live-stream routes act through.
     ///
     /// A concrete type where [`Services::Leases`] is an associated one, and the
-    /// difference is what each is over: a lease plane holds a Dragonfly connection
-    /// opened by CONNECTING, while this holds a pub/sub hub and a semaphore,
-    /// and `afd_sse::Live::detached` already lets a suite build one with no
-    /// server behind it. The seam is inside the type, so it does not also need
+    /// difference is what each is over: a lease plane holds a bus connection
+    /// beside its stores, while this holds a bus handle and a semaphore, and
+    /// `afd_sse::Live::detached` already lets a suite build one with no broker
+    /// behind it. The seam is inside the type, so it does not also need
     /// to be a parameter on this trait — the same shape [`Services::analytics`]
     /// takes, and for the same reason.
     fn live(&self) -> &Live;

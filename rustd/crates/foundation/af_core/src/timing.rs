@@ -73,7 +73,7 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 /// bounds the cost of the wait.
 pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 
-/// How long an ephemeral wake or runner command may wait for its broker.
+/// How long an ephemeral NATS wake or runner command may wait for its broker.
 ///
 /// Admission is already durable; a lost wake leaves work for the replica's
 /// recovery probe, and heartbeat or renewal checks repair a lost runner command.

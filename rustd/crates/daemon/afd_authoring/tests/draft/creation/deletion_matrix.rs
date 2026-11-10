@@ -1,4 +1,4 @@
-//! Dimension 4.1 — the draft and fleet deletion roots keep the money and scrub
+//! The draft and fleet deletion roots keep the money and scrub
 //! private output at once; an open draft and an installing fleet survive their
 //! sweeps.
 //!
@@ -148,7 +148,7 @@ async fn fleet_charge(c: &Case, fleet: &Uuid7) -> Uuid7 {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_deletion_matrix_keeps_money() {
     let c = Case::create().await;
     let fleets = Fleets::new(c.base.db.clone());

@@ -7,6 +7,7 @@
 //! `TcpStream` for that reason.
 #![cfg(feature = "test-util")]
 
+#[path = "wire/mod.rs"]
 mod wire;
 
 /// Bytes per kibibyte, so the sizes below read as the units they are argued in.

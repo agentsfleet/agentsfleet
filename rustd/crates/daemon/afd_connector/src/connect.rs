@@ -29,7 +29,7 @@
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::SecretBytes;
-use afd_dragonfly::Dragonfly;
+use afd_db::Db;
 use jiff::Timestamp;
 
 use crate::app::PlatformApp;
@@ -124,7 +124,7 @@ pub struct Connectors {
     /// other call through the exchange.
     pub(crate) client: reqwest::Client,
     /// Where a round-trip's single-use slot lives.
-    pub(crate) queue: Dragonfly,
+    pub(crate) database: Db,
     /// Where a nonce is drawn from.
     pub(crate) entropy: Entropy,
 }
@@ -145,7 +145,7 @@ impl Connectors {
         grants: Grants,
         exchange: Exchange,
         client: reqwest::Client,
-        queue: Dragonfly,
+        database: Db,
         entropy: Entropy,
     ) -> Self {
         Self {
@@ -153,7 +153,7 @@ impl Connectors {
             grants,
             exchange,
             client,
-            queue,
+            database,
             entropy,
         }
     }
@@ -184,7 +184,7 @@ impl Connectors {
         let binding = provider.state_binding();
         let nonce = nonce::mint(&self.entropy)?;
         let state = state::sign(binding, secret, workspace.as_str(), subject, &nonce, now);
-        nonce::remember(&self.queue, binding, &nonce).await?;
+        nonce::remember(&self.database, &self.entropy, provider, &nonce, now).await?;
 
         // Both archetypes start the same way — a consent screen carrying a
         // signed state — and differ only in what the code is redeemed FOR. The
@@ -267,12 +267,40 @@ impl Connectors {
             return Ok(None);
         };
         let workspace = Uuid7::parse(verified.workspace())?;
-        let binding = provider.state_binding();
-        Ok(nonce::consume(&self.queue, binding, verified.nonce())
+        Ok(nonce::consume(&self.database, provider, verified.nonce())
             .await?
             .then_some(Spent {
                 workspace,
                 authenticated_subject: subject.clone(),
             }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #![expect(
+        clippy::expect_used,
+        reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
+    )]
+
+    use af_core::id::Uuid7;
+
+    use super::Spent;
+
+    /// A spent round-trip reaches logs by its workspace, never by the person
+    /// who completed it.
+    #[test]
+    fn a_spent_round_trip_debugs_without_its_subject() {
+        let workspace = Uuid7::parse("01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8e9f")
+            .expect("a fixture identifier is a canonical UUIDv7");
+        let spent = Spent {
+            authenticated_subject: "user_who_finished_it".to_owned(),
+            workspace,
+        };
+
+        assert_eq!(
+            format!("{spent:?}"),
+            r#"Spent { workspace: Uuid7("01912d4e-8f2a-7c3b-9d1e-4a5b6c7d8e9f"), .. }"#
+        );
     }
 }

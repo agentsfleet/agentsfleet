@@ -120,12 +120,7 @@ pub async fn run(
     parameters.fit(stores.pool_size)?;
     let abort = Arc::new(Abort::new(profile.caps().abort_error_rate));
     let instrument = LeaseInstrument::install()?;
-    let leases = Leases::new(
-        stores.database.clone(),
-        stores.queue.clone(),
-        stores.bus.clone(),
-        Entropy::new(),
-    );
+    let leases = Leases::new(stores.database.clone(), stores.bus.clone(), Entropy::new());
     let tag = seed::placement_tag(prefix);
 
     let mut ledger = FixtureLedger::new();

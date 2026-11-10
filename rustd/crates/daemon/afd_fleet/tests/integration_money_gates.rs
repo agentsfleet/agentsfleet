@@ -115,7 +115,7 @@ pub(crate) fn biller(fixtures: &Fixtures) -> LedgerBiller {
 /// matters is the CLASS — `Retry` here would leave the delivery leasable and
 /// every poll would re-read the same missing row forever.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_workspace_naming_no_tenant_ends_the_event() {
     let fixtures = Fixtures::create().await;
     let accounts = Accounts::new(fixtures.database.clone());
@@ -150,7 +150,7 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
 /// spend for the right fleet and window and acts on it — a query filtered
 /// wrongly would answer zero and admit every run past every ceiling.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_fleet_past_its_daily_ceiling_is_refused() {
     let fixtures = Fixtures::create().await;
     let accounts = Accounts::new(fixtures.database.clone());
@@ -187,7 +187,7 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
 /// test the refusal alone: a pass that refused everything would satisfy the
 /// budget test and stop the platform.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
     let fixtures = Fixtures::create().await;
     let accounts = Accounts::new(fixtures.database.clone());
@@ -225,7 +225,7 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
 /// Admission moves no money: the gates read, and the lease's usage is the
 /// relay's to charge once the lease runs.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_admitted_run_is_charged_nothing_at_admission() {
     let fixtures = Fixtures::create().await;
     let accounts = Accounts::new(fixtures.database.clone());

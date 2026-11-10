@@ -1,0 +1,29 @@
+app = "nats-prod"
+primary_region = "iad"
+# Same region as agentsfleetd-prod, which reaches this app over 6PN: in-region
+# and WireGuard-encrypted, so the seed is plaintext `nats://`. No public
+# service: only the daemon dials it.
+
+[build]
+  dockerfile = "Dockerfile"
+
+# Two small nodes, as dev (Indy, Nov 10, 2026: "I want prod 2 small like dev"): core NATS has no quorum, so
+# two survive the loss of one. No volume: core NATS keeps nothing to disk, and
+# a restarted node rejoins empty.
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+# The monitoring port's own readiness answer; `ensure_fly_app.sh` waits for it
+# to pass on every machine before the daemon deploys.
+[checks]
+  [checks.nats]
+    type = "http"
+    port = 8222
+    path = "/healthz"
+    interval = "10s"
+    timeout = "2s"
+    grace_period = "5s"
+
+[[restart]]
+  policy = "always"

@@ -106,7 +106,7 @@ impl Staged {
 ///
 /// # Errors
 ///
-/// Whatever Postgres, Dragonfly or the setup chat path refused, and a
+/// Whatever Postgres or the setup chat path refused, and a
 /// platform default another run already holds.
 pub(super) async fn stage(
     stores: &Datastores,

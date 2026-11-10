@@ -59,8 +59,7 @@ async fn prove_recovery(
     expect_hints(wake, std::slice::from_ref(&fleet)).await?;
     assert_recovery(wake, capture, before + 1)?;
 
-    server.confirm(&subject);
-    server.confirm(&subject);
+    server.gap(&subject);
     server.publish(&subject, fleet.as_str());
     expect_hints(wake, std::slice::from_ref(&fleet)).await?;
     assert_recovery(wake, capture, before + 2)?;

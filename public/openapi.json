@@ -49,7 +49,7 @@
           "Health"
         ],
         "summary": "Readiness probe",
-        "description": "Returns 200 when the database and event queue are available, or 503 otherwise. This check remains available when the server is busy.",
+        "description": "Returns 200 when the database is available, or 503 otherwise. `queue` reports whether the event bus answered; a bus outage delays notifications but does not make the instance unready. This check remains available when the server is busy.",
         "operationId": "readyz",
         "responses": {
           "200": {
@@ -29478,7 +29478,7 @@
           },
           "queue": {
             "type": "boolean",
-            "description": "Whether the event queue answered."
+            "description": "Whether the event bus answered; reported only, never gating `ready`."
           },
           "ready": {
             "type": "boolean",

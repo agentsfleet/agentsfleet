@@ -4,7 +4,7 @@ use super::{Fleet, Method, StatusCode, header, json_body, mint, send_with_header
 use af_core::error_code;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn retrying_apply_after_purge_returns_gone_without_reviving_the_fleet() {
     let fleet = Fleet::create().await;
     let (_, request) = fleet.improvement().await;

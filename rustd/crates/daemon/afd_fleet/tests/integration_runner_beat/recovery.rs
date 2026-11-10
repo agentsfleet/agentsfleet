@@ -46,7 +46,7 @@ async fn beats_holding(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: Ti
 
 /// A host that loses a mechanism is degraded on the next beat, and named.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
@@ -96,7 +96,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
 
 /// A stored report repairs a stale verdict without needing a fresh report.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_stored_report_repairs_a_stale_verdict() {
     let fixtures = Fixtures::create().await;
     let enrolled = fixtures
@@ -148,7 +148,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
 
 /// A token that authenticated against a row since reaped fails closed.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_vanished_runner_is_its_own_failure() {
     let fixtures = Fixtures::create().await;
     let enrolled = fixtures
@@ -187,7 +187,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
 /// listed fleet, which no slot of this runner's holds, is answered back for
 /// release while the read works, so the empty answer is the failure's.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
     let fixtures = Fixtures::create_isolated().await;
     let enrolled = fixtures

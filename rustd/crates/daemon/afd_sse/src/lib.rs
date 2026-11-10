@@ -27,14 +27,11 @@
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-// The native backend is used only by the separate integration-test target.
-#[cfg(test)]
-use afd_dragonfly as _;
-
 pub mod error;
 pub mod fanin;
 pub mod frame;
 pub mod live;
+mod resubscribe;
 pub mod stream_limit;
 pub mod tail;
 
@@ -46,6 +43,7 @@ pub use crate::frame::{
     DEFAULT_KIND, Data, Frame, KIND_ACCESS_REVOKED, KIND_CATCHING_UP, KIND_HELLO,
 };
 pub use crate::live::Live;
+pub use crate::resubscribe::Link;
 pub use crate::stream_limit::{StreamLimit, StreamPermit};
 pub use crate::tail::tail;
 

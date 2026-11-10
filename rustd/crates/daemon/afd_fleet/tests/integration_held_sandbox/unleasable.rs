@@ -52,7 +52,7 @@ impl Unfit {
 /// Whether another runner's poll leases a fleet whose holder beat at
 /// enrolment, held it live, and then became `unfit`; and the slot after.
 async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), Uuid7) {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder, other],
         fleet,

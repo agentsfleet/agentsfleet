@@ -39,7 +39,7 @@ const LINES: &str = "SELECT count(*), count(*) FILTER (WHERE settled_at IS NULL)
 const REPORT_BOUND: Duration = Duration::from_secs(2);
 
 async fn isolated() -> Held {
-    held_in(Fixtures::create_isolated_with_queue().await).await
+    held_in(Fixtures::create_isolated().await).await
 }
 
 fn biller(held: &Held) -> LedgerBiller {

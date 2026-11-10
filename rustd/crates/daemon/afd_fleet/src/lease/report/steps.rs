@@ -105,21 +105,14 @@ impl LeaseService {
         completed_at
     }
 
-    /// Put an owed answer on the delivery queue, and receipt the row.
+    /// Ping the outbound workers that an owed answer committed.
     ///
     /// Best-effort by construction, and logged rather than returned: the
-    /// obligation is already committed, so a failure here leaves a row the
-    /// producer sweep will re-append. Failing the report instead would tell a
+    /// obligation is already committed and claimable, so a lost ping costs
+    /// one claim pass of latency. Failing the report instead would tell a
     /// runner its finished, charged run did not land — and it did.
-    pub(super) async fn queue_owed_answer(&self, owing: &Owing, lease: &Reported, answer: &str) {
-        step(
-            "queue_delivery",
-            lease,
-            owing.obligation.as_str(),
-            self.leases
-                .queue_delivery(&owing.obligation, owing.reply.delivery(lease, answer))
-                .await,
-        );
+    pub(super) async fn wake_owed_answer(&self, owing: &Owing) {
+        self.leases.wake_delivery(&owing.obligation).await;
     }
 
     /// Record and announce what the run's folds settled.

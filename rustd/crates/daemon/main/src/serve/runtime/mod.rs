@@ -12,10 +12,9 @@ use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use af_observability::Analytics;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 
 use super::clients::Clients;
-use super::optional::{announce_identity, open_live};
+use super::optional::announce_identity;
 use crate::error::BootFailure;
 use crate::plane::Shared;
 use crate::preflight::BootConfig;
@@ -37,7 +36,6 @@ const POOL_WARM_DEADLINE: Duration = Duration::from_secs(15);
 
 pub(super) struct Runtime {
     pub(super) database: Db,
-    pub(super) queue: Dragonfly,
     /// The live-stream surface, kept beside the plane it was moved into.
     ///
     /// A `Live` is two handles, so this is the same ceiling the routes admit
@@ -68,18 +66,18 @@ pub(super) async fn open_runtime(
     let authoring_transport = clients.authoring;
     #[cfg(feature = "test-util")]
     let authoring_transport = config.authoring_transport().unwrap_or(authoring_transport);
-    let (database, queue) = open_datastores(config).await?;
+    let database = open_database(config).await?;
     let (capabilities, sessions, signup_writeback) = crate::identity::resolve(config.identity());
     announce_identity(&capabilities);
     let kek = Arc::new(config.kek().clone());
     let broker = open_broker(config, &database, &kek, clients.broker).await;
-    let (bus, live) = open_live(config.redis(), queue.clone(), config.sse_max_streams()).await;
+    let bus = afd_bus::nats::connect(config.bus()).await?;
+    let live = live_over(&bus, config.sse_max_streams());
     let observed = live.clone();
     let plane = plane::build(plane::Inputs {
         config,
         analytics,
         database: &database,
-        queue: &queue,
         bus: &bus,
         kek: &kek,
         identity: (capabilities, sessions, signup_writeback),
@@ -93,7 +91,6 @@ pub(super) async fn open_runtime(
     let plane = plane.with_connector_endpoint(config.connector_endpoint());
     Ok(Runtime {
         database,
-        queue,
         live: observed,
         plane: Arc::new(plane),
         bus,
@@ -102,9 +99,16 @@ pub(super) async fn open_runtime(
     })
 }
 
-/// The database, warmed, and the queue, refused unless it can carry this
-/// daemon.
-async fn open_datastores(config: &BootConfig) -> Result<(Db, Dragonfly), BootFailure> {
+/// The live-stream surface over the bus boot connected.
+///
+/// It always carries a bus: an unreachable one refuses boot as
+/// `UZ-STARTUP-004` before the router exists.
+fn live_over(bus: &afd_bus::Handle, max_streams: usize) -> afd_sse::Live {
+    afd_sse::Live::new(bus.clone(), afd_sse::StreamLimit::new(max_streams))
+}
+
+/// The database, warmed.
+async fn open_database(config: &BootConfig) -> Result<Db, BootFailure> {
     let database = Db::connect(config.api_pool()).await?;
     // Before the router exists, so the first request finds live connections
     // instead of paying a handshake inside an acquire budget sized for a wait.
@@ -112,15 +116,7 @@ async fn open_datastores(config: &BootConfig) -> Result<(Db, Dragonfly), BootFai
     // `idle_timeout` and `max_lifetime` are both unset, and the pool pins
     // both. `warm` reports its shortfall through `pool_warm_incomplete`.
     database.warm(POOL_WARM_DEADLINE).await;
-    let queue = Dragonfly::connect(config.redis()).await?;
-    // Before the first write, and refused in the queue's own class. A seed
-    // that is not a cluster cannot place the keys this daemon routes by slot;
-    // a server without sharded pub/sub cannot carry the live tail; a primary
-    // that evicts keys would discard accepted work on purpose. A daemon that
-    // served on through any of them would look exactly like one whose fleets
-    // had simply gone quiet.
-    afd_dragonfly::preflight::refuse_unsuitable_datastore(&queue).await?;
-    Ok((database, queue))
+    Ok(database)
 }
 
 /// The credential broker, minting through the platform admin workspace's
@@ -190,12 +186,12 @@ pub(super) async fn spawn_background(
     supervisor: &mut Supervisor,
     config: &BootConfig,
     database: &Db,
-    queue: &Dragonfly,
     kek: &Arc<Kek>,
     bus: afd_bus::Handle,
     outbound_client: reqwest::Client,
 ) {
-    supervisor.spawn(crate::HUB_PUMP, async move |token| {
+    let outbound_bus = bus.clone();
+    supervisor.spawn(crate::BUS_SHUTDOWN, async move |token| {
         token.cancelled().await;
         if let Err(error) = bus.shutdown().await {
             let error_code = error.code().as_str();
@@ -208,15 +204,14 @@ pub(super) async fn spawn_background(
         }
     });
     // The connector answer-delivery worker, beside the sweepers `serve`
-    // spawned just before this, and for the same reason. Its own Dragonfly connection, because it blocks on the stream — see
-    // `crate::outbound`. It opens its own grant store over the SAME key the
-    // plane seals with, which is why the KEK arrives shared rather than
-    // rebuilt here.
+    // spawned just before this, and for the same reason. It claims from
+    // Postgres and is pinged over the bus — see `crate::outbound`. It opens its
+    // own grant store over the SAME key the plane seals with, which is why the
+    // KEK arrives shared rather than rebuilt here.
     crate::outbound::spawn(
         supervisor,
-        config.redis(),
         database,
-        queue,
+        outbound_bus,
         afd_connector::Grants::new(
             afd_vault::Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),
             database.clone(),
@@ -224,6 +219,19 @@ pub(super) async fn spawn_background(
         ),
         outbound_client,
         config.slack_api_base().to_owned(),
-    )
-    .await;
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::live_over;
+
+    #[tokio::test]
+    async fn the_live_surface_rides_the_booted_bus_at_its_capacity() -> afd_bus::Result<()> {
+        let (bus, _server) = afd_bus::test_util::detached()?;
+        let live = live_over(&bus, 3);
+        assert!(live.bus().is_some());
+        assert_eq!(live.capacity(), 3);
+        Ok(())
+    }
 }

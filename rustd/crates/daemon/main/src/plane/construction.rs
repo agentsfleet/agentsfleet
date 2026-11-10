@@ -9,7 +9,6 @@ use afd_admission::Admissions;
 use afd_billing::biller::Biller;
 use afd_credential::provider::Providers;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 use afd_fleet::lease::LeaseService;
 use afd_runner::Runners;
 use std::sync::Arc;
@@ -52,7 +51,6 @@ impl Common {
 
 pub(super) struct NativeInputs<'a> {
     pub(super) database: &'a Db,
-    pub(super) queue: &'a Dragonfly,
     pub(super) kek: Arc<Kek>,
     pub(super) providers: Providers,
     pub(super) bus: afd_bus::Handle,
@@ -81,7 +79,6 @@ impl NativeInputs<'_> {
     pub(super) fn build(self) -> Native {
         let mut leases = lease_plane(
             self.database.clone(),
-            self.queue.clone(),
             self.kek,
             self.providers,
             self.bus.clone(),

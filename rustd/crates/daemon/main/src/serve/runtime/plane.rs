@@ -9,7 +9,6 @@ use crate::{
 use af_crypto::secret::Kek;
 use af_observability::Analytics;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 use afd_sse::Live;
 use std::sync::Arc;
 
@@ -17,7 +16,6 @@ pub(super) struct Inputs<'a> {
     pub(super) config: &'a BootConfig,
     pub(super) analytics: &'a Analytics,
     pub(super) database: &'a Db,
-    pub(super) queue: &'a Dragonfly,
     pub(super) bus: &'a afd_bus::Handle,
     pub(super) kek: &'a Arc<Kek>,
     pub(super) identity: (Capabilities, Sessions, SignupWriteback),
@@ -33,7 +31,6 @@ pub(super) fn build(inputs: Inputs<'_>) -> ServingPlane {
         config,
         analytics,
         database,
-        queue,
         bus,
         kek,
         identity,
@@ -46,7 +43,6 @@ pub(super) fn build(inputs: Inputs<'_>) -> ServingPlane {
     ServingPlane::new(crate::plane::PlaneParts {
         authoring_transport,
         database: database.clone(),
-        queue: queue.clone(),
         bus: bus.clone(),
         runner_wake: config.runner_wake().clone(),
         frame_memory: config.frame_memory(),

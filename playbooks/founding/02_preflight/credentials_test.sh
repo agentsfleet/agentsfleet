@@ -146,7 +146,7 @@ test_deployment_checks_complete_infrastructure_inputs() {
     'approval-signing-secret/credential'
     'planetscale-dev/api-connection-string'
     'planetscale-dev/migrator-connection-string'
-    'dragonfly-dev/api-url'
+    'nats-dev/api-url'
     'agentsfleet-runner-stream/certificate-chain'
     'agentsfleet-runner-stream/private-key'
     'agentsfleet-runner-stream/ca-certificate'

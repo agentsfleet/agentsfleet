@@ -17,6 +17,8 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+# The live tail a committed receipt and an admitted steer are announced on,
+# through the process's one Bus connection.
 afd_bus.workspace = true
 serde.workspace = true
 # Where a steer is accepted before anything is queued. The ledger owns the
@@ -26,9 +28,6 @@ afd_admission.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
-# The live tail subscribes through the process's one pub/sub connection, and a
-# steer appends to the fleet's stream. Both are this crate's, because both are
-# the same question the table answers, asked about the present.
 # The status a stopped-fleet refusal names.
 afd_fleet_lifecycle.workspace = true
 # The event type and status spellings the wire carries.
@@ -59,8 +58,9 @@ test-util = [
 ]
 
 [dev-dependencies]
+# The in-process bus the lane's ledger announces on and the backfill suite's
+# tail reads from, and the unreachable one a deferred notification fails on.
 afd_bus = { workspace = true, features = ["test-util"] }
-afd_dragonfly = { workspace = true, features = ["test-util"] }
 # The capacity refusal the steer unit tests hand the repeat decision.
 afd_admission = { workspace = true, features = ["test-util"] }
 # The lease and runner statuses the disposition suite seeds a live run under,
@@ -76,7 +76,7 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
 afd_db = { workspace = true, features = ["test-util"] }
 # The backfill suite delivers its live half through a real tail, because the
 # claim is about the two sets a client actually holds. Acyclic: `afd_sse` knows
-# `afd_dragonfly` and `af_core`, and nothing about this crate.
+# `afd_bus` and `af_core`, and nothing about this crate.
 afd_sse.workspace = true
 # A delivered frame is the publisher's bytes forwarded unrewritten, and reading
 # the event id back out of them is precisely what a reconnecting client does.

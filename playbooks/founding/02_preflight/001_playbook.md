@@ -62,7 +62,7 @@ The `deployment` stage adds these, per environment (`<env>` is `dev` or `prod`):
 |---|---|
 | `approval-signing-secret` | `credential` (from step 01) |
 | `planetscale-<env>` | `api-connection-string` (port `6432`), `migrator-connection-string` (port `5432`) |
-| `dragonfly-<env>` | `api-url` |
+| `nats-<env>` | `api-url` |
 | `grafana-<env>` | `otlp-endpoint`, `instance-id`, `api-key` |
 | `cloudflare-tunnel-<env>` | `credential` |
 | `cloudflare-r2` | `account-id`, `access-key-id`, `secret-access-key`, `bucket` |

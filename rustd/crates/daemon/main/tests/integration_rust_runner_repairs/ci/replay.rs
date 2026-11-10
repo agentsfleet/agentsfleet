@@ -13,7 +13,7 @@ use agentsfleetd::supervisor::Supervisor;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_keep_one_draft_for_replayed_producer_event() {
     let mut supervisor = Supervisor::new();
     let (run, producer) = ready_producer(&mut supervisor).await;

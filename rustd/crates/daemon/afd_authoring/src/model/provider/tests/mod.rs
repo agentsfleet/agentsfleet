@@ -99,7 +99,7 @@ fn reply(api: InferenceApi) -> Value {
 // saved-settings route as the other three, one physical send each, with the
 // credential where each provider's SDK wire places it and never in diagnostics;
 // fails_when=a native API falls back to another wire, retries, drops usage or
-// leaks the key into Debug; why_new=§8 adds both APIs to InferenceApi;
+// leaks the key into Debug; why_new=both APIs joined InferenceApi;
 // seam=none; no_claim=live providers.
 #[tokio::test]
 async fn the_native_apis_send_once_and_keep_the_key_out_of_diagnostics() {

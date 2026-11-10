@@ -9,7 +9,7 @@ use super::*;
 /// its capabilities. The event is ended rather than retried forever, while no
 /// lease or charge is written.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_lease_money_gate_refusal() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

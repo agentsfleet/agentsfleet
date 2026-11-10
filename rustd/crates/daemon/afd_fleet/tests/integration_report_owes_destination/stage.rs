@@ -67,7 +67,7 @@ pub(crate) struct Stage {
 }
 
 pub(crate) async fn stage() -> Stage {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     fixtures.seed_wallet(&tenant, DEEP_POOL).await;
     let leases = fixtures.leases();
@@ -141,7 +141,8 @@ impl Stage {
             .expect("the plane settles the report");
     }
 
-    pub(crate) async fn receipt(&self, event: &Uuid7) -> Option<String> {
+    /// The receipt of the row `event` owes, if the report owed one.
+    pub(crate) async fn receipt(&self, event: &Uuid7) -> Option<Uuid7> {
         let mut connection = self
             .fixtures
             .database
@@ -154,9 +155,9 @@ impl Stage {
         )
         .bind(&self.fleet)
         .bind(event)
-        .fetch_one(&mut *connection)
+        .fetch_optional(&mut *connection)
         .await
-        .expect("the report owed the thread's answer")
+        .expect("the obligation read answers")
     }
 
     /// Admits one event from `producer`, stating `reply`.

@@ -9,10 +9,10 @@
 //!
 //! # The state domains must not collide, and that is checked
 //!
-//! A state's HMAC is domain-separated by [`StateBinding::domain_prefix`] and
-//! its single-use nonce namespaced by [`StateBinding::nonce_prefix`]. Two
-//! providers sharing either would let one connector's signed state verify — and
-//! be consumed — under another's callback. The suite in `registry/tests.rs`
+//! A state's HMAC is domain-separated by [`StateBinding::domain_prefix`], and
+//! its single-use nonce is stored under the provider's id. Two providers
+//! sharing either would let one connector's signed state verify — and be
+//! consumed — under another's callback. The suite in `registry/tests.rs`
 //! enforces the distinction over every pair of variants.
 
 use crate::provider::Provider;
@@ -52,16 +52,13 @@ pub const STATE_TTL_SECONDS: u32 = 600;
 
 /// The domain one provider's install state is signed and remembered in.
 ///
-/// The two prefixes travel together because they answer one question — whose
-/// state is this — and a signature checked in one domain against a nonce
-/// consumed in another would be two providers sharing a single-use slot.
+/// The nonce half of the question — whose state is this — is the provider id
+/// `connector.oauth_nonces` stores beside each digest.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StateBinding {
     /// What the HMAC is domain-separated by, so one connector's state cannot
     /// cross-verify as another's.
     pub domain_prefix: &'static str,
-    /// What the single-use nonce key is namespaced by.
-    pub nonce_prefix: &'static str,
 }
 
 /// An OAuth 2.0 authorization-code connector's endpoints and scopes.
@@ -297,23 +294,18 @@ impl Provider {
         match self {
             Self::Slack => StateBinding {
                 domain_prefix: "slackconnect:v1:",
-                nonce_prefix: "connect:slack:nonce:",
             },
             Self::GitHub => StateBinding {
                 domain_prefix: "ghconnect:v1:",
-                nonce_prefix: "connect:gh:nonce:",
             },
             Self::Zoho => StateBinding {
                 domain_prefix: "zoho:v1:",
-                nonce_prefix: "connect:zoho:nonce:",
             },
             Self::Jira => StateBinding {
                 domain_prefix: "jira:v1:",
-                nonce_prefix: "connect:jira:nonce:",
             },
             Self::Linear => StateBinding {
                 domain_prefix: "linear:v1:",
-                nonce_prefix: "connect:linear:nonce:",
             },
         }
     }

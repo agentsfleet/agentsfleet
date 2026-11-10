@@ -1,6 +1,7 @@
 use std::{fmt, pin::Pin, sync::Arc};
 
 use futures_util::{Stream, StreamExt};
+use tokio::sync::broadcast;
 
 use crate::{Result, Subject, error::ErrorKind};
 
@@ -22,6 +23,22 @@ pub enum Received {
     Lagged(u64),
     /// The native subscription was lost and restored; the missing count is unknown.
     Gap,
+}
+
+/// One broadcast receive as a delivery: a reader that fell behind is told how
+/// many it lost, and a closed channel ends its stream. Every in-process
+/// fan-out reads its channel through this.
+///
+/// # Errors
+/// `Closed` once the channel's sender is gone.
+pub(crate) fn received<T: Into<Received>>(
+    outcome: core::result::Result<T, broadcast::error::RecvError>,
+) -> Result<Received> {
+    match outcome {
+        Ok(delivered) => Ok(delivered.into()),
+        Err(broadcast::error::RecvError::Lagged(missed)) => Ok(Received::Lagged(missed)),
+        Err(broadcast::error::RecvError::Closed) => Err(ErrorKind::Closed.into()),
+    }
 }
 
 /// Owning stream; dropping it releases the adapter's native subscription.

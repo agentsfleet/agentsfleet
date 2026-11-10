@@ -1,13 +1,11 @@
 //! Putting a verified delivery on the fleet's stream, at most once.
 //!
-//! # A Postgres row, and NOT a Dragonfly claim
+//! # A Postgres row is the idempotency boundary
 //!
 //! The idempotency boundary for an inbound delivery is the admission ledger's
-//! `(producer, producer_key)` unique index. It used to be a Lua script's
-//! claim key, which had two problems the index does not: it expired, so a
-//! sender retrying past the window ran the fleet twice; and it lived in the
-//! queue, so losing the queue lost both the claim and the delivery it was
-//! protecting.
+//! `(producer, producer_key)` unique index. The row does not expire, so a
+//! sender retrying late still deduplicates, and it commits with the delivery
+//! it protects.
 //!
 //! Nothing is written to `fleet.events` here, for the reason
 //! `afd_events::steer` states about its own path: the row appears when the

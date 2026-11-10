@@ -42,7 +42,7 @@ const FIRST_CRON: &str = "0 8 * * *";
 const EDITED_CRON: &str = "30 9 * * *";
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn the_scheduler_files_the_schedule_under_the_id_a_fire_resolves() {
     let Some((url, token)) = live() else {
         return;
@@ -92,7 +92,7 @@ async fn the_scheduler_files_the_schedule_under_the_id_a_fire_resolves() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn a_delete_after_a_lost_answer_removes_the_registration_the_scheduler_holds() {
     let Some((url, token)) = live() else {
         return;
@@ -124,7 +124,7 @@ async fn a_delete_after_a_lost_answer_removes_the_registration_the_scheduler_hol
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn a_pause_whose_lease_ran_out_leaves_a_newer_resume_registered() {
     let Some((url, token)) = live() else {
         return;

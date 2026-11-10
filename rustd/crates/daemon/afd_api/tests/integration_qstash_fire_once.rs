@@ -35,7 +35,7 @@ async fn fire_once(fixture: &Fixture, message_id: &str) -> StatusCode {
 
 /// Dimension 1.9, from `QStash`. The fire is work, and the schedule retires.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_once_schedule_retires_after_its_qstash_fire() {
     let fixture = Fixture::create().await;
     fixture
@@ -58,7 +58,7 @@ async fn a_once_schedule_retires_after_its_qstash_fire() {
 /// A halted fleet drops the fire, and the one-off retires anyway: kept, it
 /// would match the same minute next year.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_once_schedule_whose_fire_is_dropped_still_retires() {
     let fixture = Fixture::create().await;
     fixture
@@ -81,7 +81,7 @@ async fn a_once_schedule_whose_fire_is_dropped_still_retires() {
 /// A recurring schedule's dropped fire changes nothing: only a one-off has a
 /// moment that passes.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_recurring_schedule_whose_fire_is_dropped_is_kept() {
     let fixture = Fixture::create().await;
     fixture

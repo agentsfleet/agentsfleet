@@ -9,7 +9,7 @@ use agentsfleetd::supervisor::Supervisor;
 use tokio::time::Instant;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn http3_is_reselected_only_when_the_http2_session_ends() {
     let mut supervisor = Supervisor::new();
     let run = crate::e2e::scenario(&mut supervisor).await;

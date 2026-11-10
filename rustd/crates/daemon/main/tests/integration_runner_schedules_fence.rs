@@ -19,7 +19,7 @@ use crate::verbs::FakeQStash;
 
 /// Greptile on #731: an old holder resumed after a reclaim must not write.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_write_fence_holds_only_for_the_live_holder() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;

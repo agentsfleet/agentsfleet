@@ -5,9 +5,8 @@
  * → row appears". The webhook handler requires:
  *   - a workspace credential keyed by `trigger.source` so HMAC verification
  *     can resolve a secret;
- *   - the operator to publish a triggered event row to Postgres + Redis,
- *     which depends on agentsfleetd's worker pool processing the enqueued
- *     stream entry.
+ *   - the daemon to admit the delivery to the Postgres admissions ledger,
+ *     which a runner then leases.
  *
  * Both are heavyweight fixture dependencies that the M64_005 harness
  * doesn't yet ship (the `trigger.source` field is unset on seedFleet's
