@@ -18,6 +18,7 @@ mod answer;
 pub mod assign;
 pub mod billing_sweep;
 pub mod bracket;
+pub mod cache;
 mod claim;
 pub mod commit;
 mod context;

@@ -282,6 +282,9 @@ pub const LABEL_FAULT: &str = "fault";
 /// causes of the same event — a run started fresh or by reclaim.
 pub const LABEL_KIND: &str = "kind";
 
+/// Which of the lease path's in-process caches a lookup asked.
+pub const LABEL_CACHE: &str = "cache";
+
 /// Which product's work a billing count is about: a fleet lease or a setup
 /// chat attempt.
 pub const LABEL_WORK_TYPE: &str = "work_type";
@@ -320,6 +323,7 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_FAULT,
     LABEL_WORK_TYPE,
     ATTR_PROVIDER_NAME,
+    LABEL_CACHE,
 ];
 
 /// Role of a database connection pool.
