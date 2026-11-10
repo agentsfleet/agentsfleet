@@ -57,7 +57,7 @@ pub use self::detail::Stated;
 pub use self::park::{Park, Parked};
 pub use self::pass::{Check, Refused, Verdict, Waiting};
 pub use self::pause::Trigger;
-pub use self::pending::{Evaluation, GateRef, evaluate};
+pub use self::pending::{Evaluation, GateRef, Recorded, evaluate};
 pub use self::route::{RefState, Route, route};
 pub use self::store::Gates;
 

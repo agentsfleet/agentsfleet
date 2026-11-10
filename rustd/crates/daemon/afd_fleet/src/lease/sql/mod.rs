@@ -7,6 +7,7 @@
 
 pub mod activity;
 pub mod fleet;
+pub mod gates;
 pub mod lease;
 pub mod meter;
 pub mod renew;

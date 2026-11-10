@@ -65,6 +65,50 @@ pub enum Evaluation {
 /// outcomes, and the answer is the one a human actually gave.
 #[must_use]
 pub const fn evaluate(answer: Option<Answer>, lapsed: bool) -> Evaluation {
+    evaluate_answer(answer, lapsed)
+}
+
+/// What a caller's read found about the gate an event already holds.
+///
+/// Built from a statement that read the reference and its newest row in one
+/// pass (`afd_fleet`'s gates read), so [`super::Gates::judge`] decides
+/// without reading either again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Recorded {
+    /// The event holds no gate.
+    Absent,
+    /// The event holds a gate, evaluated from its newest row.
+    Held(Evaluation),
+    /// The read failed; whether a gate is held is unknown.
+    Unreadable(af_core::error_code::Logged),
+}
+
+impl Recorded {
+    /// What a read of the reference and its newest row returned.
+    ///
+    /// `status` and `lapsed` are absent when the reference's row is gone,
+    /// which only a purge does: the gate is pending, the fail-safe direction.
+    /// A status this build cannot spell is no answer, as the store reads it.
+    #[must_use]
+    pub fn observed(
+        action_id: Option<&af_core::id::Uuid7>,
+        status: Option<&str>,
+        lapsed: Option<bool>,
+    ) -> Self {
+        if action_id.is_none() {
+            return Self::Absent;
+        }
+        let Some(lapsed) = lapsed else {
+            return Self::Held(Evaluation::Pending);
+        };
+        let answer = status
+            .and_then(af_core::spelling::from_spelling::<afd_api_wire::approval::GateStatus>)
+            .and_then(crate::gate::decision::answer);
+        Self::Held(evaluate_answer(answer, lapsed))
+    }
+}
+
+const fn evaluate_answer(answer: Option<Answer>, lapsed: bool) -> Evaluation {
     match answer {
         Some(Answer::Approved) => Evaluation::Approved,
         Some(Answer::Denied) => Evaluation::Denied,
