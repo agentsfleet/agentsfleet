@@ -218,17 +218,27 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
     /// Records the span so far and starts a fresh one in its place, timed or
     /// untimed as this clock is: one pass that serves a second offer.
     pub fn restart(&mut self) {
-        if !self.discarded {
+        if self.discarded {
+            self.reset();
+        } else {
             self.restart_on(&opentelemetry::global::tracer(semconv::SCOPE_NAME));
         }
-        self.reset();
     }
 
-    /// [`Self::restart`] against a tracer the caller names.
+    /// [`Self::restart`] against a tracer the caller names, for a clock that
+    /// records: the span so far is closed, and the clock records again.
     fn restart_on<T: Tracer>(&mut self, tracer: &T) {
         self.record_on(tracer);
         self.discarded = false;
         self.reset();
+    }
+
+    /// [`Self::restart`], but only once a stage has been marked: a clock that
+    /// reached nothing has no span to close, so it keeps its start and identity.
+    pub fn restart_if_staged(&mut self) {
+        if !self.stages.is_empty() {
+            self.restart();
+        }
     }
 
     /// Back to a fresh start, keeping whether this clock records.
@@ -245,12 +255,6 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
     /// This verb has nothing to describe; dropping records no span.
     pub fn discard(&mut self) {
         self.discarded = true;
-    }
-
-    /// Whether no stage has been marked yet.
-    #[must_use]
-    pub fn reached_nothing(&self) -> bool {
-        self.stages.is_empty()
     }
 
     /// Records the span on `tracer` now, once.

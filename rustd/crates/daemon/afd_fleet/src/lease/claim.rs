@@ -42,9 +42,7 @@ impl LeaseService {
                     // A fleet claim the gates refused earlier in this pass
                     // keeps its own span; this claim starts a fresh one, so
                     // its own database time is its `claim` stage.
-                    if !clock.reached_nothing() {
-                        clock.restart();
-                    }
+                    clock.restart_if_staged();
                     if let Some(lease) = drafts.claim_offered(request.runner, ticket).await? {
                         clock.mark(OfferStage::Claim);
                         let metadata = Offered {

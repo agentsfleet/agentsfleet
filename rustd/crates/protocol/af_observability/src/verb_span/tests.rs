@@ -312,7 +312,7 @@ fn test_a_restart_records_the_first_span_and_starts_a_fresh_one() {
     ticks.advance(Duration::from_millis(5));
     clock.mark(OfferStage::Claim);
     clock.restart_on(&tracer);
-    assert!(clock.reached_nothing(), "the fresh span has no stages yet");
+    assert!(clock.stages.is_empty(), "the fresh span has no stages yet");
     ticks.advance(Duration::from_millis(7));
     clock.mark(OfferStage::Claim);
     clock.record_on(&tracer);
@@ -343,4 +343,26 @@ fn test_a_restart_records_the_first_span_and_starts_a_fresh_one() {
         2,
         "an untimed clock records nothing"
     );
+}
+
+/// `restart_if_staged` closes a staged clock's span and starts a fresh one with
+/// no identity; a clock that reached no stage keeps its start and identity.
+#[test]
+fn test_restart_if_staged_only_restarts_a_staged_clock() {
+    let ticks = Moved::new();
+    let mut unstaged = VerbClock::<OfferStage, Moved>::start_on(ticks.clone());
+    unstaged.identify(EVENT_ID, FLEET_ID);
+    unstaged.restart_if_staged();
+    assert_eq!(
+        unstaged.event_id.as_deref(),
+        Some(EVENT_ID),
+        "an unstaged clock keeps its identity"
+    );
+
+    let mut staged = VerbClock::<OfferStage, Moved>::start_on(ticks);
+    staged.identify(EVENT_ID, FLEET_ID);
+    staged.mark(OfferStage::Claim);
+    staged.restart_if_staged();
+    assert!(staged.stages.is_empty(), "the restart starts a fresh span");
+    assert_eq!(staged.event_id, None, "the fresh span inherits no identity");
 }
