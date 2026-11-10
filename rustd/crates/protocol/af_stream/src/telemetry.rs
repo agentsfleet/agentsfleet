@@ -204,3 +204,40 @@ impl From<Reason> for StreamOutcome {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_carrier_failures_permit_the_http2_fallback() {
+        for (reason, permitted) in [
+            (Reason::Network, true),
+            (Reason::Timeout, true),
+            (Reason::Closed, true),
+            (Reason::Unsupported, true),
+            (Reason::Cancelled, false),
+            (Reason::Protocol, false),
+            (Reason::Worker, false),
+            (Reason::Tls, false),
+        ] {
+            assert_eq!(fallback(reason), permitted, "{reason:?}");
+        }
+    }
+
+    #[test]
+    fn every_reason_keeps_its_outcome_label() {
+        for (reason, label) in [
+            (Reason::Network, "network"),
+            (Reason::Timeout, "timeout"),
+            (Reason::Cancelled, "cancelled"),
+            (Reason::Protocol, "protocol"),
+            (Reason::Closed, "closed"),
+            (Reason::Worker, "worker"),
+            (Reason::Tls, "tls"),
+            (Reason::Unsupported, "unsupported"),
+        ] {
+            assert_eq!(StreamOutcome::from(reason).as_str(), label);
+        }
+    }
+}

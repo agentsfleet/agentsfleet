@@ -22,13 +22,15 @@ coverage:
     # 97.5"), on #816's measured 97.67%.
     # Project lowered to 98% on Nov 08, 2026 (Indy: "move the coverage down to 98
     # on the safer side"), after #817 measured 98.4981% and 98.4991% with no Rust change.
+    # Patch lowered to 95% on Nov 10, 2026 (Indy: "to 95%", "i want the CI gate to
+    # pass too"), on #819's measured 95.9156%.
     # RUSTD_PATCH_FLOOR and RUSTD_COVERAGE_FLOOR use the same values locally.
     # TypeScript remains at 100%; measurement paths and exclusions are unchanged.
     patch:
       rust-afd:
         flags:
           - rust-afd
-        target: 97.5%
+        target: 95%
         threshold: 0%
         informational: false
 
