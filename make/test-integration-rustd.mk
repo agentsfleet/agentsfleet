@@ -278,8 +278,11 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/daemon/afd_bench/)
 # 94.3990%, 21,000 of 22,246 changed lines, on 9499b0552; 94% is the floor.
 # Indy raised it on Nov 08, 2026: "move the coverage from 94 to 97.5", on
 # #816's measured 97.6744%, 2,184 of 2,236 changed lines.
+# Indy lowered it on Nov 10, 2026: "move the gate to downwards", "since i want
+# to test", "to 95%", "i want the CI gate to pass too", on #819's measured
+# 95.9156%, 11,859 of 12,364 changed lines.
 # codecov.yml uses the same patch and overall Rust floors; TypeScript stays 100%.
-RUSTD_PATCH_FLOOR ?= 97.5
+RUSTD_PATCH_FLOOR ?= 95
 RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
   $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
