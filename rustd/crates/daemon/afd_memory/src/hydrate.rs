@@ -11,6 +11,7 @@ use af_wire::memory::{
     HYDRATE_SHARED_BYTES, HYDRATE_WINDOW_BYTES, MemoryHydrateResponse, MemoryRecallResponse,
     SharedMemory,
 };
+use afd_api_wire::fleet::MemoryAccess;
 
 use crate::access::Access;
 use crate::error::Result;
@@ -28,6 +29,25 @@ impl Memories {
     /// Refuses a fleet that is gone and reports a store that would not answer.
     pub async fn hydrate(&self, fleet: &Uuid7) -> Result<MemoryHydrateResponse<'static>> {
         let Access { workspace, grants } = self.access(fleet).await?;
+        self.hydrate_scoped(fleet, &workspace, grants).await
+    }
+
+    /// The window that seeds one run of `fleet`, under the workspace and grants
+    /// a statement in the caller's pass already read.
+    ///
+    /// The lease path's claim returns both memory flags beside the fleet's
+    /// workspace, so the window follows a grant change on the next lease with
+    /// no read of its own and no cache to go stale (M245 §3).
+    ///
+    /// # Errors
+    /// Reports a store that would not answer.
+    pub async fn hydrate_scoped(
+        &self,
+        fleet: &Uuid7,
+        workspace: &Uuid7,
+        grants: MemoryAccess,
+    ) -> Result<MemoryHydrateResponse<'static>> {
+        let workspace = workspace.clone();
         let owner = Owner {
             workspace: &workspace,
             fleet,

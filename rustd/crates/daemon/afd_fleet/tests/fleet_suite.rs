@@ -69,6 +69,8 @@ mod integration_lease_assign;
 mod integration_lease_billing_races;
 #[path = "integration_lease_block.rs"]
 mod integration_lease_block;
+#[path = "integration_lease_caches.rs"]
+mod integration_lease_caches;
 #[path = "integration_lease_claim_race.rs"]
 mod integration_lease_claim_race;
 #[path = "integration_lease_edges.rs"]
