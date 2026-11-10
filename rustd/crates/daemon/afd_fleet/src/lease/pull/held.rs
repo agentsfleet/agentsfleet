@@ -10,6 +10,7 @@
 use std::time::Instant;
 
 use af_core::id::Uuid7;
+use af_observability::verb_span::{OfferStage, VerbClock};
 use af_wire::lease::LeasePayload;
 use jiff::Timestamp;
 
@@ -40,18 +41,40 @@ impl LeaseService {
         T: Send,
         F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
     {
+        let mut untimed = VerbClock::untimed();
+        let claimed = (acquired, runner_id, now, began);
+        self.run_claimed_timed(claimed, &mut untimed, emit).await
+    }
+
+    /// [`Self::run_claimed_with`], marking the admission, the issue and the
+    /// offer's encoding on `clock`: the issue ends where `emit` is called.
+    pub(super) async fn run_claimed_timed<T, F>(
+        &self,
+        (acquired, runner_id, now, began): (Acquired, &Uuid7, Timestamp, Instant),
+        clock: &mut VerbClock<OfferStage>,
+        emit: &mut F,
+    ) -> Result<Option<T>>
+    where
+        T: Send,
+        F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
+    {
         let held = Held {
             fleet_id: acquired.fleet_id.clone(),
             fence: acquired.fence,
             event_id: acquired.event_id.clone(),
         };
-        let pass = match self
-            .admit_claimed(acquired, runner_id, now)
-            .await
-            .map(Step::proceed)
-        {
+        clock.identify(held.event_id.as_str(), held.fleet_id.as_str());
+        let admitted = self.admit_claimed(acquired, runner_id, now).await;
+        clock.mark(OfferStage::Admit);
+        let pass = match admitted.map(Step::proceed) {
             Ok(Ok(admitted)) => {
-                self.deliver_with(runner_id, admitted, now, began, emit)
+                let mut timed = |lease: LeasePayload<'_>, offered: Offered| {
+                    clock.mark(OfferStage::Issue);
+                    let encoded = emit(lease, offered);
+                    clock.mark(OfferStage::Encode);
+                    encoded
+                };
+                self.deliver_with(runner_id, admitted, now, began, &mut timed)
                     .await
             }
             Ok(Err(ended)) => Ok(ended),
