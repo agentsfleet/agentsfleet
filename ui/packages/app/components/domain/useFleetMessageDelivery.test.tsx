@@ -8,7 +8,7 @@ import { RETRY_DEFAULTS } from "@/lib/api/retry-config";
 import { ERROR_CODE } from "@/lib/errors";
 import type { LiveFrame } from "@/lib/api/events";
 import { FRAME_KIND } from "@/lib/api/events-types";
-import { SEND_MARK, markSendFrame } from "@/lib/streaming/fleet-stream-reply-registry";
+import { MARKED_SENDS_MAX, SEND_MARK, markSend, markSendFrame } from "@/lib/streaming/fleet-stream-reply-registry";
 
 const postSteer = vi.hoisted(() => vi.fn());
 const mint = vi.hoisted(() => ({ unavailable: false }));
@@ -351,7 +351,18 @@ describe("a send's performance marks", () => {
     }
   });
 
+  it("forgets the oldest accepted send past the cap, so its late frames leave no mark", () => {
+    const eventOf = (n: number) => `capped-event-${n}`;
+    for (let n = 0; n <= MARKED_SENDS_MAX; n++) markSend(SEND_MARK.ACCEPTED, `capped-op-${n}`, eventOf(n));
+    performance.clearMarks();
+    markSendFrame(completionOf(eventOf(0)));
+    markSendFrame(completionOf(eventOf(MARKED_SENDS_MAX)));
+    expect(sendMarks().map(([, id]) => id)).toEqual([`capped-op-${MARKED_SENDS_MAX}`, `capped-op-${MARKED_SENDS_MAX}`]);
+  });
+
   it("leaves no frame mark for an event no send here was accepted under", () => {
+    markSendFrame({ kind: FRAME_KIND.HELLO } as unknown as LiveFrame);
+    markSendFrame({ kind: FRAME_KIND.GATE_RESOLVED, event_id: null } as unknown as LiveFrame);
     markSendFrame(chunkOf("someone-elses-event"));
     markSendFrame(completionOf("someone-elses-event"));
     expect(sendMarks()).toEqual([]);
