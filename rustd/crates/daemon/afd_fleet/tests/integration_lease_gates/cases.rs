@@ -25,8 +25,8 @@ async fn test_a_fleet_paused_after_its_event_was_claimed_issues_no_lease() {
     let answer = drive(&fixtures, &seeded, claimed).await;
 
     assert!(
-        answer.contains(NO_LEASE),
-        "a paused fleet issued a lease: {answer}"
+        answer.is_none(),
+        "a paused fleet issued a lease: {answer:?}"
     );
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
@@ -55,8 +55,8 @@ async fn test_a_fleet_past_its_ceiling_ends_the_event_rather_than_retrying_it() 
     let answer = drive(&fixtures, &seeded, claimed).await;
 
     assert!(
-        answer.contains(NO_LEASE),
-        "a drained budget issued a lease: {answer}"
+        answer.is_none(),
+        "a drained budget issued a lease: {answer:?}"
     );
     let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id)
         .await
@@ -87,10 +87,7 @@ async fn test_a_denied_gate_ends_the_event_and_names_the_denial() {
     let claimed = claim(&fixtures, &seeded).await;
     let answer = drive(&fixtures, &seeded, claimed).await;
 
-    assert!(
-        answer.contains(NO_LEASE),
-        "a denied gate issued a lease: {answer}"
-    );
+    assert!(answer.is_none(), "a denied gate issued a lease: {answer:?}");
     let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id)
         .await
         .expect("a denied event has a narrative row");
@@ -122,8 +119,8 @@ async fn test_an_unanswered_gate_parks_the_event_without_ending_it() {
     let answer = drive(&fixtures, &seeded, claimed).await;
 
     assert!(
-        answer.contains(NO_LEASE),
-        "an unanswered gate issued a lease: {answer}"
+        answer.is_none(),
+        "an unanswered gate issued a lease: {answer:?}"
     );
     let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id)
         .await

@@ -4,10 +4,7 @@ use afd_admin::test_util::DecisionModelFixture;
 use std::{borrow::Cow, time::Duration};
 
 use af_core::{clock, id::Uuid7};
-use af_wire::{
-    decision::DecisionAssignment,
-    lease::{LeaseResponse, TaggedLease},
-};
+use af_wire::{decision::DecisionAssignment, lease::TaggedLease};
 use afd_db::Db;
 use afd_runner::RunnerEdit;
 use garde::Validate as _;
@@ -101,7 +98,7 @@ async fn profile_snapshot_does_not_reverse_model_then_runner_lock_order() {
     let answer = tokio::time::timeout(ISSUE_TIMEOUT, drive(&fixtures, &case, acquired))
         .await
         .expect("lease issue never waits for the model row after locking runner");
-    let issued = decode(&answer);
+    let issued = decode(answer.as_ref());
     writer.rollback().await.expect("release model writer");
     assert_eq!(
         issued
@@ -155,21 +152,20 @@ async fn issue(fixtures: &Fixtures, case: &Ready) -> Issued {
     let _default = prepare(fixtures, case).await;
     let acquired = claim(fixtures, case).await;
     let answer = drive(fixtures, case, acquired).await;
-    decode(&answer)
+    decode(answer.as_ref())
 }
 
-fn decode(answer: &str) -> Issued {
-    let response: LeaseResponse<'_> = serde_json::from_str(answer).expect("typed issued lease");
-    response
-        .lease
-        .and_then(|lease| match lease {
-            TaggedLease::Fleet(lease) => Some(Issued {
-                id: Uuid7::parse(&lease.lease_id).expect("the lease names a UUIDv7"),
-                decision: lease.decision,
-            }),
-            TaggedLease::Authoring(_) => None,
-        })
-        .expect("fleet work was issued")
+fn decode(answer: Option<&serde_json::Value>) -> Issued {
+    let body = answer.expect("fleet work was issued").to_string();
+    let lease = match serde_json::from_str::<TaggedLease<'_>>(&body).expect("typed issued lease") {
+        TaggedLease::Fleet(lease) => Some(lease),
+        TaggedLease::Authoring(_) => None,
+    }
+    .expect("the selected admission grants fleet work");
+    Issued {
+        id: Uuid7::parse(&lease.lease_id).expect("the lease names a UUIDv7"),
+        decision: lease.decision,
+    }
 }
 
 async fn revise_and_check(

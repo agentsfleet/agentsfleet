@@ -12,6 +12,47 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=./runner_test_support.sh
 source "$SCRIPT_DIR/runner_test_support.sh"
 
+test_should_deliver_only_public_stream_trust() {
+  local output status=0
+  output="$(run_script ENV=dev bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ]; then
+    bad "stream trust delivery" "$output"
+  elif ! grep -Fxq 'AGENTSFLEET_RUNNER_STREAM_URL=https://agentsfleetd-dev.internal:4443' "$work_dir/transferred.env" ||
+    ! grep -Fxq 'AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE=/etc/agentsfleet/runner-stream-trust.pem' "$work_dir/transferred.env" ||
+    ! cmp -s "$stream_ca_fixture" "$work_dir/transferred-ca.pem"; then
+    bad "stream trust delivery" "native endpoint or public trust was not delivered"
+  elif grep -Eq '/(ca-private-key|private-key|certificate-chain)' "$calls"; then
+    bad "stream trust delivery" "runner deployment read daemon or signing material"
+  else
+    ok "stream trust delivery"
+  fi
+}
+
+test_should_refuse_missing_or_wrong_environment_stream_inputs() {
+  local output status=0
+  output="$(run_script ENV=dev STUB_MISSING_CA=1 bash "$DEPLOY")" || status=$?
+  if [ "$status" -eq 0 ] || grep -q '^ssh ' "$calls"; then
+    bad "missing stream trust refusal" "$output"
+  else
+    ok "missing stream trust refusal"
+  fi
+  status=0
+  output="$(run_script ENV=dev STUB_STREAM_SERVER_NAME=agentsfleetd-prod.internal bash "$DEPLOY")" || status=$?
+  if [ "$status" -eq 0 ] || grep -q '^ssh ' "$calls"; then
+    bad "wrong environment stream refusal" "$output"
+  else
+    ok "wrong environment stream refusal"
+  fi
+  status=0
+  output="$(run_script ENV=dev STUB_CORRUPT_CA=1 bash "$DEPLOY")" || status=$?
+  if [ "$status" -eq 0 ] || grep -q '^ssh ' "$calls" ||
+    [[ "$output" != *'valid PEM certificate'* ]]; then
+    bad "malformed stream trust refusal" "$output"
+  else
+    ok "malformed stream trust refusal"
+  fi
+}
+
 test_should_prepare_host_without_reading_runner_token() {
   local name="test_should_prepare_host_without_reading_runner_token"
   local output status=0
@@ -26,8 +67,8 @@ test_should_prepare_host_without_reading_runner_token() {
     bad "$name" "$output"
   elif grep -q '/runner-token' "$calls"; then
     bad "$name" "host preparation read a runner token"
-  elif ! grep -q 'apt-get install' "$calls"; then
-    bad "$name" "host preparation did not install dependencies"
+  elif ! grep -q 'wireguard-tools' "$calls"; then
+    bad "$name" "development host preparation did not install wireguard-tools"
   elif ! grep -q 'net.ipv4.ip_forward = 1' "$calls"; then
     bad "$name" "host preparation did not turn on IPv4 forwarding for allowlisted sandboxes"
   elif grep -q '/opt/agentsfleet/deploy/deploy.sh runner' "$calls"; then
@@ -284,4 +325,6 @@ test_should_require_vault_read_approval
 test_should_copy_the_toolbox_beside_the_binary
 test_should_clear_an_earlier_toolbox_before_staging
 test_should_refuse_a_deploy_without_its_toolbox
+test_should_deliver_only_public_stream_trust
+test_should_refuse_missing_or_wrong_environment_stream_inputs
 report_results

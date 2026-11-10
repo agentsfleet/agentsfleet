@@ -2,9 +2,8 @@
 //!
 //! Declared here and nowhere else. The daemon sets `leased_until`, treats the
 //! same instant as the kill deadline it sends the host, and derives liveness
-//! from the lapse threshold — so every one of these is a decision this side
-//! makes. The runner is told the two it needs, its deadline on the renew reply
-//! and its cadence on the beat, and holds neither.
+//! from the lapse threshold. Each runner retains its confirmed lease expiry
+//! and uses the heartbeat cadence advertised by the daemon.
 //!
 //! Each is a [`Duration`]: the one span type that a `tokio` sleep takes and
 //! that moves a `jiff::Timestamp` (see [`crate::clock::after`]). A span becomes
@@ -16,19 +15,23 @@
 
 use std::time::Duration;
 
+/// Authoring provider work keeps its existing five-minute budget plus delivery slack.
+/// Control ping and renewal deadlines remain independent while the model is pending.
+pub const AUTHORING_MODEL_ANSWER_TIMEOUT: Duration = Duration::from_secs(310);
+
 /// How long an issued lease or affinity claim stays valid before the slot
 /// becomes reclaimable, and the increment each renewal adds.
 ///
 /// Deliberately short: it is the backstop
 /// against a runner that dies silently, and a live runner extends it through
 /// the renew verb rather than being handed a long lease up front.
-pub const LEASE_TTL: Duration = Duration::from_secs(30);
+pub const LEASE_TTL: Duration = Duration::from_secs(35);
 
-/// How long before expiry a runner auto-renews.
+/// The renewal slack preserved by the lease and connection-recovery relationship.
 ///
 /// Strictly below [`LEASE_TTL`] so a renewal that fails transiently still
 /// has room to retry before the deadline.
-pub const RENEWAL_WINDOW: Duration = Duration::from_secs(10);
+pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
 
 /// How often a runner's supervision loop wakes to consider a renewal.
 ///
@@ -70,30 +73,73 @@ pub const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 /// bounds the cost of the wait.
 pub const SANDBOX_HOLD_IDLE: Duration = Duration::from_mins(10);
 
-/// The backoff hint handed to a runner that found no work.
+/// How long an ephemeral wake or runner command may wait for its broker.
 ///
-/// The lease verb always answers 200 — never 204 — and this rides the reply as
-/// `retry_after_ms`.
-pub const NO_WORK_RETRY_AFTER: Duration = Duration::from_secs(1);
-
-/// How long the daemon holds a heartbeat that asked to be woken, waiting for
-/// fresh work to be admitted.
-///
-/// Equal to [`HEARTBEAT_INTERVAL`], so a held beat returns no later than the
-/// runner's next beat was due and the runner's liveness is unchanged by the
-/// hold. The runner's call timeout is asserted above it where it is declared.
-pub const WAKE_HOLD_MAX: Duration = HEARTBEAT_INTERVAL;
-
-/// How long a readiness-doorbell command may take before its caller goes on
-/// without it: the ring a mark publishes, and the peek of the partition a ring
-/// named.
-///
-/// The doorbell only ever makes a poll faster. Under the datastore's own
-/// request timeout a slow node could hold an admission, or a poll the rotation
-/// alone would have answered, for seconds; past this deadline the ring is
-/// reported lost or the rung peek counts as failed, and the rotation still
-/// reaches the work.
+/// Admission is already durable; a lost wake leaves work for the replica's
+/// recovery probe, and heartbeat or renewal checks repair a lost runner command.
 pub const READY_WAKE_DEADLINE: Duration = Duration::from_millis(100);
+
+/// Maximum time to answer an application request or finish a partial stream frame.
+pub const STREAM_ANSWER_TIMEOUT: Duration = Duration::from_secs(5);
+/// Idle interval between application pings; a silent idle path is detected within twenty seconds.
+pub const STREAM_PING_INTERVAL: Duration = Duration::from_secs(15);
+/// Preferred transport gets this much of the bounded reconnect attempt.
+pub const STREAM_HTTP3_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+/// The TCP fallback gets its own bounded connection attempt.
+pub const STREAM_HTTP2_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+/// Ownership confirmation and lane attachment share the remaining recovery budget.
+pub const STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(3);
+/// Complete carrier setup, ownership confirmation and database rebuild budget.
+pub const STREAM_RECOVERY_BUDGET: Duration = Duration::from_secs(7);
+/// Maximum initial reconnect jitter included in the lease's recovery relationship.
+pub const RECONNECT_JITTER_MAX: Duration = Duration::from_secs(2);
+/// A connection must remain usable this long before reconnect backoff resets.
+pub const STREAM_STABLE_RESET_AFTER: Duration = Duration::from_secs(60);
+/// One independent ready-work probe per daemon replica, regardless of broker traffic.
+pub const OFFER_FALLBACK_TICK: Duration = Duration::from_secs(5);
+/// The shortest idle timeout a proxy or load balancer on the runner's path is assumed to apply.
+///
+/// Nothing reads it at run time. It is the floor [`STREAM_PING_INTERVAL`] is held under, so an
+/// idle stream pings before a common 60-second middlebox timeout closes it.
+pub const PROXY_IDLE_FLOOR: Duration = Duration::from_secs(60);
+
+const _: () = assert!(
+    STREAM_PING_INTERVAL.as_nanos() + STREAM_ANSWER_TIMEOUT.as_nanos() < LEASE_TTL.as_nanos(),
+    "a silent stream must be detected before an unrenewed lease lapses"
+);
+
+const _: () = assert!(
+    STREAM_PING_INTERVAL.as_nanos() < PROXY_IDLE_FLOOR.as_nanos(),
+    "an idle stream must ping before a proxy's idle timeout closes it"
+);
+
+const _: () = assert!(
+    HEARTBEAT_INTERVAL.saturating_mul(2).as_nanos() < RUNNER_OFFLINE_AFTER.as_nanos(),
+    "a session silent for two heartbeats must close before a fleet read derives its host offline"
+);
+
+const _: () = assert!(
+    OFFER_FALLBACK_TICK.as_nanos() < LEASE_TTL.as_nanos(),
+    "work stranded by a lost ring must be offered again before the lease backstop would free it"
+);
+
+const _: () = assert!(
+    RENEWAL_TICK.as_nanos()
+        + STREAM_ANSWER_TIMEOUT.as_nanos()
+        + RECONNECT_JITTER_MAX.as_nanos()
+        + STREAM_RECOVERY_BUDGET.as_nanos()
+        + RENEWAL_WINDOW.as_nanos()
+        < LEASE_TTL.as_nanos(),
+    "a failed renewal and bounded reconnect must leave a complete renewal window"
+);
+
+const _: () = assert!(
+    STREAM_HTTP3_CONNECT_TIMEOUT.as_nanos()
+        + STREAM_HTTP2_CONNECT_TIMEOUT.as_nanos()
+        + STREAM_OPEN_TIMEOUT.as_nanos()
+        == STREAM_RECOVERY_BUDGET.as_nanos(),
+    "the complete reconnect budget includes both carriers and ownership rebuild"
+);
 
 /// One day.
 ///
@@ -116,10 +162,6 @@ const _: () = assert!(
 const _: () = assert!(
     HEARTBEAT_INTERVAL.as_nanos() < RUNNER_OFFLINE_AFTER.as_nanos(),
     "an idle host must heartbeat before a fleet read would derive it offline"
-);
-const _: () = assert!(
-    WAKE_HOLD_MAX.as_nanos() <= HEARTBEAT_INTERVAL.as_nanos(),
-    "a held beat must return before the runner's next beat is due"
 );
 const _: () = assert!(
     LEASE_TTL.as_nanos() < MAX_RUNTIME.as_nanos(),

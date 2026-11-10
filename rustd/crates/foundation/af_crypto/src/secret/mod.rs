@@ -16,7 +16,9 @@
 
 use std::fmt::{self, Debug, Display, Formatter};
 
-use zeroize::Zeroize;
+/// The wiping owner for one secret field, re-exported so every crate takes it from the
+/// foundation that owns secret types rather than adding its own dependency.
+pub use zeroize::Zeroizing;
 
 mod object;
 mod string;
@@ -32,15 +34,15 @@ use crate::error::{Error, ErrorKind, Result};
 /// changes. There is no setter and no interior mutability, so the invariant is
 /// the type: a `Kek` value cannot be mutated, only dropped.
 #[derive(Clone)]
-pub struct Kek([u8; KEY_LEN]);
+pub struct Kek(Zeroizing<[u8; KEY_LEN]>);
 
 /// A per-row Data Encryption Key, generated fresh for every sealed payload.
 #[derive(Clone)]
-pub struct Dek([u8; KEY_LEN]);
+pub struct Dek(Zeroizing<[u8; KEY_LEN]>);
 
 /// Plaintext recovered from an envelope, zeroed when it goes out of scope.
 #[derive(Clone)]
-pub struct SecretBytes(Vec<u8>);
+pub struct SecretBytes(Zeroizing<Vec<u8>>);
 
 impl Kek {
     /// Decodes the 64-character hex master key into a 32-byte KEK.
@@ -53,18 +55,19 @@ impl Kek {
     /// Returns a key-hex error when the input is not exactly `KEY_LEN * 2`
     /// characters, or contains a character that is not a hex digit.
     pub fn from_hex(hex: &str) -> Result<Self> {
-        let mut key = [0_u8; KEY_LEN];
-        decode_hex_into(hex, &mut key)?;
+        // Decoded straight into its wiping owner, so no unwiped stack copy is left behind.
+        let mut key = Zeroizing::new([0_u8; KEY_LEN]);
+        decode_hex_into(hex, &mut *key)?;
         Ok(Self(key))
     }
 
     /// Builds a KEK from raw bytes already known to be key material.
     #[must_use]
-    pub const fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
-        Self(bytes)
+    pub fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
+        Self(Zeroizing::new(bytes))
     }
 
-    pub(crate) const fn expose(&self) -> &[u8; KEY_LEN] {
+    pub(crate) fn expose(&self) -> &[u8; KEY_LEN] {
         &self.0
     }
 }
@@ -72,8 +75,8 @@ impl Kek {
 impl Dek {
     /// Builds a DEK from raw bytes already known to be key material.
     #[must_use]
-    pub const fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
-        Self(bytes)
+    pub fn from_bytes(bytes: [u8; KEY_LEN]) -> Self {
+        Self(Zeroizing::new(bytes))
     }
 
     /// Builds a DEK from an unwrapped slice, rejecting a wrong length.
@@ -88,10 +91,10 @@ impl Dek {
                 actual: bytes.len(),
             })
         })?;
-        Ok(Self(sized))
+        Ok(Self::from_bytes(sized))
     }
 
-    pub(crate) const fn expose(&self) -> &[u8; KEY_LEN] {
+    pub(crate) fn expose(&self) -> &[u8; KEY_LEN] {
         &self.0
     }
 }
@@ -99,8 +102,8 @@ impl Dek {
 impl SecretBytes {
     /// Wraps recovered plaintext so it is zeroed when dropped.
     #[must_use]
-    pub const fn new(bytes: Vec<u8>) -> Self {
-        Self(bytes)
+    pub fn new(bytes: Vec<u8>) -> Self {
+        Self(Zeroizing::new(bytes))
     }
 
     /// The plaintext bytes, borrowed for as long as this value lives.
@@ -114,13 +117,13 @@ impl SecretBytes {
 
     /// How many bytes of plaintext were recovered.
     #[must_use]
-    pub const fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.0.len()
     }
 
     /// Whether the recovered plaintext is empty.
     #[must_use]
-    pub const fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
@@ -172,29 +175,3 @@ macro_rules! redacted {
 redacted!(Kek, "Kek");
 redacted!(Dek, "Dek");
 redacted!(SecretBytes, "SecretBytes");
-
-/// Zeroes the buffer without waiting for a drop, for a value being reused.
-impl Zeroize for SecretBytes {
-    fn zeroize(&mut self) {
-        self.0.zeroize();
-    }
-}
-
-/// Zeroes key material on drop, hand-written rather than derived.
-///
-/// `zeroize`'s derive macro is the only crate in this workspace's graph still
-/// on `syn` 2, and a duplicate `syn` fails `clippy::multiple_crate_versions`.
-/// These impls are what the derive would have produced.
-macro_rules! zero_on_drop {
-    ($ty:ident) => {
-        impl Drop for $ty {
-            fn drop(&mut self) {
-                self.0.zeroize();
-            }
-        }
-    };
-}
-
-zero_on_drop!(Kek);
-zero_on_drop!(Dek);
-zero_on_drop!(SecretBytes);

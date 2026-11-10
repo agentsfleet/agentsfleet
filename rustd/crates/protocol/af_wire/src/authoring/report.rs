@@ -77,7 +77,7 @@ pub enum Report {
         #[garde(inner(length(bytes, max = super::ENVELOPE_BYTES_MAX), custom(af_validate::rules::nul_free)))]
         answer: Option<String>,
     },
-    /// Metadata-only recovery after private spool expiry or draft deletion.
+    /// Metadata-only recovery after private answer expiry or draft deletion.
     Accounting {
         /// Same accounting identity as the original terminal report.
         #[serde(flatten)]

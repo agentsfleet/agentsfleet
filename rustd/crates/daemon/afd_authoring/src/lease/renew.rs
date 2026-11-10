@@ -38,7 +38,8 @@ impl Drafts {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let mut guarded = guard::bound(&mut tx, runner, lease, &counters).await?;
-        let host = afd_runner::capacity::lock(&mut tx, runner)
+        let host = self
+            .lock_host_capacity(&mut tx, runner)
             .await?
             .ok_or(ErrorKind::Hidden)?;
         if !host.can_renew() {

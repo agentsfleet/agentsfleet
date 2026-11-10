@@ -21,7 +21,7 @@ It does not cache compiled crates.
 | `make candidate-native-linux` in `build-candidate.yml` | `BUILDER_IMAGE` |
 | `warm-cache.yml` | the same `sed` over `versions.env` |
 
-The tag is `<RUST_VERSION>-alpine<ALPINE_SERIES>`, derived and never pasted.
+The tag is `<RUST_VERSION>-alpine<ALPINE_SERIES>`, plus `-<IMAGE_REVISION>` when `versions.env` sets one, derived and never pasted.
 The ast-grep rule `wf-builder-literal`, run by `check-gh-actions-valid`, refuses a literal builder tag in a workflow.
 The rule `wf-action-pin` refuses a moving action ref, and Dependabot moves the pins.
 
@@ -34,11 +34,23 @@ The rule `wf-action-pin` refuses a moving action ref, and Dependabot moves the p
 ## What is pinned
 
 - `versions.env` holds `RUST_VERSION`, `ALPINE_SERIES`, `RUSTUP_VERSION`, `RUSTUP_SHA256_X86_64_MUSL` and `RUSTUP_SHA256_AARCH64_MUSL`.
+- `IMAGE_REVISION` in the same file is optional; every consumer appends it, and `--revision` replaces it for one build.
 - The base is plain Alpine, and rustup installs `RUST_VERSION`, because `rust:*-alpine` tags lag a rustc release by weeks.
 - `ALPINE_SERIES` names a patch series, such as `3.24`, so musl and gcc float by patch while rustc stays exact.
 - `fetch-shas` reads the checksum upstream publishes at `<installer-url>.sha256`, downloads the binary, and refuses when they disagree.
 - That check catches a bad transfer, not a compromised `static.rust-lang.org`; rustup publishes no signature.
 - Never paste a checksum by hand.
+
+## Why every build names its target
+
+`tokio-quiche` uses `boring-sys` for HTTP/3.
+Bindgen generates its bindings and loads libclang at run time.
+
+rustup's musl toolchain links build scripts statically, and a static binary cannot load a shared library.
+Cargo's host-only flags are still unstable, so the image sets `build.target` and `build.rustc-wrapper` in `$CARGO_HOME/config.toml`.
+
+`rustc-host-dynamic` links host build scripts against the dynamic C runtime.
+The shipped binary remains static; outputs land in `target/<triple>/<profile>/`.
 
 ## Steps
 
@@ -66,7 +78,7 @@ The rule `wf-action-pin` refuses a moving action ref, and Dependabot moves the p
 
 Nothing rebuilds the image on merge.
 Any change to `Dockerfile.alpine` or `versions.env` needs `./build_and_push.sh` before the Pull Request (PR) merges.
-Use `--revision r2` once a merged commit names the tag; overwrite only a tag nothing on `main` names.
+Raise `IMAGE_REVISION` once a merged commit names the tag; overwrite only a tag nothing on `main` names.
 
 ## Move the Rust version
 

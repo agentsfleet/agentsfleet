@@ -136,18 +136,8 @@ async fn outbound_isolation(ca: DragonflyConfig, a: Dragonfly, cb: DragonflyConf
         })
         .await
         .expect("enqueue a");
-    let mut ra = OutboundReader::new(
-        Dedicated::connect(&ca, Duration::from_millis(10))
-            .await
-            .expect("dedicated a"),
-        "same-consumer".into(),
-    );
-    let mut rb = OutboundReader::new(
-        Dedicated::connect(&cb, Duration::from_millis(10))
-            .await
-            .expect("dedicated b"),
-        "same-consumer".into(),
-    );
+    let mut ra = outbound_reader(&ca, "dedicated a").await;
+    let mut rb = outbound_reader(&cb, "dedicated b").await;
     assert!(
         rb.read_blocking(Duration::from_millis(10))
             .await
@@ -185,7 +175,7 @@ async fn deliver(publisher: &FleetStreams, subscription: &mut Subscription, payl
             panic!("expected a message");
         };
         assert_eq!(message.channel, channel);
-        assert_eq!(message.payload, payload);
+        assert_eq!(message.payload.as_str(), payload);
     })
     .await
     .expect("subscription confirms and receives within budget");
@@ -262,4 +252,13 @@ mod integration_hub_exclusive {
         ha.shutdown();
         hb.shutdown();
     }
+}
+
+async fn outbound_reader(config: &DragonflyConfig, message: &str) -> OutboundReader {
+    OutboundReader::new(
+        Dedicated::connect(config, Duration::from_millis(10))
+            .await
+            .expect(message),
+        "same-consumer".into(),
+    )
 }

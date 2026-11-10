@@ -30,6 +30,7 @@ fn tenant() -> Uuid7 {
 
 fn window() -> Shared {
     Shared {
+        done: tokio_util::sync::CancellationToken::new(),
         deadline: Instant::now() + WINDOW,
         leased: AtomicU64::new(0),
         population: POPULATION,

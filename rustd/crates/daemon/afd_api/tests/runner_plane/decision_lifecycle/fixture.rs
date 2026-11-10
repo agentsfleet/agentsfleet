@@ -1,5 +1,6 @@
 //! Registered runners issue a real lease and share the router's native secret key.
 
+mod native_report;
 mod storage;
 
 use std::borrow::Cow;
@@ -94,7 +95,12 @@ impl Fixture {
         let [runner, other] = enroll(&database, &owner, &model.model.id).await;
         let queue = harness::connect_redis().await;
         let admissions = Admissions::for_tests(database.clone(), queue.clone());
-        let leases = Leases::new(database.clone(), queue, Entropy::new());
+        let leases = Leases::new(
+            database.clone(),
+            (queue).clone(),
+            afd_bus::dragonfly::publisher(queue),
+            Entropy::new(),
+        );
         let lease = acquire(&leases, &admissions, &owner, &runner).await;
         let key = format!("decision-http-fixture-{}", mint_id());
         save_key(&database, &owner.workspace, &key).await;

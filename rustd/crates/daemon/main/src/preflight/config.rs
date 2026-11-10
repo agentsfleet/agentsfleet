@@ -51,9 +51,12 @@ pub struct BootConfig {
     pub(super) qstash_token: Option<af_crypto::secret::SecretString>,
     pub(super) qstash_url: Option<Box<str>>,
     pub(super) slack_api_url: Option<Box<str>>,
-    pub(super) identity_webhook_secret: Option<Box<str>>,
+    pub(super) identity_webhook_secret: Option<af_crypto::secret::SecretString>,
     pub(super) qstash_keys: Option<SigningKeys>,
     pub(super) sse_max_streams: usize,
+    pub(super) runner_wake: afd_bus::wake::Wake,
+    pub(super) frame_memory: af_stream::MemoryLimits,
+    pub(super) runner_listener: super::runner_listener::RunnerListenerConfig,
     pub(super) posthog: Option<PostHogConfig>,
     pub(super) otlp: Option<super::OtlpConfig>,
     /// A test boot's stand-in for the vendors' token endpoints.
@@ -62,6 +65,9 @@ pub struct BootConfig {
     /// A test boot's connector vendor boundary; never an environment option.
     #[cfg(feature = "test-util")]
     pub(super) connector_endpoint: Option<String>,
+    /// A test boot's provider HTTP boundary; never an environment option.
+    #[cfg(feature = "test-util")]
+    pub(super) authoring_transport: Option<afd_authoring::Network>,
 }
 
 /// Where product events go, when this deployment sends any.
@@ -78,6 +84,39 @@ pub struct PostHogConfig {
 }
 
 impl BootConfig {
+    /// Pins provider HTTP to the boundary owned by this integration test.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn with_authoring_transport(mut self, transport: afd_authoring::Network) -> Self {
+        self.authoring_transport = Some(transport);
+        self
+    }
+
+    /// The explicitly supplied provider boundary, if this is a test boot.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn authoring_transport(&self) -> Option<afd_authoring::Network> {
+        self.authoring_transport.clone()
+    }
+
+    /// Private native listener settings, resolved before opening datastores.
+    #[must_use]
+    pub const fn runner_listener(&self) -> &super::runner_listener::RunnerListenerConfig {
+        &self.runner_listener
+    }
+
+    /// Frame memory settings shared by every native runner session.
+    #[must_use]
+    pub const fn frame_memory(&self) -> af_stream::MemoryLimits {
+        self.frame_memory
+    }
+
+    /// The validated queue is shared by every session in this replica.
+    #[must_use]
+    pub const fn runner_wake(&self) -> &afd_bus::wake::Wake {
+        &self.runner_wake
+    }
+
     /// Private storage configuration resolved before opening any connection.
     #[must_use]
     pub const fn checkpoint_storage(
@@ -241,8 +280,8 @@ impl BootConfig {
     ///
     /// `None` refuses every delivery — see [`super::IDENTITY_WEBHOOK_SECRET_KNOB`].
     #[must_use]
-    pub fn identity_webhook_secret(&self) -> Option<&str> {
-        self.identity_webhook_secret.as_deref()
+    pub fn identity_webhook_secret(&self) -> Option<&af_crypto::secret::SecretString> {
+        self.identity_webhook_secret.as_ref()
     }
 
     /// The scheduler's signing keys, when this deployment configured them.

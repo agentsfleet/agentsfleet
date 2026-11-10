@@ -38,6 +38,8 @@ use super::{Subscription, SubscriptionHub};
 /// it.
 #[derive(Debug)]
 pub(crate) struct HubInner {
+    pub(super) stop: tokio_util::sync::CancellationToken,
+    pub(super) tasks: tokio_util::task::TaskTracker,
     /// One entry per channel some reader holds.
     ///
     /// Sharded rather than one map behind one lock, because every frame this
@@ -120,6 +122,8 @@ impl HubInner {
     /// An empty table that has opened no connection yet.
     pub(super) fn new() -> Self {
         Self {
+            stop: tokio_util::sync::CancellationToken::new(),
+            tasks: tokio_util::task::TaskTracker::new(),
             namespace: crate::namespace::Namespace::default(),
             channels: DashMap::new(),
             connections_opened: AtomicU64::new(0),

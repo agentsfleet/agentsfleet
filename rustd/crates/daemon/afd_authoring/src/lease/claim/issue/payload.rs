@@ -40,8 +40,6 @@ pub(super) fn build(
         model_access: ModelAccess {
             token: placement.token.clone(),
             expires_at: placement.until,
-            invocation_path: af_wire::paths::AUTHORING_MODEL_CALLS
-                .replace("{lease_id}", placement.lease.as_str()),
         },
         candidate: context.candidate,
         messages: context.messages,

@@ -59,6 +59,8 @@ pub struct Billed<'a> {
 pub struct Issued {
     /// The lease's durable identifier, which the runner reports against.
     pub lease_id: Uuid7,
+    /// Database timestamp written with the durable lease.
+    pub created_at: Timestamp,
     /// The exact non-secret selection committed with this lease.
     pub decision: Option<Box<DecisionAssignment>>,
     /// Frozen native task and recovery state.
@@ -109,20 +111,15 @@ impl Leases {
         if !crate::task::lease::parents(&mut transaction, acquired).await? {
             return Ok(None);
         }
-        let Some(capacity) = afd_runner::capacity::lock(&mut transaction, runner_id).await? else {
+        let Some(capacity) = self.lock_host_capacity(&mut transaction, runner_id).await? else {
             return Ok(None);
         };
-        if !capacity.can_claim()
-            || acquired.leased_until <= capacity.now()
-            || self
-                .ticket()
-                .is_some_and(|ticket| !ticket.permits(capacity, LeaseKind::Fleet))
-        {
+        if !self.permits_issue(capacity, acquired) {
             return Ok(None);
         }
         let (lease_id, event_row_id) = self.mint(now)?;
         let decision = super::decision::freeze(&mut transaction, runner_id, capacity).await?;
-        let written = sql::lease::LeaseRow {
+        let Some(created_at) = (sql::lease::LeaseRow {
             lease_id: &lease_id,
             runner_id,
             fleet_id: &acquired.fleet_id,
@@ -139,18 +136,15 @@ impl Leases {
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
             decision_snapshot: decision.as_deref(),
-        }
-        .bind()
-        .execute(&mut *transaction)
-        .await
-        .map_err(query(CONTEXT_ISSUE))?;
-        // The tally arm is the statement's own row count, and it writes
-        // exactly when the fenced lease did. The choice record cannot miss
-        // here — the host row is locked since `capacity` read its version —
-        // and is checked beside the fence the way the authoring claim checks it.
-        if written.rows_affected() == 0
-            || !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await?
-        {
+        })
+        .insert(&mut transaction)
+        .await?
+        else {
+            return Ok(None);
+        };
+        // The returned timestamp proves the fenced lease and its lifetime tally were written together.
+        // The host lock still protects the optimistic choice version.
+        if !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await? {
             return Ok(None);
         }
         let Some((task, expires_at)) =
@@ -165,11 +159,20 @@ impl Leases {
         record_issued(&lease_id, runner_id, acquired, decision.as_deref());
         Ok(Some(Issued {
             lease_id,
+            created_at,
             decision,
             task,
             expires_at,
             execution_deadline,
         }))
+    }
+
+    fn permits_issue(&self, capacity: afd_runner::capacity::Capacity, acquired: &Acquired) -> bool {
+        capacity.can_claim()
+            && acquired.leased_until > capacity.now()
+            && self
+                .ticket()
+                .is_none_or(|ticket| ticket.permits(capacity, LeaseKind::Fleet))
     }
 
     /// Draw the independent lease and audit identities.

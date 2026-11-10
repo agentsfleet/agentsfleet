@@ -21,8 +21,8 @@ struct Watch {
     seen: HashMap<String, String>,
     delay: Duration,
     done: bool,
-    subscription: Option<afd_dragonfly::Subscription>,
-    _slot: afd_sse::Slot,
+    subscription: Option<afd_bus::Subscription>,
+    _slot: afd_sse::StreamPermit,
 }
 
 pub(super) fn frames(
@@ -31,8 +31,8 @@ pub(super) fn frames(
     subject: String,
     draft: Uuid7,
     generation: i64,
-    slot: afd_sse::Slot,
-    subscription: Option<afd_dragonfly::Subscription>,
+    slot: afd_sse::StreamPermit,
+    subscription: Option<afd_bus::Subscription>,
 ) -> impl Stream<Item = Result<Event, Infallible>> + Send + 'static {
     stream::unfold(
         Watch {
@@ -110,7 +110,7 @@ fn deleted(draft: &Uuid7) -> Option<Event> {
 }
 
 /// All paths return to the authorization read before they emit anything.
-async fn receive(watch: &mut Watch) -> Option<afd_dragonfly::hub::Received> {
+async fn receive(watch: &mut Watch) -> Option<afd_bus::Received> {
     if watch.delay.is_zero() {
         return None;
     }
@@ -138,9 +138,9 @@ struct Payload<'a> {
 fn preview(
     draft: &Uuid7,
     view: &afd_authoring::View,
-    received: afd_dragonfly::hub::Received,
+    received: afd_bus::Received,
 ) -> Option<Event> {
-    use afd_dragonfly::hub::Received;
+    use afd_bus::Received;
     match received {
         Received::Gap | Received::Lagged(_) => {
             Some(Event::default().event("draft.resync").data("{}"))

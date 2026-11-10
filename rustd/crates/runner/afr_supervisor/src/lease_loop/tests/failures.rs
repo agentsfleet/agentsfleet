@@ -64,8 +64,12 @@ async fn a_lease_arriving_as_the_pool_shuts_down_is_reported_not_run() {
 
     crate::test_support::bounded(
         "lease arriving during shutdown",
-        rig.lessee
-            .run(&turns, &lease(LEASE_ID, FLEET_ID), &Egress::closed()),
+        rig.lessee.run(
+            &turns,
+            &lease(LEASE_ID, FLEET_ID),
+            &Egress::closed(),
+            tokio_util::sync::CancellationToken::new(),
+        ),
     )
     .await
     .unwrap();

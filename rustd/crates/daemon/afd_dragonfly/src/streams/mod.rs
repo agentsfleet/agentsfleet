@@ -3,7 +3,6 @@
 pub(crate) mod retain;
 mod tail;
 pub use self::retain::{ACKNOWLEDGED_HISTORY, Backlog, TRIM_SLACK, Trimmed};
-pub(crate) use self::tail::CMD_PUBLISH;
 use crate::Dragonfly;
 
 pub(crate) const ARG_COUNT: &str = "COUNT";

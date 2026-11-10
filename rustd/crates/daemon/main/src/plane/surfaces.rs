@@ -41,7 +41,6 @@ pub(super) struct Authoring {
 /// preference.
 pub(super) fn authoring(
     drafts: afd_authoring::Drafts,
-    queue: &Dragonfly,
     kek: &Arc<Kek>,
     providers: &Providers,
     admissions: &Admissions,
@@ -52,7 +51,7 @@ pub(super) fn authoring(
     let decision_client = transport.guarded_client();
     let mut models =
         afd_authoring::ModelCalls::new(drafts.clone(), providers.clone(), Arc::new(transport))
-            .with_progress(afd_dragonfly::FleetStreams::new(queue.clone()));
+            .with_progress(admissions.streams());
     if let Some(admin) = decisions {
         models = models.with_decisions(admin.clone(), decision_client);
     }
@@ -116,9 +115,10 @@ pub(super) fn outbound(
     } = parts;
     let schedule_destination = schedule.destination.clone();
     let schedule_keys = schedule.keys.take();
+    let bus = admissions.streams();
     let schedules = config::schedule_plane(database, schedule, admissions);
     let interjector = platform::interjector(database, kek, vendor_client.clone(), slack_api_base);
-    let connectors = platform::connect_flow(database, kek, queue, vendor_client);
+    let connectors = platform::connect_flow(database, kek, queue, &bus, vendor_client);
     Outbound {
         schedules,
         schedule_keys,

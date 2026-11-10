@@ -17,7 +17,7 @@ const ATTEMPT_ENDS: &str = "1970-01-01T00:05:00Z";
 const EXPIRES: &str = "1970-01-01T00:00:30Z";
 /// The key both the lease and its model credential carry their expiry under.
 const EXPIRES_AT: &str = "expires_at";
-/// A spooled report's stable identity.
+/// A pending report's stable identity.
 const REPORT_ID: &str = "01890a5d-ac96-774b-bcce-b302099a8062";
 /// The key naming the model, on the lease and inside its model block.
 const MODEL: &str = "model";
@@ -30,8 +30,7 @@ fn wire() -> Value {
         MODEL: {"ref":"owned", "provider":"openai", MODEL:"gpt-4.1",
             "tokenizer":"o200k_base", "pricing":{"input_nanos_per_million":"1",
                 "output_nanos_per_million":"1", "runtime_nanos_per_second":"1"}},
-        "model_access":{"token": TOKEN, EXPIRES_AT: EXPIRES,
-            "invocation_path":"/v1/runners/me/authoring-leases/lease-1/model-calls"},
+        "model_access":{"token": TOKEN, EXPIRES_AT: EXPIRES},
         "messages":[{"role":"user","text": TEXT}],
         "limits":{"input_per_call":1,"output_per_turn":1,"max_calls":1,
             "wall_seconds":300,"provider_timeout_seconds":30}
@@ -40,6 +39,20 @@ fn wire() -> Value {
 
 fn lease() -> Lease<Value> {
     serde_json::from_value(wire()).expect("a well-formed authoring lease")
+}
+
+#[test]
+fn a_model_capability_carries_no_http_dispatch_path() {
+    let access = serde_json::to_value(lease().model_access).expect("a capability encodes");
+    assert_eq!(access, json!({"token":TOKEN, EXPIRES_AT:EXPIRES}));
+    let stale = json!({"token":TOKEN, EXPIRES_AT:EXPIRES, "invocation_path":"/retired"});
+    let failure = serde_json::from_value::<ModelAccess>(stale).expect_err("obsolete dispatch path");
+    assert!(failure.is_data());
+    assert!(
+        failure
+            .to_string()
+            .contains("unknown field `invocation_path`")
+    );
 }
 
 #[test]
@@ -104,12 +117,11 @@ fn test_runner_wire_drops_deletion_generation() {
     )
     .expect_err("a renewal still carrying a generation is refused");
 
-    // The accounting-only report a runner replays from its spool after
-    // private-content expiry: decodes without a generation, refused with one.
+    // Accounting-only receipts retain the same generation refusal as final reports.
     let report = json!({"kind": "accounting", "fence": "1", "report_id": REPORT_ID,
         "outcome": "completed", "failure_reason": null, "usage": usage});
     let decoded = serde_json::from_value::<crate::authoring::Report>(report.clone())
-        .expect("a spooled accounting report without a generation decodes");
+        .expect("a current accounting report without a generation decodes");
     assert!(matches!(
         decoded,
         crate::authoring::Report::Accounting { .. }

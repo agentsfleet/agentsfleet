@@ -157,6 +157,7 @@ pub(crate) struct Scenario {
     pub(crate) runner_id: Uuid7,
     /// Its bearer token, revealed once at enrolment.
     pub(crate) token: String,
+    pub(crate) native: tokio::sync::OnceCell<afr_supervisor::test_util::Session>,
     /// The instant the seed was stamped with.
     pub(crate) seeded_at: Timestamp,
     /// This scenario's hold on the platform default, released after the daemon
@@ -208,13 +209,7 @@ pub(crate) async fn scenario_with(
     // apiece, and on the ready stream by the guard above.
     let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
 
-    let booted = boot(
-        &daemon_environment(&database_url, provider_base, extra),
-        EPHEMERAL,
-        supervisor,
-    )
-    .await
-    .expect("the lane's Postgres and Dragonfly are up");
+    let booted = scenario_boot(&database_url, provider_base, extra, supervisor).await;
     let base = format!("http://{}", booted.address);
     let now = af_core::clock::now();
 
@@ -228,13 +223,7 @@ pub(crate) async fn scenario_with(
     let default = seed_platform_default(&booted, &workspace, now).await;
     seed_provider_key(&booted, &workspace, now).await;
 
-    // Through the production verb, not an INSERT: enrolment mints the token
-    // and stores only its digest, and a seeded row would let the suite present
-    // a credential the daemon's own minting never produced.
-    let enrolled = Runners::new(booted.database.clone(), Entropy::new())
-        .register(&scenario_enrolment(&fleet), now)
-        .await
-        .expect("enrolment must succeed");
+    let (runner_id, token) = enrolled_runner(&booted, &fleet, now).await;
 
     let event_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE).await;
 
@@ -244,8 +233,9 @@ pub(crate) async fn scenario_with(
         workspace,
         tenant,
         event_id,
-        runner_id: enrolled.runner_id,
-        token: enrolled.token.expose().to_owned(),
+        runner_id,
+        token,
+        native: tokio::sync::OnceCell::new(),
         seeded_at: now,
         booted,
         _default: default,
@@ -254,6 +244,37 @@ pub(crate) async fn scenario_with(
 }
 
 impl Scenario {
+    /// Connects once through the production native downlink.
+    pub(crate) async fn native_session(&self) -> &afr_supervisor::test_util::Session {
+        self.native
+            .get_or_init(|| async {
+                let origin = format!(
+                    "https://localhost:{}",
+                    self.booted.runner_stream_address.port()
+                );
+                let root = crate::support::runner_stream::root_file()
+                    .to_string_lossy()
+                    .into_owned();
+                let env = af_core::env::MapEnv::from_pairs([
+                    (afr_supervisor::config::ENV_API_URL, self.base.as_str()),
+                    (
+                        afr_supervisor::config::ENV_RUNNER_TOKEN,
+                        self.token.as_str(),
+                    ),
+                    (afr_supervisor::config::ENV_STREAM_URL, origin.as_str()),
+                    (afr_supervisor::config::ENV_STREAM_CA, root.as_str()),
+                ]);
+                let config = afr_supervisor::config::Config::from_env(&env)
+                    .expect("the native fixture configuration is valid");
+                let session = afr_supervisor::test_util::Session::connect(&config)
+                    .await
+                    .expect("the native fixture connects");
+                session.capacity(1);
+                session
+            })
+            .await
+    }
+
     /// Admits another event under this scenario's ready fleet.
     pub(crate) async fn enqueue_event(&self, event_type: EventType) -> Uuid7 {
         enqueue(&self.booted, &self.fleet, &self.workspace, event_type).await
@@ -294,4 +315,31 @@ impl Scenario {
         retire_fleet(&booted, &fleet).await;
         drop(booted);
     }
+}
+
+async fn enrolled_runner(booted: &Booted, fleet: &Uuid7, now: jiff::Timestamp) -> (Uuid7, String) {
+    // Through the production verb, not an INSERT: enrolment mints the token
+    // and stores only its digest, and a seeded row would let the suite present
+    // a credential the daemon's own minting never produced.
+    let enrolled = Runners::new(booted.database.clone(), Entropy::new())
+        .register(&scenario_enrolment(fleet), now)
+        .await
+        .expect("enrolment must succeed");
+
+    (enrolled.runner_id, enrolled.token.expose().to_owned())
+}
+
+async fn scenario_boot(
+    database_url: &str,
+    provider_base: Option<&str>,
+    extra: &[(&str, &str)],
+    supervisor: &mut Supervisor,
+) -> Booted {
+    boot(
+        &daemon_environment(database_url, provider_base, extra),
+        EPHEMERAL,
+        supervisor,
+    )
+    .await
+    .expect("the lane's Postgres and Dragonfly are up")
 }

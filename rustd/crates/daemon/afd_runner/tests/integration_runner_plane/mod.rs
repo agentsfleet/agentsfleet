@@ -10,6 +10,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+mod connections;
 mod decision;
 mod decision_races;
 mod durable_policy;

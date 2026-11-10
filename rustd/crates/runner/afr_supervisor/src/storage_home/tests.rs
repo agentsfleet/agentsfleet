@@ -16,7 +16,6 @@ fn opening_a_home_makes_its_directories_and_opening_it_again_keeps_them() {
     let toolbox = home.toolbox();
     for directory in [
         home.sandboxes(),
-        home.spool(),
         home.mirrors(),
         toolbox.incoming(),
         toolbox.images(),
@@ -47,4 +46,14 @@ fn the_toolbox_directories_are_three_siblings_under_the_home() {
     assert_eq!(toolbox.incoming(), under.join("incoming"));
     assert_eq!(toolbox.images(), under.join("images"));
     assert_eq!(toolbox.mounts(), under.join("mounts"));
+}
+
+/// Completed reports never create a runner-side disk outbox.
+#[test]
+fn opening_storage_does_not_create_report_storage() {
+    let root = tempfile::tempdir().unwrap();
+    StorageHome::open(root.path()).unwrap();
+    assert!(!root.path().join("spool").exists());
+    assert!(!root.path().join("reports").exists());
+    assert!(!root.path().join("receipts").exists());
 }

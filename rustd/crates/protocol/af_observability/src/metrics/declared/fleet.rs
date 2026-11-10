@@ -72,13 +72,6 @@ pub const FLEET_DELIVERY_STAGE_SECONDS: Declared<HistogramKind> =
 pub const FLEET_READY_WAKE_FAILURES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_fleet_ready_wake_failures_total");
 
-/// Held heartbeats by how they ended; rate ÷ heartbeats is the share of beats
-/// that asked to be held, and a rising `capped` share is the cap too low.
-///
-/// Labels: `reason`.
-pub const RUNNER_WAKE_ANSWERS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_runner_wake_answers_total");
-
 /// Installed fleets by lifecycle status, as the last census pass counted them.
 ///
 /// Labels: `status`.
@@ -135,3 +128,44 @@ pub const RUNNER_ACTIVE_LEASES: Declared<GaugeKind> =
 /// Successful report answers, including idempotent retries.
 pub const RUNNER_REPORT_ANSWERS_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_runner_report_answers_total");
+
+/// Every native connection attempt, including failed HTTP/3 before fallback.
+pub const RUNNER_STREAM_CONNECT_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_connect_total");
+
+/// Native TLS decisions; transport, peer role, group and outcome have closed labels.
+pub const RUNNER_STREAM_TLS_HANDSHAKES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_tls_handshakes_total");
+
+/// Complete native connection attempt duration, including name resolution.
+pub const RUNNER_STREAM_CONNECT_SECONDS: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_stream_connect_seconds");
+
+/// Bounded operations, including memory waits and cancelled futures.
+pub const RUNNER_STREAM_OPERATION_SECONDS: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_stream_operation_seconds");
+
+/// Transport failures that caused an HTTP/2 attempt.
+pub const RUNNER_STREAM_FALLBACK_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_fallback_total");
+
+/// Expired absolute deadlines, separated by the operation that stalled.
+pub const RUNNER_STREAM_TIMEOUTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_timeouts_total");
+
+/// Recent-ready notifications admitted, deduplicated or evicted by a replica.
+pub const FLEET_READY_WAKE_QUEUE_EVENTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_fleet_ready_wake_queue_events_total");
+
+/// Native path round-trip measurements; unsupported measurements stay absent.
+pub const RUNNER_STREAM_NATIVE_RTT_SECONDS: Declared<HistogramKind> =
+    Declared::new("agentsfleet_runner_stream_native_rtt_seconds");
+/// QUIC packet counter deltas, independent of application request success.
+pub const RUNNER_STREAM_NATIVE_PACKETS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_native_packets_total");
+/// QUIC probe timeout deltas across all paths on established connections.
+pub const RUNNER_STREAM_NATIVE_PTO_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_native_pto_total");
+/// Retransmitted stream bytes; distinct from the packet counter's unit.
+pub const RUNNER_STREAM_NATIVE_RETRANSMITTED_BYTES_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_runner_stream_native_retransmitted_bytes_total");

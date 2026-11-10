@@ -146,7 +146,13 @@ impl Leases {
             // no drop arm to take.
             payloads.extend(serde_json::to_string(published).ok());
         }
-        if let Err(unreachable_queue) = streams.publish_tail_batch(fleet, &payloads).await {
+        if let Err(unreachable_queue) = streams
+            .publish_batch(
+                &afd_bus::Subject::FleetTail(target.fleet_id.clone()),
+                &payloads,
+            )
+            .await
+        {
             let Logged { error_code, reason } = unreachable_queue.logged();
             tracing::debug!(
                 error_code,
@@ -208,7 +214,7 @@ struct LeaseTarget {
     live: bool,
 }
 
-impl crate::lease::pull::Plane {
+impl crate::lease::pull::LeaseService {
     /// Forward one batch of live-tail frames for a lease this runner holds.
     ///
     /// # Errors
@@ -229,6 +235,22 @@ impl crate::lease::pull::Plane {
         else {
             return Err(crate::error::lease_not_found());
         };
+        self.activity_for_target(runner_id, lease_id, &target, frames)
+            .await
+    }
+
+    /// Publish from a session's confirmed target without another lease-target lookup.
+    /// Task progress still saves canonical history under its live database fence.
+    ///
+    /// # Errors
+    /// Preserves failures to retain durable task observations.
+    pub async fn activity_for_target(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: &Uuid7,
+        target: &Target,
+        frames: &[ActivityFrame<'_>],
+    ) -> Result<()> {
         let retained: Vec<_> = frames
             .iter()
             .filter_map(ActivityFrame::task_activity)
@@ -238,7 +260,7 @@ impl crate::lease::pull::Plane {
         } else if target.timing_eligible {
             let history = self
                 .leases
-                .retain_task_activity(&target, runner_id, lease_id, &retained)
+                .retain_task_activity(target, runner_id, lease_id, &retained)
                 .await?;
             history::canonical(frames, &history.unwrap_or_default())
         } else {
@@ -249,8 +271,8 @@ impl crate::lease::pull::Plane {
                 .cloned()
                 .collect()
         };
-        record_first_chunk(&target, frames);
-        self.leases.publish_activity(&target, &published).await;
+        record_first_chunk(target, frames);
+        self.leases.publish_activity(target, &published).await;
         Ok(())
     }
 }

@@ -22,7 +22,7 @@ use afd_approval::{Inbox, IntegrationGrants};
 use afd_billing::tenant::Billing;
 use afd_credential::provider::Providers;
 use afd_events::History;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_memory::Memories;
@@ -54,7 +54,12 @@ impl Services for ServingPlane {
     }
     type Auth = Authenticator;
     type SignupMetadata = SignupWriteback;
-    type Leases = Plane;
+    type Leases = LeaseService;
+    type RunnerStreams = afd_gateway::Gateway;
+
+    fn runner_streams(&self) -> &Self::RunnerStreams {
+        &self.runner_streams
+    }
     type Sessions = Logins;
     type Workspaces = Workspaces;
     type Fleets = Fleets;
@@ -81,7 +86,11 @@ impl Services for ServingPlane {
         &self.runners
     }
 
-    fn leases(&self) -> &Plane {
+    fn runner_commands(&self) -> &afd_bus::Handle {
+        &self.runner_commands
+    }
+
+    fn leases(&self) -> &LeaseService {
         &self.leases
     }
 

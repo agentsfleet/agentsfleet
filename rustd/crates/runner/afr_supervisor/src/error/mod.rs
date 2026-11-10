@@ -32,8 +32,8 @@ mod raise;
 pub(crate) use self::raise::refused;
 pub(crate) use self::raise::{
     boundary, checkpoint_transfer, client, config, egress, egress_blocked, egress_no_ipv4,
-    egress_unresolved, encode, git, malformed, refused_with_body, token_refused, transport,
-    unavailable,
+    egress_unresolved, encode, git, malformed, refused_with_body, stream_disconnected,
+    stream_protocol, token_refused, transport, unavailable,
 };
 
 /// The daemon refused the runner's token.
@@ -47,6 +47,46 @@ af_core::error_shell!(
 /// Every way the supervisor fails.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    /// A native carrier retains its finite failure class and original cause.
+    #[error("the runner stream did not complete")]
+    Stream {
+        #[source]
+        source: af_stream::Error,
+    },
+
+    /// A disconnected session has no request owner; its caller may retry after reconnect.
+    #[error("the runner stream is disconnected")]
+    Disconnected,
+
+    /// A closed native channel retains its original failure for diagnostics.
+    #[error("the runner stream channel disconnected")]
+    StreamDisconnected {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// A daemon message or request identifier violated the session protocol.
+    #[error("the runner stream protocol was refused")]
+    StreamProtocol,
+
+    /// A native capacity or delivery invariant failed with a typed cause.
+    #[error("the runner stream protocol bound was refused")]
+    StreamProtocolSource {
+        #[source]
+        source: Box<dyn std::error::Error + Send + Sync>,
+    },
+
+    /// An unanswered request preserves its deadline failure.
+    #[error("the runner stream answer deadline expired")]
+    StreamTimeout {
+        #[source]
+        source: tokio::time::error::Elapsed,
+    },
+
+    /// Domain replies keep the registered code independently of HTTP status.
+    #[error("the daemon refused a runner stream request")]
+    StreamRefused { code: ErrorCode, retryable: bool },
+
     /// A filesystem call failed.
     #[error("an input/output call failed")]
     Io {
@@ -55,19 +95,11 @@ pub(crate) enum ErrorKind {
         source: std::io::Error,
     },
 
-    /// Private spool encryption or authentication failed.
-    #[error("private report protection failed")]
+    /// Credential or recovery encryption or authentication failed.
+    #[error("credential or recovery protection failed")]
     Crypto {
         #[source]
         source: af_crypto::error::Error,
-    },
-
-    /// A finished temporary file could not be moved into place.
-    #[error("a finished file could not be moved into place")]
-    Persist {
-        /// The rename's failure; the temporary file is removed with it.
-        #[source]
-        source: tempfile::PersistError,
     },
 
     /// The runner's configuration is missing or unusable.

@@ -37,7 +37,8 @@ impl Fleet {
         hub: afd_dragonfly::SubscriptionHub,
         capacity: usize,
     ) -> Self {
-        self.live = Live::new(hub, Ceiling::new(capacity));
+        self.runner_commands = afd_bus::test_util::with_hub(hub).expect("fixture bus");
+        self.live = Live::new(self.runner_commands.clone(), StreamLimit::new(capacity));
         self
     }
 
@@ -54,6 +55,7 @@ impl Fleet {
         } = Inputs::new(database);
         let authoring = authoring::stores(&database, &ledger, &providers);
         Self {
+            native: None,
             ready: ReadyInputs {
                 database: true,
                 queue: true,
@@ -63,15 +65,12 @@ impl Fleet {
             capabilities,
             authenticator,
             runners: Runners::new(database.clone(), Entropy::new()),
+            runner_commands: afd_bus::dragonfly::publisher(queue.clone()),
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             leases: NoWork::default(),
-            tasks: afd_fleet::task::Tasks::new(
-                afd_fleet::lease::Leases::new(database.clone(), queue.clone(), Entropy::new()),
-                ledger.clone(),
-                task_dependencies(database.clone()),
-            ),
+            tasks: tasks(&database, &queue, &ledger),
             authoring: authoring.drafts,
             authoring_setup: authoring.setup,
             authoring_models: authoring.models,
@@ -95,10 +94,14 @@ impl Fleet {
             signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
             identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(database.clone(), queue.clone(), ledger.clone()),
+            approvals: Inbox::new(
+                database.clone(),
+                afd_bus::dragonfly::publisher(queue.clone()),
+                ledger.clone(),
+            ),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
-            live: Live::detached(Ceiling::new(DEFAULT_STREAM_CEILING)),
+            live: Live::detached(StreamLimit::new(DEFAULT_STREAM_CEILING)),
             analytics: Analytics::silent(),
             steering: Steer::new(ledger),
             memories: Memories::new(database.clone(), Entropy::new()),
@@ -152,4 +155,21 @@ impl Inputs {
             authenticator,
         }
     }
+}
+
+fn tasks(
+    database: &Db,
+    queue: &Dragonfly,
+    ledger: &afd_admission::Admissions,
+) -> afd_fleet::task::Tasks {
+    afd_fleet::task::Tasks::new(
+        afd_fleet::lease::Leases::new(
+            database.clone(),
+            queue.clone(),
+            afd_bus::dragonfly::publisher(queue.clone()),
+            Entropy::new(),
+        ),
+        ledger.clone(),
+        task_dependencies(database.clone()),
+    )
 }

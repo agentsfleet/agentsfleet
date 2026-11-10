@@ -37,6 +37,9 @@ primary_region = "iad"
 # 6432: client connections to a pooler are cheap, and it is the bouncer's
 # `default_pool_size` that then counts against the 25.
 [env]
+  AGENTSFLEET_RUNNER_STREAM_LISTEN_ADDR = "[::]:4443"
+  AGENTSFLEET_RUNNER_STREAM_TLS_CERT_FILE = "/etc/agentsfleet/runner-stream/server-chain.pem"
+  AGENTSFLEET_RUNNER_STREAM_TLS_KEY_FILE = "/etc/agentsfleet/runner-stream/server.key"
   DATABASE_POOL_SIZE_API = "8"
   API_URL = "https://api-dev.agentsfleet.net"
   APP_URL = "https://app-dev.agentsfleet.net"
@@ -75,3 +78,15 @@ primary_region = "iad"
   interval = "15s"
   timeout = "5s"
   grace_period = "30s"
+
+# Fly decodes the staged secrets into files before the application starts.
+# The certificate authority signing key is never loaded by a deployment job.
+[[files]]
+  guest_path = "/etc/agentsfleet/runner-stream/server-chain.pem"
+  secret_name = "RUNNER_STREAM_TLS_CERT_BASE64"
+  processes = ["app"]
+
+[[files]]
+  guest_path = "/etc/agentsfleet/runner-stream/server.key"
+  secret_name = "RUNNER_STREAM_TLS_KEY_BASE64"
+  processes = ["app"]

@@ -11,6 +11,7 @@ use af_core::id::Uuid7;
 use af_core::spelling::from_spelling;
 use af_crypto::entropy::Entropy;
 use afd_api_wire::approval::GateStatus;
+use afd_bus::Handle;
 use afd_db::Db;
 use afd_dragonfly::Dragonfly;
 
@@ -86,6 +87,7 @@ pub mod key {
 pub struct Gates {
     pub(super) database: Db,
     queue: Dragonfly,
+    bus: Handle,
     entropy: Entropy,
 }
 
@@ -98,10 +100,11 @@ impl Gates {
     /// entropy surface rather than a second source with its own failure mode.
     /// [`Leases`](crate::lease::Leases) takes it for the same reason.
     #[must_use]
-    pub const fn new(database: Db, queue: Dragonfly, entropy: Entropy) -> Self {
+    pub const fn new(database: Db, queue: Dragonfly, bus: Handle, entropy: Entropy) -> Self {
         Self {
             database,
             queue,
+            bus,
             entropy,
         }
     }
@@ -110,6 +113,10 @@ impl Gates {
     /// counts anomalies through it.
     pub(super) const fn queue(&self) -> &Dragonfly {
         &self.queue
+    }
+
+    pub(super) const fn bus(&self) -> &Handle {
+        &self.bus
     }
 
     /// The datastore the durable half of a gate lives in.

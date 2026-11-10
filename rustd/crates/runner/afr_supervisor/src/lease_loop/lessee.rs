@@ -7,13 +7,11 @@ use af_core::clock::Clock;
 use af_egress::Resolve;
 use afr_agent::AgentEngine;
 use afr_sandbox::{Engine, Limits};
-use tokio::sync::Notify;
 
 use crate::client::ControlPlane;
 use crate::halt::Halt;
 use crate::holds::Holds;
 use crate::identity::Whoami;
-use crate::report_spool::ReportSpool;
 use crate::workspace_clone::Mirrors;
 
 /// Everything a lease needs, shared by every worker.
@@ -27,10 +25,6 @@ pub(crate) struct Lessee {
     pub(crate) resolver: Box<dyn Resolve>,
     /// Runs each lease's turn.
     pub(crate) agent: Box<dyn AgentEngine>,
-    /// Where reports wait to be posted.
-    pub(crate) spool: ReportSpool,
-    /// Private answers and independent content-free settlement.
-    pub(crate) authoring_spool: crate::report_spool::authoring::Spool,
     /// Bound repositories' mirrors, fetched outside every sandbox.
     pub(crate) mirrors: Mirrors,
     /// What every sandbox enforces.
@@ -41,10 +35,6 @@ pub(crate) struct Lessee {
     pub(crate) holds: Holds,
     /// How the runner stops.
     pub(crate) halt: Halt,
-    /// Rung when a report stays spooled, so the drain takes it over.
-    pub(crate) held: Notify,
     /// Which runner this is, for every lease's span.
     pub(crate) whoami: Whoami,
-    /// The pool's idle workers, which a held heartbeat wakes for fresh work.
-    pub(crate) wake: crate::worker_pool::Wake,
 }

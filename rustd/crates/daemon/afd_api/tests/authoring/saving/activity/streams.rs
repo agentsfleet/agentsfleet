@@ -83,7 +83,7 @@ impl Reader {
         let Received::Message(message) = received else {
             panic!("a published message, not a gap");
         };
-        message.payload.clone()
+        message.payload.as_ref().clone()
     }
 }
 

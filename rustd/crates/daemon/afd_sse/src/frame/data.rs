@@ -12,7 +12,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
-use afd_dragonfly::Message;
+use afd_bus::Message;
 
 /// What follows `data: `, as a head this frame owns and a tail it shares.
 #[derive(Clone)]

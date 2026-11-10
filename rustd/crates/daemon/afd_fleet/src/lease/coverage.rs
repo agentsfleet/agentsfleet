@@ -29,7 +29,7 @@ use afd_billing::biller::{Account, Ask, Funds, WorkKey};
 use jiff::Timestamp;
 
 use crate::error::{Result, budget_exhausted, renewal_no_credits};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::renew::Renewing;
 use afd_billing::budget::{self, Verdict};
 
@@ -42,7 +42,7 @@ const EVENT_BUDGET_BREACH: &str = "renew_budget_breach";
 /// A gate could not be read, and the renewal was admitted anyway.
 const EVENT_GATE_UNREADABLE: &str = "renew_gate_unreadable_admitted";
 
-impl Plane {
+impl LeaseService {
     /// Both money gates, in the order a refusal must not be charged in.
     ///
     /// The tenant's pool first, because it is the cheaper read and the more
@@ -237,6 +237,7 @@ mod tests {
                 .map_err(|_unencodable| "a fixed timestamp and entropy encode to a Uuid7")
         };
         Ok(Renewing {
+            cancelled: false,
             tenant_id: mint(1)?,
             fleet_id: mint(2)?,
             workspace_id: mint(3)?,

@@ -23,9 +23,9 @@ pub(super) async fn assert_unknown_credential_is_refused(http: &reqwest::Client,
     );
 }
 
-pub(super) async fn assert_unsupported_event_ends(http: &reqwest::Client, run: &Scenario) {
+pub(super) async fn assert_unsupported_event_ends(run: &Scenario) {
     let unsupported = run.enqueue_unsupported_event("future_event_type").await;
-    let ended = poll_until(http, run, || async {
+    let ended = wait_without_offer(run, || async {
         event_column(run, &unsupported, "status").await.as_deref() == Some("gate_blocked")
     })
     .await;
@@ -54,9 +54,10 @@ pub(super) async fn assert_credential_and_duplicate_refusals(
         "a provider credential is not silently treated as a mintable connector"
     );
 
-    let no_second_lease = post(http, run, "/v1/runners/me/leases", &fleet_poll()).await;
-    assert_eq!(no_second_lease.status().as_u16(), 200);
-    // The refused admission is settled. Only another lease for this fleet
-    // would violate that result; the shared lane may contain other work.
-    assert_no_lease_for_fleet_under_test(run, &json(no_second_lease).await);
+    run.native_session().await.capacity(2);
+    assert!(
+        !wait_without_offer(run, || async { false }).await,
+        "a second free worker must not receive the same fleet's active admission"
+    );
+    assert_eq!(lease_rows(run).await, 1);
 }

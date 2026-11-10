@@ -13,15 +13,18 @@ use url::Url;
 
 use crate::error::{self, Result};
 
+mod stream;
+pub use stream::{ENV_STREAM_CA, ENV_STREAM_URL, StreamConfig};
+
 /// The daemon's base address.
 pub const ENV_API_URL: &str = "AGENTSFLEET_API_URL";
 /// The runner's `agt_r` token, minted once by a platform admin.
 pub const ENV_RUNNER_TOKEN: &str = "AGENTSFLEET_RUNNER_TOKEN";
-/// The host-local root for the report spool, git mirrors, the toolbox and
+/// The host-local root for git mirrors, the toolbox and
 /// lease sandboxes.
 pub const ENV_STORAGE_HOME: &str = "RUNNER_STORAGE_HOME";
 /// Where the storage home lives when none is set: a directory that survives a
-/// reboot, because the report spool exists to outlive one.
+/// reboot for sandbox recovery and repository mirrors.
 pub const DEFAULT_STORAGE_HOME: &str = "/var/lib/agentsfleet-runner";
 
 const DETAIL_API_URL_MISSING: &str = "AGENTSFLEET_API_URL is not set";
@@ -39,6 +42,7 @@ pub struct Config {
     api_url: Url,
     token: Secret,
     storage_home: PathBuf,
+    stream: StreamConfig,
 }
 
 impl Config {
@@ -70,6 +74,7 @@ impl Config {
             api_url,
             token: Secret::new(token),
             storage_home,
+            stream: StreamConfig::from_env(env)?,
         })
     }
 
@@ -84,6 +89,12 @@ impl Config {
     #[must_use]
     pub const fn token(&self) -> &Secret {
         &self.token
+    }
+
+    /// Private native origin and its certificate trust, proved at boot.
+    #[must_use]
+    pub const fn stream(&self) -> &StreamConfig {
+        &self.stream
     }
 
     /// The host-local storage root.

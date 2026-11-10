@@ -171,7 +171,7 @@ Login proves the new credential against `GET /v1/users/me`, which needs no capab
    - Repeating Save with the same idempotency key retries the same fleet.
    - The fleet turns `active` once every check passes and activation commits; run-now activation commits its initial admission in the same transaction. See [`data_flow.md`](./data_flow.md#fleet-creation-and-setup-recovery).
 6. **Provider wiring follows the trigger surface**: a GitHub App trigger needs a one-time workspace connection. A custom webhook keeps its per-fleet URL, which the saved fleet's response lists in `webhook_urls`. The platform holds its own App secrets, never a user's Personal Access Token (PAT) ([`connectors.md`](./connectors.md) §"GitHub App: platform setup to fleet runs").
-7. Future triggers are served with no restart and no watcher thread. Each trigger commits a row to the admission ledger (`fleet.admissions`). The control plane assigns that event to an eligible `agentsfleet-runner` through the ledger claim (`POST /v1/runners/me/leases`).
+7. Future triggers are served with no restart and no watcher thread. Each trigger commits a row to the admission ledger (`fleet.admissions`). The control plane assigns that event to an eligible `agentsfleet-runner` through a ledger claim and a pushed native offer.
    - [`data_flow.md`](./data_flow.md) §"Steer flow end-to-end" carries the full path.
 8. **Improve.** A change to a saved fleet is a new draft from `--fleet <id> --setup-revision <n>`, reviewed, then applied as the next immutable revision (N11). Saving never publishes, and publishing never changes a saved fleet.
 

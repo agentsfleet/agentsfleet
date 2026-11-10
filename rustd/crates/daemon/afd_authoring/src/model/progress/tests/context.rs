@@ -15,7 +15,7 @@ use af_wire::{
 };
 use afd_db::{config::DbRole, test_util::TestDatabase};
 use afd_dragonfly::{
-    Dragonfly, FleetStreams,
+    Dragonfly,
     config::{DragonflyConfig, DragonflyRole},
 };
 use std::{sync::Arc, time::Duration};
@@ -47,7 +47,7 @@ async fn a_blocked_context_hint_expires_and_releases_its_pool_waiter() {
     pool.close().await;
 }
 
-async fn setup() -> (afd_db::Db, Drafts, FleetStreams) {
+async fn setup() -> (afd_db::Db, Drafts, afd_bus::Handle) {
     let pool = TestDatabase::shared()
         .open(
             DbRole::Api,
@@ -69,7 +69,7 @@ async fn setup() -> (afd_db::Db, Drafts, FleetStreams) {
         "redis://127.0.0.1:1".into(),
     ))
     .expect("lazy queue handle");
-    (pool, drafts, FleetStreams::new(queue))
+    (pool, drafts, afd_bus::dragonfly::publisher(queue))
 }
 
 fn assert_deadline(capture: &Capture, id: &af_core::id::Uuid7) {

@@ -29,7 +29,6 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
-use afd_dragonfly::streams::FleetStreams;
 use jiff::Timestamp;
 
 use super::sql;
@@ -164,9 +163,9 @@ impl Gates {
             pending_approvals: recorded.pending_approvals,
             counters: recorded.counters,
         };
-        FleetStreams::new(self.queue().clone())
-            .publish_frame(request.fleet_id.as_str(), &frame)
-            .await;
+        let subject = afd_bus::Subject::FleetTail(request.fleet_id.clone());
+        let publication = self.bus().publish_frame(&subject, &frame).await;
+        afd_bus::observe_notification(&subject, publication);
     }
 
     /// Insert the row a resolve updates and the mint spends against, and

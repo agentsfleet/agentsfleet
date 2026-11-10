@@ -14,7 +14,8 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
 
-use afd_dragonfly::FleetStreams;
+use af_core::id::Uuid7;
+use afd_bus::Handle;
 use afd_sse::{Frame, KIND_CATCHING_UP, Live};
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
@@ -129,8 +130,8 @@ impl Rung {
 /// histogram would not hold.
 pub(super) async fn rung(
     live: &Live,
-    publisher: &FleetStreams,
-    fleet: &str,
+    publisher: &Handle,
+    fleet: &Uuid7,
     viewers: u64,
     bytes: usize,
 ) -> Result<Rung> {
@@ -146,7 +147,7 @@ pub(super) async fn rung(
     let stop = CancellationToken::new();
     let mut tasks = Vec::new();
     for _viewer in 0..viewers {
-        let (tail, shared, stop) = (live.tail_of(fleet), Arc::clone(&shared), stop.clone());
+        let (tail, shared, stop) = (live.tail_of(fleet).await, Arc::clone(&shared), stop.clone());
         tasks.push(tokio::spawn(view(tail, shared, stop)));
     }
     probe_until_ready(publisher, fleet, &shared, viewers).await?;

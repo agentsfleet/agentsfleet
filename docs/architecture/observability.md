@@ -517,7 +517,7 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 | Steer admitted (`afd_api_tenant` steer handler, `afd_admission`) | `fleet_steer_failed` on refusal | `agentsfleet_admissions_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | request span only |
 | Doorbell ring (`afd_dragonfly` doorbell) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
 | Held heartbeat (`afd_api_runner` heartbeat, `wake.rs`) | `runner_wake_refused` | `agentsfleet_runner_wake_answers_total{reason}` | request span only |
-| Lease issued (`afd_fleet` lease delivery) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | `agentsfleet_lease_polls_total` and candidates per poll; `delivery_stage{event_to_lease}` | request span only |
+| Lease issued (`afd_fleet` lease delivery) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_lease}` | request span only |
 | Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_lease_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
 | Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease`, same condition |
 | Report settled (`afd_fleet` lease report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{lease_to_report, report_to_complete, event_to_complete}` | `fleet.delivery` with segment attributes |
@@ -528,6 +528,37 @@ Gaps left by M238, each named in M233_001:
 - The steer and lease handlers carry no stage attributes on their request spans (§1).
 - The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026 (§2).
 - The edge reports nothing of its own (§3).
+
+## M243 runner stream instrumentation
+
+The M243 transport records connection attempts, eligible HTTP/2 fallbacks and bounded operation outcomes through `af_observability`.
+Its application startup wiring remains under development; the transport library and exported-family tests do not establish a serving runner session.
+The existing signal paths above remain authoritative until that integration lands.
+
+| Measurement | Diagnostic purpose |
+|---|---|
+| `runner_stream_connect_total` and `runner_stream_connect_seconds` | Every preferred and fallback attempt, including failures hidden by eventual success |
+| `runner_stream_operation_seconds` and `runner_stream_timeouts_total` | Memory, read, write, connection, handshake, opening and shutdown delays |
+| `runner_stream_fallback_total` | Finite reason that permitted an HTTP/2 attempt |
+| `runner_stream_native_rtt_seconds` and `runner_stream_native_packets_total` | Actual QUIC round-trip samples and sent, lost and retransmission-carrying packets |
+| `runner_stream_native_pto_total` and `runner_stream_native_retransmitted_bytes_total` | Probe timeouts and stream bytes sent again |
+| `fleet_ready_wake_queue_events_total` | Per-replica queue admission, deduplication and eviction pressure |
+
+Every family uses the `agentsfleet_` prefix; the [metric census](../metrics.census.tsv) fixes its units and label ceiling.
+Connection and operation observations record completion, cancellation, timeout and an abandoned future through automatic cleanup.
+Native samples are exported by an owned task outside QUIC I/O callbacks, including a final sample during explicit close.
+
+Operation spans carry a finite stage, outcome and elapsed time beneath the caller's session context.
+Runner and connection identifiers belong in traces rather than new metric labels.
+Bearer tokens, credential hashes, payloads and key material stay out of these observations.
+
+HTTP/2 has no QUIC measurements, so unsupported readings remain absent.
+Packet loss and probe timeouts describe the native network path; application answer deadlines still determine whether the daemon responds.
+Successful fallback must retain evidence of the failed HTTP/3 attempt.
+
+Daemon and runner startup must bind these measurements to their respective collectors.
+The daemon's process-wide producers alone cannot export a disconnected runner's failed connection attempts.
+The runner collector remains the owner of those client-side measurements.
 
 ## Library read stages are metrics, not spans
 

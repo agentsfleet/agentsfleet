@@ -42,6 +42,11 @@ pub(crate) fn lease_lost() -> Error {
     Error::new(ErrorKind::LeaseLost)
 }
 
+/// Refuses a new execution slice after the fleet's durable Kill decision.
+pub(crate) fn lease_cancelled() -> Error {
+    Error::new(ErrorKind::LeaseCancelled)
+}
+
 /// Refuses a renewal past the hard runtime ceiling.
 pub(crate) fn lease_max_runtime() -> Error {
     Error::new(ErrorKind::LeaseMaxRuntime)

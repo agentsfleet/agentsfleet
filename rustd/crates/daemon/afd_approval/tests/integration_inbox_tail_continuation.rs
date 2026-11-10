@@ -58,48 +58,16 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     }
     .expect("a pending gate is this caller's to answer, and an approval continues its run");
 
-    let opened = next_frame(&mut tail)
-        .await
-        .expect("the continued run opens on the fleet's tail");
-    assert_eq!(opened.get("kind"), Some(&json!("event_received")));
-    assert_eq!(opened.get("event_id"), Some(&json!(continuation)));
-    assert_eq!(opened.get("event_type"), Some(&json!("continuation")));
-    assert_eq!(
-        opened.get("actor"),
-        Some(&json!(format!(
-            "continuation:{}",
-            lane.gate_column(&approved, "event_id").await
-        )))
-    );
-    // The continuation's own insert moved the count, and its frame carries
-    // the moved figure — read after the row landed, on the same connection.
-    assert_eq!(
-        opened.get("events_processed"),
-        Some(&json!(before.events_processed + 1)),
-        "the continued run's frame counts the row it wrote"
-    );
+    assert_continued_frame(
+        &lane,
+        &approved,
+        &continuation,
+        before.events_processed,
+        &mut tail,
+    )
+    .await;
 
-    let answered = next_frame(&mut tail)
-        .await
-        .expect("then the answer reaches the tail");
-    assert_eq!(answered.get("kind"), Some(&json!("gate_resolved")));
-    assert_eq!(answered.get("status"), Some(&json!("approved")));
-    assert_eq!(
-        answered.get("pending_approvals"),
-        Some(&json!(1)),
-        "the sibling gate still waits, and the frame says so"
-    );
-    // Read AFTER the continuation, so the answer carries the continued run's
-    // row too — a read before it would be one short.
-    assert_eq!(
-        answered.get("events_processed"),
-        Some(&json!(before.events_processed + 1)),
-        "the answer's snapshot includes the continuation it started"
-    );
-    assert_eq!(
-        answered.get("budget_used_nanos"),
-        Some(&json!(before.budget_used_nanos.to_string()))
-    );
+    assert_approval_answer(&mut tail, before.events_processed, before.budget_used_nanos).await;
 }
 
 /// Approval and its continuation commit even when notification fails.
@@ -109,7 +77,7 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     let lane = Lane::isolated().await;
     let inbox = Inbox::new(
         lane.pool.clone(),
-        dead_queue(),
+        afd_bus::dragonfly::publisher(dead_queue()),
         Admissions::for_tests(lane.pool.clone(), dead_queue()),
     );
     let action = lane.seed_gate(Window::Open).await;
@@ -156,7 +124,83 @@ async fn a_converged_continuation_announces_nothing() {
     let lane = Lane::isolated().await;
 
     let approved = lane.seed_gate(Window::Open).await;
-    let predecessor = Uuid7::parse(&lane.gate_column(&approved, "event_id").await)
+    let admitted = preinsert_continuation(&lane, &approved).await;
+
+    // Read AFTER the pre-insert: that row moved the counter legitimately, and
+    // what this test asserts is that the RESOLVE moves it no further.
+    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
+        .await
+        .expect("the counters read before the resolve");
+
+    // Subscribe only now, so the only frames on this tail are the resolve's.
+    let hub = SubscriptionHub::start(dragonfly_config())
+        .await
+        .expect("the lane's Dragonfly accepts a subscriber");
+    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
+    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+
+    let outcome = lane
+        .inbox
+        .resolve(approved.as_str(), Decision::Approved, OPERATOR, NOTE, None)
+        .await
+        .expect("the resolve must not fault");
+    let continuation = match outcome {
+        Resolution::Resolved(resolved) => resolved.continuation_event_id,
+        Resolution::AlreadyResolved(_) | Resolution::NotFound => None,
+    }
+    .expect("an approved gate still reports the run it continues");
+    assert_eq!(
+        continuation, admitted,
+        "the resolve converged on the row the lease path opened, it did not mint a second"
+    );
+
+    let frame = next_frame(&mut tail)
+        .await
+        .expect("the answer reaches the fleet's tail");
+    assert_eq!(
+        frame.get("kind"),
+        Some(&json!("gate_resolved")),
+        "the first frame is the answer: no `event_received` was published for a row that already stood"
+    );
+    assert_eq!(frame.get("status"), Some(&json!("approved")));
+    assert_eq!(
+        frame.get("events_processed"),
+        Some(&json!(before.events_processed)),
+        "a converged continuation writes no row, so it moves no counter"
+    );
+}
+
+async fn assert_continued_frame(
+    lane: &Lane,
+    approved: &Uuid7,
+    continuation: &Uuid7,
+    before_events: i64,
+    tail: &mut afd_dragonfly::Subscription,
+) {
+    let opened = next_frame(tail)
+        .await
+        .expect("the continued run opens on the fleet's tail");
+    assert_eq!(opened.get("kind"), Some(&json!("event_received")));
+    assert_eq!(opened.get("event_id"), Some(&json!(continuation)));
+    assert_eq!(opened.get("event_type"), Some(&json!("continuation")));
+    assert_eq!(
+        opened.get("actor"),
+        Some(&json!(format!(
+            "continuation:{}",
+            lane.gate_column(approved, "event_id").await
+        )))
+    );
+    // The continuation's own insert moved the count, and its frame carries
+    // the moved figure — read after the row landed, on the same connection.
+    assert_eq!(
+        opened.get("events_processed"),
+        Some(&json!(before_events + 1)),
+        "the continued run's frame counts the row it wrote"
+    );
+}
+
+async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
+    let predecessor = Uuid7::parse(&lane.gate_column(approved, "event_id").await)
         .expect("the seeded gate held a run's event");
     let actor = format!("{CONTINUATION_ACTOR_PREFIX}{predecessor}");
 
@@ -190,47 +234,33 @@ async fn a_converged_continuation_announces_nothing() {
         .await
         .expect("the lease path's insert must not fault");
     assert!(landed, "the fixture must be the writer that opened the row");
+    admitted.stored.id
+}
 
-    // Read AFTER the pre-insert: that row moved the counter legitimately, and
-    // what this test asserts is that the RESOLVE moves it no further.
-    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
+async fn assert_approval_answer(
+    tail: &mut afd_dragonfly::Subscription,
+    before_events: i64,
+    before_budget: i64,
+) {
+    let answered = next_frame(tail)
         .await
-        .expect("the counters read before the resolve");
-
-    // Subscribe only now, so the only frames on this tail are the resolve's.
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
-
-    let outcome = lane
-        .inbox
-        .resolve(approved.as_str(), Decision::Approved, OPERATOR, NOTE, None)
-        .await
-        .expect("the resolve must not fault");
-    let continuation = match outcome {
-        Resolution::Resolved(resolved) => resolved.continuation_event_id,
-        Resolution::AlreadyResolved(_) | Resolution::NotFound => None,
-    }
-    .expect("an approved gate still reports the run it continues");
+        .expect("then the answer reaches the tail");
+    assert_eq!(answered.get("kind"), Some(&json!("gate_resolved")));
+    assert_eq!(answered.get("status"), Some(&json!("approved")));
     assert_eq!(
-        continuation, admitted.stored.id,
-        "the resolve converged on the row the lease path opened, it did not mint a second"
+        answered.get("pending_approvals"),
+        Some(&json!(1)),
+        "the sibling gate still waits, and the frame says so"
     );
-
-    let frame = next_frame(&mut tail)
-        .await
-        .expect("the answer reaches the fleet's tail");
+    // Read AFTER the continuation, so the answer carries the continued run's
+    // row too — a read before it would be one short.
     assert_eq!(
-        frame.get("kind"),
-        Some(&json!("gate_resolved")),
-        "the first frame is the answer: no `event_received` was published for a row that already stood"
+        answered.get("events_processed"),
+        Some(&json!(before_events + 1)),
+        "the answer's snapshot includes the continuation it started"
     );
-    assert_eq!(frame.get("status"), Some(&json!("approved")));
     assert_eq!(
-        frame.get("events_processed"),
-        Some(&json!(before.events_processed)),
-        "a converged continuation writes no row, so it moves no counter"
+        answered.get("budget_used_nanos"),
+        Some(&json!(before_budget.to_string()))
     );
 }

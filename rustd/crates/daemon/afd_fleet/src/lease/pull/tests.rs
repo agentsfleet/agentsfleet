@@ -11,18 +11,24 @@ use crate::lease::test_dead;
 /// the plane here has none that answers, so any read would be a fault.
 #[tokio::test]
 async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
+    let mut issued = 0;
     let answer = test_dead::plane()
-        .lease(&test_dead::id(9), &[], true, test_dead::AT)
+        .claim_fleet_with(
+            crate::lease::OfferRequest {
+                runner: &test_dead::id(9),
+                held: &[],
+                degraded: true,
+                now: test_dead::AT,
+            },
+            None,
+            |_lease, _metadata| {
+                issued += 1;
+            },
+        )
         .await
         .expect("a degraded runner is a decision, not a datastore read");
-
-    let body: serde_json::Value = serde_json::from_str(&answer).expect("the answer is JSON");
-    assert_eq!(body.get("lease"), Some(&serde_json::Value::Null));
-    assert!(
-        body.get("retry_after_ms")
-            .is_some_and(serde_json::Value::is_u64),
-        "the runner is told when to ask again: {body}"
-    );
+    assert!(answer.is_none());
+    assert_eq!(issued, 0, "a degraded runner cannot receive an offer");
 }
 
 /// A failed terminal settlement stays retryable instead of claiming success.

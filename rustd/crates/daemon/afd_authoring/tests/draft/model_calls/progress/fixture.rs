@@ -93,11 +93,14 @@ impl Live {
         let redis = afd_dragonfly::test_util::connect_live(&config)
             .await
             .expect("live bus");
+        let bus = afd_bus::dragonfly::publisher(redis.clone());
         let publisher = FleetStreams::new(redis);
         let hub = SubscriptionHub::start(config)
             .await
             .expect("live subscriptions");
-        let channel = afd_authoring::draft_channel(&attempt.draft.id);
+        let channel = afd_bus::test_util::physical_channel(&afd_bus::Subject::DraftEvents(
+            attempt.draft.id.clone(),
+        ));
         let reader = hub.subscribe(&channel);
         let (sender, receiver) = mpsc::channel(8);
         let provider = Arc::new(Provider {
@@ -107,7 +110,7 @@ impl Live {
         });
         let calls = super::super::fixture::calls(f, attempt, Arc::clone(&provider))
             .await
-            .with_progress(publisher.clone());
+            .with_progress(bus);
         let mut live = Self {
             provider,
             sender,
@@ -132,7 +135,7 @@ impl Live {
             if let Ok(Ok(Received::Message(message))) =
                 tokio::time::timeout(Duration::from_millis(100), self.reader.recv()).await
             {
-                assert_eq!(message.payload, HELLO);
+                assert_eq!(message.payload.as_str(), HELLO);
                 return;
             }
         }
@@ -177,10 +180,10 @@ impl Live {
         tokio::time::timeout(WAIT, async {
             loop {
                 let message = message(self.reader.recv().await.expect("bus stays live"));
-                if message.payload == HELLO {
+                if message.payload.as_str() == HELLO {
                     continue;
                 }
-                return message.payload.clone();
+                return message.payload.as_ref().clone();
             }
         })
         .await
@@ -198,7 +201,8 @@ impl Live {
             .expect("live bus");
         let message = message(received);
         assert_eq!(
-            message.payload, BARRIER,
+            message.payload.as_str(),
+            BARRIER,
             "no unauthorized text before the bus barrier"
         );
     }

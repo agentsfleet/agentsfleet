@@ -20,6 +20,7 @@ pub(super) struct Server {
     pub(super) plane: Option<ControlPlane>,
     pub(super) archive: Arc<Mutex<Archive>>,
     worker: tokio::task::JoinHandle<()>,
+    _native: crate::test_support::Calls,
 }
 impl Server {
     pub(super) async fn start(refusal: Refusal) -> Self {
@@ -37,10 +38,25 @@ impl Server {
         let env = af_core::env::MapEnv::from_pairs([
             (ENV_API_URL, base.as_str()),
             (ENV_RUNNER_TOKEN, "agt_r_recovery_fixture"),
+            (crate::config::ENV_STREAM_URL, "https://localhost:4443"),
         ]);
         let api = HttpRunnerApi::new(&Config::from_env(&env).unwrap()).unwrap();
+        let native_archive = Arc::clone(&archive);
+        let (plane, native) = crate::test_support::plane_with_http(Box::new(api), move |call| {
+            let body = call
+                .body
+                .as_ref()
+                .map_or(Value::Null, |bytes| serde_json::from_slice(bytes).unwrap());
+            native_archive
+                .lock()
+                .unwrap()
+                .calls
+                .push((call.path.to_string(), body));
+            crate::test_support::json(&healthy().to(Some(call.verb)))
+        });
         Self {
-            plane: Some(ControlPlane::new(Box::new(api))),
+            plane: Some(plane),
+            _native: native,
             archive,
             worker,
         }

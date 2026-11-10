@@ -151,7 +151,7 @@ impl Fire {
         let schedule_id = schedule.as_str();
         let workspace_id = target.workspace.as_str();
         if !replayed {
-            afd_events::activity::announce(&self.admissions.streams(), fleet.as_str()).await;
+            afd_events::activity::announce(&self.admissions.streams(), fleet).await;
         }
         tracing::info!(
             fleet_id = %fleet,

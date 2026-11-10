@@ -38,101 +38,53 @@ fn fold_products() -> [(&'static str, usize); 2] {
 fn label_products() -> Vec<(&'static str, usize)> {
     let mut products = pool_schedule_products();
     products.extend(fold_products());
-    products.extend([
-        (
-            task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
-            task_labels::DecisionRecoveryOutcome::ALL.len(),
-        ),
-        (
-            task::TASK_OPERATIONS_TOTAL.wire_name(),
-            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
-        ),
-        (
-            task::TASK_OPERATION_SECONDS.wire_name(),
-            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
-        ),
-        (
-            billing::BILLING_FUNDS_CHECK_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len() * billing_labels::FundsOutcome::ALL.len(),
-        ),
-        (
-            billing::BILLING_SETTLE_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len() * billing_labels::SettleOutcome::ALL.len(),
-        ),
-        (
-            billing::BILLING_SWEEPER_RESETTLED_TOTAL.wire_name(),
-            billing_labels::WorkType::ALL.len(),
-        ),
-        (
-            billing::BILLING_UNSETTLED_NANOS.wire_name(),
-            billing_labels::WorkType::ALL.len(),
-        ),
-        (
-            http::OTLP_ENTRIES_DISCARDED_TOTAL.wire_name(),
-            http_labels::Signal::ALL.len() * http_labels::DiscardReason::ALL.len(),
-        ),
-        (
-            http::OTEL_ATTRIBUTE_OMITTED_TOTAL.wire_name(),
-            http_labels::OmittedAttribute::ALL.len() * http_labels::OmissionReason::ALL.len(),
-        ),
-        (
-            fleet::SIGNUP_FAILED_TOTAL.wire_name(),
-            fleet_labels::SignupFailure::ALL.len(),
-        ),
-        (
-            fleet::ADMISSIONS_TOTAL.wire_name(),
-            fleet_labels::AdmissionOutcome::ALL.len(),
-        ),
-        (
-            fleet::FLEETS.wire_name(),
-            fleet_labels::FleetStatusLabel::ALL.len(),
-        ),
-        (
-            fleet::FLEET_RUNS_STARTED_TOTAL.wire_name(),
-            fleet_labels::RunStart::ALL.len(),
-        ),
-        (
-            fleet::FLEET_DELIVERY_STAGE_SECONDS.wire_name(),
-            fleet_labels::DeliveryStage::ALL.len(),
-        ),
-        (
-            fleet::RUNNER_REPORT_ANSWERS_TOTAL.wire_name(),
-            fleet_labels::ReportAnswer::ALL.len(),
-        ),
-        (
-            fleet::RUNNER_WAKE_ANSWERS_TOTAL.wire_name(),
-            fleet_labels::WakeAnswer::ALL.len(),
-        ),
-        (
-            fleet::LEASE_HISTORY_CUTS_TOTAL.wire_name(),
-            fleet_labels::HistoryCut::ALL.len(),
-        ),
-        (
-            fleet::LEASE_HELD_CLAIMS_TOTAL.wire_name(),
-            fleet_labels::HeldClaim::ALL.len(),
-        ),
-        (
-            library::LIBRARY_STAGE_DURATION_SECONDS_TOTAL.wire_name(),
-            library_labels::Surface::ALL.len() * library_labels::Stage::ALL.len(),
-        ),
-        (
-            library::LIBRARY_STAGE_OBSERVATIONS_TOTAL.wire_name(),
-            library_labels::Surface::ALL.len() * library_labels::Stage::ALL.len(),
-        ),
-        (
-            library::LIBRARY_READ_OUTCOME_TOTAL.wire_name(),
-            library_labels::Surface::ALL.len() * library_labels::ReadOutcome::ALL.len(),
-        ),
-        (
-            library::LIBRARY_PAYLOAD_BYTES_TOTAL.wire_name(),
-            library_labels::Surface::ALL.len(),
-        ),
-        (
-            library::LIBRARY_RESULTS_TOTAL.wire_name(),
-            library_labels::Surface::ALL.len(),
-        ),
-    ]);
+    products.extend(stream_products());
+    products.extend(task_products());
+    products.extend(billing_products());
+    products.extend(http_products());
+    products.extend(fleet_products());
+    products.extend(library_products());
     products
+}
+
+fn stream_products() -> [(&'static str, usize); 9] {
+    let attempts =
+        fleet_labels::StreamTransport::ALL.len() * fleet_labels::StreamOutcome::ALL.len();
+    [
+        (fleet::RUNNER_STREAM_CONNECT_TOTAL.wire_name(), attempts),
+        (
+            fleet::RUNNER_STREAM_TLS_HANDSHAKES_TOTAL.wire_name(),
+            fleet_labels::StreamTransport::ALL.len()
+                * fleet_labels::StreamPeer::ALL.len()
+                * fleet_labels::StreamKeyExchange::ALL.len()
+                * fleet_labels::StreamTlsOutcome::ALL.len(),
+        ),
+        (fleet::RUNNER_STREAM_CONNECT_SECONDS.wire_name(), attempts),
+        (
+            fleet::RUNNER_STREAM_OPERATION_SECONDS.wire_name(),
+            fleet_labels::StreamStage::ALL.len() * fleet_labels::StreamOutcome::ALL.len(),
+        ),
+        (
+            fleet::RUNNER_STREAM_FALLBACK_TOTAL.wire_name(),
+            fleet_labels::StreamFallback::ALL.len(),
+        ),
+        (
+            fleet::RUNNER_STREAM_TIMEOUTS_TOTAL.wire_name(),
+            fleet_labels::StreamStage::ALL.len(),
+        ),
+        (
+            fleet::FLEET_READY_WAKE_QUEUE_EVENTS_TOTAL.wire_name(),
+            fleet_labels::WakeQueueOutcome::ALL.len(),
+        ),
+        (
+            fleet::RUNNER_STREAM_NATIVE_RTT_SECONDS.wire_name(),
+            fleet_labels::StreamTransport::ALL.len(),
+        ),
+        (
+            fleet::RUNNER_STREAM_NATIVE_PACKETS_TOTAL.wire_name(),
+            fleet_labels::StreamPacket::ALL.len(),
+        ),
+    ]
 }
 
 fn pool_schedule_products() -> Vec<(&'static str, usize)> {
@@ -211,6 +163,12 @@ fn every_closed_set() -> Vec<(&'static str, Vec<&'static str>)> {
         }};
     }
     vec![
+        set!(crate::metrics::label::fleet::StreamPacket),
+        set!(crate::metrics::label::fleet::StreamTransport),
+        set!(crate::metrics::label::fleet::StreamOutcome),
+        set!(crate::metrics::label::fleet::StreamStage),
+        set!(crate::metrics::label::fleet::StreamFallback),
+        set!(crate::metrics::label::fleet::WakeQueueOutcome),
         set!(crate::metrics::label::task::TaskOperation),
         set!(crate::metrics::label::task::TaskOutcome),
         set!(crate::metrics::label::database::PoolRole),
@@ -257,4 +215,117 @@ fn no_closed_set_spells_two_members_alike() {
             spellings.len()
         );
     }
+}
+
+fn task_products() -> [(&'static str, usize); 3] {
+    [
+        (
+            task::DECISION_RECOVERY_ATTEMPTS_TOTAL.wire_name(),
+            task_labels::DecisionRecoveryOutcome::ALL.len(),
+        ),
+        (
+            task::TASK_OPERATIONS_TOTAL.wire_name(),
+            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
+        ),
+        (
+            task::TASK_OPERATION_SECONDS.wire_name(),
+            task_labels::TaskOperation::ALL.len() * task_labels::TaskOutcome::ALL.len(),
+        ),
+    ]
+}
+
+fn billing_products() -> [(&'static str, usize); 4] {
+    [
+        (
+            billing::BILLING_FUNDS_CHECK_TOTAL.wire_name(),
+            billing_labels::WorkType::ALL.len() * billing_labels::FundsOutcome::ALL.len(),
+        ),
+        (
+            billing::BILLING_SETTLE_TOTAL.wire_name(),
+            billing_labels::WorkType::ALL.len() * billing_labels::SettleOutcome::ALL.len(),
+        ),
+        (
+            billing::BILLING_SWEEPER_RESETTLED_TOTAL.wire_name(),
+            billing_labels::WorkType::ALL.len(),
+        ),
+        (
+            billing::BILLING_UNSETTLED_NANOS.wire_name(),
+            billing_labels::WorkType::ALL.len(),
+        ),
+    ]
+}
+
+fn http_products() -> [(&'static str, usize); 2] {
+    [
+        (
+            http::OTLP_ENTRIES_DISCARDED_TOTAL.wire_name(),
+            http_labels::Signal::ALL.len() * http_labels::DiscardReason::ALL.len(),
+        ),
+        (
+            http::OTEL_ATTRIBUTE_OMITTED_TOTAL.wire_name(),
+            http_labels::OmittedAttribute::ALL.len() * http_labels::OmissionReason::ALL.len(),
+        ),
+    ]
+}
+
+fn fleet_products() -> [(&'static str, usize); 8] {
+    [
+        (
+            fleet::SIGNUP_FAILED_TOTAL.wire_name(),
+            fleet_labels::SignupFailure::ALL.len(),
+        ),
+        (
+            fleet::ADMISSIONS_TOTAL.wire_name(),
+            fleet_labels::AdmissionOutcome::ALL.len(),
+        ),
+        (
+            fleet::FLEETS.wire_name(),
+            fleet_labels::FleetStatusLabel::ALL.len(),
+        ),
+        (
+            fleet::FLEET_RUNS_STARTED_TOTAL.wire_name(),
+            fleet_labels::RunStart::ALL.len(),
+        ),
+        (
+            fleet::FLEET_DELIVERY_STAGE_SECONDS.wire_name(),
+            fleet_labels::DeliveryStage::ALL.len(),
+        ),
+        (
+            fleet::RUNNER_REPORT_ANSWERS_TOTAL.wire_name(),
+            fleet_labels::ReportAnswer::ALL.len(),
+        ),
+        (
+            fleet::LEASE_HISTORY_CUTS_TOTAL.wire_name(),
+            fleet_labels::HistoryCut::ALL.len(),
+        ),
+        (
+            fleet::LEASE_HELD_CLAIMS_TOTAL.wire_name(),
+            fleet_labels::HeldClaim::ALL.len(),
+        ),
+    ]
+}
+
+fn library_products() -> [(&'static str, usize); 5] {
+    [
+        (
+            library::LIBRARY_STAGE_DURATION_SECONDS_TOTAL.wire_name(),
+            library_labels::Surface::ALL.len() * library_labels::Stage::ALL.len(),
+        ),
+        (
+            library::LIBRARY_STAGE_OBSERVATIONS_TOTAL.wire_name(),
+            library_labels::Surface::ALL.len() * library_labels::Stage::ALL.len(),
+        ),
+        (
+            library::LIBRARY_READ_OUTCOME_TOTAL.wire_name(),
+            library_labels::Surface::ALL.len() * library_labels::ReadOutcome::ALL.len(),
+        ),
+        (
+            library::LIBRARY_PAYLOAD_BYTES_TOTAL.wire_name(),
+            library_labels::Surface::ALL.len(),
+        ),
+        (
+            library::LIBRARY_RESULTS_TOTAL.wire_name(),
+            library_labels::Surface::ALL.len(),
+        ),
+    ]
 }

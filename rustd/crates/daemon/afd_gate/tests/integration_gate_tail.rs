@@ -51,7 +51,8 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     fixture.seed().await;
     let gates = Gates::new(
         fixture.database.clone(),
-        connect_redis().await,
+        (connect_redis().await).clone(),
+        afd_bus::dragonfly::publisher(connect_redis().await),
         Entropy::new(),
     );
     let hub = SubscriptionHub::start(dragonfly_config())
@@ -71,6 +72,24 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
         Verdict::Await(Waiting::Parked)
     );
 
+    let frame = parked_frame(&mut tail).await;
+    assert_eq!(frame.get("kind"), Some(&json!("gate_opened")));
+    assert_eq!(frame.get("event_id"), Some(&json!(event)));
+    assert!(
+        frame
+            .get("gate_id")
+            .is_some_and(serde_json::Value::is_string)
+    );
+    assert_eq!(
+        frame.get("pending_approvals"),
+        Some(&json!(1)),
+        "the gate just raised is the one waiting"
+    );
+    assert_park_counters(&fixture, &frame).await;
+    fixture.cleanup().await;
+}
+
+async fn parked_frame(tail: &mut afd_dragonfly::Subscription) -> serde_json::Value {
     let received = tokio::time::timeout(FRAME_DEADLINE, tail.recv())
         .await
         .expect("the park reaches the fleet's tail")
@@ -84,18 +103,10 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     .expect("the tail carried the park's frame, not a lag or gap notice");
     let frame: serde_json::Value =
         serde_json::from_str(&message.payload).expect("the frame is JSON");
-    assert_eq!(frame.get("kind"), Some(&json!("gate_opened")));
-    assert_eq!(frame.get("event_id"), Some(&json!(event)));
-    assert!(
-        frame
-            .get("gate_id")
-            .is_some_and(serde_json::Value::is_string)
-    );
-    assert_eq!(
-        frame.get("pending_approvals"),
-        Some(&json!(1)),
-        "the gate just raised is the one waiting"
-    );
+    frame
+}
+
+async fn assert_park_counters(fixture: &Fixture, frame: &serde_json::Value) {
     // The park's frame carries where the fleet stands, read on the insert's
     // own connection: the figures on the wire are the database's.
     let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
@@ -111,5 +122,4 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
         Some(&json!(counters.budget_used_nanos.to_string())),
         "gate_opened carries the fleet's spend"
     );
-    fixture.cleanup().await;
 }

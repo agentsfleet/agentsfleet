@@ -765,6 +765,28 @@ Platform operator — dashboard "Add runner" (session JWT, scopes ∋ runner:enr
 
 `runner.runners` is a dedicated schema, because runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'`; cordon and drain use the same non-active runner gate.
 
+### Native runner stream authentication
+
+The native stream draft shares the existing HTTP authentication middleware.
+`BearerAuthentication` serves ordinary guarded routes and the initial runner opening through `afd_auth`'s credential registry.
+The common guard still checks the route's required scopes.
+
+`RunnerStreamAuthentication` uses that registry once for the control stream.
+Later streams reuse the server-created connection proof and must match its current owner.
+Headers alone cannot create that proof or attach another physical connection.
+
+Ownership uses `prepared`, `confirm` and `welcome` before offers begin.
+The runner records both possible owners before confirmation, allowing recovery when a welcome is lost.
+A database comparison prevents a replaced process from acquiring ownership again.
+
+Heartbeat policy reads check status, the opening credential digest and the durable connection owner.
+Grant and renewal transactions check the same authority under the host row lock.
+Broker commands trigger durable checks; a broker message never grants authority.
+
+Error codes remain defined by `af_core::error_code`, its registry and the matching problem entries.
+Stream refusals carry a stable code, a safe human explanation and a retry decision.
+Original causes remain available to server diagnostics without putting payloads or bearer tokens in logs.
+
 ### Validation: a separate middleware, on purpose
 
 Every later call carries `Bearer agt_r`. Every `/v1/runners/me/*` route is `Guard::RunnerBearer` (`rustd/crates/daemon/afd_http/src/route/runner.rs`), which authenticates on `Plane::Runner` only:

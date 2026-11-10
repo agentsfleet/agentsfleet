@@ -9,6 +9,7 @@
 )]
 
 use agentsfleetd::preflight::SESSION_CODE_PEPPER_KNOB;
+pub(crate) mod runner_stream;
 
 /// The device-flow pepper, well-formed and never used as a key here.
 ///

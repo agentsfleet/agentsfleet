@@ -32,7 +32,7 @@ pub struct ModelCalls {
     pub(in crate::model) drafts: Drafts,
     pub(in crate::model) providers: Providers,
     transport: Arc<dyn Transport>,
-    streams: Option<afd_dragonfly::FleetStreams>,
+    streams: Option<afd_bus::Handle>,
     pub(in crate::model) decisions: Option<super::edit_intent::Configuration>,
 }
 
@@ -92,6 +92,13 @@ pub(super) enum Decision {
 }
 
 impl ModelCalls {
+    /// Fence native calls with the credential and owner that opened this connection.
+    #[must_use]
+    pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
+        self.drafts = self.drafts.for_connection(authority);
+        self
+    }
+
     /// Shares the draft store and the daemon's key owner; runners receive neither.
     #[must_use]
     pub fn new(drafts: Drafts, providers: Providers, transport: Arc<dyn Transport>) -> Self {
@@ -113,7 +120,7 @@ impl ModelCalls {
 
     /// Enables creator-private previews through the existing shared pub/sub bus.
     #[must_use]
-    pub fn with_progress(mut self, streams: afd_dragonfly::FleetStreams) -> Self {
+    pub fn with_progress(mut self, streams: afd_bus::Handle) -> Self {
         self.streams = Some(streams);
         self
     }
@@ -158,7 +165,10 @@ impl ModelCalls {
         let held = self.funding(runner, lease, request, counters).await;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let guarded = guard::bound(&mut tx, runner, lease, counters).await?;
+        let guarded = self
+            .drafts
+            .invocation(&mut tx, runner, lease, counters)
+            .await?;
         capability::check(&guarded.attempt, request)?;
         if guarded.attempt.usage_unknown
             || guarded.attempt.status == crate::lease::Status::AwaitingAccounting

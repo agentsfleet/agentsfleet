@@ -70,10 +70,7 @@ async fn test_issue_reads_the_tenant_once() {
         drive(&fixtures, &seeded, claimed).await
     };
 
-    assert!(
-        !answer.contains(NO_LEASE),
-        "the lease was refused: {answer}"
-    );
+    assert!(answer.is_some(), "the lease was refused: {answer:?}");
     assert_eq!(
         reads.load(Ordering::Relaxed),
         1,

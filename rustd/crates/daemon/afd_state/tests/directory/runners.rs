@@ -28,7 +28,7 @@ async fn test_a_runner_token_resolves_to_a_machine() {
     let fixtures = Fixtures::create().await;
     let id = identifier(7);
     let digest = digest_of("agt_r_fixture_live");
-    fixtures.runner(id.as_str(), &digest, ACTIVE, true).await;
+    fixtures.runner(&id, &digest, ACTIVE, true).await;
 
     let found = Credentials::new(fixtures.database().clone())
         .resolve(CredentialKind::RunnerToken, &digest)
@@ -70,7 +70,7 @@ async fn test_only_an_active_runner_is_live() {
     ] {
         let digest = digest_of(&format!("agt_r_fixture_{state}"));
         fixtures
-            .runner(identifier(seed).as_str(), &digest, state, false)
+            .runner(&identifier(seed), &digest, state, false)
             .await;
 
         let found = Credentials::new(fixtures.database().clone())
@@ -93,32 +93,39 @@ async fn test_only_an_active_runner_is_live() {
     fixtures.cleanup().await;
 }
 
-/// An identifier Postgres stored and `Uuid7` refuses is `Unavailable`.
-///
-/// `ck_runners_id_uuidv7` checks the version nibble and nothing else, so a
-/// UUID with an RFC-4122-invalid variant is storable. Reporting that row as
-/// `Ok(None)` would tell a runner its token is unknown — a rejection it counts
-/// — when the truth is that its row is corrupt and an operator must look.
-///
-/// The corrupt row gets a database of its own: on the shared lane it would
-/// outlive the test and break every suite that reads all runners.
+/// A malformed runner identifier is refused before it can corrupt the directory.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_a_malformed_identifier_is_unavailable() {
-    let fixtures = Fixtures::create_disposable().await;
+async fn test_a_malformed_runner_identifier_is_rejected_by_the_schema() {
+    let fixtures = Fixtures::create().await;
     let digest = digest_of("agt_r_fixture_corrupt_id");
-    fixtures
-        .runner(&identifier_with_bad_variant(40), &digest, ACTIVE, false)
-        .await;
-
+    let id = identifier(40);
+    fixtures.runner(&id, &digest, ACTIVE, false).await;
+    let malformed = sqlx::types::Uuid::parse_str(&identifier_with_bad_variant(40))
+        .expect("the fault has valid UUID syntax but a forbidden variant");
+    let mut connection = fixtures
+        .database()
+        .acquire()
+        .await
+        .expect("fixture connection");
+    let error = sqlx::query("UPDATE runner.runners SET id = $2 WHERE id = $1")
+        .bind(&id)
+        .bind(malformed)
+        .execute(&mut *connection)
+        .await
+        .expect_err("the runner schema must refuse a non-RFC UUID variant");
+    assert_eq!(
+        error
+            .as_database_error()
+            .and_then(|cause| cause.constraint()),
+        Some("ck_runners_id_uuidv7")
+    );
+    drop(connection);
     let answer = Credentials::new(fixtures.database().clone())
         .resolve(CredentialKind::RunnerToken, &digest)
         .await;
 
-    assert!(
-        answer.is_err(),
-        "a row that cannot be read is not a row that is not there, got {answer:?}"
-    );
+    assert!(matches!(answer, Ok(Some(CredentialRecord::Machine { runner, .. })) if runner == id));
 
     fixtures.cleanup().await;
 }

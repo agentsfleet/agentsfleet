@@ -12,6 +12,7 @@ use afr_agent::{ScheduleCall, Unanswered};
 use crate::client::ControlPlane;
 
 mod decision;
+pub(crate) use decision::PendingDecisions;
 
 /// The verbs of one held lease, over the control plane, each call carrying
 /// the lease's fence: [`afr_agent::LeaseVerbs`] as the supervisor serves it.
@@ -20,9 +21,9 @@ pub(crate) struct FencedVerbs<'a> {
     plane: &'a ControlPlane,
     lease_id: &'a Uuid7,
     fencing_token: u64,
-    spool: &'a crate::report_spool::ReportSpool,
-    held: &'a tokio::sync::Notify,
+    halt: &'a crate::halt::Halt,
     stop: &'a tokio_util::sync::CancellationToken,
+    decisions: &'a PendingDecisions,
 }
 
 impl<'a> FencedVerbs<'a> {
@@ -31,17 +32,17 @@ impl<'a> FencedVerbs<'a> {
         plane: &'a ControlPlane,
         lease_id: &'a Uuid7,
         fencing_token: u64,
-        spool: &'a crate::report_spool::ReportSpool,
-        held: &'a tokio::sync::Notify,
+        halt: &'a crate::halt::Halt,
         stop: &'a tokio_util::sync::CancellationToken,
+        decisions: &'a PendingDecisions,
     ) -> Self {
         Self {
             plane,
             lease_id,
             fencing_token,
-            spool,
-            held,
+            halt,
             stop,
+            decisions,
         }
     }
 }

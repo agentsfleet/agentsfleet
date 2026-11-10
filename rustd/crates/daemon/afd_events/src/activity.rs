@@ -2,7 +2,7 @@
 
 use af_core::{event::status::RECORDED, id::Uuid7};
 use afd_api_wire::activity::FleetActivity;
-use afd_dragonfly::FleetStreams;
+use afd_bus::Handle;
 use futures_util::StreamExt as _;
 use serde::Serialize;
 use sqlx::{PgConnection, Postgres, Transaction};
@@ -36,7 +36,7 @@ impl Announcement {
 pub async fn commit(
     transaction: Transaction<'static, Postgres>,
     mut announcement: Announcement,
-    streams: Option<&FleetStreams>,
+    streams: Option<&Handle>,
 ) -> Result<(), sqlx::Error> {
     transaction.commit().await?;
     announcement.fleets.sort_unstable();
@@ -44,7 +44,7 @@ pub async fn commit(
     if let Some(streams) = streams {
         futures_util::stream::iter(announcement.fleets)
             .for_each_concurrent(MAX_CONCURRENT_ACTIVITY_NOTICES, async move |fleet| {
-                announce(streams, fleet.as_str()).await;
+                announce(streams, &fleet).await;
             })
             .await;
     }
@@ -109,10 +109,12 @@ pub async fn record_access_on(
 }
 
 /// Notify open tails after durable history commits; failure preserves reload.
-pub async fn announce(streams: &FleetStreams, fleet: &str) {
-    streams
-        .publish_frame(fleet, &Notice::CatchingUp { dropped: 0 })
+pub async fn announce(streams: &Handle, fleet: &Uuid7) {
+    let subject = afd_bus::Subject::FleetTail(fleet.clone());
+    let publication = streams
+        .publish_frame(&subject, &Notice::CatchingUp { dropped: 0 })
         .await;
+    afd_bus::observe_notification(&subject, publication);
 }
 
 #[derive(Serialize)]

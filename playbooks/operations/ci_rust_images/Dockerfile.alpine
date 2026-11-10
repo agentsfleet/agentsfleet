@@ -34,15 +34,18 @@ RUN test -n "$RUST_VERSION" \
 # What the workspace's native dependencies need in order to link:
 #   build-base     — cc, make, and the musl headers the `cc` crate shells out to
 #                    (it is also where rustup's own gcc and musl-dev come from)
-#   perl, cmake    — the crypto backend's own build scripts
+#   perl, cmake    — the crypto backends' own build scripts
 #   go             — the aws-lc assembly generator
 #   linux-headers  — kernel headers the libc-adjacent crates compile against
+#   clang-libclang — boring-sys, which tokio-quiche needs for HTTP/3, generates
+#                    its bindings with bindgen, and bindgen loads libclang
 RUN apk add --no-cache \
     build-base \
     perl \
     cmake \
     go \
-    linux-headers
+    linux-headers \
+    clang-libclang
 
 # What the LANES need beyond linking, so one image serves both consumers:
 #   git          — cargo and the make targets both shell out to it
@@ -117,6 +120,23 @@ RUN set -eux; \
     chmod -R a+rX,a+w "$CARGO_HOME" "$RUSTUP_HOME"; \
     cargo fmt --version; \
     cargo clippy --version
+
+# bindgen loads libclang at run time, and rustup's musl toolchain links build
+# scripts statically, which cannot load a shared library ("Dynamic loading not
+# supported"). Cargo's own host-only flags are still unstable. So every build
+# here names the image's own target through `build.target`, and the wrapper
+# links the host artifacts, the rustc calls without `--target`, against the
+# dynamic C runtime. The shipped binary is a target artifact and stays static;
+# the build lane's readelf assertions still prove it. Outputs therefore land in
+# `target/<triple>/<profile>/`.
+COPY rustc-host-dynamic /usr/local/bin/rustc-host-dynamic
+RUN set -eux; \
+    chmod a+rx /usr/local/bin/rustc-host-dynamic; \
+    host="$(rustc -vV | sed -n 's/^host: //p')"; \
+    printf '[build]\ntarget = "%s"\nrustc-wrapper = "/usr/local/bin/rustc-host-dynamic"\n' \
+      "$host" > "$CARGO_HOME/config.toml"; \
+    chmod a+r "$CARGO_HOME/config.toml"; \
+    cat "$CARGO_HOME/config.toml"
 
 # No CARGO_TARGET_DIR: an empty value is rejected by cargo outright, and left
 # unset it uses the workspace's own `target/`, which the lanes and the cache

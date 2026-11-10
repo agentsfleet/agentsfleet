@@ -1,4 +1,4 @@
-//! Dimension 7.4, at the boundary that actually matters: the process itself.
+//! Refused boot settings produce the exit status and output an operator reads.
 //!
 //! Everything else in this crate's suites asserts on a returned value. An exit
 //! CODE is not a returned value — it is the only thing an init system reads,
@@ -12,6 +12,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use agentsfleetd::preflight::runner_listener::{LISTEN_ADDR, TLS_CERT_FILE, TLS_KEY_FILE};
 use std::process::{Command, Output};
 
 /// The binary under test, built by Cargo for this suite.
@@ -46,6 +47,7 @@ fn run(knobs: &[(&str, &str)]) -> Output {
         .into_iter()
         .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
         .chain(crate::support::IDENTITY_KNOBS)
+        .chain([LISTEN_ADDR, TLS_CERT_FILE, TLS_KEY_FILE])
     {
         command.env_remove(knob);
     }
@@ -55,7 +57,7 @@ fn run(knobs: &[(&str, &str)]) -> Output {
     command.output().expect("the daemon binary runs")
 }
 
-/// Dimension 7.4 — an absent or malformed key exits non-zero, naming the knob.
+/// An absent or malformed key exits non-zero and names the knob.
 #[test]
 fn test_boot_refuses_bad_kek() {
     for bad in [None, Some(""), Some("abcd"), Some("zz")] {
@@ -88,28 +90,11 @@ fn test_boot_refuses_bad_kek() {
             stderr.contains("We flunked!"),
             "the fatal renderer is the one that speaks on the way out, got: {stderr}"
         );
-        // Narrowed, not dropped. The nameplate now prints before anything is
-        // resolved, so a refusing process DOES write its own identity to
-        // stdout — but the thing this guarded is still guarded: no boot
-        // RESULT reaches stdout. The refusal, the address and the resolved
-        // roles all remain stderr's alone, and stdout carries the nameplate
-        // and nothing besides.
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        assert_eq!(
-            stdout.trim(),
-            format!("agentsfleetd {}", env!("CARGO_PKG_VERSION")),
-            "a refusing process announces its identity and no more"
-        );
-        for leaked in ["We flunked!", KEK_KNOB, "listening", "postgres:", "redis:"] {
-            assert!(
-                !stdout.contains(leaked),
-                "a boot result must not reach stdout: {leaked} in {stdout}"
-            );
-        }
+        assert_refused_stdout(&String::from_utf8_lossy(&output.stdout));
     }
 }
 
-/// Dimension 8.1, at the process boundary — every unset knob in one run.
+/// One process reports every required setting missing from its environment.
 #[test]
 fn test_preflight_lists_missing() {
     let output = run(&[]);
@@ -120,6 +105,7 @@ fn test_preflight_lists_missing() {
         .into_iter()
         .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
         .chain(crate::support::IDENTITY.map(|(knob, _value)| knob))
+        .chain([TLS_CERT_FILE, TLS_KEY_FILE])
     {
         assert!(
             stderr.contains(knob),
@@ -142,6 +128,7 @@ fn test_boot_announces_itself_when_the_environment_is_complete() {
     ];
     knobs.extend_from_slice(&crate::support::SESSION_PEPPER);
     knobs.extend_from_slice(&crate::support::IDENTITY);
+    knobs.extend(crate::support::runner_stream::environment());
     let output = run(&knobs);
     let stdout = String::from_utf8_lossy(&output.stdout);
 
@@ -199,5 +186,19 @@ fn test_help_carries_the_nameplate_above_the_usage() {
         // The help page announces the flags that control it.
         assert!(stdout.contains("--no-banner"), "{flag}: {stdout}");
         assert!(stdout.contains("--quiet"), "{flag}: {stdout}");
+    }
+}
+
+fn assert_refused_stdout(stdout: &str) {
+    assert_eq!(
+        stdout.trim(),
+        format!("agentsfleetd {}", env!("CARGO_PKG_VERSION")),
+        "a refusing process announces its identity and no more"
+    );
+    for leaked in ["We flunked!", KEK_KNOB, "listening", "postgres:", "redis:"] {
+        assert!(
+            !stdout.contains(leaked),
+            "a boot result must not reach stdout: {leaked} in {stdout}"
+        );
     }
 }

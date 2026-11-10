@@ -8,6 +8,34 @@ executable: false
 
 # Datastore scaling requirements and target design
 
+## Approved next destination: core NATS and Postgres
+
+Indy approved replacing Dragonfly with core NATS on Nov 06, 2026.
+He said, “Yes i agree on NATS.”
+
+The [M244 decision and acceptance criteria](../v2/pending/M244_001_P1_DOCS_INFRA_OBS_CORE_NATS_REPLACES_DRAGONFLY.md#discovery-consult-log) record that approval and the required measurements.
+The [scheduler decisions](push_scheduler.md#decisions) define the resulting responsibilities.
+
+Postgres will own every durable fact and atomic state transition, including delivery obligations, login sessions and single-use authorization state.
+Core NATS will carry live activity, wake notifications and runner commands, without JetStream or a key-value store.
+Each signal remains disposable because its durable authority or recovery path lives in Postgres.
+
+Dragonfly's existing sharded Pub/Sub already provides disposable, at-most-once notifications.
+Moving durable state into Postgres also works with Dragonfly retained as the broker.
+Disposable messaging alone does not justify choosing NATS; the decision depends on measured cluster operation, reconnect behavior and subscription recovery.
+
+This separates broker recovery from lease authority and removes Dragonfly's durable state responsibilities.
+The current self-hosted deployment concentrates four Dragonfly processes on one machine and provides no managed multi-shard failover.
+M244 must demonstrate reconnect, explicit gap notifications and recovery rather than assume the replacement improves availability.
+
+The decision does not claim NATS is already faster or more reliable in this workload.
+M244 first measures Dragonfly, then requires NATS tail and wake 99th-percentile latency within 10% of that baseline on the same workload.
+Killing one NATS node must notify every viewer of the gap and restore progress within ten seconds.
+
+M243 supplies the typed `afd_bus::Bus` interface with a Dragonfly adapter.
+M244 implements NATS behind that interface, moves the remaining state into Postgres and removes Dragonfly after the required checks.
+The Dragonfly requirements below describe the current implementation until M244 lands.
+
 | Decision | Requirement |
 |---|---|
 | Required target | Four self-hosted Dragonfly processes, one region, must pass the application and recovery tests before this work is complete. Dragonfly Cloud Swarm is the later move, not the first one (Indy, 2026-09-14). |
@@ -209,7 +237,7 @@ The [connection budget](scaling.md#connection-budget-after-the-cutover) distingu
 ```text
 producer -> commit fleet.admissions -> publish fleet:wake:{shard}
                          |
-runner poll -> PostgreSQL head probe -> slot + admission claim
+offer pass -> PostgreSQL head probe -> slot + admission claim
                          |
                   issue fenced lease
                          |
@@ -218,7 +246,7 @@ report -> usage + terminal event + settlement + delivery obligation
 
 A producer commits its identity and payload before reporting acceptance. A failed wake publish leaves that acceptance intact.
 
-Every poll probes PostgreSQL. The notification only prioritizes a recent fleet.
+Every claim pass probes PostgreSQL, and each replica probes again every 5 seconds. The notification only prioritizes a recent fleet.
 
 The candidate query first checks whether any unsettled admission exists. An empty ledger skips fleet scans.
 When work exists, it reads each eligible fleet's oldest unsettled admission through `idx_admissions_unsettled` on `(fleet_id, sequence)`.
@@ -255,7 +283,7 @@ The census publishes `agentsfleet_admission_backlog` and `agentsfleet_admission_
 
 The live tail uses sharded publish and subscribe on `fleet:<id>:activity`. A restored subscription reports a gap so viewers can reload durable history.
 
-The doorbell uses sixteen `fleet:wake:{shard}` channels and a bounded local hint buffer. Every replica subscribes through its existing hub.
+The doorbell uses sixteen `fleet:wake:{shard}` channels and a bounded local notification buffer. Every replica subscribes through its existing hub.
 
 Outbound work stays on its stream. PostgreSQL records the obligation before append, and the rebuild pass repairs missing entries.
 

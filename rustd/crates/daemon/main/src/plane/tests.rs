@@ -21,7 +21,7 @@ use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
 use afd_db::config::{DbRole, PoolConfig};
 use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_sse::{Ceiling, Live};
+use afd_sse::{Live, StreamLimit};
 
 use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
 
@@ -55,6 +55,7 @@ fn plane() -> ServingPlane {
         authoring_transport: afd_authoring::Network::new()
             .expect("fixed transport builds without a network request"),
         database,
+        bus: afd_bus::dragonfly::publisher(queue.clone()),
         queue,
         kek: Arc::new(Kek::from_bytes([0x2a; 32])),
         capabilities: Capabilities::Unconfigured(NoCapabilitySource),
@@ -64,20 +65,16 @@ fn plane() -> ServingPlane {
             Arc::new(Registry::default()),
             Arc::new(vendors),
         )),
-        live: Live::detached(Ceiling::new(4)),
+        runner_wake: afd_bus::wake::Wake::default(),
+        frame_memory: af_stream::MemoryLimits::default(),
+        live: Live::detached(StreamLimit::new(4)),
         // No admin workspace and no scheduler credentials: the fail-closed
         // deployment state, which is what this fixture is for — the plane must
         // map every service to its own store whether or not either is present.
         platform_admin_workspace: None,
         checkpoint_storage: None,
         identity_webhook_secret: None,
-        schedule: crate::plane::ScheduleConfig {
-            client: reqwest::Client::new(),
-            token: SecretString::new(String::new()),
-            destination: SCHEDULE_DESTINATION.to_owned(),
-            api_base: String::new(),
-            keys: None,
-        },
+        schedule: schedule(),
         analytics: Analytics::silent(),
         slack_api_base: String::new(),
         vendor_client: reqwest::Client::new(),
@@ -88,6 +85,16 @@ fn plane() -> ServingPlane {
             api_url: DEPLOYMENT.into(),
         },
     })
+}
+
+fn schedule() -> crate::plane::ScheduleConfig {
+    crate::plane::ScheduleConfig {
+        client: reqwest::Client::new(),
+        token: SecretString::new(String::new()),
+        destination: SCHEDULE_DESTINATION.to_owned(),
+        api_base: String::new(),
+        keys: None,
+    }
 }
 
 #[tokio::test]
@@ -167,18 +174,22 @@ async fn production_plane_hands_each_route_its_deployment_facts() {
 /// lease store; that hand-off is one line beside it in `plane/mod.rs`.
 #[cfg(feature = "test-util")]
 #[tokio::test]
-async fn test_the_daemon_doorbell_hears_its_hub() {
+async fn test_the_wake_queue_hears_the_shared_bus() {
     use af_core::id::Uuid7;
-    use afd_dragonfly::SubscriptionHub;
+    use afd_bus::{Subject, wake::Wake};
 
     /// Long enough for the listener task to hear a frame the server pushed.
     const HEARD_WITHIN: std::time::Duration = std::time::Duration::from_secs(2);
 
-    let (hub, server) = SubscriptionHub::detached();
-    let live = Live::new(hub, Ceiling::new(1));
-    let doorbell = super::listening_doorbell(&live);
+    let (bus, server) = afd_bus::test_util::detached().expect("fixture bus");
+    let doorbell = Wake::default();
+    let stop = tokio_util::sync::CancellationToken::new();
+    let _listeners = doorbell
+        .listen(&bus, &stop)
+        .await
+        .expect("wake subscriptions");
     let rung = Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001").expect("fleet");
-    server.publish("fleet:wake:{6}", rung.as_str());
+    server.publish(&Subject::Wake(6), rung.as_str());
 
     let deadline = tokio::time::Instant::now() + HEARD_WITHIN;
     let mut taken = None;

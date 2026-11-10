@@ -138,15 +138,15 @@ Dragonfly fleet:wake:{shard}
 ```
 
 Hints prioritize candidate selection. Every idle poll probes the ledger even if all notifications are lost.
-[The queue design](../datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the limits and polling costs.
+[The queue design](../datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the limits and claim costs.
 
 ## 6. Pickup: two runners, two leases
 
-Each runner polls for work. Eligible fleets must be active, match runner labels and have an available slot.
+The daemon offers work to each connected runner with credits. Eligible fleets must be active, match runner labels and have an available slot.
 
 ```text
-runner R1 -> poll -> fleet A's oldest admission (PR opened)
-runner R2 -> poll -> fleet B's oldest admission (Slack mention)
+offer pass -> runner R1 -> fleet A's oldest admission (PR opened)
+offer pass -> runner R2 -> fleet B's oldest admission (Slack mention)
 
 for each claim:
   lock slot and exact oldest head with SKIP LOCKED
@@ -158,7 +158,7 @@ for each claim:
 
 Only one active lease can hold a fleet. The steer waits behind A's Pull Request job until settlement releases its slot.
 
-A parked or locked head cannot be skipped within that fleet. See [claim ordering](../lease_flow.md#the-poll-claims-an-admission-and-its-fleet-slot).
+A parked or locked head cannot be skipped within that fleet. See [claim ordering](../lease_flow.md#the-gateway-claims-an-admission-and-its-fleet-slot).
 
 ## 7. Execute: inside the runner
 
@@ -301,9 +301,13 @@ A browser's `EventSource` cannot send an `Authorization` header, so the dashboar
              |       both fleets can run concurrently    +-> thread reply
              v
  A#2 waits while A's slot is held
-     -> slot freed -> next poll claims A#2 -> run -> report A#2
+     -> slot freed -> next offer claims A#2 -> run -> report A#2
 
  You  <--- live activity frames; A#2's answer reaches the CLI stream
 ```
 
-**A runner that dies mid-job:** its lease expires 30 s after its last renew, and the next poll **reclaims** the job: the same history row, a new lease under a higher fencing token. A late report from the dead runner is refused with `UZ-RUN-005`, so history stays one row and each slice one `billing.usage_lines` row ([`../data_flow.md`](../data_flow.md) §"C. EXECUTE").
+**A runner that dies mid-job:** its lease expires 35 seconds after its last renewal.
+The next offer pass reclaims the job under a higher fencing token, retaining the same history row.
+
+A late report from the dead runner is refused with `UZ-RUN-005`.
+History stays one row, with one `billing.usage_lines` row per slice ([data flow](../data_flow.md)).

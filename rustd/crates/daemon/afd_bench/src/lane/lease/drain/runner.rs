@@ -5,13 +5,17 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use af_core::clock;
-use af_core::id::Uuid7;
-use af_wire::activity::{ActivityFrame, FleetResponseChunk, StreamTextKind};
+use super::native;
+use af_wire::activity::{ActivityFrame, ActivityRequest, FleetResponseChunk, StreamTextKind};
 use af_wire::fold::FoldRequest;
-use af_wire::lease::{LeasePayload, LeaseResponse};
+use af_wire::lease::LeasePayload;
 use af_wire::report::{Outcome, RenewRequest, ReportCheckpoint, ReportRequest, ReportTelemetry};
-use afd_fleet::lease::Plane;
+use af_wire::{
+    lease::TaggedLease,
+    protocol::{Down, Renewal, Up},
+};
+use afd_gateway::test_util::Session;
+use std::num::NonZeroU64;
 
 use super::burst::Pickups;
 use super::turn::Turn;
@@ -33,7 +37,7 @@ pub(super) struct Shared {
     pub(super) deadline: Instant,
     /// Events every runner has reported so far.
     pub(super) reported: AtomicU64,
-    /// Stop once `reported` reaches this; `None` polls to the deadline.
+    /// Stop once `reported` reaches this; `None` runs until the deadline.
     pub(super) target: Option<u64>,
     /// What each lease sends between its grant and its report.
     pub(super) turn: Turn,
@@ -41,10 +45,11 @@ pub(super) struct Shared {
     pub(super) pickups: Option<Arc<Pickups>>,
     /// The monitor every outcome is reported to.
     pub(super) abort: Arc<Abort>,
+    pub(super) done: tokio_util::sync::CancellationToken,
 }
 
 impl Shared {
-    /// Whether this window should keep polling.
+    /// Whether this window should keep processing notifications.
     fn open(&self) -> bool {
         Instant::now() < self.deadline
             && !self.abort.token().is_cancelled()
@@ -57,13 +62,11 @@ impl Shared {
 /// What one runner did in one window.
 #[derive(Debug)]
 pub(super) struct Tally {
-    /// Polls made, lease or not.
-    pub(super) polls: u64,
+    /// Entries in a notified or capacity offer pass.
+    pub(super) claims: u64,
     /// Leases issued to this runner.
     pub(super) leased: u64,
-    /// Polls or reports the path refused.
-    pub(super) failures: u64,
-    /// How long a poll that issued a lease took.
+    /// How long a successful pushed offer took.
     pub(super) lease_latency: Latency,
     /// How long the report after it took.
     pub(super) report_latency: Latency,
@@ -71,11 +74,10 @@ pub(super) struct Tally {
 
 impl Tally {
     /// An empty tally.
-    fn new() -> Result<Self> {
+    pub(super) fn new() -> Result<Self> {
         Ok(Self {
-            polls: 0,
+            claims: 0,
             leased: 0,
-            failures: 0,
             lease_latency: Latency::new()?,
             report_latency: Latency::new()?,
         })
@@ -87,108 +89,169 @@ impl Tally {
     ///
     /// When the two latency distributions will not merge.
     pub(super) fn absorb(&mut self, other: &Self) -> Result<()> {
-        self.polls += other.polls;
+        self.claims += other.claims;
         self.leased += other.leased;
-        self.failures += other.failures;
         self.lease_latency.merge(&other.lease_latency)?;
         self.report_latency.merge(&other.report_latency)
     }
 }
 
-/// Poll and report until the window closes, answering what this runner did.
+/// Drive a capacity pass, then await a real notification after an empty claim.
 ///
 /// # Errors
-///
-/// A latency the histogram would not hold, or a lease answer that does not
-/// parse. Never a refusal from the path, which is counted.
-pub(super) async fn drive(plane: &Plane, runner: &Uuid7, shared: &Shared) -> Result<Tally> {
+/// Preserves frame, domain and histogram failures.
+pub(super) async fn drive(
+    mut session: Session,
+    shared: &Shared,
+    mut generations: tokio::sync::watch::Receiver<u64>,
+) -> Result<(Tally, Session)> {
     let mut tally = Tally::new()?;
+    let abort = shared.abort.token();
     while shared.open() {
-        tally.polls += 1;
-        if let Err(refused) = step(plane, runner, shared, &mut tally).await {
-            if tally.failures == 0 {
-                refusal(&refused);
+        generations.borrow_and_update();
+        tally.claims += 1;
+        let issued = step(&mut session, shared, &mut tally).await?;
+        if !issued {
+            tokio::select! {
+                () = abort.cancelled() => break,
+                () = shared.done.cancelled() => break,
+                () = tokio::time::sleep_until(shared.deadline.into()) => break,
+                changed = generations.changed() => {
+                    changed?;
+                }
             }
-            tally.failures += 1;
-            shared.abort.record(false);
         }
     }
-    Ok(tally)
+    Ok((tally, session))
 }
 
-/// Keep each refusal's cause intact before the driver counts it.
-async fn step(plane: &Plane, runner: &Uuid7, shared: &Shared, tally: &mut Tally) -> Result<()> {
+/// The offer and all following operations use one gateway-owned target cache.
+async fn step(session: &mut Session, shared: &Shared, tally: &mut Tally) -> Result<bool> {
+    session.ready(1).await?;
     let started = Instant::now();
-    let answer = plane.lease(runner, &[], false, clock::now()).await?;
-    let took = started.elapsed();
-    shared.abort.record(true);
-    let response: LeaseResponse<'_> =
-        serde_json::from_str(&answer).map_err(|source| ErrorKind::LeaseUnreadable { source })?;
-    let Some(af_wire::lease::TaggedLease::Fleet(lease)) = response.lease else {
-        return Ok(());
+    let Some(frame) = session.offer().await? else {
+        return Ok(false);
+    };
+    let Down::Offer {
+        lease: TaggedLease::Fleet(lease),
+    } = native::decode(&frame)?
+    else {
+        return Err(ErrorKind::StreamAnswer.into());
     };
     tally.leased += 1;
-    tally.lease_latency.record(took)?;
+    tally.lease_latency.record(started.elapsed())?;
     if let Some(pickups) = &shared.pickups {
         pickups.leased(&lease.event.event_id).await?;
     }
-    let folded_through = run_turn(plane, runner, &lease, shared).await?;
+    let folded_through = run_turn(session, &lease, shared).await?;
+    let request = processed(&lease, folded_through);
     let reporting = Instant::now();
-    plane
-        .report(runner, &processed(&lease, folded_through), clock::now())
+    let frame = session
+        .request(&Up::Report {
+            request_id: NonZeroU64::MIN,
+            request: Box::new(Cow::Borrowed(&request)),
+        })
         .await?;
+    let Down::ReportAck {
+        lease_id, answer, ..
+    } = native::decode(&frame)?
+    else {
+        return Err(ErrorKind::StreamAnswer.into());
+    };
+    if lease_id != lease.lease_id || !native::accepted(answer)?.ok {
+        return Err(ErrorKind::StreamAnswer.into());
+    }
     tally.report_latency.record(reporting.elapsed())?;
-    shared.reported.fetch_add(1, Ordering::Relaxed);
-    Ok(())
+    let reported = shared.reported.fetch_add(1, Ordering::Relaxed) + 1;
+    if shared.target.is_some_and(|target| reported >= target) {
+        shared.done.cancel();
+    }
+    shared.abort.record(true);
+    Ok(true)
 }
 
-/// Send one turn's renewals and activity through the production paths a
-/// runner's routes call, then hold the lease when the turn says to, claiming
-/// the fleet's new messages before each simulated model call the way a
-/// runner does. Answers the last folded message's sequence, when any folded.
+/// Renew, publish and fold through the same native dispatch used by the listener.
 async fn run_turn(
-    plane: &Plane,
-    runner: &Uuid7,
+    session: &mut Session,
     lease: &LeasePayload<'_>,
     shared: &Shared,
 ) -> Result<Option<i64>> {
     let turn = shared.turn;
-    for _renewal in 0..turn.renewals {
-        let request = RenewRequest {
-            requests: af_wire::usage::RequestLines::default(),
-        };
-        plane
-            .renew(
-                runner,
-                &Uuid7::parse(&lease.lease_id)?,
-                request,
-                clock::now(),
-            )
-            .await?;
-    }
+    renew(session, lease, turn.renewals).await?;
     for seq in 0..turn.posts {
-        plane
-            .activity(runner, &lease.lease_id, &[chunk(seq)])
+        session
+            .send(&Up::Activity {
+                lease_id: Cow::Borrowed(&lease.lease_id),
+                request: ActivityRequest {
+                    frames: vec![chunk(seq)],
+                },
+            })
             .await?;
     }
-    let Some(hold) = turn.hold else {
-        return Ok(None);
-    };
-    let lease_id = Uuid7::parse(&lease.lease_id)?;
+    match turn.hold {
+        Some(hold) => fold(session, lease, shared, hold).await,
+        None => Ok(None),
+    }
+}
+
+async fn renew(session: &mut Session, lease: &LeasePayload<'_>, renewals: u64) -> Result<()> {
+    for _ in 0..renewals {
+        let frame = session
+            .request(&Up::RenewBatch {
+                request_id: NonZeroU64::MIN,
+                leases: vec![Renewal {
+                    lease_id: Cow::Borrowed(&lease.lease_id),
+                    request: RenewRequest {
+                        requests: af_wire::usage::RequestLines::default(),
+                    },
+                }],
+            })
+            .await?;
+        let Down::Renewed { leases, .. } = native::decode(&frame)? else {
+            return Err(ErrorKind::StreamAnswer.into());
+        };
+        if leases.len() != 1 {
+            return Err(ErrorKind::StreamAnswer.into());
+        }
+        for renewed in leases {
+            if renewed.lease_id != lease.lease_id {
+                return Err(ErrorKind::StreamAnswer.into());
+            }
+            native::accepted(renewed.answer)?;
+        }
+    }
+    Ok(())
+}
+
+async fn fold(
+    session: &mut Session,
+    lease: &LeasePayload<'_>,
+    shared: &Shared,
+    hold: Duration,
+) -> Result<Option<i64>> {
     let mut through: i64 = 0;
     let ends = Instant::now() + hold;
     while Instant::now() < ends {
-        let claimed = plane
-            .folds(
-                runner,
-                &lease_id,
-                &FoldRequest {
+        let frame = session
+            .request(&Up::Folds {
+                request_id: NonZeroU64::MIN,
+                lease_id: Cow::Borrowed(&lease.lease_id),
+                request: FoldRequest {
                     fencing_token: lease.fencing_token,
                     after_sequence: through,
                 },
-            )
+            })
             .await?;
-        for input in &claimed.inputs {
+        let Down::Folded {
+            lease_id, answer, ..
+        } = native::decode(&frame)?
+        else {
+            return Err(ErrorKind::StreamAnswer.into());
+        };
+        if lease_id != lease.lease_id {
+            return Err(ErrorKind::StreamAnswer.into());
+        }
+        for input in native::accepted(answer)?.inputs {
             through = through.max(input.sequence);
             if let Some(pickups) = &shared.pickups {
                 pickups.folded(&input.event_id).await?;
@@ -213,18 +276,6 @@ const fn chunk(seq: u64) -> ActivityFrame<'static> {
         stream_contiguous: true,
         stream_seq: seq,
     })
-}
-
-/// The first refusal per runner is enough to diagnose a failed measurement.
-fn refusal(error: &crate::error::Error) {
-    // the benchmark has no subscriber; its first refusal belongs on the same stderr as the final run failure.
-    eprintln!("drain runner refused: {error}");
-    let mut cause = core::error::Error::source(error);
-    while let Some(reason) = cause {
-        // preserve the cause chain for a benchmark failure without printing any fixture request.
-        eprintln!("  caused by: {reason}");
-        cause = reason.source();
-    }
 }
 
 /// The report a runner that ran the event and answered sends back.

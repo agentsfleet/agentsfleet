@@ -207,32 +207,12 @@ async fn deliver_live(lane: &EventsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
         .await
         .expect("the hub starts");
 
-    // A primer, so the server-side SUBSCRIBE is known live before anything the
-    // test counts is published. `subscribe` queues the command and the pump
-    // issues it, so the registration is asynchronous by construction.
-    let mut primer = hub.subscribe(&activity);
-    let marker = r#"{"kind":"primer"}"#;
-    let deadline = tokio::time::Instant::now() + DELIVERY_BUDGET;
-    loop {
-        publisher
-            .publish(&activity, marker)
-            .await
-            .expect("the publish reaches Dragonfly");
-        match tokio::time::timeout(Duration::from_millis(100), primer.recv()).await {
-            Ok(Ok(afd_dragonfly::hub::Received::Message(message))) if message.payload == marker => {
-                break;
-            }
-            Ok(Ok(_other)) => {}
-            Ok(Err(closed)) => panic!("the hub closed while priming: {closed}"),
-            Err(_elapsed) => {}
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the subscription never went live on {activity}"
-        );
-    }
+    let _primer = prime_subscription(&publisher, &hub, &activity).await;
 
-    let mut stream = Box::pin(tail(hub.subscribe(&activity)));
+    let mut stream = Box::pin(tail(
+        afd_bus::test_util::fleet_subscription(hub.subscribe(&activity))
+            .expect("canonical fleet subscription"),
+    ));
     for id in ids {
         publisher
             .publish(&activity, &activity_payload(id))
@@ -315,4 +295,38 @@ async fn page_since(lane: &EventsLane, since: Since) -> BTreeSet<Uuid7> {
         .into_iter()
         .map(|row| row.event_id)
         .collect()
+}
+
+async fn prime_subscription(
+    publisher: &FleetStreams,
+    hub: &SubscriptionHub,
+    activity: &str,
+) -> afd_dragonfly::Subscription {
+    // A primer, so the server-side SUBSCRIBE is known live before anything the
+    // test counts is published. `subscribe` queues the command and the pump
+    // issues it, so the registration is asynchronous by construction.
+    let mut primer = hub.subscribe(activity);
+    let marker = r#"{"kind":"primer"}"#;
+    let deadline = tokio::time::Instant::now() + DELIVERY_BUDGET;
+    loop {
+        publisher
+            .publish(activity, marker)
+            .await
+            .expect("the publish reaches Dragonfly");
+        match tokio::time::timeout(Duration::from_millis(100), primer.recv()).await {
+            Ok(Ok(afd_dragonfly::hub::Received::Message(message)))
+                if message.payload.as_str() == marker =>
+            {
+                break;
+            }
+            Ok(Ok(_other)) => {}
+            Ok(Err(closed)) => panic!("the hub closed while priming: {closed}"),
+            Err(_elapsed) => {}
+        }
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "the subscription never went live on {activity}"
+        );
+    }
+    primer
 }

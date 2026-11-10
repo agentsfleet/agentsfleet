@@ -4,13 +4,15 @@ This page is the target design for how a message reaches a runner and how a run 
 
 ## Decisions
 
-Indy made each decision below on Nov 06, 2026. The specs quote his words.
+Indy made the initial decisions on Nov 06, 2026. The transport decision was revised on Nov 08, 2026.
+The specs quote his words.
 
 | Decision | What it means |
 |---|---|
 | Postgres accepts every message and fences every run | `fleet.admissions` is the only acceptance store. `runner.fleet_slots.fencing_token` is the only execution authority. |
 | Messages fold into a running run | A person's message in the run's conversation joins that run before its next model call. A call in flight is never interrupted. A message no person sent, such as a webhook, waits for a run of its own and is never passed. Revised Nov 08, 2026: a plain run takes a durable task's rule (M242_002 Discovery). |
-| Runners hold one stream | A runner host keeps one outbound connection to `agentsfleetd`. Work is pushed down it; nothing polls. |
+| Runners hold one stream | Work is pushed over one outbound connection. Each daemon replica retains one database recovery probe every five seconds. |
+| Direct HTTP/3 with HTTP/2 fallback | The runner initiates a session to a reachable daemon endpoint. Fly-hosted services can use private networking; external operators supply connectivity and trusted certificates. Cloudflare and WebSocket are not required. See [the implementation design](runner_protocol.md), revised Nov 08, 2026. |
 | Core NATS replaces Dragonfly | NATS carries signals only: no JetStream, no KV. Every durable fact moves to Postgres first. |
 | Durable tasks are on by default | `durable_tasks_v1` is the default. A failed host's run restarts elsewhere from the current turn's last checkpoint. |
 | Tenants run their own runners | Self-hosted runners point at the cloud daemon through its API. They never connect to the broker. |
@@ -57,6 +59,21 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 | M245 | None expected: caches are keyed by existing revision columns. |
 | M246 | An owner tenant on `runner.runners`, a token overlap pair, and per-tenant runner settings. |
 | M247 | Cordon reason and time on `runner.runners`, and a predecessor link on `runner.leases`. |
+
+## Recovery and scheduling fairness
+
+The Bus keeps one bounded wake queue shared by producers and the gateway.
+A dropped notification or periodic database probe marks a recovery generation.
+That mark survives later locality hints and hosts with no free capacity.
+
+The five-second probe repairs a crash after admission commits but before its disposable wake is published.
+Normal admission and steering publish a wake immediately and do not wait for that probe.
+
+During recovery, admission selection orders by durable creation time and identifier across eligible fleets.
+It ignores fleet-locality hints until a durable claim covers that recovery generation.
+A claim for an older generation cannot clear a newer probe.
+
+Normal hints resume after recovery, preserving locality without starving an older unhinted fleet.
 
 ## Sequences
 

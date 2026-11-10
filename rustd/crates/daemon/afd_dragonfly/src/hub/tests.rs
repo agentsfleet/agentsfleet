@@ -29,7 +29,7 @@ fn detached() -> (SubscriptionHub, mpsc::UnboundedReceiver<Command>) {
 fn message(payload: &str) -> Message {
     Message {
         channel: CHANNEL.to_owned(),
-        payload: payload.to_owned(),
+        payload: Arc::new(payload.to_owned()),
     }
 }
 

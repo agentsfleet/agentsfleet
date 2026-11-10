@@ -51,7 +51,9 @@ async fn draft_stream_delivers_before_completion_and_final_replay_never_resends(
     assert_eq!(live.provider.calls.load(Ordering::SeqCst), 1);
     assert_eq!(super::fixture::receipts(&f, &attempt).await, (1, 1, false));
     live.drained().await;
-    let channel = afd_authoring::draft_channel(&attempt.draft.id);
+    let channel = afd_bus::test_util::physical_channel(&afd_bus::Subject::DraftEvents(
+        attempt.draft.id.clone(),
+    ));
     assert_eq!(live.hub.readers(&channel), 1);
     drop(live.reader);
     assert_eq!(live.hub.readers(&channel), 0);

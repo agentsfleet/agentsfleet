@@ -34,7 +34,7 @@ static SEQUENCE: AtomicU32 = AtomicU32::new(0);
 /// A connection to the lane's Dragonfly, plus a name prefix of this harness's own.
 pub(crate) struct SseLane {
     pub(crate) redis: Dragonfly,
-    prefix: String,
+    prefix: u32,
 }
 
 impl SseLane {
@@ -47,11 +47,7 @@ impl SseLane {
             .expect("the lane's Dragonfly must be reachable");
         Self {
             redis,
-            prefix: format!(
-                "afdsse{}_{}",
-                std::process::id(),
-                SEQUENCE.fetch_add(1, Ordering::Relaxed)
-            ),
+            prefix: std::process::id(),
         }
     }
 
@@ -65,13 +61,12 @@ impl SseLane {
             .with_request_timeout(Duration::from_secs(5))
     }
 
-    /// A fleet identifier unique to this harness.
-    ///
-    /// Not a UUID: nothing in the streaming path parses one, and a channel name
-    /// is the only thing this suite builds from it. A name that collides with
-    /// another test binary's is the failure mode that matters, and the process
-    /// id plus a counter is what rules it out.
-    pub(crate) fn fleet(&self, suffix: &str) -> String {
-        format!("{}_{suffix}", self.prefix)
+    /// A canonical fixture identifier, unique across harnesses and test processes.
+    pub(crate) fn fleet(&self, _purpose: &str) -> String {
+        format!(
+            "01950000-0000-7000-8000-{:04x}{:08x}",
+            self.prefix & 0xffff,
+            SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        )
     }
 }

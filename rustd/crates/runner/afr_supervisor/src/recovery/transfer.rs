@@ -122,7 +122,7 @@ impl Transfers {
             ));
         }
         let mut request = self.client.request(method, url).timeout(
-            crate::deadline::left(af_core::clock::now(), transfer.expires_at)
+            af_core::clock::elapsed(af_core::clock::now(), transfer.expires_at)
                 .min(std::time::Duration::from_secs(60)),
         );
         for (name, value) in &transfer.headers {

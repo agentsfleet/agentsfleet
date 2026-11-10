@@ -59,10 +59,14 @@ impl<'lane> Tasks<'lane> {
         let leases = afd_fleet::lease::Leases::new(
             self.base.database.clone(),
             queue.clone(),
+            afd_bus::dragonfly::publisher(queue.clone()),
             Entropy::new(),
         );
-        let admissions =
-            afd_admission::Admissions::new(self.base.database.clone(), queue, Entropy::new());
+        let admissions = afd_admission::Admissions::new(
+            self.base.database.clone(),
+            afd_bus::dragonfly::publisher(queue),
+            Entropy::new(),
+        );
         afd_fleet::task::Tasks::new(
             leases,
             admissions,

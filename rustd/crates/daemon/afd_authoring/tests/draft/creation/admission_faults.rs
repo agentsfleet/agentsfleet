@@ -22,7 +22,11 @@ fn run_now() -> Start {
 async fn an_admission_whose_identity_cannot_be_drawn_fails_the_activation() {
     let c = Case::create().await;
     let (entropy, control) = Entropy::new_mocked();
-    let admissions = Admissions::new(c.base.db.clone(), c.queue.clone(), entropy);
+    let admissions = Admissions::new(
+        c.base.db.clone(),
+        afd_bus::dragonfly::publisher(c.queue.clone()),
+        entropy,
+    );
     let creations = Creations::new(c.setup.clone(), admissions);
     let (_, request) = c.request("entropy-fault", run_now()).await;
     let key = mint();

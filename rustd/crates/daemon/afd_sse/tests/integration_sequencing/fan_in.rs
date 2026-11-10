@@ -40,18 +40,20 @@ async fn test_workspace_fan_in_tracks_authorised_fleets_and_valid_frames() {
     let mut beta_primer = hub.subscribe(&beta_channel);
     prime(&publisher, &beta_channel, &mut beta_primer).await;
 
-    let mut fan_in = FanIn::new(Some(hub));
+    let mut fan_in = FanIn::new(Some(
+        afd_bus::test_util::with_hub(hub).expect("fixture bus"),
+    ));
     let wanted = BTreeSet::from([beta.clone(), alpha.clone()]);
-    let attached = fan_in.sync_to(&wanted);
+    let attached = fan_in.sync_to(&wanted).await;
     assert_eq!(attached.attached, 2);
     assert_eq!(attached.detached, 0);
     assert!(attached.is_change());
     assert_eq!(fan_in.fleets(), vec![alpha.clone(), beta.clone()]);
-    assert!(!fan_in.sync_to(&wanted).is_change());
+    assert!(!fan_in.sync_to(&wanted).await.is_change());
     assert_fan_in_delivery(&publisher, &mut fan_in, &alpha, &beta).await;
 
     let remaining = BTreeSet::from([beta.clone()]);
-    let detached = fan_in.sync_to(&remaining);
+    let detached = fan_in.sync_to(&remaining).await;
     assert_eq!(detached.attached, 0);
     assert_eq!(detached.detached, 1);
     assert_eq!(fan_in.fleets(), vec![beta]);

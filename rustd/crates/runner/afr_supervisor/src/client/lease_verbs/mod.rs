@@ -9,7 +9,6 @@ use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use af_core::paging::{QUERY_LIMIT, QUERY_STARTING_AFTER};
-use af_wire::fold::FoldRequest;
 use af_wire::message_verb::MessageRequest;
 use af_wire::paths;
 use af_wire::schedule_verb::{
@@ -104,26 +103,6 @@ impl ControlPlane {
         };
         let path = lease_path(lease_id, paths::LEASE_MESSAGES_SUFFIX);
         self.send_json(Verb::Message, path, &body).await
-    }
-
-    /// Claims, for the run `lease_id` holds, the messages a person sent its
-    /// fleet after `after_sequence`.
-    ///
-    /// # Errors
-    /// A refusal, or a transport failure. Safe to send again: the daemon
-    /// answers a lease's own claims again, so a lost answer loses nothing.
-    pub(crate) async fn folds(
-        &self,
-        lease_id: &Uuid7,
-        fencing_token: u64,
-        after_sequence: i64,
-    ) -> Result<Body> {
-        let body = FoldRequest {
-            fencing_token,
-            after_sequence,
-        };
-        let path = lease_path(lease_id, paths::LEASE_FOLDS_SUFFIX);
-        self.send_json(Verb::Folds, path, &body).await
     }
 }
 

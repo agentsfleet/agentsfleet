@@ -58,6 +58,11 @@ impl Services for Fleet {
     type Auth = Planes<Directory, MockCapabilities, MockVerifier>;
     type SignupMetadata = RecordingWriteback;
     type Leases = NoWork;
+    type RunnerStreams = Self;
+
+    fn runner_streams(&self) -> &Self::RunnerStreams {
+        self
+    }
     type Sessions = Logins;
     type Workspaces = Ownership;
     type Fleets = Fleets;
@@ -82,6 +87,10 @@ impl Services for Fleet {
 
     fn runners(&self) -> &Runners {
         &self.runners
+    }
+
+    fn runner_commands(&self) -> &afd_bus::Handle {
+        &self.runner_commands
     }
 
     fn leases(&self) -> &NoWork {

@@ -1,30 +1,36 @@
 //! Renewal: a held lease bought more time, tick by tick, until the daemon says
 //! no or the time it granted runs out.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use af_core::clock::Clock;
 use af_core::error_code::{self, RUN_BUDGET_EXCEEDED, RUN_RENEW_BODY_MALFORMED};
 use af_core::id::Uuid7;
-use af_core::timing::{MAX_RUNTIME, RENEWAL_TICK};
+use af_core::timing::MAX_RUNTIME;
 use af_wire::report::{FailureClass, RenewRequest};
 use af_wire::usage::LINES_MAX;
 use afr_agent::Meter;
 use jiff::Timestamp;
-use tokio::time::{Instant, MissedTickBehavior};
+use tokio::time::Instant;
 
 use crate::client::{ControlPlane, retrying};
 use crate::error::Error;
 
-/// How long before the daemon's deadline the runner gives the lease up. The
-/// daemon may hand an expired lease to another runner, so a run must end
-/// before then, not at it; this is one slow call's worth of slack.
-pub(crate) const EXPIRY_MARGIN: Duration = Duration::from_secs(2);
+/// Leave time for an uncooperative engine, process-group termination and reaping before
+/// the daemon may hand the expired lease to another runner.
+pub(crate) const EXPIRY_MARGIN: Duration = af_core::timing::ENGINE_STOP_GRACE
+    .saturating_add(afr_executor::timing::KILL_GRACE)
+    .saturating_add(Duration::from_secs(2));
+
+const _: () = assert!(
+    EXPIRY_MARGIN.as_nanos() + af_core::timing::STREAM_ANSWER_TIMEOUT.as_nanos()
+        < af_core::timing::RENEWAL_WINDOW.as_nanos(),
+    "recovery must leave a complete renewal answer and physical cleanup window"
+);
 /// The longest a lease can be granted for, which bounds any deadline a reply
 /// can set, however far ahead it claims.
 const LONGEST_GRANT: Duration = MAX_RUNTIME;
 const EVENT_RENEWED: &str = "lease_renewed";
-const EVENT_RETRY: &str = "renew_failed_retry";
 const EVENT_TERMINATED: &str = "lease_terminated_by_renewal";
 const EVENT_EXPIRED: &str = "lease_timed_out";
 const EVENT_UNFLUSHED: &str = "usage_lines_unflushed";
@@ -36,7 +42,7 @@ pub(crate) struct Renewal<'a> {
     lease_id: &'a Uuid7,
     expires_at: Timestamp,
     clock: &'a dyn Clock,
-    meter: &'a Meter,
+    meter: &'a std::sync::Arc<Meter>,
 }
 
 impl<'a> Renewal<'a> {
@@ -48,7 +54,7 @@ impl<'a> Renewal<'a> {
         lease_id: &'a Uuid7,
         expires_at: Timestamp,
         clock: &'a dyn Clock,
-        meter: &'a Meter,
+        meter: &'a std::sync::Arc<Meter>,
     ) -> Self {
         Self {
             plane,
@@ -67,58 +73,52 @@ impl<'a> Renewal<'a> {
     /// granted deadline, less [`EXPIRY_MARGIN`], has passed: past it the daemon
     /// may already have given the event to another runner.
     pub(crate) async fn keep(self) -> FailureClass {
-        let mut deadline = self.deadline(self.expires_at);
-        let mut ticks = tokio::time::interval_at(Instant::now() + RENEWAL_TICK, RENEWAL_TICK);
-        ticks.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        let mut registration = match self.plane.stream.renewing.register(
+            self.lease_id,
+            Arc::clone(self.meter),
+            self.deadline(self.expires_at),
+        ) {
+            Ok(registration) => registration,
+            Err(error) => return self.terminated(&error),
+        };
         loop {
-            let renewed = tokio::select! {
+            let deadline = registration.lifetime.deadline();
+            tokio::select! {
                 biased;
                 () = tokio::time::sleep_until(deadline) => return self.expired(),
-                renewed = async {
-                    ticks.tick().await;
-                    self.plane.renew(self.lease_id, &self.spent()).await
-                } => renewed,
-            };
-            match renewed {
-                Ok(renewed) => {
-                    deadline = self.deadline(renewed.lease_expires_at);
-                    if let Some(seq) = renewed.recorded_through {
-                        self.meter.recorded_through(seq);
+                changed = registration.updates.changed() => {
+                    if changed.is_err() { return self.expired(); }
+                }
+            }
+            let response = registration.updates.borrow_and_update().clone();
+            match response {
+                Some(crate::uplink::renewals::Renewed::Confirmed(response)) => {
+                    registration
+                        .lifetime
+                        .extend(self.deadline(response.lease_expires_at));
+                    if let Some(sequence) = response.recorded_through {
+                        self.meter.recorded_through(sequence);
                     }
                     let lease_id = self.lease_id.as_str();
-                    let event = EVENT_RENEWED;
-                    tracing::debug!(lease_id, event);
+                    tracing::debug!(event = EVENT_RENEWED, lease_id);
                 }
-                Err(failure) if failure.is_retryable() => self.kept(&failure),
-                Err(refusal) => return self.terminated(&refusal),
+                Some(crate::uplink::renewals::Renewed::Refused(code)) => {
+                    let error = crate::error::ErrorKind::StreamRefused {
+                        code,
+                        retryable: false,
+                    }
+                    .into();
+                    return self.terminated(&error);
+                }
+                None => {}
             }
-        }
-    }
-
-    /// The run's tokens so far, as the renewal reports them: cumulative, so
-    /// the daemon meters the difference since the last one.
-    fn spent(&self) -> RenewRequest {
-        RenewRequest {
-            requests: self.meter.unrecorded(),
         }
     }
 
     /// When to give the lease up, for a grant until `expires_at`.
     fn deadline(&self, expires_at: Timestamp) -> Instant {
-        let left = crate::deadline::left(self.clock.now(), expires_at).min(LONGEST_GRANT);
+        let left = af_core::clock::elapsed(self.clock.now(), expires_at).min(LONGEST_GRANT);
         Instant::now() + left.saturating_sub(EXPIRY_MARGIN)
-    }
-
-    fn kept(&self, failure: &Error) {
-        let code = failure.code().as_str();
-        let lease_id = self.lease_id.as_str();
-        let event = EVENT_RETRY;
-        tracing::warn!(
-            error_code = code,
-            lease_id,
-            event,
-            "a renewal failed; the lease is kept"
-        );
     }
 
     fn terminated(&self, refusal: &Error) -> FailureClass {
