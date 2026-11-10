@@ -35,6 +35,20 @@ impl Resume {
     }
 }
 
+/// How long HTTP/3 is passed over after it fails while HTTP/2 works.
+const HTTP3_SKIP: Duration = Duration::from_secs(30);
+
+/// What one attempt taught the runner about the two carriers.
+#[derive(Clone, Copy, Debug)]
+enum Outcome {
+    /// A carrier connected; HTTP/3 was tried and failed first when `http3_failure` names a reason.
+    Carried {
+        http3_failure: Option<af_stream::Reason>,
+    },
+    /// Neither carrier connected. It carries no reason: no reason may start the skip.
+    Failed,
+}
+
 /// Recent UDP failure delays another attempt; a healthy carrier is never interrupted.
 #[derive(Debug, Default)]
 pub(crate) struct Preference {
@@ -48,10 +62,7 @@ impl Preference {
         stop: &CancellationToken,
         deadline: Instant,
     ) -> crate::Result<Connection> {
-        if self
-            .retry_http3_after
-            .is_some_and(|after| Instant::now() < after)
-        {
+        if self.skips_http3(Instant::now()) {
             let deadline =
                 deadline.min(Instant::now() + af_core::timing::STREAM_HTTP2_CONNECT_TIMEOUT);
             return Ok(Connection::connect(
@@ -65,25 +76,33 @@ impl Preference {
         }
         match Connection::preferred(&config.endpoint, &config.trust, stop, deadline).await {
             Ok(selected) => {
-                if selected.http3_failure.is_some() {
-                    self.delay();
-                }
+                let http3_failure = selected.http3_failure;
+                self.record(Outcome::Carried { http3_failure }, Instant::now());
                 Ok(selected.connection)
             }
             Err(error) => {
-                if matches!(
-                    error.reason(),
-                    af_stream::Reason::Network | af_stream::Reason::Timeout
-                ) {
-                    self.delay();
-                }
+                self.record(Outcome::Failed, Instant::now());
                 Err(error.into())
             }
         }
     }
 
-    fn delay(&mut self) {
-        self.retry_http3_after = Some(Instant::now() + std::time::Duration::from_secs(30));
+    /// Whether an attempt at `now` goes straight to HTTP/2.
+    fn skips_http3(&self, now: Instant) -> bool {
+        self.retry_http3_after.is_some_and(|after| now < after)
+    }
+
+    fn record(&mut self, outcome: Outcome, now: Instant) {
+        // Only HTTP/2 carrying after HTTP/3 failed points at UDP. Neither carrier connecting
+        // shows an unreachable daemon, and arming the skip then would send the first connection
+        // after a restart to HTTP/2, where a healthy session stays.
+        let udp_suspect = match outcome {
+            Outcome::Carried { http3_failure } => http3_failure.is_some(),
+            Outcome::Failed => false,
+        };
+        if udp_suspect {
+            self.retry_http3_after = Some(now + HTTP3_SKIP);
+        }
     }
 }
 
@@ -117,3 +136,7 @@ impl Recovery {
 #[cfg(test)]
 #[path = "reconnect_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "test-util"))]
+#[path = "reconnect_outage_tests.rs"]
+mod outage_tests;
