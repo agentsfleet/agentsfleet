@@ -330,4 +330,19 @@ describe("a send's performance marks", () => {
       expect(marks.filter(([, id]) => id === operationId).map(([name]) => name)).toEqual(IN_ORDER);
     }
   });
+
+  it("a send still settles when the browser refuses every mark", async () => {
+    const refuse = vi.spyOn(performance, "mark").mockImplementation(() => {
+      throw new TypeError("User Timing refused");
+    });
+    try {
+      postSteer.mockResolvedValue(ACCEPTED);
+      const { ctx, hook } = delivery();
+      await act(() => hook.result.current.onNew(message(DEPLOY)));
+      expect(ctx.writers.settle).toHaveBeenCalledTimes(1);
+      expect(ctx.reconcileOptimistic).toHaveBeenCalledTimes(1);
+    } finally {
+      refuse.mockRestore();
+    }
+  });
 });

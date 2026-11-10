@@ -42,4 +42,14 @@ describe("a send's marks through the live stream", () => {
     sendMarks.frame(completionOf("someone-elses-event"));
     expect(markedSends()).toEqual([]);
   });
+
+  it("test_a_refused_mark_never_breaks_a_send: the mark is lost, and the send's later marks still land", () => {
+    const refuse = vi.spyOn(performance, "mark").mockImplementation(() => {
+      throw new TypeError("User Timing refused");
+    });
+    expect(() => sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, EVENT_ID)).not.toThrow();
+    refuse.mockRestore();
+    sendMarks.frame(chunkOf(EVENT_ID));
+    expect(markedSends()).toEqual([[SEND_MARK.FIRST_FRAME, OPERATION_ID]]);
+  });
 });
