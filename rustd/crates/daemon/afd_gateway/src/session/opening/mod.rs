@@ -45,7 +45,7 @@ fn response(body: Body) -> Result<Response> {
 }
 
 /// Durable refusals remain distinct from an unavailable database.
-pub(super) fn allowed<T>(decision: Decision<T>) -> Result<T> {
+pub(crate) fn allowed<T>(decision: Decision<T>) -> Result<T> {
     match decision {
         Decision::Allowed(value) => Ok(value),
         Decision::Refused(refusal) => Err(ErrorKind::Authority { refusal }.into()),

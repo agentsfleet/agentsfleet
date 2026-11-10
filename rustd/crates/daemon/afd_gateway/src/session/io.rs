@@ -72,14 +72,14 @@ impl StreamAttachment {
 }
 
 /// Owning the frame retains its allocation permit through request processing.
-pub(super) struct IncomingFrame {
-    pub(super) kind: StreamKind,
-    pub(super) frame: OwnedFrame,
+pub(crate) struct IncomingFrame {
+    pub(crate) kind: StreamKind,
+    pub(crate) frame: OwnedFrame,
 }
 
 /// Four validated queues also keep activity's empty response open for the whole session.
 #[derive(Clone)]
-pub(super) struct StreamWriters(BTreeMap<StreamKind, WriteQueue>);
+pub(crate) struct StreamWriters(BTreeMap<StreamKind, WriteQueue>);
 
 impl TryFrom<BTreeMap<StreamKind, WriteQueue>> for StreamWriters {
     type Error = crate::Error;
@@ -116,7 +116,7 @@ impl StreamWriters {
 }
 
 /// The producer observes a dropped writer through the missing completion acknowledgement.
-pub(super) struct PendingWrite {
+pub(crate) struct PendingWrite {
     frame: OwnedFrame,
     flushed: oneshot::Sender<()>,
 }
@@ -144,7 +144,7 @@ pub(super) async fn read_stream(
 }
 
 /// Dropping the returned queue ends this writer after its already-accepted frames.
-pub(super) fn writer(
+pub(crate) fn writer(
     mut output: DuplexStream,
     stop: CancellationToken,
     workers: &mut JoinSet<Result<()>>,

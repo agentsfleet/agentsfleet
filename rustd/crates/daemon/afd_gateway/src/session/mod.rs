@@ -1,18 +1,16 @@
 //! One bounded owner joins the four streams, domain operations and every child task.
 
-mod cache;
+pub(crate) mod cache;
 mod commands;
 mod context;
 mod dispatch;
 mod events;
-#[cfg(feature = "test-util")]
-pub(crate) mod in_process;
-mod io;
-mod liveness;
+pub(crate) mod io;
+pub(crate) mod liveness;
 mod offer;
 mod offers;
-mod opening;
-mod requests;
+pub(crate) mod opening;
+pub(crate) mod requests;
 mod runtime;
 mod streams;
 mod supervisor;
@@ -47,9 +45,9 @@ pub(crate) struct SchedulingState {
     pub(crate) ready: bool,
     pub(crate) degraded: bool,
     pub(crate) credits: usize,
-    offers_sent: u64,
-    offers_seen: u64,
-    ready_revision: Option<NonZeroU64>,
+    pub(crate) offers_sent: u64,
+    pub(crate) offers_seen: u64,
+    pub(crate) ready_revision: Option<NonZeroU64>,
     pub(crate) held: Vec<Uuid7>,
     pub(crate) last_offer: Instant,
 }
@@ -103,12 +101,12 @@ pub(crate) struct SessionHandle {
     pub(crate) snapshot: Mutex<SchedulingState>,
     pub(crate) stop: CancellationToken,
     pub(crate) drain: CancellationToken,
-    liveness: liveness::Liveness,
-    superseded: CancellationToken,
-    offers: Notify,
-    claims: mpsc::Sender<oneshot::Sender<bool>>,
-    rechecks: Notify,
-    commands: mpsc::Sender<afd_bus::Command>,
+    pub(crate) liveness: liveness::Liveness,
+    pub(crate) superseded: CancellationToken,
+    pub(crate) offers: Notify,
+    pub(crate) claims: mpsc::Sender<oneshot::Sender<bool>>,
+    pub(crate) rechecks: Notify,
+    pub(crate) commands: mpsc::Sender<afd_bus::Command>,
 }
 
 impl SessionHandle {
@@ -180,9 +178,9 @@ struct ConfirmedSession {
 }
 
 /// Bound service clones reuse the same pools, bus and transaction-level owner checks.
-struct SessionServices {
+pub(crate) struct SessionServices {
     gateway: Gateway,
-    handle: Arc<SessionHandle>,
+    pub(crate) handle: Arc<SessionHandle>,
     authority: Authority,
     leases: afd_fleet::lease::LeaseService,
     drafts: afd_authoring::Drafts,

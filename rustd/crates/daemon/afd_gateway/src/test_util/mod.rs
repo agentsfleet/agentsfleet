@@ -1,10 +1,13 @@
+//! In-process gateway sessions for local measurement and fixtures.
+//!
 //! The measured gateway keeps its production cache, authority, dispatch and frame writers.
 //! Listener authentication, the replica registry and scheduler have separate native tests.
 
-use super::{
+use crate::session::{
     SchedulingState, SessionHandle, SessionServices,
     cache::LeaseCache,
     io::{self, IncomingFrame, StreamWriters},
+    liveness::Liveness,
     opening::allowed,
     requests::RequestTracker,
 };
@@ -241,7 +244,7 @@ fn handle(
         connection: authority.connection().clone(),
         stop,
         drain: CancellationToken::new(),
-        liveness: super::liveness::Liveness::default(),
+        liveness: Liveness::default(),
         superseded: CancellationToken::new(),
         offers: Notify::new(),
         claims,
