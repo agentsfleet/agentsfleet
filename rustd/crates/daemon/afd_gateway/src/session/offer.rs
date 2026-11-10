@@ -26,14 +26,10 @@ impl SessionServices {
         .await?;
         // After the reserve, so output backpressure is not read as claim time.
         let mut clock = VerbClock::<OfferStage>::start();
-        let issued = self.issue_offer(&state, &mut encoder, &mut clock).await;
-        // A pass that reached no stage leaves no span: the 5 s probe's empty
-        // answer, and a claim that failed before selecting, as in an outage.
-        // A claim the gates refused reached a stage and keeps its span.
-        if clock.reached_nothing() {
-            clock.discard();
-        }
-        let Some(offered) = issued? else {
+        // A pass that reaches no stage leaves no span (the clock's own rule):
+        // the 5 s probe's empty answer, and a claim that failed before
+        // selecting. A claim the gates refused reached a stage and keeps one.
+        let Some(offered) = self.issue_offer(&state, &mut encoder, &mut clock).await? else {
             return Ok(false);
         };
         let frame = encoder.finish()?;
