@@ -64,7 +64,7 @@ async fn test_a_retired_report_route_cannot_settle_a_lease() {
 /// Every pull route the stream replaced answers 404 to an enrolled runner,
 /// even for a live lease, while the runner's own row still answers.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_retired_runner_routes_answer_404() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
