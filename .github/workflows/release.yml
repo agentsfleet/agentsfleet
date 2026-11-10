@@ -239,7 +239,7 @@ jobs:
       # requests for this tag, so the release still says what shipped without a
       # file to maintain.
       - name: Create Release
-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
           body: "[Full changelog for this release →](https://docs.agentsfleet.net/changelog)"
           generate_release_notes: true
@@ -290,8 +290,9 @@ jobs:
       # Fly app names are global; the product prefix keeps this one ours.
       NATS_APP: agentsfleet-nats-prod
       NATS_BUILD_CONTEXT: deploy/fly/nats-prod
-      NATS_CONFIG: deploy/fly/nats-prod/fly.toml
       NATS_MACHINES: "2"
+      # No config argument: flyctl reads fly.toml from the build context, and a
+      # repository-relative --config would resolve inside that context.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -360,7 +361,7 @@ jobs:
           bash scripts/ensure_fly_app.sh --create-only "$NATS_APP"
           flyctl secrets set NATS_URL="$NATS_URL" --stage --app "$NATS_APP"
           bash scripts/ensure_fly_app.sh \
-            "$NATS_APP" "$NATS_BUILD_CONTEXT" "$NATS_MACHINES" "$NATS_CONFIG"
+            "$NATS_APP" "$NATS_BUILD_CONTEXT" "$NATS_MACHINES"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_ORG: agentsfleet-prod
