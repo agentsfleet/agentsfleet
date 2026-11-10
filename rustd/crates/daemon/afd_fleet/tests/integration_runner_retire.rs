@@ -101,12 +101,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
     let held = crate::seed::select_fleet(&fixtures.leases(), &runner, &fleet)
         .await
         .expect("a ready fleet holding an event is leasable");
-    // The lease row references the event's row, which the narrative log opens.
-    fixtures
-        .leases()
-        .record_received(&held)
-        .await
-        .expect("the narrative log opens");
+    // The lease row references the event's row, which the claim opened.
     let issued = fixtures
         .leases()
         .issue(

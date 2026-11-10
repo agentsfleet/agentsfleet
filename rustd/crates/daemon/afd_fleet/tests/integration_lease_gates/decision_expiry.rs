@@ -32,14 +32,7 @@ async fn a_profile_read_past_claim_expiry_creates_no_lease_audit_or_tally() {
     select(&fixtures, &case.runner, Some(&model.model.id)).await;
     let leases = fixtures.leases();
     let acquired = claim(&fixtures, &case).await;
-    assert_eq!(
-        leases
-            .record_received(&acquired)
-            .await
-            .expect("received admission")
-            .delivery,
-        Delivery::First
-    );
+    assert_eq!(acquired.opened.received.delivery, Delivery::First);
     let billed = Billed {
         tenant_id: &case.tenant,
         posture: seed::POSTURE,

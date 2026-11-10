@@ -53,6 +53,8 @@ mod integration_billing_relay;
 mod integration_billing_sweep;
 #[path = "integration_billing_sweep_faults.rs"]
 mod integration_billing_sweep_faults;
+#[path = "integration_claim_delivery.rs"]
+mod integration_claim_delivery;
 mod integration_credential_mint;
 #[path = "integration_delivery_lookup.rs"]
 mod integration_delivery_lookup;

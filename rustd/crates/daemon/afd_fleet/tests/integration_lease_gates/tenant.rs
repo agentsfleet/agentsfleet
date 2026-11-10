@@ -1,4 +1,5 @@
-//! One lease reads its tenant once, and its meter reset rides the lease row.
+//! One lease reads no tenant: the claim carries it. Its meter reset rides the
+//! lease row.
 //!
 //! Counted off the statements sqlx logs as it runs them, under a subscriber
 //! scoped to this test's thread: the suite runs leases in parallel, and a
@@ -54,9 +55,9 @@ impl Visit for IsTenantRead {
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_issue_reads_the_tenant_once() {
-    // The provider resolves against the payer and the money gates bill it, and
-    // both used to read it; a second read could only disagree with the first.
+async fn test_issue_reads_no_tenant() {
+    // The provider resolves against the payer and the money gates bill it. The
+    // claim statement returns the fleet row's tenant, so neither reads it.
     let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
@@ -73,8 +74,8 @@ async fn test_issue_reads_the_tenant_once() {
     assert!(answer.is_some(), "the lease was refused: {answer:?}");
     assert_eq!(
         reads.load(Ordering::Relaxed),
-        1,
-        "one lease reads its tenant once"
+        0,
+        "the claim carried the tenant"
     );
 
     fixtures.cleanup().await;

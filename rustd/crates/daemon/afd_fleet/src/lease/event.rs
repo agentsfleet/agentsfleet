@@ -1,48 +1,33 @@
-//! Hot-path write one: the narrative log opens.
+//! The narrative log's row: how a delivery relates to it, and the gate ending.
 //!
-//! The first thing the lease verb writes, before any gate and before any
+//! The claim statement opens the row (`sql/lease/claim_admission_head.sql`):
+//! the first thing the lease verb writes, before any gate and before any
 //! money. `data_flow.md` §C numbers it 1 for that reason — everything after it
 //! either amends this row or refers to it, and the reclaim path's INNER JOIN
 //! reads it to recover an event body without keeping a second copy on the
-//! lease.
+//! lease. It opens before the gates because a gate refusal has to have a row
+//! to mark `gate_blocked`.
 //!
-//! # The refusal write lives here too
+//! # The refusal write lives here
 //!
-//! [`Leases::block`] is the other end of the same row: this module opens the
-//! narrative log and ends it at a gate. They are one file because the guard
-//! that makes the ending safe is a statement about the OPENING — the terminal
-//! update fires only on a row still in the status this insert wrote — and a
-//! reader checking that predicate should find both halves of it together.
-//!
-//! # Why the caller is not `issue`
-//!
-//! This write opens the pass in `pull.rs`, ahead of the balance and approval
-//! gates, because a gate refusal has to have a row to mark `gate_blocked`.
-//! Folded into the issue step it would run AFTER those gates and leave a
-//! refused event with nothing to record its refusal on. So it stays a verb of
-//! its own, and the gate pass calls it first.
+//! [`Leases::block`] is the other end of the same row. The guard that makes
+//! the ending safe is a statement about the OPENING — the terminal update
+//! fires only on a row still in the status the claim wrote — so the
+//! [`Delivery`] the claim answers and the ending that reads it sit together.
 
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
-use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
 use afd_events::Closed;
 
 use crate::error::{Result, query};
 use crate::lease::admit::Refusal;
 use crate::lease::envelope::Acquired;
-use crate::lease::sql::queue;
 use crate::lease::store::Leases;
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_RECEIVED: &str = "fleet event received";
 
 /// Statement name, for the context a refusal's query failure carries.
 const CONTEXT_BLOCKED: &str = "fleet event gate blocked";
-
-/// Statement name, for the context the delivery stamp's failure carries.
-const CONTEXT_DELIVERED: &str = "admission delivered stamp";
 
 /// Whether this delivery was the first.
 ///
@@ -71,15 +56,6 @@ pub enum Delivery {
     Terminal,
 }
 
-/// What [`afd_events::sql::INSERT_LEASED_FLEET_EVENT`] answers: whether this
-/// call wrote the row, and the instant the row carries.
-#[derive(sqlx::FromRow)]
-struct Landed {
-    inserted: bool,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    created_at: Timestamp,
-}
-
 /// What opening the narrative log answered: whether this was the first
 /// delivery, and where the fleet's counters stand if it was.
 ///
@@ -100,121 +76,6 @@ pub struct Received {
     /// the `now` this delivery passed. The received frame carries it, so the
     /// tail announces the instant the history read lists the row under.
     pub opened_at: Timestamp,
-}
-
-impl Leases {
-    /// Open the narrative log for `acquired`, if it is not already open.
-    ///
-    /// Answers [`Delivery::Repeat`] when the row was already there — the
-    /// `ON CONFLICT` arm — which is how a re-leased or re-polled event is told
-    /// apart from a new one without a second read. A first delivery also
-    /// answers the fleet's counters, read after commit on the same
-    /// connection.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer. The workspace is already a
-    /// [`Uuid7`] by the time it arrives — the envelope
-    /// parsed it — so there is nothing left here to validate.
-    pub async fn record_received(&self, acquired: &Acquired) -> Result<Received> {
-        let mut connection = self.pool().acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_RECEIVED))?;
-        if !self
-            .lock_admission_on(
-                &mut transaction,
-                &acquired.fleet_id,
-                &acquired.event_id,
-                acquired.fence,
-            )
-            .await?
-        {
-            return Err(crate::error::stale_fence());
-        }
-        let admission = Some(acquired.event_id.clone());
-        let landed: Landed = sqlx::query_as(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
-            .bind(&acquired.fleet_id)
-            .bind(&acquired.event_id)
-            .bind(&acquired.workspace_id)
-            .bind(&acquired.actor)
-            .bind(&acquired.event_type)
-            .bind(&acquired.request_json)
-            .bind(Option::<&Uuid7>::None)
-            .bind(af_core::event::status::RECEIVED)
-            .bind(admission.as_ref())
-            .bind(afd_admission::Producer::Steer.as_str())
-            .fetch_one(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_RECEIVED))?;
-        let Landed {
-            inserted,
-            created_at: opened_at,
-        } = landed;
-
-        sqlx::query(queue::STAMP_DELIVERY)
-            .bind(&acquired.fleet_id)
-            .bind(&acquired.event_id)
-            .bind(acquired.fence.as_i64())
-            .execute(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_DELIVERED))?;
-
-        // A false flag is the conflict arm: the row was already there, so
-        // somebody has already paid for this event. `rows_affected` cannot say
-        // that any more — the arm converges to keep a continuation's
-        // predecessor, so it reports one row written either way.
-        let delivery = if inserted {
-            Delivery::First
-        } else {
-            self.redelivery_of(&mut transaction, acquired).await?
-        };
-        transaction
-            .commit()
-            .await
-            .map_err(query(CONTEXT_RECEIVED))?;
-        // Read optional tail figures after commit so a refused SELECT cannot
-        // abort the durable delivery.
-        let counters = if inserted {
-            afd_events::fleet_counters_best_effort_on(&mut connection, &acquired.fleet_id).await
-        } else {
-            None
-        };
-        Ok(Received {
-            delivery,
-            counters,
-            opened_at,
-        })
-    }
-
-    /// Which kind of redelivery this is: one that may still run, or one that
-    /// has already finished.
-    ///
-    /// Open means `received` and nothing else, which is not a shortcut — it is
-    /// the same predicate the failure and report updates guard on. Every other
-    /// stored spelling is an ending somebody already wrote: a runner's
-    /// `processed` or `fleet_error`, or a daemon-side refusal like
-    /// `gate_blocked`, which `af_core::event::status` documents as terminal in
-    /// its own right. Asking "is it still open" rather than listing the endings
-    /// is what keeps this correct when a new refusal spelling is added.
-    ///
-    /// A row that vanished between the insert and this read is treated as still
-    /// open. That is the conservative direction: the alternative is dropping an
-    /// event nobody can prove ran, and a redelivery that runs twice is visible
-    /// while one that is silently discarded is not.
-    async fn redelivery_of(
-        &self,
-        connection: &mut sqlx::PgConnection,
-        acquired: &Acquired,
-    ) -> Result<Delivery> {
-        let stored: Option<String> = sqlx::query_scalar(afd_events::sql::SELECT_FLEET_EVENT_STATUS)
-            .bind(&acquired.fleet_id)
-            .bind(&acquired.event_id)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_RECEIVED))?;
-        Ok(match stored.as_deref() {
-            Some(af_core::event::status::RECEIVED) | None => Delivery::Repeat,
-            Some(_) => Delivery::Terminal,
-        })
-    }
 }
 
 /// Whether the refusal moved a row, and the row it moved.

@@ -57,9 +57,12 @@ async fn prior_lease_lookup_probes_the_lease_event_index_for_fresh_and_reclaimed
         }
         let plan = claim_plan(&mut tx, &held.fleet, &held.runner).await;
         // Leases carry the event they ran, so the prior-lease lookup is one
-        // index probe on `runner.leases` by `event_id`, with no `fleet.events` join.
+        // index probe on `runner.leases` by `event_id`, with no `fleet.events`
+        // join. The claim's own insert into `fleet.events` writes; it reads nothing.
         assert!(
-            relation_scans(&plan, "events").is_empty(),
+            relation_scans(&plan, "events")
+                .iter()
+                .all(|node| node["Node Type"] == "ModifyTable"),
             "fresh={fresh}: {plan}"
         );
         let prior = relation_scans(&plan, "leases");
@@ -96,6 +99,9 @@ async fn claim_plan(
     .bind(af_wire::task::TaskState::Ready.as_str())
     .bind(af_wire::task::TaskState::Running.as_str())
     .bind(afd_fleet::task::DECISION_POLICY_PATH)
+    .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+    .bind(af_core::event::status::RECEIVED)
+    .bind(afd_admission::Producer::Steer.as_str())
     .fetch_one(connection)
     .await
     .expect("prepared production claim plan")

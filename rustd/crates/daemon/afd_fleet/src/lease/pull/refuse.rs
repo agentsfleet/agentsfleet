@@ -39,11 +39,7 @@ impl LeaseService {
         acquired: &Acquired,
         runner_id: &Uuid7,
     ) -> Result<Step<Installed>> {
-        match self
-            .leases
-            .installed_for_admission(&acquired.fleet_id, Some(&acquired.event_id))
-            .await
-        {
+        match self.leases.installed_claimed(&acquired.opened).await {
             Ok(Some(installed)) => Ok(Step::Go(installed)),
             // The selection pass filters on status, so reaching here with a
             // stopped fleet means an operator paused it in the window between
@@ -229,7 +225,7 @@ impl LeaseService {
         runner_id: &Uuid7,
         reason: &str,
     ) -> Result<()> {
-        let received = self.leases.record_received(acquired).await?;
+        let received = acquired.opened.received;
         if received.delivery == Delivery::First {
             self.leases
                 .publish_received(acquired, received.opened_at, received.counters)

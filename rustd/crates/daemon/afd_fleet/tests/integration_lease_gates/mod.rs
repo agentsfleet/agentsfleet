@@ -98,9 +98,6 @@ const STATUS_GATE_BLOCKED: &str = "gate_blocked";
 /// The status an event that is delivered, or merely waiting, is left in.
 const STATUS_RECEIVED: &str = "received";
 
-/// The status an operator's pause leaves on the fleet row.
-const FLEET_STATUS_STOPPED: &str = "stopped";
-
 /// The gate kind a fixture raises over a whole event.
 const KIND_EVENT: &str = "tool_call";
 
@@ -225,34 +222,7 @@ async fn terminal_of(
     })
 }
 
-/// Replaces a seeded fleet's status.
-async fn set_status(fixtures: &Fixtures, fleet: &Uuid7, status: &str) {
-    execute(
-        fixtures,
-        "UPDATE fleet.fleets SET status = $2 WHERE id = $1",
-        fleet,
-        status,
-    )
-    .await;
-}
-
 /// Replaces a seeded fleet's stored configuration.
 async fn set_config(fixtures: &Fixtures, fleet: &Uuid7, config_json: &str) {
     fixtures.native_config(fleet, config_json).await;
-}
-
-/// One two-parameter statement against the fixture database, keyed by the
-/// identifier `first`.
-async fn execute(fixtures: &Fixtures, statement: &'static str, first: &Uuid7, second: &str) {
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    sqlx::query(statement)
-        .bind(first)
-        .bind(second)
-        .execute(&mut *connection)
-        .await
-        .expect("the fixture statement must apply");
 }

@@ -114,11 +114,7 @@ pub(crate) async fn held_admission(fixtures: Fixtures, actor: &str, request_json
         .await
         .expect("the seeded fleet is leasable");
     assert_eq!(
-        leases
-            .record_received(&acquired)
-            .await
-            .expect("the narrative log must open")
-            .delivery,
+        acquired.opened.received.delivery,
         Delivery::First,
         "a newly leased event has no row yet"
     );

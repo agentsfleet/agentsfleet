@@ -70,14 +70,7 @@ async fn received(fixtures: &Fixtures) -> afd_fleet::lease::Acquired {
     let held = seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
-    assert_eq!(
-        leases
-            .record_received(&held)
-            .await
-            .expect("the narrative log must open")
-            .delivery,
-        Delivery::First
-    );
+    assert_eq!(held.opened.received.delivery, Delivery::First);
     held
 }
 

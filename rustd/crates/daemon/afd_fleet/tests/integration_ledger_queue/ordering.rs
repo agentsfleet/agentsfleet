@@ -45,7 +45,6 @@ async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
     let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &holder).await.expect("first claim");
     assert_eq!(first.event_id, claimed.stored.id);
-    leases.record_received(&first).await.expect("delivery");
     let issued = issue(&fixtures, &leases, &first, &holder, &tenant).await;
     let delayed = admissions
         .stage(&mut tx, delayed)
