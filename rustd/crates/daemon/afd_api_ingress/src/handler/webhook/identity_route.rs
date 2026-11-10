@@ -49,7 +49,8 @@ use http::{HeaderMap, StatusCode};
 
 use crate::handler::Refusal;
 use crate::services::{
-    NewAccount, Services, SignupMetadata as _, Signups as _, personal_tenant_name,
+    MetadataUnwritten, NewAccount, Services, SignupMetadata as _, Signups as _,
+    personal_tenant_name,
 };
 use afd_api_wire::ingress::IdentityAnswer;
 
@@ -65,6 +66,13 @@ const EVENT_WRITEBACK: &str = "identity_metadata_writeback_failed";
 
 /// The event type that opens an account.
 const EVENT_USER_CREATED: &str = "user.created";
+
+/// What the identity provider is told when it could not take the writeback.
+///
+/// It reads this on a delivery it will send again: the account is open, and
+/// the redelivery is what finishes it.
+const DETAIL_WRITEBACK_UNREACHABLE: &str =
+    "The account is open; its tenant did not reach the identity provider. Retry the delivery.";
 
 /// What a caller is told when the body is not an event this route can read.
 const DETAIL_UNREADABLE: &str = "The request body is not an identity event";
@@ -88,8 +96,10 @@ const DETAIL_UNVERIFIED_ADDRESS: &str =
 /// # Errors
 /// `UZ-WH-020` for a deployment with no configured secret, `UZ-WH-010` for a
 /// signature that did not match, `UZ-WH-011` for one outside its window,
-/// `UZ-WH-030` for a body past the cap, and `UZ-REQ-001` for a verified body
-/// this route cannot read as an event or that names no usable address.
+/// `UZ-WH-030` for a body past the cap, `UZ-REQ-001` for a verified body
+/// this route cannot read as an event or that names no usable address, and
+/// `UZ-AUTH-004` for an account opened whose tenant could not reach the
+/// identity provider, which the provider's redelivery finishes.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
     path = "/v1/auth/identity-events/clerk",
@@ -210,8 +220,9 @@ pub(crate) async fn receive<D: Services>(
     // The tenant row exists; the provider does not know about it yet. Until it
     // does, this person's next session token carries no `tenant_id` and every
     // call they make is refused for want of a tenant — so the write happens
-    // here, before the 200.
-    write_back(&services, &event.data.id, opened.tenant_id.as_str()).await;
+    // here, before the 200, on a replay too: a redelivery is how a write that
+    // could not reach the provider is finished.
+    write_back(&services, &event.data.id, opened.tenant_id.as_str()).await?;
 
     // 200 either way, and the flag says which. A replay is not a conflict: the
     // provider is right to retry and a 409 would put a delivery it cannot
@@ -231,39 +242,61 @@ pub(crate) async fn receive<D: Services>(
 
 /// Tells the identity provider which tenant the account resolved to.
 ///
-/// Best-effort by construction, and the swallow is the point: the tenant row is
-/// already committed, so answering the delivery with this failure would refuse
-/// an account that exists and invite a retry that can only duplicate work.
+/// A provider that could not be reached refuses the delivery with a 503, so
+/// the provider sends it again. That is safe because the tenant row is already
+/// committed: the redelivery takes `bootstrap`'s replay path, opens nothing
+/// new, and reaches this write once more, which is the repair. Svix retries at
+/// 5 s, 5 min, 30 min, 2 h, 5 h and 10 h twice.
 ///
-/// What the swallow costs is a person whose next token carries no tenant, which
-/// an operator repairs from the provider's dashboard — so the failure is LOGGED
-/// with the subject and tenant, because a silent one leaves them nothing to
-/// repair from.
-async fn write_back<D: Services>(services: &Arc<D>, subject: &str, tenant_id: &str) {
+/// A provider that refused this daemon's credential or no longer knows the
+/// subject is answered 200, since a redelivery cannot change either answer:
+/// the first is an operator's `CLERK_SECRET_KEY` to fix, and the second a
+/// person deleted since the event. Every failure is LOGGED with the tenant and
+/// counted, because a silent one leaves an operator nothing to repair from.
+///
+/// # Errors
+/// [`error_code::AUTH_UNAVAILABLE`] when the provider could not be reached.
+async fn write_back<D: Services>(
+    services: &Arc<D>,
+    subject: &str,
+    tenant_id: &str,
+) -> Result<(), Refusal> {
     let Ok(subject) = Subject::new(subject) else {
         // A blank subject cannot address a write. `bootstrap` already opened
         // the account under it, so this is the provider sending something the
-        // account model tolerated and the API cannot use.
+        // account model tolerated and the API cannot use; a redelivery would
+        // carry the same subject.
         tracing::warn!(event = EVENT_WRITEBACK, reason = "blank subject");
-        return;
+        return Ok(());
     };
-    if let Err(unwritten) = services
+    let Err(unwritten) = services
         .signup_metadata()
         .write_signup(&subject, tenant_id, &signup_owner_claim())
         .await
-    {
-        // Hoisted out of the macro: `tracing`'s `log` feature is on across this
-        // workspace, so a call inside an event field compiles twice.
-        let reason = unwritten.to_string();
-        tracing::warn!(
-            event = EVENT_WRITEBACK,
-            tenant_id,
-            reason,
-            "the account exists but its tenant did not reach the identity \
-             provider; the person's next token will carry none until an \
-             operator repairs the metadata"
-        );
+    else {
+        return Ok(());
+    };
+    producers::fleet::signup_failed(SignupFailure::WritebackFailed);
+    // Hoisted out of the macro: `tracing`'s `log` feature is on across this
+    // workspace, so a call inside an event field compiles twice.
+    let reason = unwritten.to_string();
+    let redelivered = unwritten == MetadataUnwritten::Unreachable;
+    tracing::warn!(
+        event = EVENT_WRITEBACK,
+        tenant_id,
+        reason,
+        redelivered,
+        "the account exists but its tenant did not reach the identity provider; \
+         the person's next token carries none until a redelivery or an operator \
+         writes it"
+    );
+    if redelivered {
+        return Err(Refusal::coded(
+            error_code::AUTH_UNAVAILABLE,
+            DETAIL_WRITEBACK_UNREACHABLE,
+        ));
     }
+    Ok(())
 }
 
 /// The signup reason a wall refusal counts under, where it counts as one.

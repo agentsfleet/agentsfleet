@@ -1,8 +1,11 @@
-import { requireCredential } from "@/lib/auth/credential";
+import { requireCredential, tenantClaimMissing } from "@/lib/auth/credential";
 import { redirect } from "next/navigation";
+import { ApiError } from "@/lib/api/errors";
 import { firstTenantWorkspace } from "@/lib/api/workspaces";
+import { ERROR_CODE } from "@/lib/errors";
 import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
 import NoWorkspaceEmptyState from "@/components/layout/NoWorkspaceEmptyState";
+import AccountSetup from "./AccountSetup";
 
 export const dynamic = "force-dynamic";
 
@@ -18,13 +21,32 @@ export const dynamic = "force-dynamic";
 export default async function DashboardIndexPage() {
   const token = await requireCredential();
 
-  // No `.catch` here: a transient list failure must NOT fall through to the
-  // create-first empty state — an operator who already owns workspaces would be
-  // shown "create a workspace" and could make a duplicate. The error propagates
-  // to `(dashboard)/error.tsx` (a retry surface) instead; the empty state renders
-  // only on a genuinely empty list (a successful 200 with no items).
-  const first = await firstTenantWorkspace(token);
+  // A transient list failure must NOT fall through to the create-first empty
+  // state — an operator who already owns workspaces would be shown "create a
+  // workspace" and could make a duplicate. The error propagates to
+  // `(dashboard)/error.tsx` (a retry surface) instead; the empty state renders
+  // only on a genuinely empty list (a successful 200 with no items). The one
+  // refusal caught is an account still opening, which only a fresh token fixes.
+  let first;
+  try {
+    first = await firstTenantWorkspace(token);
+  } catch (failure) {
+    if (await accountStillOpening(failure)) return <AccountSetup />;
+    throw failure;
+  }
   if (first) redirect(workspacePath(first.id, DEFAULT_WORKSPACE_SUBPATH));
 
   return <NoWorkspaceEmptyState />;
+}
+
+/**
+ * Whether the list was refused because this account is still opening (M245
+ * §10): the scope gate refused a token that carries no tenant. Both must hold.
+ * A token WITH a tenant that lacks the scope belongs to a person an operator
+ * narrowed by hand, for whom no amount of waiting brings the scope.
+ */
+async function accountStillOpening(failure: unknown): Promise<boolean> {
+  if (!(failure instanceof ApiError)) return false;
+  if (failure.code !== ERROR_CODE.INSUFFICIENT_SCOPE) return false;
+  return tenantClaimMissing();
 }

@@ -91,5 +91,31 @@ export const claims = cache(async (): Promise<Record<string, unknown> | null> =>
   }
 });
 
+/** The tenant claim's name, and the object the provider nests it under. */
+const CLAIM_TENANT_ID = "tenant_id";
+const CLAIM_METADATA = "metadata";
+
+/**
+ * Whether a readable session carries no tenant: the signup webhook has not
+ * yet written the account's tenant to the provider, or this token was minted
+ * before it did.
+ *
+ * Read where the daemon reads it (`afd_identity/src/jwks/claims.rs`): the top
+ * level first, then under `metadata`, where the session-token template
+ * projects it. `false` when the claims cannot be read at all, so a provider
+ * outage is never taken for an account still opening.
+ */
+export async function tenantClaimMissing(): Promise<boolean> {
+  const session = await claims();
+  if (session === null) return false;
+  const metadata = session[CLAIM_METADATA];
+  const nested =
+    typeof metadata === "object" && metadata !== null
+      ? (metadata as Record<string, unknown>)[CLAIM_TENANT_ID]
+      : undefined;
+  const tenant = session[CLAIM_TENANT_ID] ?? nested;
+  return typeof tenant !== "string" || tenant === "";
+}
+
 /** Where a session that expired mid-render sends the visitor. */
 const SIGN_IN_PATH = "/sign-in";

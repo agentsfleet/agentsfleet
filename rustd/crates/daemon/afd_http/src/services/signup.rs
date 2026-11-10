@@ -15,7 +15,8 @@
 
 use af_crypto::secret::SecretBytes;
 use afd_auth::principal::Subject;
-use afd_identity::MetadataUnwritten;
+/// What a refused writeback says, named beside the seam that returns it.
+pub use afd_identity::MetadataUnwritten;
 use afd_tenant::Result as TenantResult;
 use jiff::Timestamp;
 

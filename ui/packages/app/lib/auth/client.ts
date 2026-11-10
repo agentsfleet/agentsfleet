@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useUser, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
 
 // `useClientToken()` was retired in M64_006. Every dashboard mutation/read
@@ -13,42 +13,57 @@ import { useUser, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
 // after the cookie expires; POST cannot complete Clerk's redirect handshake.
 const SESSION_REFRESH_INTERVAL_MS = 45_000;
 
-export function AuthSessionKeeper(): null {
+/**
+ * A fresh session token on demand, and whose session it is.
+ *
+ * `refresh` mints the next token through Clerk's `user.reload()`, which
+ * refreshes the `__session` cookie without returning token bytes to this
+ * module. A call while one is in flight joins nothing and returns at once.
+ * `signedInUserId` is null until a signed-in session has loaded.
+ */
+export function useSessionRefresh(): {
+  signedInUserId: string | null;
+  refresh: () => Promise<void>;
+} {
   const { isLoaded, isSignedIn, user } = useUser();
   const refreshInFlight = useRef(false);
-  // Clerk re-instantiates the User resource after every reload(), so an
-  // effect keyed on the object identity re-arms — and fires its immediate
-  // refresh — once per refresh, doubling every FAPI call the keeper makes.
-  // The ref tracks the live resource; the effect re-arms only when the
-  // signed-in identity actually changes.
+  // Clerk re-instantiates the User resource after every reload(), so a
+  // callback keyed on the object identity would change once per refresh, and
+  // an effect depending on it would re-arm and fire again, doubling every FAPI
+  // call. The ref tracks the live resource; `refresh` stays one function.
   const userRef = useRef(user);
   useLayoutEffect(() => {
     userRef.current = user;
   }, [user]);
-  const userId = user?.id ?? null;
+
+  const refresh = useCallback(async (): Promise<void> => {
+    if (refreshInFlight.current) return;
+    refreshInFlight.current = true;
+    try {
+      await userRef.current?.reload();
+    } catch {
+      // Offline and transient Clerk failures retry on the caller's next tick;
+      // never leak an unhandled promise rejection.
+    } finally {
+      refreshInFlight.current = false;
+    }
+  }, []);
+
+  const signedInUserId = isLoaded && isSignedIn ? user.id : null;
+  return { signedInUserId, refresh };
+}
+
+export function AuthSessionKeeper(): null {
+  const { signedInUserId, refresh } = useSessionRefresh();
 
   useEffect(() => {
-    if (!isLoaded || !isSignedIn || userId === null) return;
+    if (signedInUserId === null) return;
 
-    const refreshSession = async (): Promise<void> => {
-      if (refreshInFlight.current) return;
-      refreshInFlight.current = true;
-      try {
-        // Clerk documents user.reload() as refreshing both the User resource
-        // and the session token without returning token bytes to this module.
-        await userRef.current?.reload();
-      } catch {
-        // Offline and transient Clerk failures retry on the next interval or
-        // browser-resume signal; never leak an unhandled promise rejection.
-      } finally {
-        refreshInFlight.current = false;
-      }
-    };
     const refreshWhenVisible = (): void => {
-      if (document.visibilityState === "visible") void refreshSession();
+      if (document.visibilityState === "visible") void refresh();
     };
 
-    void refreshSession();
+    void refresh();
     const interval = window.setInterval(refreshWhenVisible, SESSION_REFRESH_INTERVAL_MS);
     window.addEventListener("focus", refreshWhenVisible);
     window.addEventListener("online", refreshWhenVisible);
@@ -59,7 +74,7 @@ export function AuthSessionKeeper(): null {
       window.removeEventListener("online", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
-  }, [isLoaded, isSignedIn, userId]);
+  }, [signedInUserId, refresh]);
 
   return null;
 }

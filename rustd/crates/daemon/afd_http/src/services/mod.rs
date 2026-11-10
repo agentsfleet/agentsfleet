@@ -72,7 +72,8 @@ pub use self::provider::TenantProviders;
 pub use self::runner_stream::RunnerStreams;
 pub use self::schedule::{FleetSchedules, SchedulePlane};
 pub use self::signup::{
-    Bootstrapped, IdentityWebhookSecret, NewAccount, SignupMetadata, Signups, personal_tenant_name,
+    Bootstrapped, IdentityWebhookSecret, MetadataUnwritten, NewAccount, SignupMetadata, Signups,
+    personal_tenant_name,
 };
 pub use self::team::TenantTeam;
 pub use self::tenant::{TenantKeys, TenantWorkspaces, TerminalCredentials, WorkspaceOwnership};
