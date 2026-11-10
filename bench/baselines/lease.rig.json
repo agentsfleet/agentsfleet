@@ -2,7 +2,7 @@
   "lane": "lease",
   "profile": "rig",
   "provenance": {
-    "revision": "2bea47c3d",
+    "revision": "6b0caea35",
     "datastore_image": "nats:2.15.2-alpine",
     "owned": true
   },
@@ -14,27 +14,28 @@
     "pool_size": 20
   },
   "measurements": {
-    "candidates_per_poll": 53.990338164251206,
-    "drain_commits_per_lease": 77.715,
+    "candidates_per_poll": 53.908212560386474,
+    "drain_commits_per_lease": 37.43,
     "drain_event_rows": 200.0,
     "drain_events": 200.0,
     "drain_events_processed": 200.0,
     "drain_failures": 0.0,
-    "drain_idle_polls": 23507.0,
-    "drain_lease_p95_ms": 57.855,
+    "drain_idle_commits": 0.0,
+    "drain_idle_statements": 0.0,
+    "drain_lease_p95_ms": 64.191,
     "drain_leases": 200.0,
-    "drain_leases_per_second": 75.2951960018245,
+    "drain_leases_per_second": 86.54487072288319,
     "drain_ledger_rows_per_event": 3.0,
-    "drain_polls": 437.0,
-    "drain_report_p95_ms": 23.103,
-    "drain_statements_per_lease": 114.29,
+    "drain_offer_claims": 207.0,
+    "drain_report_p95_ms": 29.711,
+    "drain_statements_per_lease": 74.165,
     "drain_statements_per_lease_activity": 0.0,
-    "drain_statements_per_lease_claim": 7.2,
+    "drain_statements_per_lease_claim": 6.05,
     "drain_statements_per_lease_gates": 11.0,
     "drain_statements_per_lease_host": 9.0,
     "drain_statements_per_lease_issue": 7.0,
     "drain_statements_per_lease_meter": 6.0,
-    "drain_statements_per_lease_other": 47.09,
+    "drain_statements_per_lease_other": 8.115,
     "drain_statements_per_lease_pricing": 7.0,
     "drain_statements_per_lease_report": 6.0,
     "drain_statements_per_lease_shared": 8.0,
@@ -44,23 +45,21 @@
     "error_rate": 0.0,
     "exhausted": 1.0,
     "failures": 0.0,
-    "idle_commits_per_poll": 1.0000850810396904,
-    "idle_statements_per_poll": 1.0,
     "leases": 200.0,
-    "max_ms": 28.159,
-    "p95_ms": 9.047,
-    "p99_ms": 10.823,
-    "polls_per_second": 1441.4297278252698,
-    "rate_per_second": 1441.4297278252698,
+    "max_ms": 20.047,
+    "p95_ms": 11.599,
+    "p99_ms": 16.575,
+    "polls_per_second": 1395.681251133443,
+    "rate_per_second": 1395.681251133443,
     "wasted_claim_rate": 0.033816425120772944
   },
   "datastores": {
     "postgres": {
-      "operations": 468
+      "operations": 480
     }
   },
   "fixture": {
-    "run_prefix": "bench-1794252630531-37074",
+    "run_prefix": "bench-1794292002442-59035",
     "created": 1216,
     "swept": 1216
   }
