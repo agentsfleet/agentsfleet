@@ -203,11 +203,11 @@ impl Lane {
             "INSERT INTO vault.secrets \
                (id, workspace_id, key_name, \
                 dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag, \
-                kek_version, created_at, updated_at, \
+                kek_version, resource_version, created_at, updated_at, \
                 meta_kind, meta_provider, meta_base_url, meta_has_key) \
              SELECT $3, workspace_id, $4, \
                     dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag, \
-                    kek_version, now(), now(), $5, $6, $7, $8 \
+                    kek_version, 1, now(), now(), $5, $6, $7, $8 \
                FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2",
         )
         .bind(&self.workspace)

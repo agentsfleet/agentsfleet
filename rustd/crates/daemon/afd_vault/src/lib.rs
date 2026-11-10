@@ -90,6 +90,11 @@ pub use self::projection::Kind;
 pub use self::read::SecretSummary;
 pub use self::secret::{MAX_DATA_BYTES, SecretBody, SecretName};
 
+/// The `vault.secrets.resource_version` every insert binds. The table's update
+/// trigger moves it by one on each change, so a cache keyed on it misses after
+/// any writer's replace.
+pub const SECRET_FIRST_VERSION: i64 = 1;
+
 /// The key-less half of the vault: what a workspace holds, and removing one.
 ///
 /// Constructible on its own, and that is the point rather than a convenience.

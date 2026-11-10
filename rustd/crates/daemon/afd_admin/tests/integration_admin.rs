@@ -274,3 +274,64 @@ impl Lane {
         *model
     }
 }
+
+/// The catalogue's version, which every platform key cache is keyed on.
+async fn catalogue_version(lane: &Lane) -> i64 {
+    let mut connection = lane.database.acquire().await.expect("an API connection");
+    sqlx::query_scalar("SELECT resource_version FROM model.catalogue_version WHERE id = 1")
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the catalogue singleton reads")
+}
+
+// Value: protects=a platform default change moves the catalogue version;
+// fails_when=set or deactivate commits without the bump, or a refusal bumps;
+// why_new=the platform key cache keys on the version; seam=none;
+// no_claim=concurrent admin writers.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn platform_default_change_bumps_catalogue_version() {
+    let lane = Lane::create().await;
+    lane.file_model().await;
+    let before = catalogue_version(&lane).await;
+
+    let refused = PlatformKeyInput {
+        model: "missing".to_owned(),
+        ..lane.key_input()
+    };
+    assert_eq!(
+        lane.keys.set(refused).await.expect("a typed outcome"),
+        SetPlatformKey::ModelNotFound
+    );
+    assert_eq!(
+        catalogue_version(&lane).await,
+        before,
+        "a refused set moves nothing"
+    );
+
+    assert!(matches!(
+        lane.keys.set(lane.key_input()).await.expect("activates"),
+        SetPlatformKey::Set(_)
+    ));
+    assert!(
+        lane.keys
+            .deactivate(&lane.provider)
+            .await
+            .expect("deactivates")
+    );
+    assert_eq!(catalogue_version(&lane).await, before + 2);
+
+    assert!(
+        !lane
+            .keys
+            .deactivate(mint_id().as_str())
+            .await
+            .expect("a typed outcome")
+    );
+    assert_eq!(
+        catalogue_version(&lane).await,
+        before + 2,
+        "a deactivate that matched no default moves nothing"
+    );
+    lane.cleanup().await;
+}

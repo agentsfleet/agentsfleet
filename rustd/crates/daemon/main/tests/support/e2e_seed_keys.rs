@@ -81,9 +81,9 @@ pub(crate) async fn seed_provider_key(booted: &Booted, workspace: &Uuid7, now: T
         "INSERT INTO vault.secrets
            (id, workspace_id, key_name, kek_version,
             dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag,
-            created_at, updated_at,
+            resource_version, created_at, updated_at,
             meta_kind, meta_provider, meta_has_key)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $11, $11,
                  $12, $3, TRUE)
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
@@ -175,9 +175,9 @@ async fn seal_named(booted: &Booted, workspace: &Uuid7, name: &str, kind: Option
         "INSERT INTO vault.secrets
            (id, workspace_id, key_name, kek_version,
             dek_ciphertext, dek_nonce, dek_tag, secret_nonce, secret_ciphertext, secret_tag,
-            created_at, updated_at,
+            resource_version, created_at, updated_at,
             meta_kind, meta_provider, meta_has_key)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $11, $11,
                  $12, $13, $14)",
     )
     .bind(vault_row())

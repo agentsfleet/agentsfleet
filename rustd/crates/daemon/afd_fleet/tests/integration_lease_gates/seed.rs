@@ -82,9 +82,9 @@ async fn seed_provider_key(fixtures: &Fixtures, workspace: &Uuid7) {
     sqlx::query(
         "INSERT INTO vault.secrets \
            (id, workspace_id, key_name, kek_version, dek_ciphertext, dek_nonce, \
-            dek_tag, secret_nonce, secret_ciphertext, secret_tag, created_at, updated_at, \
+            dek_tag, secret_nonce, secret_ciphertext, secret_tag, resource_version, created_at, updated_at, \
             meta_kind, meta_provider, meta_has_key) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now(), \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, now(), now(), \
                  $11, $3, TRUE) \
          ON CONFLICT (workspace_id, key_name) DO NOTHING",
     )
