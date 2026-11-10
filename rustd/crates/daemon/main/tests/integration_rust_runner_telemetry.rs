@@ -211,8 +211,15 @@ fn assert_lease_trace(received: &Received, event_id: &str) {
         spans
             .iter()
             .all(|span| SPAN_KINDS.contains(&span.name.as_str())
-                || span.name == "runner_stream_operation"),
-        "only reviewed span kinds are exported"
+                || matches!(
+                    span.name.as_str(),
+                    "runner_stream_operation" | "runner.connection"
+                )),
+        "only reviewed span kinds are exported: {:?}",
+        spans
+            .iter()
+            .map(|span| span.name.as_str())
+            .collect::<BTreeSet<_>>()
     );
     let roots = spans
         .iter()

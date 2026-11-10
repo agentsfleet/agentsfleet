@@ -60,8 +60,10 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
             (*crate::wire::pointer(&away, "/error_code")),
             serde_json::Value::Null
         );
-        assert!(settled.await.expect("drain task joins").completed);
+        native.ended(STREAM_ANSWER_TIMEOUT).await;
         native.close().await;
+        let drained = settled.await.expect("drain task joins");
+        assert!(drained.is_clean(), "native drain: {drained:?}");
         supervisor.shutdown().await;
         run.cleanup().await;
     }

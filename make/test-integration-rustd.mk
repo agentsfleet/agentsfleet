@@ -284,7 +284,7 @@ RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
   $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
 
-# Shards: three, each on its own runner with its own Postgres and Dragonfly,
+# Each shard owns its Postgres and Dragonfly,
 # measured in parallel and graded together by `test-coverage-rustd-merge`.
 #
 #   runner     the Rust runner's crates, plus the daemon suite's
@@ -292,14 +292,15 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 #              daemon. A runner leases any fleet whose required tags it carries,
 #              so on the shared lane it was offered every fleet the other
 #              scenarios had left behind; on its own datastores it is offered its own.
-#   daemon     `agentsfleetd`, every target, minus the runner's modules.
+#   daemon     `agentsfleetd`, minus the runner and native-stream modules.
+#   stream     the native-stream scenarios from the daemon suite.
 #   api        the API and fleet crates, whose live-service suites dominate
 #              the remaining test time when they share substrate's runner.
-#   substrate  every other crate: the workspace minus the three above.
+#   substrate  every other crate: the workspace minus the packages above.
 #
 # The partition is total by construction. `substrate` is defined by exclusion,
-# so a crate added later lands there without an edit, and `daemon` skips exactly
-# the filter `runner` selects. No test can fall between shards, and a filter
+# so a crate added later lands there without an edit. `daemon` skips exactly
+# the filters `runner` and `stream` select. No test can fall between shards, and a filter
 # that matches nothing fails its invocation through `_rust_lane`'s zero-tests
 # guard rather than passing empty.
 #
@@ -312,7 +313,8 @@ RUSTD_RUNNER_PACKAGES := afr_agent afr_executor afr_sandbox afr_supervisor agent
 RUSTD_DAEMON_PACKAGES := agentsfleetd
 RUSTD_API_PACKAGES := afd_api afd_fleet
 RUSTD_RUNNER_IN_DAEMON := integration_rust_runner::
-RUSTD_SHARDS := runner daemon api substrate
+RUSTD_STREAM_IN_DAEMON := integration_runner_stream::
+RUSTD_SHARDS := runner daemon stream api substrate
 RUSTD_SHARD ?= $(RUSTD_SHARDS)
 # Every report the floor is graded over: the shards, and the kernel lane's
 # (`test-coverage-runner-kernel`, make/test-unit.mk), which needs root and a
@@ -380,8 +382,12 @@ ifneq ($(filter runner,$(RUSTD_SHARD)),)
 	$(call _rust_lane,rustd-coverage-runner-daemon.log,[rustd] coverage: runner against the daemon,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_RUNNER_IN_DAEMON))
 endif
 ifneq ($(filter daemon,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard daemon: agentsfleetd without the runner's modules..."; \
-	$(call _rust_lane,rustd-coverage-daemon.log,[rustd] coverage: daemon,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_DAEMON_PACKAGES)) -- --include-ignored --skip $(RUSTD_RUNNER_IN_DAEMON))
+	@echo "→ [rustd] Shard daemon: agentsfleetd without runner and native-stream modules..."; \
+	$(call _rust_lane,rustd-coverage-daemon.log,[rustd] coverage: daemon,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_DAEMON_PACKAGES)) -- --include-ignored --skip $(RUSTD_RUNNER_IN_DAEMON) --skip $(RUSTD_STREAM_IN_DAEMON))
+endif
+ifneq ($(filter stream,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard stream: native runner sessions against the daemon..."; \
+	$(call _rust_lane,rustd-coverage-stream.log,[rustd] coverage: native runner streams,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_STREAM_IN_DAEMON))
 endif
 ifneq ($(filter api,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard api: the API and fleet suites..."; \

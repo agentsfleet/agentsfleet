@@ -80,6 +80,37 @@ impl Dispatch<'_> {
         Ok(Progress::Continue)
     }
 
+    /// A peer closes its lanes independently, so another lane's end can overtake a terminal
+    /// `go_away` already written to control. Control is read to its end within one answer
+    /// bound before the session counts as lost; a timeout means control itself fell silent.
+    pub(crate) async fn until_control_ends(
+        &mut self,
+        control: &mut mpsc::Receiver<(StreamKind, OwnedFrame)>,
+        ended: Result<()>,
+    ) -> Result<Progress> {
+        let lost = ended
+            .err()
+            .unwrap_or_else(|| ErrorKind::Disconnected.into());
+        if timed_out(&lost) {
+            return Err(lost);
+        }
+        let deadline = tokio::time::Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT;
+        loop {
+            let next = tokio::select! {
+                biased;
+                () = self.stop.cancelled() => None,
+                next = tokio::time::timeout_at(deadline, control.recv()) => next.ok().flatten(),
+            };
+            let Some((kind, frame)) = next else {
+                return Err(lost);
+            };
+            match self.frame(kind, frame)? {
+                Progress::Continue => {}
+                ended => return Ok(ended),
+            }
+        }
+    }
+
     fn offer(&mut self, mut frame: OwnedFrame, id: Uuid7) -> Result<()> {
         let cancelled = self.early_cancel.remove(&id);
         let registration = self.running.offer(id, cancelled)?;
@@ -94,6 +125,14 @@ impl Dispatch<'_> {
             .try_send(offer)
             .map_err(crate::error::stream_protocol)?;
         Ok(())
+    }
+}
+
+fn timed_out(error: &crate::Error) -> bool {
+    match error.kind() {
+        ErrorKind::StreamTimeout { .. } => true,
+        ErrorKind::Stream { source } => source.reason() == af_stream::Reason::Timeout,
+        _ => false,
     }
 }
 

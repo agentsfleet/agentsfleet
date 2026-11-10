@@ -65,7 +65,12 @@ impl<A: ApplicationOverQuic> ApplicationOverQuic for Driver<A> {
     async fn wait_for_data(&mut self, qconn: &mut QuicheConnection) -> QuicResult<()> {
         tokio::select! {
             biased;
-            () = self.stop.cancelled() => Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into()),
+            () = self.stop.cancelled() => {
+                // The worker leaves here without another write pass; its closing flush sends only
+                // what is queued, so a peer would otherwise wait out the whole idle timeout.
+                let _already_closed = qconn.close(true, 0, b"");
+                Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into())
+            }
             result = self.inner.wait_for_data(qconn) => result,
         }
     }
