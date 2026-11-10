@@ -10,6 +10,10 @@
 // check; a Route Handler carries none, so this one refuses what a cross-site
 // page could send — a POST whose `Origin` is absent or foreign, a body that is
 // not JSON, and a body larger than any steer can be.
+//
+// Every answer after the mint says what the route spent, as `Server-Timing`:
+// `auth` for the mint, `upstream` for the daemon's answer. Durations only, set
+// once the answer is final, so timing never changes a status or a body.
 
 import { z } from "zod";
 import { ApiError } from "@/lib/api/errors";
@@ -30,6 +34,10 @@ const CONTENT_TYPE_JSON = "application/json";
 const CONTENT_TYPE_PROBLEM = "application/problem+json";
 // Authed per-tenant answers must never land in a shared cache.
 const CACHE_CONTROL_NO_STORE = "no-store";
+const SERVER_TIMING = "Server-Timing";
+// Tenths of a millisecond: finer than any stage worth reading, coarse enough
+// that the header never hints at a clock's resolution.
+const TIMING_DECIMALS = 1;
 // encodeURIComponent leaves '.' intact, so a bare '..'/'.' path param would
 // dot-normalize inside fetch and steer the minted token at another path.
 const DOT_ONLY_SEGMENT = /^\.+$/;
@@ -84,14 +92,27 @@ export async function POST(req: Request, { params }: Params): Promise<Response> 
   }
   const steer = await readSteer(req);
   if (steer instanceof Response) return steer;
+  const minting = performance.now();
   const token = await credential();
-  if (!token) return problem(HTTP_STATUS.UNAUTHORIZED, REFUSAL.UNAUTHORIZED, ERROR_CODE.AUTH_401);
+  const auth = performance.now() - minting;
+  if (!token) return timed(problem(HTTP_STATUS.UNAUTHORIZED, REFUSAL.UNAUTHORIZED, ERROR_CODE.AUTH_401), auth);
+  const calling = performance.now();
+  let answer: Response;
   try {
-    const accepted = await steerFleet(workspaceId, fleetId, steer, token);
-    return json(HTTP_STATUS.ACCEPTED, accepted);
+    answer = json(HTTP_STATUS.ACCEPTED, await steerFleet(workspaceId, fleetId, steer, token));
   } catch (error) {
-    return passthrough(error);
+    answer = passthrough(error);
   }
+  return timed(answer, auth, performance.now() - calling);
+}
+
+// `answer`, carrying what the mint and the daemon's answer took. The body and
+// status are already final; only the header is added.
+function timed(answer: Response, auth: number, upstream?: number): Response {
+  const metrics = [`auth;dur=${auth.toFixed(TIMING_DECIMALS)}`];
+  if (upstream !== undefined) metrics.push(`upstream;dur=${upstream.toFixed(TIMING_DECIMALS)}`);
+  answer.headers.set(SERVER_TIMING, metrics.join(", "));
+  return answer;
 }
 
 // The host this request was addressed to, read as Next's own Server Action

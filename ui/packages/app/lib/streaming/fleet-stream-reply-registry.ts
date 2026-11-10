@@ -37,6 +37,39 @@ export function setEventDetailReader(reader: EventDetailReader | null): void {
  * lost ending sooner than a quiet stream would be. */
 export const REPLY_STALL_MS = STREAM_SILENCE_TIMEOUT_MS;
 
+/** The four `performance` marks one send leaves, each naming the send's
+ * operation id in its detail, so overlapping sends never share a mark. */
+export const SEND_MARK = {SEND: "af:send", ACCEPTED: "af:accepted", FIRST_FRAME: "af:first-frame", COMPLETE: "af:complete"} as const;
+// This tab's accepted sends by the event each 202 named, until its completion.
+// A send whose completion never comes is evicted oldest first past the cap.
+const MARKED_SENDS = new Map<string, {operationId: string; heard: boolean}>();
+const MARKED_SENDS_MAX = 64;
+
+export function markSend(name: typeof SEND_MARK.SEND | typeof SEND_MARK.ACCEPTED, operationId: string, eventId?: string): void {
+  if (eventId !== undefined) {
+    MARKED_SENDS.set(eventId, {operationId, heard: false});
+    if (MARKED_SENDS.size > MARKED_SENDS_MAX) MARKED_SENDS.delete(MARKED_SENDS.keys().next().value ?? eventId);
+  }
+  leaveMark(name, operationId);
+}
+
+function leaveMark(name: string, operationId: string): void {
+  performance.mark(name, {detail: {operationId}});
+}
+
+/** Marks the first frame and the completion of an accepted send's event. A
+ * send's own frames wait for its 202, so these follow `af:accepted`. */
+export function markSendFrame(frame: LiveFrame): void {
+  const eventId = "event_id" in frame && typeof frame.event_id === "string" ? frame.event_id : null;
+  const sent = eventId === null ? undefined : MARKED_SENDS.get(eventId);
+  if (eventId === null || sent === undefined) return;
+  if (!sent.heard) leaveMark(SEND_MARK.FIRST_FRAME, sent.operationId);
+  sent.heard = true;
+  if (frame.kind !== FRAME_KIND.EVENT_COMPLETE) return;
+  MARKED_SENDS.delete(eventId);
+  leaveMark(SEND_MARK.COMPLETE, sent.operationId);
+}
+
 /** Owns live decoder lifetimes beside the fleet's one EventSource. */
 export function dispatchReplyFrame(
   entry: Entry,
@@ -45,6 +78,7 @@ export function dispatchReplyFrame(
   apply: ApplyEvents,
   isCurrent: () => boolean,
 ): boolean {
+  markSendFrame(frame);
   markHeard(entry, frame);
   if (frame.kind === FRAME_KIND.CHUNK) {
     writeChunk(entry, frame, apply, isCurrent);

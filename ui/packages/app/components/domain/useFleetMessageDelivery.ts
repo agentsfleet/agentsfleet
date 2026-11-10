@@ -11,6 +11,7 @@ import { STEER_DISPOSITION, overSteerLimit, steerBytesNearLimit, type SteerAccep
 import { ERROR_CODE } from "@/lib/errors";
 import { ACTOR } from "@/lib/events/event-summary";
 import { mintOperationId } from "@/lib/streaming/operation-id";
+import { SEND_MARK, markSend } from "@/lib/streaming/fleet-stream-reply-registry";
 
 // The tail of the steer delivery chain, lifted out of `FleetThread` at its
 // length cap. Every send is one operation: named before the optimistic append,
@@ -172,6 +173,7 @@ function useSerializedDelivery(ctx: DeliveryCtx): (operationId: string, text: st
       // The ledger entry is written first: a document that dies between here
       // and the acknowledgement leaves a record the next one can resend.
       writers.begin({ operationId, text, submittedAtMs: Date.now() });
+      markSend(SEND_MARK.SEND, operationId);
       const tempId = appendOptimistic(text, OPTIMISTIC_ACTOR, sentAs);
       // The clock starts at Send, not at the send's turn in the queue: a send
       // behind a hung one ends when its own time is up, not a full clock later.
@@ -208,6 +210,8 @@ function useAcknowledgement({ reconcileOptimistic, writers }: DeliveryCtx) {
   return useCallback(
     (operationId: string, tempId: string, accepted: SteerAccepted): boolean => {
       writers.settle(operationId);
+      // Before the reconcile, which lets this send's held frames land.
+      markSend(SEND_MARK.ACCEPTED, operationId, accepted.event_id);
       const foldedInto = accepted.disposition === STEER_DISPOSITION.FOLDED ? accepted.folded_into_event_id : null;
       reconcileOptimistic(tempId, accepted.event_id, accepted.replayed, foldedInto);
       return true;
