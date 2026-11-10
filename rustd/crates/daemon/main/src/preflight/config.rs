@@ -168,8 +168,8 @@ impl BootConfig {
     ///
     /// Held as the raw configured BYTES rather than as a decoded key, and that
     /// is a wire-format fact rather than an oversight: the HMAC is keyed with
-    /// the sixty-four hexadecimal characters as text, and a Lua script compares
-    /// the stored and presented digests as strings. Decoding here would change
+    /// the sixty-four hexadecimal characters as text, and every digest stored in
+    /// `identity.device_sessions` was taken that way. Decoding here would change
     /// every digest and silently invalidate every pending session.
     #[must_use]
     pub const fn session_code_pepper(&self) -> &SecretBytes {
