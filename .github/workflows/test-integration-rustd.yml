@@ -102,7 +102,7 @@ jobs:
       # Both install the same binary, but the alias is a moving ref: it resolves
       # to whatever that tag points at when the job starts, so a third party can
       # change what executes here with no commit in this repository.
-      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-llvm-cov
       # The catalogue seeder's integration test runs the seeder under Bun.
@@ -171,7 +171,7 @@ jobs:
           key: cargo-kernel-v1-${{ runner.os }}-${{ hashFiles('rustd/Cargo.lock', 'rustd/rust-toolchain.toml') }}
           restore-keys: |
             cargo-kernel-v1-${{ runner.os }}-
-      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-llvm-cov
       - name: Install the toolbox builder and bubblewrap
