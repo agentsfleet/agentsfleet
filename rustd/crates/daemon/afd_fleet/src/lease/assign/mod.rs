@@ -1,4 +1,4 @@
-//! One bounded Postgres discovery pass per runner poll. The admission is the queue.
+//! One bounded Postgres discovery pass per gateway claim. The admission is the queue.
 
 use crate::{
     error::Result,
@@ -22,7 +22,7 @@ struct PollCost {
 
 impl Leases {
     /// Select the oldest eligible admission of one fleet, fenced with its slot.
-    /// Every poll probes Postgres, including when every notification was lost.
+    /// Each triggered claim probes Postgres; the daemon's recovery tick covers lost notifications.
     ///
     /// # Errors
     /// Preserves database failures and malformed stored identifiers.

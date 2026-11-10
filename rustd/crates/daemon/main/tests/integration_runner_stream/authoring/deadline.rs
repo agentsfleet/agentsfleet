@@ -1,12 +1,12 @@
 //! An expired answer wait cannot discard provider accounting already known by the daemon.
 
 use super::{decision::Boundary, fixture::AuthoringFixture};
-use af_core::{error_code, id::Uuid7, timing::AUTHORING_MODEL_ANSWER_TIMEOUT};
+use af_core::{error_code, id::Uuid7, timing::STREAM_ANSWER_TIMEOUT};
 use af_wire::authoring::{FailureReason, Outcome, Report};
 use afr_supervisor::test_util::Session;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
-use std::{error::Error as _, time::Duration};
+use std::error::Error as _;
 use tokio::{sync::Semaphore, time::Instant};
 
 #[tokio::test]
@@ -18,15 +18,18 @@ async fn known_usage_survives_the_model_answer_deadline_during_its_edit_check() 
     propose_edit(&fixture).await;
     let lease = fixture.id();
     let model = fixture.model();
-    let started = Instant::now();
+    let deadline = Instant::now() + STREAM_ANSWER_TIMEOUT;
     let expired = Semaphore::new(0);
     let (result, ()) = tokio::join!(
         async {
-            let result = fixture.session.authoring_model(&lease, &model).await;
+            let result = fixture
+                .session
+                .authoring_model_until(&lease, &model, deadline)
+                .await;
             expired.add_permits(1);
             result
         },
-        cross_deadline(&fixture, &boundary, started, &expired)
+        cross_deadline(&fixture, &boundary, deadline, &expired)
     );
     let error =
         result.expect_err("the caller's answer budget expires while the decision is blocked");
@@ -51,24 +54,18 @@ async fn known_usage_survives_the_model_answer_deadline_during_its_edit_check() 
 async fn cross_deadline(
     fixture: &AuthoringFixture,
     boundary: &Boundary,
-    started: Instant,
+    deadline: Instant,
     expired: &Semaphore,
 ) {
     fixture.provider.state.arrived().await;
-    advance_to(&fixture.session, started + Duration::from_secs(299)).await;
     fixture.provider.state.resume();
     boundary.arrived().await;
-    assert!(started.elapsed() < AUTHORING_MODEL_ANSWER_TIMEOUT);
-    advance_to(
-        &fixture.session,
-        started + AUTHORING_MODEL_ANSWER_TIMEOUT - Duration::from_secs(1),
-    )
-    .await;
+    assert!(
+        Instant::now() < deadline,
+        "the edit check precedes the caller deadline"
+    );
     // This direct authority replacement emits no notification that could precede the answer timeout.
     fixture.replace_authority().await;
-    tokio::time::pause();
-    tokio::time::advance(Duration::from_secs(1) + Duration::from_millis(10)).await;
-    tokio::time::resume();
     expired
         .acquire()
         .await
@@ -141,22 +138,4 @@ async fn propose_edit(fixture: &AuthoringFixture) {
         .propose(json!({"kind":"edit","base_candidate_id":candidate.id,
         "base_candidate_revision":candidate.revision,"config_ops":[],
         "instruction_edits":[{"kind":"append","text":"\nPrefer clarity."}]}));
-}
-
-async fn advance_to(session: &Session, target: Instant) {
-    // Resume for socket and database I/O: paused-time auto-advance must not race either boundary.
-    while Instant::now() < target {
-        let step = target
-            .saturating_duration_since(Instant::now())
-            .min(Duration::from_secs(10));
-        tokio::time::pause();
-        tokio::time::advance(step).await;
-        tokio::time::resume();
-        let bytes = serde_json::to_vec(&crate::wire::capable_beat()).expect("capability JSON");
-        let beat = serde_json::from_slice(&bytes).expect("capability report");
-        session
-            .heartbeat(&beat)
-            .await
-            .expect("native liveness during clock advance");
-    }
 }

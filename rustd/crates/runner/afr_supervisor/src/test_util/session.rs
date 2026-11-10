@@ -170,6 +170,21 @@ impl Session {
         self.plane.authoring_model(lease, request).await
     }
 
+    /// Exercise the production answer deadline without advancing native transport clocks.
+    ///
+    /// # Errors
+    /// Preserves deadline expiry, transport failures and coded authoring refusals.
+    pub async fn authoring_model_until(
+        &self,
+        lease: &Uuid7,
+        request: &af_wire::authoring::ModelCall,
+        deadline: Instant,
+    ) -> Result<af_wire::authoring::ModelResult> {
+        self.plane
+            .authoring_model_until(lease, request, deadline)
+            .await
+    }
+
     /// Submit a proposal and receive its durable activity receipt.
     ///
     /// # Errors
