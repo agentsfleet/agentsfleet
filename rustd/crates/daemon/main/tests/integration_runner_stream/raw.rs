@@ -170,13 +170,18 @@ impl Native {
             .pipes
             .get_mut(&StreamKind::Control)
             .expect("control attached");
-        let ended = tokio::time::timeout(bound, read(&mut pipe.reader))
-            .await
-            .expect("silent native session closes");
-        assert!(
-            !matches!(ended, Ok(Some(_))),
-            "unexpected frame on closed session"
-        );
+        // A policy recheck already in flight can precede the terminal read.
+        tokio::time::timeout(bound, async {
+            while let Ok(Some(frame)) = read(&mut pipe.reader).await {
+                assert_eq!(
+                    crate::wire::pointer(&frame, "/type"),
+                    "assignment",
+                    "unexpected frame before native close: {frame:?}"
+                );
+            }
+        })
+        .await
+        .expect("silent native session closes");
     }
 
     pub(crate) async fn close(self) {

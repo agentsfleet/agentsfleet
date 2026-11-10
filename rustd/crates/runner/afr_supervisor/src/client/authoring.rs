@@ -22,7 +22,24 @@ impl ControlPlane {
         lease: &Uuid7,
         request: &ModelCall,
     ) -> Result<ModelResult> {
-        let reply = self.stream.compute(Model { lease, request }).await?;
+        self.authoring_model_until(
+            lease,
+            request,
+            tokio::time::Instant::now() + af_core::timing::AUTHORING_MODEL_ANSWER_TIMEOUT,
+        )
+        .await
+    }
+
+    pub(crate) async fn authoring_model_until(
+        &self,
+        lease: &Uuid7,
+        request: &ModelCall,
+        deadline: tokio::time::Instant,
+    ) -> Result<ModelResult> {
+        let reply = self
+            .stream
+            .compute_until(Model { lease, request }, deadline)
+            .await?;
         Ok(garde::Unvalidated::new(reply).validate()?.into_inner())
     }
 

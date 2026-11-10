@@ -320,13 +320,13 @@ impl Downlink {
             tokio::select! {
                 biased;
                 () = stop.cancelled() => return Err(ErrorKind::Disconnected.into()),
-                done = workers.join_next() => {
-                    done.ok_or(ErrorKind::Disconnected)???;
-                    return Err(ErrorKind::Disconnected.into());
-                }
                 frame = control.recv() => {
                     let (kind, frame) = frame.ok_or(ErrorKind::Disconnected)?;
                     match dispatch.frame(kind, frame)? { Progress::Continue => {}, ended => return Ok(ended) }
+                }
+                done = workers.join_next() => {
+                    let ended = done.ok_or(ErrorKind::Disconnected)??;
+                    return dispatch.until_control_ends(control, ended).await;
                 }
                 () = self.running.changed.notified() => {
                     sender.send(&self.running.ready()?,

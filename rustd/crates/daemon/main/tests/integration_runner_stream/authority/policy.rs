@@ -1,12 +1,7 @@
 //! Operator changes close stale native owners; durable reads cover a lost notification.
 
 use super::super::raw::Native;
-use super::{
-    TestResult, faults,
-    fixture::Fixture,
-    locks::{self, HostLock},
-    signals,
-};
+use super::{PUSH_BOUND, TestResult, faults, fixture::Fixture, signals};
 use crate::wire;
 use af_core::{
     clock,
@@ -86,11 +81,13 @@ async fn a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat
         let mut native = fixture.native(transport).await;
         native.heartbeat().await;
         revoke_without_delivery(&fixture).await?;
-        let held = HostLock::hold(&fixture.run).await?;
         native.ready().await;
-        let waiter = held.blocked(&fixture.run).await?;
-        held.release().await?;
-        locks::finished(&fixture.run, waiter).await?;
+        // Discovery can reject a committed revoke before issuance takes the host lock.
+        let offered = tokio::time::timeout(PUSH_BOUND, native.next(StreamKind::Work)).await;
+        assert!(
+            offered.is_err(),
+            "revoked cached capacity offered work: {offered:?}"
+        );
         let leases: i64 =
             sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE event_id=$1")
                 .bind(&fixture.run.event_id)
