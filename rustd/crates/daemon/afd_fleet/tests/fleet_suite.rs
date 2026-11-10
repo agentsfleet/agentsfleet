@@ -61,6 +61,8 @@ mod integration_delivery_lookup;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
 mod integration_held_sandbox;
+#[path = "integration_issue_host.rs"]
+mod integration_issue_host;
 #[path = "integration_lease_affinity.rs"]
 mod integration_lease_affinity;
 #[path = "integration_lease_assign.rs"]

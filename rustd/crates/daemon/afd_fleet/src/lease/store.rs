@@ -68,6 +68,19 @@ impl Leases {
         })
     }
 
+    /// Lock the runner row and prove its owner, leaving the census to the
+    /// fleet issue's guarded insert (M245 §5).
+    pub(crate) async fn lock_host(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &af_core::id::Uuid7,
+    ) -> crate::Result<Option<afd_runner::capacity::Held>> {
+        Ok(match &self.authority {
+            Some(authority) => afd_runner::capacity::lock_host(tx, (runner, authority)).await?,
+            None => afd_runner::capacity::lock_host(tx, runner).await?,
+        })
+    }
+
     pub(super) const fn with_ticket(
         mut self,
         ticket: Option<afd_runner::capacity::choice::Ticket>,
