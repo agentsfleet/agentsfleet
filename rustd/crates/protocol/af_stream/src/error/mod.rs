@@ -145,6 +145,9 @@ impl Error {
     }
 }
 
+#[cfg(test)]
+mod tests;
+
 fn quic_reason(source: tokio_quiche::quiche::Error) -> Reason {
     use tokio_quiche::quiche::Error as Quic;
     match source {

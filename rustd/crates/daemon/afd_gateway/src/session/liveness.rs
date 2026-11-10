@@ -5,7 +5,7 @@ use parking_lot::Mutex;
 use tokio::time::{Instant, sleep_until};
 
 #[derive(Debug)]
-pub(super) struct Liveness {
+pub(crate) struct Liveness {
     last_heartbeat: Mutex<Instant>,
 }
 

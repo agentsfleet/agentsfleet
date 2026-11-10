@@ -11,7 +11,7 @@ use crate::{Operation, Result};
 
 impl SessionServices {
     /// Reserve before policy assembly, then transfer the same charged bytes to the writer.
-    pub(super) async fn offer(&self) -> Result<bool> {
+    pub(crate) async fn offer(&self) -> Result<bool> {
         let Some(state) = self.offer_state() else {
             return Ok(false);
         };

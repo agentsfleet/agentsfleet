@@ -22,7 +22,7 @@ impl SessionServices {
         fields(stream_kind = incoming.kind.as_str(), request_id = tracing::field::Empty,
             operation = tracing::field::Empty)
     )]
-    pub(super) async fn dispatch(
+    pub(crate) async fn dispatch(
         self: Arc<Self>,
         incoming: IncomingFrame,
         requests: &Arc<super::requests::RequestTracker>,
