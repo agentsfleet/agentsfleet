@@ -61,6 +61,42 @@ async fn test_a_retired_report_route_cannot_settle_a_lease() {
     run.cleanup().await;
 }
 
+/// Every pull route the stream replaced answers 404 to an enrolled runner,
+/// even for a live lease, while the runner's own row still answers.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn the_retired_runner_routes_answer_404() {
+    let mut supervisor = Supervisor::new();
+    let run = scenario(&mut supervisor).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
+    let http = reqwest::Client::new();
+    let (lease_id, _) = lease(&run).await;
+    let retired = [
+        "/v1/runners/me/heartbeats".to_owned(),
+        "/v1/runners/me/leases".to_owned(),
+        format!("/v1/runners/me/leases/{lease_id}/renew"),
+        format!("/v1/runners/me/leases/{lease_id}/activity"),
+        format!("/v1/runners/me/leases/{lease_id}/folds"),
+        "/v1/runners/me/reports".to_owned(),
+    ];
+    for path in &retired {
+        let answer = crate::wire::post(&http, &run, path, &serde_json::json!({})).await;
+        assert_eq!(answer.status().as_u16(), 404, "POST {path} is retired");
+    }
+    let own = crate::wire::get(&http, &run, "/v1/runners/me").await;
+    assert_eq!(
+        own.status().as_u16(),
+        200,
+        "the runner still reads its own row"
+    );
+
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
 /// How long the runner is given to take, run and settle the seeded event.
 const SETTLE_DEADLINE: std::time::Duration = std::time::Duration::from_secs(60);
 
