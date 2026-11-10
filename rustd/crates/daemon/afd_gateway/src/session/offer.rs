@@ -36,7 +36,8 @@ impl SessionServices {
         let frame = encoder.finish()?;
         self.cache.insert(offered)?;
         self.handle.snapshot.lock().issued()?;
-        let sent = self.output
+        let sent = self
+            .output
             .send(StreamKind::Work, frame, &self.handle.stop, deadline)
             .await;
         clock.mark(OfferStage::Send);

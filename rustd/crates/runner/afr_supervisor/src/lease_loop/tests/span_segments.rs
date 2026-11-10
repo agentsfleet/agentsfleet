@@ -60,7 +60,10 @@ fn test_lease_span_records_existing_segments() {
         .iter()
         .filter(|key| recorded.field(key).is_some())
         .count();
-    assert_eq!(written, 3, "only reached segments are written: {recorded:?}");
+    assert_eq!(
+        written, 3,
+        "only reached segments are written: {recorded:?}"
+    );
 }
 
 /// A lease run to its report writes onto its span the segments its last line
@@ -80,5 +83,8 @@ async fn test_a_concluded_lease_writes_its_segments_onto_its_span() {
     let span = the_lease_span(&capture);
     assert!(span.field(ATTR_RUNNER_MODEL_MS).is_some(), "{span:?}");
     assert_eq!(span.field(ATTR_RUNNER_MODEL_MS), line.field(LINE_MODEL_MS));
-    assert_eq!(span.field(ATTR_RUNNER_REPORT_MS), line.field(LINE_REPORT_MS));
+    assert_eq!(
+        span.field(ATTR_RUNNER_REPORT_MS),
+        line.field(LINE_REPORT_MS)
+    );
 }

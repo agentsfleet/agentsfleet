@@ -197,7 +197,8 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         if self.stages.iter().any(|(marked, _)| *marked == stage) {
             return;
         }
-        self.stages.push((stage, now.saturating_duration_since(self.last)));
+        self.stages
+            .push((stage, now.saturating_duration_since(self.last)));
         self.last = now;
     }
 
@@ -228,8 +229,14 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         if std::mem::replace(&mut self.discarded, true) {
             return;
         }
-        let elapsed = self.ticks.monotonic().saturating_duration_since(self.started);
-        let ended_at = self.started_at.checked_add(elapsed).unwrap_or(self.started_at);
+        let elapsed = self
+            .ticks
+            .monotonic()
+            .saturating_duration_since(self.started);
+        let ended_at = self
+            .started_at
+            .checked_add(elapsed)
+            .unwrap_or(self.started_at);
         // An empty context: the verb's request or stream span is not its
         // parent, as for fleet.delivery, and a root joins by attribute.
         let mut span = SpanBuilder::from_name(S::SPAN)
@@ -250,10 +257,7 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
             .into_iter()
             .filter_map(|(key, value)| Some(KeyValue::new(key, value.clone()?)));
         let staged = self.stages.iter().map(|(stage, took)| {
-            KeyValue::new(
-                stage.key(),
-                af_core::clock::saturating_millis_signed(*took),
-            )
+            KeyValue::new(stage.key(), af_core::clock::saturating_millis_signed(*took))
         });
         named.chain(staged).collect()
     }

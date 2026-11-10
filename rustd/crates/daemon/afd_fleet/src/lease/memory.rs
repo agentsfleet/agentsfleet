@@ -140,7 +140,9 @@ impl LeaseService {
             lease_id,
             fencing_token,
         } = holder;
-        let fenced = self.fenced(runner_id, fleet_id, lease_id, fencing_token).await;
+        let fenced = self
+            .fenced(runner_id, fleet_id, lease_id, fencing_token)
+            .await;
         clock.mark(CaptureStage::Fence);
         fenced?;
         let written = self.memories.capture(fleet_id, memory, now).await;

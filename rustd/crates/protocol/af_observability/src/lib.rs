@@ -35,9 +35,9 @@ pub mod producers;
 pub mod product;
 pub mod runner;
 pub mod semconv;
-pub mod verb_span;
 #[cfg(feature = "test-util")]
 pub mod test_util;
+pub mod verb_span;
 
 pub use self::delivery::{Delivery, MAX_RUN, Segments};
 pub use self::error::{Error, Result};

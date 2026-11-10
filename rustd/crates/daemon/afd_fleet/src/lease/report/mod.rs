@@ -140,18 +140,19 @@ impl LeaseService {
         clock.mark(ReportStage::Capture);
         let committed = self.leases.commit_report(report).await;
         clock.mark(ReportStage::Commit);
-        let reconciled = self.finalize_report(
-            lease,
-            committed?,
-            task_plan.as_ref(),
-            finalize::Context {
-                runner_id,
-                request,
-                lease_id,
-                now,
-            },
-        )
-        .await;
+        let reconciled = self
+            .finalize_report(
+                lease,
+                committed?,
+                task_plan.as_ref(),
+                finalize::Context {
+                    runner_id,
+                    request,
+                    lease_id,
+                    now,
+                },
+            )
+            .await;
         clock.mark(ReportStage::Announce);
         reconciled
     }
