@@ -155,7 +155,12 @@ main() {
   fi
 
   printf 'deploying %s from %s%s\n' "$app" "$context_dir" "${config:+ using $config}"
-  "$FLYCTL" deploy "$context_dir" --app "$app" --wait-timeout 60 "${config_flag[@]}"
+  # --ha=false: on an app's first deploy flyctl otherwise adds a stopped
+  # standby beside the first machine, and `scale count` then counts that
+  # standby as one of `desired`. A two-node NATS cluster came up as one
+  # routed node and one that never started; the readiness poll below refused
+  # it. `scale count` alone decides how many machines run.
+  "$FLYCTL" deploy "$context_dir" --app "$app" --wait-timeout 60 --ha=false "${config_flag[@]}"
 
   "$FLYCTL" scale count "$desired" --app "$app" --yes
 
