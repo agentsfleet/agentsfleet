@@ -26,7 +26,7 @@ const RACERS: u32 = MESSAGES_PER_RUN_MAX + MESSAGES_PER_RUN_MAX / 2;
 
 /// Dimension 2.2. A token that is not the lease's own posts nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_stale_fence_message_refused() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
@@ -46,7 +46,7 @@ async fn test_stale_fence_message_refused() {
 /// Dimension 2.2, the spec's failure mode. A holder a reclaim has superseded
 /// presents its own token, and its line never reaches the thread.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_superseded_holder_of_a_thread_posts_nothing() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
@@ -67,7 +67,7 @@ async fn test_superseded_holder_of_a_thread_posts_nothing() {
 /// Posts racing for the last slots: exactly the cap land, every other is
 /// refused, and the count never passes the cap.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_concurrent_messages_never_pass_the_cap() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;

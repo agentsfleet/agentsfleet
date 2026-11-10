@@ -2,7 +2,8 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { afterEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { EMPTY_DRAFT_VIEW } from "@/lib/api/draft-state";
-import { DRAFT, FLEET, MESSAGE, PUBLICATION, WORKSPACE } from "@/tests/helpers/draft-fixtures";
+import { DRAFT_LIST_STATUS } from "@/lib/api/draft-list-types";
+import { DRAFT, FLEET, MESSAGE, MODEL, PUBLICATION, WORKSPACE } from "@/tests/helpers/draft-fixtures";
 import { SetupStatusFlap } from "./SetupStatusFlap";
 
 afterEach(cleanup);
@@ -124,4 +125,45 @@ it("retains both actions after saving the same published setup", () => {
   render(<SetupStatusFlap view={view} workspace={WORKSPACE} />);
   expect(screen.getByRole("status").textContent).toContain("Setup saved · v1");
   expect(screen.getAllByRole("link")).toHaveLength(2);
+});
+
+const READY = {...EMPTY_DRAFT_VIEW, listStatus: DRAFT_LIST_STATUS.ready};
+
+it.each([DRAFT_LIST_STATUS.loading, DRAFT_LIST_STATUS.unavailable])("does not claim there are no models while the list is %s", listStatus => {
+  const {container} = render(<SetupStatusFlap view={{...EMPTY_DRAFT_VIEW, listStatus}} workspace={WORKSPACE} modelsHref="/admin/models" />);
+  expect(container.textContent).toBe("");
+});
+
+it("stays quiet when a model can author", () => {
+  const {container} = render(<SetupStatusFlap view={{...READY, models: [MODEL]}} workspace={WORKSPACE} modelsHref="/admin/models" />);
+  expect(container.textContent).toBe("");
+});
+
+it.each([
+  {name: "no model is configured", patch: {}, label: "No chat model yet"},
+  {name: "no configured model can author", patch: {models: [{...MODEL, eligibility: {authoring: false, runtime: true}}]}, label: "No chat model available"},
+])("sends the owner to model settings when $name", ({patch, label}) => {
+  render(<SetupStatusFlap view={{...READY, ...patch}} workspace={WORKSPACE} modelsHref="/admin/models" />);
+  expect(screen.getByRole("status", {name: "Setup status"}).textContent).toBe(`${label}Set up model`);
+  expect(screen.getByRole("status").getAttribute("data-setup-status")).toBe("attention");
+  expect(screen.getByRole("link", {name: "Set up model"}).getAttribute("href")).toBe("/admin/models");
+});
+
+it("names the missing model without a link when the caller gives no settings page", () => {
+  render(<SetupStatusFlap view={READY} workspace={WORKSPACE} />);
+  expect(screen.getByRole("status").textContent).toBe("No chat model yet");
+  expect(screen.queryByRole("link")).toBeNull();
+});
+
+it("asks for more models, with no link, while the model search is incomplete", () => {
+  render(<SetupStatusFlap view={{...READY, moreModels: true}} workspace={WORKSPACE} modelsHref="/admin/models" />);
+  expect(screen.getByRole("status").textContent).toBe("Load more models to find one for chat");
+  expect(screen.queryByRole("link")).toBeNull();
+});
+
+it("lets an in-flight save or a failure speak before the missing model", () => {
+  const {rerender} = render(<SetupStatusFlap view={{...READY, saveOperation: "accepted-save"}} workspace={WORKSPACE} modelsHref="/admin/models" />);
+  expect(screen.getByRole("status").textContent).toBe("Saving");
+  rerender(<SetupStatusFlap view={{...READY, error: "A request failed"}} workspace={WORKSPACE} modelsHref="/admin/models" />);
+  expect(screen.getByRole("status").textContent).toBe("Setup needs attention");
 });

@@ -165,23 +165,23 @@ async fn a_person_with_no_display_name_omits_the_field(router: &axum::Router, fi
 struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
+    tenant: Uuid7,
     workspace: Uuid7,
     subject: String,
-    user: String,
-    key: String,
+    user: Uuid7,
+    key: Uuid7,
     token: String,
 }
 
 impl Fixture {
     async fn create() -> Self {
         let lane = TestDatabase::shared();
-        let first = mint_id().replace('-', "");
-        let second = mint_id().replace('-', "");
+        let first = mint_id().as_str().replace('-', "");
+        let second = mint_id().as_str().replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             user: mint_id(),
             key: mint_id(),
@@ -199,7 +199,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("current-user")
             .insert(&mut *connection)
             .await
@@ -218,7 +218,7 @@ impl Fixture {
     /// Returns the person to having never set a display name.
     async fn clear_display_name(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("UPDATE identity.users SET display_name = NULL WHERE id = $1::uuid")
+        sqlx::query("UPDATE identity.users SET display_name = NULL WHERE id = $1")
             .bind(&self.user)
             .execute(&mut *connection)
             .await
@@ -228,10 +228,10 @@ impl Fixture {
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         for statement in [
-            "DELETE FROM identity.api_keys WHERE tenant_id = $1::uuid",
-            "DELETE FROM identity.users WHERE tenant_id = $1::uuid",
-            "DELETE FROM identity.workspaces WHERE tenant_id = $1::uuid",
-            "DELETE FROM identity.tenants WHERE id = $1::uuid",
+            "DELETE FROM identity.api_keys WHERE tenant_id = $1",
+            "DELETE FROM identity.users WHERE tenant_id = $1",
+            "DELETE FROM identity.workspaces WHERE tenant_id = $1",
+            "DELETE FROM identity.tenants WHERE id = $1",
         ] {
             sqlx::query(statement)
                 .bind(&self.tenant)

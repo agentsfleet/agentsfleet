@@ -197,16 +197,37 @@ fn layered<D: Serving>(
     } else {
         handler
     };
-    let guarded = if plane_of(meta.guard).is_some() {
-        let gate = Gate::new(Arc::clone(dependencies), meta);
-        owned.layer(from_fn_with_state(gate, prove::<D>))
-    } else {
-        owned
-    };
+    let guarded = authenticate_route(owned, meta, dependencies);
     if is_metered(meta.class) {
         guarded.layer(from_fn_with_state(admission.clone(), admit))
     } else {
         guarded
+    }
+}
+
+/// Choose authentication once from the route's declared guard and traffic class.
+fn authenticate_route<D: Serving>(
+    handler: MethodRouter<Arc<D>>,
+    meta: RouteMeta,
+    dependencies: &Arc<D>,
+) -> MethodRouter<Arc<D>> {
+    use afd_http::auth::{BearerAuthentication, RunnerStreamAuthentication};
+    match (meta.guard, meta.class) {
+        (crate::route::Guard::RunnerBearer, crate::route::RouteClass::Stream) => {
+            let authentication = RunnerStreamAuthentication::new(Arc::clone(dependencies));
+            handler.layer(from_fn_with_state(
+                Gate::new(authentication, meta),
+                prove::<RunnerStreamAuthentication<D>>,
+            ))
+        }
+        _ if plane_of(meta.guard).is_some() => {
+            let authentication = BearerAuthentication::new(Arc::clone(dependencies));
+            handler.layer(from_fn_with_state(
+                Gate::new(authentication, meta),
+                prove::<BearerAuthentication<D>>,
+            ))
+        }
+        _ => handler,
     }
 }
 

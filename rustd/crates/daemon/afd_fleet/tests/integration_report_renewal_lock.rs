@@ -38,14 +38,14 @@ const BASE: i64 = af_wire::usage::DAEMON_SEQ_BASE as i64;
 
 /// Holds the row the renewal's usage-line insert trigger must update.
 const HOLD_COUNTER: &str =
-    "SELECT pg_backend_pid() FROM fleet.activity_counters WHERE fleet_id = $1::uuid FOR UPDATE";
+    "SELECT pg_backend_pid() FROM fleet.activity_counters WHERE fleet_id = $1 FOR UPDATE";
 
 /// The backend `$1` is blocking, if any.
 const BLOCKED_BY: &str = "SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))";
 
 /// The lease's runtime lines, by number, with the run time each billed.
 const RUNTIME_LINES: &str = "SELECT seq, runtime_ms FROM billing.usage_lines \
-     WHERE work_id = $1::uuid AND seq >= $2 ORDER BY seq";
+     WHERE work_id = $1 AND seq >= $2 ORDER BY seq";
 
 /// How long a wait may take before the test calls it a hang.
 const WAIT_LIMIT: Duration = Duration::from_secs(10);
@@ -58,7 +58,7 @@ const REPORT_SLICE: Duration = Duration::from_millis(50);
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_behind_a_held_renewal_bills_its_own_runtime_line() {
     let held = held().await;
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
     let from = held.run_a_slice().await;
     let lease = held
         .leases
@@ -173,7 +173,7 @@ async fn blocked_by(held: &Held, pid: i32) -> i32 {
 async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     let mut connection = held.fixtures.database.acquire().await.expect("read lines");
     sqlx::query_as(RUNTIME_LINES)
-        .bind(held.issued.lease_id.as_str())
+        .bind(&held.issued.lease_id)
         .bind(BASE)
         .fetch_all(&mut *connection)
         .await

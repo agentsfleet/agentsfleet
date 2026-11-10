@@ -22,7 +22,7 @@ use af_wire::report::ReportRequest;
 use jiff::Timestamp;
 
 use crate::lease::memory::Holder;
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::settle::Reported;
 
 /// The report's memory could not be written; the report still settles.
@@ -31,7 +31,7 @@ pub(super) const EVENT_CAPTURE_FAILED: &str = "memory_capture_failed";
 /// The report's lease was no longer live, so its memory was not written again.
 const EVENT_CAPTURE_SKIPPED: &str = "memory_capture_skipped";
 
-impl Plane {
+impl LeaseService {
     /// Writes the report's memory deltas, fenced on the lease's own token.
     /// A fence refusal was logged by the fence; anything else is logged here.
     pub(super) async fn capture_reported(
@@ -47,10 +47,15 @@ impl Plane {
         // The row's token, as the settle is fenced on it: the report is this
         // runner's by the load, and a lease the fleet has moved past writes
         // neither its memory nor its settle.
+        // The report was loaded by this id, so it parses; a value that does
+        // not names no lease and has no memory to write.
+        let Ok(lease_key) = Uuid7::parse(request.lease_id.as_ref()) else {
+            return;
+        };
         let holder = Holder {
             runner_id,
             fleet_id: &lease.fleet_id,
-            lease_id: request.lease_id.as_ref(),
+            lease_id: &lease_key,
             fencing_token: lease.fence.as_u64(),
         };
         let Err(failure) = self.capture_for(holder, &request.memory, now).await else {

@@ -151,6 +151,7 @@ SQLEOF
 	# Forward URL via env-name-only so the password never appears in `ps aux`.
 	DATABASE_URL="$url" docker run --rm \
 		-e DATABASE_URL \
+		-e PGSSLROOTCERT=system \
 		-v "$tmp_sql:/verify.sql:ro" \
 		postgres:18-alpine \
 		sh -c 'psql "$DATABASE_URL" -f /verify.sql -t' \

@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use af_wire::event::EventType;
@@ -14,7 +13,7 @@ use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
 use afd_credential::vault::Vault;
 use afd_db::test_util::WalletSeed;
-use afd_fleet::lease::{Leases, Plane};
+use afd_fleet::lease::{LeaseService, Leases};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
 
@@ -49,7 +48,7 @@ pub(super) struct Staged {
     /// The fleets, one event each.
     pub(super) fleets: Vec<SeededFleet>,
     /// The runners that drain them.
-    pub(super) runners: Vec<Uuid7>,
+    pub(super) runners: Vec<super::super::seed::RunnerIdentity>,
     /// The key the platform credential is sealed under.
     kek: Arc<Kek>,
 }
@@ -58,7 +57,7 @@ pub(super) struct Staged {
 ///
 /// # Errors
 ///
-/// Whatever Postgres or Dragonfly refused, a credential that would not seal,
+/// Whatever Postgres refused, a credential that would not seal,
 /// and a platform default another run already holds.
 pub(super) async fn stage(
     stores: &Datastores,
@@ -70,7 +69,7 @@ pub(super) async fn stage(
     let tag = prefix.name(TAG_SUFFIX);
     let mut fleets = Vec::new();
     for index in 0..parameters.fleets {
-        let fleet = seed::identities(INDEX_BASE + index);
+        let fleet = seed::identities(INDEX_BASE + index)?;
         seed::rows(&stores.database, prefix, &fleet, &tag, SEEDED_AT).await?;
         ledger.created(ROWS_PER_FLEET);
         fleets.push(fleet);
@@ -83,11 +82,11 @@ pub(super) async fn stage(
     };
     platform::stage(stores, &staged.kek, INDEX_BASE).await?;
     for fleet in &staged.fleets {
-        seed::enqueue(&stores.database, &stores.queue, fleet, EventType::Chat).await?;
+        seed::enqueue(&stores.database, &stores.bus, fleet, EventType::Chat).await?;
     }
     for index in 0..parameters.runners {
         let host = prefix.name(&format!("{HOST_SUFFIX}-{index}"));
-        let runner = seed::runner(&stores.database, &host, &tag, SEEDED_AT).await?;
+        let runner = seed::runner_identity(&stores.database, &host, &tag, 1, SEEDED_AT).await?;
         staged.runners.push(runner);
         ledger.created(ROWS_PER_RUNNER);
     }
@@ -108,13 +107,24 @@ async fn fund(stores: &Datastores, fleets: &[SeededFleet]) -> Result<()> {
 }
 
 impl Staged {
-    /// The daemon's lease plane over the lane's pool and queue.
-    pub(super) fn plane(&self, stores: &Datastores) -> Plane {
-        plane(stores, &self.kek)
+    /// One in-process gateway session per seeded runner, over the lane's pool and Bus.
+    pub(super) async fn sessions(
+        &self,
+        stores: &Datastores,
+    ) -> Result<Vec<afd_gateway::test_util::Session>> {
+        let (gateway, _) = super::session::gateway(stores, &self.kek)?;
+        let mut sessions = Vec::with_capacity(self.runners.len());
+        for runner in &self.runners {
+            sessions.push(
+                super::session::open(&gateway, runner, af_wire::lease::AcceptedKinds::FLEET, 1)
+                    .await?,
+            );
+        }
+        Ok(sessions)
     }
 }
 
-/// The daemon's lease plane over the lane's pool and queue, resolving the
+/// The daemon's lease plane over the lane's pool and Bus, resolving the
 /// platform credential sealed under `kek`.
 ///
 /// Composed the way the daemon's root composes it, with a broker over a
@@ -124,12 +134,12 @@ impl Staged {
     clippy::disallowed_methods,
     reason = "a seeded fleet declares no integration, so the broker's vendor client never sends a request"
 )]
-pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> Plane {
+pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> LeaseService {
     let database = stores.database.clone();
-    Plane {
+    LeaseService {
         task_reports: None,
-        leases: Leases::new(database.clone(), stores.queue.clone(), Entropy::new()),
-        gates: Gates::new(database.clone(), stores.queue.clone(), Entropy::new()),
+        leases: Leases::new(database.clone(), stores.bus.clone(), Entropy::new()),
+        gates: Gates::new(database.clone(), stores.bus.clone(), Entropy::new()),
         accounts: Accounts::new(database.clone()),
         // The daemon wraps this in its outage policy and metrics; a bench
         // lane reaches neither, so the bare ledger is the same money path.

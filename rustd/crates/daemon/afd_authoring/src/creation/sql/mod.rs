@@ -79,6 +79,9 @@ pub(super) const UPDATE: &str = include_str!("update.sql");
 /// `$1` fleet, `$2` the editing status, `$3` the saving status.
 pub(super) const RESTORE: &str = include_str!("restore.sql");
 
+/// Mark every active fleet lease before the Kill transaction commits.
+pub(super) const CANCEL_LEASES: &str = include_str!("mark_leases_cancel_requested.sql");
+
 /// The number of a revision this fleet accepted.
 ///
 /// `$1` revision, `$2` fleet.

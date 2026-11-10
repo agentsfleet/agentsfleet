@@ -75,7 +75,7 @@ pub struct Schedules {
     /// one so a created row's identifier is a fact a test can name.
     entropy: Entropy,
     /// Existing live tails, notified only after durable history commits.
-    streams: Option<afd_dragonfly::FleetStreams>,
+    streams: Option<afd_bus::Handle>,
 }
 
 impl Schedules {
@@ -91,7 +91,7 @@ impl Schedules {
 
     /// Shares the existing history publisher with ordinary schedule mutations.
     #[must_use]
-    pub fn with_activity_streams(mut self, streams: afd_dragonfly::FleetStreams) -> Self {
+    pub fn with_activity_streams(mut self, streams: afd_bus::Handle) -> Self {
         self.streams = Some(streams);
         self
     }

@@ -17,6 +17,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TestDatabase, mint_id};
@@ -32,7 +33,7 @@ const EMAIL: &str = "ada@example.test";
 
 /// A subject nothing else in the lane addresses.
 fn subject() -> String {
-    format!("user_{}", mint_id().replace('-', ""))
+    format!("user_{}", mint_id().to_string().replace('-', ""))
 }
 
 /// The provisioning surface, over the lane's Postgres.
@@ -78,8 +79,8 @@ async fn a_signup_opens_every_row_an_account_needs() {
         .acquire()
         .await
         .expect("a connection");
-    let user: (String, String) =
-        sqlx::query_as("SELECT tenant_id::text, email FROM identity.users WHERE oidc_subject = $1")
+    let user: (Uuid7, String) =
+        sqlx::query_as("SELECT tenant_id, email FROM identity.users WHERE oidc_subject = $1")
             .bind(&subject)
             .fetch_one(&mut *connection)
             .await
@@ -88,7 +89,7 @@ async fn a_signup_opens_every_row_an_account_needs() {
     assert_eq!(user.1, EMAIL);
 
     let role: String = sqlx::query_scalar(
-        "SELECT role FROM identity.memberships WHERE user_id = $1::uuid AND tenant_id = $2::uuid",
+        "SELECT role FROM identity.memberships WHERE user_id = $1 AND tenant_id = $2",
     )
     .bind(&opened.user_id)
     .bind(&opened.tenant_id)
@@ -97,8 +98,8 @@ async fn a_signup_opens_every_row_an_account_needs() {
     .expect("the membership row lands");
     assert_eq!(role, "owner", "a personal account's one member owns it");
 
-    let workspace: (String, String) =
-        sqlx::query_as("SELECT tenant_id::text, name FROM identity.workspaces WHERE id = $1::uuid")
+    let workspace: (Uuid7, String) =
+        sqlx::query_as("SELECT tenant_id, name FROM identity.workspaces WHERE id = $1")
             .bind(&opened.workspace_id)
             .fetch_one(&mut *connection)
             .await
@@ -107,7 +108,7 @@ async fn a_signup_opens_every_row_an_account_needs() {
     assert_eq!(workspace.1, opened.workspace_name);
 
     let balance: i64 =
-        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
+        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1")
             .bind(&opened.tenant_id)
             .fetch_one(&mut *connection)
             .await
@@ -118,12 +119,11 @@ async fn a_signup_opens_every_row_an_account_needs() {
          grant is part of the bootstrap rather than a later step"
     );
 
-    let tenant: String =
-        sqlx::query_scalar("SELECT name FROM identity.tenants WHERE id = $1::uuid")
-            .bind(&opened.tenant_id)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the tenant row lands");
+    let tenant: String = sqlx::query_scalar("SELECT name FROM identity.tenants WHERE id = $1")
+        .bind(&opened.tenant_id)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the tenant row lands");
     assert_eq!(
         tenant, "ada",
         "the tenant is named for the address's local part"
@@ -232,7 +232,7 @@ async fn a_replay_restores_a_wallet_that_went_missing() {
         .acquire()
         .await
         .expect("a connection");
-    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1::uuid")
+    sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1")
         .bind(&opened.tenant_id)
         .execute(&mut *connection)
         .await
@@ -244,7 +244,7 @@ async fn a_replay_restores_a_wallet_that_went_missing() {
         .expect("a replay is a success");
 
     let balance: i64 =
-        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
+        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1")
             .bind(&opened.tenant_id)
             .fetch_one(&mut *connection)
             .await
@@ -280,7 +280,7 @@ async fn a_replay_never_resets_a_balance_already_spent() {
         .acquire()
         .await
         .expect("a connection");
-    sqlx::query("UPDATE billing.wallets SET balance_nanos = $2 WHERE tenant_id = $1::uuid")
+    sqlx::query("UPDATE billing.wallets SET balance_nanos = $2 WHERE tenant_id = $1")
         .bind(&opened.tenant_id)
         .bind(spent)
         .execute(&mut *connection)
@@ -293,7 +293,7 @@ async fn a_replay_never_resets_a_balance_already_spent() {
         .expect("a replay is a success");
 
     let balance: i64 =
-        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1::uuid")
+        sqlx::query_scalar("SELECT balance_nanos FROM billing.wallets WHERE tenant_id = $1")
             .bind(&opened.tenant_id)
             .fetch_one(&mut *connection)
             .await

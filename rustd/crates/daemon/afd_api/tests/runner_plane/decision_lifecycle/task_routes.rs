@@ -16,7 +16,7 @@ use af_wire::{
         TaskProposedItem, TaskRequestedTarget,
     },
 };
-use afd_db::test_util::mint_uuid7;
+use afd_db::test_util::mint_id;
 use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
@@ -58,7 +58,7 @@ async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
     assert_eq!(empty, json!({"effects":[],"next_cursor":null}));
     let missing = format!(
         "{route}/{}?fencing_token={}",
-        mint_uuid7(),
+        mint_id(),
         fixture.lease.fence
     );
     let response = send(
@@ -71,7 +71,7 @@ async fn effects(fixture: &Fixture, task: &Value, item: &Value) {
     .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     problem(&json_body(response).await, "UZ-DT-001");
-    let publish = json!({"operation_id":mint_uuid7(),"fencing_token":fixture.lease.fence,
+    let publish = json!({"operation_id":mint_id(),"fencing_token":fixture.lease.fence,
         "task":task,"source_item_id":item,"covered_input_sequence":0,
         "expected_head":"0".repeat(40),"tested_tree":"1".repeat(40),
         "changes":[{"path":"README.md","contents":"aGk="}]});
@@ -189,7 +189,7 @@ async fn receipts(fixture: &Fixture, binding: &TaskBindingsInput, accepted: &Val
             .expect("response field exists"),
         &binding.plan_digest
     );
-    let receipt = json!({"fencing_token":fixture.lease.fence,"operation_id":mint_uuid7(),
+    let receipt = json!({"fencing_token":fixture.lease.fence,"operation_id":mint_id(),
         "source_admission_id":fixture.lease.source,"plan_digest":binding.plan_digest,
         "item_id":accepted.pointer("/items/0/item_id").expect("response field exists"),"task":task,
         "mode":"answered","response_text":"I will inspect the failed checks."});

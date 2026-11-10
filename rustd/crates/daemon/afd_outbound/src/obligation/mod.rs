@@ -1,171 +1,137 @@
 //! `fleet.obligations` — every statement that touches the table, and the
-//! two shapes that address it.
+//! shapes that address it.
 //!
 //! # Why one module owns the table
 //!
-//! The statements were split across this crate and `afd_fleet` — the report
-//! path held the insert and its receipt, the delivery path the scans and the
-//! stamp — and that split immediately produced what a split always produces:
-//! two `UPDATE … SET receipt` statements differing by one guard, and two
-//! structs for the same six columns. `afd_events::sql` carries the same lesson
-//! in its own note, where `afd_approval` once held a byte-identical copy of
-//! `INSERT_FLEET_EVENT`.
-//!
-//! So the table lives here, in the crate that DELIVERS, and `afd_fleet` calls
+//! The table lives here, in the crate that DELIVERS, and `afd_fleet` calls
 //! [`owe`] inside its report transaction. The dependency runs fleet → outbound
 //! and nowhere back.
 //!
-//! # Acknowledged is not delivered
+//! # Postgres is the queue
 //!
-//! An ack says the worker is finished with an entry,
-//! and [`Lanes::deliver_and_ack`](crate::lanes) acknowledges an EXHAUSTED job
-//! too — deliberately, because leaving it pending would park one undeliverable
-//! answer at the head of a destination's lane forever. So "acknowledged" and
-//! "delivered" are different facts, and only one of them is what a person on
-//! the other end experienced.
-//!
-//! `delivered_at` is the second. A row that is receipted and still unstamped is
-//! an answer the queue carried and nobody received, which is exactly the set
-//! the producer's recovery scan re-offers.
+//! An owed row is free to claim the moment its report commits. A worker claims
+//! lane heads — the earliest open row of each (provider, workspace) pair — with
+//! its own token in `receipt`, delivers, and stamps, counts, releases or
+//! abandons only while that token still holds. A worker that dies mid-delivery
+//! simply stops renewing; its claim lapses after [`CLAIM_TTL`] and the next
+//! claim pass retakes the row, while the dead holder's late write matches
+//! nothing.
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_db::Db;
-use afd_dragonfly::OutboundJob;
 
 use crate::error::Result;
 
 mod outcome;
-mod sql;
+pub(crate) mod sql;
 
 pub use self::outcome::{AbandonReason, abandon, count_attempt, stamp_delivered};
 
-/// Statement name, for the context a scan failure carries.
-const CONTEXT_SCAN: &str = "scan obligations";
+/// How long a claim holds without renewal.
+pub const CLAIM_TTL: Duration = Duration::from_secs(30);
+/// How often a holder renews while it delivers; a third of [`CLAIM_TTL`].
+pub const CLAIM_RENEW: Duration = Duration::from_secs(10);
+const _: () = assert!(
+    CLAIM_RENEW.as_millis() * 3 <= CLAIM_TTL.as_millis(),
+    "a holder renews at least three times inside one claim"
+);
+
+/// The longest renewal interval a worker accepts: two renewals may fail and
+/// the third still lands inside one claim.
+pub const CLAIM_RENEW_MAX: Duration = Duration::from_secs(CLAIM_TTL.as_secs() / 3);
+
+/// Statement name, for the context a claim failure carries.
+const CONTEXT_CLAIM: &str = "claim obligations";
+/// Statement name, for the context a renewal or release failure carries.
+const CONTEXT_HOLD: &str = "hold obligation claim";
+/// Statement name, for the context an owe failure carries.
+const CONTEXT_OWE: &str = "owe delivery";
 
 /// One owed delivery, as a caller ADDRESSES it.
 ///
-/// The borrowing half of the pair below. A struct rather than five positional
-/// `&str`-shaped parameters: four of these are text, and a transposition
-/// between the event and the answer — or the provider and the workspace —
-/// writes a wrong row and compiles clean.
+/// A struct rather than five positional `&str`-shaped parameters: four of these
+/// are text, and a transposition between the event and the answer — or the
+/// provider and the workspace — writes a wrong row and compiles clean.
 #[derive(Debug, Clone, Copy)]
 pub struct Delivery<'a> {
     /// The fleet that produced the answer.
-    pub fleet_id: &'a str,
+    pub fleet_id: &'a Uuid7,
     /// The workspace whose grant pays for it.
-    pub workspace_id: &'a str,
+    pub workspace_id: &'a Uuid7,
     /// Which connector carries it back. The connector type rather than its
-    /// id, so a lease's model provider — a string the report also holds —
-    /// cannot be passed here and compile.
+    /// id, so a lease's model provider cannot be passed here and compile.
     pub provider: Provider,
-    /// Where that connector posts it: an address only its poster reads, as the
-    /// producer recorded it at admission.
+    /// Where that connector posts it, as the producer recorded it at admission.
     pub destination: &'a str,
     /// The event the answer is threaded onto.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// What to say.
     pub answer: &'a str,
 }
 
-impl<'a> From<Delivery<'a>> for OutboundJob<'a> {
-    /// The queue entry that carries a delivery to its poster.
-    ///
-    /// The one conversion, so the report's append and the producer's re-append
-    /// cannot disagree about which field goes where.
-    fn from(delivery: Delivery<'a>) -> Self {
-        Self {
-            provider: delivery.provider.id(),
-            destination: delivery.destination,
-            workspace_id: delivery.workspace_id,
-            fleet_id: delivery.fleet_id,
-            event_id: delivery.event_id,
-            answer: delivery.answer,
-        }
-    }
-}
-
-impl Owed {
-    /// This row as a caller would address it, or `None` when it cannot be.
-    ///
-    /// The one place the owned and borrowed halves meet, so a scan hands its
-    /// rows to the same append the report path uses and neither side carries a
-    /// second opinion about which fields identify a delivery.
-    ///
-    /// `None` for a row whose stored connector id no connector answers to: no
-    /// append can deliver it.
-    #[must_use]
-    pub fn addressed(&self) -> Option<Delivery<'_>> {
-        Some(Delivery {
-            fleet_id: &self.fleet_id,
-            workspace_id: &self.workspace_id,
-            provider: Provider::parse(&self.provider)?,
-            destination: &self.destination,
-            event_id: &self.event_id,
-            answer: &self.answer,
-        })
-    }
-}
-
-/// One answer this deployment still owes, as the LEDGER holds it.
+/// What a poster needs to carry one answer: whose it is, where it goes, and
+/// what it says. A claimed row carries one, and so does an interjection, which
+/// is posted without ever being owed.
 ///
-/// The owning half: a scan reads rows out of a transient result set, so it has
-/// to own its text. [`Owed::addressed`] is how it becomes a [`Delivery`].
-///
-/// Decoded by `sqlx::FromRow` rather than seven hand-written `try_get` calls:
-/// the derive binds by COLUMN NAME, so it cannot be silently broken by editing
-/// a `SELECT` list into a different order the way a positional decoder can.
-/// Both scans select the same seven names for exactly that reason.
-///
-/// Not `Clone`: a scan hands each row to the append once and by value, so a
-/// clone here would only ever copy the answer text for nobody.
-#[derive(Debug, sqlx::FromRow)]
-pub struct Owed {
-    /// The obligation row.
-    pub id: String,
+/// Decoded by `sqlx::FromRow`, which binds by column name, so a reordered
+/// `RETURNING` list cannot silently shift a field.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub struct Outgoing {
     /// The fleet that produced the answer.
-    pub fleet_id: String,
+    pub fleet_id: Uuid7,
     /// The workspace whose grant pays for the delivery.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// Which connector carries it back, as the ledger spells it.
     pub provider: String,
     /// Where that connector posts it.
     pub destination: String,
     /// The event the answer is threaded onto.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// What to say.
     pub answer: String,
 }
 
-/// Statement name, for the context an owe failure carries.
-const CONTEXT_OWE: &str = "owe delivery";
+/// One claimed answer, as the holder delivers it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Claimed {
+    /// The obligation row.
+    pub id: Uuid7,
+    /// What the row asks to be posted.
+    pub outgoing: Outgoing,
+    /// The claim's token; every later write on this row matches it.
+    pub token: Uuid7,
+}
+
+/// One row the claim statement returns.
+#[derive(sqlx::FromRow)]
+struct ClaimedRow {
+    id: Uuid7,
+    #[sqlx(flatten)]
+    outgoing: Outgoing,
+}
 
 /// Owe this answer its delivery, on the caller's connection.
 ///
 /// Runs inside the report's transaction, so the obligation and the result it
-/// describes share one fate: a rollback that un-does the settle un-does this
-/// too, which is the property that makes "committed and charged" and "a
-/// delivery is owed" the same instant.
+/// describes share one fate. The row is written with the report's own token
+/// and an expired claim, so it is free to claim the moment the transaction
+/// commits.
 ///
-/// Takes the row id rather than minting one — the entropy source belongs to the
-/// caller's store, and this crate has no business holding one.
+/// An EMPTY answer owes nothing: a row carrying an empty string would post a
+/// blank message into a real thread.
 ///
-/// An EMPTY answer owes nothing. A run that produced no output has nothing to
-/// say, and a row carrying an empty string would be an obligation the producer
-/// enqueues, a poster delivers, and a reader sees as a blank message in a real
-/// thread. Deliberate, so it is stated here and asserted in the suite.
-///
-/// Answers `true` when this call is the one that created the row — `false` for
-/// an empty answer or a repeat that conflicted — so a caller appends only what
-/// it actually wrote, and a replayed report cannot put a second entry on the
-/// queue for an answer already in flight.
+/// Answers `true` when this call created the row — `false` for an empty answer
+/// or a repeat that conflicted — so a caller pings only for what it wrote.
 ///
 /// # Errors
 /// Reports a database that would not answer.
 pub async fn owe(
     connection: &mut sqlx::PgConnection,
-    row_id: &str,
+    row_id: &Uuid7,
+    token: &Uuid7,
     delivery: Delivery<'_>,
 ) -> Result<bool> {
     if delivery.answer.is_empty() {
@@ -179,89 +145,107 @@ pub async fn owe(
         .bind(delivery.event_id)
         .bind(delivery.answer)
         .bind(delivery.destination)
+        .bind(token)
         .fetch_optional(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_OWE))?;
     Ok(written.is_some())
 }
 
-/// Record the entry an obligation was first appended to.
-///
-/// Runs on a pooled connection AFTER the report's transaction, because the
-/// append it records happens after that transaction too. A failure here leaves
-/// the row unreceipted, which is the recoverable state by construction: the
-/// producer's scan is exactly that set.
+/// Claims up to `limit` lane heads for `token`, in `sequence` order, and
+/// commits the claim.
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn receipt(database: &Db, obligation: &str, entry: &str) -> Result<()> {
-    write_receipt(database, sql::RECEIPT_DELIVERY, obligation, entry).await
-}
-
-/// Answers committed but never queued, at least `min_age` old by the
-/// database's clock.
-///
-/// # Errors
-/// Reports a database that would not answer.
-pub async fn unreceipted(database: &Db, min_age: Duration, limit: i64) -> Result<Vec<Owed>> {
-    scan(database, sql::SELECT_UNRECEIPTED, min_age, limit).await
-}
-
-/// Answers queued but never received, untouched for at least `lost_after` by
-/// the database's clock.
-///
-/// # Errors
-/// Reports a database that would not answer.
-pub async fn undelivered(database: &Db, lost_after: Duration, limit: i64) -> Result<Vec<Owed>> {
-    scan(database, sql::SELECT_UNDELIVERED, lost_after, limit).await
-}
-
-/// Runs one scan. `age` is bound as an interval the statement subtracts from
-/// `statement_timestamp()`, so the cut-off is measured on the database's
-/// clock, the one that stamped the rows it compares.
-async fn scan(
-    database: &Db,
-    statement: &'static str,
-    age: Duration,
-    limit: i64,
-) -> Result<Vec<Owed>> {
-    let mut connection = database.acquire().await?;
-    sqlx::query_as::<_, Owed>(statement)
-        .bind(age)
-        .bind(limit)
-        .fetch_all(&mut *connection)
+pub async fn claim(database: &Db, limit: i64, token: &Uuid7) -> Result<Vec<Claimed>> {
+    let mut transaction = sqlx::Transaction::begin(database.acquire().await?, None)
         .await
-        .map_err(crate::error::query(CONTEXT_SCAN))
+        .map_err(crate::error::query(CONTEXT_CLAIM))?;
+    let claimed = claim_in(&mut transaction, limit, token).await?;
+    transaction
+        .commit()
+        .await
+        .map_err(crate::error::query(CONTEXT_CLAIM))?;
+    Ok(claimed)
 }
 
-/// Statement name, for the context a receipt failure carries.
-const CONTEXT_RECEIPT: &str = "record receipt";
-
-/// Point an obligation at the entry the producer re-appended for it.
+/// [`claim`], inside the caller's transaction, which commits it.
+///
+/// # A claim locks its lanes before it chooses their heads
+///
+/// The lanes are locked for the transaction first, and the heads chosen by a
+/// second statement, whose snapshot postdates the locks. A claim that guarded
+/// only the rows it picked would race a row committing late: one claim takes
+/// a lane's later row, the earlier row commits, and a second claim that
+/// starts before the first commits sees the earlier row as the head and the
+/// later row's claim as not yet written, so the lane gets two holders. The
+/// locks hold until the caller's transaction ends, so the caller commits at
+/// once.
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn record_reappended(database: &Db, obligation: &str, entry: &str) -> Result<()> {
-    write_receipt(database, sql::REAPPEND_RECEIPT, obligation, entry).await
+pub async fn claim_in(
+    transaction: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    limit: i64,
+    token: &Uuid7,
+) -> Result<Vec<Claimed>> {
+    let lanes: Vec<(String, Uuid7)> = sqlx::query_as(sql::LOCK_LANES)
+        .bind(limit)
+        .fetch_all(&mut **transaction)
+        .await
+        .map_err(crate::error::query(CONTEXT_CLAIM))?;
+    if lanes.is_empty() {
+        return Ok(Vec::new());
+    }
+    let (providers, workspaces): (Vec<String>, Vec<Uuid7>) = lanes.into_iter().unzip();
+    let rows = sqlx::query_as::<_, ClaimedRow>(sql::CLAIM_HEADS)
+        .bind(limit)
+        .bind(token)
+        .bind(CLAIM_TTL)
+        .bind(&providers)
+        .bind(&workspaces)
+        .fetch_all(&mut **transaction)
+        .await
+        .map_err(crate::error::query(CONTEXT_CLAIM))?;
+    Ok(rows
+        .into_iter()
+        .map(|row| Claimed {
+            id: row.id,
+            outgoing: row.outgoing,
+            token: token.clone(),
+        })
+        .collect())
 }
 
-/// The body both receipt writers share.
+/// Extends `job`'s claim; `false` when it lapsed and another holder may own it.
 ///
-/// The two statements differ by one guard and nothing else, so they bind the
-/// same two parameters in the same order — which is exactly the kind of pair
-/// that drifts when each carries its own copy of the binding.
-async fn write_receipt(
+/// # Errors
+/// Reports a database that would not answer.
+pub async fn renew(database: &Db, job: &Claimed) -> Result<bool> {
+    hold(database, sql::RENEW_CLAIM, job, CLAIM_TTL).await
+}
+
+/// Gives `job`'s claim back, due again after `after`.
+///
+/// # Errors
+/// Reports a database that would not answer.
+pub async fn release(database: &Db, job: &Claimed, after: Duration) -> Result<bool> {
+    hold(database, sql::RELEASE_CLAIM, job, after).await
+}
+
+async fn hold(
     database: &Db,
     statement: &'static str,
-    obligation: &str,
-    entry: &str,
-) -> Result<()> {
+    job: &Claimed,
+    span: Duration,
+) -> Result<bool> {
     let mut connection = database.acquire().await?;
-    sqlx::query(statement)
-        .bind(obligation)
-        .bind(entry)
+    let done = sqlx::query(statement)
+        .bind(&job.id)
+        .bind(&job.token)
+        .bind(span)
         .execute(&mut *connection)
         .await
-        .map_err(crate::error::query(CONTEXT_RECEIPT))?;
-    Ok(())
+        .map_err(crate::error::query(CONTEXT_HOLD))?;
+    Ok(done.rows_affected() == 1)
 }

@@ -1,9 +1,9 @@
-//! Real authorization and durable state; the detached server supplies network pushes.
+//! Real authorization and durable state; the in-process bus's server supplies network pushes.
 
 use super::super::{fixture::Fixture, json_body, mint, send};
 use af_core::id::Uuid7;
 use afd_auth::scope::Scope;
-use afd_dragonfly::{SubscriptionHub, hub::DetachedServer};
+use afd_bus::{Subject, test_util::Server};
 use axum::{Router, body::BodyDataStream, response::Response};
 use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
@@ -14,17 +14,28 @@ pub(super) struct Live {
     pub(super) router: Router,
     pub(super) draft: Uuid7,
     pub(super) item: String,
-    pub(super) hub: SubscriptionHub,
-    pub(super) server: DetachedServer,
+    pub(super) bus: afd_bus::Handle,
+    pub(super) server: Server,
 }
 
 impl Live {
     pub(super) async fn create(capacity: usize) -> Self {
+        Self::over(capacity, |bus| bus).await
+    }
+
+    /// A stream whose router subscribes through `wrap` of the in-process bus,
+    /// so a suite can shape what a subscription does before it delivers.
+    pub(super) async fn over(
+        capacity: usize,
+        wrap: impl FnOnce(afd_bus::Handle) -> afd_bus::Handle,
+    ) -> Self {
         let f = Fixture::create().await;
-        let (hub, server) = SubscriptionHub::detached();
+        let (inner, server) =
+            afd_bus::test_util::detached().expect("an in-process bus opens no socket");
+        let bus = wrap(inner);
         let router = f
             .services(&Scope::ALL)
-            .with_stream_capacity(hub.clone(), capacity)
+            .with_stream_capacity(bus.clone(), capacity)
             .router();
         let created = send(
             &router,
@@ -41,8 +52,8 @@ impl Live {
             .to_owned();
         let document = json_body(created).await;
         let draft = Uuid7::parse(document["id"].as_str().expect("draft")).expect("draft UUIDv7");
-        sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1::uuid")
-            .bind(draft.as_str())
+        sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1")
+            .bind(&draft)
             .execute(&mut *f.db.acquire().await.expect("message connection"))
             .await
             .expect("leased message state");
@@ -51,7 +62,7 @@ impl Live {
             router,
             draft,
             item,
-            hub,
+            bus,
             server,
         }
     }
@@ -81,12 +92,16 @@ impl Live {
                 .await
                 .contains("event: candidate.changed\n")
         );
-        self.server.confirm(&self.channel());
         body
     }
 
-    pub(super) fn channel(&self) -> String {
-        afd_authoring::draft_channel(&self.draft)
+    pub(super) fn subject(&self) -> Subject {
+        Subject::DraftEvents(self.draft.clone())
+    }
+
+    /// How many viewers hold a subscription on the draft's events right now.
+    pub(super) fn readers(&self) -> usize {
+        self.server.readers(&self.subject())
     }
 
     pub(super) fn delta(&self, text: &str) -> Value {
@@ -95,19 +110,18 @@ impl Live {
     }
 
     pub(super) fn publish(&self, frame: &Value) {
-        self.server.publish(&self.channel(), &frame.to_string());
+        self.server.publish(&self.subject(), &frame.to_string());
     }
 
     pub(super) async fn mutate(&self, statement: &'static str) {
         sqlx::query(statement)
-            .bind(self.draft.as_str())
+            .bind(&self.draft)
             .execute(&mut *self.f.db.acquire().await.expect("mutation connection"))
             .await
             .expect("fixture state transition");
     }
 
     pub(super) async fn cleanup(self) {
-        self.hub.shutdown();
         drop(self.router);
         self.f.cleanup().await;
     }

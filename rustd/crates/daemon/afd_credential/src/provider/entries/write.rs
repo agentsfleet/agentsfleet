@@ -33,7 +33,7 @@ use crate::provider::sql as provider_sql;
 use crate::provider::store::Providers;
 
 /// The entry's domain key, `(tenant, model, secret_ref)`: the one unique
-/// constraint a retarget can collide with (`schema/1330_model_tenant_models.sql`).
+/// constraint a retarget can collide with (`schema/20261108121500_model_tenant_models.sql`).
 const UQ_ENTRY_DOMAIN_KEY: &str = "uq_tenant_models_tenant_id_model_name_secret_ref";
 
 /// The context a failed registry write reports under.
@@ -64,7 +64,7 @@ impl Providers {
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_WRITE))?;
 
         let locked = sqlx::query(provider_sql::LOCK_CREDENTIAL_FOR_REFERENCE)
-            .bind(tenant.as_str())
+            .bind(tenant)
             .bind(secret_ref)
             .fetch_optional(&mut *transaction)
             .await
@@ -80,8 +80,8 @@ impl Providers {
         }
 
         let stored = sqlx::query_as::<_, EntryRow>(sql::INSERT_ENTRY)
-            .bind(self.mint_entry_id(now)?.as_str())
-            .bind(tenant.as_str())
+            .bind(self.mint_entry_id(now)?)
+            .bind(tenant)
             .bind(model_name)
             .bind(secret_ref)
             .fetch_optional(&mut *transaction)
@@ -93,7 +93,7 @@ impl Providers {
         let Some(row) = stored else {
             return Ok(Added::Duplicate);
         };
-        let entry = row.into_entry()?;
+        let entry = row.into_entry();
         // Committed BEFORE the caller is told. A 201 whose transaction then
         // failed to commit is the worst outcome available: the client records
         // an id that does not exist.
@@ -117,14 +117,14 @@ impl Providers {
     ) -> Result<Retargeted> {
         let mut connection = self.pool().acquire().await?;
         let updated = sqlx::query_as::<_, EntryRow>(sql::UPDATE_ENTRY_MODEL)
-            .bind(entry_id.as_str())
-            .bind(tenant.as_str())
+            .bind(entry_id)
+            .bind(tenant)
             .bind(model_name)
             .fetch_optional(&mut *connection)
             .await;
 
         match updated {
-            Ok(Some(row)) => Ok(Retargeted::Stored(row.into_entry()?)),
+            Ok(Some(row)) => Ok(Retargeted::Stored(row.into_entry())),
             Ok(None) => Ok(Retargeted::NotFound),
             // The domain key is `(tenant, model, secret_ref)`, so moving an
             // entry onto a model this credential already carries collides with
@@ -158,7 +158,7 @@ impl Providers {
         let mut connection = self.pool().acquire().await?;
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_WRITE))?;
         let held = sqlx::query(provider_sql::LOCK_CREDENTIAL_FOR_REFERENCE)
-            .bind(tenant.as_str())
+            .bind(tenant)
             .bind(&*entry.secret_ref)
             .fetch_optional(&mut *transaction)
             .await
@@ -180,8 +180,8 @@ impl Providers {
         }
 
         sqlx::query(sql::DELETE_ENTRY)
-            .bind(entry_id.as_str())
-            .bind(tenant.as_str())
+            .bind(entry_id)
+            .bind(tenant)
             .execute(&mut *transaction)
             .await
             .map_err(query(CONTEXT_WRITE))?;
@@ -196,14 +196,13 @@ impl Providers {
     /// cannot read.
     pub async fn entry(&self, tenant: &Uuid7, entry_id: &Uuid7) -> Result<Option<Entry>> {
         let mut connection = self.pool().acquire().await?;
-        sqlx::query_as::<_, EntryRow>(sql::SELECT_ENTRY)
-            .bind(entry_id.as_str())
-            .bind(tenant.as_str())
+        Ok(sqlx::query_as::<_, EntryRow>(sql::SELECT_ENTRY)
+            .bind(entry_id)
+            .bind(tenant)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_WRITE))?
-            .map(EntryRow::into_entry)
-            .transpose()
+            .map(EntryRow::into_entry))
     }
 
     /// Whether the tenant's selection points at `entry`, read under the lock.
@@ -220,8 +219,8 @@ impl Providers {
         entry: &Entry,
     ) -> Result<bool> {
         let holds: Option<bool> = sqlx::query_scalar(provider_sql::SELECT_SELECTION_HOLDS)
-            .bind(tenant.as_str())
-            .bind(entry.id.as_str())
+            .bind(tenant)
+            .bind(&entry.id)
             .fetch_optional(&mut **transaction)
             .await
             .map_err(query(CONTEXT_WRITE))?;

@@ -29,6 +29,7 @@ mod knob_tests;
 mod knobs;
 mod otlp;
 mod read;
+pub mod runner_listener;
 #[cfg(test)]
 mod stream_ceiling_tests;
 
@@ -47,8 +48,8 @@ pub use self::knobs::{
 };
 
 use self::knobs::{
-    API_URL_DEFAULT, APP_URL_DEFAULT, POSTHOG_HOST_KNOB, POSTHOG_KEY_KNOB, WHY_DATABASE,
-    WHY_DRAGONFLY, WHY_SESSION_PEPPER,
+    API_URL_DEFAULT, APP_URL_DEFAULT, POSTHOG_HOST_KNOB, POSTHOG_KEY_KNOB, WHY_DATABASE, WHY_NATS,
+    WHY_SESSION_PEPPER,
 };
 
 use self::read::{classify, identity, is_set, read_kek, required};
@@ -59,7 +60,6 @@ use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::Dashboard;
 use afd_cron::SigningKeys;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
 #[doc(inline)]
 pub use crate::error::{Fault, Refusal};
@@ -83,10 +83,13 @@ pub fn preflight<E: EnvSource + ?Sized>(env: &E) -> Result<BootConfig, Refusal> 
 /// which is the order an operator sees them in.
 struct Readings {
     api_pool: Option<PoolConfig>,
-    redis: Option<DragonflyConfig>,
+    bus: Option<afd_bus::nats::Config>,
     kek: Option<Kek>,
     session_code_pepper: Option<SecretBytes>,
     sse_max_streams: usize,
+    runner_wake: Option<afd_bus::wake::Wake>,
+    frame_memory: Option<af_stream::MemoryLimits>,
+    runner_listener: Option<runner_listener::RunnerListenerConfig>,
     posthog: Option<PostHogConfig>,
     otlp: Option<OtlpConfig>,
     slack_api_url: Option<Box<str>>,
@@ -100,7 +103,7 @@ struct Readings {
 /// Reads every knob in fault order, pushing a fault for each one that is
 /// unset where required or set and unusable.
 fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Readings {
-    let (api_pool, redis) = datastores(env, faults);
+    let (api_pool, bus) = datastores(env, faults);
     let kek = read_kek(env, faults);
     let session_code_pepper = session_code_pepper(env, faults);
     // Both are optional-with-a-default and resolve identically, so the shape is
@@ -111,6 +114,9 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
     // a dashboard that silently refuses every stream — the furthest possible
     // point from the mistake. Unset is the default, which is most deployments.
     let sse_max_streams = read::sse_max_streams(env, faults);
+    let runner_wake = read::runner_wake(env, faults);
+    let frame_memory = read::frame_memory(env, faults);
+    let runner_listener = runner_listener::read(env, faults);
     let posthog = posthog(env);
     // Absent is a deployment that exports nothing, which is most of them and
     // is not a fault. What IS a fault is an endpoint with a protocol, timeout
@@ -128,10 +134,13 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
     let checkpoint_storage = checkpoint::read(env, faults, platform_admin_workspace.as_ref());
     Readings {
         api_pool,
-        redis,
+        bus,
         kek,
         session_code_pepper,
         sse_max_streams,
+        runner_wake,
+        frame_memory,
+        runner_listener,
         posthog,
         otlp,
         slack_api_url,
@@ -143,11 +152,12 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
     }
 }
 
-/// The API role's Postgres and Dragonfly, each a fault when unset or unusable.
+/// The API role's Postgres and the event bus, each a fault when unset or
+/// unusable.
 fn datastores<E: EnvSource + ?Sized>(
     env: &E,
     faults: &mut Vec<Fault>,
-) -> (Option<PoolConfig>, Option<DragonflyConfig>) {
+) -> (Option<PoolConfig>, Option<afd_bus::nats::Config>) {
     let database_knob = DbRole::Api.url_knob();
     let api_pool = classify(
         faults,
@@ -157,15 +167,14 @@ fn datastores<E: EnvSource + ?Sized>(
         PoolConfig::resolve(env, DbRole::Api),
     );
 
-    let dragonfly_knob = DragonflyRole::Api.url_knob();
-    let redis = classify(
+    let bus = classify(
         faults,
-        is_set(env, dragonfly_knob),
-        dragonfly_knob,
-        WHY_DRAGONFLY,
-        DragonflyConfig::resolve(env, DragonflyRole::Api),
+        is_set(env, afd_bus::nats::URL_ENV),
+        afd_bus::nats::URL_ENV,
+        WHY_NATS,
+        afd_bus::nats::Config::from_env(env),
     );
-    (api_pool, redis)
+    (api_pool, bus)
 }
 
 /// The device-flow login pepper, required, as the bytes it is keyed with.
@@ -198,39 +207,27 @@ impl Readings {
         env: &E,
         faults: Vec<Fault>,
     ) -> Result<BootConfig, Refusal> {
-        let Self {
-            api_pool,
-            redis,
-            kek,
-            session_code_pepper,
-            sse_max_streams,
-            posthog,
-            otlp,
-            slack_api_url,
-            dashboard,
-            deployment,
-            identity,
-            platform_admin_workspace,
-            checkpoint_storage,
-        } = self;
-        match (
-            api_pool,
-            redis,
-            kek,
-            identity,
-            session_code_pepper,
-            dashboard,
-        ) {
-            (
-                Some(api_pool),
-                Some(redis),
-                Some(kek),
-                Some(identity),
-                Some(session_code_pepper),
-                Some(dashboard),
-            ) if faults.is_empty() => Ok(BootConfig {
+        match self {
+            Self {
+                api_pool: Some(api_pool),
+                bus: Some(bus),
+                kek: Some(kek),
+                identity: Some(identity),
+                session_code_pepper: Some(session_code_pepper),
+                dashboard: Some(dashboard),
+                runner_wake: Some(runner_wake),
+                frame_memory: Some(frame_memory),
+                runner_listener: Some(runner_listener),
+                sse_max_streams,
+                posthog,
+                otlp,
+                slack_api_url,
+                deployment,
+                platform_admin_workspace,
+                checkpoint_storage,
+            } if faults.is_empty() => Ok(BootConfig {
                 api_pool,
-                redis,
+                bus,
                 kek,
                 session_code_pepper,
                 app_url: dashboard,
@@ -241,15 +238,20 @@ impl Readings {
                 qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
                 qstash_url: optional(env, QSTASH_URL_KNOB),
                 slack_api_url,
-                identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
+                identity_webhook_secret: optional_secret(env, IDENTITY_WEBHOOK_SECRET_KNOB),
                 qstash_keys: signing_keys(env),
                 sse_max_streams,
+                runner_wake,
+                frame_memory,
+                runner_listener,
                 posthog,
                 otlp,
                 #[cfg(feature = "test-util")]
                 exchanger: None,
                 #[cfg(feature = "test-util")]
                 connector_endpoint: None,
+                #[cfg(feature = "test-util")]
+                authoring_transport: None,
             }),
             // Anything else: a knob that is missing or unusable, the identity
             // provider included. Every one of them has already pushed its own

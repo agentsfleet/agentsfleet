@@ -42,8 +42,8 @@ async fn should_report_a_terminal_report_finished_once_and_not_on_replay() {
 async fn should_report_a_claim_gate_failure_finished_once() {
     let f = funded(1).await;
     let draft = queue(&f, "Selected model later disappears").await;
-    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
-        .bind(f.model.as_str())
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
+        .bind(&f.model)
         .execute(&mut *f.connection().await)
         .await
         .expect("disable owned entry");
@@ -60,8 +60,8 @@ async fn should_report_a_model_lost_before_the_report_finished_once() {
     let f = funded(1).await;
     let draft = queue(&f, "Model goes away mid-turn").await;
     let lease = claim(&f, &draft).await.expect("admitted");
-    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
-        .bind(f.model.as_str())
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
+        .bind(&f.model)
         .execute(&mut *f.connection().await)
         .await
         .expect("disable owned entry");
@@ -90,9 +90,9 @@ async fn should_report_a_revoked_creators_queued_message_finished_once() {
         )
         .await
         .expect("member's private draft");
-    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1::uuid AND user_id=$2::uuid")
-        .bind(f.tenant.as_str())
-        .bind(f.member.as_str())
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id=$1 AND user_id=$2")
+        .bind(&f.tenant)
+        .bind(&f.member)
         .execute(&mut *f.connection().await)
         .await
         .expect("committed membership revocation");

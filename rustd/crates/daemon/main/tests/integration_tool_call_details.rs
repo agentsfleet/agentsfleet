@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 use sqlx::AssertSqlSafe;
 
 use crate::e2e::{Scenario, scenario};
-use crate::integration_tool_trace::{REPORTS, tenant_reader};
+use crate::integration_tool_trace::tenant_reader;
 use crate::tail::lease;
 use crate::wire::{json as body_of, post, report_body};
 
@@ -70,8 +70,8 @@ pub(crate) async fn rows(run: &Scenario) -> i64 {
     scalar(
         run,
         "SELECT count(*) FROM fleet.tool_calls t \
-         JOIN fleet.events e ON e.id = t.fleet_event_id \
-         WHERE t.fleet_id = $1::uuid AND e.event_id = $2",
+         JOIN fleet.events e ON e.event_id = t.event_id \
+         WHERE t.fleet_id = $1 AND e.event_id = $2",
         None,
     )
     .await
@@ -82,8 +82,8 @@ async fn rows_at(run: &Scenario, fence: u64) -> i64 {
     scalar(
         run,
         "SELECT count(*) FROM fleet.tool_calls t \
-         JOIN fleet.events e ON e.id = t.fleet_event_id \
-         WHERE t.fleet_id = $1::uuid AND e.event_id = $2 AND t.fencing_token = $3",
+         JOIN fleet.events e ON e.event_id = t.event_id \
+         WHERE t.fleet_id = $1 AND e.event_id = $2 AND t.fencing_token = $3",
         Some(fence),
     )
     .await
@@ -106,14 +106,14 @@ pub(crate) async fn leased(
 ) -> (Scenario, reqwest::Client, String, u64) {
     let run = scenario(supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     (run, http, lease_id, fence)
 }
 
 /// Dimensions 1.1 and 1.3. A valid post stores one row per record, and the
 /// same post again changes nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_details_stored_under_fence() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -127,7 +127,7 @@ async fn test_tool_call_details_stored_under_fence() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_details_retry_is_idempotent() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -143,14 +143,14 @@ async fn test_tool_call_details_retry_is_idempotent() {
 
 /// Dimension 1.2. A holder the fleet has moved past keeps nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_stale_fence_tool_call_details_refused() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
     execute(
         &run,
         "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 \
-         WHERE fleet_id = $1::uuid AND $2 <> ''",
+         WHERE fleet_id = $1 AND $2 IS NOT NULL",
     )
     .await;
     let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(1, "x")]).await;
@@ -162,7 +162,7 @@ async fn test_stale_fence_tool_call_details_refused() {
 
 /// Dimension 1.4. One record over a bound is skipped; the rest are kept.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_over_bound_tool_call_detail_skipped() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -179,7 +179,7 @@ async fn test_over_bound_tool_call_detail_skipped() {
 
 /// Dimension 1.5. An event keeps at most 1 MiB of records.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_detail_budget_caps_records() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -212,12 +212,12 @@ async fn plant_dead_record(run: &Scenario, fence: u64) {
         run,
         &format!(
             "INSERT INTO fleet.tool_calls \
-             (id, workspace_id, fleet_id, fleet_event_id, fencing_token, sequence, arguments, \
+             (id, workspace_id, fleet_id, event_id, fencing_token, sequence, arguments, \
               truncated_arguments, output, output_line_count, truncated, byte_count, \
               created_at, updated_at) \
-             SELECT '{dead}'::uuid, workspace_id, fleet_id, id, {fence}, 1, '{{}}'::jsonb, \
+             SELECT '{dead}'::uuid, workspace_id, fleet_id, event_id, {fence}, 1, '{{}}'::jsonb, \
                     false, 'dead', 1, false, 256, now(), now() \
-             FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2"
+             FROM fleet.events WHERE fleet_id = $1 AND event_id = $2"
         ),
     )
     .await;
@@ -226,7 +226,7 @@ async fn plant_dead_record(run: &Scenario, fence: u64) {
 /// Dimension 1.6. Settlement keeps only the settling fence's records, and the
 /// current lease's first post already clears a dead lease's.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_settle_drops_dead_lease_details() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -240,14 +240,8 @@ async fn test_settle_drops_dead_lease_details() {
     );
 
     plant_dead_record(&run, fence - 1).await;
-    let settled = post(
-        &http,
-        &run,
-        REPORTS,
-        &report_body(&lease_id, &run.event_id, fence),
-    )
-    .await;
-    assert_eq!(settled.status().as_u16(), 200);
+    let settled = crate::wire::report(&run, &report_body(&lease_id, &run.event_id, fence)).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(rows_at(&run, fence - 1).await, 0, "settlement drops it too");
     assert_eq!(rows_at(&run, fence).await, 1, "the settling lease's stays");
     supervisor.shutdown().await;
@@ -274,12 +268,12 @@ async fn tenant_status(
 /// Dimensions 2.1 and 2.2. A member reads a kept call in full; an unknown
 /// call, another fleet, and a call id that is not one each answer 404.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_member_reads_tool_call_detail() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let lines: Vec<String> = (1..=224).map(|n| format!("line {n}")).collect();
     let output = format!("{}\n", lines.join("\n"));
     let mut kept = record(3, &output);
@@ -305,12 +299,12 @@ async fn test_member_reads_tool_call_detail() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_detail_absent_is_not_found() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let (status, _) = post_records(&http, &run, (&lease_id, fence), &[record(3, "x")]).await;
     assert_eq!(status, 200);
 

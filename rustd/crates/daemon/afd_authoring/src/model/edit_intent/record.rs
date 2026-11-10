@@ -26,7 +26,11 @@ impl ModelCalls {
     ) -> Result<Disposition> {
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let fresh = match guard::publication(&mut tx, runner, lease, counters).await {
+        let fresh = match self
+            .drafts
+            .publication(&mut tx, runner, lease, counters)
+            .await
+        {
             Ok(current) => {
                 current.draft.candidate_revision == prepared.candidate_revision
                     && afd_runner::decision_assignment_on(&mut tx, runner)
@@ -52,6 +56,21 @@ impl ModelCalls {
         } else {
             Disposition::Stale
         };
+        let charged = self
+            .record_evaluation(&mut tx, prepared, evaluation, disposition)
+            .await?;
+        tx.commit().await.map_err(query(CONTEXT))?;
+        tracing::info!(event = "setup_edit_intent", dispatch_id = %prepared.request.call_id,
+            disposition = disposition.as_str(), usage_known = charged.is_some());
+        Ok(disposition)
+    }
+    async fn record_evaluation(
+        &self,
+        tx: &mut sqlx::PgConnection,
+        prepared: &Prepared,
+        evaluation: Evaluation,
+        disposition: Disposition,
+    ) -> Result<Option<i64>> {
         let usage = evaluation.usage.or_else(|| {
             (!evaluation.sent).then_some(DecisionUsage {
                 input_tokens: 0,
@@ -61,7 +80,7 @@ impl ModelCalls {
             })
         });
         let sequence: i64 = sqlx::query_scalar(include_str!("sql/sequence.sql"))
-            .bind(&prepared.request.call_id)
+            .bind(Uuid7::parse(&prepared.request.call_id)?)
             .fetch_one(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;
@@ -71,7 +90,7 @@ impl ModelCalls {
             .and_then(|bill| bill.lines.first())
             .map(|line| line.charged.as_i64());
         sqlx::query(include_str!("sql/record.sql"))
-            .bind(&prepared.request.call_id)
+            .bind(Uuid7::parse(&prepared.request.call_id)?)
             .bind(disposition.as_str())
             .bind(usage.map(sqlx::types::Json))
             .bind(charged)
@@ -87,10 +106,7 @@ impl ModelCalls {
             )
             .await?;
         }
-        tx.commit().await.map_err(query(CONTEXT))?;
-        tracing::info!(event = "setup_edit_intent", dispatch_id = %prepared.request.call_id,
-            disposition = disposition.as_str(), usage_known = charged.is_some());
-        Ok(disposition)
+        Ok(charged)
     }
 }
 

@@ -1,4 +1,4 @@
-//! The population the saturation shape polls: chat drafts across tenants,
+//! The saturation population: chat drafts across tenants,
 //! ready fleets beside them, and hosts that hold several leases at once.
 //!
 //! # Seeded in the order the keys and the paths require
@@ -85,8 +85,8 @@ pub(super) struct Staged {
     pub(super) fleets: Vec<SeededFleet>,
     /// Queued chat messages, one per draft.
     pub(super) messages: u64,
-    /// The hosts that poll.
-    pub(super) runners: Vec<Uuid7>,
+    /// Hosts holding one native session each.
+    pub(super) runners: Vec<seed::RunnerIdentity>,
 }
 
 impl Staged {
@@ -94,10 +94,10 @@ impl Staged {
     /// but no more than the hosts have workers, because nothing is reported
     /// and a full host takes no more. Whichever runs out first ends the window,
     /// so a rate is never leases divided by a deadline spent idle.
-    pub(super) fn population(&self) -> u64 {
-        let work = self.messages + u64::try_from(self.fleets.len()).unwrap_or(u64::MAX);
-        let hosts = u64::try_from(self.runners.len()).unwrap_or(u64::MAX);
-        work.min(hosts.saturating_mul(u64::from(WORKERS)))
+    pub(super) fn population(&self) -> Result<u64> {
+        let work = self.messages + u64::try_from(self.fleets.len())?;
+        let hosts = u64::try_from(self.runners.len())?;
+        Ok(work.min(hosts.saturating_mul(u64::from(WORKERS))))
     }
 }
 
@@ -106,7 +106,7 @@ impl Staged {
 ///
 /// # Errors
 ///
-/// Whatever Postgres, Dragonfly or the setup chat path refused, and a
+/// Whatever Postgres or the setup chat path refused, and a
 /// platform default another run already holds.
 pub(super) async fn stage(
     stores: &Datastores,
@@ -124,7 +124,7 @@ pub(super) async fn stage(
         runners: Vec::new(),
     };
     for index in 0..TENANTS {
-        let tenant = seed::identities(INDEX_BASE + index);
+        let tenant = seed::identities(INDEX_BASE + index)?;
         seed::rows(&stores.database, prefix, &tenant, &tag, SEEDED_AT).await?;
         ledger.created(ROWS_PER_CHAT_TENANT);
         owner(stores, &tenant, index).await?;
@@ -135,16 +135,17 @@ pub(super) async fn stage(
         staged.messages += queue(drafts, tenant, index).await?;
     }
     for index in 0..parameters.fleets {
-        let fleet = seed::identities(INDEX_BASE + TENANTS + index);
+        let fleet = seed::identities(INDEX_BASE + TENANTS + index)?;
         seed::rows(&stores.database, prefix, &fleet, &tag, SEEDED_AT).await?;
         fund(stores, &fleet).await?;
-        seed::enqueue(&stores.database, &stores.queue, &fleet, EventType::Chat).await?;
+        seed::enqueue(&stores.database, &stores.bus, &fleet, EventType::Chat).await?;
         ledger.created(ROWS_PER_FLEET);
         staged.fleets.push(fleet);
     }
     for index in 0..parameters.runners {
         let host = prefix.name(&format!("{HOST_SUFFIX}-{index}"));
-        let runner = seed::runner_with(&stores.database, &host, &tag, WORKERS, SEEDED_AT).await?;
+        let runner =
+            seed::runner_identity(&stores.database, &host, &tag, WORKERS, SEEDED_AT).await?;
         staged.runners.push(runner);
         ledger.created(ROWS_PER_RUNNER);
     }
@@ -154,9 +155,9 @@ pub(super) async fn stage(
 /// The chat tenant's owner, whose subject the drafts are created under, and
 /// its wallet.
 async fn owner(stores: &Datastores, tenant: &SeededFleet, index: u64) -> Result<()> {
-    let user = subject(index);
+    let user = subject(index)?;
     let mut connection = stores.database.acquire().await?;
-    UserSeed::new(&user, &tenant.tenant, &user, &user)
+    UserSeed::new(&user, &tenant.tenant, user.as_str(), user.as_str())
         .insert(&mut *connection)
         .await
         .map_err(seed_refused)?;
@@ -177,8 +178,8 @@ async fn fund(stores: &Datastores, tenant: &SeededFleet) -> Result<()> {
 /// Queue [`DRAFTS_PER_TENANT`] first messages for one chat tenant, through
 /// the route's own create verb, answering how many were queued.
 async fn queue(drafts: &Drafts, tenant: &SeededFleet, index: u64) -> Result<u64> {
-    let workspace = Uuid7::parse(&tenant.workspace)?;
-    let user = subject(index);
+    let workspace = tenant.workspace.clone();
+    let user = subject(index)?.to_string();
     let access = Access {
         workspace: &workspace,
         subject: &user,
@@ -198,6 +199,6 @@ async fn queue(drafts: &Drafts, tenant: &SeededFleet, index: u64) -> Result<u64>
 }
 
 /// The owner's id, which is also the subject and address it signs in with.
-fn subject(index: u64) -> String {
+fn subject(index: u64) -> Result<Uuid7> {
     seed::identifier(KIND_USER, INDEX_BASE + index)
 }

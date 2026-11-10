@@ -8,22 +8,14 @@
 
 use af_core::id::Uuid7;
 
-use crate::error::{Result, lease_not_found, query, row_malformed, stale_fence};
-use crate::lease::pull::Plane;
+use crate::error::{Result, lease_not_found, query, stale_fence};
+use crate::lease::pull::LeaseService;
 use crate::lease::sql;
 use crate::lease::sql::standing::SELECT_STANDING;
 use crate::lease::store::Leases;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_STANDING: &str = "lease standing lookup";
-
-/// The table a malformed column is reported against.
-const TABLE: &str = "runner.leases";
-
-/// The columns a malformed value is reported under.
-const COLUMN_FLEET: &str = "fleet_id";
-/// See [`COLUMN_FLEET`].
-const COLUMN_WORKSPACE: &str = "workspace_id";
 
 /// A superseded holder reached a lease verb, and nothing was done for it.
 const EVENT_FENCED: &str = "lease_verb_fenced";
@@ -38,7 +30,7 @@ pub struct Standing {
     /// The workspace that fleet belongs to.
     pub workspace_id: Uuid7,
     /// The event it is running, as the ledger names it.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// Who woke the fleet for that event, as the ledger recorded it: a
     /// schedule's fire reads `cron:<schedule_id>`.
     pub actor: String,
@@ -49,11 +41,11 @@ pub struct Standing {
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub(crate) struct LiveLease {
     /// The fleet the lease runs.
-    pub(crate) fleet_id: String,
+    pub(crate) fleet_id: Uuid7,
     /// The workspace that fleet belongs to.
-    pub(crate) workspace_id: String,
+    pub(crate) workspace_id: Uuid7,
     /// The event the lease runs.
-    pub(crate) event_id: String,
+    pub(crate) event_id: Uuid7,
     /// Who woke the fleet for that event.
     pub(crate) actor: String,
     /// The lease's own fencing token, which keys every row it writes.
@@ -86,7 +78,7 @@ pub(crate) const fn fence_current(fence: i64, live_seq: i64) -> bool {
     fence >= live_seq
 }
 
-impl Plane {
+impl LeaseService {
     /// Proves `lease_id` is `runner_id`'s live lease, and the fleet's current
     /// holder under the presented token.
     ///
@@ -119,9 +111,8 @@ impl Plane {
         }
         Ok(Standing {
             lease_id,
-            fleet_id: Uuid7::parse(&read.fleet_id).map_err(row_malformed(TABLE, COLUMN_FLEET))?,
-            workspace_id: Uuid7::parse(&read.workspace_id)
-                .map_err(row_malformed(TABLE, COLUMN_WORKSPACE))?,
+            fleet_id: read.fleet_id.clone(),
+            workspace_id: read.workspace_id.clone(),
             event_id: read.event_id,
             actor: read.actor,
         })
@@ -133,8 +124,8 @@ impl Leases {
     async fn standing_row(&self, runner_id: &Uuid7, lease_id: &Uuid7) -> Result<Option<LiveLease>> {
         let mut connection = self.pool().acquire().await?;
         sqlx::query_as(SELECT_STANDING)
-            .bind(lease_id.as_str())
-            .bind(runner_id.as_str())
+            .bind(lease_id)
+            .bind(runner_id)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await

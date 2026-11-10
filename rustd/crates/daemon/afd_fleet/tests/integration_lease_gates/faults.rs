@@ -7,7 +7,7 @@ use super::*;
 
 use af_core::test_util::trace::Capture;
 use afd_billing::Accounts;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 
 use crate::rows::{LAPSE, Row};
 
@@ -23,7 +23,7 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     // A payer read that fails is neither an owner-less workspace to refuse nor
     // a tenant to bill: the pass answers no work, the event stays runnable,
     // and the claim is freed so the next poll can read the payer again.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let claimed = claim(&fixtures, &seeded).await;
@@ -32,7 +32,7 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     let now = fixtures.enrolled_at();
     let log = Capture::install();
     let answer = plane
-        .lease_claimed(claimed.clone(), &seeded.runner, now)
+        .claim_selected(claimed.clone(), &seeded.runner, now)
         .await
         .expect("an unread payer is a retry, not a fault");
     let line = log.only("lease_tenant_lookup_failed").fields;
@@ -40,18 +40,15 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
     // The next poll meets the same delivery on its open row: it retries again
     // and reopens nothing.
     let again = plane
-        .lease_claimed(claimed, &seeded.runner, now)
+        .claim_selected(claimed, &seeded.runner, now)
         .await
         .expect("the retry repeats");
 
     assert!(
-        answer.contains(NO_LEASE),
-        "an unread payer issued a lease: {answer}"
+        answer.is_none(),
+        "an unread payer issued a lease: {answer:?}"
     );
-    assert!(
-        again.contains(NO_LEASE),
-        "the repeat issued a lease: {again}"
-    );
+    assert!(again.is_none(), "the repeat issued a lease: {again:?}");
     assert_eq!(
         line.get("error_code").map(String::as_str),
         Some(af_core::error_code::INTERNAL_DB_QUERY.as_str())
@@ -67,8 +64,8 @@ async fn should_retry_and_free_the_claim_when_the_payer_cannot_be_read() {
 }
 
 /// The fixture plane with a payer ledger whose database never answers.
-fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
-    Plane {
+fn plane_with_unreadable_payer(fixtures: &Fixtures) -> LeaseService {
+    LeaseService {
         task_reports: None,
         accounts: Accounts::new(afd_db::test_util::unreachable_db()),
         ..fixtures.plane()
@@ -76,7 +73,7 @@ fn plane_with_unreadable_payer(fixtures: &Fixtures) -> Plane {
 }
 
 /// Asserts the fleet's claim was handed back, so the next poll may take it.
-async fn assert_claim_freed(fixtures: &Fixtures, fleet: &str) {
+async fn assert_claim_freed(fixtures: &Fixtures, fleet: &Uuid7) {
     assert!(
         fixtures.slot_is_free(fleet).await,
         "the retry freed the claim"
@@ -88,7 +85,7 @@ async fn assert_claim_freed(fixtures: &Fixtures, fleet: &str) {
 async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
     // The first pass ends the event; the second finds the row already ended
     // and must neither reopen it nor answer anything but no work.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     fixtures
         .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
@@ -103,7 +100,7 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
         STATUS_GATE_BLOCKED.to_owned(),
         af_core::event::label::CONFIG_UNREADABLE.to_owned(),
     ));
-    assert!(first.contains(NO_LEASE) && second.contains(NO_LEASE));
+    assert!(first.is_none() && second.is_none());
     assert_eq!(ended, expected, "the first pass ends the event");
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
@@ -117,7 +114,7 @@ async fn should_refuse_an_unreadable_fleet_once_however_often_it_is_offered() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     let claimed = claim(&fixtures, &seeded).await;
     fixtures
@@ -139,7 +136,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
         .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
         .await;
     let answer = drive(&fixtures, &seeded, claimed).await;
-    assert!(answer.contains(NO_LEASE));
+    assert!(answer.is_none());
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
         Some((af_core::event::status::PROCESSED.to_owned(), String::new()))
@@ -163,7 +160,7 @@ async fn an_unreadable_redelivery_preserves_an_existing_terminal_ending() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recorded() {
-    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let fixtures = Fixtures::create_isolated().await;
     let seeded = ready(&fixtures).await;
     fixtures
         .corrupt_native_config(&seeded.fleet, UNREADABLE_CONFIG)
@@ -180,11 +177,14 @@ async fn should_answer_no_work_when_an_unreadable_fleets_refusal_cannot_be_recor
     drop(log);
 
     assert!(
-        answer.contains(NO_LEASE),
-        "an unrecordable refusal issued a lease: {answer}"
+        answer.is_none(),
+        "an unrecordable refusal issued a lease: {answer:?}"
     );
     assert!(line.get("error_code").is_some_and(|code| !code.is_empty()));
-    assert_eq!(line.get("agentsfleet_event_id"), Some(&seeded.event_id));
+    assert_eq!(
+        line.get("agentsfleet_event_id").map(String::as_str),
+        Some(seeded.event_id.as_str())
+    );
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
         None,
@@ -201,13 +201,13 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     // Every gate admits the run, and by the time the lease row is written a
     // second runner holds the slot. The fenced insert writes nothing, and the
     // pass answers no work rather than a lease two runners would execute.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [runner, rival]) = seeded_parts::<2>(&fixtures).await;
     let seeded = ready_in(&fixtures, &workspace, runner, fleet, tenant).await;
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
     let claimed = claim(&fixtures, &seeded).await;
-    let slot = Row::Slot(claimed.fleet_id.as_str());
+    let slot = Row::Slot(&claimed.fleet_id);
     fixtures.age(slot, "lease_expires_at", LAPSE).await;
     let won = fixtures
         .leases()
@@ -221,15 +221,15 @@ async fn should_write_no_lease_when_another_runner_won_the_claim_mid_pass() {
     let lost = log.only("lease_claim_lost").fields;
     drop(log);
 
-    assert!(
-        answer.contains(NO_LEASE),
-        "a lost claim issued a lease: {answer}"
+    assert!(answer.is_none(), "a lost claim issued a lease: {answer:?}");
+    assert_eq!(
+        lost.get("runner_id").map(String::as_str),
+        Some(seeded.runner.as_str())
     );
     assert_eq!(
-        lost.get("runner_id"),
-        Some(&seeded.runner.as_str().to_owned())
+        lost.get("agentsfleet_event_id").map(String::as_str),
+        Some(seeded.event_id.as_str())
     );
-    assert_eq!(lost.get("agentsfleet_event_id"), Some(&seeded.event_id));
 
     fixtures.cleanup().await;
 }
@@ -240,7 +240,7 @@ async fn should_write_no_lease_when_the_pass_outlived_its_claim() {
     // Every gate admits the run and no rival takes the slot, but the claim's
     // own deadline passed while the gates ran. The issue refuses a claim past
     // its lapse rather than write a lease another runner may soon hold.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
@@ -254,7 +254,7 @@ async fn should_write_no_lease_when_the_pass_outlived_its_claim() {
 
     assert_eq!(
         (
-            answer.contains(NO_LEASE),
+            answer.is_none(),
             lost.field("runner_id"),
             lost.field("agentsfleet_event_id"),
         ),
@@ -263,7 +263,7 @@ async fn should_write_no_lease_when_the_pass_outlived_its_claim() {
             Some(seeded.runner.as_str()),
             Some(seeded.event_id.as_str())
         ),
-        "a lapsed claim issued a lease: {answer}"
+        "a lapsed claim issued a lease: {answer:?}"
     );
     fixtures.cleanup().await;
 }
@@ -272,10 +272,10 @@ async fn should_write_no_lease_when_the_pass_outlived_its_claim() {
 /// caller picks: the fleet's own, or one no row carries.
 async fn ready_in(
     fixtures: &Fixtures,
-    workspace: &str,
+    workspace: &Uuid7,
     runner: Uuid7,
-    fleet: String,
-    tenant: String,
+    fleet: Uuid7,
+    tenant: Uuid7,
 ) -> Ready {
     let event_id = crate::queue::enqueue(
         &fixtures.database,

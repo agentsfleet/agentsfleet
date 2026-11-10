@@ -1,7 +1,7 @@
 //! Dimension 4.9 — an admitted event is named by its `fleet.admissions` row id,
 //! and the history keyset `(created_at, event_id)` reads two such events in one
-//! millisecond newest-first, each once, across a page boundary. A stream-style
-//! `{millis}-{seq}` id names nothing.
+//! millisecond newest-first, each once, across a page boundary. An id no
+//! admission minted names nothing.
 //!
 //! Lives here rather than beside the receipts in `afd_admission`, because the
 //! history read is this crate's and `afd_admission` cannot depend on it.
@@ -10,9 +10,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_admission::{Admission, Key, Producer};
+use afd_db::test_util::mint_id;
 use afd_events::{Filter, History, next_cursor};
 use jiff::Timestamp;
 
@@ -20,9 +20,6 @@ use crate::support::EventsLane;
 
 /// The one millisecond both events are recorded at.
 const SHARED_INSTANT: Timestamp = Timestamp::constant(1_800_000_000, 7_000_000);
-
-/// A legacy stream-entry id, the shape event ids had before the row id.
-const LEGACY_ID: &str = "1800000000007-0";
 
 fn admission<'a>(lane: &'a EventsLane, key: &'a str) -> Admission<'a> {
     Admission {
@@ -49,7 +46,6 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
             .admit(admission(&lane, &key))
             .await
             .expect("the admission is taken");
-        Uuid7::parse(&admitted.stored.id).expect("an event id is the row's UUIDv7");
         // Delivered as the worker records it: under the admission's own id,
         // both at one instant so only the id can break the tie.
         lane.seed_event(&admitted.stored.id, SHARED_INSTANT).await;
@@ -59,12 +55,11 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
     newest_first.sort_by(|older, newer| newer.cmp(older));
 
     let history = History::new(lane.database.clone());
-    let workspace = Uuid7::parse(&lane.workspace).expect("the fixture workspace parses");
-    let fleet = Uuid7::parse(&lane.fleet).expect("the fixture fleet parses");
+    let (workspace, fleet) = (&lane.workspace, &lane.fleet);
     let filter = Filter::default();
 
     let whole = history
-        .page_for_fleet(&workspace, &fleet, &filter, None, 10)
+        .page_for_fleet(workspace, fleet, &filter, None, 10)
         .await
         .expect("a page reads");
     let listed: Vec<_> = whole.iter().map(|row| row.event_id.clone()).collect();
@@ -75,7 +70,7 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
     let mut cursor = None;
     loop {
         let page = history
-            .page_for_fleet(&workspace, &fleet, &filter, cursor.as_ref(), 1)
+            .page_for_fleet(workspace, fleet, &filter, cursor.as_ref(), 1)
             .await
             .expect("a page reads");
         walked.extend(page.iter().map(|row| row.event_id.clone()));
@@ -88,16 +83,19 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
 
     let first = ids.first().expect("two admissions were made");
     let found = history
-        .detail(&workspace, &fleet, first)
+        .detail(workspace, fleet, first)
         .await
         .expect("the detail reads")
         .expect("the row id names the event");
     assert_eq!(&found.row.event_id, first);
-    let legacy = history
-        .detail(&workspace, &fleet, LEGACY_ID)
+    let unadmitted = history
+        .detail(workspace, fleet, &mint_id())
         .await
         .expect("the detail reads");
-    assert!(legacy.is_none(), "a {{millis}}-{{seq}} id names nothing");
+    assert!(
+        unadmitted.is_none(),
+        "an id no admission minted names nothing"
+    );
 
     lane.cleanup().await;
 }

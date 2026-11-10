@@ -12,6 +12,7 @@
 use crate::e2e::{Scenario, scenario};
 use crate::wire::{field, json, post};
 use af_core::error_code::{GRANT_NOT_FOUND, INVALID_REQUEST, RUN_LEASE_NOT_FOUND};
+use af_core::id::Uuid7;
 use afd_db::test_util::{EventKind, FleetEventSeed, mint_id};
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::{Value, json};
@@ -28,15 +29,15 @@ INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user
 draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
 lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
 reported_runtime_ms,last_activity_sequence,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,1,1,$1,'{}'::jsonb,
+VALUES($1,$2,$3,$4,$5,$6,$7,1,1,$1,'{}'::jsonb,
 'active',now()+interval '1 minute',now()+interval '1 minute',0,false,0,0,0,0,now(),now())";
 
 const RUNTIME: &str = "\
-INSERT INTO runner.leases(id,runner_id,fleet_id,workspace_id,tenant_id,fleet_event_id,
+INSERT INTO runner.leases(id,runner_id,fleet_id,workspace_id,tenant_id,event_id,
 event_created_at,posture,provider,model,last_metered_at,fencing_token,
 lease_expires_at,status,
 posted_message_count,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,now(),'platform','test',
+VALUES($1,$2,$3,$4,$5,$6,now(),'platform','test',
 'test',now(),1,now()+interval '1 minute','active',0,now(),now())";
 
 /// The event the runtime lease executes: a chat a person sent, received.
@@ -46,10 +47,10 @@ const EVENT: EventKind<'static> = EventKind {
     status: "received",
 };
 
-async fn execute(run: &Scenario, statement: &'static str, binds: &[&str]) {
+async fn execute(run: &Scenario, statement: &'static str, binds: &[&Uuid7]) {
     let mut query = sqlx::query(statement);
     for bind in binds {
-        query = query.bind((*bind).to_owned());
+        query = query.bind(*bind);
     }
     query
         .execute(&mut *run.booted.database.acquire().await.expect("connection"))
@@ -77,51 +78,22 @@ async fn mint(http: &reqwest::Client, run: &Scenario, lease: &str) -> (u16, Valu
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn authoring_lease_cannot_mint_a_runtime_credential_live_or_revoked() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     let http = client();
-    let runner = run.runner_id.as_str();
     let (attempt, authoring_lease, runtime_lease) = (mint_id(), mint_id(), mint_id());
-    let (creator, draft) = (mint_id(), mint_id());
-    let ids = [
-        attempt.as_str(),
-        authoring_lease.as_str(),
-        runner,
-        run.workspace.as_str(),
-        run.tenant.as_str(),
-        creator.as_str(),
-        draft.as_str(),
-    ];
-    execute(&run, AUTHORING, &ids).await;
-    let event = FleetEventSeed::new(
-        run.fleet.as_str(),
-        run.workspace.as_str(),
-        &runtime_lease,
-        EVENT,
-    )
-    .insert(&mut *run.booted.database.acquire().await.expect("connection"))
-    .await
-    .expect("the runtime lease's event seeds");
-    let ids = [
-        runtime_lease.as_str(),
-        runner,
-        run.fleet.as_str(),
-        run.workspace.as_str(),
-        run.tenant.as_str(),
-        event.as_str(),
-    ];
-    execute(&run, RUNTIME, &ids).await;
+    seed_leases(&run, &attempt, &authoring_lease, &runtime_lease).await;
 
-    let (status, control) = mint(&http, &run, &runtime_lease).await;
+    let (status, control) = mint(&http, &run, runtime_lease.as_str()).await;
     // Past the lease lookup and stopped one gate later, at the grant.
     assert_eq!(status, 403, "{control}");
     assert_eq!(
         field(&control, "error_code"),
         &json!(GRANT_NOT_FOUND.as_str())
     );
-    let (status, live) = mint(&http, &run, &authoring_lease).await;
+    let (status, live) = mint(&http, &run, authoring_lease.as_str()).await;
     assert_eq!(status, 404, "{live}");
     assert_eq!(
         field(&live, "error_code"),
@@ -131,13 +103,13 @@ async fn authoring_lease_cannot_mint_a_runtime_credential_live_or_revoked() {
 
     sqlx::query(
         "UPDATE authoring.attempts SET status='cancelled',lease_expires_at=now() \
-         WHERE id=$1::uuid",
+         WHERE id=$1",
     )
     .bind(&attempt)
     .execute(&mut *run.booted.database.acquire().await.expect("connection"))
     .await
     .expect("revoke the authoring capability");
-    let (status, revoked) = mint(&http, &run, &authoring_lease).await;
+    let (status, revoked) = mint(&http, &run, authoring_lease.as_str()).await;
     assert_eq!(status, 404, "{revoked}");
     assert_eq!(
         revoked, live,
@@ -145,11 +117,8 @@ async fn authoring_lease_cannot_mint_a_runtime_credential_live_or_revoked() {
     );
 
     for (statement, id) in [
-        ("DELETE FROM authoring.attempts WHERE id=$1::uuid", &attempt),
-        (
-            "DELETE FROM runner.leases WHERE id=$1::uuid",
-            &runtime_lease,
-        ),
+        ("DELETE FROM authoring.attempts WHERE id=$1", &attempt),
+        ("DELETE FROM runner.leases WHERE id=$1", &runtime_lease),
     ] {
         sqlx::query(statement)
             .bind(id)
@@ -162,7 +131,7 @@ async fn authoring_lease_cannot_mint_a_runtime_credential_live_or_revoked() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_lease_id_that_is_not_an_identifier_is_a_bad_request_not_a_server_error() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -175,28 +144,60 @@ async fn a_lease_id_that_is_not_an_identifier_is_a_bad_request_not_a_server_erro
             &json!(INVALID_REQUEST.as_str())
         );
     }
-    // The lease routes that once handed their path id to a `::uuid` cast:
-    // malformed is the caller's mistake, well-formed and unknown is hidden.
-    for (suffix, body) in [
-        ("renew", json!({})),
-        ("activity", json!({"frames": []})),
-        ("tool-calls", json!({"fencing_token": 7, "calls": []})),
+    // The retained tool-call route validates its identifier before looking up a lease.
+    for (lease, status, code) in [
+        ("x".to_owned(), 400, INVALID_REQUEST),
+        (mint_id().to_string(), 404, RUN_LEASE_NOT_FOUND),
     ] {
-        for (lease, status, code) in [
-            ("x".to_owned(), 400, INVALID_REQUEST),
-            (mint_id(), 404, RUN_LEASE_NOT_FOUND),
-        ] {
-            let path = format!("/v1/runners/me/leases/{lease}/{suffix}");
-            let response = post(&http, &run, &path, &body).await;
-            assert_eq!(response.status().as_u16(), status, "{suffix} {lease}");
-            let answer = json(response).await;
-            assert_eq!(
-                field(&answer, "error_code"),
-                &json!(code.as_str()),
-                "{suffix} {lease}"
-            );
-        }
+        let path = format!("/v1/runners/me/leases/{lease}/tool-calls");
+        let response = post(
+            &http,
+            &run,
+            &path,
+            &json!({"fencing_token": 7, "calls": []}),
+        )
+        .await;
+        assert_eq!(response.status().as_u16(), status, "tool-calls {lease}");
+        let answer = json(response).await;
+        assert_eq!(
+            field(&answer, "error_code"),
+            &json!(code.as_str()),
+            "tool-calls {lease}"
+        );
     }
     supervisor.shutdown().await;
     run.cleanup().await;
+}
+
+async fn seed_leases(
+    run: &Scenario,
+    attempt: &Uuid7,
+    authoring_lease: &Uuid7,
+    runtime_lease: &Uuid7,
+) {
+    let (creator, draft) = (mint_id(), mint_id());
+    let ids = [
+        attempt,
+        authoring_lease,
+        &run.runner_id,
+        &run.workspace,
+        &run.tenant,
+        &creator,
+        &draft,
+    ];
+    execute(run, AUTHORING, &ids).await;
+    // The runtime lease executes an event of its own id.
+    FleetEventSeed::new(&run.fleet, &run.workspace, runtime_lease, EVENT)
+        .insert(&mut *run.booted.database.acquire().await.expect("connection"))
+        .await
+        .expect("the runtime lease's event seeds");
+    let ids = [
+        runtime_lease,
+        &run.runner_id,
+        &run.fleet,
+        &run.workspace,
+        &run.tenant,
+        runtime_lease,
+    ];
+    execute(run, RUNTIME, &ids).await;
 }

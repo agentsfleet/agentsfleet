@@ -68,7 +68,7 @@ impl Vault {
         connectors: &dyn Connectors,
     ) -> Result<Vec<CredentialInspection>> {
         let rows = sqlx::query_as::<_, InspectedRow>(INSPECT)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(names)
             .fetch_all(connection)
             .await

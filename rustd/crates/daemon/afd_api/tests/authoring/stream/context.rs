@@ -31,7 +31,7 @@ async fn private_summary_status_arrives_incrementally_without_changing_saved_his
     let messages = crate::harness::json_body(response).await;
     assert!(!messages.to_string().contains("summarizing"));
     drop(body);
-    assert_eq!(live.hub.readers(&live.channel()), 0);
+    assert_eq!(live.readers(), 0);
     live.cleanup().await;
 }
 
@@ -69,9 +69,9 @@ async fn malformed_foreign_and_nonrunning_summary_notices_never_reach_the_privat
 async fn stopping_a_message_withholds_its_buffered_summary_notice() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    live.mutate("UPDATE authoring.messages SET status='cancelled' WHERE draft_id=$1::uuid")
+    live.mutate("UPDATE authoring.messages SET status='cancelled' WHERE draft_id=$1")
         .await;
-    live.mutate("UPDATE authoring.drafts SET cancelled_through_sequence=1 WHERE id=$1::uuid")
+    live.mutate("UPDATE authoring.drafts SET cancelled_through_sequence=1 WHERE id=$1")
         .await;
     live.publish(&notice(&live, "resuming"));
     let received = frame(&mut body).await;
@@ -80,7 +80,7 @@ async fn stopping_a_message_withholds_its_buffered_summary_notice() {
         "{received}"
     );
     assert!(!received.contains("resuming"));
-    live.server.publish(&live.channel(), "{\"invalid\":true}");
+    live.server.publish(&live.subject(), "{\"invalid\":true}");
     drop(body);
     live.cleanup().await;
 }
@@ -95,8 +95,8 @@ async fn revocation_withholds_a_previously_authorized_summary_ending() {
         data(&frame(&mut body).await)["progress"]["state"],
         "summarizing"
     );
-    sqlx::query("DELETE FROM identity.users WHERE id=$1::uuid")
-        .bind(live.f.owner.as_str())
+    sqlx::query("DELETE FROM identity.users WHERE id=$1")
+        .bind(&live.f.owner)
         .execute(&mut *live.f.db.acquire().await.expect("revocation connection"))
         .await
         .expect("revoke only this fixture's person");

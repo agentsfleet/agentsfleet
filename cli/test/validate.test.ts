@@ -14,7 +14,7 @@ describe("isValidId", () => {
   });
 
   // Canonical form is lowercase. Postgres folds an uppercase spelling to the
-  // same row on ::uuid, but Redis dedupe keys, cache keys and string equality
+  // same row on ::uuid, but bus subjects, cache keys and string equality
   // see a different id — so one entity would have two valid spellings whose
   // behaviour depends on which storage boundary it crossed. The server rejects
   // uppercase (`rustd/crates/foundation/af_core/src/id.rs`); the CLI matches it

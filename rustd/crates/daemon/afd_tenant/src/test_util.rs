@@ -8,6 +8,7 @@
     reason = "a feature-gated fixture: every expect here reports a LANE fault — an unreachable Postgres, a seed the schema refused — where a Result would hand the suite a value it could only unwrap (dispatch/write_rust.md, test-util carve-out)"
 )]
 
+use af_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::test_util::mint_id;
 use jiff::Timestamp;
@@ -30,9 +31,9 @@ const HELD_FROM: Timestamp = Timestamp::constant(0, 2_000_000);
 #[derive(Debug, Clone, Copy)]
 pub struct Signup<'a> {
     /// The account.
-    pub tenant: &'a str,
+    pub tenant: &'a Uuid7,
     /// The person's user row.
-    pub user: &'a str,
+    pub user: &'a Uuid7,
     /// The identity provider's subject for them.
     pub subject: &'a str,
     /// Their address, as stored.
@@ -42,7 +43,7 @@ pub struct Signup<'a> {
     /// The person's own name, when the identity provider gave one.
     pub display_name: Option<&'a str>,
     /// The account's one workspace.
-    pub workspace: &'a str,
+    pub workspace: &'a Uuid7,
 }
 
 /// Writes `person`'s tenant, user, owner membership and workspace, all at
@@ -56,17 +57,17 @@ pub async fn sign_up(database: &Db, person: &Signup<'_>) {
     sqlx::query(
         "WITH tenant AS ( \
            INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-           VALUES ($1::uuid, $2, $10, $10) \
+           VALUES ($1, $2, $10, $10) \
          ), person AS ( \
            INSERT INTO identity.users \
              (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-           VALUES ($3::uuid, $1::uuid, $4, $5, $6, $10, $10) \
+           VALUES ($3, $1, $4, $5, $6, $10, $10) \
          ), membership AS ( \
            INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
-           VALUES ($7::uuid, $1::uuid, $3::uuid, $8, $10) \
+           VALUES ($7, $1, $3, $8, $10) \
          ) \
          INSERT INTO identity.workspaces (id, tenant_id, name, created_at) \
-         VALUES ($9::uuid, $1::uuid, $2, $10)",
+         VALUES ($9, $1, $2, $10)",
     )
     .bind(person.tenant)
     .bind(person.name)
@@ -91,22 +92,20 @@ pub async fn sign_up(database: &Db, person: &Signup<'_>) {
 ///
 /// # Panics
 /// When the lane's Postgres will not take the row.
-pub async fn hold(database: &Db, tenant: &str, user: &str, role: &str) {
+pub async fn hold(database: &Db, tenant: &Uuid7, user: &Uuid7, role: &str) {
     let mut connection = database.acquire().await.expect(NO_CONNECTION);
     let mut transaction = sqlx::Acquire::begin(&mut *connection)
         .await
         .expect("the membership transaction opens");
-    sqlx::query(
-        "DELETE FROM identity.memberships WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
-    )
-    .bind(tenant)
-    .bind(user)
-    .execute(&mut *transaction)
-    .await
-    .expect("the old membership clears");
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id = $1 AND user_id = $2")
+        .bind(tenant)
+        .bind(user)
+        .execute(&mut *transaction)
+        .await
+        .expect("the old membership clears");
     sqlx::query(
         "INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
-         VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)",
+         VALUES ($1, $2, $3, $4, $5)",
     )
     .bind(mint_id())
     .bind(tenant)
@@ -123,9 +122,9 @@ pub async fn hold(database: &Db, tenant: &str, user: &str, role: &str) {
 ///
 /// # Panics
 /// When the lane's Postgres will not remove them.
-pub async fn delete_accounts(database: &Db, tenants: &[&str]) {
+pub async fn delete_accounts(database: &Db, tenants: &[&Uuid7]) {
     let mut connection = database.acquire().await.expect(NO_CONNECTION);
-    sqlx::query("DELETE FROM identity.tenants WHERE id = ANY($1::uuid[])")
+    sqlx::query("DELETE FROM identity.tenants WHERE id = ANY($1)")
         .bind(tenants)
         .execute(&mut *connection)
         .await

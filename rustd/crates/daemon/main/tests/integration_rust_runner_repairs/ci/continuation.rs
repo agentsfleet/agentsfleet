@@ -16,7 +16,7 @@ use hyper::Method;
 use serde_json::{Value, json};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_correct_failed_validation_in_the_same_draft() {
     for (acknowledgement, readback) in [
         (Acknowledgement::Delivered, Readback::Exact),
@@ -37,7 +37,7 @@ async fn continue_repair(acknowledgement: Acknowledgement, readback: Readback) {
     let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
     let remote = Remote::new(
         LINKWARDEN,
-        &branch_for(&run.event_id),
+        &branch_for(run.event_id.as_str()),
         acknowledgement,
         readback,
     );

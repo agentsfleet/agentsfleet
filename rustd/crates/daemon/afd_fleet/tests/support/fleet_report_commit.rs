@@ -32,8 +32,8 @@ pub(crate) const RESPONSE_POSTGRES_REFUSES: &str = "the answer\u{0}with a null i
 /// holding.
 pub(crate) const RESPONSE_ACCEPTED: &str = "the fleet finished and said this";
 
-/// The event the fleet's next run resumes after.
-pub(crate) const RESUME_EVENT_ID: &str = "1788550034853-0";
+/// The event the fleet's next run resumes after, as the wire spells it.
+pub(crate) const RESUME_EVENT_ID: &str = "0198c3d2-1e00-7000-8000-00000000e5e0";
 
 /// The answer that next run resumes from.
 pub(crate) const RESUME_RESPONSE: &str = "resume from here";
@@ -50,8 +50,8 @@ pub(crate) const LEDGER_ROWS_AFTER_SETTLE: i64 = 1;
 /// store the answer and whether the claim can still win. Holding everything
 /// else fixed is what makes the wallet assertions read as one run reported
 /// more than once.
-pub(crate) const fn report<'a>(
-    lease_id: &'a str,
+pub(crate) fn report<'a>(
+    lease_id: &'a Uuid7,
     runner_id: &'a Uuid7,
     lease: &'a Reported,
     priced: (&'a Uuid7, &'a Pricing),
@@ -75,7 +75,7 @@ pub(crate) const fn report<'a>(
             wall_ms: SLICE_MS,
             tool_calls: None,
         },
-        last_event_id: RESUME_EVENT_ID,
+        last_event_id: crate::report_seed::resume_event(),
         last_response: RESUME_RESPONSE,
         held_until: None,
         now,

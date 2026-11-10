@@ -10,6 +10,7 @@
 
 #![cfg(feature = "test-util")]
 
+use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_ingress::slack::KIND_NOTICE_OWNER;
 use afd_ingress::sql;
@@ -43,14 +44,14 @@ async fn a_moved_teams_binding_is_repointed_as_api_runtime() {
         .execute(&mut *transaction)
         .await
         .expect("the lane's user may assume api_runtime");
-    let repointed: Option<String> = sqlx::query_scalar(sql::INSERT_NOTICE_OWNER)
+    let repointed: Option<Uuid7> = sqlx::query_scalar(sql::INSERT_NOTICE_OWNER)
         .bind(mint_id())
         .bind(PROVIDER.id())
         .bind(&fixture.team)
         .bind(CHANNEL)
-        .bind(carrier.as_str())
+        .bind(&carrier)
         .bind(KIND_NOTICE_OWNER)
-        .bind(fixture.workspace().as_str())
+        .bind(fixture.workspace())
         .fetch_optional(&mut *transaction)
         .await
         .expect("api_runtime runs the carrier bind, re-point included");
@@ -61,8 +62,8 @@ async fn a_moved_teams_binding_is_repointed_as_api_runtime() {
     drop(connection);
 
     assert_eq!(
-        repointed.as_deref(),
-        Some(carrier.as_str()),
+        repointed.as_ref(),
+        Some(&carrier),
         "the binding names this workspace's carrier, not the one left behind"
     );
 

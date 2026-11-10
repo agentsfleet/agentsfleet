@@ -35,19 +35,18 @@ const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
      WHERE $1::integer = ANY(pg_blocking_pids(pid))";
 
 /// Which runner the slot names now.
-const HOLDER: &str =
-    "SELECT last_runner_id::text FROM runner.fleet_slots WHERE fleet_id = $1::uuid";
+const HOLDER: &str = "SELECT last_runner_id FROM runner.fleet_slots WHERE fleet_id = $1";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_claim_that_waited_on_a_live_claim_takes_nothing() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,
         ..
     } = seeded::<2>(&fixtures).await;
-    let fleet_id = Uuid7::parse(&fleet).expect("a seeded fleet id");
+    let fleet_id = fleet.clone();
     let mut other = fixtures.database.acquire().await.expect("a connection");
     let mut claiming = other.begin().await.expect("a transaction");
     let pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
@@ -55,8 +54,8 @@ async fn test_a_claim_that_waited_on_a_live_claim_takes_nothing() {
         .await
         .expect("the session names itself");
     sqlx::query(CLAIM_FLEET_SLOT)
-        .bind(fleet.as_str())
-        .bind(second.as_str())
+        .bind(&fleet)
+        .bind(&second)
         .bind(LEASE_TTL)
         .bind(RUNNER_OFFLINE_AFTER)
         .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
@@ -90,11 +89,11 @@ async fn test_a_claim_that_waited_on_a_live_claim_takes_nothing() {
 
     assert_eq!(queued, 1, "the poll's claim queued behind the open one");
     assert!(polled.is_none(), "the lost claim takes nothing: {polled:?}");
-    let holder: String = sqlx::query_scalar(HOLDER)
+    let holder: Uuid7 = sqlx::query_scalar(HOLDER)
         .bind(&fleet)
         .fetch_one(&mut *fixtures.database.acquire().await.expect("a connection"))
         .await
         .expect("the slot reads back");
-    assert_eq!(holder, second.as_str(), "the slot is the first claimer's");
+    assert_eq!(holder, second, "the slot is the first claimer's");
     fixtures.cleanup().await;
 }

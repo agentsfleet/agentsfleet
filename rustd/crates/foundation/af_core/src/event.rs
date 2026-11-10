@@ -3,7 +3,7 @@
 //!
 //! # Why here and not in `af_wire`
 //!
-//! `af_wire` is a byte-exact model of the frozen `/v1/admin/runners` contract, and it
+//! `af_wire` is a byte-exact model of the frozen `/v1/runners` contract, and it
 //! depends on nothing but serde ON PURPOSE — its own module documentation says
 //! so, because a validated newtype reaching that layer would break the fixture
 //! byte-equality the crate exists to guarantee. Neither of these columns is on

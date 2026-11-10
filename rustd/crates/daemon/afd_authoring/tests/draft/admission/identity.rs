@@ -1,6 +1,7 @@
 //! Native placement pins a single accepted request and never discloses credentials.
 
 use super::{claim, funded, mint, now, queue};
+use af_core::id::Uuid7;
 use af_core::timing::LEASE_TTL;
 use afd_authoring::types::SendMessage;
 use jiff::SignedDuration;
@@ -10,8 +11,8 @@ use sha2::{Digest as _, Sha256};
 #[ignore = "requires live Postgres"]
 async fn a_model_output_ceiling_can_equal_its_context_without_excluding_every_message() {
     let f = funded(1).await;
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=32768,inference=jsonb_set(inference,'{max_output_tokens}','32768') WHERE id=$1::uuid")
-        .bind(f.catalogue.first().expect("owned model").as_str()).execute(&mut *f.connection().await).await.expect("configured model ceilings");
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=32768,inference=jsonb_set(inference,'{max_output_tokens}','32768') WHERE id=$1")
+        .bind(f.catalogue.first().expect("owned model")).execute(&mut *f.connection().await).await.expect("configured model ceilings");
     let draft = queue(&f, "Investigate").await;
     let lease = claim(&f, &draft)
         .await
@@ -56,9 +57,9 @@ async fn lease_pins_oldest_message_model_candidate_and_only_hashes_its_capabilit
     assert_eq!(lease.model_access.token.len(), 43);
     let saved: (String, i64, jiff_sqlx::Timestamp, jiff_sqlx::Timestamp) = sqlx::query_as(
         "SELECT model_token_hash, reserved_nanos, expires_at, lease_expires_at \
-         FROM authoring.attempts WHERE id = $1::uuid",
+         FROM authoring.attempts WHERE id = $1",
     )
-    .bind(&lease.attempt_id)
+    .bind(Uuid7::parse(&lease.attempt_id).expect("the lease names its attempt"))
     .fetch_one(&mut *f.connection().await)
     .await
     .expect("durable placement");

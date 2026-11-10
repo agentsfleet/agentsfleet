@@ -53,8 +53,8 @@ async fn capacity(case: &Case) {
     assert_eq!(fixture.goal_snapshot(&task).await, task_before);
     assert_eq!(fixture.counts().await, (10, 10, 0));
     assert_eq!(fixture.wallet().await, balance);
-    let outstanding: (i64,i64) = sqlx::query_as("SELECT count(*),SUM(reserved_nanos)::bigint FROM runner.decision_calls WHERE original_lease_id=$1::uuid AND accounted_at IS NULL")
-        .bind(case.held.lease_key.as_str()).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("source reservation observer")).await.expect("five uncertain original sends");
+    let outstanding: (i64,i64) = sqlx::query_as("SELECT count(*),SUM(reserved_nanos)::bigint FROM runner.decision_calls WHERE original_lease_id=$1 AND accounted_at IS NULL")
+        .bind(&case.held.lease_key).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("source reservation observer")).await.expect("five uncertain original sends");
     assert_eq!(outstanding, (5, 100_000_000));
     fixture
         .model
@@ -82,7 +82,7 @@ async fn attempts(fixture: &Decisions<'_>, input: garde::Valid<DecisionReservati
         (DecisionCallState::Unknown, "20000000")
     );
     let mut retry = (*input).clone();
-    retry.operation_id = afd_db::test_util::mint_id();
+    retry.operation_id = afd_db::test_util::mint_id().into();
     retry.retry_of = Some(first.call_id.clone());
     let retry = garde::Unvalidated::new(retry)
         .validate()
@@ -114,8 +114,8 @@ async fn attempts(fixture: &Decisions<'_>, input: garde::Valid<DecisionReservati
 }
 
 async fn calls(fixture: &Decisions<'_>) -> Vec<(serde_json::Value, serde_json::Value)> {
-    sqlx::query_as("SELECT to_jsonb(c),to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1::uuid ORDER BY c.id")
-        .bind(fixture.case.held.lease_key.as_str())
+    sqlx::query_as("SELECT to_jsonb(c),to_jsonb(p) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.original_lease_id=$1 ORDER BY c.id")
+        .bind(&fixture.case.held.lease_key)
         .fetch_all(&mut *fixture.case.held.fixtures.database.acquire().await.expect("all source calls observer"))
         .await.expect("complete calls and payloads")
 }

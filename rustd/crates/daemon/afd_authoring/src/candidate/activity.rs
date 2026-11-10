@@ -46,7 +46,7 @@ impl Drafts {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         // The publication guard refuses an attempt whose usage is unknown.
-        let guarded = guard::publication(&mut tx, runner, lease, &counters).await?;
+        let guarded = self.publication(&mut tx, runner, lease, &counters).await?;
         if let Some(receipt) =
             receipt::find(&mut tx, &guarded.attempt.id, sequence, &digest).await?
         {
@@ -67,7 +67,7 @@ impl Drafts {
         )
         .await?;
         sqlx::query(sql::ADVANCE)
-            .bind(guarded.attempt.id.as_str())
+            .bind(&guarded.attempt.id)
             .bind(sequence)
             .execute(&mut *tx)
             .await

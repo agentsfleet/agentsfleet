@@ -8,7 +8,7 @@ use http::StatusCode;
 use serde_json::{Value, json};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn save_records_each_supported_origin_without_relabelling_replays() {
     for origin in ["cli", "dashboard", "chat"] {
         let case = Case::create().await;
@@ -27,10 +27,10 @@ async fn save_records_each_supported_origin_without_relabelling_replays() {
         assert_eq!(replay.status(), StatusCode::CREATED);
         assert_eq!(json_body(replay).await["id"], saved["id"]);
         let receipts: Vec<Value> = sqlx::query_scalar(
-            "SELECT request_json::jsonb FROM fleet.events WHERE fleet_id=$1::uuid \
+            "SELECT request_json::jsonb FROM fleet.events WHERE fleet_id=$1 \
              AND event_type='activity' AND request_json::jsonb->>'kind'='setup_saved'",
         )
-        .bind(saved["id"].as_str().expect("accepted fleet ID"))
+        .bind(crate::authoring::id_field(&saved["id"]))
         .fetch_all(&mut *case.base.db.acquire().await.expect("receipt connection"))
         .await
         .expect("durable Save receipts");

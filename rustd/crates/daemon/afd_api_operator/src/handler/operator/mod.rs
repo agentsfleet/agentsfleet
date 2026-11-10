@@ -4,5 +4,6 @@ pub(crate) mod events;
 pub(crate) mod leases;
 mod query;
 pub(crate) mod runner_delete;
+mod runner_notify;
 pub(crate) mod runner_patch;
 pub(crate) mod runners;

@@ -15,23 +15,27 @@
 //! # Then timed through one frame each
 //!
 //! A ceiling is only as good as its latency at that many streams, so once the
-//! heap is read the rung publishes one measured frame to every stream's fleet,
-//! stamping each publish, and every stream records how long its own took to
-//! arrive. The p95 over the streams is the rung's publish-to-receive figure;
+//! heap is read the rung publishes one measured frame to every stream's fleet
+//! in one concurrent burst, and every stream records how long after the burst began its
+//! own arrived. The p95 over the streams is the rung's burst-to-receive figure;
 //! a stream that never hears its frame is counted, not timed.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
-use afd_dragonfly::FleetStreams;
-use afd_sse::{Frame, Live, Slot};
+use af_core::id::Uuid7;
+use afd_bus::Handle;
+use afd_sse::{Frame, Live, StreamPermit};
 use futures_util::StreamExt as _;
 use futures_util::stream::BoxStream;
 use tokio_util::sync::CancellationToken;
 
 use super::publish::{FRAME_KIND, PROBE, PROBE_INTERVAL, PROBE_KIND, RUNG_DEADLINE, frame_of};
-use super::{HEAP_BYTES_PER_STREAM, LADDER_STREAMS, STREAM_RECEIVE_P95_MS, STREAMS_LIVE, push};
+use super::{
+    HEAP_BYTES_PER_STREAM, LADDER_STREAMS, STREAM_RECEIVE_P95_MS, STREAM_RECEIVE_P99_MS,
+    STREAMS_LIVE, push,
+};
 use crate::allocations::Snapshot;
 use crate::error::{ErrorKind, Result};
 use crate::fixture::RunPrefix;
@@ -80,6 +84,11 @@ impl Rung {
                 report,
                 STREAM_RECEIVE_P95_MS,
                 self.latency.quantile_ms(0.95),
+            );
+            push(
+                report,
+                STREAM_RECEIVE_P99_MS,
+                self.latency.quantile_ms(0.99),
             );
         }
     }
@@ -146,17 +155,17 @@ impl Watch {
 ///
 /// # Errors
 ///
-/// A publish Dragonfly refused, or a stream task that was lost.
+/// A publish the Bus refused, or a stream task that was lost.
 pub(super) async fn rung(
     live: &Live,
-    publisher: &FleetStreams,
-    prefix: &RunPrefix,
+    publisher: &Handle,
+    _prefix: &RunPrefix,
     opened: u64,
 ) -> Result<Rung> {
     let stop = CancellationToken::new();
-    let fleets: Vec<String> = (0..opened)
-        .map(|index| prefix.name(&format!("tail-stream-{opened}-{index}")))
-        .collect();
+    let fleets: Vec<Uuid7> = (0..opened)
+        .map(|_| af_crypto::entropy::Entropy::new().uuid7(af_core::clock::now()))
+        .collect::<Result<_, _>>()?;
     let watch = Arc::new(Watch::new(fleets.len()));
     let mut tasks = Vec::with_capacity(fleets.len());
     // Taken after the rung's own bookkeeping is allocated, so what is weighed
@@ -166,7 +175,7 @@ pub(super) async fn rung(
         // The ceiling is sized for the widest rung, so a refusal means an
         // earlier rung's streams had not closed (see `CeilingRefused`).
         let slot = live.admit().ok_or(ErrorKind::CeilingRefused { opened })?;
-        let tail = live.tail_of(fleet);
+        let tail = live.tail_of(fleet).await;
         let (watch, stop) = (Arc::clone(&watch), stop.clone());
         tasks.push(tokio::spawn(hold(tail, slot, watch, index, stop)));
     }
@@ -191,18 +200,29 @@ pub(super) async fn rung(
     })
 }
 
-/// Publish one timed frame to every fleet, stamping each, then wait for every
-/// stream to hear its own or the deadline.
-async fn time_every_stream(
-    publisher: &FleetStreams,
-    fleets: &[String],
-    watch: &Watch,
-) -> Result<()> {
+/// Publish one timed frame to every fleet, then wait for every stream to hear
+/// its own or the deadline.
+///
+/// Every stamp is the burst's start, so a stream's figure is how long the
+/// whole burst took to reach it. Stamping each publish instead charged a bus
+/// whose publish returns at once for the queue behind it, and excused one
+/// whose publish waits for a reply for the waiting.
+async fn time_every_stream(publisher: &Handle, fleets: &[Uuid7], watch: &Watch) -> Result<()> {
     let frame = frame_of(TIMED_FRAME_BYTES);
-    for (fleet, stamp) in fleets.iter().zip(&watch.stamped) {
-        stamp.store(watch.now(), Ordering::Release);
-        publisher.publish_tail(fleet, &frame).await?;
+    let started = watch.now();
+    for stamp in &watch.stamped {
+        stamp.store(started, Ordering::Release);
     }
+    // Concurrently, as fleets publish in production: each from its own task,
+    // never one waiting on another's reply.
+    let sent = futures_util::future::join_all(fleets.iter().map(|fleet| {
+        let subject = afd_bus::Subject::FleetTail(fleet.clone());
+        let frame = &frame;
+        async move { publisher.publish(&subject, frame).await }
+    }))
+    .await;
+    sent.into_iter()
+        .collect::<std::result::Result<Vec<()>, _>>()?;
     let deadline = Instant::now() + RUNG_DEADLINE;
     while watch
         .arrived
@@ -230,7 +250,7 @@ fn latency_of(watch: &Watch) -> Result<Latency> {
 /// Hold one stream open, pulling frames, until the rung is done with it.
 async fn hold(
     mut tail: BoxStream<'static, Frame>,
-    _slot: Slot,
+    _slot: StreamPermit,
     watch: Arc<Watch>,
     index: usize,
     stop: CancellationToken,
@@ -259,8 +279,8 @@ async fn hold(
 /// Only the fleets still silent are probed again, so a rung of four thousand
 /// streams repeats a handful of publishes rather than four thousand.
 async fn probe_until_heard(
-    publisher: &FleetStreams,
-    fleets: &[String],
+    publisher: &Handle,
+    fleets: &[Uuid7],
     heard: &[AtomicBool],
 ) -> Result<()> {
     let deadline = Instant::now() + RUNG_DEADLINE;
@@ -269,7 +289,9 @@ async fn probe_until_heard(
         for (fleet, flag) in fleets.iter().zip(heard) {
             if !flag.load(Ordering::Relaxed) {
                 silent += 1;
-                publisher.publish_tail(fleet, PROBE).await?;
+                publisher
+                    .publish(&afd_bus::Subject::FleetTail(fleet.clone()), PROBE)
+                    .await?;
             }
         }
         if silent == 0 || Instant::now() >= deadline {

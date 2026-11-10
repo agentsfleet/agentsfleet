@@ -7,7 +7,7 @@ use model_calls::compaction::competing;
 use sqlx::Connection as _;
 
 #[tokio::test]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn a_competing_checkpoint_withholds_late_notes_but_settles_known_usage() {
     let (f, attempt, mut live) = ready().await;
     let task = live.call(&f.runner, &attempt, model_calls::fixture::request(&attempt));
@@ -39,7 +39,7 @@ async fn a_competing_checkpoint_withholds_late_notes_but_settles_known_usage() {
 }
 
 #[tokio::test]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn a_failed_checkpoint_write_rolls_back_the_receipt_without_publishing_private_notes() {
     let (f, attempt, mut live) = ready_in(Fixture::isolated().await).await;
     let task = live.call(&f.runner, &attempt, model_calls::fixture::request(&attempt));
@@ -66,8 +66,8 @@ async fn a_failed_checkpoint_write_rolls_back_the_receipt_without_publishing_pri
         model_calls::fixture::receipts(&f, &attempt).await,
         (1, 1, false)
     );
-    let pending: (String, bool) = sqlx::query_as("SELECT status,result IS NULL AND usage IS NULL FROM authoring.dispatches WHERE attempt_id=$1::uuid")
-        .bind(attempt.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("rolled back receipt");
+    let pending: (String, bool) = sqlx::query_as("SELECT status,result IS NULL AND usage IS NULL FROM authoring.dispatches WHERE attempt_id=$1")
+        .bind(attempt.id).fetch_one(&mut *f.connection().await).await.expect("rolled back receipt");
     assert_eq!(pending, ("pending".into(), true));
     sqlx::query("DROP TRIGGER refuse_notes ON memory.context_checkpoints")
         .execute(&mut owner)

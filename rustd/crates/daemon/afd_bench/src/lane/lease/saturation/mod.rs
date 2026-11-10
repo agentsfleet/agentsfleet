@@ -2,10 +2,10 @@
 //!
 //! # What it asks
 //!
-//! What the production poll sustains when requesters outnumber the pool's
-//! connections, and whether it stays correct while it does. Every host polls
-//! `Plane::claim` — setup chats and fleet leases competing as they do in
-//! production — and renews what it holds, while wall viewers read the fleet
+//! What native gateway offers sustain when hosts outnumber the pool's
+//! connections, and whether placement stays correct. Hosts receive setup
+//! chats and fleet leases through their own guarded session and renew held
+//! work, while wall viewers read the fleet
 //! live set on the same pool. Requesters default to twice the pool size, so
 //! the default shape's `fit` guard is the one thing this shape skips on
 //! purpose.
@@ -33,7 +33,7 @@ use af_core::id::Uuid7;
 use afd_fleet_lifecycle::Fleets;
 
 use self::probe::Pool as _;
-use self::production::Production;
+use self::production::{Connected, Production};
 use self::record::Window;
 use self::requester::Shared;
 use super::Parameters;
@@ -88,7 +88,7 @@ pub async fn run(
     let mut report = Report::new(Lane::LeaseSaturation, profile, provenance);
     record::parameters(&mut report, parameters, stores.pool_size);
     let kek = Arc::new(platform::minted_kek()?);
-    let host = Arc::new(Production::new(stores, &kek));
+    let host = Arc::new(Production::new(stores, &kek)?);
     let mut ledger = FixtureLedger::new();
     let staged = stage::stage(stores, &host.drafts, &kek, prefix, parameters, &mut ledger).await;
     let measured = match staged {
@@ -113,16 +113,18 @@ async fn measure(
     // so a refusal here leaves nothing running beneath the caller's cleanup.
     let locker = slow::named(run.stores.sampler().await?).await?;
     let mut sampler = run.stores.sampler().await?;
-    let workspaces = workspaces_of(staged)?;
+    let workspaces = workspaces_of(staged);
     let abort = Arc::new(Abort::new(run.profile.caps().abort_error_rate));
+    let connected = Arc::new(host.connect(run.stores, &staged.runners).await?);
     let started = Instant::now();
     let shared = Arc::new(Shared {
         deadline: started + run.parameters.window,
         leased: 0.into(),
-        population: staged.population(),
+        population: staged.population()?,
         abort: Arc::clone(&abort),
+        done: tokio_util::sync::CancellationToken::new(),
     });
-    let requesters = spawn_requesters(host, &staged.runners, &shared);
+    let requesters = spawn_requesters(&connected, &staged.runners, &shared);
     let viewers = spawn_viewers(run.stores, &workspaces, &shared);
     let tenant = first_tenant(staged);
     let writer = spawn_writer(locker, tenant, &shared);
@@ -135,6 +137,7 @@ async fn measure(
     let requesters = join::all(requesters, REQUESTER_ROLE).await;
     let viewers = join::all(viewers, VIEWER_ROLE).await;
     let writer = joined(writer.await, WRITER_ROLE).and_then(|inner| inner);
+    connected.close().await;
     let mut window = Window::new(watched?)?;
     for tally in requesters? {
         window.tally.absorb(&tally)?;
@@ -144,8 +147,19 @@ async fn measure(
     }
     window.slow_holds = writer?;
     window.length = started.elapsed();
+    report.abort = abort.recorded();
+    record_census(run, staged, ledger, report, &window).await
+}
+
+async fn record_census(
+    run: &Run<'_>,
+    staged: &stage::Staged,
+    ledger: &mut FixtureLedger,
+    report: &mut Report,
+    window: &Window,
+) -> Result<()> {
     let recovered = run.stores.database.serves(run.stores.pool_size).await;
-    let tenants: Vec<String> = staged.tenants.iter().map(|t| t.tenant.clone()).collect();
+    let tenants: Vec<Uuid7> = staged.tenants.iter().map(|t| t.tenant.clone()).collect();
     ledger.created(invariants::issued(run.stores, &tenants).await?);
     let census = invariants::count(
         run.stores,
@@ -156,51 +170,46 @@ async fn measure(
     )
     .await?;
     window.record(report, &census);
-    report.abort = abort.recorded();
     census.judge()
 }
 
-/// One requester per host, each polling until the window closes.
+/// One requester per host, each waiting for notified offers until the window closes.
 fn spawn_requesters(
-    host: &Arc<Production>,
-    runners: &[Uuid7],
+    host: &Arc<Connected>,
+    runners: &[super::seed::RunnerIdentity],
     shared: &Arc<Shared>,
 ) -> Vec<tokio::task::JoinHandle<Result<requester::Tally>>> {
     runners
         .iter()
         .map(|runner| {
-            let (host, runner, shared) = (Arc::clone(host), runner.clone(), Arc::clone(shared));
+            let (host, runner, shared) = (Arc::clone(host), runner.id.clone(), Arc::clone(shared));
             tokio::spawn(async move { requester::drive(&*host, &runner, &shared).await })
         })
         .collect()
 }
 
 /// The tenant the slow writer holds: the first chat tenant's.
-fn first_tenant(staged: &stage::Staged) -> String {
-    staged
-        .tenants
-        .first()
-        .map(|seeded| seeded.tenant.clone())
-        .unwrap_or_default()
+fn first_tenant(staged: &stage::Staged) -> Option<Uuid7> {
+    staged.tenants.first().map(|seeded| seeded.tenant.clone())
 }
 
 /// The slow writer over `tenant`'s drafts, on the connection it was handed.
 fn spawn_writer(
     mut locker: sqlx::PgConnection,
-    tenant: String,
+    tenant: Option<Uuid7>,
     shared: &Arc<Shared>,
 ) -> tokio::task::JoinHandle<Result<u64>> {
     let shared = Arc::clone(shared);
-    tokio::spawn(async move { slow::write(&mut locker, &tenant, &shared).await })
+    tokio::spawn(async move { slow::write(&mut locker, tenant.as_ref(), &shared).await })
 }
 
 /// Every chat tenant's workspace, which the wall viewers cycle through.
-fn workspaces_of(staged: &stage::Staged) -> Result<Arc<[Uuid7]>> {
-    Ok(staged
+fn workspaces_of(staged: &stage::Staged) -> Arc<[Uuid7]> {
+    staged
         .tenants
         .iter()
-        .map(|tenant| Uuid7::parse(&tenant.workspace))
-        .collect::<core::result::Result<_, _>>()?)
+        .map(|tenant| tenant.workspace.clone())
+        .collect()
 }
 
 /// [`live::READERS`] wall viewers over `workspaces`.

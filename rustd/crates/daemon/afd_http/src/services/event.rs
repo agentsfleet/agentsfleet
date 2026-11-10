@@ -97,7 +97,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
     ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send;
 
     /// One tool call's kept record, inside this workspace, fleet and event.
@@ -109,7 +109,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
         call: CallAddress,
     ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send;
 }
@@ -164,7 +164,7 @@ impl WorkspaceEvents for History {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
     ) -> impl Future<Output = EventResult<Option<EventDetailRow>>> + Send {
         Self::detail(self, workspace, fleet, event_id)
     }
@@ -173,7 +173,7 @@ impl WorkspaceEvents for History {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
         call: CallAddress,
     ) -> impl Future<Output = EventResult<Option<ToolCallRow>>> + Send {
         Self::tool_call(self, workspace, fleet, event_id, call)
@@ -183,9 +183,9 @@ impl WorkspaceEvents for History {
 /// What the steer verb acts through.
 ///
 /// Its own trait rather than a method on [`WorkspaceEvents`], because it is
-/// its own store: the reads hold a Postgres pool, and this holds a Dragonfly
-/// connection opened by CONNECTING — which is exactly the seam a suite proving
-/// the refusal matrix must not have to construct.
+/// its own store: the reads hold a Postgres pool, and this holds the admission
+/// ledger and the bus it notifies through — which is exactly the seam a suite
+/// proving the refusal matrix must not have to construct.
 pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
     /// Puts one message on the fleet's stream, answering with its event id and
     /// whether an earlier send of the same operation id already admitted it.
@@ -197,8 +197,8 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
     /// Reports a queue that would not take the append.
     fn append(
         &self,
-        fleet: &str,
-        workspace: &str,
+        fleet: &Uuid7,
+        workspace: &Uuid7,
         actor: &str,
         request_json: &str,
         operation_id: Option<&str>,
@@ -213,8 +213,8 @@ pub trait FleetSteering: Send + Sync + std::fmt::Debug + 'static {
 impl FleetSteering for Steer {
     fn append(
         &self,
-        fleet: &str,
-        workspace: &str,
+        fleet: &Uuid7,
+        workspace: &Uuid7,
         actor: &str,
         request_json: &str,
         operation_id: Option<&str>,

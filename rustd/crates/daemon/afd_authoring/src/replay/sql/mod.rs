@@ -3,7 +3,7 @@
 //! A receipt has no foreign key: it outlives the resource it names, so a retry
 //! after deletion finds the receipt and a missing resource, which the read
 //! reports as `live = false` and the caller answers as Gone
-//! (`schema/1980_authoring_replay_receipts.sql`). Every statement here reads
+//! (`schema/20261108124300_authoring_replay_receipts.sql`). Every statement here reads
 //! the window against `statement_timestamp()`, so a key the read calls expired
 //! is one the delete and the sweep call expired too.
 

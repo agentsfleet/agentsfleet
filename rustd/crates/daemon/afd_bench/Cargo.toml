@@ -12,6 +12,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
+# The NATS Bus the live tail and the wakes run over, connected the way the
+# daemon connects it.
+afd_bus.workspace = true
+afd_auth.workspace = true
+af_stream.workspace = true
+afd_gateway = { workspace = true, features = ["test-util"] }
 # THE dependency that makes this a measurement rather than a model: the lanes
 # drive `Leases::select`, the real assignment pass, not a copy of it. A
 # reimplementation would not compile against these signatures (Invariant 2).
@@ -45,6 +51,8 @@ reqwest.workspace = true
 # The delivery worker the outbound lane drives, and the trait its scripted
 # destination implements.
 afd_outbound.workspace = true
+# `Provider`, the connector an owed answer names.
+afd_connector.workspace = true
 # The token the worker is stopped by.
 tokio-util.workspace = true
 # The live tail's per-viewer stream and its stream ceiling, as the tenant
@@ -58,16 +66,9 @@ futures-util.workspace = true
 # with them. The release build names its package (`make/build.mk`), so this
 # feature never reaches the shipped daemon.
 afd_db = { workspace = true, features = ["test-util"] }
-# The live tail, doorbell and outbound queue used by the measured paths.
-afd_dragonfly.workspace = true
-# `INFO commandstats`, for the Redis half of the attribution. The library never
-# spells a Redis command itself -- `afd_dragonfly` owns every one the product
-# issues -- but asking the SERVER what it served is a question only the server
-# answers, and the same reason `afd_outbound`'s suite reaches for this crate.
-redis.workspace = true
 # Identifiers, the clock the pass is given, and the environment source the
 # daemon's own pool config resolves through.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The entropy surface a lease mints its identifiers from.
 # The ledger a steer is admitted through. The lane builds one so its
 # measured cost is the production path's, not a shortcut around it.
@@ -104,9 +105,10 @@ thiserror.workspace = true
 # `MapEnv`: the environment a test hands every knob reader instead of
 # mutating the process.
 af_core = { workspace = true, features = ["test-util"] }
-# `Redis::unreachable`: a handle that opens no socket, so the abort rail can be
-# proven wired into a lane without a datastore to kill.
-afd_dragonfly = { workspace = true, features = ["test-util"] }
+# `unreachable()`: a Bus that refuses every publish without a broker, so the
+# abort rail can be proven wired into a lane without a datastore to kill; and
+# `lane()`, the integration lane's NATS a seeded fleet's wake lands on.
+afd_bus = { workspace = true, features = ["test-util"] }
 # Paused time: the burst's pacer is proven 100 ms apart without waiting it out.
 tokio = { workspace = true, features = ["test-util"] }
 

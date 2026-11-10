@@ -17,6 +17,7 @@ use sqlx::PgConnection;
 
 use super::{Status, sql};
 
+mod connected;
 mod counters;
 pub(crate) use counters::{Counters, DELETION_GENERATION};
 
@@ -52,11 +53,11 @@ pub(crate) struct Attempt {
 /// One `authoring.attempts` row, by column name.
 #[derive(sqlx::FromRow)]
 pub(crate) struct AttemptRow {
-    id: String,
-    workspace_id: String,
-    tenant_id: String,
-    user_id: String,
-    draft_id: String,
+    id: Uuid7,
+    workspace_id: Uuid7,
+    tenant_id: Uuid7,
+    user_id: Uuid7,
+    draft_id: Uuid7,
     message_sequence: i64,
     fencing_token: i64,
     model_snapshot: String,
@@ -80,11 +81,11 @@ pub(crate) struct AttemptRow {
 impl AttemptRow {
     pub(crate) fn decode(self) -> Result<Attempt> {
         Ok(Attempt {
-            id: Uuid7::parse(&self.id)?,
-            workspace_id: Uuid7::parse(&self.workspace_id)?,
-            tenant_id: Uuid7::parse(&self.tenant_id)?,
-            user_id: Uuid7::parse(&self.user_id)?,
-            draft_id: Uuid7::parse(&self.draft_id)?,
+            id: self.id.clone(),
+            workspace_id: self.workspace_id.clone(),
+            tenant_id: self.tenant_id.clone(),
+            user_id: self.user_id.clone(),
+            draft_id: self.draft_id.clone(),
             message_sequence: self.message_sequence,
             fencing_token: self.fencing_token,
             model_snapshot: value(&self.model_snapshot)?,
@@ -112,17 +113,8 @@ pub(crate) struct Guarded {
     pub(crate) now: Timestamp,
 }
 
-pub(crate) async fn publication(
-    connection: &mut PgConnection,
-    runner: &Uuid7,
-    lease: &Uuid7,
-    counters: &Counters,
-) -> Result<Guarded> {
-    authorize(connection, runner, lease, counters, Purpose::Publication).await
-}
-
 /// Validates live private authority before checking a model capability or key.
-pub(crate) async fn bound(
+pub(in crate::lease) async fn bound(
     connection: &mut PgConnection,
     runner: &Uuid7,
     lease: &Uuid7,
@@ -132,7 +124,7 @@ pub(crate) async fn bound(
     let draft = subject(connection, &first).await?;
     let locked = attempt(connection, sql::LOCK, runner, lease).await?;
     let running: bool = sqlx::query_scalar(sql::MESSAGE)
-        .bind(draft.id.as_str())
+        .bind(&draft.id)
         .bind(locked.message_sequence)
         .bind(RUNNING)
         .fetch_one(&mut *connection)
@@ -180,7 +172,7 @@ pub(crate) async fn accounting(
 /// Reads a saved cancellation fence without requiring access to private content.
 pub(crate) async fn cancelled(connection: &mut PgConnection, attempt: &Attempt) -> Result<bool> {
     sqlx::query_scalar(sql::CANCELLED)
-        .bind(attempt.draft_id.as_str())
+        .bind(&attempt.draft_id)
         .bind(attempt.message_sequence)
         .bind(crate::types::EDITING)
         .fetch_one(connection)
@@ -205,21 +197,6 @@ impl Purpose {
     }
 }
 
-async fn authorize(
-    connection: &mut PgConnection,
-    runner: &Uuid7,
-    lease: &Uuid7,
-    counters: &Counters,
-    purpose: Purpose,
-) -> Result<Guarded> {
-    let guarded = bound(connection, runner, lease, counters).await?;
-    if !purpose.accepts(&guarded.attempt) {
-        return Err(ErrorKind::Fence.into());
-    }
-    current_model(connection, &guarded).await?;
-    Ok(guarded)
-}
-
 pub(crate) async fn refresh(
     connection: &mut PgConnection,
     guarded: &Guarded,
@@ -238,7 +215,7 @@ pub(crate) async fn refresh(
 
 async fn subject(connection: &mut PgConnection, attempt: &Attempt) -> Result<read::Locked> {
     let subject: Option<String> = sqlx::query_scalar(crate::sql::access::SUBJECT)
-        .bind(attempt.user_id.as_str())
+        .bind(&attempt.user_id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;
@@ -272,8 +249,8 @@ async fn attempt(
     lease: &Uuid7,
 ) -> Result<Attempt> {
     let row: Option<AttemptRow> = sqlx::query_as(statement)
-        .bind(lease.as_str())
-        .bind(runner.as_str())
+        .bind(lease)
+        .bind(runner)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;

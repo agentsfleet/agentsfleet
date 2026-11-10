@@ -1,6 +1,6 @@
 //! The wall a scheduled fire crosses, and every way across it that is refused.
 //!
-//! Dimension 3.2's signature half. The fire route is reachable by anyone who
+//! The signature half of the fire wall. The fire route is reachable by anyone who
 //! finds the URL — it carries no bearer, because the scheduler has none to
 //! present — so the token IS the authentication and this is the file that says
 //! what the token has to prove.

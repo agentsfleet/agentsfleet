@@ -28,10 +28,10 @@ const CHAT_LEASES: &str = "chat_leases";
 /// Measurement key: fleet leases issued.
 const FLEET_LEASES: &str = "fleet_leases";
 
-/// Measurement key: polls made, lease or not.
-const POLLS: &str = "polls";
+/// Measurement key: claims made, lease or not.
+const CLAIMS: &str = "claims";
 
-/// Measurement key: polls and renewals the path refused.
+/// Measurement key: claims and renewals the path refused.
 const FAILURES: &str = "failures";
 
 /// Measurement key: chat renewals the path accepted.
@@ -40,13 +40,13 @@ const RENEWALS: &str = "renewals";
 /// Measurement key: leases of either kind per second of the window.
 const LEASES_PER_SECOND: &str = "leases_per_second";
 
-/// Measurement key: the tail of a poll that issued a lease.
+/// Measurement key: the tail of a offer that issued a lease.
 const LEASE_P95_MS: &str = "lease_p95_ms";
 
-/// Measurement key: the tail of a poll that issued a setup chat lease.
+/// Measurement key: the tail of a offer that issued a setup chat lease.
 const CHAT_LEASE_P95_MS: &str = "chat_lease_p95_ms";
 
-/// Measurement key: the longest poll that issued a setup chat lease.
+/// Measurement key: the longest offer that issued a setup chat lease.
 const CHAT_LEASE_MAX_MS: &str = "chat_lease_max_ms";
 
 /// Measurement key: holds the slow writer took on one tenant's drafts.
@@ -133,7 +133,7 @@ impl Window {
         let mut put = |key: &str, value: f64| report.measurement(key, value);
         put(CHAT_LEASES, count(self.tally.chat));
         put(FLEET_LEASES, count(self.tally.fleet));
-        put(POLLS, count(self.tally.polls));
+        put(CLAIMS, count(self.tally.claims));
         put(FAILURES, count(self.tally.failures));
         put(RENEWALS, count(self.tally.renewals));
         put(SLOW_HOLDS, count(self.slow_holds));

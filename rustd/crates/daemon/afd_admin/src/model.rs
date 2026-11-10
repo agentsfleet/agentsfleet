@@ -153,7 +153,7 @@ impl Models {
         bump(&mut transaction, CONTEXT_CREATE).await?;
         let metadata = &input.details.metadata;
         let done = sqlx::query(sql::INSERT_PLATFORM_MODEL)
-            .bind(id.as_str())
+            .bind(&id)
             .bind(&input.provider)
             .bind(&input.model_name)
             .bind(&metadata.display_name)
@@ -204,7 +204,7 @@ impl Models {
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_UPDATE))?;
         bump(&mut transaction, CONTEXT_UPDATE).await?;
         let current: Option<CurrentSettings> = sqlx::query_as(sql::SELECT_PLATFORM_MODEL_INFERENCE)
-            .bind(id.as_str())
+            .bind(id)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_UPDATE))?;
@@ -213,7 +213,7 @@ impl Models {
         };
         current.validate_replacement(&details)?;
         sqlx::query(sql::UPDATE_PLATFORM_MODEL)
-            .bind(id.as_str())
+            .bind(id)
             .bind(&details.metadata.display_name)
             .bind(details.metadata.context_cap_tokens)
             .bind(&details.metadata.context_source_url)
@@ -246,7 +246,7 @@ impl Models {
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_DELETE))?;
         bump(&mut transaction, CONTEXT_DELETE).await?;
         let deleted = sqlx::query(sql::DELETE_PLATFORM_MODEL)
-            .bind(id.as_str())
+            .bind(id)
             .execute(&mut *transaction)
             .await;
         if let Err(error) = &deleted

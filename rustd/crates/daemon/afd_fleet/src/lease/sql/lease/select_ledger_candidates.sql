@@ -5,7 +5,7 @@ WITH instant AS MATERIALIZED (
          (host.durable_tasks_enabled AND COALESCE(host.capability_report @> jsonb_build_object($8::text, true), false)) AS task_capable
   FROM fleet.fleets z
   CROSS JOIN instant
-  JOIN runner.runners host ON host.id = $2::uuid
+  JOIN runner.runners host ON host.id = $2
   LEFT JOIN runner.fleet_slots s ON s.fleet_id = z.id
   LEFT JOIN fleet.revisions setup ON setup.id = z.head_revision_id AND setup.fleet_id = z.id
   WHERE z.status = $1
@@ -15,7 +15,7 @@ WITH instant AS MATERIALIZED (
     AND (s.lease_expires_at IS NULL OR s.lease_expires_at < instant.read_at)
     AND (s.hold_expires_at IS NULL
          OR s.hold_expires_at <= instant.read_at
-         OR s.last_runner_id = $2::uuid
+         OR s.last_runner_id = $2
          OR NOT EXISTS (
            SELECT 1 FROM runner.runners r
            WHERE r.id = s.last_runner_id
@@ -25,12 +25,12 @@ WITH instant AS MATERIALIZED (
       SELECT COALESCE(array_agg(e), '{}'::text[])
       FROM jsonb_array_elements_text(
         (SELECT CASE WHEN jsonb_typeof(labels) = 'array' THEN labels ELSE '[]'::jsonb END
-         FROM runner.runners WHERE id = $2::uuid)) AS e)
+         FROM runner.runners WHERE id = $2)) AS e)
 )
-SELECT z.id::text
+SELECT z.id
 FROM eligible z
 JOIN LATERAL (
-  SELECT a.id, a.parked_at
+  SELECT a.id, a.parked_at, a.event_created_at
   FROM fleet.admissions a
   WHERE a.fleet_id = z.id AND a.settled_at IS NULL
     AND ((a.task_id IS NULL AND a.task_generation IS NULL) OR (z.task_capable AND EXISTS (
@@ -47,11 +47,13 @@ JOIN LATERAL (
   UNION ALL
   (SELECT 1 FROM fleet.approval_gates g
   WHERE g.fleet_id = z.id AND g.resolved_at IS NULL
-    AND g.event_id = head.id::text AND g.expires_at > z.read_at LIMIT 1))
-ORDER BY z.id = ANY((SELECT ($6::text[])::uuid[])::uuid[]) DESC,
-         (z.id = $7::uuid) DESC NULLS LAST,
-         (z.last_runner_id = $2::uuid) DESC NULLS LAST,
-         -- Only each fleet's head is ordered. Spread runners across fleets
-         -- rather than making all of them contend for the same oldest fleet.
-         random()
+    AND g.event_id = head.id AND g.expires_at > z.read_at LIMIT 1))
+-- The independent recovery generation must reach old work even while a hot
+-- fleet keeps replacing every disposable hint. Notifications retain locality.
+ORDER BY CASE WHEN $12 THEN head.event_created_at END,
+         CASE WHEN $12 THEN head.id END,
+         CASE WHEN NOT $12 THEN z.id = ANY($6) END DESC,
+         CASE WHEN NOT $12 THEN z.id = $7 END DESC NULLS LAST,
+         CASE WHEN NOT $12 THEN z.last_runner_id = $2 END DESC NULLS LAST,
+         CASE WHEN NOT $12 THEN random() END
 LIMIT $3

@@ -147,7 +147,7 @@ pub(crate) async fn steer<D: Services>(
     let actor = actor_for(person.person());
     let request_json = stored_payload(&steer.message)?;
     let operation_id = steer.operation_id.as_deref();
-    let (fleet, workspace) = (fleet.as_str(), owned.workspace.as_str());
+    let (fleet, workspace) = (&fleet, &owned.workspace);
     let steering = services.steering();
     // One ledger statement decides ownership, a repeat, the fleet's status and
     // the ceiling: a foreign fleet is a 404 before any operation id is read, and
@@ -157,7 +157,7 @@ pub(crate) async fn steer<D: Services>(
         .append(fleet, workspace, &actor, &request_json, operation_id)
         .await
         .map_err(refuse_steer)?;
-    announce_admitted(steering, fleet, &steered, &actor, &steer.message).await;
+    announce_admitted(steering, fleet.as_str(), &steered, &actor, &steer.message).await;
     let replayed = steered.replayed();
     Ok(accepted(steered.event_id, replayed, steered.placed))
 }

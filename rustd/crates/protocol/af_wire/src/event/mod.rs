@@ -53,7 +53,7 @@ impl EventType {
         }
     }
 
-    /// The word a stored row or a stream field spells this type as.
+    /// The word a stored row or the wire spells this type as.
     ///
     /// The inverse of [`Self::parse`], and deliberately a `match` beside it
     /// rather than a serde round trip: the two are read together, so a variant
@@ -71,7 +71,6 @@ impl EventType {
 }
 
 mod entry;
-pub mod field;
 mod message;
 mod steer;
 

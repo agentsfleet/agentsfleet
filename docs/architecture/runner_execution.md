@@ -2,13 +2,13 @@
 
 > Scope: how `agentsfleet-runner` runs one lease, where its agent loop runs and what its sandbox is made of. The page also covers how a fleet's code and files survive from one lease to the next. It covers how credentials and repository writes cross the sandbox wall too.
 
-> `agentsfleet-runner` is the one runner binary, with three entries: `run`, `probe` and `sandbox` (`rustd/crates/runner/main/src/main.rs`). The control protocol, renewal, fencing and report semantics are in [Runner Fleet](./runner_fleet.md).
+> `agentsfleet-runner` is the one runner binary, with three entries: `run`, `probe` and `sandbox` (`rustd/crates/runner/main/src/main.rs`). The [runner guide](runner_protocol.md) owns connection, renewal, fencing and report recovery rules.
 
 ## Facts
 
 | Fact | Value |
 |---|---|
-| Language | Rust, in the `rustd` workspace beside `agentsfleetd`, under the same principles: one error type per crate through `af_core::error_shell!`, one source per constant, pure logic apart from I/O. The wire is `af_wire` and nothing else. Daemon→runner types decode leniently, so a runner never refuses a field a newer daemon adds |
+| Language | Rust, in the `rustd` workspace beside `agentsfleetd`, under the same principles: one error type per crate through `af_core::error_shell!`, one source per constant, pure logic apart from I/O. The wire is `af_wire` and nothing else. Native session messages reject unknown variants and fields |
 | Process model | A trusted **supervisor** runs the lease loop and the agent loop; a per-lease **sandbox** runs tool calls and nothing else |
 | Hosts | Bare metal or a virtual machine (VM), multi-tenant from the first release |
 | Sandbox engine | bubblewrap (Landlock, seccomp, cgroup v2, a per-lease network namespace except under `allow_all`) is the one engine built, `BubblewrapEngine`, and stays as the engine for development, Continuous Integration (CI) and hosts without `/dev/kvm`. Firecracker microVMs, for code-running leases from many tenants on hosts that expose `/dev/kvm`, are the target and are not built |
@@ -24,9 +24,9 @@
 
 ## Lease execution kinds
 
-A tagged claim returns fleet runtime or private setup work. Fleet runs use their admitted tools and optional sandbox. Setup turns use only daemon-scoped model calls and the fixed proposal tool.
+A tagged native offer carries fleet runtime or private setup work. Fleet runs use their admitted tools and optional sandbox. Setup turns use only daemon-scoped model calls and the fixed proposal tool.
 
-Setup leases carry no runtime credentials, repository checkout or tenant tools. The [runner protocol](runner_fleet.md#authoring-leases) owns capacity and fences. [API resources](api_resources.md#scoped-model-invocation) owns dispatch authorization.
+Setup leases carry no runtime credentials, repository checkout or tenant tools. The [runner guide](runner_protocol.md) owns connection authority, capacity and recovery. [API resources](api_resources.md#scoped-model-invocation) owns dispatch authorization.
 
 ### Proposal correction and failure
 
@@ -48,28 +48,16 @@ Remove the private transcript from server-rendered and browser caches, and close
 |---|---|---|
 | Draft/message/candidate rows and private replay bodies | Daemon DELETE/expiry, content-free receipts remain | Gone from ordinary reads at 204; database backups follow infrastructure retention, not an instant physical erase. |
 | Private progress channel / buffered deltas | Daemon drops draft-specific buffer and closes subscribers | No new private read after 204; buffered or already rendered client text cannot be recalled. |
-| Runner memory / in-flight request | Delete generation at renewal, report, activity; runner cancels the turn and drops its local buffers | Online runner notices at next ten-second renewal; disconnected runner lease expires within 30 seconds. Upstream completion may outlive local abort. |
-| Typed report spool, temporary files, rejected/quarantined copies | Supervisor owns encrypted authoring content plus a separate content-free settlement envelope | Logical expiry is 24 hours from first write, unchanged by retry/rename. Online cleanup runs at the deadline; stopped machines clean before content is opened at next startup. Physical files may remain while powered off. |
+| Runner memory / in-flight request | Delete generation at renewal, report, activity; runner cancels the turn and drops its local buffers | Online runner notices at next five-second renewal; disconnected runner lease expires within 35 seconds. Upstream completion may outlive local abort. |
+| Pending authoring report | Worker memory retains the current report; no report files are written (`afr_supervisor/src/authoring/mod.rs`) | After 24 hours, delivery zeroes private answer text and retries content-free accounting. Process loss discards pending memory. |
 | Logs / traces / metrics / crash diagnostics | Do not capture prompts, answers, proposal content, tokens, or secret values | No private text is intentionally written; test redaction and disabling automatic body/crash capture. |
 | Provider requests | Provider/service account policy, disclosed on delete | Local abort cannot establish upstream erasure. Provider-specific retention is shown, never claimed zero. |
 | Published revision / applied fleet setup | Deliberately shared definition, independent authority | Draft deletion does not unpublish or delete shared setup; disclose this before Save/publication. |
 | Backups / legal accounting | Infrastructure backup schedule; billing domain content-free ledger | Follow published retention; no invented physical-purge deadline. |
 
-The supervisor enforces the 24-hour rule as logical expiry. It guarantees neither cryptographic unreadability nor physical removal while the host is stopped.
-
-Encryption at rest uses a separate local content key, so anyone who keeps that key and the ciphertext can decrypt offline. Cleanup deletes the content, the key and every temporary or quarantined copy, though storage snapshots follow their own retention. No timer can run on a powered-off host.
-
-Private answer bytes, including temporary files, are encrypted. Authenticated metadata binds the lease, attempt, report identity, first-write time and deadline (`afr_supervisor/src/report_spool/authoring/entry.rs`). A separate `kind:"accounting"` envelope retains usage without private text or capabilities.
-
-The replay identity survives private-content removal. Both previously acknowledged and never-received reports can settle against daemon receipts after draft deletion. Altered usage conflicts.
-
-Startup scans the private spool before decrypting or uploading content. Expired, corrupt, orphaned or clock-uncertain private copies are removed while content-free settlement remains.
-
-Uptime uses a monotonic deadline. Restart compares Coordinated Universal Time (UTC) against a saved high-water clock and fails closed on rollback. Retry and rename never extend expiry.
-
-Failed entry cleanup holds that entry without loading or sending its content. Other entries continue; a spool-wide failure pauses the pass. The drainer reports bounded cleanup errors (`afr_supervisor/src/report_spool/authoring/drain.rs`).
-
-The encrypted spool implements this retention boundary (`afr_supervisor/src/report_spool/authoring/`). Source inspection does not establish new deployment acceptance evidence.
+Accounting replay keeps its original report identity and can settle against daemon receipts after draft deletion.
+Changed accounting content conflicts.
+The [runner guide](runner_protocol.md#results-and-billing) owns delivery and shutdown limits.
 
 An offline runner does not prevent DELETE from returning 204 at the server text boundary. A tombstone rejects stale generations before accepting text. Content-free settlement can acknowledge known usage without recreating messages.
 
@@ -97,11 +85,11 @@ Its outputs are the answer, a proposed change, files the user can download and m
 ## Process model
 
 ```
-agentsfleetd ◄── the runner verbs (af_wire), unchanged, plus workspace and tool-call verbs
+agentsfleetd ◄── native runner session (af_wire) and retained HTTP operations
    ▲
 agentsfleet-runner (one binary; a VM or a bare-metal host)
  ┌ supervisor — trusted, outside every sandbox ─────────────────────────┐
- │ lease loop · renew · report spool · memory hydrate and push          │
+ │ lease loop · renew · pending reports in memory · fleet memory        │
  │ agent loop + model providers            (model keys live only here)  │
  │ tool catalog · router · leak scan · events → activity frames         │
  │ workspace restore and save · git clone · credential minting · push   │
@@ -131,24 +119,26 @@ A session's process outlives the call that started it. So the run's end also kil
 
 ## One lease, end to end
 
-`agentsfleet-runner run` boots, probes the host, admits the staged toolbox and builds one bubblewrap engine (`rustd/crates/runner/main/src/main.rs`). Then the heartbeat, the report-spool drain and the worker pool run side by side until shutdown (`afr_supervisor/src/lib.rs`).
+`agentsfleet-runner run` probes the host, admits the staged toolbox and builds one bubblewrap engine (`rustd/crates/runner/main/src/main.rs`).
+The native session, heartbeat policy and worker pool run together until shutdown (`afr_supervisor/src/lib.rs`).
 
-Each worker polls for a lease while the last assignment says to take work. It runs the lease it gets to its report before polling again (`afr_supervisor/src/worker_pool/mod.rs`).
+Idle workers wait for pushed offers while the current assignment permits work.
+Each worker keeps its lease and pending report until acknowledgement or a terminal refusal (`afr_supervisor/src/worker_pool/mod.rs`).
 
 ```
- lease reply
+ native offer
    │
    ├─ admit       the policy's tools and provider; an unhosted one refuses the lease here
    ├─ turn        one run per fleet on this runner; a second lease for it waits
    ├─ memory      the fleet's memory window, carried on the lease; read through
-   │              agentsfleetd only when an older daemon sent none
+   │              agentsfleetd when the lease has no window
    ├─ admitted    only when a tool runs in a sandbox: size, egress and checkout plan
    ├─ run         the agent loop in the supervisor; tool calls cross the executor socket
    │  └─ build    beside it: the fleet's held sandbox, or a fresh one on the assigned
    │              network, bound repositories checked out; a sandbox call waits for it
    ├─ keep        a processed lease's sandbox is frozen and held; any other is killed
-   ├─ settle      full tool records, then one report post carrying the run's memory and
-   │              segments; without a window, the memory push first, as before
+   ├─ settle      HTTP tool records, then a native report with memory and timing segments
+   │              retained in this worker until acknowledgement or terminal refusal
    └─ release     a killed sandbox's disk, beside the live tail's drain of at most 5 s
         renewal ticks alongside from the lease's start until the report is answered
 ```
@@ -161,25 +151,22 @@ A worker waits for its fleet's turn without a lock, and dropping the turn frees 
 
 A sandbox that cannot be built leaves the turn going, and its sandbox-side calls answer `sandbox_unavailable`. Nothing runs unsandboxed in a sandbox's place.
 
-**One post settles a lease that carried its window.** A daemon at this release puts the fleet's memory window on every lease. Only such a daemon reads a report's `memory` and `telemetry.segments`. So the runner sends them, and skips the memory read and push, exactly when the lease carried a window (`afr_supervisor/src/lease_loop/settle.rs`).
+**The report carries memory and timing.** The runner sends the current report with its memory deltas and timing segments (`afr_supervisor/src/lease_loop/settle.rs`).
+The daemon captures memory under the lease fence before committing settlement.
 
-During a rolling deploy, a lease from a new replica can meet an old replica at report time. That daemon refuses the body's shape with 400 `UZ-REQ-001`. The runner then pushes the memory and posts the report again without the new fields, once.
+**Lease frames and memory deltas zero on drop.** Native offer frames retain zeroing allocation owners through dispatch.
+`CapturedMemory` overwrites the strings it owns when dropped (`afr_supervisor/src/memory/mod.rs`).
 
-A report first kept and later re-posted by the drain is reshaped there instead. The drain removes the memory and segments and posts it again, so the answer is kept and the memory dropped.
-
-**The lease reply and the run's memory zero on drop.** The run borrows its policy, memory window and earlier turns from the reply body. That body sits in a `zeroize::Zeroizing` buffer (`afr_supervisor/src/client/mod.rs`).
-
-The deltas a run hands back travel in `CapturedMemory`, whose drop overwrites every string the run owns (`afr_supervisor/src/memory/mod.rs`).
-
-Not covered: the bytes handed to the HTTP client, which it frees unzeroed. Nor the report spool's copy, which `ReportSpool::hold` writes to disk in clear and keeps until delivery.
-
-**The report is the record.** The report settles before the runner waits on the live tail (`afr_supervisor/src/lease_loop/settle.rs`). A report the daemon cannot take stays spooled for the drain (`afr_supervisor/src/report_spool/mod.rs`).
+**The report is the record.** The worker retries the same report from memory after connection loss (`afr_supervisor/src/report/delivery/mod.rs`).
+A terminal refusal ends delivery; process loss can discard results or usage the daemon has not accepted.
+See [results and billing](runner_protocol.md#results-and-billing) for saved acknowledgements and shutdown limits.
 
 A renewal the daemon refuses, or a runner told to stop, cuts the run. The cut keeps the tokens and memory the run handed back, and reports why the run ended (`afr_supervisor/src/lease_loop/mod.rs`).
 
 **Usage rides renewals and the report, at most 512 lines a body.** Both carry provider requests the daemon has not yet recorded. Each request is one line, oldest first, capped at 512 (`af_wire::usage::LINES_MAX`, taken in `afr_agent/src/engine/mod.rs`).
 
-The cap binds both bodies, and the daemon answers a body past it differently for each. A renewal past the cap still extends the lease and records no lines, so the runner sends them again. A report past it is refused with 400 `UZ-REQ-001` naming the bound.
+The runner caps each batch at the wire limit.
+Each renewal answer acknowledges recorded lines through `recorded_through`; the report carries the remaining lines.
 
 [Billing §3](./billing_and_provider_keys.md#3-one-debit-point-usage-settled-through-the-biller) has the full table, under **Request lines**.
 
@@ -487,7 +474,9 @@ In the kernel lane, a debug build went from lease accept to executor ready in 23
 
 On a disk under `/var/tmp`, with 100 leases 4 at once, executor ready took 100.8 ms cold at p50 before M237. The in-process disk took that under 50 ms. The specs' Discovery holds every figure ([lease waits](../v2/done/M237_001_P1_API_DOCS_INFRA_OBS_SANDBOX_START_HIDES_BEHIND_MODEL.md), [start](../v2/done/M237_002_P2_DOCS_INFRA_OBS_SANDBOX_START_DROPS_POLLING_AND_DOUBLE_CACHE.md)).
 
-A run's first seconds go to the poll interval (up to 1 s), loading the fleet's memory and the first model call. The toolbox download never sits on a lease's path: a host fetches the image when it boots or reconciles.
+Work arrives through a pushed offer when the gateway can claim it for an available worker.
+Memory preparation and the first model call follow the offer.
+The host fetches the toolbox before taking work.
 
 **Reading the lease path's speed.** A regression should show as a moved percentile on a signal the runner exports. A fleet watching Grafana can then find it ([durable repair](scenarios/durable-repair.md)). Each question below has one:
 
@@ -511,7 +500,7 @@ Three questions have no signal yet. Nothing times an event's wait for its lease,
 | Workspace disk, with `/tmp` | `<state>/<lease_id>/workspace.img`, sparse; `/tmp` is its `tmp/` directory | the lease's `disk_bytes`, 4 GiB by default; a full disk answers `ENOSPC` | one lease, or until its hold ends | `afr_sandbox/src/workspace_disk/mod.rs`, `afr_sandbox/src/engine/mod.rs` |
 | `/run`, `/dev/shm` | tmpfs in RAM, charged to the lease's memory cgroup | the cgroup's 2 GiB | one lease | `afr_sandbox/src/bubblewrap/mod.rs` |
 | Processes | the lease's memory cgroup, no swap | 2 GiB | one command, unless it leaves the shell's process group; exec sessions close at run end | `afr_sandbox/src/cgroup/mod.rs`, `afr_executor/src/server/process/mod.rs`, `afr_agent/src/loop/finish.rs` |
-| Report spool, repository mirrors, lease sandboxes | the storage home's `spool/`, `git/` and `sandboxes/`, under `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | across leases | `afr_supervisor/src/config/mod.rs`, `afr_supervisor/src/storage_home/mod.rs` |
+| Repository mirrors and lease sandboxes | The storage home's `git/` and `sandboxes/`, under `/var/lib/agentsfleet-runner` unless `RUNNER_STORAGE_HOME` says otherwise | none found | Across leases; sandbox cleanup follows lease end or the engine's boot sweep | `afr_supervisor/src/config/mod.rs`, `afr_supervisor/src/storage_home/mod.rs` |
 
 **What bounds a runner host.** The image does not, because its blocks sit in shared page cache that memory pressure evicts.
 
@@ -549,7 +538,9 @@ The kernel lane keeps its state under `/var/tmp`, on a disk as a host's is (`afr
 
 ## Code walkthrough
 
-This section traces one runner from boot to a tool call inside bubblewrap, at revision `77147e0d2`. Paths start with their crate, which sits in its layer folder under `rustd/crates/`. Parts A to G follow the order the code runs in.
+This section traces one runner from boot to a tool call inside bubblewrap.
+Paths start with their crate under `rustd/crates/`.
+Parts A to G follow the order the code runs in.
 
 Two facts frame the whole walk. Bubblewrap starts once per lease, never once per tool call. A lease gets a sandbox only when its policy offers a tool whose runtime is `Sandbox`.
 
@@ -578,7 +569,7 @@ systemd ─► /usr/local/bin/agentsfleet-runner run
                ├─ host::agent        afr_agent::Loop over the tool catalog and providers
                └─ tokio runtime ─► serve                                   main.rs
                     └─ afr_supervisor::run ─► compose ─► Lessee { engine, agent, plane }
-                         heartbeat, report-spool drain and worker pool run side by side
+                         native session, heartbeat policy and worker pool run together
 ```
 
 The probe checks that `/usr/bin/bwrap` exists and is executable. It does not start a trial sandbox; the first lease's `prepare` is the first real start.
@@ -618,7 +609,7 @@ A lease's own files live only on its workspace disk, which no other lease can se
 ### Part B: a lease arrives, and the sandbox decision
 
 ```
-worker_pool next ─► POST /v1/runners/me/leases ─► LeasePayload
+native offer ─► worker_pool ─► LeasePayload
 Lessee::run ─► run_lease ─► LeaseRun::lease        lease_loop/mod.rs
   renewal and the activity pump start alongside
 work
@@ -751,10 +742,9 @@ settle_and_drain                                    lease_loop/mod.rs
     otherwise ─► kill: cgroup.kill, then populated 0 within 5 s ─► Killed
                  an unsettled kill posts anyway and logs sandbox_kill_unsettled
   settle(&Fate)                                     lease_loop/settle.rs
-    tool records posted ─► [no window: memory pushed] ─► usage flushed by renewal
-    ─► report spooled (window: memory + segments ride it) ─► report posted
-    a one-post body refused for its shape (UZ-REQ-001) ─► memory pushed,
-      report re-posted without the new fields, once; the refused copy removed
+    tool records posted over HTTP ─► usage flushed by native renewal
+    ─► native report with memory + segments
+    ─► retain the same report in worker memory until acknowledgement or terminal refusal
   release, beside the live tail's drain
     destroy: egress removed, cgroup removed, umount, image and directory removed
     run_lease returns after it, so a worker never holds two leases' disks

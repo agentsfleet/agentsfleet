@@ -12,6 +12,7 @@
 )]
 
 use af_core::error_code;
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_auth::principal::PersonCredential;
 use afd_auth::scope::ScopeSet;
@@ -19,7 +20,7 @@ use afd_db::test_util::mint_id;
 use afd_tenant::workspace::Workspaces;
 use afd_tenant::workspace::access::Role;
 
-use crate::access_lane::{Account, Fixture, held, id, person, session};
+use crate::access_lane::{Account, Fixture, held, person, session};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -30,12 +31,12 @@ async fn membership_decides_access_and_the_role_it_is_held_with() {
     let bob_session = session(&bob.tenant, &bob.subject);
 
     let reached = workspaces
-        .authorize(&bob_session, &id(&john.workspace))
+        .authorize(&bob_session, &john.workspace)
         .await
         .expect("the access check answers");
     assert_eq!(reached, Some(held(&john.tenant, Role::Member)));
     let own = workspaces
-        .authorize(&bob_session, &id(&bob.workspace))
+        .authorize(&bob_session, &bob.workspace)
         .await
         .expect("the access check answers");
     assert_eq!(
@@ -46,7 +47,7 @@ async fn membership_decides_access_and_the_role_it_is_held_with() {
 
     let outsider = session(&stranger.tenant, &stranger.subject);
     let refused = workspaces
-        .authorize(&outsider, &id(&john.workspace))
+        .authorize(&outsider, &john.workspace)
         .await
         .expect("the access check answers");
     assert_eq!(refused, None, "no membership, no access");
@@ -60,7 +61,7 @@ async fn membership_decides_access_and_the_role_it_is_held_with() {
         ScopeSet::EMPTY,
     );
     let by_key = workspaces
-        .authorize(&key, &id(&john.workspace))
+        .authorize(&key, &john.workspace)
         .await
         .expect("the access check answers");
     assert_eq!(
@@ -81,7 +82,7 @@ async fn a_stored_role_this_build_does_not_know_is_reported_not_guessed() {
     let refused = workspaces
         .authorize(
             &session(&fixture.bob.tenant, &fixture.bob.subject),
-            &id(&fixture.john.workspace),
+            &fixture.john.workspace,
         )
         .await
         .expect_err("an unreadable role is a fault, never a verdict");
@@ -102,17 +103,15 @@ async fn the_accounts_a_person_holds_are_their_own_and_every_membership() {
         .accounts_of(bob_session.person().expect("a session is a person"))
         .await
         .expect("the account read answers");
-    assert_eq!(accounts.home, id(&bob.tenant));
+    assert_eq!(accounts.home, bob.tenant.clone());
     assert_eq!(accounts.held.len(), 2, "{accounts:?}");
-    let johns = accounts
-        .get(&id(&john.tenant))
-        .expect("John's account is held");
+    let johns = accounts.get(&john.tenant).expect("John's account is held");
     assert_eq!(
         (johns.role, johns.owner_name.as_str()),
         (Role::Member, "John")
     );
     let own = accounts
-        .get(&id(&bob.tenant))
+        .get(&bob.tenant)
         .expect("Bob's own account is held");
     assert_eq!(own.role, Role::Owner);
 
@@ -145,9 +144,7 @@ async fn an_api_key_holds_only_its_own_account(workspaces: &Workspaces, bob: &Ac
         1,
         "an api-key holds only the account it was minted in"
     );
-    let own = by_key
-        .get(&id(&bob.tenant))
-        .expect("Bob's own account is held");
+    let own = by_key.get(&bob.tenant).expect("Bob's own account is held");
     assert_eq!(
         (own.role, own.owner_name.as_str()),
         (Role::Owner, bob.name),
@@ -172,10 +169,10 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
         .accounts_of(claim.person().expect("a session is a person"))
         .await
         .expect("the account read answers");
-    assert_eq!(claimed.home, id(&fixture.john.tenant));
+    assert_eq!(claimed.home, fixture.john.tenant.clone());
     assert_eq!(claimed.held.len(), 1, "{claimed:?}");
     let johns = claimed
-        .get(&id(&fixture.john.tenant))
+        .get(&fixture.john.tenant)
         .expect("the claimed account is held");
     assert_eq!(
         (johns.role, johns.owner_name.as_str()),
@@ -189,7 +186,7 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
         .accounts_of(nowhere_claim.person().expect("a session is a person"))
         .await
         .expect("the account read answers");
-    assert_eq!(empty.home, id(&nowhere));
+    assert_eq!(empty.home, nowhere.clone());
     assert!(empty.held.is_empty(), "{empty:?}");
     fixture.cleanup().await;
 }
@@ -198,9 +195,9 @@ async fn should_fall_back_to_claim_when_session_subject_has_no_user_row() {
 const RENAMED_ACCOUNT: &str = "Renamed account";
 
 /// Gives `tenant`'s account a stored name of its own.
-async fn rename_account(fixture: &Fixture, tenant: &str) {
+async fn rename_account(fixture: &Fixture, tenant: &Uuid7) {
     let mut connection = fixture.database.acquire().await.expect("a connection");
-    sqlx::query("UPDATE identity.tenants SET name = $2 WHERE id = $1::uuid")
+    sqlx::query("UPDATE identity.tenants SET name = $2 WHERE id = $1")
         .bind(tenant)
         .bind(RENAMED_ACCOUNT)
         .execute(&mut *connection)

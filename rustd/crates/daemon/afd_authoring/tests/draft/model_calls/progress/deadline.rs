@@ -13,7 +13,7 @@ use afd_db::{config::DbRole, test_util::TestDatabase};
 use std::{sync::atomic::Ordering, time::Duration};
 
 #[tokio::test]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn a_blocked_preview_expires_without_blocking_or_corrupting_the_final_receipt() {
     let mut f = Fixture::create().await;
     let pool = preview_pool().await;

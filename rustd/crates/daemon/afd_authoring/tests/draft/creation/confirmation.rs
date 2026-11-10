@@ -16,7 +16,7 @@ struct Retained {
     key: Uuid7,
     request: SaveFleet,
     saved: SavedFleet,
-    event: String,
+    event: Uuid7,
 }
 
 impl Retained {
@@ -38,7 +38,7 @@ impl Retained {
                 state: StartState::Accepted,
                 event_id: Some(event),
                 ..
-            } => Some(event.clone()),
+            } => Some(Uuid7::parse(event).expect("the admitted run names a minted event")),
             _ => None,
         }
         .expect("the funded activation admits its initial run");
@@ -52,8 +52,8 @@ impl Retained {
     }
 
     async fn pending(&self, expected: &str) {
-        sqlx::query("UPDATE fleet.fleets SET initial_start=jsonb_set(initial_start, '{outcome}', $2::jsonb) WHERE id=$1::uuid")
-            .bind(self.saved.id.as_str())
+        sqlx::query("UPDATE fleet.fleets SET initial_start=jsonb_set(initial_start, '{outcome}', $2::jsonb) WHERE id=$1")
+            .bind(&self.saved.id)
             .bind(serde_json::json!({"kind":"run_now", "state":"pending", "event_id":expected}).to_string())
             .execute(&mut *self.case.base.connection().await).await.expect("unconfirmed activation");
     }
@@ -91,27 +91,26 @@ impl Retained {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_missing_confirmation_keeps_the_saved_identity_until_the_same_key_answers() {
     let retained = Retained::create("confirm-missing").await;
-    retained.pending(&retained.event).await;
+    retained.pending(retained.event.as_str()).await;
     let mut connection = retained.case.base.connection().await;
-    let key: String =
-        sqlx::query_scalar("SELECT producer_key FROM fleet.admissions WHERE id=$1::uuid")
-            .bind(&retained.event)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("initial producer key");
-    sqlx::query("UPDATE fleet.admissions SET producer_key=$2 WHERE id=$1::uuid")
+    let key: String = sqlx::query_scalar("SELECT producer_key FROM fleet.admissions WHERE id=$1")
         .bind(&retained.event)
-        .bind(mint().as_str())
+        .fetch_one(&mut *connection)
+        .await
+        .expect("initial producer key");
+    sqlx::query("UPDATE fleet.admissions SET producer_key=$2 WHERE id=$1")
+        .bind(&retained.event)
+        .bind(mint().to_string())
         .execute(&mut *connection)
         .await
         .expect("hide confirmation");
     retained
-        .retry(&retained.case.creations, false, &retained.event)
+        .retry(&retained.case.creations, false, retained.event.as_str())
         .await;
-    sqlx::query("UPDATE fleet.admissions SET producer_key=$2 WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.admissions SET producer_key=$2 WHERE id=$1")
         .bind(&retained.event)
         .bind(key)
         .execute(&mut *connection)
@@ -119,13 +118,13 @@ async fn a_missing_confirmation_keeps_the_saved_identity_until_the_same_key_answ
         .expect("restore confirmation");
     drop(connection);
     retained
-        .retry(&retained.case.creations, true, &retained.event)
+        .retry(&retained.case.creations, true, retained.event.as_str())
         .await;
     retained.case.cleanup().await;
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_confirmation_for_another_event_cannot_accept_the_initial_run() {
     let retained = Retained::create("confirm-mismatch").await;
     let unexpected = mint();
@@ -133,26 +132,28 @@ async fn a_confirmation_for_another_event_cannot_accept_the_initial_run() {
     retained
         .retry(&retained.case.creations, false, unexpected.as_str())
         .await;
-    retained.pending(&retained.event).await;
+    retained.pending(retained.event.as_str()).await;
     retained
-        .retry(&retained.case.creations, true, &retained.event)
+        .retry(&retained.case.creations, true, retained.event.as_str())
         .await;
     retained.case.cleanup().await;
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_confirmation_outage_is_logged_and_a_retry_accepts_without_another_admission() {
     let retained = Retained::create("confirm-outage").await;
-    retained.pending(&retained.event).await;
+    retained.pending(retained.event.as_str()).await;
     let admissions = Admissions::new(
         afd_db::test_util::unreachable_db(),
-        retained.case.queue.clone(),
+        retained.case.bus.clone(),
         Entropy::new(),
     );
     let creations = Creations::new(retained.case.setup.clone(), admissions);
     let log = Capture::install();
-    retained.retry(&creations, false, &retained.event).await;
+    retained
+        .retry(&creations, false, retained.event.as_str())
+        .await;
     let fields = log.only("fleet_initial_run_unconfirmed").fields;
     assert_eq!(
         fields.get("fleet_id").map(String::as_str),
@@ -164,7 +165,7 @@ async fn a_confirmation_outage_is_logged_and_a_retry_accepts_without_another_adm
     );
     drop(log);
     retained
-        .retry(&retained.case.creations, true, &retained.event)
+        .retry(&retained.case.creations, true, retained.event.as_str())
         .await;
     retained.case.cleanup().await;
 }

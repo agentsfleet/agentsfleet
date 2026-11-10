@@ -57,6 +57,12 @@ use super::refusable::{Refusable, log_refusal, refuse};
 #[derive(Debug)]
 pub struct Refusal(Box<Response>);
 
+impl From<Response> for Refusal {
+    fn from(response: Response) -> Self {
+        Self(Box::new(response))
+    }
+}
+
 impl Refusal {
     /// A setup mutation must show the freshly computed review before retrying.
     #[must_use]

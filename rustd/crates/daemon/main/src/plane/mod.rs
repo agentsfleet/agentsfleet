@@ -28,9 +28,8 @@ use afd_approval::IntegrationGrants;
 use afd_billing::Accounts;
 use afd_credential::provider::Providers;
 use afd_credential::vault::Vault;
-use afd_dragonfly::Doorbell;
 use afd_events::History;
-use afd_fleet::lease::{Leases, Plane};
+use afd_fleet::lease::{LeaseService, Leases};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
 use afd_runner::Runners;
@@ -63,7 +62,9 @@ pub struct ServingPlane {
     signup_writeback: SignupWriteback,
     authenticator: Authenticator,
     runners: Runners,
-    leases: Plane,
+    leases: LeaseService,
+    runner_streams: afd_gateway::Gateway,
+    runner_commands: afd_bus::Handle,
     tasks: afd_fleet::task::Tasks,
     /// What a signup event from the identity provider is verified against.
     identity_webhook_secret: Option<SecretBytes>,
@@ -73,6 +74,12 @@ pub struct ServingPlane {
 }
 
 impl ServingPlane {
+    /// One native session owner shared by the router and supervised runtime.
+    #[must_use]
+    pub fn runner_streams(&self) -> &afd_gateway::Gateway {
+        &self.runner_streams
+    }
+
     /// Shares the request-path task owner with supervised maintenance.
     #[must_use]
     pub(crate) fn task_owner(&self) -> afd_fleet::task::Tasks {
@@ -122,104 +129,88 @@ impl ServingPlane {
     ///   outbound group takes it by value, so it is built after every group
     ///   that clones it.
     ///
-    /// The lease plane is last, because it takes the pool, the queue and the
-    /// key by value.
+    /// The lease plane is last, because it takes the pool and the key by
+    /// value.
     #[must_use]
     pub fn new(parts: PlaneParts) -> Self {
-        let PlaneParts {
-            database,
-            identity_webhook_secret,
-            queue,
-            kek,
-            capabilities,
-            sessions,
-            signup_writeback,
-            broker,
-            platform_admin_workspace,
-            checkpoint_storage,
-            live,
-            analytics,
-            login,
-            schedule,
-            slack_api_base,
-            vendor_client,
-            authoring_transport,
-        } = parts;
-        let providers = Providers::new(database.clone(), Arc::clone(&kek), Entropy::new());
-        let github_client = authoring_transport.guarded_client();
-        let task_master = Arc::clone(&kek);
-        let admissions = Admissions::new(database.clone(), queue.clone(), Entropy::new());
-        // One biller for every money path: fleet leases and setup chat reserve
-        // against the same holds and settle into the same ledger (billing §11).
-        let biller = crate::billing::biller(database.clone());
-        let drafts =
-            afd_authoring::Drafts::new(database.clone(), Entropy::new(), Arc::clone(&biller))
-                .with_analytics(analytics.clone());
+        let common = construction::Common::new(&parts);
+        let database = parts.database;
+        let kek = parts.kek;
         let authoring = surfaces::authoring(
-            drafts,
-            &queue,
+            common.drafts,
             &kek,
-            &providers,
-            &admissions,
-            authoring_transport,
-            platform_admin_workspace.as_ref(),
+            &common.providers,
+            &common.admissions,
+            parts.authoring_transport,
+            parts.platform_admin_workspace.as_ref(),
         );
-        let doorbell = listening_doorbell(&live);
         let admin = stores::admin(&database);
-        let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
-        let tenant = stores::tenant(&database, &kek, &providers, &activity_streams);
-        let activity = stores::activity(&database, &queue, &kek, &admissions);
-        let task_admissions = admissions.clone();
+        let activity_streams = parts.bus.clone();
+        let tenant = stores::tenant(&database, &kek, &common.providers, &activity_streams);
+        let activity = stores::activity(&database, &kek, &common.admissions);
+        let task_admissions = common.admissions.clone();
         let outbound = surfaces::outbound(
             &database,
-            &queue,
             &kek,
             surfaces::OutboundParts {
-                schedule,
-                admissions,
-                vendor_client,
-                slack_api_base,
+                schedule: parts.schedule,
+                admissions: common.admissions,
+                vendor_client: parts.vendor_client,
+                slack_api_base: parts.slack_api_base,
             },
         );
-        let mut leases = lease_plane(
-            database.clone(),
-            queue.clone(),
+        let native = construction::NativeInputs {
+            database: &database,
             kek,
-            providers,
-            doorbell,
-            broker,
-            biller,
-        );
-        let tasks = task_plane(
-            &mut leases,
-            task_admissions,
-            platform_admin_workspace.clone(),
-            checkpoint_storage,
-            task_master,
-            github_client,
-        );
+            providers: common.providers,
+            bus: parts.bus.clone(),
+            broker: parts.broker,
+            biller: common.biller,
+            wake: parts.runner_wake,
+            admissions: task_admissions,
+            admin_workspace: parts.platform_admin_workspace.clone(),
+            storage_config: parts.checkpoint_storage,
+            master: common.task_master,
+            client: common.github_client,
+            authoring: &authoring,
+            stream_limit: parts.live.stream_limit().clone(),
+            frame_memory: parts.frame_memory,
+            analytics: parts.analytics.clone(),
+        }
+        .build();
         Self {
             authoring,
             tenant,
             admin,
             activity,
             outbound,
-            login: surfaces::login(login, &queue),
-            probes: LiveDependencies::new(database.clone(), queue.clone()),
-            signup_writeback,
-            authenticator: Planes::new(Credentials::new(database.clone()), capabilities, sessions),
-            runners: Runners::new(database, Entropy::new()),
-            leases,
-            tasks,
-            identity_webhook_secret,
-            platform_admin_workspace,
-            live,
-            analytics,
+            login: surfaces::login(parts.login, &database),
+            probes: LiveDependencies::new(database.clone(), parts.bus),
+            signup_writeback: parts.signup_writeback,
+            authenticator: authenticator(database, parts.capabilities, parts.sessions),
+            runners: native.runners,
+            runner_streams: native.streams,
+            runner_commands: activity_streams,
+            leases: native.leases,
+            tasks: native.tasks,
+            identity_webhook_secret: parts.identity_webhook_secret,
+            platform_admin_workspace: parts.platform_admin_workspace,
+            live: parts.live,
+            analytics: parts.analytics,
         }
     }
 }
 
+fn authenticator(
+    database: afd_db::Db,
+    capabilities: Capabilities,
+    sessions: Sessions,
+) -> Authenticator {
+    Planes::new(Credentials::new(database), capabilities, sessions)
+}
+
 mod config;
+mod construction;
 mod platform;
 mod services;
 mod stores;
@@ -230,23 +221,21 @@ pub use self::config::{LoginConfig, PlaneParts, ScheduleConfig};
 /// The plane every runner verb acts through: leases, gates, grants, wallets,
 /// memory, provider keys, the chat thread and declared credentials.
 ///
-/// Takes the pool, the queue and the key by value, so [`ServingPlane::new`]
+/// Takes the pool and the key by value, so [`ServingPlane::new`]
 /// builds it after every other group has cloned what it needs.
 fn lease_plane(
     database: afd_db::Db,
-    queue: afd_dragonfly::Dragonfly,
     kek: Arc<af_crypto::secret::Kek>,
     providers: Providers,
-    doorbell: Doorbell,
+    bus: afd_bus::Handle,
     broker: Arc<afd_credential::credential::Broker>,
     biller: Arc<dyn afd_billing::biller::Biller>,
-) -> Plane {
-    let activity_streams = afd_dragonfly::FleetStreams::new(queue.clone());
-    Plane {
+) -> LeaseService {
+    let activity_streams = bus.clone();
+    LeaseService {
         task_reports: None,
-        leases: Leases::new(database.clone(), queue.clone(), Entropy::new())
-            .with_doorbell(doorbell),
-        gates: Gates::new(database.clone(), queue, Entropy::new()),
+        leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
+        gates: Gates::new(database.clone(), bus, Entropy::new()),
         // The same surface the activity group's `grants` holds, over the
         // same table: a delivery that finds no grant asks through the crate
         // that owns the row rather than writing one.
@@ -262,18 +251,6 @@ fn lease_plane(
         vault: Vault::new(database, kek),
         broker,
     }
-}
-
-/// The doorbell every poll the lease plane makes takes rung partitions from,
-/// rung by this replica's hub. One per process: a second would hear rings no
-/// poll reads. With no hub nothing rings, and polls find fresh work through
-/// the rotation alone.
-fn listening_doorbell(live: &Live) -> Doorbell {
-    let doorbell = Doorbell::new();
-    if let Some(hub) = live.hub() {
-        doorbell.listen(hub);
-    }
-    doorbell
 }
 
 impl Dependencies for ServingPlane {
@@ -294,7 +271,7 @@ mod tests;
 
 /// One native task owner attaches reporting to the existing lease plane.
 fn task_plane(
-    leases: &mut Plane,
+    leases: &mut LeaseService,
     admissions: Admissions,
     admin_workspace: Option<Uuid7>,
     storage_config: Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,

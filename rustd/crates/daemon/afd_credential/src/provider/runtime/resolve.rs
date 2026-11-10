@@ -36,7 +36,7 @@ impl Providers {
             .ok_or_else(provider_secret_missing)?
             .into_envelope()
             .map_err(vault_open)?
-            .open(self.vault_key(), &Aad::new(&workspace, &name))
+            .open(self.vault_key(), &Aad::new(workspace.as_str(), &name))
             .map_err(vault_open)?;
         let credential = vetted::vet(body.expose())?;
         let api_key = managed::bearer(credential.api_key, credential.dialled.is_some())?;

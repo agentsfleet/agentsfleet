@@ -11,7 +11,6 @@ use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use afd_connector::Provider;
 use afd_db::{Db, DbRole, PoolConfig};
-use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_ingress::slack::{ChannelId, MentionAdmission, NoticeOwed};
 use afd_ingress::{Binding, Delivery, Ingress, Surface};
 use afd_vault::Vault;
@@ -22,9 +21,6 @@ use super::WebhookIngress;
 /// A Postgres nobody is listening on. Port 1 is reserved and unbound, so an
 /// acquire fails on connection REFUSAL rather than waiting out a timeout.
 const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
-
-/// The same, for the queue.
-const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
 
 /// The knob bounding how long an acquire may spend before it reports.
 const ACQUIRE_TIMEOUT_KNOB: &str = "DATABASE_ACQUIRE_TIMEOUT_MS";
@@ -47,17 +43,13 @@ fn refusing() -> Ingress {
     let pool = PoolConfig::resolve(&environment, DbRole::Api)
         .expect("the fixture connection string is well formed");
     let database = Db::unreachable(&pool);
-    let queue = Dragonfly::unreachable(
-        &DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE_QUEUE.to_owned())
-            .with_request_timeout(std::time::Duration::from_millis(250)),
-    )
-    .expect("a lazy manager opens no socket, so it cannot fail to open one");
     let vault = Vault::new(
         database.clone(),
         Arc::new(Kek::from_bytes([7u8; 32])),
         Entropy::new(),
     );
-    let admissions = afd_admission::Admissions::for_tests(database.clone(), queue);
+    let admissions =
+        afd_admission::Admissions::for_tests(database.clone(), afd_bus::test_util::unreachable());
     Ingress::new(database, vault, admissions)
 }
 
@@ -171,7 +163,6 @@ fn notice<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> NoticeOwed<'a> {
         owner: fleet,
         workspace,
         provider: Provider::Slack,
-        key: "TSEAM:EvSeam:notice",
         address: EMPTY_OBJECT,
         text: "notice",
     }

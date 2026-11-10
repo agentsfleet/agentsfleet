@@ -17,12 +17,13 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+afd_bus.workspace = true
 # Identifiers, the clock a decision is stamped with, and the registry codes.
 # Where an approved gate's continuation is accepted before anything is
 # queued. Its unique index on the gate's action is what makes a retried
 # resolve continue the run exactly once.
 afd_admission.workspace = true
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # Entropy for the identifiers a grant request mints — the grant row, its gate,
 # and the action a person answers about.
 af_crypto.workspace = true
@@ -35,7 +36,6 @@ afd_db.workspace = true
 afd_events.workspace = true
 # An approved gate CONTINUES the run it blocked, which is a stream append —
 # the one reason this crate touches the queue at all.
-afd_dragonfly.workspace = true
 # The stored status spellings and the event type a continuation carries. Shared
 # with the runner plane rather than copied: two crates read this one column.
 afd_api_wire.workspace = true
@@ -60,16 +60,17 @@ tracing.workspace = true
 test-util = [
     "afd_admission/test-util",
     "af_core/test-util",
+    "afd_bus/test-util",
     "afd_db/test-util",
-    "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]
-# The `tracing` capture, and the pool and queue that refuse every call, the
-# wake's failure-line test reads its `reason` back through.
+# The `tracing` capture, and the pool and bus that refuse every call, the
+# wake's failure-line test reads its `reason` back through. The bus's
+# in-process half is also the one the live-tail suites publish and subscribe on.
 af_core = { workspace = true, features = ["test-util"] }
+afd_bus = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
-afd_dragonfly = { workspace = true, features = ["test-util"] }
 # The race the resolve exists to decide is worthless single-threaded: the
 # interleaving two operators produce cannot happen without threads under it.
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

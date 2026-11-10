@@ -29,7 +29,10 @@ impl ModelCalls {
             budget::covers(&self.drafts.database, self.drafts.biller.as_ref(), &attempt).await;
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let guarded = guard::publication(&mut tx, runner, lease, counters).await?;
+        let guarded = self
+            .drafts
+            .publication(&mut tx, runner, lease, counters)
+            .await?;
         let selected = afd_runner::decision_assignment_on(&mut tx, runner).await?;
         let fresh = selected
             .is_some_and(|current| *current.assignment == prepared.snapshot.assignment)
@@ -45,10 +48,10 @@ impl ModelCalls {
             return Ok(false);
         }
         let inserted = sqlx::query(include_str!("sql/reserve.sql"))
-            .bind(&request.dispatch_id)
-            .bind(attempt.id.as_str())
-            .bind(attempt.tenant_id.as_str())
-            .bind(attempt.workspace_id.as_str())
+            .bind(super::super::dispatch_id(request)?)
+            .bind(&attempt.id)
+            .bind(attempt.tenant_id)
+            .bind(attempt.workspace_id)
             .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE) + i64::from(request.call_index))
             .bind(prepared.candidate_revision)
             .bind(sqlx::types::Json(&prepared.snapshot))
@@ -59,7 +62,7 @@ impl ModelCalls {
             .map_err(query(CONTEXT))?
             .rows_affected();
         sqlx::query(include_str!("../dispatch/fund.sql"))
-            .bind(attempt.id.as_str())
+            .bind(attempt.id)
             .bind(attempt.reserved_nanos)
             .execute(&mut *tx)
             .await

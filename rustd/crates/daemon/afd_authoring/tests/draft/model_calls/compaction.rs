@@ -12,8 +12,7 @@ use std::sync::{Arc, Mutex};
 
 mod paging;
 
-const CHECKPOINT_COUNT: &str =
-    "SELECT count(*) FROM memory.context_checkpoints WHERE draft_id=$1::uuid";
+const CHECKPOINT_COUNT: &str = "SELECT count(*) FROM memory.context_checkpoints WHERE draft_id=$1";
 
 #[derive(Debug)]
 struct ChangedHistory {
@@ -27,8 +26,8 @@ impl Biller for ChangedHistory {
     async fn check(&self, ask: &Ask) -> afd_billing::Result<Funds> {
         let funds = self.ledger.check(ask).await?;
         // The first preparation has committed and dropped its connection here.
-        let written = sqlx::query("UPDATE authoring.messages SET answer_text='changed after measurement' WHERE draft_id=$1::uuid AND sequence=1")
-            .bind(self.draft.as_str())
+        let written = sqlx::query("UPDATE authoring.messages SET answer_text='changed after measurement' WHERE draft_id=$1 AND sequence=1")
+            .bind(&self.draft)
             .execute(&mut *self.db.acquire().await.expect("biller boundary releases the pool"))
             .await.expect("controlled source change between measured funding and dispatch");
         assert_eq!(written.rows_affected(), 1);
@@ -67,7 +66,7 @@ async fn changed_history_after_funding_cannot_dispatch_the_previously_measured_b
     assert_eq!(fixture::receipts(&f, &attempt).await, (0, 0, false));
     assert!(provider.0.lock().expect("provider recording").is_empty());
     let checkpoints: i64 = sqlx::query_scalar(CHECKPOINT_COUNT)
-        .bind(attempt.draft.id.as_str())
+        .bind(attempt.draft.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("no new working notes");
@@ -127,27 +126,27 @@ pub(in crate::draft) async fn history_for(
     prior: i64,
 ) {
     let mut connection = f.connection().await;
-    sqlx::query("UPDATE authoring.messages SET sequence=$2 WHERE draft_id=$1::uuid")
-        .bind(draft.as_str())
+    sqlx::query("UPDATE authoring.messages SET sequence=$2 WHERE draft_id=$1")
+        .bind(draft)
         .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("move current request");
-    sqlx::query("UPDATE authoring.attempts SET message_sequence=$2 WHERE id=$1::uuid")
-        .bind(attempt.as_str())
+    sqlx::query("UPDATE authoring.attempts SET message_sequence=$2 WHERE id=$1")
+        .bind(attempt)
         .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("pin current request");
-    sqlx::query("UPDATE authoring.drafts SET last_message_sequence=$2 WHERE id=$1::uuid")
-        .bind(draft.as_str())
+    sqlx::query("UPDATE authoring.drafts SET last_message_sequence=$2 WHERE id=$1")
+        .bind(draft)
         .bind(prior + 1)
         .execute(&mut *connection)
         .await
         .expect("pin draft sequence");
     for sequence in 1..=prior {
-        sqlx::query("INSERT INTO authoring.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at) VALUES($1::uuid,$2::uuid,$3,$1::uuid,'completed',$4,$5,now(),now())")
-            .bind(mint().as_str()).bind(draft.as_str()).bind(sequence)
+        sqlx::query("INSERT INTO authoring.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at) VALUES($1,$2,$3,$1,'completed',$4,$5,now(),now())")
+            .bind(mint()).bind(draft).bind(sequence)
             .bind(format!("initial-reference investigation step {sequence}: {}", TRACE.repeat(8)))
             .bind(format!("completed evidence {}", TRACE.repeat(2))).execute(&mut *connection).await.expect("owned complete exchange");
     }
@@ -182,8 +181,8 @@ pub(super) async fn competing(f: &Fixture, attempt: &Attempt) -> Value {
 #[ignore = "requires live Postgres"]
 async fn repeated_authoring_compaction_restores_notes_and_continues_with_all_181_messages_intact() {
     let f = Fixture::create().await;
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1::uuid")
-        .bind(f.catalogue.first().expect("owned model").as_str())
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1")
+        .bind(f.catalogue.first().expect("owned model"))
         .execute(&mut *f.connection().await)
         .await
         .expect("force a small physical window");
@@ -221,7 +220,7 @@ async fn assert_erased(f: &Fixture, attempt: &Attempt, receipts: i64) {
         .await
         .expect("creator erases private working state");
     let count: i64 = sqlx::query_scalar(CHECKPOINT_COUNT)
-        .bind(attempt.draft.id.as_str())
+        .bind(&attempt.draft.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("private notes census after deletion");
@@ -238,13 +237,12 @@ async fn assert_saved(f: &Fixture, attempt: &Attempt, summaries: i64) {
             false
         )
     );
-    let saved: Value = sqlx::query_scalar(
-        "SELECT document FROM memory.context_checkpoints WHERE draft_id=$1::uuid",
-    )
-    .bind(attempt.draft.id.as_str())
-    .fetch_one(&mut *f.connection().await)
-    .await
-    .expect("durable private notes");
+    let saved: Value =
+        sqlx::query_scalar("SELECT document FROM memory.context_checkpoints WHERE draft_id=$1")
+            .bind(&attempt.draft.id)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("durable private notes");
     assert_eq!(
         saved.get("generation").and_then(Value::as_i64),
         Some(summaries)
@@ -254,8 +252,8 @@ async fn assert_saved(f: &Fixture, attempt: &Attempt, summaries: i64) {
         Some("finish the original investigation")
     );
     let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1::uuid")
-            .bind(attempt.draft.id.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM authoring.messages WHERE draft_id=$1")
+            .bind(&attempt.draft.id)
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("original history retained");

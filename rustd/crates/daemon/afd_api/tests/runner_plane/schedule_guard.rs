@@ -21,7 +21,7 @@ use afd_api::SchedulePlane;
 use afd_cron::{Change, DesiredStatus, Fire, QStash, Refused, ScheduleService, Schedules};
 use afd_db::Precondition;
 use afd_db::config::DbRole;
-use afd_db::test_util::{TestDatabase, mint_uuid7};
+use afd_db::test_util::{TestDatabase, mint_id};
 use afd_http::services::FleetSchedules as _;
 use sqlx::PgConnection;
 
@@ -48,11 +48,10 @@ fn pause() -> Change<'static> {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_guarded_change_refuses_an_unheld_lease_and_finds_no_unknown_schedule() {
     let lane = TestDatabase::shared();
     let database = lane.open(DbRole::Api, &[]).await;
-    let queue = harness::connect_redis().await;
     let plane = SchedulePlane::new(
         ScheduleService::new(
             Schedules::new(database.clone(), Entropy::new()),
@@ -65,11 +64,11 @@ async fn a_guarded_change_refuses_an_unheld_lease_and_finds_no_unknown_schedule(
         ),
         Fire::new(afd_admission::Admissions::for_tests(
             database.clone(),
-            queue,
+            harness::bus().await,
         )),
         Entropy::new(),
     );
-    let (fleet, schedule) = (mint_uuid7(), mint_uuid7());
+    let (fleet, schedule) = (mint_id(), mint_id());
 
     let refused = plane
         .change_guarded(

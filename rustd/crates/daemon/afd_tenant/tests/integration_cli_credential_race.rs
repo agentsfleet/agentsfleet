@@ -40,10 +40,9 @@ async fn two_logins_from_one_machine_at_once_leave_one_live_credential() {
     let fixture = Fixture::create().await;
     fixture.seed_racer().await;
     let credentials = CliCredentials::new(fixture.database.clone(), Entropy::new());
-    let (user, tenant) = (parsed(&fixture.user), parsed(&fixture.tenant));
     let request = MintRequest {
-        user: &user,
-        tenant: &tenant,
+        user: &fixture.user,
+        tenant: &fixture.tenant,
         machine: MachineName::parse(MACHINE).expect("a well-formed machine name"),
         deployment: DEPLOYMENT,
         from_address: FROM_ADDRESS,
@@ -57,7 +56,7 @@ async fn two_logins_from_one_machine_at_once_leave_one_live_credential() {
     let mut hold = sqlx::Connection::begin(&mut *blocker)
         .await
         .expect("the hold opens");
-    sqlx::query("SELECT 1 FROM identity.users WHERE id = $1::uuid FOR UPDATE")
+    sqlx::query("SELECT 1 FROM identity.users WHERE id = $1 FOR UPDATE")
         .bind(&fixture.user)
         .execute(&mut *hold)
         .await
@@ -80,12 +79,8 @@ async fn two_logins_from_one_machine_at_once_leave_one_live_credential() {
     ];
 
     let live = fixture.the_one_live_credential_on(MACHINE).await;
-    assert!(minted.iter().any(|login| login.id.as_str() == live));
+    assert!(minted.iter().any(|login| login.id == live));
     fixture.cleanup().await;
-}
-
-fn parsed(stored: &str) -> Uuid7 {
-    Uuid7::parse(stored).expect("the fixture identifier is UUIDv7")
 }
 
 impl Fixture {
@@ -96,11 +91,11 @@ impl Fixture {
         sqlx::query(
             "WITH tenant AS ( \
                INSERT INTO identity.tenants (id, name, created_at, updated_at) \
-               VALUES ($1::uuid, $2, now(), now()) \
+               VALUES ($1, $2, now(), now()) \
              ) \
              INSERT INTO identity.users \
                (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at) \
-             VALUES ($3::uuid, $1::uuid, $4, $5, NULL, now(), now())",
+             VALUES ($3, $1, $4, $5, NULL, now(), now())",
         )
         .bind(&self.tenant)
         .bind(RACER_TENANT_NAME)
@@ -140,11 +135,11 @@ impl Fixture {
 
     /// The one live credential Ada holds for `machine`, after asserting it
     /// sits beside exactly one revoked row: one row per login, one live.
-    async fn the_one_live_credential_on(&self, machine: &str) -> String {
+    async fn the_one_live_credential_on(&self, machine: &str) -> Uuid7 {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        let rows: Vec<(String, bool)> = sqlx::query_as(
-            "SELECT id::text, revoked_at IS NULL FROM identity.cli_credentials \
-             WHERE user_id = $1::uuid AND machine_name = $2",
+        let rows: Vec<(Uuid7, bool)> = sqlx::query_as(
+            "SELECT id, revoked_at IS NULL FROM identity.cli_credentials \
+             WHERE user_id = $1 AND machine_name = $2",
         )
         .bind(&self.user)
         .bind(machine)

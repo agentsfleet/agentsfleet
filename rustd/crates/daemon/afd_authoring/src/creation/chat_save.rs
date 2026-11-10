@@ -15,7 +15,7 @@ use sqlx::{Connection as _, PgConnection};
 
 #[derive(sqlx::FromRow)]
 struct SavedTurn {
-    fleet_id: String,
+    fleet_id: Uuid7,
     oidc_subject: String,
 }
 
@@ -58,7 +58,7 @@ impl Creations {
                     return Err(error);
                 }
                 sqlx::query(include_str!("sql/save_refused.sql"))
-                    .bind(attempt.draft_id.as_str())
+                    .bind(&attempt.draft_id)
                     .bind(attempt.message_sequence)
                     .bind(error.code().as_str())
                     .execute(connection)
@@ -145,13 +145,13 @@ impl Creations {
     pub(crate) async fn finish_saved_turn(&self, attempt: &Attempt) -> Result<()> {
         let mut connection = self.setup.drafts.database.acquire().await?;
         let saved: Option<SavedTurn> = sqlx::query_as(include_str!("sql/saved_turn.sql"))
-            .bind(attempt.draft_id.as_str())
-            .bind(attempt.workspace_id.as_str())
-            .bind(attempt.user_id.as_str())
+            .bind(&attempt.draft_id)
+            .bind(&attempt.workspace_id)
+            .bind(&attempt.user_id)
             .bind(attempt.message_sequence)
             .bind(MessageState::Completed.as_str())
             .bind(DraftState::Saving.as_str())
-            .bind(attempt.tenant_id.as_str())
+            .bind(&attempt.tenant_id)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
@@ -163,11 +163,7 @@ impl Creations {
             subject: &saved.oidc_subject,
         };
         drop(connection);
-        self.advance(
-            access,
-            &Uuid7::parse(&saved.fleet_id)?,
-            af_core::clock::now(),
-        )
-        .await
+        self.advance(access, &saved.fleet_id, af_core::clock::now())
+            .await
     }
 }

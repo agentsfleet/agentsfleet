@@ -112,7 +112,7 @@ impl Fire {
         target: &FireTarget,
         message_id: &str,
     ) -> Result<Fired> {
-        let fleet = target.fleet.as_str();
+        let fleet = &target.fleet;
         // Scoped by SCHEDULE as well as by fleet: one fleet may hold many
         // schedules, and a key that was the message id alone would let two
         // schedules firing on the same tick silence each other.
@@ -127,7 +127,7 @@ impl Fire {
                 producer: Producer::ScheduleFire,
                 key: Key::Repeated(&key),
                 fleet,
-                workspace: target.workspace.as_str(),
+                workspace: &target.workspace,
                 actor: &actor,
                 event_type: EventType::Cron,
                 request_json: &request_json,
@@ -154,16 +154,16 @@ impl Fire {
             afd_events::activity::announce(&self.admissions.streams(), fleet).await;
         }
         tracing::info!(
-            fleet_id = fleet,
-            workspace_id,
-            schedule_id,
-            event_id,
+            fleet_id = %fleet,
+            workspace_id = %workspace_id,
+            schedule_id = %schedule_id,
+            event_id = %event_id,
             replayed,
             event = "schedule_fire_appended",
         );
 
         Ok(Fired {
-            event_id: admitted.stored.id,
+            event_id: admitted.stored.id.into(),
             replayed,
         })
     }

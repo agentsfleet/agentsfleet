@@ -5,13 +5,63 @@
 //! before waiting for that lock could miss the preceding claimant's commit.
 
 use af_core::id::Uuid7;
+use afd_auth::directory::Digest;
 use jiff::Timestamp;
 use sqlx::{Postgres, Transaction};
 
 use crate::error::{Result, query};
 
+pub mod authority;
 pub mod choice;
 mod sql;
+
+/// The claim owner, proved under the same host lock as the physical capacity.
+pub enum Guard<'a> {
+    /// A trusted domain call for an enrolled host.
+    Enrolled(&'a Uuid7),
+    /// A stream call must also prove the exact opening credential and connection.
+    Connected {
+        /// Host whose capacity is being inspected.
+        runner: &'a Uuid7,
+        /// The opening's expected database owner.
+        connection: &'a Uuid7,
+        /// Digest proved at opening; never included in debug output.
+        digest: &'a Digest,
+    },
+}
+
+impl std::fmt::Debug for Guard<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Enrolled(runner) => f.debug_tuple("Enrolled").field(runner).finish(),
+            Self::Connected {
+                runner, connection, ..
+            } => f
+                .debug_struct("Connected")
+                .field("runner", runner)
+                .field("connection", connection)
+                .finish_non_exhaustive(),
+        }
+    }
+}
+
+impl<'a> From<&'a Uuid7> for Guard<'a> {
+    fn from(runner: &'a Uuid7) -> Self {
+        Self::Enrolled(runner)
+    }
+}
+
+impl<'a> From<&'a authority::Authority> for Guard<'a> {
+    fn from(authority: &'a authority::Authority) -> Self {
+        authority.guard_for(authority.runner())
+    }
+}
+
+impl<'a> From<(&'a Uuid7, &'a authority::Authority)> for Guard<'a> {
+    fn from((runner, authority): (&'a Uuid7, &'a authority::Authority)) -> Self {
+        authority.guard_for(runner)
+    }
+}
 
 /// Capacity observed while holding the host row until transaction completion.
 #[derive(Debug, Clone, Copy)]
@@ -55,6 +105,7 @@ impl Capacity {
 /// [`sql::LOCK_HOST`]'s row.
 #[derive(Debug, sqlx::FromRow)]
 struct Host {
+    authorized: bool,
     worker_count: i32,
     status: String,
     degraded: bool,
@@ -78,18 +129,30 @@ struct Census {
 ///
 /// # Errors
 /// Preserves statement and column failures with their query context.
-pub async fn lock(
+pub async fn lock<'a>(
     transaction: &mut Transaction<'_, Postgres>,
-    runner_id: &Uuid7,
+    guard: impl Into<Guard<'a>>,
 ) -> Result<Option<Capacity>> {
+    let (runner_id, digest, connection) = match guard.into() {
+        Guard::Enrolled(runner) => (runner, None, None),
+        Guard::Connected {
+            runner,
+            connection,
+            digest,
+        } => (runner, Some(digest.as_str()), Some(connection)),
+    };
     let host = sqlx::query_as::<_, Host>(sql::LOCK_HOST)
-        .bind(runner_id.as_str())
+        .bind(runner_id)
+        .bind(digest)
+        .bind(connection)
         .fetch_optional(&mut **transaction)
         .await
         .map_err(query(sql::CONTEXT))?;
-    let Some(host) = host else { return Ok(None) };
+    let Some(host) = host.filter(|host| host.authorized) else {
+        return Ok(None);
+    };
     let census = sqlx::query_as::<_, Census>(sql::CENSUS)
-        .bind(runner_id.as_str())
+        .bind(runner_id)
         .bind(crate::sql::LEASE_STATUS_ACTIVE)
         .fetch_one(&mut **transaction)
         .await

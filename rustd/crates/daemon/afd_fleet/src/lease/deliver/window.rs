@@ -11,12 +11,12 @@ use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 use af_wire::memory::MemoryHydrateResponse;
 
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 
 /// The window could not be read; the lease issues without one.
 pub(super) const EVENT_WINDOW_READ_FAILED: &str = "lease_window_read_failed";
 
-impl Plane {
+impl LeaseService {
     /// The memory window the lease carries, or none when the read failed.
     pub(super) async fn window_for(
         &self,

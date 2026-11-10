@@ -19,6 +19,8 @@ impl Admissions {
             return Ok(None);
         };
         self.wake(&row.fleet).await;
-        Ok(Some(Confirmation { event_id: row.id }))
+        Ok(Some(Confirmation {
+            event_id: row.id.into(),
+        }))
     }
 }

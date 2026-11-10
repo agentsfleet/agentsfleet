@@ -16,9 +16,8 @@ const CONTEXT_TOOL_CALL: &str = "read one tool call's record";
 
 /// One call by event, fence and number, inside its workspace and fleet.
 ///
-/// A call record points at its event's ROW (`fleet_event_id`), and a reader
-/// names the event by its `event_id`, so the read joins the two inside the same
-/// fleet; the call's number in its lease's run is the record's `sequence`.
+/// A call record names its event by `event_id` inside its fleet; the call's
+/// number in its lease's run is the record's `sequence`.
 ///
 /// `$1` workspace, `$2` fleet, `$3` event, `$4` fence, `$5` call number.
 const SELECT_TOOL_CALL: &str = include_str!("select_tool_call.sql");
@@ -77,13 +76,13 @@ impl History {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
         call: CallAddress,
     ) -> Result<Option<ToolCallRow>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as::<_, ToolCallRow>(SELECT_TOOL_CALL)
-            .bind(workspace.as_str())
-            .bind(fleet.as_str())
+            .bind(workspace)
+            .bind(fleet)
             .bind(event_id)
             .bind(call.fence)
             .bind(call.call_number)

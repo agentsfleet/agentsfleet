@@ -60,7 +60,7 @@ pub(super) async fn admit(
     };
     insert(connection, runner, hint, &selected, &model, &placement).await?;
     sqlx::query(sql::RUNNING)
-        .bind(hint.id.as_str())
+        .bind(&hint.id)
         .bind(selected.sequence)
         .bind(RUNNING)
         .bind(QUEUED)
@@ -134,13 +134,13 @@ async fn insert(
     placement: &Placement,
 ) -> Result<()> {
     sqlx::query(sql::INSERT)
-        .bind(placement.attempt.as_str())
-        .bind(placement.lease.as_str())
-        .bind(runner.as_str())
-        .bind(hint.workspace_id.as_str())
-        .bind(hint.tenant_id.as_str())
-        .bind(hint.user_id.as_str())
-        .bind(hint.id.as_str())
+        .bind(&placement.attempt)
+        .bind(&placement.lease)
+        .bind(runner)
+        .bind(&hint.workspace_id)
+        .bind(&hint.tenant_id)
+        .bind(&hint.user_id)
+        .bind(&hint.id)
         .bind(selected.sequence)
         .bind(FENCE)
         .bind(hex::encode(Sha256::digest(placement.token.as_bytes())))
@@ -165,7 +165,7 @@ async fn failure(
     // so the message it selected queued is still queued: this write finishes it.
     let failed = MessageState::Failed.as_str();
     sqlx::query(crate::sql::message::FAIL)
-        .bind(gate.selected.draft.id.as_str())
+        .bind(&gate.selected.draft.id)
         .bind(gate.selected.sequence)
         .bind(failed)
         .bind(crate::lease::report::verdict::reason(reason))

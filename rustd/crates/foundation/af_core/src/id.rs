@@ -5,7 +5,7 @@
 //! version nibble `7` and an RFC 4122 variant. Uppercase is REJECTED, never
 //! normalized — Postgres folds `::uuid` to lowercase, so an uppercase spelling
 //! would be the same row there but a different key everywhere an identifier is
-//! handled as text: Dragonfly dedupe keys, session keys, every `==` on a string.
+//! handled as text: dedupe keys, bus subjects, every `==` on a string.
 //! One entity with two valid spellings is the bug the rejection prevents.
 //!
 //! # Why not the `uuid` crate
@@ -17,9 +17,13 @@
 //!
 //! # Why the text, not sixteen bytes
 //!
-//! Every consumer — a wire payload, a `::uuid` bind parameter, a cache key —
-//! wants the canonical text. Storing the parsed bytes would mean re-rendering
-//! it at each use and re-deriving the one spelling this module exists to fix.
+//! A wire payload and a cache key want the canonical text. Storing the parsed
+//! bytes would mean re-rendering it at each use and re-deriving the one
+//! spelling this module exists to fix.
+//!
+//! Postgres is the exception: with the `sqlx` feature an identifier binds as,
+//! and is read from, a native `uuid` (and `uuid[]`), so no statement casts an
+//! identifier to or from text (owner's rule, Nov 08, 2026).
 
 use std::fmt::{self, Display, Formatter};
 
@@ -178,6 +182,62 @@ impl From<Uuid7> for String {
     }
 }
 
+/// An identifier equals the text that spells it, so a wire answer that carries
+/// the text compares with the identifier without parsing it.
+impl PartialEq<str> for Uuid7 {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
+
+impl PartialEq<&str> for Uuid7 {
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+}
+
+impl PartialEq<String> for Uuid7 {
+    fn eq(&self, other: &String) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl PartialEq<Uuid7> for str {
+    fn eq(&self, other: &Uuid7) -> bool {
+        self == other.as_str()
+    }
+}
+
+impl PartialEq<Uuid7> for &str {
+    fn eq(&self, other: &Uuid7) -> bool {
+        *self == other.as_str()
+    }
+}
+
+impl PartialEq<std::borrow::Cow<'_, str>> for Uuid7 {
+    fn eq(&self, other: &std::borrow::Cow<'_, str>) -> bool {
+        self.as_str() == other.as_ref()
+    }
+}
+
+impl PartialEq<Uuid7> for String {
+    fn eq(&self, other: &Uuid7) -> bool {
+        self.as_str() == other.as_str()
+    }
+}
+
+impl From<Uuid7> for Box<str> {
+    fn from(id: Uuid7) -> Self {
+        id.0
+    }
+}
+
+impl From<Uuid7> for std::borrow::Cow<'_, str> {
+    fn from(id: Uuid7) -> Self {
+        std::borrow::Cow::Owned(id.0.into_string())
+    }
+}
+
 impl<'de> Deserialize<'de> for Uuid7 {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         // Through `String` rather than `&str`: a JSON encoder is free to escape
@@ -218,5 +278,57 @@ fn first_violation(text: &str) -> Option<&'static str> {
     match text.as_bytes().get(VARIANT_OFFSET) {
         Some(b'8' | b'9' | b'a' | b'b') => None,
         _ => Some("variant nibble is not an RFC 4122 variant"),
+    }
+}
+
+#[cfg(feature = "sqlx")]
+mod database {
+    //! [`Uuid7`] as a Postgres `uuid`, in binary on the way in and out. A value
+    //! read back is checked by [`Uuid7::parse`], so a column holding any other
+    //! UUID version fails to decode rather than entering the system.
+
+    use sqlx::encode::IsNull;
+    use sqlx::error::BoxDynError;
+    use sqlx::postgres::types::Oid;
+    use sqlx::postgres::{
+        PgArgumentBuffer, PgHasArrayType, PgTypeInfo, PgValueFormat, PgValueRef, Postgres,
+    };
+
+    use super::Uuid7;
+
+    /// Postgres's `uuid` type.
+    const UUID: Oid = Oid(2950);
+    /// Postgres's `uuid[]` type.
+    const UUID_ARRAY: Oid = Oid(2951);
+
+    impl sqlx::Type<Postgres> for Uuid7 {
+        fn type_info() -> PgTypeInfo {
+            PgTypeInfo::with_oid(UUID)
+        }
+    }
+
+    impl PgHasArrayType for Uuid7 {
+        fn array_type_info() -> PgTypeInfo {
+            PgTypeInfo::with_oid(UUID_ARRAY)
+        }
+    }
+
+    impl sqlx::Encode<'_, Postgres> for Uuid7 {
+        fn encode_by_ref(&self, buf: &mut PgArgumentBuffer) -> Result<IsNull, BoxDynError> {
+            buf.extend_from_slice(&self.to_bytes());
+            Ok(IsNull::No)
+        }
+    }
+
+    impl sqlx::Decode<'_, Postgres> for Uuid7 {
+        fn decode(value: PgValueRef<'_>) -> Result<Self, BoxDynError> {
+            let text = match value.format() {
+                PgValueFormat::Binary => uuid::Uuid::from_slice(value.as_bytes()?)?
+                    .hyphenated()
+                    .to_string(),
+                PgValueFormat::Text => value.as_str()?.to_owned(),
+            };
+            Ok(Self::parse(&text)?)
+        }
     }
 }

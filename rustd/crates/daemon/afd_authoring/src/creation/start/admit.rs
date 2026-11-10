@@ -25,8 +25,8 @@ impl Creations {
         let admission = Admission {
             producer: Producer::Steer,
             key: Key::Repeated(key),
-            fleet: row.id.as_str(),
-            workspace: row.workspace_id.as_str(),
+            fleet: &row.id,
+            workspace: &row.workspace_id,
             actor: actor.as_str(),
             event_type: EventType::Chat,
             request_json: payload,
@@ -53,7 +53,7 @@ impl Creations {
             Prepared::Ready(prepared) => match self.admissions.stage(connection, prepared).await {
                 Ok(admitted) => StartOutcome::RunNow {
                     state: StartState::Pending,
-                    event_id: Some(admitted.stored.id),
+                    event_id: Some(admitted.stored.id.into()),
                     error_code: None,
                 },
                 Err(refused) if refused.is_over_capacity() => blocked(refused.code().to_string()),

@@ -61,25 +61,25 @@ async fn refused(c: &Case, key: &Uuid7, request: &SaveFleet, why: &str) -> afd_a
 /// Receipts written under `key`: a spent Save key has exactly one.
 async fn receipts(c: &Case, key: &Uuid7) -> i64 {
     sqlx::query_scalar(
-        "SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1::uuid AND operation_id=$2::uuid",
+        "SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1 AND operation_id=$2",
     )
-    .bind(c.base.workspace.as_str())
-    .bind(key.as_str())
+    .bind(&c.base.workspace)
+    .bind(key)
     .fetch_one(&mut *c.base.connection().await)
     .await
     .expect("replay receipts")
 }
 
 async fn revisions(c: &Case, fleet: &Uuid7) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE fleet_id=$1::uuid")
-        .bind(fleet.as_str())
+    sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE fleet_id=$1")
+        .bind(fleet)
         .fetch_one(&mut *c.base.connection().await)
         .await
         .expect("definition revisions")
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_creates_one_fleet() {
     let c = Case::create().await;
     let (draft, request) = c.request("reservation-fault", run_now()).await;
@@ -125,7 +125,7 @@ async fn a_reservation_aborted_after_its_fleet_row_leaves_nothing_and_the_key_cr
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_readiness_record_failure_keeps_activation_and_its_run_uncommitted() {
     let c = Case::create().await;
     let (_, request) = c.request("stream-record-fault", run_now()).await;
@@ -169,7 +169,7 @@ async fn a_readiness_record_failure_keeps_activation_and_its_run_uncommitted() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn concurrent_retries_after_an_aborted_activation_admit_one_run() {
     let c = Arc::new(Case::create().await);
     let (_, request) = c.request("concurrent-retry", run_now()).await;

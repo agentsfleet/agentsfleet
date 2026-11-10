@@ -9,13 +9,13 @@ const IDLE_FLEETS: &str = "INSERT INTO fleet.fleets \
     (id,workspace_id,tenant_id,name,status,required_tags,memory_reads_workspace, \
      memory_publishes_workspace,resource_version,created_at,updated_at) \
     SELECT uuidv7(),workspace_id,tenant_id,'idle-'||n,status,required_tags,false,false,1,now(),now() \
-    FROM fleet.fleets CROSS JOIN generate_series(1,$2) n WHERE id=$1::uuid";
+    FROM fleet.fleets CROSS JOIN generate_series(1,$2) n WHERE id=$1";
 
 // Value: protects=empty-ledger idle cost; fails_when=discovery visits every idle
 // fleet; why_new=backlog tests do not grow idle fleet population; seam=none;
 // no_claim=constant server work when unsettled admissions exist.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_empty_ledger_skips_fleet_scans_at_twenty_thousand_idle_fleets() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, _, _, [runner]) = crate::seed::seeded_parts::<1>(&fixtures).await;
@@ -32,7 +32,7 @@ async fn an_empty_ledger_skips_fleet_scans_at_twenty_thousand_idle_fleets() {
     for table in ["fleet.fleets", "fleet.admissions"] {
         run(&mut tx, &format!("ANALYZE {table}")).await;
     }
-    let plan = head_plan(&mut tx, runner.as_str()).await;
+    let plan = head_plan(&mut tx, &runner).await;
     let scans = relation_scans(&plan, "fleets");
     eprintln!(
         "idle fleets={POPULATION}, execution_ms={}, fleet_scans={scans:?}",

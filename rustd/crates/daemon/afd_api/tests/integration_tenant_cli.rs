@@ -6,6 +6,7 @@
 )]
 
 use crate::harness;
+use af_core::id::Uuid7;
 
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::Db;
@@ -94,8 +95,8 @@ fn text<'value>(document: &'value Value, field: &str) -> &'value str {
 struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
-    user: String,
+    tenant: Uuid7,
+    user: Uuid7,
 }
 
 impl Fixture {
@@ -124,9 +125,9 @@ impl Fixture {
 
     async fn assert_replaced(&self, first: &str, replacement: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        let rows: Vec<(String, bool)> = sqlx::query_as(
-            "SELECT id::text, revoked_at IS NOT NULL FROM identity.cli_credentials \
-             WHERE user_id = $1::uuid AND machine_name = $2 ORDER BY created_at, id",
+        let rows: Vec<(Uuid7, bool)> = sqlx::query_as(
+            "SELECT id, revoked_at IS NOT NULL FROM identity.cli_credentials \
+             WHERE user_id = $1 AND machine_name = $2 ORDER BY created_at, id",
         )
         .bind(&self.user)
         .bind(MACHINE)
@@ -148,7 +149,7 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

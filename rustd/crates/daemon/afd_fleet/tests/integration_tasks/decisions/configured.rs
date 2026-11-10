@@ -71,36 +71,34 @@ async fn configured_edit_after_claim_is_rechecked_before_issuing_a_source_lease(
 }
 
 async fn refuse_after_edit(case: &Case, acquired: &Acquired) {
-    let before: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE fleet_id=$1::uuid")
-            .bind(&case.held.fleet)
-            .fetch_one(
-                &mut *case
-                    .held
-                    .fixtures
-                    .database
-                    .acquire()
-                    .await
-                    .expect("observer"),
-            )
-            .await
-            .expect("lease count");
+    let before: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE fleet_id=$1")
+        .bind(&case.held.fleet)
+        .fetch_one(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("observer"),
+        )
+        .await
+        .expect("lease count");
     set(case, false).await;
     assert!(issue(case, acquired).await.is_none());
-    let after: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE fleet_id=$1::uuid")
-            .bind(&case.held.fleet)
-            .fetch_one(
-                &mut *case
-                    .held
-                    .fixtures
-                    .database
-                    .acquire()
-                    .await
-                    .expect("observer"),
-            )
-            .await
-            .expect("lease count");
+    let after: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE fleet_id=$1")
+        .bind(&case.held.fleet)
+        .fetch_one(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("observer"),
+        )
+        .await
+        .expect("lease count");
     assert_eq!(
         after, before,
         "no lease survives a rejected final eligibility proof"
@@ -126,7 +124,7 @@ async fn continuation(case: &Case) {
         .task_id
         .as_ref()
         .expect("task");
-    sqlx::query("UPDATE fleet.admissions SET settled_at=clock_timestamp() WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.admissions SET settled_at=clock_timestamp() WHERE id=$1")
         .bind(&case.held.event_id)
         .execute(
             &mut *case

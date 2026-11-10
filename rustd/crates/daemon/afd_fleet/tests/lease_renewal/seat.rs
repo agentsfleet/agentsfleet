@@ -23,21 +23,20 @@ pub(super) const FUNDED: i64 = 1_000 * NANOS_PER_USD;
 const SECRET_REF: &str = "authoring-model";
 const PROVIDER: &str = "openai";
 const KEK_HEX: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
-const IDENTITY: &str =
-    "SELECT tenant_id::text, workspace_id::text FROM fleet.fleets WHERE id = $1::uuid";
+const IDENTITY: &str = "SELECT tenant_id, workspace_id FROM fleet.fleets WHERE id = $1";
 const PERSON: &str = "\
 INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$1,$1,now(),now())";
+VALUES($1,$2,$1,$1,now(),now())";
 const ENTRY: &str = "\
 INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3,$4,now(),now())";
+VALUES($1,$2,$3,$4,now(),now())";
 const SECRET: &str = "\
 INSERT INTO vault.secrets(id,workspace_id,key_name,dek_ciphertext,dek_nonce,dek_tag,secret_nonce,
 secret_ciphertext,secret_tag,kek_version,meta_provider,meta_has_key,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,now(),now())";
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,now(),now())";
 
 pub(super) struct Seat {
-    pub(super) tenant: String,
+    pub(super) tenant: Uuid7,
     workspace: Uuid7,
     owner: Uuid7,
     entry: Uuid7,
@@ -47,17 +46,17 @@ pub(super) struct Seat {
 impl Seat {
     pub(super) async fn create(running: &Running) -> Self {
         let database = &running.fixtures.database;
-        let (tenant, workspace): (String, String) = sqlx::query_as(IDENTITY)
+        let (tenant, workspace): (Uuid7, Uuid7) = sqlx::query_as(IDENTITY)
             .bind(&running.fleet)
             .fetch_one(&mut *database.acquire().await.expect("identity"))
             .await
             .expect("the leased fleet's tenant and workspace");
         let seat = Self {
             tenant,
-            workspace: id(&workspace),
-            owner: id(&mint_id()),
-            entry: id(&mint_id()),
-            catalogue: id(&mint_id()),
+            workspace,
+            owner: mint_id(),
+            entry: mint_id(),
+            catalogue: mint_id(),
         };
         seat.seed(database).await;
         running.fixtures.seed_wallet(&seat.tenant, FUNDED).await;
@@ -68,19 +67,19 @@ impl Seat {
         let model = format!("gpt-4o-{}", self.catalogue);
         let mut connection = database.acquire().await.expect("seat seed");
         sqlx::query(PERSON)
-            .bind(self.owner.as_str())
+            .bind(&self.owner)
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
             .expect("the tenant's owner");
-        ModelSeed::new(self.catalogue.as_str(), PROVIDER, &model, 128_000)
+        ModelSeed::new(&self.catalogue, PROVIDER, &model, 128_000)
             .rates(NANOS_PER_USD, NANOS_PER_USD, NANOS_PER_USD)
             .inference(RESPONSES_INFERENCE)
             .insert(&mut *connection)
             .await
             .expect("an isolated priced model");
         sqlx::query(ENTRY)
-            .bind(self.entry.as_str())
+            .bind(&self.entry)
             .bind(&self.tenant)
             .bind(&model)
             .bind(SECRET_REF)
@@ -97,7 +96,7 @@ impl Seat {
             .expect("the fixture key seals");
         sqlx::query(SECRET)
             .bind(mint_id())
-            .bind(self.workspace.as_str())
+            .bind(&self.workspace)
             .bind(SECRET_REF)
             .bind(sealed.wrapped_dek())
             .bind(sealed.dek_nonce().as_slice())
@@ -136,7 +135,7 @@ impl Seat {
             },
             authoring_model_ref: self.entry.to_string(),
             message: Some("Investigate the checkout".to_owned()),
-            operation_id: id(&mint_id()),
+            operation_id: mint_id(),
         };
         drafts
             .create(access, request, clock::now())
@@ -155,8 +154,8 @@ impl Seat {
 
     /// Removes the one global row the seat wrote; the lane reset owns the rest.
     pub(super) async fn remove(self, database: &Db) {
-        sqlx::query("DELETE FROM model.platform_models WHERE id = $1::uuid")
-            .bind(self.catalogue.as_str())
+        sqlx::query("DELETE FROM model.platform_models WHERE id = $1")
+            .bind(self.catalogue)
             .execute(&mut *database.acquire().await.expect("seat cleanup"))
             .await
             .expect("remove the isolated catalogue row");
@@ -175,8 +174,4 @@ fn definition() -> af_fleet_runtime::Definition {
         }}
     }))
     .expect("native setup passes the shared validator")
-}
-
-fn id(raw: &str) -> Uuid7 {
-    Uuid7::parse(raw).expect("a UUIDv7")
 }

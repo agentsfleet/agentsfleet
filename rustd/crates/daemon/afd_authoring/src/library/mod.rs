@@ -40,7 +40,7 @@ struct Entry {
 /// One `authoring.library_entries` row, by column name.
 #[derive(sqlx::FromRow)]
 struct EntryRow {
-    id: String,
+    id: Uuid7,
     platform_slug: Option<String>,
     name: String,
     description: String,
@@ -48,7 +48,7 @@ struct EntryRow {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     updated_at: Timestamp,
     visibility: String,
-    head_revision_id: Option<String>,
+    head_revision_id: Option<Uuid7>,
     resource_version: i64,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
@@ -59,9 +59,9 @@ impl EntryRow {
     /// row is a stored fault.
     fn decode(self) -> Result<Entry> {
         // A card without a head revision is not yet readable as a Library entry.
-        let head = self.head_revision_id.as_deref().ok_or(ErrorKind::Hidden)?;
+        let head = self.head_revision_id.as_ref().ok_or(ErrorKind::Hidden)?;
         Ok(Entry {
-            id: Uuid7::parse(&self.id)?,
+            id: self.id.clone(),
             platform_slug: self.platform_slug,
             name: self.name,
             description: self.description,
@@ -72,7 +72,7 @@ impl EntryRow {
                 .transpose()?,
             updated_at: self.updated_at,
             visibility: self.visibility,
-            head_revision_id: Uuid7::parse(head)?,
+            head_revision_id: Uuid7::parse(head.as_str())?,
             resource_version: self.resource_version,
             created_at: self.created_at,
         })
@@ -126,7 +126,7 @@ pub(crate) struct Revision {
 /// One `authoring.library_revisions` row, by column name.
 #[derive(sqlx::FromRow)]
 struct RevisionRow {
-    id: String,
+    id: Uuid7,
     revision: i64,
     definition: String,
     canonical_digest: String,
@@ -138,7 +138,7 @@ struct RevisionRow {
 impl RevisionRow {
     fn decode(self) -> Result<Revision> {
         Ok(Revision {
-            id: Uuid7::parse(&self.id)?,
+            id: self.id.clone(),
             revision: self.revision,
             definition: serde_json::from_str(&self.definition).map_err(stored)?,
             canonical_digest: self.canonical_digest,

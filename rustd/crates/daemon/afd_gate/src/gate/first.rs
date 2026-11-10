@@ -53,15 +53,12 @@ impl Gates {
 
         // Reached only on a first encounter — see the module note on why that
         // matters for an increment.
-        if self
-            .anomaly(
-                request.fleet_id,
-                request.event_type,
-                request.actor,
-                policy.anomaly_rules(),
-            )
-            .await
-            == Anomaly::AutoKill
+        if self.anomaly(
+            request.fleet_id,
+            request.event_type,
+            request.actor,
+            policy.anomaly_rules(),
+        ) == Anomaly::AutoKill
         {
             return self.stop(request, Trigger::Anomaly).await;
         }
@@ -84,7 +81,7 @@ impl Gates {
                 let stated = Stated::of(
                     request.event_type,
                     request.actor,
-                    request.event_id,
+                    request.event_id.as_str(),
                     request.config.repository_binding(),
                     timeout,
                 );
@@ -98,9 +95,9 @@ impl Gates {
             Route::EvaluateRecorded => {
                 let fleet = request.fleet_id.as_str();
                 tracing::error!(
-                    event = EVENT_ROUTE_UNREACHABLE,
-                    fleet_id = fleet,
-                    agentsfleet_event_id = request.event_id,
+                    event = %EVENT_ROUTE_UNREACHABLE,
+                    fleet_id = %fleet,
+                    agentsfleet_event_id = %request.event_id,
                     "a recorded gate reached the first-encounter pass; the event waits"
                 );
                 Verdict::Await(Waiting::Unreadable)
@@ -212,30 +209,28 @@ mod tests {
         use af_core::test_util::trace::Capture;
         use af_crypto::entropy::Entropy;
         use af_fleet_runtime::FleetConfig;
-        use afd_dragonfly::Dragonfly;
-        use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 
         use crate::gate::pass::{Check, Verdict, Waiting};
         use crate::gate::route::RefState;
         use crate::gate::store::Gates;
-
-        /// A queue address nothing listens on.
-        const NOWHERE: &str = "redis://127.0.0.1:1";
 
         /// A fleet whose only rule names another tool, so policy passes a chat outright.
         const APPROVE_EVERY_CHAT: &str = r#"{"name":"gate-unit","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"gates":{"rules":[{"tool":"shell","action":"user:other","behavior":"approve"}]}}}"#;
 
         const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee2";
 
+        /// The event the broken ordering handed the pass.
+        const EVENT: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee3";
+
         #[tokio::test]
         async fn a_recorded_gate_reaching_the_policy_pass_waits_and_says_so() {
-            let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-                DragonflyRole::Default,
-                NOWHERE.to_owned(),
-            ))
-            .expect("a lazy handle opens no socket and cannot fail");
-            let gates = Gates::new(afd_db::test_util::unreachable_db(), queue, Entropy::new());
+            let gates = Gates::new(
+                afd_db::test_util::unreachable_db(),
+                afd_bus::test_util::unreachable(),
+                Entropy::new(),
+            );
             let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");
+            let event = Uuid7::parse(EVENT).expect("a canonical identifier");
             let config =
                 FleetConfig::stored(APPROVE_EVERY_CHAT).expect("the fixture policy resolves");
             let capture = Capture::install();
@@ -245,7 +240,7 @@ mod tests {
                     &Check {
                         fleet_id: &fleet,
                         workspace_id: &fleet,
-                        event_id: "event-ordering-broke",
+                        event_id: &event,
                         event_type: "chat",
                         actor: "user:fixture",
                         request_json: "{}",
@@ -263,10 +258,7 @@ mod tests {
             );
             let logged = capture.only("gate_route_unreachable");
             assert_eq!(logged.field("fleet_id"), Some(FLEET));
-            assert_eq!(
-                logged.field("agentsfleet_event_id"),
-                Some("event-ordering-broke")
-            );
+            assert_eq!(logged.field("agentsfleet_event_id"), Some(EVENT));
         }
     }
 }

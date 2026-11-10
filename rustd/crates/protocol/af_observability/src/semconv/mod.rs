@@ -249,6 +249,15 @@ pub const LABEL_RUNNER_ID: &str = "runner_id";
 /// How an operation ended.
 pub const LABEL_OUTCOME: &str = "outcome";
 
+/// What caused a bus gap, from its closed cause set.
+pub const LABEL_CAUSE: &str = "cause";
+
+/// What triggered an outbound claim, from its closed set.
+pub const LABEL_VIA: &str = "via";
+
+/// The native runner connection protocol, from its closed transport set.
+pub const LABEL_TRANSPORT: &str = "transport";
+
 /// Which bounded native operation produced a measurement.
 pub const LABEL_OPERATION: &str = "operation";
 
@@ -299,6 +308,10 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
     LABEL_ATTRIBUTE,
     LABEL_RUNNER_ID,
     LABEL_OUTCOME,
+    LABEL_CAUSE,
+    LABEL_VIA,
+    LABEL_TRANSPORT,
+    LABEL_KEY_EXCHANGE,
     LABEL_OPERATION,
     LABEL_SURFACE,
     LABEL_STAGE,
@@ -311,6 +324,8 @@ pub const CENSUS_LABEL_KEYS: &[&str] = &[
 
 /// Role of a database connection pool.
 pub const LABEL_ROLE: &str = "role";
+/// Finite TLS key-agreement group selected by a native connection.
+pub const LABEL_KEY_EXCHANGE: &str = "key_exchange";
 /// A closed inventory or connection state.
 pub const LABEL_STATE: &str = "state";
 /// A model's configured limit kind.

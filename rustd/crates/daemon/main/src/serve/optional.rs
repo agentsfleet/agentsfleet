@@ -1,9 +1,6 @@
 //! Optional boot surfaces that degrade without refusing the daemon.
 
-use af_core::error_code::{Coded as _, Logged};
 use af_observability::Analytics;
-use afd_dragonfly::{DragonflyConfig, SubscriptionHub};
-use afd_sse::{Ceiling, Live};
 
 use crate::identity::Capabilities;
 
@@ -28,29 +25,6 @@ pub(super) fn announce_identity(capabilities: &Capabilities) {
     }
 }
 
-/// The live-stream surface, or its silent form when the hub will not open.
-pub(super) async fn open_live(config: &DragonflyConfig, max_streams: usize) -> Live {
-    let ceiling = Ceiling::new(max_streams);
-    match SubscriptionHub::start(config.clone()).await {
-        Ok(hub) => Live::new(hub, ceiling),
-        Err(unopened) => {
-            let code = af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str();
-            let Logged {
-                error_code: cause_error_code,
-                reason,
-            } = unopened.logged();
-            tracing::warn!(
-                error_code = code,
-                cause_error_code,
-                reason,
-                event = "hub_unavailable",
-                "the live-stream surface will carry no frames and lease polls find fresh work through Postgres; every other verb is unaffected"
-            );
-            Live::detached(ceiling)
-        }
-    }
-}
-
 /// The product-analytics reporter, or its silent form.
 pub(super) async fn open_analytics(config: Option<&crate::preflight::PostHogConfig>) -> Analytics {
     match config {
@@ -61,12 +35,9 @@ pub(super) async fn open_analytics(config: Option<&crate::preflight::PostHogConf
 
 #[cfg(test)]
 mod tests {
-    use std::time::Duration;
-
     use afd_auth::capability::NoCapabilitySource;
-    use afd_dragonfly::config::DragonflyRole;
 
-    use super::{announce_identity, open_analytics, open_live};
+    use super::{announce_identity, open_analytics};
     use crate::identity::Capabilities;
     use crate::preflight::PostHogConfig;
 
@@ -74,48 +45,6 @@ mod tests {
     fn an_unconfigured_identity_is_announced_as_a_reduced_surface() {
         afd_db::test_util::install_subscriber();
         announce_identity(&Capabilities::Unconfigured(NoCapabilitySource));
-    }
-
-    #[tokio::test]
-    async fn a_failed_hub_becomes_a_capacity_bounded_silent_surface() {
-        afd_db::test_util::install_subscriber();
-        let config = afd_dragonfly::DragonflyConfig::from_url(
-            DragonflyRole::Api,
-            "redis://127.0.0.1:1".to_owned(),
-        )
-        .with_connect_timeout(Duration::from_millis(25));
-
-        let live = open_live(&config, 3).await;
-        assert!(live.hub().is_none());
-        assert_eq!(live.capacity(), 3);
-    }
-
-    #[tokio::test]
-    async fn an_unopened_hub_reason_carries_no_code_prefix() {
-        let config = afd_dragonfly::DragonflyConfig::from_url(
-            DragonflyRole::Api,
-            "redis://127.0.0.1:1".to_owned(),
-        )
-        .with_connect_timeout(Duration::from_millis(25));
-        let log = af_core::test_util::trace::Capture::install();
-
-        drop(open_live(&config, 3).await);
-
-        let line = log.only("hub_unavailable");
-        let reason = line.field("reason").unwrap_or_default();
-        assert_eq!(
-            line.field("error_code"),
-            Some(af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str())
-        );
-        assert_eq!(
-            line.field("cause_error_code"),
-            Some(af_core::error_code::STARTUP_DRAGONFLY_CONNECT.as_str()),
-            "the unopened hub's own code rides `cause_error_code`"
-        );
-        assert!(
-            !reason.is_empty() && !reason.contains("[UZ-"),
-            "the code is the line's `error_code`, never the reason's prefix: {reason}"
-        );
     }
 
     #[tokio::test]

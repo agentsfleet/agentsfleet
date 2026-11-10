@@ -8,7 +8,7 @@
 //!
 //! Only the fleets the caller may read are ever subscribed, so a frame from
 //! another workspace is not delivered and then discarded — it never arrives.
-//! There is deliberately no pattern subscribe: `PSUBSCRIBE fleet:*` would put
+//! There is deliberately no wildcard subscribe: `af.fleet.*.tail` would put
 //! every tenant's frames on one firehose and make tenant isolation a matter of
 //! discipline rather than of what is attached.
 //!
@@ -29,15 +29,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use afd_dragonfly::hub::Received;
-use afd_dragonfly::{Message, Subscription, SubscriptionHub};
+use afd_bus::Received;
+use afd_bus::{Handle, Message, Subscription};
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream, SelectAll};
 use tokio_util::sync::CancellationToken;
 
 use crate::error::Error;
 use crate::frame::Frame;
-use afd_dragonfly::fleet_activity_channel;
+use af_core::id::Uuid7;
 
 /// One arrival on the shared consumer, before it becomes a frame.
 ///
@@ -80,7 +80,7 @@ pub struct FanIn {
     /// opens and still heartbeats — it simply carries no channels — because a
     /// stream surface that 500s when the queue is absent would take the whole
     /// dashboard down with it.
-    hub: Option<SubscriptionHub>,
+    hub: Option<Handle>,
     /// The fleets currently attached, and the token that detaches each.
     ///
     /// A map rather than a `Vec` of pairs: `sync_to` asks "is this one already
@@ -113,7 +113,7 @@ impl FanIn {
     ///
     /// [`sync_to`]: FanIn::sync_to
     #[must_use]
-    pub fn new(hub: Option<SubscriptionHub>) -> Self {
+    pub fn new(hub: Option<Handle>) -> Self {
         Self {
             hub,
             attached: BTreeMap::new(),
@@ -129,9 +129,9 @@ impl FanIn {
     }
 
     /// Aligns the attached channels with `wanted`.
-    pub fn sync_to(&mut self, wanted: &BTreeSet<String>) -> Delta {
+    pub async fn sync_to(&mut self, wanted: &BTreeSet<String>) -> Delta {
         let detached = self.detach_absent(wanted);
-        let attached = self.attach_missing(wanted);
+        let attached = self.attach_missing(wanted).await;
         Delta { attached, detached }
     }
 
@@ -151,7 +151,7 @@ impl FanIn {
     }
 
     /// Attaches every fleet in `wanted` that is not attached yet.
-    fn attach_missing(&mut self, wanted: &BTreeSet<String>) -> usize {
+    async fn attach_missing(&mut self, wanted: &BTreeSet<String>) -> usize {
         let Some(hub) = self.hub.clone() else {
             return 0;
         };
@@ -161,7 +161,18 @@ impl FanIn {
                 continue;
             }
             let token = CancellationToken::new();
-            let subscription = hub.subscribe(&fleet_activity_channel(fleet_id));
+            let Ok(fleet) = Uuid7::parse(fleet_id) else {
+                continue;
+            };
+            let subscription = match hub.subscribe(&afd_bus::Subject::FleetTail(fleet)).await {
+                Ok(subscription) => subscription,
+                Err(error) => {
+                    let error_code = error.code().as_str();
+                    let reason = error.reason();
+                    tracing::warn!(event = "sse_subscription_unavailable", error_code, reason);
+                    continue;
+                }
+            };
             self.arrivals
                 .push(arrivals(subscription, Arc::from(fleet_id.as_str()), token.clone()).boxed());
             self.attached.insert(fleet_id.clone(), token);
@@ -251,25 +262,20 @@ mod tests {
 
     use std::collections::BTreeSet;
 
-    use afd_dragonfly::fleet_activity_channel;
+    use af_core::id::Uuid7;
+    use af_core::test_util::trace::Capture;
+    use afd_bus::{Subject, test_util};
+
+    const FLEET: &str = "0195b4ba-8d3a-7000-8abc-000000000001";
 
     use super::FanIn;
 
-    /// The channel a fan-in subscribes to is the one the publisher writes:
-    /// both read the name from the queue crate, and its bytes are pinned here
-    /// because a drift would leave every tile silent with nothing failing.
-    #[test]
-    fn a_fleets_activity_channel_is_its_id_between_the_two_affixes() {
-        // pin test: literal is the contract
-        assert_eq!(fleet_activity_channel("a"), "fleet:a:activity");
-    }
-
-    #[test]
-    fn a_detached_fan_in_stays_empty_and_debug_hides_transport_details() {
+    #[tokio::test]
+    async fn a_detached_fan_in_stays_empty_and_debug_hides_transport_details() {
         let mut fan_in = FanIn::new(None);
         let wanted = BTreeSet::from(["fleet-a".to_owned(), "fleet-b".to_owned()]);
 
-        assert_eq!(fan_in.sync_to(&wanted).attached, 0);
+        assert_eq!(fan_in.sync_to(&wanted).await.attached, 0);
         assert_eq!(fan_in.fleets(), [] as [String; 0]);
         assert_eq!(format!("{fan_in:?}"), "FanIn { attached: 0, seq: 0, .. }");
     }
@@ -278,15 +284,17 @@ mod tests {
     /// `catching_up` with nothing counted, like the per-fleet tail.
     #[tokio::test]
     async fn a_gap_on_one_fleet_is_catching_up_with_nothing_counted() {
-        let (hub, server) = afd_dragonfly::SubscriptionHub::detached();
-        let mut fan_in = FanIn::new(Some(hub));
+        let (bus, server) = test_util::detached().expect("fixture bus");
+        let mut fan_in = FanIn::new(Some(bus));
         assert_eq!(
-            fan_in.sync_to(&BTreeSet::from(["a".to_owned()])).attached,
+            fan_in
+                .sync_to(&BTreeSet::from([FLEET.to_owned()]))
+                .await
+                .attached,
             1
         );
-        let channel = fleet_activity_channel("a");
-        server.confirm(&channel);
-        server.confirm(&channel);
+        let channel = Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet"));
+        server.gap(&channel);
 
         let frame = fan_in.next_frame().await;
         assert_eq!(frame.kind, crate::frame::KIND_CATCHING_UP);
@@ -298,18 +306,72 @@ mod tests {
     /// ending a tab's stream or spinning on channels that will say nothing.
     #[tokio::test]
     async fn a_closed_hub_parks_the_fan_in_instead_of_ending_it() {
-        let (hub, server) = afd_dragonfly::SubscriptionHub::detached();
-        let mut fan_in = FanIn::new(Some(hub.clone()));
-        fan_in.sync_to(&BTreeSet::from(["a".to_owned()]));
-        hub.shutdown();
-        server.publish(&fleet_activity_channel("a"), r#"{"kind":"chunk"}"#);
+        let (bus, server) = test_util::detached().expect("fixture bus");
+        let mut fan_in = FanIn::new(Some(bus.clone()));
+        fan_in.sync_to(&BTreeSet::from([FLEET.to_owned()])).await;
+        bus.shutdown().await.expect("fixture shutdown");
+        server.publish(
+            &Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet")),
+            r#"{"kind":"chunk"}"#,
+        );
         tokio::time::timeout(std::time::Duration::from_millis(20), fan_in.next_frame())
             .await
             .expect_err("a closed hub leaves nothing to send and nothing to end");
         assert_eq!(
             fan_in.fleets(),
-            ["a"],
+            [FLEET],
             "the set stays what the caller attached"
+        );
+    }
+
+    /// A name that is not a fleet identifier has no channel to attach, so it
+    /// is skipped and the fleets beside it still attach.
+    #[tokio::test]
+    async fn a_name_that_is_no_fleet_identifier_is_skipped() {
+        let (bus, server) = test_util::detached().expect("fixture bus");
+        let mut fan_in = FanIn::new(Some(bus));
+
+        let delta = fan_in
+            .sync_to(&BTreeSet::from([
+                "not-a-fleet".to_owned(),
+                FLEET.to_owned(),
+            ]))
+            .await;
+
+        assert_eq!(delta.attached, 1);
+        assert_eq!(fan_in.fleets(), [FLEET]);
+        let channel = Subject::FleetTail(Uuid7::parse(FLEET).expect("canonical fleet"));
+        assert_eq!(server.readers(&channel), 1);
+    }
+
+    /// A fleet whose subscription the bus refuses is left out of this tick,
+    /// with the refusal's code in the log, and the next tick tries it again.
+    #[tokio::test]
+    async fn a_refused_subscription_is_logged_and_left_for_the_next_tick() {
+        let mut fan_in = FanIn::new(Some(test_util::unreachable()));
+        let wanted = BTreeSet::from([FLEET.to_owned()]);
+        let capture = Capture::install();
+
+        let delta = fan_in.sync_to(&wanted).await;
+
+        assert_eq!(delta, super::Delta::default(), "nothing attached");
+        assert_eq!(fan_in.fleets(), [] as [String; 0]);
+        let refused = capture.only("sse_subscription_unavailable");
+        assert_eq!(refused.level, tracing::Level::WARN);
+        assert_eq!(
+            refused.field("error_code"),
+            Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+        );
+        assert_eq!(refused.field("reason"), Some("backend"));
+        fan_in.sync_to(&wanted).await;
+        assert_eq!(
+            capture
+                .events()
+                .iter()
+                .filter(|event| event.field("event") == Some("sse_subscription_unavailable"))
+                .count(),
+            2,
+            "a fleet left unattached is tried again on the next tick"
         );
     }
 

@@ -21,7 +21,7 @@ pub(super) const CONTEXT: &str = "resolve registered owner model";
 /// and the host its saved settings dial.
 pub(super) struct Registration {
     pub(super) model: RegisteredModel,
-    pub(super) workspace_id: String,
+    pub(super) workspace_id: Uuid7,
     pub(super) key_name: String,
     pub(super) inference_host: Box<str>,
 }
@@ -61,7 +61,7 @@ struct RegisteredRow {
     input_nanos_per_million: i64,
     output_nanos_per_million: i64,
     resolution_version: String,
-    workspace_id: String,
+    workspace_id: Uuid7,
     key_name: String,
     base_url: Option<String>,
     inference: Option<Json<ModelInference>>,
@@ -109,6 +109,15 @@ pub(super) async fn read(
     owner: &Uuid7,
     reference: &str,
 ) -> Result<Option<Registration>> {
+    // An entry is named by its id, a UUIDv7: any other reference names none.
+    let entry = if reference == PLATFORM_MODEL_REF {
+        None
+    } else {
+        let Ok(entry) = Uuid7::parse(reference) else {
+            return Ok(None);
+        };
+        Some(entry)
+    };
     // A savepoint inside the caller's transaction, a transaction of its own
     // on a bare connection: either way the locks below are taken in order and
     // held together. See `sql`'s lock order.
@@ -117,24 +126,29 @@ pub(super) async fn read(
         .execute(&mut *ordered)
         .await
         .map_err(query(CONTEXT))?;
-    let (credential, statement) = if reference == PLATFORM_MODEL_REF {
+    let (credential, statement) = if entry.is_none() {
         (sqlx::query(sql::LOCK_PLATFORM_CREDENTIAL), sql::PLATFORM)
     } else {
         let credential = sqlx::query(sql::LOCK_ENTRY_CREDENTIAL)
-            .bind(owner.as_str())
-            .bind(reference);
+            .bind(owner)
+            .bind(entry.as_ref());
         (credential, sql::ENTRY)
     };
     credential
         .execute(&mut *ordered)
         .await
         .map_err(query(CONTEXT))?;
-    let row = sqlx::query_as::<_, RegisteredRow>(statement)
-        .bind(owner.as_str())
-        .bind(reference)
-        .fetch_optional(&mut *ordered)
-        .await
-        .map_err(query(CONTEXT))?;
+    let row = match &entry {
+        Some(entry) => sqlx::query_as::<_, RegisteredRow>(statement)
+            .bind(owner)
+            .bind(entry),
+        None => sqlx::query_as::<_, RegisteredRow>(statement)
+            .bind(owner)
+            .bind(reference),
+    }
+    .fetch_optional(&mut *ordered)
+    .await
+    .map_err(query(CONTEXT))?;
     ordered.commit().await.map_err(query(CONTEXT))?;
     let Some(row) = row else {
         return Ok(None);

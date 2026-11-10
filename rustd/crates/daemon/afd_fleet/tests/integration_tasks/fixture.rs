@@ -40,7 +40,7 @@ impl Case {
         let actor = afd_events::steer_actor("native_task_owner");
         let request = json!({"message": GOALS.join("; ")}).to_string();
         let held = held_admission(
-            Fixtures::create_in_with_queue(lane.shared_handle()).await,
+            Fixtures::create_in(lane.shared_handle()).await,
             &actor,
             &request,
         )
@@ -52,8 +52,8 @@ impl Case {
                 r#"{"name":"pull-request-repair","x-agentsfleet":{"tools":[],"triggers":[],"budget":{"daily_nanos":"1000000000"}}}"#,
             )
             .await;
-        let (workspace, revision, number): (String, String, i64) = sqlx::query_as(
-            "SELECT f.workspace_id::text,f.head_revision_id::text,r.revision FROM fleet.fleets f JOIN fleet.revisions r ON r.id=f.head_revision_id WHERE f.id=$1::uuid",
+        let (workspace, revision, number): (Uuid7, Uuid7, i64) = sqlx::query_as(
+            "SELECT f.workspace_id,f.head_revision_id,r.revision FROM fleet.fleets f JOIN fleet.revisions r ON r.id=f.head_revision_id WHERE f.id=$1",
         )
         .bind(&held.fleet)
         .fetch_one(
@@ -67,12 +67,12 @@ impl Case {
         .await
         .expect("saved native revision");
         let scope = TaskScope {
-            workspace_id: id(&workspace),
-            fleet_id: id(&held.fleet),
+            workspace_id: workspace,
+            fleet_id: held.fleet.clone(),
         };
         let admissions = Admissions::new(
             held.fixtures.database.clone(),
-            held.fixtures.queue().clone(),
+            held.fixtures.bus().clone(),
             Entropy::new(),
         );
         let tasks = Tasks::new(
@@ -84,7 +84,7 @@ impl Case {
             held,
             tasks,
             scope,
-            revision: id(&revision),
+            revision,
             revision_number: u64::try_from(number).expect("positive saved revision"),
             admissions,
         }
@@ -104,7 +104,7 @@ impl Case {
 
     pub(super) fn plan(&self, digest: &str, count: usize) -> PreparedPlan {
         self.source_plan(
-            id(&self.held.event_id),
+            self.held.event_id.clone(),
             digest,
             count,
             TaskLimits::default(),
@@ -152,9 +152,9 @@ impl Case {
             .admissions
             .admit(Admission {
                 producer,
-                key: Key::Repeated(&key),
-                fleet: self.scope.fleet_id.as_str(),
-                workspace: self.scope.workspace_id.as_str(),
+                key: Key::Repeated(key.as_str()),
+                fleet: &self.scope.fleet_id,
+                workspace: &self.scope.workspace_id,
                 actor,
                 event_type: EventType::Chat,
                 request_json: &request,
@@ -162,19 +162,32 @@ impl Case {
             })
             .await
             .expect("additional human source");
-        id(&admission.stored.id)
+        admission.stored.id
     }
 
     pub(super) async fn claim(&self, source: &Uuid7) {
-        sqlx::query("UPDATE fleet.admissions SET input_claim_lease_id=$2::uuid,input_claim_fence=$3 WHERE id=$1::uuid")
-            .bind(source.as_str()).bind(self.held.lease_key.as_str()).bind(self.held.fence.as_i64())
-            .execute(&mut *self.held.fixtures.database.acquire().await.expect("claim connection"))
-            .await.expect("native input claim fixture");
+        sqlx::query(
+            "UPDATE fleet.admissions SET input_claim_lease_id=$2,input_claim_fence=$3 WHERE id=$1",
+        )
+        .bind(source)
+        .bind(&self.held.lease_key)
+        .bind(self.held.fence.as_i64())
+        .execute(
+            &mut *self
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("claim connection"),
+        )
+        .await
+        .expect("native input claim fixture");
     }
 
     pub(super) async fn counts(&self) -> (i64, i64, i64) {
-        sqlx::query_as("SELECT (SELECT count(*) FROM fleet.tasks WHERE fleet_id=$1::uuid), (SELECT count(*) FROM fleet.task_items WHERE fleet_id=$1::uuid), (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid)")
-            .bind(self.scope.fleet_id.as_str())
+        sqlx::query_as("SELECT (SELECT count(*) FROM fleet.tasks WHERE fleet_id=$1), (SELECT count(*) FROM fleet.task_items WHERE fleet_id=$1), (SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1)")
+            .bind(&self.scope.fleet_id)
             .fetch_one(&mut *self.held.fixtures.database.acquire().await.expect("count connection"))
             .await.expect("all residual state is readable")
     }
@@ -257,7 +270,6 @@ pub(super) async fn task_capability(held: &Held, enabled: bool) {
             selftest: None,
             holds,
             closing: false,
-            wake: false,
         };
         let held_fleets = afd_runner::heartbeat::holds::prove(request.holds.clone());
         held.fixtures

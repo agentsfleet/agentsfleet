@@ -127,6 +127,37 @@ runner_load_context() {
       return 1
       ;;
   esac
+  runner_load_stream
+  runner_load_wireguard
+}
+
+# CI loads these two fields with load-secrets-action. Manual deployments use
+# the same references through the existing, explicitly approved vault reader.
+runner_load_stream() {
+  RUNNER_STREAM_SERVER_NAME="${RUNNER_STREAM_SERVER_NAME:-$(runner_read_required "op://$RUNNER_VAULT/agentsfleet-runner-stream/server-name")}"
+  if [ "$RUNNER_STREAM_SERVER_NAME" != "agentsfleetd-$ENV.internal" ]; then
+    echo "ERROR: runner stream server-name must match agentsfleetd-$ENV.internal" >&2
+    return 1
+  fi
+  RUNNER_STREAM_URL="https://$RUNNER_STREAM_SERVER_NAME:4443"
+  RUNNER_STREAM_CA_CERTIFICATE="${RUNNER_STREAM_CA_CERTIFICATE:-$(runner_read_required "op://$RUNNER_VAULT/agentsfleet-runner-stream/ca-certificate")}"
+  playbooks_require_tool openssl
+  if ! printf '%s\n' "$RUNNER_STREAM_CA_CERTIFICATE" | openssl x509 -noout >/dev/null 2>&1; then
+    echo 'ERROR: runner stream ca-certificate must contain a valid PEM certificate' >&2
+    return 1
+  fi
+}
+
+# Only development has an external Fly peer. An absent optional field leaves
+# an existing manually provisioned route alone; production never reads it.
+runner_load_wireguard() {
+  set +x
+  [ "$ENV" = dev ] || return 0
+  if [ "${RUNNER_STREAM_WIREGUARD_CONFIG+x}" != x ]; then
+    RUNNER_STREAM_WIREGUARD_CONFIG="$(
+      playbooks_read_ref_or_empty "op://$RUNNER_VAULT/agentsfleet-runner-stream/wireguard-config"
+    )"
+  fi
 }
 
 runner_remote() {
@@ -182,6 +213,19 @@ runner_enable_ipv4_forwarding() {
     sudo sysctl -q -p '$IPV4_FORWARD_SYSCTL_FILE'
     test \"\$(cat '$IPV4_FORWARD_PROC')\" = 1
   "
+}
+
+runner_require_native_tls() {
+  [ "$ENV" = dev ] || return 0
+  runner_remote '
+    set -e
+    if ! command -v timeout >/dev/null ||
+      ! openssl list -tls-groups 2>/dev/null | grep -w X25519MLKEM768 >/dev/null ||
+      ! openssl s_client -help 2>&1 | grep -- -quic >/dev/null; then
+      echo "ERROR: install OpenSSL 3.5 or newer with QUIC and X25519MLKEM768 support, plus coreutils timeout" >&2
+      exit 1
+    fi
+  '
 }
 
 runner_copy() {

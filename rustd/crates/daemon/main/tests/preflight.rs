@@ -1,4 +1,4 @@
-//! Dimensions 8.1 and 7.4 — boot refuses loudly, and names everything at once.
+//! Boot refuses loudly and names all unusable settings at once.
 //!
 //! Driven through [`MapEnv`] rather than the process environment, because
 //! `std::env::set_var` is `unsafe` in edition 2024 for a reason that bites
@@ -13,31 +13,28 @@
 use af_core::env::MapEnv;
 use agentsfleetd::preflight::{
     ENCRYPTION_MASTER_KEY_KNOB, Fault, SESSION_CODE_PEPPER_KNOB, preflight,
+    runner_listener::{TLS_CERT_FILE, TLS_KEY_FILE},
 };
 
 /// The API role's Postgres knob — the name an operator actually exports.
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
-/// The API role's Dragonfly knob.
-const DRAGONFLY_KNOB: &str = "DRAGONFLY_URL";
-
 /// A Postgres URL the resolver accepts.
 const GOOD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:5432/agentsfleet";
-
-/// A Dragonfly URL the resolver accepts.
-const GOOD_DRAGONFLY_URL: &str = "redis://127.0.0.1:6379";
 
 /// Sixty-four hex characters: exactly one 32-byte key.
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 /// The datastore and key knobs, plus `extra`, plus a usable identity provider.
-fn env_with(extra: [(&str, &str); 3]) -> MapEnv {
+fn env_with(extra: [(&str, &str); 2]) -> MapEnv {
     // The pepper is chained rather than passed in `extra`, because no test
     // here is ABOUT the pepper: each holds it good and varies one other knob.
     MapEnv::from_pairs(
         extra
             .into_iter()
             .chain(crate::support::SESSION_PEPPER)
+            .chain(crate::support::BUS)
+            .chain(crate::support::runner_stream::environment())
             .chain(crate::support::IDENTITY),
     )
 }
@@ -46,12 +43,11 @@ fn env_with(extra: [(&str, &str); 3]) -> MapEnv {
 fn complete() -> MapEnv {
     env_with([
         (DATABASE_KNOB, GOOD_DATABASE),
-        (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
         (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
     ])
 }
 
-/// Dimension 8.1 — every unset knob is named in ONE failure, not the first.
+/// Every unset knob is named in one failure.
 ///
 /// This is the dimension's whole point. A boot that exits at the first check
 /// makes an operator missing seven knobs restart seven times to find that out;
@@ -64,10 +60,12 @@ fn test_preflight_lists_missing() {
     knobs.sort_unstable();
     let mut expected = vec![
         DATABASE_KNOB,
-        DRAGONFLY_KNOB,
         ENCRYPTION_MASTER_KEY_KNOB,
         SESSION_CODE_PEPPER_KNOB,
+        TLS_CERT_FILE,
+        TLS_KEY_FILE,
     ];
+    expected.extend(crate::support::BUS.map(|(name, _value)| name));
     expected.extend(crate::support::IDENTITY.map(|(knob, _value)| knob));
     expected.sort_unstable();
     assert_eq!(
@@ -100,7 +98,6 @@ fn test_preflight_lists_missing() {
 fn test_preflight_treats_a_blank_value_as_unset() {
     let env = env_with([
         (DATABASE_KNOB, GOOD_DATABASE),
-        (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
         (ENCRYPTION_MASTER_KEY_KNOB, "   "),
     ]);
 
@@ -117,7 +114,7 @@ fn test_preflight_treats_a_blank_value_as_unset() {
     );
 }
 
-/// Dimension 7.4 — a malformed master key is INVALID, and says so.
+/// A malformed master key is invalid and names its setting.
 ///
 /// The distinction from "missing" is the operator's next action: supply a
 /// value, versus correct the one you wrote. A refusal that collapsed them
@@ -127,7 +124,6 @@ fn test_boot_refuses_bad_kek() {
     for bad in ["abcd", GOOD_KEK.replace('0', "zz").as_str()] {
         let env = env_with([
             (DATABASE_KNOB, GOOD_DATABASE),
-            (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
             (ENCRYPTION_MASTER_KEY_KNOB, bad),
         ]);
 
@@ -158,7 +154,6 @@ fn test_boot_refuses_bad_kek() {
 fn test_preflight_separates_unusable_from_unset() {
     let env = env_with([
         (DATABASE_KNOB, "mysql://not-postgres/afd"),
-        (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
         (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
     ]);
 
@@ -190,10 +185,11 @@ fn test_preflight_requires_the_login_pepper() {
     let env = MapEnv::from_pairs(
         [
             (DATABASE_KNOB, GOOD_DATABASE),
-            (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
             (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
         ]
         .into_iter()
+        .chain(crate::support::BUS)
+        .chain(crate::support::runner_stream::environment())
         .chain(crate::support::IDENTITY),
     );
 
@@ -221,11 +217,6 @@ fn test_preflight_resolves_a_complete_environment() {
         afd_db::config::DbRole::Api,
         "preflight resolves the API role, not the default one"
     );
-    assert_eq!(
-        config.redis().role(),
-        afd_dragonfly::config::DragonflyRole::Api,
-        "preflight resolves the API Dragonfly role"
-    );
     // The KEK is redacted by construction, so the assertion is that it EXISTS
     // and does not print itself — checking the bytes would be checking
     // af_crypto's job from the wrong crate.
@@ -249,7 +240,6 @@ fn test_a_padded_master_key_still_boots() {
     let padded = format!("  {GOOD_KEK}\n");
     let env = env_with([
         (DATABASE_KNOB, GOOD_DATABASE),
-        (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
         (ENCRYPTION_MASTER_KEY_KNOB, padded.as_str()),
     ]);
 

@@ -1,8 +1,8 @@
-SELECT id::text AS id,
-       workspace_id::text AS workspace_id,
-       tenant_id::text AS tenant_id,
-       user_id::text AS user_id,
-       draft_id::text AS draft_id,
+SELECT id,
+       workspace_id,
+       tenant_id,
+       user_id,
+       draft_id,
        message_sequence,
        fencing_token,
        model_snapshot::text AS model_snapshot,
@@ -19,4 +19,4 @@ SELECT id::text AS id,
        reported_runtime_ms,
        failure_reason
   FROM authoring.attempts
- WHERE lease_id = $1::uuid AND runner_id = $2::uuid
+ WHERE lease_id = $1 AND runner_id = $2

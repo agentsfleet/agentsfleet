@@ -8,6 +8,7 @@ use crate::{
     Result,
     task::{TaskLease, TaskRefusal},
 };
+use af_core::id::Uuid7;
 use af_wire::{
     decision::{DecisionAnswer, DecisionOutcome, DecisionThreshold},
     task::{DecisionAssessment, DecisionReceipt, TaskBindingsInput, TaskInputAction},
@@ -23,7 +24,7 @@ pub(super) struct Answered {
 pub(super) async fn load(
     connection: &mut PgConnection,
     lease: TaskLease<'_>,
-    id: &str,
+    id: &Uuid7,
 ) -> Result<Answered> {
     let call = row::read_on(connection, id)
         .await?
@@ -56,7 +57,12 @@ pub(in crate::task) async fn binding(
     lease: TaskLease<'_>,
     input: &TaskBindingsInput,
 ) -> Result<()> {
-    let whole = load(connection, lease, &input.message_decision_call_id).await?;
+    let whole = load(
+        connection,
+        lease,
+        &crate::task::guard::wire(&input.message_decision_call_id)?,
+    )
+    .await?;
     source(&whole, input)?;
     if whole.call.context_snapshot.assessment != DecisionAssessment::Message {
         return Err(TaskRefusal::ReplayConflict.into());
@@ -83,7 +89,7 @@ pub(in crate::task) async fn binding(
                 .decision_call_id
                 .as_deref()
                 .ok_or(TaskRefusal::InputAmbiguous)?;
-            let evaluated = load(connection, lease, id).await?;
+            let evaluated = load(connection, lease, &crate::task::guard::wire(id)?).await?;
             source(&evaluated, input)?;
             let expected = DecisionAssessment::Item {
                 ordinal: u8::try_from(ordinal).map_err(|_overflow| TaskRefusal::InputAmbiguous)?,
@@ -191,17 +197,19 @@ pub(in crate::task) async fn goal(
     let evaluated = load(
         connection,
         lease,
-        input
-            .decision_call_id
-            .as_deref()
-            .ok_or(TaskRefusal::DecisionUnavailable)?,
+        &crate::task::guard::wire(
+            input
+                .decision_call_id
+                .as_deref()
+                .ok_or(TaskRefusal::DecisionUnavailable)?,
+        )?,
     )
     .await?;
     if !matches!(
         evaluated.call.context_snapshot.assessment,
         DecisionAssessment::Goal { .. }
     ) || evaluated.call.context_snapshot.execution.as_ref()
-        != Some(&super::context::TaskStamp::of(task))
+        != super::context::TaskStamp::of(task).as_ref()
     {
         return Err(TaskRefusal::StaleState.into());
     }

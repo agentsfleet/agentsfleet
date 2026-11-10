@@ -10,7 +10,7 @@ mod types;
 mod workflow;
 
 use super::TaskLease;
-use crate::{Result, lease::Plane};
+use crate::{Result, lease::LeaseService};
 use af_core::clock;
 use af_wire::credentials::MintCredentialRequest;
 use std::borrow::Cow;
@@ -21,7 +21,7 @@ pub(super) use types::{BoundPr, Workflow};
 /// Trusted publisher transport; credentials never reach the coding model.
 #[derive(Debug, Clone)]
 pub struct Github {
-    plane: Plane,
+    plane: LeaseService,
     client: reqwest::Client,
     master: std::sync::Arc<af_crypto::secret::Kek>,
 }
@@ -47,7 +47,7 @@ impl Github {
     /// Reuses the daemon's guarded client and current credential plane.
     #[must_use]
     pub const fn new(
-        plane: Plane,
+        plane: LeaseService,
         client: reqwest::Client,
         master: std::sync::Arc<af_crypto::secret::Kek>,
     ) -> Self {
@@ -105,7 +105,7 @@ impl Github {
         let scope = self
             .plane
             .leases
-            .mint_scope(lease.runner_id, lease.lease_id.as_str())
+            .mint_scope(lease.runner_id, lease.lease_id)
             .await?
             .ok_or(super::TaskRefusal::StaleState)?;
         let handle = self

@@ -65,9 +65,9 @@ pub(super) async fn label_kind(fixture: &Fixture, name: &str, kind: &str) {
     let mut connection = fixture.database.acquire().await.expect("an API connection");
     sqlx::query(
         "UPDATE vault.secrets SET meta_kind = $3 \
-         WHERE workspace_id = $1::uuid AND key_name = $2",
+         WHERE workspace_id = $1 AND key_name = $2",
     )
-    .bind(fixture.workspace.as_str())
+    .bind(&fixture.workspace)
     .bind(name)
     .bind(kind)
     .execute(&mut *connection)
@@ -213,8 +213,8 @@ async fn an_entry_whose_credential_is_gone_lists_degraded_beside_an_intact_row()
 
     // Out of band: the registry keeps its row, the vault loses its own.
     let mut connection = fixture.database.acquire().await.expect("an API connection");
-    sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid AND key_name = $2")
-        .bind(fixture.workspace.as_str())
+    sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1 AND key_name = $2")
+        .bind(&fixture.workspace)
         .bind(CREDENTIAL)
         .execute(&mut *connection)
         .await

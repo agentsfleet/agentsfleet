@@ -9,7 +9,7 @@
 
 use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
-use super::{hold, id, live, slot};
+use super::{hold, live, slot};
 use crate::rows::Row;
 use crate::seed::{self, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -17,7 +17,7 @@ use crate::support::Fixtures;
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_holder_claims_its_held_fleet() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder, _other],
         fleet,
@@ -38,14 +38,14 @@ async fn test_holder_claims_its_held_fleet() {
         .await
         .expect("the holder leases its held fleet");
 
-    assert_eq!(acquired.fleet_id.as_str(), fleet);
+    assert_eq!(acquired.fleet_id, fleet);
     fixtures.cleanup().await;
 }
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_other_runner_skips_held_fleet() {
-    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let fixtures = Fixtures::create_isolated().await;
     let Seeded {
         runners: [holder, other],
         fleet,
@@ -64,7 +64,7 @@ async fn test_other_runner_skips_held_fleet() {
 
     let skipped = seed::select_fleet(&leases, &other, &fleet).await;
     let refused = leases
-        .claim(&id(&fleet), &other, LEASE_TTL)
+        .claim(&fleet, &other, LEASE_TTL)
         .await
         .expect("the claim answers");
     let held = seed::select_fleet(&leases, &holder, &fleet).await;
@@ -81,7 +81,7 @@ async fn test_other_runner_skips_held_fleet() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_lapsed_hold_is_claimable() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (expired, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let (silent, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
@@ -96,16 +96,16 @@ async fn test_lapsed_hold_is_claimable() {
         .age(Row::Slot(&expired), "hold_expires_at", lapse)
         .await;
     let past_the_hold = leases
-        .claim(&id(&expired), &other, LEASE_TTL)
+        .claim(&expired, &other, LEASE_TTL)
         .await
         .expect("answers");
     // Then the holder falls silent with the second hold still in date.
     let silence = RUNNER_OFFLINE_AFTER.saturating_mul(2);
     fixtures
-        .age(Row::Runner(holder.as_str()), "last_seen_at", silence)
+        .age(Row::Runner(&holder), "last_seen_at", silence)
         .await;
     let past_the_silence = leases
-        .claim(&id(&silent), &other, LEASE_TTL)
+        .claim(&silent, &other, LEASE_TTL)
         .await
         .expect("answers");
 
@@ -116,7 +116,7 @@ async fn test_lapsed_hold_is_claimable() {
     assert!(past_the_silence.is_some(), "nor does a silent holder's");
     assert_eq!(
         slot(&fixtures, &silent).await,
-        (None, Some(other.as_str().to_owned())),
+        (None, Some(other.clone())),
         "another runner's claim clears the hold it overrode"
     );
     fixtures.cleanup().await;
@@ -125,7 +125,7 @@ async fn test_lapsed_hold_is_claimable() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_holder_polls_its_holds_first() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder],
         fleet,
@@ -143,19 +143,19 @@ async fn test_holder_polls_its_holds_first() {
     .await;
 
     let first_poll = leases
-        .select(&holder, &[id(&fleet)])
+        .select(&holder, std::slice::from_ref(&fleet))
         .await
         .expect("a poll answers")
         .expect("one poll finds the held fleet, whichever partition it is in");
 
-    assert_eq!(first_poll.fleet_id.as_str(), fleet);
+    assert_eq!(first_poll.fleet_id, fleet);
     fixtures.cleanup().await;
 }
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_drained_claim_keeps_held_hint() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     let until = fixtures.after(SANDBOX_HOLD_IDLE);
@@ -163,18 +163,18 @@ async fn test_drained_claim_keeps_held_hint() {
     hold(&leases, &fixtures, &fleet, &holder, until).await;
 
     let claimed = leases
-        .claim(&id(&fleet), &holder, LEASE_TTL)
+        .claim(&fleet, &holder, LEASE_TTL)
         .await
         .expect("answers")
         .expect("the holder wins");
     leases
-        .release(&id(&fleet), claimed.fence)
+        .release(&fleet, claimed.fence)
         .await
         .expect("an empty claim lets go");
 
     assert_eq!(
         slot(&fixtures, &fleet).await,
-        (Some(until), Some(holder.as_str().to_owned()))
+        (Some(until), Some(holder.clone()))
     );
     fixtures.cleanup().await;
 }
@@ -182,26 +182,26 @@ async fn test_drained_claim_keeps_held_hint() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_unheld_fleet_claims_as_before() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [first, second]) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
 
     let claimed = leases
-        .claim(&id(&fleet), &first, LEASE_TTL)
+        .claim(&fleet, &first, LEASE_TTL)
         .await
         .expect("answers")
         .expect("a free slot is won");
     let contended = leases
-        .claim(&id(&fleet), &second, LEASE_TTL)
+        .claim(&fleet, &second, LEASE_TTL)
         .await
         .expect("answers");
     leases
-        .release(&id(&fleet), claimed.fence)
+        .release(&fleet, claimed.fence)
         .await
         .expect("lets go");
     let after = slot(&fixtures, &fleet).await;
     let reclaimed = leases
-        .claim(&id(&fleet), &second, LEASE_TTL)
+        .claim(&fleet, &second, LEASE_TTL)
         .await
         .expect("answers");
 

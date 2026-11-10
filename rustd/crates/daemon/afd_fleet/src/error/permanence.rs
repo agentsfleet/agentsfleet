@@ -71,7 +71,6 @@ impl Error {
             | ErrorKind::Billing { .. }
             | ErrorKind::Credential { .. }
             | ErrorKind::Gate { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::Events { .. }
@@ -82,6 +81,7 @@ impl Error {
             | ErrorKind::TaskControlConflict { .. }
             | ErrorKind::TaskPrecondition { .. }
             | ErrorKind::TaskRefused { .. }
+            | ErrorKind::UsageCount { .. }
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskTargetCounter { .. }
             | ErrorKind::TaskState { .. }
@@ -99,6 +99,7 @@ impl Error {
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
+            | ErrorKind::LeaseCancelled
             | ErrorKind::LeaseMaxRuntime
             | ErrorKind::RenewalNoCredits
             | ErrorKind::BudgetExhausted

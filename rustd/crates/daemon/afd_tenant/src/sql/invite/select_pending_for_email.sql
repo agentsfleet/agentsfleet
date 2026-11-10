@@ -1,4 +1,4 @@
-SELECT i.id::text AS id, t.id::text AS tenant_id,
+SELECT i.id AS id, t.id AS tenant_id,
        COALESCE(owner.display_name, t.name) AS owner_name,
        i.expires_at
 FROM identity.invites i

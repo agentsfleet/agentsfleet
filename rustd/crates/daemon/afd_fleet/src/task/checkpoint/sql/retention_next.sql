@@ -7,4 +7,4 @@ UPDATE fleet.tasks t SET checkpoint_cleanup_at = (
         SELECT t.terminal_at + make_interval(secs => $2) WHERE t.terminal_at > clock_timestamp() - make_interval(secs => $2)
             AND EXISTS (SELECT 1 FROM fleet.task_checkpoints c WHERE c.task_id = t.id)
     ) due
-), updated_at = now() WHERE t.id = $1::uuid
+), updated_at = now() WHERE t.id = $1

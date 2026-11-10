@@ -40,7 +40,7 @@ pub(crate) async fn lock<'a>(
         return Ok(Selection::Unassigned);
     };
     let available = sqlx::query_scalar::<_, bool>(sql::runner::SELECT_DECISION_MODEL)
-        .bind(model.as_str())
+        .bind(model)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;

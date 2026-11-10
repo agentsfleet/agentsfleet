@@ -1,8 +1,8 @@
 WITH person AS MATERIALIZED (
     SELECT u.id, u.tenant_id, w.id AS workspace_id, w.tenant_id AS owner
       FROM identity.users u
-      JOIN identity.workspaces w ON w.id = $2::uuid
-     WHERE u.id = $1::uuid
+      JOIN identity.workspaces w ON w.id = $2
+     WHERE u.id = $1
        FOR SHARE OF u
 ), membership AS MATERIALIZED (
     SELECT m.id, m.role, m.created_at

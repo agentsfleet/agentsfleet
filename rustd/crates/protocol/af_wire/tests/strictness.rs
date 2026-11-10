@@ -6,42 +6,42 @@
     reason = "test target: failing loudly on a malformed payload is the correct outcome"
 )]
 
-use af_wire::activity::{ActivityAccepted, ActivityRequest};
+use af_wire::activity::ActivityRequest;
 use af_wire::credentials::{MintCredentialRequest, MintCredentialResponse};
-use af_wire::lease::{LeaseResponse, TaggedLease};
 use af_wire::memory::{MemoryCaptureResponse, MemoryHydrateResponse, MemoryPushRequest};
 use af_wire::report::{
     RenewRequest, RenewResponse, ReportRequest, ReportResponse, ReportTelemetry,
 };
 use af_wire::runner::{AssignedPolicy, HeartbeatRequest, HeartbeatResponse, SelfResponse};
 use af_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
+use af_wire::{lease::TaggedLease, protocol::Down};
 use serde_json::Value;
 
-/// A complete, well-formed `LeaseResponse` — the truncation cases below cut it
+/// A complete, well-formed `Down` — the truncation cases below cut it
 /// at several offsets and every cut must fail as a typed error.
-const WELL_FORMED_LEASE_RESPONSE: &str = r#"{"lease":{"kind":"fleet","lease_id":"lease_id","fencing_token":504,"lease_expires_at":"1970-01-01T00:00:00.931Z","secret_delivery":"inline","event":{"event_id":"event_id","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"actor","event_type":"chat","request_json":"request_json","created_at":"1970-01-01T00:00:00.426Z"},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","limits":null,"history":[],"resume_hold":false},"retry_after_ms":34}"#;
+const WELL_FORMED_OFFER: &str = r#"{"type":"offer","lease":{"kind":"fleet","lease_id":"lease_id","fencing_token":504,"lease_expires_at":"1970-01-01T00:00:00.931Z","secret_delivery":"inline","event":{"event_id":"event_id","fleet_id":"fleet_id","workspace_id":"workspace_id","actor":"actor","event_type":"chat","request_json":"request_json","created_at":"1970-01-01T00:00:00.426Z"},"policy":{"network_policy":{"allow":["allow"],"read_only":true,"read_post_paths":["read_post_paths"]},"tools":["tools"],"secrets_map":{"secrets_map":"secrets_map"},"mintable":[{"name":"name","integration":"integration"}],"provider":"provider","api_key":"api_key","inference_host":"inference_host","base_url":"base_url","repository_binding":{"repositories":["repositories"],"access":"read","base_branch":"base_branch"},"http_origin_policies":[{"host":"host","credential_names":["credential_names"],"requests":[{"method":"get","path":"path","path_match":"exact","json_fields":[{"name":"name","string_value":"string_value","boolean_value":true}]}]}],"context":{"tool_window":141,"memory_checkpoint_every":26,"stage_chunk_threshold":0.75,"model":"model","context_cap_tokens":499}},"instructions":"instructions","limits":null,"history":[],"resume_hold":false}}"#;
 
 /// A malformed payload must produce a typed error, never a panic and never a
 /// half-built value. Truncation is the realistic shape: a connection dropped
 /// mid-body yields valid JSON right up to the cut.
 #[test]
 fn test_wire_rejects_malformed() {
-    let full = WELL_FORMED_LEASE_RESPONSE.as_bytes();
+    let full = WELL_FORMED_OFFER.as_bytes();
 
     // Parse it whole FIRST. Without this the truncation loop below asserts
     // `is_err()` on every cut and passes identically if the constant were the
     // string "garbage" — the premise it rests on ("valid JSON right up to the
     // cut") would be an unasserted claim. This line is also the only surviving
     // check that every field name and enum spelling of a full nested
-    // `LeaseResponse` still deserializes, which the deleted wire corpus used to
+    // `Down` still deserializes, which the deleted wire corpus used to
     // own.
     assert!(
-        serde_json::from_slice::<LeaseResponse<'_>>(full).is_ok(),
-        "the literal above must be a well-formed LeaseResponse"
+        serde_json::from_slice::<Down<'_>>(full).is_ok(),
+        "the literal above must be a well-formed Down"
     );
 
     for cut in [1, full.len() / 4, full.len() / 2, full.len() - 1] {
-        let err = serde_json::from_slice::<LeaseResponse<'_>>(&full[..cut]).unwrap_err();
+        let err = serde_json::from_slice::<Down<'_>>(&full[..cut]).unwrap_err();
         assert!(
             err.is_eof() || err.is_syntax() || err.is_data(),
             "truncation at {cut} produced an unexpected error class: {err}"
@@ -57,7 +57,7 @@ fn test_wire_rejects_malformed() {
         &b"\xff\xfe"[..],
     ] {
         assert!(
-            serde_json::from_slice::<LeaseResponse<'_>>(garbage).is_err(),
+            serde_json::from_slice::<Down<'_>>(garbage).is_err(),
             "accepted garbage: {:?}",
             String::from_utf8_lossy(garbage)
         );
@@ -155,13 +155,12 @@ fn grow(document: &mut Value, pointer: &str) {
     object.unwrap().insert(FUTURE.to_owned(), Value::from(1));
 }
 
-/// A lease grown at every level still decodes, so a daemon that adds a field to
-/// any part of a lease never strands a runner built before it.
+/// Additional nested lease metadata preserves the declared fields.
+/// The enclosing session message remains closed to unknown fields.
 #[test]
 fn test_daemon_payload_with_unknown_field_decodes() {
-    let mut document: Value = serde_json::from_str(WELL_FORMED_LEASE_RESPONSE).unwrap();
+    let mut document: Value = serde_json::from_str(WELL_FORMED_OFFER).unwrap();
     for pointer in [
-        "",
         "/lease",
         "/lease/event",
         "/lease/policy",
@@ -177,10 +176,13 @@ fn test_daemon_payload_with_unknown_field_decodes() {
     }
     let grown = serde_json::to_vec(&document).unwrap();
 
-    let decoded = serde_json::from_slice::<LeaseResponse<'_>>(&grown).unwrap();
+    let decoded = serde_json::from_slice::<Down<'_>>(&grown).unwrap();
 
-    let TaggedLease::Fleet(lease) = decoded.lease.unwrap() else {
-        panic!("the fixture grants fleet work");
+    let Down::Offer {
+        lease: TaggedLease::Fleet(lease),
+    } = decoded
+    else {
+        panic!("the fixture offers fleet work");
     };
     assert_eq!(lease.fencing_token, 504);
 }
@@ -242,7 +244,7 @@ fn policy_carrying_replies() -> [(&'static str, String, Decodes); 2] {
 }
 
 /// The replies to the verbs a runner makes while it holds a lease.
-fn lease_verb_replies() -> [(&'static str, String, Decodes); 7] {
+fn lease_verb_replies() -> [(&'static str, String, Decodes); 6] {
     [
         (
             "hydrate",
@@ -260,9 +262,6 @@ fn lease_verb_replies() -> [(&'static str, String, Decodes); 7] {
             r#"{"token":"t","expires_at":"1970-01-01T00:00:00.001Z","future":1}"#.to_owned(),
             |b| serde_json::from_slice::<MintCredentialResponse<'_>>(b).is_ok(),
         ),
-        ("activity", r#"{"ok":true,"future":1}"#.to_owned(), |b| {
-            serde_json::from_slice::<ActivityAccepted>(b).is_ok()
-        }),
         (
             "renew",
             r#"{"lease_expires_at":"1970-01-01T00:00:00.009Z","future":1}"#.to_owned(),

@@ -6,7 +6,7 @@ use afd_fleet::lease::Renewed;
 use sqlx::{Connection as _, Postgres, Transaction};
 use std::time::Duration;
 
-const LOCK: &str = "SELECT pg_backend_pid() FROM runner.leases WHERE id = $1::uuid FOR UPDATE";
+const LOCK: &str = "SELECT pg_backend_pid() FROM runner.leases WHERE id = $1 FOR UPDATE";
 const BLOCKED: &str =
     "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
 const WAIT_LIMIT: Duration = Duration::from_secs(5);
@@ -24,7 +24,7 @@ async fn test_renewal_rechecks_expiry_after_waiting_for_a_lease_lock() {
         .expect("hold lease row");
     let mut held = connection.begin().await.expect("open blocker");
     let blocker: i32 = sqlx::query_scalar(LOCK)
-        .bind(running.lease.as_str())
+        .bind(&running.lease)
         .fetch_one(&mut *held)
         .await
         .expect("lock the original live lease");
@@ -49,7 +49,7 @@ async fn expire_while_blocked(
     tokio::time::timeout(WAIT_LIMIT, wait_for_blocked(running, blocker))
         .await
         .expect("renewal reaches the held row");
-    let lease = Row::Lease(running.lease.as_str());
+    let lease = Row::Lease(&running.lease);
     age_on(&mut held, lease, "lease_expires_at", LAPSE).await;
     held.commit().await.expect("release the expired row");
 }

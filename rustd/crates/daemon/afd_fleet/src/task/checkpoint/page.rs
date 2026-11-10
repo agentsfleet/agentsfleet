@@ -19,7 +19,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(sqlx::FromRow)]
 pub(super) struct Page {
-    pub id: String,
+    pub id: Uuid7,
     #[sqlx(rename = "page_number")]
     pub number: i32,
     pub digest: Option<String>,
@@ -50,12 +50,12 @@ pub(in crate::task) async fn write(
     .await?;
     let position = usize::try_from(input.contents.page_number)
         .map_err(|_overflow| TaskRefusal::CheckpointIncompatible)?;
-    if plan.page_ids.get(position).map(String::as_str) != Some(page.as_str()) {
+    if plan.page_ids.get(position) != Some(page) {
         return Err(TaskRefusal::ReplayConflict.into());
     }
     let objects = validate(&mut tx, &plan, &input.contents).await?;
     super::transfer::protect(&mut tx, &objects, &pin).await?;
-    let existing = selected(&mut tx, &plan, page.as_str()).await?;
+    let existing = selected(&mut tx, &plan, page).await?;
     if let Some(saved) = &existing.body {
         if saved != &body || existing.digest.as_deref() != Some(input.digest.as_str()) {
             return Err(TaskRefusal::ReplayConflict.into());
@@ -66,7 +66,7 @@ pub(in crate::task) async fn write(
             CheckpointMode::Incremental => include_str!("sql/page_write.sql"),
         };
         sqlx::query(statement)
-            .bind(page.as_str())
+            .bind(page)
             .bind(&input.digest)
             .bind(&body)
             .execute(&mut *tx)
@@ -90,7 +90,7 @@ pub(in crate::task) async fn read(
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let (_owned, plan, _pin) = read_authority(&mut tx, lease, checkpoint, &input.pin_id).await?;
-    let page = selected(&mut tx, &plan, page.as_str()).await?;
+    let page = selected(&mut tx, &plan, page).await?;
     let body = page.body.ok_or(TaskRefusal::CheckpointIncompatible)?;
     if page.digest.as_deref() != Some(af_core::etag::sha256_hex(&body).as_str()) {
         return Err(TaskRefusal::CheckpointIncompatible.into());
@@ -125,7 +125,7 @@ pub(super) async fn read_authority(
 pub(super) async fn selected(
     connection: &mut PgConnection,
     plan: &Plan,
-    page: &str,
+    page: &Uuid7,
 ) -> Result<Page> {
     sqlx::query_as(include_str!("sql/page_read.sql"))
         .bind(page)
@@ -141,12 +141,20 @@ pub(super) async fn validate(
     connection: &mut PgConnection,
     plan: &Plan,
     page: &CheckpointPage,
-) -> Result<Vec<String>> {
+) -> Result<Vec<Uuid7>> {
     if plan.mode()? == CheckpointMode::RetainBase && !page.history_objects.is_empty() {
         return Err(TaskRefusal::CheckpointIncompatible.into());
     }
     let mut previous = None;
-    let mut ids: BTreeSet<String> = page.history_objects.iter().cloned().collect();
+    // Object ids arrive as page text; one that is not a UUIDv7 names no object.
+    let object = |text: &String| {
+        Uuid7::parse(text).map_err(|_text| crate::Error::from(TaskRefusal::CheckpointIncompatible))
+    };
+    let mut ids: BTreeSet<Uuid7> = page
+        .history_objects
+        .iter()
+        .map(object)
+        .collect::<Result<_>>()?;
     for entry in &page.entries {
         if previous.is_some_and(|previous: &str| previous >= entry.path()) {
             return Err(TaskRefusal::CheckpointIncompatible.into());
@@ -154,7 +162,9 @@ pub(super) async fn validate(
         previous = Some(entry.path());
         match entry {
             CheckpointEntry::File(file) => {
-                ids.extend(file.objects.iter().cloned());
+                for id in &file.objects {
+                    ids.insert(object(id)?);
+                }
             }
             CheckpointEntry::Symlink { path, target } => link(path, target)?,
             CheckpointEntry::Remove { .. } if plan.mode()? == CheckpointMode::RetainBase => {
@@ -169,7 +179,7 @@ pub(super) async fn validate(
     super::objects::attach(connection, plan, &ids).await?;
     let lengths: BTreeMap<_, _> = objects
         .into_iter()
-        .map(|object| (object.id, object.plaintext_size))
+        .map(|object| (String::from(object.id), object.plaintext_size))
         .collect();
     for entry in &page.entries {
         if let CheckpointEntry::File(file) = entry {

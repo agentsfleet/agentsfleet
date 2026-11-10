@@ -50,7 +50,7 @@ pub(in crate::library) async fn receipt(
     revision: &Uuid7,
 ) -> Result<crate::types::Published> {
     let slug: Option<String> = sqlx::query_scalar(sql::PLATFORM_RECEIPT)
-        .bind(revision.as_str())
+        .bind(revision)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query(CONTEXT))?;

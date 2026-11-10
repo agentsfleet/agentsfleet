@@ -5,7 +5,7 @@ use super::fixture::Case;
 use afd_authoring::types::{SaveOrigin, Start};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn save_provenance_is_recorded_once_and_bound_to_the_accepted_operation() {
     for origin in [
         None,
@@ -26,9 +26,9 @@ async fn save_provenance_is_recorded_once_and_bound_to_the_accepted_operation() 
         });
         assert_eq!(c.save(&key, request).await.id, saved.id);
         let receipts: Vec<String> = sqlx::query_scalar(
-            "SELECT request_json::text FROM fleet.events WHERE fleet_id=$1::uuid AND event_type=$2",
+            "SELECT request_json::text FROM fleet.events WHERE fleet_id=$1 AND event_type=$2",
         )
-        .bind(saved.id.as_str())
+        .bind(&saved.id)
         .bind(afd_events::activity::EVENT_TYPE_ACTIVITY)
         .fetch_all(&mut *c.base.connection().await)
         .await
@@ -52,7 +52,7 @@ async fn save_provenance_is_recorded_once_and_bound_to_the_accepted_operation() 
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn unfunded_save_replays_one_fleet_and_funding_resumes_it() {
     let c = Case::create().await;
     let (_, request) = c.request("retained-setup", Start::None).await;
@@ -77,7 +77,7 @@ async fn unfunded_save_replays_one_fleet_and_funding_resumes_it() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn stale_review_allocates_neither_fleet_nor_replay_receipt() {
     let c = Case::create().await;
     let (_, mut request) = c.request("stale-review", Start::None).await;
@@ -90,14 +90,14 @@ async fn stale_review_allocates_neither_fleet_nor_replay_receipt() {
     assert_eq!(error.code().as_str(), "UZ-AUTHOR-006");
     assert!(error.review_digest().is_some());
     assert_eq!(c.fleet_count().await, 0);
-    let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1::uuid AND scope LIKE '%:fleet:create:%'")
-        .bind(c.base.workspace.as_str()).fetch_one(&mut *c.base.connection().await).await.expect("creation receipts");
+    let receipts: i64 = sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE workspace_id=$1 AND scope LIKE '%:fleet:create:%'")
+        .bind(&c.base.workspace).fetch_one(&mut *c.base.connection().await).await.expect("creation receipts");
     assert_eq!(receipts, 0);
     c.cleanup().await;
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn accepted_key_refuses_changed_body_and_foreign_creator() {
     let c = Case::create().await;
     let (_, request) = c.request("bound-save", Start::None).await;
@@ -131,17 +131,11 @@ async fn accepted_key_refuses_changed_body_and_foreign_creator() {
     c.cleanup().await;
 }
 
-/// A queue no socket reaches: the stream stage of Save fails, nothing else.
+/// A bus no broker answers: the stream stage of Save fails, nothing else.
 fn unreachable(c: &Case) -> afd_authoring::Creations {
-    let config = afd_dragonfly::config::DragonflyConfig::from_url(
-        afd_dragonfly::config::DragonflyRole::Default,
-        "redis://127.0.0.1:1".to_owned(),
-    )
-    .with_request_timeout(std::time::Duration::from_millis(250));
-    let queue = afd_dragonfly::Dragonfly::unreachable(&config).expect("lazy manager");
     let admissions = afd_admission::Admissions::new(
         c.base.db.clone(),
-        queue,
+        afd_bus::test_util::unreachable(),
         af_crypto::entropy::Entropy::new(),
     );
     afd_authoring::Creations::new(c.setup.clone(), admissions)
@@ -158,7 +152,7 @@ fn stream_state(saved: &afd_authoring::SavedFleet) -> &str {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn save_with_unavailable_notifications_activates_and_still_binds_body_and_actor() {
     let c = Case::create().await;
     c.fund().await;

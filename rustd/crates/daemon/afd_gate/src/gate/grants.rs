@@ -29,7 +29,7 @@ impl Gates {
     ) -> Result<bool> {
         Ok(
             sqlx::query_scalar::<_, String>(include_str!("grant_sql/hold_approved_service.sql"))
-                .bind(fleet.as_str())
+                .bind(fleet)
                 .bind(integration)
                 .bind(grant_sql::STATUS_APPROVED)
                 .fetch_optional(connection)
@@ -59,7 +59,7 @@ impl Gates {
     pub async fn approved_integrations(&self, fleet_id: &Uuid7) -> Result<Grants> {
         let mut connection = self.database.acquire().await?;
         let services = sqlx::query_scalar::<_, String>(grant_sql::SELECT_APPROVED_SERVICES)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(grant_sql::STATUS_APPROVED)
             .fetch_all(&mut *connection)
             .await

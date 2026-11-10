@@ -97,19 +97,12 @@ impl Ingress {
         installation: &str,
     ) -> Result<Option<Uuid7>> {
         let mut connection = self.database.acquire().await?;
-        let workspace: Option<String> = sqlx::query_scalar(sql::SELECT_INSTALL_WORKSPACE)
+        sqlx::query_scalar(sql::SELECT_INSTALL_WORKSPACE)
             .bind(provider)
             .bind(installation)
             .fetch_optional(connection.as_mut())
             .await
-            .map_err(error::query(CONTEXT_INSTALL))?;
-
-        workspace
-            .map(|workspace| {
-                Uuid7::parse(&workspace)
-                    .map_err(|_shape| error::row_unreadable(error::COLUMN_WORKSPACE))
-            })
-            .transpose()
+            .map_err(error::query(CONTEXT_INSTALL))
     }
 
     /// The fleets in `workspace` that subscribed to this repository and event.
@@ -135,7 +128,7 @@ impl Ingress {
     ) -> Result<Fanout> {
         let mut connection = self.database.acquire().await?;
         let rows: Vec<SubscriberRow> = sqlx::query_as(sql::SELECT_APP_SUBSCRIBERS)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(FleetStatus::Active.as_str())
             .bind(provider)
             .bind(status::APPROVED)
@@ -145,10 +138,8 @@ impl Ingress {
 
         let mut matched = Vec::new();
         for row in &rows {
-            let fleet = Uuid7::parse(&row.fleet_id)
-                .map_err(|_shape| error::row_unreadable(error::COLUMN_FLEET))?;
-            let owner = Uuid7::parse(&row.workspace_id)
-                .map_err(|_shape| error::row_unreadable(error::COLUMN_WORKSPACE))?;
+            let fleet = row.fleet_id.clone();
+            let owner = row.workspace_id.clone();
 
             // `is_runnable` is deliberately not re-asked: the statement bound
             // the status to `active`, and a second check here would be a
@@ -195,9 +186,9 @@ pub fn replay_id(body: &[u8]) -> String {
 #[derive(Debug, sqlx::FromRow)]
 struct SubscriberRow {
     /// The fleet, as text.
-    fleet_id: String,
+    fleet_id: Uuid7,
     /// Its workspace, as text.
-    workspace_id: String,
+    workspace_id: Uuid7,
     /// The stored status word.
     status: String,
     /// The head revision's configuration, as JSON text.

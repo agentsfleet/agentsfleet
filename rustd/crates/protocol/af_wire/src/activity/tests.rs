@@ -5,7 +5,7 @@
 
 use std::borrow::Cow;
 
-use super::{ActivityAccepted, ActivityFrame, FleetResponseChunk, StreamTextKind};
+use super::{ActivityFrame, FleetResponseChunk, StreamTextKind};
 
 /// The wire chunk a runner sends, with only the fields a case varies named.
 fn chunk(text: &'static str, text_kind: StreamTextKind) -> ActivityFrame<'static> {
@@ -82,17 +82,6 @@ fn test_activity_frame_call_id_is_bounded() {
     assert_eq!(usable(""), [false; 3]);
     assert_eq!(usable(&"c".repeat(CALL_ID_MAX_BYTES + 1)), [false; 3]);
     assert_eq!(usable(&"c".repeat(CALL_ID_MAX_BYTES)), [true; 3]);
-}
-
-/// The acknowledgement is exactly the one field `ActivityAccepted` declares.
-#[test]
-fn test_the_acknowledgement_is_exactly_ok_true() {
-    assert_eq!(
-        serde_json::to_string(&ActivityAccepted { ok: true })
-            .ok()
-            .as_deref(),
-        Some(r#"{"ok":true}"#),
-    );
 }
 
 #[test]

@@ -29,7 +29,7 @@ async fn running_private_answer_arrives_before_durable_completion() {
     let messages = crate::harness::json_body(response).await;
     assert!(!messages.to_string().contains("incremental answer"));
     drop(body);
-    assert_eq!(live.hub.readers(&live.channel()), 0);
+    assert_eq!(live.readers(), 0);
     live.cleanup().await;
 }
 
@@ -59,8 +59,8 @@ async fn running_answer_remains_visible_behind_twenty_five_queued_messages() {
     let received = frame(&mut body).await;
     assert!(received.contains("event: message.delta\n"), "{received}");
     assert_eq!(data(&received), expected);
-    sqlx::query("DELETE FROM identity.users WHERE id=$1::uuid")
-        .bind(live.f.owner.as_str())
+    sqlx::query("DELETE FROM identity.users WHERE id=$1")
+        .bind(&live.f.owner)
         .execute(&mut *live.f.db.acquire().await.expect("revocation connection"))
         .await
         .expect("revoke the person after their deep-queue preview");
@@ -76,7 +76,7 @@ async fn malformed_unbounded_foreign_and_nonrunning_deltas_are_withheld() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
     for raw in ["not-json".to_owned(), "x".repeat(32769)] {
-        live.server.publish(&live.channel(), &raw);
+        live.server.publish(&live.subject(), &raw);
     }
     for (field, invalid) in [
         ("draft_id", json!(super::super::mint())),
@@ -105,9 +105,9 @@ async fn malformed_unbounded_foreign_and_nonrunning_deltas_are_withheld() {
 async fn stopped_message_preview_is_withheld_before_a_new_running_message() {
     let live = Live::create(1).await;
     let mut body = live.open().await;
-    live.mutate("UPDATE authoring.messages SET status='cancelled' WHERE draft_id=$1::uuid")
+    live.mutate("UPDATE authoring.messages SET status='cancelled' WHERE draft_id=$1")
         .await;
-    live.mutate("UPDATE authoring.drafts SET cancelled_through_sequence=1 WHERE id=$1::uuid")
+    live.mutate("UPDATE authoring.drafts SET cancelled_through_sequence=1 WHERE id=$1")
         .await;
     live.publish(&live.delta("stopped private text"));
     let cancelled = frame(&mut body).await;
@@ -125,10 +125,8 @@ async fn stopped_message_preview_is_withheld_before_a_new_running_message() {
     )
     .await;
     assert_eq!(response.status(), http::StatusCode::ACCEPTED);
-    live.mutate(
-        "UPDATE authoring.messages SET status='running' WHERE draft_id=$1::uuid AND sequence=2",
-    )
-    .await;
+    live.mutate("UPDATE authoring.messages SET status='running' WHERE draft_id=$1 AND sequence=2")
+        .await;
     assert!(frame(&mut body).await.contains("event: message.running\n"));
     let mut marker = live.delta("new message answer");
     marker["sequence"] = Value::String("2".into());

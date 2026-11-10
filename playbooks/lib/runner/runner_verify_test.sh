@@ -158,6 +158,20 @@ test_should_fail_and_name_the_status_when_the_control_plane_stays_down() {
     ok "$name"
   fi
 }
+test_should_fail_when_installed_stream_files_are_not_ready() {
+  local boundary output status
+  for boundary in 'stat -c %a /etc/default/agentsfleet-runner' 'test -r /etc/agentsfleet/runner-stream-trust.pem'; do
+    status=0
+    output="$(run_script ENV=dev TAILSCALE_FAIL_MATCH="$boundary" bash "$VERIFY")" || status=$?
+    if [ "$status" -eq 0 ]; then
+      bad "installed stream files" "$boundary failure passed verification: $output"
+      return
+    fi
+  done
+  ok "installed stream files and private unit env are checked"
+}
+
+test_should_fail_when_installed_stream_files_are_not_ready
 test_should_fail_when_cpu_controller_is_not_delegated
 test_should_fail_when_io_controller_is_not_delegated
 test_should_fail_when_ipv4_forwarding_is_off
@@ -167,4 +181,68 @@ test_should_fail_verification_when_runner_token_is_rejected
 test_should_verify_without_reading_runner_token
 test_should_pass_once_the_control_plane_clears_a_tunnel_reconnect
 test_should_fail_and_name_the_status_when_the_control_plane_stays_down
+
+# Synthetic configuration bytes only; no real WireGuard key enters this suite.
+test_should_replace_dev_wireguard_only_after_stopping_old_config() {
+  local output status=0 mode
+  output="$(run_script ENV=dev STUB_EXECUTE_WIREGUARD=1 RUNNER_STREAM_WIREGUARD_CONFIG=first-config bash "$DEPLOY")" || status=$?
+  output+="$(run_script ENV=dev STUB_EXECUTE_WIREGUARD=1 RUNNER_STREAM_WIREGUARD_CONFIG=first-config bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ] || [ "$(cat "$work_dir/wireguard/events")" != $'enable\nenable' ]; then
+    bad "unchanged WireGuard configuration" "$output"
+    return
+  fi
+  output="$(run_script ENV=dev STUB_EXECUTE_WIREGUARD=1 RUNNER_STREAM_WIREGUARD_CONFIG=second-config bash "$DEPLOY")" || status=$?
+  mode="$(stat -c %a "$work_dir/wireguard/fly-dev.conf" 2>/dev/null || stat -f %Lp "$work_dir/wireguard/fly-dev.conf")"
+  if [ "$status" -ne 0 ] || [ "$mode" != 600 ] ||
+    [ "$(cat "$work_dir/wireguard/fly-dev.conf")" != second-config ] ||
+    [ "$(cat "$work_dir/wireguard/stopped-config")" != first-config ] ||
+    [ "$(cat "$work_dir/wireguard/events")" != $'enable\nenable\nstop\nenable' ]; then
+    bad "changed WireGuard configuration" "$output"
+  elif grep -Fq second-config "$calls" || [[ "$output" == *second-config* ]] ||
+    find "$work_dir/wireguard" -name '.fly-dev.*' | grep . >/dev/null; then
+    bad "WireGuard stdin confidentiality" "configuration reached argv/output or a staged copy survived"
+  else
+    ok "WireGuard uses stdin, protected files, and old PreDown before replacement"
+  fi
+}
+
+test_should_skip_absent_and_production_wireguard() {
+  local output status=0
+  output="$(run_script ENV=dev STUB_MISSING_WIREGUARD=1 bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ] || grep -q '/etc/wireguard' "$calls"; then
+    bad "absent WireGuard field" "$output"
+    return
+  fi
+  output="$(run_script ENV=prod RUNNER_ITEM=prod-runner RUNNER_STREAM_WIREGUARD_CONFIG=ignored-prod-config bash "$DEPLOY")" || status=$?
+  if [ "$status" -ne 0 ] || grep -Eq '/wireguard-config|/etc/wireguard' "$calls"; then
+    bad "production WireGuard isolation" "$output"
+  else
+    ok "absent optional peer and production skip WireGuard"
+  fi
+}
+
+test_should_probe_each_private_carrier_and_refuse_failures() {
+  local output status=0 boundary
+  output="$(run_script ENV=dev bash "$VERIFY")" || status=$?
+  if [ "$status" -ne 0 ] || [[ "$output" != *'private runner h2: verified TLSv1.3'*'private runner h3: verified QUICv1'* ]] ||
+    ! grep -Fq -- '-tls1_3 -alpn h2' "$calls" || ! grep -Fq -- '-quic -alpn h3' "$calls" ||
+    ! grep -Fq -- '-groups X25519MLKEM768' "$calls" ||
+    grep -Eq -- '-quic.*-tls1_3|-tls1_3.*-quic|-sess_out|-keylogfile' "$calls"; then
+    bad "separate hybrid carrier probes" "$output"
+    return
+  fi
+  for boundary in 'getent ahosts' 'http://agentsfleetd-dev.internal:3000/readyz' '-alpn h2' '-alpn h3'; do
+    status=0
+    output="$(run_script ENV=dev TAILSCALE_FAIL_MATCH="$boundary" bash "$VERIFY")" || status=$?
+    if [ "$status" -eq 0 ]; then
+      bad "private carrier failure" "$boundary passed"
+      return
+    fi
+  done
+  ok "private DNS, readiness, and both TLS carriers fail closed"
+}
+
+test_should_replace_dev_wireguard_only_after_stopping_old_config
+test_should_skip_absent_and_production_wireguard
+test_should_probe_each_private_carrier_and_refuse_failures
 report_results

@@ -15,10 +15,11 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+afd_bus.workspace = true
 # A gate's spend is priced before it is admitted.
 afd_billing.workspace = true
 # Identifiers, the clock a gate's deadline is measured against, registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # What the policy assembly resolves a fleet's declared credentials into.
 afd_credential.workspace = true
 af_crypto.workspace = true
@@ -32,8 +33,6 @@ af_fleet_runtime.workspace = true
 # The fleet status the auto-kill writes (`paused`), spelled where the fleet's
 # lifecycle declares it rather than as a literal in the statement.
 afd_fleet_lifecycle.workspace = true
-# A parked run's continuation is a stream append.
-afd_dragonfly.workspace = true
 # The approval status vocabulary this plane shares with the operator's.
 afd_api_wire.workspace = true
 af_wire.workspace = true
@@ -56,7 +55,6 @@ test-util = [
     "afd_db/test-util",
     "afd_credential/test-util",
     "af_fleet_runtime/test-util",
-    "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]

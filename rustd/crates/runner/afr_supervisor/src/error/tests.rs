@@ -63,7 +63,7 @@ fn a_refusal_carries_the_daemons_code_and_status_through() {
 fn a_refusal_without_a_known_code_falls_back_by_status_then_verb() {
     let unknown = raise::refused_with_body(Verb::Renew, 409, br#"{"error_code":"UZ-NOPE-999"}"#);
     let unreadable = raise::refused_with_body(Verb::Report, 400, b"<html>");
-    let unauthorized = raise::refused(Verb::Lease, 401, None);
+    let unauthorized = raise::refused(Verb::Heartbeat, 401, None);
     let absent = raise::refused(Verb::Hydrate, 404, None);
 
     assert_eq!(unknown.code(), error_code::RUN_LEASE_LOST);
@@ -111,22 +111,17 @@ async fn a_transport_failure_is_retryable() {
 fn local_failures_log_as_internal() {
     let decode = serde_json::from_str::<u8>("x").unwrap_err();
     let encode = serde_json::from_str::<u8>("y").unwrap_err();
-    let persist = tempfile::NamedTempFile::new()
-        .unwrap()
-        .persist("/no/such/dir/x")
-        .unwrap_err();
     let unbuildable = reqwest::Client::builder()
         .user_agent("\n")
         .build()
         .unwrap_err();
     let failures: Vec<Error> = vec![
-        raise::malformed(Verb::Lease)(decode),
+        raise::malformed(Verb::Heartbeat)(decode),
         raise::encode(encode),
         raise::config("unset"),
         url::Url::parse("no scheme").unwrap_err().into(),
         raise::client(unbuildable),
         std::io::Error::other("disk").into(),
-        persist.into(),
         af_core::id::Uuid7::parse("nope").unwrap_err().into(),
         raise::git("acme/widget", "fetched")(Box::new(std::io::Error::other("refused"))),
     ];
@@ -154,4 +149,20 @@ fn a_git_failure_names_the_repository_and_keeps_the_librarys_reason() {
     );
     let cause = std::error::Error::source(&failure).unwrap();
     assert_eq!(cause.to_string(), "no branch");
+}
+
+#[test]
+fn transport_loss_and_protocol_breaks_log_different_codes_and_retry_differently() {
+    let lost = raise::stream_disconnected(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+    assert_eq!(lost.code(), error_code::RUN_STREAM_DISCONNECTED);
+    assert!(lost.is_retryable(), "a lost stream reconnects");
+    assert_eq!(lost.refusal_code(), None);
+    let broken = raise::stream_protocol(std::io::Error::other("fixture frame"));
+    assert_eq!(broken.code(), error_code::RUN_PROTOCOL_UNSUPPORTED);
+    assert!(!broken.is_retryable(), "a protocol break never retries");
+    let busy = raise::unavailable(Verb::Open, 503);
+    assert!(busy.is_retryable(), "an overloaded opening retries");
+    assert_eq!(busy.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert_eq!(busy.refusal_status(), None);
+    assert_eq!(Verb::Open.to_string(), "stream_open");
 }

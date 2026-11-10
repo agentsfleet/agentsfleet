@@ -3,8 +3,9 @@
 use super::row::Plan;
 use crate::{
     Result,
-    task::{TaskRefusal, guard, storage::R2CheckpointStore},
+    task::{TaskRefusal, storage::R2CheckpointStore},
 };
+use af_core::id::Uuid7;
 use af_crypto::{
     checkpoint::{CheckpointScope, WrappedCheckpointKey},
     secret::SecretBytes,
@@ -15,16 +16,16 @@ use base64::{Engine as _, prelude::BASE64_STANDARD};
 
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct Object {
-    pub id: String,
+    pub id: Uuid7,
     #[sqlx(rename = "task_identity_key_id")]
-    pub identity_key_id: String,
+    pub identity_key_id: Uuid7,
     pub content_identity: String,
     pub plaintext_digest: String,
     pub plaintext_size: i64,
     pub kind: String,
     pub format_version: i32,
-    pub owner_checkpoint_id: String,
-    pub owner_lease_id: String,
+    pub owner_checkpoint_id: Uuid7,
+    pub owner_lease_id: Uuid7,
     pub owner_fence: i64,
     pub bucket_reference: String,
     pub ciphertext_digest: Option<String>,
@@ -53,8 +54,8 @@ impl Object {
         if self.tombstoned || self.bucket_reference != storage.bucket_reference() {
             return Err(TaskRefusal::CheckpointIncompatible.into());
         }
-        let workspace = guard::id(&plan.workspace_id, "workspace_id")?;
-        let id = guard::id(&self.id, "object_id")?;
+        let workspace = plan.workspace_id.clone();
+        let id = self.id.clone();
         let nonce: [u8; af_crypto::NONCE_LEN] = self
             .nonce
             .as_slice()
@@ -73,7 +74,7 @@ impl Object {
         )?;
         Ok((
             CheckpointObject {
-                object_id: self.id,
+                object_id: self.id.into(),
                 repository: plan.repository.clone(),
                 plaintext: CheckpointPlaintext {
                     sha256: self.plaintext_digest,
@@ -103,7 +104,7 @@ impl Object {
     pub(super) fn wire(self, storage: &R2CheckpointStore, plan: &Plan) -> Result<CheckpointObject> {
         if !self.own(plan) && !self.verified {
             return Ok(CheckpointObject {
-                object_id: self.id,
+                object_id: self.id.into(),
                 repository: plan.repository.clone(),
                 plaintext: CheckpointPlaintext {
                     sha256: self.plaintext_digest,

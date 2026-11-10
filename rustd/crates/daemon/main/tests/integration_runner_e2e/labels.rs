@@ -19,7 +19,7 @@ const ENROLLED_LABEL: &str = "fixture";
 /// Pins the scenario's fleet to `tag`, the tag no runner in the lane carries.
 async fn require_tag(run: &Scenario, tag: &str) {
     let mut connection = run.booted.database.acquire().await.expect("a connection");
-    sqlx::query("UPDATE fleet.fleets SET required_tags = ARRAY[$2::text] WHERE id = $1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET required_tags = ARRAY[$2::text] WHERE id = $1")
         .bind(&run.fleet)
         .bind(tag)
         .execute(&mut *connection)
@@ -46,8 +46,8 @@ async fn edit_labels(run: &Scenario, labels: &[&str]) {
 }
 
 /// Spends the whole poll budget asserting the fleet under test is never offered.
-async fn assert_never_offered(http: &reqwest::Client, run: &Scenario, why: &str) {
-    let ended = poll_until(http, run, || async { false }).await;
+async fn assert_never_offered(run: &Scenario, why: &str) {
+    let ended = wait_without_offer(run, || async { false }).await;
     assert!(!ended, "{why}");
 }
 
@@ -56,39 +56,31 @@ async fn assert_never_offered(http: &reqwest::Client, run: &Scenario, why: &str)
 /// again once the label is edited away — with the runner never restarted or
 /// re-enrolled.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_operator_label_edit_changes_placement_on_the_next_poll() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
-    let http = reqwest::Client::new();
     // `gpu`, made unique to this fleet so another suite's runner on the shared
     // lane can never be the one that matches it.
     let tag = format!("gpu-{}", run.fleet);
     require_tag(&run, &tag).await;
 
-    let beat = post(&http, &run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(beat.status().as_u16(), 200, "the runner proves its cage");
-    assert_never_offered(
-        &http,
-        &run,
-        "a runner without the tag was offered the fleet",
-    )
-    .await;
+    let beat = crate::wire::heartbeat(&run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
+    );
+    assert_never_offered(&run, "a runner without the tag was offered the fleet").await;
 
     edit_labels(&run, &[ENROLLED_LABEL, &tag]).await;
-    let (lease_id, fence) = poll_for_seeded_lease(&http, &run).await;
+    let (lease_id, fence) = wait_for_seeded_offer(&run).await;
     let report = report_body(&lease_id, &run.event_id, fence);
-    let settled = post(&http, &run, "/v1/runners/me/reports", &report).await;
-    assert_eq!(
-        settled.status().as_u16(),
-        200,
-        "the labelled runner finishes the work"
-    );
+    let settled = crate::wire::report(&run, &report).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
 
     edit_labels(&run, &[ENROLLED_LABEL]).await;
     let _next = run.enqueue_event(EVENT_TYPE).await;
     assert_never_offered(
-        &http,
         &run,
         "a runner whose tag was edited away was offered the fleet again",
     )

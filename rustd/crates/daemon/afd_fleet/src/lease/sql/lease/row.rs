@@ -10,7 +10,7 @@ use af_wire::decision::DecisionAssignment;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
-use afd_db::statement::Bound;
+use crate::{Result, error::query};
 
 /// Open a lease, record the event that opened it and bump the runner's lifetime
 /// acquired tally, atomically.
@@ -23,7 +23,7 @@ use afd_db::statement::Bound;
 /// # Fenced on the claim that earned it
 ///
 /// The `held` arm writes nothing unless the slot still carries this claim's
-/// token (`$11`) and has not lapsed (`$12`), and every other arm reads from it.
+/// token (`$10`) and has not lapsed (`$11`), and every other arm reads from it.
 /// A pass that outlived its claim lost the slot to a runner that took the same
 /// entry over, and an unfenced insert would have two runners executing one
 /// event. A lost fence writes no row at all, which the caller reads as no-work.
@@ -39,13 +39,13 @@ use afd_db::statement::Bound;
 /// was billed to the dead lease when it expired.
 ///
 /// The lease stores no copy of the event body: the reclaim path reads it by
-/// joining `fleet.events` on the `(fleet_id, event_id)` unique key, so the
+/// joining `fleet.events` on its `event_id` key, so the
 /// hottest write in the system stops duplicating the largest value in it.
 pub const INSERT_LEASE_WITH_EVENT: &str = include_str!("insert_lease_with_event.sql");
 
 /// Everything [`INSERT_LEASE_WITH_EVENT`] needs, by name.
 ///
-/// Twenty-one positional parameters, several of them same-typed text that a
+/// Seventeen positional parameters, several of them same-typed text that a
 /// transposition would compile straight through, and this workspace disables
 /// sqlx's `macros` feature deliberately, so there is no compile-time query
 /// checking to catch it. Naming the fields is what replaces
@@ -64,7 +64,7 @@ pub struct LeaseRow<'a> {
     pub tenant_id: &'a Uuid7,
     /// The event being leased, as the admission ledger names it. The statement
     /// resolves it to the `fleet.events` row the lease references.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// When the event was raised, by the producer's clock; what the lease bills
     /// against.
     pub event_created_at: Timestamp,
@@ -90,15 +90,27 @@ pub struct LeaseRow<'a> {
     pub decision_snapshot: Option<&'a DecisionAssignment>,
 }
 
-impl<'a> LeaseRow<'a> {
-    /// The statement with every parameter bound, in `$n` order.
-    pub fn bind(&'a self) -> Bound<'a> {
-        sqlx::query(INSERT_LEASE_WITH_EVENT)
-            .bind(self.lease_id.as_str())
-            .bind(self.runner_id.as_str())
-            .bind(self.fleet_id.as_str())
-            .bind(self.workspace_id.as_str())
-            .bind(self.tenant_id.as_str())
+impl LeaseRow<'_> {
+    /// Return the actual stored creation time, or None when the guarded insert lost its claim.
+    ///
+    /// # Errors
+    /// Preserves the statement's failure; no additional timestamp read is issued.
+    pub async fn insert(&self, connection: &mut sqlx::PgConnection) -> Result<Option<Timestamp>> {
+        let metadata = std::collections::BTreeMap::from([
+            (afd_runner::sql::meta::LEASE_ID, self.lease_id.as_str()),
+            (afd_runner::sql::meta::FLEET_ID, self.fleet_id.as_str()),
+            (
+                afd_runner::sql::meta::AGENTSFLEET_EVENT_ID,
+                self.event_id.as_str(),
+            ),
+            (afd_runner::sql::meta::KIND, self.kind),
+        ]);
+        let created_at = sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(INSERT_LEASE_WITH_EVENT)
+            .bind(self.lease_id)
+            .bind(self.runner_id)
+            .bind(self.fleet_id)
+            .bind(self.workspace_id)
+            .bind(self.tenant_id)
             .bind(self.event_id)
             .bind(self.posture)
             .bind(self.provider)
@@ -106,14 +118,16 @@ impl<'a> LeaseRow<'a> {
             .bind(self.fencing_token)
             .bind(self.checked_at.to_sqlx())
             .bind(self.status)
-            .bind(self.event_row_id.as_str())
+            .bind(self.event_row_id)
             .bind(afd_runner::sql::event_type::LEASE_ACQUIRED)
-            .bind(afd_runner::sql::meta::LEASE_ID)
-            .bind(afd_runner::sql::meta::FLEET_ID)
-            .bind(afd_runner::sql::meta::AGENTSFLEET_EVENT_ID)
-            .bind(afd_runner::sql::meta::KIND)
-            .bind(self.kind)
+            .bind(sqlx::types::Json(metadata))
             .bind(self.event_created_at.to_sqlx())
             .bind(self.decision_snapshot.map(sqlx::types::Json))
+            .fetch_optional(connection)
+            .await
+            .map_err(query(
+                "write the fenced lease and return its saved creation time",
+            ))?;
+        Ok(created_at.map(jiff_sqlx::Timestamp::to_jiff))
     }
 }

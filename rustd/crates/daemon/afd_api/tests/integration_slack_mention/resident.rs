@@ -4,12 +4,11 @@
 use super::notice::owed;
 use super::resident_bound::{bind, bound};
 use super::*;
-use afd_ingress::slack::notice_key;
 
 async fn stored(fixture: &Fixture) -> Value {
     let mut connection = fixture.database().acquire().await.expect("observer");
-    sqlx::query_scalar("SELECT jsonb_build_object('fleets', COALESCE((SELECT jsonb_agg(to_jsonb(f) ORDER BY f.id) FROM fleet.fleets f WHERE workspace_id=$1::uuid),'[]'::jsonb), 'revisions', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM fleet.revisions r JOIN fleet.fleets f ON f.id=r.fleet_id WHERE f.workspace_id=$1::uuid),'[]'::jsonb))")
-        .bind(fixture.workspace().as_str()).fetch_one(&mut *connection).await.expect("fleet snapshot")
+    sqlx::query_scalar("SELECT jsonb_build_object('fleets', COALESCE((SELECT jsonb_agg(to_jsonb(f) ORDER BY f.id) FROM fleet.fleets f WHERE workspace_id=$1),'[]'::jsonb), 'revisions', COALESCE((SELECT jsonb_agg(to_jsonb(r) ORDER BY r.id) FROM fleet.revisions r JOIN fleet.fleets f ON f.id=r.fleet_id WHERE f.workspace_id=$1),'[]'::jsonb))")
+        .bind(fixture.workspace()).fetch_one(&mut *connection).await.expect("fleet snapshot")
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -38,11 +37,7 @@ async fn unconfigured_mentions_do_not_create_fleets_or_admissions_or_notices() {
         );
     }
     assert_eq!(fixture.admissions().await, 0);
-    assert!(
-        owed(&fixture, &notice_key(&fixture.team, "EvUnconfigured"))
-            .await
-            .is_empty()
-    );
+    assert!(owed(&fixture).await.is_empty());
     assert_eq!(stored(&fixture).await, before);
     let channel = CHANNEL.parse().expect("channel");
     assert!(
@@ -102,11 +97,9 @@ async fn concurrent_notices_choose_one_existing_owner_without_changing_fleets() 
 }
 
 async fn concurrent_outcome(fixture: &Fixture, first: &str, before: Value) {
-    for event in ["EvConcurrent01", "EvConcurrent02"] {
-        let notices = owed(fixture, &notice_key(&fixture.team, event)).await;
-        assert_eq!(notices.len(), 1);
-        assert_eq!(notices[0].owner, "responder");
-    }
+    let notices = owed(fixture).await;
+    assert_eq!(notices.len(), 2, "one notice per mention: {notices:?}");
+    assert!(notices.iter().all(|notice| notice.owner == "responder"));
     assert_eq!(bound(fixture).await.0, first);
     assert_eq!(fixture.admissions().await, 0);
     assert_eq!(stored(fixture).await, before);
@@ -135,9 +128,9 @@ async fn prior_kind_binding_remains_owner_when_subscribers_change() {
         .acquire()
         .await
         .expect("legacy binding fixture");
-    sqlx::query("UPDATE connector.channels SET binding_type=$1 WHERE fleet_id=$2::uuid")
+    sqlx::query("UPDATE connector.channels SET binding_type=$1 WHERE fleet_id=$2")
         .bind("resident")
-        .bind(carrier.as_str())
+        .bind(&carrier)
         .execute(&mut *connection)
         .await
         .expect("historical kind");
@@ -159,7 +152,7 @@ async fn prior_kind_binding_remains_owner_when_subscribers_change() {
         deliver(&fixture.router(), &body).await.status(),
         StatusCode::OK
     );
-    let notices = owed(&fixture, &notice_key(&fixture.team, "EvStable01")).await;
+    let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "notice-carrier");
     assert_eq!(bound(&fixture).await.0, carrier.as_str());
@@ -185,8 +178,8 @@ async fn deleting_a_carrier_allows_the_next_notice_to_bind_a_current_subscriber(
         .acquire()
         .await
         .expect("deletion fixture");
-    sqlx::query("DELETE FROM fleet.fleets WHERE id=$1::uuid")
-        .bind(carrier.as_str())
+    sqlx::query("DELETE FROM fleet.fleets WHERE id=$1")
+        .bind(carrier)
         .execute(&mut *connection)
         .await
         .expect("carrier deleted");
@@ -214,7 +207,7 @@ async fn deleting_a_carrier_allows_the_next_notice_to_bind_a_current_subscriber(
         StatusCode::OK
     );
     assert_eq!(bound(&fixture).await.0, first.as_str());
-    let notices = owed(&fixture, &notice_key(&fixture.team, "EvRebind01")).await;
+    let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "responder");
     assert_eq!(fixture.admissions().await, 0);

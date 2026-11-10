@@ -37,8 +37,7 @@ const QUEUED_WITHIN: Duration = Duration::from_secs(10);
 const POLL: Duration = Duration::from_millis(20);
 
 /// Locks the lease row the pass is about to bill, answering the holder's pid.
-const HOLD_LEASE: &str =
-    "SELECT pg_backend_pid() FROM runner.leases WHERE id = $1::uuid FOR UPDATE";
+const HOLD_LEASE: &str = "SELECT pg_backend_pid() FROM runner.leases WHERE id = $1 FOR UPDATE";
 
 /// Sessions queued behind `$1`.
 const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
@@ -46,10 +45,10 @@ const WAITERS: &str = "SELECT count(*) FROM pg_stat_activity \
 
 /// What a late report does to the cursor: carries it to the deadline.
 const BILL_TO_DEADLINE: &str =
-    "UPDATE runner.leases SET last_metered_at = lease_expires_at WHERE id = $1::uuid";
+    "UPDATE runner.leases SET last_metered_at = lease_expires_at WHERE id = $1";
 
 async fn isolated() -> Held {
-    held_in(Fixtures::create_isolated_with_queue().await).await
+    held_in(Fixtures::create_isolated().await).await
 }
 
 async fn close(held: Held) {
@@ -65,8 +64,8 @@ async fn a_line_the_biller_cannot_settle_waits_for_the_next_pass() {
     let database = &held.fixtures.database;
     let ledger = LedgerBiller::on_system_clock(database.clone());
     orphan(&held).await;
-    sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1::uuid")
-        .bind(held.lease_key.as_str())
+    sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1")
+        .bind(&held.lease_key)
         .bind(LEASE_STATUS_REPORTED)
         .execute(&mut *database.acquire().await.expect("a connection"))
         .await
@@ -123,8 +122,8 @@ async fn an_expired_slice_the_biller_cannot_settle_is_logged_and_counted() {
         }
     );
     let logged: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE work_id = $1::uuid")
-            .bind(held.lease_key.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM billing.usage_lines WHERE work_id = $1")
+            .bind(&held.lease_key)
             .fetch_one(&mut *database.acquire().await.expect("a connection"))
             .await
             .expect("the lines count");
@@ -141,7 +140,7 @@ async fn a_lease_billed_while_the_pass_waited_is_skipped() {
     let held = isolated().await;
     let database = held.fixtures.database.clone();
     abandon(&held).await;
-    let lease = held.lease_key.as_str().to_owned();
+    let lease = held.lease_key.clone();
     let mut reporter = database.acquire().await.expect("a connection");
     let mut report = reporter.begin().await.expect("a transaction");
     let pid: i32 = sqlx::query_scalar(HOLD_LEASE)

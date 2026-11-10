@@ -124,16 +124,13 @@ async fn source(
     let current = guard::lease(&mut tx, lease).await?;
     let source = admit::source::lock(&mut tx, lease, &current, plan).await?;
     admit::source::check_human(&source)?;
-    if current.revision_id.as_deref() != Some(plan.accepted_revision_id.as_str()) {
+    if current.revision_id.as_ref() != Some(&plan.accepted_revision_id) {
         return Err(TaskRefusal::StaleState.into());
     }
-    let config = Leases::stored_config_on(
-        &mut tx,
-        &current.fleet_id,
-        Some(plan.accepted_revision_id.as_str()),
-    )
-    .await?
-    .ok_or(TaskRefusal::InvalidTarget)?;
+    let config =
+        Leases::stored_config_on(&mut tx, &current.fleet_id, Some(&plan.accepted_revision_id))
+            .await?
+            .ok_or(TaskRefusal::InvalidTarget)?;
     let message = source.message()?.into_owned();
     tx.commit().await.map_err(crate::error::query(
         "finish native interpretation preflight",

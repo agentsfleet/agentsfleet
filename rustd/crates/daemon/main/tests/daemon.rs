@@ -10,7 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use agentsfleetd::daemon::{Daemon, StopCause};
 use agentsfleetd::inventory::{
-    ANALYTICS_FLUSH, BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT, OUTBOUND_WORKER,
+    ANALYTICS_FLUSH, BACKGROUND_TASKS, BUS_SHUTDOWN, OTLP_EXPORT, OUTBOUND_WORKER,
 };
 use agentsfleetd::supervisor::Supervisor;
 
@@ -154,7 +154,7 @@ async fn test_an_unclean_teardown_is_reported_not_swallowed() {
 fn test_the_daemon_supervises_what_it_claims() {
     assert_eq!(
         BACKGROUND_TASKS,
-        &[HUB_PUMP, OUTBOUND_WORKER, OTLP_EXPORT, ANALYTICS_FLUSH],
+        &[BUS_SHUTDOWN, OUTBOUND_WORKER, OTLP_EXPORT, ANALYTICS_FLUSH],
         "this build supervises the pub/sub pump, the connector answer-delivery \
          worker, the span exporter and the analytics flush, and nothing else"
     );

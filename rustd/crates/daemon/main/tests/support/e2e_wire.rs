@@ -14,11 +14,12 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use serde_json::{Value, json};
 
 use crate::e2e::Scenario;
 
-const POLL_LIMIT: usize = 8;
+const OFFER_LIMIT: usize = 8;
 
 /// A runner credential belonging to no row: well-formed, sixty-four hex
 /// characters after the marker, so the refusal comes from the DIRECTORY rather
@@ -82,60 +83,66 @@ pub(crate) fn claim(lease: &Value) -> (String, u64) {
     )
 }
 
-/// Poll until the daemon offers this scenario's event, checking its identity.
-pub(crate) async fn poll_for_seeded_lease(http: &reqwest::Client, run: &Scenario) -> (String, u64) {
-    poll_for_lease(http, run, &run.event_id).await
+/// Read the pushed offer for this scenario's event through the production runner downlink.
+pub(crate) async fn wait_for_seeded_offer(run: &Scenario) -> (String, u64) {
+    wait_for_offer(run, &run.event_id).await
 }
 
-/// [`poll_for_seeded_lease`], for any event the scenario has put on its fleet.
-///
-/// A lease for another event is not this call's to settle, so the loop moves
-/// past it — but it keeps count, because a budget spent on leftovers and a
-/// budget spent on `lease: null` are different failures with different fixes.
-pub(crate) async fn poll_for_lease(
-    http: &reqwest::Client,
-    run: &Scenario,
-    event_id: &str,
-) -> (String, u64) {
-    let mut elsewhere = Vec::new();
-    for _poll in 0..POLL_LIMIT {
-        let response = post(http, run, "/v1/runners/me/leases", &fleet_poll()).await;
-        // Asserted on EVERY turn, not once before the loop: a caller that
-        // polled separately to check the status would consume the lease this
-        // loop is looking for, and then never find it.
-        let status = response.status().as_u16();
-        let body = json(response).await;
-        assert_eq!(
-            status, 200,
-            "work and no-work share a status on this verb: {body}"
-        );
-        let Some(lease) = body.get("lease").filter(|value| !value.is_null()) else {
-            continue;
-        };
-        let event = field(lease, "event");
-        if field(event, "event_id") == &json!(event_id) {
-            return claim(lease);
+/// Wait for the requested event without issuing another lease request.
+pub(crate) async fn wait_for_offer(run: &Scenario, event_id: &Uuid7) -> (String, u64) {
+    let client = run.native_session().await;
+    let reading = async {
+        let mut elsewhere = Vec::new();
+        loop {
+            let frame = client.offer().await.expect("the native owner remains live");
+            let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
+            let af_wire::protocol::Down::Offer {
+                lease: af_wire::lease::TaggedLease::Fleet(lease),
+            } = message
+            else {
+                panic!("this fleet fixture received an authoring offer")
+            };
+            if lease.event.event_id == event_id.as_str() {
+                return (lease.lease_id.to_string(), lease.fencing_token);
+            }
+            elsewhere.push(lease.event.fleet_id.to_string());
+            assert!(
+                elsewhere.len() <= OFFER_LIMIT,
+                "{}",
+                never_offered(&elsewhere)
+            );
         }
-        elsewhere.push(
-            field(event, "fleet_id")
-                .as_str()
-                .expect("a lease's event names its fleet")
-                .to_owned(),
-        );
-    }
-    panic!(
-        "the event {event_id} was never offered in {POLL_LIMIT} polls.\n\n{}",
-        never_offered(&elsewhere)
-    )
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(10), reading)
+        .await
+        .expect("the seeded event is pushed")
 }
 
-/// How many fleet ids a failed poll names before it stops listing them.
+/// Record capability and policy through the native heartbeat command.
+pub(crate) async fn heartbeat(run: &Scenario, body: &Value) -> Value {
+    let bytes = serde_json::to_vec(body).expect("the heartbeat fixture encodes");
+    let request = serde_json::from_slice(&bytes).expect("the heartbeat fixture is current");
+    run.native_session()
+        .await
+        .heartbeat(&request)
+        .await
+        .expect("the native heartbeat is acknowledged")
+}
+
+/// Preserve the native report response or the daemon's coded refusal.
+pub(crate) async fn report(run: &Scenario, body: &Value) -> afr_supervisor::Result<Value> {
+    let bytes = serde_json::to_vec(body).expect("the report fixture encodes");
+    let response = run.native_session().await.report(&bytes).await?;
+    Ok(serde_json::to_value(response).expect("the report response encodes"))
+}
+
+/// How many unrelated fleet identifiers a missing-offer diagnostic names.
 const NAMED_ELSEWHERE: usize = 8;
 
-/// Why [`poll_for_lease`] came back empty-handed, from what it was handed.
+/// Why [`wait_for_offer`] came back empty-handed, from what it was handed.
 fn never_offered(elsewhere: &[String]) -> String {
     if elsewhere.is_empty() {
-        return "Every poll returned no work. Enable AFD_TEST_LOG=1 to inspect the fleet's gate and placement decisions.".to_owned();
+        return "No offer arrived. Enable AFD_TEST_LOG=1 to inspect the fleet's gate and placement decisions.".to_owned();
     }
     let named = elsewhere
         .iter()
@@ -144,51 +151,38 @@ fn never_offered(elsewhere: &[String]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     format!(
-        "{} polls offered other events on fleets [{named}]; check scenario isolation and retirement",
+        "{} offers named other events on fleets [{named}]; check scenario isolation and retirement",
         elsewhere.len()
     )
 }
 
-/// For a refusal, wait for the caller's durable condition and check every response.
-pub(crate) async fn poll_until<F, Fut>(http: &reqwest::Client, run: &Scenario, mut ended: F) -> bool
+/// Observe a durable refusal while asserting the runner receives no offer for this fleet.
+pub(crate) async fn wait_without_offer<F, Fut>(run: &Scenario, mut ended: F) -> bool
 where
     F: FnMut() -> Fut,
     Fut: Future<Output = bool>,
 {
-    for _poll in 0..POLL_LIMIT {
-        let response = post(http, run, "/v1/runners/me/leases", &fleet_poll()).await;
-        assert_eq!(
-            response.status().as_u16(),
-            200,
-            "no-work is a 200 on this verb"
-        );
-        assert_no_lease_for_fleet_under_test(run, &json(response).await);
-        if ended().await {
-            return true;
+    let client = run.native_session().await;
+    let waiting = async {
+        loop {
+            if ended().await {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
-    }
-    false
-}
-
-/// Asserts the answer carries no lease for the fleet under test.
-///
-/// Scoped to that fleet rather than asserting `lease: null`, because a lease
-/// for ANOTHER fleet is the shared lane rather than a defect: this database
-/// carries every earlier suite's fleets, and the reclaim sweeper re-marks any
-/// whose stream still holds work. A scenario's runner is placed only on its own
-/// tagged fleet and on fleets that require no tag, so such a lease is an
-/// untagged leftover. It takes one of the runner's worker slots and is left
-/// alone: handing it back would mean reporting an event this suite does not
-/// own, to a fleet another crate's suite may be waiting on.
-pub(crate) fn assert_no_lease_for_fleet_under_test(run: &Scenario, body: &Value) {
-    let Some(lease) = body.get("lease").filter(|value| !value.is_null()) else {
-        return;
     };
-    assert_ne!(
-        field(field(lease, "event"), "fleet_id"),
-        &json!(run.fleet),
-        "the daemon must not hand out the work under test"
-    );
+    tokio::select! {
+        biased;
+        frame = client.offer() => {
+            let frame = frame.expect("the native owner remains live");
+            let message: af_wire::protocol::Down<'_> = frame.decode().expect("the offer decodes");
+            if let af_wire::protocol::Down::Offer { lease: af_wire::lease::TaggedLease::Fleet(lease) } = message {
+                assert_ne!(lease.event.fleet_id, run.fleet.as_str(), "a refused fleet must not be issued");
+            }
+            false
+        },
+        result = tokio::time::timeout(std::time::Duration::from_secs(2), waiting) => result.unwrap_or(false),
+    }
 }
 
 /// The report one completed run sends.
@@ -197,7 +191,7 @@ pub(crate) fn assert_no_lease_for_fleet_under_test(run: &Scenario, body: &Value)
 /// sends it TWICE — three literals of eleven fields is three chances for the
 /// cumulative counts to disagree and for the dedup assertion to be measuring a
 /// different report rather than the same one.
-pub(crate) fn report_body(lease_id: &str, event_id: &str, fence: u64) -> Value {
+pub(crate) fn report_body(lease_id: &str, event_id: &Uuid7, fence: u64) -> Value {
     json!({
         "lease_id": lease_id,
         "event_id": event_id,
@@ -225,12 +219,6 @@ pub(crate) async fn get(http: &reqwest::Client, run: &Scenario, path: &str) -> r
         .send()
         .await
         .expect("the booted daemon answers")
-}
-
-/// The claim body a fleet worker sends: it implements the fleet protocol only,
-/// and `accepted_kinds` is required on the claim.
-pub(crate) fn fleet_poll() -> Value {
-    json!({"accepted_kinds": af_wire::lease::AcceptedKinds::FLEET})
 }
 
 /// A `POST` carrying the scenario's runner credential and a JSON body.
@@ -277,4 +265,11 @@ pub(crate) async fn json(response: reqwest::Response) -> Value {
             String::from_utf8_lossy(&bytes)
         )
     })
+}
+
+/// Read an expected native response path; missing fields must fail the fixture.
+pub(crate) fn pointer<'a>(value: &'a Value, path: &str) -> &'a Value {
+    value
+        .pointer(path)
+        .unwrap_or_else(|| panic!("native response lacks {path}"))
 }

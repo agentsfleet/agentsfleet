@@ -98,12 +98,15 @@ fn key_names_match(
             && (column.ends_with(&format!("{}_id", singular(target)))
                 || ROLE_NAMED.contains(&(column, target)))
     } else {
-        arity > 1
-            && (column == target_column
-                || (table == "tasks"
-                    && column == "id"
-                    && target == "task_checkpoints"
-                    && target_column == "task_id"))
+        // `fleet.events` is keyed by `event_id`, and a row that points at one
+        // carries that same name.
+        (arity == 1 && target_column == "event_id" && column == target_column)
+            || (arity > 1
+                && (column == target_column
+                    || (table == "tasks"
+                        && column == "id"
+                        && target == "task_checkpoints"
+                        && target_column == "task_id")))
     }
 }
 

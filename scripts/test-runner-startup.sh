@@ -127,6 +127,7 @@ ExecStart=
 ExecStart=/usr/bin/bash $WORK/startup.sh --enter $WORK $ROOT $mode $choice
 EnvironmentFile=
 Environment=AGENTSFLEET_API_URL=http://127.0.0.1:9
+Environment=AGENTSFLEET_RUNNER_STREAM_URL=https://localhost:9
 Environment=AGENTSFLEET_RUNNER_TOKEN=agt_r_startup_suite
 Environment=RUNNER_STORAGE_HOME=$STORAGE
 Environment=HOME=/run/$NAME

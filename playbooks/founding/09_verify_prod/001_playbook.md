@@ -1,59 +1,60 @@
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
+
 # Verify the Production Installation
 
-**Owner:** Human
-**Executors:** Agent starts and monitors the run; Pipeline deploys and verifies
-**Prerequisites:** steps 07 and 08 completed; `PROD_RUNNER_READY=true`
+## What this does
 
-Rerun the original tag workflow. Publishing and release creation are
-idempotent; the rerun now executes the canary and approved fleet rollout.
+The Agent reruns the original release, which now deploys the canary and the approved fleet.
+Publishing and release creation are idempotent on a rerun.
 
-```bash
-gh run rerun "$PROD_RELEASE_RUN_ID" \
-  --repo agentsfleet/agentsfleet
-gh run watch "$PROD_RELEASE_RUN_ID" \
-  --repo agentsfleet/agentsfleet \
-  --exit-status
-```
+## Before you begin
 
-The Human approves the `production-fleet` GitHub environment only after the canary
-runner is green.
+Steps [07](../07_deploy_prod/001_playbook.md) and [08](../08_runner_bootstrap_prod/001_playbook.md) are done, and `PROD_RUNNER_READY` is `true`.
 
-## Required result
+## Steps
 
-- Production API and tunnel readiness pass.
-- Canary deployment passes before the remaining runner fleet starts.
-- Every configured runner is active after rollout.
-- Post-release command-line interface (CLI) acceptance runs against
-  `https://api.agentsfleet.net` using the exact package version in `VERSION`.
-- The accepted package version is promoted to npm `latest`.
-- The production dashboard is reachable at `https://app.agentsfleet.net`.
+1. Rerun and watch the release:
 
-Complete the production operational gates:
+   ```bash
+   gh run rerun "$PROD_RELEASE_RUN_ID" --repo agentsfleet/agentsfleet
+   gh run watch "$PROD_RELEASE_RUN_ID" --repo agentsfleet/agentsfleet --exit-status
+   ```
 
-```bash
-ENV=prod ACTION=apply \
-  ALLOW_VAULT_READS=1 \
-  ALLOW_PROVIDER_WRITES=1 \
-  ./playbooks/operations/ip_allowlisting/00_gate.sh
+2. After `deploy-metal-canary-prod` is green, the Human approves the `production-fleet` environment.
+3. After Human approval, apply the production operational gates:
 
-ALLOW_VAULT_READS=1 \
-  ALLOW_OBSERVABILITY_WRITES=1 \
-  ACTION=apply ENV=prod ./playbooks/operations/observability/00_gate.sh
+   ```bash
+   ENV=prod ACTION=apply ALLOW_VAULT_READS=1 ALLOW_PROVIDER_WRITES=1 \
+     ./playbooks/operations/ip_allowlisting/00_gate.sh
+   ENV=prod ACTION=apply ALLOW_VAULT_READS=1 ALLOW_OBSERVABILITY_WRITES=1 \
+     ./playbooks/operations/observability/00_gate.sh
+   ENV=prod ACTION=verify ALLOW_VAULT_READS=1 \
+     ./playbooks/operations/observability/00_gate.sh
+   ```
 
-ALLOW_VAULT_READS=1 \
-  ACTION=verify ENV=prod ./playbooks/operations/observability/00_gate.sh
-```
+   They end with `PASS: IP allowlisting apply completed for prod`, `PASS: observability apply completed for prod` and `PASS: observability verify completed for prod`.
+4. Complete every live-acceptance section the production provider registration playbooks left open.
+   Record provider-side identifiers, tenant and fleet identifiers and timestamps, never credentials.
 
-Confirm package promotion:
+## Verify it works
 
-```bash
-version="$(cat VERSION)"
-test "$(npm view @agentsfleet/cli@latest version)" = "$version"
-```
+- Every job in the [production job table](../../deploy/prod/001_playbook.md#verify-it-works) passes; the canary passes before the fleet starts.
+- Every runner in `PROD_RUNNER_HOSTS` is active.
+- `acceptance-cli-prod` passes against `https://api.agentsfleet.net` with the exact version in `VERSION`.
+- npm `latest` is that version:
 
-Complete every live-acceptance section left open by the six production provider
-registration playbooks. Record provider-side identifiers, tenant/fleet
-identifiers, and timestamps, but no credential values.
+  ```bash
+  test "$(npm view @agentsfleet/cli@latest version)" = "$(cat VERSION)"
+  ```
 
-Production is ready to move only when this step, the provider gates, and both
-public domains are green. A skipped job is not evidence.
+  The command prints nothing and exits 0.
+- `https://app.agentsfleet.net` is reachable.
+
+Production is ready only when this step, the provider gates and both public domains are green.
+A skipped job is not evidence.

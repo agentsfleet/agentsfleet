@@ -50,7 +50,6 @@ async fn test_a_beat_whose_writes_are_refused_still_answers_and_logs_each() {
         selftest: None,
         holds: HeldFleets(Vec::new()),
         closing: false,
-        wake: false,
     };
     let capture = Capture::install();
 
@@ -60,6 +59,20 @@ async fn test_a_beat_whose_writes_are_refused_still_answers_and_logs_each() {
         .await
         .expect("a refused best-effort write does not fail the beat");
 
+    assert_refused_writes(&capture, &runner);
+    drop(capture);
+    drop(refusal);
+
+    let stored = fixture
+        .runners
+        .self_record(&runner)
+        .await
+        .expect("the runner reads");
+    assert_eq!(stored.last_seen_at, NEVER_SEEN, "no liveness write landed");
+    fixture.cleanup().await;
+}
+
+fn assert_refused_writes(capture: &Capture, runner: &af_core::id::Uuid7) {
     let events = capture.events();
     let failed: Vec<_> = events
         .iter()
@@ -86,14 +99,4 @@ async fn test_a_beat_whose_writes_are_refused_still_answers_and_logs_each() {
             "the line carries Postgres's own reason: {event:?}"
         );
     }
-    drop(capture);
-    drop(refusal);
-
-    let stored = fixture
-        .runners
-        .self_record(&runner)
-        .await
-        .expect("the runner reads");
-    assert_eq!(stored.last_seen_at, NEVER_SEEN, "no liveness write landed");
-    fixture.cleanup().await;
 }

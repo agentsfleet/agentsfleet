@@ -19,7 +19,7 @@ workspace = true
 afd_admission.workspace = true
 af_observability.workspace = true
 # Identifiers, the clock a liveness instant is stamped with, the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 garde.workspace = true
 # The sentence each enrolment bound earns, keyed by the path garde reports.
 af_validate.workspace = true
@@ -39,8 +39,6 @@ jiff-sqlx.workspace = true
 # The stored vocabulary two planes share — admin states, lease statuses, the
 # never-seen sentinel — lives below both, where `ADMIN_STATE_*` always has.
 afd_state.workspace = true
-# The outbound rebuild sweeper restores its transport group.
-afd_dragonfly.workspace = true
 # The enrolment and heartbeat request shapes, as the frozen wire spells them.
 afd_api_wire.workspace = true
 af_wire.workspace = true
@@ -60,7 +58,6 @@ test-util = [
     "afd_admission/test-util",
     "af_core/test-util",
     "afd_db/test-util",
-    "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]
@@ -69,7 +66,6 @@ tokio-util = { workspace = true, features = ["rt"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync", "test-util"] }
 afd_admission = { workspace = true, features = ["test-util"] }
 afd_db = { workspace = true, features = ["test-util"] }
-afd_dragonfly.workspace = true
 af_observability = { workspace = true, features = ["test-util"] }
 
 [[test]]

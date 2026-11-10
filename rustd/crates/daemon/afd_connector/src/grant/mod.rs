@@ -302,7 +302,7 @@ impl Grants {
         // Same transaction, so a claim that fails takes the release with it.
         sqlx::query(sql::RELEASE_OTHER_INSTALLS)
             .bind(provider.id())
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(&install.external_account_id)
             .execute(&mut **transaction)
             .await
@@ -313,10 +313,10 @@ impl Grants {
             InstallClaim::Exclusive => sql::CLAIM_INSTALL,
         };
         let claimed = sqlx::query(statement)
-            .bind(id.as_str())
+            .bind(id)
             .bind(provider.id())
             .bind(&install.external_account_id)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(&install.scopes)
             .execute(&mut **transaction)
             .await
@@ -347,7 +347,7 @@ pub async fn link_person(
     subject: &str,
 ) -> Result<u64> {
     sqlx::query(include_str!("sql/link_person.sql"))
-        .bind(workspace.as_str())
+        .bind(workspace)
         .bind(team)
         .bind(person)
         .bind(subject)

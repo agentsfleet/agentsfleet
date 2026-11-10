@@ -44,10 +44,7 @@ async fn deadline(case: &Case) {
         .execute(&mut *blocker)
         .await
         .expect("hold read lock");
-    sqlx::raw_sql(include_str!("fixtures/stall_read.sql"))
-        .execute(&mut *admin.acquire().await.expect("isolated policy connection"))
-        .await
-        .expect("query remains blocked after server cancellation");
+    stall_read(&admin).await;
 
     missing_result(&tasks, scope, task).await;
     available_connection(&database).await;
@@ -99,12 +96,12 @@ async fn single_pool(case: &Case) -> (Db, Tasks) {
     let tasks = Tasks::new(
         Leases::new(
             database.clone(),
-            case.held.fixtures.queue().clone(),
+            case.held.fixtures.bus().clone(),
             Entropy::new(),
         ),
         Admissions::new(
             database.clone(),
-            case.held.fixtures.queue().clone(),
+            case.held.fixtures.bus().clone(),
             Entropy::new(),
         ),
         afd_fleet::task::TaskDependencies::from(&case.held.fixtures.plane()),
@@ -130,4 +127,11 @@ async fn missing_result(tasks: &Tasks, scope: &TaskScope, task: &Uuid7) {
         started.elapsed() >= Duration::from_secs(5),
         "the server's three-second cancellation is not this boundary"
     );
+}
+
+async fn stall_read(admin: &Db) {
+    sqlx::raw_sql(include_str!("fixtures/stall_read.sql"))
+        .execute(&mut *admin.acquire().await.expect("isolated policy connection"))
+        .await
+        .expect("query remains blocked after server cancellation");
 }

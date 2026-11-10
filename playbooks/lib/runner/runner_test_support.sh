@@ -21,6 +21,9 @@ readonly VERIFY="$RUNNER_TEST_DIR/verify.sh"
 # shellcheck source=./common.sh
 required_controllers="$(source "$RUNNER_TEST_DIR/common.sh" && printf '%s' "$REQUIRED_CGROUP_CONTROLLERS")"
 readonly required_controllers
+# Public certificate only, copied from boring 5.4.0 test/root-ca.pem (Apache-2.0).
+# Source and license: https://github.com/cloudflare/boring/tree/309bf35b9eb97fc21040915a5f4a886941965c47/boring
+readonly stream_ca_fixture="$RUNNER_TEST_DIR/fixtures/stream-ca.pem"
 if [ -z "$required_controllers" ]; then
   printf 'FATAL: REQUIRED_CGROUP_CONTROLLERS read empty from %s\n' "$RUNNER_TEST_DIR/common.sh" >&2
   exit 2
@@ -51,6 +54,19 @@ case "${1:-}" in
     case "${2:-}" in
       */tailscale-hostname) printf 'runner-host\n' ;;
       */deploy-user) printf 'runner-user\n' ;;
+      */ca-certificate)
+        [ "${STUB_MISSING_CA:-0}" != 1 ] || exit 1
+        if [ "${STUB_CORRUPT_CA:-0}" = 1 ]; then
+          printf '%s\n' '-----BEGIN CERTIFICATE-----' 'not a certificate' '-----END CERTIFICATE-----'
+        else
+          cat "$STUB_STREAM_CA"
+        fi
+        ;;
+      */wireguard-config)
+        [ "${STUB_MISSING_WIREGUARD:-0}" != 1 ] || exit 1
+        printf '%s\n' 'fixture-wireguard-config'
+        ;;
+      */server-name) printf '%s\n' "${STUB_STREAM_SERVER_NAME:-agentsfleetd-$ENV.internal}" ;;
       */runner-token) printf '%s\n' "${STUB_TOKEN:-agt_rREAL_TOKEN}" ;;
       *) exit 1 ;;
     esac
@@ -77,7 +93,21 @@ then
   bash -c "$command"
   exit $?
 fi
+if [ "${STUB_EXECUTE_WIREGUARD:-0}" = 1 ] && [[ "$command" == *"/etc/wireguard/.fly-dev."* ]]; then
+  command="${command//\/etc\/wireguard/$STUB_WIREGUARD_DIR}"
+  bash -c "$command"
+  exit $?
+fi
 case "$command" in
+  *"http://agentsfleetd-dev.internal:3000/readyz"*) exit 0 ;;
+  # What OpenSSL prints for each carrier: over QUIC the version reads QUICv1
+  # and no group line appears, which a TLS-shaped fake once hid from the tests.
+  *"openssl s_client -brief"*"-quic"*)
+    printf '%s\n' 'CONNECTION ESTABLISHED' 'Protocol version: QUICv1' 'Verification: OK'
+    ;;
+  *"openssl s_client -brief"*)
+    printf '%s\n' 'CONNECTION ESTABLISHED' 'Protocol version: TLSv1.3' 'Verification: OK' 'Negotiated TLS1.3 group: X25519MLKEM768'
+    ;;
   *"BWRAP_VERSION="*)
     printf '%s\n' \
       'BWRAP_VERSION=bwrap 0.11.0' \
@@ -114,9 +144,42 @@ case "$command" in
     printf '%s\n' "${statuses[index]}"
     ;;
 esac
-cat >/dev/null || true
+if [[ "$command" == *"/opt/agentsfleet/.env.new"* ]]; then
+  cat >"$TRANSFER_ENV"
+elif [[ "$command" == *"/opt/agentsfleet/runner-stream-trust.pem.new"* ]]; then
+  cat >"$TRANSFER_CA"
+else
+  cat >/dev/null || true
+fi
 STUB
-chmod +x "$stub_dir/op" "$stub_dir/tailscale"
+# Execute the real remote file-update logic in a fixture directory. Only host
+# identity and systemd calls are stubbed; the pipe, compare, file modes and
+# replacement order stay real.
+cat >"$stub_dir/sudo" <<'STUB'
+#!/usr/bin/env bash
+exec "$@"
+STUB
+cat >"$stub_dir/chown" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+cat >"$stub_dir/systemctl" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  is-active) test -f "$STUB_WIREGUARD_DIR/active" ;;
+  stop)
+    cp "$STUB_WIREGUARD_DIR/fly-dev.conf" "$STUB_WIREGUARD_DIR/stopped-config"
+    rm -f "$STUB_WIREGUARD_DIR/active"
+    printf 'stop\n' >>"$STUB_WIREGUARD_DIR/events"
+    ;;
+  enable)
+    touch "$STUB_WIREGUARD_DIR/active"
+    printf 'enable\n' >>"$STUB_WIREGUARD_DIR/events"
+    ;;
+  *) exit 1 ;;
+esac
+STUB
+chmod +x "$stub_dir/op" "$stub_dir/tailscale" "$stub_dir/sudo" "$stub_dir/chown" "$stub_dir/systemctl"
 runner_binary="$work_dir/agentsfleet-runner"
 printf 'runner\n' >"$runner_binary"
 # The toolbox a deploy ships beside the binary, as every workflow lays it out:
@@ -132,7 +195,7 @@ mkdir -p "$cgroup_fixture"
 
 run_script() {
   : >"$calls"
-  rm -f "$readyz_counter"
+  rm -f "$readyz_counter" "$work_dir/transferred.env" "$work_dir/transferred-ca.pem"
   # The test must supply its whole world, so the child sees ONLY what this
   # harness assigns plus the VAR=val pairs each case passes. Cases that mean to
   # exercise a variable pass it as an argument below, which still wins.
@@ -154,6 +217,10 @@ run_script() {
     PATH="$stub_dir:$PATH" \
     CALLS="$calls" \
     READYZ_COUNTER="$readyz_counter" \
+    TRANSFER_ENV="$work_dir/transferred.env" \
+    TRANSFER_CA="$work_dir/transferred-ca.pem" \
+    STUB_STREAM_CA="$stream_ca_fixture" \
+    STUB_WIREGUARD_DIR="$work_dir/wireguard" \
     STUB_REQUIRED_CONTROLLERS="$required_controllers" \
     RUNNER_BINARY="$runner_binary" \
     RUNNER_VERSION=test-build \

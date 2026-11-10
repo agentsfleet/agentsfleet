@@ -25,7 +25,6 @@
 //! as `abandoned` when it is dropped, so the frames a slow daemon cost are
 //! counted on every path that loses them.
 
-use std::io;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
@@ -106,10 +105,25 @@ impl Early {
     }
 }
 
+/// The batcher's write boundary; native transport owns queue admission and delivery policy.
+pub(crate) trait ActivityWriter: Send + Sync {
+    fn activity(
+        &self,
+        lease: &Uuid7,
+        request: &ActivityRequest<'_>,
+    ) -> impl Future<Output = crate::Result<()>> + Send;
+}
+
+impl ActivityWriter for ControlPlane {
+    async fn activity(&self, lease: &Uuid7, request: &ActivityRequest<'_>) -> crate::Result<()> {
+        self.activity(lease, request).await
+    }
+}
+
 /// The posting side: batches frames and posts them, for one lease.
 #[derive(Debug)]
-pub(crate) struct ActivityPump<'a> {
-    plane: &'a ControlPlane,
+pub(crate) struct ActivityPump<'a, W: ActivityWriter + ?Sized = ControlPlane> {
+    plane: &'a W,
     lease_id: &'a Uuid7,
     frames: mpsc::UnboundedReceiver<ActivityFrame<'static>>,
     /// Batches dropped because [`MAX_BATCHES_HELD`] were already held.
@@ -121,7 +135,7 @@ pub(crate) struct ActivityPump<'a> {
     early: Early,
 }
 
-impl Drop for ActivityPump<'_> {
+impl<W: ActivityWriter + ?Sized> Drop for ActivityPump<'_, W> {
     /// Records the frames a pump still holds as abandoned: zero for a pump
     /// that drained, everything left for one the lease stopped waiting for.
     fn drop(&mut self) {
@@ -134,10 +148,10 @@ impl Drop for ActivityPump<'_> {
 }
 
 /// A sink for the run and the pump that posts what it emits.
-pub(crate) fn channel<'a>(
-    plane: &'a ControlPlane,
+pub(crate) fn channel<'a, W: ActivityWriter + ?Sized>(
+    plane: &'a W,
     lease_id: &'a Uuid7,
-) -> (ActivitySink, ActivityPump<'a>) {
+) -> (ActivitySink, ActivityPump<'a, W>) {
     let (sender, receiver) = mpsc::unbounded_channel();
     let pump = ActivityPump {
         plane,
@@ -157,7 +171,7 @@ pub(crate) fn channel<'a>(
 /// The frames posted together in one request.
 type Batch = Vec<ActivityFrame<'static>>;
 
-impl ActivityPump<'_> {
+impl<W: ActivityWriter + ?Sized> ActivityPump<'_, W> {
     /// Batches and posts until the sink is dropped and every held batch is
     /// sent.
     pub(crate) async fn run(&mut self) {
@@ -251,7 +265,7 @@ fn offer(posts: &mpsc::Sender<Batch>, batch: &mut Batch, bytes: &mut usize) {
 }
 
 /// Posts one batch. Activity is best-effort: a failure is logged, not retried.
-async fn post(plane: &ControlPlane, lease_id: &Uuid7, frames: Batch) {
+async fn post(plane: &(impl ActivityWriter + ?Sized), lease_id: &Uuid7, frames: Batch) {
     let lost = frame_count(frames.len());
     if let Err(failure) = plane.activity(lease_id, &ActivityRequest { frames }).await {
         record::frames_dropped(FrameDrop::PostFailed, lost);
@@ -274,23 +288,8 @@ fn frame_count(frames: usize) -> u64 {
 
 /// A frame's encoded size, measured without allocating its encoding.
 fn encoded_len(frame: &ActivityFrame<'_>) -> usize {
-    let mut counter = Counter(0);
     // Encoding a wire frame cannot fail; were it to, the frame rides alone.
-    serde_json::to_writer(&mut counter, frame).map_or(MAX_BATCH_BYTES, |()| counter.0)
-}
-
-/// An `io::Write` that keeps only the count of what was written to it.
-struct Counter(usize);
-
-impl io::Write for Counter {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0 += buf.len();
-        Ok(buf.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
+    af_validate::serialized_len(frame).unwrap_or(MAX_BATCH_BYTES)
 }
 
 #[cfg(test)]

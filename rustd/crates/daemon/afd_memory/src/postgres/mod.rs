@@ -103,7 +103,7 @@ impl PgStore {
 /// The seven columns every read returns, by name.
 #[derive(Debug, sqlx::FromRow)]
 struct EntryRow {
-    fleet_id: String,
+    fleet_id: Uuid7,
     key: String,
     content: String,
     category: String,
@@ -118,7 +118,7 @@ struct EntryRow {
 fn record(row: &PgRow, failure: Failure) -> Result<Record> {
     let row = EntryRow::from_row(row).map_err(|source| failure.raise(source))?;
     Ok(Record {
-        fleet: Uuid7::parse(&row.fleet_id)?,
+        fleet: row.fleet_id.clone(),
         key: row.key,
         content: row.content,
         category: row.category,

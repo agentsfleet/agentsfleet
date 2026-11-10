@@ -144,8 +144,8 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         now: Timestamp,
     ) -> impl Future<Output = IngressResult<Uuid7>> + Send;
 
-    /// Owes deterministic routing text through the ordinary outbound ledger.
-    /// Returns false for an already owed notice.
+    /// Owes deterministic routing text through the ordinary outbound ledger,
+    /// and answers the id it is owed under.
     ///
     /// # Errors
     /// Reports identifier generation or ledger persistence failure.
@@ -153,7 +153,7 @@ pub trait WebhookIngress: Send + Sync + std::fmt::Debug + 'static {
         &self,
         owed: NoticeOwed<'_>,
         now: Timestamp,
-    ) -> impl Future<Output = IngressResult<bool>> + Send;
+    ) -> impl Future<Output = IngressResult<Uuid7>> + Send;
 }
 
 /// The production ingress answers every one directly.
@@ -250,7 +250,7 @@ impl WebhookIngress for Ingress {
         &self,
         owed: NoticeOwed<'_>,
         now: Timestamp,
-    ) -> impl Future<Output = IngressResult<bool>> + Send {
+    ) -> impl Future<Output = IngressResult<Uuid7>> + Send {
         Self::owe_notice(self, owed, now)
     }
 }

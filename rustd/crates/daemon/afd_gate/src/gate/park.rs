@@ -1,6 +1,7 @@
-//! Raising the question: the durable gate row, and the reference that finds it.
+//! Raising the question: the durable gate row, which is also the reference
+//! every later poll finds it by.
 //!
-//! # Two writes, in an order that is a safety property
+//! # One write, then the announce, in an order that is a safety property
 //!
 //! The durable row goes down BEFORE anything points a human at it. That row is
 //! what a resolve updates and what the write-scoped mint spends against, so a
@@ -13,23 +14,11 @@
 //! Fail closed, default-deny. Never a silently released run, and never a
 //! question whose answer has nowhere to land. The caller answers no-work and
 //! the next poll tries again.
-//!
-//! # No pending summary, no staged notification
-//!
-//! A park writes no `fleet:gate:pending:{fleet}:{action}` summary and no
-//! `fleet:gate:notify:{fleet}:{action}` Slack message for a provider to pick
-//! up, because **nothing would read either one** — not the daemon, not the
-//! sweeper, not the resolver, not the tenant plane, not the web application.
-//! A write with no reader would add two round trips to every park, two key
-//! shapes for the sweeper and the resolver to agree on, and a `DEL` on the
-//! refusal path. Whether notification should be staged in Dragonfly at all is
-//! a separate question this module does not answer.
 
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
-use afd_dragonfly::streams::FleetStreams;
 use jiff::Timestamp;
 
 use super::sql;
@@ -50,12 +39,9 @@ const EVENT_PARK_PENDING: &str = "gate_pending";
 
 /// Which write could not be made, for the line an operator reads.
 ///
-/// Named rather than inlined at the two call sites: an operator responds to
-/// both the same way, but knowing WHICH store dropped is the difference between
-/// suspecting Postgres and suspecting Dragonfly.
+/// Named rather than inlined at the two call sites, which share it: the
+/// durable row is the only write a park makes.
 const WRITE_ROW: &str = "durable_row";
-/// See [`WRITE_ROW`].
-const WRITE_REFERENCE: &str = "event_reference";
 
 /// The spend count a bounded approval opens at.
 ///
@@ -80,7 +66,7 @@ pub struct Park<'a> {
     /// The workspace it belongs to.
     pub workspace_id: &'a Uuid7,
     /// The event being parked.
-    pub event_id: &'a str,
+    pub event_id: &'a Uuid7,
     /// What the daemon and the workspace assert.
     pub stated: Stated<'a>,
     /// What the fleet's model claims.
@@ -119,31 +105,17 @@ impl Gates {
             Ok(recorded) => recorded,
             Err(fault) => return Self::unavailable(&request, WRITE_ROW, Some(&fault)),
         };
-        // Last, and the ordering the module note argues for. A reference that
-        // fails to land leaves a `pending` row nothing points at: the event
-        // re-polls, finds no reference, and parks again — which is why
-        // `SELECT_GATE_STATUS` reads the NEWEST row for an action rather than
-        // assuming one. A second card is the cost; a released run is not.
-        if let Err(fault) = self
-            .record(
-                request.fleet_id,
-                request.event_id,
-                &reference,
-                request.stated.timeout,
-            )
-            .await
-        {
-            return Self::unavailable(&request, WRITE_REFERENCE, Some(&fault));
-        }
+        // The row is the reference: `recorded` finds this event's gate in
+        // `approval_gates`, so nothing else has to land before the announce.
         self.announce(&request, &recorded).await;
 
         let fleet = request.fleet_id.as_str();
         let action = reference.action_id().as_str();
         tracing::debug!(
-            event = EVENT_PARK_PENDING,
-            fleet_id = fleet,
-            agentsfleet_event_id = request.event_id,
-            action_id = action,
+            event = %EVENT_PARK_PENDING,
+            fleet_id = %fleet,
+            agentsfleet_event_id = %request.event_id,
+            action_id = %action,
             "a human has been asked, and this event waits for the answer"
         );
         Parked::Awaiting(reference)
@@ -151,22 +123,22 @@ impl Gates {
 
     /// Tell the fleet's live tail a human has been asked, best-effort.
     ///
-    /// After both writes, so a watcher reacting to the frame finds the row it
-    /// names. The count rode the insert and the fleet's counters rode the
+    /// After the row insert, so a watcher reacting to the frame finds the row
+    /// it names. The count rode the insert and the fleet's counters rode the
     /// same connection, so the frame costs the park one publish; a read that
     /// did not answer sends the frame without its figures. A publish that
     /// fails costs the tail one frame and the park nothing — the row is down,
-    /// the reference is down, and the card is what the answer lands on.
+    /// and the card is what the answer lands on.
     async fn announce(&self, request: &Park<'_>, recorded: &Recorded) {
         let frame = TailFrame::GateOpened {
             gate_id: Cow::Borrowed(recorded.gate_id.as_str()),
-            event_id: Cow::Borrowed(request.event_id),
+            event_id: Cow::Borrowed(request.event_id.as_str()),
             pending_approvals: recorded.pending_approvals,
             counters: recorded.counters,
         };
-        FleetStreams::new(self.queue().clone())
-            .publish_frame(request.fleet_id.as_str(), &frame)
-            .await;
+        let subject = afd_bus::Subject::FleetTail(request.fleet_id.clone());
+        let publication = self.bus().publish_frame(&subject, &frame).await;
+        afd_bus::observe_notification(&subject, publication);
     }
 
     /// Insert the row a resolve updates and the mint spends against, and
@@ -204,8 +176,7 @@ impl Gates {
         .await
         .map_err(query(CONTEXT_PARK))?;
         let counters =
-            afd_events::fleet_counters_best_effort_on(&mut connection, request.fleet_id.as_str())
-                .await;
+            afd_events::fleet_counters_best_effort_on(&mut connection, request.fleet_id).await;
         Ok(Recorded {
             gate_id,
             pending_approvals,
@@ -238,9 +209,9 @@ impl Gates {
             Error::to_string,
         );
         tracing::warn!(
-            event = EVENT_PARK_UNAVAILABLE,
-            fleet_id = fleet,
-            agentsfleet_event_id = request.event_id,
+            event = %EVENT_PARK_UNAVAILABLE,
+            fleet_id = %fleet,
+            agentsfleet_event_id = %request.event_id,
             write,
             reason,
             "the gate could not be raised; the event waits rather than running ungated"

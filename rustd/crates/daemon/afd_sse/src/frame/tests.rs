@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use afd_api_wire::tail::FleetCounters;
-use afd_dragonfly::Message;
+use afd_bus::{Message, Subject};
 
 use super::{
     DEFAULT_KIND, Frame, KIND_ACCESS_REVOKED, KIND_ANCHOR, KIND_CATCHING_UP, KIND_HELLO, KIND_KEY,
@@ -27,8 +27,8 @@ const CHUNK: &str = r#"{"kind":"chunk","text":"hi"}"#;
 /// `payload` as the hub hands it to every reader of its channel.
 fn published(payload: &str) -> Arc<Message> {
     Arc::new(Message {
-        channel: format!("fleet:{FLEET}:activity"),
-        payload: payload.to_owned(),
+        subject: Subject::FleetTail(af_core::id::Uuid7::parse(FLEET).expect("canonical fleet")),
+        payload: Arc::new(payload.to_owned()),
     })
 }
 

@@ -1,33 +1,33 @@
-//! Dimension 6.1 — the golden paths, and what they answer on a sharded store.
+//! The golden paths, and what they answer across Postgres and the NATS
+//! cluster.
 //!
 //! # What this asserts that the sibling e2e suite does not
 //!
 //! `test_runner_suite_vs_rust_daemon` proves WIRING: that the verb is served
 //! on the path a runner sends to, that the guard and the store scope by one
-//! identity, that a payload round-trips. None of that changes when the
-//! datastore shards.
+//! identity, that a payload round-trips.
 //!
 //! This asserts the OUTCOME — the status and the body a client is documented
-//! to receive — for the four golden-path steps whose keys stopped living on
-//! one server. Each arm names the hazard it closes, and every one of them is a
-//! failure that appears only on a cluster and only at run time:
+//! to receive — for the golden-path steps that cross a process boundary. Each
+//! arm names the hazard it closes, and each is a failure that shows up only at
+//! run time and looks like nothing in a log:
 //!
-//! - an append whose at-most-once marker hashes away from its stream is
-//!   `CROSSSLOT`, and the documented 200 becomes a 500;
-//! - a poll reads a readiness partition on one node and the fleet's stream on
-//!   another, so a driver that could not follow the second returns no work
-//!   from a fleet that has some;
-//! - a live frame is `SPUBLISH`ed, which is SHARD-scoped, so a subscriber
-//!   attached to the wrong node hears silence and the dashboard goes quiet
-//!   with nothing in any log;
-//! - a settlement commits in PostgreSQL and acknowledges in the queue, and
-//!   those are now two different machines.
+//! - a second admission must be a second event in the `fleet.admissions`
+//!   ledger, not a replay of the first;
+//! - an admission rings the wake ring (`af.wake.<shard>`) and the scheduler
+//!   reads the ledger's candidates, so an offer that never arrives is a runner
+//!   idling beside work;
+//! - a live frame is published on whichever NATS node the daemon holds, so a
+//!   subscriber attached to another node that missed it hears silence and the
+//!   dashboard goes quiet;
+//! - a report commits its result, its charge and the terminal lease state in
+//!   one Postgres transaction, and a repeat of it must cost nothing.
 //!
 //! # Why the outcomes are spelled out rather than compared to a fixture
 //!
 //! These are the answers the published API documents. A test that asserted
 //! "the same thing it did last time" would ratify a regression the moment one
-//! landed, and the point of a cutover gate is the opposite of that.
+//! landed.
 //!
 //! Marked `#[ignore]` like the rest of the live-service suite; run by
 //! `make test-integration-rustd`.
@@ -37,19 +37,17 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
-use afd_dragonfly::SubscriptionHub;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
-use crate::e2e::{Scenario, dragonfly_config, scenario};
+use crate::e2e::{Scenario, scenario};
 use crate::reads::{
     balance, counter_column, lease_column, ledger_rows, relay_settled, unsettled_lines,
 };
 use crate::tail::{next_frame, settle};
-use crate::wire::{
-    capable_beat, field, json, poll_for_lease, poll_for_seeded_lease, post, report_body,
-};
+use crate::wire::{capable_beat, field, report_body, wait_for_offer, wait_for_seeded_offer};
 
 /// The event type the daemon has an execution path for, so an extra append is
 /// leasable rather than ended as unsupported. `EventType` is a closed set and
@@ -58,43 +56,34 @@ use crate::wire::{
 const SUPPORTED_EVENT: EventType = EventType::Chat;
 
 /// The text a forwarded chunk carries.
-const CHUNK_TEXT: &str = "the cluster carried this across a shard";
-
-/// The activity channel a fleet's live tail is published on, either side of
-/// the fleet id. Spelled here because the hub takes the whole channel name and
-/// a test that guessed it would agree with nothing.
-const CHANNEL_PREFIX: &str = "fleet:";
-const CHANNEL_SUFFIX: &str = ":activity";
+const CHUNK_TEXT: &str = "the cluster carried this across its nodes";
 
 /// A runner that has proven its capabilities is leasable; one that has not
 /// reads degraded and is correctly answered no-work, which would make every
 /// arm below pass for the wrong reason.
-async fn prove_capabilities(http: &reqwest::Client, run: &Scenario) {
-    let beat = post(http, run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(
-        beat.status().as_u16(),
-        200,
-        "a heartbeat is accepted on the documented path"
+async fn prove_capabilities(run: &Scenario) {
+    let beat = crate::wire::heartbeat(run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
     );
     assert_eq!(
-        field(&json(beat).await, "degraded"),
+        field(&beat, "degraded"),
         &json!(false),
         "and the proven capabilities clear the degraded verdict"
     );
 }
 
-/// A second append onto a stream that already holds one.
+/// A second admission onto a fleet whose ledger already holds one.
 ///
 /// # The hazard
 ///
-/// The append is a script over TWO keys: the fleet's stream and the
-/// at-most-once marker that stops one logical event becoming two entries. A
-/// cluster refuses a multi-key script whose keys hash to different slots, with
-/// `CROSSSLOT`, and no amount of retrying fixes it. The marker therefore
-/// carries the stream key as its hash tag. If that ever comes apart, the
-/// documented outcome of accepting work becomes a 500 — and it does so on the
-/// SECOND event, not the first, because the first is what creates the stream.
-async fn a_second_admission_lands_on_the_same_slot(run: &Scenario) -> String {
+/// Admission is at most once per key: a repeat of one operation returns the
+/// event it already admitted. A key that collided across two distinct
+/// operations would answer the second with the first's event, and the work
+/// would silently never run. The seed's key is minted per call, so the second
+/// admission must be a new event.
+async fn a_second_admission_is_a_second_event(run: &Scenario) -> Uuid7 {
     let second = run.enqueue_event(SUPPORTED_EVENT).await;
     assert_ne!(
         second, run.event_id,
@@ -103,73 +92,58 @@ async fn a_second_admission_lands_on_the_same_slot(run: &Scenario) -> String {
     second
 }
 
-/// The poll returns the fleet's oldest event, reading two nodes to do it.
+/// The runner is offered the fleet's oldest event.
 ///
 /// # The hazard
 ///
-/// Readiness is `fleet:ready:{p}` and the work is `fleet:{id}:events`. Those
-/// are different keys, chosen to hash to different slots on purpose, so the
-/// partition a poll samples is spread across the cluster. A poll that could
-/// not follow the second read would answer `lease: null` — a documented,
-/// perfectly valid response — from a fleet that is holding work. That is the
-/// failure this arm exists for: it does not look like an error anywhere.
-async fn a_poll_crosses_the_partition_and_the_stream(
-    http: &reqwest::Client,
-    run: &Scenario,
-) -> (String, u64) {
-    // WHICH fleet answers is a rotation's question, not one request's: the
-    // index is sixteen partitions and a poll reads one. `poll_for_seeded_lease`
-    // turns the rotation and stops on this scenario's own event, which is the
-    // OLDEST entry on this fleet's stream — so a lease coming back at all is
-    // the stream read having followed the partition read to a different node
-    // rather than answering from whatever was local.
-    poll_for_seeded_lease(http, run).await
+/// Readiness is the Postgres admissions ledger: an admission commits a row in
+/// `fleet.admissions`, then rings the NATS wake ring for the fleet's shard,
+/// and the scheduler reads the ledger's candidates and pushes an offer down
+/// the runner's stream. A scheduler that never heard the ring, or read a
+/// ledger that did not hold the row, offers nothing, and a runner idling
+/// beside work is not an error anywhere.
+async fn the_runner_is_offered_the_fleets_oldest_event(run: &Scenario) -> (String, u64) {
+    // Other fleets' heads may be offered first: candidates are ordered at
+    // random among eligible fleets. `wait_for_seeded_offer` reads offers until
+    // this scenario's own event arrives, which is the OLDEST unsettled
+    // admission on this fleet.
+    wait_for_seeded_offer(run).await
 }
 
 /// A frame the daemon publishes reaches a subscriber that attached elsewhere.
 ///
 /// # The hazard
 ///
-/// `SPUBLISH` delivers to the shard that owns the channel's slot, and
-/// `SSUBSCRIBE` only hears the shard it is attached to. A publisher and a
-/// subscriber that disagree about which node owns the channel produce exactly
-/// no symptom: the publish succeeds, the subscribe succeeds, and the dashboard
-/// is silent. Asserted through `SubscriptionHub` because that is the consumer
+/// The daemon publishes on whichever NATS node its connection holds, and the
+/// subscriber may be attached to another. The cluster carries the frame across
+/// only once the subscriber's interest has reached the publisher's node. A
+/// route that never carries it produces exactly no symptom: the publish
+/// succeeds, the subscribe succeeds, and the dashboard is silent. Asserted
+/// through the bus subscription because that is the consumer
 /// the live tail actually runs on — a raw subscribe would agree with a
 /// publisher that had drifted from its only reader.
-async fn a_frame_crosses_the_shard_to_its_subscriber(
-    http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
-) {
+async fn a_frame_crosses_the_cluster_to_its_subscriber(run: &Scenario, lease_id: &str) {
     // Subscribed BEFORE the forward: pub/sub keeps nothing for a reader that
     // arrives late, so a subscription opened afterwards would prove a drop
     // that never happened.
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the dashboard's hub connects to the lane's cluster");
-    let mut tail = hub.subscribe(&format!("{CHANNEL_PREFIX}{}{CHANNEL_SUFFIX}", run.fleet));
-    // The pump registers the subscription asynchronously; publishing in the
-    // same instant can legitimately beat it to the server.
+    let mut tail = crate::tail::tail_of(&run.fleet).await;
+    // The interest reaches the cluster asynchronously; publishing in the same
+    // instant can legitimately beat it to the daemon's node.
     settle().await;
 
-    let forwarded = post(
-        http,
-        run,
-        &format!("/v1/runners/me/leases/{lease_id}/activity"),
-        &json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT, "text_kind": "answer"}}]}),
-    )
-    .await;
-    assert_eq!(
-        forwarded.status().as_u16(),
-        202,
-        "the reply acknowledges RECEIPT, as documented — the publish behind it \
-         is best-effort and happens whether or not anybody is listening"
-    );
+    let body =
+        json!({"frames": [{"fleet_response_chunk": {"text": CHUNK_TEXT, "text_kind": "answer"}}]});
+    let bytes = serde_json::to_vec(&body).expect("activity fixture encodes");
+    let request = serde_json::from_slice(&bytes).expect("current activity fixture");
+    run.native_session()
+        .await
+        .activity(&Uuid7::parse(lease_id).expect("issued lease"), &request)
+        .await
+        .expect("native activity accepted by its send queue");
 
     let frame = next_frame(&mut tail).await.expect(
-        "the frame reaches the subscriber — a shard-scoped publish that missed it \
-         would leave this silent with nothing logged anywhere",
+        "the frame reaches the subscriber — a publish the cluster never routed \
+         to it would leave this silent with nothing logged anywhere",
     );
     assert_eq!(
         field(&frame, "text"),
@@ -188,25 +162,19 @@ async fn a_frame_crosses_the_shard_to_its_subscriber(
 ///
 /// # The hazard
 ///
-/// The result, its settlement and the terminal lease state commit in one
-/// PostgreSQL transaction, and the queue is acknowledged only after that
-/// commit. Those are two machines now. A report that acknowledged first and
-/// committed second would lose the result on a crash between them; one that
-/// charged per delivery would debit a retried report twice. Both are invisible
-/// in the success path, so the repeat is asserted rather than assumed.
-async fn a_report_settles_once_across_both_stores(
-    http: &reqwest::Client,
-    run: &Scenario,
-    lease_id: &str,
-    fence: u64,
-) {
+/// The result, its usage line and the terminal lease state commit in one
+/// Postgres transaction, and the billing relay charges the line afterwards. A
+/// report that charged per delivery would debit a retried report twice, which
+/// is invisible in the success path, so the repeat is asserted rather than
+/// assumed.
+async fn a_report_settles_once(run: &Scenario, lease_id: &str, fence: u64) {
     let before = balance(run).await;
     let report = report_body(lease_id, &run.event_id, fence);
 
-    let settled = post(http, run, "/v1/runners/me/reports", &report).await;
-    assert_eq!(settled.status().as_u16(), 200, "the report is accepted");
+    let settled = crate::wire::report(run, &report).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     assert_eq!(
-        json(settled).await,
+        settled.expect("the native report is acknowledged"),
         json!({"ok": true}),
         "and answers in the shape a runner parses"
     );
@@ -233,13 +201,52 @@ async fn a_report_settles_once_across_both_stores(
         "a priced run draws the wallet down: {before:?} → {after:?}"
     );
 
-    let repeated = post(http, run, "/v1/runners/me/reports", &report).await;
-    assert_eq!(
-        repeated.status().as_u16(),
-        200,
-        "a repeat is acknowledged rather than refused — a runner replays because \
-         it did not hear the first answer, and refusing teaches it to retry forever"
-    );
+    assert_replayed_report(run, &report, logged, after).await;
+}
+
+/// The next poll finds the fleet's remaining work rather than stalling on it.
+///
+/// # The hazard
+///
+/// The fleet still holds the second event this suite admitted, and that
+/// admission's wake ring fired before the first run settled. A settle that
+/// closed more than its own admission leaves the documented outcome intact on
+/// THIS report and loses the next event entirely, which is why the remaining
+/// work is claimed rather than counted.
+async fn the_fleet_is_still_discoverable_for_its_remaining_work(
+    run: &Scenario,
+    second_event: &Uuid7,
+) {
+    // Offers are read until the second event arrives: another fleet's head may
+    // come first, and the helper carries the diagnosis if none in its budget
+    // is this one.
+    let (_lease_id, _fence) = wait_for_offer(run, second_event).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_cluster_preserves_application_outcomes() {
+    let mut supervisor = Supervisor::new();
+    let run = scenario(&mut supervisor).await;
+    prove_capabilities(&run).await;
+    let second_event = a_second_admission_is_a_second_event(&run).await;
+    let (lease_id, fence) = the_runner_is_offered_the_fleets_oldest_event(&run).await;
+    a_frame_crosses_the_cluster_to_its_subscriber(&run, &lease_id).await;
+    a_report_settles_once(&run, &lease_id, fence).await;
+    the_fleet_is_still_discoverable_for_its_remaining_work(&run, &second_event).await;
+
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+async fn assert_replayed_report(
+    run: &Scenario,
+    report: &serde_json::Value,
+    logged: i64,
+    after: Option<i64>,
+) {
+    let repeated = crate::wire::report(run, report).await;
+    assert!(repeated.is_ok(), "native report refused: {repeated:?}");
     assert_eq!(
         ledger_rows(run).await,
         logged,
@@ -257,46 +264,4 @@ async fn a_report_settles_once_across_both_stores(
         Some("1"),
         "and the lifetime tally counts one completed run, not two"
     );
-}
-
-/// The next poll finds the fleet's remaining work rather than stalling on it.
-///
-/// # The hazard
-///
-/// Clearing a fleet's readiness mark is a token-checked single-key script, and
-/// the fleet still holds the second event this suite appended. A clear that
-/// ran on the wrong slot, or one that deleted unconditionally, leaves the
-/// documented outcome intact on THIS request and loses the next event
-/// entirely — which is why the remaining work is claimed rather than counted.
-async fn the_fleet_is_still_discoverable_for_its_remaining_work(
-    http: &reqwest::Client,
-    run: &Scenario,
-    second_event: &str,
-) {
-    // A rotation rather than one request: the second event is discoverable
-    // only on the poll that samples its partition, and the helper carries the
-    // diagnosis if no poll in the budget is handed it.
-    let (_lease_id, _fence) = poll_for_lease(http, run, second_event).await;
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and the cluster: make test-integration-rustd"]
-async fn test_cluster_preserves_application_outcomes() {
-    let mut supervisor = Supervisor::new();
-    let run = scenario(&mut supervisor).await;
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
-    )]
-    let http = reqwest::Client::new();
-
-    prove_capabilities(&http, &run).await;
-    let second_event = a_second_admission_lands_on_the_same_slot(&run).await;
-    let (lease_id, fence) = a_poll_crosses_the_partition_and_the_stream(&http, &run).await;
-    a_frame_crosses_the_shard_to_its_subscriber(&http, &run, &lease_id).await;
-    a_report_settles_once_across_both_stores(&http, &run, &lease_id, fence).await;
-    the_fleet_is_still_discoverable_for_its_remaining_work(&http, &run, &second_event).await;
-
-    supervisor.shutdown().await;
-    run.cleanup().await;
 }

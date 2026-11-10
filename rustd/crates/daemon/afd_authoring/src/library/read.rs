@@ -63,7 +63,7 @@ pub(super) async fn entry(
     valid_id(library)?;
     let row: Option<EntryRow> = sqlx::query_as(if must_own { sql::OWNED } else { sql::ENTRY })
         .bind(library)
-        .bind(owner.as_str())
+        .bind(owner)
         .bind(if must_own { TENANT } else { PLATFORM })
         .fetch_optional(connection)
         .await
@@ -77,8 +77,8 @@ pub(super) async fn revision(
     id: &Uuid7,
 ) -> Result<Revision> {
     let row: Option<RevisionRow> = sqlx::query_as(sql::REVISION)
-        .bind(library.as_str())
-        .bind(id.as_str())
+        .bind(library)
+        .bind(id)
         .fetch_optional(connection)
         .await
         .map_err(query(CONTEXT))?;

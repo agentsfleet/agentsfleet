@@ -13,7 +13,6 @@
 
 use std::borrow::Cow;
 
-use af_core::id::Uuid7;
 use af_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
 use af_wire::tool_detail::ToolCallRecordsRequest;
 use afd_admission::{Producer, Reply};
@@ -48,7 +47,7 @@ async fn test_standing_answers_only_the_live_holder() {
     let stale = plane.standing(&held.runner, lease.clone(), token + 1).await;
     let foreign = plane.standing(&held.spare, lease.clone(), token).await;
     held.fixtures
-        .age(Row::Lease(lease.as_str()), "lease_expires_at", LAPSE)
+        .age(Row::Lease(&lease), "lease_expires_at", LAPSE)
         .await;
     let lapsed = plane.standing(&held.runner, lease, token).await;
 
@@ -78,7 +77,6 @@ async fn test_messages_count_against_the_live_holder() {
     };
     stage.admit(Producer::Webhook, "speaks", reply).await;
     let (lease_id, lease) = stage.lease_next(stage.fixtures.enrolled_at()).await;
-    let lease_id = Uuid7::parse(&lease_id).expect("a lease id is a v7 spelling");
     let plane = stage.fixtures.plane();
     let say = |text: &'static str| MessageRequest {
         fencing_token: lease.fence.as_u64(),
@@ -132,7 +130,6 @@ async fn test_a_run_is_refused_past_its_message_cap() {
     };
     stage.admit(Producer::Webhook, "chatty", reply).await;
     let (lease_id, lease) = stage.lease_next(stage.fixtures.enrolled_at()).await;
-    let lease_id = Uuid7::parse(&lease_id).expect("a lease id is a v7 spelling");
     let plane = stage.fixtures.plane();
     let request = MessageRequest {
         fencing_token: lease.fence.as_u64(),

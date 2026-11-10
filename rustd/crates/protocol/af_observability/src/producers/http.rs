@@ -87,7 +87,7 @@ pub fn frame_dropped() {
     }
 }
 
-/// Records the pub/sub connection having been re-established.
+/// Records the NATS client having reconnected after a disconnect.
 pub fn hub_reconnected() {
     if let Some(producers) = installed() {
         producers.http.hub_reconnects.add(1, &[]);

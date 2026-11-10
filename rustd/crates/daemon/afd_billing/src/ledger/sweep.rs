@@ -40,7 +40,7 @@ const BATCH_LIMIT: i64 = 500;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Resume {
     logged_at: Timestamp,
-    line_id: String,
+    line_id: Uuid7,
 }
 
 /// What one resettling pass did.
@@ -159,7 +159,7 @@ pub async fn unsettled<'e>(
     let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED)
         .bind(limit)
         .bind(after.map(|resume| jiff_sqlx::Timestamp::from(resume.logged_at)))
-        .bind(after.map(|resume| resume.line_id.as_str()))
+        .bind(after.map(|resume| &resume.line_id))
         .fetch_all(executor)
         .await
         .map_err(query(CONTEXT_UNSETTLED))?;
@@ -188,7 +188,7 @@ pub async fn unsettled_work<'e>(
 ) -> Result<Vec<Settlement>> {
     let rows: Vec<UnsettledRow> = sqlx::query_as(SELECT_UNSETTLED_WORK)
         .bind(work.work_type())
-        .bind(work.id().as_str())
+        .bind(work.id())
         .fetch_all(executor)
         .await
         .map_err(query(CONTEXT_UNSETTLED))?;
@@ -221,13 +221,13 @@ fn grouped(mut rows: Vec<UnsettledRow>) -> Result<Vec<Settlement>> {
 #[derive(Debug, sqlx::FromRow)]
 struct UnsettledRow {
     work_type: String,
-    work_id: String,
+    work_id: Uuid7,
     seq: i64,
-    tenant_id: String,
-    workspace_id: String,
-    fleet_id: Option<String>,
+    tenant_id: Uuid7,
+    workspace_id: Uuid7,
+    fleet_id: Option<Uuid7>,
     fleet_name: Option<String>,
-    event_id: Option<String>,
+    event_id: Option<Uuid7>,
     provider: String,
     model: String,
     posture: String,
@@ -240,12 +240,12 @@ struct UnsettledRow {
     cache_write_1h_token_count: i64,
     output_token_count: i64,
     runtime_ms: i64,
-    price_id: Option<String>,
+    price_id: Option<Uuid7>,
     unpriced_token_count: i64,
     charged_nanos: i64,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     logged_at: Timestamp,
-    line_id: String,
+    line_id: Uuid7,
 }
 
 impl UnsettledRow {
@@ -254,7 +254,7 @@ impl UnsettledRow {
     fn identity(&self) -> (&str, &str, &str, &str, &str) {
         (
             &self.work_type,
-            &self.work_id,
+            self.work_id.as_str(),
             &self.provider,
             &self.model,
             &self.posture,
@@ -265,9 +265,10 @@ impl UnsettledRow {
     fn line(&self) -> Result<RatedLine> {
         let price = self
             .price_id
-            .as_deref()
+            .as_ref()
             .map(|id| {
-                Uuid7::parse(id).map_err(row_malformed(TABLE_LINES, "platform_model_price_id"))
+                Uuid7::parse(id.as_str())
+                    .map_err(row_malformed(TABLE_LINES, "platform_model_price_id"))
             })
             .transpose()?;
         Ok(RatedLine {
@@ -302,19 +303,19 @@ impl UnsettledRow {
         let id = |text: &str, column: &'static str| {
             Uuid7::parse(text).map_err(row_malformed(TABLE_LINES, column))
         };
-        let attribution = match (self.fleet_id.as_deref(), self.event_id) {
+        let attribution = match (self.fleet_id.as_ref(), self.event_id) {
             (Some(fleet), Some(event_id)) => Attribution::Fleet {
-                fleet: id(fleet, "fleet_id")?,
+                fleet: id(fleet.as_str(), "fleet_id")?,
                 fleet_name: self.fleet_name.unwrap_or_default(),
                 event_id,
             },
             _ => Attribution::SetupChat,
         };
         Ok(Settlement {
-            work: work(id(&self.work_id, "work_id")?),
+            work: work(id(self.work_id.as_str(), "work_id")?),
             payer: Account {
-                tenant: id(&self.tenant_id, "tenant_id")?,
-                workspace: id(&self.workspace_id, "workspace_id")?,
+                tenant: id(self.tenant_id.as_str(), "tenant_id")?,
+                workspace: id(self.workspace_id.as_str(), "workspace_id")?,
             },
             attribution,
             provider: self.provider,

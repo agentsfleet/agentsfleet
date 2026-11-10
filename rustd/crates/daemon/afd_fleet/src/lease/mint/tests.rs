@@ -13,7 +13,7 @@ use af_core::error_code;
 use jiff::Timestamp;
 use zeroize::Zeroizing;
 
-use super::accept;
+use super::admission::accept;
 use afd_credential::credential::outcome::{Minted, Outcome, Retry};
 use afd_credential::secrets::connector::{Connector, Connectors as _, Registry};
 
@@ -190,7 +190,7 @@ async fn an_unrotated_refresh_token_reason_carries_no_code_prefix() {
         .persist_rotation(&scope, "github", &handle, &rotated)
         .await;
 
-    let line = log.only(super::EVENT_REFRESH_ROTATED);
+    let line = log.only(super::admission::EVENT_REFRESH_ROTATED);
     let reason = line.field("reason").unwrap_or_default();
     assert!(
         line.field("error_code")

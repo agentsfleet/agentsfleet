@@ -41,16 +41,12 @@ const PAGE: i64 = 2;
 /// that a row stamped with the lease instant sorts above every admission here.
 const ADMITTED_EARLIER: std::time::Duration = std::time::Duration::from_secs(60);
 
-fn uuid(text: &str) -> Uuid7 {
-    Uuid7::parse(text).expect("the fixture mints canonical identifiers")
-}
-
 /// A steer cut from page one and leased before page two is still on page two,
 /// once, as the history row the lease wrote, at its admission instant.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let steer = Steer::new(ledger(&fixtures));
     let mut admitted = Vec::with_capacity(WAITING);
@@ -62,16 +58,17 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
         admitted.push(steered);
     }
     let oldest = admitted.first().expect("three steers were admitted");
-    let admission = Row::Admission(&oldest.event_id);
+    let oldest_id =
+        Uuid7::parse(oldest.event_id.as_str()).expect("the steer names a canonical identifier");
+    let admission = Row::Admission(&oldest_id);
     fixtures
         .age(admission, "created_at", ADMITTED_EARLIER)
         .await;
     let admitted_at = fixtures.instant(admission, "created_at").await;
     let history = History::new(fixtures.database.clone());
-    let (workspace_id, fleet_id) = (uuid(&workspace), uuid(&fleet));
 
     let first = history
-        .thread_page(&workspace_id, &fleet_id, None, PAGE)
+        .thread_page(&workspace, &fleet, None, PAGE)
         .await
         .expect("the thread reads");
     let kept: Vec<_> = first
@@ -79,7 +76,7 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
         .take(usize::try_from(PAGE).expect("a page size is positive"))
         .collect();
     assert!(
-        kept.iter().all(|row| row.row.event_id != oldest.event_id),
+        kept.iter().all(|row| row.row.event_id != oldest_id),
         "the oldest steer is cut from page one"
     );
     let last = kept.last().expect("page one is full");
@@ -90,7 +87,7 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
         .await
         .expect("the fleet holding the steers is leasable");
     assert_eq!(
-        acquired.event_id, oldest.event_id,
+        acquired.event_id, oldest_id,
         "the queue hands out its oldest first"
     );
     let received = leases
@@ -105,12 +102,12 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
     );
 
     let second = history
-        .thread_page(&workspace_id, &fleet_id, Some(&cursor), PAGE)
+        .thread_page(&workspace, &fleet, Some(&cursor), PAGE)
         .await
         .expect("the resumed thread reads");
     let found: Vec<_> = second
         .iter()
-        .filter(|row| row.row.event_id == oldest.event_id)
+        .filter(|row| row.row.event_id == oldest_id)
         .collect();
     assert_eq!(found.len(), 1, "the leased steer is on page two, once");
     assert_eq!(
@@ -126,7 +123,7 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_webhook_row_keeps_the_lease_instant() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
     let key = producer_key(&fleet, "lease-instant");
     ledger(&fixtures)

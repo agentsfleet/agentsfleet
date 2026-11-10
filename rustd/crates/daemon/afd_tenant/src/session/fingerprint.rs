@@ -26,10 +26,10 @@ const FIELD_SEPARATOR: u8 = 0x00;
 
 /// A request's identity for the replay window: address, user agent, session.
 ///
-/// Holds the rendered hex rather than the digest bytes, because the only thing
-/// done with it is comparing it against what a Lua script stored as text.
+/// Holds the digest bytes, the form `identity.device_sessions` stores and
+/// compares.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Fingerprint(String);
+pub struct Fingerprint([u8; 32]);
 
 impl Fingerprint {
     /// Digests one request's identity.
@@ -41,13 +41,26 @@ impl Fingerprint {
             hasher.update([FIELD_SEPARATOR]);
         }
         hasher.update(session_id.as_bytes());
-        Self(hex::encode(hasher.finalize()))
+        Self(hasher.finalize().into())
     }
 
-    /// The lower-case hex the script compares.
+    /// The digest the session row stores.
     #[must_use]
-    pub fn as_str(&self) -> &str {
+    pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
+    }
+
+    /// Whether `stored` is this digest.
+    ///
+    /// A stored value that is not 32 bytes is not, and is refused before any
+    /// comparison: every digest has that length, so the length tells a caller
+    /// nothing. The 32 bytes compare in constant time, because the answer
+    /// decides whether a sealed credential is handed out again.
+    #[must_use]
+    pub fn matches(&self, stored: &[u8]) -> bool {
+        use subtle::ConstantTimeEq as _;
+        <&[u8; 32]>::try_from(stored)
+            .is_ok_and(|stored| stored.as_slice().ct_eq(self.0.as_slice()).into())
     }
 }
 
@@ -60,7 +73,7 @@ mod tests {
         let first = Fingerprint::of("203.0.113.7", "afc/1", "sid");
         let second = Fingerprint::of("203.0.113.7", "afc/1", "sid");
         assert_eq!(first, second);
-        assert_eq!(first.as_str().len(), 64);
+        assert_eq!(first.as_bytes().len(), 32);
     }
 
     #[test]
@@ -73,6 +86,23 @@ mod tests {
         ] {
             assert_ne!(base, other);
         }
+    }
+
+    #[test]
+    fn only_the_same_32_bytes_match() {
+        let fingerprint = Fingerprint::of("203.0.113.7", "afc/1", "sid");
+        let digest = fingerprint.as_bytes();
+        assert!(fingerprint.matches(digest));
+        assert!(
+            !fingerprint.matches(&digest[..31]),
+            "a short value is refused"
+        );
+        let mut long = digest.to_vec();
+        long.push(0);
+        assert!(!fingerprint.matches(&long), "a long value is refused");
+        let mut flipped = *digest;
+        flipped[31] ^= 1;
+        assert!(!fingerprint.matches(&flipped), "one changed bit is refused");
     }
 
     #[test]

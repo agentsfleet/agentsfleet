@@ -10,15 +10,15 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_admission::{Admission, Admissions, Key, Producer};
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_dragonfly::SubscriptionHub;
 use serde_json::json;
 
-use crate::lane::{Lane, Window, dead_queue, dragonfly_config};
+use crate::lane::{Lane, Window};
 use crate::tail_watch::{
-    CONTINUATION_ACTOR_PREFIX, CONTINUATION_BODY, NOTE, OPERATOR, SUBSCRIBE_SETTLE, next_frame,
+    CONTINUATION_ACTOR_PREFIX, CONTINUATION_BODY, NOTE, OPERATOR, next_frame, tail,
 };
 
 /// An approval opens the continued run on the tail before it announces the
@@ -31,24 +31,20 @@ use crate::tail_watch::{
 /// continuation, then `gate_resolved` for the answer, and the count on the
 /// answer says the sibling still waits.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     let lane = Lane::isolated().await;
 
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+    let mut tail = tail(&lane).await;
 
     let approved = lane.seed_gate(Window::Open).await;
     let _still_waiting = lane.seed_gate(Window::Open).await;
-    let before = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
+    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read before the resolve");
     let outcome = lane
         .inbox
-        .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(approved.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let continuation = match outcome {
@@ -57,66 +53,34 @@ async fn an_approval_opens_the_continued_run_before_it_announces_the_answer() {
     }
     .expect("a pending gate is this caller's to answer, and an approval continues its run");
 
-    let opened = next_frame(&mut tail)
-        .await
-        .expect("the continued run opens on the fleet's tail");
-    assert_eq!(opened.get("kind"), Some(&json!("event_received")));
-    assert_eq!(opened.get("event_id"), Some(&json!(continuation)));
-    assert_eq!(opened.get("event_type"), Some(&json!("continuation")));
-    assert_eq!(
-        opened.get("actor"),
-        Some(&json!(format!(
-            "continuation:{}",
-            lane.gate_column(&approved, "event_id").await
-        )))
-    );
-    // The continuation's own insert moved the count, and its frame carries
-    // the moved figure — read after the row landed, on the same connection.
-    assert_eq!(
-        opened.get("events_processed"),
-        Some(&json!(before.events_processed + 1)),
-        "the continued run's frame counts the row it wrote"
-    );
+    assert_continued_frame(
+        &lane,
+        &approved,
+        &continuation,
+        before.events_processed,
+        &mut tail,
+    )
+    .await;
 
-    let answered = next_frame(&mut tail)
-        .await
-        .expect("then the answer reaches the tail");
-    assert_eq!(answered.get("kind"), Some(&json!("gate_resolved")));
-    assert_eq!(answered.get("status"), Some(&json!("approved")));
-    assert_eq!(
-        answered.get("pending_approvals"),
-        Some(&json!(1)),
-        "the sibling gate still waits, and the frame says so"
-    );
-    // Read AFTER the continuation, so the answer carries the continued run's
-    // row too — a read before it would be one short.
-    assert_eq!(
-        answered.get("events_processed"),
-        Some(&json!(before.events_processed + 1)),
-        "the answer's snapshot includes the continuation it started"
-    );
-    assert_eq!(
-        answered.get("budget_used_nanos"),
-        Some(&json!(before.budget_used_nanos.to_string()))
-    );
+    assert_approval_answer(&mut tail, before.events_processed, before.budget_used_nanos).await;
 }
 
 /// Approval and its continuation commit even when notification fails.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
     let lane = Lane::isolated().await;
     let inbox = Inbox::new(
         lane.pool.clone(),
-        dead_queue(),
-        Admissions::for_tests(lane.pool.clone(), dead_queue()),
+        afd_bus::test_util::unreachable(),
+        Admissions::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
     );
     let action = lane.seed_gate(Window::Open).await;
 
     let outcome = inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
-        .expect("a queue that refuses the entry does not lose the continuation");
+        .expect("a bus that refuses the notification does not lose the continuation");
     assert_eq!(lane.status_of(&action).await, "approved");
     let continuation = match outcome {
         Resolution::Resolved(resolved) => resolved.continuation_event_id,
@@ -150,61 +114,25 @@ async fn an_approval_with_a_lost_notification_still_commits_its_continuation() {
 /// second resolve is stopped by the gate's `WHERE status = 'pending'` guard
 /// before `continue_from` is ever reached.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_converged_continuation_announces_nothing() {
     let lane = Lane::isolated().await;
 
     let approved = lane.seed_gate(Window::Open).await;
-    let predecessor = lane.gate_column(&approved, "event_id").await;
-    let actor = format!("{CONTINUATION_ACTOR_PREFIX}{predecessor}");
-
-    // The lease path, played by hand: the same admission the resolve is about
-    // to ask for, then the row it would have written. Keyed on the gate's
-    // action, so the resolve's own `admit` returns this very id.
-    let admitted = Admissions::for_tests(lane.pool.clone(), lane.queue.clone())
-        .admit(Admission {
-            producer: Producer::GateContinuation,
-            key: Key::Repeated(&approved),
-            fleet: lane.fleet.as_str(),
-            workspace: lane.workspace.as_str(),
-            actor: actor.as_str(),
-            event_type: EventType::Continuation,
-            request_json: CONTINUATION_BODY,
-            reply: afd_admission::Reply::None,
-        })
-        .await
-        .expect("the admission ledger accepts the continuation");
-    // The statement answers `inserted` first, which is the column this reads.
-    let landed: bool = sqlx::query_scalar(afd_events::sql::INSERT_FLEET_EVENT)
-        .bind(lane.fleet.as_str())
-        .bind(admitted.stored.id.as_str())
-        .bind(lane.workspace.as_str())
-        .bind(&actor)
-        .bind(EventType::Continuation.as_str())
-        .bind(sqlx::types::Json(serde_json::json!({})))
-        .bind(&predecessor)
-        .bind(af_core::event::status::RECEIVED)
-        .fetch_one(&mut *lane.pool.acquire().await.expect("the lane's pool answers"))
-        .await
-        .expect("the lease path's insert must not fault");
-    assert!(landed, "the fixture must be the writer that opened the row");
+    let admitted = preinsert_continuation(&lane, &approved).await;
 
     // Read AFTER the pre-insert: that row moved the counter legitimately, and
     // what this test asserts is that the RESOLVE moves it no further.
-    let before = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
+    let before = afd_events::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read before the resolve");
 
     // Subscribe only now, so the only frames on this tail are the resolve's.
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+    let mut tail = tail(&lane).await;
 
     let outcome = lane
         .inbox
-        .resolve(&approved, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(approved.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let continuation = match outcome {
@@ -213,7 +141,7 @@ async fn a_converged_continuation_announces_nothing() {
     }
     .expect("an approved gate still reports the run it continues");
     assert_eq!(
-        continuation, admitted.stored.id,
+        continuation, admitted,
         "the resolve converged on the row the lease path opened, it did not mint a second"
     );
 
@@ -230,5 +158,100 @@ async fn a_converged_continuation_announces_nothing() {
         frame.get("events_processed"),
         Some(&json!(before.events_processed)),
         "a converged continuation writes no row, so it moves no counter"
+    );
+}
+
+async fn assert_continued_frame(
+    lane: &Lane,
+    approved: &Uuid7,
+    continuation: &Uuid7,
+    before_events: i64,
+    tail: &mut afd_bus::Subscription,
+) {
+    let opened = next_frame(tail)
+        .await
+        .expect("the continued run opens on the fleet's tail");
+    assert_eq!(opened.get("kind"), Some(&json!("event_received")));
+    assert_eq!(opened.get("event_id"), Some(&json!(continuation)));
+    assert_eq!(opened.get("event_type"), Some(&json!("continuation")));
+    assert_eq!(
+        opened.get("actor"),
+        Some(&json!(format!(
+            "continuation:{}",
+            lane.gate_column(approved, "event_id").await
+        )))
+    );
+    // The continuation's own insert moved the count, and its frame carries
+    // the moved figure — read after the row landed, on the same connection.
+    assert_eq!(
+        opened.get("events_processed"),
+        Some(&json!(before_events + 1)),
+        "the continued run's frame counts the row it wrote"
+    );
+}
+
+async fn preinsert_continuation(lane: &Lane, approved: &Uuid7) -> Uuid7 {
+    let predecessor = Uuid7::parse(&lane.gate_column(approved, "event_id").await)
+        .expect("the seeded gate held a run's event");
+    let actor = format!("{CONTINUATION_ACTOR_PREFIX}{predecessor}");
+
+    // The lease path, played by hand: the same admission the resolve is about
+    // to ask for, then the row it would have written. Keyed on the gate's
+    // action, so the resolve's own `admit` returns this very id.
+    let admitted = Admissions::for_tests(lane.pool.clone(), lane.bus.clone())
+        .admit(Admission {
+            producer: Producer::GateContinuation,
+            key: Key::Repeated(approved.as_str()),
+            fleet: &lane.fleet,
+            workspace: &lane.workspace,
+            actor: actor.as_str(),
+            event_type: EventType::Continuation,
+            request_json: CONTINUATION_BODY,
+            reply: afd_admission::Reply::None,
+        })
+        .await
+        .expect("the admission ledger accepts the continuation");
+    // The statement answers `inserted` first, which is the column this reads.
+    let landed: bool = sqlx::query_scalar(afd_events::sql::INSERT_FLEET_EVENT)
+        .bind(&lane.fleet)
+        .bind(&admitted.stored.id)
+        .bind(&lane.workspace)
+        .bind(&actor)
+        .bind(EventType::Continuation.as_str())
+        .bind(sqlx::types::Json(serde_json::json!({})))
+        .bind(&predecessor)
+        .bind(af_core::event::status::RECEIVED)
+        .fetch_one(&mut *lane.pool.acquire().await.expect("the lane's pool answers"))
+        .await
+        .expect("the lease path's insert must not fault");
+    assert!(landed, "the fixture must be the writer that opened the row");
+    admitted.stored.id
+}
+
+async fn assert_approval_answer(
+    tail: &mut afd_bus::Subscription,
+    before_events: i64,
+    before_budget: i64,
+) {
+    let answered = next_frame(tail)
+        .await
+        .expect("then the answer reaches the tail");
+    assert_eq!(answered.get("kind"), Some(&json!("gate_resolved")));
+    assert_eq!(answered.get("status"), Some(&json!("approved")));
+    assert_eq!(
+        answered.get("pending_approvals"),
+        Some(&json!(1)),
+        "the sibling gate still waits, and the frame says so"
+    );
+    // Read AFTER the continuation, so the answer carries the continued run's
+    // row too — a read before it would be one short.
+    assert_eq!(
+        answered.get("events_processed"),
+        Some(&json!(before_events + 1)),
+        "the answer's snapshot includes the continuation it started"
+    );
+    assert_eq!(
+        answered.get("budget_used_nanos"),
+        Some(&json!(before_budget.to_string()))
     );
 }

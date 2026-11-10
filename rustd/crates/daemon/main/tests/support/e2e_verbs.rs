@@ -161,11 +161,10 @@ impl Drop for FakeQStash {
 
 /// Seals a Slack grant for the scenario's workspace, under the daemon's key.
 pub(crate) async fn seal_slack_grant(run: &Scenario) {
-    let workspace = Uuid7::parse(&run.workspace).expect("a minted workspace id");
     let body = json!({"integration": "slack", "bot_token": BOT_TOKEN, "bot_user_id": BOT_USER});
     seal(
         &run.booted,
-        &workspace,
+        &run.workspace,
         Provider::Slack.grant_key(),
         &body.to_string(),
         af_core::clock::now(),
@@ -175,10 +174,10 @@ pub(crate) async fn seal_slack_grant(run: &Scenario) {
 
 /// Admits an event on the scenario's fleet from a Slack thread, so an answer
 /// or a line said before it is owed there.
-pub(crate) async fn enqueue_from_thread(run: &Scenario) -> String {
+pub(crate) async fn enqueue_from_thread(run: &Scenario) -> Uuid7 {
     let address = json!({"team_id": "T0FIXTURE", "channel_id": CHANNEL, "thread_ts": THREAD});
     let address = address.to_string();
-    let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.queue.clone())
+    let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone())
         .admit(Admission {
             producer: Producer::Steer,
             key: Key::Unrepeatable,

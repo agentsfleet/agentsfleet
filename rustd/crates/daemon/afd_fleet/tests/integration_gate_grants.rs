@@ -31,12 +31,12 @@ use self::support::Fixtures;
 /// primary key, and with every test in the lane sharing one database a fixed
 /// identifier is a unique-violation the moment a second test seeds its own
 /// grants. See [`afd_db::test_util::mint_id`].
-fn grant_ids() -> [String; 3] {
+fn grant_ids() -> [Uuid7; 3] {
     [mint_id(), mint_id(), mint_id()]
 }
 
 /// Writes one grant row for `fleet`.
-async fn grant(fixtures: &Fixtures, id: &str, fleet: &str, service: &str, status: &str) {
+async fn grant(fixtures: &Fixtures, id: &Uuid7, fleet: &Uuid7, service: &str, status: &str) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -45,7 +45,7 @@ async fn grant(fixtures: &Fixtures, id: &str, fleet: &str, service: &str, status
     sqlx::query(
         "INSERT INTO connector.integration_grants
            (id, fleet_id, service, status, requested_reason, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, now(), now())",
+         VALUES ($1, $2, $3, $4, $5, now(), now())",
     )
     .bind(id)
     .bind(fleet)
@@ -57,11 +57,6 @@ async fn grant(fixtures: &Fixtures, id: &str, fleet: &str, service: &str, status
     .expect("the grant row must insert");
 }
 
-/// The fleet id, parsed the way the caller holds it.
-fn id(fleet: &str) -> Uuid7 {
-    Uuid7::parse(fleet).expect("the seeded fleet id is a uuid")
-}
-
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_only_approved_grants_reach_the_set() {
@@ -69,7 +64,7 @@ async fn test_only_approved_grants_reach_the_set() {
     // answered; `revoked` is a human who answered and then changed their mind.
     // Admitting either would mint a third-party token under an authority
     // nobody currently grants.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded { fleet, .. } = seeded::<0>(&fixtures).await;
     let grants = grant_ids();
     grant(&fixtures, &grants[0], &fleet, "github", "approved").await;
@@ -78,7 +73,7 @@ async fn test_only_approved_grants_reach_the_set() {
 
     let granted = fixtures
         .gates()
-        .approved_integrations(&id(&fleet))
+        .approved_integrations(&fleet)
         .await
         .expect("the grant read must run");
 
@@ -93,12 +88,12 @@ async fn test_only_approved_grants_reach_the_set() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_fleet_with_no_grants_holds_nothing_and_is_not_an_error() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded { fleet, .. } = seeded::<0>(&fixtures).await;
 
     let granted = fixtures
         .gates()
-        .approved_integrations(&id(&fleet))
+        .approved_integrations(&fleet)
         .await
         .expect("no rows is not a datastore failure");
 
@@ -111,14 +106,14 @@ async fn test_another_fleets_grant_is_not_this_fleets() {
     // The row carries a `fleet_id` and the statement filters on it. Without
     // that predicate every fleet in a workspace would inherit every other
     // fleet's standing approvals.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded { fleet: mine, .. } = seeded::<0>(&fixtures).await;
     let Seeded { fleet: theirs, .. } = seeded::<0>(&fixtures).await;
     grant(&fixtures, &grant_ids()[0], &theirs, "github", "approved").await;
 
     let granted = fixtures
         .gates()
-        .approved_integrations(&id(&mine))
+        .approved_integrations(&mine)
         .await
         .expect("the grant read must run");
 

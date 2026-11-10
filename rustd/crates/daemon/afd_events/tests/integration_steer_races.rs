@@ -181,7 +181,7 @@ async fn sixty_four_concurrent_sends_to_one_fleet_each_land_once() {
         "every send is its own event"
     );
     let (rows, sequences): (i64, i64) = sqlx::query_as(
-        "SELECT count(*), count(DISTINCT sequence) FROM fleet.admissions WHERE fleet_id = $1::uuid",
+        "SELECT count(*), count(DISTINCT sequence) FROM fleet.admissions WHERE fleet_id = $1",
     )
     .bind(&lane.fleet)
     .fetch_one(&mut *lane.connection().await)

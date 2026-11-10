@@ -69,9 +69,9 @@ async fn read(models: &Models, id: &Uuid7) -> Model {
 }
 async fn stamp(db: &Db, id: &Uuid7) -> (i64, String) {
     sqlx::query_as(
-        "SELECT context_cap_tokens::bigint, updated_at::text FROM model.platform_models WHERE id=$1::uuid",
+        "SELECT context_cap_tokens::bigint, updated_at::text FROM model.platform_models WHERE id=$1",
     )
-    .bind(id.as_str())
+    .bind(id)
     .fetch_one(&mut *db.acquire().await.expect("owned connection"))
     .await
     .expect("saved row")

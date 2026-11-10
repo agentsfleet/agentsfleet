@@ -40,7 +40,7 @@ pub use self::sort::ApiKeySort;
 
 /// The index that holds a tenant to one key per name.
 ///
-/// Must equal the name in `schema/1150_identity_api_keys.sql`: a key-hash or
+/// Must equal the name in `schema/20261108120700_identity_api_keys.sql`: a key-hash or
 /// primary-key collision is unique too, and is not a name the caller can change.
 const NAME_CONSTRAINT: &str = "uq_api_keys_tenant_id_name";
 
@@ -69,8 +69,8 @@ impl ApiKeys {
 
         let mut connection = self.database.acquire().await?;
         let created_at = sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(sql::INSERT_TENANT_KEY)
-            .bind(id.as_str())
-            .bind(request.tenant.as_str())
+            .bind(&id)
+            .bind(request.tenant)
             .bind(request.name.as_str())
             .bind(request.description.as_str())
             .bind(credential.digest().as_str())
@@ -115,8 +115,8 @@ impl ApiKeys {
     ) -> Result<Revoked> {
         let mut connection = self.database.acquire().await?;
         let row: RevokedRow = sqlx::query_as(sql::REVOKE_TENANT_KEY)
-            .bind(key.as_str())
-            .bind(tenant.as_str())
+            .bind(key)
+            .bind(tenant)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query("revoke api-key"))?
@@ -139,8 +139,8 @@ impl ApiKeys {
     pub async fn delete(&self, tenant: &Uuid7, key: &Uuid7) -> Result<()> {
         let mut connection = self.database.acquire().await?;
         let changed: bool = sqlx::query_scalar(sql::DELETE_TENANT_KEY)
-            .bind(key.as_str())
-            .bind(tenant.as_str())
+            .bind(key)
+            .bind(tenant)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query("delete api-key"))?
@@ -165,11 +165,11 @@ impl ApiKeys {
         // constructor parses against a closed allowlist, so no caller-supplied
         // byte can reach either slot.
         let statement = sqlx::AssertSqlSafe(Self::page_statement(page));
-        let mut query = sqlx::query(statement).bind(tenant.as_str());
+        let mut query = sqlx::query(statement).bind(tenant);
         query = match page.cursor.as_ref() {
             None => query,
-            Some(Cursor::Timestamp { at, id }) => query.bind(at.to_sqlx()).bind(id.as_str()),
-            Some(Cursor::Text { value, id }) => query.bind(value.as_str()).bind(id.as_str()),
+            Some(Cursor::Timestamp { at, id }) => query.bind(at.to_sqlx()).bind(boundary_id(id)?),
+            Some(Cursor::Text { value, id }) => query.bind(value.as_str()).bind(boundary_id(id)?),
         };
 
         let mut connection = self.database.acquire().await?;
@@ -215,7 +215,7 @@ pub struct MintRequest<'a> {
     ///
     /// A `&str` rather than a parsed subject, because `created_by_subject` is
     /// `TEXT NOT NULL` holding the claim directly — a key outlives the admin who
-    /// made it, as `schema/1150_identity_api_keys.sql` says, and it is why the
+    /// made it, as `schema/20261108120700_identity_api_keys.sql` says, and it is why the
     /// credential lookup does not join `identity.users` for this class.
     pub created_by: &'a str,
 }
@@ -243,6 +243,11 @@ pub struct Revoked {
     pub id: Uuid7,
     /// When the row records it stopped working.
     pub revoked_at: Timestamp,
+}
+
+/// A cursor's boundary row, which must be an identifier this daemon minted.
+fn boundary_id(id: &str) -> crate::Result<Uuid7> {
+    Uuid7::parse(id).map_err(|_forged| error::cursor_invalid())
 }
 
 /// Turns an insert failure into the refusal it means.

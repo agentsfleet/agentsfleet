@@ -64,9 +64,9 @@ async fn removed_or_already_settled_obligations_cannot_be_recreated_by_a_late_re
             .await
             .expect("physical request reached provider");
         let statement = if removed {
-            "DELETE FROM authoring.attempts WHERE id=$1::uuid"
+            "DELETE FROM authoring.attempts WHERE id=$1"
         } else {
-            "UPDATE authoring.dispatches SET status='completed',usage='{\"knowledge\":\"known\",\"input_tokens\":1,\"output_tokens\":1,\"provider_cost_nanos\":\"3000\"}'::jsonb WHERE attempt_id=$1::uuid"
+            "UPDATE authoring.dispatches SET status='completed',usage='{\"knowledge\":\"known\",\"input_tokens\":1,\"output_tokens\":1,\"provider_cost_nanos\":\"3000\"}'::jsonb WHERE attempt_id=$1"
         };
         // The concurrent change is scaffolding, so it runs as the lane owner:
         // `api_runtime` holds no DELETE on attempts.
@@ -74,7 +74,7 @@ async fn removed_or_already_settled_obligations_cannot_be_recreated_by_a_late_re
             .await
             .expect("the lane owner connects");
         sqlx::query(statement)
-            .bind(a.id.as_str())
+            .bind(&a.id)
             .execute(&mut owner)
             .await
             .expect("selected concurrent durable change");
@@ -91,8 +91,8 @@ async fn removed_or_already_settled_obligations_cannot_be_recreated_by_a_late_re
                 error_code::AUTHORING_STATE
             }
         );
-        let saved: (i64, i64) = sqlx::query_as("SELECT count(*)::bigint,count(*) FILTER(WHERE result IS NOT NULL OR native_reply IS NOT NULL)::bigint FROM authoring.dispatches WHERE attempt_id=$1::uuid")
-            .bind(a.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("durable result state");
+        let saved: (i64, i64) = sqlx::query_as("SELECT count(*)::bigint,count(*) FILTER(WHERE result IS NOT NULL OR native_reply IS NOT NULL)::bigint FROM authoring.dispatches WHERE attempt_id=$1")
+            .bind(a.id).fetch_one(&mut *f.connection().await).await.expect("durable result state");
         assert_eq!(saved, (i64::from(!removed), 0));
         assert_eq!(provider.count(), 1);
         f.cleanup().await;

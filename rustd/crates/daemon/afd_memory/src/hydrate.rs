@@ -114,10 +114,7 @@ impl Memories {
             .into_iter()
             .map(|record| SharedMemory {
                 writer_fleet_name: Cow::Owned(
-                    names
-                        .get(record.fleet.as_str())
-                        .cloned()
-                        .unwrap_or_default(),
+                    names.get(&record.fleet).cloned().unwrap_or_default(),
                 ),
                 writer_fleet_id: Cow::Owned(record.fleet.as_str().to_owned()),
                 updated_at: record.updated_at,

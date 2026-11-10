@@ -1,13 +1,11 @@
 //! Per-destination delivery lanes under one in-flight ceiling.
 //!
-//! # Why the worker does not deliver what it reads
+//! # Why the worker does not deliver what it claims
 //!
-//! The outbound stream is one stream, read in order, and a delivery is a
-//! vendor call with a deadline. A worker that delivered each job before
-//! reading the next would let one destination that is slow to answer — a
-//! workspace whose Slack is rate-limiting, a channel behind a timed-out
-//! proxy — hold every answer queued behind it for every other workspace. So
-//! the worker hands each job to the LANE for its destination and reads on.
+//! A delivery is a vendor call with a deadline. A worker that delivered each
+//! claimed job before claiming the next would let one destination that is
+//! slow to answer hold every other workspace's answer behind it. So the worker
+//! hands each job to the LANE for its destination and claims on.
 //!
 //! # What a lane promises
 //!
@@ -29,36 +27,57 @@
 //!
 //! # How far a slow destination can reach
 //!
-//! A lane holds at most [`LANE_DEPTH`] jobs in memory. Past that the dispatch
-//! waits, which is the stream buffering on the destination's behalf — the
-//! entries are already read into this consumer's pending list and lose
-//! nothing by waiting. The bound is stated rather than hidden: a destination
-//! that will not take a job stalls unrelated answers only after that many of
-//! its own have piled up, and the reader resumes the moment one drains.
+//! A lane holds at most [`LANE_DEPTH`] jobs in memory, and Postgres claims at
+//! most one head per lane at a time, so a lane rarely holds more than one.
 //!
-//! # Cancellation stops lanes between jobs, never inside one
+//! # A job never waits for a delivery slot
 //!
-//! The rule the worker already keeps. A lane asked to stop finishes the job
-//! in hand — one vendor deadline, since the retry loop stops starting new
-//! attempts — and leaves everything still queued unacknowledged. Those
-//! entries stay pending under this consumer's name, and the next process's
-//! pending-first read is what delivers them.
+//! A claimed job renews nothing until its delivery starts, so a job left
+//! waiting for one of the [`IN_FLIGHT_DELIVERIES`] slots past
+//! [`CLAIM_TTL`](crate::obligation::CLAIM_TTL) could lapse to another
+//! replica. The worker therefore claims only into [`Lanes::room`]: every job
+//! the lanes hold has a slot, and a row this replica cannot start stays free
+//! for one that can.
+//!
+//! # A holder renews, and a lapsed holder stops
+//!
+//! A delivery's opening count extends its claim, and finds none when another
+//! holder took the row, in which case nothing is posted. While the delivery
+//! runs it renews its claim every [`CLAIM_RENEW`]. A renewal that finds the
+//! claim gone means another holder may own the row, so the delivery is
+//! abandoned unfinished rather than posting twice.
+//!
+//! # Cancellation gives the claim back
+//!
+//! A lane asked to stop finishes nothing new; a job whose delivery the
+//! shutdown interrupted, or that the lane had taken and not started, releases
+//! its claim at once, so another replica can take it on its next claim pass.
+//! One still queued behind it keeps its claim until
+//! [`CLAIM_TTL`](crate::obligation::CLAIM_TTL) lapses.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use afd_db::Db;
-use afd_dragonfly::{OutboundDelivery, OutboundQueue};
 use dashmap::DashMap;
 use dashmap::mapref::entry::Entry;
-use tokio::sync::Semaphore;
 use tokio::sync::mpsc;
+use tokio::sync::{Notify, Semaphore};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use crate::obligation::AbandonReason;
-use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry};
-use crate::producer::MAX_DELIVERY_CYCLES;
+use std::time::Duration;
 
+use crate::obligation::{AbandonReason, CLAIM_RENEW, Claimed};
+use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry};
+
+/// Delivery cycles an answer gets before it is abandoned.
+pub const MAX_DELIVERY_CYCLES: i64 = 12;
+
+/// How long a retryable answer waits before it is due again.
+pub const CYCLE_BACKOFF: Duration = Duration::from_secs(30);
+
+mod claim;
 mod dispatch;
 mod retire;
 
@@ -74,7 +93,9 @@ const EVENT_DELIVERY_EXHAUSTED: &str = "outbound_delivery_exhausted";
 const EVENT_DELIVERED: &str = "outbound_delivery_delivered";
 const EVENT_STAMP_FAILED: &str = "outbound_obligation_stamp_failed";
 const EVENT_ATTEMPT_COUNT_FAILED: &str = "outbound_obligation_attempt_failed";
-const EVENT_ACK_FAILED: &str = "outbound_ack_failed";
+const EVENT_RELEASE_FAILED: &str = "outbound_claim_release_failed";
+const EVENT_RENEW_FAILED: &str = "outbound_claim_renew_failed";
+const EVENT_CLAIM_LAPSED: &str = "outbound_claim_lapsed";
 
 /// Where an answer goes: one provider's workspace.
 ///
@@ -89,19 +110,19 @@ pub struct Destination {
 impl Destination {
     /// The destination a job is addressed to.
     #[must_use]
-    pub fn of(job: &OutboundDelivery) -> Self {
+    pub fn of(job: &Claimed) -> Self {
         Self {
-            provider: job.provider.clone(),
-            workspace_id: job.workspace_id.clone(),
+            provider: job.outgoing.provider.clone(),
+            workspace_id: job.outgoing.workspace_id.clone().into(),
         }
     }
 }
 
 /// A job as the lanes carry it: boxed, because the answer text is the bulk
 /// of it and a channel moves the box, not the text.
-type Job = Box<OutboundDelivery>;
+type Job = Box<Claimed>;
 
-/// The lanes, over one set of posters and one queue to acknowledge through.
+/// The lanes, over one set of posters and the obligation ledger.
 ///
 /// Cheap to clone: every clone shares the same lanes, ceiling and tracker.
 #[derive(Debug)]
@@ -120,7 +141,6 @@ impl<S> Clone for Lanes<S> {
 #[derive(Debug)]
 struct Inner<S> {
     posters: Posters<S>,
-    queue: OutboundQueue,
     /// The obligation ledger, for stamping what a destination actually took.
     database: Db,
     permits: Semaphore,
@@ -129,29 +149,55 @@ struct Inner<S> {
     lanes: DashMap<Destination, mpsc::Sender<Job>>,
     tasks: TaskTracker,
     token: CancellationToken,
+    /// How often a delivery renews its claim.
+    renew: Duration,
+    /// Rung after every finished job: a lane's next row may now be claimable.
+    finished: Notify,
+    /// Jobs dispatched and not yet finished, which [`Lanes::room`] reads.
+    held: AtomicUsize,
 }
 
 impl<S: Deliver + 'static> Lanes<S> {
-    /// Lanes delivering through `posters`, acknowledging through `queue`,
-    /// stamping obligations in `database`, and stopping on `token`.
+    /// Lanes delivering through `posters`, stamping obligations in
+    /// `database`, and stopping on `token`.
     #[must_use]
-    pub fn new(
+    pub fn new(posters: Posters<S>, database: Db, token: CancellationToken) -> Self {
+        Self::renewing_every(posters, database, token, CLAIM_RENEW)
+    }
+
+    /// [`Lanes::new`], renewing each delivery's claim every `renew`.
+    #[must_use]
+    pub fn renewing_every(
         posters: Posters<S>,
-        queue: OutboundQueue,
         database: Db,
         token: CancellationToken,
+        renew: Duration,
     ) -> Self {
         Self {
             inner: Arc::new(Inner {
                 posters,
-                queue,
                 database,
                 permits: Semaphore::new(IN_FLIGHT_DELIVERIES),
                 lanes: DashMap::new(),
                 tasks: TaskTracker::new(),
                 token,
+                renew,
+                finished: Notify::new(),
+                held: AtomicUsize::new(0),
             }),
         }
+    }
+
+    /// Resolves after the next job finishes, however it ended.
+    pub async fn finished(&self) {
+        self.inner.finished.notified().await;
+    }
+
+    /// How many more jobs the lanes can start at once: the delivery slots
+    /// no dispatched, unfinished job holds.
+    #[must_use]
+    pub fn room(&self) -> usize {
+        IN_FLIGHT_DELIVERIES.saturating_sub(self.inner.held.load(Ordering::Acquire))
     }
 
     /// How many lanes currently hold work.
@@ -188,16 +234,14 @@ impl<S: Deliver + 'static> Inner<S> {
         }
     }
 
-    /// Delivers one job with bounded retry, then acknowledges it.
-    ///
-    /// # Every terminal verdict acknowledges, including the exhausted one
-    ///
-    /// A job whose attempts ran out is acknowledged and logged, not left
-    /// pending. Leaving it would redeliver it on the next pass, forever, at
-    /// the head of its destination's lane — one undeliverable answer would
-    /// stop every answer to that workspace behind it. The durable stream's
-    /// job is to survive a CRASH, and a crash is precisely the case where the
-    /// ack never runs.
+    /// A job a lane took has ended, however it ended: its slot is free again,
+    /// then the worker hears, so the room it reads already counts the slot.
+    fn done(&self) {
+        self.held.fetch_sub(1, Ordering::AcqRel);
+        self.finished.notify_one();
+    }
+
+    /// One delivery cycle of a claimed job.
     ///
     /// # The cycle is counted before it is run
     ///
@@ -206,110 +250,75 @@ impl<S: Deliver + 'static> Inner<S> {
     /// reached the counter, which is how `attempt_count` came to hold a tally
     /// of successes: the destination that refuses an answer forever is the row
     /// worth finding, and it is the one a success counter never records.
-    async fn deliver_and_ack(&self, job: &OutboundDelivery) {
-        let attempts = self.count_cycle(job).await;
-        let opening = Attempt::opening(attempts);
-        let verdict = deliver_with_retry(&self.posters, job, &self.token, opening).await;
-        if verdict == Verdict::Delivered {
-            self.stamp_delivered(job, attempts).await;
+    async fn deliver(&self, job: &Claimed) {
+        // A row naming no connector this build knows has no poster to try.
+        if afd_connector::Provider::parse(&job.outgoing.provider).is_none() {
+            crate::abandon::delivery(&self.database, job, AbandonReason::Unaddressable).await;
+            return;
         }
-        if verdict == Verdict::Permanent {
-            crate::abandon::delivery(&self.database, job, AbandonReason::Refused).await;
-        }
-        if verdict == Verdict::Retryable {
-            // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-            let error_code = af_core::error_code::CONNECTOR_VENDOR_DEADLINE.as_str();
-            let provider = job.provider.as_str();
-            let fleet_id = job.fleet_id.as_str();
-            // A shutdown cut the retries short, so this is not an exhausted
-            // budget — it is work this process is handing back. Left
-            // UNACKNOWLEDGED on purpose: the entry stays in this consumer's
-            // pending list, and the next process's pending-first read is what
-            // picks it up.
-            if self.token.is_cancelled() {
-                tracing::info!(
-                    provider,
-                    fleet_id,
-                    attempts,
-                    event = EVENT_REQUEUED_AT_SHUTDOWN
-                );
+        let attempts = match crate::obligation::count_attempt(&self.database, job).await {
+            Ok(Some(counted)) => Some(counted),
+            // Another holder took the row: posting it now would send the
+            // answer twice, or beside a later answer to the same workspace.
+            Ok(None) => {
+                Self::lapsed(job, "count");
                 return;
             }
-            tracing::warn!(
-                error_code,
-                provider,
-                fleet_id,
-                attempts,
-                event = EVENT_DELIVERY_EXHAUSTED
-            );
-            if attempts.is_some_and(|cycles| cycles >= MAX_DELIVERY_CYCLES) {
-                crate::abandon::delivery(&self.database, job, AbandonReason::CyclesExhausted).await;
-            }
-        }
-        if let Err(failure) = self.queue.ack(&job.id).await {
-            // The delivery HAPPENED. What failed is the record of it, so the
-            // job stays pending and will be delivered a second time — which is
-            // why the whole path is at-least-once and the destination's own
-            // thread is what a person reads.
-            crate::worker::report(EVENT_ACK_FAILED, &failure.into());
-        }
-    }
-
-    /// Records this delivery cycle against its obligation, and answers the
-    /// count the write produced.
-    ///
-    /// `None` covers both of the ways there is no number to report: a row that
-    /// was already delivered, so a duplicate queue entry counts nothing; and a
-    /// database that would not answer. The second is logged and the delivery
-    /// goes ahead regardless — the answer is owed to a person, and losing it
-    /// because the bookkeeping failed is the one outcome worth nothing to
-    /// anybody. The telemetry then under-reports, which it says by carrying no
-    /// count rather than by carrying a wrong one.
-    async fn count_cycle(&self, job: &OutboundDelivery) -> Option<i64> {
-        match crate::obligation::count_attempt(
-            &self.database,
-            job.fleet_id.as_str(),
-            job.event_id.as_str(),
-        )
-        .await
-        {
-            Ok(counted) => counted,
+            // The answer is owed to a person and the count is bookkeeping, so
+            // an unanswered count is reported and the delivery goes ahead;
+            // the renewals below still stop it before its claim can lapse.
             Err(failure) => {
                 crate::worker::report(EVENT_ATTEMPT_COUNT_FAILED, &failure);
                 None
             }
+        };
+        let opening = Attempt::opening(attempts);
+        let verdict = tokio::select! {
+            verdict = deliver_with_retry(&self.posters, &job.outgoing, &self.token, opening) => Ok(verdict),
+            lost = self.renewing(job) => Err(lost),
+        };
+        let verdict = match verdict {
+            Ok(verdict) => verdict,
+            // The claim lapsed, or may have: another holder may be posting it.
+            Err(lost) => {
+                Self::lapsed(job, lost);
+                return;
+            }
+        };
+        match verdict {
+            Verdict::Delivered => self.stamp_delivered(job, attempts).await,
+            Verdict::Permanent => {
+                crate::abandon::delivery(&self.database, job, AbandonReason::Refused).await;
+            }
+            Verdict::Retryable => self.retry_later(job, attempts).await,
         }
     }
 
     /// Records that a destination took this answer.
     ///
-    /// Stamped BEFORE the acknowledgement, because the two record different
-    /// facts and only this one says a person received anything. The ack fires
-    /// for an EXHAUSTED job too, so an ack-time stamp would mark undeliverable
-    /// answers delivered.
-    ///
-    /// A failure here leaves the row receipted and unstamped, which the
-    /// recovery scan reads as "queued and never received" and re-offers. That
-    /// costs a duplicate message in a thread; the opposite error — marking
-    /// delivered what was not — loses the answer silently.
-    async fn stamp_delivered(&self, job: &OutboundDelivery, attempts: Option<i64>) {
-        if let Err(failure) = crate::obligation::stamp_delivered(
-            &self.database,
-            job.fleet_id.as_str(),
-            job.event_id.as_str(),
-        )
-        .await
-        {
-            crate::worker::report(EVENT_STAMP_FAILED, &failure);
-            return;
+    /// A failure here leaves the row claimed and unstamped; the claim lapses
+    /// and the next holder posts it again. That costs a duplicate message in a
+    /// thread; the opposite error — marking delivered what was not — loses the
+    /// answer silently.
+    async fn stamp_delivered(&self, job: &Claimed, attempts: Option<i64>) {
+        match crate::obligation::stamp_delivered(&self.database, job).await {
+            Ok(true) => {}
+            Ok(false) => {
+                Self::lapsed(job, "stamp");
+                return;
+            }
+            Err(failure) => {
+                crate::worker::report(EVENT_STAMP_FAILED, &failure);
+                return;
+            }
         }
         // Hoisted: see the `tracing` note in the workspace Cargo.toml.
-        let provider = job.provider.as_str();
-        let fleet_id = job.fleet_id.as_str();
+        let provider = job.outgoing.provider.as_str();
+        let fleet_id = job.outgoing.fleet_id.as_str();
         // The turn this answer belongs to. Every other layer stamps it, and a
         // delivery line that names only the fleet cannot be joined back to the
         // turn a reader is tracing — nor tell two turns of one fleet apart.
-        let agentsfleet_event_id = job.event_id.as_str();
+        let agentsfleet_event_id = job.outgoing.event_id.as_str();
         tracing::debug!(
             provider,
             fleet_id,

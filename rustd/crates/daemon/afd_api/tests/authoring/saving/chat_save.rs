@@ -14,7 +14,7 @@ mod recovery;
 mod refusals;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn ordinary_failed_and_cancelled_messages_never_save() {
     for mode in ["ordinary", "failed", "cancelled"] {
         let mut case = Case::create().await;
@@ -39,14 +39,9 @@ async fn ordinary_failed_and_cancelled_messages_never_save() {
             .await;
             assert_eq!(response.status(), StatusCode::OK);
         }
-        let response = send(
-            &case.router,
-            Method::POST,
-            &path,
-            Some(&token),
-            &report.to_string(),
-        )
-        .await;
+        let response =
+            crate::harness::native::send(&case.router, &path, Some(&token), &report.to_string())
+                .await;
         assert_eq!(
             response.status(),
             StatusCode::OK,
@@ -62,7 +57,7 @@ async fn ordinary_failed_and_cancelled_messages_never_save() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_checked_save_refusal_keeps_the_answer_and_draft_editable() {
     let mut case = Case::create().await;
     case.fund().await;
@@ -109,7 +104,7 @@ async fn a_checked_save_refusal_keeps_the_answer_and_draft_editable() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_terminal_report_saves_once_without_a_browser() {
     let mut case = Case::create().await;
     case.fund().await;
@@ -163,7 +158,10 @@ async fn read(case: &Case, item: &str) -> Value {
     json_body(response).await
 }
 
-async fn finish_request(case: &mut Case, draft: &Value) -> (String, String, Value) {
+async fn finish_request(
+    case: &mut Case,
+    draft: &Value,
+) -> (crate::harness::native::Operation, String, Value) {
     let runner = mint();
     case.base.own_runner(&runner);
     let token = format!("agt_r{}{}", mint(), mint()).replace('-', "");
@@ -173,7 +171,7 @@ async fn finish_request(case: &mut Case, draft: &Value) -> (String, String, Valu
         &case.base,
         &runner,
         &lease,
-        draft["id"].as_str().expect("draft"),
+        &crate::authoring::id_field(&draft["id"]),
         digest.as_str(),
     )
     .await;
@@ -181,7 +179,7 @@ async fn finish_request(case: &mut Case, draft: &Value) -> (String, String, Valu
         "usage":{"knowledge":"known","calls":0,"input_tokens":0,"output_tokens":0,
             "runtime_ms":0,"provider_cost_nanos":"0"},"answer":"Prepared."});
     (
-        format!("/v1/runners/me/authoring-leases/{lease}/reports"),
+        crate::harness::native::Operation::Report(lease),
         token,
         report,
     )
@@ -199,15 +197,14 @@ async fn accept_message(case: &Case, item: &str, input: &Value) {
     assert_eq!(response.status(), StatusCode::ACCEPTED);
 }
 
-async fn report_once(case: &Case, path: &str, token: &str, report: &Value) {
-    let response = send(
-        &case.router,
-        Method::POST,
-        path,
-        Some(token),
-        &report.to_string(),
-    )
-    .await;
+async fn report_once(
+    case: &Case,
+    path: &crate::harness::native::Operation,
+    token: &str,
+    report: &Value,
+) {
+    let response =
+        crate::harness::native::send(&case.router, path, Some(token), &report.to_string()).await;
     assert_eq!(
         response.status(),
         StatusCode::OK,

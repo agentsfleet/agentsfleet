@@ -34,10 +34,6 @@ async fn test_records_post_before_report() {
     let calls = rig.calls();
     let records = position(&calls, Verb::Records).unwrap();
     assert!(
-        records < position(&calls, Verb::Capture).unwrap(),
-        "records go before memory"
-    );
-    assert!(
         records < position(&calls, Verb::Report).unwrap(),
         "and before the report"
     );
@@ -73,9 +69,9 @@ async fn a_failed_records_post_leaves_the_report_untouched() {
         3,
         "the trace still rides"
     );
-    assert!(
-        position(&calls, Verb::Capture).is_some(),
-        "memory is still pushed"
+    assert_eq!(
+        report["memory"][0]["key"], "k",
+        "memory stays with the report"
     );
     let failed = capture.only("tool_records_post_failed");
     assert_eq!(failed.level, tracing::Level::WARN);

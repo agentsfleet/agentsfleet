@@ -1,4 +1,4 @@
-//! Approval inbox and decision HTTP lifecycle over live Postgres and Dragonfly.
+//! Approval inbox and decision HTTP lifecycle over live Postgres and the lane's NATS.
 #![cfg(feature = "test-util")]
 
 use crate::harness;
@@ -24,23 +24,29 @@ pub(crate) const LISTING_SUBJECT: &str = "user_live_approval_listing";
 const UNKNOWN_SUBJECT: &str = "user_live_approval_unknown";
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn approval_inbox_reads_and_resolves_a_live_gate() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
         SUBJECT,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), queue)
+    .with_approval_queue(fixture.database.clone(), harness::bus().await)
     .router();
     let collection = format!("/v1/workspaces/{}/approvals", fixture.workspace.as_str());
     let item = format!("{collection}/{}", fixture.gate);
     assert_approval_reads(&router, &fixture, &collection, &item).await;
-    assert_approval_resolution(&router, &fixture.token, &item, &fixture.gate, &collection).await;
+    assert_approval_resolution(
+        &router,
+        &fixture.token,
+        &item,
+        fixture.gate.as_str(),
+        &collection,
+    )
+    .await;
     fixture.cleanup().await;
 }
 
@@ -49,18 +55,17 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
 /// own 404, and revoking a grant under an unknown fleet is the fleet's, so a
 /// caller learns which half of the path named nothing.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
     let fixture = Fixture::create_as(UNKNOWN_SUBJECT).await;
     fixture.seed().await;
-    let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
         UNKNOWN_SUBJECT,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), queue)
+    .with_approval_queue(fixture.database.clone(), harness::bus().await)
     .router();
     let workspace = fixture.workspace.as_str();
     let nowhere = afd_db::test_util::mint_id();
@@ -104,9 +109,6 @@ async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
 /// [`LISTING_SUBJECT`] gives.
 const VANISH_SUBJECT: &str = "user_live_approval_vanish";
 
-/// The action id the concurrent edit moves the gate to.
-const MOVED_ACTION: &str = "moved-away";
-
 /// A gate that leaves its action between the handler's read and its decision
 /// is answered as absent, not as resolved by nobody.
 ///
@@ -116,19 +118,18 @@ const MOVED_ACTION: &str = "moved-away";
 /// under that action. The wait polls `pg_stat_activity`, a catalog view no
 /// test alters, never the gate table.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 #[expect(clippy::expect_used, reason = "a test asserts by panicking")]
 async fn a_gate_that_vanishes_mid_decision_is_absent() {
     let fixture = Fixture::create_as(VANISH_SUBJECT).await;
     fixture.seed().await;
-    let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
         VANISH_SUBJECT,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), queue)
+    .with_approval_queue(fixture.database.clone(), harness::bus().await)
     .router();
 
     let mut editor = fixture
@@ -143,9 +144,11 @@ async fn a_gate_that_vanishes_mid_decision_is_absent() {
         .fetch_one(&mut *edit)
         .await
         .expect("the editor names its backend");
-    sqlx::query("UPDATE fleet.approval_gates SET action_id = $2 WHERE id = $1::uuid")
+    // The action the concurrent edit moves the gate to: one nothing names.
+    let moved_action = afd_db::test_util::mint_id();
+    sqlx::query("UPDATE fleet.approval_gates SET action_id = $2 WHERE id = $1")
         .bind(&fixture.gate)
-        .bind(MOVED_ACTION)
+        .bind(&moved_action)
         .execute(&mut *edit)
         .await
         .expect("the gate moves inside the open edit");

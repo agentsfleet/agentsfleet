@@ -5,8 +5,8 @@
 use crate::{queue, requests, seed, support::Fixtures};
 use af_core::id::Uuid7;
 use af_wire::runner::{NetworkPolicy, RegisterRequest, SandboxTier};
+use afd_bus::wake::Wake;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::Doorbell;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
@@ -14,7 +14,7 @@ const HOT_FLEETS: usize = 96;
 const PLACEABLE: usize = 3;
 const HOT_TAG: &str = "fixture:nobody-carries-this";
 
-async fn enqueue(fixtures: &Fixtures, fleet: &str, workspace: &str) {
+async fn enqueue(fixtures: &Fixtures, fleet: &Uuid7, workspace: &Uuid7) {
     queue::enqueue(
         &fixtures.database,
         fleet,
@@ -27,7 +27,7 @@ async fn enqueue(fixtures: &Fixtures, fleet: &str, workspace: &str) {
     .await;
 }
 
-fn enrolment(fleet: &str) -> RegisterRequest<'static> {
+fn enrolment(fleet: &Uuid7) -> RegisterRequest<'static> {
     requests::enrolment_tagged(
         SandboxTier::LandlockFull,
         NetworkPolicy::AllowListEgress,
@@ -39,7 +39,7 @@ fn enrolment(fleet: &str) -> RegisterRequest<'static> {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_ineligible_work_cannot_hide_eligible_fleets() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (base, workspace, tenant) = seed::unique_ids();
     for _ in 0..HOT_FLEETS {
         let fleet = mint_id();
@@ -73,7 +73,7 @@ async fn test_ineligible_work_cannot_hide_eligible_fleets() {
             cost.candidates_scanned <= u64::try_from(remaining).expect("small count"),
             "{cost:?}"
         );
-        found.insert(acquired.fleet_id.as_str().to_owned());
+        found.insert(acquired.fleet_id);
     }
     assert_eq!(found, expected);
     fixtures.cleanup().await;
@@ -82,7 +82,7 @@ async fn test_ineligible_work_cannot_hide_eligible_fleets() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (first, workspace, tenant) = seed::unique_ids();
     let second = mint_id();
     let mut request = enrolment(&first);
@@ -98,17 +98,16 @@ async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
         .await
         .expect("runner")
         .runner_id;
-    let bell = Doorbell::new();
-    bell.ring(Uuid7::parse(&second).expect("fleet"));
-    let leases = fixtures.leases().with_doorbell(bell);
+    let bell = Wake::default();
+    bell.ring(second.clone());
+    let leases = fixtures.leases().with_wake(bell);
     assert_eq!(
         leases
             .select(&runner, &[])
             .await
             .expect("poll")
             .expect("rung fleet")
-            .fleet_id
-            .as_str(),
+            .fleet_id,
         second
     );
     assert_eq!(
@@ -117,8 +116,7 @@ async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
             .await
             .expect("poll")
             .expect("unnotified fleet")
-            .fleet_id
-            .as_str(),
+            .fleet_id,
         first
     );
     fixtures.cleanup().await;

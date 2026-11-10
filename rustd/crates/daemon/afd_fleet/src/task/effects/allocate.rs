@@ -7,6 +7,7 @@ use crate::{
     task::{TaskLease, TaskRefusal, Tasks, execution, github::BoundPr, guard, row, transaction},
 };
 use af_core::clock;
+use af_core::id::Uuid7;
 use af_wire::task::TaskEffectInput;
 use sqlx::{PgConnection, types::Json};
 
@@ -42,14 +43,17 @@ pub(super) async fn reserve(
     })
     .map_err(af_core::json::Unreadable::from)?;
     let digest = af_core::etag::sha256_hex(request.as_bytes());
+    let task = crate::task::guard::wire(&input.task.task_id)?;
+    let operation = crate::task::guard::wire(&input.operation_id)?;
+    let source_item = crate::task::guard::wire(&input.source_item_id)?;
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // Replays remain readable after a stop, but never regain mutation authority.
     let current = guard::lease(&mut tx, lease).await?;
-    if current.task_id.as_deref() != Some(input.task.task_id.as_str()) {
+    if current.task_id.as_ref() != Some(&task) {
         return Err(TaskRefusal::NotFound.into());
     }
-    if let Some(effect) = existing(&mut tx, &input.task.task_id, &input.operation_id).await? {
+    if let Some(effect) = existing(&mut tx, &task, &operation).await? {
         if effect.request_digest != digest {
             return Err(TaskRefusal::ReplayConflict.into());
         }
@@ -63,18 +67,18 @@ pub(super) async fn reserve(
     let target = publication_context(&mut tx, &owned, input).await?;
     let id = tasks.leases.entropy().uuid7(clock::now())?;
     let ordinal: i64 = sqlx::query_scalar(include_str!("sql/cursor.sql"))
-        .bind(&input.task.task_id)
+        .bind(&task)
         .fetch_one(&mut *tx)
         .await
         .map_err(query("allocate native effect ordinal"))?;
     sqlx::query(include_str!("sql/insert.sql"))
-        .bind(id.as_str())
-        .bind(&input.task.task_id)
+        .bind(&id)
+        .bind(&task)
         .bind(&owned.current.fleet_id)
         .bind(&owned.current.workspace_id)
-        .bind(&input.source_item_id)
-        .bind(lease.lease_id.as_str())
-        .bind(lease.runner_id.as_str())
+        .bind(&source_item)
+        .bind(lease.lease_id)
+        .bind(lease.runner_id)
         .bind(owned.current.fence)
         .bind(row::sql_counter(
             owned.snapshot.context.generation,
@@ -85,7 +89,7 @@ pub(super) async fn reserve(
             "stop_generation",
         )?)
         .bind(ordinal)
-        .bind(&input.operation_id)
+        .bind(&operation)
         .bind(target.input_sequence)
         .bind(&input.expected_head)
         .bind(&input.tested_tree)
@@ -103,8 +107,8 @@ pub(super) async fn reserve(
         .await
         .map_err(query("persist immutable publication intent"))?;
     sqlx::query(include_str!("sql/payload.sql"))
-        .bind(id.as_str())
-        .bind(&input.task.task_id)
+        .bind(&id)
+        .bind(&task)
         .bind(&owned.current.fleet_id)
         .bind(&owned.current.workspace_id)
         .bind(target.target)
@@ -113,12 +117,12 @@ pub(super) async fn reserve(
         .await
         .map_err(query("retain private publication target"))?;
     sqlx::query(include_str!("sql/prepare.sql"))
-        .bind(id.as_str())
+        .bind(id)
         .bind("prepared")
         .execute(&mut *tx)
         .await
         .map_err(query("prepare native publication"))?;
-    let effect = existing(&mut tx, &input.task.task_id, &input.operation_id)
+    let effect = existing(&mut tx, &task, &operation)
         .await?
         .ok_or(TaskRefusal::NotFound)?;
     tx.commit()
@@ -130,8 +134,8 @@ pub(super) async fn reserve(
 
 async fn existing(
     connection: &mut PgConnection,
-    task: &str,
-    operation: &str,
+    task: &Uuid7,
+    operation: &Uuid7,
 ) -> Result<Option<Effect>> {
     sqlx::query_as(include_str!("sql/replay.sql"))
         .bind(task)
@@ -152,9 +156,11 @@ async fn publication_context(
     ) {
         return Err(TaskRefusal::InvalidTarget.into());
     }
+    let task = crate::task::guard::wire(&input.task.task_id)?;
+    let source_item = crate::task::guard::wire(&input.source_item_id)?;
     let target: PublicationContext = sqlx::query_as(include_str!("sql/target.sql"))
-        .bind(&input.task.task_id)
-        .bind(&input.source_item_id)
+        .bind(&task)
+        .bind(&source_item)
         .fetch_one(&mut *connection)
         .await
         .map_err(query("read native publication target"))?;
@@ -172,13 +178,15 @@ async fn publication_context(
     let accepted = crate::lease::Leases::stored_config_on(
         connection,
         &owned.current.fleet_id,
-        Some(owned.snapshot.context.accepted_revision_id.as_ref()),
+        Some(&crate::task::guard::wire(
+            &owned.snapshot.context.accepted_revision_id,
+        )?),
     )
     .await?
     .ok_or(TaskRefusal::InvalidTarget)?;
     target.target.within(&accepted)?;
     let free: bool = sqlx::query_scalar(include_str!("sql/available.sql"))
-        .bind(&input.task.task_id)
+        .bind(&task)
         .bind("prepared")
         .bind("issued")
         .bind("unknown")

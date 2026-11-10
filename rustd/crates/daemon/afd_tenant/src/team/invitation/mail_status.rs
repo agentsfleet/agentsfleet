@@ -96,8 +96,8 @@ impl Team {
     ) -> Result<Option<EmailAttempt>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query_as(sql::BEGIN_EMAIL_ATTEMPT)
-            .bind(tenant.as_str())
-            .bind(invite.as_str())
+            .bind(tenant)
+            .bind(invite)
             .bind(ROLE_OWNER)
             .fetch_optional(&mut *connection)
             .await
@@ -122,7 +122,7 @@ impl Team {
         let mut connection = self.database.acquire().await?;
         let stamped =
             sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(sql::RECORD_EMAIL_RESULT)
-                .bind(invite.as_str())
+                .bind(invite)
                 .bind(attempt)
                 .bind(status.wire())
                 .bind(status == EmailStatus::Sent)

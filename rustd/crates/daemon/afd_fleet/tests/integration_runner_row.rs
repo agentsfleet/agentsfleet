@@ -31,7 +31,7 @@ use crate::rows::Row;
 /// one response and the row keeps a hash of it, so a database read — a backup, a
 /// replica, an operator with `SELECT` — cannot recover a working credential.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_enrolment_stores_only_the_digest() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 4);
@@ -42,7 +42,7 @@ async fn test_enrolment_stores_only_the_digest() {
         .await
         .expect("a well-formed enrolment against a reachable datastore");
 
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
     let token = enrolled.token.expose().to_owned();
     let digest = Digest::of_minted(&token);
 
@@ -74,7 +74,7 @@ async fn test_enrolment_stores_only_the_digest() {
 /// What the operator is echoed and what the host will apply are the same value,
 /// which is only true if the clamp lands on the ROW rather than on the reply.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_enrolment_stores_the_clamped_assignment() {
     let fixtures = Fixtures::create().await;
     // Far past the ceiling: a fat-fingered value must not fork unbounded
@@ -91,7 +91,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
         .await
         .expect("an out-of-range worker count is clamped, never refused");
 
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
     assert_eq!(enrolled.worker_count, af_core::limits::MAX_WORKERS);
     assert_eq!(
         fixtures.text(Row::Runner(&runner), "worker_count").await,
@@ -127,7 +127,7 @@ async fn test_enrolment_stores_the_clamped_assignment() {
 /// there is no evidence, so the lease gate refuses work rather than assuming
 /// the cage exists.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_enrolment_opens_degraded_with_its_audit_row() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
@@ -138,7 +138,7 @@ async fn test_enrolment_opens_degraded_with_its_audit_row() {
         .await
         .expect("enrolment must succeed");
 
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
     assert_eq!(
         enrolled.verdict,
         Verdict::Degraded {
@@ -165,7 +165,7 @@ async fn test_enrolment_opens_degraded_with_its_audit_row() {
 /// make a dead host look alive, which is a property of the statement rather
 /// than of a handler remembering not to ask.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_the_self_read_never_bumps_liveness() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::DevNone, NetworkPolicy::AllowAll, 2);
@@ -193,7 +193,7 @@ async fn test_the_self_read_never_bumps_liveness() {
     assert_eq!(assigned.registry_allowlist, ["registry.npmjs.org"]);
     assert_eq!(assigned.worker_count, 2);
     // Read twice; still never seen.
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
     assert_eq!(
         fixtures.instant(Row::Runner(&runner), "last_seen_at").await,
         Some(afd_runner::sql::NEVER_SEEN),

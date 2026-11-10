@@ -20,10 +20,10 @@ where
     S: SqlSafeStr,
 {
     sqlx::query_as(wrap(include_str!("sql/aggregates.sql")))
-        .bind(tenant.as_str())
+        .bind(tenant)
         .bind(request.window.from.to_sqlx())
         .bind(request.window.through.to_sqlx())
-        .bind(request.filter.fleet.as_ref().map(Uuid7::as_str))
+        .bind(request.filter.fleet.as_ref())
         .bind(request.filter.model.as_deref())
         .bind(request.filter.work_type)
         .bind(dimension::SUMMARY)
@@ -42,10 +42,10 @@ where
     S: SqlSafeStr,
 {
     sqlx::query_as(wrap(include_str!("sql/activities.sql")))
-        .bind(tenant.as_str())
+        .bind(tenant)
         .bind(request.window.from.to_sqlx())
         .bind(request.window.through.to_sqlx())
-        .bind(request.filter.fleet.as_ref().map(Uuid7::as_str))
+        .bind(request.filter.fleet.as_ref())
         .bind(request.filter.model.as_deref())
         .bind(request.filter.work_type)
         .bind(
@@ -54,7 +54,7 @@ where
                 .as_ref()
                 .map(|after| after.recorded_at.to_sqlx()),
         )
-        .bind(request.after.as_ref().map(|after| after.work_id.as_str()))
+        .bind(request.after.as_ref().map(|after| &after.work_id))
         .bind(request.after.as_ref().map(|after| after.work_type))
         .bind(i64::from(request.limit) + 1)
 }
@@ -72,14 +72,14 @@ where
     S: SqlSafeStr,
 {
     sqlx::query_as(wrap(include_str!("sql/charges.sql")))
-        .bind(tenant.as_str())
+        .bind(tenant)
         .bind(work.work_type())
-        .bind(work.id().as_str())
+        .bind(work.id())
         .bind(request.window.from.to_sqlx())
         .bind(request.window.through.to_sqlx())
         .bind(request.filter.model.as_deref())
         .bind(after)
         .bind(i64::from(request.limit) + 1)
-        .bind(request.filter.fleet.as_ref().map(Uuid7::as_str))
+        .bind(request.filter.fleet.as_ref())
         .bind(request.filter.work_type)
 }

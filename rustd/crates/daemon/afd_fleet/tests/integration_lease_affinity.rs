@@ -35,9 +35,9 @@ use crate::rows::{LAPSE, Row};
 /// one is a unique-violation the moment a second test seeds its own fleet —
 /// see [`afd_db::test_util::mint_id`].
 struct Ids {
-    fleet: String,
-    workspace: String,
-    tenant: String,
+    fleet: Uuid7,
+    workspace: Uuid7,
+    tenant: Uuid7,
 }
 
 impl Ids {
@@ -91,16 +91,16 @@ async fn enrol<const N: usize>(fixtures: &Fixtures, tag: &str) -> [Uuid7; N] {
 /// an error, because a loser that saw a failure would back off instead of
 /// moving to the next candidate.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_lease_affinity_race() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
         .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
     let runners: [Uuid7; CONTENDERS] = enrol(&fixtures, &tag).await;
-    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
+    let fleet = ids.fleet.clone();
     let leases = fixtures.leases();
 
     // Every contender claims the same slot at the same instant. Awaited
@@ -142,16 +142,16 @@ async fn test_lease_affinity_race() {
 /// indistinguishable from the dead holder it displaced, and §3's report could
 /// not tell a stale writer from the live one.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_reclaim_bumps_fence() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
         .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
-    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
+    let fleet = ids.fleet.clone();
     let leases = fixtures.leases();
 
     let first = leases
@@ -196,16 +196,16 @@ async fn test_reclaim_bumps_fence() {
 /// This is the failure the guard exists for: without it a dead runner's late
 /// release would hand a fleet that is actively being worked to a second runner.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_superseded_holder_cannot_release_the_live_slot() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let ids = Ids::mint();
     let tag = placement_tag(&ids.fleet);
     fixtures
         .seed_fleet(&ids.fleet, &ids.workspace, &ids.tenant, &tag)
         .await;
     let [first_runner, second_runner] = enrol(&fixtures, &tag).await;
-    let fleet = Uuid7::parse(&ids.fleet).expect("the fixture id is a v7 spelling");
+    let fleet = ids.fleet.clone();
     let leases = fixtures.leases();
 
     let stale = leases

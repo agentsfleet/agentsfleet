@@ -17,8 +17,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use afd_admission::{Admission, Admitted, Key, Producer, Reply, sql};
+use afd_db::test_util::mint_id;
 
 use crate::recovery_seed::{admission, ledger, producer_key};
 use crate::seed::seeded_parts;
@@ -41,9 +43,6 @@ const LOOKUP_INDEX: &str = "idx_admissions_reply_lookup";
 const LOOKUP_COLUMNS: &str = "(fleet_id, created_at, sequence)";
 const LOOKUP_PREDICATE: &str = "WHERE (reply_provider IS NOT NULL)";
 
-/// An id this ledger never minted.
-const FOREIGN_EVENT: &str = "not-a-ledger-id";
-
 /// Every producer that owns no reply surface, which is every one but the
 /// continuation.
 const NO_SURFACE: [Producer; 4] = [
@@ -55,8 +54,8 @@ const NO_SURFACE: [Producer; 4] = [
 
 /// A webhook admission that states `reply`.
 fn replying<'a>(
-    fleet: &'a str,
-    workspace: &'a str,
+    fleet: &'a Uuid7,
+    workspace: &'a Uuid7,
     key: &'a str,
     reply: Reply<'a>,
 ) -> Admission<'a> {
@@ -67,7 +66,11 @@ fn replying<'a>(
 }
 
 /// The destination one event was admitted with, read by the shipped lookup.
-async fn destination(fixtures: &Fixtures, fleet: &str, event_id: &str) -> Option<(String, String)> {
+async fn destination(
+    fixtures: &Fixtures,
+    fleet: &Uuid7,
+    event_id: &Uuid7,
+) -> Option<(String, String)> {
     let mut connection = fixtures
         .database
         .acquire()
@@ -96,7 +99,7 @@ async fn admit(fixtures: &Fixtures, admission: Admission<'_>) -> Admitted {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn existing_producers_record_no_reply_destination() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
 
     for producer in NO_SURFACE {
@@ -125,7 +128,7 @@ async fn existing_producers_record_no_reply_destination() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn reply_destination_is_both_or_neither() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
     let key = producer_key(&fleet, "stated");
     let stated = Reply::To {
@@ -145,12 +148,11 @@ async fn reply_destination_is_both_or_neither() {
         .acquire()
         .await
         .expect("a pooled connection");
-    let refused =
-        sqlx::query("UPDATE fleet.admissions SET reply_address = NULL WHERE id = $1::uuid")
-            .bind(&admitted.stored.id)
-            .execute(&mut *connection)
-            .await
-            .expect_err("a connector without an address must be refused");
+    let refused = sqlx::query("UPDATE fleet.admissions SET reply_address = NULL WHERE id = $1")
+        .bind(&admitted.stored.id)
+        .execute(&mut *connection)
+        .await
+        .expect_err("a connector without an address must be refused");
     assert_eq!(
         refused
             .as_database_error()
@@ -168,7 +170,7 @@ async fn reply_destination_is_both_or_neither() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn continuation_inherits_the_resumed_destination() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
 
     let asked_key = producer_key(&fleet, "asked-in-a-thread");
@@ -188,13 +190,15 @@ async fn continuation_inherits_the_resumed_destination() {
     let silent_key = producer_key(&fleet, "asked-nowhere");
     let silent = admit(&fixtures, admission(&fleet, &workspace, &silent_key)).await;
 
+    // An id this ledger never minted.
+    let foreign = mint_id();
     let resumed = [
         (
-            asked.stored.id.as_str(),
+            &asked.stored.id,
             Some((CONNECTOR.to_owned(), THREAD_A.to_owned())),
         ),
-        (silent.stored.id.as_str(), None),
-        (FOREIGN_EVENT, None),
+        (&silent.stored.id, None),
+        (&foreign, None),
     ];
     for (event_id, expected) in resumed {
         let key = producer_key(&fleet, &format!("continues:{event_id}"));
@@ -224,7 +228,7 @@ async fn continuation_inherits_the_resumed_destination() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn retried_key_with_a_new_destination_keeps_the_first() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
     let key = producer_key(&fleet, "retried");
     let first_reply = Reply::To {
@@ -260,7 +264,7 @@ async fn retried_key_with_a_new_destination_keeps_the_first() {
         .await
         .expect("a pooled connection");
     let stored: String =
-        sqlx::query_scalar("SELECT payload_digest FROM fleet.admissions WHERE id = $1::uuid")
+        sqlx::query_scalar("SELECT payload_digest FROM fleet.admissions WHERE id = $1")
             .bind(&first.stored.id)
             .fetch_one(&mut *connection)
             .await
@@ -282,7 +286,7 @@ async fn retried_key_with_a_new_destination_keeps_the_first() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_reply_lookup_index_holds_only_rows_that_owe() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let mut connection = fixtures
         .database
         .acquire()

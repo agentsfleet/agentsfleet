@@ -15,7 +15,7 @@ categories.workspace = true
 postgres = ["dep:sqlx"]
 
 [dependencies]
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 af_validate.workspace = true
 garde.workspace = true
 hex.workspace = true

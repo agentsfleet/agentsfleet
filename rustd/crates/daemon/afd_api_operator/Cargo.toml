@@ -19,6 +19,7 @@ test-util = ["afd_admin/test-util"]
 openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "af_wire/openapi"]
 
 [dependencies]
+afd_bus.workspace = true
 afd_admin.workspace = true
 afd_authoring.workspace = true
 af_core.workspace = true

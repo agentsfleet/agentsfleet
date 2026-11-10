@@ -2,11 +2,11 @@
 //!
 //! # Why an in-process poster and not a loopback vendor
 //!
-//! The spec pointed at `hanging_queue.rs` as the model for a stub vendor. That
-//! server exists to prove the HTTP client's deadline, which is not what this
-//! lane measures: head-of-line cost and retry occupancy are properties of the
-//! worker's LOOP — one job at a time, the retry ladder awaited inline — and
-//! the loop takes its poster through the [`Deliver`] trait. Scripting the trait
+//! A loopback stub vendor would prove the HTTP client's deadline, which is
+//! not what this lane measures: head-of-line cost and retry occupancy are
+//! properties of the worker's LOOP — one job at a time, the retry ladder
+//! awaited inline — and the loop takes its poster through the [`Deliver`]
+//! trait. Scripting the trait
 //! drives the real `Worker` with the real ladder and skips a socket that would
 //! only have added its own latency to the number.
 //!
@@ -25,8 +25,8 @@
 //!
 //! # Only this run's jobs count
 //!
-//! The worker reads the shared stream, so an entry an earlier, unswept run
-//! left behind reaches this poster too. Its destination is one this script
+//! The worker claims from the shared `fleet.obligations` table, so a row an
+//! earlier, unswept run left behind reaches this poster too. Its destination is one this script
 //! never named, and such a job is answered but never counted: not as an
 //! attempt, not as settled. Counting it would end the drain before this run's
 //! own jobs had all been reached.
@@ -37,7 +37,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use afd_dragonfly::OutboundDelivery;
+use af_core::id::Uuid7;
+use afd_outbound::Outgoing;
 use afd_outbound::retry::DELIVERY_ATTEMPTS;
 use afd_outbound::{Deliver, Verdict};
 use tokio::sync::Notify;
@@ -72,10 +73,10 @@ impl Attempt {
     }
 }
 
-/// Everything the poster saw of THIS run's jobs, keyed by stream entry id.
+/// Everything the poster saw of THIS run's jobs, keyed by the event each answers.
 #[derive(Debug, Default)]
 pub struct Seen {
-    attempts: HashMap<String, Vec<Attempt>>,
+    attempts: HashMap<Uuid7, Vec<Attempt>>,
     /// Jobs answered with a foreign destination: left by an earlier run.
     foreign: u64,
 }
@@ -83,7 +84,7 @@ pub struct Seen {
 impl Seen {
     /// Every attempt, in the order it happened, per job.
     #[must_use]
-    pub const fn attempts(&self) -> &HashMap<String, Vec<Attempt>> {
+    pub const fn attempts(&self) -> &HashMap<Uuid7, Vec<Attempt>> {
         &self.attempts
     }
 
@@ -161,14 +162,14 @@ impl Scripted {
     /// answer to it will settle the job.
     fn stamp(
         &self,
-        id: &str,
+        id: &Uuid7,
         behaviour: Behaviour,
         at: Instant,
         delay: Duration,
         terminal: bool,
     ) -> bool {
         let attempts_so_far = if let Ok(mut seen) = self.seen.lock() {
-            let attempts = seen.attempts.entry(id.to_owned()).or_default();
+            let attempts = seen.attempts.entry(id.clone()).or_default();
             attempts.push(Attempt {
                 at,
                 behaviour,
@@ -192,9 +193,9 @@ impl Scripted {
 }
 
 impl Deliver for Scripted {
-    fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         let at = Instant::now();
-        let scripted = self.behaviour_of(&job.fleet_id);
+        let scripted = self.behaviour_of(job.fleet_id.as_str());
         let (delay, verdict) = match scripted {
             Some(Behaviour::Fast) => (self.fast, Verdict::Delivered),
             Some(Behaviour::Slow) => (self.slow, Verdict::Delivered),
@@ -204,8 +205,9 @@ impl Deliver for Scripted {
             None => (Duration::ZERO, Verdict::Delivered),
         };
         let settles = if let Some(behaviour) = scripted {
+            // One obligation per (fleet, event), so the event names the job.
             self.stamp(
-                job.id.as_str(),
+                &job.event_id,
                 behaviour,
                 at,
                 delay,

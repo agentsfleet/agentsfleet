@@ -5,21 +5,22 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use agentsfleetd::supervisor::Supervisor;
 use serde_json::json;
 
 use crate::e2e::{MODEL, POSTURE, Scenario, scenario};
 use crate::reads::{assert_shape, lease_column, line_output_tokens, relay_settled};
 use crate::wire::{
-    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat,
-    poll_for_seeded_lease, post, report_body,
+    MEMORY_CATEGORY, MEMORY_CONTENT, MEMORY_KEY, OUTPUT_TOKENS, capable_beat, post, report_body,
+    wait_for_seeded_offer,
 };
 
 /// rows, so the report can rebuild the price without re-resolving the tenant.
 ///
 /// `posted_message_count` is `NOT NULL`, so every lease carries it from the
 /// moment it is written, and the messages verb counts against it under the
-/// lease's fence. The lease names its event by row id (`fleet_event_id`); the
+/// lease's fence. The lease names its event by its id (`event_id`); the
 /// actor and type are read from the event, not copied onto the lease.
 const LEASE_SHAPE: &[&str] = &[
     "id",
@@ -27,7 +28,7 @@ const LEASE_SHAPE: &[&str] = &[
     "fleet_id",
     "workspace_id",
     "tenant_id",
-    "fleet_event_id",
+    "event_id",
     "event_created_at",
     "posture",
     "provider",
@@ -100,8 +101,8 @@ const MEMORY_SHAPE: &[&str] = &[
 ];
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows() {
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn test_cycle_settles_in_the_ledger_and_populates_rows() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     #[expect(
@@ -112,20 +113,19 @@ async fn test_cycle_leaves_no_dragonfly_queue_keys_and_populates_rows() {
     let lease_id = complete_cycle(&http, &run).await;
     assert_rows(&run, &lease_id).await;
     assert_values(&run, &lease_id).await;
-    assert_ledger_only_queue(&run).await;
+    assert_settled_in_the_ledger(&run).await;
     supervisor.shutdown().await;
     run.cleanup().await;
 }
 
 async fn complete_cycle(http: &reqwest::Client, run: &Scenario) -> String {
-    let beat = post(http, run, "/v1/runners/me/heartbeats", &capable_beat()).await;
-    assert_eq!(
-        beat.status().as_u16(),
-        200,
-        "the runner proves its capabilities"
+    let beat = crate::wire::heartbeat(run, &capable_beat()).await;
+    assert!(
+        beat.get("assigned_policy").is_some(),
+        "the native heartbeat carries its assignment"
     );
 
-    let (lease_id, fence) = poll_for_seeded_lease(http, run).await;
+    let (lease_id, fence) = wait_for_seeded_offer(run).await;
 
     let captured = post(
         http,
@@ -144,26 +144,21 @@ async fn complete_cycle(http: &reqwest::Client, run: &Scenario) -> String {
     .await;
     assert_eq!(captured.status().as_u16(), 200, "the memory capture lands");
 
-    let settled = post(
-        http,
-        run,
-        "/v1/runners/me/reports",
-        &report_body(&lease_id, &run.event_id, fence),
-    )
-    .await;
-    assert_eq!(settled.status().as_u16(), 200, "the report settles");
+    let settled = crate::wire::report(run, &report_body(&lease_id, &run.event_id, fence)).await;
+    assert!(settled.is_ok(), "native report refused: {settled:?}");
     lease_id
 }
 
 async fn assert_rows(run: &Scenario, lease_id: &str) {
     // `settled_at` is part of the recorded line shape; the relay fills it.
     relay_settled(run).await;
-    assert_shape(run, "runner.leases", "id = $1::uuid", lease_id, LEASE_SHAPE).await;
+    let lease = Uuid7::parse(lease_id).expect("the daemon answers a canonical lease id");
+    assert_shape(run, "runner.leases", "id = $1", &lease, LEASE_SHAPE).await;
     assert_shape(
         run,
         "runner.events",
-        "runner_id = $1::uuid",
-        run.runner_id.as_str(),
+        "runner_id = $1",
+        &run.runner_id,
         EVENT_SHAPE,
     )
     .await;
@@ -178,7 +173,7 @@ async fn assert_rows(run: &Scenario, lease_id: &str) {
     assert_shape(
         run,
         "memory.entries",
-        "fleet_id = $1::uuid",
+        "fleet_id = $1",
         &run.fleet,
         MEMORY_SHAPE,
     )
@@ -203,26 +198,10 @@ async fn assert_values(run: &Scenario, lease_id: &str) {
     );
 }
 
-async fn assert_ledger_only_queue(run: &Scenario) {
-    let queue = afd_dragonfly::test_util::connect_live(&crate::e2e::dragonfly_config())
-        .await
-        .expect("live cluster");
-    for pattern in [
-        format!("fleet:{}:events", run.fleet),
-        "fleet:ready*".to_owned(),
-    ] {
-        assert!(
-            queue
-                .scan_keys(&pattern, 64)
-                .await
-                .expect("all primaries scanned")
-                .is_empty(),
-            "a completed cycle created the obsolete queue key {pattern}"
-        );
-    }
+async fn assert_settled_in_the_ledger(run: &Scenario) {
     let settled: bool = sqlx::query_scalar(
         "SELECT lease_fence IS NOT NULL AND delivered_at IS NOT NULL AND settled_at IS NOT NULL \
-         FROM fleet.admissions WHERE id = $1::uuid AND fleet_id = $2::uuid",
+         FROM fleet.admissions WHERE id = $1 AND fleet_id = $2",
     )
     .bind(&run.event_id)
     .bind(&run.fleet)

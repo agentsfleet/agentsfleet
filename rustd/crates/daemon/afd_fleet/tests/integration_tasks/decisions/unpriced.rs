@@ -4,6 +4,7 @@
     reason = "a provider fixture with another variant must fail loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_core::{error_code, test_util::trace::Capture};
 use af_wire::{
     decision::DecisionUsage,
@@ -64,13 +65,14 @@ async fn retained(case: &Case, rate: Option<i64>, usage: DecisionUsage, capture:
     };
     result.usage = Some(usage);
     assert_unpriced(&fixture, call, &receipt, usage, false).await;
-    let saved = snapshot(&fixture, call).await;
+    let call_id = id(call);
+    let saved = snapshot(&fixture, &call_id).await;
     assert!(fixture.record(call, receipt.clone()).await.replayed);
     contradictory_receipts(&fixture, call, &receipt).await;
     refuse_retry(&fixture, &input, call).await;
     fixture.reprice().await;
     assert_unpriced(&fixture, call, &receipt, usage, true).await;
-    assert_eq!(snapshot(&fixture, call).await, saved);
+    assert_eq!(snapshot(&fixture, &call_id).await, saved);
     assert_eq!(fixture.counts().await, (1, 1, 0));
     assert!(!fixture.reserve(&input).await.0);
     if rate.is_some() {
@@ -142,7 +144,7 @@ async fn refuse_retry(
     call: &str,
 ) {
     let mut retry = (**input).clone();
-    retry.operation_id = afd_db::test_util::mint_id();
+    retry.operation_id = afd_db::test_util::mint_id().into();
     retry.retry_of = Some(call.to_owned());
     let retry = garde::Unvalidated::new(retry)
         .validate()
@@ -182,8 +184,8 @@ async fn contradictory_receipts(fixture: &Decisions<'_>, call: &str, receipt: &D
     }
 }
 
-async fn snapshot(fixture: &Decisions<'_>, call: &str) -> Value {
-    sqlx::query_scalar("SELECT jsonb_build_object('call',to_jsonb(c),'payload',to_jsonb(p)) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.id=$1::uuid")
+async fn snapshot(fixture: &Decisions<'_>, call: &Uuid7) -> Value {
+    sqlx::query_scalar("SELECT jsonb_build_object('call',to_jsonb(c),'payload',to_jsonb(p)) FROM runner.decision_calls c JOIN runner.decision_payloads p ON p.decision_call_id=c.id WHERE c.id=$1")
         .bind(call).fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("native evidence connection"))
         .await.expect("full durable call and payload")
 }

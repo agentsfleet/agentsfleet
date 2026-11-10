@@ -30,7 +30,6 @@ mod tail_watch;
 #[path = "support/gate_lane.rs"]
 #[allow(
     clippy::expect_used,
-    clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 mod lane;

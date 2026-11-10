@@ -67,8 +67,8 @@ pub(super) async fn bind(
                 binding.task_generation = Some(1);
                 if active {
                     insert::lease(&mut tx, lease, binding).await?;
-                    insert::admission(&mut tx, plan.source_admission_id.as_str(), binding).await?;
-                    bound = binding.task_id.as_ref().map(ToString::to_string);
+                    insert::admission(&mut tx, &plan.source_admission_id, binding).await?;
+                    bound.clone_from(&binding.task_id);
                 }
                 !active
             }
@@ -96,14 +96,10 @@ pub(super) async fn bind(
     }
     mark_interpreted(&mut tx, &current, plan).await?;
     let current_task = match bound {
-        Some(id) => Some(
-            super::read::on(&mut tx, &scope, &guard::id(&id, "task_id")?)
-                .await?
-                .context,
-        ),
+        Some(id) => Some(super::read::on(&mut tx, &scope, &id).await?.context),
         None => None,
     };
-    let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id.as_str()).await?;
+    let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id).await?;
     tx.commit().await.map_err(query(CONTEXT))?;
     transaction::recycle(connection);
     for ordinal in queued {
@@ -144,14 +140,14 @@ async fn authorize(
     if let Some(authorization) = &plan.authorization {
         decision::authorize::binding(connection, lease, authorization).await?;
         sqlx::query(include_str!("sql/interpretation.sql"))
-            .bind(plan.source_admission_id.as_str())
+            .bind(&plan.source_admission_id)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
             .bind(&current.tenant_id)
             .bind(&plan.digest)
             .bind(source.message()?.as_ref())
             .bind(Json(authorization))
-            .bind(lease.lease_id.as_str())
+            .bind(lease.lease_id)
             .bind(current.fence)
             .bind(&source.actor)
             .bind(&source.producer)
@@ -193,7 +189,7 @@ async fn mark_interpreted(
 ) -> Result<()> {
     if plan.authorization.is_some() {
         sqlx::query(include_str!("sql/interpreted.sql"))
-            .bind(plan.source_admission_id.as_str())
+            .bind(&plan.source_admission_id)
             .bind(&current.fleet_id)
             .bind(&current.workspace_id)
             .execute(&mut *connection)

@@ -9,14 +9,13 @@
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use af_wire::activity::ActivityAccepted;
 use afr_agent::EventSink as _;
 use afr_telemetry::labels::FrameDrop;
 use afr_telemetry::testing::{Recorded, Tally, scoped};
 
 use super::tests::{CALL, TOOL, chunk, completed, posted_frames, progress, started, tool};
 use super::{MAX_BATCH_BYTES, channel};
-use crate::test_support::{Answer, LEASE_ID, drain, json, plane};
+use crate::test_support::{Answer, LEASE_ID, activities, drain};
 
 /// A second tool call, open while the answer streams.
 const SECOND_CALL: &str = "call-2";
@@ -34,7 +33,7 @@ const OWN_MS: i64 = 60;
 /// once; the frame after it waits for the tick as every later one does.
 #[tokio::test(start_paused = true)]
 async fn test_first_frame_posts_without_waiting() {
-    let (plane, mut calls) = plane(|_call| json(&ActivityAccepted { ok: true }));
+    let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let (sink, mut pump) = channel(&plane, &lease);
 
@@ -57,7 +56,7 @@ async fn test_first_frame_posts_without_waiting() {
 /// order the run produced them and without waiting for the tick.
 #[tokio::test(start_paused = true)]
 async fn test_first_answer_chunk_flushes_in_order() {
-    let (plane, mut calls) = plane(|_call| json(&ActivityAccepted { ok: true }));
+    let (plane, mut calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let (sink, mut pump) = channel(&plane, &lease);
 
@@ -91,7 +90,7 @@ async fn test_first_answer_chunk_flushes_in_order() {
 /// holds when it is abandoned are counted as such.
 #[tokio::test(start_paused = true)]
 async fn test_early_flush_keeps_drop_accounting() {
-    let (plane, _calls) = plane(|_call| Answer::Stall);
+    let (plane, _calls) = activities(|_call| Answer::Stall);
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let (sink, mut pump) = channel(&plane, &lease);
     // The same burst as `test_activity_sender_drops_past_four_batches`: the
@@ -133,7 +132,7 @@ async fn test_early_flush_keeps_drop_accounting() {
 /// tool call's frames bracket the run's tool time, a cut call to the end.
 #[tokio::test(start_paused = true)]
 async fn test_the_run_clock_splits_tools_from_the_model() {
-    let (plane, _calls) = plane(|_call| json(&ActivityAccepted { ok: true }));
+    let (plane, _calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let (sink, _pump) = channel(&plane, &lease);
     tokio::time::advance(Duration::from_millis(500)).await;
@@ -170,7 +169,7 @@ async fn test_the_run_clock_splits_tools_from_the_model() {
 /// to more than the run.
 #[tokio::test(start_paused = true)]
 async fn test_overlapping_calls_count_their_union() {
-    let (plane, _calls) = plane(|_call| json(&ActivityAccepted { ok: true }));
+    let (plane, _calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let (sink, _pump) = channel(&plane, &lease);
     sink.run_started();
@@ -198,7 +197,7 @@ async fn test_overlapping_calls_count_their_union() {
 /// so the stretch it covers is not closed by the first one.
 #[tokio::test(start_paused = true)]
 async fn test_a_reused_call_id_stays_open_until_its_last_completion() {
-    let (plane, _calls) = plane(|_call| json(&ActivityAccepted { ok: true }));
+    let (plane, _calls) = activities(|_call| Answer::Reply(bytes::Bytes::new()));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let (sink, _pump) = channel(&plane, &lease);
     sink.run_started();

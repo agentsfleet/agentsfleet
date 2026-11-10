@@ -57,8 +57,8 @@ async fn refused_resume(case: &Case, task: &Uuid7, resource: &str) {
         )
         .await
         .expect("pause before exhaustion");
-    sqlx::query("UPDATE fleet.tasks SET used_model_nanos=CASE WHEN $2='model' THEN max_model_nanos-100 ELSE 50 END, reserved_model_nanos=CASE WHEN $2='model' THEN 100 ELSE 0 END, used_running_nanos=CASE WHEN $2='running' THEN max_running_nanos ELSE 10 END, used_leases=CASE WHEN $2='leases' THEN max_leases ELSE used_leases END, created_at=CASE WHEN $2='wall' THEN created_at-interval '8 days' ELSE created_at END, expires_at=CASE WHEN $2='wall' THEN expires_at-interval '8 days' ELSE expires_at END WHERE id=$1::uuid")
-        .bind(task.as_str()).bind(resource)
+    sqlx::query("UPDATE fleet.tasks SET used_model_nanos=CASE WHEN $2='model' THEN max_model_nanos-100 ELSE 50 END, reserved_model_nanos=CASE WHEN $2='model' THEN 100 ELSE 0 END, used_running_nanos=CASE WHEN $2='running' THEN max_running_nanos ELSE 10 END, used_leases=CASE WHEN $2='leases' THEN max_leases ELSE used_leases END, created_at=CASE WHEN $2='wall' THEN created_at-interval '8 days' ELSE created_at END, expires_at=CASE WHEN $2='wall' THEN expires_at-interval '8 days' ELSE expires_at END WHERE id=$1")
+        .bind(task).bind(resource)
         .execute(&mut *case.held.fixtures.database.acquire().await.expect("usage connection"))
         .await.expect("retained cumulative usage");
     let before = tasks

@@ -14,7 +14,7 @@ use jiff::Timestamp;
 use crate::error::Result;
 use crate::lease::fold::Folds;
 use crate::lease::obligation::Owing;
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::settle::Reported;
 
 /// The `event_complete` frame was published for a settled report.
@@ -35,7 +35,7 @@ pub(super) struct Completion<'a> {
     pub answer: &'a str,
 }
 
-impl Plane {
+impl LeaseService {
     /// Announce a report that committed, and clear what it leaves behind.
     ///
     /// The money and queue transitions already committed. Completion frames
@@ -76,14 +76,24 @@ impl Plane {
         // nothing the owner sees depends on.
         // Timed only when the frame landed: a dropped announcement is logged
         // by the tail and leaves no completion instant to measure from.
-        let mut completed_at = None;
-        if let Some(closed) = closed
-            && self.leases.publish_completion(&closed, Some(answer)).await
-        {
-            let event = EVENT_COMPLETION_PUBLISHED;
-            tracing::debug!(fleet_id = fleet, lease_id, event);
-            completed_at = Some(af_core::clock::now());
-        }
+        let completed_at = match closed {
+            Some(closed) => match self.leases.publish_completion(&closed, Some(answer)).await {
+                Ok(()) => {
+                    let event = EVENT_COMPLETION_PUBLISHED;
+                    tracing::debug!(fleet_id = fleet, lease_id, event);
+                    Some(af_core::clock::now())
+                }
+                Err(error) => {
+                    // The report is durable. Observe its failed live notification without undoing settlement.
+                    afd_bus::observe_notification(
+                        &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                        Err(error),
+                    );
+                    None
+                }
+            },
+            None => None,
+        };
         step(
             "record_released",
             lease,
@@ -95,30 +105,22 @@ impl Plane {
         completed_at
     }
 
-    /// Put an owed answer on the delivery queue, and receipt the row.
+    /// Ping the outbound workers that an owed answer committed.
     ///
     /// Best-effort by construction, and logged rather than returned: the
-    /// obligation is already committed, so a failure here leaves a row the
-    /// producer sweep will re-append. Failing the report instead would tell a
+    /// obligation is already committed and claimable, so a lost ping costs
+    /// one claim pass of latency. Failing the report instead would tell a
     /// runner its finished, charged run did not land — and it did.
-    pub(super) async fn queue_owed_answer(&self, owing: &Owing, lease: &Reported, answer: &str) {
-        step(
-            "queue_delivery",
-            lease,
-            owing.obligation.as_str(),
-            self.leases
-                .queue_delivery(&owing.obligation, owing.reply.delivery(lease, answer))
-                .await,
-        );
+    pub(super) async fn wake_owed_answer(&self, owing: &Owing) {
+        self.leases.wake_delivery(&owing.obligation).await;
     }
 
-    /// Record, announce and queue what the run's folds settled.
+    /// Record and announce what the run's folds settled.
     ///
-    /// Best effort, as the run's own announcement is: every row and every
-    /// obligation is committed, so a frame that does not land is re-read by
-    /// the next page, and a queue append that fails is re-appended by the
-    /// producer sweep. The settled log and counter are written here, after the
-    /// commit, so a report that rolled back leaves neither.
+    /// Best effort, as the run's own announcement is: every row is committed,
+    /// so a frame that does not land is re-read by the next page. The settled
+    /// log and counter are written here, after the commit, so a report that
+    /// rolled back leaves neither.
     pub(super) async fn announce_folds(
         &self,
         lease: &Reported,
@@ -128,24 +130,10 @@ impl Plane {
     ) {
         folds.record_settled(lease.fleet_id.as_str(), lease_id);
         for closed in &folds.closed {
-            let _published = self.leases.publish_completion(closed, Some(answer)).await;
-        }
-        for (owing, event_id) in &folds.owed {
-            let delivery = afd_outbound::obligation::Delivery {
-                fleet_id: lease.fleet_id.as_str(),
-                workspace_id: lease.workspace_id.as_str(),
-                provider: owing.reply.provider,
-                destination: &owing.reply.address,
-                event_id,
-                answer,
-            };
-            step(
-                "queue_fold_delivery",
-                lease,
-                owing.obligation.as_str(),
-                self.leases
-                    .queue_delivery(&owing.obligation, delivery)
-                    .await,
+            let publication = self.leases.publish_completion(closed, Some(answer)).await;
+            afd_bus::observe_notification(
+                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                publication,
             );
         }
     }

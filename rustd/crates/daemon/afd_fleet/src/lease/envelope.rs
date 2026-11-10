@@ -38,7 +38,7 @@ pub struct Acquired {
     pub kind: Kind,
     /// The event to execute — the admission ledger's LOGICAL id, which the
     /// row, the lease, the ledger and every read address.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// Who raised it.
     pub actor: String,
     /// Its type.

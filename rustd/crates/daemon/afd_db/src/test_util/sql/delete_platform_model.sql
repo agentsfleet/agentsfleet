@@ -1,1 +1,1 @@
-DELETE FROM model.platform_models WHERE id = $1::uuid
+DELETE FROM model.platform_models WHERE id = $1

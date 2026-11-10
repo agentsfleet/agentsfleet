@@ -19,7 +19,7 @@ const FIXTURE_PURPOSE: &str = "Runtime fixture.";
 const WHOLE_PAGE: u32 = 50;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn the_fleet_page_lists_the_head_revisions_purpose() {
     let lane = Lane::create().await;
     let saved = lane.fleet().await;

@@ -8,7 +8,7 @@
 use std::time::{Duration, Instant};
 
 use afd_billing::biller::{Account, Ask, Biller, Funds, OutagePolicy, WithOutagePolicy, WorkKey};
-use afd_db::test_util::mint_uuid7;
+use afd_db::test_util::mint_id;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
@@ -65,7 +65,7 @@ async fn a_funds_read_past_its_cap_gives_up_unanswered() {
         workspace: lane.workspace.clone(),
     };
     let ask = Ask {
-        work: WorkKey::FleetLease(mint_uuid7()),
+        work: WorkKey::FleetLease(mint_id()),
         payer: payer.clone(),
         next: LINE,
     };

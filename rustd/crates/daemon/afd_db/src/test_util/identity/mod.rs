@@ -7,6 +7,7 @@
 //! [`TenantSeed`] and a [`WorkspaceSeed`] instead, the way [`super::FleetSeed`]
 //! seeds a fleet, and the column lists change here alone.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::PgExecutor;
@@ -35,17 +36,17 @@ const CONTEXT_USER: &str = "seed a person";
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct TenantSeed<'a> {
-    id: &'a str,
+    id: &'a Uuid7,
     name: &'a str,
     created_at: Option<Timestamp>,
 }
 
 impl<'a> TenantSeed<'a> {
     /// A tenant named after its own id.
-    pub const fn new(id: &'a str) -> Self {
+    pub fn new(id: &'a Uuid7) -> Self {
         Self {
             id,
-            name: id,
+            name: id.as_str(),
             created_at: None,
         }
     }
@@ -83,19 +84,19 @@ impl<'a> TenantSeed<'a> {
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct WorkspaceSeed<'a> {
-    id: &'a str,
-    tenant_id: &'a str,
+    id: &'a Uuid7,
+    tenant_id: &'a Uuid7,
     name: &'a str,
     created_at: Option<Timestamp>,
 }
 
 impl<'a> WorkspaceSeed<'a> {
     /// A workspace named after its own id, under `tenant_id`.
-    pub const fn new(id: &'a str, tenant_id: &'a str) -> Self {
+    pub fn new(id: &'a Uuid7, tenant_id: &'a Uuid7) -> Self {
         Self {
             id,
             tenant_id,
-            name: id,
+            name: id.as_str(),
             created_at: None,
         }
     }
@@ -138,8 +139,8 @@ impl<'a> WorkspaceSeed<'a> {
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct ApiKeySeed<'a> {
-    id: &'a str,
-    tenant_id: &'a str,
+    id: &'a Uuid7,
+    tenant_id: &'a Uuid7,
     name: &'a str,
     key_hash: &'a str,
     created_by_subject: &'a str,
@@ -148,7 +149,12 @@ pub struct ApiKeySeed<'a> {
 
 impl<'a> ApiKeySeed<'a> {
     /// A key `id` under `tenant_id`, stored as `key_hash` and made by `subject`.
-    pub const fn new(id: &'a str, tenant_id: &'a str, key_hash: &'a str, subject: &'a str) -> Self {
+    pub const fn new(
+        id: &'a Uuid7,
+        tenant_id: &'a Uuid7,
+        key_hash: &'a str,
+        subject: &'a str,
+    ) -> Self {
         Self {
             id,
             tenant_id,
@@ -198,8 +204,8 @@ impl<'a> ApiKeySeed<'a> {
 #[derive(Debug, Clone, Copy)]
 #[must_use = "a seed writes nothing until `insert` runs"]
 pub struct UserSeed<'a> {
-    id: &'a str,
-    tenant_id: &'a str,
+    id: &'a Uuid7,
+    tenant_id: &'a Uuid7,
     oidc_subject: &'a str,
     email: &'a str,
     display_name: Option<&'a str>,
@@ -209,8 +215,8 @@ pub struct UserSeed<'a> {
 impl<'a> UserSeed<'a> {
     /// A person `id` under `tenant_id`, signed in as `oidc_subject`.
     pub const fn new(
-        id: &'a str,
-        tenant_id: &'a str,
+        id: &'a Uuid7,
+        tenant_id: &'a Uuid7,
         oidc_subject: &'a str,
         email: &'a str,
     ) -> Self {

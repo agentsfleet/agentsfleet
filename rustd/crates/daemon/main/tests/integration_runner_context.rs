@@ -26,7 +26,7 @@ fn put(held: &Leased, expected: u64, checkpoint: &Value) -> Value {
     json!({"fencing_token":held.fence,"expected_generation":expected,"checkpoint":checkpoint})
 }
 async fn stored(held: &Leased) -> Value {
-    sqlx::query_scalar("SELECT document FROM memory.context_checkpoints WHERE lease_id=$1::uuid")
+    sqlx::query_scalar("SELECT document FROM memory.context_checkpoints WHERE lease_id=$1")
         .bind(&held.lease_id)
         .fetch_one(&mut *held.connection().await)
         .await
@@ -34,7 +34,7 @@ async fn stored(held: &Leased) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn checkpoint_retry_is_idempotent_and_superseded_assignment_cannot_read_or_replace_notes() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -75,21 +75,19 @@ async fn checkpoint_retry_is_idempotent_and_superseded_assignment_cannot_read_or
     assert_eq!(status, 409);
     assert_eq!(refusal["error_code"], "UZ-RUN-005");
     assert_eq!(stored(&held).await, original);
-    held.on_fleet("DELETE FROM fleet.fleets WHERE id=$1::uuid")
-        .await;
-    let remaining: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM memory.context_checkpoints WHERE lease_id=$1::uuid",
-    )
-    .bind(&held.lease_id)
-    .fetch_one(&mut *held.connection().await)
-    .await
-    .expect("fleet purge removes private run notes");
+    held.on_fleet("DELETE FROM fleet.fleets WHERE id=$1").await;
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM memory.context_checkpoints WHERE lease_id=$1")
+            .bind(&held.lease_id)
+            .fetch_one(&mut *held.connection().await)
+            .await
+            .expect("fleet purge removes private run notes");
     assert_eq!(remaining, 0);
     held.finish(supervisor).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn one_of_one_hundred_conflicting_checkpoint_writers_publishes_exactly_one_generation() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -123,22 +121,20 @@ async fn one_of_one_hundred_conflicting_checkpoint_writers_publishes_exactly_one
             .expect("winner goal")
             .starts_with("winner-")
     );
-    let count: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM memory.context_checkpoints WHERE lease_id=$1::uuid",
-    )
-    .bind(&held.lease_id)
-    .fetch_one(&mut *held.connection().await)
-    .await
-    .expect("one scope row");
+    let count: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM memory.context_checkpoints WHERE lease_id=$1")
+            .bind(&held.lease_id)
+            .fetch_one(&mut *held.connection().await)
+            .await
+            .expect("one scope row");
     assert_eq!(count, 1);
     held.finish(supervisor).await;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_private_notes() {
     use af_context::repository::{Repository, Scope};
-    use af_core::id::Uuid7;
     use af_crypto::entropy::Entropy;
 
     let mut supervisor = Supervisor::new();
@@ -146,10 +142,10 @@ async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_priv
     let held = Leased::boot(&mut supervisor, &qstash).await;
     let leases = afd_fleet::lease::Leases::new(
         held.run.booted.database.clone(),
-        held.run.booted.queue.clone(),
+        held.run.booted.bus.clone(),
         Entropy::new(),
     );
-    let lease = Uuid7::parse(&held.lease_id).expect("the real lease identifier");
+    let lease = held.lease_id.clone();
     let invalid = serde_json::from_value(document(&held, 1, "   ")).expect("a typed document");
     let error = leases
         .context_commit(&held.run.runner_id, &lease, &lease, held.fence, 0, invalid)
@@ -171,12 +167,12 @@ async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_priv
         let mut connection = held.connection().await;
         let scope = Scope::Run {
             lease: lease.clone(),
-            fleet: Uuid7::parse(&held.run.fleet).expect("the owning fleet"),
+            fleet: held.run.fleet.clone(),
             branch: lease.clone(),
         };
         format!("{:?}", Repository::new(&mut connection, scope, lease))
     };
-    assert!(diagnostic.contains("Repository") && diagnostic.contains(&held.lease_id));
+    assert!(diagnostic.contains("Repository") && diagnostic.contains(held.lease_id.as_str()));
     assert!(!diagnostic.contains("connection") && !diagnostic.contains("password"));
     held.finish(supervisor).await;
 }

@@ -18,7 +18,7 @@ use crate::rows::Row;
 const ACTOR: &str = "fixture:platform-operator";
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
     let fixtures = Fixtures::create().await;
     let enrolled = fixtures
@@ -40,10 +40,7 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
     );
     assert_eq!(
         fixtures
-            .instant(
-                Row::Runner(enrolled.runner_id.as_str()),
-                "selftest_requested_at"
-            )
+            .instant(Row::Runner(&enrolled.runner_id), "selftest_requested_at")
             .await,
         Some(requested.requested_at()),
         "the answer reports the instant the row stores"
@@ -79,7 +76,7 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_rotation_takeover() {
     let fixtures = Fixtures::create().await;
     let enrolled = fixtures
@@ -130,7 +127,7 @@ async fn test_runner_rotation_takeover() {
         "the replacement credential authenticates"
     );
     assert_eq!(
-        fixtures.events(enrolled.runner_id.as_str()).await,
+        fixtures.events(&enrolled.runner_id).await,
         vec![
             "runner_registered".to_owned(),
             "runner_token_rotated".to_owned()

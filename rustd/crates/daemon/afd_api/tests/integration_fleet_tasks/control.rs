@@ -273,7 +273,7 @@ pub(super) async fn queued(fixture: &Tasks<'_>) -> i64 {
         .acquire()
         .await
         .expect("continuation read");
-    sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id=$1")
         .bind(&fixture.base.fleet)
         .fetch_one(&mut *connection)
         .await

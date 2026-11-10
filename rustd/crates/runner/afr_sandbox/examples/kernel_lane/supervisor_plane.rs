@@ -6,9 +6,7 @@ use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
 use af_wire::lease::LeasePayload;
-use af_wire::paths::{
-    RUNNER_CREDENTIALS_MINT, RUNNER_LEASES, RUNNER_REPORTS, SCHEDULE_RUNS_SUFFIX,
-};
+use af_wire::paths::{RUNNER_CREDENTIALS_MINT, RUNNER_STREAM, SCHEDULE_RUNS_SUFFIX};
 use af_wire::policy::{RepositoryAccess, RepositoryBinding};
 use af_wire::runner::{AssignedPolicy, NetworkPolicy, SandboxTier};
 use af_wire::schedule_verb::ScheduleRun;
@@ -45,9 +43,7 @@ pub(crate) struct Received {
 #[derive(Debug)]
 struct Plane {
     healthy: Healthy,
-    lease: Mutex<Option<Value>>,
     calls: mpsc::Sender<Received>,
-    reported: Arc<Notify>,
     fail_mutations: bool,
     recovery: Option<Mutex<crate::supervisor_recovery::Archive>>,
 }
@@ -57,6 +53,7 @@ pub(crate) struct Server {
     pub(crate) reported: Arc<Notify>,
     pub(crate) calls: mpsc::Receiver<Received>,
     listener: afr_supervisor::test_util::Listener,
+    pub(crate) native: afr_supervisor::test_util::NativeDaemon,
 }
 
 impl Server {
@@ -82,16 +79,32 @@ impl Server {
             interval_ms: 50,
             granted_until,
         };
+        let sent = calls.clone();
+        let completed = Arc::clone(&reported);
+        let native = afr_supervisor::test_util::NativeDaemon::serve(
+            healthy.clone(),
+            lease(tools, repository, granted_until, recovery.as_ref())?,
+            move |frame| {
+                let sent = sent.clone();
+                let completed = Arc::clone(&completed);
+                async move {
+                    let report = frame.get("type").and_then(Value::as_str) == Some("report");
+                    sent.send(Received {
+                        method: "STREAM".into(),
+                        path: RUNNER_STREAM.into(),
+                        body: frame,
+                    })
+                    .unwrap_or_else(|_| unreachable!("the trial retains its native transcript"));
+                    if report {
+                        completed.notify_one();
+                    }
+                }
+            },
+        )
+        .await?;
         let plane = Arc::new(Plane {
             healthy,
-            lease: Mutex::new(Some(lease(
-                tools,
-                repository,
-                granted_until,
-                recovery.as_ref(),
-            )?)),
             calls,
-            reported: Arc::clone(&reported),
             fail_mutations: fail,
             recovery: recovery
                 .map(crate::supervisor_recovery::Archive::new)
@@ -104,11 +117,13 @@ impl Server {
             reported,
             calls: received,
             listener,
+            native,
         })
     }
 
     pub(crate) async fn stop(&mut self) -> Result<(), Failed> {
         self.listener.stop().await?;
+        self.native.close().await?;
         Ok(())
     }
 }
@@ -140,16 +155,6 @@ async fn reply(
                 Json(json!({"fixture_error":format!("{failure:?}")})),
             ),
         };
-    }
-    if path == RUNNER_REPORTS {
-        plane.reported.notify_one();
-    }
-    if path == RUNNER_LEASES {
-        let lease = plane.lease.lock().await.take();
-        return (
-            StatusCode::OK,
-            Json(json!({ "lease": lease, "retry_after_ms": 50 })),
-        );
     }
     let mutation = path.ends_with("/schedules") || path.ends_with("/messages");
     if mutation && plane.fail_mutations {
@@ -217,7 +222,7 @@ fn lease(
     if recovery.is_some() {
         crate::supervisor_recovery::Config::configure(&mut lease)?;
     }
-    // The poll reply tags each lease with its kind, as the daemon does.
+    // Offers use the daemon's tagged lease encoding.
     Ok(serde_json::to_value(af_wire::lease::TaggedLease::<
         '_,
         Value,

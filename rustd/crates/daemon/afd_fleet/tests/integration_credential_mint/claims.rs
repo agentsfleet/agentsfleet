@@ -72,7 +72,7 @@ fn zoho_handle(accounts_base: &str) -> String {
 }
 
 /// Writes the routing row the GitHub connect flow lands beside its handle.
-async fn seed_install(fixtures: &Fixtures, workspace: &str, installation: &str) {
+async fn seed_install(fixtures: &Fixtures, workspace: &Uuid7, installation: &str) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -81,7 +81,7 @@ async fn seed_install(fixtures: &Fixtures, workspace: &str, installation: &str) 
     sqlx::query(
         "INSERT INTO connector.installs
            (id, provider, external_account_id, workspace_id, scopes, created_at, updated_at)
-         VALUES ($1::uuid, $2, $3, $4::uuid, '{}', now(), now())",
+         VALUES ($1, $2, $3, $4, '{}', now(), now())",
     )
     .bind(mint_id())
     .bind(CONNECTOR_GITHUB)
@@ -122,7 +122,7 @@ async fn mint(
     integration: &str,
 ) -> (Result<Minted, ErrorCode>, usize) {
     let counting = Arc::new(Counting::default());
-    let plane = afd_fleet::lease::Plane {
+    let plane = afd_fleet::lease::LeaseService {
         task_reports: None,
         broker: Arc::new(Broker::new(
             Arc::new(Registry::default()),
@@ -133,7 +133,7 @@ async fn mint(
     let answer = plane
         .mint(
             &who.runner,
-            &requests::mint(&who.lease, integration),
+            &requests::mint(who.lease.as_str(), integration),
             fixtures.enrolled_at(),
         )
         .await
@@ -142,10 +142,10 @@ async fn mint(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_handle_naming_another_workspaces_installation_mints_nothing() {
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let installation = installation();
     let victim = bound(&fixtures, "{}").await;
     seed_install(&fixtures, &victim.workspace, &installation).await;
@@ -168,12 +168,12 @@ async fn test_a_handle_naming_another_workspaces_installation_mints_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_handle_with_no_routing_row_mints_nothing() {
     // The same refusal as the forged case, on purpose: told apart, the answer
     // would say whether some other workspace holds the installation.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let unrouted = granted_with(
         &fixtures,
         CONNECTOR_GITHUB,
@@ -191,10 +191,10 @@ async fn test_a_handle_with_no_routing_row_mints_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_the_workspaces_own_installation_mints() {
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let installation = installation();
     let owner = granted_with(
         &fixtures,
@@ -215,14 +215,14 @@ async fn test_the_workspaces_own_installation_mints() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_github_handle_filed_under_another_name_is_not_connected() {
     // Asked for by a name no connector carries, the grant gate has nothing to
     // check; the handle inside still says GitHub. Even with its workspace
     // holding the installation, it is not minted as a connector nobody granted.
     // The handle IS stored under that name, so this is not a vault miss.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let renamed = "github-copy";
     let installation = installation();
     let owner = granted_with(
@@ -246,12 +246,12 @@ async fn test_a_github_handle_filed_under_another_name_is_not_connected() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_refresh_steered_off_its_provider_posts_nothing() {
     // The platform's client secret rides every refresh. A base the SSRF guard
     // admits but no Zoho callback writes must never reach the exchange.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let steered = granted_with(
         &fixtures,
         CONNECTOR_ZOHO,
@@ -278,10 +278,10 @@ async fn test_a_refresh_steered_off_its_provider_posts_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_refresh_at_its_own_data_centre_mints() {
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let owner = granted_with(
         &fixtures,
         CONNECTOR_ZOHO,

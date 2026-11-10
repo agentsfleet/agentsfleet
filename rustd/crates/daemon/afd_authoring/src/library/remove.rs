@@ -19,7 +19,7 @@ impl Setup {
         let person = access::current(&mut tx, access).await?;
         let entry = read::entry(&mut tx, &person.owner, library, true).await?;
         sqlx::query(sql::REMOVE)
-            .bind(entry.id.as_str())
+            .bind(&entry.id)
             .execute(&mut *tx)
             .await
             .map_err(query(CONTEXT))?;

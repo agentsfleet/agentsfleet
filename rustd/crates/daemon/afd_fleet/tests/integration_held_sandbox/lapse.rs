@@ -7,9 +7,10 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 
-use super::{hold, id, live, slot};
+use super::{hold, live, slot};
 use crate::rows::Row;
 use crate::seed::{self, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -24,7 +25,7 @@ enum Lapse {
 }
 
 /// Ages `fleet`'s hold by `lapse`: its deadline, or its holder's last beat.
-async fn lapse_hold(fixtures: &Fixtures, fleet: &str, holder: &str, lapse: Lapse) {
+async fn lapse_hold(fixtures: &Fixtures, fleet: &Uuid7, holder: &Uuid7, lapse: Lapse) {
     match lapse {
         Lapse::Deadline => {
             let past = SANDBOX_HOLD_IDLE.saturating_mul(2);
@@ -45,7 +46,7 @@ async fn lapse_hold(fixtures: &Fixtures, fleet: &str, holder: &str, lapse: Lapse
 /// poll reaches the claim only through the candidate scan, so a fleet the scan
 /// filters is never leased.
 async fn offered_to_another(lapse: Lapse) -> bool {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder, other],
         fleet,
@@ -61,7 +62,7 @@ async fn offered_to_another(lapse: Lapse) -> bool {
         fixtures.after(SANDBOX_HOLD_IDLE),
     )
     .await;
-    lapse_hold(&fixtures, &fleet, holder.as_str(), lapse).await;
+    lapse_hold(&fixtures, &fleet, &holder, lapse).await;
 
     let found = seed::select_fleet(&leases, &other, &fleet).await;
 
@@ -92,7 +93,7 @@ async fn test_another_runners_poll_is_offered_a_silent_holders_fleet() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_an_empty_claim_on_a_lapsed_hold_drops_the_hint() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
@@ -104,15 +105,15 @@ async fn test_an_empty_claim_on_a_lapsed_hold_drops_the_hint() {
         fixtures.after(SANDBOX_HOLD_IDLE),
     )
     .await;
-    lapse_hold(&fixtures, &fleet, holder.as_str(), Lapse::Deadline).await;
+    lapse_hold(&fixtures, &fleet, &holder, Lapse::Deadline).await;
 
     let claimed = leases
-        .claim(&id(&fleet), &holder, LEASE_TTL)
+        .claim(&fleet, &holder, LEASE_TTL)
         .await
         .expect("answers")
         .expect("the holder wins");
     leases
-        .release(&id(&fleet), claimed.fence)
+        .release(&fleet, claimed.fence)
         .await
         .expect("an empty claim lets go");
 

@@ -2,6 +2,136 @@
 
 use crate::metrics::label::closed_set;
 
+closed_set! {
+    /// Packet counters are cumulative; observers export only the delta.
+    StreamPacket {
+        /// Packets placed on the network.
+        Sent => "sent",
+        /// Packets the loss detector marked lost.
+        Lost => "lost",
+        /// Sent packets carrying retransmitted data.
+        Retransmitted => "retransmitted"
+    }
+}
+
+closed_set! {
+    /// Process side observing its one native TLS connection.
+    StreamPeer {
+        /// Outbound runner connector.
+        Client => "client",
+        /// Private daemon acceptor.
+        Server => "server"
+    }
+}
+
+closed_set! {
+    /// Public negotiated algorithm names; no certificate or key data.
+    StreamKeyExchange {
+        /// Required hybrid group.
+        X25519MlKem768 => "x25519_mlkem768",
+        /// Rejected conventional group.
+        X25519 => "x25519",
+        /// Rejected conventional group.
+        P256 => "p256",
+        /// Rejected conventional group.
+        P384 => "p384",
+        /// No completed or recognized negotiation.
+        Other => "other"
+    }
+}
+
+closed_set! {
+    /// Result of the required TLS key-agreement policy.
+    StreamTlsOutcome {
+        /// The completed handshake selected the required hybrid group.
+        Accepted => "accepted",
+        /// The handshake failed or selected another group.
+        Failed => "failed"
+    }
+}
+
+closed_set! {
+    /// Native protocol used for one connection attempt.
+    StreamTransport {
+        /// QUIC with verified TLS.
+        Http3 => "http3",
+        /// TCP with verified TLS.
+        Http2 => "http2"
+    }
+}
+
+closed_set! {
+    /// Final outcome; dropping an unfinished future remains visible.
+    StreamOutcome {
+        /// The operation completed.
+        Success => "success",
+        /// The socket or name lookup failed.
+        Network => "network",
+        /// The absolute deadline expired.
+        Timeout => "timeout",
+        /// Explicit cancellation won.
+        Cancelled => "cancelled",
+        /// A message or protocol rule was violated.
+        Protocol => "protocol",
+        /// The peer or channel closed.
+        Closed => "closed",
+        /// A local worker failed.
+        Worker => "worker",
+        /// Certificate verification or TLS configuration failed.
+        Tls => "tls",
+        /// The peer did not support the protocol.
+        Unsupported => "unsupported",
+        /// The caller dropped the future before its result.
+        Abandoned => "abandoned"
+    }
+}
+
+closed_set! {
+    /// Operation whose elapsed time or timeout is measured.
+    StreamStage {
+        /// Reserving frame memory.
+        Memory => "memory",
+        /// Receiving a partial frame.
+        Read => "read",
+        /// Sending a complete frame.
+        Write => "write",
+        /// Resolving and connecting a socket.
+        Connect => "connect",
+        /// Verifying the peer and starting HTTP.
+        Handshake => "handshake",
+        /// Waiting for response headers.
+        Open => "open",
+        /// Waiting for native workers to stop.
+        Close => "close"
+    }
+}
+
+closed_set! {
+    /// Only these failures permit the same trust policy over HTTP/2.
+    StreamFallback {
+        /// The QUIC socket could not connect.
+        Network => "network",
+        /// QUIC did not answer before its deadline.
+        Timeout => "timeout",
+        /// QUIC closed before opening the session.
+        Closed => "closed",
+        /// The peer does not support this QUIC version.
+        Unsupported => "unsupported"
+    }
+}
+
+closed_set! {
+    /// A wake queue stores bounded scheduling notifications; durable work stays in Postgres.
+    WakeQueueOutcome {
+        /// A new fleet entered the queue.
+        Added => "added",
+        /// The fleet already had a queued reminder.
+        Duplicate => "duplicate",
+        /// A new fleet replaced the oldest reminder.
+        Evicted => "evicted"
+    }
+}
+
 /// This one has been seen before, and the first delivery's answer stands.
 ///
 /// One spelling for one fact, shared by the sets that observe it. Named rather
@@ -145,18 +275,6 @@ closed_set! {
         LeaseToReport => "lease_to_report",
         /// The report's arrival to the `event_complete` publish.
         ReportToComplete => "report_to_complete",
-    }
-}
-
-closed_set! {
-    /// How a held heartbeat ended.
-    WakeAnswer {
-        /// Fresh work was admitted while the beat was held.
-        Ring => "ring",
-        /// The hold reached its deadline with no ring.
-        Deadline => "deadline",
-        /// The process held its cap of beats, so this one was not held.
-        Capped => "capped",
     }
 }
 

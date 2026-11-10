@@ -112,7 +112,7 @@ pub(crate) async fn covers(
     }
     let logged: i64 = sqlx::query_scalar(include_str!("budget_logged.sql"))
         .bind(afd_billing::sql::work::AUTHORING_ATTEMPT)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .fetch_one(&mut *database.acquire().await?)
         .await
         .map_err(crate::error::raise::query("read logged authoring budget"))?;

@@ -107,7 +107,7 @@ impl History {
     ) -> Result<Vec<EventRow>> {
         self.page(
             workspace,
-            Some(fleet.as_str()),
+            Some(fleet),
             filter,
             cursor,
             limit,
@@ -134,7 +134,7 @@ impl History {
     ) -> Result<Vec<EventRow>> {
         self.page(
             workspace,
-            fleet.map(Uuid7::as_str),
+            fleet,
             filter,
             cursor,
             limit,
@@ -159,12 +159,12 @@ impl History {
         &self,
         workspace: &Uuid7,
         fleet: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
     ) -> Result<Option<EventDetailRow>> {
         let mut connection = self.database.acquire().await?;
         let found = sqlx::query(SELECT_DETAIL)
-            .bind(workspace.as_str())
-            .bind(fleet.as_str())
+            .bind(workspace)
+            .bind(fleet)
             .bind(event_id)
             .fetch_optional(&mut *connection)
             .await
@@ -190,14 +190,12 @@ impl History {
         limit: i64,
     ) -> Result<Vec<EventDetailRow>> {
         let scoped = match cursor {
-            None => sqlx::query(SELECT_THREAD_PAGE)
-                .bind(workspace.as_str())
-                .bind(fleet.as_str()),
+            None => sqlx::query(SELECT_THREAD_PAGE).bind(workspace).bind(fleet),
             Some(at) => sqlx::query(SELECT_THREAD_PAGE_AFTER)
-                .bind(workspace.as_str())
-                .bind(fleet.as_str())
+                .bind(workspace)
+                .bind(fleet)
                 .bind(at.created_at.to_sqlx())
-                .bind(at.event_id.as_str()),
+                .bind(&at.event_id),
         };
         let bound = limit.clamp(1, THREAD_MAX_LIMIT + 1);
         let mut connection = self.database.acquire().await?;
@@ -232,10 +230,10 @@ impl History {
     ) -> Result<Vec<EventDetailRow>> {
         let mut connection = self.database.acquire().await?;
         sqlx::query(SELECT_THREAD_FINISHED_BEFORE)
-            .bind(workspace.as_str())
-            .bind(fleet.as_str())
+            .bind(workspace)
+            .bind(fleet)
             .bind(at.created_at.to_sqlx())
-            .bind(at.event_id.as_str())
+            .bind(&at.event_id)
             .bind(status::PROCESSED)
             .bind(status::FLEET_ERROR)
             .bind(limit.clamp(1, THREAD_MAX_LIMIT + 1))
@@ -252,7 +250,7 @@ impl History {
     async fn page(
         &self,
         workspace: &Uuid7,
-        fleet: Option<&str>,
+        fleet: Option<&Uuid7>,
         filter: &Filter,
         cursor: Option<&Cursor>,
         limit: i64,
@@ -260,15 +258,13 @@ impl History {
     ) -> Result<Vec<EventRow>> {
         let actor = filter.actor_like.as_deref();
         let text = listing_text(fleet.is_some(), cursor.is_some(), actor.is_some());
-        let query = sqlx::query(text).bind(workspace.as_str());
+        let query = sqlx::query(text).bind(workspace);
         let query = match fleet {
             Some(fleet) => query.bind(fleet),
             None => query,
         };
         let query = match cursor {
-            Some(at) => query
-                .bind(at.created_at.to_sqlx())
-                .bind(at.event_id.as_str()),
+            Some(at) => query.bind(at.created_at.to_sqlx()).bind(&at.event_id),
             None => query,
         };
         let query = match actor {
@@ -307,12 +303,17 @@ pub fn next_cursor(page: &[EventRow], limit: i64) -> Option<Cursor> {
 mod tests {
     use super::*;
 
-    fn row_at(second: i64, event_id: &str) -> EventRow {
+    /// The event a test row carries, one per ordinal.
+    fn event(ordinal: u8) -> af_core::error::Result<Uuid7> {
+        Uuid7::parse(&format!("0199a0b0-0000-7000-8000-{ordinal:012x}"))
+    }
+
+    fn row_at(second: i64, event_id: &Uuid7) -> EventRow {
         let created_at = jiff::Timestamp::constant(second, 0);
         EventRow {
-            fleet_id: String::new(),
+            fleet_id: event_id.to_owned(),
             event_id: event_id.to_owned(),
-            workspace_id: String::new(),
+            workspace_id: event_id.to_owned(),
             actor: String::new(),
             event_type: String::new(),
             status: String::new(),
@@ -333,17 +334,20 @@ mod tests {
     }
 
     #[test]
-    fn a_short_page_ends_the_walk() {
-        let page = vec![row_at(10, "a"), row_at(9, "b")];
+    fn a_short_page_ends_the_walk() -> af_core::error::Result<()> {
+        let page = vec![row_at(10, &event(1)?), row_at(9, &event(2)?)];
         assert!(next_cursor(&page, DEFAULT_LIMIT).is_none());
+        Ok(())
     }
 
     #[test]
-    fn a_full_page_resumes_from_its_last_row() {
-        let page = vec![row_at(10, "a"), row_at(9, "b")];
+    fn a_full_page_resumes_from_its_last_row() -> af_core::error::Result<()> {
+        let last = event(2)?;
+        let page = vec![row_at(10, &event(1)?), row_at(9, &last)];
         assert_eq!(
             next_cursor(&page, 2),
-            Some(Cursor::after(jiff::Timestamp::constant(9, 0), "b"))
+            Some(Cursor::after(jiff::Timestamp::constant(9, 0), &last))
         );
+        Ok(())
     }
 }

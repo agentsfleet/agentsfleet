@@ -1,4 +1,4 @@
-//! Prove transport progress and private publication against live Postgres and Dragonfly.
+//! Prove transport progress and private publication against live Postgres and the in-process bus.
 
 mod compaction;
 mod deadline;
@@ -13,7 +13,7 @@ use std::{sync::atomic::Ordering, time::Instant};
 const MILLIS_PER_SECOND: f64 = 1_000.0;
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn draft_stream_delivers_before_completion_and_final_replay_never_resends() {
     let f = Fixture::create().await;
     let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
@@ -51,10 +51,10 @@ async fn draft_stream_delivers_before_completion_and_final_replay_never_resends(
     assert_eq!(live.provider.calls.load(Ordering::SeqCst), 1);
     assert_eq!(super::fixture::receipts(&f, &attempt).await, (1, 1, false));
     live.drained().await;
-    let channel = afd_authoring::draft_channel(&attempt.draft.id);
-    assert_eq!(live.hub.readers(&channel), 1);
+    let subject = afd_bus::Subject::DraftEvents(attempt.draft.id.clone());
+    assert_eq!(live.server.readers(&subject), 1);
     drop(live.reader);
-    assert_eq!(live.hub.readers(&channel), 0);
+    assert_eq!(live.server.readers(&subject), 0);
     eprintln!("private_stream first_text_ms={first_ms:.3} physical_sends=1 final_receipts=1");
     f.cleanup().await;
 }

@@ -11,7 +11,7 @@ use super::*;
 /// spells them. Written out here rather than read from one of the files, so a
 /// file edited on its own disagrees with this and fails.
 const ROW_COLUMNS: &str = "\
-SELECT fleet_id::text AS fleet_id, event_id, workspace_id::text AS workspace_id,
+SELECT fleet_id, event_id, workspace_id,
        actor, event_type, status, token_count, wall_ms,
        failure_reason, failure_detail, resumes_event_id,
        created_at, updated_at,

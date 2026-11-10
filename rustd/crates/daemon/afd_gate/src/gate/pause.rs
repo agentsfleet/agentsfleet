@@ -58,7 +58,7 @@ impl Gates {
         let mut connection = self.database().acquire().await?;
         sqlx::query(sql::PAUSE_FLEET)
             .bind(FleetStatus::Paused.as_str())
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_PAUSE))?;

@@ -22,7 +22,7 @@ pub(super) async fn apply(
     };
     if matches!(proposal, Proposal::Edit { .. }) {
         let veto: bool = sqlx::query_scalar(include_str!("../model/edit_intent/sql/veto.sql"))
-            .bind(guarded.attempt.id.as_str())
+            .bind(&guarded.attempt.id)
             .bind(guarded.draft.candidate_revision)
             .bind("no")
             .fetch_one(&mut *connection)

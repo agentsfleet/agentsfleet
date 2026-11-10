@@ -19,6 +19,7 @@
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use af_core::id::Uuid7;
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
 use afd_db::config::DbRole;
@@ -117,11 +118,12 @@ pub(crate) fn per_run(name: &str) -> String {
 /// but the lane is now ONE database shared by every binary in the run, and a
 /// deterministic identifier is exactly how two suites come to name the same
 /// row. The process id costs nothing and removes the class.
-pub(crate) fn identifier(seed: u32) -> String {
-    format!(
+pub(crate) fn identifier(seed: u32) -> Uuid7 {
+    let text = format!(
         "01900000-0000-7000-8000-{:06x}{seed:06x}",
         std::process::id()
-    )
+    );
+    Uuid7::parse(&text).expect("a fixture identifier is a canonical UUIDv7")
 }
 
 /// A seed no other call in this binary will use.
@@ -139,12 +141,11 @@ fn minted_seed() -> u32 {
     NEXT.fetch_add(1, Ordering::Relaxed)
 }
 
-/// An identifier the schema accepts and [`af_core::id::Uuid7`] refuses.
+/// An identifier [`af_core::id::Uuid7`] refuses.
 ///
-/// The version nibble is `7`, which is all `ck_*_id_uuidv7` checks — but the
-/// variant nibble is `0`, and RFC 4122 spells that `8`, `9`, `a` or `b`. So
-/// this is a value Postgres will store and the port will not read, which is
-/// exactly the corrupt row the malformed-identifier path exists for.
+/// The version nibble is `7`, but the variant nibble is `0` instead of an RFC
+/// variant. Runner constraints reject it; older tenant fixtures exercise how
+/// the directory refuses a malformed identifier admitted by a weaker check.
 pub(crate) fn identifier_with_bad_variant(seed: u32) -> String {
     format!(
         "01900000-0000-7000-0000-{:06x}{seed:06x}",
@@ -154,7 +155,7 @@ pub(crate) fn identifier_with_bad_variant(seed: u32) -> String {
 
 impl Fixtures {
     /// Inserts a tenant, returning its identifier.
-    pub(crate) async fn tenant(&self, id: &str) -> String {
+    pub(crate) async fn tenant(&self, id: &Uuid7) -> Uuid7 {
         let mut connection = self
             .database
             .acquire()
@@ -168,14 +169,19 @@ impl Fixtures {
     }
 
     /// Inserts a user under `tenant`, returning its identifier.
-    pub(crate) async fn user(&self, id: &str, tenant: &str, subject: &str) -> String {
-        self.run(
+    pub(crate) async fn user(&self, id: &Uuid7, tenant: &Uuid7, subject: &str) -> Uuid7 {
+        let mut connection = self.connection().await;
+        sqlx::query(
             "INSERT INTO identity.users \
              (id, tenant_id, oidc_subject, email, created_at, updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $1 || '@example.test', now(), now())",
-            &[id, tenant, subject],
+             VALUES ($1, $2, $3, $1 || '@example.test', now(), now())",
         )
-        .await;
+        .bind(id)
+        .bind(tenant)
+        .bind(subject)
+        .execute(&mut *connection)
+        .await
+        .expect("the user row must insert");
         id.to_owned()
     }
 
@@ -183,41 +189,55 @@ impl Fixtures {
     ///
     /// Revocation is `revoked_at` being set; the key's name is its digest, which
     /// is unique per test and so never trips `uq_api_keys_tenant_id_name`.
-    pub(crate) async fn api_key(&self, tenant: &str, digest: &Digest, subject: &str, active: bool) {
+    pub(crate) async fn api_key(
+        &self,
+        tenant: &Uuid7,
+        digest: &Digest,
+        subject: &str,
+        active: bool,
+    ) {
         let revoked_at = if active { "NULL" } else { "now()" };
-        self.run(
-            &format!(
-                "INSERT INTO identity.api_keys \
+        let mut connection = self.connection().await;
+        sqlx::query(AssertSqlSafe(format!(
+            "INSERT INTO identity.api_keys \
                  (id, tenant_id, name, description, key_hash, created_by_subject, \
                   revoked_at, created_at, updated_at) \
-                 VALUES ($4::uuid, $1::uuid, $2, '', $2, $3, {revoked_at}, now(), now())"
-            ),
-            &[tenant, digest.as_str(), subject, &identifier(minted_seed())],
-        )
-        .await;
+                 VALUES ($4, $1, $2, '', $2, $3, {revoked_at}, now(), now())"
+        )))
+        .bind(tenant)
+        .bind(digest.as_str())
+        .bind(subject)
+        .bind(identifier(minted_seed()))
+        .execute(&mut *connection)
+        .await
+        .expect("the api key row must insert");
     }
 
     /// Inserts a command-line credential for `user`.
     pub(crate) async fn cli_credential(
         &self,
-        user: &str,
-        tenant: &str,
+        user: &Uuid7,
+        tenant: &Uuid7,
         digest: &Digest,
         revoked: bool,
     ) {
         let revoked_at = if revoked { "now()" } else { "NULL" };
-        self.run(
-            &format!(
-                "INSERT INTO identity.cli_credentials \
+        let mut connection = self.connection().await;
+        sqlx::query(AssertSqlSafe(format!(
+            "INSERT INTO identity.cli_credentials \
                  (id, user_id, tenant_id, machine_name, credential_hash, \
                   credential_prefix, deployment, created_from_address, \
                   revoked_at, created_at, updated_at) \
-                 VALUES ($4::uuid, $1::uuid, $2::uuid, 'fixture', $3, 'afc_', \
+                 VALUES ($4, $1, $2, 'fixture', $3, 'afc_', \
                          'test', '127.0.0.1', {revoked_at}, now(), now())"
-            ),
-            &[user, tenant, digest.as_str(), &identifier(minted_seed())],
-        )
-        .await;
+        )))
+        .bind(user)
+        .bind(tenant)
+        .bind(digest.as_str())
+        .bind(identifier(minted_seed()))
+        .execute(&mut *connection)
+        .await
+        .expect("the credential row must insert");
     }
 
     /// Inserts a runner holding `status`, its token stored as `digest`.
@@ -225,25 +245,25 @@ impl Fixtures {
     /// Written here rather than through `afd_db`'s `RunnerSeed`, whose token
     /// digest is the runner's own id: this suite looks a runner up BY its
     /// digest, so the digest is the column under test.
-    pub(crate) async fn runner(&self, id: &str, digest: &Digest, status: &str, degraded: bool) {
-        let degraded_reason = if degraded {
-            "'fixture-degraded'"
-        } else {
-            "NULL"
-        };
-        self.run(
-            &format!(
-                "INSERT INTO runner.runners \
+    ///
+    pub(crate) async fn runner(&self, id: &Uuid7, digest: &Digest, status: &str, degraded: bool) {
+        let mut connection = self.connection().await;
+        sqlx::query(
+            "INSERT INTO runner.runners \
                  (id, host_id, token_hash, sandbox_tier, status, labels, network_policy, \
                   registry_allowlist, worker_count, degraded_reason, last_seen_at, \
                   lease_version, created_at, updated_at) \
-                 VALUES ($1::uuid, 'fixture-host', $2, 'standard', $3, '[]'::jsonb, \
-                         'deny_all_egress', '[]'::jsonb, 1, {degraded_reason}, now(), 0, \
-                         now(), now())"
-            ),
-            &[id, digest.as_str(), status],
+                 VALUES ($1, 'fixture-host', $2, 'standard', $3, jsonb_build_array(), \
+                         'deny_all_egress', jsonb_build_array(), 1, $4, clock_timestamp(), 0, \
+                         clock_timestamp(), clock_timestamp())",
         )
-        .await;
+        .bind(id)
+        .bind(digest.as_str())
+        .bind(status)
+        .bind(degraded.then_some("fixture-degraded"))
+        .execute(&mut *connection)
+        .await
+        .expect("the native runner fixture must insert");
     }
 
     /// Removes a table out from under the directory.
@@ -293,20 +313,11 @@ impl Fixtures {
         pool.close().await;
     }
 
-    /// Runs one seeding statement with text binds.
-    async fn run(&self, statement: &str, binds: &[&str]) {
-        let mut connection = self
-            .database
+    /// A connection for seeding.
+    async fn connection(&self) -> sqlx::pool::PoolConnection<sqlx::Postgres> {
+        self.database
             .acquire()
             .await
-            .expect("a connection for seeding");
-        let mut query = sqlx::query(AssertSqlSafe(statement.to_owned()));
-        for bind in binds {
-            query = query.bind((*bind).to_owned());
-        }
-        query
-            .execute(&mut *connection)
-            .await
-            .expect("the fixture row must insert");
+            .expect("a connection for seeding")
     }
 }

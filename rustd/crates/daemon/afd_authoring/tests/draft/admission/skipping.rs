@@ -8,6 +8,7 @@
 
 use super::fixture::{attempts, fund, queue};
 use super::{Fixture, mint, now};
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_wire::lease::AcceptedKinds;
 use afd_authoring::Claimed;
@@ -24,11 +25,10 @@ const PROMPT: Duration = Duration::from_secs(10);
 const WORKERS: i32 = 4;
 
 /// Locks one draft row until its transaction ends.
-const HOLD_DRAFT: &str = "SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE";
+const HOLD_DRAFT: &str = "SELECT id FROM authoring.drafts WHERE id=$1 FOR UPDATE";
 
 /// Locks a tenant's wallet row, the way a ledger write does.
-const HOLD_WALLET: &str =
-    "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid FOR UPDATE";
+const HOLD_WALLET: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1 FOR UPDATE";
 
 /// One offered claim on the fixture's host, failing the proof if it waits.
 async fn claim(f: &Fixture) -> Option<Claimed> {
@@ -53,7 +53,7 @@ async fn queue_as_member(f: &Fixture, text: &str) -> Draft {
 }
 
 /// Hold `statement`'s row for `id` on a session of its own until committed.
-async fn hold(f: &Fixture, statement: &'static str, id: &str) -> PoolConnection<sqlx::Postgres> {
+async fn hold(f: &Fixture, statement: &'static str, id: &Uuid7) -> PoolConnection<sqlx::Postgres> {
     let mut session = f.connection().await;
     sqlx::query("BEGIN")
         .execute(&mut *session)
@@ -81,7 +81,7 @@ async fn test_locked_draft_does_not_block_other_tenant() {
     let f = fund(Fixture::isolated().await, WORKERS).await;
     let older = queue(&f, "The older chat, whose draft is busy").await;
     let newer = queue_as_member(&f, "The newer chat, from someone else").await;
-    let holder = hold(&f, HOLD_DRAFT, older.id.as_str()).await;
+    let holder = hold(&f, HOLD_DRAFT, &older.id).await;
     let claimed = claim(&f)
         .await
         .expect("the newer chat is admitted past the busy one");
@@ -106,8 +106,8 @@ async fn test_all_drafts_locked_returns_no_work() {
     let first = queue(&f, "A busy chat").await;
     let second = queue_as_member(&f, "Another busy chat").await;
     let holders = [
-        hold(&f, HOLD_DRAFT, first.id.as_str()).await,
-        hold(&f, HOLD_DRAFT, second.id.as_str()).await,
+        hold(&f, HOLD_DRAFT, &first.id).await,
+        hold(&f, HOLD_DRAFT, &second.id).await,
     ];
     assert!(
         claim(&f).await.is_none(),
@@ -129,7 +129,7 @@ async fn test_all_drafts_locked_returns_no_work() {
 async fn test_locked_wallet_does_not_block_claim() {
     let f = fund(Fixture::isolated().await, WORKERS).await;
     let draft = queue(&f, "A chat whose tenant's wallet is busy").await;
-    let holder = hold(&f, HOLD_WALLET, f.tenant.as_str()).await;
+    let holder = hold(&f, HOLD_WALLET, &f.tenant).await;
     let claimed = claim(&f)
         .await
         .expect("a held wallet does not stop admission");

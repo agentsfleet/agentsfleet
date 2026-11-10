@@ -13,6 +13,7 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_connector::test_util::FakeSlack;
 use agentsfleetd::preflight::SLACK_API_URL_KNOB;
 use agentsfleetd::supervisor::Supervisor;
@@ -21,7 +22,7 @@ use serde_json::{Value, json};
 use crate::e2e::{Scenario, scenario_with};
 use crate::tail::lease;
 use crate::verbs::{enqueue_from_thread, seal_slack_grant};
-use crate::wire::{json as body_of, poll_for_lease, post, report_body};
+use crate::wire::{json as body_of, post, report_body, wait_for_offer};
 
 /// A booted daemon pointed at a loopback Slack.
 pub(crate) struct Speaking {
@@ -49,7 +50,7 @@ impl Speaking {
 
     /// Leases the seeded event, which came from no thread.
     pub(crate) async fn lease_seeded(&self) -> (String, u64) {
-        lease(&self.http, &self.run).await
+        lease(&self.run).await
     }
 
     /// Settles the seeded lease, then admits an event from the Slack thread
@@ -57,10 +58,10 @@ impl Speaking {
     pub(crate) async fn lease_thread(&self) -> (String, u64) {
         let (lease_id, fence) = self.lease_seeded().await;
         let report = report_body(&lease_id, &self.run.event_id, fence);
-        let reported = post(&self.http, &self.run, "/v1/runners/me/reports", &report).await;
-        assert_eq!(reported.status().as_u16(), 200, "the seeded lease settles");
+        let reported = crate::wire::report(&self.run, &report).await;
+        assert!(reported.is_ok(), "native report refused: {reported:?}");
         let event = enqueue_from_thread(&self.run).await;
-        poll_for_lease(&self.http, &self.run, &event).await
+        wait_for_offer(&self.run, &event).await
     }
 
     pub(crate) async fn say(&self, (lease_id, fence): (&str, u64), text: &str) -> (u16, Value) {
@@ -73,6 +74,8 @@ impl Speaking {
 
     /// How many lines `lease_id` has counted against its cap.
     pub(crate) async fn counted(&self, lease_id: &str) -> i32 {
+        let lease_id =
+            Uuid7::parse(lease_id).expect("a lease id the daemon answered is a canonical UUIDv7");
         let mut connection = self
             .run
             .booted
@@ -80,8 +83,8 @@ impl Speaking {
             .acquire()
             .await
             .expect("a connection");
-        sqlx::query_scalar("SELECT posted_message_count FROM runner.leases WHERE id = $1::uuid")
-            .bind(lease_id)
+        sqlx::query_scalar("SELECT posted_message_count FROM runner.leases WHERE id = $1")
+            .bind(&lease_id)
             .fetch_one(&mut *connection)
             .await
             .expect("the lease row")
@@ -98,7 +101,7 @@ impl Speaking {
             .await
             .expect("a connection");
         sqlx::query(
-            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1::uuid",
+            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1 WHERE fleet_id = $1",
         )
         .bind(&self.run.fleet)
         .execute(&mut *connection)

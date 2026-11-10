@@ -14,6 +14,7 @@
 //! connection would also shrink the pool, and the two effects would read as
 //! one.
 
+use af_core::id::Uuid7;
 use core::time::Duration;
 
 use sqlx::{Connection as _, PgConnection};
@@ -57,11 +58,11 @@ pub(super) trait Locker {
     /// # Errors
     ///
     /// `SamplerUnavailable` when the connection would not answer.
-    fn hold(&mut self, tenant: &str, hold: Duration) -> impl Future<Output = Result<()>> + Send;
+    fn hold(&mut self, tenant: &Uuid7, hold: Duration) -> impl Future<Output = Result<()>> + Send;
 }
 
 impl Locker for PgConnection {
-    async fn hold(&mut self, tenant: &str, hold: Duration) -> Result<()> {
+    async fn hold(&mut self, tenant: &Uuid7, hold: Duration) -> Result<()> {
         let unavailable = |source| ErrorKind::SamplerUnavailable { source };
         let mut tx = self.begin().await.map_err(unavailable)?;
         sqlx::query(HOLD_DRAFTS)
@@ -81,11 +82,18 @@ impl Locker for PgConnection {
 /// # Errors
 ///
 /// The locker's connection would not answer.
-pub(super) async fn write<L: Locker>(locker: &mut L, tenant: &str, shared: &Shared) -> Result<u64> {
+pub(super) async fn write<L: Locker>(
+    locker: &mut L,
+    tenant: Option<&Uuid7>,
+    shared: &Shared,
+) -> Result<u64> {
     let mut holds = 0;
     while shared.open() {
-        locker.hold(tenant, HOLD).await?;
-        holds += 1;
+        // A run that staged no chat tenant has nothing to hold.
+        if let Some(tenant) = tenant {
+            locker.hold(tenant, HOLD).await?;
+            holds += 1;
+        }
         tokio::time::sleep(GAP).await;
     }
     Ok(holds)

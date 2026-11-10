@@ -13,7 +13,6 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_dragonfly::Error => Queue,
     afd_admission::Error => Admission,
 );
 
@@ -50,12 +49,12 @@ pub(crate) fn operation_conflict() -> Error {
 
 /// One [`Error`] of every kind, labelled, for a suite that grades the surface.
 ///
-/// The seam `afd_db`, `afd_dragonfly`, `afd_ingress` and `afd_cron` already
-/// carry: the accessors on an error type — its code, its sentence, its
-/// rendering, whether a retry could help — are what a person reads at three
-/// in the morning and are exactly what the happy path never touches. A sample
-/// built here rather than in the suite means adding a variant without a
-/// sample is a change in THIS file, next to the variant.
+/// The seam `afd_db`, `afd_ingress` and `afd_cron` already carry: the
+/// accessors on an error type — its code, its sentence, its rendering, whether
+/// a retry could help — are what a person reads at three in the morning and
+/// are exactly what the happy path never touches. A sample built here rather
+/// than in the suite means adding a variant without a sample is a change in
+/// THIS file, next to the variant.
 ///
 /// # Panics
 /// When a sibling crate stops refusing an input this builder relies on being
@@ -74,11 +73,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         .find(|(label, _error)| *label == "datastore")
         .expect("the ledger declares an unavailable kind")
         .1;
-    let queue = afd_dragonfly::error::one_of_each_kind()
-        .into_iter()
-        .next()
-        .expect("the datastore declares at least one kind")
-        .1;
 
     vec![
         (
@@ -95,7 +89,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("cursor malformed", cursor_malformed()),
         ("operation conflict", operation_conflict()),
-        ("queue", ErrorKind::Queue { source: queue }.into()),
         (
             "admission",
             ErrorKind::Admission { source: admission }.into(),

@@ -11,9 +11,9 @@ use af_wire::runner::{
     SandboxTier,
 };
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
+use afd_bus::Handle;
 use afd_db::Db;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
-use afd_dragonfly::Dragonfly;
 use afd_runner::Runners;
 use afd_runner::heartbeat::holds::prove;
 use jiff::Timestamp;
@@ -32,9 +32,10 @@ pub const ROWS_PER_RUNNER: u64 = 1;
 
 /// The actor every bench-written event carries, seeded or steered.
 ///
-/// One spelling, so a reader grepping a stream for bench entries has one
-/// thing to grep for.
-pub const BENCH_ACTOR: &str = "bench:steer";
+/// One spelling, so a reader grepping the ledger for bench rows has one
+/// thing to grep for. It is a person's steer actor (`steer:<subject>`), because
+/// a live run folds only a person's messages, and the burst measures folds.
+pub const BENCH_ACTOR: &str = "steer:bench";
 
 /// The event type every seeded event carries: a steer is a chat.
 const EVENT_TYPE: EventType = EventType::Chat;
@@ -79,11 +80,11 @@ const KIND_FLEET: u32 = 3;
 #[derive(Debug, Clone)]
 pub struct SeededFleet {
     /// The fleet a poll can lease.
-    pub fleet: String,
+    pub fleet: Uuid7,
     /// Its workspace.
-    pub workspace: String,
+    pub workspace: Uuid7,
     /// Its billing tenant.
-    pub tenant: String,
+    pub tenant: Uuid7,
 }
 
 /// An identifier the schema's `uuidv7` CHECK accepts.
@@ -91,11 +92,11 @@ pub struct SeededFleet {
 /// The character after the second dash must be `7`. Process id plus index in
 /// the final group gives four billion distinct fleets per process, which is
 /// past anything the cardinality ladder climbs to.
-pub(crate) fn identifier(kind: u32, index: u64) -> String {
-    format!(
+pub(crate) fn identifier(kind: u32, index: u64) -> Result<Uuid7> {
+    Ok(Uuid7::parse(&format!(
         "0195b4ba-8d3a-7{kind:03x}-8abc-{:04x}{index:08x}",
         std::process::id() & 0xffff
-    )
+    ))?)
 }
 
 /// The tag that keeps this run's fleets placeable only by this run's runners.
@@ -116,7 +117,7 @@ pub async fn empty_fleet(
     index: u64,
     now: Timestamp,
 ) -> Result<SeededFleet> {
-    let seeded = identities(index);
+    let seeded = identities(index)?;
     rows(database, prefix, &seeded, tag, now).await?;
     Ok(seeded)
 }
@@ -125,28 +126,28 @@ pub async fn empty_fleet(
 ///
 /// # Errors
 ///
-/// Whatever Postgres or Dragonfly refused, naming which.
+/// Whatever Postgres refused.
 pub async fn ready_fleet(
     database: &Db,
-    queue: &Dragonfly,
+    bus: &Handle,
     prefix: &RunPrefix,
     tag: &str,
     index: u64,
     now: Timestamp,
 ) -> Result<SeededFleet> {
-    let seeded = identities(index);
+    let seeded = identities(index)?;
     rows(database, prefix, &seeded, tag, now).await?;
-    enqueue(database, queue, &seeded, EVENT_TYPE).await?;
+    enqueue(database, bus, &seeded, EVENT_TYPE).await?;
     Ok(seeded)
 }
 
 /// The three identifiers one index yields.
-pub(crate) fn identities(index: u64) -> SeededFleet {
-    SeededFleet {
-        fleet: identifier(KIND_FLEET, index),
-        workspace: identifier(KIND_WORKSPACE, index),
-        tenant: identifier(KIND_TENANT, index),
-    }
+pub(crate) fn identities(index: u64) -> Result<SeededFleet> {
+    Ok(SeededFleet {
+        fleet: identifier(KIND_FLEET, index)?,
+        workspace: identifier(KIND_WORKSPACE, index)?,
+        tenant: identifier(KIND_TENANT, index)?,
+    })
 }
 
 /// The tenant, workspace and fleet rows, in the order the keys require.
@@ -197,20 +198,20 @@ pub(crate) async fn rows(
 /// One event of `event_type` admitted onto the fleet, through the ledger's own
 /// write path.
 ///
-/// `Admissions::admit` is what ingress runs: it writes the `fleet.admissions`
-/// row, appends the entry under that row's id, records the receipt and marks
-/// the fleet ready. Seeding through it leaves exactly the state ingress leaves,
-/// so the lease path's delivery stamp meets a real row, as in production.
+/// `Admissions::admit` is what ingress runs: it commits the `fleet.admissions`
+/// row, then publishes a best-effort wake on the Bus. Seeding through it
+/// leaves exactly the state ingress leaves, so the lease path's delivery stamp
+/// meets a real row, as in production.
 ///
-/// A queue that refuses the append is the ledger's deferral, not an error: the
-/// row stands without a receipt and the run's ledger backlog shows it.
+/// A wake the Bus drops is not an error: the committed row is what the lease
+/// path reads, and the run's ledger backlog shows it until a lease delivers it.
 pub(crate) async fn enqueue(
     database: &Db,
-    queue: &Dragonfly,
+    bus: &Handle,
     seeded: &SeededFleet,
     event_type: EventType,
 ) -> Result<String> {
-    let admitted = Admissions::new(database.clone(), queue.clone(), Entropy::new())
+    let admitted = Admissions::new(database.clone(), bus.clone(), Entropy::new())
         .admit(Admission {
             producer: Producer::Steer,
             key: Key::Unrepeatable,
@@ -249,6 +250,27 @@ pub async fn runner_with(
     workers: u32,
     now: Timestamp,
 ) -> Result<Uuid7> {
+    Ok(runner_identity(database, host, tag, workers, now).await?.id)
+}
+
+/// Enrolled identity retained by an in-process gateway session.
+#[derive(Debug, Clone)]
+pub(in crate::lane::lease) struct RunnerIdentity {
+    pub(in crate::lane::lease) id: Uuid7,
+    pub(in crate::lane::lease) digest: afd_auth::directory::Digest,
+}
+
+/// Enrol once while retaining the credential digest for guarded native ownership.
+///
+/// # Errors
+/// Preserves enrollment and initial capability failures.
+pub(in crate::lane::lease) async fn runner_identity(
+    database: &Db,
+    host: &str,
+    tag: &str,
+    workers: u32,
+    now: Timestamp,
+) -> Result<RunnerIdentity> {
     let runners = Runners::new(database.clone(), Entropy::new());
     let request = RegisterRequest {
         host_id: host.into(),
@@ -266,7 +288,9 @@ pub async fn runner_with(
         // still match and a runner missing this one never will.
         labels: vec![tag.into()],
     };
-    let runner = runners.register(&request, now).await?.runner_id;
+    let enrolled = runners.register(&request, now).await?;
+    let digest = enrolled.token.digest().clone();
+    let runner = enrolled.runner_id;
     // The first beat a real host sends before it polls. A host that has never
     // reported reads degraded and may claim nothing, so without it every poll
     // would be refused for a reason this lane is not about.
@@ -275,13 +299,12 @@ pub async fn runner_with(
         selftest: None,
         holds: HeldFleets(Vec::new()),
         closing: false,
-        wake: false,
     };
     let held = prove(beat.holds.clone());
     runners
         .heartbeat(&runner, &beat, held.as_ref(), now)
         .await?;
-    Ok(runner)
+    Ok(RunnerIdentity { id: runner, digest })
 }
 
 /// A host that proves every confinement the enrolment asks for.

@@ -172,7 +172,7 @@ Access isolation, buffer wiping and protection against a compromised daemon or h
 ## Implementation scope
 
 The shared engine is the `af_context` crate. Its window, planner, compaction, checkpoint, summary and trace modules sit beside adapters in the daemon's repository modules.
-The checkpoint table is `schema/2160_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
+The checkpoint table is `schema/20261108124800_memory_context_checkpoints.sql`, registered in `afd_db`'s migration list.
 
 Authoring admission and accounting live in `afd_authoring` (lease claim, model budget, dispatch, progress and receipt).
 The runner protocol lives in `af_wire` (authoring model, meter and lease payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.
@@ -270,7 +270,7 @@ Its `compact.rs` replaces and saves working history through an explicit compacti
 These observations come from source inspection, not a captured request from Indy's desktop session.
 
 A message sent while its fleet's run is live now folds into that run.
-The send answers disposition `folded` with `folded_into_event_id`, and the running lease claims the fold at its next model call (`POST /v1/runners/me/leases/{lease_id}/folds`).
+The send answers disposition `folded` with `folded_into_event_id`, and the running lease claims the fold at its next model call (a native `folds` request).
 The folded message's own event receives the run's reply when the run reports succeeded.
 
 Dispositions are `started`, `folded` and `queued`.

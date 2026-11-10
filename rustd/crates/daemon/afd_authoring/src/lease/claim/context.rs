@@ -22,7 +22,7 @@ pub(super) async fn read(
         None => None,
     };
     let user: String = sqlx::query_scalar(sql::HISTORY)
-        .bind(selected.draft.id.as_str())
+        .bind(&selected.draft.id)
         .bind(selected.sequence)
         .fetch_one(connection)
         .await

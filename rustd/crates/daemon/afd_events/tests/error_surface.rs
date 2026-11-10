@@ -23,7 +23,7 @@ use af_core::test_util::error_surface::{Expect, grade, grade_sentences};
 use afd_events::error::one_of_each_kind;
 
 /// How many carry a `source()` — the chain an operator follows to the cause.
-const WITH_SOURCE: usize = 5;
+const WITH_SOURCE: usize = 4;
 /// How many distinct registry codes the kinds report between them.
 const DISTINCT_CODES: usize = 4;
 
@@ -67,8 +67,8 @@ fn each_predicate_answers_for_exactly_the_kinds_it_owns() {
         .collect();
     assert_eq!(
         is_datastore_unavailable.len(),
-        3,
-        "`is_datastore_unavailable` now answers for {is_datastore_unavailable:?}, not 3 kinds"
+        2,
+        "`is_datastore_unavailable` now answers for {is_datastore_unavailable:?}, not 2 kinds"
     );
 
     let is_operation_conflict: Vec<&str> = one_of_each_kind()

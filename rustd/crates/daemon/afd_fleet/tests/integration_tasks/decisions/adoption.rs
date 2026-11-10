@@ -21,21 +21,19 @@ async fn revised(case: &Case, daily: i64) -> Uuid7 {
         .fixtures
         .native_config(&case.held.fleet, &config.to_string())
         .await;
-    let revision: String =
-        sqlx::query_scalar("SELECT head_revision_id::text FROM fleet.fleets WHERE id=$1::uuid")
-            .bind(&case.held.fleet)
-            .fetch_one(
-                &mut *case
-                    .held
-                    .fixtures
-                    .database
-                    .acquire()
-                    .await
-                    .expect("revision connection"),
-            )
-            .await
-            .expect("new reviewed revision");
-    id(&revision)
+    sqlx::query_scalar("SELECT head_revision_id FROM fleet.fleets WHERE id=$1")
+        .bind(&case.held.fleet)
+        .fetch_one(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("revision connection"),
+        )
+        .await
+        .expect("new reviewed revision")
 }
 
 #[tokio::test]
@@ -53,7 +51,7 @@ async fn reviewed_goal_adoption_fences_old_execution_and_replays_without_another
         let revision = revised(case, 1_000_000_000).await;
         let adoption = TaskAdoption {
             goal_revision_id: revision.clone(),
-            operation_id: id(&afd_db::test_util::mint_id()),
+            operation_id: afd_db::test_util::mint_id(),
             expected_generation: before.context.generation,
         };
         let after = decisions
@@ -93,7 +91,7 @@ async fn paused_goal_adoption_preserves_pause_and_same_revision_is_an_idempotent
         let revision = revised(case, 1_000_000_000).await;
         let adoption = TaskAdoption {
             goal_revision_id: revision,
-            operation_id: id(&afd_db::test_util::mint_id()),
+            operation_id: afd_db::test_util::mint_id(),
             expected_generation: 2,
         };
         let adopted = decisions
@@ -130,7 +128,7 @@ async fn adoption_refuses_stale_versions_unreviewed_goals_and_changed_authority(
         let revision = revised(case, 2_000_000_000).await;
         let adoption = TaskAdoption {
             goal_revision_id: revision,
-            operation_id: id(&afd_db::test_util::mint_id()),
+            operation_id: afd_db::test_util::mint_id(),
             expected_generation: 1,
         };
         stale_adoption(&decisions, &task, &before, &adoption).await;
@@ -162,8 +160,8 @@ fn assert_adopted(before: &TaskSnapshot, after: &TaskSnapshot, revision: &Uuid7)
 
 async fn assert_receipt(case: &Case, task: &Uuid7) {
     let stored: (i64, i64) = sqlx::query_as(
-        "SELECT (SELECT count(*) FROM fleet.task_adoptions WHERE task_id=$1::uuid), (SELECT count(*) FROM fleet.admissions WHERE task_id=$1::uuid AND task_generation=2 AND settled_at IS NULL)",
-    ).bind(task.as_str())
+        "SELECT (SELECT count(*) FROM fleet.task_adoptions WHERE task_id=$1), (SELECT count(*) FROM fleet.admissions WHERE task_id=$1 AND task_generation=2 AND settled_at IS NULL)",
+    ).bind(task)
         .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("receipt connection"))
         .await.expect("committed adoption and continuation");
     assert_eq!(stored, (1, 1));
@@ -205,7 +203,7 @@ async fn same_revision(
     let case = decisions.case;
     let same = TaskAdoption {
         expected_generation: 3,
-        operation_id: id(&afd_db::test_util::mint_id()),
+        operation_id: afd_db::test_util::mint_id(),
         ..adoption
     };
     assert_eq!(

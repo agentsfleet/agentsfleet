@@ -1,8 +1,8 @@
 //! One workspace holding one fleet and one schedule, over both live stores.
 //!
-//! `Fleet::live` alone would not do: its schedules plane appends to a Dragonfly
-//! nothing resolves, and the accepted fire is the one path that writes. This
-//! fixture arranges the queue too — see [`harness::Fleet::with_live_fire`].
+//! `Fleet::live` alone would not do: its schedules plane notifies a bus nothing
+//! reaches, and the accepted fire is the one path that writes. This fixture
+//! arranges the bus too — see [`harness::Fleet::with_live_fire`].
 
 use af_core::id::Uuid7;
 use afd_auth::scope::{Scope, ScopeSet};
@@ -10,7 +10,6 @@ use afd_cron::{DesiredStatus, Source};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id};
-use afd_dragonfly::Dragonfly;
 use afd_fleet_lifecycle::FleetStatus;
 
 use crate::harness;
@@ -32,11 +31,11 @@ const MESSAGE: &str = "run the nightly sweep";
 pub(crate) struct Fixture {
     lane: TestDatabase,
     database: Db,
-    queue: Dragonfly,
+    bus: afd_bus::Handle,
     subject: String,
-    tenant: String,
+    tenant: Uuid7,
     workspace: Uuid7,
-    user: String,
+    user: Uuid7,
     fleet: Uuid7,
     /// The schedule a fire names in its header.
     pub(crate) schedule: Uuid7,
@@ -47,18 +46,18 @@ impl Fixture {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            queue: harness::connect_redis().await,
+            bus: harness::bus().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             user: mint_id(),
-            fleet: Uuid7::parse(&mint_id()).expect("a minted fleet is canonical"),
-            schedule: Uuid7::parse(&mint_id()).expect("a minted schedule is canonical"),
+            fleet: mint_id(),
+            schedule: mint_id(),
             lane,
         }
     }
 
-    /// The production router, resolving through Postgres AND the queue.
+    /// The production router, resolving through Postgres AND the bus.
     pub(crate) fn router(&self) -> axum::Router {
         harness::Fleet::live(
             self.database.clone(),
@@ -69,7 +68,7 @@ impl Fixture {
             crate::webhook_qstash_route::CURRENT_KEY,
             crate::webhook_qstash_route::NEXT_KEY,
         )
-        .with_live_fire(self.database.clone(), self.queue.clone())
+        .with_live_fire(self.database.clone(), self.bus.clone())
         .router()
     }
 
@@ -84,7 +83,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("qstash-fire-live")
             .insert(&mut *connection)
             .await
@@ -98,28 +97,23 @@ impl Fixture {
         .insert(&mut *connection)
         .await
         .expect("its person seeds");
-        FleetSeed::new(
-            self.fleet.as_str(),
-            self.workspace.as_str(),
-            &self.tenant,
-            fleet.as_str(),
-        )
-        .name("qstash-fire-fleet")
-        .at(afd_db::test_util::SEEDED_AT)
-        .native_setup()
-        .insert(&mut *connection)
-        .await
-        .expect("the fleet seeds");
+        FleetSeed::new(&self.fleet, &self.workspace, &self.tenant, fleet.as_str())
+            .name("qstash-fire-fleet")
+            .at(afd_db::test_util::SEEDED_AT)
+            .native_setup()
+            .insert(&mut *connection)
+            .await
+            .expect("the fleet seeds");
         sqlx::query(
             "INSERT INTO fleet.schedules \
                (id, fleet_id, source, provider_schedule_id, cron_expression, timezone, \
                 message, once, desired_status, sync_status, resource_version, created_at, \
                 updated_at) \
-             VALUES ($1::uuid, $2::uuid, $3, $1::text, $4, 'UTC', $5, false, $6, 'synced', 1, \
+             VALUES ($1, $2, $3, $1::text, $4, 'UTC', $5, false, $6, 'synced', 1, \
                      now(), now())",
         )
-        .bind(self.schedule.as_str())
-        .bind(self.fleet.as_str())
+        .bind(&self.schedule)
+        .bind(&self.fleet)
         // A person's schedule: `source` names who wrote it, and a retirement
         // decodes the whole row, so it must hold a value the store reads back.
         .bind(Source::Api.as_str())
@@ -135,8 +129,8 @@ impl Fixture {
     /// moment.
     pub(crate) async fn mark_once(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("UPDATE fleet.schedules SET once = true WHERE id = $1::uuid")
-            .bind(self.schedule.as_str())
+        sqlx::query("UPDATE fleet.schedules SET once = true WHERE id = $1")
+            .bind(&self.schedule)
             .execute(&mut *connection)
             .await
             .expect("the schedule becomes a one-off");
@@ -145,8 +139,8 @@ impl Fixture {
     /// The seeded schedule's desired status, or `None` once its row is gone.
     pub(crate) async fn desired_status(&self) -> Option<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query_scalar("SELECT desired_status FROM fleet.schedules WHERE id = $1::uuid")
-            .bind(self.schedule.as_str())
+        sqlx::query_scalar("SELECT desired_status FROM fleet.schedules WHERE id = $1")
+            .bind(&self.schedule)
             .fetch_optional(&mut *connection)
             .await
             .expect("the schedule row reads")
@@ -155,7 +149,7 @@ impl Fixture {
     /// Removes this run's rows — the schedule cascades with its fleet.
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

@@ -36,7 +36,7 @@ pub(super) fn report<'a>(
                 &input.scope,
                 Position::Activity {
                     at: row.recorded_at.to_string(),
-                    id: row.work_id.clone(),
+                    id: row.work_id.clone().into(),
                     work_type: row.work_type.clone(),
                 },
             ))
@@ -127,10 +127,10 @@ fn activity(row: &store::Activity) -> Result<wire::Activity<'_>, Refusal> {
         _ => return Err(stored_refusal()),
     };
     Ok(wire::Activity {
-        id: Cow::Borrowed(&row.work_id),
+        id: Cow::Borrowed(row.work_id.as_str()),
         activity_type: Cow::Borrowed(kind),
-        workspace_id: Cow::Borrowed(&row.workspace_id),
-        fleet_id: row.fleet_id.as_deref().map(Cow::Borrowed),
+        workspace_id: Cow::Borrowed(row.workspace_id.as_str()),
+        fleet_id: row.fleet_id.as_ref().map(|id| Cow::Borrowed(id.as_str())),
         fleet_name: row.fleet_name.as_deref().map(Cow::Borrowed),
         recorded_at: row.recorded_at,
         totals: wire::Totals {
@@ -176,7 +176,7 @@ pub(super) fn charges<'a>(
         .iter()
         .take(count)
         .map(|row| wire::Charge {
-            id: Cow::Borrowed(&row.id),
+            id: Cow::Borrowed(row.id.as_str()),
             sequence: row.sequence,
             model: Cow::Borrowed(&row.model),
             posture: Cow::Borrowed(&row.posture),

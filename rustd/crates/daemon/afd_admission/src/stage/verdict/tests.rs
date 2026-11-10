@@ -28,16 +28,15 @@ fn open() -> Answer {
         digest: None,
         fleet: None,
         created_at: None,
-        run: super::RunRow::default(),
     }
 }
 
 /// The same answer carrying a stored row.
 fn stored(mut answer: Answer, inserted: bool) -> Answer {
     answer.inserted = inserted;
-    answer.id = Some("0190d5c2-7e1a-7000-8000-000000000001".to_owned());
+    answer.id = Some(afd_db::test_util::mint_id());
     answer.digest = Some("digest".to_owned());
-    answer.fleet = Some("0190d5c2-7e1a-7000-8000-000000000002".to_owned());
+    answer.fleet = Some(afd_db::test_util::mint_id());
     answer.created_at = Some(jiff::Timestamp::UNIX_EPOCH.into());
     answer
 }

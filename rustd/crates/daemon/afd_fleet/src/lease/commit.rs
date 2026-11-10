@@ -13,7 +13,7 @@ use sqlx::{Acquire as _, PgConnection};
 
 use crate::error::{Result, query};
 use crate::lease::fold::Folds;
-use crate::lease::obligation::{Owing, ReplyDestination};
+use crate::lease::obligation::Owing;
 use crate::lease::settle::{Reported, Settled};
 use crate::lease::sql::meter::Metering;
 use crate::lease::store::Leases;
@@ -32,7 +32,7 @@ const CONTEXT_COMMIT: &str = "report commit";
 #[derive(Debug)]
 pub struct TerminalReport<'a> {
     /// The lease being reported on.
-    pub lease_id: &'a str,
+    pub lease_id: &'a Uuid7,
     /// The runner presenting the report — the ownership scope of every
     /// statement below.
     pub runner_id: &'a Uuid7,
@@ -48,7 +48,7 @@ pub struct TerminalReport<'a> {
     /// The run's ending, as the event row will carry it.
     pub outcome: Terminal<'a>,
     /// The event the fleet's next run resumes after.
-    pub last_event_id: &'a str,
+    pub last_event_id: &'a Uuid7,
     /// The answer that run resumes from.
     pub last_response: &'a str,
     /// When the sandbox the run left held for the fleet's next event lapses;
@@ -89,15 +89,14 @@ pub enum Committed {
         /// every fenced answer that size too. `Option<Box<_>>` rather than
         /// `Box<Option<_>>`: a report that closed nothing allocates nothing.
         closed: Option<Box<Closed>>,
-        /// The delivery obligation this report newly owed, and where, for the
-        /// caller to append and receipt.
+        /// The delivery obligation this report newly owed, for the caller to
+        /// wake the outbound workers about.
         ///
         /// `None` when the settled event was admitted with no destination, when
         /// the run answered nothing, and on a repeat that conflicted — so a
-        /// caller cannot append an entry for an answer nobody asked for, or one
-        /// already owed and in flight. Carried up rather than appended in here
-        /// because the append is not part of the transaction and must not be
-        /// able to fail it.
+        /// caller cannot ring for an answer nobody asked for, or one already
+        /// owed and in flight. Carried up rather than rung in here because the
+        /// wake is not part of the transaction and must not be able to fail it.
         owed: Option<Owing>,
         /// Native replacement for a stale or unverified completion claim.
         notice: Option<&'static str>,
@@ -252,19 +251,12 @@ impl Leases {
             .await?;
         self.release_through(connection, &lease.fleet_id, lease.fence, held_until)
             .await?;
-        let (destination, owed) = self.owe_answer(connection, lease, answer, now).await?;
+        let owed = self.owe_answer(connection, lease, answer, now).await?;
         // A failed or stopped run's folds settle nothing: each message stays
         // for the fleet's next run, in order.
         let read_through = folded_through_sequence.filter(|_| succeeded);
         let folds = self
-            .settle_folds(
-                connection,
-                lease,
-                lease_id,
-                read_through,
-                answer,
-                destination.as_ref(),
-            )
+            .settle_folds(connection, lease, lease_id, read_through, answer)
             .await?;
         Ok((closed, owed, notice, folds))
     }
@@ -274,32 +266,30 @@ impl Leases {
     /// The fifth write, and the one that closes the window between the charge
     /// and the send: the answer is owed before anything tries to send it, so a
     /// process that dies in between leaves a record rather than a charged run
-    /// whose answer exists nowhere. The append itself is NOT here — see
-    /// `obligation` for why it cannot be.
+    /// whose answer exists nowhere. The wake is NOT here: it follows the
+    /// commit, so a refused wake cannot roll the report back.
     ///
     /// The lease's own `provider` is the MODEL provider billing resolved, and
     /// it has no path in here: `Delivery` takes a connector type, which only
-    /// the event's recorded destination supplies. Answers that destination,
-    /// and the obligation newly owed to it.
+    /// the event's recorded destination supplies. Answers the obligation
+    /// newly owed to it. A folded message is in the run's conversation, so
+    /// this one reply reaches it too (`claim_inputs.sql`).
     async fn owe_answer(
         &self,
         connection: &mut PgConnection,
         lease: &Reported,
         answer: &str,
         now: Timestamp,
-    ) -> Result<(Option<ReplyDestination>, Option<Owing>)> {
+    ) -> Result<Option<Owing>> {
         let destination =
-            Self::reply_destination(connection, lease.fleet_id.as_str(), &lease.event_id).await?;
+            Self::reply_destination(connection, &lease.fleet_id, lease.event_id.as_str()).await?;
         let owed = match &destination {
             Some(reply) => self
                 .owe_delivery(connection, reply.delivery(lease, answer), now)
                 .await?
-                .map(|obligation| Owing {
-                    obligation,
-                    reply: reply.clone(),
-                }),
+                .map(|obligation| Owing { obligation }),
             None => None,
         };
-        Ok((destination, owed))
+        Ok(owed)
     }
 }

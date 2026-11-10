@@ -115,8 +115,8 @@ impl Leases {
         fleet_id: &Uuid7,
     ) -> Result<Option<Fence>> {
         let found = sqlx::query(SELECT_LIVE_FENCE_BY_FLEET)
-            .bind(runner_id.as_str())
-            .bind(fleet_id.as_str())
+            .bind(runner_id)
+            .bind(fleet_id)
             .bind(sql::LEASE_STATUS_ACTIVE);
         self.read_fence(found).await
     }
@@ -133,13 +133,13 @@ impl Leases {
     pub(crate) async fn live_fence_for_lease(
         &self,
         runner_id: &Uuid7,
-        lease_id: &str,
+        lease_id: &Uuid7,
         fleet_id: &Uuid7,
     ) -> Result<Option<Fence>> {
         let found = sqlx::query(SELECT_LIVE_FENCE_BY_LEASE)
             .bind(lease_id)
-            .bind(runner_id.as_str())
-            .bind(fleet_id.as_str())
+            .bind(runner_id)
+            .bind(fleet_id)
             .bind(sql::LEASE_STATUS_ACTIVE);
         self.read_fence(found).await
     }

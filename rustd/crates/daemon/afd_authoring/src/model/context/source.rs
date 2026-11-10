@@ -32,7 +32,7 @@ impl HistorySource for Source<'_> {
             let after = i64::try_from(sequence).map_err(af_context::Error::boundary)?;
             let sql_limit = i64::try_from(limit).map_err(af_context::Error::boundary)?;
             let rows: Vec<Row> = sqlx::query_as(include_str!("history.sql"))
-                .bind(self.attempt.draft_id.as_str())
+                .bind(&self.attempt.draft_id)
                 .bind(after)
                 .bind(self.attempt.message_sequence)
                 .bind(sql_limit)

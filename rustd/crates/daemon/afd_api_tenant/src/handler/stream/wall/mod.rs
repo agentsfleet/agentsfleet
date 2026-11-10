@@ -140,14 +140,14 @@ impl Recount {
 }
 
 /// Every frame one workspace stream sends, starting with its `hello`.
-pub(super) fn frames<D: Services>(
+pub(super) async fn frames<D: Services>(
     services: Arc<D>,
     workspace: Uuid7,
     principal: Principal,
     opening: &BTreeSet<String>,
 ) -> BoxStream<'static, Frame> {
     let mut fan_in = services.live().fan_in();
-    fan_in.sync_to(opening);
+    fan_in.sync_to(opening).await;
     let now = Instant::now();
     let wall = Wall {
         watch: Watch::new(Membership::new(services, principal, workspace), STREAM_WALL),
@@ -261,7 +261,7 @@ async fn refresh<D: Services>(wall: &mut Wall<D>) -> Tick {
             // Detach before returning, so no frame already queued on an
             // attached channel can still reach a caller who lost the right
             // to it.
-            wall.fan_in.sync_to(&BTreeSet::new());
+            wall.fan_in.sync_to(&BTreeSet::new()).await;
             return Tick::Revoked;
         }
     }
@@ -270,7 +270,7 @@ async fn refresh<D: Services>(wall: &mut Wall<D>) -> Tick {
     let workspace = membership.workspace();
     match membership.services().fleets().live_set(workspace).await {
         Ok(fleets) => {
-            if wall.fan_in.sync_to(&fleets).is_change() {
+            if wall.fan_in.sync_to(&fleets).await.is_change() {
                 Tick::Changed
             } else {
                 Tick::Steady

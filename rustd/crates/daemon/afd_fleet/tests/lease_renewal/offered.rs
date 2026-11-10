@@ -6,7 +6,8 @@
 //! authoring lease, through the same response type a runtime lease rides in.
 
 use super::{fixture::Running, replica::expire, seat::Seat};
-use af_wire::lease::{AcceptedKinds, LeaseResponse, TaggedLease};
+use af_wire::lease::{AcceptedKinds, TaggedLease};
+use afd_fleet::lease::OfferRequest;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -20,25 +21,25 @@ async fn test_a_poll_accepting_both_kinds_places_the_owed_authoring_turn() {
     let answer = running
         .fixtures
         .plane()
-        .claim(
+        .claim_with(
             &drafts,
-            &running.runner,
-            &[],
+            OfferRequest {
+                runner: &running.runner,
+                held: &[],
+                degraded: false,
+                now: running.now,
+            },
             AcceptedKinds::ALL,
-            false,
-            running.now,
+            |lease, _metadata| match lease {
+                TaggedLease::Authoring(lease) => Some(lease),
+                TaggedLease::Fleet(_) => None,
+            },
         )
         .await
         .expect("the poll answers");
 
-    let response: LeaseResponse<'_> =
-        serde_json::from_str(&answer).expect("the poll answers a lease response");
-    assert!(
-        matches!(response.lease, Some(TaggedLease::Authoring(_))),
-        "the owed authoring turn is placed: {answer}"
-    );
-    assert_eq!(response.retry_after_ms, None);
-    assert!(answer.contains(draft.id.as_str()), "{answer}");
+    let authoring = answer.flatten().expect("the owed authoring turn is placed");
+    assert_eq!(authoring.draft_id, draft.id.as_str());
     seat.remove(&running.fixtures.database).await;
     running.cleanup().await;
 }

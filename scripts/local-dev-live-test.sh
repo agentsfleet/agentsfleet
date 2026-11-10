@@ -41,7 +41,7 @@ class LiveTests(unittest.TestCase):
         self.run_make("up", 0)
         self.table = "worktree_probe_" + os.urandom(4).hex()
         original = self.services(0)
-        self.assertEqual(set(original), {"postgres", "dragonfly", "mailpit", "qstash"})
+        self.assertEqual(set(original), {"postgres", "mailpit", "qstash", "nats-1", "nats-2", "nats-3"})
         self.run_make("up", 1)
         a, b = self.context(0), self.context(1)
         self.assertEqual(a["project"], b["project"])

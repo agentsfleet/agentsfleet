@@ -1,13 +1,13 @@
-//! The device flow end to end, against a live Dragonfly.
+//! The device flow end to end, against a live Postgres.
 //!
 //! The unit half of this surface is `auth_sessions.rs`: what each endpoint
-//! refuses before it reaches the queue, which is a question a fake answers. The
+//! refuses before it reaches the store, which is a question a fake answers. The
 //! question here is what a SESSION does across calls — opened, approved,
 //! verified twice, cancelled twice, then swept in bulk — and a fake that
 //! remembers nothing cannot be asked it.
 //!
 //! Split from that file rather than sharing it, because the filename is what
-//! declares the tier: this one needs Dragonfly and is `#[ignore]`d for it, and the
+//! declares the tier: this one needs Postgres and is `#[ignore]`d for it, and the
 //! unit lane must be able to run its sibling on a machine with Docker closed.
 #![cfg(feature = "test-util")]
 #![expect(
@@ -46,10 +46,13 @@ const APPROVE_BODY: &str = r#"{
 const VERIFY_BODY: &str = r#"{"verification_code":"012345"}"#;
 
 #[tokio::test]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn device_sessions_open_approve_verify_replay_and_abort() {
+    let database = afd_db::test_util::TestDatabase::shared()
+        .open(afd_db::config::DbRole::Api, &[])
+        .await;
     let router = Fleet::new()
-        .with_session_queue(harness::connect_redis().await)
+        .with_session_store(database)
         .with_dashboard(SUBJECT)
         .router();
 

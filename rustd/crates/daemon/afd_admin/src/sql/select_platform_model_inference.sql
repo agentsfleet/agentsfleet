@@ -5,5 +5,5 @@ SELECT m.inference,
 FROM model.platform_models m
 LEFT JOIN model.decision_revisions d
        ON d.platform_model_id = m.id AND d.id = m.decision_revision_id
-WHERE m.id = $1::uuid
+WHERE m.id = $1
 FOR UPDATE OF m

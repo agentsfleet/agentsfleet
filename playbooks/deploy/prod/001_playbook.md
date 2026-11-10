@@ -1,97 +1,84 @@
-# Deploy the Existing Production System
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
 
-**Owner:** Human
-**Executor:** Agent starts the release; Pipeline performs the deployment
-**Route:** Routine deployment; use the founding sequence after a wipe
+# Deploy the Production System
 
-## Readiness
+## What this does
 
-| Order | Executor | Action | Verifier | Required evidence | Blocks next |
-|---|---|---|---|---|---|
-| 1 | Agent | Confirm this is an existing production installation. | Agent | Founding step 09 has green evidence. | Yes |
-| 2 | Agent | Run the production deployment-input gate. | `02_preflight/00_gate.sh` | Green output with no missing deployment input. | Yes |
-| 3 | Agent | Verify development health and production domains. | HTTP checks | Development readiness plus production API and dashboard routes resolve. | Yes |
-| 4 | Agent | Report the exact version, commit, tag, and targets. | Human | Explicit approval for that release tag. | Yes |
+Pushing a `v*` tag starts `release.yml`.
+The release builds nothing: it promotes the development-qualified candidate for the tagged source tree.
+That candidate exists only after a `deploy-dev.yml` run on the same tree where every gate, runner included, passed.
 
-Run only read-only checks before requesting approval:
+When `Release` succeeds, `post-release.yml` verifies installs, runs live command-line acceptance and moves npm `latest`.
+The founding steps use this page's [release commands](#steps) too.
 
-```bash
-ENV=prod STAGE=deployment \
-  ./playbooks/founding/02_preflight/00_gate.sh
+## Before you begin
 
-curl -fsS https://api-dev.agentsfleet.net/readyz \
-  | jq -e '.ready == true'
-curl -fsS https://api.agentsfleet.net/readyz \
-  | jq -e '.ready == true'
-curl -fsS -o /dev/null https://app.agentsfleet.net
+1. Confirm founding step 09 has green evidence. If not, stop and use [chronological setup](../../README.md#chronological-setup).
+2. Run only read-only checks:
 
-release_tag="v$(cat VERSION)"
-git rev-parse HEAD
-printf 'release tag: %s\n' "$release_tag"
-```
+   ```bash
+   ENV=prod STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh
+   curl -fsS https://api-dev.agentsfleet.net/readyz | jq -e '.ready == true'
+   curl -fsS https://api.agentsfleet.net/readyz | jq -e '.ready == true'
+   curl -fsS -o /dev/null https://app.agentsfleet.net
+   release_tag="v$(cat VERSION)"
+   git rev-parse HEAD
+   printf 'release tag: %s\n' "$release_tag"
+   ```
 
-If the production installation or step 09 evidence is absent, stop and route to
-[`founding/README.md`](../../founding/README.md). If a public domain is absent,
-report it as a Human-owned blocker and do not create the tag.
+   The gate ends with `✅ 002_preflight check complete (env: prod, stage: deployment)`.
+   Each `jq -e` prints `true`. The script ends with `<COMMIT_SHA>` and `release tag: v<VERSION>`.
+3. A missing public domain is a Human-owned blocker. Report it and create no tag.
+4. Report the version, commit, tag and targets. The Human approves that exact tag.
 
-## Human approval: release
+## Steps
 
-The Human approves the exact version and tag reported above. Only then may the
-Agent run:
+After the Human approves the tag, the Agent runs:
 
 ```bash
 git tag "$release_tag"
 git push origin "$release_tag"
-
-run_id="$(
-  gh run list \
-    --repo agentsfleet/agentsfleet \
-    --workflow release.yml \
-    --limit 20 \
-    --json databaseId,headBranch \
-    --jq ".[] | select(.headBranch == \"$release_tag\") | .databaseId" \
-    | head -1
-)"
-gh run watch "$run_id" \
-  --repo agentsfleet/agentsfleet \
-  --exit-status
+run_id="$(gh run list --repo agentsfleet/agentsfleet --workflow release.yml --limit 20 \
+  --json databaseId,headBranch \
+  --jq ".[] | select(.headBranch == \"$release_tag\") | .databaseId" | head -1)"
+gh run watch "$run_id" --repo agentsfleet/agentsfleet --exit-status
 ```
 
-## Human approval: runner fleet
+`gh run watch` exits 0 only when the run succeeds.
 
-The Pipeline deploys and verifies the first production runner. The Agent reports
-the canary job URL and evidence. The Human then approves the
-`production-fleet` GitHub environment. No remaining runner starts before that
-approval.
+When `PROD_RUNNER_READY == 'true'`, the Pipeline deploys and verifies the first runner in `PROD_RUNNER_HOSTS`.
+The Agent reports the canary job URL.
 
-## Verification
+The Human then approves the `production-fleet` GitHub environment. No other runner starts before that approval.
 
-| Pipeline job | What it proves |
+## Verify it works
+
+| Job | Proves |
 |---|---|
-| `check-credentials` and `verify-tag` | Inputs exist and the tag matches `VERSION`. |
-| Release build and publication jobs | Binaries, image, npm `next`, and the GitHub release use the approved version. |
-| `verify-dev-gate` | Development remains ready before production changes. |
-| `deploy-fly-prod` | Production API, tunnel, health, and readiness passed. |
-| `deploy-metal-canary-prod` | The first runner deployed and passed its host gate. |
-| `deploy-metal-fleet-prod` | The Human-approved remaining fleet deployed sequentially. |
-| Post-release verification | Exact-version installs and live command-line acceptance passed before npm `latest` moved. |
+| `check-credentials`, `verify-tag` | Inputs exist; the tag equals `v` plus `VERSION` |
+| `prepare-artifacts` | A development-qualified candidate for this tree exists and its signatures verify |
+| `push-ghcr`, `npm`, `create-release` | Image promoted, npm `next` published, GitHub Release created |
+| `verify-dev-gate` | Development `/healthz` and `/readyz` pass before production changes |
+| `deploy-fly-prod` | Collector, NATS cluster, API (three machines), tunnel and readiness pass |
+| `deploy-metal-canary-prod` | The first runner deployed and passed its host gate |
+| `deploy-metal-fleet-prod` | The approved remaining runners deployed one by one |
+| `post-release.yml`: `verify-npm` | The exact version installs on macOS, Linux and Windows |
+| `post-release.yml`: `acceptance-cli-prod`, `promote-latest` | Live command-line acceptance passed, then npm `latest` moved |
 
-After the Pipeline is green, the Agent runs each configured provider's read-only
-verification adapter and records its result. Production is eligible only when
-the workflow, provider checks, public domains, and package verification are all
-green. A skipped check is not evidence.
+The canary, fleet and `acceptance-cli-prod` jobs skip while `PROD_RUNNER_READY` is not `true`; `promote-latest` then skips too.
+After green runs, the Agent runs each provider's read-only verification and records the result.
+Production is eligible only when the workflows, provider checks, public domains and package checks are all green.
 
-## Failure handling
+A skipped check is not evidence.
 
-The Agent diagnoses a red job from its logs. A provider write, live host change,
-release replacement, or restart of work in flight requires new Human approval.
+## Common problems
 
-**There is no shell in the API container.** The image is distroless: it carries
-the daemon, a certificate bundle and a clock, and nothing else — no shell, no
-package manager, no `wget`. `flyctl ssh console` into an API machine will not
-give a prompt, and that is the image working as intended rather than a broken
-deploy. Diagnose from what the daemon publishes instead: `flyctl logs` for the
-logfmt stream, `/readyz` and `/healthz` over the tunnel for liveness, and the
-metrics families for behaviour. A question none of those can answer is a
-question the daemon should be reporting and currently is not — the fix is an
-emit, not a shell.
+The Agent diagnoses a red job from its logs.
+A provider write, live host change, release replacement or restart of work in flight needs new Human approval.
+The API container has no shell; [`ARCHITECTURE.md`](../../ARCHITECTURE.md#limits) says how to diagnose it.

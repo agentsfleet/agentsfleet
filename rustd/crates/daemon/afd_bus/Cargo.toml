@@ -1,0 +1,52 @@
+[package]
+name = "afd_bus"
+description = "Typed ephemeral signals with one replaceable broker adapter."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+# The detached and unreachable fixtures, the lane's live connection, and the
+# cut-able TCP relay (`tokio`'s `net` and `io-util`). The live suite reads the
+# gap counter back through `af_observability`'s capture.
+test-util = ["af_observability/test-util", "tokio/net", "tokio/io-util"]
+
+[dependencies]
+af_core.workspace = true
+af_observability.workspace = true
+af_validate.workspace = true
+async-nats.workspace = true
+async-trait.workspace = true
+bytes.workspace = true
+crc16.workspace = true
+futures-util.workspace = true
+garde.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util = { workspace = true, features = ["rt"] }
+tracing.workspace = true
+
+[dev-dependencies]
+af_core = { workspace = true, features = ["test-util"] }
+# Reads agentsfleet_bus_gaps_total back in the live suite.
+af_observability = { workspace = true, features = ["test-util"] }
+# `test-util` pauses time for the publish-deadline tests in `wake_failure`.
+tokio = { workspace = true, features = ["net", "io-util", "test-util"] }
+
+# Reaches the lane's seeds, connection and relay through `test_util`, the one
+# place that holds them.
+[[test]]
+name = "nats_suite"
+path = "tests/nats_suite.rs"
+required-features = ["test-util"]

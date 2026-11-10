@@ -4,6 +4,6 @@ SELECT key_name,
            id, kek_version, encode(sha256(secret_ciphertext), 'hex')
        )::text, 'UTF8')), 'hex') AS resolution_version
   FROM vault.secrets
- WHERE workspace_id = $1::uuid AND key_name = ANY($2::text[])
+ WHERE workspace_id = $1 AND key_name = ANY($2::text[])
  ORDER BY key_name
    FOR SHARE

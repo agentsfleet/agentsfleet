@@ -1,14 +1,15 @@
-//! Dimension 6.2 — what an approval lands, and what it leaves untouched.
+//! What an approval lands, and what it leaves untouched.
 //!
 //! The continuation row is a NEW event carrying `resumes_event_id`; the
 //! blocked row is never reopened. Both halves are proven here over live
-//! Postgres and Dragonfly: the row that appears, the row that does not change, and
-//! the idempotence that keeps a second answer from continuing the run twice.
+//! Postgres: the row that appears, the row that does not change, and the
+//! idempotence that keeps a second answer from continuing the run twice.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_admission::{Admissions, Budgets};
 use afd_approval::{Decision, Inbox, Resolution};
 
@@ -21,16 +22,16 @@ const OTHER_OPERATOR: &str = "human:somebody-else";
 /// The note an operator leaves.
 const NOTE: &str = "looks right";
 
-/// Dimension 6.2 — an approval lands a continuation that resumes the blocked run.
+/// An approval lands a continuation that resumes the blocked run.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
 
     let outcome = lane
         .inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -43,30 +44,33 @@ async fn an_approved_gate_lands_a_continuation_naming_what_it_resumes() {
         .expect("an approval continues the run it unblocked");
 
     let actor = lane
-        .event_column(&continuation, "actor")
+        .event_column(continuation.as_str(), "actor")
         .await
         .expect("a continuation row carries an actor");
     let kind = lane
-        .event_column(&continuation, "event_type")
+        .event_column(continuation.as_str(), "event_type")
         .await
         .expect("a continuation row carries a type");
-    let resumes = lane.event_column(&continuation, "resumes_event_id").await;
+    let resumes = lane
+        .event_column(continuation.as_str(), "resumes_event_id")
+        .await;
 
     // The chain reads forward: the blocked row says what stopped, and this one
     // says what it resumed from — so a reader never joins back through the gate
     // table to reconstruct the history.
     let held = resolved
         .event_id
-        .as_deref()
+        .as_ref()
+        .map(Uuid7::as_str)
         .expect("a gate raised on a run names the event it held");
     assert_eq!(actor, format!("continuation:{held}"));
     assert_eq!(kind, "continuation");
     assert_eq!(resumes.as_deref(), Some(held));
 }
 
-/// Dimension 6.2 — a denial continues nothing.
+/// A denial continues nothing.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_denied_gate_continues_nothing() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -74,7 +78,7 @@ async fn a_denied_gate_continues_nothing() {
 
     let outcome = lane
         .inbox
-        .resolve(&action, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -88,22 +92,28 @@ async fn a_denied_gate_continues_nothing() {
     assert_eq!(before, lane.event_count().await, "a denial writes no event");
 }
 
-/// Dimension 6.2 — a re-answered gate does not continue the run twice.
+/// A re-answered gate does not continue the run twice.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_second_answer_does_not_continue_the_run_again() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
 
     lane.inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let after_first = lane.event_count().await;
 
     let second = lane
         .inbox
-        .resolve(&action, Decision::Approved, OTHER_OPERATOR, NOTE, None)
+        .resolve(
+            action.as_str(),
+            Decision::Approved,
+            OTHER_OPERATOR,
+            NOTE,
+            None,
+        )
         .await
         .expect("the resolve must not fault");
 
@@ -118,16 +128,16 @@ async fn a_second_answer_does_not_continue_the_run_again() {
     );
 }
 
-/// Dimension 6.2's negative half — resolving a gate leaves the blocked row alone.
+/// The negative half — resolving a gate leaves the blocked row alone.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
 
     let before = lane.event_count().await;
     lane.inbox
-        .resolve(&action, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -172,7 +182,7 @@ async fn resolving_a_gate_does_not_reopen_the_event_it_blocked() {
 /// event — so every gate kind now honours its answer end to end, which is the
 /// behaviour this test pins.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
     // this gate is past its window, so a sibling's sweep would take it.
     let _sweeper = sweeper_exclusive().await;
@@ -184,7 +194,7 @@ async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
 
     let outcome = lane
         .inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -208,8 +218,9 @@ async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
         .continuation_event_id
         .expect("a late approval must still continue the run it unblocked");
     assert_eq!(
-        lane.event_column(&continuation, "resumes_event_id").await,
-        resolved.event_id,
+        lane.event_column(continuation.as_str(), "resumes_event_id")
+            .await,
+        resolved.event_id.map(String::from),
         "the continuation names the blocked event it resumes"
     );
 }
@@ -221,31 +232,16 @@ async fn a_gate_answered_long_after_its_window_still_resumes_the_run() {
 /// takes the already-resolved path. Without the retry landing it, the run a
 /// person approved would never restart.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
     let before = lane.event_count().await;
-
-    // A ledger with no room refuses the continuation after the row moved.
-    let full = Budgets {
-        deployment_backlog: 0,
-    };
-    let refusing = Inbox::new(
-        lane.pool.clone(),
-        lane.queue.clone(),
-        Admissions::for_tests(lane.pool.clone(), lane.queue.clone()).with_budgets(full),
-    );
-    refusing
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
-        .await
-        .expect_err("the continuation's admission is refused");
-    assert_eq!(lane.status_of(&action).await, "approved");
-    assert_eq!(lane.event_count().await, before, "nothing continued yet");
+    refuse_continuation(&lane, &action, before).await;
 
     let retried = lane
         .inbox
-        .resolve(&action, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the retry settles the standing approval");
     let Resolution::AlreadyResolved(retried) = retried else {
@@ -260,23 +256,48 @@ async fn a_retry_lands_the_continuation_the_first_answer_could_not() {
         "exactly one continuation"
     );
     assert_eq!(
-        lane.event_column(&continuation, "resumes_event_id").await,
-        retried.event_id,
+        lane.event_column(continuation.as_str(), "resumes_event_id")
+            .await,
+        retried.event_id.map(String::from),
         "the continuation names the blocked event it resumes"
     );
 
     let third = lane
         .inbox
-        .resolve(&action, Decision::Approved, OTHER_OPERATOR, NOTE, None)
+        .resolve(
+            action.as_str(),
+            Decision::Approved,
+            OTHER_OPERATOR,
+            NOTE,
+            None,
+        )
         .await
         .expect("a third answer reads the standing decision");
     let Resolution::AlreadyResolved(third) = third else {
         unreachable!("the row stays answered, got {third:?}");
     };
     assert_eq!(
-        third.continuation_event_id.as_deref(),
+        third.continuation_event_id.as_ref().map(Uuid7::as_str),
         Some(continuation.as_str()),
         "the third answer finds the continuation already landed"
     );
     assert_eq!(lane.event_count().await, before + 1, "and lands none");
+}
+
+async fn refuse_continuation(lane: &Lane, action: &Uuid7, before: i64) {
+    // A ledger with no room refuses the continuation after the row moved.
+    let full = Budgets {
+        deployment_backlog: 0,
+    };
+    let refusing = Inbox::new(
+        lane.pool.clone(),
+        lane.bus.clone(),
+        Admissions::for_tests(lane.pool.clone(), lane.bus.clone()).with_budgets(full),
+    );
+    refusing
+        .resolve(action.as_str(), Decision::Approved, OPERATOR, NOTE, None)
+        .await
+        .expect_err("the continuation's admission is refused");
+    assert_eq!(lane.status_of(action).await, "approved");
+    assert_eq!(lane.event_count().await, before, "nothing continued yet");
 }

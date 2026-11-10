@@ -5,4 +5,4 @@ WITH due AS MATERIALIZED (
 )
 UPDATE fleet.task_storage_purges p SET next_attempt_at = clock_timestamp() + make_interval(secs => $2), updated_at = now()
 FROM due WHERE p.task_object_id = due.task_object_id
-RETURNING p.task_object_id::text, p.workspace_id::text, p.task_identity_key_id::text, p.bucket_reference
+RETURNING p.task_object_id, p.workspace_id, p.task_identity_key_id, p.bucket_reference

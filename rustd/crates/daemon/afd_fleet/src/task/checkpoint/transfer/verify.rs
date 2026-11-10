@@ -92,15 +92,15 @@ pub(super) async fn record(tasks: &Tasks, workspace: &Uuid7, receipts: &[Receipt
     }
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let parent: Option<String> = sqlx::query_scalar(crate::task::sql::LOCK_WORKSPACE)
-        .bind(workspace.as_str())
+    let parent: Option<Uuid7> = sqlx::query_scalar(crate::task::sql::LOCK_WORKSPACE)
+        .bind(workspace)
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("hold workspace while accounting verified storage"))?;
     if parent.is_some() {
-        super::super::identity::quota(&mut tx, workspace.as_str()).await?;
+        super::super::identity::quota(&mut tx, workspace).await?;
         sqlx::query(include_str!("../sql/verify.sql"))
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(Json(receipts))
             .execute(&mut *tx)
             .await

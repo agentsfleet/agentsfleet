@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn receipt_filters_decode_and_validate_before_reading() {
     let saved = Saved::create(json!({})).await;
     let encoded = saved.get("/messages?event_type=%61ctivity&limit=25").await;
@@ -38,7 +38,7 @@ async fn receipt_filters_decode_and_validate_before_reading() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn busy_fleets_keep_exact_receipts_across_filtered_pages() {
     let saved = Saved::create(json!({})).await;
     for index in 0..26 {
@@ -49,10 +49,11 @@ async fn busy_fleets_keep_exact_receipts_across_filtered_pages() {
     }
     sqlx::query("INSERT INTO fleet.events
         (fleet_id,workspace_id,event_id,actor,event_type,status,request_json,response_text,created_at,updated_at)
-        SELECT $1::uuid,$2::uuid,'busy-'||n,'steer:api','chat','processed',
+        SELECT $1,$2,uuidv7(),'steer:api','chat','processed',
           jsonb_build_object('message',repeat('runtime body ',5000)),'Runtime reply',now(),now()
         FROM generate_series(1,33) n")
-        .bind(saved.fleet.as_str()).bind(saved.case.base.workspace.as_str())
+        .bind(&saved.fleet)
+        .bind(&saved.case.base.workspace)
         .execute(&mut *saved.case.base.db.acquire().await.expect("busy fleet connection"))
         .await.expect("runtime rows newer than receipts");
     let first = saved.get("/messages?event_type=activity&limit=25").await;

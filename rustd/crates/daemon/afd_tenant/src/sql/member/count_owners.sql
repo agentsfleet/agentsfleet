@@ -1,2 +1,2 @@
 SELECT count(*) FROM identity.memberships
-WHERE tenant_id = $1::uuid AND role = $2
+WHERE tenant_id = $1 AND role = $2

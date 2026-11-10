@@ -9,6 +9,7 @@
 )]
 
 use agentsfleetd::preflight::SESSION_CODE_PEPPER_KNOB;
+pub(crate) mod runner_stream;
 
 /// The device-flow pepper, well-formed and never used as a key here.
 ///
@@ -28,6 +29,9 @@ pub(crate) const SESSION_PEPPER: [(&str, &str); 1] = [(
     SESSION_CODE_PEPPER_KNOB,
     "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
 )];
+
+/// The event bus seed, well-formed and never dialled by a preflight-only test.
+pub(crate) const BUS: [(&str, &str); 1] = [(afd_bus::nats::URL_ENV, "nats://127.0.0.1:4222")];
 
 /// The identity provider knobs, well-formed and never dialled.
 ///

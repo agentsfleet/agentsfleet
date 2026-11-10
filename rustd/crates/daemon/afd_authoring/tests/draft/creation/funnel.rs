@@ -31,7 +31,7 @@ async fn kill(c: &Case, fleet: &SavedFleet) -> afd_authoring::Result<SavedFleet>
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_report_setup_finished_once_when_activation_commits() {
     let c = Case::create().await;
     let (_, request) = c.request("funnel-finish", Start::None).await;
@@ -62,7 +62,7 @@ async fn should_report_setup_finished_once_when_activation_commits() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_report_setup_cancelled_once_and_not_for_a_refused_kill() {
     let c = Case::create().await;
     let (_, request) = c.request("funnel-cancel", Start::None).await;
@@ -102,7 +102,7 @@ async fn should_report_setup_cancelled_once_and_not_for_a_refused_kill() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_leave_installing_setup_unchanged_after_empty_or_invalid_edits() {
     let c = Case::create().await;
     let (_, request) = c.request("funnel-refused-edit", Start::None).await;

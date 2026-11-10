@@ -39,6 +39,11 @@ fn lease_and_memory_refusals_have_stable_wire_classification() {
             DETAIL_LEASE_LOST,
         ),
         expected(
+            super::lease_cancelled(),
+            error_code::RUN_LEASE_CANCELLED,
+            super::DETAIL_LEASE_CANCELLED,
+        ),
+        expected(
             super::lease_max_runtime(),
             error_code::RUN_LEASE_EXCEEDED_MAX_RUNTIME,
             DETAIL_LEASE_MAX_RUNTIME,
@@ -213,30 +218,6 @@ fn assert_error(expected: &Expected) {
     assert!(!expected.error.is_datastore_unavailable());
     assert_eq!(expected.error.source().is_some(), expected.has_source);
     assert!(expected.error.to_string().contains(expected.code.as_str()));
-}
-
-/// A queue outage names the queue, not the database: the sentence sends an
-/// operator to the datastore that actually failed.
-#[test]
-fn a_queue_outage_tells_the_caller_the_queue_is_unavailable() {
-    /// An environment with no knob set, so resolving a Dragonfly URL fails
-    /// without a server — the cheapest real `afd_dragonfly::Error` there is.
-    struct Unset;
-    impl af_core::env::EnvSource for Unset {
-        fn get(&self, _key: &str) -> Option<String> {
-            None
-        }
-    }
-    let outage =
-        afd_dragonfly::DragonflyConfig::resolve(&Unset, afd_dragonfly::DragonflyRole::Default)
-            .err()
-            .map(Error::from);
-
-    // pin test: literal is the contract
-    assert_eq!(
-        outage.as_ref().map(Error::detail),
-        Some("Queue unavailable")
-    );
 }
 
 /// A fleet with no reviewed native setup is refused for good, with a sentence

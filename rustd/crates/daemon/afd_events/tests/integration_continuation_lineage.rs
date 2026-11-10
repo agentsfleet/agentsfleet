@@ -34,6 +34,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use sqlx::Row as _;
 
 use crate::support::EventsLane;
@@ -41,17 +42,22 @@ use crate::support::EventsLane;
 /// The event a person unblocked, which the continuation resumes.
 const PREDECESSOR: &str = "0195b4ba-8d3a-7a11-8abc-0000000000a1";
 
+/// [`PREDECESSOR`] as the identifier the insert binds and the row reads back.
+fn predecessor() -> Uuid7 {
+    Uuid7::parse(PREDECESSOR).expect("the fixture predecessor is a canonical UUIDv7")
+}
+
 /// Runs the shared narrative insert and answers whether it inserted a row.
 ///
 /// The binds mirror the two production callers exactly — `afd_fleet`'s
 /// `record_received` and `afd_approval`'s `continue_from` — because a fixture
 /// that bound its own column order would prove something about itself.
-async fn insert(lane: &EventsLane, event_id: &str, resumes: Option<&str>) -> bool {
+async fn insert(lane: &EventsLane, event_id: &Uuid7, resumes: Option<&Uuid7>) -> bool {
     let mut connection = lane.connection().await;
     sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
-        .bind(lane.fleet.as_str())
+        .bind(&lane.fleet)
         .bind(event_id)
-        .bind(lane.workspace.as_str())
+        .bind(&lane.workspace)
         .bind("continuation:test")
         .bind("continuation")
         .bind(sqlx::types::Json(serde_json::json!({})))
@@ -65,32 +71,32 @@ async fn insert(lane: &EventsLane, event_id: &str, resumes: Option<&str>) -> boo
 }
 
 /// What the row under `event_id` names as its predecessor.
-async fn stored_predecessor(lane: &EventsLane, event_id: &str) -> Option<String> {
+async fn stored_predecessor(lane: &EventsLane, event_id: &Uuid7) -> Option<Uuid7> {
     let mut connection = lane.connection().await;
     sqlx::query(
         "SELECT resumes_event_id FROM fleet.events
-         WHERE fleet_id = $1::uuid AND event_id = $2",
+         WHERE fleet_id = $1 AND event_id = $2",
     )
-    .bind(lane.fleet.as_str())
+    .bind(&lane.fleet)
     .bind(event_id)
     .fetch_one(&mut *connection)
     .await
     .expect("the row must be readable")
     .try_get(0)
-    .expect("resumes_event_id is a nullable text column")
+    .expect("resumes_event_id is a nullable uuid column")
 }
 
 /// How many rows the pair of writes left behind.
 ///
 /// Asserted everywhere below, because a conflict arm that stopped conflicting
 /// would satisfy every lineage assertion here by writing a second row.
-async fn row_count(lane: &EventsLane, event_id: &str) -> i64 {
+async fn row_count(lane: &EventsLane, event_id: &Uuid7) -> i64 {
     let mut connection = lane.connection().await;
     sqlx::query(
         "SELECT count(*) FROM fleet.events
-         WHERE fleet_id = $1::uuid AND event_id = $2",
+         WHERE fleet_id = $1 AND event_id = $2",
     )
-    .bind(lane.fleet.as_str())
+    .bind(&lane.fleet)
     .bind(event_id)
     .fetch_one(&mut *connection)
     .await
@@ -111,13 +117,13 @@ async fn lineage_survives_lease_before_approval() {
     let event = afd_db::test_util::mint_id();
 
     let first = insert(&lane, &event, None).await;
-    let second = insert(&lane, &event, Some(PREDECESSOR)).await;
+    let second = insert(&lane, &event, Some(&predecessor())).await;
 
     assert!(first, "the runner's insert opens the row");
     assert!(!second, "the approval path finds the row already there");
     assert_eq!(
-        stored_predecessor(&lane, &event).await.as_deref(),
-        Some(PREDECESSOR),
+        stored_predecessor(&lane, &event).await,
+        Some(predecessor()),
         "the predecessor the approval path knew must reach the row"
     );
     assert_eq!(row_count(&lane, &event).await, 1, "one event, one row");
@@ -135,14 +141,14 @@ async fn lineage_kept_when_approval_writes_first() {
     let lane = EventsLane::open().await;
     let event = afd_db::test_util::mint_id();
 
-    let first = insert(&lane, &event, Some(PREDECESSOR)).await;
+    let first = insert(&lane, &event, Some(&predecessor())).await;
     let second = insert(&lane, &event, None).await;
 
     assert!(first, "the approval path opens the row");
     assert!(!second, "the runner finds the row already there");
     assert_eq!(
-        stored_predecessor(&lane, &event).await.as_deref(),
-        Some(PREDECESSOR),
+        stored_predecessor(&lane, &event).await,
+        Some(predecessor()),
         "a writer with no predecessor must not clear one"
     );
     assert_eq!(row_count(&lane, &event).await, 1, "one event, one row");
@@ -161,7 +167,7 @@ async fn a_redelivery_never_clears_lineage() {
     let lane = EventsLane::open().await;
     let event = afd_db::test_util::mint_id();
 
-    insert(&lane, &event, Some(PREDECESSOR)).await;
+    insert(&lane, &event, Some(&predecessor())).await;
     for _ in 0..3 {
         assert!(
             !insert(&lane, &event, None).await,
@@ -170,8 +176,8 @@ async fn a_redelivery_never_clears_lineage() {
     }
 
     assert_eq!(
-        stored_predecessor(&lane, &event).await.as_deref(),
-        Some(PREDECESSOR),
+        stored_predecessor(&lane, &event).await,
+        Some(predecessor()),
         "three redeliveries must leave the predecessor where it was"
     );
     assert_eq!(row_count(&lane, &event).await, 1, "one event, one row");
@@ -199,52 +205,48 @@ async fn only_a_fresh_insert_reports_inserted() {
         "an identical second write inserts nothing"
     );
     assert!(
-        !insert(&lane, &event, Some(PREDECESSOR)).await,
+        !insert(&lane, &event, Some(&predecessor())).await,
         "a converging write is still not an insert"
     );
 
     lane.cleanup().await;
 }
 
-/// The row id is the column's own `uuidv7()`: the insert names the event by
-/// `(fleet_id, event_id)`, binds no id, and reads the row's back — the SAME id
-/// on the conflict arm, so a caller pointing a tool call or a lease at the row
-/// gets one identity however many times the event arrives.
+/// The event id is the row's key: the insert answers the id it was given on
+/// the fresh arm and the SAME id on the conflict arm, so a caller pointing a
+/// tool call or a lease at the row gets one identity however many times the
+/// event arrives.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn the_row_id_is_minted_by_postgres_and_stable_across_arms() {
+async fn the_event_id_is_the_row_key_and_stable_across_arms() {
     let lane = EventsLane::open().await;
     let event = afd_db::test_util::mint_id();
 
     let first = inserted_id(&lane, &event).await;
     let again = inserted_id(&lane, &event).await;
 
-    let minted = af_core::id::Uuid7::parse(&first);
-    assert!(
-        minted.is_ok(),
-        "the database minted a version-7 id: {first}"
-    );
+    assert_eq!(first, event, "a fresh insert answers the event's own id");
     assert_eq!(again, first, "a redelivery answers the row's own id");
     assert_eq!(row_count(&lane, &event).await, 1);
 
     lane.cleanup().await;
 }
 
-/// Runs the shared insert and answers the row id it reports.
-async fn inserted_id(lane: &EventsLane, event_id: &str) -> String {
+/// Runs the shared insert and answers the event id it reports.
+async fn inserted_id(lane: &EventsLane, event_id: &Uuid7) -> Uuid7 {
     let mut connection = lane.connection().await;
     sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
-        .bind(lane.fleet.as_str())
+        .bind(&lane.fleet)
         .bind(event_id)
-        .bind(lane.workspace.as_str())
+        .bind(&lane.workspace)
         .bind("continuation:test")
         .bind("continuation")
         .bind(sqlx::types::Json(serde_json::json!({})))
-        .bind(None::<&str>)
+        .bind(None::<&Uuid7>)
         .bind(af_core::event::status::RECEIVED)
         .fetch_one(&mut *connection)
         .await
         .expect("the narrative insert must run")
-        .try_get("id")
-        .expect("the statement returns the row id")
+        .try_get("event_id")
+        .expect("the statement returns the event id")
 }

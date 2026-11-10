@@ -22,7 +22,7 @@ pub(super) async fn observe(
     let reference = match candidate.definition.runtime().model() {
         Some(reference) => reference.to_owned(),
         None => sqlx::query_scalar(super::sql::DEFAULT_MODEL)
-            .bind(draft.tenant_id.as_str())
+            .bind(&draft.tenant_id)
             .bind(PLATFORM_MODEL_REF)
             .fetch_one(&mut *connection)
             .await

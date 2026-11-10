@@ -4,6 +4,7 @@
 //! rungs, the climb, the observe-only path — and this module decides HOW each
 //! reading is taken.
 
+use af_core::id::Uuid7;
 use core::time::Duration;
 use std::time::Instant;
 
@@ -51,24 +52,36 @@ const POPULATION_QUERY: &str = include_str!("sql/select_fleet_population.sql");
 const POSTGRES: &str = "postgres";
 const SELECT_ADMISSION_HEAD: &str = include_str!("sql/select_admission_head.sql");
 
+/// The serving candidate query's binds, as the lease path sends them
+/// (`afd_fleet::lease::assign::ledger`): no held fleets and no hint. One
+/// place, so the timed query and its plan never drift apart.
+fn candidates<'q, O>(
+    query: sqlx::query::QueryScalar<'q, sqlx::Postgres, O, sqlx::postgres::PgArguments>,
+    runner: &'q Uuid7,
+) -> sqlx::query::QueryScalar<'q, sqlx::Postgres, O, sqlx::postgres::PgArguments> {
+    query
+        .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+        .bind(runner)
+        .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
+        // How long a silent holder binds, and the status a holder must be in
+        // to bind at all; the instant they compare against is the statement's.
+        .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
+        .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
+        .bind(Vec::<Uuid7>::new())
+        .bind(None::<&Uuid7>)
+        .bind(af_wire::task::CAPABILITY)
+        .bind(af_wire::task::TaskState::Ready.as_str())
+        .bind(af_wire::task::TaskState::Running.as_str())
+        .bind(afd_fleet::task::DECISION_POLICY_PATH)
+}
+
 /// Median candidate discovery latency over the serving query.
-pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &str) -> Result<f64> {
+pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &Uuid7) -> Result<f64> {
     let mut samples = Vec::with_capacity(SAMPLES);
     let mut connection = database.acquire().await?;
     for _ in 0..SAMPLES {
         let started = Instant::now();
-        let _candidates: Vec<String> = sqlx::query_scalar(SELECT_CANDIDATES)
-            .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
-            .bind(runner)
-            .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-            .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
-            .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
-            .bind(Vec::<String>::new())
-            .bind(None::<&str>)
-            .bind(af_wire::task::CAPABILITY)
-            .bind(af_wire::task::TaskState::Ready.as_str())
-            .bind(af_wire::task::TaskState::Running.as_str())
-            .bind(afd_fleet::task::DECISION_POLICY_PATH)
+        let _candidates: Vec<Uuid7> = candidates(sqlx::query_scalar(SELECT_CANDIDATES), runner)
             .fetch_all(&mut *connection)
             .await?;
         samples.push(started.elapsed());
@@ -83,12 +96,12 @@ pub(super) async fn candidate_ms(database: &afd_db::Db, runner: &str) -> Result<
 }
 
 /// Median indexed head lookup latency over the unsettled ledger.
-pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &str) -> Result<f64> {
+pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &Uuid7) -> Result<f64> {
     let mut samples = Vec::with_capacity(SAMPLES);
     let mut connection = database.acquire().await?;
     for _ in 0..SAMPLES {
         let started = Instant::now();
-        let _head: Option<String> = sqlx::query_scalar(SELECT_ADMISSION_HEAD)
+        let _head: Option<Uuid7> = sqlx::query_scalar(SELECT_ADMISSION_HEAD)
             .bind(fleet)
             .fetch_optional(&mut *connection)
             .await?;
@@ -106,7 +119,7 @@ pub(super) async fn admission_read_ms(database: &afd_db::Db, fleet: &str) -> Res
 /// Table sizes and the candidate query's plan at population.
 pub(super) async fn postgres_at_population(
     stores: &Datastores,
-    runner: &str,
+    runner: &Uuid7,
     report: &mut Report,
 ) -> Result<()> {
     report.measurement(
@@ -116,24 +129,12 @@ pub(super) async fn postgres_at_population(
     let mut connection = stores.database.acquire().await?;
     // `AssertSqlSafe` because the statement is assembled from two constants
     // this crate and `afd_fleet` own; nothing a caller typed reaches it.
-    let lines: Vec<String> =
-        sqlx::query_scalar(sqlx::AssertSqlSafe(format!("{EXPLAIN}{SELECT_CANDIDATES}")))
-            .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
-            .bind(runner)
-            .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
-            // How long a silent holder binds, and the status a holder must be in to
-            // bind at all: the lease path's own binds for the hold condition. The
-            // instant they compare against is the statement's own clock.
-            .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
-            .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
-            .bind(Vec::<String>::new())
-            .bind(None::<&str>)
-            .bind(af_wire::task::CAPABILITY)
-            .bind(af_wire::task::TaskState::Ready.as_str())
-            .bind(af_wire::task::TaskState::Running.as_str())
-            .bind(afd_fleet::task::DECISION_POLICY_PATH)
-            .fetch_all(&mut *connection)
-            .await?;
+    let lines: Vec<String> = candidates(
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!("{EXPLAIN}{SELECT_CANDIDATES}"))),
+        runner,
+    )
+    .fetch_all(&mut *connection)
+    .await?;
     if let Some(execution) = plan_time(&lines, EXECUTION_TIME) {
         report.measurement(CANDIDATE_QUERY_MS, execution);
     }

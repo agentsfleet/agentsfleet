@@ -2,10 +2,10 @@
 
 use af_core::{error_code, id::Uuid7};
 use af_wire::authoring::{ENVELOPE_BYTES_MAX, Outcome, Report};
-use sqlx::PgConnection;
+use sqlx::{Postgres, Transaction};
 
 use crate::{
-    Result,
+    Drafts, Result,
     error::raise::{invalid, stored},
     funnel::Owed,
     lease::{failure, guard},
@@ -63,7 +63,8 @@ impl Prepared {
 }
 
 pub(super) async fn publication(
-    connection: &mut PgConnection,
+    drafts: &Drafts,
+    connection: &mut Transaction<'_, Postgres>,
     runner: &Uuid7,
     lease: &Uuid7,
     prepared: &Prepared,
@@ -73,7 +74,9 @@ pub(super) async fn publication(
         return Ok(None);
     }
     let authorized = async {
-        let guarded = guard::bound(connection, runner, lease, &prepared.counters).await?;
+        let guarded = drafts
+            .invocation(connection, runner, lease, &prepared.counters)
+            .await?;
         if let Err(error) = guard::current_model(connection, &guarded).await {
             failure::record(connection, &guarded.attempt, &error, owed).await?;
             return Err(error);

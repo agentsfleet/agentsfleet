@@ -15,6 +15,7 @@ use af_otlp::Encoding;
 use crate::inventory::OTLP_EXPORT;
 use crate::preflight::{
     OTEL_ENDPOINT_KNOB, OTEL_HEADERS_KNOB, OTEL_PROTOCOL_KNOB, OTEL_TIMEOUT_KNOB, preflight,
+    runner_listener::{TLS_CERT_FILE, TLS_KEY_FILE},
 };
 use crate::serve::{attach_exports, open_telemetry};
 use crate::supervisor::Supervisor;
@@ -26,13 +27,13 @@ use crate::supervisor::Supervisor;
 const UNREACHABLE: &str = "http://127.0.0.1:1";
 
 /// Everything preflight requires before it will answer at all.
-fn required() -> [(&'static str, &'static str); 7] {
+fn required() -> [(&'static str, &'static str); 9] {
     [
         (
             "DATABASE_URL_API",
             "postgres://afd:afd@127.0.0.1:5432/agentsfleet",
         ),
-        ("DRAGONFLY_URL", "redis://127.0.0.1:6379"),
+        ("NATS_URL", "nats://127.0.0.1:4222"),
         (
             "ENCRYPTION_MASTER_KEY",
             "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -44,6 +45,8 @@ fn required() -> [(&'static str, &'static str); 7] {
         ("OIDC_ISSUER", "https://identity.fixture.test"),
         ("OIDC_AUDIENCE", "agentsfleetd-lane"),
         ("CLERK_API_BASE", "https://api.identity.fixture.test"),
+        (TLS_CERT_FILE, "/run/runner/chain.pem"),
+        (TLS_KEY_FILE, "/run/runner/leaf.pem"),
     ]
 }
 

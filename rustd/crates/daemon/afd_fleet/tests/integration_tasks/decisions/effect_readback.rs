@@ -1,6 +1,7 @@
 //! Recovery listings of persisted uncertain intents never claim remote success.
 
 use af_core::error_code;
+use af_core::id::Uuid7;
 use af_wire::task::{TaskEffectState, TaskEffectsQuery};
 use afd_db::test_util::mint_id;
 use afd_fleet::task::{TaskLifecycle as _, TaskRefusal};
@@ -19,9 +20,10 @@ async fn recovery_pages_keep_uncertainty_and_respect_watermark_task_and_fence() 
 async fn readback(case: &Case) {
     let fixture = Decisions::create(case).await;
     let task = fixture.bind_goal().await;
-    let first = seed(case, &task.task_id, 1, "refused").await;
-    let second = seed(case, &task.task_id, 2, "unknown").await;
-    let third = seed(case, &task.task_id, 3, "issued").await;
+    let task_id = id(&task.task_id);
+    let first = seed(case, &task_id, 1, "refused").await;
+    let second = seed(case, &task_id, 2, "unknown").await;
+    let third = seed(case, &task_id, 3, "issued").await;
     pages(&fixture, &task.task_id, &first, &second, &third).await;
     refusals(&fixture, &task.task_id).await;
     receipts(&fixture, &task.task_id, &first, &second).await;
@@ -61,12 +63,12 @@ async fn recovery_page(
         .expect("recovery page")
 }
 
-async fn pages(fixture: &Decisions<'_>, task: &str, first: &str, second: &str, third: &str) {
+async fn pages(fixture: &Decisions<'_>, task: &str, first: &Uuid7, second: &Uuid7, third: &Uuid7) {
     let page = recovery_page(fixture, task, 0, None).await;
     assert_eq!(page.effects.len(), 1);
     assert_eq!(
         page.effects.first().expect("one effect on page").effect_id,
-        first
+        *first
     );
     assert_eq!(
         page.effects.first().expect("one effect on page").state,
@@ -76,7 +78,7 @@ async fn pages(fixture: &Decisions<'_>, task: &str, first: &str, second: &str, t
     let page = recovery_page(fixture, task, 0, page.next_cursor.as_deref()).await;
     assert_eq!(
         page.effects.first().expect("one effect on page").effect_id,
-        second
+        *second
     );
     assert_eq!(
         page.effects.first().expect("one effect on page").state,
@@ -94,7 +96,7 @@ async fn pages(fixture: &Decisions<'_>, task: &str, first: &str, second: &str, t
     let page = recovery_page(fixture, task, 2, Some("1")).await;
     assert_eq!(
         page.effects.first().expect("one effect on page").effect_id,
-        third
+        *third
     );
     assert_eq!(
         page.effects.first().expect("one effect on page").state,
@@ -138,7 +140,7 @@ async fn refusals(fixture: &Decisions<'_>, task: &str) {
     assert_eq!(
         fixture
             .tasks
-            .effects(case.lease(), &query(case, &mint_id(), 0, None))
+            .effects(case.lease(), &query(case, mint_id().as_str(), 0, None))
             .await
             .expect_err("foreign task")
             .code(),
@@ -157,11 +159,11 @@ async fn refusals(fixture: &Decisions<'_>, task: &str) {
     );
 }
 
-async fn receipts(fixture: &Decisions<'_>, task: &str, first: &str, second: &str) {
+async fn receipts(fixture: &Decisions<'_>, task: &str, first: &Uuid7, second: &Uuid7) {
     let case = fixture.case;
     let refused = fixture
         .tasks
-        .effect(case.lease(), &id(first))
+        .effect(case.lease(), first)
         .await
         .expect("terminal refused receipt");
     assert_eq!(refused.state, TaskEffectState::Refused);
@@ -169,7 +171,7 @@ async fn receipts(fixture: &Decisions<'_>, task: &str, first: &str, second: &str
     assert_eq!(
         fixture
             .tasks
-            .effect(case.lease(), &id(&mint_id()))
+            .effect(case.lease(), &mint_id())
             .await
             .expect_err("missing receipt")
             .code(),
@@ -179,7 +181,7 @@ async fn receipts(fixture: &Decisions<'_>, task: &str, first: &str, second: &str
     assert_eq!(
         fixture
             .tasks
-            .effect(case.lease(), &id(second))
+            .effect(case.lease(), second)
             .await
             .expect_err("unconfigured GitHub cannot resolve unknown effect")
             .code(),
@@ -203,7 +205,7 @@ async fn receipts(fixture: &Decisions<'_>, task: &str, first: &str, second: &str
     );
 }
 
-pub(super) async fn seed(case: &Case, task: &str, ordinal: i64, state: &str) -> String {
+pub(super) async fn seed(case: &Case, task: &Uuid7, ordinal: i64, state: &str) -> Uuid7 {
     let effect = mint_id();
     let mut connection = case
         .held
@@ -217,17 +219,17 @@ pub(super) async fn seed(case: &Case, task: &str, ordinal: i64, state: &str) -> 
         .expect("atomic crash-recovery fixture");
     // A persisted intent owns an allocated ordinal. Unknown/issued fixtures also
     // retain the spent publication attempt, as after a lost remote acknowledgement.
-    sqlx::query("UPDATE fleet.tasks SET effect_cursor=GREATEST(effect_cursor,$2),used_publications=used_publications+CASE WHEN $3 IN ('issued','unknown') THEN 1 ELSE 0 END WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.tasks SET effect_cursor=GREATEST(effect_cursor,$2),used_publications=used_publications+CASE WHEN $3 IN ('issued','unknown') THEN 1 ELSE 0 END WHERE id=$1")
         .bind(task).bind(ordinal).bind(state).execute(&mut *transaction)
         .await.expect("retain allocation and any issued attempt");
-    sqlx::query("INSERT INTO fleet.task_effects (id,task_id,fleet_id,workspace_id,source_item_id,original_lease_id,original_runner_id,original_fence,task_generation,stop_generation,ordinal,operation_id,covered_input_sequence,expected_head,tested_tree,request_digest,repository_id,installation_id,issuance_expires_at,created_at) SELECT $1::uuid,id,fleet_id,workspace_id,originating_task_item_id,$3::uuid,$4::uuid,$5,generation,stop_generation,$6,$7::uuid,0,$8,$9,$10,(target->>'repository_id')::bigint,(target->>'installation_id')::bigint,now()+interval '1 minute',now() FROM fleet.tasks WHERE id=$2::uuid")
-        .bind(&effect).bind(task).bind(case.lease().lease_id.as_str()).bind(case.lease().runner_id.as_str())
+    sqlx::query("INSERT INTO fleet.task_effects (id,task_id,fleet_id,workspace_id,source_item_id,original_lease_id,original_runner_id,original_fence,task_generation,stop_generation,ordinal,operation_id,covered_input_sequence,expected_head,tested_tree,request_digest,repository_id,installation_id,issuance_expires_at,created_at) SELECT $1,id,fleet_id,workspace_id,originating_task_item_id,$3,$4,$5,generation,stop_generation,$6,$7,0,$8,$9,$10,(target->>'repository_id')::bigint,(target->>'installation_id')::bigint,now()+interval '1 minute',now() FROM fleet.tasks WHERE id=$2")
+        .bind(&effect).bind(task).bind(case.lease().lease_id).bind(case.lease().runner_id)
         .bind(i64::try_from(case.lease().fencing_token).expect("fixture fence")).bind(ordinal).bind(mint_id())
         .bind("0".repeat(40)).bind("1".repeat(40)).bind("a".repeat(64))
         .execute(&mut *transaction).await.expect("preexisting immutable publication intent");
-    sqlx::query("INSERT INTO fleet.task_effect_states (task_effect_id,status,issued_at,created_at,updated_at) VALUES ($1::uuid,$2,CASE WHEN $2 IN ('issued','unknown') THEN now() END,now(),now())")
+    sqlx::query("INSERT INTO fleet.task_effect_states (task_effect_id,status,issued_at,created_at,updated_at) VALUES ($1,$2,CASE WHEN $2 IN ('issued','unknown') THEN now() END,now(),now())")
         .bind(&effect).bind(state).execute(&mut *transaction).await.expect("unconfirmed state");
-    sqlx::query("INSERT INTO fleet.task_effect_payloads (task_effect_id,task_id,fleet_id,workspace_id,target,request,created_at) SELECT $1::uuid,id,fleet_id,workspace_id,target,'{}'::jsonb,now() FROM fleet.tasks WHERE id=$2::uuid")
+    sqlx::query("INSERT INTO fleet.task_effect_payloads (task_effect_id,task_id,fleet_id,workspace_id,target,request,created_at) SELECT $1,id,fleet_id,workspace_id,target,'{}'::jsonb,now() FROM fleet.tasks WHERE id=$2")
         .bind(&effect).bind(task).execute(&mut *transaction).await.expect("private recovery target");
     transaction
         .commit()

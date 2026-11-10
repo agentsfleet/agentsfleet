@@ -33,8 +33,8 @@ async fn catalogue_cannot_select_a_reviewed_revision_owned_by_another_model() {
         .begin()
         .await
         .expect("revision selection transaction");
-    sqlx::query("UPDATE model.platform_models SET decision_revision_id=(SELECT decision_revision_id FROM model.platform_models WHERE id=$2::uuid) WHERE id=$1::uuid")
-        .bind(first.model.id.as_str()).bind(second.model.id.as_str())
+    sqlx::query("UPDATE model.platform_models SET decision_revision_id=(SELECT decision_revision_id FROM model.platform_models WHERE id=$2) WHERE id=$1")
+        .bind(&first.model.id).bind(&second.model.id)
         .execute(&mut *transaction).await.expect("deferred ownership check waits for commit");
     let rejected = transaction
         .commit()
@@ -133,13 +133,12 @@ async fn reject_historical_revision(models: &Models, second: &Model) {
 
 async fn assert_coding_schedule(scenario: &Scenario) {
     let database = &scenario.database;
-    let coding_id: String = sqlx::query_scalar(
-        "SELECT id::text FROM model.platform_model_prices WHERE platform_model_id=$1::uuid",
-    )
-    .bind(scenario.model.id.as_str())
-    .fetch_one(&mut *database.acquire().await.expect("rate connection"))
-    .await
-    .expect("coding rate identity");
+    let coding_id: Uuid7 =
+        sqlx::query_scalar("SELECT id FROM model.platform_model_prices WHERE platform_model_id=$1")
+            .bind(&scenario.model.id)
+            .fetch_one(&mut *database.acquire().await.expect("rate connection"))
+            .await
+            .expect("coding rate identity");
     let book = PriceBook::load(
         &mut *database.acquire().await.expect("book connection"),
         "typesafe",
@@ -150,7 +149,7 @@ async fn assert_coding_schedule(scenario: &Scenario) {
     assert_eq!(
         book,
         PriceBook::from_tiers(vec![Tier {
-            id: Uuid7::parse(&coding_id).expect("native price id"),
+            id: coding_id,
             price: price(7)
         }]),
         "decision schedules never join coding billing"

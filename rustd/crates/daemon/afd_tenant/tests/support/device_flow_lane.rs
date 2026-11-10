@@ -1,5 +1,5 @@
 //! What every device-flow suite builds its logins from: the login surface over
-//! the lane's queue, and the one approval, code and caller they all present.
+//! the lane's Postgres, and the one approval, code and caller they all present.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -8,12 +8,11 @@
 
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::SecretBytes;
-use afd_dragonfly::SessionStore;
 use afd_tenant::session::input::Approval;
-use afd_tenant::session::{Fingerprint, Sessions};
+use afd_tenant::session::{DeviceSessions, Fingerprint, Sessions};
 use jiff::Timestamp;
 
-use crate::dragonfly_harness::DragonflyHarness;
+use crate::session_harness::SessionHarness;
 
 /// The dashboard this suite's login URLs are built against.
 pub(crate) const APP_URL: &str = "https://app-dev.agentsfleet.net/";
@@ -24,14 +23,14 @@ pub(crate) const CODE: &str = "428193";
 /// The identity that approves them.
 pub(crate) const APPROVER: &str = "user_2abcDEF";
 
-/// A fixed instant, so nothing here depends on when it runs. The session
-/// lives in Dragonfly, so the daemon's clock stamps it, and this stands in.
+/// A fixed instant for the session identifier `open` mints, so nothing here
+/// depends on when it runs. The row's deadlines are the database clock's.
 pub(crate) const NOW: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
-/// The login surface, over the lane's queue.
-pub(crate) fn surface(harness: &DragonflyHarness) -> Sessions {
+/// The login surface, over the lane's database.
+pub(crate) fn surface(harness: &SessionHarness) -> Sessions {
     Sessions::new(
-        SessionStore::new(harness.redis.clone()),
+        DeviceSessions::new(harness.database.clone()),
         SecretBytes::new(b"c0ffee".repeat(8)),
         Entropy::new(),
         APP_URL,
@@ -46,9 +45,9 @@ pub(crate) fn approval() -> Approval<'static> {
 /// An approver no other test shares, for a test that bulk-cancels.
 ///
 /// `cancel_all` aborts every live login its owner approved, and the suites run
-/// in parallel against one queue. A test cancelling as [`APPROVER`] would abort
+/// in parallel against one database. A test cancelling as [`APPROVER`] would abort
 /// the logins a sibling test is still driving, so each canceller takes its own
-/// owner; the process id keeps two concurrent runs on one queue apart too.
+/// owner; the process id keeps two concurrent runs on one database apart too.
 pub(crate) fn owner(test: &str) -> String {
     format!("{APPROVER}_{test}_{}", std::process::id())
 }

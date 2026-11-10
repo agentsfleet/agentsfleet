@@ -13,7 +13,7 @@
 //!
 //! Most kinds wrap the failure beneath them (`afd_db`, `sqlx`, the
 //! filesystem) or carry the numbers that refused a run, which is the property
-//! `docs/RUST_ERROR_STANDARD.md` §"The shared hull" uses to put a crate on the
+//! "The shared hull" in `docs/RUST_ERROR_STANDARD.md` uses to put a crate on the
 //! hull. So [`Error`] is the `af_core::error_shell!` struct over a private
 //! `ErrorKind`, and callers ask `is_*` questions instead of
 //! matching variants.
@@ -43,10 +43,15 @@ af_core::error_shell!(
 );
 
 af_core::error_lifts!(Error, ErrorKind:
+    std::num::TryFromIntError => ConcurrencyUnrepresentable,
+    afd_gateway::Error => StreamFaulted,
+    tokio::sync::watch::error::RecvError => WakeClosed,
+    reqwest::Error => ProviderTransportFaulted,
     afd_db::Error => DatabaseUnavailable,
-    afd_dragonfly::Error => QueueUnavailable,
+    afd_bus::Error => BusUnavailable,
     afd_events::Error => SteerPathFaulted,
     afd_fleet::Error => LeasePathFaulted,
+    afd_outbound::Error => OutboundPathFaulted,
     afd_authoring::Error => AuthoringPathFaulted,
     afd_fleet_lifecycle::Error => LiveSetFaulted,
     afd_admission::Error => LedgerUnreadable,

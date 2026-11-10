@@ -1,7 +1,9 @@
 //! The second daemon replica, and the expiry it re-admits work after.
 //!
-//! Its own pool and Dragonfly connection over the lane both replicas share, so
-//! the two meet only where two deployed replicas meet: rows and queue keys.
+//! Its own pool over the lane both replicas share, and its own in-process bus.
+//! The bus is isolated deliberately: the claim is that the second replica
+//! re-admits a lapsed lease from the rows alone, so nothing the first one
+//! publishes may reach it.
 
 use super::fixture::Running;
 use af_core::{clock, id::Uuid7};
@@ -10,8 +12,8 @@ use afd_db::{Db, config::DbRole, test_util::TestDatabase};
 use afd_fleet::lease::{Billed, Kind, Leases};
 
 const ORIGINAL: &str = "\
-SELECT e.event_id, l.status FROM runner.leases l JOIN fleet.events e ON e.id = l.fleet_event_id
-WHERE l.id = $1::uuid";
+SELECT e.event_id, l.status FROM runner.leases l JOIN fleet.events e ON e.event_id = l.event_id
+WHERE l.id = $1";
 
 pub(super) struct Replica {
     lane: TestDatabase,
@@ -25,7 +27,9 @@ impl Replica {
         let database = lane.open(DbRole::Api, &[]).await;
         let leases = Leases::new(
             database.clone(),
-            crate::queue::connect().await,
+            afd_bus::test_util::detached()
+                .expect("an in-process bus opens")
+                .0,
             Entropy::new(),
         );
         Self {
@@ -36,7 +40,7 @@ impl Replica {
     }
 
     /// B's poll: win the lapsed claim, take the dead holder's event, write a lease.
-    pub(super) async fn readmit(&self, running: &Running) -> (String, Uuid7) {
+    pub(super) async fn readmit(&self, running: &Running) -> (Uuid7, Uuid7) {
         let acquired = crate::seed::select_fleet(&self.leases, &running.runner, &running.fleet)
             .await
             .expect("the lapsed fleet is offered to the second replica");
@@ -49,14 +53,13 @@ impl Replica {
             .reused
             .as_ref()
             .expect("a reclaim carries the original billing");
-        let tenant = Uuid7::parse(&carried.tenant_id).expect("carried tenant");
         let issued = self
             .leases
             .issue(
                 &running.runner,
                 &acquired,
                 Billed {
-                    tenant_id: &tenant,
+                    tenant_id: &carried.tenant_id,
                     posture: &carried.posture,
                     provider: crate::seed::PROVIDER,
                     model: &carried.model,
@@ -79,14 +82,14 @@ impl Replica {
 pub(super) async fn expire(running: &Running) {
     running
         .fixtures
-        .lapse_holder(running.lease.as_str(), &running.fleet)
+        .lapse_holder(&running.lease, &running.fleet)
         .await;
 }
 
 /// The event and status of A's original lease row.
-pub(super) async fn original(running: &Running) -> (String, String) {
+pub(super) async fn original(running: &Running) -> (Uuid7, String) {
     sqlx::query_as(ORIGINAL)
-        .bind(running.lease.as_str())
+        .bind(&running.lease)
         .fetch_one(&mut *running.fixtures.database.acquire().await.expect("read"))
         .await
         .expect("the original lease row")

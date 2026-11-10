@@ -24,7 +24,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Concurrency rules | C1–C5 | declared producer/consumer, receiver owns the payload · stop→join→drop · no blocking under a consumer's lock · one documented lock per aggregate · task/thread-confined by default | §The five invariants |
 | Long-lived work | supervised control-plane tasks, async connections, and runner tasks | each with a declared spawn point, protection, and stop path | §Thread map |
 | Shutdown flags | none | the half-dead-node window the two flags protected is an ordering here, not shared mutable state | §Why there is no signal watcher |
-| Shared-state locks | inventoried below | the pub/sub socket is behind none of them: one task owns it and it is reached by command | §Lock-invariant registry |
+| Shared-state locks | inventoried below | the NATS client sits behind the adapter's read/write lock: operations share read guards, and only shutdown takes the write guard | §Lock-invariant registry |
 | Deadline ownership | one deadline per call site, on both planes | `tokio::time::timeout` or the HTTP client's own timeout; no shared registration map | §The deadline-ownership invariant |
 | Shutdown order | decide why → cancel and join → drop | teardown is in the outer `run`, so every early return still tears down | §Shutdown choreography |
 | Cancellation reach | every long-lived task selects its own I/O against the token | a genuinely blocked `accept()` is interrupted mid-read, not at the next poll interval | §Shutdown choreography |
@@ -38,9 +38,9 @@ Each trap is enforced in its owner section; this list is the index.
 
 - Every spawned task needs a lifetime owner and stop path, including request-owned private preview publishers (§Thread map).
 
-- Never issue an `SSUBSCRIBE`/`SUNSUBSCRIBE` from anywhere but the hub's control task. A subscriber enqueues a command and the dispatch task sends a signal instead. The enqueue is what may happen under the channel map's lock, because it cannot block (§Lock-invariant registry).
+- Never open a second native subscription for a subject that already has local readers. The first reader opens it and starts its pump; later readers join the channel and wait until that subscription is queued (§Lock-invariant registry).
 
-- Never await a round trip on the hub's dispatch task; a subscribe that waits there holds every frame behind it (§Thread map).
+- Never await a round trip on a subject's pump. It forwards every frame for that subject, so a wait there holds them all (§Thread map).
 
 - Never do a blocking wire send while holding the map lock. That is the C3 fix that ended the hub hazard (§Lock-invariant registry).
 
@@ -91,7 +91,7 @@ how that state is protected, and how it is stopped and joined.
 
 The supervisor in the daemon binary (`rustd/crates/daemon/main`) owns process-lifetime daemon tasks. Connection handlers, hub workers and bounded request-owned work have their own owners.
 
-`Supervisor::spawn` supplies a cancellation token and retains each handle. Shutdown waits for each handle and reports tasks exceeding the ten-second join deadline. The supervised `hub_pump` shuts down the hub and its listeners.
+`Supervisor::spawn` supplies a cancellation token and retains each handle. Shutdown waits for each handle and reports tasks exceeding the ten-second join deadline. The supervised `bus_shutdown` task shuts the NATS connection down on cancellation.
 
 Private answer previews use a request-owned publisher (`afd_authoring`'s preview publisher). Its `AbortOnDropHandle` aborts the task on cancellation or unwind; normal completion allows a two-second drain. Publication rechecks access before sending each preview.
 
@@ -105,11 +105,10 @@ a name, or a sweeper that quietly went back to a bare spawn, is a failing test.
 | accept loop (`accept_loop`) | `serve::listen` | the listener; the shared `Router` by clone | none shared mutable | `select!` over `token.cancelled()` and a genuinely blocked `accept()` → loop breaks → joined |
 | connection (one per socket) | the accept loop | one connection's request stream | none shared mutable; the router is cloned per connection | the same token: `select!` over `cancelled()` and the served connection |
 | Server-Sent Events (SSE) response body | HTTP handler | stream permit and hub subscription receivers | owned by the body; no dedicated operating-system thread | dropping the body releases its permit and receivers; hub closure ends a fleet tail |
-| outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` when its dedicated Dragonfly connection opens | blocking stream reader and shared writers | one reader owns its socket; it cannot block the shared command connection | cancellation races the read; supervisor joins the worker |
-| owed-answer producer (`connector:outbound-producer`) | `agentsfleetd::outbound::spawn`, beside the worker | `fleet.obligations` through its own pool handle; re-appends owed answers on the shared Dragonfly handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
-| SSE hub control task (`afd_dragonfly`'s hub pump) | `SubscriptionHub::start`; stopped by the supervised task `hub_pump`, which `serve::spawn_background` registers | the one shared pub/sub connection's commands, its redial, and a node repair's re-subscribes | it owns the connection outright, no lock; the map under its own sharded lock | the supervised task observes cancellation and calls `hub.shutdown()`, which clears the map so every reader is told; the task returns when the last command sender drops, aborting the dispatch task on its way out |
-| SSE hub dispatch task (`afd_dragonfly`'s hub dispatch) | the control task, once per connection | the connection's pushes: frames out to readers, confirmations into gaps, a lost node's attribution | reads the `channels` map; never touches the connection, so no round trip can hold a frame | aborted by the control task when its connection is redialled or the hub drops |
-| admission doorbell listeners (sixteen, `afd_dragonfly`'s doorbell) | `Doorbell::listen`, from `ServingPlane::new` | one hub subscription each; shared buffer of at most 64 fleet hints | leaf mutex; never held across an await | hub shutdown closes the subscriptions; listeners return and release their buffer |
+| outbound answer worker (`connector:outbound`) | `agentsfleetd::outbound::spawn` | claims lane heads from `fleet.obligations`, at most as many as its lanes have free delivery slots, and hands each row to the outbound lanes. A claim runs on an `af.outbound.wake` ping, on a finished lane, or every `CLAIM_PASS` (30 s). | a per-lane `pg_try_advisory_xact_lock` taken before the heads are chosen, `FOR UPDATE SKIP LOCKED`, and the holder's token, which the attempt count re-proves before each post; no in-process lock shared with other tasks | `select!` over `cancelled()`, the ping, a finished lane and the pass sleep → loop breaks → the lanes drain → joined |
+| NATS hub pump (one per subject with readers, `afd_bus::nats`'s hub) | `Bus::subscribe`, for a subject's first local reader | that subject's one native subscription: frames out to every local reader, and an `Af-Gap` marker turned into `Gap` | the channel map under its own mutex; the pump never takes it to forward a frame | the last reader's drop aborts the pump, which unsubscribes; `Bus::shutdown` aborts and joins every pump |
+| NATS gap watcher (`afd_bus::nats`'s signals watcher) | `afd_bus::nats::connect`, once per process | client events (reconnect, slow consumer), the publish debt, and the `af.bus.gap` broadcast | the debt under a short mutex the client's event callback also takes; the callback only sets flags and wakes the watcher | `Bus::shutdown` aborts and joins it before the client drains; the supervised `bus_shutdown` calls that shutdown on cancellation |
+| runner wake listeners (sixteen, `afd_bus::wake`) | `Wake::listen`, from the gateway scheduler (`afd_gateway/src/scheduler/subscriptions.rs`) | one `af.wake.<shard>` subscription each; one shared queue of at most 64 fleet IDs by default | leaf mutex; never held across an await | the stop token, or a closed subscription; the scheduler then resubscribes with backoff |
 | liveness sweeper (`sweeper:liveness`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | `select!` over `cancelled()` and the interval sleep → loop breaks → joined |
 | retention sweeper (`sweeper:retention`) | `sweepers::spawn` | Postgres through its own pool handle | none shared | as above |
 | fleet census sweeper (`sweeper:fleet-census`) | `sweepers::spawn` | Postgres through its own pool handle, reads only; publishes into the `agentsfleet_fleets` snapshot cells | none shared | as above |
@@ -125,14 +124,14 @@ New process-lifetime background work belongs to the supervisor. Request-owned wo
 
 Rooted at the runner binary (`rustd/crates/runner/main`); no runner crate links a
 datastore crate ([`runner_execution.md`](./runner_execution.md#crates)).
-`afr_supervisor::run` composes the long-lived work. The private report spool protects shared clock and deadline state with its own mutex.
+`afr_supervisor::run` composes the native connection, heartbeat policy and worker pool.
+Workers retain pending reports in memory; no report files or spool drains remain.
 
 | Task | Spawned by | Touches | Protection | Stop path |
 |---|---|---|---|---|
-| heartbeat | `afr_supervisor::run`, beside both drains and the pool under one `tokio::join!` | the assignment it publishes | a `watch` channel; no lock | the halt token → returns → joined |
-| runtime report spool drain | `afr_supervisor::run` | the storage home's runtime reports | file work on the blocking pool | the halt token → returns → joined |
-| private report spool drain | `afr_supervisor::run` | encrypted authoring answers and separate accounting envelopes | private spool state mutex; filesystem work on the blocking pool | serving halt ends the drain; startup cleanup precedes workers |
-| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its lease and that lease's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | leasing stops → polling stops → leases in flight run to their reports → the set drains |
+| Native connection | `afr_supervisor::run` | Four streams, request correlation, offers and reconnect | Bounded channels, permits and cancellation owners | Remains available while accepted workers settle; cancellation joins its tasks |
+| Heartbeat policy | `afr_supervisor::run`, beside the worker pool | Current assignment | A `watch` channel | Halt → return → joined |
+| workers (N) | `worker_pool::serve`, one `JoinSet` | each worker owns its lease and that lease's sandbox | none shared mutable (C5); which fleet is busy belongs to one coordinator task, reached by message | New offers stop; accepted work has thirty seconds, then five seconds for cleanup before abort and join |
 | hold keeper | `Holds::start` | the frozen sandboxes held for their fleet's next lease | owned by the keeper task, reached by message | `holds.shutdown()` after the join destroys every hold |
 | executor link (one per sandbox) | `afr_executor`'s client | one sandbox's executor connection | owned by the link task | ends with its sandbox |
 
@@ -141,30 +140,32 @@ datastore crate ([`runner_execution.md`](./runner_execution.md#crates)).
 ## Channel inventory
 
 Cross-task and cross-process channels, with producer/consumer roles and payload
-ownership. Dragonfly stream/channel **names** are canonical in
+ownership. NATS subject **names** are canonical in
 [`data_flow.md`](./data_flow.md) §"Two streams + one pub/sub channel"; the roles
 below are the concurrency view.
 
 | Channel | Kind | Producer → Consumer | Payload ownership |
 |---|---|---|---|
-| hub commands | unbounded `mpsc` | any subscriber or dropped `Subscription` → the hub's control task | `Subscribe`/`Unsubscribe` moves to the control task; unbounded so the enqueue can happen under the channel map's lock without blocking |
-| hub signals | unbounded `mpsc` | the hub's dispatch task → its control task | `Resubscribe` (a slot moved), `Repair` (a node's socket was lost: every live channel), `Redial` (a loss the window did not explain); unbounded so a push is never held behind the control task's round trips |
-| channel fan-out | `broadcast`, 256 messages per channel | the dispatch task (producer) → every reader subscribed to that channel | every reader receives the same `Arc<Message>`, so a frame is one allocation however many watch it; a lost subscription is a `Gap` item once it is back; a reader that falls 256 behind is told the count it missed rather than losing them silently (C1) |
+| client events | the `async-nats` event callback | the NATS client → the gap watcher | the callback sets a flag per cause (reconnect, slow consumer) and wakes the watcher. A burst coalesces into one gap per cause, and the callback never waits on I/O. |
+| channel fan-out | `broadcast`, 256 messages per channel (`Tuning::channel_capacity`) | the subject's pump (producer) → every local reader of that subject | every reader receives the same `Arc<Message>`, so a frame is one allocation however many watch it. A reconnect, a slow consumer or a gap marker is a `Gap` item. A reader that falls 256 behind is told the count it missed (C1). |
 | cancellation | `CancellationToken` | the supervisor → every supervised task and every live connection | edge-triggered; a task selects it against its own I/O, so it is interrupted mid-read |
-| `fleet.admissions` | PostgreSQL queue | producers commit admissions; lease polls claim the oldest unsettled row per eligible fleet | slot and admission fences; reports settle in the usage transaction |
-| `connector:outbound` | Dragonfly stream + consumer group `connector_workers` | the report path after its commit, and the owed-answer producer → dedicated blocking outbound reader | durable queue; the worker acknowledges each job it finishes, delivered or exhausted |
-| `fleet:{id}:activity` | Dragonfly sharded pub/sub (ephemeral) | `agentsfleetd` `SPUBLISH` (+ runner-forwarded frames) → the hub's one shared connection, one `SSUBSCRIBE` per channel, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
-| `fleet:wake:{shard}` (sixteen) | Dragonfly sharded pub/sub | admission and gate-answer commits publish hints to each replica | ephemeral; every poll still probes PostgreSQL |
+| `fleet.admissions` | PostgreSQL queue | producers commit admissions; offer passes claim the oldest unsettled row per eligible fleet | slot and admission fences; reports settle in the usage transaction |
+| `fleet.obligations` | PostgreSQL rows claimed per lane | the report path writes the row in its transaction → any replica's outbound worker claims the lane head | durable; the claim's token names the holder, and a lapsed holder's late write matches no row |
+| `af.outbound.wake` | core NATS subject (at most once) | the report path after its commit → every replica's outbound worker | the payload names the obligation, but the worker reads only the ping and claims from Postgres. A lost ping waits for the next 30 s claim pass. |
+| `af.fleet.<fleet_id>.tail` | core NATS subject (at most once) | `agentsfleetd` publishers (+ runner-forwarded frames) → each process's one native subscription per subject, fanned out by reference | ephemeral; every SSE stream shares the published frame, and the response body writes its payload from that one allocation |
+| `af.wake.<shard>` (sixteen) | core NATS subject | admission and gate-answer commits publish fleet IDs to every replica | ephemeral; each replica's 5 s recovery probe still reads PostgreSQL |
 
-The hub holds exactly **one** pub/sub connection for all viewers, refcounting
-`SSUBSCRIBE` per channel-with-viewers. The per-stream connections are gone
-(`data_flow.md`), and `test_hub_refcount_single_connection` is what holds it.
+Each process holds exactly **one** NATS connection for all viewers and
+publishers, with one native subscription per subject that has local readers
+(`rustd/crates/daemon/afd_bus/src/nats/hub/mod.rs`).
+`readers_share_one_channel_and_one_payload` and
+`concurrent_openers_make_exactly_one_pump` hold it.
 
 New cross-boundary channels declare one producer and one consumer and say who owns
 the payload (C1). Reshaping the existing ones is a separate judgment with this
 page as input.
 
-SSE response bodies share the hub; they do not each open a Dragonfly connection or reserve a thread.
+SSE response bodies share the hub; they do not each open a NATS connection or reserve a thread.
 The daemon listener supports HTTP/1.1 and h2c independently of the browser-facing connection.
 [Data Flow, section D (WATCH)](./data_flow.md#d-watch--user-side-how-the-live-tail-surfaces) owns the Next.js proxy and per-hop protocol description.
 
@@ -177,10 +178,12 @@ constraint. Each is documented at its declaration (C4).
 
 | Lock | Declared at | Protects | Ordering |
 |---|---|---|---|
-| hub channel map | `afd_dragonfly`'s `HubInner` | the `channel → (broadcast sender, reader count, confirmed once)` map and **nothing else** | leaf, sharded per key, and never held across an await; the only things done under it are the command enqueue and a broadcast send (a frame, or a gap on a repeated confirmation), neither of which can block |
+| bus adapter state | `afd_bus::nats`'s `Adapter::live` (tokio `RwLock`) | the live client, channel map, signals and watcher, or `None` after shutdown | every publish and subscribe holds a read guard for its own call; `shutdown` takes the write guard, so nothing opens after the drain begins |
+| hub channel map | `afd_bus::nats`'s hub `Channels` | the `subject → (broadcast sender, reader count, generation, pump)` map and **nothing else** | leaf mutex, never held across an await. The work under it is a map edit, a pump abort, or a broadcast send for a gap; none can block. |
+| publish debt | `afd_bus::nats`'s `Signals` | the subjects published inside the 2 s debt window, the subjects owed an `Af-Gap` marker, and the overflow flag, each bounded at 4,096 subjects | leaf mutex; taken by the publish path, the client's event callback and the watcher, never across an await |
 | outbound lane map | `afd_outbound`'s `lanes::Inner` | destination membership and publication against lane retirement | reserve capacity before locking; verify channel identity and publish under one guard; retirement checks for queued work and removes an empty lane under that same guard; no await while held |
 | runner series table | `af_observability`'s `RunnerMetrics` | the `runner_id → counters` map, up to 4096 series | read lock for LOOKUP only; the counters are atomics incremented after the guard is released, so a slow recorder never blocks a fast one |
-| doorbell hint buffer | `afd_dragonfly::Doorbell` | at most 64 distinct recent fleet IDs | leaf mutex; no database or network calls while held |
+| wake queue | `afd_bus::wake::Wake` | at most 64 distinct recent fleet IDs by default (`AGENTSFLEET_RUNNER_WAKE_QUEUE_CAPACITY`) | leaf mutex; no database or network calls while held |
 | metric instruments | `af_observability`'s instrument registry | the family names already claimed, and the observable gauge handles kept alive | leaf, held alone |
 | Capability caches | `afd_identity`'s `ProviderCapabilities` | separate Moka stores for fresh claims and last confirmed claims; each is bounded to 4096 subjects | conditional per-key invalidation precedes `try_get_with`, which coalesces concurrent fetches; failed refreshes retain the original stale timestamp, and unknown subjects clear the fallback |
 | JSON Web Key Set (JWKS) cache | `afd_identity`'s `KeyCache` | the held key set (read/write lock) and the single-flight gate (mutex) | the flight gate is held across the fetch with the key-set lock **released**, so a cache hit never queues behind a slow provider |
@@ -196,15 +199,14 @@ constraint. Each is documented at its declaration (C4).
 | private report state | `afr_supervisor`'s authoring spool | clock high-water mark, uncertainty flag and monotonic report deadlines | shared by writes and cleanup; filesystem work runs on the blocking pool |
 | egress host lock | `afr_sandbox`'s egress `HELD` | the host egress lock file this process holds once taken, shared by every engine it builds | leaf, held alone |
 
-The load-bearing ordering rule is the C3 fix that ended the hub's
-blocking-write-under-the-map-mutex hazard. The pub/sub socket is behind no lock
-at all. The control task owns it, and a subscriber that wants an `SSUBSCRIBE`
-or an `SUNSUBSCRIBE` enqueues a command.
+The load-bearing ordering rule is C3: no wire send happens under the channel
+map's lock. `Channels::open` hands the pump half to a subject's first reader.
+That reader calls the NATS client's `subscribe` only after the lock is released.
 
-The enqueue happens while the channel map is still locked, deliberately. That
-ordering is what stops an `Unsubscribe` overtaking the `Subscribe` of a reader
-arriving on the same channel. It is safe only because the queue is unbounded
-and the send therefore cannot block.
+A later reader of the same subject waits on the channel's `subscribed` signal.
+It returns only once the first reader's subscription is queued on the
+connection. A first reader that fails drops the signal, and its joiners fail
+with it (`rustd/crates/daemon/afd_bus/src/nats/mod.rs`).
 
 ### The deadline-ownership invariant
 
@@ -256,9 +258,9 @@ that a teardown had to hold by hand.
    `test_task_inventory_and_cancellation` proves that for a real blocked
    `accept()`, and carries a control so the negative is not vacuous.
 
-   Streaming stops here too. `hub.shutdown()` clears the channel map, so a
-   reader parked on the hub gets a hub-closed error it can act on. It no longer
-   waits on a socket nobody is pumping.
+   Streaming stops here too. `Bus::shutdown` drains the channel map and aborts
+   every pump, so a reader parked on a subscription gets `Closed`, which it can
+   act on. The client drains only after every pump has joined.
 
 3. **Drop after shutdown returns.** The caller drops its pools after `Supervisor::shutdown` finishes.
    Successful joins establish stopped tasks; timeout records an abandoned task and drops its join handle (the daemon binary's supervisor).
@@ -359,14 +361,14 @@ Every draft writer takes that draft lock too: a sent message, an edit, an applie
 ```
 BEFORE — the claim waits                      AFTER — the claim skips
                                               
- runner R polls                                runner R polls
+ offer pass (R)                                offer pass (R)
    │ lock host row R                             │ lock host row R
    ├─ draft A1 (tenant A) ── held by a writer    ├─ draft A1 ── held? NOWAIT refuses
    │     ⏳ waits until the writer commits        │     ↩ savepoint rolls back, A1 skipped
    │     (host row R held, ~1 s per write)       ├─ draft B1 (tenant B) ── free
    ├─ draft B1 (tenant B) ── never reached       │     ✔ admitted, lease issued
    │     until A's write ends                    └─ commit; A1 is admitted on a later
-   └─ every poll repeats the wait                    poll, once its writer lets go
+   └─ every pass repeats the wait                    pass, once its writer lets go
 ```
 
 
@@ -374,7 +376,7 @@ BEFORE — the claim waits                      AFTER — the claim skips
 
 A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back keeps the claim's transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the claim commits, so the reads after it never wait.
 
-The skip logs `authoring_claim_draft_skipped` at `debug`, because under contention it fires on every poll of the walk. A skipped draft is passed over, not dropped. Its order by age resumes on the first poll after the writer commits.
+The skip logs `authoring_claim_draft_skipped` at `debug`, because under contention it fires on every claim pass of the walk. A skipped draft is passed over, not dropped. Its order by age resumes on the first claim pass after the writer commits.
 
 `make bench-lease BENCH_SHAPE=saturation` measures it with 40 hosts on a 20-connection pool. One writer holds a tenant's drafts 1 s of every 1.25 s. Medians of three runs: open-transaction age p95 959 → 17 ms, chat lease p95 3 006 → 707 ms, 41.7 → 62.7 leases/s.
 

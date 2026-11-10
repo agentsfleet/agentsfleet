@@ -8,7 +8,7 @@ use jiff::Timestamp;
 use sqlx::Connection as _;
 
 use super::{MAX_CANDIDATES_PER_POLL, PollCost, started};
-use crate::error::{Result, query, row_malformed};
+use crate::error::{Result, query};
 use crate::lease::affinity::{self, Fence};
 use crate::lease::envelope::{Acquired, Kind};
 use crate::lease::reclaim::Reused;
@@ -17,14 +17,12 @@ use crate::lease::store::Leases;
 
 /// Query context shared by the claim's transaction operations.
 const CONTEXT: &str = "admissions ledger claim";
-/// Table named by a malformed stored identifier.
-const LEDGER: &str = "fleet.admissions";
 
 /// The admission row whose slot and fence the transaction just won.
 #[derive(Debug, sqlx::FromRow)]
 struct Admission {
-    event_id: String,
-    workspace_id: String,
+    event_id: Uuid7,
+    workspace_id: Uuid7,
     actor: String,
     event_type: String,
     request_json: String,
@@ -35,8 +33,8 @@ struct Admission {
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     lease_expires_at: Timestamp,
     held: bool,
-    holder: Option<String>,
-    reused_tenant_id: Option<String>,
+    holder: Option<Uuid7>,
+    reused_tenant_id: Option<Uuid7>,
     reused_posture: Option<String>,
     reused_model: Option<String>,
 }
@@ -49,28 +47,36 @@ impl Leases {
         held: &[Uuid7],
         cost: &mut PollCost,
     ) -> Result<Option<Acquired>> {
-        let hint = self.doorbell().take();
-        let held: Vec<&str> = held.iter().map(Uuid7::as_str).collect();
+        let recovery = self.wake().recovery();
+        let hint = if recovery.is_some() {
+            None
+        } else {
+            self.wake().take()
+        };
+        let held: Vec<&Uuid7> = held.iter().collect();
         let mut connection = self.pool().acquire().await?;
-        let candidates: Vec<String> = sqlx::query_scalar(queue::SELECT_CANDIDATES)
+        let candidates: Vec<Uuid7> = sqlx::query_scalar(queue::SELECT_CANDIDATES)
             .bind(sql::FLEET_STATUS_ACTIVE)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(i64::try_from(MAX_CANDIDATES_PER_POLL).unwrap_or(i64::MAX))
             .bind(RUNNER_OFFLINE_AFTER)
             .bind(sql::RUNNER_STATUS_ACTIVE)
             .bind(&held)
-            .bind(hint.as_ref().map(Uuid7::as_str))
+            .bind(hint.as_ref())
             .bind(af_wire::task::CAPABILITY)
             .bind(af_wire::task::TaskState::Ready.as_str())
             .bind(af_wire::task::TaskState::Running.as_str())
             .bind(crate::task::DECISION_POLICY_PATH)
+            .bind(recovery.is_some())
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT))?;
         cost.candidates_scanned = u64::try_from(candidates.len()).unwrap_or(u64::MAX);
         for fleet in candidates {
-            let fleet = Uuid7::parse(&fleet).map_err(row_malformed(LEDGER, "fleet_id"))?;
             if let Some(acquired) = self.ledger_claim(&mut connection, &fleet, runner).await? {
+                if let Some(recovery) = recovery {
+                    self.wake().recovered(recovery);
+                }
                 producers::fleet::run_started(started(acquired.kind));
                 affinity::count_resumed(&acquired);
                 return Ok(Some(acquired));
@@ -88,8 +94,8 @@ impl Leases {
     ) -> Result<Option<Acquired>> {
         let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
         let row: Option<Admission> = sqlx::query_as(queue::CLAIM_HEAD)
-            .bind(fleet.as_str())
-            .bind(runner.as_str())
+            .bind(fleet)
+            .bind(runner)
             .bind(LEASE_TTL)
             .bind(RUNNER_OFFLINE_AFTER)
             .bind(sql::RUNNER_STATUS_ACTIVE)
@@ -106,8 +112,8 @@ impl Leases {
             transaction.rollback().await.map_err(query(CONTEXT))?;
             return Ok(None);
         };
-        let displaced_hold = row.held && row.holder.as_deref() != Some(runner.as_str());
-        let acquired = row.acquired(fleet, runner)?;
+        let displaced_hold = row.held && row.holder.as_ref() != Some(runner);
+        let acquired = row.acquired(fleet, runner);
         transaction.commit().await.map_err(query(CONTEXT))?;
         if displaced_hold {
             producers::fleet::hold::claimed(HeldClaim::OtherAfterLapse);
@@ -118,7 +124,7 @@ impl Leases {
 
 impl Admission {
     /// Build the same downstream envelope from the committed ledger payload.
-    fn acquired(self, fleet: &Uuid7, runner: &Uuid7) -> Result<Acquired> {
+    fn acquired(self, fleet: &Uuid7, runner: &Uuid7) -> Acquired {
         // All three are non-null on a matched prior lease; the outer join
         // makes all three absent when the admission has never been issued.
         let reused = self
@@ -135,7 +141,7 @@ impl Admission {
         } else {
             Kind::Fresh
         };
-        Ok(Acquired {
+        Acquired {
             fleet_id: fleet.clone(),
             fence: Fence::from_i64(self.fencing_token),
             leased_until: self.lease_expires_at,
@@ -144,14 +150,11 @@ impl Admission {
             actor: self.actor,
             event_type: self.event_type,
             request_json: self.request_json,
-            workspace_id: Uuid7::parse(&self.workspace_id)
-                .map_err(row_malformed(LEDGER, "workspace_id"))?,
+            workspace_id: self.workspace_id.clone(),
             event_created_at: self.event_created_at,
             reused,
-            resume_hold: self.held
-                && self.holder.as_deref() == Some(runner.as_str())
-                && kind == Kind::Fresh,
+            resume_hold: self.held && self.holder.as_ref() == Some(runner) && kind == Kind::Fresh,
             redelivered: self.redelivered,
-        })
+        }
     }
 }

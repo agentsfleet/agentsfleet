@@ -48,10 +48,10 @@ enum OrdinaryMutation<'r, 'a> {
         "changes.\n\n",
         "Actions are `cordon`, `drain`, `revoke`, `rotate`, and `self_test`. Revocation is permanent. ",
         "`rotate` returns a replacement `runner_token` once; save it and update the host. ",
-        "`self_test` queues a sandbox check; the runner receives it on its next heartbeat ",
+        "`self_test` queues a sandbox check; a connected runner is notified immediately ",
         "and reports later. The response confirms the request, not the result. Revoked ",
         "runners return 409 `UZ-RUN-018`.\n\n",
-        "Policy changes reach the runner on its next heartbeat. Repeating the current ",
+        "Changes notify a connected runner after commit; its next heartbeat repairs a lost notification. Repeating the current ",
         "policy has no effect; revoked runners return 400. Labels replace the entire set, ",
         "using enrollment limits. Duplicates are removed in their original order; an empty ",
         "list clears labels. Revoked runners' labels remain editable. The response includes ",
@@ -101,6 +101,9 @@ pub(crate) async fn handle<D: Services>(
         Mutation::Edit(edit) => OrdinaryMutation::Edit(edit),
     };
     let result = mutate(&*services, &runner, identity.subject(), ordinary).await;
+    if result.is_ok() {
+        super::runner_notify::changed(&*services, &runner).await;
+    }
     finish(result, &identity, &runner)
 }
 
@@ -182,6 +185,7 @@ async fn rotate<D: Services>(
         .await
     {
         Ok(rotated) => {
+            super::runner_notify::changed(services, runner).await;
             let actor_id = identity.subject();
             let runner_id = runner.as_str();
             tracing::info!(actor_id, runner_id, event = "runner_token_rotated",);

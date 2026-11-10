@@ -16,17 +16,15 @@ use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 use sqlx::{PgConnection, PgExecutor};
 
+use crate::sql;
 use crate::{
     Result,
-    error::{query, row},
+    error::query,
     model::{DecisionModel, Model, ModelUpdate},
 };
 use af_crypto::entropy::Entropy;
 use af_wire::{decision::DecisionConfiguration, inference::ModelInference};
 use sqlx::types::Json;
-
-const MODEL_TABLE: &str = "model.platform_models";
-use crate::sql;
 
 /// `model.platform_models`' identity columns, embedded with `#[sqlx(flatten)]`
 /// in any row that selects them under these names.
@@ -56,7 +54,7 @@ impl From<MetadataColumns> for Metadata {
 /// a separate read ([`prices_for`]); inference and decision settings remain non-secret JSON.
 #[derive(Debug, sqlx::FromRow)]
 pub(crate) struct ModelRow {
-    pub(crate) id: String,
+    pub(crate) id: Uuid7,
     provider: String,
     model_name: String,
     #[sqlx(flatten)]
@@ -66,9 +64,9 @@ pub(crate) struct ModelRow {
 }
 
 impl ModelRow {
-    pub(crate) fn parse(self, prices: Vec<Price>, decision_prices: Vec<Price>) -> Result<Model> {
-        Ok(Model {
-            id: Uuid7::parse(&self.id).map_err(row(MODEL_TABLE, "id"))?,
+    pub(crate) fn parse(self, prices: Vec<Price>, decision_prices: Vec<Price>) -> Model {
+        Model {
+            id: self.id.clone(),
             provider: self.provider,
             model_name: self.model_name,
             details: ModelUpdate {
@@ -80,14 +78,14 @@ impl ModelRow {
                     prices: decision_prices,
                 }),
             },
-        })
+        }
     }
 }
 
 /// One [`sql::SELECT_MODEL_PRICES`] row, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct PriceRow {
-    platform_model_id: String,
+    platform_model_id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     effective_from: Timestamp,
     effective_until: Option<jiff_sqlx::Timestamp>,
@@ -107,7 +105,7 @@ struct PriceRow {
 impl PriceRow {
     fn into_parts(self) -> (String, Price) {
         (
-            self.platform_model_id,
+            self.platform_model_id.into(),
             Price {
                 effective_from: self.effective_from,
                 effective_until: self.effective_until.map(jiff_sqlx::Timestamp::to_jiff),
@@ -155,7 +153,7 @@ impl Prices {
 /// The statement's own failure, for the caller to report under its context.
 pub async fn prices_for<'e>(
     executor: impl PgExecutor<'e>,
-    model_ids: &[&str],
+    model_ids: &[&Uuid7],
     protocol: PriceProtocol,
 ) -> Result<Prices, sqlx::Error> {
     let statement = match protocol {
@@ -177,7 +175,7 @@ pub async fn prices_for<'e>(
 /// One replacement owns no rates: arrays borrow the caller's proved values.
 struct PriceReplacement<'a> {
     model: &'a Uuid7,
-    ids: &'a [String],
+    ids: &'a [Uuid7],
     prices: &'a [Price],
     decision_revision_id: Option<&'a Uuid7>,
 }
@@ -202,7 +200,7 @@ impl PriceReplacement<'_> {
             sql::UPSERT_PLATFORM_MODEL_PRICES
         };
         let mut query = sqlx::query(statement)
-            .bind(self.model.as_str())
+            .bind(self.model)
             .bind(self.ids)
             .bind(starts)
             .bind(column(self.prices, |it| {
@@ -219,7 +217,7 @@ impl PriceReplacement<'_> {
             .bind(column(self.prices, |it| it.verified_at.to_sqlx()))
             .bind(column(self.prices, |it| it.conditions.as_str()));
         if let Some(revision) = self.decision_revision_id {
-            query = query.bind(revision.as_str());
+            query = query.bind(revision);
         }
         query.execute(connection).await?;
         Ok(())
@@ -237,11 +235,11 @@ impl PriceReplacement<'_> {
             sql::DELETE_PLATFORM_MODEL_PRICES
         };
         let mut query = sqlx::query(statement)
-            .bind(self.model.as_str())
+            .bind(self.model)
             .bind(tiers)
             .bind(starts);
         if let Some(revision) = self.decision_revision_id {
-            query = query.bind(revision.as_str());
+            query = query.bind(revision);
         }
         query.execute(connection).await?;
         Ok(())
@@ -282,7 +280,7 @@ pub(crate) async fn replace_schedules(
     for (revision, prices) in std::iter::once((None, details.prices.as_slice())).chain(decision) {
         let ids = prices
             .iter()
-            .map(|_| entropy.uuid7(now).map(|id| id.as_str().to_owned()))
+            .map(|_| entropy.uuid7(now))
             .collect::<std::result::Result<Vec<_>, _>>()?;
         PriceReplacement {
             model,

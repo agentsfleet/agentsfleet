@@ -1,6 +1,7 @@
 //! Read durable event, usage and unsettled admission counts after the drain.
 
 use af_core::event::status::PROCESSED;
+use af_core::id::Uuid7;
 
 use crate::datastores::Datastores;
 use crate::error::Result;
@@ -37,7 +38,7 @@ const SELECT_UNSETTLED_COUNT: &str = include_str!("sql/select_unsettled_count.sq
 ///
 /// Whatever Postgres refused.
 pub(super) async fn read(stores: &Datastores, fleets: &[SeededFleet]) -> Result<Settled> {
-    let ids: Vec<&str> = fleets.iter().map(|it| it.fleet.as_str()).collect();
+    let ids: Vec<&Uuid7> = fleets.iter().map(|it| &it.fleet).collect();
     let mut connection = stores.database.acquire().await?;
     let events: EventCounts = sqlx::query_as(SELECT_EVENT_COUNTS)
         .bind(&ids)
@@ -49,19 +50,15 @@ pub(super) async fn read(stores: &Datastores, fleets: &[SeededFleet]) -> Result<
         .fetch_one(&mut *connection)
         .await?;
     Ok(Settled {
-        event_rows: count(events.0),
-        processed: count(events.1),
-        ledger_rows: count(ledger),
-        unsettled_rows: count(
+        event_rows: crate::datastores::postgres_count(events.0, "drain events")?,
+        processed: crate::datastores::postgres_count(events.1, "processed events")?,
+        ledger_rows: crate::datastores::postgres_count(ledger, "ledger rows")?,
+        unsettled_rows: crate::datastores::postgres_count(
             sqlx::query_scalar(SELECT_UNSETTLED_COUNT)
                 .bind(&ids)
                 .fetch_one(&mut *connection)
                 .await?,
-        ),
+            "unsettled admissions",
+        )?,
     })
-}
-
-/// A `count(*)`, which Postgres answers as a non-negative bigint.
-const fn count(value: i64) -> u64 {
-    value.unsigned_abs()
 }

@@ -25,14 +25,15 @@
 use af_core::id::Uuid7;
 use af_wire::report::RenewRequest;
 use jiff::Timestamp;
-use sqlx::{Connection as _, FromRow as _};
 
-use crate::error::{Result, lease_lost, lease_max_runtime, lease_not_found, query};
-use crate::lease::pull::Plane;
+use crate::error::{
+    Result, lease_cancelled, lease_lost, lease_max_runtime, lease_not_found, query,
+};
+use crate::lease::pull::LeaseService;
 use crate::lease::sql;
-use crate::lease::sql::meter::{Ending, Metering};
+use crate::lease::sql::meter::Metering;
 use crate::lease::store::Leases;
-use crate::lease::usage::{self, Pricing, SliceColumns};
+use crate::lease::usage::{self, Pricing};
 use afd_billing::Nanos;
 use afd_billing::biller::Settlement;
 use afd_billing::rates::Posture;
@@ -40,12 +41,13 @@ use afd_billing::rates::Posture;
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "renew lease load";
 
-/// Statement name, for the context a query failure carries.
-const CONTEXT_RENEW: &str = "renew and meter";
+mod extend;
 
 /// The lease a renewal is about, as the row holds it.
 #[derive(Debug, Clone)]
 pub struct Renewing {
+    /// A committed Kill survives notification loss and refuses the next renewal.
+    pub cancelled: bool,
     /// The tenant whose balance gates the renewal.
     pub tenant_id: Uuid7,
     /// The fleet whose own ceiling gates it too.
@@ -68,6 +70,8 @@ pub struct Renewing {
 /// carry known usage that must settle without granting another execution slice.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Renewed {
+    /// A committed Kill forbids another execution slice.
+    Cancelled,
     /// Both rows advanced. Carries the new deadline and the slice's usage line,
     /// logged in the same transaction and still to be settled; `None` when the
     /// slice measured nothing.
@@ -98,7 +102,7 @@ impl Leases {
     /// which is why this propagates rather than answering `None`.
     pub async fn load_for_renew(
         &self,
-        lease_id: &str,
+        lease_id: &Uuid7,
         runner_id: &Uuid7,
     ) -> Result<Option<Renewing>> {
         let mut connection = self.pool().acquire().await?;
@@ -107,90 +111,16 @@ impl Leases {
 
     pub(crate) async fn load_for_renew_on(
         connection: &mut sqlx::PgConnection,
-        lease_id: &str,
+        lease_id: &Uuid7,
         runner_id: &Uuid7,
     ) -> Result<Option<Renewing>> {
         let found: Option<LeaseForRenew> = sqlx::query_as(sql::renew::SELECT_LEASE_FOR_RENEW)
             .bind(lease_id)
-            .bind(runner_id.as_str())
+            .bind(runner_id)
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT_LOAD))?;
-        found.map(LeaseForRenew::into_renewing).transpose()
-    }
-
-    /// Advance both deadline rows, measure the slice and log its usage line,
-    /// atomically.
-    ///
-    /// The line is logged inside the transaction that advanced the deadlines,
-    /// so a renewal and what it cost commit together; the billing relay
-    /// settles it.
-    ///
-    /// # Errors
-    /// Reports an entropy source that could not produce the line's
-    /// identifier, an instant that cannot be encoded, a charge past a 64-bit
-    /// nano count, and a datastore that would not answer. Every VERDICT —
-    /// extended, capped, lost — is an `Ok`.
-    pub async fn extend(
-        &self,
-        lease: Metering<'_>,
-        lease_key: &Uuid7,
-        pricing: &Pricing,
-        now: Timestamp,
-    ) -> Result<Renewed> {
-        let mut connection = self.pool().acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_RENEW))?;
-        let capacity = afd_runner::capacity::lock(&mut transaction, lease.runner_id).await?;
-        let Some(capacity) = capacity.filter(|capacity| capacity.can_renew()) else {
-            let settlement = pricing
-                .original_requests(&mut transaction, lease_key, lease.runner_id, lease.requests)
-                .await?;
-            usage::log_measured(&mut transaction, self.entropy(), now, settlement.as_ref()).await?;
-            transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
-            return Ok(match settlement {
-                Some(settlement) => Renewed::Stopped {
-                    settlement: Some(Box::new(settlement)),
-                },
-                None => Renewed::Lost,
-            });
-        };
-        let row = lease
-            .bind(Ending::Renew)
-            .fetch_one(&mut *transaction)
-            .await
-            .map_err(query(CONTEXT_RENEW))?;
-        let answer = RenewAnswer::from_row(&row).map_err(query(CONTEXT_RENEW))?;
-        let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT_RENEW))?;
-        let Some(expires_at) = answer.extended() else {
-            let settlement = pricing
-                .original_requests(&mut transaction, lease_key, lease.runner_id, lease.requests)
-                .await?;
-            usage::log_measured(&mut transaction, self.entropy(), now, settlement.as_ref()).await?;
-            transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
-            return Ok(match settlement {
-                Some(settlement) => Renewed::Stopped {
-                    settlement: Some(Box::new(settlement)),
-                },
-                None => answer.verdict(capacity.now()),
-            });
-        };
-        // Extended means the guard row matched, and the slice is read off that
-        // same row, so it is always present here.
-        let settlement = slice.into_slice().map_or(Ok(None), |slice| {
-            pricing.settlement(lease_key, slice, lease.requests)
-        })?;
-        let allowed =
-            usage::log_measured(&mut transaction, self.entropy(), now, settlement.as_ref()).await?;
-        transaction.commit().await.map_err(query(CONTEXT_RENEW))?;
-        if !allowed {
-            return Ok(Renewed::Stopped {
-                settlement: settlement.map(Box::new),
-            });
-        }
-        Ok(Renewed::Extended {
-            expires_at,
-            settlement: settlement.map(Box::new),
-        })
+        Ok(found.map(Renewing::from))
     }
 }
 
@@ -234,36 +164,35 @@ impl RenewAnswer {
     }
 }
 
-/// [`sql::renew::SELECT_LEASE_FOR_RENEW`]'s row, ids still as stored text.
+/// [`sql::renew::SELECT_LEASE_FOR_RENEW`]'s row, retaining native identifiers.
 #[derive(sqlx::FromRow)]
 struct LeaseForRenew {
-    tenant_id: String,
-    fleet_id: String,
-    workspace_id: String,
+    cancelled: bool,
+    tenant_id: Uuid7,
+    fleet_id: Uuid7,
+    workspace_id: Uuid7,
     posture: String,
     provider: String,
     model: String,
     status: String,
 }
 
-impl LeaseForRenew {
-    fn into_renewing(self) -> Result<Renewing> {
-        let id = |text: &str, column: &'static str| {
-            Uuid7::parse(text).map_err(crate::error::row_malformed("runner.leases", column))
-        };
-        Ok(Renewing {
-            tenant_id: id(&self.tenant_id, "tenant_id")?,
-            fleet_id: id(&self.fleet_id, "fleet_id")?,
-            workspace_id: id(&self.workspace_id, "workspace_id")?,
-            posture: self.posture,
-            provider: self.provider,
-            model: self.model,
-            status: self.status,
-        })
+impl From<LeaseForRenew> for Renewing {
+    fn from(row: LeaseForRenew) -> Self {
+        Self {
+            cancelled: row.cancelled,
+            tenant_id: row.tenant_id,
+            fleet_id: row.fleet_id,
+            workspace_id: row.workspace_id,
+            posture: row.posture,
+            provider: row.provider,
+            model: row.model,
+            status: row.status,
+        }
     }
 }
 
-impl Plane {
+impl LeaseService {
     /// Extend one live lease, metering the slice since its last renewal.
     ///
     /// Answers the new deadline and what the slice drained.
@@ -278,16 +207,19 @@ impl Plane {
     pub async fn renew(
         &self,
         runner_id: &Uuid7,
-        lease_id: &str,
+        lease_id: &Uuid7,
         request: RenewRequest,
         now: Timestamp,
     ) -> Result<(Timestamp, Nanos)> {
         let Some(lease) = self.leases.load_for_renew(lease_id, runner_id).await? else {
             return Err(lease_not_found());
         };
-        let lease_key = Uuid7::parse(lease_id).map_err(|_malformed| lease_not_found())?;
-        let admission = if lease.status == sql::LEASE_STATUS_ACTIVE {
-            self.gate_renewal(&lease, &lease_key, lease_id, now).await
+        let lease_key = lease_id;
+        let admission = if lease.cancelled {
+            Err(lease_cancelled())
+        } else if lease.status == sql::LEASE_STATUS_ACTIVE {
+            self.gate_renewal(&lease, lease_key, lease_id.as_str(), now)
+                .await
         } else {
             Err(lease_lost())
         };
@@ -296,13 +228,13 @@ impl Plane {
             posture_of(&lease),
             &lease.provider,
             &lease.model,
-            lease_id,
+            lease_id.as_str(),
         )
         .await;
         if let Err(refusal) = admission {
             let _known = self
                 .leases
-                .record_known_requests(runner_id, &lease_key, &pricing, &request.requests.0, now)
+                .record_known_requests(runner_id, lease_key, &pricing, &request.requests.0, now)
                 .await?;
             return Err(refusal);
         }
@@ -313,13 +245,14 @@ impl Plane {
         };
         match self
             .leases
-            .extend(metering, &lease_key, &pricing, now)
+            .extend(metering, lease_key, &pricing, now)
             .await?
         {
             Renewed::Extended {
                 expires_at,
                 settlement,
             } => Ok((expires_at, usage::charged(settlement.as_deref()))),
+            Renewed::Cancelled => Err(lease_cancelled()),
             Renewed::Stopped { .. } | Renewed::Lost => Err(lease_lost()),
             Renewed::MaxRuntime => Err(lease_max_runtime()),
         }

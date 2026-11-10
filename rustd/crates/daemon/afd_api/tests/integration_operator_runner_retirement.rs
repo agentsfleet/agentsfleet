@@ -11,11 +11,10 @@ pub(super) async fn assert_retired(router: &axum::Router, fixture: &Fixture, pat
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
     let mut connection = fixture.database.acquire().await.expect("an API connection");
-    let events: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM runner.events WHERE runner_id = $1::uuid")
-            .bind(&fixture.runner)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the scoped runner events remain readable");
+    let events: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.events WHERE runner_id = $1")
+        .bind(&fixture.runner)
+        .fetch_one(&mut *connection)
+        .await
+        .expect("the scoped runner events remain readable");
     assert_eq!(events, 0);
 }

@@ -96,8 +96,8 @@ async fn key_opening_refuses_an_empty_sealed_key_even_if_its_projection_claims_p
         )
         .await
         .expect("seal empty key");
-    sqlx::query("UPDATE vault.secrets SET meta_has_key=true WHERE workspace_id=$1::uuid AND key_name='authoring-model'")
-        .bind(f.workspace.as_str()).execute(&mut *f.connection().await).await
+    sqlx::query("UPDATE vault.secrets SET meta_has_key=true WHERE workspace_id=$1 AND key_name='authoring-model'")
+        .bind(&f.workspace).execute(&mut *f.connection().await).await
         .expect("simulate inconsistent presence metadata");
     let providers = Providers::new(f.db.clone(), Arc::new(key()), Entropy::new());
     let mut connection = f.connection().await;

@@ -1,12 +1,17 @@
 //! The half of a state that needs a store: remembering a nonce, and spending it.
 //!
-//! # Single-use is `DEL`'s return value, not a read followed by a write
+//! # Single-use is the delete's returned row, not a read followed by a write
 //!
-//! A `GET` that finds the slot and a `DEL` that removes it are two commands
-//! with a gap, and two callbacks racing through that gap both see the slot and
-//! both complete — which is the whole failure single-use exists to prevent.
-//! `DEL` answers how many keys it removed, so exactly one caller can ever see
-//! `1`.
+//! A read that finds the row and a delete that removes it are two statements
+//! with a gap, and two callbacks racing through that gap would both complete,
+//! which is the whole failure single-use exists to prevent. `DELETE …
+//! RETURNING` answers the row to exactly one caller.
+//!
+//! # Only the digest is stored
+//!
+//! The nonce rides the signed state the browser carries. The table keeps its
+//! SHA-256, so a reader of `connector.oauth_nonces` holds nothing a callback
+//! could present.
 //!
 //! # Nothing here decides anything
 //!
@@ -15,11 +20,17 @@
 //! started it is [`super::verify`]'s and the caller's, decided before this
 //! module is reached.
 
-use af_crypto::entropy::Entropy;
-use afd_dragonfly::Dragonfly;
+use std::time::Duration;
 
-use crate::error::Result;
-use crate::registry::{STATE_TTL_SECONDS, StateBinding};
+use af_crypto::entropy::Entropy;
+use afd_db::Db;
+use jiff::Timestamp;
+use sha2::{Digest as _, Sha256};
+
+use crate::error::{Result, query};
+use crate::provider::Provider;
+use crate::registry::STATE_TTL_SECONDS;
+use crate::sql;
 
 /// Bytes of entropy behind a nonce, rendered as twice as many hex characters.
 ///
@@ -27,8 +38,8 @@ use crate::registry::{STATE_TTL_SECONDS, StateBinding};
 /// window needs, with room to spare.
 const NONCE_BYTES: usize = 16;
 
-/// What is stored at the slot, which is never read — only its presence counts.
-const SLOT_MARK: &str = "1";
+const CONTEXT_REMEMBER: &str = "remember a connect nonce";
+const CONTEXT_SPEND: &str = "spend a connect nonce";
 
 /// A fresh nonce, as the lower-case hex a state carries.
 ///
@@ -40,25 +51,39 @@ pub fn mint(entropy: &Entropy) -> Result<String> {
     Ok(hex::encode(bytes))
 }
 
+/// The stored form of a nonce.
+fn digest(nonce: &str) -> Vec<u8> {
+    Sha256::digest(nonce.as_bytes()).to_vec()
+}
+
 /// Remembers `nonce` for as long as a connect round-trip may take.
 ///
 /// # Errors
 /// Reports a store that would not answer. A connect whose nonce was not
 /// remembered must not proceed: its state would verify and then fail to
 /// consume, which reads to the person as a forged callback.
-pub async fn remember(queue: &Dragonfly, binding: StateBinding, nonce: &str) -> Result<()> {
-    Ok(queue
-        .set_for(
-            &key(binding, nonce),
-            SLOT_MARK,
-            i64::from(STATE_TTL_SECONDS),
-        )
-        .await?)
+pub async fn remember(
+    database: &Db,
+    entropy: &Entropy,
+    provider: Provider,
+    nonce: &str,
+    now: Timestamp,
+) -> Result<()> {
+    let mut connection = database.acquire().await?;
+    sqlx::query(sql::INSERT_OAUTH_NONCE)
+        .bind(entropy.uuid7(now)?)
+        .bind(provider.id())
+        .bind(digest(nonce))
+        .bind(Duration::from_secs(u64::from(STATE_TTL_SECONDS)))
+        .execute(&mut *connection)
+        .await
+        .map_err(query(CONTEXT_REMEMBER))?;
+    Ok(())
 }
 
 /// Spends `nonce`, answering whether this caller is the one that got it.
 ///
-/// `false` for a slot already spent and for one that expired — the two are
+/// `false` for a row already spent and for one that expired — the two are
 /// indistinguishable here and are answered identically by the caller, because
 /// both mean the same thing to the person: start the connect again.
 ///
@@ -66,13 +91,15 @@ pub async fn remember(queue: &Dragonfly, binding: StateBinding, nonce: &str) -> 
 /// Reports a store that would not answer. Deliberately NOT collapsed into
 /// `false`: a store that is down would otherwise read as a replayed callback,
 /// and an operator would go looking for an attacker.
-pub async fn consume(queue: &Dragonfly, binding: StateBinding, nonce: &str) -> Result<bool> {
-    Ok(queue.spend_key(&key(binding, nonce)).await?)
-}
-
-/// Where one connect's slot lives — one spelling for the write and the spend.
-fn key(binding: StateBinding, nonce: &str) -> String {
-    format!("{}{nonce}", binding.nonce_prefix)
+pub async fn consume(database: &Db, provider: Provider, nonce: &str) -> Result<bool> {
+    let mut connection = database.acquire().await?;
+    let spent = sqlx::query(sql::SPEND_OAUTH_NONCE)
+        .bind(provider.id())
+        .bind(digest(nonce))
+        .fetch_optional(&mut *connection)
+        .await
+        .map_err(query(CONTEXT_SPEND))?;
+    Ok(spent.is_some())
 }
 
 #[cfg(test)]
@@ -82,34 +109,19 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{NONCE_BYTES, key};
-    use crate::provider::Provider;
+    use super::{NONCE_BYTES, digest};
 
-    /// The slot key is the provider's namespace and the nonce, in that order.
-    ///
-    /// Pinned because the two sites that build it — remembering and spending —
-    /// would fail apart silently: a connect would start, and every completion
-    /// would answer "already used" for a slot nothing had ever spent.
+    /// The stored form is the nonce's SHA-256, never the nonce.
     #[test]
-    fn the_slot_key_is_the_providers_namespace_and_the_nonce() {
-        let binding = Provider::Slack.state_binding();
-
-        assert_eq!(key(binding, "abc"), "connect:slack:nonce:abc");
-    }
-
-    /// Two providers' slots for one nonce are different keys.
-    ///
-    /// The namespace half of the cross-connector guarantee `crate::registry`'s
-    /// suite proves for the domain half: a nonce spent under one connector must
-    /// leave the other's slot untouched.
-    #[test]
-    fn one_nonce_under_two_providers_is_two_slots() {
+    fn the_stored_form_is_a_digest_not_the_nonce() {
         let nonce = "0123456789abcdef0123456789abcdef";
 
-        assert_ne!(
-            key(Provider::Slack.state_binding(), nonce),
-            key(Provider::Jira.state_binding(), nonce),
-        );
+        let stored = digest(nonce);
+
+        assert_eq!(stored.len(), 32);
+        assert_ne!(stored.as_slice(), nonce.as_bytes());
+        assert_eq!(stored, digest(nonce), "one nonce, one digest");
+        assert_ne!(stored, digest("0123456789abcdef0123456789abcdee"));
     }
 
     /// The rendered nonce is twice the byte width, which is what hex means.
@@ -124,7 +136,7 @@ mod tests {
     }
 
     /// Each byte renders as two lower-case digits, leading zero kept, so the
-    /// slot key a state names is the one the mint remembered.
+    /// digest a state names is the one the mint remembered.
     #[test]
     fn the_rendered_nonce_is_lower_case_with_every_leading_zero() {
         let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();

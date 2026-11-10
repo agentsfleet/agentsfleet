@@ -11,7 +11,6 @@ use afd_auth::scope::{Scope, ScopeSet, TENANT_OWNER_GRANT};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TestDatabase, mint_id};
-use afd_dragonfly::{Dragonfly, SubscriptionHub};
 use afd_events::ACTOR_PREFIX;
 use afd_tenant::test_util::{Signup, delete_accounts, sign_up};
 use afd_tenant::workspace::access::ROLE_MEMBER;
@@ -37,8 +36,8 @@ pub(crate) struct Person {
     /// Unique per run: the invites waiting for an address are read across
     /// every account, so a shared address would see another run's.
     pub(crate) email: String,
-    pub(crate) tenant: String,
-    pub(crate) user: String,
+    pub(crate) tenant: Uuid7,
+    pub(crate) user: Uuid7,
     pub(crate) workspace: Uuid7,
     pub(crate) token: String,
 }
@@ -53,7 +52,7 @@ impl Person {
             display_name,
             tenant: mint_id(),
             user: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
         }
     }
 
@@ -84,7 +83,7 @@ impl Members {
             john: Person::minted("John"),
             bob: Person::minted("Bob"),
             stranger: Person::minted("Stranger"),
-            fleet: Uuid7::parse(&mint_id()).expect("a minted fleet is canonical"),
+            fleet: mint_id(),
             lane,
         };
         members.seed().await;
@@ -98,8 +97,8 @@ impl Members {
         }
         let mut connection = self.database.acquire().await.expect("an API connection");
         FleetSeed::new(
-            self.fleet.as_str(),
-            self.john.workspace.as_str(),
+            &self.fleet,
+            &self.john.workspace,
             &self.john.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -111,7 +110,7 @@ impl Members {
         .expect("John's fleet seeds");
         sqlx::query(
             "INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, '1970-01-01T00:00:00.002Z')",
+             VALUES ($1, $2, $3, $4, '1970-01-01T00:00:00.002Z')",
         )
         .bind(mint_id())
         .bind(&self.john.tenant)
@@ -132,7 +131,7 @@ impl Members {
             email: &person.email,
             name: &name,
             display_name: Some(person.display_name),
-            workspace: person.workspace.as_str(),
+            workspace: &person.workspace,
         };
         sign_up(&self.database, &signup).await;
     }
@@ -151,17 +150,17 @@ impl Members {
     /// The actor of every message admitted to John's fleet.
     pub(crate) async fn admitted_actors(&self) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query_scalar("SELECT actor FROM fleet.admissions WHERE fleet_id = $1::uuid")
-            .bind(self.fleet.as_str())
+        sqlx::query_scalar("SELECT actor FROM fleet.admissions WHERE fleet_id = $1")
+            .bind(&self.fleet)
             .fetch_all(&mut *connection)
             .await
             .expect("John's fleet's admissions read")
     }
 
     /// How many sends `invite` has counted, read from its row.
-    pub(crate) async fn email_attempts(&self, invite: &str) -> i32 {
+    pub(crate) async fn email_attempts(&self, invite: &Uuid7) -> i32 {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query_scalar("SELECT email_attempt_count FROM identity.invites WHERE id = $1::uuid")
+        sqlx::query_scalar("SELECT email_attempt_count FROM identity.invites WHERE id = $1")
             .bind(invite)
             .fetch_one(&mut *connection)
             .await
@@ -181,26 +180,22 @@ impl Members {
         self.fleet(who, scopes).router()
     }
 
-    /// The same, able to steer and stream through `queue` and `hub`.
+    /// The same, able to steer and stream through `bus`.
     pub(crate) fn live_router(
         &self,
         who: &Person,
         scopes: ScopeSet,
-        queue: Dragonfly,
-        hub: SubscriptionHub,
+        bus: afd_bus::Handle,
     ) -> Router {
         self.fleet(who, scopes)
-            .with_steering_queue(self.database.clone(), queue)
-            .with_live_hub(hub)
+            .with_steering_queue(self.database.clone(), bus.clone())
+            .with_live_bus(bus)
             .router()
     }
 
-    /// A router for `who` over the lane's Dragonfly, and the hub its streams
-    /// read through, which the caller shuts down.
-    pub(crate) async fn live(&self, who: &Person, scopes: ScopeSet) -> (Router, SubscriptionHub) {
-        let hub = harness::live_hub().await;
-        let router = self.live_router(who, scopes, harness::connect_redis().await, hub.clone());
-        (router, hub)
+    /// A router for `who` over a lane NATS connection of its own.
+    pub(crate) async fn live(&self, who: &Person, scopes: ScopeSet) -> Router {
+        self.live_router(who, scopes, harness::bus().await)
     }
 
     /// John's fleets, under his workspace.
@@ -219,7 +214,7 @@ impl Members {
     }
 
     pub(crate) async fn cleanup(self) {
-        let accounts = [&*self.john.tenant, &self.bob.tenant, &self.stranger.tenant];
+        let accounts = [&self.john.tenant, &self.bob.tenant, &self.stranger.tenant];
         delete_accounts(&self.database, &accounts).await;
         drop(self.database);
         self.lane.cleanup().await;

@@ -51,14 +51,14 @@ pub const DELETE_TENANT_KEY: &str = include_str!("apikey/delete_tenant_key.sql")
 /// The first page. `{order}` the ORDER BY clause · `$1` tenant, `$2` limit.
 pub const SELECT_TENANT_KEY_PAGE_FIRST: &str = "\
 WITH tenant_total AS ( \
-    SELECT COUNT(*)::bigint AS total FROM identity.api_keys WHERE tenant_id = $1::uuid \
+    SELECT COUNT(*)::bigint AS total FROM identity.api_keys WHERE tenant_id = $1 \
 ) \
 SELECT p.id, p.name, p.created_at, p.revoked_at, t.total \
 FROM tenant_total t \
 LEFT JOIN LATERAL ( \
-    SELECT id::text AS id, name, created_at, revoked_at \
+    SELECT id AS id, name, created_at, revoked_at \
     FROM identity.api_keys \
-    WHERE tenant_id = $1::uuid \
+    WHERE tenant_id = $1 \
     ORDER BY {order} \
     LIMIT $2 \
 ) p ON TRUE \
@@ -70,15 +70,15 @@ ORDER BY {order}";
 /// `$1` tenant, `$2` boundary instant, `$3` boundary id, `$4` limit.
 pub const SELECT_TENANT_KEY_PAGE_AFTER_CREATED: &str = "\
 WITH tenant_total AS ( \
-    SELECT COUNT(*)::bigint AS total FROM identity.api_keys WHERE tenant_id = $1::uuid \
+    SELECT COUNT(*)::bigint AS total FROM identity.api_keys WHERE tenant_id = $1 \
 ) \
 SELECT p.id, p.name, p.created_at, p.revoked_at, t.total \
 FROM tenant_total t \
 LEFT JOIN LATERAL ( \
-    SELECT id::text AS id, name, created_at, revoked_at \
+    SELECT id AS id, name, created_at, revoked_at \
     FROM identity.api_keys \
-    WHERE tenant_id = $1::uuid \
-      AND (created_at, id) {comparator} ($2::timestamptz, $3::uuid) \
+    WHERE tenant_id = $1 \
+      AND (created_at, id) {comparator} ($2::timestamptz, $3) \
     ORDER BY {order} \
     LIMIT $4 \
 ) p ON TRUE \
@@ -87,15 +87,15 @@ ORDER BY {order}";
 /// A continuation from a name boundary. Same slots and binds, different column.
 pub const SELECT_TENANT_KEY_PAGE_AFTER_NAME: &str = "\
 WITH tenant_total AS ( \
-    SELECT COUNT(*)::bigint AS total FROM identity.api_keys WHERE tenant_id = $1::uuid \
+    SELECT COUNT(*)::bigint AS total FROM identity.api_keys WHERE tenant_id = $1 \
 ) \
 SELECT p.id, p.name, p.created_at, p.revoked_at, t.total \
 FROM tenant_total t \
 LEFT JOIN LATERAL ( \
-    SELECT id::text AS id, name, created_at, revoked_at \
+    SELECT id AS id, name, created_at, revoked_at \
     FROM identity.api_keys \
-    WHERE tenant_id = $1::uuid \
-      AND (name, id) {comparator} ($2::text, $3::uuid) \
+    WHERE tenant_id = $1 \
+      AND (name, id) {comparator} ($2::text, $3) \
     ORDER BY {order} \
     LIMIT $4 \
 ) p ON TRUE \

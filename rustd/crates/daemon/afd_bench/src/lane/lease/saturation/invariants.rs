@@ -16,6 +16,7 @@
 use crate::datastores::Datastores;
 use crate::error::{ErrorKind, Result};
 use crate::fixture::RunPrefix;
+use af_core::id::Uuid7;
 
 /// An attempt still running, as `afd_authoring` spells it.
 ///
@@ -95,7 +96,7 @@ impl Census {
 pub(super) async fn count(
     stores: &Datastores,
     prefix: &RunPrefix,
-    tenants: &[String],
+    tenants: &[Uuid7],
     chat_issued: u64,
     recovered: bool,
 ) -> Result<Census> {
@@ -119,9 +120,9 @@ pub(super) async fn count(
         .await?;
     Ok(Census {
         chat_issued,
-        doubled_chat: unsigned(doubled_chat),
-        doubled_fleet: unsigned(doubled_fleet),
-        oversubscribed: unsigned(oversubscribed),
+        doubled_chat: crate::datastores::postgres_count(doubled_chat, "doubled drafts")?,
+        doubled_fleet: crate::datastores::postgres_count(doubled_fleet, "doubled fleets")?,
+        oversubscribed: crate::datastores::postgres_count(oversubscribed, "oversubscribed hosts")?,
         recovered,
     })
 }
@@ -131,18 +132,13 @@ pub(super) async fn count(
 /// # Errors
 ///
 /// Whatever Postgres refused.
-pub(super) async fn issued(stores: &Datastores, tenants: &[String]) -> Result<u64> {
+pub(super) async fn issued(stores: &Datastores, tenants: &[Uuid7]) -> Result<u64> {
     let mut connection = stores.database.acquire().await?;
     let issued: i64 = sqlx::query_scalar(ISSUED_ATTEMPTS)
         .bind(tenants)
         .fetch_one(&mut *connection)
         .await?;
-    Ok(unsigned(issued))
-}
-
-/// A `count(*)`, which Postgres never answers negative.
-fn unsigned(count: i64) -> u64 {
-    u64::try_from(count).unwrap_or_default()
+    crate::datastores::postgres_count(issued, "issued attempts")
 }
 
 #[cfg(test)]

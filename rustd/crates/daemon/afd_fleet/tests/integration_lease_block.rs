@@ -18,6 +18,7 @@
 
 use crate::seed;
 use crate::support;
+use af_core::id::Uuid7;
 use afd_fleet::lease::admit::Refusal;
 use afd_fleet::lease::{Delivery, Ended};
 use sqlx::Row as _;
@@ -35,7 +36,7 @@ const SECOND_LABEL: &str = "approval_denied";
 const DETAIL: &str = "top up the workspace balance";
 
 /// Two columns of one `fleet.events` row, as text.
-async fn failure_of(fixtures: &Fixtures, fleet: &str, event: &str) -> (String, Option<String>) {
+async fn failure_of(fixtures: &Fixtures, fleet: &Uuid7, event: &Uuid7) -> (String, Option<String>) {
     let mut connection = fixtures
         .database
         .acquire()
@@ -43,7 +44,7 @@ async fn failure_of(fixtures: &Fixtures, fleet: &str, event: &str) -> (String, O
         .expect("a pooled connection");
     let row = sqlx::query(
         "SELECT status, failure_reason, failure_detail
-           FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2",
+           FROM fleet.events WHERE fleet_id = $1 AND event_id = $2",
     )
     .bind(fleet)
     .bind(event)
@@ -83,7 +84,7 @@ async fn received(fixtures: &Fixtures) -> afd_fleet::lease::Acquired {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let acquired = received(&fixtures).await;
     let fleet = &acquired.fleet_id;
     let event = &acquired.event_id;
@@ -109,7 +110,7 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
     // The two counters differ (one event, nothing charged), so a closing that
     // swapped their positions would disagree with the read below.
     if let Ended::Now(closed) = &ended {
-        let stored = afd_events::fleet_counters(&fixtures.database, fleet.as_str())
+        let stored = afd_events::fleet_counters(&fixtures.database, fleet)
             .await
             .expect("the counters read back");
         assert_ne!(stored.events_processed, stored.budget_used_nanos);
@@ -118,7 +119,7 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
             "the closing's snapshot is the database's"
         );
     }
-    let (label, detail) = failure_of(&fixtures, fleet.as_str(), event).await;
+    let (label, detail) = failure_of(&fixtures, fleet, event).await;
     assert_eq!(label, FIRST_LABEL);
     assert_eq!(detail.as_deref(), Some(DETAIL));
 }
@@ -130,7 +131,7 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     // acknowledgement was lost comes back; without the `status = 'received'`
     // predicate the second pass would rewrite the row under a different label,
     // and the event that a human denied would carry a billing refusal instead.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let acquired = received(&fixtures).await;
     let fleet = &acquired.fleet_id;
     let event = &acquired.event_id;
@@ -154,7 +155,7 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     assert!(matches!(first, Ended::Now(_)));
     // The settled admission refuses a second terminal mutation.
     assert_eq!(second.code(), af_core::error_code::RUN_STALE_FENCING_TOKEN);
-    let (label, detail) = failure_of(&fixtures, fleet.as_str(), event).await;
+    let (label, detail) = failure_of(&fixtures, fleet, event).await;
     assert_eq!(label, FIRST_LABEL, "the first refusal must stand");
     assert_eq!(detail.as_deref(), Some(DETAIL));
 }
@@ -166,7 +167,7 @@ async fn test_a_refusal_with_no_instruction_stores_null_rather_than_empty() {
     // pass every `IS NOT NULL` check and render as a blank instruction in the
     // dashboard, which reads as "we have nothing to tell you" rather than as
     // "there was nothing to tell".
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let acquired = received(&fixtures).await;
     let fleet = &acquired.fleet_id;
     let event = &acquired.event_id;
@@ -177,7 +178,7 @@ async fn test_a_refusal_with_no_instruction_stores_null_rather_than_empty() {
         .await
         .expect("the refusal must write");
 
-    let (label, detail) = failure_of(&fixtures, fleet.as_str(), event).await;
+    let (label, detail) = failure_of(&fixtures, fleet, event).await;
     assert_eq!(label, FIRST_LABEL);
     assert_eq!(detail, None, "an empty detail must store as SQL NULL");
 }

@@ -34,15 +34,13 @@ impl Unfit {
         let mut connection = fixtures.database.acquire().await.expect("a connection");
         let statement = match self {
             Self::Degraded => {
-                sqlx::query("UPDATE runner.runners SET degraded_reason = $2 WHERE id = $1::uuid")
-                    .bind(runner.as_str())
+                sqlx::query("UPDATE runner.runners SET degraded_reason = $2 WHERE id = $1")
+                    .bind(runner)
                     .bind(DEGRADED_REASON)
             }
-            Self::Drained => {
-                sqlx::query("UPDATE runner.runners SET status = $2 WHERE id = $1::uuid")
-                    .bind(runner.as_str())
-                    .bind(RUNNER_STATUS_DRAINED)
-            }
+            Self::Drained => sqlx::query("UPDATE runner.runners SET status = $2 WHERE id = $1")
+                .bind(runner)
+                .bind(RUNNER_STATUS_DRAINED),
         };
         statement
             .execute(&mut *connection)
@@ -53,8 +51,8 @@ impl Unfit {
 
 /// Whether another runner's poll leases a fleet whose holder beat at
 /// enrolment, held it live, and then became `unfit`; and the slot after.
-async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<String>), String) {
-    let fixtures = Fixtures::create_with_queue().await;
+async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<Uuid7>), Uuid7) {
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder, other],
         fleet,
@@ -76,7 +74,7 @@ async fn taken_from(unfit: Unfit) -> (bool, (Option<Timestamp>, Option<String>),
     let after = slot(&fixtures, &fleet).await;
 
     fixtures.cleanup().await;
-    (found.is_some(), after, other.as_str().to_owned())
+    (found.is_some(), after, other)
 }
 
 #[tokio::test]

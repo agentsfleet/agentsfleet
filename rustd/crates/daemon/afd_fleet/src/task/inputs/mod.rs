@@ -2,6 +2,7 @@
 
 mod recover;
 
+use af_core::id::Uuid7;
 use af_core::paging::Cursor;
 use af_wire::task::{
     DecisionTaskVersion, TaskAcceptedInput, TaskHumanInput, TaskInputCandidate, TaskInputsQuery,
@@ -16,7 +17,7 @@ use crate::{
 
 #[derive(sqlx::FromRow)]
 struct Human {
-    id: String,
+    id: Uuid7,
     sequence: i64,
     request_json: String,
     producer: String,
@@ -24,7 +25,7 @@ struct Human {
 
 #[derive(sqlx::FromRow)]
 struct Candidate {
-    id: String,
+    id: Uuid7,
     title: String,
     state: String,
     generation: i64,
@@ -32,10 +33,10 @@ struct Candidate {
 
 #[derive(sqlx::FromRow)]
 struct InputRow {
-    source_admission_id: String,
+    source_admission_id: Uuid7,
     plan_digest: String,
-    item_id: String,
-    task_id: String,
+    item_id: Uuid7,
+    task_id: Uuid7,
     generation: i64,
     sequence: i64,
     action: String,
@@ -58,12 +59,8 @@ pub(super) async fn read(
     let mut tx = transaction::begin(&mut connection).await?;
     let current = guard::lease(&mut tx, lease).await?;
     let current_task = guard::context(&mut tx, &current).await?;
-    let source = super::admit::source::load(
-        &mut tx,
-        &current,
-        &guard::id(&current.source_admission_id, "source_admission_id")?,
-    )
-    .await?;
+    let source =
+        super::admit::source::load(&mut tx, &current, &current.source_admission_id).await?;
     let current_message = if super::admit::source::check_human(&source).is_ok() {
         Some(source.message()?.into_owned())
     } else {
@@ -79,10 +76,10 @@ pub(super) async fn read(
         .bind(format!("{}%", afd_events::ACTOR_PREFIX))
         .bind(after)
         .bind(i64::from(input.limit) + 1)
-        .bind(lease.lease_id.as_str())
+        .bind(lease.lease_id)
         .bind(current.fence)
         .bind(crate::lease::sql::LEASE_STATUS_ACTIVE)
-        .bind(None::<&str>)
+        .bind(None::<&str>.map(crate::task::guard::wire).transpose()?)
         .bind(true)
         .bind(afd_admission::Producer::SlackMention.as_str())
         .bind(afd_connector::Provider::Slack.id())
@@ -98,7 +95,7 @@ pub(super) async fn read(
     let next_cursor = more.then(|| humans.last()).flatten().map(|last| {
         Cursor::Text {
             value: last.sequence.to_string(),
-            id: last.id.clone(),
+            id: last.id.clone().into(),
         }
         .to_string()
     });
@@ -115,19 +112,19 @@ pub(super) async fn read(
         .map(|source| {
             Ok(TaskHumanInput {
                 accepted: recovered.remove(&source.id),
-                source_admission_id: source.id,
+                source_admission_id: source.id.into(),
                 sequence: row::counter(source.sequence, "input sequence")?,
                 message: super::admit::source::message_for(&source.producer, &source.request_json)?
                     .into_owned(),
             })
         })
         .collect::<Result<Vec<_>>>()?;
-    let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id.as_str()).await?;
+    let execution_deadline = crate::lease::deadline::read(&mut tx, lease.lease_id).await?;
     tx.commit().await.map_err(query("finish task input read"))?;
     transaction::recycle(connection);
     Ok(TaskInputsResponse {
-        source_admission_id: current.source_admission_id,
-        accepted_revision_id: current.revision_id,
+        source_admission_id: current.source_admission_id.into(),
+        accepted_revision_id: current.revision_id.map(String::from),
         current_message,
         inputs,
         accepted_inputs,
@@ -185,11 +182,11 @@ async fn accepted(
         .into_iter()
         .map(|item| {
             Ok(TaskAcceptedInput {
-                source_admission_id: item.source_admission_id,
+                source_admission_id: item.source_admission_id.into(),
                 plan_digest: item.plan_digest,
-                item_id: item.item_id,
+                item_id: item.item_id.into(),
                 task: DecisionTaskVersion {
-                    task_id: item.task_id,
+                    task_id: item.task_id.into(),
                     generation: row::counter(item.generation, "task generation")?,
                 },
                 sequence: row::counter(item.sequence, "input sequence")?,
@@ -228,7 +225,7 @@ async fn candidates(
         .into_iter()
         .map(|candidate| {
             Ok(TaskInputCandidate {
-                task_id: candidate.id,
+                task_id: candidate.id.into(),
                 title: candidate.title,
                 state: row::state(&candidate.state)?,
                 generation: row::counter(candidate.generation, "generation")?,

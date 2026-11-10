@@ -25,10 +25,10 @@ pub(super) async fn refusal(
     workspace: &Uuid7,
     new: &NewSchedule<'_>,
 ) -> Result<Option<Refused>> {
-    let fleet = new.fleet.as_str();
+    let fleet = &new.fleet;
     let in_workspace = sqlx::query(sql::FLEET_IN_WORKSPACE)
         .bind(fleet)
-        .bind(workspace.as_str())
+        .bind(workspace)
         .fetch_optional(&mut *transaction)
         .await
         .map_err(error::query(CONTEXT_WRITE))?;
@@ -78,7 +78,7 @@ enum Tally {
 
 impl Tally {
     /// How many of `fleet`'s schedules this tally covers.
-    async fn count(self, transaction: &mut PgConnection, fleet: &str) -> Result<usize> {
+    async fn count(self, transaction: &mut PgConnection, fleet: &Uuid7) -> Result<usize> {
         let query = match self {
             Self::Fleet => sqlx::query_scalar::<_, i64>(sql::COUNT_FOR_FLEET).bind(fleet),
             Self::Source(source) => sqlx::query_scalar::<_, i64>(sql::COUNT_FOR_SOURCE)

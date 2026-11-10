@@ -23,7 +23,7 @@ pub(super) const SUBJECT: &str = "user_live_task_operator";
 
 pub(super) struct Tasks<'lane> {
     pub(super) base: Owner<'lane>,
-    pub(super) ids: [String; 4],
+    pub(super) ids: [Uuid7; 4],
 }
 
 impl<'lane> Tasks<'lane> {
@@ -54,15 +54,11 @@ impl<'lane> Tasks<'lane> {
     }
 
     pub(super) fn lifecycle(&self) -> afd_fleet::task::Tasks {
-        let queue = afd_dragonfly::Dragonfly::unreachable(&harness::unreachable_queue())
-            .expect("lazy task control queue");
-        let leases = afd_fleet::lease::Leases::new(
-            self.base.database.clone(),
-            queue.clone(),
-            Entropy::new(),
-        );
+        let bus = afd_bus::test_util::unreachable();
+        let leases =
+            afd_fleet::lease::Leases::new(self.base.database.clone(), bus.clone(), Entropy::new());
         let admissions =
-            afd_admission::Admissions::new(self.base.database.clone(), queue, Entropy::new());
+            afd_admission::Admissions::new(self.base.database.clone(), bus, Entropy::new());
         afd_fleet::task::Tasks::new(
             leases,
             admissions,
@@ -100,7 +96,7 @@ impl<'lane> Tasks<'lane> {
             sqlx::query(include_str!("fixtures/seed_item.sql"))
                 .bind(&item)
                 .bind(&self.base.fleet)
-                .bind(self.base.workspace.as_str())
+                .bind(&self.base.workspace)
                 .bind(&admission)
                 .bind(i32::try_from(ordinal).expect("four fixture items"))
                 .bind(id)
@@ -130,9 +126,9 @@ impl<'lane> Tasks<'lane> {
 pub(super) struct Owner<'lane> {
     pub(super) lane: &'lane TestDatabase,
     pub(super) database: Db,
-    tenant: String,
+    tenant: Uuid7,
     pub(super) workspace: Uuid7,
-    pub(super) fleet: String,
+    pub(super) fleet: Uuid7,
     pub(super) token: String,
     // Pooled handles drop first on unwind, before cleanup waits on their rows.
     cleanup: OwnedRows,
@@ -142,7 +138,7 @@ impl<'lane> Owner<'lane> {
     async fn create(lane: &'lane TestDatabase) -> Self {
         let database = lane.open(DbRole::Api, &[]).await;
         let tenant = mint_id();
-        let workspace = Uuid7::parse(&mint_id()).expect("workspace identity");
+        let workspace = mint_id();
         let fleet = mint_id();
         let mut cleanup = OwnedRows::new(lane);
         cleanup.record(include_str!("fixtures/cleanup.sql"), &tenant);
@@ -157,7 +153,7 @@ impl<'lane> Owner<'lane> {
             .insert(&mut *connection)
             .await
             .expect("tenant seeds");
-        WorkspaceSeed::new(workspace.as_str(), &tenant)
+        WorkspaceSeed::new(&workspace, &tenant)
             .name("Task verification")
             .insert(&mut *connection)
             .await
@@ -168,7 +164,7 @@ impl<'lane> Owner<'lane> {
             .expect("reader credential seeds");
         FleetSeed::new(
             &fleet,
-            workspace.as_str(),
+            &workspace,
             &tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -190,9 +186,9 @@ impl<'lane> Owner<'lane> {
     }
 
     pub(super) async fn other_workspace(&self) -> Uuid7 {
-        let id = Uuid7::parse(&mint_id()).expect("other workspace identity");
+        let id = mint_id();
         let mut connection = self.database.acquire().await.expect("workspace connection");
-        WorkspaceSeed::new(id.as_str(), &self.tenant)
+        WorkspaceSeed::new(&id, &self.tenant)
             .name("Other task workspace")
             .insert(&mut *connection)
             .await
@@ -200,7 +196,7 @@ impl<'lane> Owner<'lane> {
         id
     }
 
-    pub(super) async fn empty_fleet(&self) -> String {
+    pub(super) async fn empty_fleet(&self) -> Uuid7 {
         let id = mint_id();
         let mut connection = self
             .database
@@ -209,7 +205,7 @@ impl<'lane> Owner<'lane> {
             .expect("empty fleet connection");
         FleetSeed::new(
             &id,
-            self.workspace.as_str(),
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )

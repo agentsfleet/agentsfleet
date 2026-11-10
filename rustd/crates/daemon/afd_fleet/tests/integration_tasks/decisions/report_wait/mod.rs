@@ -82,7 +82,7 @@ async fn scenario(
         "WAIT decision is already paid"
     );
     if invalid_checkpoint {
-        semantic.checkpoint_id = Some(afd_db::test_util::mint_id());
+        semantic.checkpoint_id = Some(afd_db::test_util::mint_id().into());
     }
     // These responses become available only after the WAIT receipt committed.
     observe(&server, observation);
@@ -122,7 +122,7 @@ async fn capture(fixture: &Decisions<'_>, task: &DecisionTaskVersion) -> (String
         .await
         .expect("incremental recovery allocation");
     let plan = checkpoint::complete(&storage, case, task, &plan).await;
-    let saved = checkpoint_row(case, &plan.checkpoint_id).await;
+    let saved = checkpoint_row(case, &id(&plan.checkpoint_id)).await;
     (plan.checkpoint_id, saved)
 }
 
@@ -136,6 +136,7 @@ async fn settle(
 ) {
     let case = fixture.case;
     let task = semantic.task.clone();
+    let task_id = id(&task.task_id);
     let report = report_settlement::request(case, Some(semantic));
     let mut plane = case.held.fixtures.plane();
     plane.task_reports = Some(Arc::new(tasks.clone()));
@@ -145,25 +146,25 @@ async fn settle(
         .await
         .expect("ordinary report settlement");
     let snapshot = tasks
-        .read(&case.scope, &id(&task.task_id))
+        .read(&case.scope, &task_id)
         .await
         .expect("settled task");
     support::assert_state(&snapshot, expected, checkpoint);
-    let after = counts(case, &task.task_id).await;
+    let after = counts(case, &task_id).await;
     support::assert_counts(after, expected);
-    assert_eq!(checkpoint_row(case, checkpoint).await, *saved);
+    assert_eq!(checkpoint_row(case, &id(checkpoint)).await, *saved);
     plane
         .report(&case.held.runner, &report, now)
         .await
         .expect("duplicate report replay");
     assert_eq!(
         tasks
-            .read(&case.scope, &id(&task.task_id))
+            .read(&case.scope, &task_id)
             .await
             .expect("stable task"),
         snapshot
     );
-    assert_eq!(counts(case, &task.task_id).await, after);
+    assert_eq!(counts(case, &task_id).await, after);
     assert_eq!(
         fixture.counts().await,
         (1, 1, 1),

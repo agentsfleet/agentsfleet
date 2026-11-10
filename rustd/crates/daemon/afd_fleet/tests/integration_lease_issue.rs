@@ -17,7 +17,6 @@
 
 use crate::seed;
 use crate::support;
-use af_core::id::Uuid7;
 use afd_fleet::lease::{Billed, Delivery, Kind};
 
 use self::seed::{MODEL, POSTURE, PROVIDER, Seeded, seeded};
@@ -33,7 +32,7 @@ use crate::rows::{LAPSE, Row};
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,
@@ -60,7 +59,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
         "a newly leased event has no row yet"
     );
 
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    let tenant_id = tenant.clone();
     let issued = leases
         .issue(
             &first,
@@ -76,7 +75,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
         .await
         .expect("the lease row must be written")
         .expect("the claim is still held");
-    let lease = issued.lease_id.as_str();
+    let lease = &issued.lease_id;
 
     assert_eq!(
         fixtures.text(Row::Lease(lease), "status").await,
@@ -134,7 +133,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_every_lease_meters_from_its_own_issue() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,
@@ -142,7 +141,7 @@ async fn test_every_lease_meters_from_its_own_issue() {
         ..
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    let tenant_id = tenant.clone();
     let billed = Billed {
         tenant_id: &tenant_id,
         posture: POSTURE,
@@ -193,7 +192,7 @@ async fn test_every_lease_meters_from_its_own_issue() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_stale_claim_writes_no_lease() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,
@@ -202,7 +201,7 @@ async fn test_a_stale_claim_writes_no_lease() {
     } = seeded::<2>(&fixtures).await;
     let leases = fixtures.leases();
     let now = fixtures.enrolled_at();
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    let tenant_id = tenant.clone();
     let billed = Billed {
         tenant_id: &tenant_id,
         posture: POSTURE,
@@ -239,7 +238,7 @@ async fn test_a_stale_claim_writes_no_lease() {
     assert!(superseded.is_none(), "a superseded fence writes no lease");
     let mut connection = fixtures.database.acquire().await.expect("database");
     let active: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM runner.leases WHERE fleet_id = $1::uuid AND status = 'active'",
+        "SELECT count(*) FROM runner.leases WHERE fleet_id = $1 AND status = 'active'",
     )
     .bind(&fleet)
     .fetch_one(&mut *connection)

@@ -2,6 +2,7 @@
 use crate::catalogue::{ModelRow, PriceProtocol, prices_for};
 use crate::error::{Result, query};
 use crate::{Model, Models, sql};
+use af_core::id::Uuid7;
 use af_core::paging::{MAX_LIMIT, struct_cursor};
 use serde::{Deserialize, Serialize};
 use sqlx::Connection as _;
@@ -90,7 +91,7 @@ impl Models {
             .fetch_all(&mut *transaction)
             .await
             .map_err(query(CONTEXT_LIST))?;
-        let ids: Vec<&str> = rows.iter().map(|model| model.id.as_str()).collect();
+        let ids: Vec<&Uuid7> = rows.iter().map(|model| &model.id).collect();
         let mut prices = prices_for(&mut *transaction, &ids, PriceProtocol::Coding)
             .await
             .map_err(query(CONTEXT_LIST))?;
@@ -101,11 +102,11 @@ impl Models {
         let models = rows
             .into_iter()
             .map(|model| {
-                let schedule = prices.take(&model.id);
-                let decisions = decision_prices.take(&model.id);
+                let schedule = prices.take(model.id.as_str());
+                let decisions = decision_prices.take(model.id.as_str());
                 model.parse(schedule, decisions)
             })
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<Vec<_>>();
         Ok((models, version))
     }
 }

@@ -14,7 +14,7 @@ use crate::integration_tool_call_details::{execute, leased, post_records, record
 
 /// Dimension 1.7. Records go with their event.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_event_delete_cascades_tool_call_details() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -22,7 +22,7 @@ async fn test_event_delete_cascades_tool_call_details() {
     assert_eq!(status, 200);
     execute(
         &run,
-        "DELETE FROM fleet.events WHERE fleet_id = $1::uuid AND event_id = $2",
+        "DELETE FROM fleet.events WHERE fleet_id = $1 AND event_id = $2",
     )
     .await;
     assert_eq!(rows(&run).await, 0);
@@ -33,7 +33,7 @@ async fn test_event_delete_cascades_tool_call_details() {
 /// Dimension 1.8. The runtime role holds every privilege the verb and the
 /// read use.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_details_grants_allow_runtime() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -43,7 +43,7 @@ async fn test_tool_call_details_grants_allow_runtime() {
             &format!(
                 "SELECT (has_table_privilege('api_runtime', \
                  'fleet.tool_calls', '{privilege}') \
-                 AND $1 <> '' AND $2 <> '')::int::bigint"
+                 AND $1 IS NOT NULL AND $2 IS NOT NULL)::int::bigint"
             ),
             None,
         )

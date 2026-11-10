@@ -16,7 +16,7 @@ use crate::integration_tenant_registry::{mint_tenant_token, provider_listener};
 use crate::integration_tool_trace::{stored_trace, tenant_get};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_read_text_through_admitted_redirects() {
     let provider = provider_listener().await;
     for redirect in [301, 302, 303, 307, 308] {
@@ -27,7 +27,7 @@ async fn should_read_text_through_admitted_redirects() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_interrupted_job_log_returns_no_usable_source_text() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, "github-log-reader", &[], None).await;

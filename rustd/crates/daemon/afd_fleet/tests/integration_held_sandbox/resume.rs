@@ -13,7 +13,7 @@ use af_core::timing::{LEASE_TTL, RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use afd_fleet::lease::{Billed, Kind, Leases};
 use jiff::Timestamp;
 
-use super::{hold, id, live};
+use super::{hold, live};
 use crate::rows::{LAPSE, Row};
 use crate::seed::{self, MODEL, POSTURE, PROVIDER, Seeded, seeded, seeded_parts};
 use crate::support::Fixtures;
@@ -24,9 +24,9 @@ fn until(fixtures: &Fixtures) -> Timestamp {
 }
 
 /// Whether `runner`'s won claim on `fleet` resumes its hold.
-async fn resumes(leases: &Leases, fleet: &str, runner: &Uuid7) -> bool {
+async fn resumes(leases: &Leases, fleet: &Uuid7, runner: &Uuid7) -> bool {
     leases
-        .claim(&id(fleet), runner, LEASE_TTL)
+        .claim(fleet, runner, LEASE_TTL)
         .await
         .expect("the claim answers")
         .expect("the slot is won")
@@ -36,7 +36,7 @@ async fn resumes(leases: &Leases, fleet: &str, runner: &Uuid7) -> bool {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_the_holders_claim_on_a_live_hold_resumes_it() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
@@ -49,7 +49,7 @@ async fn test_the_holders_claim_on_a_live_hold_resumes_it() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_claim_after_the_hold_lapsed_builds_fresh() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let (never_held, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
@@ -73,24 +73,24 @@ async fn test_a_claim_after_the_hold_lapsed_builds_fresh() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_claim_after_another_runner_ran_the_fleet_builds_fresh() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
     let silence = RUNNER_OFFLINE_AFTER.saturating_mul(2);
     fixtures
-        .age(Row::Runner(holder.as_str()), "last_seen_at", silence)
+        .age(Row::Runner(&holder), "last_seen_at", silence)
         .await;
 
     let others = leases
-        .claim(&id(&fleet), &other, LEASE_TTL)
+        .claim(&fleet, &other, LEASE_TTL)
         .await
         .expect("the claim answers")
         .expect("a silent holder's fleet is won");
     let mut connection = fixtures.database.acquire().await.expect("a connection");
     leases
-        .release_through(&mut connection, &id(&fleet), others.fence, None)
+        .release_through(&mut connection, &fleet, others.fence, None)
         .await
         .expect("the other runner's report lands");
     drop(connection);
@@ -109,7 +109,7 @@ async fn test_a_claim_after_another_runner_ran_the_fleet_builds_fresh() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder],
         fleet,
@@ -120,7 +120,6 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
     live(&fixtures, &holder).await;
     hold(&leases, &fixtures, &fleet, &holder, until(&fixtures)).await;
     let now = fixtures.enrolled_at();
-    let tenant_id = Uuid7::parse(&tenant).expect("a seeded tenant");
 
     let fresh = seed::select_fleet(&leases, &holder, &fleet)
         .await
@@ -130,7 +129,7 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
         .await
         .expect("the event's row opens");
     let billed = Billed {
-        tenant_id: &tenant_id,
+        tenant_id: &tenant,
         posture: POSTURE,
         provider: PROVIDER,
         model: MODEL,

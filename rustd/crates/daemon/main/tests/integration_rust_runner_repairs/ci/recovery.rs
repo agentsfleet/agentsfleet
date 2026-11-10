@@ -12,7 +12,7 @@ use agentsfleetd::supervisor::Supervisor;
 use hyper::Method;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_reconcile_uncertain_repair_writes() {
     for loss in [Acknowledgement::LoseRef, Acknowledgement::LoseDraft] {
         for readback in [Readback::Exact, Readback::Forbidden, Readback::WrongHead] {
@@ -24,7 +24,12 @@ async fn should_reconcile_uncertain_repair_writes() {
 async fn recover(loss: Acknowledgement, readback: Readback) {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, "ci-repairer", &[], None).await;
-    let remote = Remote::new(LINKWARDEN, &branch_for(&run.event_id), loss, readback);
+    let remote = Remote::new(
+        LINKWARDEN,
+        &branch_for(run.event_id.as_str()),
+        loss,
+        readback,
+    );
     let upstream = Upstream::serve(remote.routes()).await;
     let (model, transcript) =
         FakeModel::deciding(repair_walk::script(LINKWARDEN, head_reads(LINKWARDEN)));

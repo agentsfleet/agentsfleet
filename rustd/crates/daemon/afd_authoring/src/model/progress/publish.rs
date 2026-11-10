@@ -1,10 +1,10 @@
 //! Current publication authority is checked without holding a connection over a bus write.
 
 use super::trace::Trace;
-use super::{CAPACITY, Delta, Piece, Preview, TextKind, draft_channel};
+use super::{CAPACITY, Delta, Piece, Preview, TextKind};
 use crate::{Drafts, error::raise::query, lease::guard};
 use af_core::id::Uuid7;
-use afd_dragonfly::FleetStreams;
+use afd_bus::Handle;
 use sqlx::Connection as _;
 use std::time::Duration;
 use tokio::sync::mpsc;
@@ -18,7 +18,7 @@ pub(in crate::model) struct Publisher(AbortOnDropHandle<()>);
 
 impl Publisher {
     pub(in crate::model) fn start(
-        streams: FleetStreams,
+        streams: Handle,
         drafts: Drafts,
         runner: Uuid7,
         lease: Uuid7,
@@ -48,7 +48,7 @@ impl Publisher {
 }
 
 struct Worker {
-    streams: FleetStreams,
+    streams: Handle,
     drafts: Drafts,
     runner: Uuid7,
     lease: Uuid7,
@@ -91,7 +91,10 @@ impl Worker {
         let payload =
             Zeroizing::new(serde_json::to_string(&frame).map_err(crate::error::raise::stored)?);
         self.streams
-            .publish(&draft_channel(&frame.draft_id), &payload)
+            .publish(
+                &afd_bus::Subject::DraftEvents(frame.draft_id.clone()),
+                &payload,
+            )
             .await
             .map(|_subscribers| ())
             .map_err(|source| crate::error::ErrorKind::Preview { source }.into())
@@ -106,7 +109,7 @@ pub(super) async fn authorize(
 ) -> crate::Result<(Uuid7, i64)> {
     let mut connection = drafts.database.acquire().await?;
     let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-    let guarded = guard::publication(&mut tx, runner, lease, counters).await?;
+    let guarded = drafts.publication(&mut tx, runner, lease, counters).await?;
     let identity = (guarded.attempt.draft_id, guarded.attempt.message_sequence);
     tx.commit().await.map_err(query(CONTEXT))?;
     drop(connection);

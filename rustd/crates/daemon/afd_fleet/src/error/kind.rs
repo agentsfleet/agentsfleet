@@ -4,6 +4,12 @@ use super::Error;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("a saved usage count cannot be represented as a nonnegative metric")]
+    UsageCount {
+        #[source]
+        source: std::num::TryFromIntError,
+    },
+
     #[error("private checkpoint upload authorization could not be signed")]
     TaskStorageSigning {
         #[source]
@@ -143,12 +149,6 @@ pub(crate) enum ErrorKind {
         source: afd_credential::Error,
     },
 
-    #[error("the queue backing the runner plane would not answer")]
-    Queue {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
-
     #[error("the billing store could not answer for the runner plane")]
     Billing {
         #[source]
@@ -227,6 +227,9 @@ pub(crate) enum ErrorKind {
 
     #[error("the lease is no longer this runner's to renew")]
     LeaseLost,
+
+    #[error("the fleet was killed and this lease must stop")]
+    LeaseCancelled,
 
     #[error("the lease reached the hard ceiling on one run's wall time")]
     LeaseMaxRuntime,

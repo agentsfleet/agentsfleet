@@ -7,14 +7,14 @@ async fn the_http_client_sends_the_token_and_the_right_method() {
     let api = api(&base, "agt_r_token").unwrap();
 
     let posted = api
-        .send(call(Verb::Report, "/v1/report", Some(b"{\"a\":1}")))
+        .send(call(Verb::Mint, "/v1/credentials", Some(b"{\"a\":1}")))
         .await
         .unwrap();
     let read = api
         .send(call(Verb::Hydrate, "/v1/memory", None))
         .await
         .unwrap();
-    api.send(call(Verb::Lease, "/v1/lease", None))
+    api.send(call(Verb::Mint, "/v1/credentials", None))
         .await
         .unwrap();
 
@@ -25,7 +25,7 @@ async fn the_http_client_sends_the_token_and_the_right_method() {
     assert!(read.is_empty());
     assert_eq!(
         (first.method, first.path.as_str()),
-        (Method::POST, "/v1/report")
+        (Method::POST, "/v1/credentials")
     );
     assert_eq!(first.authorization.as_deref(), Some("Bearer agt_r_token"));
     assert_eq!(first.content_type.as_deref(), Some("application/json"));
@@ -41,19 +41,19 @@ async fn the_http_client_classifies_every_status_class() {
     let api = api(&base, "agt_r_token").unwrap();
 
     let busy = api
-        .send(call(Verb::Lease, "/status/503", None))
+        .send(call(Verb::Mint, "/status/503", None))
         .await
         .unwrap_err();
     let throttled = api
-        .send(call(Verb::Lease, "/status/429", None))
+        .send(call(Verb::Mint, "/status/429", None))
         .await
         .unwrap_err();
     let lost = api
-        .send(call(Verb::Renew, "/status/409", Some(b"{}")))
+        .send(call(Verb::Mint, "/status/409", Some(b"{}")))
         .await
         .unwrap_err();
     let unauthorized = api
-        .send(call(Verb::Heartbeat, "/status/401", Some(b"{}")))
+        .send(call(Verb::Mint, "/status/401", Some(b"{}")))
         .await
         .unwrap_err();
 
@@ -70,10 +70,7 @@ async fn the_http_client_classifies_every_status_class() {
 async fn an_unreachable_daemon_is_a_transport_failure() {
     let api = api("http://127.0.0.1:1", "agt_r_token").unwrap();
 
-    let failure = api
-        .send(call(Verb::Heartbeat, "/x", None))
-        .await
-        .unwrap_err();
+    let failure = api.send(call(Verb::Mint, "/x", None)).await.unwrap_err();
 
     assert!(failure.is_retryable());
 }
@@ -93,12 +90,12 @@ async fn a_route_joins_under_the_daemons_path_prefix() {
     let (base, mut seen) = daemon().await;
     let api = api(&format!("{base}gateway"), "agt_r_token").unwrap();
 
-    api.send(call(Verb::Lease, "/v1/runners/me/leases", None))
+    api.send(call(Verb::Mint, "/v1/runners/me/credentials/mint", None))
         .await
         .unwrap();
 
     assert_eq!(
         seen.recv().await.unwrap().path,
-        "/gateway/v1/runners/me/leases"
+        "/gateway/v1/runners/me/credentials/mint"
     );
 }

@@ -16,8 +16,8 @@ async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
         .fill(&mut bytes)
         .expect("independent installation ID");
     let installation = u64::from_be_bytes(bytes).max(1).to_string();
-    sqlx::query("INSERT INTO connector.installs(id,provider,external_account_id,workspace_id,scopes,created_at,updated_at) VALUES($1::uuid,'github',$2,$3::uuid,ARRAY['contents:read'],now(),now())")
-        .bind(mint().as_str()).bind(&installation).bind(c.base.workspace.as_str())
+    sqlx::query("INSERT INTO connector.installs(id,provider,external_account_id,workspace_id,scopes,created_at,updated_at) VALUES($1,'github',$2,$3,ARRAY['contents:read'],now(),now())")
+        .bind(mint()).bind(&installation).bind(&c.base.workspace)
         .execute(&mut *c.base.connection().await).await.expect("workspace installation");
     let raw = serde_json::value::RawValue::from_string(
         json!({"integration":"github", "installation_id":installation,"app_id":"7"}).to_string(),
@@ -59,18 +59,18 @@ async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
     request
 }
 
-async fn cards(c: &Case, fleet: &af_core::id::Uuid7) -> Vec<(String, String)> {
+async fn cards(c: &Case, fleet: &af_core::id::Uuid7) -> Vec<(af_core::id::Uuid7, String)> {
     sqlx::query_as(
-        "SELECT action_id,status FROM fleet.approval_gates WHERE fleet_id=$1::uuid ORDER BY id",
+        "SELECT action_id,status FROM fleet.approval_gates WHERE fleet_id=$1 ORDER BY id",
     )
-    .bind(fleet.as_str())
+    .bind(fleet)
     .fetch_all(&mut *c.base.connection().await)
     .await
     .expect("real approval cards")
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activates() {
     let c = Case::create().await;
     c.fund().await;
@@ -91,12 +91,12 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
     assert_eq!(pending[0].1, "pending");
     let inbox = Inbox::new(
         c.base.db.clone(),
-        c.queue.clone(),
-        Admissions::new(c.base.db.clone(), c.queue.clone(), Entropy::new()),
+        c.bus.clone(),
+        Admissions::new(c.base.db.clone(), c.bus.clone(), Entropy::new()),
     );
     let resolved = inbox
         .resolve(
-            &pending[0].0,
+            pending[0].0.as_str(),
             Decision::Approved,
             c.base.owner.as_str(),
             "",
@@ -113,7 +113,7 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
     let c = Case::create().await;
     c.fund().await;
@@ -124,12 +124,12 @@ async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
     assert_eq!(pending.len(), 1);
     let inbox = Inbox::new(
         c.base.db.clone(),
-        c.queue.clone(),
-        Admissions::new(c.base.db.clone(), c.queue.clone(), Entropy::new()),
+        c.bus.clone(),
+        Admissions::new(c.base.db.clone(), c.bus.clone(), Entropy::new()),
     );
     let resolved = inbox
         .resolve(
-            &pending[0].0,
+            pending[0].0.as_str(),
             Decision::Denied,
             c.base.owner.as_str(),
             "",
@@ -150,7 +150,7 @@ async fn a_denied_grant_blocks_setup_and_a_retry_opens_no_second_card() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn kill_closes_setup_cards_and_late_grant_work_cannot_reopen_them() {
     let c = Case::create().await;
     c.fund().await;
@@ -193,7 +193,7 @@ async fn kill_closes_setup_cards_and_late_grant_work_cannot_reopen_them() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn concurrent_retries_open_one_card_for_the_one_missing_grant() {
     const RETRIES: usize = 8;
     let c = Arc::new(Case::create().await);
@@ -242,25 +242,11 @@ async fn concurrent_retries_open_one_card_for_the_one_missing_grant() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_stored_token_for_an_unrouted_integration_needs_no_connection_or_grant() {
     use afd_authoring::types::{CheckKind, CheckState};
     let c = Case::create().await;
-    let raw = serde_json::value::RawValue::from_string(
-        json!({"integration":"pagerduty","token":"pd-fixture-token"}).to_string(),
-    )
-    .expect("handle JSON");
-    let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
-        .expect("fixture key");
-    Vault::new(c.base.db.clone(), Arc::new(key), Entropy::new())
-        .create(
-            &c.base.workspace,
-            &SecretName::parse("pagerduty").expect("handle name"),
-            &SecretBody::parse(&raw).expect("handle object"),
-            now(),
-        )
-        .await
-        .expect("seal a stored token");
+    store_unrouted_token(&c).await;
     let (draft, _) = c.request("stored-token", Start::None).await;
     let current = c
         .setup
@@ -294,4 +280,22 @@ async fn a_stored_token_for_an_unrouted_integration_needs_no_connection_or_grant
     assert_eq!(about(CheckKind::Connection), []);
     assert_eq!(about(CheckKind::Grant), []);
     c.cleanup().await;
+}
+
+async fn store_unrouted_token(c: &Case) {
+    let raw = serde_json::value::RawValue::from_string(
+        json!({"integration":"pagerduty","token":"pd-fixture-token"}).to_string(),
+    )
+    .expect("handle JSON");
+    let key = Kek::from_hex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")
+        .expect("fixture key");
+    Vault::new(c.base.db.clone(), Arc::new(key), Entropy::new())
+        .create(
+            &c.base.workspace,
+            &SecretName::parse("pagerduty").expect("handle name"),
+            &SecretBody::parse(&raw).expect("handle object"),
+            now(),
+        )
+        .await
+        .expect("seal a stored token");
 }

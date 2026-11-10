@@ -7,7 +7,7 @@ WITH resolved AS (
           JOIN fleet.fleets z ON z.id = fleet.approval_gates.fleet_id
           WHERE u.oidc_subject = $3 AND u.tenant_id = z.tenant_id)
   WHERE action_id = $4 AND resolved_at IS NULL
-    AND ($5::text = '' OR fleet_id::text = $5)
+    AND (fleet_id = $5 OR $5 IS NULL)
   RETURNING id, action_id, workspace_id, fleet_id, status, resolved_at,
             resolved_by, detail, gate_type, evidence, event_id
 ), granted AS (
@@ -29,8 +29,8 @@ WITH resolved AS (
   WHERE a.fleet_id = r.fleet_id AND a.settled_at IS NULL
 )
 
-SELECT id::text AS gate_id, action_id, workspace_id::text AS workspace_id,
-       fleet_id::text AS fleet_id, status, resolved_at, resolved_by, detail, event_id,
+SELECT id AS gate_id, action_id, workspace_id,
+       fleet_id, status, resolved_at, resolved_by, detail, event_id,
        (SELECT COUNT(*) FROM fleet.approval_gates g
          WHERE g.fleet_id = resolved.fleet_id AND g.resolved_at IS NULL
            AND g.id NOT IN (SELECT id FROM resolved)) AS pending_approvals

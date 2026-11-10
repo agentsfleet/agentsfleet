@@ -5,6 +5,7 @@ use super::{
     fixture::{self, Provider},
 };
 use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_authoring::types::Source;
 use sqlx::{Connection as _, PgConnection};
 use std::{sync::Arc, time::Duration};
@@ -53,7 +54,11 @@ async fn elapsed_authorization_budget_records_deadline_without_sending_or_replay
         .expect("dispatch task")
         .expect_err("elapsed authorization cannot send");
     assert_eq!(error.code(), error_code::AUTHORING_UNKNOWN);
-    deadline_receipt(&f, &request.dispatch_id).await;
+    deadline_receipt(
+        &f,
+        &Uuid7::parse(&request.dispatch_id).expect("the call names its dispatch"),
+    )
+    .await;
     assert_eq!(
         calls
             .call(&f.runner, &attempt.lease, request)
@@ -94,9 +99,9 @@ async fn hold(f: &Fixture, dispatch: &str) -> (PgConnection, i32) {
     (owner, pid)
 }
 
-async fn deadline_receipt(f: &Fixture, dispatch: &str) {
+async fn deadline_receipt(f: &Fixture, dispatch: &Uuid7) {
     let receipt: (String, String, bool) = sqlx::query_as(
-        "SELECT status,failure_cause,result IS NULL AND native_reply IS NULL FROM authoring.dispatches WHERE id=$1::uuid")
+        "SELECT status,failure_cause,result IS NULL AND native_reply IS NULL FROM authoring.dispatches WHERE id=$1")
         .bind(dispatch).fetch_one(&mut *f.connection().await).await.expect("content-free deadline receipt");
     assert_eq!(receipt, ("unknown".into(), "deadline".into(), true));
 }

@@ -11,17 +11,18 @@ use crate::{rows::Row, seed::seeded_parts, support::Fixtures};
 const ORDER: &str = "SELECT claimed.sequence < delayed.sequence \
     AND delayed.created_at < claimed.created_at \
     FROM fleet.admissions claimed, fleet.admissions delayed \
-    WHERE claimed.id=$1::uuid AND delayed.id=$2::uuid";
+    WHERE claimed.id=$1 AND delayed.id=$2";
 
 // Value: protects=unfinished work survives an older transaction committing later;
 // fails_when=created_at outranks serialized insertion order; why_new=real producer
 // transactions invert timestamp order; seam=Postgres plus admission and lease stores.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, tenant, [holder, poller]) = seeded_parts::<2>(&fixtures).await;
-    let admissions = Admissions::for_tests(fixtures.database.clone(), crate::queue::unreachable());
+    let admissions =
+        Admissions::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
     let delayed = admissions
         .prepare(input(&fleet, &workspace))
         .await
@@ -41,7 +42,7 @@ async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
         .admit(input(&fleet, &workspace))
         .await
         .expect("newer commits first");
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &holder).await.expect("first claim");
     assert_eq!(first.event_id, claimed.stored.id);
     leases.record_received(&first).await.expect("delivery");
@@ -69,15 +70,15 @@ async fn assert_reclaimed(
     leases: &Leases,
     poller: &Uuid7,
     first: &Acquired,
-    issued: &str,
-    tenant: &str,
+    issued: &Uuid7,
+    tenant: &Uuid7,
 ) {
     let recovered = next(leases, poller).await.expect("recover unfinished run");
     assert_eq!(recovered.event_id, first.event_id);
     assert!(recovered.redelivered);
     assert!(recovered.fence > first.fence);
     assert_eq!(
-        recovered.reused.expect("original billing").tenant_id,
+        &recovered.reused.expect("original billing").tenant_id,
         tenant
     );
     assert_eq!(
@@ -86,7 +87,7 @@ async fn assert_reclaimed(
     );
 }
 
-const fn input<'a>(fleet: &'a str, workspace: &'a str) -> Admission<'a> {
+const fn input<'a>(fleet: &'a Uuid7, workspace: &'a Uuid7) -> Admission<'a> {
     Admission {
         producer: Producer::Steer,
         key: Key::Unrepeatable,
@@ -109,11 +110,12 @@ const BLOCKED_ON: &str =
 /// A send that waits behind a staged admission's fleet lock draws the later
 /// sequence, and the claim takes the staged row first.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
-    let admissions = Admissions::for_tests(fixtures.database.clone(), crate::queue::unreachable());
+    let admissions =
+        Admissions::for_tests(fixtures.database.clone(), afd_bus::test_util::unreachable());
     let prepared = admissions
         .prepare(input(&fleet, &workspace))
         .await
@@ -158,7 +160,7 @@ async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
         .expect("the waiting send admits");
     let later: bool = sqlx::query_scalar(
         "SELECT w.sequence > s.sequence FROM fleet.admissions w, fleet.admissions s \
-         WHERE w.id = $1::uuid AND s.id = $2::uuid",
+         WHERE w.id = $1 AND s.id = $2",
     )
     .bind(&behind.stored.id)
     .bind(&staged.stored.id)
@@ -166,7 +168,7 @@ async fn a_send_queued_behind_the_fleet_lock_takes_the_later_sequence() {
     .await
     .expect("both sequences");
     assert!(later, "the waiter draws the later sequence");
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &runner).await.expect("the claim");
     assert_eq!(
         first.event_id, staged.stored.id,

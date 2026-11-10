@@ -141,7 +141,7 @@ Signed completion events match native waits directly and skip intent classificat
 ## State authority and transaction boundaries
 
 Postgres owns DTs, input receipts, waits, effect intents and checkpoint manifests.
-Dragonfly retains existing wake hints; `fleet.admissions` remains the work queue.
+Core NATS carries wake notifications only; `fleet.admissions` remains the work queue.
 R2 holds encrypted immutable checkpoint bytes and does not decide current ownership.
 
 Large repositories use a retained verified base plus incremental chunks, as defined in [checkpoint storage](sandbox_evaluation.md#large-repositories-and-incremental-checkpoints).

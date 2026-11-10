@@ -6,8 +6,9 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_fleet::lease::sql::queue::SELECT_CANDIDATES;
-use sqlx::{AssertSqlSafe, PgConnection, Row as _};
+use sqlx::{AssertSqlSafe, PgConnection};
 
 use crate::support::Fixtures;
 
@@ -24,19 +25,6 @@ mod prepared;
 
 /// Plans every prepared statement once for all binds, as a cached plan does.
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
-/// The scan's text prepared with the types sqlx binds it with.
-const PREPARE: &str = "PREPARE ledger_candidates \
-(text, text, bigint, interval, text, text[], text, text, text, text, text[]) AS ";
-/// Its plan. The values are placeholders a generic plan never reads.
-const EXPLAIN: &str = "EXPLAIN (VERBOSE, COSTS OFF) EXECUTE ledger_candidates \
-('active', '01890a5d-ac96-774b-bcce-b302099a80a1', 64, '30 seconds', 'active', '{}', NULL, ";
-/// Drops the prepared text, which outlives the transaction.
-const DEALLOCATE: &str = "DEALLOCATE ledger_candidates";
-/// The plan line naming what the scan sorts by.
-const SORT_KEY: &str = "Sort Key:";
-/// The bind carrying the cursor's partition's ids.
-const HELD_IDS: &str = "$6";
-
 /// Runs one statement that returns nothing worth reading. Every text is this
 /// file's own constant or the scan's, never input.
 async fn run(connection: &mut PgConnection, statement: &str) {
@@ -46,46 +34,11 @@ async fn run(connection: &mut PgConnection, statement: &str) {
         .unwrap_or_else(|failure| panic!("{statement}: {failure}"));
 }
 
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_the_held_ids_are_cast_once_per_scan() {
-    let fixtures = Fixtures::create().await;
-    let mut connection = fixtures
-        .database
-        .acquire()
-        .await
-        .expect("a pooled connection");
-    run(&mut connection, "BEGIN").await;
-    run(&mut connection, FORCE_GENERIC).await;
-    run(&mut connection, &format!("{PREPARE}{SELECT_CANDIDATES}")).await;
-    let plan: Vec<String> = sqlx::raw_sql(AssertSqlSafe(format!(
-        "{EXPLAIN}{})",
-        prepared::task_parameters()
-    )))
-    .fetch_all(&mut *connection)
-    .await
-    .expect("the scan explains")
-    .iter()
-    .map(|row| row.try_get::<String, _>(0).expect("a plan line is text"))
-    .collect();
-    run(&mut connection, DEALLOCATE).await;
-    run(&mut connection, "ROLLBACK").await;
-
-    let sort_key = plan
-        .iter()
-        .find(|line| line.contains(SORT_KEY))
-        .expect("the scan sorts");
-    assert!(
-        !sort_key.contains(HELD_IDS),
-        "the cursor's ids are cast for every sorted row: {sort_key}"
-    );
-}
-
 // Value: protects=one head per fleet as backlog grows; fails_when=the probe reads
 // the backlog; why_new=the empty-ledger precheck adds a separate plan branch;
 // seam=none; no_claim=constant total discovery cost with many active fleets.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = crate::seed::seeded_parts::<1>(&fixtures).await;
@@ -98,9 +51,9 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
         let ids: Vec<_> = (previous..size)
             .map(|_| afd_db::test_util::mint_id())
             .collect();
-        sqlx::query("INSERT INTO fleet.admissions (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor, event_type, request_json, event_created_at, created_at, updated_at) SELECT id::uuid,$1::uuid,$2::uuid,'steer',id,'fixture','fixture','chat','{}',now(),now(),now() FROM unnest($3::text[]) id")
+        sqlx::query("INSERT INTO fleet.admissions (id, fleet_id, workspace_id, producer, producer_key, payload_digest, actor, event_type, request_json, event_created_at, created_at, updated_at) SELECT id,$1,$2,'steer',id,'fixture','fixture','chat','{}',now(),now(),now() FROM unnest($3) id")
             .bind(&fleet).bind(&workspace).bind(&ids).execute(&mut *tx).await.expect("grow backlog");
-        let plan = head_plan(&mut tx, runner.as_str()).await;
+        let plan = head_plan(&mut tx, &runner).await;
         let scans = relation_scans(&plan, "admissions");
         assert_eq!(scans.len(), 2, "empty-ledger check and fleet head: {plan}");
         let scan = scans
@@ -135,7 +88,7 @@ async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
     fixtures.cleanup().await;
 }
 
-async fn head_plan(connection: &mut PgConnection, runner: &str) -> serde_json::Value {
+async fn head_plan(connection: &mut PgConnection, runner: &Uuid7) -> serde_json::Value {
     sqlx::query_scalar(AssertSqlSafe(format!(
         "EXPLAIN (ANALYZE, FORMAT JSON) {SELECT_CANDIDATES}"
     )))
@@ -144,12 +97,13 @@ async fn head_plan(connection: &mut PgConnection, runner: &str) -> serde_json::V
     .bind(64_i64)
     .bind(af_core::timing::RUNNER_OFFLINE_AFTER)
     .bind(afd_fleet::lease::sql::RUNNER_STATUS_ACTIVE)
-    .bind(Vec::<String>::new())
-    .bind(Option::<&str>::None)
+    .bind(Vec::<Uuid7>::new())
+    .bind(Option::<Uuid7>::None)
     .bind(af_wire::task::CAPABILITY)
     .bind(af_wire::task::TaskState::Ready.as_str())
     .bind(af_wire::task::TaskState::Running.as_str())
     .bind(afd_fleet::task::DECISION_POLICY_PATH)
+    .bind(false)
     .fetch_one(connection)
     .await
     .expect("candidate explain")

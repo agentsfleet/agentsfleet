@@ -22,10 +22,10 @@ ignored = ["jiff-sqlx"]
 workspace = true
 
 [dependencies]
+afd_bus.workspace = true
 afd_events.workspace = true
-afd_dragonfly.workspace = true
 # Identifiers, the clock the write stamps rows with, and the registry codes.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 # The envelope, the associated data, and the key material types. The whole
 # reason this is not a plain `afd_state` module: AES-GCM belongs behind the one
 # surface that seals, and the credential directories the auth path runs on must

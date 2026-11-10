@@ -22,9 +22,8 @@ use af_core::timing::DAY;
 use jiff::Timestamp;
 
 use super::{Invitee, email};
-use crate::sql::COLUMN_ID;
+use crate::Result;
 use crate::workspace::access::Role;
-use crate::{Result, stored};
 
 /// How many days an invitation can be accepted. The invite email states this
 /// count, so it never promises a window the invitation does not keep.
@@ -36,13 +35,6 @@ pub const INVITE_TTL: Duration = Duration::from_secs(
     DAY.as_secs()
         .saturating_mul(INVITE_VALID_DAYS.unsigned_abs()),
 );
-
-/// The table an invitation is read from, as a malformed row reports it.
-const TABLE: &str = "identity.invites";
-/// The column naming who accepted an invitation, as a malformed one reports it.
-const COLUMN_ACCEPTED_BY: &str = "accepted_by_user_id";
-/// The column naming an invitation's account, as a malformed one reports it.
-const COLUMN_TENANT_ID: &str = "tenant_id";
 
 /// One invitation into an account, as stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,15 +69,15 @@ pub struct Invitation {
 /// and the role, which is the only part a stored value can fail.
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct InvitationRow {
-    id: String,
-    tenant_id: String,
+    id: Uuid7,
+    tenant_id: Uuid7,
     email: String,
     role: String,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     expires_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
-    accepted_by_user_id: Option<String>,
+    accepted_by_user_id: Option<Uuid7>,
     resolved_at: Option<jiff_sqlx::Timestamp>,
     email_status: Option<String>,
     email_sent_at: Option<jiff_sqlx::Timestamp>,
@@ -94,20 +86,15 @@ pub(super) struct InvitationRow {
 impl InvitationRow {
     /// The invitation this row stores.
     fn parse(self) -> Result<Invitation> {
-        let uuid = |column: &'static str, value: &str| stored::uuid(TABLE, column, value);
         Ok(Invitation {
-            id: uuid(COLUMN_ID, &self.id)?,
-            tenant: uuid(COLUMN_TENANT_ID, &self.tenant_id)?,
+            id: self.id,
+            tenant: self.tenant_id,
             email: self.email,
             role: Role::parse(&self.role)?,
             expires_at: self.expires_at,
             created_at: self.created_at,
             resolved_at: self.resolved_at.map(jiff_sqlx::Timestamp::to_jiff),
-            accepted_by: self
-                .accepted_by_user_id
-                .as_deref()
-                .map(|user| uuid(COLUMN_ACCEPTED_BY, user))
-                .transpose()?,
+            accepted_by: self.accepted_by_user_id,
             email_status: EmailStatus::from_stored(self.email_status.as_deref()),
             email_sent_at: self.email_sent_at.map(jiff_sqlx::Timestamp::to_jiff),
         })

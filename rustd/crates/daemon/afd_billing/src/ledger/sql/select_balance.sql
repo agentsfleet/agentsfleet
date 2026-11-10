@@ -3,4 +3,4 @@ SELECT w.balance_nanos, w.exhausted_at,
                  FROM billing.usage_lines u
                  WHERE u.tenant_id = w.tenant_id AND u.settled_at IS NULL), 0)::bigint AS unsettled
 FROM billing.wallets w
-WHERE w.tenant_id = $1::uuid
+WHERE w.tenant_id = $1

@@ -20,8 +20,6 @@ const BEARER: &str = "Bearer ";
 /// failure. It must outlast the daemon's message deadline (asserted below);
 /// renewal races its own deadline rather than relying on this.
 const CALL_TIMEOUT: Duration = Duration::from_secs(20);
-/// The daemon may spend five minutes awaiting the one provider request.
-const AUTHORING_MODEL_TIMEOUT: Duration = Duration::from_secs(310);
 
 // The daemon bounds a message post by its own deadline and answers
 // `delivered: false` past it; a call timeout shorter than that would read a
@@ -30,12 +28,6 @@ const AUTHORING_MODEL_TIMEOUT: Duration = Duration::from_secs(310);
 const _: () = assert!(
     af_wire::message_verb::MESSAGE_DELIVERY_DEADLINE.as_secs() < CALL_TIMEOUT.as_secs(),
     "the runner's call timeout must outlast the daemon's message deadline"
-);
-// A held heartbeat answers no later than `WAKE_HOLD_MAX`; a call timeout
-// shorter than that would read every hold as a daemon that never answered.
-const _: () = assert!(
-    af_core::timing::WAKE_HOLD_MAX.as_secs() < CALL_TIMEOUT.as_secs(),
-    "the runner's call timeout must outlast a held heartbeat"
 );
 /// Why a token was refused before any call.
 const DETAIL_TOKEN_UNPRINTABLE: &str =
@@ -77,14 +69,23 @@ impl HttpRunnerApi {
 #[async_trait::async_trait]
 impl RunnerApi for HttpRunnerApi {
     async fn send(&self, call: Call) -> Result<Bytes> {
+        if matches!(
+            call.verb,
+            super::Verb::Heartbeat
+                | super::Verb::Renew
+                | super::Verb::Activity
+                | super::Verb::Report
+                | super::Verb::Folds
+                | super::Verb::AuthoringModel
+                | super::Verb::AuthoringActivity
+                | super::Verb::AuthoringRenew
+                | super::Verb::AuthoringReport
+        ) {
+            return Err(crate::error::ErrorKind::StreamProtocol.into());
+        }
         // Relative, so a base carrying a path prefix keeps it.
         let url = self.base.join(call.path.trim_start_matches('/'))?;
         let request = self.client.request(call.verb.method().http(), url);
-        let request = if call.verb == super::Verb::AuthoringModel {
-            request.timeout(AUTHORING_MODEL_TIMEOUT)
-        } else {
-            request
-        };
         let request = match call.body {
             Some(body) => request.header(CONTENT_TYPE, APPLICATION_JSON).body(body),
             None => request,

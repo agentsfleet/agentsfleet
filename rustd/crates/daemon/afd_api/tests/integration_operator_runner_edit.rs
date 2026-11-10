@@ -5,6 +5,7 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_auth::scope::{Scope, ScopeSet};
 use afd_db::test_util::mint_id;
 use http::{Method, StatusCode};
@@ -21,16 +22,16 @@ const SECOND_POLICY: &str = r#"{"sandbox_tier":"dev_none","network_policy":"allo
 
 /// Every column but the two a label write may move, as one comparable string.
 const ROW_BUT_LABELS: &str = "\
-SELECT (to_jsonb(r) - 'labels' - 'updated_at')::text FROM runner.runners r WHERE r.id = $1::uuid";
+SELECT (to_jsonb(r) - 'labels' - 'updated_at')::text FROM runner.runners r WHERE r.id = $1";
 
 /// The stored label column, verbatim.
-const STORED_LABELS: &str = "SELECT labels::text FROM runner.runners WHERE id = $1::uuid";
+const STORED_LABELS: &str = "SELECT labels::text FROM runner.runners WHERE id = $1";
 
 /// The whole row, for the edits that must change nothing.
-const WHOLE_ROW: &str = "SELECT to_jsonb(r)::text FROM runner.runners r WHERE r.id = $1::uuid";
+const WHOLE_ROW: &str = "SELECT to_jsonb(r)::text FROM runner.runners r WHERE r.id = $1";
 
 /// How many events the runner's history holds, for the no-event repeat.
-const EVENT_COUNT: &str = "SELECT count(*)::text FROM runner.events WHERE runner_id = $1::uuid";
+const EVENT_COUNT: &str = "SELECT count(*)::text FROM runner.events WHERE runner_id = $1";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -55,7 +56,7 @@ async fn operator_edits_labels_through_the_runner_patch() {
 }
 
 /// Enrolment collapses repeats by the same rule the edit uses.
-async fn enrol_with_repeats(router: &axum::Router, token: &str) -> String {
+async fn enrol_with_repeats(router: &axum::Router, token: &str) -> Uuid7 {
     let body = json!({
         "host_id": "operator-edit-enrolment",
         "assigned_policy": serde_json::from_str::<Value>(SECOND_POLICY).expect("fixture policy"),
@@ -70,7 +71,8 @@ async fn enrol_with_repeats(router: &axum::Router, token: &str) -> String {
     )
     .await;
     assert_eq!(enrolled.status(), StatusCode::CREATED);
-    let runner = text(&json_body(enrolled).await, "runner_id").to_owned();
+    let runner = Uuid7::parse(text(&json_body(enrolled).await, "runner_id"))
+        .expect("enrolment answers a runner id");
     assert_eq!(
         read_labels(router, token, &format!("/v1/admin/runners/{runner}")).await,
         ["gpu", "linux"],

@@ -15,6 +15,8 @@ use af_wire::runner::{
 };
 use std::borrow::Cow;
 
+use af_core::id::Uuid7;
+
 /// How far this suite advances between beats.
 ///
 /// Any value inside the lapse threshold would do — what these tests turn on is
@@ -49,7 +51,7 @@ pub(crate) fn enrolment(
 ///
 /// Derived from the fleet id, which is already minted per test, so it is unique
 /// without a second counter and names the fleet it belongs to in any failure.
-pub(crate) fn placement_tag(fleet: &str) -> String {
+pub(crate) fn placement_tag(fleet: &Uuid7) -> String {
     format!("fixture:{fleet}")
 }
 

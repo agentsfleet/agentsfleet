@@ -42,7 +42,7 @@ async fn a_failed_park_release_rolls_back_the_stamp_and_retries_after_approval()
 }
 
 async fn assert_failed_park_recovers(injection: &'static str) {
-    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let fixtures = Fixtures::create_isolated().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
@@ -57,7 +57,7 @@ async fn assert_failed_park_recovers(injection: &'static str) {
 
     let failure = fixtures
         .plane()
-        .lease_claimed(claimed, &seeded.runner, fixtures.enrolled_at())
+        .claim_selected(claimed, &seeded.runner, fixtures.enrolled_at())
         .await
         .expect_err("the park transaction fails");
     assert_original_park_error(&failure);
@@ -92,10 +92,10 @@ fn assert_original_park_error(failure: &afd_fleet::Error) {
     assert_eq!(cause.message(), "injected park failure");
 }
 
-async fn admission_state(fixtures: &Fixtures, event: &str) -> (bool, bool, Option<i64>) {
+async fn admission_state(fixtures: &Fixtures, event: &Uuid7) -> (bool, bool, Option<i64>) {
     sqlx::query_as(
         "SELECT parked_at IS NOT NULL, settled_at IS NOT NULL, lease_fence \
-        FROM fleet.admissions WHERE id = $1::uuid",
+        FROM fleet.admissions WHERE id = $1",
     )
     .bind(event)
     .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
@@ -103,22 +103,22 @@ async fn admission_state(fixtures: &Fixtures, event: &str) -> (bool, bool, Optio
     .expect("admission after rollback")
 }
 
-async fn approve(fixtures: &Fixtures, seeded: &Ready, action: &str) {
+async fn approve(fixtures: &Fixtures, seeded: &Ready, action: &Uuid7) {
     let resolved = Inbox::new(
         fixtures.database.clone(),
-        fixtures.queue().clone(),
+        fixtures.bus().clone(),
         Admissions::new(
             fixtures.database.clone(),
-            fixtures.queue().clone(),
+            fixtures.bus().clone(),
             Entropy::new(),
         ),
     )
     .resolve(
-        action,
+        action.as_str(),
         Decision::Approved,
         "fixture:human",
         "",
-        Some(&seeded.fleet),
+        Some(seeded.fleet.as_str()),
     )
     .await
     .expect("answer approval after the failed park");

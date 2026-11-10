@@ -121,19 +121,3 @@ fn test_secret_bytes_reports_length_without_exposing() {
     assert_eq!(filled.len(), 3);
     assert_eq!(filled.expose(), b"abc");
 }
-
-/// Zeroing on demand clears the buffer, which is what drop relies on.
-///
-/// Observing memory after a drop is undefined behaviour, so the drop path is
-/// proven by exercising the same `Zeroize` implementation the `Drop` impl calls
-/// rather than by reading freed memory.
-#[test]
-fn test_secret_bytes_zeroize_clears_the_buffer() {
-    use zeroize::Zeroize as _;
-    let mut secret = SecretBytes::new(b"sk-super-secret-value".to_vec());
-    secret.zeroize();
-    assert!(
-        secret.expose().iter().all(|byte| *byte == 0),
-        "zeroize must leave no non-zero byte"
-    );
-}

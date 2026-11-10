@@ -1,7 +1,7 @@
 WITH current_row AS (
     SELECT id, revoked_at
     FROM identity.api_keys
-    WHERE id = $1::uuid AND tenant_id = $2::uuid
+    WHERE id = $1 AND tenant_id = $2
 ), deleted AS (
     DELETE FROM identity.api_keys k
     USING current_row c

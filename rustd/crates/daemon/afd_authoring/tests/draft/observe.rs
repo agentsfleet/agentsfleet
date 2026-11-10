@@ -9,11 +9,11 @@ use af_core::error_code;
 use afd_authoring::{Observation, View};
 
 /// Moves the draft's one message to `status`, as a lease or a cutoff does.
-const MESSAGE_STATUS: &str = "UPDATE authoring.messages SET status=$2 WHERE draft_id=$1::uuid";
+const MESSAGE_STATUS: &str = "UPDATE authoring.messages SET status=$2 WHERE draft_id=$1";
 
 /// Closes the draft for its retention window, as a Save or an apply does.
 const CLOSE: &str = "UPDATE authoring.drafts SET status='closed', closed_at=now(), \
-     expires_at=now()+interval '1 day' WHERE id=$1::uuid";
+     expires_at=now()+interval '1 day' WHERE id=$1";
 
 async fn view(f: &Fixture, draft: &af_core::id::Uuid7) -> View {
     match f
@@ -66,7 +66,7 @@ async fn each_message_state_is_noticed_under_its_own_event() {
         ("timed_out", "message.timed_out"),
     ] {
         sqlx::query(MESSAGE_STATUS)
-            .bind(draft.id.as_str())
+            .bind(&draft.id)
             .bind(status)
             .execute(&mut *f.connection().await)
             .await
@@ -98,7 +98,7 @@ async fn a_closed_draft_ends_the_stream_and_a_foreign_generation_reads_deleted()
         "a generation the draft never had reads as deleted"
     );
     sqlx::query(CLOSE)
-        .bind(draft.id.as_str())
+        .bind(&draft.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("close the draft");
@@ -139,8 +139,8 @@ async fn malformed_stored_state_remains_a_datastore_failure_during_observation()
         .await
         .expect("an idle draft")
         .draft;
-    sqlx::query("UPDATE authoring.drafts SET status='invalid' WHERE id=$1::uuid")
-        .bind(draft.id.as_str())
+    sqlx::query("UPDATE authoring.drafts SET status='invalid' WHERE id=$1")
+        .bind(&draft.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("inject a stored-state fault");

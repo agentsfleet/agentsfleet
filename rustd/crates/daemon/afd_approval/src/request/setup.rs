@@ -29,8 +29,8 @@ impl IntegrationGrants {
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;
         let status: Option<String> = sqlx::query_scalar(grant_sql::LOCK_FLEET_FOR_SETUP)
-            .bind(fleet.as_str())
-            .bind(workspace.as_str())
+            .bind(fleet)
+            .bind(workspace)
             .fetch_optional(&mut *tx)
             .await
             .map_err(error::query(CONTEXT_REQUEST))?;

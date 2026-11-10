@@ -14,7 +14,7 @@ use af_core::error_code;
 use afd_tenant::error::InviteConflict;
 use jiff::Timestamp;
 
-use crate::access_lane::{Fixture, id};
+use crate::access_lane::Fixture;
 
 /// The instant each identifier a case mints is minted at. Every stamp and
 /// deadline is the database clock's.
@@ -34,7 +34,7 @@ async fn should_leave_invite_pending_when_another_account_revokes_it() {
         .invite(&fixture.carol.email, NOW)
         .await
         .expect("John invites Carol");
-    let stranger = id(&fixture.bob.tenant);
+    let stranger = fixture.bob.tenant.clone();
     fixture
         .team
         .revoke_invitation(&stranger, &invite)
@@ -43,7 +43,7 @@ async fn should_leave_invite_pending_when_another_account_revokes_it() {
 
     let listed = fixture
         .team
-        .invitations(&id(&fixture.john.tenant))
+        .invitations(&fixture.john.tenant)
         .await
         .expect("the list reads");
     assert!(listed.iter().any(|row| row.id == invite), "still pending");
@@ -104,7 +104,7 @@ async fn should_treat_invite_as_closed_everywhere_once_past_expiry() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_list_only_open_invites_when_revoked_or_accepted() {
     let fixture = Fixture::create().await;
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let invite = fixture
         .invite(&fixture.carol.email, NOW)
         .await
@@ -149,7 +149,7 @@ async fn should_list_only_open_invites_when_revoked_or_accepted() {
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn should_refuse_revoking_an_invite_its_invitee_joined_through() {
     let fixture = Fixture::create().await;
-    let tenant = id(&fixture.john.tenant);
+    let tenant = fixture.john.tenant.clone();
     let invite = fixture
         .invite(&fixture.carol.email, NOW)
         .await
@@ -176,7 +176,7 @@ async fn should_refuse_revoking_an_invite_its_invitee_joined_through() {
 
     fixture
         .team
-        .remove(&tenant, &fixture.carol.user_id)
+        .remove(&tenant, &fixture.carol.user)
         .await
         .expect("John removes Carol");
     fixture
@@ -204,7 +204,7 @@ async fn should_answer_quietly_when_another_account_revokes_an_accepted_invite()
         .await
         .expect("Carol joins");
 
-    let stranger = id(&fixture.bob.tenant);
+    let stranger = fixture.bob.tenant.clone();
     fixture
         .team
         .revoke_invitation(&stranger, &invite)
@@ -241,13 +241,16 @@ async fn should_roll_back_the_join_when_a_workspace_row_cannot_be_read() {
         "still open"
     );
 
-    fixture.remove_workspace(&unreadable).await;
+    fixture.remove_workspace(unreadable).await;
     let accepted = fixture
         .team
         .accept(&invite, &fixture.carol.invitee(), NOW)
         .await
         .expect("the retry lands once the row is readable");
-    assert_eq!(accepted.workspaces, [id(&fixture.john.workspace)]);
+    assert_eq!(
+        accepted.workspaces,
+        std::slice::from_ref(&fixture.john.workspace)
+    );
     assert_eq!(fixture.memberships_in_johns(&fixture.carol).await, 1);
     fixture.cleanup().await;
 }
