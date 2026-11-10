@@ -43,7 +43,7 @@ fn refusing_steer() -> Steer {
     .expect("a lazy handle opens no socket and cannot fail");
     Steer::new(Admissions::new(
         afd_db::Db::unreachable(&pool),
-        queue,
+        afd_bus::dragonfly::publisher(queue),
         Entropy::new(),
     ))
 }

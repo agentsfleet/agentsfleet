@@ -1,10 +1,7 @@
 //! The runner plane's stub: a lease plane that by default answers no-work.
 
-use std::sync::{Arc, Mutex};
-
 use af_core::id::Uuid7;
 use afd_api::services::Leasing;
-use afd_fleet::lease::report::{Reconciled, RunTokens};
 use jiff::Timestamp;
 
 /// A lease plane that by default answers no-work.
@@ -25,7 +22,6 @@ use jiff::Timestamp;
 /// stub's.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct NoWork {
-    polled: Arc<Mutex<Vec<Vec<String>>>>,
     refusal: Option<fn() -> afd_fleet::Error>,
     minted: Option<(&'static str, Timestamp)>,
 }
@@ -48,11 +44,6 @@ impl NoWork {
         }
     }
 
-    /// The fleets each poll named as held, oldest poll first.
-    pub(crate) fn polled_holds(&self) -> Vec<Vec<String>> {
-        self.polled.lock().expect("the poll log is healthy").clone()
-    }
-
     /// The chosen refusal, when there is one; `Ok` lets the verb answer as
     /// a plane with no work would.
     fn refused(&self) -> afd_fleet::Result<()> {
@@ -61,84 +52,6 @@ impl NoWork {
 }
 
 impl Leasing for NoWork {
-    fn lease(
-        &self,
-        _drafts: &afd_authoring::Drafts,
-        _runner_id: &Uuid7,
-        held: &[Uuid7],
-        _accepted: af_wire::lease::AcceptedKinds,
-        _degraded: bool,
-        _now: Timestamp,
-    ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
-        let named = held.iter().map(|fleet| fleet.as_str().to_owned()).collect();
-        self.polled
-            .lock()
-            .expect("the poll log is healthy")
-            .push(named);
-        std::future::ready(Ok(r#"{"lease":null,"retry_after_ms":1000}"#.to_owned()))
-    }
-
-    /// Ends every hold at once, as a plane with no work to wake for would.
-    fn wait_for_work(
-        &self,
-        _deadline: std::time::Duration,
-        _max: usize,
-    ) -> impl Future<Output = afd_fleet::lease::Waited> + Send {
-        std::future::ready(afd_fleet::lease::Waited::Deadline)
-    }
-
-    /// Accepts every report and charges nothing, which is what a plane with no
-    /// work in it would do.
-    ///
-    /// Deliberately not a refusal. A suite here proves the guard, scope and
-    /// refusal matrix in FRONT of the verb, so what it needs is for an
-    /// authenticated runner to REACH the handler — and every refusal this verb
-    /// can raise needs a real lease row to be refused against, which is
-    /// `afd_fleet`'s integration lane and its live Postgres. Returning an error
-    /// here would put a code on the wire that no datastore decided, and a
-    /// router suite asserting on it would be asserting on this stub.
-    fn report(
-        &self,
-        _runner_id: &Uuid7,
-        _request: &af_wire::report::ReportRequest<'_>,
-        now: Timestamp,
-    ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send {
-        std::future::ready(Ok(Reconciled {
-            charged: afd_billing::Nanos::ZERO,
-            fleet_id: fixture_id(),
-            workspace_id: fixture_id(),
-            tenant_id: fixture_id(),
-            event_id: fixture_id(),
-            posture: String::new(),
-            provider: String::new(),
-            model: String::new(),
-            // A FIRST report, not a repeat: the handler skips its analytics,
-            // meters and delivery span on a repeat, and a stub answering
-            // `true` would route every suite here down the quiet arm and
-            // prove the loud one is reachable never.
-            repeated: false,
-            tokens: RunTokens::default(),
-            event_created_at: now,
-            lease_created_at: now,
-            completed_at: Some(now),
-        }))
-    }
-
-    /// Accepts every batch of frames and publishes none, which is what a plane
-    /// with no queue behind it does.
-    ///
-    /// The truest of the three stubs: publishing IS best-effort in production,
-    /// so a plane that drops every frame and answers `Ok` is not pretending —
-    /// it is one end of the range the real verb already spans.
-    fn activity(
-        &self,
-        _runner_id: &Uuid7,
-        _lease_id: &str,
-        _frames: &[af_wire::activity::ActivityFrame<'_>],
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
-        std::future::ready(Ok(()))
-    }
-
     /// Mints nothing, and says so with the code a deployment holding no
     /// platform credential answers, unless built with [`NoWork::refusing`].
     ///
@@ -230,18 +143,6 @@ impl Leasing for NoWork {
         }))
     }
 
-    /// Renews to the instant asked about, for the reason [`NoWork::report`]
-    /// accepts.
-    fn renew(
-        &self,
-        _runner_id: &Uuid7,
-        _lease_id: &Uuid7,
-        _request: af_wire::report::RenewRequest,
-        now: Timestamp,
-    ) -> impl Future<Output = afd_fleet::Result<Timestamp>> + Send {
-        std::future::ready(Ok(now))
-    }
-
     fn context_load(
         &self,
         _runner: &Uuid7,
@@ -285,16 +186,6 @@ impl Leasing for NoWork {
         std::future::ready(Err(afd_fleet::Error::lease_not_found()))
     }
 
-    /// No message ever waits for a run this daemon cannot lease.
-    fn folds(
-        &self,
-        _runner_id: &Uuid7,
-        _lease_id: &Uuid7,
-        _request: &af_wire::fold::FoldRequest,
-    ) -> impl Future<Output = afd_fleet::Result<af_wire::fold::FoldResponse<'static>>> + Send {
-        std::future::ready(Ok(af_wire::fold::FoldResponse::default()))
-    }
-
     /// Refused for the reason [`NoWork::standing`] is.
     fn masked(
         &self,
@@ -314,4 +205,22 @@ impl Leasing for NoWork {
 fn fixture_id() -> Uuid7 {
     Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")
         .expect("a fixture identifier is well formed")
+}
+
+impl afd_api::services::RunnerStreams for NoWork {
+    fn open(
+        &self,
+        _runner: afd_auth::principal::Runner,
+        _request: axum::extract::Request,
+    ) -> impl Future<Output = axum::response::Response> {
+        use axum::response::IntoResponse as _;
+        std::future::ready(
+            afd_http::envelope::ProblemResponse::new(
+                af_core::error_code::INTERNAL_OPERATION_FAILED,
+                "This router fixture has no native runner connection.",
+                afd_http::request_id::RequestId::mint(),
+            )
+            .into_response(),
+        )
+    }
 }

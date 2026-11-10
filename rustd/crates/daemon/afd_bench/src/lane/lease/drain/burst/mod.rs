@@ -108,19 +108,19 @@ async fn measure(
     staged: &stage::Staged,
     report: &mut Report,
 ) -> Result<()> {
-    let plane = staged.plane(stores);
+    let sessions = staged.sessions(stores).await?;
     let abort = Arc::new(Abort::new(profile.caps().abort_error_rate));
     let pickups = Arc::new(Pickups::new()?);
     let appends = Arc::new(Appends::new()?);
     let stop = CancellationToken::new();
     let sampler = tokio::spawn(peak_backlog(admissions(stores), stop.clone()));
     let pacers = spawn_pacers(burst, parameters, stores, staged, &pickups, &appends);
-    window(
-        &plane,
+    let measured = window(
+        sessions,
         stores,
-        &staged.runners,
         Shape {
             length: parameters.window,
+            idle: false,
             target: None,
             turn: Turn::held(parameters.turn),
             pickups: Some(Arc::clone(&pickups)),
@@ -128,6 +128,9 @@ async fn measure(
         &abort,
     )
     .await?;
+    for session in measured.sessions {
+        session.close().await;
+    }
     for pacer in pacers {
         joined(pacer.await, PACER_ROLE)?;
     }
@@ -211,11 +214,7 @@ async fn append_one(
 
 /// The intake over the lane's pool and queue.
 fn admissions(stores: &Datastores) -> Admissions {
-    Admissions::new(
-        stores.database.clone(),
-        stores.queue.clone(),
-        Entropy::new(),
-    )
+    Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new())
 }
 
 /// Sample the unsettled backlog until told to stop, answering its peak.

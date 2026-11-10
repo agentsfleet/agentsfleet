@@ -64,10 +64,13 @@ impl Creations {
                 .await
                 .map_err(query(CONTEXT))?;
         }
-        if requested == KILLED {
-            self.cancel(&mut tx, fleet).await?;
-        }
+        let cancelled = if requested == KILLED {
+            self.cancel(&mut tx, fleet).await?
+        } else {
+            Vec::new()
+        };
         tx.commit().await.map_err(query(CONTEXT))?;
+        self.announce_cancellations(cancelled).await;
         // Killing an installing fleet cancels its setup; a live fleet's setup
         // already finished, and `transition` refused any repeated Kill above.
         if requested == KILLED && row.status == INSTALLING {
@@ -82,8 +85,18 @@ impl Creations {
         self.read(access, fleet).await
     }
 
-    async fn cancel(&self, connection: &mut PgConnection, fleet: &Uuid7) -> Result<()> {
+    async fn cancel(
+        &self,
+        connection: &mut PgConnection,
+        fleet: &Uuid7,
+    ) -> Result<Vec<(Uuid7, Uuid7)>> {
         self.grants.cancel_setup_on(connection, fleet).await?;
+        let cancelled = sqlx::query_as(sql::CANCEL_LEASES)
+            .bind(fleet)
+            .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(query(CONTEXT))?;
         sqlx::query(sql::RESTORE)
             .bind(fleet)
             .bind(DraftState::Editing.as_str())
@@ -91,7 +104,18 @@ impl Creations {
             .execute(connection)
             .await
             .map_err(query(CONTEXT))?;
-        Ok(())
+        Ok(cancelled)
+    }
+
+    async fn announce_cancellations(&self, cancelled: Vec<(Uuid7, Uuid7)>) {
+        let bus = self.activity_streams();
+        for (runner, lease_id) in cancelled {
+            let subject = afd_bus::Subject::RunnerCommand(runner.clone());
+            let publication = afd_bus::Command::Cancel { lease_id }
+                .publish(&bus, &runner)
+                .await;
+            afd_bus::observe_notification(&subject, publication);
+        }
     }
 }
 

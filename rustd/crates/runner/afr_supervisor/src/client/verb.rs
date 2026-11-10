@@ -40,14 +40,14 @@ impl Method {
 /// One runner verb.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum Verb {
+    /// The authenticated opening of the native runner stream.
+    Open,
     /// Liveness, capability, assignment.
     Heartbeat,
     /// Private run working notes, loaded under a live fence.
     ContextLoad,
     /// Private run working notes, conditionally replaced.
     ContextCommit,
-    /// The next event to run.
-    Lease,
     /// Scoped private model invocation; never automatically redispatched.
     AuthoringModel,
     /// Native proposal receipt for a private authoring attempt.
@@ -129,10 +129,10 @@ impl Verb {
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
     pub(crate) const ALL: [Self; 41] = [
+        Self::Open,
         Self::Heartbeat,
         Self::ContextLoad,
         Self::ContextCommit,
-        Self::Lease,
         Self::AuthoringModel,
         Self::AuthoringActivity,
         Self::AuthoringRenew,
@@ -190,8 +190,8 @@ impl Verb {
             | Self::TaskCheckpointCommit
             | Self::TaskCheckpointPin => Method::Patch,
             Self::ScheduleDelete => Method::Delete,
-            Self::Heartbeat
-            | Self::Lease
+            Self::Open
+            | Self::Heartbeat
             | Self::AuthoringModel
             | Self::AuthoringActivity
             | Self::AuthoringRenew
@@ -221,10 +221,10 @@ impl Verb {
     /// The verb as a log line and an error name it.
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
+            Self::Open => "stream_open",
             Self::Heartbeat => "heartbeat",
             Self::ContextLoad => "context_load",
             Self::ContextCommit => "context_commit",
-            Self::Lease => "lease",
             Self::AuthoringModel => "authoring_model",
             Self::AuthoringActivity => "authoring_activity",
             Self::AuthoringRenew => "authoring_renew",
@@ -271,8 +271,8 @@ impl Verb {
             Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
             Self::ContextLoad
             | Self::ContextCommit
+            | Self::Open
             | Self::Heartbeat
-            | Self::Lease
             | Self::AuthoringModel
             | Self::AuthoringActivity
             | Self::AuthoringRenew

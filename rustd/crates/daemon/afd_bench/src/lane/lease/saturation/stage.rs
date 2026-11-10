@@ -1,4 +1,4 @@
-//! The population the saturation shape polls: chat drafts across tenants,
+//! The saturation population: chat drafts across tenants,
 //! ready fleets beside them, and hosts that hold several leases at once.
 //!
 //! # Seeded in the order the keys and the paths require
@@ -85,8 +85,8 @@ pub(super) struct Staged {
     pub(super) fleets: Vec<SeededFleet>,
     /// Queued chat messages, one per draft.
     pub(super) messages: u64,
-    /// The hosts that poll.
-    pub(super) runners: Vec<Uuid7>,
+    /// Hosts holding one native session each.
+    pub(super) runners: Vec<seed::RunnerIdentity>,
 }
 
 impl Staged {
@@ -94,10 +94,10 @@ impl Staged {
     /// but no more than the hosts have workers, because nothing is reported
     /// and a full host takes no more. Whichever runs out first ends the window,
     /// so a rate is never leases divided by a deadline spent idle.
-    pub(super) fn population(&self) -> u64 {
-        let work = self.messages + u64::try_from(self.fleets.len()).unwrap_or(u64::MAX);
-        let hosts = u64::try_from(self.runners.len()).unwrap_or(u64::MAX);
-        work.min(hosts.saturating_mul(u64::from(WORKERS)))
+    pub(super) fn population(&self) -> Result<u64> {
+        let work = self.messages + u64::try_from(self.fleets.len())?;
+        let hosts = u64::try_from(self.runners.len())?;
+        Ok(work.min(hosts.saturating_mul(u64::from(WORKERS))))
     }
 }
 
@@ -138,13 +138,14 @@ pub(super) async fn stage(
         let fleet = seed::identities(INDEX_BASE + TENANTS + index)?;
         seed::rows(&stores.database, prefix, &fleet, &tag, SEEDED_AT).await?;
         fund(stores, &fleet).await?;
-        seed::enqueue(&stores.database, &stores.queue, &fleet, EventType::Chat).await?;
+        seed::enqueue(&stores.database, &stores.bus, &fleet, EventType::Chat).await?;
         ledger.created(ROWS_PER_FLEET);
         staged.fleets.push(fleet);
     }
     for index in 0..parameters.runners {
         let host = prefix.name(&format!("{HOST_SUFFIX}-{index}"));
-        let runner = seed::runner_with(&stores.database, &host, &tag, WORKERS, SEEDED_AT).await?;
+        let runner =
+            seed::runner_identity(&stores.database, &host, &tag, WORKERS, SEEDED_AT).await?;
         staged.runners.push(runner);
         ledger.created(ROWS_PER_RUNNER);
     }

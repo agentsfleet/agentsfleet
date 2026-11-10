@@ -14,13 +14,12 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_wire::paths::RUNNER_REPORTS;
 use afd_state::sql::{LEASE_STATUS_ACTIVE, LEASE_STATUS_REPORTED};
 use agentsfleetd::supervisor::Supervisor;
 
 use crate::e2e::scenario;
 use crate::tail::lease;
-use crate::wire::{post, report_body};
+use crate::wire::report_body;
 
 #[path = "integration_rust_runner_overlap.rs"]
 mod overlap;
@@ -32,7 +31,7 @@ const FUTURE: &str = "future";
 /// the correct one.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn test_runner_body_with_unknown_field_refused() {
+async fn test_a_retired_report_route_cannot_settle_a_lease() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     #[expect(
@@ -40,22 +39,58 @@ async fn test_runner_body_with_unknown_field_refused() {
         reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
     )]
     let http = reqwest::Client::new();
-    let (lease_id, fence) = lease(&http, &run).await;
+    let (lease_id, fence) = lease(&run).await;
     let mut body = report_body(&lease_id, &run.event_id, fence);
     let report = body.as_object_mut().expect("a report is a JSON object");
     report.insert(FUTURE.to_owned(), serde_json::Value::from(1));
 
-    let refused = post(&http, &run, RUNNER_REPORTS, &body).await;
-    assert_eq!(refused.status().as_u16(), 400, "an unknown key is refused");
+    let refused = crate::wire::post(&http, &run, "/v1/runners/me/reports", &body).await;
+    assert_eq!(
+        refused.status().as_u16(),
+        404,
+        "the retired report endpoint is absent"
+    );
 
     body.as_object_mut()
         .expect("a report is a JSON object")
         .remove(FUTURE);
-    let accepted = post(&http, &run, RUNNER_REPORTS, &body).await;
+    let accepted = crate::wire::report(&run, &body).await;
+    assert!(accepted.is_ok(), "native report refused: {accepted:?}");
+
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+/// Every pull route the stream replaced answers 404 to an enrolled runner,
+/// even for a live lease, while the runner's own row still answers.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+async fn the_retired_runner_routes_answer_404() {
+    let mut supervisor = Supervisor::new();
+    let run = scenario(&mut supervisor).await;
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"
+    )]
+    let http = reqwest::Client::new();
+    let (lease_id, _) = lease(&run).await;
+    let retired = [
+        "/v1/runners/me/heartbeats".to_owned(),
+        "/v1/runners/me/leases".to_owned(),
+        format!("/v1/runners/me/leases/{lease_id}/renew"),
+        format!("/v1/runners/me/leases/{lease_id}/activity"),
+        format!("/v1/runners/me/leases/{lease_id}/folds"),
+        "/v1/runners/me/reports".to_owned(),
+    ];
+    for path in &retired {
+        let answer = crate::wire::post(&http, &run, path, &serde_json::json!({})).await;
+        assert_eq!(answer.status().as_u16(), 404, "POST {path} is retired");
+    }
+    let own = crate::wire::get(&http, &run, "/v1/runners/me").await;
     assert_eq!(
-        accepted.status().as_u16(),
+        own.status().as_u16(),
         200,
-        "the refusal settled nothing, so the corrected report lands"
+        "the runner still reads its own row"
     );
 
     supervisor.shutdown().await;
@@ -226,8 +261,17 @@ fn rust_runner(
 ) -> impl Future<Output = afr_supervisor::Result<()>> + use<> {
     use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
     let home = home.to_string_lossy().into_owned();
+    let origin = format!(
+        "https://localhost:{}",
+        run.booted.runner_stream_address.port()
+    );
+    let root = crate::support::runner_stream::root_file()
+        .to_string_lossy()
+        .into_owned();
     let env = af_core::env::MapEnv::from_pairs([
         (ENV_API_URL, run.base.as_str()),
+        (afr_supervisor::config::ENV_STREAM_URL, origin.as_str()),
+        (afr_supervisor::config::ENV_STREAM_CA, root.as_str()),
         (ENV_RUNNER_TOKEN, run.token.as_str()),
         (ENV_STORAGE_HOME, home.as_str()),
     ]);

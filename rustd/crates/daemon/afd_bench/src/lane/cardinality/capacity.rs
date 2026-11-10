@@ -43,11 +43,7 @@ pub(super) async fn record(stores: &Datastores, report: &mut Report) -> Result<(
 
     // The same ledger shape the daemon holds — see `lane::steer` — read for
     // the one figure the datastore cannot give: rows the queue never took.
-    let ledger = Admissions::new(
-        stores.database.clone(),
-        stores.queue.clone(),
-        Entropy::new(),
-    );
+    let ledger = Admissions::new(stores.database.clone(), stores.bus.clone(), Entropy::new());
     let backlog = ledger.backlog().await?;
     report.measurement(LEDGER_BACKLOG_ROWS, count(backlog.rows));
     report.measurement(

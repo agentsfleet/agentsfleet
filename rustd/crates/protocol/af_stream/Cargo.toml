@@ -1,0 +1,65 @@
+[package]
+name = "af_stream"
+autotests = false
+description = "Bounded duplex HTTP transports for the runner session."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+readme.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lints]
+workspace = true
+
+[features]
+test-util = ["dep:rcgen", "dep:tempfile"]
+
+[dependencies]
+rcgen = { workspace = true, optional = true }
+tempfile = { workspace = true, optional = true }
+base64.workspace = true
+percent-encoding.workspace = true
+af_core.workspace = true
+af_observability.workspace = true
+af_crypto.workspace = true
+af_wire.workspace = true
+boring.workspace = true
+bytes.workspace = true
+futures-util = { workspace = true, features = ["sink"] }
+garde.workspace = true
+h2.workspace = true
+http.workspace = true
+http-body.workspace = true
+http-body-util.workspace = true
+hyper.workspace = true
+hyper-util = { workspace = true, features = ["client-proxy"] }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "net"] }
+tokio-boring.workspace = true
+tokio-quiche.workspace = true
+tokio-util = { workspace = true, features = ["io", "rt"] }
+tower.workspace = true
+tracing.workspace = true
+url.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+af_observability = { workspace = true, features = ["test-util"] }
+tracing-subscriber = { workspace = true, features = ["json"] }
+rcgen.workspace = true
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "test-util"] }
+
+[[test]]
+name = "stream_suite"
+path = "tests/stream_suite.rs"
+
+[[test]]
+name = "transport_observability"
+path = "tests/transport_observability.rs"

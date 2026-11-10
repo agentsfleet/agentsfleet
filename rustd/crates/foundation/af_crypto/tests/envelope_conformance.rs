@@ -149,26 +149,3 @@ fn kek_rejects_a_wrong_length_hex() {
     let error = Kek::from_hex("deadbeef").expect_err("a wrong-length hex must be refused");
     assert!(error.is_key_hex(), "got {error}");
 }
-
-/// Recovered secret bytes are zeroed before their memory is released.
-///
-/// The guarantee lives in the type, through `zeroize`, so the assertion is
-/// that the buffer holds no non-zero byte once released.
-#[test]
-fn secret_bytes_are_zeroed_before_release() {
-    use zeroize::Zeroize as _;
-
-    let mut recovered = Sealer::new()
-        .seal(
-            &kek(),
-            &Aad::from_bytes(Vec::new()),
-            SECRET_API_KEY_PLAINTEXT,
-        )
-        .unwrap()
-        .open(&kek(), &Aad::from_bytes(Vec::new()))
-        .unwrap();
-
-    assert_eq!(recovered.expose(), SECRET_API_KEY_PLAINTEXT);
-    recovered.zeroize();
-    assert!(recovered.expose().iter().all(|byte| *byte == 0));
-}

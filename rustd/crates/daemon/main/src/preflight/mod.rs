@@ -29,6 +29,7 @@ mod knob_tests;
 mod knobs;
 mod otlp;
 mod read;
+pub mod runner_listener;
 #[cfg(test)]
 mod stream_ceiling_tests;
 
@@ -87,6 +88,9 @@ struct Readings {
     kek: Option<Kek>,
     session_code_pepper: Option<SecretBytes>,
     sse_max_streams: usize,
+    runner_wake: Option<afd_bus::wake::Wake>,
+    frame_memory: Option<af_stream::MemoryLimits>,
+    runner_listener: Option<runner_listener::RunnerListenerConfig>,
     posthog: Option<PostHogConfig>,
     otlp: Option<OtlpConfig>,
     slack_api_url: Option<Box<str>>,
@@ -111,6 +115,9 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
     // a dashboard that silently refuses every stream — the furthest possible
     // point from the mistake. Unset is the default, which is most deployments.
     let sse_max_streams = read::sse_max_streams(env, faults);
+    let runner_wake = read::runner_wake(env, faults);
+    let frame_memory = read::frame_memory(env, faults);
+    let runner_listener = runner_listener::read(env, faults);
     let posthog = posthog(env);
     // Absent is a deployment that exports nothing, which is most of them and
     // is not a fault. What IS a fault is an endpoint with a protocol, timeout
@@ -132,6 +139,9 @@ fn read_every_knob<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> R
         kek,
         session_code_pepper,
         sse_max_streams,
+        runner_wake,
+        frame_memory,
+        runner_listener,
         posthog,
         otlp,
         slack_api_url,
@@ -198,37 +208,25 @@ impl Readings {
         env: &E,
         faults: Vec<Fault>,
     ) -> Result<BootConfig, Refusal> {
-        let Self {
-            api_pool,
-            redis,
-            kek,
-            session_code_pepper,
-            sse_max_streams,
-            posthog,
-            otlp,
-            slack_api_url,
-            dashboard,
-            deployment,
-            identity,
-            platform_admin_workspace,
-            checkpoint_storage,
-        } = self;
-        match (
-            api_pool,
-            redis,
-            kek,
-            identity,
-            session_code_pepper,
-            dashboard,
-        ) {
-            (
-                Some(api_pool),
-                Some(redis),
-                Some(kek),
-                Some(identity),
-                Some(session_code_pepper),
-                Some(dashboard),
-            ) if faults.is_empty() => Ok(BootConfig {
+        match self {
+            Self {
+                api_pool: Some(api_pool),
+                redis: Some(redis),
+                kek: Some(kek),
+                identity: Some(identity),
+                session_code_pepper: Some(session_code_pepper),
+                dashboard: Some(dashboard),
+                runner_wake: Some(runner_wake),
+                frame_memory: Some(frame_memory),
+                runner_listener: Some(runner_listener),
+                sse_max_streams,
+                posthog,
+                otlp,
+                slack_api_url,
+                deployment,
+                platform_admin_workspace,
+                checkpoint_storage,
+            } if faults.is_empty() => Ok(BootConfig {
                 api_pool,
                 redis,
                 kek,
@@ -241,15 +239,20 @@ impl Readings {
                 qstash_token: optional_secret(env, QSTASH_TOKEN_KNOB),
                 qstash_url: optional(env, QSTASH_URL_KNOB),
                 slack_api_url,
-                identity_webhook_secret: optional(env, IDENTITY_WEBHOOK_SECRET_KNOB),
+                identity_webhook_secret: optional_secret(env, IDENTITY_WEBHOOK_SECRET_KNOB),
                 qstash_keys: signing_keys(env),
                 sse_max_streams,
+                runner_wake,
+                frame_memory,
+                runner_listener,
                 posthog,
                 otlp,
                 #[cfg(feature = "test-util")]
                 exchanger: None,
                 #[cfg(feature = "test-util")]
                 connector_endpoint: None,
+                #[cfg(feature = "test-util")]
+                authoring_transport: None,
             }),
             // Anything else: a knob that is missing or unusable, the identity
             // provider included. Every one of them has already pushed its own

@@ -9,11 +9,13 @@ use serde_json::json;
 async fn proposal_router_commits_one_version_and_checks_stop_before_replay() {
     let r = Running::create().await;
     let request = r.initialize().to_string();
-    let first = send(&r.router, Method::POST, &r.path, Some(&r.token), &request).await;
+    let first =
+        crate::harness::native::send(&r.router, &r.operation, Some(&r.token), &request).await;
     assert_eq!(first.status(), StatusCode::ACCEPTED);
     let first = json_body(first).await;
     assert_eq!(first.pointer("/candidate/revision"), Some(&json!("1")));
-    let replay = send(&r.router, Method::POST, &r.path, Some(&r.token), &request).await;
+    let replay =
+        crate::harness::native::send(&r.router, &r.operation, Some(&r.token), &request).await;
     assert_eq!(replay.status(), StatusCode::ACCEPTED);
     let replay = json_body(replay).await;
     assert_eq!(replay.get("candidate"), first.get("candidate"));
@@ -28,7 +30,8 @@ async fn proposal_router_commits_one_version_and_checks_stop_before_replay() {
     )
     .await;
     assert_eq!(stopped.status(), StatusCode::OK);
-    let late = send(&r.router, Method::POST, &r.path, Some(&r.token), &request).await;
+    let late =
+        crate::harness::native::send(&r.router, &r.operation, Some(&r.token), &request).await;
     assert_eq!(late.status(), StatusCode::CONFLICT);
     assert_eq!(
         json_body(late).await.get("error_code"),
@@ -42,10 +45,9 @@ async fn proposal_router_commits_one_version_and_checks_stop_before_replay() {
 async fn proposal_router_rejects_person_tokens_unknown_authority_and_bad_counters() {
     let r = Running::create().await;
     let request = r.initialize();
-    let person = send(
+    let person = crate::harness::native::send(
         &r.router,
-        Method::POST,
-        &r.path,
+        &r.operation,
         Some(&r.f.token),
         &request.to_string(),
     )
@@ -56,21 +58,18 @@ async fn proposal_router_rejects_person_tokens_unknown_authority_and_bad_counter
         .as_object_mut()
         .expect("object")
         .insert("grants".into(), json!([]));
-    let response = send(
+    crate::harness::native::assert_closed(
         &r.router,
-        Method::POST,
-        &r.path,
+        &r.operation,
         Some(&r.token),
         &authority.to_string(),
     )
     .await;
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     let mut invalid = request;
     *invalid.get_mut("activity_sequence").expect("sequence") = json!("01");
-    let response = send(
+    let response = crate::harness::native::send(
         &r.router,
-        Method::POST,
-        &r.path,
+        &r.operation,
         Some(&r.token),
         &invalid.to_string(),
     )

@@ -144,6 +144,7 @@ pub(super) async fn enrol(booted: &Booted, fleet: &Uuid7, now: Timestamp) -> (Uu
     afd_fleet::lease::Leases::new(
         booted.database.clone(),
         booted.queue.clone(),
+        afd_bus::dragonfly::publisher(booted.queue.clone()),
         Entropy::new(),
     )
     .claim(fleet, &enrolled.runner_id, std::time::Duration::ZERO)

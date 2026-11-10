@@ -6,12 +6,13 @@ use af_core::id::Uuid7;
 use af_wire::task::{TaskContext, TaskState};
 use sqlx::PgConnection;
 
-// Setup-head writers first hold the parent FOR UPDATE; KEY SHARE also fences that writer,
-// without strengthening this parent lock before the host and slot.
+// Setup changes and Kill hold FOR UPDATE. Recheck active state after that lock
+// wait, before taking the host and slot, so a selected admission cannot survive Kill.
 pub(crate) async fn parents(connection: &mut PgConnection, acquired: &Acquired) -> Result<bool> {
-    let parent: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_SCOPE)
+    let parent: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_ISSUE_SCOPE)
         .bind(&acquired.fleet_id)
         .bind(&acquired.workspace_id)
+        .bind(crate::lease::sql::FLEET_STATUS_ACTIVE)
         .fetch_optional(connection)
         .await
         .map_err(query("hold surviving issue parents before host and slot"))?;
@@ -86,9 +87,19 @@ pub(crate) async fn attach(
     {
         return Ok(None);
     }
+    attach_task(connection, acquired, lease, &task_id, revision).await
+}
+
+async fn attach_task(
+    connection: &mut PgConnection,
+    acquired: &Acquired,
+    lease: &Uuid7,
+    task_id: &Uuid7,
+    revision: Option<&crate::lease::installed::IssueRevision>,
+) -> Result<Option<(Option<TaskContext<'static>>, jiff::Timestamp)>> {
     let task = task_id.clone();
     let _locked: Option<String> = sqlx::query_scalar(super::sql::LOCK_TASK)
-        .bind(&task_id)
+        .bind(task_id)
         .bind(&acquired.fleet_id)
         .bind(&acquired.workspace_id)
         .fetch_optional(&mut *connection)
@@ -97,7 +108,7 @@ pub(crate) async fn attach(
     let deadline: Option<jiff_sqlx::Timestamp> =
         sqlx::query_scalar(include_str!("sql/issue_lease.sql"))
             .bind(lease)
-            .bind(&task_id)
+            .bind(task_id)
             .bind(TaskState::Ready.as_str())
             .bind(TaskState::Running.as_str())
             .bind(revision.and_then(|proof| proof.task_generation))
@@ -172,9 +183,9 @@ impl crate::lease::Leases {
                 task_id: std::borrow::Cow::Borrowed(task.as_str()),
                 resource_version: super::row::counter(version, "resource_version")?,
             };
-            self.streams()
-                .publish_frame(acquired.fleet_id.as_str(), &frame)
-                .await;
+            let subject = afd_bus::Subject::FleetTail(acquired.fleet_id.clone());
+            let publication = self.streams().publish_frame(&subject, &frame).await;
+            afd_bus::observe_notification(&subject, publication);
             tracing::info!(
                 event = "dt_transition",
                 task_id = task.as_str(),

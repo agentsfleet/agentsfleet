@@ -83,6 +83,9 @@ fn lane_knobs() -> Vec<(&'static str, String)> {
     ]
     .into_iter()
     .chain(crate::support::SESSION_PEPPER.map(|(knob, value)| (knob, value.to_owned())))
+    .chain(
+        crate::support::runner_stream::environment().map(|(knob, value)| (knob, value.to_owned())),
+    )
     .chain(crate::support::IDENTITY.map(|(knob, value)| (knob, value.to_owned())))
     .collect()
 }
@@ -128,6 +131,7 @@ fn spawn(args: &[&str], knobs: &[(&str, String)]) -> Child {
     ]
     .into_iter()
     .chain(crate::support::SESSION_PEPPER.map(|(knob, _value)| knob))
+    .chain(crate::support::runner_stream::environment().map(|(knob, _value)| knob))
     .chain(crate::support::IDENTITY_KNOBS)
     {
         command.env_remove(knob);

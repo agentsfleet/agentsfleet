@@ -14,7 +14,6 @@ use af_core::id::Uuid7;
 use afd_api_wire::approval::status;
 use afd_api_wire::grant::status as grant_status;
 use afd_api_wire::tail::{FleetCounters, TailFrame};
-use afd_dragonfly::FleetStreams;
 
 use super::announce::Answer;
 use super::row::{StoredResolution, StoredWin};
@@ -148,7 +147,7 @@ impl Inbox {
         } else {
             // Resolution already cleared the durable park. Notify a waiting
             // poll that the original delivery is available again.
-            self.wake_parked_delivery(resolved.fleet_id.as_str()).await;
+            self.wake_parked_delivery(&resolved.fleet_id).await;
             Ok(None)
         };
         // After the continuation, so an approval's frame carries the count the
@@ -157,7 +156,7 @@ impl Inbox {
         let counters =
             afd_events::fleet_counters_best_effort_on(connection, &resolved.fleet_id).await;
         self.announce(Answer {
-            fleet_id: resolved.fleet_id.as_str(),
+            fleet_id: &resolved.fleet_id,
             gate_id: resolved.gate_id.as_str(),
             event_id: resolved.event_id.as_ref().map(Uuid7::as_str),
             status: &resolved.status,
@@ -171,8 +170,8 @@ impl Inbox {
     }
 
     /// The answer already cleared the durable park in its own transaction.
-    pub(super) async fn wake_parked_delivery(&self, fleet: &str) {
-        afd_dragonfly::doorbell::publish(&self.queue, fleet).await;
+    pub(super) async fn wake_parked_delivery(&self, fleet: &Uuid7) {
+        afd_bus::wake::publish(&self.bus, fleet.clone()).await;
     }
 
     /// Lands the event that resumes the run an approved gate had blocked.
@@ -230,9 +229,9 @@ impl Inbox {
                 message: None,
                 counters,
             };
-            FleetStreams::new(self.queue.clone())
-                .publish_frame(resolved.fleet_id.as_str(), &frame)
-                .await;
+            let subject = afd_bus::Subject::FleetTail(resolved.fleet_id.clone());
+            let publication = self.bus.publish_frame(&subject, &frame).await;
+            afd_bus::observe_notification(&subject, publication);
         }
 
         Ok(Some(admitted.stored.id))

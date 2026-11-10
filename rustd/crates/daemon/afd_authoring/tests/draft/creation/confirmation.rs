@@ -146,7 +146,7 @@ async fn a_confirmation_outage_is_logged_and_a_retry_accepts_without_another_adm
     retained.pending(retained.event.as_str()).await;
     let admissions = Admissions::new(
         afd_db::test_util::unreachable_db(),
-        retained.case.queue.clone(),
+        afd_bus::dragonfly::publisher(retained.case.queue.clone()),
         Entropy::new(),
     );
     let creations = Creations::new(retained.case.setup.clone(), admissions);

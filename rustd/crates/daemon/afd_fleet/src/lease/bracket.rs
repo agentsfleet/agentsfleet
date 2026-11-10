@@ -13,7 +13,7 @@
 //! The durable row is written first and stands whether or not anybody was
 //! listening; the frame is the row's announcement, and a lost announcement is
 //! recovered by the client's reconnect backfill from the events list. That
-//! contract is [`afd_dragonfly::FleetStreams::publish_frame`]'s, stated once for
+//! contract is [`afd_bus::Handle::publish_frame`]'s, stated once for
 //! every daemon-authored frame.
 //!
 //! # The completion is the row, not a pointer to it
@@ -102,14 +102,21 @@ impl Leases {
             message: steer_message(acquired),
             counters,
         };
-        self.streams()
-            .publish_frame(acquired.fleet_id.as_str(), &frame)
-            .await;
+        let subject = afd_bus::Subject::FleetTail(acquired.fleet_id.clone());
+        let publication = self.streams().publish_frame(&subject, &frame).await;
+        afd_bus::observe_notification(&subject, publication);
     }
 
     /// Announce that a run ended, carrying the row the ending wrote. Answers
-    /// whether the announcement landed.
-    pub async fn publish_completion(&self, closed: &Closed, final_reply: Option<&str>) -> bool {
+    /// the original publication failure so the caller decides how to observe it.
+    ///
+    /// # Errors
+    /// Retains serialization and broker failures after the durable report committed.
+    pub async fn publish_completion(
+        &self,
+        closed: &Closed,
+        final_reply: Option<&str>,
+    ) -> afd_bus::Result<()> {
         let frame = TailFrame::EventComplete {
             event: Box::new(TailRow::from(closed.row.summary())),
             final_reply: inline_final_reply(final_reply),
@@ -118,7 +125,10 @@ impl Leases {
             counters: Some(closed.counters),
         };
         self.streams()
-            .publish_frame(closed.row.fleet_id.as_str(), &frame)
+            .publish_frame(
+                &afd_bus::Subject::FleetTail(closed.row.fleet_id.clone()),
+                &frame,
+            )
             .await
     }
 }

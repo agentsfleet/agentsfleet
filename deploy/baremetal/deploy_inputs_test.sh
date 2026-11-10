@@ -130,11 +130,13 @@ test_deploy_inputs_refuse_a_placeholder_token() {
   toolbox_set "$toolbox"
   printf 'AGENTSFLEET_API_URL=https://api.example.test\nAGENTSFLEET_RUNNER_TOKEN=agt_rREAL\n' >"$real"
   printf 'AGENTSFLEET_API_URL=https://api.example.test\nAGENTSFLEET_RUNNER_TOKEN=agt_rFAKE_x\n' >"$fake"
+  printf 'AGENTSFLEET_RUNNER_STREAM_URL=https://agentsfleetd-dev.internal:4443\nAGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE=/etc/agentsfleet/runner-stream-trust.pem\n' | tee -a "$real" >>"$fake"
+  printf 'fixture public trust\n' >"$WORK_DIR/trust.pem"
   # shellcheck source=./deploy.sh
-  (source "$DEPLOY_SH" >/dev/null 2>&1; set +e; check_deploy_inputs "$binary" "$toolbox" "$real" >/dev/null 2>&1)
+  (source "$DEPLOY_SH" >/dev/null 2>&1; set +e; check_deploy_inputs "$binary" "$toolbox" "$real" "$WORK_DIR/trust.pem" >/dev/null 2>&1)
   status_real=$?
   # shellcheck source=./deploy.sh
-  (source "$DEPLOY_SH" >/dev/null 2>&1; set +e; check_deploy_inputs "$binary" "$toolbox" "$fake" >/dev/null 2>&1)
+  (source "$DEPLOY_SH" >/dev/null 2>&1; set +e; check_deploy_inputs "$binary" "$toolbox" "$fake" "$WORK_DIR/trust.pem" >/dev/null 2>&1)
   status_fake=$?
   if [[ "$status_real" -ne 0 ]]; then
     bad "$name" "complete inputs with a real token were refused"
@@ -176,6 +178,33 @@ test_deploy_bundle_keeps_its_directory_private() {
   fi
 }
 
+test_stream_inputs_refuse_empty_values_and_missing_trust() {
+  local binary="$WORK_DIR/stream-binary" toolbox="$WORK_DIR/stream-toolbox" env_file="$WORK_DIR/stream.env" ca="$WORK_DIR/stream-ca.pem" key value status
+  : >"$binary"
+  toolbox_set "$toolbox"
+  printf 'public certificate fixture\n' >"$ca"
+  printf 'AGENTSFLEET_API_URL=https://api.example.test\nAGENTSFLEET_RUNNER_TOKEN=agt_rREAL\nAGENTSFLEET_RUNNER_STREAM_URL=https://agentsfleetd-dev.internal:4443\nAGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE=/etc/agentsfleet/runner-stream-trust.pem\n' >"$env_file"
+  # shellcheck source=./deploy.sh
+  if ! (source "$DEPLOY_SH"; check_deploy_inputs "$binary" "$toolbox" "$env_file" "$ca"); then
+    bad "complete stream deploy inputs" "positive control was refused"
+    return
+  fi
+  for key in AGENTSFLEET_API_URL AGENTSFLEET_RUNNER_TOKEN AGENTSFLEET_RUNNER_STREAM_URL AGENTSFLEET_RUNNER_STREAM_TLS_CA_CERT_FILE; do
+    value="$WORK_DIR/empty-$key.env"
+    sed "s|^$key=.*|$key=|" "$env_file" >"$value"
+    status=0
+    # shellcheck source=./deploy.sh
+    (source "$DEPLOY_SH"; check_deploy_inputs "$binary" "$toolbox" "$value" "$ca") >/dev/null 2>&1 || status=$?
+    if [ "$status" -eq 0 ]; then bad "empty stream deploy input" "$key was accepted empty"; return; fi
+  done
+  status=0
+  # shellcheck source=./deploy.sh
+  (source "$DEPLOY_SH"; check_deploy_inputs "$binary" "$toolbox" "$env_file" "$WORK_DIR/missing-ca.pem") >/dev/null 2>&1 || status=$?
+  if [ "$status" -eq 0 ]; then bad "missing stream trust" "a missing CA was accepted"; return; fi
+  ok "stream deploy inputs require nonempty values and staged public trust"
+}
+
+test_stream_inputs_refuse_empty_values_and_missing_trust
 test_deploy_refused_toolbox_leaves_the_host_untouched
 test_deploy_refused_env_leaves_the_host_untouched
 test_deploy_inputs_refuse_a_placeholder_token

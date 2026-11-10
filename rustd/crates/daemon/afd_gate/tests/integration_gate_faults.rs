@@ -51,7 +51,8 @@ fn told_reason(capture: &Capture, event: &str) -> String {
 async fn an_unreadable_gate_decision_reason_carries_no_code_prefix() {
     let gates = Gates::new(
         afd_db::test_util::unreachable_db(),
-        connect_redis().await,
+        (connect_redis().await).clone(),
+        afd_bus::dragonfly::publisher(connect_redis().await),
         Entropy::new(),
     );
     let fleet = mint_id();
@@ -102,7 +103,12 @@ async fn a_policy_kill_pauses_the_fleet_even_when_dragonfly_is_unreachable() {
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail");
-    let gates = Gates::new(fixture.database.clone(), dead_queue, Entropy::new());
+    let gates = Gates::new(
+        fixture.database.clone(),
+        (dead_queue).clone(),
+        afd_bus::dragonfly::publisher(dead_queue),
+        Entropy::new(),
+    );
     let policy_kill = config_gates(KILL_EVERY_CHAT);
 
     let event = mint_id();
@@ -134,7 +140,12 @@ fn gates_without_a_queue(database: afd_db::Db) -> Gates {
         NOWHERE.to_owned(),
     ))
     .expect("a lazy handle opens no socket and cannot fail");
-    Gates::new(database, dead_queue, Entropy::new())
+    Gates::new(
+        database,
+        (dead_queue).clone(),
+        afd_bus::dragonfly::publisher(dead_queue),
+        Entropy::new(),
+    )
 }
 
 #[tokio::test]
@@ -145,6 +156,7 @@ async fn a_mirrored_answer_decides_without_reading_the_durable_row() {
     let gates = Gates::new(
         afd_db::test_util::unreachable_db(),
         queue.clone(),
+        afd_bus::dragonfly::publisher(queue.clone()),
         Entropy::new(),
     );
     let fleet = mint_id();
@@ -159,14 +171,7 @@ async fn a_mirrored_answer_decides_without_reading_the_durable_row() {
         )
         .await
         .expect("the live queue holds the reference");
-    queue
-        .set_for(
-            &afd_gate::gate::key::response(action.as_str()),
-            MIRRORED_APPROVE,
-            MIRROR_TTL_SECONDS,
-        )
-        .await
-        .expect("the live queue holds the mirrored answer");
+    mirror_approval(&queue, &action).await;
     let config = config(false);
 
     let verdict = gates
@@ -197,7 +202,8 @@ async fn a_reference_whose_row_is_gone_keeps_the_event_waiting() {
     let fixture = Fixture::create().await;
     let gates = Gates::new(
         fixture.database.clone(),
-        connect_redis().await,
+        (connect_redis().await).clone(),
+        afd_bus::dragonfly::publisher(connect_redis().await),
         Entropy::new(),
     );
     let action = mint_id();
@@ -267,4 +273,15 @@ async fn a_park_whose_reference_cannot_be_written_fails_closed_after_the_row() {
         "the durable row survives the failed reference write"
     );
     fixture.cleanup().await;
+}
+
+async fn mirror_approval(queue: &Dragonfly, action: &af_core::id::Uuid7) {
+    queue
+        .set_for(
+            &afd_gate::gate::key::response(action.as_str()),
+            MIRRORED_APPROVE,
+            MIRROR_TTL_SECONDS,
+        )
+        .await
+        .expect("the live queue holds the mirrored answer");
 }

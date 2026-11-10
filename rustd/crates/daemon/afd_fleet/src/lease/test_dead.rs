@@ -27,7 +27,7 @@ use jiff::Timestamp;
 
 use crate::lease::affinity::Fence;
 use crate::lease::envelope::{Acquired, Kind};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::store::Leases;
 use afd_memory::Memories;
 
@@ -50,7 +50,12 @@ pub(crate) fn queue() -> Dragonfly {
 
 /// A lease store over both.
 pub(crate) fn leases() -> Leases {
-    Leases::new(database(), queue(), Entropy::new())
+    Leases::new(
+        database(),
+        queue(),
+        afd_bus::dragonfly::publisher(queue()),
+        Entropy::new(),
+    )
 }
 
 /// The whole lease plane over both.
@@ -58,12 +63,17 @@ pub(crate) fn leases() -> Leases {
     clippy::disallowed_methods,
     reason = "the broker's vendors hold Platform::empty(), so this client never exchanges a credential or sends a request; afd_identity::direct's deadline and no_proxy have nothing to bound"
 )]
-pub(crate) fn plane() -> Plane {
+pub(crate) fn plane() -> LeaseService {
     let kek = Arc::new(Kek::from_bytes([7; af_crypto::KEY_LEN]));
-    Plane {
+    LeaseService {
         task_reports: None,
         leases: leases(),
-        gates: Gates::new(database(), queue(), Entropy::new()),
+        gates: Gates::new(
+            database(),
+            queue(),
+            afd_bus::dragonfly::publisher(queue()),
+            Entropy::new(),
+        ),
         accounts: Accounts::new(database()),
         biller: Arc::new(biller()),
         memories: Memories::new(database(), Entropy::new()),

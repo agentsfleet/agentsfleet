@@ -80,6 +80,11 @@ fn recording() -> (Recorded, tracing::subscriber::DefaultGuard) {
     let recorded = Recorded::default();
     let guard =
         tracing::subscriber::set_default(tracing_subscriber::registry().with(recorded.clone()));
+    // tracing-core caches each callsite's interest from the first thread to reach it. A thread
+    // with no dispatcher caches `never`, and a parallel test's recorder then misses the event.
+    // Every test here records, so no drain callsite is first reached without one; the rebuild
+    // repairs a callsite another module's test reached first.
+    tracing::callsite::rebuild_interest_cache();
     (recorded, guard)
 }
 
@@ -93,6 +98,7 @@ const A_MOMENT: Duration = Duration::from_millis(20);
 
 #[tokio::test]
 async fn an_empty_server_drains_at_once_and_stops_accepting() {
+    let (_recorded, _guard) = recording();
     let drain = Drain::new();
     assert!(!drain.accepting().is_cancelled());
     let settled = drain.settle(GENEROUS).await;
@@ -100,7 +106,8 @@ async fn an_empty_server_drains_at_once_and_stops_accepting() {
         settled,
         Settled {
             in_flight_at_close: 0,
-            abandoned: 0
+            abandoned: 0,
+            completed: true,
         }
     );
     assert!(settled.is_clean());
@@ -111,6 +118,7 @@ async fn an_empty_server_drains_at_once_and_stops_accepting() {
 
 #[tokio::test]
 async fn an_in_flight_request_finishes_before_the_drain_returns() {
+    let (_recorded, _guard) = recording();
     let drain = Drain::new();
     let guard = drain.enter();
     assert_eq!(drain.in_flight(), 1);
@@ -158,6 +166,7 @@ async fn a_request_that_outlasts_the_bound_is_reported_not_waited_for() {
 
 #[tokio::test]
 async fn every_connection_is_counted_and_released() {
+    let (_recorded, _guard) = recording();
     let drain = Drain::new();
     let guards: Vec<Guard> = (0..8).map(|_| drain.enter()).collect();
     assert_eq!(drain.in_flight(), 8);
@@ -171,6 +180,7 @@ async fn every_connection_is_counted_and_released() {
 /// waiter, or the drain waits out its entire bound over an empty server.
 #[tokio::test]
 async fn a_guard_dropped_while_the_drain_is_arming_still_wakes_it() {
+    let (_recorded, _guard) = recording();
     for _ in 0..64 {
         let drain = Drain::new();
         let guard = drain.enter();
@@ -191,6 +201,7 @@ async fn a_guard_dropped_while_the_drain_is_arming_still_wakes_it() {
 /// — the bound does not cover that wait, it only covers the in-flight count.
 #[tokio::test]
 async fn a_drain_with_no_accept_loop_settles_without_waiting_for_one() {
+    let (_recorded, _guard) = recording();
     let drain = Drain::new();
     let settled = tokio::time::timeout(GENEROUS, drain.settle(GENEROUS))
         .await
@@ -203,6 +214,7 @@ async fn a_drain_with_no_accept_loop_settles_without_waiting_for_one() {
 /// announces.
 #[tokio::test]
 async fn settle_waits_for_the_accept_loop_to_actually_leave() {
+    let (_recorded, _guard) = recording();
     let drain = Drain::new();
     drain.attach();
     let left = Arc::new(AtomicBool::new(false));
@@ -233,6 +245,7 @@ async fn settle_waits_for_the_accept_loop_to_actually_leave() {
 /// drain then returns while that request is still in flight.
 #[tokio::test]
 async fn a_connection_accepted_after_the_cancel_is_counted_at_close() {
+    let (_recorded, _guard) = recording();
     let drain = Drain::new();
     drain.attach();
 
@@ -263,36 +276,46 @@ async fn a_connection_accepted_after_the_cancel_is_counted_at_close() {
 /// already closed, or its first connection would be refused.
 #[tokio::test]
 async fn the_default_drain_is_an_open_one() {
+    let (_recorded, _guard) = recording();
     let drain = Drain::default();
     assert!(!drain.accepting().is_cancelled());
     assert_eq!(drain.in_flight(), 0);
     assert_eq!(drain.settle(GENEROUS).await, Settled::EMPTY);
 }
 
-/// A heartbeat held on the doorbell ends the moment the drain stops
-/// accepting, so the drain is clean long before the hold's own deadline.
-#[tokio::test]
-async fn a_held_heartbeat_ends_when_the_drain_stops_accepting() {
-    let doorbell = afd_dragonfly::Doorbell::new();
-    let drain = Drain::new().with_doorbell(doorbell.clone());
-    let guard = drain.enter();
-    let held = tokio::spawn(async move {
-        let waited = doorbell.wait_for_ring(Duration::from_secs(3_600), 1).await;
-        drop(guard);
-        waited
-    });
-    tokio::task::yield_now().await;
-
-    let settled = drain.settle(GENEROUS).await;
-
+/// A stuck accept loop consumes the same bound as a stuck request.
+#[tokio::test(start_paused = true)]
+async fn a_stuck_accept_loop_cannot_make_the_drain_unbounded() {
+    let (recorded, _guard) = recording();
+    let drain = Drain::new();
+    drain.attach();
+    let request = drain.enter();
+    let settled = drain.settle(Duration::from_secs(2)).await;
+    assert_eq!(settled.abandoned, 1);
+    assert!(drain.accepting().is_cancelled());
     assert_eq!(
-        (settled, held.await.expect("the held beat's task finished")),
-        (
-            Settled {
-                in_flight_at_close: 1,
-                abandoned: 0
-            },
-            afd_dragonfly::doorbell::Waited::Deadline
-        )
+        recorded.names(),
+        vec![
+            EVENT_DRAIN_STARTED.to_owned(),
+            EVENT_DRAIN_TIMED_OUT.to_owned()
+        ],
+        "a stuck accept loop's expired bound is reported like a stuck request's"
+    );
+    drop(request);
+}
+
+#[tokio::test(start_paused = true)]
+async fn an_empty_count_does_not_hide_an_accept_loop_that_never_stopped() {
+    let (recorded, _guard) = recording();
+    let drain = Drain::new();
+    drain.attach();
+    let settled = drain.settle(Duration::from_secs(2)).await;
+    assert_eq!(settled.abandoned, 0);
+    assert!(!settled.completed);
+    assert!(!settled.is_clean());
+    assert_eq!(
+        recorded.names(),
+        vec![EVENT_DRAIN_TIMED_OUT.to_owned()],
+        "an accept loop that never stopped is reported even with nothing in flight"
     );
 }

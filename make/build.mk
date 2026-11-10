@@ -55,7 +55,8 @@ BUILDER_ALPINE_SERIES := $(shell sed -n 's/^ALPINE_SERIES=//p' $(BUILDER_DIR)/ve
 BUILDER_RUSTUP_VERSION := $(shell sed -n 's/^RUSTUP_VERSION=//p' $(BUILDER_DIR)/versions.env)
 BUILDER_RUSTUP_SHA_X86 := $(shell sed -n 's/^RUSTUP_SHA256_X86_64_MUSL=//p' $(BUILDER_DIR)/versions.env)
 BUILDER_RUSTUP_SHA_ARM := $(shell sed -n 's/^RUSTUP_SHA256_AARCH64_MUSL=//p' $(BUILDER_DIR)/versions.env)
-BUILDER_IMAGE ?= ghcr.io/agentsfleet/ci-rust-alpine:$(BUILDER_RUST_VERSION)-alpine$(BUILDER_ALPINE_SERIES)
+BUILDER_REVISION := $(shell sed -n 's/^IMAGE_REVISION=//p' $(BUILDER_DIR)/versions.env)
+BUILDER_IMAGE ?= ghcr.io/agentsfleet/ci-rust-alpine:$(BUILDER_RUST_VERSION)-alpine$(BUILDER_ALPINE_SERIES)$(if $(BUILDER_REVISION),-$(BUILDER_REVISION))
 
 # Pull the published builder; bake it locally only when the registry does not
 # have it. Either way it happens once and every build after reuses the layers.
@@ -85,12 +86,14 @@ _dist-daemons: _builder-image
 	    -v "$(CURDIR):/w" -w /w/rustd $(BUILDER_IMAGE) \
 	    sh -c 'set -e; \
 	      cargo build --profile dist -p agentsfleetd --bin agentsfleetd; \
-	      bin="$$CARGO_TARGET_DIR/dist/agentsfleetd"; \
+	      triple="$$(rustc -vV | sed -n "s/^host: //p")"; \
+	      bin="$$CARGO_TARGET_DIR/$$triple/dist/agentsfleetd"; \
 	      if readelf -d "$$bin" | grep -q " (NEEDED)"; then echo "FAIL: dynamic NEEDED entries"; exit 1; fi; \
 	      if readelf -l "$$bin" | grep -q INTERP; then echo "FAIL: INTERP present"; exit 1; fi; \
-	      echo "  static: zero NEEDED, no INTERP"' \
+	      echo "  static: zero NEEDED, no INTERP"; \
+	      install -m 755 "$$bin" "$$CARGO_TARGET_DIR/agentsfleetd"' \
 	    || exit 1; \
-	  cp "rustd/target/musl-$$out/dist/agentsfleetd" "dist/agentsfleetd-rs-linux-$$out"; \
+	  cp "rustd/target/musl-$$out/agentsfleetd" "dist/agentsfleetd-rs-linux-$$out"; \
 	  chmod +x "dist/agentsfleetd-rs-linux-$$out"; \
 	  echo "✓ [image] dist/agentsfleetd-rs-linux-$$out ($$platform)"; \
 	done

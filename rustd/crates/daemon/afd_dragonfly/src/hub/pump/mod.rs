@@ -59,7 +59,16 @@ pub(super) async fn spawn(
 ) -> Result<()> {
     let connection = connect(&config).await?;
     inner.record_connection();
-    tokio::spawn(run(config, schedule, inner, commands, connection));
+    let tasks = inner.tasks.clone();
+    let stop = inner.stop.clone();
+    tasks.spawn(async move {
+        let _stop = stop.clone().drop_guard();
+        tokio::select! {
+            biased;
+            () = stop.cancelled() => {},
+            () = run(config, schedule, inner, commands, connection) => {},
+        }
+    });
     Ok(())
 }
 
@@ -156,7 +165,12 @@ async fn generation(
     channels: Vec<String>,
 ) -> Result<(Ended, Duration), Unhosted> {
     let (signal, mut signals) = mpsc::unbounded_channel();
-    let dispatcher = dispatch::spawn(Arc::clone(inner), pushes, signal, channels.clone());
+    let dispatcher = tokio_util::task::AbortOnDropHandle::new(dispatch::spawn(
+        Arc::clone(inner),
+        pushes,
+        signal,
+        channels.clone(),
+    ));
     let ended = match resubscribe(connection, &channels).await {
         Ok(()) => {
             let serving = Instant::now();

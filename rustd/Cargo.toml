@@ -37,6 +37,7 @@ members = [
     "crates/daemon/afd_authoring",
     "crates/daemon/afd_bench",
     "crates/daemon/afd_billing",
+    "crates/daemon/afd_bus",
     "crates/daemon/afd_connector",
     "crates/protocol/af_context",
     "crates/foundation/af_core",
@@ -51,6 +52,7 @@ members = [
     "crates/daemon/afd_fleet_ops",
     "crates/protocol/af_fleet_runtime",
     "crates/daemon/afd_gate",
+    "crates/daemon/afd_gateway",
     "crates/daemon/afd_http",
     "crates/daemon/afd_identity",
     "crates/protocol/af_inference",
@@ -68,6 +70,7 @@ members = [
     "crates/daemon/afd_vault",
     "crates/protocol/af_webhook",
     "crates/protocol/af_wire",
+    "crates/protocol/af_stream",
     "crates/runner/afr_agent",
     "crates/harness/af_egress",
     "crates/runner/afr_executor",
@@ -82,6 +85,8 @@ members = [
     "crates/runner/main",
     "crates/daemon/main",
 ]
+# Vendored upstream crates patched below: not ours to lint, test or grade.
+exclude = ["patches/datagram-socket"]
 
 [workspace.package]
 version = "0.75.0"
@@ -156,6 +161,8 @@ afd_fleet = { path = "crates/daemon/afd_fleet" }
 # needs a person. The lease plane calls down into it at two moments and it
 # calls back at none, which is what let it out.
 afd_gate = { path = "crates/daemon/afd_gate" }
+afd_gateway = { path = "crates/daemon/afd_gateway" }
+af_stream = { path = "crates/protocol/af_stream" }
 afd_http = { path = "crates/daemon/afd_http" }
 af_inference = { path = "crates/protocol/af_inference" }
 # Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
@@ -193,6 +200,7 @@ af_observability = { path = "crates/protocol/af_observability" }
 af_otlp = { path = "crates/protocol/af_otlp" }
 afd_outbound = { path = "crates/daemon/afd_outbound" }
 afd_dragonfly = { path = "crates/daemon/afd_dragonfly" }
+afd_bus = { path = "crates/daemon/afd_bus" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
 # meet at exactly one audit row, and that meeting is a vocabulary import.
@@ -677,6 +685,12 @@ tower = { version = "0.5.3", default-features = false, features = ["util"] }
 # drives the same listener with an HTTP/1.1 client and an HTTP/2 one, and there
 # is no other way to prove the auto builder serves both.
 h2 = { version = "0.4.20", default-features = false }
+# Both runner carriers use the same BoringSSL implementation and verified identity.
+boring = { version = "5.4.0", default-features = false }
+tokio-boring = { version = "5.4.0", default-features = false }
+tokio-quiche = { version = "=0.20.1", default-features = false }
+http-body = { version = "1.1.0", default-features = false }
+http-body-util = { version = "0.1.5", default-features = false }
 hyper = { version = "1.12.0", default-features = false, features = ["server", "client", "http1", "http2"] }
 # The tokio adapter for hyper's own I/O traits, and nothing else: `TokioIo` is
 # what lets a `tokio::net::TcpStream` be served by a hyper connection.
@@ -720,6 +734,7 @@ crc16 = { version = "0.4.0", default-features = false }
 # act a per-key race needs. Where a map is keyed by something many tasks
 # touch at once, this is the shape, not `Mutex<HashMap>`.
 dashmap = { version = "6.2.1", default-features = false }
+parking_lot = { version = "0.12.5", default-features = false }
 
 # JWT semantics for the GitHub App mint: header and claims JSON, base64url
 # segments, and expiry validation. NOT a crypto backend — it sits on one, and
@@ -917,7 +932,8 @@ jsonrpsee-types = { version = "0.26.1", default-features = false }
 tempfile = { version = "3.27.0", default-features = false }
 # The system-call numbers the sandbox's seccomp program refuses; rustix exposes
 # the calls, not their numbers. Codex's `linux-sandbox` reads them from here too.
-libc = { version = "0.2.191", default-features = false }
+# tokio-quiche 0.20.1 caps this below 0.2.190; retain the published transport.
+libc = { version = "=0.2.189", default-features = false }
 # The sandbox's egress scope speaks netlink itself: route netlink for the veth
 # pair, its addresses and its route, nf_tables for the host-side rules. Pure
 # Rust over the kernel's own protocol, so the static runner links no C library
@@ -1258,3 +1274,11 @@ lto = false
 codegen-units = 16
 strip = false
 debug = 1
+
+# datagram-socket 0.8.1, the newest release and the one tokio-quiche 0.20.1
+# requires, builds `libc::msghdr` with struct literals, and 64-bit musl's
+# private padding makes that a compile error on every static Linux build.
+# The vendored copy changes only those two literals; drop it once upstream
+# (cloudflare/quiche) releases a fix.
+[patch.crates-io]
+datagram-socket = { path = "patches/datagram-socket" }

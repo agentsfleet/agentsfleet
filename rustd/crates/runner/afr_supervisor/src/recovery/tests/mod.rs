@@ -277,6 +277,33 @@ fn remote(
     (plane, calls, saved)
 }
 
+/// Native activity has no reply; read through its terminal phase before inspecting the transcript.
+async fn drain(calls: &mut Calls) -> Vec<Call> {
+    crate::test_support::bounded("terminal native recovery activity", async {
+        let mut observed = Vec::new();
+        loop {
+            let call = calls.recv().await.unwrap();
+            let done = if call.verb == Verb::Activity {
+                let value: serde_json::Value = body(&call);
+                matches!(
+                    value
+                        .pointer("/frames/0/task_transfer_progress/phase")
+                        .and_then(serde_json::Value::as_str),
+                    Some("saved" | "restored" | "failed")
+                )
+            } else {
+                false
+            };
+            observed.push(call);
+            if done {
+                observed.extend(crate::test_support::drain(calls));
+                return observed;
+            }
+        }
+    })
+    .await
+}
+
 fn config_failure(error: &crate::Error, expected: &str) {
     assert!(
         matches!(error.kind(), crate::error::ErrorKind::Config { detail } if *detail == expected),

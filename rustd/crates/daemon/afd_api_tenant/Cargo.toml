@@ -28,6 +28,7 @@ test-util = [
 openapi = ["dep:utoipa", "afd_http/openapi", "afd_api_wire/openapi", "af_wire/openapi"]
 
 [dependencies]
+afd_bus.workspace = true
 jiff.workspace = true
 af_crypto.workspace = true
 afd_cron.workspace = true
@@ -58,7 +59,6 @@ af_observability.workspace = true
 afd_sse.workspace = true
 # The published message a live-tail body borrows its payload bytes from; see
 # `handler/stream/body.rs`.
-afd_dragonfly.workspace = true
 afd_tenant.workspace = true
 afd_vault.workspace = true
 afd_api_wire.workspace = true

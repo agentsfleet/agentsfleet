@@ -11,6 +11,24 @@ use crate::profile::Profile;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("the in-process runner stream failed")]
+    StreamFaulted { source: afd_gateway::Error },
+    #[error("the benchmark wake subscription closed")]
+    WakeClosed {
+        source: tokio::sync::watch::error::RecvError,
+    },
+    #[error("the provider transport could not initialize")]
+    ProviderTransportFaulted { source: reqwest::Error },
+    #[error("the runner stream returned an unexpected answer")]
+    StreamAnswer,
+    #[error("the runner stream refused the operation with {error_code}")]
+    StreamRefused { error_code: String },
+    #[error("the requested benchmark concurrency cannot be represented on this platform")]
+    ConcurrencyUnrepresentable {
+        #[source]
+        source: std::num::TryFromIntError,
+    },
+
     /// Raised on the way in rather than defaulted, because defaulting an
     /// unrecognised profile would silently pick someone's blast radius.
     #[error("unknown profile {name:?}: expected one of {expected}")]
@@ -43,6 +61,9 @@ pub(crate) enum ErrorKind {
 
     #[error("the bench queue would not open")]
     QueueUnavailable { source: afd_dragonfly::Error },
+
+    #[error("the notification bus would not answer")]
+    BusUnavailable { source: afd_bus::Error },
 
     #[error("the steer path would not run")]
     SteerPathFaulted { source: afd_events::Error },

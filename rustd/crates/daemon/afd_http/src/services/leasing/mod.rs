@@ -1,95 +1,20 @@
 //! The runner plane's HTTP seam: what the lease family of verbs acts through.
 
 use af_core::id::Uuid7;
-use af_wire::activity::ActivityFrame;
 use af_wire::credentials::MintCredentialRequest;
-use af_wire::fold::{FoldRequest, FoldResponse};
 use af_wire::memory::{
     MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest, MemoryRecallResponse,
 };
 use af_wire::message_verb::MessageRequest;
-use af_wire::report::{RenewRequest, ReportRequest};
 use af_wire::tool_detail::{ToolCallRecordsRequest, ToolCallRecordsStored};
 use afd_credential::credential::Minted;
-use afd_fleet::lease::report::Reconciled;
-use afd_fleet::lease::{Standing, Waited};
+use afd_fleet::lease::Standing;
 use afd_memory::Captured;
 use afd_outbound::Interim;
 use jiff::Timestamp;
 
-/// Answering one runner's poll.
-///
-/// One method, because the lease verb is one decision — the HTTP layer asks it
-/// and renders whatever comes back. The answer is already-serialized JSON:
-/// `ExecutionPolicy` borrows from values that do not outlive the call that
-/// assembles it, and `afd_fleet::lease` documents why owning or re-assembling
-/// are both worse.
+/// The fenced HTTP operations that remain outside the host session.
 pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
-    /// The next lease for `runner_id`, or a backoff.
-    ///
-    /// `degraded` fails CLOSED: a runner whose verdict could not be read is
-    /// issued nothing, because its assignment names an isolation the host may
-    /// not deliver. `held` names the fleets whose sandboxes the runner holds,
-    /// for the pass to try before its partition.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer, or a stored configuration
-    /// this daemon cannot read. Every DECISION — no work, refused, parked — is
-    /// an `Ok` carrying the bytes that say so.
-    fn lease(
-        &self,
-        drafts: &afd_authoring::Drafts,
-        runner_id: &Uuid7,
-        held: &[Uuid7],
-        accepted: af_wire::lease::AcceptedKinds,
-        degraded: bool,
-        now: Timestamp,
-    ) -> impl Future<Output = afd_fleet::Result<String>> + Send;
-
-    /// Record one terminal execution result.
-    ///
-    /// Answers what the final slice drained. Unlike [`Leasing::lease`], the
-    /// decisions here are ERRORS rather than `Ok` values: a stale fence and a
-    /// foreign lease are things the runner is TOLD, with a code it acts on,
-    /// where "no work" is an ordinary poll outcome that needs no code at all.
-    ///
-    /// # Errors
-    /// Refuses a lease that is not this runner's, and a holder the fleet has
-    /// superseded. Also reports a datastore that would not answer.
-    fn report(
-        &self,
-        runner_id: &Uuid7,
-        request: &ReportRequest<'_>,
-        now: Timestamp,
-    ) -> impl Future<Output = afd_fleet::Result<Reconciled>> + Send;
-
-    /// Hold a runner's heartbeat until fresh work is admitted, `deadline`
-    /// passes, or `max` beats are already held, and say which.
-    fn wait_for_work(
-        &self,
-        deadline: std::time::Duration,
-        max: usize,
-    ) -> impl Future<Output = Waited> + Send;
-
-    /// Extend one live lease's deadline, metering the slice since the last.
-    ///
-    /// Answers the new deadline only. What the slice drained stays inside the
-    /// plane: the wire reply carries a deadline and nothing else, and widening
-    /// this signature to return a charge nobody renders would be an amount
-    /// travelling to a caller that has no use for it.
-    ///
-    /// # Errors
-    /// Refuses a lease that is not this runner's, one no longer active, one
-    /// past the hard runtime ceiling, and one whose tenant or fleet has run out
-    /// of money — each with its own registry code.
-    fn renew(
-        &self,
-        runner_id: &Uuid7,
-        lease_id: &Uuid7,
-        request: RenewRequest,
-        now: Timestamp,
-    ) -> impl Future<Output = afd_fleet::Result<Timestamp>> + Send;
-
     /// Read private model-window notes under the live assignment.
     ///
     /// # Errors
@@ -171,21 +96,6 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         now: Timestamp,
     ) -> impl Future<Output = afd_fleet::Result<Minted>> + Send;
 
-    /// Forward one batch of live-tail frames.
-    ///
-    /// No clock parameter: nothing this publishes is stamped or stored, so
-    /// there is no row for an instant to be consistent with.
-    ///
-    /// # Errors
-    /// Refuses a lease that is not this runner's, and reports a datastore that
-    /// would not answer. A dropped frame is neither.
-    fn activity(
-        &self,
-        runner_id: &Uuid7,
-        lease_id: &str,
-        frames: &[ActivityFrame<'_>],
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send;
-
     /// Keep each finished call's full arguments and output under the lease's
     /// fence.
     ///
@@ -230,19 +140,6 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
         request: &MessageRequest<'_>,
     ) -> impl Future<Output = afd_fleet::Result<Interim>> + Send;
 
-    /// The messages `lease_id`'s fleet received after the request's cursor,
-    /// claimed for the run, oldest first; none for a lease this runner does
-    /// not hold live.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    fn folds(
-        &self,
-        runner_id: &Uuid7,
-        lease_id: &Uuid7,
-        request: &FoldRequest,
-    ) -> impl Future<Output = afd_fleet::Result<FoldResponse<'static>>> + Send;
-
     /// `text` with the lease's fleet's declared static secrets masked: what a
     /// schedule the fleet writes stores and hands the scheduler.
     ///
@@ -256,4 +153,4 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send;
 }
 
-mod plane;
+mod lease_service;

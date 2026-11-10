@@ -126,18 +126,7 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
     // A runner on the default egress policy reads degraded and takes no work.
     allow_all_egress(&run).await;
     let (endpoint, received) = collector().await;
-    let env = MapEnv::from_pairs([
-        (ENDPOINT_KNOB, endpoint.as_str()),
-        (PROTOCOL_KNOB, "http/json"),
-    ]);
-    let endpoint = Endpoint::from_env(&env)
-        .expect("every knob reads")
-        .expect("an endpoint is configured");
-    let telemetry = Telemetry::install(&endpoint).expect("the runner's pipeline builds");
-    assert!(
-        telemetry.recording(),
-        "the only install in this test binary is the process recorder"
-    );
+    let telemetry = recording(&endpoint);
     let layer = telemetry.layer();
     let (model, _transcript) = FakeModel::new(vec![
         vec![call(
@@ -174,7 +163,19 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
             .block_on(serving)
     });
 
-    let status = settled(&run, &run.event_id).await;
+    stop_recording(&run, shutdown, thread, telemetry).await;
+    assert_lease_trace(&received, run.event_id.as_str());
+    supervisor.shutdown().await;
+    run.cleanup().await;
+}
+
+async fn stop_recording(
+    run: &crate::e2e::Scenario,
+    shutdown: CancellationToken,
+    thread: std::thread::JoinHandle<afr_supervisor::Result<()>>,
+    telemetry: Telemetry,
+) {
+    let status = settled(run, &run.event_id).await;
     shutdown.cancel();
     let stopped = tokio::task::spawn_blocking(move || thread.join())
         .await
@@ -185,13 +186,14 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
         .await
         .expect("the flush runs");
     assert_eq!(status.as_deref(), Some(PROCESSED));
+}
 
-    let spans = spans(&received);
+fn assert_lease_trace(received: &Received, event_id: &str) {
+    let spans = spans(received);
     let root = spans
         .iter()
         .find(|span| {
-            span.name == SPAN_RUNNER_LEASE
-                && span.attribute(ATTR_EVENT_ID) == Some(run.event_id.as_str())
+            span.name == SPAN_RUNNER_LEASE && span.attribute(ATTR_EVENT_ID) == Some(event_id)
         })
         .expect("the lease's root span reached the collector, naming the daemon's event");
     assert!(
@@ -201,16 +203,40 @@ async fn test_e2e_runner_lease_trace_reaches_a_collector() {
     );
     let kinds: BTreeSet<&str> = spans
         .iter()
-        .filter(|span| span.trace == root.trace)
+        .filter(|span| span.trace == root.trace && SPAN_KINDS.contains(&span.name.as_str()))
         .map(|span| span.name.as_str())
         .collect();
     assert_eq!(kinds, BTreeSet::from(SPAN_KINDS), "one trace, four kinds");
+    assert!(
+        spans
+            .iter()
+            .all(|span| SPAN_KINDS.contains(&span.name.as_str())
+                || matches!(
+                    span.name.as_str(),
+                    "runner_stream_operation" | "runner.connection"
+                )),
+        "only reviewed span kinds are exported: {:?}",
+        spans
+            .iter()
+            .map(|span| span.name.as_str())
+            .collect::<BTreeSet<_>>()
+    );
     let roots = spans
         .iter()
         .filter(|span| span.trace == root.trace && span.name == SPAN_RUNNER_LEASE)
         .count();
     assert_eq!(roots, 1, "the lease is its own trace");
+}
 
-    supervisor.shutdown().await;
-    run.cleanup().await;
+fn recording(endpoint: &str) -> Telemetry {
+    let env = MapEnv::from_pairs([(ENDPOINT_KNOB, endpoint), (PROTOCOL_KNOB, "http/json")]);
+    let endpoint = Endpoint::from_env(&env)
+        .expect("every knob reads")
+        .expect("an endpoint is configured");
+    let telemetry = Telemetry::install(&endpoint).expect("the runner's pipeline builds");
+    assert!(
+        telemetry.recording(),
+        "the only install in this test binary is the process recorder"
+    );
+    telemetry
 }

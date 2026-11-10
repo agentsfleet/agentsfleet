@@ -126,6 +126,10 @@ const EXPORT_DISABLED: &str = "telemetry_export_disabled";
 fn run_with(home: &std::path::Path, extra: &[(&str, &str)]) -> Output {
     Runner::new(&["run"])
         .daemon(UNREACHABLE_DAEMON)
+        .envs(&[(
+            afr_supervisor::config::ENV_STREAM_URL,
+            "https://localhost:9",
+        )])
         .home(home)
         .envs(extra)
         .command()

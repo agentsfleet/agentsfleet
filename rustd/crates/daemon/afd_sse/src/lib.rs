@@ -27,22 +27,26 @@
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-pub mod ceiling;
+// The native backend is used only by the separate integration-test target.
+#[cfg(test)]
+use afd_dragonfly as _;
+
 pub mod error;
 pub mod fanin;
 pub mod frame;
 pub mod live;
+pub mod stream_limit;
 pub mod tail;
 
 use std::time::Duration;
 
-pub use crate::ceiling::{Ceiling, Slot};
 pub use crate::error::{Error, Result};
 pub use crate::fanin::{Delta, FanIn};
 pub use crate::frame::{
     DEFAULT_KIND, Data, Frame, KIND_ACCESS_REVOKED, KIND_CATCHING_UP, KIND_HELLO,
 };
 pub use crate::live::Live;
+pub use crate::stream_limit::{StreamLimit, StreamPermit};
 pub use crate::tail::tail;
 
 /// How often an idle stream proves that its transport still carries events.

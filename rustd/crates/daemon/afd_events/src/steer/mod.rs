@@ -63,14 +63,13 @@
 
 use af_core::error_code;
 use af_core::id::Uuid7;
-use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Key, PersonSteer, Producer, Repeated, Reply, RunFacts};
+use afd_admission::{Admission, Admissions, Key, PersonSteer, Repeated, RunFacts};
 use afd_api_wire::tail::TailFrame;
 
 use crate::error::{Result, operation_conflict};
 
-/// Joins the fleet to the caller's operation id in the ledger key.
-const KEY_SEPARATOR: &str = ":";
+mod admission;
+use admission::{scoped_key, steer_admission};
 
 /// What a refused reuse's warn names as the half that differed: the row sits
 /// on another fleet, or it holds another message or sender.
@@ -256,7 +255,22 @@ impl Steer {
     /// Puts `frame` on `fleet`'s live tail, best-effort: a queue that will
     /// not take it is logged by the publisher and changes no answer.
     pub async fn announce(&self, fleet: &str, frame: &TailFrame<'_>) {
-        self.admissions.streams().publish_frame(fleet, frame).await;
+        let Ok(fleet) = Uuid7::parse(fleet) else {
+            let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            tracing::warn!(
+                event = "tail_frame_dropped",
+                error_code,
+                reason = "invalid_fleet_identifier"
+            );
+            return;
+        };
+        let subject = afd_bus::Subject::FleetTail(fleet);
+        let publication = self
+            .admissions
+            .streams()
+            .publish_frame(&subject, frame)
+            .await;
+        afd_bus::observe_notification(&subject, publication);
     }
 
     /// A capacity refusal, unless the key is a repeat: then its event.
@@ -326,40 +340,6 @@ fn answer_repeat(admission: &Admission<'_>, repeated: Repeated) -> Result<String
         event = "steer_operation_conflict",
     );
     Err(operation_conflict())
-}
-
-/// The ledger key a caller's operation id becomes on one fleet.
-fn scoped_key(fleet: &str, operation: &str) -> String {
-    [fleet, operation].join(KEY_SEPARATOR)
-}
-
-/// The admission a steer asks for: the same fields on the first send and on
-/// every repeat, which is what makes the digest comparison mean anything.
-const fn steer_admission<'a>(
-    fleet: &'a Uuid7,
-    workspace: &'a Uuid7,
-    actor: &'a str,
-    request_json: &'a str,
-    key: Option<&'a str>,
-) -> Admission<'a> {
-    Admission {
-        producer: Producer::Steer,
-        // Mapped explicitly, never by `unwrap_or`-ing into a default: `Key`'s
-        // own note warns that an `Option` lets a caller which HAS an identity
-        // lose deduplication by omission, and this is the call site that would
-        // do it.
-        key: match key {
-            Some(repeated) => Key::Repeated(repeated),
-            None => Key::Unrepeatable,
-        },
-        fleet,
-        workspace,
-        actor,
-        event_type: EventType::Chat,
-        request_json,
-        // A steer is read on the event tail that carried it, never posted to a thread.
-        reply: Reply::None,
-    }
 }
 
 #[cfg(test)]

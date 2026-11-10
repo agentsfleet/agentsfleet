@@ -27,6 +27,8 @@ mod guard;
 mod identity;
 mod ownership;
 mod person;
+mod request;
+mod runner_stream;
 
 use afd_auth::authenticate::Registry;
 use afd_auth::capability::CapabilitySource;
@@ -44,6 +46,12 @@ pub use self::person::{
     AnyClass, ClassPolicy, DETAIL_NOT_DASHBOARD, DETAIL_PERSON_REQUIRED, DETAIL_SESSION_REQUIRED,
     DashboardClass, DashboardIdentity, FreshSession, FreshSessionClass, HumanClass, HumanIdentity,
     PersonIdentity, Proven,
+};
+pub use self::request::{AuthenticationResult, BearerAuthentication, RequestAuthentication};
+pub use self::runner_stream::{
+    AuthenticatedRunnerCredential, AuthenticatedRunnerStream, ConnectionAuthenticationResult,
+    ConnectionCredentials, NativeRunnerConnection, RunnerConnectionAuthentication,
+    RunnerStreamAuthentication,
 };
 
 /// What proves a credential presented on a plane.

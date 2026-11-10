@@ -284,8 +284,8 @@ The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/
 ## Connection topology: the cutover collapsed the dedicated tier
 
 The Rust daemon shares one cluster command owner for ordinary Dragonfly commands.
-A lease request probes the Postgres ledger and never blocks on a Dragonfly stream.
-An empty response tells the runner when to poll again; the runner holds no Dragonfly connection.
+A claim pass probes the Postgres ledger and never blocks on a Dragonfly stream.
+The daemon pushes offers over each runner's stream; the runner holds no Dragonfly connection.
 
 ```text
 agentsfleetd replica
@@ -612,17 +612,18 @@ There is no Bearer fallback. The `Authorization` header is never consulted on `/
 
 ### C. EXECUTE  (lease → runner → report)
 
-The lease call prepares work for the runner. The report call commits its terminal outcome.
+The gateway claims work and pushes a native offer.
+The native report commits its terminal outcome.
 
 1. Refuse placement when the runner's isolation verdict is degraded or unreadable.
 2. Probe eligible active fleets and each fleet's oldest unsettled admission through `idx_admissions_unsettled`.
-3. Prefer held fleets, recent hints and previous placement; randomize the remaining candidates. Try at most 64 candidates per poll.
+3. Prefer held fleets, recent hints and previous placement; randomize the remaining candidates. Try at most 64 candidates per claim.
 4. Lock a fleet slot and its exact oldest admission with `SKIP LOCKED`. A locked or parked head cannot be skipped within that fleet.
 5. Advance the slot and admission fences together. Decode before committing; malformed stored data rolls back both fences.
 6. Open `fleet.events` and stamp admission delivery in one transaction under those fences. Terminal refusals settle the admission without issuing a lease.
 7. Resolve the payer, balance, budget, approvals and installed policy. A wait for a person parks the head and releases the unissued slot.
 8. Resolve declared tool secrets separately from the model provider key. Build `ExecutionPolicy` and issue `runner.leases` under the claimed fence.
-9. Run the lease in the supervisor and sandbox. Forward activity over HTTP; report the outcome and measured usage when the turn ends.
+9. Run the lease in the supervisor and sandbox. Forward activity over the native session; report the outcome and measured usage when the turn ends.
 10. Commit the report under the host, slot, lease and admission guards. One transaction records usage, terminal history, the checkpoint, admission settlement, slot release and any outbound obligation.
 11. After commit, publish terminal activity and attempt outbound delivery.
 
@@ -763,7 +764,7 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 
 - `runner.fleet_slots` holds one slot per fleet. `Leases::select` in `afd_fleet` claims it atomically and bumps a monotonic `fencing_token`.
 
-  A runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, however many runners poll concurrently.
+  A runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, however many claim passes run concurrently.
 - The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
 - A runner that loses the race for a Fleet simply gets no lease for it. It tries the next eligible fleet or backs off.
 - Durable fleet memory and bounded chat history can reach another runner’s next lease. Warm sandbox reuse is optional; session checkpoints are saved but not replayed into leases. [Workspace continuity](runner_execution.md#workspace-between-leases) owns these limits; sticky placement stays a hint, never ownership.

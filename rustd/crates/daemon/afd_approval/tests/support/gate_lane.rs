@@ -142,7 +142,7 @@ impl Lane {
         let lane = Self {
             inbox: Inbox::new(
                 pool.clone(),
-                queue.clone(),
+                afd_bus::dragonfly::publisher(queue.clone()),
                 afd_admission::Admissions::for_tests(pool.clone(), queue.clone()),
             ),
             _database: database,

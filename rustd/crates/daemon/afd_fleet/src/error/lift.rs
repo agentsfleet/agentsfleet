@@ -28,6 +28,7 @@
 use super::{Error, ErrorKind};
 
 af_core::error_lifts!(Error, ErrorKind:
+    std::num::TryFromIntError => UsageCount,
     object_store::Error => TaskStorage,
     aws_sigv4::http_request::SigningError => TaskStorageSigning,
     aws_sigv4::sign::v4::signing_params::BuildError => TaskStorageSigningParameters,

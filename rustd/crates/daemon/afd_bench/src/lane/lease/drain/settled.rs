@@ -50,19 +50,15 @@ pub(super) async fn read(stores: &Datastores, fleets: &[SeededFleet]) -> Result<
         .fetch_one(&mut *connection)
         .await?;
     Ok(Settled {
-        event_rows: count(events.0),
-        processed: count(events.1),
-        ledger_rows: count(ledger),
-        unsettled_rows: count(
+        event_rows: crate::datastores::postgres_count(events.0, "drain events")?,
+        processed: crate::datastores::postgres_count(events.1, "processed events")?,
+        ledger_rows: crate::datastores::postgres_count(ledger, "ledger rows")?,
+        unsettled_rows: crate::datastores::postgres_count(
             sqlx::query_scalar(SELECT_UNSETTLED_COUNT)
                 .bind(&ids)
                 .fetch_one(&mut *connection)
                 .await?,
-        ),
+            "unsettled admissions",
+        )?,
     })
-}
-
-/// A `count(*)`, which Postgres answers as a non-negative bigint.
-const fn count(value: i64) -> u64 {
-    value.unsigned_abs()
 }

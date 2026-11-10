@@ -88,7 +88,7 @@ async fn assert_stamp_failure_rolls_back(
     );
     let failure = fixtures
         .plane_with_dead_queue()
-        .lease_claimed(acquired.clone(), runner, fixtures.enrolled_at())
+        .claim_selected(acquired.clone(), runner, fixtures.enrolled_at())
         .await
         .expect_err("a failed delivery cannot issue a lease");
     assert_eq!(failure.code(), af_core::error_code::INTERNAL_DB_QUERY);

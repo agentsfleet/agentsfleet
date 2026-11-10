@@ -58,8 +58,8 @@ async fn test_a_write_binding_it_cannot_enforce_ends_the_event() {
     let answer = drive(&fixtures, &seeded, claimed).await;
 
     assert!(
-        answer.contains(NO_LEASE),
-        "an unenforceable binding issued a lease: {answer}"
+        answer.is_none(),
+        "an unenforceable binding issued a lease: {answer:?}"
     );
     let (status, failure) = terminal_of(&fixtures, &seeded.fleet, &seeded.event_id)
         .await
@@ -105,12 +105,14 @@ async fn test_an_approved_write_binding_locks_its_egress_to_that_gates_branch() 
 
     let branch = repair::branch_for(seeded.event_id.as_str());
     assert!(
-        answer.contains(&branch),
-        "the delivery locked a branch that is not this gate's {branch}: {answer}"
+        answer
+            .as_ref()
+            .is_some_and(|lease| lease.to_string().contains(&branch)),
+        "the delivery locked a branch that is not this gate's {branch}: {answer:?}"
     );
     assert!(
-        !answer.contains(NO_LEASE),
-        "an approved write binding issued no lease: {answer}"
+        answer.is_some(),
+        "an approved write binding issued no lease: {answer:?}"
     );
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,
@@ -139,12 +141,14 @@ async fn test_a_read_binding_is_delivered_without_asking_for_an_approval() {
     let answer = drive(&fixtures, &seeded, claimed).await;
 
     assert!(
-        !answer.contains(NO_LEASE),
-        "a read binding was refused a lease: {answer}"
+        answer.is_some(),
+        "a read binding was refused a lease: {answer:?}"
     );
     assert!(
-        !answer.contains(repair::PREFIX),
-        "a read binding was given a repair branch it never asked for: {answer}"
+        answer
+            .as_ref()
+            .is_some_and(|lease| !lease.to_string().contains(repair::PREFIX)),
+        "a read binding was given a repair branch it never asked for: {answer:?}"
     );
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,

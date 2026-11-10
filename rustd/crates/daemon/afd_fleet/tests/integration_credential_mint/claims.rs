@@ -122,7 +122,7 @@ async fn mint(
     integration: &str,
 ) -> (Result<Minted, ErrorCode>, usize) {
     let counting = Arc::new(Counting::default());
-    let plane = afd_fleet::lease::Plane {
+    let plane = afd_fleet::lease::LeaseService {
         task_reports: None,
         broker: Arc::new(Broker::new(
             Arc::new(Registry::default()),

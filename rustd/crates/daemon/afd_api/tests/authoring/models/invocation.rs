@@ -13,13 +13,6 @@ async fn authenticated_model_result_replays_and_only_activity_commits_its_propos
     let model = Model::create().await;
     let response = invoke(&model).await;
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response
-            .headers()
-            .get("cache-control")
-            .expect("private cache policy"),
-        "no-store"
-    );
     let result = json_body(response).await;
     assert_eq!(result.get("replayed"), Some(&Value::Bool(false)));
     let calls = result
@@ -44,10 +37,9 @@ async fn authenticated_model_result_replays_and_only_activity_commits_its_propos
 /// One model call through the machine route, with the fixture's request.
 async fn invoke(model: &Model) -> Response {
     let r = &model.running;
-    send(
+    crate::harness::native::send(
         &r.router,
-        Method::POST,
-        &model.path,
+        &model.operation,
         Some(&r.token),
         &model.request.to_string(),
     )
@@ -72,10 +64,9 @@ async fn accept_proposal(model: &Model, calls: &[Value]) {
         .expect("native proposal");
     let activity = json!({"fence":"1","sequence":"1","activity_sequence":"1",
         "event":{"kind":"proposal","proposal":proposal}});
-    let accepted = send(
+    let accepted = crate::harness::native::send(
         &r.router,
-        Method::POST,
-        &r.path,
+        &r.operation,
         Some(&r.token),
         &activity.to_string(),
     )

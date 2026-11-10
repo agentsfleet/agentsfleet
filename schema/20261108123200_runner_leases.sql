@@ -18,7 +18,7 @@
 -- echoes back; `posted_message_count` bounds the messages a lease may post.
 CREATE TABLE runner.leases (
     id                          UUID PRIMARY KEY,
-    CONSTRAINT ck_leases_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
+    CONSTRAINT ck_leases_id_uuidv7 CHECK (uuid_extract_version(id) IS NOT DISTINCT FROM 7),
     runner_id                   UUID    NOT NULL REFERENCES runner.runners(id) ON DELETE CASCADE,
     fleet_id                    UUID    NOT NULL,
     workspace_id                UUID    NOT NULL,
@@ -31,6 +31,8 @@ CREATE TABLE runner.leases (
     last_metered_at             TIMESTAMPTZ(3)  NOT NULL,
     fencing_token               BIGINT  NOT NULL,
     lease_expires_at            TIMESTAMPTZ(3)  NOT NULL,
+    -- Durable Kill decision; a missed notification cannot restore authority.
+    cancel_requested_at         TIMESTAMPTZ(3),
     status                      TEXT    NOT NULL,
     posted_message_count        INTEGER NOT NULL,
     created_at                  TIMESTAMPTZ(3)  NOT NULL,
@@ -64,7 +66,10 @@ CREATE INDEX idx_leases_fleet_id_status_fencing_token
 CREATE INDEX idx_leases_runner_id_created_at_id
     ON runner.leases (runner_id, created_at DESC, id DESC);
 
-CREATE INDEX idx_leases_runner_id_status ON runner.leases (runner_id, status);
+-- Reconnect and cancellation refresh read one host's unexpired active leases.
+-- The equality prefix still serves other runner/status reads.
+CREATE INDEX idx_leases_runner_id_status_lease_expires_at
+    ON runner.leases (runner_id, status, lease_expires_at);
 
 -- The expiry sweep.
 CREATE INDEX idx_leases_status_updated_at ON runner.leases (status, updated_at);

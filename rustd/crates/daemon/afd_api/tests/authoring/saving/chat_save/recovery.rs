@@ -19,14 +19,8 @@ async fn a_committed_save_waits_for_restored_access_before_activation() {
     let draft = read(&case, &item).await;
     let (path, token, report) = finish_request(&mut case, &draft).await;
     let fault = Refusal::install(case.base.owner_url(), &case.base.workspace, "setup_ready").await;
-    let refused = send(
-        &case.router,
-        Method::POST,
-        &path,
-        Some(&token),
-        &report.to_string(),
-    )
-    .await;
+    let refused =
+        crate::harness::native::send(&case.router, &path, Some(&token), &report.to_string()).await;
     assert_eq!(refused.status(), StatusCode::INTERNAL_SERVER_ERROR);
     fault.assert_fired_once().await;
     drop(fault);

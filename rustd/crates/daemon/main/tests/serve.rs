@@ -47,6 +47,7 @@ fn parses_but_dead() -> MapEnv {
         // supplying them well-formed keeps this fixture's failure the DATASTORE
         // one it is asserting about.
         .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::runner_stream::environment())
         .chain(crate::support::IDENTITY),
     )
 }

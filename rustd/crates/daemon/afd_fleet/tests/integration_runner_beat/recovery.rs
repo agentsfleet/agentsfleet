@@ -78,7 +78,6 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                     selftest: None,
                     holds: HeldFleets::default(),
                     closing: false,
-                    wake: false,
                 },
                 None,
                 fixtures.after(offset),
@@ -204,14 +203,7 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
     let working = beats_holding(&fixtures, runner, fleet.as_str(), fixtures.after(ONE_BEAT)).await;
     // Renaming a table is the owner's right; the beat under test keeps the
     // api pool.
-    let owner = fixtures.open(DbRole::Migrator).await;
-    let mut connection = owner.acquire().await.expect("an owner connection");
-    sqlx::query(MOVE_FLEETS)
-        .execute(&mut *connection)
-        .await
-        .expect("the private database's table moves");
-    drop(connection);
-    owner.close().await;
+    move_fleets(&fixtures).await;
 
     let log = Capture::install();
     let failed = beats_holding(
@@ -239,4 +231,15 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
         Some(runner.as_str())
     );
     fixtures.cleanup().await;
+}
+
+async fn move_fleets(fixtures: &Fixtures) {
+    let owner = fixtures.open(DbRole::Migrator).await;
+    let mut connection = owner.acquire().await.expect("an owner connection");
+    sqlx::query(MOVE_FLEETS)
+        .execute(&mut *connection)
+        .await
+        .expect("the private database's table moves");
+    drop(connection);
+    owner.close().await;
 }

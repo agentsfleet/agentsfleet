@@ -108,10 +108,10 @@ fn exercise(lane: &Lane, mode: Mode) -> Result<(), Failed> {
         observed.origin_unchanged,
         "capture does not publish to the source repository",
     )?;
-    let report = crate::supervisor_checks::received(&observed, af_wire::paths::RUNNER_REPORTS)?;
+    let report = crate::supervisor_checks::report(&observed)?;
     if mode == Mode::WrongHead {
         expect(
-            report.body.get("outcome") == Some(&json!("fleet_error")),
+            report.get("outcome") == Some(&json!("fleet_error")),
             "moved checkout cannot execute accepted work",
         )?;
         expect(
@@ -122,11 +122,11 @@ fn exercise(lane: &Lane, mode: Mode) -> Result<(), Failed> {
             "head mismatch prevents every capture plan",
         )?;
         return expect(
-            report.body.get("task").is_none_or(Value::is_null),
+            report.get("task").is_none_or(Value::is_null),
             "failed build has no task completion proof",
         );
     }
-    completed(&observed, &report.body, mode)
+    completed(&observed, report, mode)
 }
 fn completed(observed: &Observed, report: &Value, mode: Mode) -> Result<(), Failed> {
     expect(
@@ -157,7 +157,7 @@ fn completed(observed: &Observed, report: &Value, mode: Mode) -> Result<(), Fail
     let report_at = observed
         .received
         .iter()
-        .position(|request| request.path == af_wire::paths::RUNNER_REPORTS);
+        .position(crate::supervisor_checks::is_report);
     expect(
         matches!((commit,report_at),(Some(commit),Some(report)) if commit<report),
         "checkpoint commits before report",

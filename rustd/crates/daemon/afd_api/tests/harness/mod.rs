@@ -70,7 +70,7 @@ use afd_fleet_lifecycle::Fleets;
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_memory::Memories;
 use afd_runner::Runners;
-use afd_sse::{Ceiling, Live};
+use afd_sse::{Live, StreamLimit};
 use afd_state::Credentials;
 use afd_tenant::apikey::ApiKeys;
 use afd_tenant::cli_credential::CliCredentials;
@@ -246,6 +246,7 @@ const FIXTURE_APP_URL: &str = "https://app.fixture.test";
 /// The seams a suite arranges, and the state the router is built over.
 #[derive(Debug)]
 pub(crate) struct Fleet {
+    native: Option<Db>,
     authoring: afd_authoring::Drafts,
     authoring_setup: afd_authoring::Setup,
     creations: afd_authoring::Creations,
@@ -256,6 +257,7 @@ pub(crate) struct Fleet {
     capabilities: MockCapabilities,
     authenticator: Planes<Directory, MockCapabilities, MockVerifier>,
     runners: Runners,
+    runner_commands: afd_bus::Handle,
     leases: NoWork,
     tasks: afd_fleet::task::Tasks,
     workspaces: Ownership,
@@ -334,5 +336,7 @@ mod fleet;
 mod fleet_access;
 mod fleet_credentials;
 mod fleet_seams;
+
+pub(crate) mod native;
 
 mod services;

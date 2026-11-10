@@ -143,9 +143,9 @@ BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(BENCH_RIG_OWNED)),$(TEST_
 
 # The lease lane runs two populations: the contended window it always ran, then
 # a drain through the full lease and report verbs, whose idle cost it prints as
-# `idle_statements_per_poll=` — the line a reader, or a rubric, greps for.
+# `drain_idle_statements=` — the line a reader, or a rubric, greps for.
 #
-# BENCH_SHAPE=saturation drives the production poll instead, setup chats and
+# BENCH_SHAPE=saturation drives native gateway offers instead, setup chats and
 # fleets together, with twice as many hosts as the pool has connections unless
 # BENCH_RUNNERS says otherwise. It writes `lease-saturation.rig.json`, never the
 # default result, and refuses any profile but the rig: exhausting a deployed
@@ -153,7 +153,7 @@ BENCH_MIGRATE := $(if $(and $(filter rig,$(PROFILE)),$(BENCH_RIG_OWNED)),$(TEST_
 # oversubscribed host or a pool that did not recover exits non-zero.
 BENCH_SHAPE ?= default
 
-bench-lease: _ensure-test-infra $(BENCH_MIGRATE)  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statements per poll (PROFILE=rig [BENCH_SHAPE=default|saturation|burst] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
+bench-lease: _ensure-test-infra $(BENCH_MIGRATE)  ## Lease throughput, then a drain: rate, p95, statements and commits per lease, idle statement totals (PROFILE=rig [BENCH_SHAPE=default|saturation|burst] [BENCH_FLEETS=n] [BENCH_RUNNERS=n] [BENCH_TURN_MS=n] [BENCH_RATE=n])
 	@echo "→ [bench-lease] profile=$(PROFILE) shape=$(BENCH_SHAPE)"
 	@BENCH_SHAPE="$(BENCH_SHAPE)" $(BENCH_LANE_ENV) $(BENCH_LANE_RUN) lease
 

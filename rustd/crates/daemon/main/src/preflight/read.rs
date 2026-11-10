@@ -50,7 +50,7 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
     let audience = required(env, faults, OIDC_AUDIENCE_KNOB, WHY_AUDIENCE);
     let api_base = required(env, faults, PROVIDER_API_BASE_KNOB, WHY_API_BASE)
         .and_then(|raw| provider_api_base(raw, faults));
-    let raw_secret = required(env, faults, PROVIDER_SECRET_KNOB, WHY_SECRET);
+    let raw_secret = required_secret(env, faults, PROVIDER_SECRET_KNOB, WHY_SECRET);
     let transport = identity_transport(env, faults);
 
     let secret = raw_secret.and_then(|raw| {
@@ -59,7 +59,7 @@ pub(super) fn identity<E: EnvSource + ?Sized>(
             true,
             PROVIDER_SECRET_KNOB,
             WHY_SECRET,
-            ProviderSecret::new(&raw),
+            ProviderSecret::new(raw.expose()),
         )
     });
 
@@ -132,6 +132,20 @@ pub(super) fn required<E: EnvSource + ?Sized>(
     why: &'static str,
 ) -> Option<String> {
     let value = optional(env, knob).map(String::from);
+    if value.is_none() {
+        faults.push(Fault::Missing { knob, why });
+    }
+    value
+}
+
+/// A required secret knob, owned by a wiping string from its first read.
+pub(super) fn required_secret<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+    knob: &'static str,
+    why: &'static str,
+) -> Option<af_crypto::secret::SecretString> {
+    let value = super::optional_secret(env, knob);
     if value.is_none() {
         faults.push(Fault::Missing { knob, why });
     }
@@ -219,6 +233,20 @@ pub(super) fn sse_max_streams<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<F
         .unwrap_or(SSE_MAX_STREAMS_DEFAULT)
 }
 
+/// A set but invalid scheduling capacity refuses boot; it never silently selects another capacity.
+pub(super) fn runner_wake<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<afd_bus::wake::Wake> {
+    classify(
+        faults,
+        true,
+        afd_bus::wake::ENV_WAKE_QUEUE_CAPACITY,
+        "a scheduling queue capacity between 1 and 65536",
+        afd_bus::wake::Wake::from_env(env),
+    )
+}
+
 /// The Slack base `SLACK_API_URL` names, or `None` when it is unset.
 ///
 /// Set and unsafe pushes a fault: see [`WHY_SLACK_API_URL`].
@@ -280,5 +308,19 @@ pub(super) fn platform_admin_workspace<E: EnvSource + ?Sized>(
         PLATFORM_ADMIN_WORKSPACE_KNOB,
         WHY_PLATFORM_ADMIN,
         Uuid7::parse(&raw),
+    )
+}
+
+/// Invalid frame memory settings join the other startup faults before sockets open.
+pub(super) fn frame_memory<E: EnvSource + ?Sized>(
+    env: &E,
+    faults: &mut Vec<Fault>,
+) -> Option<af_stream::MemoryLimits> {
+    classify(
+        faults,
+        true,
+        "AGENTSFLEET_RUNNER_FRAME_MEMORY",
+        "control and data frame budgets between 12 and 512 MiB",
+        af_stream::MemoryLimits::from_env(env),
     )
 }

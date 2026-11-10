@@ -21,7 +21,8 @@ impl Error {
         // distinction the code does not make. What decides this is whether a
         // connection was open when the failure was raised.
         match self.kind() {
-            ErrorKind::UnknownProfile { .. }
+            ErrorKind::ConcurrencyUnrepresentable { .. }
+            | ErrorKind::UnknownProfile { .. }
             | ErrorKind::CapExceeded { .. }
             | ErrorKind::AcknowledgementMissing { .. }
             | ErrorKind::TargetMissing { .. }
@@ -33,7 +34,12 @@ impl Error {
             | ErrorKind::RunnersExceedPool { .. }
             | ErrorKind::UnknownShape { .. }
             | ErrorKind::ShapeNeedsRig { .. } => true,
-            ErrorKind::LatencyUnavailable { .. }
+            ErrorKind::StreamFaulted { .. }
+            | ErrorKind::WakeClosed { .. }
+            | ErrorKind::ProviderTransportFaulted { .. }
+            | ErrorKind::StreamAnswer
+            | ErrorKind::StreamRefused { .. }
+            | ErrorKind::LatencyUnavailable { .. }
             | ErrorKind::LatencyUnrecordable { .. }
             | ErrorKind::LatencyUnmergeable { .. }
             | ErrorKind::ResultUnrenderable { .. }
@@ -45,6 +51,7 @@ impl Error {
             | ErrorKind::InstrumentPoisoned
             | ErrorKind::DatabaseUnavailable { .. }
             | ErrorKind::QueueUnavailable { .. }
+            | ErrorKind::BusUnavailable { .. }
             | ErrorKind::LeasePathFaulted { .. }
             | ErrorKind::SteerPathFaulted { .. }
             | ErrorKind::LedgerUnreadable { .. }

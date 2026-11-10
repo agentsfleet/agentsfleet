@@ -34,7 +34,7 @@ use core::time::Duration;
 use af_observability::metrics::instrument::Instruments;
 use af_observability::metrics::label::cost::{ChargeClass, ErrorType};
 use af_observability::metrics::label::fleet::{
-    AdmissionOutcome, DeliveryStage, FoldOutcome, ReadyWake, SignupFailure, SteerPlaced, WakeAnswer,
+    AdmissionOutcome, DeliveryStage, FoldOutcome, ReadyWake, SignupFailure, SteerPlaced,
 };
 use af_observability::metrics::label::http::{
     DiscardReason, OmissionReason, OmittedAttribute, Signal,
@@ -89,9 +89,6 @@ fn test_every_fleet_producer_runs_its_body() {
     }
     producers::fleet::retention_swept(9);
     producers::fleet::retention_failed();
-    for answer in WakeAnswer::ALL {
-        producers::fleet::wake_answered(*answer);
-    }
     for placed in SteerPlaced::ALL {
         producers::fleet::fold::disposition(*placed);
     }

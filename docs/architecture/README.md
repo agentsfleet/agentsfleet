@@ -41,6 +41,7 @@ The larger topic files open with a Facts table, so the answer is usually on the 
 | Can two runners hold the same fleet at once? | [`data_flow.md`](./data_flow.md) §"One active lease per fleet: the ownership model" |
 | How does a new runner get enrolled? | [`runner_fleet.md`](./runner_fleet.md) §"Registering a runner" |
 | What are the runner protocol verbs? | [API reference](https://docs.agentsfleet.net/api-reference/introduction) › Runner plane |
+| What replaces runner polling, and how do HTTP/3 and HTTP/2 coexist? | [Runner connection and recovery](runner_protocol.md) |
 | What sandbox does a leased event run in? | [`runner_fleet.md`](./runner_fleet.md) §"Running one event" |
 | How does the Rust runner run a lease, and what survives to the next one? | [`runner_execution.md`](./runner_execution.md) §"Process model", §"Workspace between leases" |
 | How should we evaluate SPACE and test a recoverable coding session? | [Coding sandbox evaluation](sandbox_evaluation.md) |
@@ -178,20 +179,20 @@ One-line definitions for quick lookup. The full, canonical definition lives in t
 | Term | Meaning |
 |---|---|
 | **`agentsfleetd`** (control plane) | The daemon (`rustd/crates/daemon/main`) that serves the API, owns Postgres and Dragonfly, and hands work to runners. [(more)](./runner_fleet.md#the-split-two-binaries-no-sidecar) |
-| **`agentsfleet-runner`** | The host binary (`rustd/crates/runner/main`) that asks `agentsfleetd` for leases and runs each one in a sandbox. [(more)](./runner_execution.md#process-model) |
+| **`agentsfleet-runner`** | The host binary (`rustd/crates/runner/main`) that receives work from `agentsfleetd` and runs each lease with its admitted tools. [(more)](./runner_execution.md#process-model) |
 | **Tenant** (`identity.tenants`) | The paying account: it owns one or more workspaces and one wallet (`billing.wallets`). [(more)](../AUTH.md#signup-what-usercreated-writes) |
 | **Workspace** (`identity.workspaces`) | The space inside a tenant that fleets, secrets and connector installs belong to. [(more)](../AUTH.md#who-opens-a-workspace) |
 | **Fleet** (`fleet.fleets`, `fleet_id`) | A durable AI agent defined by a reviewed Definition, saved into one workspace. [(more)](./high_level.md#1-product-thesis) |
 | **Definition** | A validated description, instructions and fleet configuration stored in immutable revisions. [(more)](./fleet_definitions.md#validated-definition) |
 | **Producer** (`afd_admission::Producer`) | The ingress path that asked for work (`steer`, `webhook`, `webhook_app`, `schedule_fire`, `gate_continuation`, `task_continuation` or `slack_mention`), stored on the admission with its dedup key. [(more)](./lease_flow.md#admission-commits-the-queue-row) |
 | **Admission** (`fleet.admissions`) | The ledger row that accepts one piece of work for a fleet, unique per `(producer, producer_key)` so a retried delivery is not run twice. [(more)](./lease_flow.md#admission-commits-the-queue-row) |
-| **Admissions queue** (`fleet.admissions`) | Unsettled admissions ordered by admission `sequence` within each fleet. Lease polls claim the oldest head under slot and admission fences. [(more)](./datastore_scaling.md#the-admissions-ledger-is-the-queue) |
-| **Wake notification** (`fleet:wake:{shard}`) | Sixteen channels prioritize a bounded local set of fleet hints. Every idle poll still reads Postgres. [(more)](./runner_fleet.md#datastore-topology) |
-| **Affinity slot** (`runner.fleet_slots`) | One row per fleet that one runner at a time can claim; a won claim raises `fencing_token` and holds until `lease_expires_at`. [(more)](./lease_flow.md#the-poll-claims-an-admission-and-its-fleet-slot) |
+| **Admissions queue** (`fleet.admissions`) | Unsettled admissions ordered by admission `sequence` within each fleet. Gateway claim passes take the oldest head under slot and admission fences. [(more)](./datastore_scaling.md#the-admissions-ledger-is-the-queue) |
+| **Wake notification** (`fleet:wake:{shard}`) | Sixteen shards notify gateway claim passes when work arrives. Idle runners send no lease requests. [(more)](runner_protocol.md#recovery-and-availability) |
+| **Affinity slot** (`runner.fleet_slots`) | One row per fleet that one runner at a time can claim; a won claim raises `fencing_token` and holds until `lease_expires_at`. [(more)](./lease_flow.md#the-gateway-claims-an-admission-and-its-fleet-slot) |
 | **Fencing token** | The slot's `fencing_token` a won claim returns, copied onto the lease's `fencing_token`; a report carrying an older one is refused. [(more)](./runner_fleet.md#system-guarantees-read-this-first) |
 | **Lease** (`runner.leases`, `afd_fleet::lease::Leases`) | One runner's time-limited right to run one event, renewed while the run lasts. [(more)](./data_flow.md#one-active-lease-per-fleet-the-ownership-model) |
 | **Event** (`fleet.events`) | The history row for one piece of work, written `received` when a lease picks it up and closed by the report. [(more)](./data_flow.md#the-five-durable-stores-who-owns-what) |
-| **Report** (`POST /v1/runners/me/reports`) | The runner's terminal result for one run (`af_wire::report::ReportRequest`), carrying its lease and fencing token. [(more)](./data_flow.md#c-execute--lease--runner--report) |
+| **Report** (`af_wire::protocol::Up::Report`) | The runner's terminal result for one run (`af_wire::report::ReportRequest`), carrying its lease and fencing token. [(more)](./data_flow.md#c-execute--lease--runner--report) |
 | **Obligation** (`fleet.obligations`) | An answer the fleet owes to a reply destination such as a Slack thread, written with the report and delivered by `afd_outbound`. [(more)](./lease_flow.md#4-how-agent-bob-01-can-reply) |
 | **Activity channel** (`fleet:{id}:activity`) | The fleet's pub/sub channel for live-tail frames: best effort, with no history. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |
 | **Subscription hub** (`afd_dragonfly::SubscriptionHub`) | The one pub/sub connection in each `agentsfleetd` process; it subscribes each channel once and copies frames to every viewer and to the wake listeners. [(more)](./data_flow.md#two-streams--one-pubsub-channel-and-the-one-that-retired) |

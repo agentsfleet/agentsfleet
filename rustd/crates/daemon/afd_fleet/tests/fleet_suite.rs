@@ -14,6 +14,7 @@
 mod installed;
 mod integration_model_seed;
 mod integration_tasks;
+mod issue_lifecycle;
 mod lease_renewal;
 
 #[path = "support/fleet_setup.rs"]
@@ -31,7 +32,7 @@ mod recovery_seed;
 mod report_commit;
 #[path = "support/fleet_report_reads.rs"]
 mod report_reads;
-#[path = "support/fleet_report_seed.rs"]
+#[path = "support/fleet_report_seed/mod.rs"]
 mod report_seed;
 #[path = "support/fleet_requests.rs"]
 mod requests;
@@ -103,7 +104,7 @@ mod integration_money_gates;
 mod integration_money_gates_debt;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
-#[path = "integration_renew_coverage.rs"]
+#[path = "integration_renew_coverage/mod.rs"]
 mod integration_renew_coverage;
 #[path = "integration_renew_gate_edges.rs"]
 mod integration_renew_gate_edges;

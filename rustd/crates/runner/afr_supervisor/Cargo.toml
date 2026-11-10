@@ -18,9 +18,13 @@ workspace = true
 # The daemon's integration lane runs the supervisor against fixture
 # repositories served over `file://` (`run_fetching_from`); a fake daemon
 # serves on `test_util::Listener`.
-test-util = ["dep:axum"]
+test-util = ["dep:axum", "dep:tower", "af_stream/test-util"]
 
 [dependencies]
+af_stream.workspace = true
+http.workspace = true
+parking_lot.workspace = true
+dashmap.workspace = true
 af_context = { workspace = true }
 # Proves a lease's sandbox size within the wire's declared bounds before the
 # engine builds it.
@@ -32,10 +36,10 @@ af_observability.workspace = true
 # Identifiers, the lease clock, worker-count clamps, the environment seam and
 # the registry codes a failure is logged under.
 af_core.workspace = true
-# Per-report content keys, authenticated metadata and encrypted private spool bytes.
+# Activity and renewal batching share allocation-free encoded-size measurements.
+af_validate.workspace = true
+# Provider credentials and encrypted recovery objects use the shared crypto types.
 af_crypto.workspace = true
-# No-follow, nonblocking opens keep private spool reads on regular files.
-libc.workspace = true
 cap-std.workspace = true
 rustix.workspace = true
 # The one wire: every verb's request and reply, spelled once.
@@ -71,16 +75,12 @@ gix = { workspace = true, features = ["blocking-network-client", "blocking-http-
 reqwest.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-# The report spool writes through a temporary file that is
-# persisted only once complete, so a crash never leaves half a report.
-tempfile.workspace = true
 thiserror.workspace = true
 # The daemon's address, parsed once at boot; every route joins under it.
 url.workspace = true
 # The runner token and minted credentials are wiped from memory when dropped.
 zeroize.workspace = true
-# `fs` for the report spool's one-step renames and removals; the executor
-# links it already. `net` for the host resolver an egress allowlist is
+# `fs` for recovery objects. `net` for the host resolver an egress allowlist is
 # resolved through.
 tokio = { workspace = true, features = ["fs", "rt", "sync", "time", "macros", "net"] }
 # The token that stops a run when its lease is refused, and stops the pool at
@@ -88,12 +88,16 @@ tokio = { workspace = true, features = ["fs", "rt", "sync", "time", "macros", "n
 tokio-util.workspace = true
 # `test_util::Listener`: the loopback listener a fake daemon serves on.
 axum = { workspace = true, optional = true }
+tower = { workspace = true, optional = true }
 tracing.workspace = true
 # `catch_unwind` around an agent run, so a panicking engine still has its
 # sandbox torn down.
 futures-util.workspace = true
 
 [dev-dependencies]
+tempfile.workspace = true
+http-body-util.workspace = true
+af_stream = { workspace = true, features = ["test-util"] }
 # Verified local HTTPS object storage boundary for recovery transfer tests.
 rcgen.workspace = true
 rustls.workspace = true
@@ -118,5 +122,5 @@ afr_agent = { workspace = true, features = ["test-util"] }
 axum = { workspace = true, features = ["json"] }
 af_core = { workspace = true, features = ["test-util"] }
 # The subscriber a lease's spans are exported through in the telemetry suite.
-tracing-subscriber.workspace = true
+tracing-subscriber = { workspace = true, features = ["json"] }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread", "sync", "time", "macros", "net", "test-util"] }

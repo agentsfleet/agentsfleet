@@ -2,11 +2,10 @@
 
 use af_core::id::Uuid7;
 use af_wire::context::{ContextProgress, ContextState};
-use afd_dragonfly::FleetStreams;
+use afd_bus::Handle;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    draft_channel,
     publish::{DEADLINE, authorize},
     trace::Trace,
 };
@@ -34,7 +33,7 @@ pub struct ContextNotice {
 }
 
 pub(in crate::model) struct ContextPublisher<'a> {
-    streams: &'a FleetStreams,
+    streams: &'a Handle,
     drafts: &'a Drafts,
     runner: &'a Uuid7,
     lease: &'a Uuid7,
@@ -45,7 +44,7 @@ pub(in crate::model) struct ContextPublisher<'a> {
 
 impl<'a> ContextPublisher<'a> {
     pub(in crate::model) const fn new(
-        streams: &'a FleetStreams,
+        streams: &'a Handle,
         drafts: &'a Drafts,
         runner: &'a Uuid7,
         lease: &'a Uuid7,
@@ -90,7 +89,10 @@ impl<'a> ContextPublisher<'a> {
         };
         let payload = serde_json::to_string(&frame).map_err(crate::error::raise::stored)?;
         self.streams
-            .publish(&draft_channel(&frame.draft_id), &payload)
+            .publish(
+                &afd_bus::Subject::DraftEvents(frame.draft_id.clone()),
+                &payload,
+            )
             .await
             .map(|_subscribers| ())
             .map_err(|source| crate::error::ErrorKind::Preview { source }.into())

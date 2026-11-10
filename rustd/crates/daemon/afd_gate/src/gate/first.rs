@@ -237,7 +237,12 @@ mod tests {
                 NOWHERE.to_owned(),
             ))
             .expect("a lazy handle opens no socket and cannot fail");
-            let gates = Gates::new(afd_db::test_util::unreachable_db(), queue, Entropy::new());
+            let gates = Gates::new(
+                afd_db::test_util::unreachable_db(),
+                (queue).clone(),
+                afd_bus::dragonfly::publisher(queue),
+                Entropy::new(),
+            );
             let fleet = Uuid7::parse(FLEET).expect("a canonical identifier");
             let event = Uuid7::parse(EVENT).expect("a canonical identifier");
             let config =

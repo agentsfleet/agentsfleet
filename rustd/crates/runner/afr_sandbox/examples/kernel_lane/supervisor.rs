@@ -11,6 +11,7 @@ use af_core::env::MapEnv;
 use af_providers::Call;
 use afr_sandbox::{BubblewrapEngine, Engine, Sandbox, SandboxRequest, probe};
 use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
+use afr_supervisor::config::{ENV_STREAM_CA, ENV_STREAM_URL};
 use afr_supervisor::test_util::LEASE_ID;
 use libtest_mimic::Failed;
 use tokio::sync::Notify;
@@ -184,7 +185,10 @@ fn start(
     stop: CancellationToken,
 ) -> Result<tokio::task::JoinHandle<afr_supervisor::Result<()>>, Failed> {
     let storage = root.join("runner").display().to_string();
+    let roots = server.native.root().display().to_string();
     let env = MapEnv::from_pairs([
+        (ENV_STREAM_URL, server.native.url.as_str()),
+        (ENV_STREAM_CA, roots.as_str()),
         (ENV_API_URL, server.url.as_str()),
         (ENV_RUNNER_TOKEN, RUNNER_TOKEN),
         (ENV_STORAGE_HOME, storage.as_str()),

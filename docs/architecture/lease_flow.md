@@ -4,7 +4,7 @@ Read this when you want one lease's whole path on one page. The path starts with
 
 The page walks the path and links each step to the page that owns it.
 
-[`data_flow.md`](./data_flow.md) owns ingress, admission and settlement. [`runner_fleet.md`](./runner_fleet.md) owns the protocol, renewal and fencing. [`runner_execution.md`](./runner_execution.md) owns the runner's side.
+[`data_flow.md`](./data_flow.md) owns ingress, admission and settlement. [`runner_protocol.md`](./runner_protocol.md) owns the connection, renewal and recovery rules. [`runner_execution.md`](./runner_execution.md) owns the runner's side.
 
 Where a step's facts live on one of those pages, this page links rather than restates them.
 Crate names refer to crates under `rustd/crates/`.
@@ -43,9 +43,9 @@ Sections 6 and 7 cover the sandbox and host.
                              SPUBLISH fleet:wake:{shard} (best effort)    Dragonfly
                          6 202 {matched, enqueued}
 
- RUNNER POLL             POST /v1/runners/me/leases  (every ≤1 s per worker)
+ GATEWAY CLAIM PASS      native session has advertised worker capacity
                          a Postgres: oldest unsettled head per eligible fleet
-                         b prefer held fleets, wake hints and previous placement; ≤64
+                         b prefer held fleets, wake notifications and previous placement; ≤64
                          c lock slot and exact head with SKIP LOCKED
                          d advance slot + admission fences; decode before commit
                          e INSERT fleet.events status=received (+ stamp admission delivered)
@@ -54,9 +54,9 @@ Sections 6 and 7 cover the sandbox and host.
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
                              (tools, network.allow, origin rules for api.github.com)
                          i INSERT runner.leases        status=active, fencing_token, expires  ← THE LEASE ROW
-                         j 200 { lease: { lease_id, fencing_token, lease_expires_at,
-                                          event{digest}, policy,
-                                          instructions = instructions_md } }
+                         j push offer{lease:{lease_id,fencing_token,lease_expires_at,
+                                              event{digest},policy,
+                                              instructions=instructions_md}}
 ```
 
 ### Save writes the fleet and its setup, then activates once ready
@@ -103,12 +103,13 @@ Under `Policy::AppIngress` every `pull_request` action wakes the fleet except on
 Each producer calls `Admissions::admit`. The row carries producer identity, payload, original event time and any reply destination.
 An accepted message costs one write (`admit_one.sql`) and holds no fleet-row lock across round trips; a steer adds one read.
 
-Repeated producer identities return the existing admission. After commit, a bounded wake publish can prioritize its fleet on the next poll.
+Repeated producer identities return the existing admission.
+After commit, a bounded wake publish starts a gateway claim pass for hosts with available capacity.
 
-### The poll claims an admission and its fleet slot
+### The gateway claims an admission and its fleet slot
 
 1. Read the oldest unsettled admission for each eligible fleet through `idx_admissions_unsettled`.
-2. Prefer held fleets and recent hints, then try a bounded candidate set.
+2. Prefer held fleets and recent wake notifications, then try a bounded candidate set.
 3. Lock a candidate's slot and exact oldest admission with `SKIP LOCKED`. A locked or parked head blocks later rows.
 4. Advance the slot and admission fences together. Decode the envelope before committing, so malformed stored data rolls back both fences.
 5. Open runtime history and stamp `delivered_at` under the same current fences.
@@ -124,102 +125,31 @@ See [the queue design](./datastore_scaling.md#the-admissions-ledger-is-the-queue
 
 ## 2. The runner's side of one lease
 
-```text
- agentsfleet-runner run                        agentsfleetd
- ───────────────────────                       ───────────
- boot: AGENTSFLEET_API_URL, _RUNNER_TOKEN,
-       RUNNER_STORAGE_HOME (/var/lib/agentsfleet-runner)
- delegated cgroup from /proc/self/cgroup; probe the kernel; admit the staged toolbox
- engine boot sweep: leftover <home>/sandboxes/*, afegress* tables, afv* links
- tokio::join!( heartbeat , spool drainer , worker pool )
+`agentsfleet-runner run` reads its API address, native stream origin and runner token before opening its storage home.
+The home holds sandboxes, repository mirrors and the toolbox.
+Host checks and the engine's cleanup sweep run before the runner takes work (`afr_supervisor::boot`, `afr_sandbox`'s engine).
 
- HEARTBEAT every 10 s ──► POST /v1/runners/me/heartbeats {capability_report, holds, wake}
-                      ◄── {status: ok, assigned_policy{worker_count, tier,
-                           network_policy, registry_allowlist}, interval, woken}
-                           worker_count clamped 1..=64; workers spawn to that count
-                           wake: held ≤10 s until a doorbell ring; woken ⇒ one idle worker polls now
+The native session, heartbeat policy and worker pool run together (`afr_supervisor/src/lib.rs`).
+Idle workers wait for pushed offers and advertise their free capacity.
+The [runner guide](runner_protocol.md) owns connection setup, heartbeat timing, cancellation, renewal and reconnect behavior.
 
- WORKER n ────────────► POST /v1/runners/me/leases {holds}   (sleep retry_after_ms ≥250 ms if null,
-                      ◄── { lease, memory window }               or until a woken beat ends the pause)
- ┌─ lease task ────────────────────────────────────────────────────────────────────────┐
- │ 1 admit(policy)        unhosted tool or provider ⇒ refuse at startup                │
- │                        needs_sandbox = any tool with Runtime::Sandbox               │
- │ 2 turns.claim(fleet)   one run per fleet per runner                                 │
- │ 3 memory               the lease's window; only without one:                       │
- │                        GET /v1/runners/me/memory/{fleet_id}                         │
- │ 4 [sandbox]            held sandbox for this fleet and key, else engine.prepare:    │
- │                        dir, workspace.img, cgroup, bwrap on the assigned network,   │
- │                        executor; check_out the bound repositories                   │
- │ 5 agent loop           turns ↔ provider; each call: start frame → router → end frame│
- │     folded inputs ───► POST /v1/runners/me/leases/{id}/folds before each model call │
- │     tool calls ──────► POST /v1/runners/me/credentials/mint  (first ${secrets.x})   │
- │     mid-run memory ──► POST /v1/runners/me/memory/{fleet_id} (every N calls)        │
- │     activity pump ───► POST /v1/runners/me/leases/{id}/activity (≤64 KiB, 250 ms)   │
- │   ║ renewal tick 5 s ─► POST /v1/runners/me/leases/{id}/renew {request lines}      │
- │   ║                  ◄── {lease_expires_at}   4xx ⇒ interrupt run (5 s grace)       │
- │ 6 [sandbox] keep       processed ⇒ freeze and hold; else destroy                    │
- │ 7 settle               POST .../tool-calls (full records, ≤256 KiB per post)        │
- │                        without a window: POST .../memory/{fleet_id} {deltas}        │
- │                        spool <home>/spool/<lease>.json (fsync + rename)             │
- │                        POST /v1/runners/me/reports  {lease_id, fence, outcome, ...  │
- │                          folded_through_sequence; with a window: memory, segments}  │
- │                        a shape refusal (UZ-REQ-001) of that body: push, re-post once│
- │                        kept on 5xx/401/403/408/413 → drainer retries forever        │
- │ 8 wait ≤5 s for activity to drain                                                   │
- └─────────────────────────────────────────────────────────────────────────────────────┘
-                                               daemon report: memory captured first
-                                               (own transaction, memory role, fenced)
-                                               then ONE transaction
-                                               METER_LEASE (current fences, active→reported, measured usage)
-                                               → fleet.events processed/fleet_error + tool_calls
-                                               → fleet.sessions checkpoint → admission settled → affinity released
-                                               → folded messages settled → obligation if a reply destination; COMMIT
-                                               → SPUBLISH event_complete
-```
+Each fleet lease follows these steps:
 
-**Boot and composition.** `afr_supervisor::boot` reads three variables and opens `<home>/{sandboxes,spool,git,toolbox}`.
+1. Admit its tools, provider and policy; claim the fleet's local turn.
+2. Load the lease's memory window, or read memory through the retained HTTP route when the window is absent.
+3. Prepare or thaw a sandbox when the admitted tools need one, then run the agent loop.
+4. Request folded inputs before model calls and send bounded activity over the native session.
+5. Freeze and hold a completed sandbox, or kill it; post full tool records through the retained HTTP route.
+6. Flush outstanding usage through renewals, then send the report with memory, timing segments and folded-input progress.
+7. Retain the report in the worker's memory until acknowledgement or a terminal refusal, then finish sandbox cleanup and drain activity.
 
-The runner binary (`rustd/crates/runner/main`) then builds the host's engine and runs `afr_supervisor::run` with it. It refuses to start on a host that lacks a mechanism every sandbox needs.
+The daemon captures reported memory under the lease fence before the settlement transaction.
+Settlement records usage, event outcome, session checkpoint, admission completion, slot release and any outbound obligation.
+Only a successful report settles folded messages through `folded_through_sequence`.
 
-Building the engine sweeps what a crashed run left ([`runner_execution.md`](./runner_execution.md) §"A lease's sandbox today").
-
-**Heartbeat → assignment.** The heartbeat posts the capability report and the fleets the runner holds, and reads back the assigned policy. The worker count is clamped to `1..=64` (`afr_supervisor`'s heartbeat, `af_core`'s limits).
-
-The daemon serves the 10 s cadence. It reconciles the report against the assignment into a `degraded` verdict ([Runner Fleet](./runner_fleet.md) §"Assigned policy and reconciliation (M148)"). The reply's `status` is always `ok`, so a running lease learns nothing of a kill from it ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause").
-
-While a worker is idle, the beat asks to be held (`wake`). The daemon holds it until the doorbell rings or the interval passes. A `woken` reply ends one idle worker's pause ([Runner Fleet](./runner_fleet.md) §"The held heartbeat").
-
-**Worker pool.** Workers grow to the assigned count and are never killed.
-
-A worker polls while the assignment says to take work, and runs a lease to its report before polling again. On no work it sleeps the daemon's `retry_after_ms`, floored at 250 ms (`afr_supervisor`'s worker pool).
-
-A woken beat ends one idle worker's sleep, so fresh work waits one round trip, not a hint. The other workers keep their staggered pauses.
-
-**One lease.** The steps and their refusals are in [`runner_execution.md`](./runner_execution.md) §"One lease, end to end".
-
-The renewal ticks every 5 s with the provider requests the daemon has not recorded, one line each. It moves the runner's own deadline to the reply's `lease_expires_at` less 2 s.
-
-A 5xx keeps the lease and a 4xx ends it ([Runner Fleet](./runner_fleet.md) §"Per-lease renewal").
-
-An interrupted engine gets 5 s to hand back its tokens and memory (`afr_supervisor`'s lease loop).
-
-**The turn.** The loop reads installed instructions, trusted repair context and recent chat turns (`afr_agent`'s prompt).
-Each call is numbered, announced, routed and closed once (`afr_agent`'s ledger).
-
-Before each model call, the loop claims messages that folded into the run through `POST /v1/runners/me/leases/{lease_id}/folds`.
-The claim carries `fencing_token` and `after_sequence` and returns at most 32 inputs (`FOLDS_PER_CLAIM_MAX`).
-A parked or task-bound message is a barrier: nothing sent after it folds.
-
-Shared preparation compacts older groups while retaining instructions, tools and complete tool groups (`afr_agent`'s loop context).
-See [context lifecycle](context_lifecycle.md); output, time, cancellation and money bounds still stop the run.
-
-**Settle and report.** Full tool records post first. A lease that carried its memory window settles in one post, which carries the run's memory and its segments. The daemon captures the memory, fenced on the lease's token, before it commits the settle, so the fleet's next lease reads it.
-
-A lease without a window pushes memory first, as an older daemon expects. The daemon settles the report in one transaction ([Runner Fleet](./runner_fleet.md) §"Running one event").
-
-The report carries `folded_through_sequence`. Only a succeeded report settles the folded messages. Each folded message's own event then carries `resumes_event_id`, naming the run, and the run's answer as its reply.
-
-A stale fence, a lease not found or a lease lost settles the spooled entry for good. A 5xx, 401, 403, 408 or 413 keeps it for the drainer (`afr_supervisor`'s report spool and drainer).
+Connection loss preserves pending reports in memory while the runner reconnects.
+Process loss can discard results or usage the daemon has not accepted.
+[Results and billing](runner_protocol.md#results-and-billing) covers retries, shutdown and saved acknowledgements.
 
 ---
 
@@ -239,7 +169,7 @@ A stale fence, a lease not found or a lease lost settles the spooled entry for g
    │                        ∩ events ∋ pull_request          ⇒ agent-bob-01 (and any twin)
    │                      commit admission + best-effort wake
    │◄──── 202 ────────────┤
-   │                      │◄──── POST /v1/runners/me/leases ──────────────────────────────┤
+   │                      gateway sees available capacity on the native session
    │                      claim slot, fleet.events received, gates, vault, policy:
    │                        tools: [http_request, memory_store, memory_recall]
    │                        network.allow: [api.github.com]
@@ -248,7 +178,7 @@ A stale fence, a lease not found or a lease lost settles the spooled entry for g
    │                           POST /git/blobs|trees|commits, POST /git/refs{ref locked},
    │                           POST /pulls{head,base locked, draft:true}
    │                           PATCH own event ref{force:false, sha only}
-   │                      ├──── 200 lease{instructions, event=digest} ────────────────────►
+   │                      ├──── offer{lease:{instructions,event=digest}} ─────────────────►
    │                      │                                  admit: all three tools Supervisor
    │                      │                                  ⇒ needs_sandbox = false ⇒ NO SANDBOX
    │                      │◄──── GET memory/{fleet} ─────────────────────────────────────┤
@@ -265,7 +195,7 @@ A stale fence, a lease not found or a lease lost settles the spooled entry for g
    │      ✗ never sent    │                                  ⇒ [request_policy_not_allowed] to the model
    │                      │◄──── activity: tool_call_completed(failed) ──────────────────┤
    │                      │                                  model turn 3 → final answer text
-   │                      │◄──── tool-calls, memory push, POST reports ──────────────────┤
+   │                      │◄──── HTTP tool records; native report with memory ───────────┤
    │                      settle: fleet.events processed, response_text = the answer
    │                      admission settled, event_complete frame → dashboard thread
 ```
@@ -346,7 +276,9 @@ So writing "post the review" in the instructions (which the fixture already does
 
 The 202 names a `disposition`: `started`, `folded` or `queued`. With no run live, the message waits for the single affinity slot (`queue::CLAIM_HEAD`, `afd_fleet`'s lease queue). It then starts a run of its own.
 
-With a run live, the message folds into it, and the 202 also carries `folded_into_event_id`. The running lease claims it at its next model call through `POST /v1/runners/me/leases/{lease_id}/folds`, and the run's answer becomes its reply. A parked or task-bound message ahead of it is a barrier, so it queues instead.
+With a run live, the message folds into it, and the 202 also carries `folded_into_event_id`.
+The lease claims it through the native `folds` request before its next model call; the run's answer becomes its reply.
+A parked or task-bound message ahead of it is a barrier, so the new message queues instead.
 
 The web app shows a folded message as "Added to the current run" and waits on the message's own event. The CLI `steer` command waits on the message's own event id the same way.
 
@@ -381,7 +313,7 @@ Unblocking the review is a one-rule change in `afd_gate`'s egress write rules: a
                                                                            new unsettled queue row
  fleet.admissions    [opened: running]  [synchronize: waiting]  [labeled]  [edited] ...
                        one active lease per fleet (affinity slot) ⇒ strictly one at a time
- next poll after the report frees the slot:
+ next gateway claim after the report frees the slot:
    claim fence+1 (sticky: last_runner_id sorts first, random tie-break)
    new lease row, new lease_id, new fencing_token
    load: fleet memory window (≤256 KiB, core pinned) ⇒ what memory_store saved last run
@@ -434,9 +366,12 @@ The toolbox image, its page cache and what bounds a host's memory and disk: [run
 
 - Activity: 64 KiB batches, 4 held (`afr_supervisor`'s activity). Memory: a 256 KiB memory window (`af_wire`'s memory module).
 
-- Timers in `af_core`: the lease TTL is 30 seconds and a renewal comes every 5 seconds. A run lasts at most 12 hours, and a runner counts as offline after 90 seconds. The heartbeat is 10 seconds, the empty-poll hint 1 second and the sandbox hold 10 minutes.
+- Timers in `af_core`: leases last 35 seconds and renewals run every 5 seconds.
+  A run lasts at most 12 hours, and a runner counts as offline after 105 seconds.
+  Heartbeats run every 10 seconds; a sandbox hold lasts 10 minutes.
 
-- Poll and admission: at most 64 candidate fleets per poll; no per-fleet admission cap. [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) also describe the sampled deployment budget.
+- Claim and admission: at most 64 candidate fleets per claim; no per-fleet admission cap.
+  [Queue limits](./datastore_scaling.md#the-admissions-ledger-is-the-queue) describe the sampled deployment budget.
 
 ---
 

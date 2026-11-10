@@ -86,7 +86,7 @@ impl Live {
     }
 
     pub(super) fn channel(&self) -> String {
-        afd_authoring::draft_channel(&self.draft)
+        afd_bus::test_util::physical_channel(&afd_bus::Subject::DraftEvents(self.draft.clone()))
     }
 
     pub(super) fn delta(&self, text: &str) -> Value {

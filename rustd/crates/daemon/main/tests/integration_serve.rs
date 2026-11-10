@@ -67,6 +67,7 @@ fn lane_environment() -> MapEnv {
         // than used, so well-formed is enough and nothing here reaches the
         // issuer or takes a digest.
         .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::runner_stream::environment())
         .chain(crate::support::IDENTITY),
     )
 }
@@ -161,11 +162,13 @@ fn assert_supervises_every_task(supervisor: &Supervisor) {
             agentsfleetd::inventory::HUB_PUMP,
             agentsfleetd::inventory::OUTBOUND_WORKER,
             agentsfleetd::outbound::OUTBOUND_PRODUCER,
+            "runner_stream_scheduler",
+            "runner_stream_listener",
             agentsfleetd::serve::ACCEPT_LOOP,
             agentsfleetd::inventory::ANALYTICS_FLUSH,
         ],
         "a booted daemon supervises its pump, its sweepers, both halves of \
-         outbound delivery, its accept loop and its analytics flush"
+         outbound delivery, its native scheduler and listener, its accept loop and its analytics flush"
     );
 }
 
