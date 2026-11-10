@@ -35,7 +35,7 @@ use af_fleet_runtime::FleetConfig;
 use jiff::Timestamp;
 
 use crate::gate::pause::Trigger;
-use crate::gate::pending::{Evaluation, GateRef};
+use crate::gate::pending::{Evaluation, GateRef, Recorded};
 use crate::gate::route::RefState;
 use crate::gate::store::Gates;
 
@@ -158,12 +158,37 @@ impl Gates {
     }
 
     /// What a poll makes of the gate this event already holds.
+    /// [`Self::check`] over what the caller's read already found, reading
+    /// neither the reference nor its row again (M245 §5).
+    ///
+    /// An unreadable read is judged as [`Self::check`] judges an unreadable
+    /// lookup: a first encounter in [`RefState::Unreadable`].
+    pub async fn judge(&self, request: Check<'_>, recorded: Recorded, now: Timestamp) -> Verdict {
+        match recorded {
+            Recorded::Held(evaluation) => decided(evaluation),
+            Recorded::Absent => {
+                self.judge_first_encounter(&request, RefState::Absent, now)
+                    .await
+            }
+            Recorded::Unreadable(Logged { error_code, reason }) => {
+                let fleet = request.fleet_id.as_str();
+                tracing::warn!(
+                    error_code,
+                    event = %EVENT_LOOKUP_UNREADABLE,
+                    fleet_id = %fleet,
+                    agentsfleet_event_id = %request.event_id,
+                    reason,
+                    "whether this event already holds a gate could not be read"
+                );
+                self.judge_first_encounter(&request, RefState::Unreadable, now)
+                    .await
+            }
+        }
+    }
+
     async fn resolve_recorded(&self, request: &Check<'_>, reference: &GateRef) -> Verdict {
         match self.evaluate(reference).await {
-            Ok(Evaluation::Approved) => Verdict::Pass,
-            Ok(Evaluation::Denied) => Verdict::Refuse(Refused::Denied),
-            Ok(Evaluation::Expired) => Verdict::Refuse(Refused::Expired),
-            Ok(Evaluation::Pending) => Verdict::Await(Waiting::Pending),
+            Ok(evaluation) => decided(evaluation),
             // A transient read failure must not deny a gate a human APPROVED.
             // Waiting costs a poll; the other direction throws away an answer.
             Err(fault) => {
@@ -180,5 +205,15 @@ impl Gates {
                 Verdict::Await(Waiting::Unreadable)
             }
         }
+    }
+}
+
+/// The verdict a recorded gate's evaluation decides.
+const fn decided(evaluation: Evaluation) -> Verdict {
+    match evaluation {
+        Evaluation::Approved => Verdict::Pass,
+        Evaluation::Denied => Verdict::Refuse(Refused::Denied),
+        Evaluation::Expired => Verdict::Refuse(Refused::Expired),
+        Evaluation::Pending => Verdict::Await(Waiting::Pending),
     }
 }

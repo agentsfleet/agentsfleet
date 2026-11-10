@@ -19,7 +19,7 @@
 //! means stating a posture; changing a posture means editing one line that
 //! reads like the sentence it enforces.
 
-use af_core::error_code::{self, Coded as _, Logged};
+use af_core::error_code::{self, Coded, Logged};
 
 use crate::lease::admit::{Declined, Transient};
 
@@ -79,7 +79,7 @@ impl Gate {
     /// spells that `absorb(&fault).ok_or(fault)`: one expression, and if the
     /// posture is ever changed to `Admit` the gate propagates the error instead
     /// of silently admitting — which is the right way for that edit to fail.
-    pub(super) fn absorb(self, fault: &afd_billing::Error) -> Option<Declined> {
+    pub(super) fn absorb(self, fault: &impl Coded) -> Option<Declined> {
         // Hoisted: the `log` bridge duplicates field expressions and llvm-cov
         // scores the dead copy.
         let code = error_code::INTERNAL_DB_QUERY.as_str();

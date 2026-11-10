@@ -57,10 +57,14 @@ impl LeaseService {
             admitted.acquired.event_id.as_str(),
             &admitted.installed.config,
         );
-        let granted = self
-            .gates
-            .approved_integrations(&admitted.acquired.fleet_id)
-            .await?;
+        let granted = match admitted.granted.clone() {
+            Some(granted) => granted,
+            None => {
+                self.gates
+                    .approved_integrations(&admitted.acquired.fleet_id)
+                    .await?
+            }
+        };
 
         let policy = match build::assemble(
             build::Inputs {

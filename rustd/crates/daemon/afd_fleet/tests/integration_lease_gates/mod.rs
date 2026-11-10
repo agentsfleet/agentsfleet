@@ -42,6 +42,7 @@ mod chat;
 mod decision;
 mod decision_expiry;
 mod faults;
+mod gates_read;
 mod history;
 mod seed;
 mod slack;

@@ -8,7 +8,9 @@ use af_wire::event::EventType;
 use jiff::Timestamp;
 
 use crate::error::Result;
-use crate::lease::admit::{Admission, Billed as Admitted, Request, money_gates, payer_gate};
+use crate::lease::admit::{
+    Admission, Billed as Admitted, GateFacts, Request, money_gates_with, payer_gate,
+};
 use crate::lease::answer::no_work;
 use crate::lease::envelope::Acquired;
 use crate::lease::installed::Installed;
@@ -101,6 +103,9 @@ pub(super) struct AdmittedFleetWork {
     pub(super) resolved: Resolved,
     /// What the money pass resolved.
     pub(super) billed: Admitted,
+    /// The standing integration grants the gates read returned, or `None`
+    /// when that read failed and the policy reads them itself.
+    pub(super) granted: Option<afd_gate::policy::grants::Grants>,
 }
 
 impl LeaseService {
@@ -177,7 +182,8 @@ impl LeaseService {
                 acquired.opened.platform_key.as_ref(),
             )
             .await?;
-        let gated = self.gated(&acquired, &installed, tenant, &resolved, now);
+        let facts = self.leases.gate_facts(&acquired).await;
+        let gated = self.gated(&acquired, &installed, tenant, &resolved, &facts, now);
         let billed = match gated.await?.admitted() {
             Ok(billed) => billed,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,
@@ -188,6 +194,7 @@ impl LeaseService {
             event_type,
             resolved,
             billed,
+            granted: facts.granted(),
         }))
     }
 
@@ -218,6 +225,7 @@ impl LeaseService {
         installed: &Installed,
         tenant: Uuid7,
         resolved: &Resolved,
+        facts: &GateFacts,
         now: Timestamp,
     ) -> Result<Admission> {
         let request = Request {
@@ -229,18 +237,22 @@ impl LeaseService {
             provider: resolved.provider.as_ref(),
             model: resolved.model.as_ref(),
         };
-        let money = money_gates(
+        let money = money_gates_with(
             &self.accounts,
             self.biller.as_ref(),
             Ok(Some(tenant)),
             request,
+            facts.spend(),
             now,
         )
         .await?;
         if !matches!(money, Admission::Admit(_)) {
             return Ok(money);
         }
-        Ok(self.judged(acquired, installed, now).await.unwrap_or(money))
+        Ok(self
+            .judged(acquired, installed, facts, now)
+            .await
+            .unwrap_or(money))
     }
 
     /// The approval gate, as an admission answer.
@@ -248,11 +260,12 @@ impl LeaseService {
         &self,
         acquired: &Acquired,
         installed: &Installed,
+        facts: &GateFacts,
         now: Timestamp,
     ) -> Option<Admission> {
         let verdict = self
             .gates
-            .check(
+            .judge(
                 Check {
                     fleet_id: &acquired.fleet_id,
                     workspace_id: &acquired.workspace_id,
@@ -262,6 +275,7 @@ impl LeaseService {
                     request_json: &acquired.request_json,
                     config: &installed.config,
                 },
+                facts.recorded(),
                 now,
             )
             .await;

@@ -30,6 +30,7 @@
 mod declined;
 mod fault;
 mod gates;
+pub(crate) use self::gates::GateFacts;
 mod verdict;
 
 pub use self::declined::Declined;
@@ -201,6 +202,31 @@ pub async fn money_gates(
     request: Request<'_>,
     now: Timestamp,
 ) -> Result<Admission> {
+    let spend = accounts.spend(request.workspace_id, request.fleet_id).await;
+    money_gates_with(
+        accounts,
+        biller,
+        payer,
+        request,
+        spend.as_ref().copied(),
+        now,
+    )
+    .await
+}
+
+/// [`money_gates`] over a spend the caller already read — the lease path's
+/// one gates read (M245 §5) — or the fault that read met.
+///
+/// # Errors
+/// As [`money_gates`].
+pub async fn money_gates_with<E: af_core::error_code::Coded>(
+    accounts: &Accounts,
+    biller: &dyn Biller,
+    payer: Payer,
+    request: Request<'_>,
+    spend: core::result::Result<afd_billing::budget::Spend, &E>,
+    now: Timestamp,
+) -> Result<Admission> {
     let tenant_id = match payer_gate(payer, request.workspace_id)? {
         Ok(found) => found,
         Err(stop) => return Ok(stop.into()),
@@ -209,7 +235,7 @@ pub async fn money_gates(
     if let Some(stop) = gates::balance(accounts, biller, &request, &tenant_id, now).await {
         return Ok(stop.into());
     }
-    if let Some(stop) = gates::fleet_budget(accounts, &request).await {
+    if let Some(stop) = gates::fleet_budget(&request, spend) {
         return Ok(stop.into());
     }
 
