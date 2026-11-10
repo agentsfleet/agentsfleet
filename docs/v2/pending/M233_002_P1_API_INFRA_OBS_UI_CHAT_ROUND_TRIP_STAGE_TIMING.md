@@ -16,12 +16,11 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M233
 **Workstream:** 002
 **Date:** Nov 04, 2026
-**Status:** IN_PROGRESS
+**Status:** PENDING
 **Open work:** Per-request daemon stages (§1), browser/edge timing (§3), and remaining sizing checks (§0.2–§0.3).
 **Priority:** P1 — operator-facing: the production daemon size (three `shared-cpu-4x` 4 GB machines at about $80 a month, or three `performance-2x` 4 GB at $198 a month; source in Discovery) is chosen without per-event evidence of where a chat's time goes
 **Categories:** API, INFRA, OBS, UI
 **Batch:** B1 — single workstream; Section prerequisites are stated in each Section
-**Branch:** chore/m238-dev-round-trip
 **Baseline revision:** 11883fdaba2197adf8931d334396ba8b3bb9eb5b
 **Test Baseline:** pending — measured before the Pull Request
 **Baseline evidence:** pending — report path or run URL with revision, commands, passed/failed/skipped counts, and environment
@@ -391,6 +390,9 @@ No dead code is removed by the delivery-row change. Shipped authoring cleanup re
 - **Patch-vs-refactor verdict:** patch for §1, §3 and §4; §2 is new infrastructure.
 
 ## Discovery (consult log)
+
+- **Returned to pending, Nov 10, 2026:**
+  > Indy (Nov 10, 2026): "also M233_002 bring it back to pending, since nothing is active now." — context: returned from active/ to pending/; §0.1 and §5 shipped in #786, §1–§4 and §0.2–§0.3 remain open, and §0.3's dragonfly-dev check is superseded by M244, which deletes that app.
 
 - **Row implementation, Nov 04, 2026:** §4 uses the successful plain-search query and numeric span fields from M238 evidence. The metrics query returns no series; local-blocks enablement cannot be established through the exposed Grafana proxy routes. Two segments are legitimately absent in the tool-free, memory-window sample. Fleet-wide metrics are blocked by Grafana rejecting delta metrics at ingest; Indy subsequently requested "i nee 1 PR", so the export repair ships in the same pull request as this row and the recorded evidence. The Explore search screenshot shows ten matching spans; no rendered-row screenshot is claimed. §1–§3 remain unstarted, and §0.1/§5 remains predecessor history, excluded from active files and tests.
 
