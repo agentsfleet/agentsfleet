@@ -145,7 +145,11 @@ fn test_verb_clock_writes_each_reached_stage_once() {
     refused.record_on(&tracer);
 
     let spans = collected.spans();
-    assert_eq!(spans.len(), 2, "one span per verb, recorded once: {spans:?}");
+    assert_eq!(
+        spans.len(),
+        2,
+        "one span per verb, recorded once: {spans:?}"
+    );
     let [all, load_only] = [&spans[0], &spans[1]];
     assert_eq!(all.name, semconv::SPAN_FLEET_REPORT);
     assert_eq!(stage_keys(all).len(), ALL_REPORT_STAGES.len());
@@ -175,7 +179,10 @@ fn test_verb_span_carries_only_declared_keys() {
     let collected = Collected::default();
     let (_provider, tracer) = tracer(&collected);
     let mut clock = VerbClock::<SteerStage, Moved>::start_on(Moved::new());
-    assert!(!message.is_empty(), "the steer's message is never handed over");
+    assert!(
+        !message.is_empty(),
+        "the steer's message is never handed over"
+    );
     clock.identify(EVENT_ID, FLEET_ID);
     clock.mark(SteerStage::Admit);
     clock.mark(SteerStage::Announce);
@@ -215,12 +222,18 @@ fn test_verb_stage_attributes_account_for_the_span() {
         .duration_since(span.start_time)
         .expect("the span ends after it starts");
     let span_ms = u64::try_from(length.as_millis()).expect("a short span");
-    let stages_ms: i64 = [semconv::ATTR_STEER_ADMIT_MS, semconv::ATTR_STEER_ANNOUNCE_MS]
-        .iter()
-        .filter_map(|key| millis(span, key))
-        .sum();
+    let stages_ms: i64 = [
+        semconv::ATTR_STEER_ADMIT_MS,
+        semconv::ATTR_STEER_ANNOUNCE_MS,
+    ]
+    .iter()
+    .filter_map(|key| millis(span, key))
+    .sum();
     let stages_ms = u64::try_from(stages_ms).expect("stages are not negative");
     assert_eq!((span_ms, stages_ms), (100, 96));
     assert!(accounts_for(span_ms, stages_ms));
-    assert!(!accounts_for(100, 80), "a 20 ms gap in 100 ms is unaccounted");
+    assert!(
+        !accounts_for(100, 80),
+        "a 20 ms gap in 100 ms is unaccounted"
+    );
 }

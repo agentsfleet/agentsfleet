@@ -14,11 +14,11 @@ use af_observability::semconv::{
     ATTR_RUNNER_SANDBOX_WAIT_MS, ATTR_RUNNER_TOOLS_MS, ATTR_SANDBOX_REUSED, RUNNER_SCOPE_NAME,
     SPAN_RUNNER_LEASE,
 };
-use tracing::field::Empty;
 use af_wire::lease::LeasePayload;
 use af_wire::runner::SelfResponse;
 use tokio::sync::OnceCell;
 use tracing::Span;
+use tracing::field::Empty;
 
 use crate::client::ControlPlane;
 use crate::error::Result;

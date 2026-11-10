@@ -63,8 +63,6 @@ impl LeaseService {
         let mut chosen = self.clone();
         chosen.leases = chosen.leases.with_ticket(ticket);
         let claimed = (acquired, request.runner, request.now, began);
-        chosen
-            .run_claimed_timed(claimed, clock, &mut emit)
-            .await
+        chosen.run_claimed_timed(claimed, clock, &mut emit).await
     }
 }

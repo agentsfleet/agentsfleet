@@ -105,7 +105,11 @@ fn text(value: &Value) -> String {
     ["stringValue", "intValue", "boolValue", "doubleValue"]
         .iter()
         .find_map(|kind| value.get(kind))
-        .map(|found| found.as_str().map_or_else(|| found.to_string(), str::to_owned))
+        .map(|found| {
+            found
+                .as_str()
+                .map_or_else(|| found.to_string(), str::to_owned)
+        })
         .unwrap_or_default()
 }
 
@@ -126,7 +130,12 @@ fn drain(received: &mut mpsc::UnboundedReceiver<(String, Value)>, exported: &mut
                 .as_array()
                 .into_iter()
                 .flatten()
-                .map(|pair| (pair["key"].as_str().unwrap_or_default().to_owned(), text(&pair["value"])))
+                .map(|pair| {
+                    (
+                        pair["key"].as_str().unwrap_or_default().to_owned(),
+                        text(&pair["value"]),
+                    )
+                })
                 .collect();
             let name = span["name"].as_str().unwrap_or_default().to_owned();
             exported.0.push((name, attributes));
@@ -202,7 +211,10 @@ async fn test_verb_span_reaches_exporter_through_global_provider() {
         .named(semconv::SPAN_FLEET_STEER)
         .next()
         .expect("the steer span reached the installed exporter");
-    assert!(attribute(steer, semconv::ATTR_STEER_ADMIT_MS).is_some(), "{steer:?}");
+    assert!(
+        attribute(steer, semconv::ATTR_STEER_ADMIT_MS).is_some(),
+        "{steer:?}"
+    );
 }
 
 /// Dimension 1.3, through the real stack: one chat's offer and report spans
@@ -226,22 +238,44 @@ async fn test_event_identity_joins_the_verb_spans() {
 
     let fleet = run.fleet.to_string();
     for (name, stages) in [
-        (semconv::SPAN_FLEET_OFFER, [
-            semconv::ATTR_OFFER_CLAIM_MS, semconv::ATTR_OFFER_ADMIT_MS, semconv::ATTR_OFFER_ISSUE_MS,
-            semconv::ATTR_OFFER_ENCODE_MS, semconv::ATTR_OFFER_SEND_MS,
-        ].as_slice()),
-        (semconv::SPAN_FLEET_REPORT, [
-            semconv::ATTR_REPORT_LOAD_MS, semconv::ATTR_REPORT_PREPARE_MS, semconv::ATTR_REPORT_CAPTURE_MS,
-            semconv::ATTR_REPORT_COMMIT_MS, semconv::ATTR_REPORT_ANNOUNCE_MS, semconv::ATTR_REPORT_ACK_MS,
-        ].as_slice()),
+        (
+            semconv::SPAN_FLEET_OFFER,
+            [
+                semconv::ATTR_OFFER_CLAIM_MS,
+                semconv::ATTR_OFFER_ADMIT_MS,
+                semconv::ATTR_OFFER_ISSUE_MS,
+                semconv::ATTR_OFFER_ENCODE_MS,
+                semconv::ATTR_OFFER_SEND_MS,
+            ]
+            .as_slice(),
+        ),
+        (
+            semconv::SPAN_FLEET_REPORT,
+            [
+                semconv::ATTR_REPORT_LOAD_MS,
+                semconv::ATTR_REPORT_PREPARE_MS,
+                semconv::ATTR_REPORT_CAPTURE_MS,
+                semconv::ATTR_REPORT_COMMIT_MS,
+                semconv::ATTR_REPORT_ANNOUNCE_MS,
+                semconv::ATTR_REPORT_ACK_MS,
+            ]
+            .as_slice(),
+        ),
     ] {
         let span = exported
             .named(name)
             .find(|span| attribute(span, semconv::ATTR_EVENT_ID) == Some(event.as_str()))
             .unwrap_or_else(|| panic!("no {name} span names event {event}: {exported:?}"));
-        assert_eq!(attribute(span, semconv::ATTR_AGENT_ID), Some(fleet.as_str()), "{name}");
+        assert_eq!(
+            attribute(span, semconv::ATTR_AGENT_ID),
+            Some(fleet.as_str()),
+            "{name}"
+        );
         for stage in stages {
-            assert!(attribute(span, stage).is_some(), "{name} lacks {stage}: {span:?}");
+            assert!(
+                attribute(span, stage).is_some(),
+                "{name} lacks {stage}: {span:?}"
+            );
         }
     }
     supervisor.shutdown().await;
