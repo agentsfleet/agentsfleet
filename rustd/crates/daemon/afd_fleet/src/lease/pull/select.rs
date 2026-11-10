@@ -13,30 +13,11 @@ use crate::{
 impl LeaseService {
     /// Place fleet work and invoke the sink while its borrowed policy is alive.
     /// The sink's result remains concrete and cannot borrow from that policy.
+    /// Marks each offer stage it reaches on `clock`, from the selection on.
     ///
     /// # Errors
     /// Preserves selection, policy, billing and durable issue failures.
     pub async fn claim_fleet_with<T, F>(
-        &self,
-        request: OfferRequest<'_>,
-        ticket: Option<Ticket>,
-        emit: F,
-    ) -> Result<Option<T>>
-    where
-        T: Send,
-        F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
-    {
-        let mut untimed = VerbClock::untimed();
-        self.claim_fleet_timed(request, ticket, &mut untimed, emit)
-            .await
-    }
-
-    /// [`Self::claim_fleet_with`], marking each offer stage it reaches on
-    /// `clock`, from the selection on.
-    ///
-    /// # Errors
-    /// As [`Self::claim_fleet_with`].
-    pub async fn claim_fleet_timed<T, F>(
         &self,
         request: OfferRequest<'_>,
         ticket: Option<Ticket>,
@@ -62,7 +43,15 @@ impl LeaseService {
         clock.mark(OfferStage::Claim);
         let mut chosen = self.clone();
         chosen.leases = chosen.leases.with_ticket(ticket);
-        let claimed = (acquired, request.runner, request.now, began);
-        chosen.run_claimed_timed(claimed, clock, &mut emit).await
+        chosen
+            .run_claimed_with(
+                acquired,
+                request.runner,
+                request.now,
+                began,
+                clock,
+                &mut emit,
+            )
+            .await
     }
 }

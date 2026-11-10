@@ -136,6 +136,7 @@ impl Stage {
                         u64::try_from(SLICE_MS).expect("a fixture span is not negative"),
                     ),
                 ),
+                &mut af_observability::verb_span::VerbClock::untimed(),
             )
             .await
             .expect("the plane settles the report");

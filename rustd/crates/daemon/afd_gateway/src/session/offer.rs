@@ -16,7 +16,6 @@ impl SessionServices {
         let Some(state) = self.offer_state() else {
             return Ok(false);
         };
-        let mut clock = VerbClock::<OfferStage>::start();
         let deadline = Instant::now() + STREAM_ANSWER_TIMEOUT;
         let mut encoder = Encoder::reserve(
             &self.gateway.inner.output_budget,
@@ -25,12 +24,16 @@ impl SessionServices {
             deadline,
         )
         .await?;
-        let Some(offered) = self.issue_offer(&state, &mut encoder, &mut clock).await? else {
-            // An empty pass is the 5 s probe's common answer: no span for it.
-            // A claim the gates refused reached a stage and keeps its span.
-            if clock.reached_nothing() {
-                clock.discard();
-            }
+        // After the reserve, so output backpressure is not read as claim time.
+        let mut clock = VerbClock::<OfferStage>::start();
+        let issued = self.issue_offer(&state, &mut encoder, &mut clock).await;
+        // A pass that reached no stage leaves no span: the 5 s probe's empty
+        // answer, and a claim that failed before selecting, as in an outage.
+        // A claim the gates refused reached a stage and keeps its span.
+        if clock.reached_nothing() {
+            clock.discard();
+        }
+        let Some(offered) = issued? else {
             return Ok(false);
         };
         let frame = encoder.finish()?;
@@ -69,9 +72,10 @@ impl SessionServices {
             .operation(Operation::Offer, async {
                 Ok(self
                     .leases
-                    .claim_with_timed(
+                    .claim_with(
                         &self.drafts,
-                        (request, self.accepted),
+                        request,
+                        self.accepted,
                         clock,
                         |lease, metadata| encode_offer(encoder, lease, metadata),
                     )

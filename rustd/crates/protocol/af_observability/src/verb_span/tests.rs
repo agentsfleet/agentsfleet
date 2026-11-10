@@ -1,5 +1,5 @@
-//! Dimensions 1.1, 1.4 and 1.6: a verb span holds its reached stages once,
-//! only declared keys, and stages that account for its length.
+//! A verb span holds its reached stages once, only declared keys, and stages
+//! that account for its length.
 
 #![expect(
     clippy::expect_used,
@@ -14,7 +14,9 @@ use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::error::OTelSdkResult;
 use opentelemetry_sdk::trace::{SdkTracer, SdkTracerProvider, SpanData, SpanExporter};
 
-use super::{ReportStage, SteerStage, Ticks, VerbClock};
+use super::{
+    CaptureStage, HydrateStage, OfferStage, ReportStage, Stage, SteerStage, Ticks, VerbClock,
+};
 use crate::semconv;
 
 /// A collector that keeps what it is handed.
@@ -112,13 +114,6 @@ fn stage_keys(span: &SpanData) -> Vec<&str> {
         .collect()
 }
 
-/// The largest gap a span may leave between its stages and its length: 10%
-/// of the span, or 5 ms when that is larger.
-fn accounts_for(span_ms: u64, stages_ms: u64) -> bool {
-    let allowed = (span_ms / 10).max(5);
-    span_ms.saturating_sub(stages_ms) <= allowed
-}
-
 /// A report reaching all six stages exports one span with six stages; a report
 /// refused at its load exports one span with `load_ms` alone, and a stage
 /// marked twice keeps its first reading.
@@ -175,19 +170,13 @@ fn test_a_discarded_clock_records_no_span() {
     );
 }
 
-/// A steer of a probe message exports only declared keys, and no value holds
-/// the probe: nothing on the clock can take a message.
+/// A steer's span carries only declared keys, and its only text values are
+/// the event and fleet it was identified with: no clock method takes free text.
 #[test]
 fn test_verb_span_carries_only_declared_keys() {
-    const PROBE: &str = "secret-probe-7f3a";
-    let message = format!("deploy {PROBE}");
     let collected = Collected::default();
     let (_provider, tracer) = tracer(&collected);
     let mut clock = VerbClock::<SteerStage, Moved>::start_on(Moved::new());
-    assert!(
-        !message.is_empty(),
-        "the steer's message is never handed over"
-    );
     clock.identify(EVENT_ID, FLEET_ID);
     clock.mark(SteerStage::Admit);
     clock.mark(SteerStage::Announce);
@@ -195,18 +184,75 @@ fn test_verb_span_carries_only_declared_keys() {
 
     let spans = collected.spans();
     let span = spans.first().expect("the steer recorded its span");
+    let mut texts = Vec::new();
     for pair in &span.attributes {
         assert!(
             semconv::VERB_SPAN_KEYS.contains(&pair.key.as_str()),
             "`{}` is not a declared verb key",
             pair.key
         );
-        assert!(!pair.value.as_str().contains(PROBE));
+        if let Value::String(text) = &pair.value {
+            texts.push(text.as_str().to_owned());
+        }
+    }
+    assert_eq!(texts, [EVENT_ID, FLEET_ID]);
+}
+
+/// Every stage key belongs to its own verb and is declared: a stage wired to
+/// another verb's key, or to a key `VERB_SPAN_KEYS` lacks, fails here.
+#[test]
+fn test_every_stage_key_belongs_to_its_verb() {
+    let verbs: [(&str, Vec<&str>); 5] = [
+        (
+            "agentsfleet.steer.",
+            [SteerStage::Admit, SteerStage::Announce]
+                .map(Stage::key)
+                .to_vec(),
+        ),
+        (
+            "agentsfleet.offer.",
+            [
+                OfferStage::Claim,
+                OfferStage::Admit,
+                OfferStage::Issue,
+                OfferStage::Encode,
+                OfferStage::Send,
+            ]
+            .map(Stage::key)
+            .to_vec(),
+        ),
+        (
+            "agentsfleet.report.",
+            ALL_REPORT_STAGES.map(Stage::key).to_vec(),
+        ),
+        (
+            "agentsfleet.hydrate.",
+            [HydrateStage::Fence, HydrateStage::MemoryRead]
+                .map(Stage::key)
+                .to_vec(),
+        ),
+        (
+            "agentsfleet.capture.",
+            [CaptureStage::Fence, CaptureStage::MemoryWrite]
+                .map(Stage::key)
+                .to_vec(),
+        ),
+    ];
+    let mut seen = std::collections::BTreeSet::new();
+    for (prefix, keys) in verbs {
+        for key in keys {
+            assert!(key.starts_with(prefix), "`{key}` is not under `{prefix}`");
+            assert!(
+                semconv::VERB_SPAN_KEYS.contains(&key),
+                "`{key}` is undeclared"
+            );
+            assert!(seen.insert(key), "`{key}` is wired to two stages");
+        }
     }
 }
 
-/// Stages summing 96 ms of a 100 ms span account for it; 80 ms of 100 does
-/// not, because the gap passes the larger of 10% and 5 ms.
+/// Stages summing 96 ms of a 100 ms span account for it: the gap is within
+/// the larger of 10% of the span and 5 ms.
 #[test]
 fn test_verb_stage_attributes_account_for_the_span() {
     let collected = Collected::default();
@@ -236,9 +282,9 @@ fn test_verb_stage_attributes_account_for_the_span() {
     .sum();
     let stages_ms = u64::try_from(stages_ms).expect("stages are not negative");
     assert_eq!((span_ms, stages_ms), (100, 96));
-    assert!(accounts_for(span_ms, stages_ms));
+    let allowed = (span_ms / 10).max(5);
     assert!(
-        !accounts_for(100, 80),
-        "a 20 ms gap in 100 ms is unaccounted"
+        span_ms - stages_ms <= allowed,
+        "the stages leave {span_ms} - {stages_ms} ms unaccounted"
     );
 }

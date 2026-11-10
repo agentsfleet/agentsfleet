@@ -11,6 +11,8 @@ use crate::Result;
 impl LeaseService {
     /// Serialize each domain's offer inside the values that own its borrowed fields.
     /// The returned metadata carries its target without another database lookup.
+    /// Marks each offer stage it reaches on `clock`; a pass that selects
+    /// nothing marks none.
     ///
     /// # Errors
     /// Preserves host selection, policy, billing and durable placement failures.
@@ -19,26 +21,6 @@ impl LeaseService {
         drafts: &afd_authoring::Drafts,
         request: OfferRequest<'_>,
         accepted: AcceptedKinds,
-        emit: F,
-    ) -> Result<Option<T>>
-    where
-        T: Send,
-        F: for<'a> FnMut(TaggedLease<'a, afd_authoring::types::Candidate>, Offered) -> T + Send,
-    {
-        let mut untimed = VerbClock::untimed();
-        self.claim_with_timed(drafts, (request, accepted), &mut untimed, emit)
-            .await
-    }
-
-    /// [`Self::claim_with`], marking each offer stage it reaches on `clock`;
-    /// a pass that selects nothing marks none.
-    ///
-    /// # Errors
-    /// As [`Self::claim_with`].
-    pub async fn claim_with_timed<T, F>(
-        &self,
-        drafts: &afd_authoring::Drafts,
-        (request, accepted): (OfferRequest<'_>, AcceptedKinds),
         clock: &mut VerbClock<OfferStage>,
         mut emit: F,
     ) -> Result<Option<T>>
@@ -58,6 +40,11 @@ impl LeaseService {
             match kind {
                 LeaseKind::Authoring => {
                     if let Some(lease) = drafts.claim_offered(request.runner, ticket).await? {
+                        // A fleet claim the gates refused earlier in this pass
+                        // keeps its own span; this offer starts a fresh one.
+                        if !clock.reached_nothing() {
+                            *clock = VerbClock::start();
+                        }
                         clock.mark(OfferStage::Claim);
                         let metadata = Offered {
                             lease_id: Uuid7::parse(&lease.lease_id)?,
@@ -71,7 +58,7 @@ impl LeaseService {
                 }
                 LeaseKind::Fleet => {
                     if let Some(body) = self
-                        .claim_fleet_timed(request, Some(ticket), clock, |lease, metadata| {
+                        .claim_fleet_with(request, Some(ticket), clock, |lease, metadata| {
                             emit(TaggedLease::Fleet(Box::new(lease)), metadata)
                         })
                         .await?

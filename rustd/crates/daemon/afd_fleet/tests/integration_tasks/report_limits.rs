@@ -90,7 +90,12 @@ async fn settle(case: &Case, task: DecisionTaskVersion, reason: Option<&str>) {
         .await;
     } else {
         plane
-            .report(&case.held.runner, &report, now)
+            .report(
+                &case.held.runner,
+                &report,
+                now,
+                &mut af_observability::verb_span::VerbClock::untimed(),
+            )
             .await
             .expect("financial settlement survives exhaustion");
     }
@@ -98,7 +103,12 @@ async fn settle(case: &Case, task: DecisionTaskVersion, reason: Option<&str>) {
     let retained = evidence(case, &id(&task.task_id), reason).await;
     assert_eq!(case.counts().await, (1, 1, 1));
     plane
-        .report(&case.held.runner, &report, now)
+        .report(
+            &case.held.runner,
+            &report,
+            now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("financial report replay");
     assert_eq!(
@@ -167,7 +177,8 @@ async fn report_after_preparation_deadline(
             .fetch_one(&mut *held)
             .await
             .expect("hold report host row");
-    let reporting = plane.report(&case.held.runner, report, now);
+    let mut untimed = af_observability::verb_span::VerbClock::untimed();
+    let reporting = plane.report(&case.held.runner, report, now, &mut untimed);
     let release = async {
         observe_report_commit(case, pid).await;
         // Preparation has finished and commit owns the original report. Advance

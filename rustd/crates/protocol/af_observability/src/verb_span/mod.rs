@@ -265,6 +265,10 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
 
 impl<S: Stage, C: Ticks> Drop for VerbClock<S, C> {
     fn drop(&mut self) {
-        self.record_on(&opentelemetry::global::tracer(semconv::SCOPE_NAME));
+        // Checked first, so an untimed or discarded clock never reads the
+        // global provider.
+        if !self.discarded {
+            self.record_on(&opentelemetry::global::tracer(semconv::SCOPE_NAME));
+        }
     }
 }
