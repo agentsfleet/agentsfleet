@@ -130,7 +130,7 @@ This leaves time to stop the engine and reap its processes.
 |---|---|---|
 | Heartbeat | Every 10 seconds | No heartbeat for two intervals closes the session |
 | Ping | Every 15 seconds | An unanswered ping fails after 5 seconds; idle detection can take 20 seconds |
-| Renewal | Every 5 seconds | Each answer has its own 5-second deadline |
+| Renewal | Every 5 seconds | One frame names every live lease on the host; each answer has its own 5-second deadline |
 | Lease grant | 35 seconds | Includes recovery, another renewal answer and physical cleanup |
 | Offline threshold | 105 seconds | Three missed lease lifetimes mark the host offline |
 | Recovery attempt | 7 seconds total | HTTP/3 setup 2 seconds, HTTP/2 setup 2 seconds, authenticated opening and rebuild 3 seconds |
@@ -182,6 +182,15 @@ A lost acknowledgement does not authorize another charge or physical provider ca
 An unacknowledged result occupies its worker until acknowledgement or a terminal refusal.
 Process loss before the database commit can lose that unsent result and usage.
 The runner writes no report spool and replays no files from an earlier process.
+
+### First model call
+
+A lease carries `inputs_waiting`, which the claim sets when its conversation holds a later unsettled admission.
+A run whose lease says false skips the fold ask before its first model call; an absent field reads as true.
+The ask after every answer is unconditional, so a message landing after the claim folds into the next model call.
+
+A run never loads a context checkpoint: it mints every branch it writes, so a load could only answer nothing.
+The runner has no context-load verb, and the daemon serves no context `GET`; the checkpoint `PUT` stays.
 
 ### Authoring operations on the native session
 

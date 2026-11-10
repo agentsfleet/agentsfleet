@@ -31,8 +31,8 @@ Each rule below holds until the milestone named beside it lands; that milestone'
 | A cluster-only broker is the only datastore | `.orly/LOCAL.md`, `datastore_scaling.md` | M244, done: both pages now name core NATS and Postgres |
 | A runner polls; there is no cancel channel | `runner_fleet.md` | M243 |
 | The lease path is not a general scheduler | `runner_fleet.md` | M243 |
-| Config is never cached | `runner_fleet.md` | M245 |
-| Timers have no central deadline scheduler | `concurrency.md` | M245 |
+| Config is never cached | `runner_fleet.md` | M245, done: config is cached by the head revision id the claim reads |
+| Timers have no central deadline scheduler | `concurrency.md` | M245, done: one daemon expiry clock and one runner host timer |
 
 ## Where each fact lives
 
@@ -56,7 +56,7 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 | M242 | None. Intake holds the fleet row for one statement, and folding rides #803's input claims on `fleet.admissions`. |
 | M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `runner.leases`. |
 | M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `fleet.obligations`. |
-| M245 | None expected: caches are keyed by existing revision columns. |
+| M245 | `daemon_line_count` on `runner.leases`, which numbers runtime lines under the lease row lock. `resource_version` on `vault.secrets`, moved by trigger on every update, which keys the platform key cache. |
 | M246 | An owner tenant on `runner.runners`, a token overlap pair, and per-tenant runner settings. |
 | M247 | Cordon reason and time on `runner.runners`, and a predecessor link on `runner.leases`. |
 
@@ -116,13 +116,13 @@ A second connection for the same runner supersedes the first. A revoked token cl
 
 ```
 runner                         agentsfleetd                         Postgres
-  │ RenewBatch{lease ids, slices} ►│ one host lock, one fenced update   │
-  │                                │ for every lease, money checked     │
-  │                                │ every Nth tick ───────────────────►│
+  │ RenewBatch{lease ids, slices} ►│ one fenced statement for every     │
+  │                                │ lease, no host lock; funds checked │
+  │                                │ every third tick ─────────────────►│
   │◄─ Renewed{per lease: deadline or lost}                              │
 ```
 
-A lost lease in the batch never blocks the others. Each answer is fenced.
+A lost lease in the batch never blocks the others. Each answer is fenced, and each lease's runtime lines are numbered from `runner.leases.daemon_line_count` under its own row lock.
 
 ### The live tail
 
@@ -175,7 +175,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | M242 | One-statement intake; folding with a disposition | One write statement per accepted message; a live run takes a person's mid-run message in its conversation |
 | M243 | One runner stream; the Bus seam | Activity path near 0 statements; no poll; reconnect and revocation tests |
 | M244 | Core NATS behind the Bus; durable jobs in Postgres | Tail p99 and a kill drill on both buses |
-| M245 | Revision-keyed caches, a one-statement report, batched renewal | 15 to 20 statements per chat |
+| M245 | Revision-keyed caches, a one-statement report, batched renewal, an idle-gated checkout ping | At most 20 statements per chat, none on pricing after warm-up |
 | M246 | Tenant-owned runners, a hard ownership filter, the respawn setting | Cross-tenant placement refused; no platform key leaves the daemon |
 | M247 | Hold-aware capacity, auto-cordon, checkpoint respawn | A killed host's run restarts elsewhere, settled once |
 

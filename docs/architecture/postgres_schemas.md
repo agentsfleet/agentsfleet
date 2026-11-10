@@ -374,8 +374,13 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 - **`model.platform_defaults.base_url`: kept.** The file `20261108121400_model_platform_defaults.sql` declares it; `afd_credential`'s
   `select_active_platform_default.sql` reads it.
 - **`runner.leases.last_metered_at`: kept.** The file `20261108123200_runner_leases.sql` declares it as the lease's runtime cursor
-  (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `meter_lease.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
+  (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `renew_batch.sql` and `commit_report.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
   `bill_expired_slice.sql`).
+- **`runner.leases.daemon_line_count`: added by M245.** The count of daemon-range lines the lease has logged. `renew_batch.sql`,
+  `commit_report.sql` and `bill_expired_slice.sql` read and advance it under the lease row lock, so a racing renewal and
+  report never number a runtime line the same.
+- **`vault.secrets.resource_version`: added by M245.** A `BEFORE UPDATE` trigger moves it on every update, whichever writer
+  runs. The lease claim and the platform key cache read it, so a same-KEK (key-encryption key) replace misses the cache.
 
   The review listed it as dropped. Per-request billing kept this one
   cursor and dropped the lease's token cursors and the slot's cursors instead.
