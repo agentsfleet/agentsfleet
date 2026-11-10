@@ -16,11 +16,11 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
-**Implementation branch:** `feat/m243-runner-push-stream`, worktree `/workspace/agentsfleet-m243`; current `origin/main` `61820b66a` was merged normally after #817.
+**Implementation branch:** `feat/m243-runner-push-stream`, worktree `~/Projects/agentsfleet-m243`; current `origin/main` `61820b66a` was merged normally after #817.
 
-**Transport revision:** Nov 08, 2026. Indy approved HTTP/3 first, HTTP/2 fallback and direct runner-to-daemon connectivity. Production wiring and final verification remain due.
+**Transport revision:** Nov 08, 2026. Indy approved HTTP/3 first, HTTP/2 fallback and direct runner-to-daemon connectivity. Production wiring is in PR #819; dev qualification runs after the candidate deploys.
 
 **Priority:** P1, operators see work start late and a kill that never stops a run; every self-hosted runner will take this path
 
@@ -32,7 +32,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Provenance:** LLM-drafted (Claude Opus 5.5, Nov 06, 2026) from the EGM brief and source research on main 14539a73e
 
-**Canonical architecture:** `docs/architecture/push_scheduler.md` §M243 and `docs/architecture/runner_protocol.md` (implementation design; runtime not yet implemented).
+**Canonical architecture:** `docs/architecture/push_scheduler.md` §M243 and `docs/architecture/runner_protocol.md` (implemented by this milestone).
 
 ---
 
@@ -103,7 +103,7 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
+| `docs/v2/done/M243_001_P1_API_DOCS_INFRA_OBS_RUNNERS_HOLD_ONE_PUSH_STREAM.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
 | `docs/architecture/runner_protocol.md`, `docs/architecture/README.md` | CREATE, EDIT | §3: frames, ordering, rebuild, cancel, supersede, timings; §1's transport evidence; index row |
 | `docs/reviews/m243/` | CREATE, DELETE | Owner audit closure; reconcile design into this spec and canonical architecture, then remove the review packet |
 | `rustd/crates/daemon/afd_runner/src/capacity/**`, `rustd/crates/daemon/afd_gateway/src/connection.rs`, `rustd/crates/daemon/afd_http/src/auth/guard.rs`, `rustd/crates/daemon/afd_http/src/route/mod.rs` | EDIT, CREATE | atomic session authority and native connection-local secondary-lane binding |
@@ -153,6 +153,17 @@ agentsfleet-runner ──direct HTTP/3; HTTP/2 fallback──► agentsfleetd re
 | `rustd/crates/daemon/main/src/preflight/{config,mod,read}.rs`, `plane/{config,services,tests}.rs` | EDIT | Resolve wake and memory settings before startup; invalid values remain absent until admission |
 | `rustd/crates/daemon/afd_bench/src/error/{kind,mod,accessors}.rs` | EDIT | Preserve failed concurrency conversion rather than substituting a maximum value |
 | `deploy/fly/agentsfleetd-dev/fly.toml`, `deploy/fly/agentsfleetd-prod/fly.toml` | Approved Nov 09 by Indy | private runner listener and certificate delivery; public ingress is outside this milestone |
+| `.github/workflows/{deploy-dev-fly,deploy-dev-metal,release}.yml` | EDIT | deployment wiring approved Nov 09: daemon jobs stage the listener's chain and key as Fly file secrets; runner jobs load the public CA, server name and WireGuard config by `op://` reference |
+| `.github/workflows/test-unit-rustd.yml` | EDIT | Miri pinned to `nightly-2026-11-10` (Indy) |
+| `.github/workflows/warm-cache.yml`, `make/build.mk`, `playbooks/operations/ci_rust_images/**`, `scripts/build-candidate.sh`, `.gitignore` | EDIT, CREATE | the revisioned musl builder that compiles `tokio-quiche`'s BoringSSL, and its ignored Cargo cache |
+| `make/quality.mk`, `make/test-integration-rustd.mk` | EDIT | the playbook suite unsets the runner stream inputs; the `coverage (stream)` shard runs the native stream tests |
+| `deploy/baremetal/{agentsfleet-runner.service,deploy.sh,deploy_inputs_test.sh,layout.sh}`, `scripts/test-runner-startup.sh` | EDIT | the runner's stream origin and installed CA trust are required deploy inputs |
+| `deploy/local/{acceptance,bootstrap,codex,orbstack}.sh` | EDIT | local acceptance issues a stream leaf through Caddy and points its runner at the native listener |
+| `playbooks/founding/02_preflight/{02_credentials,credentials_test}.sh` | EDIT | preflight checks the `agentsfleet-runner-stream` vault fields by reference |
+| `playbooks/founding/05_runner_bootstrap_dev/{001_playbook.md,00_gate.sh}`, `playbooks/lib/runner/{common,deploy,prepare,verify,runner_test,runner_test_support,runner_verify_test}.sh`, `playbooks/lib/runner/fixtures` | EDIT | the dev runner gets its stream origin, CA trust and WireGuard tunnel; the gate probes both carriers and a recent native heartbeat |
+| `playbooks/operations/runner_stream_tls/001_playbook.md` | CREATE | issuing and renewing the private listener certificate and its CA |
+| `docs/architecture/{api_resources,concurrency,connectors,context_lifecycle,data_flow,lease_flow,observability,runner_execution,scaling,user_flow}.md`, `docs/architecture/scenarios/{github-pr-reviewer,two-fleets-github-slack}.md`, `docs/AUTH_DEVICE_LOGIN.md` | EDIT | pushed offers replace the poll in every page that described one (ARCH-HOMES) |
+| `.orly/LOCAL.md` | EDIT | the moved `serve/runtime/mod.rs` path |
 | `~/Projects/docs` branch `chore/m243-runner-stream-changelog`: `runners.mdx`, `runners/install.mdx`, `cli/agentsfleet.mdx`, `api-reference/error-codes.mdx`, `changelog.mdx` | EDIT | §7: direct endpoint and network prerequisites, carrier fallback, kill behaviour and errors; API pages after merge |
 
 ## Applicable Rules
@@ -212,21 +223,21 @@ The approved four-lane mapping, native connection binding, framing bytes, reques
 The spike verifies those choices on both carriers before production wiring.
 Authentication, certificate and protocol refusals fail closed; changing the transport must not bypass them.
 
-- **Dimension 1.1** — each carrier stays open and exchanges both ways → Test `direct_carriers_exchange_while_upload_remains_open` (native transport integration): HTTP/3 and HTTP/2 answer application pings during at least 120 seconds of an open request body.
-- **Dimension 1.2** — a failed connection never hangs recovery → Test `carrier_failure_cancels_blocked_io` (native transport integration): interrupted reads, writes and handshakes end within their declared deadlines; no connection worker survives cleanup.
-- **Dimension 1.3** — a report-sized message passes → Test `direct_carriers_preserve_report_sized_messages` (native transport integration): each carrier returns a 2 MiB message byte-identical and rejects an oversized declared length before allocating it.
-- **Dimension 1.4** — unavailable UDP permits HTTP/2 → Test `unreachable_http3_falls_back_to_http2` (native transport integration): drop the HTTP/3 path, establish one HTTP/2 session within the recovery budget, and record the fallback reason.
-- **Dimension 1.5** — refusal cannot become a transport downgrade → Test `terminal_refusals_do_not_trigger_fallback` (native transport integration): invalid certificates, runner credentials and protocol versions fail closed, without starting another carrier.
-- **Dimension 1.6** — large payloads do not starve control → Test `both_carriers_preserve_control_progress_under_pressure` (native transport integration): cancellation and renewal complete while a large report and saturated activity queue are in flight.
+- **Dimension 1.1 — DONE** — each carrier stays open and exchanges both ways → Tests `http3_exchanges_with_its_upload_open_for_two_minutes` and `http2_exchanges_with_its_upload_open_for_two_minutes` (native transport integration): HTTP/3 and HTTP/2 answer application pings during at least 120 seconds of an open request body.
+- **Dimension 1.2 — DONE** — a failed connection never hangs recovery → Tests `an_http3_lane_times_out_a_partial_frame_and_returns_its_memory`, `an_http3_write_into_an_unread_lane_obeys_its_frame_deadline`, `an_http3_handshake_with_a_silent_peer_obeys_its_deadline`, their `http2` pairs and `expired_opening_cancels_every_native_worker_on_both_transports` (native transport integration): interrupted reads, writes and handshakes end within their declared deadlines; each `Connection::close` joins its connection worker within its deadline, so none survives cleanup.
+- **Dimension 1.3 — DONE** — a report-sized message passes → Tests `four_http3_lanes_share_one_verified_duplex_connection`, `four_http2_lanes_share_one_verified_duplex_connection`, `an_http3_lane_refuses_an_oversized_declared_length_before_allocating` and `an_http2_lane_refuses_an_oversized_declared_length_before_allocating` (native transport integration): each carrier returns a 2 MiB message byte-identical and rejects an oversized declared length before allocating it.
+- **Dimension 1.4 — DONE** — unavailable UDP permits HTTP/2 → Test `blackholed_quic_falls_back_to_verified_http2_within_one_connection_budget` (native transport integration): drop the HTTP/3 path, establish one HTTP/2 session within the recovery budget, and record the fallback reason.
+- **Dimension 1.5 — DONE** — refusal cannot become a transport downgrade → Tests `peer_identity_failure_is_terminal_for_the_preferred_connector`, `an_invalid_runner_credential_stops_after_one_native_opening` and `an_unsupported_protocol_stops_after_one_native_opening` (native transport integration): invalid certificates, runner credentials and protocol versions fail closed, without starting another carrier.
+- **Dimension 1.6 — DONE** — large payloads do not starve control → Tests `large_report_and_saturated_activity_leave_renewal_and_cancel_independent`, `http3_control_progresses_while_every_data_lane_is_blocked` and `http2_control_progresses_while_every_data_lane_is_blocked` (native transport integration): cancellation and renewal complete while a large report and saturated activity queue are in flight.
 
 ### §2 — Pub/sub goes behind one bus seam
 
 `afd_bus` holds the `Bus` trait (`publish`, `publish_batch`, `subscribe`) and the typed `Subject`: a fleet's tail, a draft's events, a wake shard and a runner's commands. Each implementation spells its own names. `Subscription` and `Received { Message, Lagged, Gap }` move from `afd_dragonfly::hub` with their meaning unchanged. `Command { Cancel { lease_id }, Recheck }` is the typed runner-command payload. The doorbell moves whole into `afd_bus::wake`, keeping 16 shards, 64 notifications and "ring after commit, count a lost ring". §7 deletes its hold. The Dragonfly implementation lives in `afd_bus/src/dragonfly/`, where M244 deletes it, over `afd_dragonfly`'s client and hub. It keeps today's channel spellings and `SPUBLISH`/`SSUBSCRIBE`, and hash-tags the runner id so one runner's commands land in one slot. Boot builds one `afd_bus::Handle` and hands it to every publisher and subscriber. **Implementation default:** the handle wraps `Arc<dyn Bus>`, because boot chooses the implementation once and M244 swaps it without threading a type parameter through every store; nothing downcasts, so NTE's concern does not arise. **Implementation default:** a daemon whose hub did not start still subscribes to nothing, as `afd_sse/src/live.rs` does today, because M244's frozen-screen fix owns that change and its A/B compares the same work.
 
-- **Dimension 2.1** — no production crate names a Dragonfly pub/sub type → Test `git grep -n -w -e SubscriptionHub -e publish_tail -e "doorbell::publish" -- 'rustd/crates/*/src/*' ':!rustd/crates/daemon/afd_dragonfly' ':!rustd/crates/daemon/afd_bus'` (manual): prints nothing; today it prints hits in `afd_sse`, `afd_admission` and `afd_approval`.
-- **Dimension 2.2** — a lost subscription reaches a bus subscriber as a gap → Test `a_repaired_node_gaps_every_bus_subscription` (integration, ported from the hub's gap fault test): after a node repair, a subscription opened through `afd_bus` reads `Received::Gap`.
-- **Dimension 2.3** — runner commands cross replicas and stay addressed → Test `a_runner_command_crosses_replicas` (integration): `Cancel` published through one hub reaches a subscription for that runner on a second hub; a subscription for another runner reads nothing within 1 s.
-- **Dimension 2.4** — a lost ring is counted, never refused → Test `a_failed_ring_counts_and_admits` (integration, ported from `doorbell/tests.rs`): with the publish deadline forced to elapse, the admission commits and `agentsfleet_fleet_ready_wake_failures_total{kind="ring"}` rises by 1.
+- **Dimension 2.1 — DONE** — no production crate names a Dragonfly pub/sub type → Test `git grep -n -w -e SubscriptionHub -e publish_tail -e "doorbell::publish" -- 'rustd/crates/*/src/*' ':!rustd/crates/daemon/afd_dragonfly' ':!rustd/crates/daemon/afd_bus'` (manual): prints nothing; today it prints hits in `afd_sse`, `afd_admission` and `afd_approval`.
+- **Dimension 2.2 — DONE** — a lost subscription reaches a bus subscriber as a gap → Test `a_repaired_node_gaps_every_bus_subscription` (integration, ported from the hub's gap fault test): after a node repair, a subscription opened through `afd_bus` reads `Received::Gap`.
+- **Dimension 2.3 — DONE** — runner commands cross replicas and stay addressed → Test `a_runner_command_crosses_replicas` (integration): `Cancel` published through one hub reaches a subscription for that runner on a second hub; a subscription for another runner reads nothing within 1 s.
+- **Dimension 2.4 — DONE** — a lost ring is counted, never refused → Tests `a_failed_ring_is_counted_once_after_its_publish_deadline` (unit, paused time) and `a_silent_notification_is_bounded_and_does_not_lose_acceptance` (integration): with the publish deadline forced to elapse, `agentsfleet_fleet_ready_wake_failures_total{kind="ring"}` rises by 1, and the admission commits and replays to the same stored row.
 
 ### §3 — Protocol, schema and timings are fixed before the code that uses them
 
@@ -264,9 +275,9 @@ Timing constants and assertions live in `af_core/src/timing.rs`.
 UZ-RUN-021, -022 and -023 land with their registry rows and problem entries.
 The architecture decision lands before gateway code.
 
-- **Dimension 3.1** — an up frame with an unknown field is refused → Test `an_up_frame_with_an_unknown_field_is_refused` (unit): a `renew_batch` frame with `"extra":1` fails to decode; the same frame without it decodes.
-- **Dimension 3.2** — bounds hold → Test `a_renew_batch_past_max_workers_is_refused` (unit): `MAX_WORKERS + 1` entries are refused naming the bound; `MAX_WORKERS` entries pass.
-- **Dimension 3.3** — the timings leave a full renewal window after a reconnect → Test `stream_timings_leave_a_renewal_window_after_reconnect` (unit): asserts each Interfaces relation against the production constants (TFX), and fails if `STREAM_ANSWER_TIMEOUT` is raised to 15 s.
+- **Dimension 3.1 — DONE** — an up frame with an unknown field is refused → Test `an_up_frame_with_an_unknown_field_is_refused` (unit): a `renew_batch` frame with `"extra":1` fails to decode; the same frame without it decodes.
+- **Dimension 3.2 — DONE** — bounds hold → Test `a_renew_batch_past_max_workers_is_refused` (unit): `MAX_WORKERS + 1` entries are refused naming the bound; `MAX_WORKERS` entries pass.
+- **Dimension 3.3 — DONE** — the timings leave a full renewal window after a reconnect → The `const` assertions in `af_core/src/timing.rs` and `serve/drain/mod.rs` (build) hold each Interfaces relation against the production constants (TFX); raising `STREAM_ANSWER_TIMEOUT` to 15 s fails the build. Test `the_full_recovery_and_answer_budgets_preserve_running_work` (unit) exercises the recovery budget.
 - **Dimension 3.4 — DONE** — statements prepare against the edited table definitions → Test `test_every_sql_file_prepares` (integration, `afd_db/tests/integration_migrate/statements.rs`): passes with native UUIDv7 bindings and the cancellation and connection columns.
 
 ### §4 — The gateway serves the stream
@@ -294,15 +305,15 @@ The other frames:
 
 Authoring leases arrive as offers; model calls, proposals/progress, renewals and reports use the same native session. Their four HTTP routes are removed. On drain the registry stops offering, answers accepted work, then sends `go_away` and closes within `DRAIN_TIMEOUT`.
 
-- **Dimension 4.1** — a streamed chat reads the token once and no lease target → Test `a_streamed_chat_reads_no_lease_target` (integration, a private database filtered by `dbid` as `afd_events/tests/queued/snapshot.rs` does): one lease, 2 renewal batches, 40 activity frames and a report over the stream make 1 call of the runner-token statement and 0 of the lease-target statement. Over HTTP the lease-target statement runs 40 times.
-- **Dimension 4.2** — an unknown protocol is refused before opening → Test `an_unknown_protocol_version_is_refused` (integration): `agentsfleet.runner.v9` answers `400` UZ-RUN-023, never a successful session response.
-- **Dimension 4.3** — reconnect rebuilds from Postgres → Test `reconnect_rebuilds_active_leases_from_postgres` (integration): Postgres holds leases A, B and marked M; `hello` lists A, C and M. A renews, C gets `cancel` UZ-RUN-011, M gets `cancel` UZ-RUN-022, and B is offered to nobody until it lapses.
+- **Dimension 4.1 — DONE** — a streamed chat reads the token once and no lease target → Test `a_streamed_chat_reads_no_lease_target` (integration, a private database filtered by `dbid` as `afd_events/tests/queued/snapshot.rs` does): one lease, 2 renewal batches, 40 activity frames and a report over the stream make 1 call of the runner-token statement and 0 of the lease-target statement. Both carriers run it; M241 measured 40 lease-target reads over the retired HTTP path.
+- **Dimension 4.2 — DONE** — an unknown protocol is refused before opening → Test `an_unknown_protocol_version_is_refused` (integration): `agentsfleet.runner.v9` answers `400` UZ-RUN-023, never a successful session response.
+- **Dimension 4.3 — DONE** — reconnect rebuilds from Postgres → Test `opening_reconciles_retained_missing_and_cancelled_work_without_reoffering_omitted_work` (integration): Postgres holds leases A, B and marked M; `hello` lists A, C and M. A renews, C gets `cancel` UZ-RUN-011, M gets `cancel` UZ-RUN-022, and B is offered to nobody until it lapses.
 - **Dimension 4.4 — DONE** — rings coalesce and passes stay bounded → Test `rings_coalesce_into_one_claim_pass` (unit, paused time): 100 rings during one in-flight claim run exactly one more pass. `a_one_ring_pass_ends_at_its_first_lease` and `an_empty_pass_over_five_sessions_makes_five_claims` pin the positive budget and empty walk. The one-ring test also fails at its assertion when the production budget is increased by one.
 - **Dimension 4.5 — DONE** — the fallback costs one probe a tick per replica → Test `the_fallback_tick_probes_once_per_replica` (unit, paused time): 50 registered idle sessions, an empty probe result and three ticks make 3 probes and 0 claims; a positive result on the fourth tick runs a pass through all 50 empty hosts. The injected probe tests clock ownership; the unchanged SQL query remains part of live integration verification.
-- **Dimension 4.6** — a drain answers what it read, then sends `go_away` → Test `draining_sends_go_away_and_waits_for_answers` (integration): a drain that starts with a renewal in flight sends `renewed`, then `go_away`, then closes before `DRAIN_TIMEOUT`.
-- **Dimension 4.7** — a report resent after a cut settles once → Test `a_report_resent_after_a_cut_settles_once` (integration): the same report on two connections writes one usage line, and both acknowledgements carry the same saved result.
-- **Dimension 4.8** — a grant re-checks the host inside its transaction → Test `a_grant_rechecks_the_host_inside_its_transaction` (integration): a host flipped degraded after `hello`, with a session still believing it healthy, is issued nothing and its claimed admission returns to the ledger.
-- **Dimension 4.9** — a stream past the ceiling is refused with a retry notification → Test `a_stream_past_the_ceiling_is_refused_with_retry` (integration): with `SSE_MAX_STREAMS=1` and one dashboard stream open, the session opening answers `503` with `Retry-After`.
+- **Dimension 4.6 — DONE** — a drain answers what it read, then sends `go_away` → Test `draining_sends_go_away_after_an_in_flight_native_renewal_answer` (integration): a drain that starts with a renewal in flight sends `renewed`, then `go_away`, then closes before `DRAIN_TIMEOUT`.
+- **Dimension 4.7 — DONE** — a report resent after a cut settles once → Test `a_report_resent_after_a_native_cut_is_charged_once` (integration): the same report on two connections writes one usage line, and both acknowledgements carry the same saved result.
+- **Dimension 4.8 — DONE** — a grant re-checks the host inside its transaction → Test `a_grant_rechecks_the_host_inside_its_transaction` (integration): a host flipped degraded after `hello`, with a session still believing it healthy, is issued nothing and its claimed admission returns to the ledger.
+- **Dimension 4.9 — DONE** — a stream past the ceiling is refused with a retry notification → Test `a_stream_past_the_ceiling_is_refused_with_retry` (integration): with `SSE_MAX_STREAMS=1` and one dashboard stream open, the session opening answers `503` with `Retry-After`.
 
 ### §5 — Cancel, revocation and supersede are a Postgres write plus a push
 
@@ -312,13 +323,13 @@ Each push names its Postgres authority, so pub/sub's at-most-once delivery costs
 - **Revocation, rotation, cordon, drain, policy edits, delete.** After each runner-row write commits, the operator handler publishes `Recheck`. The owning session re-runs the heartbeat's read without its writes. A non-active status closes with UZ-RUN-009, a changed token hash or a missing row with UZ-RUN-001, and anything else pushes the new `heartbeat` answer. Backstop: the next heartbeat runs the same read, and a session with no heartbeat for two intervals closes. Every grant and renewal re-checks inside its transaction (§4).
 - **Supersede.** Guarded connection acquisition compares the authenticated token digest before changing `connection_id`. Issue and streamed renewal compare that digest and expected connection while holding the existing host row lock. A superseded session cannot obtain further authority even if its notification is lost. Its next recheck sends `go_away` UZ-RUN-021 and closes; a second process sharing the token halts rather than flapping.
 
-- **Dimension 5.1** — a kill cancels a running lease from another replica → Test `killing_a_fleet_cancels_its_running_lease_across_replicas` (integration, two `Supervisor` daemons on the lane's Postgres and Dragonfly): the stream on replica B, the kill sent to A; the runner gets `cancel` within 1 s, the row carries `cancel_requested_at`, and the report settles with the renewal-refusal class.
-- **Dimension 5.2** — a lost cancel push ends at the next renewal → Test `a_cancel_whose_push_is_lost_ends_at_the_next_renewal` (integration, a bus that drops runner commands): the next `renewed` answers UZ-RUN-022 for that lease and a deadline for its sibling.
-- **Dimension 5.3** — revocation closes the stream → Test `revoking_a_runner_closes_its_stream` (integration): after a revoke the stream closes within 1 s, the reconnect answers `401` UZ-RUN-009, and the runner halts.
-- **Dimension 5.4** — a lost revocation push closes at the next heartbeat → Test `a_revocation_whose_push_is_lost_closes_at_the_next_heartbeat` (integration, a bus that drops runner commands): the stream closes on the next heartbeat with UZ-RUN-009, and no offer reaches it after the revoke commits.
-- **Dimension 5.5** — rotation closes the stream on the old token → Test `rotating_a_token_closes_the_stream_on_the_old_token` (integration): after `rotate`, the old stream closes with UZ-RUN-001 and the new token connects.
-- **Dimension 5.6** — a second connection supersedes the first → Test `a_second_connection_supersedes_the_first` (integration, two replicas): the first stream gets `go_away` UZ-RUN-021 and closes, and only the second receives offers.
-- **Dimension 5.7** — lost ownership notifications cannot grant authority → Test `a_stale_session_cannot_issue_or_renew_after_rotation_or_supersession` (integration): pause an old claim at the host lock, rotate or acquire a new connection, drop recheck notifications, and resume. The old transaction grants no lease or renewal; the current owner still succeeds.
+- **Dimension 5.1 — DONE** — a kill cancels a running lease from another replica → Test `a_kill_on_another_replica_cancels_and_settles_the_native_lease` (integration, two `Supervisor` daemons on the lane's Postgres and Dragonfly): the stream on replica B, the kill sent to A; the runner gets `cancel` within 1 s, the row carries `cancel_requested_at`, and the report settles with the renewal-refusal class.
+- **Dimension 5.2 — DONE** — a lost cancel push ends at the next renewal → Test `a_cancel_whose_push_is_lost_ends_at_the_next_renewal` (integration, a bus that drops runner commands): the next `renewed` answers UZ-RUN-022 for that lease and a deadline for its sibling.
+- **Dimension 5.3 — DONE** — revocation closes the stream → Tests `operator_revocation_and_rotation_close_the_previous_native_owner` and `an_operator_revocation_halts_the_production_native_downlink` (integration): after a revoke the stream closes within 1 s, the reconnect answers `401` UZ-RUN-009, and the runner halts.
+- **Dimension 5.4 — DONE** — a lost revocation push closes at the next heartbeat → Test `a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat` (integration, a bus that drops runner commands): the stream closes on the next heartbeat with UZ-RUN-009, and no offer reaches it after the revoke commits.
+- **Dimension 5.5 — DONE** — rotation closes the stream on the old token → Test `operator_revocation_and_rotation_close_the_previous_native_owner` (integration): after `rotate`, the old stream closes with UZ-RUN-001 and the new token connects.
+- **Dimension 5.6 — DONE** — a second connection supersedes the first → Test `a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers` (integration, two replicas): the first stream gets `go_away` UZ-RUN-021 and closes, and only the second receives offers.
+- **Dimension 5.7 — DONE** — lost ownership notifications cannot grant authority → Test `stale_native_grants_cannot_survive_rotation_or_supersession_at_the_host_lock` (integration): pause an old claim at the host lock, rotate or acquire a new connection, drop recheck notifications, and resume. The old transaction grants no lease or renewal; the current owner still succeeds.
 - **Dimension 5.8 — DONE** — Kill invalidates an already selected admission. Tests `a_kill_committed_after_selection_prevents_a_later_issue` and `an_issue_waiting_on_a_kill_rechecks_the_committed_fleet_state` cover committed Kill and issuance waiting behind Kill. Rejected issuance writes no lease; reports retain their settlement path.
 
 ### §6 — The runner takes work from the stream
@@ -355,33 +366,35 @@ Renewals batch per host each `RENEWAL_TICK` and preserve each lease's complete `
 Each worker retains its report only in memory until its matching `report_ack`, and retries after reconnect.
 Every answer echoes the session-local request identifier; disconnect fails and clears all pending callers.
 
-- **Dimension 6.1** — a bounded blackhole recovers inside the lease → Test `a_blackholed_stream_reconnects_and_reports_once` (native integration for both carriers): inject a bounded interruption between probes and measure total detection and recovery time. Renew before the confirmed deadline and settle the report retained in worker memory once. A separate sustained-outage test, `an_outage_never_extends_a_confirmed_lease`, must stop the lease at expiry.
-- **Dimension 6.2** — an activity flood never delays a renewal → Test `an_activity_flood_does_not_delay_renewal` (unit): with 1,000 activity batches queued, a renewal queued after them is the next frame written.
-- **Dimension 6.3** — reconnects spread out → Test `reconnects_spread_over_the_jitter_window` (unit, paused time and injected random source): 100 runners reconnect within the initial jitter bound and occupy several time buckets. The test pins the deterministic injected sample; it does not demand an impossible perfectly even random distribution.
-- **Dimension 6.4** — a superseded runner halts → Test `a_superseded_runner_halts` (unit): `go_away` with UZ-RUN-021 stops the runner, and it opens no new connection.
-- **Dimension 6.5** — an idle runner asks for nothing → Test `an_idle_runner_sends_no_lease_request` (unit, paused time): an idle runner over 60 s writes only heartbeats and pings, and no frame asks for work.
-- **Dimension 6.6** — a runner runs a lease end to end over the stream → Test `a_runner_runs_a_lease_over_the_stream` (e2e, the `integration_runner_e2e` harness): an admitted event reaches the supervisor as an `offer`, streams activity to the tail, and settles its report.
-- **Dimension 6.7** — outbound proxy policy governs connection selection → Test `the_stream_connects_through_an_environment_proxy` (native integration, a CONNECT proxy and injected `MapEnv`): a required HTTP proxy selects the HTTP/2 path and receives the connection. No HTTP/3 attempt bypasses that policy.
-- **Dimension 6.8** — connection failures and fallback are visible → Test `stream_failures_and_recovery_emit_correlated_telemetry` (native integration): collect finite transport/reason labels and correlated attempt, failure, fallback and recovery records. A sustained outage remains distinguishable from a stable connection.
-- **Dimension 6.9** — usage acknowledgements survive carrier changes → Test `renewal_batches_acknowledge_usage_independently_across_reconnect` (integration): several leases each produce more than `LINES_MAX` records. Lose an answer, reconnect, replay and report. Each lease advances its own `recorded_through`; each provider request settles once.
-- **Dimension 6.10** — delayed answers cannot reach another caller → Test `late_replies_do_not_complete_cancelled_or_reconnected_calls` (unit): cancel folds and renewal waits, deliver their answers late, and reconnect. New request identifiers and the new session's map retain the correct callers and bounds.
-- **Dimension 6.11** — HTTP/3 returns on normal reconnect without a hot switch → Test `http3_is_reselected_only_when_the_http2_session_ends` (native integration): establish HTTP/2 with UDP blocked, restore UDP and keep the healthy session on HTTP/2; end it and prove the next permitted connection selects HTTP/3.
-- **Dimension 6.12** — cancellation may overtake a work-lane offer. Test `a_cancel_received_before_its_offer_prevents_execution` delivers that ordering and asserts zero executions. Full cancellation state closes the session safely.
+- **Dimension 6.1 — DONE** — a bounded blackhole recovers inside the lease → Test `a_blackholed_native_runner_reconnects_and_settles_its_memory_report_once` (native integration for both carriers, Linux; CI's `coverage (stream)` shard runs it): inject a bounded interruption between probes and measure total detection and recovery time. Renew before the confirmed deadline and settle the report retained in worker memory once. A separate sustained-outage test, `a_sustained_native_outage_never_extends_the_running_process_deadline`, must stop the lease at expiry.
+- **Dimension 6.2 — DONE** — an activity flood never delays a renewal → Test `an_activity_flood_does_not_delay_renewal` (unit): with 1,000 activity batches queued, a renewal queued after them is the next frame written.
+- **Dimension 6.3 — DONE** — reconnects spread out → Test `reconnects_spread_over_the_jitter_window_and_never_exceed_the_cap` (unit, paused time and injected random source): 100 runners reconnect within the initial jitter bound and occupy several time buckets. The test pins the deterministic injected sample; it does not demand an impossible perfectly even random distribution.
+- **Dimension 6.4 — DONE** — a superseded runner halts → Test `a_superseded_runner_stops_without_opening_another_connection` (integration): `go_away` with UZ-RUN-021 stops the runner, and it opens no new connection.
+- **Dimension 6.5 — DONE** — an idle runner asks for nothing → Test `an_idle_runner_sends_no_lease_request_over_sixty_seconds` (unit, paused time): an idle runner over 60 s writes only heartbeats and pings, and no frame asks for work.
+- **Dimension 6.6 — DONE** — a runner runs a lease end to end over the stream → Test `test_rust_runner_lease_roundtrip` (e2e, the `integration_runner_e2e` harness): an admitted event reaches the supervisor as an `offer`, streams activity to the tail, and settles its report.
+- **Dimension 6.7 — DONE** — outbound proxy policy governs connection selection → Test `the_stream_connects_through_an_environment_proxy_without_a_direct_http3_attempt` (native integration, a CONNECT proxy, a counting relay and injected `MapEnv`): a required HTTP proxy selects the HTTP/2 path and receives the connection; the relay sees one TCP path and no UDP path, so no HTTP/3 attempt bypasses that policy.
+- **Dimension 6.8 — DONE** — connection failures and fallback are visible → Test `stream_failures_and_recovery_emit_correlated_telemetry` (native integration): collect finite transport/reason labels and correlated attempt, failure, fallback and recovery records. A sustained outage remains distinguishable from a stable connection.
+- **Dimension 6.9 — DONE** — usage acknowledgements survive carrier changes → Test `renewal_batches_acknowledge_usage_independently_across_reconnect` (integration): several leases each produce more than `LINES_MAX` records. Lose an answer, reconnect, replay and report. Each lease advances its own `recorded_through`; each provider request settles once.
+- **Dimension 6.10 — DONE** — delayed answers cannot reach another caller → Tests `a_late_fold_answer_cannot_complete_the_next_caller_after_cancellation`, `a_late_renewal_answer_cannot_acknowledge_a_new_callers_usage` and `equal_request_ids_from_different_sessions_keep_separate_pending_owners` (unit): cancel folds and renewal waits, deliver their answers late, and reconnect. New request identifiers and the new session's map retain the correct callers and bounds.
+- **Dimension 6.11 — DONE** — HTTP/3 returns on normal reconnect without a hot switch → Test `http3_is_reselected_only_when_the_http2_session_ends` (native integration): establish HTTP/2 with UDP blocked, restore UDP and keep the healthy session on HTTP/2; end it and prove the next permitted connection selects HTTP/3.
+- **Dimension 6.12 — DONE** — cancellation may overtake a work-lane offer. Test `a_cancel_received_before_its_offer_prevents_execution` delivers that ordering and asserts zero executions. Full cancellation state closes the session safely.
 
 ### §7 — The pull path is deleted, and the docs describe the stream
 
 Six routes go: `POST /v1/runners/me/heartbeats`, `/leases`, `/leases/{lease_id}/renew`, `/leases/{lease_id}/activity`, `/leases/{lease_id}/folds` (M242_002) and `/reports`, with their handlers, client verbs and tests. The doorbell's hold (`wait_for_ring`, `Waited`, the held count, `close`) goes with `Leasing::wait_for_work`, `NO_WORK_RETRY_AFTER`, `WAKE_HOLD_MAX`, `HELD_BEATS_MAX`, `wake`, `woken`, `LeaseRequest`, `LeaseResponse` and `agentsfleet_runner_wake_answers_total`. **Implementation default:** the removed routes answer `404`, following the pre-2.0.0 precedent in M145_001 and M228_001; `VERSION` is 0.75.0, and there is no compatibility period (NLG; Indy, Discovery). The architecture pages, `docs/AUTH.md` and the docs repository change in the same Pull Request (ARCH-HOMES, ARCH-PUBLISHED).
 
-- **Dimension 7.1** — the retired routes are gone → Test `the_retired_runner_routes_answer_404` (integration): each of the six `POST`s answers `404`, while `GET /v1/runners/me` still answers `200`.
-- **Dimension 7.2** — no census row outlives its producer → Test `every_census_family_has_a_producer` (unit): passes with the wake-answers row gone and each new stream-health family paired with its producer.
+- **Dimension 7.1 — DONE** — the retired routes are gone → Test `the_retired_runner_routes_answer_404` (integration): each of the six `POST`s answers `404`, while `GET /v1/runners/me` still answers `200`.
+- **Dimension 7.2 — DONE** — no census row outlives its producer → Test `every_census_family_has_a_producer` (unit): passes with the wake-answers row gone and each new stream-health family paired with its producer.
 
 ### §8 — The bench proves the stream's cost
 
+**MOVED to M244_001** (Discovery, Nov 10, 2026). M244_001 carries this Section as its own P0 rows and re-baselines it after its bus swap.
+
 The drain's simulated runner (`afd_bench/src/lane/lease/drain/runner.rs`) drives an `afd_gateway` session in process: offers in; renewal batches, M242_002's folds requests, 40 activity frames and a report up. M241's statement paths classify the result unchanged. The idle window keeps every simulated runner's session connected with credits and no admissions for `IDLE_WINDOW`. It records `drain_idle_statements` and `drain_idle_dragonfly_calls`, and the per-poll keys go, since no poll exists. Heartbeats and the per-replica fallback probe sit outside the bench, which runs no registry; Dimension 4.5 bounds the probe. Three interleaved runs follow a reset rig, and the median run is copied to `bench/baselines/lease.rig.json`. The other two values go into `push_scheduler.md` §Baselines.
 
-- **Dimension 8.1** — a streamed chat's activity path is near zero and an idle host costs nothing → Test `make bench-lease PROFILE=rig` (integration): `drain_statements_per_lease_activity` is under 1, against M241's 40. `drain_idle_statements` and `drain_idle_dragonfly_calls` are 0, against today's one Dragonfly call per idle poll.
-- **Dimension 8.2** — an idle window with no polls reports totals, never a ratio → Test `an_idle_window_reports_totals_not_ratios` (unit): a window of 0 polls writes `drain_idle_statements` 0 and no `idle_statements_per_poll` key.
-- **Dimension 8.3** — baselines are median runs → Test `baselines_are_median_runs` (manual): §Baselines lists three values per headline key, and the committed file holds the middle one.
+- **Dimension 8.1 — MOVED to M244_001** — a streamed chat's activity path is near zero and an idle host costs nothing → Test `make bench-lease PROFILE=rig` (integration): `drain_statements_per_lease_activity` is under 1, against M241's 40. `drain_idle_statements` and `drain_idle_dragonfly_calls` are 0, against today's one Dragonfly call per idle poll.
+- **Dimension 8.2 — MOVED to M244_001** — an idle window with no polls reports totals, never a ratio → Test `an_idle_window_reports_totals_not_ratios` (unit): a window of 0 polls writes `drain_idle_statements` 0 and no `idle_statements_per_poll` key.
+- **Dimension 8.3 — MOVED to M244_001** — baselines are median runs → Test `baselines_are_median_runs` (manual): §Baselines lists three values per headline key, and the committed file holds the middle one.
 
 ## Interfaces
 
@@ -420,23 +433,23 @@ These cases remain unverified until the code-completion review is finished and i
 | Mode | Kind | Cause | Handling (response and what the caller observes) | Test |
 |------|------|-------|--------------------------------------------------|------|
 | Intermediary idles out a session | failure | a deployment's idle timeout | application pings preserve the tested idle interval; a cut triggers bounded recovery | `direct_carriers_exchange_while_upload_remains_open` |
-| Stream blackholed mid-lease | failure | network blip, half-open socket | unanswered requests fail after 5 s; idle ping-only detection can take 20 s; measure complete recovery and retain independent lease expiry | `a_blackholed_stream_reconnects_and_reports_once`, `an_outage_never_extends_a_confirmed_lease` |
-| HTTP/3 path unavailable | failure | blocked UDP or failed transport setup | bounded HTTP/2 fallback; one serving session; reason counted | `unreachable_http3_falls_back_to_http2` |
+| Stream blackholed mid-lease | failure | network blip, half-open socket | unanswered requests fail after 5 s; idle ping-only detection can take 20 s; measure complete recovery and retain independent lease expiry | `a_blackholed_native_runner_reconnects_and_settles_its_memory_report_once`, `a_sustained_native_outage_never_extends_the_running_process_deadline` |
+| HTTP/3 path unavailable | failure | blocked UDP or failed transport setup | bounded HTTP/2 fallback; one serving session; reason counted | `blackholed_quic_falls_back_to_verified_http2_within_one_connection_budget` |
 | Certificate or credential refusal | security | invalid endpoint identity or runner authority | fail closed; no transport bypass | `terminal_refusals_do_not_trigger_fallback` |
 | Unknown protocol version | failure | a runner build the daemon does not speak | `400` UZ-RUN-023 before accepting the session | `an_unknown_protocol_version_is_refused` |
 | Malformed or oversized up frame | failure | a broken runner build | strict decode fails; the bounded codec rejects messages past 2 MiB before payload allocation | `an_up_frame_with_an_unknown_field_is_refused`, `direct_carriers_preserve_report_sized_messages` |
 | Ring lost | failure | publish timeout or a hub gap | the next tick's probe finds the work and runs a pass within 5 s; the loss is counted | `the_fallback_tick_probes_once_per_replica`, `a_failed_ring_counts_and_admits` |
 | Burst of rings | capacity | 50 fleets at 10 messages a second | rings coalesce into passes, each bounded by its leases or one claim per session | `rings_coalesce_into_one_claim_pass` |
-| Offer lost in a cut | race | the stream dies between issue and delivery | the lease lapses and the next tick's probe reclaims it | `reconnect_rebuilds_active_leases_from_postgres` |
+| Offer lost in a cut | race | the stream dies between issue and delivery | the lease lapses and the next tick's probe reclaims it | `opening_reconciles_retained_missing_and_cancelled_work_without_reoffering_omitted_work` |
 | Cancel push lost | failure | pub/sub is at most once | the next renewal refuses with UZ-RUN-022 | `a_cancel_whose_push_is_lost_ends_at_the_next_renewal` |
-| Runner away during a kill | failure | disconnected at the kill | rebuild sends `cancel` on reconnect | `reconnect_rebuilds_active_leases_from_postgres` |
-| Revocation push lost | security | pub/sub is at most once | closed at the next heartbeat; grants refused in their transaction | `a_revocation_whose_push_is_lost_closes_at_the_next_heartbeat` |
-| Token rotated | security | operator rotation | the old token's stream closes with UZ-RUN-001 | `rotating_a_token_closes_the_stream_on_the_old_token` |
+| Runner away during a kill | failure | disconnected at the kill | rebuild sends `cancel` on reconnect | `opening_reconciles_retained_missing_and_cancelled_work_without_reoffering_omitted_work` |
+| Revocation push lost | security | pub/sub is at most once | closed at the next heartbeat; grants refused in their transaction | `a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat` |
+| Token rotated | security | operator rotation | the old token's stream closes with UZ-RUN-001 | `operator_revocation_and_rotation_close_the_previous_native_owner` |
 | Degraded host | security | capability lost mid-stream | no offers; the host lock refuses inside the issue | `a_grant_rechecks_the_host_inside_its_transaction` |
-| Two processes share a token | race | a duplicated host | the newer connection wins; the older halts with UZ-RUN-021 | `a_second_connection_supersedes_the_first`, `a_superseded_runner_halts` |
-| Report reply lost | replay | a cut after the commit | the worker retries from memory; the lease-keyed report answers its saved result, charged once | `a_report_resent_after_a_cut_settles_once` |
-| Rolling deploy | failure | drain | answers in flight are sent, then `go_away`; the runner reconnects elsewhere | `draining_sends_go_away_and_waits_for_answers` |
-| Mass reconnect | capacity | a tunnel restart | reconnects spread over the jitter window | `reconnects_spread_over_the_jitter_window` |
+| Two processes share a token | race | a duplicated host | the newer connection wins; the older halts with UZ-RUN-021 | `a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers`, `a_superseded_runner_halts` |
+| Report reply lost | replay | a cut after the commit | the worker retries from memory; the lease-keyed report answers its saved result, charged once | `a_report_resent_after_a_native_cut_is_charged_once` |
+| Rolling deploy | failure | drain | answers in flight are sent, then `go_away`; the runner reconnects elsewhere | `draining_sends_go_away_after_an_in_flight_native_renewal_answer` |
+| Mass reconnect | capacity | a tunnel restart | reconnects spread over the jitter window | `reconnects_spread_over_the_jitter_window_and_never_exceed_the_cap` |
 | Stream ceiling reached | capacity | dashboards hold every slot | `503` with `Retry-After`; the runner retries | `a_stream_past_the_ceiling_is_refused_with_retry` |
 | Activity flood | capacity | a chatty run | renewals are written first; activity past the cap drops | `an_activity_flood_does_not_delay_renewal` |
 
@@ -444,20 +457,20 @@ These cases remain unverified until the code-completion review is finished and i
 
 1. No lease is granted to a non-active or degraded host, and none is renewed for a revoked or degraded one — `afd_runner::capacity::lock` decides inside the issue and renewal transactions, whatever the session believes; `a_grant_rechecks_the_host_inside_its_transaction` is the counterexample.
 2. A cancel outlives a lost publish — `cancel_requested_at` commits before the publish, and renewal and rebuild read it; `a_cancel_whose_push_is_lost_ends_at_the_next_renewal` fails if renewal ignores it.
-3. One runner has one serving stream — `connection_id` is last-writer-wins, and every heartbeat read compares it; `a_second_connection_supersedes_the_first` fails if the comparison goes.
-4. A bounded first-attempt recovery leaves renewal slack; every outage retains the confirmed expiry deadline. The timing assertion includes the full seven-second carrier/open/rebuild budget. `an_outage_never_extends_a_confirmed_lease` proves the unconditional deadline rule.
-5. A worker releases its pending report memory only on acknowledgement or a terminal refusal; `a_blackholed_stream_reconnects_and_reports_once` fails on a lost or doubled report.
+3. One runner has one serving stream — `connection_id` is last-writer-wins, and every heartbeat read compares it; `a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers` fails if the comparison goes.
+4. A bounded first-attempt recovery leaves renewal slack; every outage retains the confirmed expiry deadline. The timing assertion includes the full seven-second carrier/open/rebuild budget. `a_sustained_native_outage_never_extends_the_running_process_deadline` proves the unconditional deadline rule.
+5. A worker releases its pending report memory only on acknowledgement or a terminal refusal; `a_blackholed_native_runner_reconnects_and_settles_its_memory_report_once` fails on a lost or doubled report.
 6. Renewals never queue behind activity — the uplink's biased select; `an_activity_flood_does_not_delay_renewal` fails if the order flips.
 
 ## Metrics & Observability
 
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test |
 |----------------|----------|------------|--------------------|---------------|------|
-| `agentsfleet_runner_stream_closes_total` | operator | a session closes | `reason`: client, silent, superseded, revoked, draining, protocol | no token, no tenant identifier | `revoking_a_runner_closes_its_stream` |
+| `agentsfleet_runner_stream_closes_total` | operator | a session closes | `reason`: client, silent, superseded, revoked, draining, protocol | no token, no tenant identifier | `operator_revocation_and_rotation_close_the_previous_native_owner` |
 | `agentsfleet_runner_offer_claims_total` | operator | a claim pass runs one claim | `outcome`: leased, empty | none needed | `rings_coalesce_into_one_claim_pass` |
 | Stream connection attempts, fallback and recovery families | operator | connection attempt, eligible fallback, reconnect or restored session | closed transport, reason and outcome labels; measured durations | no token, payload or unbounded identifier label | `stream_failures_and_recovery_emit_correlated_telemetry` |
 | `agentsfleet_runner_wake_answers_total` (removed) | operator | never again | none | none | `every_census_family_has_a_producer` |
-| `runner_stream_started`, `runner_stream_completed`, `runner_stream_failed` (log events) | operator | connect, clean close, error close | `runner_id`, `connection_id`, `error_code`, `duration_ms` | runner identifiers only; no token or workspace identifier at `info` | `a_second_connection_supersedes_the_first` |
+| `runner_stream_started`, `runner_stream_completed`, `runner_stream_failed` (log events) | operator | connect, clean close, error close | `runner_id`, `connection_id`, `error_code`, `duration_ms` | runner identifiers only; no token or workspace identifier at `info` | `a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers` |
 
 ## Acceptance Rubric (single scoring surface)
 
@@ -467,14 +480,14 @@ These cases remain unverified until the code-completion review is finished and i
 | R2 | No production crate names a Dragonfly pub/sub type (§2) | `git grep -n -w -e SubscriptionHub -e publish_tail -e "doorbell::publish" -- 'rustd/crates/*/src/*' ':!rustd/crates/daemon/afd_dragonfly' ':!rustd/crates/daemon/afd_bus'` | no output | P0 | |
 | R3 | The protocol page and edited docs read clean (§3, §7) | `orly gate verify` | exit 0 | P0 | |
 | R4 | A streamed chat reads no lease target (§4) | `make test-integration-rustd` | output holds `a_streamed_chat_reads_no_lease_target ... ok` | P0 | |
-| R5 | A reconnect rebuilds from Postgres (§4) | `make test-integration-rustd` | output holds `reconnect_rebuilds_active_leases_from_postgres ... ok` | P0 | |
-| R6 | A kill cancels a running lease across replicas (§5) | `make test-integration-rustd` | output holds `killing_a_fleet_cancels_its_running_lease_across_replicas ... ok` | P0 | |
-| R7 | Revocation closes the stream (§5) | `make test-integration-rustd` | output holds `revoking_a_runner_closes_its_stream ... ok` | P0 | |
-| R8 | A second connection supersedes the first (§5) | `make test-integration-rustd` | output holds `a_second_connection_supersedes_the_first ... ok` | P0 | |
-| R9 | A blackholed stream recovers and reports once (§6) | `make test-integration-rustd` | output holds `a_blackholed_stream_reconnects_and_reports_once ... ok` | P0 | |
+| R5 | A reconnect rebuilds from Postgres (§4) | `make test-integration-rustd` | output holds `opening_reconciles_retained_missing_and_cancelled_work_without_reoffering_omitted_work ... ok` | P0 | |
+| R6 | A kill cancels a running lease across replicas (§5) | `make test-integration-rustd` | output holds `a_kill_on_another_replica_cancels_and_settles_the_native_lease ... ok` | P0 | |
+| R7 | Revocation closes the stream (§5) | `make test-integration-rustd` | output holds `operator_revocation_and_rotation_close_the_previous_native_owner ... ok` | P0 | |
+| R8 | A second connection supersedes the first (§5) | `make test-integration-rustd` | output holds `a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers ... ok` | P0 | |
+| R9 | A blackholed stream recovers and reports once (§6) | `make test-integration-rustd` on Linux | output holds `a_blackholed_native_runner_reconnects_and_settles_its_memory_report_once ... ok` | P0 | |
 | R10 | The pull path is gone (§7) | `git grep -n -w -e RUNNER_HEARTBEATS -e wait_for_work -e WAKE_HOLD_MAX -e HELD_BEATS_MAX -e NO_WORK_RETRY_AFTER -- ':!docs/v2'` | no output | P0 | |
-| R11 | A streamed chat's activity path is near zero (§8) | `jq -e ".measurements.drain_statements_per_lease_activity < 1" bench/baselines/lease.rig.json` | `true` | P0 | |
-| R12 | An idle host costs no statement (§8) | `jq -e ".measurements.drain_idle_statements == 0" bench/baselines/lease.rig.json` | `true` | P0 | |
+| R11 | A streamed chat's activity path is near zero (§8) | `jq -e ".measurements.drain_statements_per_lease_activity < 1" bench/baselines/lease.rig.json` | `true` | P0 | MOVED to M244_001 R11 |
+| R12 | An idle host costs no statement (§8) | `jq -e ".measurements.drain_idle_statements == 0" bench/baselines/lease.rig.json` | `true` | P0 | MOVED to M244_001 R12 |
 | R13 | Direct HTTP/3 and HTTP/2 pass native duplex and pressure tests (§1) | native transport integration through `make test-integration-rustd` | both carriers pass; recorded commands and outcomes in `runner_protocol.md` | P0 | |
 | R14 | UDP failure selects HTTP/2 without bypassing refusals (§1) | `make test-integration-rustd` | fallback and fail-closed tests pass | P0 | |
 | R15 | Flaky and unavailable sessions have visible telemetry (§6) | `make test-integration-rustd` | correlated failure, fallback, outage and recovery evidence | P0 | |
@@ -504,6 +517,7 @@ Schema this milestone leaves with no runtime reader or writer is removed from it
 
 - One statement per host renewal: M245. Each lease keeps its own renewal statements here.
 - The NATS implementation behind `afd_bus`: M244.
+- §8's bench and its baselines: MOVED to M244_001 (Discovery, Nov 10, 2026).
 - A pause that cancels a running lease: pause keeps today's behaviour.
 - Aiming a ring at one eligible runner: an empty pass still costs one claim per session with credits, as each ring costs today, counted by `agentsfleet_runner_offer_claims_total`. Not planned until that count matters.
 - Customer-runner trust (M246) and the lapsed-host respawn signal (M247).
@@ -618,12 +632,14 @@ The shared capacity clock remains unchanged.
   > Indy (Nov 06, 2026: 02:13 PM): "And i prefer we create all the spects and close M241 and push a PR?" — context: this spec lands with M241.
 - **Programme decisions (relayed in the authoring brief, Nov 06, 2026; transport replaced by the owner's Nov 08 decision):** one outbound session per host; self-hosted runners never touch the broker. Authentication happens at session opening; revocation closes the session; each grant rechecks the host. Postgres rebuilds state and holds cancellation markers. No compatibility period preserves retired routes.
   > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
-- **Model reviews** — implementer source-readiness review and accepted corrections appear above; Indy's new implementation design review remains pending.
+- **Model reviews** — implementer source-readiness review and accepted corrections appear above; Indy approved the implementation design (Owner implementation approval, above).
 - **Open implementation decisions** —
-  1. §1 must prove both direct carriers and fix their stream mapping, framing and session authentication binding.
-  2. Prepare a concrete private Fly listener and certificate-delivery proposal before seeking approval for deployment edits. Document external runner prerequisites without adding hosted public ingress.
-  3. Reverify the complete Files Changed inventory after the data-layer follow-up lands. New SQL must use its native UUIDv7 bindings and table-file layout.
-- **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.
+  1. §1 must prove both direct carriers and fix their stream mapping, framing and session authentication binding. Resolved: Dimensions 1.1 to 1.6.
+  2. Prepare a concrete private Fly listener and certificate-delivery proposal before seeking approval for deployment edits. Document external runner prerequisites without adding hosted public ingress. Resolved: Nov 09 managed deployment completion, below; dev qualification steps are in PR #819.
+  3. Reverify the complete Files Changed inventory after the data-layer follow-up lands. New SQL must use its native UUIDv7 bindings and table-file layout. Resolved Nov 10, 2026: the table was checked against `git diff --name-only 61820b66a..HEAD` (926 files), and the 53 files it did not name gained rows.
+- **Deferrals and transfers** — §8 (Dimensions 8.1 to 8.3, rubric R11 and R12) MOVED to M244_001, which carries them as its own P0 rows and re-baselines `bench-lease` after its bus swap. Under the same ruling, M244_001 keeps its own wake ladder (its Dimensions 1.3 to 1.5), which it had marked as transferred here. The recovery-probe replacement is deferred separately (Nov 09 recovery probe clarification, below).
+  > Owner (Indy, Nov 10, 2026, before 10:14 AM): "Why do we need this? i have 244 bench it" — context: §8's drain and idle bench, recorded in the M243 checkpoint saved at 10:14 AM; the exact minute was not recorded.
+  > Owner (Indy, Nov 10, 2026 11:05 AM): chose "M244 owns both (Recommended)" — context: asked which spec owns the two benches after M244_001 marked its wake ladder transferred to M243 while M243 deferred §8 to M244, leaving neither owned. The M244 session confirmed it on its own spec.
 
 ### Morning handoff and provisioning
 
