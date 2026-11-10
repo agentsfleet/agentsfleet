@@ -351,6 +351,9 @@ M244 re-measured every lane on core NATS at `2bea47c3d`, on Nov 10, 2026, with `
 Outbound and cardinality each ran three times, and the committed file is the median run.
 The lease shapes and steer ran once.
 
+The drain ran three more times at `6b0caea35`, after M243's runner stream merged: 83.00, 91.97 and 86.54 leases per second, at 74.16, 74.16 and 74.165 statements per chat. The median run, 86.54, is committed as `lease.rig.json`.
+Each run's idle window cost 0 statements, and a chat's activity path cost 0.
+
 | Lane | Number | Before M244 | On core NATS |
 | --- | --- | --- | --- |
 | Outbound, 200 jobs over 16 destinations | delivered per second | 49.6 | 34.7 |
@@ -358,7 +361,8 @@ The lease shapes and steer ran once.
 | Cardinality, 10,000 fleets | candidate query | 0.54 ms with no ledger rows | 25.45 ms with 10,000 unsettled admissions |
 | Steer | Postgres statements per steer | 1.003 | 2.002 |
 | Steer | accepted per second, p95 | 2,191, 9.52 ms | 2,868, 4.33 ms |
-| Lease drain | statements per chat, lease p95 | 115.0, 44.1 ms | 114.3, 57.9 ms |
+| Lease drain | statements per chat, lease p95 | 115.0, 44.1 ms | 74.2, 64.2 ms on the runner stream (`6b0caea35`) |
+| Lease drain, idle host | statements in the idle window; activity statements per chat | not measured | 0; 0 |
 | Lease saturation | lease p95 | 3,207 ms | 550 ms |
 | Lease burst | pickup p95 | 491.5 ms | 494.6 ms |
 

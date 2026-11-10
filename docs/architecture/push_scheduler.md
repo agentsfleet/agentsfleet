@@ -241,7 +241,7 @@ M244 measured tail p99 and the broker-kill drill on both buses, against the same
 
 Measured on Indy's laptop on Nov 09, 2026, with `make bench-tail PROFILE=rig`: three interleaved pairs, one run on each bus, each on a reset rig. The tree was this branch at `514f37420` with the tail-lane method of `fb2f55801` and the publish-record fix of `202b08ffd`.
 
-Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, is committed as `tail.rig.json`.
+Each rung shows the median of the three runs. The median NATS run, by its 4,096-stream p99, was committed as `tail.rig.json`; the wake ladder's runs below replaced it.
 
 The viewer ladder keeps one frame in flight, so a frame's time is one trip through the bus and the fan-out. The stream ladder publishes to every stream at once and times each stream from the burst's start.
 
@@ -278,6 +278,19 @@ No frame went undelivered and no viewer lagged on either bus.
 Verdict: NATS passes. Fifteen of sixteen rungs meet the bar. The miss is one viewer of 64 KiB frames, 1.3 ms over.
 
 A size sweep ruled out the client's 65,535-byte read buffer, and the cause is open. Indy accepted it: "I would accept the 1 bench miss and signoff NATS."
+
+#### Wake ladder
+
+Measured on Indy's laptop on Nov 10, 2026, at `6b0caea35`, with `make bench-tail PROFILE=rig`: three runs, each on a reset rig.
+Each hub is a replica with its own NATS connection, listening on all 16 wake shards. A ring is timed from publish to the first hub that takes it, at most 64 rings are outstanding, and a ring untaken after 1 s is missed.
+
+| Hubs | p50 (ms), run 1 / 2 / 3 | p99 (ms), run 1 / 2 / 3 | Missed |
+|---|---|---|---|
+| 1 | 0.284 / 0.284 / 0.233 | 0.415 / 1.426 / 0.362 | 0 |
+| 2 | 0.331 / 0.281 / 0.332 | 0.517 / 0.445 / 0.511 | 0 |
+| 4 | 0.461 / 0.378 / 0.424 | 1.303 / 0.606 / 0.983 | 0 |
+
+The median run by its 4,096-stream p99 (13.27, 12.62 and 11.90 ms) is run 2, committed as `tail.rig.json`.
 
 #### Kill drills
 
