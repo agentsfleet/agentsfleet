@@ -3,7 +3,7 @@
 //! Gates run before issue; an empty selection carries no polling response or retry hint.
 //! The native session owns delivery and decides when another placement pass is useful.
 
-use af_core::{error_code, id::Uuid7};
+use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use jiff::Timestamp;
 
@@ -127,13 +127,8 @@ impl LeaseService {
             Err(ended) => return Ok(ended),
         };
 
-        let received = match self.leases.record_received(&acquired).await {
-            Ok(received) => received,
-            Err(stale) if stale.code() == error_code::RUN_STALE_FENCING_TOKEN => {
-                return Ok(claim_lost(runner_id, &acquired));
-            }
-            Err(failure) => return Err(failure),
-        };
+        // The claim statement opened the event row and stamped delivery.
+        let received = acquired.opened.received;
         let delivery = received.delivery;
         if delivery == crate::lease::event::Delivery::Terminal {
             return self.finished(&acquired, runner_id).await;
@@ -167,9 +162,9 @@ impl LeaseService {
                 .map(|()| Step::Stop);
         };
 
-        // The payer is read ONCE, here: the provider resolves against it and
-        // the gates bill it, so a second read could only disagree with the first.
-        let read = self.accounts.payer(&acquired.workspace_id).await;
+        // The payer is the fleet row's tenant, which the claim read: the
+        // provider resolves against it and the gates bill it.
+        let read = Ok(Some(acquired.opened.tenant_id.clone()));
         let tenant = match payer_gate(read, &acquired.workspace_id)? {
             Ok(tenant) => tenant,
             Err(declined) => return self.ended(&acquired, declined, runner_id).await,

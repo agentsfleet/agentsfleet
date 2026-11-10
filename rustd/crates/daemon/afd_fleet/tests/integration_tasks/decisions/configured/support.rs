@@ -48,11 +48,6 @@ pub(super) async fn selected(case: &Case) -> Option<Acquired> {
 pub(super) async fn issue(case: &Case, acquired: &Acquired) -> Option<Issued> {
     case.held
         .leases
-        .record_received(acquired)
-        .await
-        .expect("ordinary source history");
-    case.held
-        .leases
         .issue(
             &case.held.runner,
             acquired,
@@ -89,6 +84,9 @@ pub(super) async fn claimable(case: &Case) -> bool {
         .bind(af_wire::task::TaskState::Ready.as_str())
         .bind(af_wire::task::TaskState::Running.as_str())
         .bind(afd_fleet::task::DECISION_POLICY_PATH)
+        .bind(afd_fleet::lease::sql::FLEET_STATUS_ACTIVE)
+        .bind(af_core::event::status::RECEIVED)
+        .bind(afd_admission::Producer::Steer.as_str())
         .fetch_optional(&mut *tx)
         .await
         .expect("real admission claim statement");

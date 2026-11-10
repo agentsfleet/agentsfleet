@@ -33,7 +33,6 @@ impl Selected {
         let acquired = seed::select_fleet(&leases, &runner, &fleet)
             .await
             .ok_or("expected queued work")?;
-        leases.record_received(&acquired).await?;
         Ok(Self {
             fixtures,
             runner,

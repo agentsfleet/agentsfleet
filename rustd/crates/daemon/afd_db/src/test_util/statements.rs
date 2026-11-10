@@ -8,8 +8,9 @@
 //! closes; [`Ran`] is the difference. Seeds run before the window opens and
 //! assertions after it closes, so neither lands in the count. Only top-level
 //! statements count, because a trigger's statements are not round trips.
-//! Transaction control and the counter's own reads are left out, as the bench
-//! leaves them out (`afd_bench`'s statement queries).
+//! Transaction control is left out, as the bench leaves it out (`afd_bench`'s
+//! statement queries), and so is every statement the reading role ran: the
+//! counter's own reads and the `Migrator` pool's unlock on each checkin.
 //!
 //! No flush is needed: the extension counts a call as its statement ends.
 
@@ -26,13 +27,15 @@ const READ: &str = "SELECT queryid, sum(calls)::bigint, min(query) FROM pg_stat_
          AND toplevel \
          AND query !~* '^\\s*(BEGIN|START TRANSACTION|COMMIT|END|ROLLBACK|SAVEPOINT|RELEASE|ABORT)\\y' \
          AND query !~ '(pg_stat_|pg_database|pg_extension)' \
+         AND userid <> (SELECT oid FROM pg_roles WHERE rolname = current_user) \
        GROUP BY queryid";
 
 /// Installs the counter's views in the current database.
 const INSTALL: &str = "CREATE EXTENSION IF NOT EXISTS pg_stat_statements";
 
 /// A migrated database of the caller's own with the counter installed, and
-/// its migrator pool, which the window reads through.
+/// its migrator pool, which the window reads through. The work under count
+/// must run as another role, as the product's pools do.
 ///
 /// # Panics
 /// When the database will not migrate or the extension will not install: the
@@ -44,6 +47,17 @@ pub async fn counted_database() -> (TestDatabase, Db) {
         .run(&owner)
         .await
         .unwrap_or_else(|failure| panic!("the counted database must migrate: {failure}"));
+    install(&owner).await;
+    (database, owner)
+}
+
+/// Installs the counter in the database `owner` reads, for a fixture that
+/// created its own private database.
+///
+/// # Panics
+/// When the extension will not install: the lane's Postgres was started
+/// without `pg_stat_statements` preloaded.
+pub async fn install(owner: &Db) {
     let mut connection = owner.acquire().await.unwrap_or_else(|failure| {
         panic!("the counted database must accept a connection: {failure}")
     });
@@ -53,8 +67,6 @@ pub async fn counted_database() -> (TestDatabase, Db) {
         .unwrap_or_else(|failure| {
             panic!("pg_stat_statements must install; is it preloaded? {failure}")
         });
-    drop(connection);
-    (database, owner)
 }
 
 /// Calls and normalized text, by query id, at one instant.

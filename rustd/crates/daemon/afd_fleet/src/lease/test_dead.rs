@@ -103,5 +103,6 @@ pub(crate) fn acquired() -> Acquired {
         reused: None,
         resume_hold: false,
         redelivered: false,
+        opened: crate::lease::envelope::Opened::unread(id(2), id(3)),
     }
 }

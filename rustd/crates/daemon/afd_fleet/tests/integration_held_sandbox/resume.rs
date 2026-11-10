@@ -124,10 +124,6 @@ async fn test_a_reclaimed_event_builds_fresh_on_a_live_hold() {
     let fresh = seed::select_fleet(&leases, &holder, &fleet)
         .await
         .expect("the holder leases its held fleet");
-    leases
-        .record_received(&fresh)
-        .await
-        .expect("the event's row opens");
     let billed = Billed {
         tenant_id: &tenant,
         posture: POSTURE,

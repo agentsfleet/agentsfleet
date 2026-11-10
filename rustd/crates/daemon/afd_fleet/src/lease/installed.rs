@@ -129,7 +129,32 @@ impl Leases {
             .fetch_optional(connection)
             .await
             .map_err(query(CONTEXT_INSTALLED))?;
-        let Some(FleetWithSession {
+        match found {
+            Some(row) => Self::install(definitions, row).await,
+            None => Ok(None),
+        }
+    }
+
+    /// The fleet the claim statement read, as installed. The claim admits only
+    /// an active fleet, so this answers `None` only for a row this daemon would
+    /// not lease either.
+    ///
+    /// # Errors
+    /// As [`Self::installed`]: an unreadable document, a setup this daemon
+    /// cannot run, or a task whose accepted setup no longer fits.
+    pub(crate) async fn installed_claimed(
+        &self,
+        opened: &crate::lease::envelope::Opened,
+    ) -> Result<Option<Installed>> {
+        Self::install(self.definitions(), opened.setup.clone()).await
+    }
+
+    /// A fleet row, its revision and its session, as a lease runs them.
+    async fn install(
+        definitions: &Definitions,
+        row: FleetWithSession,
+    ) -> Result<Option<Installed>> {
+        let FleetWithSession {
             workspace_id: workspace,
             definition: document,
             status,
@@ -141,10 +166,7 @@ impl Leases {
             head_revision_id,
             task_generation,
             current_definition,
-        }) = found
-        else {
-            return Ok(None);
-        };
+        } = row;
         if status != sql::FLEET_STATUS_ACTIVE {
             return Ok(None);
         }
@@ -232,19 +254,40 @@ fn parse_for_save(document: &str) -> Result<Definition> {
     Ok(definition)
 }
 
-/// [`sql::fleet::SELECT_FLEET_WITH_SESSION`]'s row: the fleet, its head
-/// revision and its session, each revision column absent until one is installed.
-#[derive(sqlx::FromRow)]
-struct FleetWithSession {
-    workspace_id: Uuid7,
-    definition: Option<String>,
-    status: String,
-    runtime_model_ref: Option<String>,
-    name: String,
-    context_json: Option<String>,
-    policy_semantics: Option<String>,
-    revision_id: Option<Uuid7>,
-    head_revision_id: Option<Uuid7>,
-    task_generation: Option<i64>,
-    current_definition: Option<String>,
+/// [`sql::fleet::SELECT_FLEET_WITH_SESSION`]'s row, and the same columns of
+/// the claim statement's: the fleet, its head revision and its session, each
+/// revision column absent until one is installed.
+#[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
+pub(crate) struct FleetWithSession {
+    pub(crate) workspace_id: Uuid7,
+    pub(crate) definition: Option<String>,
+    pub(crate) status: String,
+    pub(crate) runtime_model_ref: Option<String>,
+    pub(crate) name: String,
+    pub(crate) context_json: Option<String>,
+    pub(crate) policy_semantics: Option<String>,
+    pub(crate) revision_id: Option<Uuid7>,
+    pub(crate) head_revision_id: Option<Uuid7>,
+    pub(crate) task_generation: Option<i64>,
+    pub(crate) current_definition: Option<String>,
+}
+
+#[cfg(test)]
+impl FleetWithSession {
+    /// An active fleet with no revision installed.
+    pub(crate) fn unread(workspace_id: Uuid7) -> Self {
+        Self {
+            workspace_id,
+            definition: None,
+            status: sql::FLEET_STATUS_ACTIVE.to_owned(),
+            runtime_model_ref: None,
+            name: "Support triage".to_owned(),
+            context_json: None,
+            policy_semantics: None,
+            revision_id: None,
+            head_revision_id: None,
+            task_generation: None,
+            current_definition: None,
+        }
+    }
 }

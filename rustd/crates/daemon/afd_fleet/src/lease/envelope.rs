@@ -1,5 +1,7 @@
 //! Work read from the admissions ledger under the fleet's current fence.
 
+use crate::lease::event::Received;
+use crate::lease::installed::FleetWithSession;
 use crate::lease::{affinity::Fence, reclaim::Reused};
 use af_core::id::Uuid7;
 use jiff::Timestamp;
@@ -67,4 +69,45 @@ pub struct Acquired {
     pub resume_hold: bool,
     /// Whether this admission was delivered on an earlier attempt.
     pub redelivered: bool,
+    /// What the claim statement read and wrote beside the slot.
+    pub opened: Opened,
+}
+
+/// The fleet the claim statement read, and the event row it opened.
+///
+/// One statement claims the slot, reads the fleet and its setup, opens the
+/// `fleet.events` row and stamps delivery (M245 §4), so nothing after the
+/// claim reads any of these again.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Opened {
+    /// Whether this delivery opened the event row, and the counters it read.
+    pub received: Received,
+    /// The payer: `fleet.fleets.tenant_id`, which the workspace's tenant key
+    /// constrains to the workspace's own tenant.
+    pub tenant_id: Uuid7,
+    /// Whether the fleet's runs read workspace-shared memory.
+    pub memory_reads_workspace: bool,
+    /// Whether the fleet's runs publish to workspace-shared memory.
+    pub memory_publishes_workspace: bool,
+    /// The installed setup, parsed through the definition cache.
+    pub(crate) setup: FleetWithSession,
+}
+
+#[cfg(test)]
+impl Opened {
+    /// A first delivery of a fleet with no installed setup, for a unit test
+    /// that never reaches the parse.
+    pub(crate) fn unread(workspace_id: Uuid7, tenant_id: Uuid7) -> Self {
+        Self {
+            received: Received {
+                delivery: crate::lease::event::Delivery::First,
+                counters: None,
+                opened_at: Timestamp::UNIX_EPOCH,
+            },
+            tenant_id,
+            memory_reads_workspace: false,
+            memory_publishes_workspace: false,
+            setup: FleetWithSession::unread(workspace_id),
+        }
+    }
 }

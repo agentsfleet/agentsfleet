@@ -50,11 +50,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     // — without it the reclaim finds nothing and correctly falls through to a
     // fresh pull, which is what an earlier revision of this test observed.
     assert_eq!(
-        leases
-            .record_received(&held)
-            .await
-            .expect("the narrative log must open")
-            .delivery,
+        held.opened.received.delivery,
         Delivery::First,
         "a newly leased event has no row yet"
     );
@@ -152,10 +148,6 @@ async fn test_every_lease_meters_from_its_own_issue() {
     let held = seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
-    leases
-        .record_received(&held)
-        .await
-        .expect("the narrative log must open");
     leases
         .issue(&first, &held, billed, fixtures.enrolled_at())
         .await
