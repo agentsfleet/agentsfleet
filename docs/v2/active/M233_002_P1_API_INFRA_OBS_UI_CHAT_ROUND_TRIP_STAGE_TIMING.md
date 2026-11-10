@@ -85,7 +85,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 a
 | `rustd/crates/daemon/afd_gateway/src/session/verb_span_tests.rs` | CREATE | §1: Dimensions 1.2 and 1.3, `#[ignore]`d live-Postgres tests beside the crate's other session tests |
 | `rustd/crates/daemon/afd_fleet/src/lease/claim.rs`, `pull/mod.rs`, `deliver/mod.rs`, `report/mod.rs` | EDIT | §1: the clock passed in and one mark per stage boundary |
 | `rustd/crates/daemon/main/tests/integration_verb_span_export.rs` | CREATE | §1: Dimension 1.5 through `telemetry::install` |
-| `rustd/crates/daemon/main/tests/daemon_suite.rs` | EDIT | §1: registers the export test (`autotests = false`) |
+| `rustd/crates/daemon/main/Cargo.toml` | EDIT | §1: the export tests' own `[[test]]` binary, which owns the global tracer (`telemetry_boot`'s pattern) |
 | `rustd/crates/daemon/afd_fleet/src/lease/pull/select.rs`, `pull/held.rs` | EDIT | §1: the offer clock's path to `admit_claimed`, and its `claim` and `admit` marks |
 | `rustd/crates/daemon/afd_fleet/src/lease/memory.rs` | EDIT | §1: the hydrate and capture clocks, where the fence and the memory call run |
 | `rustd/crates/runner/afr_supervisor/src/lease_loop/segments.rs`, `identity/mod.rs`, `lease_loop/tests/mod.rs`, `lease_loop/tests/span_segments.rs` | EDIT, CREATE | §2: `runner.lease` declares and records the ten segments |
@@ -326,6 +326,8 @@ N/A: nothing is deleted. The old default's span layer move and its `stage_clock`
   > Indy (Nov 10, 2026): chose "Yes, all 7 (Recommended)" — context: §1's marks cannot reach `admit_claimed` without `pull/select.rs` and `pull/held.rs`, hydrate's and capture's stages run inside `afd_fleet`'s `lease/memory.rs` behind the `Leasing` trait, and the export test needs a `daemon_suite.rs` registration.
   - Built with fewer than the seven approved: the memory clocks start in `afd_fleet`'s `hydrate` and `capture`, so `afd_http`'s `Leasing` trait and `afd_api_runner/Cargo.toml` are unchanged, and `memory.rs` in `afd_api_runner` is untouched. The clock misses only the handler's path parse.
   - `LeaseService::report` and `claim_fleet_with` keep their signatures for their existing test callers; the gateway calls clocked siblings.
+  > Indy (Nov 10, 2026): "what is your decision here" — context: whether the verb-span export tests run inside `daemon_suite` (approved above) or in a test binary of their own. The agent chose their own `[[test]]` in `daemon/main/Cargo.toml`, because five `daemon_suite` tests replace the global tracer mid-run; `daemon_suite.rs` is unchanged.
+  - Dimensions 1.2, 1.3 and 1.5 live in `daemon/main/tests/integration_verb_span_export.rs`, not `afd_gateway/src/session/verb_span_tests.rs`: the seeded-scenario fixtures that drive a real gateway session live in `daemon/main/tests/support/`. No `daemon_suite` fixture sends a steer as a person, so 1.3 joins `fleet.offer` and `fleet.report` through the real stack and covers `fleet.steer`'s identity in its unit test.
 
 - **Rewritten for the runner stream, Nov 10, 2026:**
   > Indy (Nov 10, 2026): chose "Rewrite §1 for the gateway now" — context: asked how M233_002 should start beside M245_001, given §1 targeted handlers M243 removed.
