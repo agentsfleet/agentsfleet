@@ -2,8 +2,7 @@
 //!
 //! # One locked transaction per verify
 //!
-//! The retired Lua script read, branched and wrote one key atomically. Here
-//! the verify locks the row, reads the clock once after the lock, classifies
+//! The verify locks the row, reads the clock once after the lock, classifies
 //! in Rust, compares the code digest in constant time, writes one `UPDATE`
 //! and commits before the handler answers. Concurrent verifies of one session
 //! queue on the row lock, so five wrong codes abort it exactly once and a

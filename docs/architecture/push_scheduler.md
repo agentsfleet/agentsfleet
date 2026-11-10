@@ -295,4 +295,5 @@ On Nov 10, 2026 two more NATS runs stopped all three nodes, so one column compar
 
 A whole-bus outage costs the same on both buses: tails go quiet and send `catching_up` once the bus returns.
 The NATS client retries about every 12 s while every node is down, so that wait can reach about 12 s.
-NATS differs when one node fails, because any surviving node carries every subject. The previous broker's self-hosted cluster has no failover: "Dragonfly only provides a data plane", and automatic failover is "out of the scope of Dragonfly server functionality" ([cluster mode](https://www.dragonflydb.io/docs/managing-dragonfly/cluster-mode)).
+NATS differs when one node fails, because any surviving node carries every subject.
+The previous broker's self-hosted cluster had no failover of its own: its documentation leaves failover to a separate control plane, so a lost primary's channels waited for that primary to restart.
