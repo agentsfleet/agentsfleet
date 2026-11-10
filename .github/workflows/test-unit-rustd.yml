@@ -129,7 +129,7 @@ jobs:
   test-miri-secret-wiping:
     runs-on: ubuntu-latest
     env:
-      MIRI_TOOLCHAIN: nightly-2026-10-22
+      MIRI_TOOLCHAIN: nightly-2026-11-10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned Miri toolchain
