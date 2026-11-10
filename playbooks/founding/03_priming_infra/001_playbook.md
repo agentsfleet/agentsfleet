@@ -42,7 +42,7 @@ fly apps create agentsfleetd-prod --org agentsfleet-prod
 fly apps create cloudflared-prod --org agentsfleet-prod
 ```
 
-The deploy workflows create `otelcol-<env>` and `nats-<env>` themselves with `scripts/ensure_fly_app.sh --create-only`.
+The deploy workflows create `otelcol-<env>` and `agentsfleet-nats-<env>` themselves with `scripts/ensure_fly_app.sh --create-only`.
 
 A new organization refuses to deploy until it can pay.
 Both organizations are linked to the Billing Organization `personal`, which holds the prepaid credits.
@@ -102,7 +102,7 @@ Past that ceiling Postgres refuses with `53300 too_many_connections`.
 
 The daemon then reports a stall, `UZ-INTERNAL-001` (`the pool held <N> of <M>`), not an outage.
 
-The NATS `api-url` is the cluster seed on Fly's private network: `nats://agentsfleet:<PASSWORD>@nats-<env>.internal:4222`.
+The NATS `api-url` is the cluster seed on Fly's private network: `nats://agentsfleet:<PASSWORD>@agentsfleet-nats-<env>.internal:4222`. Fly app names are global, so the NATS app carries the product prefix; the 1Password item stays `nats-<env>`.
 The daemon and every NATS node read this one credential; there is no second, root-level NATS credential.
 
 Never apply schema files by hand.

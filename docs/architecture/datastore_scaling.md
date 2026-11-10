@@ -30,7 +30,7 @@ In the kill drills, NATS viewers received `catching_up` within 0.3 s of a node s
 |---|---|
 | Bus | Core NATS, routed as one cluster in one region, with JetStream off. Boot refuses a server that fails any of these. |
 | Durable state | Postgres: admissions, outbound obligations, device-login sessions, OAuth nonces and approval gates. |
-| Deployment | `nats-prod` and `nats-dev` each run two nodes, both in `iad`, with no volume (`.github/workflows/release.yml`, `deploy-dev-fly.yml`). |
+| Deployment | The Fly apps `agentsfleet-nats-prod` and `agentsfleet-nats-dev` each run two nodes, both in `iad`, with no volume (`.github/workflows/release.yml`, `deploy-dev-fly.yml`). |
 | Rust client | `async-nats` 0.52.0 without default features, so its JetStream module does not compile (`rustd/Cargo.toml`). |
 | Evidence | Compare before and after each change on the same rig and workload. |
 | Scale | Report measured capacity against an explicit workload; fleet population alone proves no throughput guarantee. |
