@@ -76,6 +76,9 @@ pub struct Datastores {
     pub database: Db,
     /// The NATS Bus: live tail frames, wakes and notifications.
     pub bus: afd_bus::Handle,
+    /// What `bus` was connected from, so a lane can open another replica's
+    /// connection the same way; `None` when the caller brought its own Bus.
+    bus_config: Option<afd_bus::nats::Config>,
     /// How many connections the pool may open, for the result file and for
     /// refusing more runners than that.
     pub pool_size: u32,
@@ -98,10 +101,12 @@ impl Datastores {
             nats_url: Some(nats_url),
         };
         let (database, pool_size) = connect_database(&env).await?;
-        let bus = afd_bus::nats::connect(&afd_bus::nats::Config::from_env(&env)?).await?;
+        let bus_config = afd_bus::nats::Config::from_env(&env)?;
+        let bus = afd_bus::nats::connect(&bus_config).await?;
         Ok(Self {
             database,
             bus,
+            bus_config: Some(bus_config),
             pool_size,
             database_url: database_url.to_owned(),
         })
@@ -122,8 +127,31 @@ impl Datastores {
         Ok(Self {
             database,
             bus,
+            bus_config: None,
             pool_size,
             database_url: database_url.to_owned(),
+        })
+    }
+
+    /// The Bus another daemon replica would hold: a connection of its own,
+    /// opened from the same seeds and namespace as [`Datastores::bus`].
+    ///
+    /// A Bus the caller brought has no seeds to dial again, so its replicas
+    /// share it, and [`Replica::close`] leaves it open for its owner.
+    ///
+    /// # Errors
+    ///
+    /// `BusUnavailable` when the new connection will not open.
+    pub async fn replica(&self) -> Result<Replica> {
+        let Some(config) = &self.bus_config else {
+            return Ok(Replica {
+                bus: self.bus.clone(),
+                owned: false,
+            });
+        };
+        Ok(Replica {
+            bus: afd_bus::nats::connect(config).await?,
+            owned: true,
         })
     }
 
@@ -140,6 +168,34 @@ impl Datastores {
         sqlx::PgConnection::connect(&self.database_url)
             .await
             .map_err(|source| ErrorKind::SamplerUnavailable { source }.into())
+    }
+}
+
+/// One replica's Bus, closed by whoever opened it.
+#[derive(Debug)]
+pub struct Replica {
+    bus: afd_bus::Handle,
+    /// Whether this replica opened `bus`, and so must close it.
+    owned: bool,
+}
+
+impl Replica {
+    /// The replica's Bus.
+    #[must_use]
+    pub const fn bus(&self) -> &afd_bus::Handle {
+        &self.bus
+    }
+
+    /// Close the connection this replica opened; a shared Bus stays open.
+    ///
+    /// # Errors
+    ///
+    /// `BusUnavailable` when the connection will not close cleanly.
+    pub async fn close(self) -> Result<()> {
+        if self.owned {
+            self.bus.shutdown().await?;
+        }
+        Ok(())
     }
 }
 

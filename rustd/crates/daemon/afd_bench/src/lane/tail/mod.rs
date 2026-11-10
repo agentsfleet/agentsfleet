@@ -1,7 +1,7 @@
 //! What the live tail costs: per delivered frame as viewers pile onto one
 //! fleet, and per open stream as a replica holds more of them.
 //!
-//! # Two ladders, one hub
+//! # Three ladders, one broker
 //!
 //! ```text
 //!   publisher ──publish──► NATS ──push──► hub (one per process)
@@ -24,6 +24,11 @@
 //! each one keeps and the p95 of one frame published to every one of them.
 //! Those are the numbers `SSE_MAX_STREAMS` should be sized from.
 //!
+//! The WAKE ladder times one doorbell ring from publish to the first of 1, 2
+//! and 4 replicas that takes it, and counts the rings none took within a
+//! second ([`wake`]). It lives here because, like a frame, a ring is one
+//! broker hop, and the broker comparison reads both.
+//!
 //! # Every frame must arrive, so the publisher waits for the slowest viewer
 //!
 //! The hub buffers a bounded number of messages per channel and tells a reader
@@ -40,6 +45,7 @@
 mod publish;
 mod streams;
 mod viewers;
+mod wake;
 
 use afd_sse::{Live, StreamLimit};
 
@@ -109,13 +115,14 @@ pub const LAG_NOTICES: &str = "lag_notices";
 /// Measurement key: streams that never received their frame, over every rung.
 pub const STREAMS_UNREACHED: &str = "streams_unreached";
 
-/// Run both ladders and return the report.
+/// Run the three ladders and return the report.
 ///
 /// # Errors
 ///
 /// A cap refusal before anything opens, a hub that will not start, a publish
-/// the Bus refused, or a lost viewer task. A frame that did not arrive is a
-/// measurement, not an error.
+/// the Bus refused, a replica connection that will not open, or a lost viewer
+/// or listener task. A frame or ring that did not arrive is a measurement, not
+/// an error.
 pub async fn run(
     profile: Profile,
     provenance: Provenance,
@@ -151,6 +158,7 @@ pub async fn run(
         missing.frames += rung.live.saturating_sub(rung.timed);
         rung.record(&mut report, counting);
     }
+    wake::ladder(stores, &mut report).await?;
     report.measurement(FRAMES_UNDELIVERED, count(missing.frames));
     report.measurement(LAG_NOTICES, count(missing.lags));
     report.measurement(STREAMS_UNREACHED, count(missing.streams));
@@ -189,7 +197,7 @@ const STREAM_COLUMNS: [&str; 5] = [
 /// The headline totals, printed last.
 const TOTALS: [&str; 3] = [FRAMES_UNDELIVERED, LAG_NOTICES, STREAMS_UNREACHED];
 
-/// Both ladders as `key=value` lines, one per rung, then the totals.
+/// Every ladder as `key=value` lines, one per rung, then the totals.
 ///
 /// Printed rather than left only in the file because the ladder is read by a
 /// person deciding a stream ceiling, and twelve rungs read better as twelve
@@ -199,6 +207,7 @@ const TOTALS: [&str; 3] = [FRAMES_UNDELIVERED, LAG_NOTICES, STREAMS_UNREACHED];
 pub fn summary(report: &Report) -> String {
     let mut lines = rows(report, &VIEWER_COLUMNS);
     lines.extend(rows(report, &STREAM_COLUMNS));
+    lines.extend(wake::summary_lines(report));
     lines.push(
         TOTALS
             .iter()
