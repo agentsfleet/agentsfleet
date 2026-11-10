@@ -2,27 +2,21 @@
 
 use super::fixture::*;
 use afd_auth::Scope;
-use afd_dragonfly::{
-    Dragonfly,
-    config::{DragonflyConfig, DragonflyRole},
-};
 use http::{Method, StatusCode};
 use serde_json::json;
-use std::time::Duration;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn failed_notifications_keep_access_and_memory_committed_and_reloadable() {
     let mut saved = Saved::create(json!({"credentials":[SERVICE]})).await;
-    let config =
-        DragonflyConfig::from_url(DragonflyRole::Default, "redis://127.0.0.1:1".to_owned())
-            .with_request_timeout(Duration::from_millis(200));
-    let queue = Dragonfly::unreachable(&config).expect("lazy unavailable queue");
     saved.case.router = saved
         .case
         .base
         .services(&Scope::ALL)
-        .with_fleet_queue(saved.case.base.db.clone(), queue)
+        .with_fleet_queue(
+            saved.case.base.db.clone(),
+            afd_bus::test_util::unreachable(),
+        )
         .router();
     assert_eq!(
         saved.access(Method::POST, "fixture-first").await.status(),

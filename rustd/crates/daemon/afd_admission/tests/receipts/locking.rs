@@ -7,7 +7,7 @@ use afd_admission::Reply as ReplyTo;
 use afd_db::test_util::mint_id;
 use sqlx::Connection as _;
 
-use super::{Fallible, lane::Lane, ledger::steer, queue::over_fake};
+use super::{Fallible, lane::Lane, ledger::steer, queue::over_lane};
 
 /// How long an admission may take to start waiting on the held fleet lock.
 const BLOCK_WAIT: Duration = Duration::from_secs(5);
@@ -42,10 +42,10 @@ async fn wait_until_blocked(lane: &Lane, holder: i32) -> Fallible {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_admission_waiting_on_a_revision_install_never_lands_under_the_old_policy() -> Fallible {
     let lane = std::sync::Arc::new(Lane::seed().await?);
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let admissions = over_lane(&lane).await?;
     let mut connection = lane.database.acquire().await?;
     let holder: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
         .fetch_one(&mut *connection)
@@ -100,10 +100,10 @@ async fn an_admission_waiting_on_a_revision_install_never_lands_under_the_old_po
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn staging_admits_on_an_installing_fleet() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let admissions = over_lane(&lane).await?;
     sqlx::query("UPDATE fleet.fleets SET status = 'installing' WHERE id = $1")
         .bind(&lane.fleet)
         .execute(&mut *lane.database.acquire().await?)
@@ -156,10 +156,10 @@ fn timed_out_on_a_lock(error: &afd_admission::Error) -> bool {
 /// A send behind a fleet row held past `LOCK_TIMEOUT` fails alone, retryable,
 /// and records nothing.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_send_behind_a_held_fleet_row_times_out() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let admissions = over_lane(&lane).await?;
     let mut connection = lane.database.acquire().await?;
     let mut holder = connection.begin().await?;
     sqlx::query("SELECT 1 FROM fleet.fleets WHERE id = $1 FOR UPDATE")
@@ -195,11 +195,11 @@ async fn a_send_behind_a_held_fleet_row_times_out() -> Fallible {
 /// `agentsfleet_admissions_total`, which `count_refusal` records beside that
 /// log.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_stopped_fleet_refusal_counts_no_admission() -> Fallible {
     let capture = af_core::test_util::trace::Capture::install();
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let admissions = over_lane(&lane).await?;
     let key = mint_id();
     let refused = admissions
         .admit_runnable(steer(&lane, key.as_str(), ReplyTo::None))

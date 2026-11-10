@@ -143,9 +143,7 @@ impl Error {
     pub const fn is_datastore_unavailable(&self) -> bool {
         matches!(
             self.inner.kind,
-            ErrorKind::Datastore { .. }
-                | ErrorKind::Queue { .. }
-                | ErrorKind::LibraryPageUnavailable { .. }
+            ErrorKind::Datastore { .. } | ErrorKind::LibraryPageUnavailable { .. }
         )
     }
 
@@ -155,9 +153,9 @@ impl Error {
         match self.inner.kind {
             ErrorKind::InviteConflict { conflict } => Some(conflict),
             ErrorKind::Datastore { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::Query { .. }
             | ErrorKind::RoleUnknown { .. }
+            | ErrorKind::SessionUnreadable { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::SessionFieldInvalid { .. }
             | ErrorKind::SessionMissing
@@ -195,16 +193,10 @@ impl Error {
     #[must_use]
     pub const fn code(&self) -> ErrorCode {
         match self.inner.kind {
-            // One code for both stores. A caller acts identically on either —
-            // this instance could not reach what it needed — and which of the
-            // two it was belongs in the log beside the request id, not in a
-            // code a dashboard would have to branch on.
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => {
-                error_code::INTERNAL_DB_UNAVAILABLE
-            }
-            ErrorKind::Query { .. } | ErrorKind::RoleUnknown { .. } => {
-                error_code::INTERNAL_DB_QUERY
-            }
+            ErrorKind::Datastore { .. } => error_code::INTERNAL_DB_UNAVAILABLE,
+            ErrorKind::Query { .. }
+            | ErrorKind::RoleUnknown { .. }
+            | ErrorKind::SessionUnreadable { .. } => error_code::INTERNAL_DB_QUERY,
             // One internal code for two failures the caller shares an
             // inability to correct. One is this instance's own: a
             // cryptographic step — a draw, an identifier, a key — that failed.
@@ -272,7 +264,6 @@ impl Error {
     pub const fn detail(&self) -> &'static str {
         match self.inner.kind {
             ErrorKind::Datastore { .. } => DETAIL_DATABASE_UNAVAILABLE,
-            ErrorKind::Queue { .. } => DETAIL_QUEUE_UNAVAILABLE,
             // Every internal failure answers ONE fixed sentence, deliberately:
             // a statement that failed, a row this daemon cannot read, a clock
             // that cannot name an instant and a host that cannot draw random
@@ -281,6 +272,7 @@ impl Error {
             // cause is in the log beside the request id.
             ErrorKind::Query { .. }
             | ErrorKind::RoleUnknown { .. }
+            | ErrorKind::SessionUnreadable { .. }
             | ErrorKind::Crypto { .. }
             | ErrorKind::CliCredentialMachineCollision => DETAIL_DATABASE_ERROR,
             ErrorKind::SessionFieldInvalid { field } => match field {
@@ -330,7 +322,6 @@ impl Error {
 
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_dragonfly::Error => Queue,
     af_crypto::error::Error => Crypto,
 );
 

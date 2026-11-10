@@ -98,7 +98,7 @@ fn row(call: &Value) -> (String, String, String) {
 /// holds the parent's two `delegate` rows and the children's four `file_read`
 /// rows under one counter, each ended inside the call that started it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_delegating_definition_roundtrip() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, FLEET, &[], None).await;

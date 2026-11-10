@@ -65,7 +65,7 @@ The Human then approves the `production-fleet` GitHub environment. No other runn
 | `prepare-artifacts` | A development-qualified candidate for this tree exists and its signatures verify |
 | `push-ghcr`, `npm`, `create-release` | Image promoted, npm `next` published, GitHub Release created |
 | `verify-dev-gate` | Development `/healthz` and `/readyz` pass before production changes |
-| `deploy-fly-prod` | Collector, Dragonfly cluster, API (three machines), tunnel and readiness pass |
+| `deploy-fly-prod` | Collector, NATS cluster, API (three machines), tunnel and readiness pass |
 | `deploy-metal-canary-prod` | The first runner deployed and passed its host gate |
 | `deploy-metal-fleet-prod` | The approved remaining runners deployed one by one |
 | `post-release.yml`: `verify-npm` | The exact version installs on macOS, Linux and Windows |

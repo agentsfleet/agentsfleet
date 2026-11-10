@@ -45,7 +45,6 @@ mod vendor;
 
 use std::sync::Arc;
 
-use af_core::env::{EnvSource, ProcessEnv};
 use af_core::id::Uuid7;
 use af_crypto::aad::Aad;
 use af_crypto::entropy::Entropy;
@@ -60,7 +59,6 @@ use afd_connector::{Finishing, Landed};
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_db::{Db, Migrator};
-use afd_dragonfly::{Dragonfly, DragonflyConfig, DragonflyRole};
 use afd_vault::{SecretName, Vault};
 use jiff::Timestamp;
 
@@ -144,7 +142,7 @@ impl Round {
             Grants::new(vault.clone(), database.clone(), Entropy::new()),
             Exchange::new(reqwest::Client::new()).pointed_at(vendor.base().to_owned()),
             reqwest::Client::new(),
-            queue().await,
+            database.clone(),
             Entropy::new(),
         );
 
@@ -209,21 +207,6 @@ impl Round {
     pub(crate) async fn drop_private(self) {
         self.lane.cleanup().await;
     }
-}
-
-/// The lane's Dragonfly, where a round trip's single-use nonce lives.
-async fn queue() -> Dragonfly {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the panic names the `VarError`, which `ProcessEnv` drops"
-    )]
-    let url = std::env::var("TEST_DRAGONFLY_URL")
-        .expect("TEST_DRAGONFLY_URL is unset — run this through `make test-integration-rustd`");
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get("TEST_DRAGONFLY_CA_CERT").map(Into::into));
-    afd_dragonfly::test_util::connect_live(&config)
-        .await
-        .expect("the lane's Dragonfly must be reachable")
 }
 
 /// One tenant and its workspaces, which the vault's foreign key requires.

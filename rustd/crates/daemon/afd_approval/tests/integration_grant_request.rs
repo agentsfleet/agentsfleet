@@ -123,7 +123,7 @@ async fn first_card_action(lane: &Lane) -> Uuid7 {
 /// so a fleet declaring `github` parked every delivery on a decision nobody
 /// could be asked for.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_request_writes_the_grant_and_the_card_together() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -153,7 +153,7 @@ async fn a_request_writes_the_grant_and_the_card_together() {
 
 /// A repeated install writes one row, and the table is what says so.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_repeated_request_does_not_duplicate_the_grant() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -171,7 +171,7 @@ async fn a_repeated_request_does_not_duplicate_the_grant() {
 /// a rate limit, which is the difference between "one question stands" and "one
 /// question a minute".
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_redelivering_park_raises_one_card_not_one_per_second() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -195,7 +195,7 @@ async fn a_redelivering_park_raises_one_card_not_one_per_second() {
 ///
 /// The approve half, reached for the first time by a row this crate wrote.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn approving_the_card_grants_the_integration() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -238,7 +238,7 @@ async fn approving_the_card_grants_the_integration() {
 /// poll and writes a terminal row instead of parking again. Proven on the lease
 /// path in `afd_fleet`; proven HERE as the column transition it depends on.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn denying_the_card_revokes_the_grant() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -271,7 +271,7 @@ async fn denying_the_card_revokes_the_grant() {
 
 /// A standing yes is not asked about again.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approved_grant_raises_no_second_card() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -319,7 +319,7 @@ async fn card_resolved_at(lane: &Lane, action: &Uuid7) -> Option<Timestamp> {
 
 /// One fleet's request is not another's.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_request_names_the_fleet_that_asked() {
     let mine = Lane::isolated().await;
     let theirs = Lane::isolated().await;

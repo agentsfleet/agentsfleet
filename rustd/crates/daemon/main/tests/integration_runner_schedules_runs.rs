@@ -29,7 +29,7 @@ use crate::wire::wait_for_offer;
 /// Dimension 1.6. Running now admits one event under the schedule's actor, and
 /// a retried post answers the same run.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedule_run_now_admits_one_event() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -67,7 +67,7 @@ async fn test_schedule_run_now_admits_one_event() {
 /// its body: the lease records the fired event, which it can only do when the
 /// fire stored JSON, as every other producer does.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_scheduled_run_is_leased_with_its_message() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -99,7 +99,7 @@ async fn test_scheduled_run_is_leased_with_its_message() {
 
 /// A person's active schedule may be run now: running is not changing it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_run_now_of_a_person_s_active_schedule_runs() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -115,7 +115,7 @@ async fn test_run_now_of_a_person_s_active_schedule_runs() {
 /// A run-now overrides neither a person's pause nor a retirement: each is a
 /// 409 naming the schedule's state, and nothing is admitted.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_run_now_refuses_a_schedule_that_would_not_fire() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -140,7 +140,7 @@ async fn test_run_now_refuses_a_schedule_that_would_not_fire() {
 
 /// A fleet an operator stopped takes no run-now, whatever its schedules say.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_run_now_refuses_a_fleet_that_takes_no_work() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -163,7 +163,7 @@ async fn test_run_now_refuses_a_fleet_that_takes_no_work() {
 /// A run a schedule started cannot run one now, so no schedule wakes its fleet
 /// in a loop.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_run_now_from_a_scheduled_run_is_refused() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -183,7 +183,7 @@ async fn test_run_now_from_a_scheduled_run_is_refused() {
 
 /// Dimension 1.7. A schedule's runs are its events, newest first, paged.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_schedule_runs_lists_events() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -230,7 +230,7 @@ async fn test_schedule_runs_lists_events() {
 /// Dimension 1.9. A `once` schedule run now retires: `QStash` removes it and the
 /// row goes, so a repeat finds nothing to run.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_once_schedule_retires_after_fire() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -265,7 +265,7 @@ async fn test_once_schedule_retires_after_fire() {
 /// admitted, the call answers 409 so it is repeated, and the repeat replays
 /// the same event and finishes the retirement.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_once_retirement_held_is_repeated_not_dropped() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;

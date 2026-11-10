@@ -12,7 +12,7 @@ use serde_json::json;
 use fixture::{Watched, assert_frame, chunk, completion, next_frame};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_missing_fleet_refuses_without_retaining_a_stream_slot() {
     use super::{Fixture, SUBJECT};
     use crate::harness::{self, Fleet};
@@ -56,14 +56,13 @@ async fn a_missing_fleet_refuses_without_retaining_a_stream_slot() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn one_hundred_live_responses_share_one_subscription_and_release_every_reader() {
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn one_hundred_live_responses_receive_one_publication_and_release_every_reader() {
     let watched = Watched::create().await;
     for viewers in [1, 10, 100] {
         let mut bodies = join_all((0..viewers).map(|_| watched.open())).await;
-        assert_eq!(watched.hub.readers(&watched.channel()), viewers);
+        assert_eq!(watched.readers(), viewers);
         watched.ready(&mut bodies).await;
-        assert_eq!(watched.hub.connections_opened(), 1);
         // Owning the only pool slot is a deterministic barrier: delivery below
         // cannot depend on another Postgres acquisition, at any viewer count.
         let held = watched
@@ -74,21 +73,19 @@ async fn one_hundred_live_responses_share_one_subscription_and_release_every_rea
         assert_eq!(watched.database().size(), 1);
         let started = Instant::now();
         let payload = chunk("fanout", "one");
-        assert_eq!(watched.publish(&payload).await, 1);
+        watched.publish(&payload).await;
         let frames = join_all(bodies.iter_mut().map(next_frame)).await;
         for frame in frames {
-            assert_frame(&frame, 1, &payload);
+            assert_frame(&frame, 0, &payload);
         }
         let delivery_us = started.elapsed().as_micros();
         drop(held);
         drop(bodies);
-        assert_eq!(watched.hub.readers(&watched.channel()), 0);
-        watched.unsubscribed().await;
+        assert_eq!(watched.readers(), 0);
         eprintln!(
             "stream_transport_evidence={}",
             json!({
-                "viewers": viewers, "dragonfly_connections_opened": watched.hub.connections_opened(),
-                "dragonfly_subscribers": 1, "readers_after_drop": 0,
+                "viewers": viewers, "readers_after_drop": 0,
                 "postgres_pool_size": watched.database().size(),
                 "postgres_available_slots_during_delivery": 0,
                 "database_query_count": null,
@@ -101,7 +98,7 @@ async fn one_hundred_live_responses_share_one_subscription_and_release_every_rea
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn one_hundred_quiet_viewers_receive_liveness_without_queries_or_sequence_gaps() {
     const VIEWERS: usize = 100;
     let watched = Watched::create().await;
@@ -122,35 +119,33 @@ async fn one_hundred_quiet_viewers_receive_liveness_without_queries_or_sequence_
             "event: heartbeat\ndata: {\"kind\":\"heartbeat\"}\n\n"
         );
     }
-    assert_eq!(watched.hub.connections_opened(), 1);
-    assert_eq!(watched.hub.readers(&watched.channel()), VIEWERS);
+    assert_eq!(watched.readers(), VIEWERS);
     let payload = chunk("after-heartbeat", "one");
-    assert_eq!(watched.publish(&payload).await, 1);
+    watched.publish(&payload).await;
     for frame in join_all(bodies.iter_mut().map(next_frame)).await {
-        assert_frame(&frame, 1, &payload);
+        assert_frame(&frame, 0, &payload);
     }
     drop(held);
     drop(bodies);
-    assert_eq!(watched.hub.readers(&watched.channel()), 0);
-    watched.unsubscribed().await;
+    assert_eq!(watched.readers(), 0);
     watched.cleanup().await;
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn reconnect_recovers_a_missed_completion_from_durable_history() {
     let watched = Watched::create().await;
     let mut first = [watched.open().await];
     watched.ready(&mut first).await;
     drop(first);
-    watched.unsubscribed().await;
     let event_id = watched.commit_without_publish().await;
     let payload = completion(&event_id);
     assert_eq!(
-        watched.publish(&payload).await,
+        watched.readers(),
         0,
         "the absent viewer really misses the frame"
     );
+    watched.publish(&payload).await;
 
     let started = Instant::now();
     let mut second = [watched.open().await];
@@ -170,15 +165,14 @@ async fn reconnect_recovers_a_missed_completion_from_durable_history() {
     let expected_status = json!(Outcome::Processed.as_str());
     assert_eq!(recovered.get("status"), Some(&expected_status));
     let recovery_us = started.elapsed().as_micros();
-    assert_eq!(watched.publish(&payload).await, 1);
+    watched.publish(&payload).await;
     assert_frame(
         &next_frame(second.first_mut().expect("reconnected viewer")).await,
-        1,
+        0,
         &payload,
     );
     drop(second);
-    assert_eq!(watched.hub.readers(&watched.channel()), 0);
-    watched.unsubscribed().await;
+    assert_eq!(watched.readers(), 0);
     eprintln!(
         "stream_recovery_evidence={}",
         json!({
@@ -190,14 +184,14 @@ async fn reconnect_recovers_a_missed_completion_from_durable_history() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn repeated_publications_remain_distinct_transport_frames_without_writing_history() {
     let watched = Watched::create().await;
     let mut bodies = [watched.open().await];
     watched.ready(&mut bodies).await;
     let payload = completion("duplicate");
-    for sequence in [1, 2] {
-        assert_eq!(watched.publish(&payload).await, 1);
+    for sequence in [0, 1] {
+        watched.publish(&payload).await;
         assert_frame(
             &next_frame(bodies.first_mut().expect("viewer")).await,
             sequence,
@@ -211,25 +205,25 @@ async fn repeated_publications_remain_distinct_transport_frames_without_writing_
         "pub/sub cannot create audit rows"
     );
     drop(bodies);
-    watched.unsubscribed().await;
+    assert_eq!(watched.readers(), 0);
     watched.cleanup().await;
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
-async fn hub_shutdown_closes_the_response_instead_of_leaving_an_idle_stream() {
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn bus_shutdown_closes_the_response_instead_of_leaving_an_idle_stream() {
     use futures_util::StreamExt as _;
     let watched = Watched::create().await;
     let mut bodies = [watched.open().await];
     watched.ready(&mut bodies).await;
-    watched.hub.shutdown();
+    watched.bus.shutdown().await.expect("the bus shuts down");
     let body = bodies.first_mut().expect("viewer");
     let ended = tokio::time::timeout(fixture::DELIVERY_BUDGET, body.next())
         .await
-        .expect("hub shutdown promptly ends the response");
+        .expect("bus shutdown promptly ends the response");
     assert!(
         ended.is_none(),
-        "the closed hub must not leave a silently idle response"
+        "the closed bus must not leave a silently idle response"
     );
     drop(bodies);
     watched.cleanup().await;

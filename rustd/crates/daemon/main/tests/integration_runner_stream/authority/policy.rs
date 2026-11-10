@@ -19,7 +19,7 @@ use std::sync::atomic::Ordering;
 // why_new=direct database backstop tests cannot detect a missing operator publication;
 // seam=authenticated operator HTTP, real Bus/Postgres and both native carriers.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn operator_revocation_and_rotation_close_the_previous_native_owner() -> TestResult {
     for transport in [Transport::H2, Transport::H3] {
         for action in ["revoke", "rotate"] {
@@ -74,7 +74,7 @@ async fn rotated(
 // why_new=successful pushes cannot exercise the Postgres backstop;
 // seam=the real runner transition and a dropped runner command, then native issue/heartbeat.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_lost_revocation_push_is_fenced_at_issue_and_the_next_native_heartbeat() -> TestResult {
     for transport in [Transport::H2, Transport::H3] {
         let fixture = Fixture::start().await?;
@@ -143,7 +143,7 @@ async fn heartbeat_refused(native: &mut Native) -> TestResult {
 // why_new=the existing supersession case connects twice to one replica;
 // seam=two production daemons sharing the actual Bus and Postgres.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_new_replica_supersedes_the_old_native_owner_and_alone_receives_offers() -> TestResult {
     for transport in [Transport::H2, Transport::H3] {
         let fixture = Fixture::start().await?;

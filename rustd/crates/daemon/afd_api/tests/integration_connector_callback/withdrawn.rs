@@ -10,7 +10,7 @@
 use super::*;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_connect_whose_app_was_withdrawn_finishes_as_not_configured() {
     let fixture = Fixture::create().await;
     fixture.seed().await;

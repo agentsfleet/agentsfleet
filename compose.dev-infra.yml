@@ -17,23 +17,6 @@ services:
       timeout: 5s
       retries: 20
 
-  dragonfly:
-    image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
-    entrypoint: ["bash", "/scripts/dragonfly-cluster.sh"]
-    command: ["serve"]
-    environment:
-      DRAGONFLY_BASE_PORT: ${AGENTSFLEET_DRAGONFLY_BASE_PORT}
-    ports:
-      - "127.0.0.1:${AGENTSFLEET_DRAGONFLY_BASE_PORT}-${AGENTSFLEET_DRAGONFLY_LAST_PORT}:${AGENTSFLEET_DRAGONFLY_BASE_PORT}-${AGENTSFLEET_DRAGONFLY_LAST_PORT}"
-    volumes:
-      - ./scripts/dragonfly-cluster.sh:/scripts/dragonfly-cluster.sh:ro
-      - dragonfly-data:/data
-    healthcheck:
-      test: ["CMD", "bash", "/scripts/dragonfly-cluster.sh", "healthy"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
   mailpit:
     image: axllent/mailpit:v1.31.3
     environment:
@@ -69,6 +52,58 @@ services:
       retries: 60
       start_period: 30s
 
+  # The event bus: three core NATS nodes routed as one cluster, no JetStream
+  # and no volume, as in the test lane's compose. Host clients take every node
+  # as a seed because `--no_advertise` keeps the bridge addresses to the nodes.
+  nats-1: &nats
+    image: nats:2.15.2-alpine
+    command:
+      - --name=nats-1
+      - --port=4222
+      - --http_port=8222
+      - --user=agentsfleet
+      - --pass=agentsfleet
+      - --cluster_name=agentsfleet
+      - --cluster=nats://0.0.0.0:6222
+      - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
+      - --no_advertise=true
+    ports:
+      - "127.0.0.1:${AGENTSFLEET_NATS_BASE_PORT}:4222"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8222/healthz"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  nats-2:
+    <<: *nats
+    command:
+      - --name=nats-2
+      - --port=4222
+      - --http_port=8222
+      - --user=agentsfleet
+      - --pass=agentsfleet
+      - --cluster_name=agentsfleet
+      - --cluster=nats://0.0.0.0:6222
+      - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
+      - --no_advertise=true
+    ports:
+      - "127.0.0.1:${AGENTSFLEET_NATS_PORT_2}:4222"
+
+  nats-3:
+    <<: *nats
+    command:
+      - --name=nats-3
+      - --port=4222
+      - --http_port=8222
+      - --user=agentsfleet
+      - --pass=agentsfleet
+      - --cluster_name=agentsfleet
+      - --cluster=nats://0.0.0.0:6222
+      - --routes=nats://nats-1:6222,nats://nats-2:6222,nats://nats-3:6222
+      - --no_advertise=true
+    ports:
+      - "127.0.0.1:${AGENTSFLEET_NATS_PORT_3}:4222"
+
 volumes:
   postgres-data:
-  dragonfly-data:

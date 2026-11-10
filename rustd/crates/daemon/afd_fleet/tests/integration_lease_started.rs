@@ -49,7 +49,7 @@ const RECLAIMED: &str = "reclaimed";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_fresh_grant_counts_one_run() {
     let capture = Capture::install();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
         fleet,
@@ -79,7 +79,7 @@ async fn test_fresh_grant_counts_one_run() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_reclaim_counts_as_reclaimed() {
     let capture = Capture::install();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,

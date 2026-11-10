@@ -1,17 +1,16 @@
-//! What the fixture instance reports about ITSELF, and the two handles that
-//! answer nothing.
+//! What the fixture instance reports about ITSELF, and the pool that answers
+//! nothing.
 //!
 //! Split from the builder beside it: `mod.rs` assembles a `Fleet` out of real
 //! stores, and this is the readiness half — what `/readyz` is told, and the
-//! Postgres and Dragonfly configurations that point at a port nothing listens on.
-//! Those two are the whole reason a router suite needs no datastore: every
-//! store below is the PRODUCTION one, over handles that refuse at the first
-//! acquire with the error its own crate raises.
+//! Postgres configuration that points at a port nothing listens on. That pool
+//! and the unreachable bus are the whole reason a router suite needs no
+//! datastore: every store below is the PRODUCTION one, over handles that refuse
+//! at the first acquire with the error its own crate raises.
 
 use af_core::env::MapEnv;
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_db::{DbRole, PoolConfig};
-use afd_dragonfly::{DragonflyConfig, DragonflyRole};
 
 use super::Fleet;
 
@@ -22,9 +21,6 @@ use super::Fleet;
 /// difference between a suite that runs in milliseconds and one that runs in
 /// acquire budgets.
 const NOWHERE: &str = "postgres://runner:secret@127.0.0.1:1/agentsfleet";
-
-/// A Dragonfly nobody is listening on, for the same reason and on the same port.
-const NOWHERE_QUEUE: &str = "redis://127.0.0.1:1";
 
 /// A GitHub nobody is listening on, for the same reason and on the same port.
 ///
@@ -82,11 +78,4 @@ pub(super) fn unreachable_pool() -> PoolConfig {
     ]);
     PoolConfig::resolve(&environment, DbRole::Api)
         .expect("the fixture connection string is well formed")
-}
-
-/// The same, for the queue the login surface and the fleet install reach, and
-/// the one a suite pointing only the connectors' vendor elsewhere keeps.
-pub(crate) fn unreachable_queue() -> DragonflyConfig {
-    DragonflyConfig::from_url(DragonflyRole::Default, NOWHERE_QUEUE.to_owned())
-        .with_request_timeout(std::time::Duration::from_millis(250))
 }

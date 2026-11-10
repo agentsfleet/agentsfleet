@@ -25,7 +25,7 @@ use crate::rows::Row;
 const ACTOR: &str = "fixture:platform-operator";
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_views_parity() {
     let fixtures = Fixtures::create().await;
     let seeded = seed_runner_views(&fixtures).await;

@@ -11,13 +11,12 @@ use super::runner::{self, Shared, Tally};
 use super::settled::Settled;
 use super::turn::Turn;
 use super::{
-    CLAIMS, COMMITS_PER_LEASE, DRAGONFLY_CALLS_PER_LEASE, EVENT_ROWS, EVENTS, EVENTS_PROCESSED,
-    FAILURES, IDLE_COMMITS, IDLE_DRAGONFLY_CALLS, IDLE_STATEMENTS, LEASE_P95_MS, LEASES,
-    LEASES_PER_SECOND, LEDGER_ROWS_PER_EVENT, REPORT_P95_MS, RUNNER_ROLE, STATEMENTS_PER_LEASE,
-    UNSETTLED_ROWS,
+    CLAIMS, COMMITS_PER_LEASE, EVENT_ROWS, EVENTS, EVENTS_PROCESSED, FAILURES, IDLE_COMMITS,
+    IDLE_STATEMENTS, LEASE_P95_MS, LEASES, LEASES_PER_SECOND, LEDGER_ROWS_PER_EVENT, REPORT_P95_MS,
+    RUNNER_ROLE, STATEMENTS_PER_LEASE, UNSETTLED_ROWS,
 };
 use crate::abort::Abort;
-use crate::datastores::{Datastores, dragonfly_calls};
+use crate::datastores::Datastores;
 use crate::error::Result;
 use crate::lane::joined;
 use crate::report::{Report, count, latency, per_second, ratio};
@@ -32,7 +31,6 @@ pub(super) struct Window {
     cost: StatementCost,
     /// Each statement's calls in the window, for the split by path.
     queries: Vec<QueryCost>,
-    dragonfly_calls: u64,
 }
 
 /// What one window varies: how long it runs, how many events end it, how each
@@ -64,7 +62,6 @@ pub(super) async fn window(
     };
     let queries_before = statements::read_queries(&stores.database).await?;
     let before = statements::read(&stores.database).await?;
-    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
     let started = Instant::now();
     let shared = Arc::new(Shared {
         deadline: started + length,
@@ -88,9 +85,6 @@ pub(super) async fn window(
         queries: statements::read_queries(&stores.database)
             .await?
             .since(&queries_before),
-        dragonfly_calls: dragonfly_calls(&stores.queue)
-            .await?
-            .saturating_sub(dragonfly_before),
     })
 }
 
@@ -166,10 +160,6 @@ impl Window {
             }
         }
         report.measurement(COMMITS_PER_LEASE, ratio(self.cost.commits, leased));
-        report.measurement(
-            DRAGONFLY_CALLS_PER_LEASE,
-            ratio(self.dragonfly_calls, leased),
-        );
         report.measurement(EVENTS, count(events));
         report.measurement(EVENT_ROWS, count(settled.event_rows));
         report.measurement(EVENTS_PROCESSED, count(settled.processed));
@@ -181,7 +171,6 @@ impl Window {
     pub(super) fn record_idle(&self, report: &mut Report) {
         report.measurement(IDLE_STATEMENTS, count(self.cost.statements));
         report.measurement(IDLE_COMMITS, count(self.cost.commits));
-        report.measurement(IDLE_DRAGONFLY_CALLS, count(self.dragonfly_calls));
     }
 }
 
@@ -231,13 +220,12 @@ mod tests {
                 commits: 0,
             },
             queries: Vec::new(),
-            dragonfly_calls: 0,
         };
         let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
         window.record_idle(&mut report);
         assert_eq!(report.measurements.get(IDLE_STATEMENTS), Some(&0.0));
-        assert_eq!(report.measurements.get(IDLE_DRAGONFLY_CALLS), Some(&0.0));
-        assert_eq!(report.measurements.len(), 3);
+        assert_eq!(report.measurements.get(IDLE_COMMITS), Some(&0.0));
+        assert_eq!(report.measurements.len(), 2);
         Ok(())
     }
 }

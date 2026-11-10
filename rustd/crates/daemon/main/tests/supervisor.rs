@@ -30,7 +30,7 @@ use tokio::sync::mpsc;
 use crate::support::install_subscriber;
 
 /// The tasks the join-order fixture supervises, in the order it spawns them.
-const TASK_NAMES: [&str; 3] = ["stream_reader", "session_sweeper", "hub_pump"];
+const TASK_NAMES: [&str; 3] = ["stream_reader", "session_sweeper", "bus_shutdown"];
 
 /// The task that owns a listening socket, and is cancelled while blocked on it.
 const ACCEPT_TASK: &str = "listener_accept";

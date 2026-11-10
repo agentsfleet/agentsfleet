@@ -11,7 +11,6 @@ impl Fleet {
     }
 
     fn authoring_gateway(&self, database: Db) -> Gateway {
-        let queue = Dragonfly::unreachable(&unreachable_queue()).expect("lazy fixture queue");
         let bus = self.runner_commands.clone();
         let biller = Arc::new(afd_billing::ledger::LedgerBiller::on_system_clock(
             database.clone(),
@@ -19,8 +18,8 @@ impl Fleet {
         let key = Arc::new(Kek::from_bytes(FIXTURE_KEK));
         let leases = LeaseService {
             task_reports: None,
-            leases: Leases::new(database.clone(), queue.clone(), bus.clone(), Entropy::new()),
-            gates: afd_gate::gate::Gates::new(database.clone(), queue, bus.clone(), Entropy::new()),
+            leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
+            gates: afd_gate::gate::Gates::new(database.clone(), bus.clone(), Entropy::new()),
             accounts: afd_billing::Accounts::new(database.clone()),
             biller,
             memories: Memories::new(database.clone(), Entropy::new()),

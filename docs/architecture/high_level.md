@@ -17,6 +17,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | The minimum viable product (MVP) promise | "Operational outcomes do not fall into limbo" | §4 |
 | The existence bar | if local Claude answers "what should I do next?" as well, v2 has not earned its existence | §1 |
 | The Slack bot | acquisition on-ramp, reactive only; agency, not memory, is the line to the durable agent | §5.2 |
+| The stores | Postgres holds every durable fact; core NATS carries disposable signals | §How the runtime fits together |
 
 ## Traps
 
@@ -25,6 +26,39 @@ Every row is extracted from the numbered sections below; the owner column names 
 - The §3 counterarguments are live risks, not strawmen; the MVP bar exists because the thesis can still fail (§3).
 
 - The reactive Slack bot converts to the durable agent; it is never a second product (§5.2).
+
+## How the runtime fits together
+
+```text
+   browser, command line, webhooks
+             |  HTTPS
+             v
+ +-----------------------+   signals, at most once   +---------------------------+
+ | agentsfleetd replicas |<------------------------->| core NATS                 |
+ | API, offers, reports  |                           | 3 nodes in prod, 1 region |
+ |                       |                           +---------------------------+
+ |                       |
+ |                       |   facts, in transactions  +---------------------------+
+ |                       |<------------------------->| Postgres                  |
+ +-----------------------+                           | every durable fact        |
+             ^                                       +---------------------------+
+             |  one push stream per runner host
+             v
+ +-----------------------+
+ | agentsfleet-runner    |
+ | agent loop, sandboxes |
+ +-----------------------+
+```
+
+Postgres holds every durable fact. Admissions, events, leases, outbound obligations, sessions and usage are all rows.
+
+Core NATS carries disposable signals on five subjects: the fleet tail, draft events, the wake ring, runner commands and the outbound wake. It stores nothing, because JetStream is off.
+
+A lost signal costs latency, never work. A 5 s recovery probe finds pending work, and a viewer that misses frames gets `catching_up` and reloads from `fleet.events`.
+
+Runners never reach either store. Each runner host holds one stream to a replica, and work is pushed down it.
+
+[`datastore_scaling.md`](./datastore_scaling.md) owns the stores, and [`data_flow.md`](./data_flow.md) follows one event through them.
 
 ---
 
@@ -134,7 +168,7 @@ The MVP wedge is:
 
 The flagship workflow is `platform-ops`. When a GitHub Actions continuous-deployment (CD) pipeline fails, the fleet wakes from the webhook.
 
-It gathers the right evidence from Fly.io, Dragonfly, Postgres and adjacent sources. It explains what is wrong and posts a remediation suggestion to Slack.
+It gathers the right evidence from Fly.io, NATS, Postgres and adjacent sources. It explains what is wrong and posts a remediation suggestion to Slack.
 
 The same fleet can also be steered by hand for "morning health check" investigations and follow-up reasoning after the webhook diagnosis.
 
@@ -230,7 +264,7 @@ Primary job:
 
 - investigate unhealthy production state on a schedule (cron trigger) or on operator request (steer trigger);
 
-- collect logs and health evidence from Fly.io, Dragonfly, Postgres, GitHub Actions run logs, and adjacent systems;
+- collect logs and health evidence from Fly.io, NATS, Postgres, GitHub Actions run logs, and adjacent systems;
 
 - summarize the likely cause;
 

@@ -129,13 +129,12 @@ impl ServingPlane {
     ///   outbound group takes it by value, so it is built after every group
     ///   that clones it.
     ///
-    /// The lease plane is last, because it takes the pool, the queue and the
-    /// key by value.
+    /// The lease plane is last, because it takes the pool and the key by
+    /// value.
     #[must_use]
     pub fn new(parts: PlaneParts) -> Self {
         let common = construction::Common::new(&parts);
         let database = parts.database;
-        let queue = parts.queue;
         let kek = parts.kek;
         let authoring = surfaces::authoring(
             common.drafts,
@@ -152,7 +151,6 @@ impl ServingPlane {
         let task_admissions = common.admissions.clone();
         let outbound = surfaces::outbound(
             &database,
-            &queue,
             &kek,
             surfaces::OutboundParts {
                 schedule: parts.schedule,
@@ -163,10 +161,9 @@ impl ServingPlane {
         );
         let native = construction::NativeInputs {
             database: &database,
-            queue: &queue,
             kek,
             providers: common.providers,
-            bus: parts.bus,
+            bus: parts.bus.clone(),
             broker: parts.broker,
             biller: common.biller,
             wake: parts.runner_wake,
@@ -187,8 +184,8 @@ impl ServingPlane {
             admin,
             activity,
             outbound,
-            login: surfaces::login(parts.login, &queue),
-            probes: LiveDependencies::new(database.clone(), queue.clone()),
+            login: surfaces::login(parts.login, &database),
+            probes: LiveDependencies::new(database.clone(), parts.bus),
             signup_writeback: parts.signup_writeback,
             authenticator: authenticator(database, parts.capabilities, parts.sessions),
             runners: native.runners,
@@ -224,11 +221,10 @@ pub use self::config::{LoginConfig, PlaneParts, ScheduleConfig};
 /// The plane every runner verb acts through: leases, gates, grants, wallets,
 /// memory, provider keys, the chat thread and declared credentials.
 ///
-/// Takes the pool, the queue and the key by value, so [`ServingPlane::new`]
+/// Takes the pool and the key by value, so [`ServingPlane::new`]
 /// builds it after every other group has cloned what it needs.
 fn lease_plane(
     database: afd_db::Db,
-    queue: afd_dragonfly::Dragonfly,
     kek: Arc<af_crypto::secret::Kek>,
     providers: Providers,
     bus: afd_bus::Handle,
@@ -238,8 +234,8 @@ fn lease_plane(
     let activity_streams = bus.clone();
     LeaseService {
         task_reports: None,
-        leases: Leases::new(database.clone(), queue.clone(), bus.clone(), Entropy::new()),
-        gates: Gates::new(database.clone(), queue, bus, Entropy::new()),
+        leases: Leases::new(database.clone(), bus.clone(), Entropy::new()),
+        gates: Gates::new(database.clone(), bus, Entropy::new()),
         // The same surface the activity group's `grants` holds, over the
         // same table: a delivery that finds no grant asks through the crate
         // that owns the row rather than writing one.

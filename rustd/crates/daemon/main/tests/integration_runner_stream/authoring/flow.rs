@@ -8,7 +8,7 @@ use af_wire::authoring::{ModelCall, ModelResult, ModelUsage, Outcome, Renew};
 use agentsfleetd::supervisor::Supervisor;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn model_proposal_renewal_and_completion_share_one_native_session() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, true).await;

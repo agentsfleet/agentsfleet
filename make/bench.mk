@@ -69,7 +69,7 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 # datastore gives out first. Distinct from the loadgen above in the one way
 # that matters: `hey` measures a URL, and only the steer path IS one — these
 # drive the production types directly, which is the only way to attribute a
-# cost between Dragonfly and Postgres.
+# cost between the bus and Postgres.
 #
 # PROFILE decides scale, target and blast radius (rig | dev | prod), and the
 # lane refuses a parameter above its ceiling before it opens a connection.
@@ -85,12 +85,11 @@ _bench-loadgen:  ## Internal: hey-backed HTTP loadgen gate (Tier-2).
 # REPOSITORY root beside `bench/baselines/`, not the Rust workspace inside it.
 PROFILE ?= rig
 
-# The datastore build every lane run is graded against, read from the one file
-# that pins it. Extracted rather than restated: a second spelling of the tag is
-# a second thing to keep true, and provenance naming a stale image describes a
-# run that did not happen. Dragonfly publishes one image per version — there is
-# no alpine or slim variant to choose between (probed, 2026-09-13).
-DATASTORE_IMAGE := $(shell awk '/dragonflydb\/dragonfly:/ { print $$2; exit }' docker-compose.yml)
+# The bus build every lane run is graded against, read from the one file that
+# pins it. Extracted rather than restated: a second spelling of the tag is a
+# second thing to keep true, and provenance naming a stale image describes a
+# run that did not happen.
+DATASTORE_IMAGE := $(shell awk '/image: nats:/ { print $$2; exit }' docker-compose.yml)
 
 # The rig is owned by construction: compose brings it up under a project name
 # derived from this worktree's directory, and the lane resets it. A deployed
@@ -114,8 +113,7 @@ BENCH_TARGET_OWNED ?= owned
 # lane must never be handed, since it would refuse every run.
 BENCH_LANE_ENV = BENCH_PROFILE="$(PROFILE)" \
 	BENCH_DATABASE_URL="$(TEST_DATABASE_URL)" \
-	BENCH_DRAGONFLY_URL="$(TEST_DRAGONFLY_URL)" \
-	BENCH_DRAGONFLY_CA_CERT="$(TEST_DRAGONFLY_CA_CERT)" \
+	BENCH_NATS_URL="$(TEST_NATS_URL)" \
 	BENCH_REVISION="$(GIT_COMMIT)" \
 	BENCH_DATASTORE_IMAGE="$(DATASTORE_IMAGE)" \
 	BENCH_TARGET_OWNED="$(BENCH_TARGET_OWNED)"
@@ -131,8 +129,8 @@ BENCH_LANE_RUN := cargo run --release --quiet --manifest-path $(RUSTD_DIR)/Cargo
 # does (`$(TEST_STATE_DEP)`, then `_migrate-test-db`, which depends on the
 # reset, so `make -j` cannot run the two side by side). The migration gives a
 # fresh worktree the schema its seed needs (`identity.tenants`); the reset clears
-# the readiness marks the integration suite leaves in `fleet:ready`, which a
-# lease run would otherwise meet in every idle window. Only an owned rig: a dev
+# the unsettled `fleet.admissions` rows the integration suite leaves, which a
+# lease run would otherwise meet as candidates in every idle window. Only an owned rig: a dev
 # or prod profile points at a deployed database, and a rig whose
 # BENCH_TARGET_OWNED is overridden is not this run's to reset (see above), so a
 # bench never resets or migrates either.
@@ -170,8 +168,8 @@ bench-cardinality: _ensure-test-infra $(BENCH_MIGRATE)  ## Cost per idle fleet u
 	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) cardinality
 
 # The live tail's ladders: viewers on one fleet × payload size, then open
-# streams. The only lane that also needs the pub/sub hub, which it opens from
-# the same Dragonfly the others use.
+# streams. The only lane that also subscribes, on the same NATS cluster the
+# others publish to.
 bench-tail: _ensure-test-infra $(BENCH_MIGRATE)  ## Live tail: allocations, busy time and p95 per delivered frame over a viewer ladder, heap per stream over a stream ladder (PROFILE=rig)
 	@echo "→ [bench-tail] profile=$(PROFILE)"
 	@$(BENCH_LANE_ENV) $(BENCH_LANE_RUN) tail

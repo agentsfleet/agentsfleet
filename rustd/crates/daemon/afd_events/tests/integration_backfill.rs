@@ -17,9 +17,9 @@
 //! window up guarantees the two sets OVERLAP instead.
 //!
 //! An overlap is only safe if the client can tell one event seen twice from two
-//! events, and that is what the event id is: the stream entry id, carried
-//! identically on the live frame and on the row (dimension 5.3 pins that they
-//! are the same value). So the price of never missing an event is receiving a
+//! events, and that is what the event id is: the admission row's identifier,
+//! carried identically on the live frame and on the row (dimension 5.3 pins
+//! that they are the same value). So the price of never missing an event is receiving a
 //! few twice, and the merge is what the client pays it with.
 //!
 //! # What is proven here, and what belongs to the client
@@ -28,16 +28,15 @@
 //! `created_at`, that it returns the gap rows, and that it deliberately returns
 //! rows the client already has. The merge itself is the client's arithmetic, and
 //! it is performed here over the two REAL sets — frames actually delivered
-//! through a live hub, rows actually read back through `History` — because the
+//! through the bus and a tail, rows actually read back through `History` — because the
 //! claim worth making is about those two sets together. A merge run over two
 //! hand-written vectors would prove only that `HashSet` deduplicates.
 //!
 //! Marked `#[ignore]` so `make test-unit-all` still COMPILES and lints this
-//! without datastores, and `make test-integration-rustd` — which runs
+//! without Postgres or NATS, and `make test-integration-rustd` — which runs
 //! `--ignored` and nothing else — is the only lane that executes it.
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -45,10 +44,8 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use af_core::id::Uuid7;
+use afd_bus::Subject;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::SubscriptionHub;
-use afd_dragonfly::fleet_activity_channel;
-use afd_dragonfly::streams::FleetStreams;
 use afd_events::{Filter, History, MAX_LIMIT, Since};
 use afd_sse::tail;
 use futures_util::StreamExt as _;
@@ -104,7 +101,7 @@ fn after_now(span: Duration) -> Timestamp {
 /// Dimension 5.4 — a reconnect misses nothing, and the client sees each event
 /// once.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_sse_reconnect_backfill() {
     let lane = EventsLane::open().await;
 
@@ -121,7 +118,7 @@ async fn test_sse_reconnect_backfill() {
     lane.seed_event(&delivered[2], before_now(LAST_DELIVERY_AGO))
         .await;
 
-    // The live half, over a real hub. These three are what the connection was
+    // The live half, over the bus. These three are what the connection was
     // handed before it dropped; the last of them is the delivery the client
     // measures its reconnect window from.
     let live = deliver_live(&lane, &delivered).await;
@@ -195,29 +192,24 @@ fn assert_merged(
     );
 }
 
-/// The event ids the client is delivered live, through a real hub.
+/// The event ids the client is delivered live, through the bus.
 ///
-/// Publishes each event's frame and reads it back off the tail, so the returned
-/// set is what a connection ACTUALLY received rather than what the fixture
-/// intended it to.
+/// Publishes each event's frame on the lane's bus and reads it back off a tail
+/// subscribed to it, so the returned set is what a connection ACTUALLY
+/// received rather than what the fixture intended it to.
 async fn deliver_live(lane: &EventsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
-    let publisher = FleetStreams::new(lane.queue.clone());
-    let activity = fleet_activity_channel(lane.fleet.as_str());
-    let hub = SubscriptionHub::start(EventsLane::redis())
-        .await
-        .expect("the hub starts");
-
-    let _primer = prime_subscription(&publisher, &hub, &activity).await;
-
+    let activity = Subject::FleetTail(lane.fleet.clone());
     let mut stream = Box::pin(tail(
-        afd_bus::test_util::fleet_subscription(hub.subscribe(&activity))
-            .expect("canonical fleet subscription"),
+        lane.bus
+            .subscribe(&activity)
+            .await
+            .expect("the bus subscribes"),
     ));
     for id in ids {
-        publisher
+        lane.bus
             .publish(&activity, &activity_payload(id))
             .await
-            .expect("the publish reaches Dragonfly");
+            .expect("the publish reaches the bus");
     }
 
     let mut received = Vec::with_capacity(ids.len());
@@ -235,7 +227,7 @@ async fn deliver_live(lane: &EventsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
 ///
 /// `kind` leads because that is the anchor the frame's `event:` name is read
 /// from, and `event_id` carries the value the merge is performed on — the same
-/// stream entry id the row is stored under.
+/// id the row is stored under.
 fn activity_payload(event_id: &Uuid7) -> String {
     format!(r#"{{"kind":"run_output","event_id":"{event_id}"}}"#)
 }
@@ -261,7 +253,7 @@ fn event_id_of(data: &str) -> Uuid7 {
 /// clock, which shares a machine with the lane's Postgres; the margins are
 /// minutes, so no skew between the two decides the outcome.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_since_span_is_measured_on_the_database_clock() {
     let lane = EventsLane::open().await;
     let (old, recent) = (mint_id(), mint_id());
@@ -295,38 +287,4 @@ async fn page_since(lane: &EventsLane, since: Since) -> BTreeSet<Uuid7> {
         .into_iter()
         .map(|row| row.event_id)
         .collect()
-}
-
-async fn prime_subscription(
-    publisher: &FleetStreams,
-    hub: &SubscriptionHub,
-    activity: &str,
-) -> afd_dragonfly::Subscription {
-    // A primer, so the server-side SUBSCRIBE is known live before anything the
-    // test counts is published. `subscribe` queues the command and the pump
-    // issues it, so the registration is asynchronous by construction.
-    let mut primer = hub.subscribe(activity);
-    let marker = r#"{"kind":"primer"}"#;
-    let deadline = tokio::time::Instant::now() + DELIVERY_BUDGET;
-    loop {
-        publisher
-            .publish(activity, marker)
-            .await
-            .expect("the publish reaches Dragonfly");
-        match tokio::time::timeout(Duration::from_millis(100), primer.recv()).await {
-            Ok(Ok(afd_dragonfly::hub::Received::Message(message)))
-                if message.payload.as_str() == marker =>
-            {
-                break;
-            }
-            Ok(Ok(_other)) => {}
-            Ok(Err(closed)) => panic!("the hub closed while priming: {closed}"),
-            Err(_elapsed) => {}
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the subscription never went live on {activity}"
-        );
-    }
-    primer
 }

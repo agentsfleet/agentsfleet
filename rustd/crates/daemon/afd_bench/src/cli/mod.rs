@@ -17,9 +17,7 @@ use std::process::ExitCode;
 
 use af_core::env::EnvSource;
 
-use crate::datastores::{
-    DATABASE_URL_VARIABLE, DRAGONFLY_CA_CERT_VARIABLE, DRAGONFLY_URL_VARIABLE, Datastores,
-};
+use crate::datastores::{DATABASE_URL_VARIABLE, Datastores, NATS_URL_VARIABLE};
 use crate::error::Result;
 use crate::knobs::{required, variable};
 use crate::profile::{PROFILE_VARIABLE, Profile, Target};
@@ -46,7 +44,7 @@ pub fn admitted(env: &dyn EnvSource) -> Result<(Profile, Target, Provenance)> {
     Ok((profile, target, provenance))
 }
 
-/// Both datastores, from the lane's three variables.
+/// Both datastores, from the lane's two variables.
 ///
 /// # Errors
 ///
@@ -54,8 +52,7 @@ pub fn admitted(env: &dyn EnvSource) -> Result<(Profile, Target, Provenance)> {
 pub async fn datastores(env: &(dyn EnvSource + Sync)) -> Result<Datastores> {
     Datastores::open(
         &required(env, DATABASE_URL_VARIABLE)?,
-        &required(env, DRAGONFLY_URL_VARIABLE)?,
-        variable(env, DRAGONFLY_CA_CERT_VARIABLE),
+        &required(env, NATS_URL_VARIABLE)?,
     )
     .await
 }

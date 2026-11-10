@@ -24,7 +24,7 @@ struct Issuance {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_profile_read_past_claim_expiry_creates_no_lease_audit_or_tally() {
-    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let fixtures = Fixtures::create_isolated().await;
     let model = DecisionModelFixture::create(&fixtures.database)
         .await
         .expect("reviewed decision model fixture");

@@ -15,7 +15,6 @@ use afd_admission::Admissions;
 use afd_credential::provider::Providers;
 use afd_cron::SigningKeys;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 use afd_tenant::session::Sessions as Logins;
 
 use super::config::{LoginConfig, ScheduleConfig};
@@ -101,12 +100,7 @@ pub(super) struct OutboundParts {
 /// the interjector and the connect flow both take `vendor_client`: one pool for
 /// everything this family sends outbound — see `crate::credentials`. The
 /// interjector clones it, so the connect flow can take it last.
-pub(super) fn outbound(
-    database: &Db,
-    queue: &Dragonfly,
-    kek: &Arc<Kek>,
-    parts: OutboundParts,
-) -> Outbound {
+pub(super) fn outbound(database: &Db, kek: &Arc<Kek>, parts: OutboundParts) -> Outbound {
     let OutboundParts {
         mut schedule,
         admissions,
@@ -118,7 +112,7 @@ pub(super) fn outbound(
     let bus = admissions.streams();
     let schedules = config::schedule_plane(database, schedule, admissions);
     let interjector = platform::interjector(database, kek, vendor_client.clone(), slack_api_base);
-    let connectors = platform::connect_flow(database, kek, queue, &bus, vendor_client);
+    let connectors = platform::connect_flow(database, kek, &bus, vendor_client);
     Outbound {
         schedules,
         schedule_keys,
@@ -140,9 +134,9 @@ pub(super) struct Login {
 ///
 /// The surface BORROWS the dashboard url, so it is built before the url moves
 /// into the returned value.
-pub(super) fn login(login: LoginConfig, queue: &Dragonfly) -> Login {
+pub(super) fn login(login: LoginConfig, database: &Db) -> Login {
     let logins = Logins::new(
-        afd_dragonfly::SessionStore::new(queue.clone()),
+        afd_tenant::session::DeviceSessions::new(database.clone()),
         login.code_pepper,
         Entropy::new(),
         login.app_url.as_str(),

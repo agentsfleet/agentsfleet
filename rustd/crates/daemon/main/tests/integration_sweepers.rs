@@ -60,7 +60,7 @@ const LEFT_BEHIND: &str = "SELECT \
      (SELECT count(*) FROM authoring.replay_receipts WHERE id = $2)";
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_the_first_sweep_settles_orphaned_lines_and_ends_expired_receipts() {
     install_subscriber();
     let database_url = lane(DATABASE_LANE_KNOB);
@@ -107,7 +107,7 @@ async fn test_the_first_sweep_settles_orphaned_lines_and_ends_expired_receipts()
         &mut supervisor,
     )
     .await
-    .expect("the lane's Postgres and Dragonfly are up");
+    .expect("the lane's Postgres and NATS are up");
 
     let deadline = tokio::time::Instant::now() + FIRST_PASS;
     let mut left: (i64, i64) = (-1, -1);

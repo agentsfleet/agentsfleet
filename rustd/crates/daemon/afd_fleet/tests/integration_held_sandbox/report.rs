@@ -119,7 +119,7 @@ async fn test_a_report_carrying_held_until_records_the_hold() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_the_stored_hold_is_capped_at_one_idle_window() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [runner]) = seeded_parts::<1>(&fixtures).await;
 
     let inside = af_core::clock::after(fixtures.database_now().await, SANDBOX_HOLD_IDLE / 2);

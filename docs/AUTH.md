@@ -340,9 +340,9 @@ and answers as a replay. An index holds under concurrency and a read never can.
 
 A failed writeback is logged with the tenant and the reason; the subject stays out of the log line. The cost is a person whose next token carries no tenant. An operator repairs that from the provider's dashboard, and only if the log gave them something to repair from.
 
-**Signup writes nothing to Dragonfly.** No key, no stream, no queue. The account
-is five Postgres rows and one outbound call to the identity provider; the
-datastore learns about a tenant when that tenant's first fleet is installed.
+**Signup publishes nothing on the bus.** `afd_tenant`, which runs it, does not
+depend on `afd_bus` (`rustd/crates/daemon/afd_tenant/Cargo.toml`). The account
+is five Postgres rows and one outbound call to the identity provider.
 
 ## Memberships and roles
 
@@ -1190,7 +1190,7 @@ Each of these is a real concern, named here so future fleets and security-review
 | 4 | **Verification-code entropy uplift** — 6 digits → 8 alphanumeric characters in a segmented format (e.g. `X4K9-TQ`). Hygiene, not correctness: the 5-attempt cap and 5-minute time-to-live already bound brute force ([`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Cryptographic primitives (pinned)*). | Future follow-up spec (no milestone yet). |
 | 5 | **Dashboard-JS-compromise hardening** — Sub-Resource Integrity (SRI) on the dashboard bundle, Content Security Policy (CSP) hardening, dependency-supply-chain pinning. Addresses [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Threats this flow does NOT close* row 1. | Future spec (no milestone yet). |
 | 6 | **API-minted access tokens** instead of a persisted Clerk JWT — **delivered by M160_002**, except two parts. The dashboard still brokers a Clerk JWT for the handoff rather than the API minting directly from the approval. And there are no *per-install* scopes: the credential resolves the person's own scopes with no ceiling below them (§CLI credential: resolved, not granted, *Known gap*). | Per-install scope ceilings: future spec (no milestone yet) — a row column plus an intersection at `parse_claim`. |
-| 7 | **Pub/sub for sub-second session-state push** — *obsolete.* Would have replaced the 1-5s CLI poll with a Redis pub/sub channel on `auth:session:{id}:state`, but M74_003 dropped CLI polling entirely (the CLI prompts for the code immediately), so no CLI-side poll remains to optimize. | Closed — superseded by the M74_003 poll removal. |
+| 7 | **Pub/sub for sub-second session-state push** — *obsolete.* Would have replaced the 1-5s CLI poll with a pub/sub channel per session, but M74_003 dropped CLI polling entirely (the CLI prompts for the code immediately), so no CLI-side poll remains to optimize. | Closed — superseded by the M74_003 poll removal. |
 | 8 | **Hardware-backed CLI key storage** (TPM / Secure Enclave / WebAuthn / passkey) — closes [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Threats this flow does NOT close* row 2 (malware on the CLI host). | Future spec (no milestone yet). |
 
 ---

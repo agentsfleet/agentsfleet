@@ -18,7 +18,7 @@ use crate::rows::Row;
 const ACTOR: &str = "fixture:platform-operator";
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
     let fixtures = Fixtures::create().await;
     let enrolled = fixtures
@@ -76,7 +76,7 @@ async fn test_runner_selftest_request_distinguishes_missing_and_revoked() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_rotation_takeover() {
     let fixtures = Fixtures::create().await;
     let enrolled = fixtures

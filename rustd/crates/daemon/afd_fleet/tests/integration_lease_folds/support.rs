@@ -128,8 +128,10 @@ pub(super) async fn send_as(
     request_json: &str,
     reply: Reply<'_>,
 ) -> Checked<Sent> {
-    let admissions =
-        Admissions::for_tests(held.fixtures.database.clone(), crate::queue::unreachable());
+    let admissions = Admissions::for_tests(
+        held.fixtures.database.clone(),
+        afd_bus::test_util::unreachable(),
+    );
     let admitted = admissions
         .admit(Admission {
             producer,

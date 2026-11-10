@@ -29,7 +29,7 @@ if action == "up":
     time.sleep(float(os.getenv("FAKE_DOCKER_DELAY", "0.1")))
     state.write_text("ready")
 elif action == "ps" and state.exists():
-    for name in (["postgres"] if state.read_text() == "partial" else ["postgres", "dragonfly", "mailpit", "qstash"]):
+    for name in (["postgres"] if state.read_text() == "partial" else ["postgres", "mailpit", "qstash", "nats-1", "nats-2", "nats-3"]):
         print(name, "running" if state.read_text() == "ready" else "exited", "unhealthy" if name == "postgres" and os.getenv("FAIL_HEALTH") else "healthy")
 elif action == "restart": state.write_text("ready")
 elif action == "exec":
@@ -48,7 +48,7 @@ if os.getenv("FAIL_BUILD"): sys.exit(42)
 time.sleep(float(os.getenv("FAKE_BUILD_DELAY", "0")))
 record = target.parents[2] / "runtime-env.json"
 record.write_text(__import__("json").dumps({key: os.getenv(key) for key in [
-    "DATABASE_URL_API", "DATABASE_URL_MIGRATOR", "DRAGONFLY_URL", "AGENTSFLEET_DEV_NAMESPACE", "API_URL"]}))
+    "DATABASE_URL_API", "DATABASE_URL_MIGRATOR", "NATS_URL", "AGENTSFLEET_DEV_NAMESPACE", "API_URL"]}))
 shutil.copyfile(os.environ["FAKE_BOOT_FAILURE" if os.getenv("FAIL_BOOT") else "FAKE_UNBOUND" if os.getenv("FAIL_LISTENER") else "FAKE_NATIVE"], target)
 target.chmod(0o700)
 '''
@@ -85,7 +85,7 @@ class LauncherTests(unittest.TestCase):
         for repo in self.repos:
             (repo / "scripts").mkdir(parents=True)
             (repo / "rustd").mkdir()
-            for name in ["local-dev.sh", "local-dev-state.sh", "dragonfly-cluster.sh"]:
+            for name in ["local-dev.sh", "local-dev-state.sh"]:
                 shutil.copyfile(SOURCE / "scripts" / name, repo / "scripts" / name)
             launcher = repo / "scripts/local-dev.sh"
             launcher.write_text(launcher.read_text().replace("DEV_INFRA_LOCK_ATTEMPTS=1800", "DEV_INFRA_LOCK_ATTEMPTS=10").replace("DEV_BUILD_LOCK_ATTEMPTS=6000", "DEV_BUILD_LOCK_ATTEMPTS=10").replace("DEV_PROCESS_LOCK_ATTEMPTS=9000", "DEV_PROCESS_LOCK_ATTEMPTS=10"))
@@ -236,12 +236,12 @@ class LauncherTests(unittest.TestCase):
         self.assertTrue(record.exists())
     def test_machine_environment_cannot_replace_shared_datastore_addresses(self):
         machine = self.base / "machine.env"
-        machine.write_text('AGENTSFLEET_PG_HOST_PORT=1\nDRAGONFLY_URL=redis://wrong:1\n')
+        machine.write_text('AGENTSFLEET_PG_HOST_PORT=1\nNATS_URL=nats://wrong:1\n')
         self.run_dev("up", env=dict(self.env, AGENTSFLEET_RUSTD_ENV_FILE=str(machine)))
         config = json.loads((self.shared() / "runtime-env.json").read_text())
         self.assertEqual(config["DATABASE_URL_API"], config["DATABASE_URL_MIGRATOR"])
         self.assertNotIn(":1/", config["DATABASE_URL_API"])
-        self.assertNotIn("wrong", config["DRAGONFLY_URL"])
+        self.assertNotIn("wrong", config["NATS_URL"])
         self.assertEqual(config["AGENTSFLEET_DEV_NAMESPACE"], self.run_dev("identity").stdout.strip())
         self.assertEqual(config["API_URL"], self.run_dev("url").stdout.strip().replace("127.0.0.1", "192.0.2.10"))
     def test_signing_key_refusal_never_launches_a_daemon(self):
@@ -302,13 +302,22 @@ class LauncherTests(unittest.TestCase):
         fallback = subprocess.check_output(["bash", "-c", command], cwd=self.repos[0],
                                           env=dict(self.env, XDG_STATE_HOME="", HOME=str(self.base)), text=True).strip()
         self.assertTrue(Path(fallback).is_relative_to(self.base / ".local/state/agentsfleet"))
-    def test_stack_teardown_refuses_live_worktrees(self):
-        self.run_dev("up", infra=True)
-        self.run_dev("up", 1, infra=True)
+    def test_stack_teardown_refuses_while_a_daemon_runs(self):
+        self.run_dev("up")
+        self.run_dev("up", 1)
         self.run_dev("down")
         result = self.run_dev("down", infra=True, expected=1)
-        for root in self.repos: self.assertIn(str(root), result.stderr)
+        self.assertIn(str(self.repos[1]), result.stderr)
+        self.assertNotIn(str(self.repos[0]), result.stderr)
         self.assertNotIn("down", (self.shared() / "docker-calls").read_text().splitlines())
+    def test_stack_teardown_proceeds_once_no_daemon_runs(self):
+        self.run_dev("up")
+        self.run_dev("up", 1)
+        self.run_dev("down")
+        self.run_dev("down", 1)
+        self.run_dev("down", infra=True)
+        self.assertIn("down", (self.shared() / "docker-calls").read_text().splitlines())
+        self.assertFalse((self.shared() / "infrastructure").exists(), "the next up rebuilds the snapshot")
     def test_stack_teardown_removes_gone_worktrees(self):
         self.run_dev("up", infra=True)
         owner = self.shared() / "worktrees/gone"

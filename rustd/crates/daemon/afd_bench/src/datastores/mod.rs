@@ -1,67 +1,33 @@
 //! Opening the datastores a lane measures, the way the daemon opens them.
 //!
-//! # One knob, the daemon's own resolution
+//! # One knob per store, the daemon's own resolution
 //!
-//! A lane names ONE variable per datastore. Everything downstream of that —
-//! pool sizing, acquire timeouts, whether the URL implies TLS and which
-//! certificate authority verifies it — is resolved by `afd_db` and `afd_dragonfly`
-//! from that URL, exactly as `open_runtime` does at boot. Re-deriving any of it
-//! here would mean the lane measured a pool the daemon never opens.
+//! A lane names ONE variable per store: Postgres and the NATS Bus. Everything
+//! downstream of that — pool sizing, acquire timeouts, whether the URL implies
+//! TLS, the Bus's seeds and credentials — is resolved by `afd_db` and
+//! `afd_bus` from that URL, exactly as `open_runtime` does at boot.
+//! Re-deriving any of it here would mean the lane measured a pool or a
+//! connection the daemon never opens.
 //!
 //! The mapping is a thin [`EnvSource`] rather than a second set of knobs: the
-//! pool config asks for `DATABASE_URL_API`, and this answers that question with
-//! whatever [`DATABASE_URL_VARIABLE`] holds while passing every other lookup
-//! through to the process environment untouched.
-
-use core::time::Duration;
+//! pool config asks for `DATABASE_URL_API` and the Bus asks for `NATS_URL`,
+//! and this answers each with whatever [`DATABASE_URL_VARIABLE`] or
+//! [`NATS_URL_VARIABLE`] holds while passing every other lookup through to the
+//! process environment untouched.
 
 use af_core::env::{EnvSource, ProcessEnv};
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};
-use afd_dragonfly::{Dedicated, Dragonfly, DragonflyConfig, DragonflyRole};
 
 use sqlx::Connection as _;
 
 use crate::error::{ErrorKind, Result};
 
-/// The Dragonfly commands this crate spells itself, in one place.
-///
-/// `afd_dragonfly` owns every command the PRODUCT issues. These are the ones a
-/// lane asks the SERVER about itself with, or uses to remove what it created,
-/// and each module that needs one imports it from here rather than spelling
-/// its own copy.
-pub mod command {
-    /// The `INFO` section carrying per-command tallies.
-    pub const COMMANDSTATS: &str = "commandstats";
-    /// The `INFO` section carrying memory.
-    pub const MEMORY: &str = "memory";
-    /// Read a stream by id range.
-    pub const XRANGE: &str = "XRANGE";
-    /// Delete named entries from a stream.
-    pub const XDEL: &str = "XDEL";
-    /// The smallest stream id, so a range reads from the beginning.
-    pub const RANGE_START: &str = "-";
-    /// The largest stream id, so a range reads to the end.
-    pub const RANGE_END: &str = "+";
-}
-
 /// Where a lane reads its Postgres from.
 pub const DATABASE_URL_VARIABLE: &str = "BENCH_DATABASE_URL";
 
-/// Where a lane reads its Dragonfly from.
-pub const DRAGONFLY_URL_VARIABLE: &str = "BENCH_DRAGONFLY_URL";
-
-/// The certificate authority for a Dragonfly serving TLS, when it does.
-pub const DRAGONFLY_CA_CERT_VARIABLE: &str = "BENCH_DRAGONFLY_CA_CERT";
-
-/// The field inside a `cmdstat_*` line holding the call count.
-const CALLS_FIELD: &str = "calls=";
-
-/// The line of `INFO memory` carrying resident bytes.
-const USED_MEMORY_FIELD: &str = "used_memory:";
-
-/// The datastore named when a Dragonfly counter will not parse.
-const DRAGONFLY: &str = "dragonfly";
+/// The NATS seeds a lane's Bus connects to, comma-separated as `NATS_URL` is.
+pub const NATS_URL_VARIABLE: &str = "BENCH_NATS_URL";
 
 /// The datastore named when a Postgres counter will not parse.
 const POSTGRES: &str = "postgres";
@@ -71,18 +37,20 @@ const TRANSACTIONS_FIELD: &str = "xact_commit + xact_rollback";
 
 /// Postgres's own transaction tally for the database a lane is connected to.
 ///
-/// The counterpart to `INFO commandstats`, and used for the same reason: a
-/// lane that reported "no Postgres cost" without asking Postgres would be
+/// A lane that reported "no Postgres cost" without asking Postgres would be
 /// asserting a zero rather than measuring one, which is what RULE ECL forbids.
-/// Server-wide for this database, so it carries the same caveat as the Dragonfly
-/// side — on the rig that is this lane and nothing else.
+/// Server-wide for this database: on the rig that is this lane and nothing
+/// else.
 const TRANSACTIONS_QUERY: &str = "SELECT xact_commit + xact_rollback \
      FROM pg_stat_database WHERE datname = current_database()";
 
-/// Answers the daemon's pool knobs from the lane's single database variable.
+/// Answers the daemon's pool and Bus knobs from the lane's two variables.
 #[derive(Debug, Clone, Copy)]
 struct LaneEnv<'a> {
     database_url: &'a str,
+    /// `None` when the caller brought its own Bus, so the knob is answered
+    /// unset rather than from the developer's shell.
+    nats_url: Option<&'a str>,
 }
 
 impl EnvSource for LaneEnv<'_> {
@@ -94,6 +62,9 @@ impl EnvSource for LaneEnv<'_> {
         if key == DbRole::Api.url_knob() || key == DbRole::Default.url_knob() {
             return Some(self.database_url.to_owned());
         }
+        if key == afd_bus::nats::URL_ENV {
+            return self.nats_url.map(str::to_owned);
+        }
         ProcessEnv.get(key)
     }
 }
@@ -103,19 +74,17 @@ impl EnvSource for LaneEnv<'_> {
 pub struct Datastores {
     /// The pool the candidate query runs on.
     pub database: Db,
-    /// Live activity, notifications and outbound delivery.
-    pub queue: Dragonfly,
-    /// The single ephemeral notification adapter for this lane.
+    /// The NATS Bus: live tail frames, wakes and notifications.
     pub bus: afd_bus::Handle,
+    /// What `bus` was connected from, so a lane can open another replica's
+    /// connection the same way; `None` when the caller brought its own Bus.
+    bus_config: Option<afd_bus::nats::Config>,
     /// How many connections the pool may open, for the result file and for
     /// refusing more runners than that.
     pub pool_size: u32,
     /// The URL the pool was resolved from, for a sampler that connects
     /// outside it.
     database_url: String,
-    /// The Dragonfly configuration the queue was opened from, kept so a lane
-    /// needing its own parked connection opens one from the same resolution.
-    redis: DragonflyConfig,
 }
 
 impl Datastores {
@@ -123,27 +92,66 @@ impl Datastores {
     ///
     /// # Errors
     ///
-    /// `DatabaseUnavailable` naming which one refused, so the
-    /// message says whether to start Postgres or Dragonfly rather than "a
+    /// `DatabaseUnavailable` or `BusUnavailable`, naming which one refused, so
+    /// the message says whether to start Postgres or NATS rather than "a
     /// datastore".
-    pub async fn open(
-        database_url: &str,
-        dragonfly_url: &str,
-        ca_cert: Option<String>,
-    ) -> Result<Self> {
-        let pool = PoolConfig::resolve(&LaneEnv { database_url }, DbRole::Api)?;
-        let database = Db::connect(&pool).await?;
-        let redis = DragonflyConfig::from_url(DragonflyRole::Default, dragonfly_url.to_owned())
-            .with_ca_cert_file(ca_cert.map(Into::into));
-        let queue = Dragonfly::connect(&redis).await?;
-        let bus = afd_bus::dragonfly::connect(queue.clone(), redis.clone()).await?;
+    pub async fn open(database_url: &str, nats_url: &str) -> Result<Self> {
+        let env = LaneEnv {
+            database_url,
+            nats_url: Some(nats_url),
+        };
+        let (database, pool_size) = connect_database(&env).await?;
+        let bus_config = afd_bus::nats::Config::from_env(&env)?;
+        let bus = afd_bus::nats::connect(&bus_config).await?;
         Ok(Self {
             database,
-            queue,
             bus,
-            pool_size: pool.max_connections(),
+            bus_config: Some(bus_config),
+            pool_size,
             database_url: database_url.to_owned(),
-            redis,
+        })
+    }
+
+    /// Open Postgres beside a Bus the caller already holds, such as the
+    /// integration lane's from `afd_bus::test_util::lane`.
+    ///
+    /// # Errors
+    ///
+    /// `DatabaseUnavailable` when Postgres will not answer.
+    pub async fn over(database_url: &str, bus: afd_bus::Handle) -> Result<Self> {
+        let env = LaneEnv {
+            database_url,
+            nats_url: None,
+        };
+        let (database, pool_size) = connect_database(&env).await?;
+        Ok(Self {
+            database,
+            bus,
+            bus_config: None,
+            pool_size,
+            database_url: database_url.to_owned(),
+        })
+    }
+
+    /// The Bus another daemon replica would hold: a connection of its own,
+    /// opened from the same seeds and namespace as [`Datastores::bus`].
+    ///
+    /// A Bus the caller brought has no seeds to dial again, so its replicas
+    /// share it, and [`Replica::close`] leaves it open for its owner.
+    ///
+    /// # Errors
+    ///
+    /// `BusUnavailable` when the new connection will not open.
+    pub async fn replica(&self) -> Result<Replica> {
+        let Some(config) = &self.bus_config else {
+            return Ok(Replica {
+                bus: self.bus.clone(),
+                owned: false,
+            });
+        };
+        Ok(Replica {
+            bus: afd_bus::nats::connect(config).await?,
+            owned: true,
         })
     }
 
@@ -161,69 +169,42 @@ impl Datastores {
             .await
             .map_err(|source| ErrorKind::SamplerUnavailable { source }.into())
     }
+}
 
-    /// A connection of the lane's own, for a reader that parks on a stream.
+/// One replica's Bus, closed by whoever opened it.
+#[derive(Debug)]
+pub struct Replica {
+    bus: afd_bus::Handle,
+    /// Whether this replica opened `bus`, and so must close it.
+    owned: bool,
+}
+
+impl Replica {
+    /// The replica's Bus.
+    #[must_use]
+    pub const fn bus(&self) -> &afd_bus::Handle {
+        &self.bus
+    }
+
+    /// Close the connection this replica opened; a shared Bus stays open.
     ///
     /// # Errors
     ///
-    /// `QueueUnavailable` when it will not open.
-    pub async fn dedicated(&self, longest_park: Duration) -> Result<Dedicated> {
-        Ok(Dedicated::connect(&self.redis, longest_park).await?)
+    /// `BusUnavailable` when the connection will not close cleanly.
+    pub async fn close(self) -> Result<()> {
+        if self.owned {
+            self.bus.shutdown().await?;
+        }
+        Ok(())
     }
 }
 
-/// Dragonfly's own tally of commands served, for the per-datastore attribution.
-///
-/// `INFO commandstats` is SERVER-WIDE: it counts every client's calls, not just
-/// this lane's. On the rig that is exactly this lane, which is the profile the
-/// number is reported under. Against a shared environment it would include
-/// whatever else is connected, which is one more reason a deployed profile
-/// points at the rig until an environment is disposable.
-///
-/// # Errors
-///
-/// `QueueUnavailable` when the server will not answer `INFO`.
-pub async fn dragonfly_calls(queue: &Dragonfly) -> Result<u64> {
-    // Summed across primaries: a command is served by whichever shard owns its
-    // key, so one node's tally is a fraction of the lane's work reported as the
-    // whole of it.
-    let per_node = queue.info_per_primary(command::COMMANDSTATS).await?;
-    let mut total = 0_u64;
-    let mut read_any = false;
-    for raw in &per_node {
-        if let Some(calls) = dragonfly_calls_in(raw) {
-            total = total.saturating_add(calls);
-            read_any = true;
-        }
-    }
-    read_any.then_some(total).ok_or_else(|| {
-        ErrorKind::CounterUnreadable {
-            datastore: DRAGONFLY,
-            field: CALLS_FIELD,
-        }
-        .into()
-    })
-}
-
-/// The total of every `calls=` field in an `INFO commandstats` reply.
-///
-/// `None` when the reply carries no such field at all: a server that answered
-/// `INFO` with nothing this parser recognises is not a server that served zero
-/// commands, and reporting it as one is the zero RULE ECL forbids.
-#[must_use]
-pub(crate) fn dragonfly_calls_in(info: &str) -> Option<u64> {
-    let mut seen = false;
-    let total = info
-        .lines()
-        .filter_map(|line| {
-            let (name, values) = line.split_once(CALLS_FIELD)?;
-            let calls = values.split(',').next()?.trim().parse::<u64>().ok()?;
-            // INFO belongs to the measuring reader, not the product operation.
-            Some(if name == "cmdstat_info:" { 0 } else { calls })
-        })
-        .inspect(|_calls| seen = true)
-        .sum();
-    seen.then_some(total)
+/// The pool the daemon would open from `env`, proved to answer, and how many
+/// connections it may hold.
+async fn connect_database(env: &LaneEnv<'_>) -> Result<(Db, u32)> {
+    let pool = PoolConfig::resolve(env, DbRole::Api)?;
+    let database = Db::connect(&pool).await?;
+    Ok((database, pool.max_connections()))
 }
 
 /// Transactions this database has committed or rolled back, in total.
@@ -254,43 +235,6 @@ pub(crate) fn postgres_count(value: i64, field: &'static str) -> Result<u64> {
         }
         .into()
     })
-}
-
-/// Dragonfly's `used_memory`, in bytes.
-///
-/// # Errors
-///
-/// `QueueUnavailable` when `INFO` will not answer, and
-/// `CounterUnreadable` when the reply carries no
-/// `used_memory:` line — which is not a server using zero bytes.
-pub async fn dragonfly_used_memory(queue: &Dragonfly) -> Result<u64> {
-    // Summed for the same reason the call tally is: a fleet's keys are spread
-    // across shards by their own hash, so the memory they occupy is the sum
-    // over primaries and never one node's figure.
-    let per_node = queue.info_per_primary(command::MEMORY).await?;
-    let mut total = 0_u64;
-    let mut read_any = false;
-    for raw in &per_node {
-        if let Some(bytes) = used_memory_in(raw) {
-            total = total.saturating_add(bytes);
-            read_any = true;
-        }
-    }
-    read_any.then_some(total).ok_or_else(|| {
-        ErrorKind::CounterUnreadable {
-            datastore: DRAGONFLY,
-            field: USED_MEMORY_FIELD,
-        }
-        .into()
-    })
-}
-
-/// The `used_memory:` value out of an `INFO memory` reply.
-#[must_use]
-pub(crate) fn used_memory_in(info: &str) -> Option<u64> {
-    info.lines()
-        .find_map(|line| line.strip_prefix(USED_MEMORY_FIELD))
-        .and_then(|value| value.trim().parse().ok())
 }
 
 #[cfg(test)]

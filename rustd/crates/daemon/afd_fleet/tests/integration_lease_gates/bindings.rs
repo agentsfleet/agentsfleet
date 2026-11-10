@@ -48,7 +48,7 @@ async fn test_a_write_binding_it_cannot_enforce_ends_the_event() {
     // `integration_credential_mint/write_gate.rs`. What is proven here is the
     // half that did not move: an unenforceable config ends rather than parks.
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, MULTI_REPOSITORY_WRITE_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
@@ -93,7 +93,7 @@ async fn test_an_approved_write_binding_locks_its_egress_to_that_gates_branch() 
     // passed throughout, because their fixture id was a canonical v7 that the
     // ledger never produces.
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, WRITE_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
@@ -132,7 +132,7 @@ async fn test_a_read_binding_is_delivered_without_asking_for_an_approval() {
     // through `write::rules`: that binding has no repair branch and never
     // will, so it would refuse every read-bound fleet in the deployment.
     crate::support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, READ_BOUND_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;

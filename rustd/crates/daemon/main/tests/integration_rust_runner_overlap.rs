@@ -71,7 +71,7 @@ fn answering_first() -> afr_agent::scripted::ScriptedEngine {
 
 /// Every frame the tail carried after the first chunk, read until it falls
 /// quiet or [`SETTLE_DEADLINE`] passes, whichever is first.
-async fn later_frames(tail: &mut afd_dragonfly::Subscription) -> Vec<serde_json::Value> {
+async fn later_frames(tail: &mut crate::tail::Tail) -> Vec<serde_json::Value> {
     let deadline = Instant::now() + SETTLE_DEADLINE;
     let mut frames = Vec::new();
     while Instant::now() < deadline {
@@ -108,7 +108,7 @@ fn assert_tool_succeeded(later: &[serde_json::Value]) {
 }
 
 /// When the first answer chunk reached the tail, read while the runner runs.
-async fn chunk_arrived(tail: &mut afd_dragonfly::Subscription) -> Option<Instant> {
+async fn chunk_arrived(tail: &mut crate::tail::Tail) -> Option<Instant> {
     let deadline = Instant::now() + SETTLE_DEADLINE;
     while Instant::now() < deadline {
         let Some(frame) = crate::tail::next_frame(tail).await else {
@@ -122,15 +122,12 @@ async fn chunk_arrived(tail: &mut afd_dragonfly::Subscription) -> Option<Instant
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_chat_streams_before_sandbox_ready() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
     allow_all_egress(&run).await;
-    let hub = afd_dragonfly::SubscriptionHub::start(crate::e2e::dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", run.fleet));
+    let mut tail = crate::tail::tail_of(&run.fleet).await;
     crate::tail::settle().await;
     let home = tempfile::tempdir().expect("a storage home");
     let sandboxes = tempfile::tempdir_in("/tmp").expect("a short sandbox base");

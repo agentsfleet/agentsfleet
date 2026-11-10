@@ -89,7 +89,7 @@ verify_planetscale() {
 
 
 # PlanetScale only. The datastore's half of this verification is gone with the
-# store it verified: a self-hosted Dragonfly cluster has no public endpoint, no
+# store it verified: a self-hosted NATS cluster has no public endpoint, no
 # provider allowlist to attest, and no management API to read one back from. It
 # is reached over 6PN, which admits nothing from outside the private network.
 verify_env() {

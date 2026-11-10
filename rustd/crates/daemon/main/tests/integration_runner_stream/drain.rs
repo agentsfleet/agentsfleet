@@ -17,7 +17,7 @@ use crate::{
 };
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();

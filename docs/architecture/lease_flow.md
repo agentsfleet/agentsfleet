@@ -40,7 +40,7 @@ Sections 6 and 7 cover the sandbox and host.
                          5 per matched fleet:
                              INSERT fleet.admissions (producer=webhook_app,
                                  key = "{fleet}:{sha256(body)}")           Postgres  ← the acceptance
-                             SPUBLISH fleet:wake:{shard} (best effort)    Dragonfly
+                             publish af.wake.<shard> (best effort)         NATS
                          6 202 {matched, enqueued}
 
  GATEWAY CLAIM PASS      native session has advertised worker capacity
@@ -49,7 +49,7 @@ Sections 6 and 7 cover the sandbox and host.
                          c lock slot and exact head with SKIP LOCKED
                          d advance slot + admission fences; decode before commit
                          e INSERT fleet.events status=received (+ stamp admission delivered)
-                         f SPUBLISH event_received bracket on fleet:{id}:activity
+                         f publish event_received bracket on af.fleet.<id>.tail
                          g gates: payer → balance → budget → approval (nothing charged)
                          h vault: static secrets + mintable "github"; build ExecutionPolicy
                              (tools, network.allow, origin rules for api.github.com)
@@ -104,7 +104,7 @@ Each producer calls `Admissions::admit`. The row carries producer identity, payl
 An accepted message costs one write (`admit_one.sql`) and holds no fleet-row lock across round trips; a steer adds one read.
 
 Repeated producer identities return the existing admission.
-After commit, a bounded wake publish starts a gateway claim pass for hosts with available capacity.
+After commit, a bounded wake publish on `af.wake.<shard>` starts a gateway claim pass for hosts with available capacity.
 
 ### The gateway claims an admission and its fleet slot
 

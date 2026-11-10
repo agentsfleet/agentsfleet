@@ -26,7 +26,7 @@ const NIGHTLY: &str = "0 3 * * *";
 // ── Reads are scoped by fleet, always ────────────────────────────────────────
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_list_carries_this_fleets_schedules_and_no_others() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;
@@ -52,7 +52,7 @@ async fn a_list_carries_this_fleets_schedules_and_no_others() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_schedule_is_not_readable_through_a_fleet_that_does_not_own_it() {
     let lane = CronLane::open().await;
     let other = CronLane::open().await;
@@ -69,7 +69,7 @@ async fn a_schedule_is_not_readable_through_a_fleet_that_does_not_own_it() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_list_for_a_fleet_with_no_schedules_is_empty_rather_than_absent() {
     let lane = CronLane::open().await;
 
@@ -88,7 +88,7 @@ async fn a_list_for_a_fleet_with_no_schedules_is_empty_rather_than_absent() {
 // ── What a signed fire resolves to ───────────────────────────────────────────
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_fire_resolves_to_the_fleet_workspace_and_message_it_wakes() {
     let lane = CronLane::open().await;
     let created = lane.create("key-fire", NIGHTLY).await;
@@ -117,7 +117,7 @@ async fn a_fire_resolves_to_the_fleet_workspace_and_message_it_wakes() {
 /// scheduled. The sender is correctly configured and acting on what it was last
 /// told, so this is dropped rather than refused.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_fire_for_a_schedule_this_daemon_no_longer_has_resolves_to_nothing() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-vanished", NIGHTLY).await;
@@ -204,7 +204,7 @@ async fn run_on(lane: &CronLane, statement: &'static str, schedule: &Uuid7, word
 /// own writer cannot produce this state — every word it writes is one this
 /// build parses, which is exactly the property being relied on.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_row_carrying_a_word_this_build_cannot_read_fails_the_read() {
     let lane = CronLane::open().await;
     let readable = lane.create("decode-readable", NIGHTLY).await;

@@ -25,8 +25,8 @@ check_ref() {
 # a public endpoint needs its egress ranges allowlisted, and the credentials
 # above were how this script reached its management API to read them.
 #
-# Self-hosted Dragonfly has no public endpoint. It runs on one Fly machine
-# reached over 6PN, which is a private network with no ingress from anywhere
+# Self-hosted NATS has no public endpoint. Its Fly machines are reached
+# over 6PN, which is a private network with no ingress from anywhere
 # else, so there is no range to allowlist and no management API to ask. The
 # control is not weakened by removing it; it is answered by the deployment.
 check_env() {

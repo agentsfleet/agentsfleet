@@ -17,7 +17,7 @@ use crate::support::Fixtures;
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_holder_claims_its_held_fleet() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder, _other],
         fleet,
@@ -45,7 +45,7 @@ async fn test_holder_claims_its_held_fleet() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_other_runner_skips_held_fleet() {
-    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let fixtures = Fixtures::create_isolated().await;
     let Seeded {
         runners: [holder, other],
         fleet,
@@ -81,7 +81,7 @@ async fn test_other_runner_skips_held_fleet() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_lapsed_hold_is_claimable() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (expired, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let (silent, ..) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
@@ -125,7 +125,7 @@ async fn test_lapsed_hold_is_claimable() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_holder_polls_its_holds_first() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [holder],
         fleet,
@@ -155,7 +155,7 @@ async fn test_holder_polls_its_holds_first() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_drained_claim_keeps_held_hint() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder]) = seeded_parts::<1>(&fixtures).await;
     let leases = fixtures.leases();
     let until = fixtures.after(SANDBOX_HOLD_IDLE);
@@ -182,7 +182,7 @@ async fn test_drained_claim_keeps_held_hint() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_unheld_fleet_claims_as_before() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [first, second]) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
 

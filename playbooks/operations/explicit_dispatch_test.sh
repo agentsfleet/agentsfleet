@@ -72,11 +72,6 @@ run_case credential_rotation \
   '01_vault_sync.sh 02_service_health.sh' \
   01_vault_sync.sh 02_service_health.sh
 
-run_case dragonfly_teardown \
-  "$SCRIPT_DIR/teardown/dragonfly/00_gate.sh" \
-  '01_credential_check.sh 02_teardown.sh 03_verify.sh' \
-  01_credential_check.sh 02_teardown.sh 03_verify.sh
-
 run_case database_teardown \
   "$SCRIPT_DIR/teardown/database/00_gate.sh" \
   '01_credential_check.sh 02_teardown.sh 03_verify.sh' \

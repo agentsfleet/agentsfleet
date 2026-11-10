@@ -50,7 +50,7 @@ pub(crate) async fn seed_counters(lane: &Lane, fleet: &Uuid7, counters: FleetCou
 /// page reads the counters by key under `COALESCE`, where an inner join would
 /// drop the fleet from the wall the moment it was installed.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn a_fleet_with_no_counter_row_still_lists() {
     let lane = Lane::create().await;
     let ran = lane.fleet().await;
@@ -85,7 +85,7 @@ async fn a_fleet_with_no_counter_row_still_lists() {
 /// never run — and nothing for an identifier that names no fleet, so a client
 /// assigns every tile from the map and a stray id cannot invent a tile.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn the_wall_counters_answer_every_fleet_in_the_set() {
     let lane = Lane::create().await;
     let ran = lane.fleet().await;
@@ -149,7 +149,7 @@ async fn a_refused_counters_read_is_reported_as_the_datastores() {
 /// workspace holds answers no row, so a caller that hands over a stray id
 /// learns nothing about somebody else's spend.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn a_neighbours_fleet_is_not_answered_for() {
     let lane = Lane::create().await;
     let own = lane.fleet().await;

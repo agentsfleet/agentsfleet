@@ -5,10 +5,11 @@
 //!
 //! A worker that returns `Err` up its loop stops delivering. So a failure to
 //! POST, a bot token that is gone, an event row that vanished — none of them
-//! are errors: they are [`crate::Verdict`]s, which the worker acts on and then
-//! acknowledges the job. Only the things that make the LOOP unable to continue
-//! reach this type: the stream would not answer, the group could not be
-//! created, the dedicated connection would not open.
+//! are errors: they are [`crate::Verdict`]s, which the lane acts on by
+//! stamping, releasing or abandoning the obligation. Only what stops the
+//! worker from claiming or recording reaches this type: the host would not
+//! draw the entropy a claim token is minted from, the ledger's pool would not
+//! answer, or the ledger refused a claim, stamp, release or abandon.
 //!
 //! The two categories have different types, so a raise site cannot put a
 //! delivery failure where a loop failure goes.
@@ -30,22 +31,17 @@ af_core::error_shell!(
 /// What actually went wrong. Crate-visible so a raise site can name the variant.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
-    /// The queue would not answer, or the connection to it would not open.
-    ///
-    /// The only failure that stops the worker's loop rather than one job: a
-    /// stream that cannot be read has no next job to move on to.
-    #[error("the queue holding the outbound answers would not answer")]
-    Queue {
+    /// The host could not draw the entropy a claim token is minted from.
+    #[error("a claim token could not be drawn")]
+    Entropy {
         #[source]
-        source: afd_dragonfly::Error,
+        source: af_crypto::error::Error,
     },
 
     /// The obligation ledger's pool would not hand out a connection.
     ///
-    /// Distinct from [`Self::Queue`] because the two stores fail for different
-    /// reasons and an operator acts on them differently: a queue outage stops
-    /// the worker's loop, while a ledger that will not answer leaves the
-    /// delivery itself unaffected and only the RECORD of it unwritten.
+    /// The ledger is the queue, so an unanswered pool stops claims until it
+    /// answers again; nothing owed is lost meanwhile.
     #[error("the ledger holding the delivery obligations would not answer")]
     Ledger {
         #[source]
@@ -72,12 +68,18 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
 
 /// One sample of each kind a caller can match on, for a crate wrapping this
 /// error to render in its own suite.
-///
-/// The queue kind is left out: it wraps `afd_dragonfly`'s error, and a wrapper
-/// that needs a queue sample takes it from that crate's own builder.
 #[cfg(feature = "test-util")]
 #[must_use]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
+    let (entropy, control) = af_crypto::entropy::Entropy::new_mocked();
+    control.fail_next();
+    let refused_draw = entropy
+        .uuid_randomness()
+        .expect_err("a mocked source told to fail refuses the draw");
     vec![
         (
             "ledger",
@@ -87,6 +89,9 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             .into(),
         ),
         ("query", query("owe delivery")(sqlx::Error::RowNotFound)),
+        // Listed last: a wrapping crate that takes the first kind that is not
+        // an outage keeps reading the refused statement.
+        ("entropy", refused_draw.into()),
     ]
 }
 
@@ -105,8 +110,7 @@ impl Error {
         }
     }
 
-    /// Whether a store behind the ledger could not be reached: Postgres, or
-    /// the queue an obligation is announced on.
+    /// Whether the ledger could not be reached.
     ///
     /// The accessor `afd_admission` and its siblings carry, so a crate
     /// wrapping this error asks the question instead of comparing codes.
@@ -116,14 +120,13 @@ impl Error {
             // An unreachable store is the outage an operator retries against,
             // and a pool that will not hand out a connection is the same
             // outage. Anything either store ANSWERS is this daemon's own fault.
-            ErrorKind::Queue { source } => source.is_unavailable(),
             ErrorKind::Ledger { .. } => true,
-            ErrorKind::Query { .. } => false,
+            ErrorKind::Entropy { .. } | ErrorKind::Query { .. } => false,
         }
     }
 }
 
 af_core::error_lifts!(Error, ErrorKind:
-    afd_dragonfly::Error => Queue,
+    af_crypto::error::Error => Entropy,
     afd_db::Error => Ledger,
 );

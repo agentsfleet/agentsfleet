@@ -24,7 +24,7 @@ pub(super) struct Running {
 impl Running {
     /// A runtime lease on the lane's shared database.
     pub(super) async fn create() -> Self {
-        Self::issue_on(Fixtures::create_with_queue().await).await
+        Self::issue_on(Fixtures::create().await).await
     }
 
     /// The same, on a database of this test's own.
@@ -35,7 +35,7 @@ impl Running {
     /// A private database makes this test's draft the only candidate, and its
     /// platform defaults the only ones. `cleanup` drops it.
     pub(super) async fn create_isolated() -> Self {
-        Self::issue_on(Fixtures::create_isolated_with_queue().await).await
+        Self::issue_on(Fixtures::create_isolated().await).await
     }
 
     async fn issue_on(fixtures: Fixtures) -> Self {

@@ -17,7 +17,7 @@ use support::{Counts, Fixture, Held, Tail, healthy, host_locks, offer, text};
 type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_streamed_chat_reads_no_lease_target() -> Result<()> {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();
@@ -30,7 +30,7 @@ async fn a_streamed_chat_reads_no_lease_target() -> Result<()> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_grant_rechecks_the_host_inside_its_transaction() -> Result<()> {
     let mut supervisor = Supervisor::new();
     let fixture = Fixture::open(&mut supervisor).await;
@@ -223,7 +223,7 @@ async fn census(fixture: &Fixture) -> Result<(i64, i64)> {
 }
 
 async fn wake(fixture: &Fixture) -> Result<()> {
-    let bus = afd_bus::dragonfly::publisher(fixture.run.booted.queue.clone());
+    let bus = fixture.run.booted.bus.clone();
     bus.publish(&Subject::Wake(0), fixture.run.fleet.as_str())
         .await?;
     bus.shutdown().await?;

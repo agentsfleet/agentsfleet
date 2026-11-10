@@ -16,6 +16,7 @@ categories.workspace = true
 workspace = true
 
 [dependencies]
+# Best-effort notification transport.
 afd_bus.workspace = true
 # Identifiers, the instant a row is stamped with, and the registry codes.
 af_core = { workspace = true, features = ["sqlx"] }
@@ -30,8 +31,6 @@ af_fleet_runtime.workspace = true
 afd_fleet_lifecycle.workspace = true
 # The live lease status the steer's run facts read.
 afd_state.workspace = true
-# Best-effort notification transport.
-afd_dragonfly = { workspace = true, optional = true }
 # Admission outcome counters.
 af_observability.workspace = true
 # Event types accepted by producers.
@@ -55,20 +54,22 @@ tracing.workspace = true
 test-util = [
     "af_core/test-util",
     "af_crypto/test-util",
+    "afd_bus/test-util",
     "afd_db/test-util",
-    "afd_dragonfly/test-util",
 ]
 
 [dev-dependencies]
 # The `tracing` capture the failure-line suites read a `reason` back through.
 af_core = { workspace = true, features = ["test-util"] }
-# `net`, `io-util` and `sync` serve the fake queue `tests/receipt_faults.rs`
-# borrows from `afd_dragonfly`'s support tree.
-tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time", "net", "io-util", "sync"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# The in-process bus the receipt suites admit over and read wake rings back
+# from, and the unreachable one their failure arms use.
+afd_bus = { workspace = true, features = ["test-util"] }
+# The stalled broker `tests/receipts/queue.rs` implements the bus trait for.
+async-trait.workspace = true
 # The lane fixture: the shared test database and the identifier minting the
 # seeded rows are addressed by.
 afd_db = { workspace = true, features = ["test-util"] }
-afd_dragonfly = { workspace = true, features = ["test-util"] }
 af_crypto = { workspace = true, features = ["test-util"] }
 # The error surface reaches THROUGH the chain to the driver's own
 # `DatabaseError`, which is the only way to grade what the exhausted-disk

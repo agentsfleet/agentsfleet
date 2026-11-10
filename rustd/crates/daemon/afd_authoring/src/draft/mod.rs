@@ -30,7 +30,9 @@ pub struct Drafts {
     /// pool. They cache neither authorization nor a database ordering decision.
     pub(crate) senders: Cache<Uuid7, Arc<Mutex<()>>>,
     /// Moves a setup chat's money: the same biller fleet leases bill through
-    /// (billing §11), built once where the daemon is assembled.
+    /// (one billing lifecycle behind the `Biller` trait, per
+    /// `docs/architecture/billing_and_provider_keys.md`), built once where the
+    /// daemon is assembled.
     pub(crate) biller: Arc<dyn Biller>,
     pub(crate) authority: Option<afd_runner::capacity::authority::Authority>,
 }

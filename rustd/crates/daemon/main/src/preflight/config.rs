@@ -11,7 +11,6 @@ use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::Dashboard;
 use afd_cron::SigningKeys;
 use afd_db::PoolConfig;
-use afd_dragonfly::DragonflyConfig;
 use afd_identity::ProviderSecret;
 
 /// The identity provider a deployment has, when it has one.
@@ -39,7 +38,7 @@ pub struct IdentityConfig {
 #[derive(Debug)]
 pub struct BootConfig {
     pub(super) api_pool: PoolConfig,
-    pub(super) redis: DragonflyConfig,
+    pub(super) bus: afd_bus::nats::Config,
     pub(super) kek: Kek,
     pub(super) session_code_pepper: SecretBytes,
     pub(super) app_url: Dashboard,
@@ -131,10 +130,10 @@ impl BootConfig {
         &self.api_pool
     }
 
-    /// Settings for the API role's Dragonfly client.
+    /// Settings for the event bus: the NATS seeds and this deployment's namespace.
     #[must_use]
-    pub const fn redis(&self) -> &DragonflyConfig {
-        &self.redis
+    pub const fn bus(&self) -> &afd_bus::nats::Config {
+        &self.bus
     }
 
     /// How many concurrent event streams this instance carries.
@@ -169,8 +168,8 @@ impl BootConfig {
     ///
     /// Held as the raw configured BYTES rather than as a decoded key, and that
     /// is a wire-format fact rather than an oversight: the HMAC is keyed with
-    /// the sixty-four hexadecimal characters as text, and a Lua script compares
-    /// the stored and presented digests as strings. Decoding here would change
+    /// the sixty-four hexadecimal characters as text, and every digest stored in
+    /// `identity.device_sessions` was taken that way. Decoding here would change
     /// every digest and silently invalidate every pending session.
     #[must_use]
     pub const fn session_code_pepper(&self) -> &SecretBytes {

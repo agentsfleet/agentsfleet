@@ -15,13 +15,18 @@ categories.workspace = true
 workspace = true
 
 [features]
-test-util = ["afd_dragonfly/test-util"]
+# The detached and unreachable fixtures, the lane's live connection, and the
+# cut-able TCP relay (`tokio`'s `net` and `io-util`). The live suite reads the
+# gap counter back through `af_observability`'s capture.
+test-util = ["af_observability/test-util", "tokio/net", "tokio/io-util"]
 
 [dependencies]
 af_core.workspace = true
 af_observability.workspace = true
-afd_dragonfly.workspace = true
+af_validate.workspace = true
+async-nats.workspace = true
 async-trait.workspace = true
+bytes.workspace = true
 crc16.workspace = true
 futures-util.workspace = true
 garde.workspace = true
@@ -34,6 +39,14 @@ tracing.workspace = true
 
 [dev-dependencies]
 af_core = { workspace = true, features = ["test-util"] }
+# Reads agentsfleet_bus_gaps_total back in the live suite.
 af_observability = { workspace = true, features = ["test-util"] }
-afd_dragonfly = { workspace = true, features = ["test-util"] }
-redis.workspace = true
+# `test-util` pauses time for the publish-deadline tests in `wake_failure`.
+tokio = { workspace = true, features = ["net", "io-util", "test-util"] }
+
+# Reaches the lane's seeds, connection and relay through `test_util`, the one
+# place that holds them.
+[[test]]
+name = "nats_suite"
+path = "tests/nats_suite.rs"
+required-features = ["test-util"]

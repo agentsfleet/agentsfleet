@@ -13,7 +13,7 @@ use afd_fleet_lifecycle::FleetStatus;
 
 pub(super) async fn sibling(run: &Scenario, name: &str) -> (Uuid7, Uuid7) {
     let fleet = seed_sibling(run, name).await;
-    let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.queue.clone())
+    let admitted = Admissions::for_tests(run.booted.database.clone(), run.booted.bus.clone())
         .admit(Admission {
             producer: Producer::Steer,
             key: Key::Unrepeatable,

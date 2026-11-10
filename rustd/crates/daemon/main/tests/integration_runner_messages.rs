@@ -41,7 +41,7 @@ const DECLARING: &str = r#"{"name":"e2e-fleet","x-agentsfleet":{"triggers":[],"t
 /// Dimension 2.1. A line reaches the event's Slack thread while the run is
 /// still leased, under its own marker part.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_fleet_posts_a_message_mid_run() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
@@ -74,7 +74,7 @@ async fn test_fleet_posts_a_message_mid_run() {
 /// Dimension 2.3. Eight lines a run, then the cap; and a line over the byte
 /// bound is refused before anything is counted.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_caps_refuse() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
@@ -112,7 +112,7 @@ async fn test_message_caps_refuse() {
 /// Dimension 2.4. An event from no thread has nowhere to post, and the run
 /// keeps its budget.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_without_channel_refused() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
@@ -162,7 +162,7 @@ async fn test_message_without_channel_refused() {
 /// Dimension 2.5. A secret value the fleet declared is masked before the line
 /// leaves the daemon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_is_scrubbed() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, DECLARING).await;
@@ -189,7 +189,7 @@ async fn test_message_is_scrubbed() {
 /// A Slack that refuses the line: the call answers, `delivered` is false, and
 /// the run goes on.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_refused_by_slack_is_undelivered() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;
@@ -207,7 +207,7 @@ async fn test_message_refused_by_slack_is_undelivered() {
 /// at its own deadline, inside the runner's call timeout, rather than letting
 /// the runner give up first and read an unreachable daemon.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_message_to_a_stalled_slack_answers_at_the_deadline() {
     let mut supervisor = Supervisor::new();
     let speaking = Speaking::boot(&mut supervisor, crate::e2e_seed::FLEET_CONFIG_JSON).await;

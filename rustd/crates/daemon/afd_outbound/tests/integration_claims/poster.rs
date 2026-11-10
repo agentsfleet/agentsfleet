@@ -1,0 +1,141 @@
+//! A poster that records what it was handed, per lane, and how many it held.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
+
+use af_core::id::Uuid7;
+use afd_outbound::{Deliver, Outgoing, Verdict};
+use tokio_util::sync::CancellationToken;
+
+#[derive(Debug, Default)]
+struct Log {
+    attempted: Vec<Uuid7>,
+    delivered: HashMap<Uuid7, Vec<Uuid7>>,
+    in_flight: HashMap<Uuid7, usize>,
+    most: HashMap<Uuid7, usize>,
+}
+
+/// Long enough that two workers would overlap on one lane if the claim let
+/// them.
+const OVERLAP: Duration = Duration::from_millis(5);
+
+/// Records every attempt; refuses one event retryably, and one for good, if
+/// told to.
+#[derive(Debug, Clone)]
+pub(crate) struct Recorder {
+    log: Arc<Mutex<Log>>,
+    failing: Option<Uuid7>,
+    refusing: Option<Uuid7>,
+    slow: Duration,
+    /// Held shut until cancelled: every attempt waits on it before answering.
+    gate: Option<CancellationToken>,
+}
+
+impl Default for Recorder {
+    fn default() -> Self {
+        Self {
+            log: Arc::default(),
+            failing: None,
+            refusing: None,
+            slow: OVERLAP,
+            gate: None,
+        }
+    }
+}
+
+impl Recorder {
+    pub(crate) fn failing(event: Uuid7) -> Self {
+        Self {
+            failing: Some(event),
+            ..Self::default()
+        }
+    }
+
+    pub(crate) fn refusing(event: Uuid7) -> Self {
+        Self {
+            refusing: Some(event),
+            ..Self::default()
+        }
+    }
+
+    /// Every attempt takes `slow` before it answers.
+    pub(crate) const fn with_slow(mut self, slow: Duration) -> Self {
+        self.slow = slow;
+        self
+    }
+
+    /// Every attempt waits until `gate` is cancelled before it answers.
+    pub(crate) fn with_gate(mut self, gate: CancellationToken) -> Self {
+        self.gate = Some(gate);
+        self
+    }
+
+    /// How many attempts `event` has started.
+    pub(crate) fn attempts_of(&self, event: &Uuid7) -> usize {
+        self.log()
+            .attempted
+            .iter()
+            .filter(|tried| *tried == event)
+            .count()
+    }
+
+    fn log(&self) -> std::sync::MutexGuard<'_, Log> {
+        self.log.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    pub(crate) fn delivered_to(&self, workspace: &Uuid7) -> Vec<Uuid7> {
+        self.log()
+            .delivered
+            .get(workspace)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn most_in_flight(&self, workspace: &Uuid7) -> usize {
+        self.log().most.get(workspace).copied().unwrap_or_default()
+    }
+
+    pub(crate) fn attempted(&self) -> Vec<Uuid7> {
+        self.log().attempted.clone()
+    }
+}
+
+/// Records an attempt starting, and the most this lane has held at once.
+fn started(log: &Mutex<Log>, workspace: &Uuid7, event: &Uuid7) {
+    let mut log = log.lock().unwrap_or_else(PoisonError::into_inner);
+    log.attempted.push(event.clone());
+    let held = log.in_flight.entry(workspace.clone()).or_default();
+    *held += 1;
+    let now = *held;
+    let most = log.most.entry(workspace.clone()).or_default();
+    *most = (*most).max(now);
+}
+
+impl Deliver for Recorder {
+    fn deliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
+        let (workspace, event) = (job.workspace_id.clone(), job.event_id.clone());
+        let failing = self.failing.as_ref() == Some(&event);
+        let refusing = self.refusing.as_ref() == Some(&event);
+        let (log, slow, gate) = (Arc::clone(&self.log), self.slow, self.gate.clone());
+        async move {
+            started(&log, &workspace, &event);
+            if let Some(gate) = gate {
+                gate.cancelled().await;
+            }
+            tokio::time::sleep(slow).await;
+            let mut log = log.lock().unwrap_or_else(PoisonError::into_inner);
+            if let Some(held) = log.in_flight.get_mut(&workspace) {
+                *held -= 1;
+            }
+            if failing {
+                return Verdict::Retryable;
+            }
+            if refusing {
+                return Verdict::Permanent;
+            }
+            log.delivered.entry(workspace).or_default().push(event);
+            Verdict::Delivered
+        }
+    }
+}

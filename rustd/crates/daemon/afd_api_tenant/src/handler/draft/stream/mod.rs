@@ -48,8 +48,8 @@ pub(crate) async fn open<D: Services>(
         af_observability::producers::http::stream_shed();
         Refusal::at_stream_ceiling(live.carrying(), live.capacity())
     })?;
-    let subscription = live
-        .subscribe(&afd_bus::Subject::DraftEvents(draft.clone()))
+    let link = live
+        .link(afd_bus::Subject::DraftEvents(draft.clone()))
         .await;
     let stream = body::frames(
         services.authoring().clone(),
@@ -57,8 +57,7 @@ pub(crate) async fn open<D: Services>(
         person.subject().to_owned(),
         draft,
         view.generation,
-        slot,
-        subscription,
+        body::Feed { slot, link },
     );
     Ok(Sse::new(stream).into_response())
 }

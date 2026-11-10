@@ -24,7 +24,7 @@ impl Precondition for NotHeld {
 // fails_when=failure is omitted, replay adds history or recovery retains last_error;
 // seam=native store confirms supplied upstream facts; no_claim=vendor transport.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn failed_schedule_sync_history_recovers_without_duplicate_success() {
     let lane = CronLane::open().await;
     let token = CronLane::token();
@@ -76,7 +76,7 @@ async fn failed_schedule_sync_history_recovers_without_duplicate_success() {
 // fails_when=receipt creation runs independently of the fenced mutation;
 // seam=stored expiry denotes an abandoned holder; no_claim=wall-clock waiting.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn superseded_schedule_sync_emits_no_successful_activity() {
     let lane = CronLane::open().await;
     let old = CronLane::token();
@@ -128,7 +128,7 @@ async fn superseded_schedule_sync_emits_no_successful_activity() {
 // fails_when=receipt insertion precedes the proven owner/guard;
 // seam=fixed native Precondition verdict; no_claim=the runner's actual lease guard.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn refused_schedule_changes_leave_history_and_state_unchanged() {
     let lane = CronLane::open().await;
     let foreign = CronLane::open().await;
@@ -180,7 +180,7 @@ async fn refused_schedule_changes_leave_history_and_state_unchanged() {
 // fails_when=confirmation writes survive parent deletion or reach another owner;
 // seam=real parent deletion cascades through the stored schema; no_claim=upstream removal.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn deleted_schedule_owners_ignore_late_results_without_touching_live_history() {
     let removed = CronLane::open().await;
     let live = CronLane::open().await;

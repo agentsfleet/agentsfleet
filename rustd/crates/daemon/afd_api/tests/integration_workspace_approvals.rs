@@ -1,4 +1,4 @@
-//! Approval inbox and decision HTTP lifecycle over live Postgres and Dragonfly.
+//! Approval inbox and decision HTTP lifecycle over live Postgres and the lane's NATS.
 #![cfg(feature = "test-util")]
 
 use crate::harness;
@@ -24,18 +24,17 @@ pub(crate) const LISTING_SUBJECT: &str = "user_live_approval_listing";
 const UNKNOWN_SUBJECT: &str = "user_live_approval_unknown";
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn approval_inbox_reads_and_resolves_a_live_gate() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
         SUBJECT,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), queue)
+    .with_approval_queue(fixture.database.clone(), harness::bus().await)
     .router();
     let collection = format!("/v1/workspaces/{}/approvals", fixture.workspace.as_str());
     let item = format!("{collection}/{}", fixture.gate);
@@ -56,18 +55,17 @@ async fn approval_inbox_reads_and_resolves_a_live_gate() {
 /// own 404, and revoking a grant under an unknown fleet is the fleet's, so a
 /// caller learns which half of the path named nothing.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unknown_gate_and_an_unknown_fleet_are_each_absent() {
     let fixture = Fixture::create_as(UNKNOWN_SUBJECT).await;
     fixture.seed().await;
-    let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
         UNKNOWN_SUBJECT,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), queue)
+    .with_approval_queue(fixture.database.clone(), harness::bus().await)
     .router();
     let workspace = fixture.workspace.as_str();
     let nowhere = afd_db::test_util::mint_id();
@@ -120,19 +118,18 @@ const VANISH_SUBJECT: &str = "user_live_approval_vanish";
 /// under that action. The wait polls `pg_stat_activity`, a catalog view no
 /// test alters, never the gate table.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 #[expect(clippy::expect_used, reason = "a test asserts by panicking")]
 async fn a_gate_that_vanishes_mid_decision_is_absent() {
     let fixture = Fixture::create_as(VANISH_SUBJECT).await;
     fixture.seed().await;
-    let queue = harness::connect_redis().await;
     let router = Fleet::live(
         fixture.database.clone(),
         VANISH_SUBJECT,
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .with_owned_workspace(fixture.workspace.clone())
-    .with_approval_queue(fixture.database.clone(), queue)
+    .with_approval_queue(fixture.database.clone(), harness::bus().await)
     .router();
 
     let mut editor = fixture

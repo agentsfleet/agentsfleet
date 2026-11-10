@@ -17,7 +17,7 @@ const REMEMBERED: &str = "SELECT content FROM memory.entries WHERE fleet_id = $1
 
 /// GitHub-only evidence reaches the model and memory through native guarded reads.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_responder_reads_exact_ci_evidence() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, "ci-responder", &[], None).await;
@@ -126,7 +126,7 @@ fn assert_returned_sources(results: &[String]) {
 
 /// A failed required log read stops before source, memory or repository writes.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_responder_stops_on_required_source_gap() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, "ci-responder", &[], None).await;
@@ -161,7 +161,7 @@ async fn test_responder_stops_on_required_source_gap() {
 
 /// The runner reports a known empty trace when the scripted model uses no tool.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_completed_definition_turn_reports_known_zero_tool_calls() {
     let mut supervisor = Supervisor::new();
     let run = install_definition(&mut supervisor, "github-log-reader", &[], None).await;

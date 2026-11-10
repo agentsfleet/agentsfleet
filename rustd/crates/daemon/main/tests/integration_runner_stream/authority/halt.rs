@@ -9,7 +9,7 @@ use af_core::error_code::RUN_ADMIN_STATE_BLOCKED;
 // why_new=raw native readers do not execute runner halt policy;
 // seam=real runner downlink and authenticated operator HTTP over two daemons.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_operator_revocation_halts_the_production_native_downlink() -> TestResult {
     let fixture = Fixture::start().await?;
     let mut runner = production_runner(&fixture).await?;

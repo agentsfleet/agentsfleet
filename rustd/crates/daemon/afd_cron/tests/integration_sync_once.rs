@@ -86,7 +86,7 @@ async fn settle(lane: &CronLane, created: &Schedule, claim: &Uuid7, registered: 
 /// The fire instant is counted from the row's own `created_at`: after it, and
 /// on the minute the expression names.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_once_fire_at_follows_the_rows_own_stamp() {
     let lane = CronLane::open().await;
     let created = one_off(&lane, &CronLane::token()).await;
@@ -108,7 +108,7 @@ async fn a_once_fire_at_follows_the_rows_own_stamp() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn a_one_off_synced_after_its_moment_is_retired() {
     let Some((url, token)) = live() else {
         return;
@@ -137,7 +137,7 @@ async fn a_one_off_synced_after_its_moment_is_retired() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn a_one_off_synced_before_its_moment_is_registered() {
     let Some((url, token)) = live() else {
         return;
@@ -160,7 +160,7 @@ async fn a_one_off_synced_before_its_moment_is_registered() {
 /// Greptile on #731: a one-off `QStash` already holds keeps its row past its
 /// moment, so a delayed callback still finds it.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn a_registered_one_off_synced_after_its_moment_is_kept() {
     let Some((url, token)) = live() else {
         return;
@@ -196,7 +196,7 @@ async fn a_registered_one_off_synced_after_its_moment_is_kept() {
 /// An edit that moves a one-off sets it for the new moment, counted from the
 /// edit's own stamp.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_one_off_moved_by_an_edit_is_set_for_its_new_moment() {
     let lane = CronLane::open().await;
     let claim = CronLane::token();
@@ -228,7 +228,7 @@ async fn a_one_off_moved_by_an_edit_is_set_for_its_new_moment() {
 /// Greptile on #731: a one-off paused before its moment and resumed after it
 /// is retired. The pause removed it upstream, so nothing holds its run.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres and the compose qstash service"]
+#[ignore = "needs the lane's Postgres, NATS and the compose qstash service"]
 async fn a_one_off_resumed_after_its_moment_is_retired() {
     let Some((url, token)) = live() else {
         return;

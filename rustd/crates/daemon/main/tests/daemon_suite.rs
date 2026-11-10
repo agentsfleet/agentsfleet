@@ -159,6 +159,8 @@ mod serve;
 mod shutdown_drain;
 #[path = "supervisor.rs"]
 mod supervisor;
+#[path = "tls_posture.rs"]
+mod tls_posture;
 
 #[path = "integration_grant_denial.rs"]
 mod integration_grant_denial;

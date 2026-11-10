@@ -20,7 +20,7 @@ const NIGHTLY: &str = "0 3 * * *";
 const NEXT_NIGHT: Timestamp = Timestamp::constant(1_760_065_200, 0);
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_schedule_names_a_next_run_only_once_it_is_registered() {
     let lane = CronLane::open().await;
 

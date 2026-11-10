@@ -8,7 +8,6 @@ use af_crypto::aad::Aad;
 use af_crypto::envelope::Sealer;
 use af_crypto::secret::Kek;
 use afd_db::test_util::{DefaultSeed, PlatformDefault, mint_id};
-use afd_gate::gate::GateRef;
 
 use super::{
     CONTEXT_CAP_TOKENS, GATE_WINDOW, KIND_EVENT, KIND_REPOSITORY_WRITE, PROVIDER_KEY_BODY,
@@ -152,13 +151,9 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &Uuid
 
 /// Raises one gate over `ready`'s event, answered as `status` names.
 ///
-/// Two writes, because the gate is two things. The DECISION is a
-/// `fleet.approval_gates` row keyed by `action_id`; the REFERENCE that
-/// points a poll at it is a Dragonfly key, and `Gates::check` reads the
-/// reference first, then recovers it from the durable row on a cache miss.
-///
-/// The reference is written through `Gates::record`, the production writer,
-/// rather than by forging the key by hand.
+/// One write: the gate is a `fleet.approval_gates` row keyed by `action_id`,
+/// and the row is also the reference a poll follows: `Gates::recorded` finds
+/// the gate by its event.
 ///
 /// The gate expires one [`GATE_WINDOW`] after the database's `now()`.
 pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) -> Uuid7 {
@@ -190,25 +185,14 @@ pub(super) async fn seed_gate(fixtures: &Fixtures, ready: &Ready, status: &str) 
     .execute(&mut *connection)
     .await
     .expect("the gate row must insert");
-
-    fixtures
-        .gates()
-        .record(
-            &ready.fleet,
-            ready.event_id.as_str(),
-            &GateRef::new(action_id.clone()),
-            GATE_WINDOW,
-        )
-        .await
-        .expect("the gate reference must be recorded");
     action_id
 }
 
 /// Raises one APPROVED `repository_write` gate over `ready`'s event.
 ///
 /// A different table read from [`seed_gate`]'s, despite the shared row: that
-/// one is answered through `Gates::check`, which reads a Dragonfly reference
-/// first and falls back to the durable event association. This one is also
+/// one is answered through `Gates::check`, which finds the gate by its event
+/// association. This one is also
 /// read by `approved_write_gate` in SQL off `fleet.approval_gates`; its approval
 /// allows the event to proceed when the reference is absent.
 ///

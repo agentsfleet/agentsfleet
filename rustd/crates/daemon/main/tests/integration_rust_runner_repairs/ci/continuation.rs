@@ -16,7 +16,7 @@ use hyper::Method;
 use serde_json::{Value, json};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_correct_failed_validation_in_the_same_draft() {
     for (acknowledgement, readback) in [
         (Acknowledgement::Delivered, Readback::Exact),

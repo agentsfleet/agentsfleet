@@ -49,7 +49,7 @@ pub struct Readiness {
     pub ready: bool,
     /// Whether the database answered.
     pub database: bool,
-    /// Whether the event queue answered.
+    /// Whether the event bus answered; reported only, never gating `ready`.
     pub queue: bool,
 }
 

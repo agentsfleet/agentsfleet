@@ -42,7 +42,7 @@ async fn a_failed_park_release_rolls_back_the_stamp_and_retries_after_approval()
 }
 
 async fn assert_failed_park_recovers(injection: &'static str) {
-    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let fixtures = Fixtures::create_isolated().await;
     let seeded = ready(&fixtures).await;
     set_config(&fixtures, &seeded.fleet, BUDGETED_CONFIG).await;
     let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
@@ -106,10 +106,10 @@ async fn admission_state(fixtures: &Fixtures, event: &Uuid7) -> (bool, bool, Opt
 async fn approve(fixtures: &Fixtures, seeded: &Ready, action: &Uuid7) {
     let resolved = Inbox::new(
         fixtures.database.clone(),
-        afd_bus::dragonfly::publisher(fixtures.queue().clone()),
+        fixtures.bus().clone(),
         Admissions::new(
             fixtures.database.clone(),
-            afd_bus::dragonfly::publisher(fixtures.queue().clone()),
+            fixtures.bus().clone(),
             Entropy::new(),
         ),
     )

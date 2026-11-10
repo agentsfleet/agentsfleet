@@ -23,7 +23,7 @@ const READ_MODELS: &str = include_str!("fixtures/read_models.sql");
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn concurrent_seeds_preserve_two_models_and_their_prices() {
-    let fixtures = Fixtures::create_isolated_with_queue().await;
+    let fixtures = Fixtures::create_isolated().await;
     let outcome = AssertUnwindSafe(tokio::time::timeout(
         Duration::from_secs(30),
         seed_and_read(&fixtures),

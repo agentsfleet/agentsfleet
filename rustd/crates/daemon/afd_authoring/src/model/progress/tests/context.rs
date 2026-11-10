@@ -14,10 +14,6 @@ use af_wire::{
     context::ContextState,
 };
 use afd_db::{config::DbRole, test_util::TestDatabase};
-use afd_dragonfly::{
-    Dragonfly,
-    config::{DragonflyConfig, DragonflyRole},
-};
 use std::{sync::Arc, time::Duration};
 
 #[tokio::test]
@@ -64,12 +60,7 @@ async fn setup() -> (afd_db::Db, Drafts, afd_bus::Handle) {
             pool.clone(),
         )),
     );
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        "redis://127.0.0.1:1".into(),
-    ))
-    .expect("lazy queue handle");
-    (pool, drafts, afd_bus::dragonfly::publisher(queue))
+    (pool, drafts, afd_bus::test_util::unreachable())
 }
 
 fn assert_deadline(capture: &Capture, id: &af_core::id::Uuid7) {

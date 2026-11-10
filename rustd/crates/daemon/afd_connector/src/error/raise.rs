@@ -13,7 +13,6 @@ use super::{Error, ErrorKind};
 // [`query`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
-    afd_dragonfly::Error => Queue,
     afd_vault::Error => Vault,
     af_crypto::error::Error => Entropy,
     af_core::error::Error => IdentifierShape,
@@ -87,13 +86,6 @@ pub(crate) fn installation_held_elsewhere() -> Error {
 )]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
-    // Both queue samples are chosen BY LABEL rather than by position. `.next()`
-    // silently depended on the order `afd_dragonfly` happens to list its kinds in,
-    // and that order put a configuration error first — so the sample set held
-    // no queue that is GONE, and the arm answering the outage code for one was
-    // unreachable from this builder while looking covered by "queue".
-    let queue = dragonfly_sample("command");
-    let queue_gone = dragonfly_sample("unreachable");
     let vault = afd_vault::SecretName::parse("").expect_err("an empty vault name is refused");
     let entropy =
         af_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused");
@@ -127,8 +119,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
             }
             .into(),
         ),
-        ("queue", ErrorKind::Queue { source: queue }.into()),
-        ("queue gone", ErrorKind::Queue { source: queue_gone }.into()),
         ("entropy", ErrorKind::Entropy { source: entropy }.into()),
         (
             "identifier shape",
@@ -154,22 +144,4 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         ),
         ("installation held elsewhere", installation_held_elsewhere()),
     ]
-}
-
-/// One `afd_dragonfly` sample, by the label that crate gives it.
-///
-/// By label because the two this builder needs sit on opposite sides of
-/// `is_unavailable`, and picking either by index makes this sample set depend
-/// on the order a different crate lists its kinds in.
-#[cfg(feature = "test-util")]
-#[expect(
-    clippy::expect_used,
-    reason = "a sample builder whose own preconditions fail should stop the suite"
-)]
-fn dragonfly_sample(label: &str) -> afd_dragonfly::Error {
-    afd_dragonfly::error::one_of_each_kind()
-        .into_iter()
-        .find(|(named, _)| *named == label)
-        .map(|(_, error)| error)
-        .expect("afd_dragonfly declares this kind")
 }

@@ -34,7 +34,7 @@ async fn stored(held: &Leased) -> Value {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn checkpoint_retry_is_idempotent_and_superseded_assignment_cannot_read_or_replace_notes() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -87,7 +87,7 @@ async fn checkpoint_retry_is_idempotent_and_superseded_assignment_cannot_read_or
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn one_of_one_hundred_conflicting_checkpoint_writers_publishes_exactly_one_generation() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
@@ -132,7 +132,7 @@ async fn one_of_one_hundred_conflicting_checkpoint_writers_publishes_exactly_one
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_private_notes() {
     use af_context::repository::{Repository, Scope};
     use af_crypto::entropy::Entropy;
@@ -142,8 +142,7 @@ async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_priv
     let held = Leased::boot(&mut supervisor, &qstash).await;
     let leases = afd_fleet::lease::Leases::new(
         held.run.booted.database.clone(),
-        held.run.booted.queue.clone(),
-        afd_bus::dragonfly::publisher(held.run.booted.queue.clone()),
+        held.run.booted.bus.clone(),
         Entropy::new(),
     );
     let lease = held.lease_id.clone();

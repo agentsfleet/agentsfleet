@@ -22,7 +22,7 @@ struct Selected {
 
 impl Selected {
     async fn create() -> TestResult<Self> {
-        let fixtures = Fixtures::create_with_queue().await;
+        let fixtures = Fixtures::create().await;
         let Seeded {
             runners: [runner],
             fleet,

@@ -1,51 +1,38 @@
 //! Delivering a fleet's answer back to the connector the question came from.
 //!
 //! ```text
-//!   report path ──► OutboundQueue::enqueue     provider as opaque text
-//!                        │
-//!                        ▼   connector:outbound  (durable, consumer-grouped)
-//!                   Worker::run
-//!                        │  read_pending  ── anything a previous process was
-//!                        │                   handed and never acknowledged
-//!                        │  read_blocking ── parked on the stream, raced
-//!                        │                   against the supervisor's token
+//!   report path ──► obligation::owe (inside the report's transaction)
+//!                        │  then a lossy af.outbound.wake ping
+//!                        ▼
+//!                   Worker::run ── claims lane heads from fleet.obligations
+//!                        │         on the ping, or every CLAIM_PASS
 //!                        ▼
 //!                   dispatch by provider ──► the poster ──► the vendor
 //!                        │
 //!                        ▼
-//!                   ack, exactly once
+//!                   stamp, release or abandon, matching the holder's token
 //! ```
 //!
 //! # Invariant 9 lives at this crate's boundary
 //!
-//! `afd_dragonfly::outbound` carries `provider` as a string and knows nothing about
-//! what one is, so the report path enqueues an answer without a connector
-//! anywhere in its graph. THIS crate is the only one that turns that string
-//! into a [`afd_connector::Provider`] and picks a poster for it. Adding a
-//! connector is therefore one arm in [`dispatch`] plus a sibling poster — never
-//! a change to the path that produced the answer.
+//! The ledger carries `provider` as a string, so the report path owes an
+//! answer without a connector anywhere in its graph. THIS crate is the only
+//! one that turns that string into a [`afd_connector::Provider`] and picks a
+//! poster for it. Adding a connector is therefore one arm in [`dispatch`] plus
+//! a sibling poster — never a change to the path that produced the answer.
 //!
-//! # How the worker waits, and how it backs off
+//! # The backoff is jittered
 //!
-//! **The read parks instead of polling.** A pooled connection borrowed per
-//! command cannot be parked on a stream, so the worker owns an
-//! [`afd_dragonfly::Dedicated`] connection and `XREADGROUP … BLOCK` holds until
-//! an entry lands. An answer is delivered the instant it is queued, and an idle
-//! deployment issues one command per block interval rather than a poll loop's
-//! several a second forever.
+//! A flat `200ms << attempt` would have every worker that saw the same vendor
+//! outage retry in the same millisecond. [`retry`] uses `backon`'s jittered
+//! schedule instead.
 //!
-//! **The backoff is jittered.** A flat `200ms << attempt` would have every
-//! worker that saw the same vendor outage retry in the same millisecond, and
-//! the recovering vendor would be hit by the whole fleet at once. [`retry`]
-//! uses `backon`'s jittered schedule instead, and Dimension 5.1 grades it.
+//! # Delivery is serial per lane, and that is a requirement
 //!
-//! # Delivery is serial, and that is a requirement
-//!
-//! One job at a time, start to finish. Two answers into one Slack thread must
-//! arrive in the order the fleet produced them, and nothing downstream
-//! reorders them back. The throughput ceiling that buys is real and is the
-//! right trade: answers arrive at model-run cadence, and a second worker would
-//! be a second consumer name, not more parallelism within one.
+//! Two answers into one Slack thread must arrive in the order the fleet
+//! produced them. The claim hands out at most one row per (provider,
+//! workspace) lane at a time, across every replica, so no second replica can
+//! overtake the first inside one thread.
 
 // A dependency listed but unused is a supply-chain and compile-time cost with
 // no offsetting benefit. Gated on `not(test)` because the test build links
@@ -59,14 +46,23 @@ pub mod interim;
 pub mod lanes;
 pub mod obligation;
 pub mod poster;
-pub mod producer;
 pub mod retry;
 pub mod slack;
 pub mod worker;
 
 pub use self::error::{Error, Result};
+
+/// Statements a suite reads plans of, bound rather than re-exported (RS-TESTCONST).
+#[cfg(feature = "test-util")]
+pub mod test_util {
+    /// The lane locks a claim takes first, for their query-plan test.
+    pub const LOCK_LANES: &str = crate::obligation::sql::LOCK_LANES;
+    /// The lane-head claim, for its query-plan test.
+    pub const CLAIM_HEADS: &str = crate::obligation::sql::CLAIM_HEADS;
+}
 pub use self::interim::{Interim, Interjector};
 pub use self::lanes::{Destination, IN_FLIGHT_DELIVERIES, LANE_DEPTH, Lanes};
+pub use self::obligation::{Claimed, Outgoing};
 pub use self::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry, dispatch};
 pub use self::slack::SlackPoster;
-pub use self::worker::{LONGEST_PARK, Worker};
+pub use self::worker::Worker;

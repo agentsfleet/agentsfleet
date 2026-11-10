@@ -47,7 +47,7 @@ const A_MOMENT: Duration = Duration::from_secs(1);
 /// be turned off — an inbox wanting every state had to ask once per state, and
 /// the dashboard did exactly that.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_absent_status_reads_every_state_and_a_named_one_narrows() {
     let lane = Lane::isolated().await;
     let answered = lane.seed_gate(Window::Open).await;
@@ -117,7 +117,7 @@ async fn an_absent_status_reads_every_state_and_a_named_one_narrows() {
 /// make page one the most ANCIENT gates in the workspace — settled rows, with
 /// today's queue off the page entirely.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_page_reads_newest_first() {
     let lane = Lane::isolated().await;
     // Seeded oldest-first, so a page that merely echoed insertion order would
@@ -153,7 +153,7 @@ async fn the_page_reads_newest_first() {
 /// change; a page walked with the wrong form either faults or skips, and both
 /// show up here as a row count that is not the number seeded.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_cursor_walks_every_gate_raised_in_one_millisecond() {
     const SIBLINGS: usize = 5;
     /// Small enough that the walk takes several pages over `SIBLINGS` rows.

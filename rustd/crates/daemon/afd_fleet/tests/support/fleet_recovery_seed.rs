@@ -27,7 +27,7 @@ pub(crate) const fn admission<'a>(
 
 /// The ledger over this fixture's datastores.
 pub(crate) fn ledger(fixtures: &Fixtures) -> Admissions {
-    Admissions::for_tests(fixtures.database.clone(), fixtures.queue().clone())
+    Admissions::for_tests(fixtures.database.clone(), fixtures.bus().clone())
 }
 
 /// A repeated producer key scoped to this fixture's fleet.

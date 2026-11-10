@@ -50,7 +50,7 @@ gh run watch "$run_id" --repo agentsfleet/agentsfleet --exit-status
 |---|---|
 | `check-credentials` | Development deployment inputs exist |
 | `build / promote` | The `test.yml` candidate for this tree verified; toolbox scanned and signed; image published |
-| `fly / deploy-fly` | OTLP collector, Dragonfly cluster and API deployed |
+| `fly / deploy-fly` | OTLP collector, NATS cluster and API deployed |
 | `metal / deploy-metal` | Runner deployed and passed its host gate; runs only when `DEV_RUNNER_READY == 'true'` |
 | `dashboard / dashboard` | Candidate command-line and dashboard builds made; prebuilt dashboard deployed; acceptance needs it |
 | `verify / verify` | Tunnel running; public `/healthz` and `/readyz` pass |

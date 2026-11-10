@@ -1,12 +1,12 @@
-//! What the gate pass says when neither datastore answers.
+//! What the gate pass says when neither Postgres nor the bus answers.
 //!
-//! No datastore, deliberately: the pool points at a reserved port and the queue
-//! at a loopback port nobody listens on, so every read and write fails at the
-//! socket. One kill-rule check walks three failure arms in order — the lookup
-//! that could not be read, the anomaly counter that could not be read, and the
-//! pause that could not be written — and each says why in a `reason` an
-//! operator can read without the registry code, which the line's own fields
-//! already carry, or a captured backtrace.
+//! No datastore, deliberately: the pool points at a reserved port and the bus
+//! refuses every publish and subscribe as a disconnected broker does, so every
+//! read and write fails. One kill-rule check walks two failure arms in order — the lookup
+//! that could not be read and the pause that could not be written — and each
+//! says why in a `reason` an operator can read without the registry code, which
+//! the line's own fields already carry, or a captured backtrace. The anomaly
+//! brake counts in memory and cannot fail to answer.
 #![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
@@ -20,14 +20,9 @@ use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_gate::gate::{Check, Claim, Gates, Park, Parked, Stated, Trigger, Verdict, Waiting};
 
 use self::fixture::config_gates;
-
-/// A queue address nothing listens on.
-const NOWHERE: &str = "redis://127.0.0.1:1";
 
 /// A rule that stops the fleet on every chat, and a threshold to count it
 /// against, so one check reaches the counter and then the pause.
@@ -42,23 +37,14 @@ const FLEET: &str = "0190aaaa-bbbb-7ccc-8ddd-eeeeeeeeeee1";
 /// The lookup that could not tell whether the event already holds a gate.
 const EVENT_LOOKUP_UNREADABLE: &str = "gate_ref_lookup_failed";
 
-/// The anomaly counter that could not be read.
-const EVENT_COUNTER_UNAVAILABLE: &str = "gate_anomaly_counter_unavailable";
-
 /// The pause that could not be written.
 const EVENT_PAUSE_FAILED: &str = "gate_pause_failed";
 
-/// Gates over a pool and a queue that both refuse.
+/// Gates over a pool and a bus that both refuse.
 fn unreachable_gates() -> Gates {
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail");
     Gates::new(
         afd_db::test_util::unreachable_db(),
-        (queue).clone(),
-        afd_bus::dragonfly::publisher(queue),
+        afd_bus::test_util::unreachable(),
         Entropy::new(),
     )
 }
@@ -106,7 +92,6 @@ async fn every_failed_gate_read_and_write_reason_carries_no_code_prefix() {
         "a failed pause does not change what the gate decided"
     );
     told_reason(&capture, EVENT_LOOKUP_UNREADABLE);
-    told_reason(&capture, EVENT_COUNTER_UNAVAILABLE);
     told_reason(&capture, EVENT_PAUSE_FAILED);
 }
 

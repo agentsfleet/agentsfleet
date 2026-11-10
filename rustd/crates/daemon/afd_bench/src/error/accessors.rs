@@ -17,9 +17,7 @@ impl Error {
             ErrorKind::FixtureUnseedable { .. } | ErrorKind::FixtureRefused { .. } => {
                 error_code::INTERNAL_DB_QUERY
             }
-            ErrorKind::QueueUnavailable { .. } | ErrorKind::BusUnavailable { .. } => {
-                error_code::STARTUP_DRAGONFLY_CONNECT
-            }
+            ErrorKind::BusUnavailable { .. } => error_code::STARTUP_BUS_CONNECT,
             _ if self.is_pre_flight() => error_code::STARTUP_ENV_CHECK,
             ErrorKind::StreamFaulted { .. }
             | ErrorKind::WakeClosed { .. }
@@ -32,6 +30,7 @@ impl Error {
             | ErrorKind::AcknowledgementMissing { .. }
             | ErrorKind::SteerPathFaulted { .. }
             | ErrorKind::LeasePathFaulted { .. }
+            | ErrorKind::OutboundPathFaulted { .. }
             | ErrorKind::LedgerUnreadable { .. }
             | ErrorKind::CounterUnreadable { .. }
             | ErrorKind::VariableUnreadable { .. }
