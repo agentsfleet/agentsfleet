@@ -1,6 +1,5 @@
-import { ActivityIcon, BookOpenIcon, CpuIcon, CircleCheckIcon, ChartNoAxesCombinedIcon, KeyRoundIcon, LockKeyholeIcon, LibraryBigIcon, PlugIcon, ServerIcon, UsersIcon, UserRoundIcon } from "lucide-react";
-import { SCOPE } from "@/lib/auth/scopes";
-import type { NavEntry, PlatformNavEntry } from "./sidebar-navigation-data";
+import { ActivityIcon, BookOpenIcon, CpuIcon, CircleCheckIcon, ChartNoAxesCombinedIcon, KeyRoundIcon, LockKeyholeIcon, LibraryBigIcon, PlugIcon, UsersIcon, UserRoundIcon } from "lucide-react";
+import type { NavEntry } from "./sidebar-navigation-data";
 
 export const WORKSPACE_NAV: NavEntry[] = [
   { label: "Activity", path: "events", icon: ActivityIcon, workspaceScoped: true },
@@ -9,11 +8,6 @@ export const WORKSPACE_NAV: NavEntry[] = [
   { label: "Fleet library", path: "library", icon: LibraryBigIcon, workspaceScoped: true },
 ];
 
-export const PLATFORM_NAV: PlatformNavEntry[] = [
-  { label: "Runners", path: "/admin/runners", icon: ServerIcon, scope: SCOPE.RUNNER_READ },
-  { label: "Model library", path: "/admin/models", icon: CpuIcon, scope: SCOPE.MODEL_READ },
-  { label: "Fleet library", path: "/admin/fleet-libraries", icon: LibraryBigIcon, scope: SCOPE.PLATFORM_LIBRARY_WRITE },
-];
 
 // Each person manages the account signup created for them.
 export const ACCOUNT_NAV: NavEntry[] = [

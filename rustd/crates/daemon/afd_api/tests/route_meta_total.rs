@@ -43,7 +43,7 @@ const DECLARED_DIVERGENCES: usize = 1;
 
 /// Verbs the pinned count holds as one member that this union spells apart.
 ///
-/// One: the runner record's retirement. `DELETE /v1/fleets/runners/{id}` is
+/// One: the runner record's retirement. `DELETE /v1/admin/runners/{id}` is
 /// counted with the runner patch in the pinned count, and here it is
 /// `RunnerOpsRoute::Delete` with its own meta.
 const VERB_SPLITS: usize = 1;

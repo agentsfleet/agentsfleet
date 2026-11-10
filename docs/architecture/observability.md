@@ -2,7 +2,7 @@
 
 > Two decisions drive this file. `agentsfleetd` **owns backend-bound
 > telemetry**: product analytics, cost, and every fact a runner reports over
-> `/v1/runners`; its collectors, `otelcol-{dev,prod}`, serve the daemon only.
+> `/v1/admin/runners`; its collectors, `otelcol-{dev,prod}`, serve the daemon only.
 
 > **The dev runner has its own OpenTelemetry collector on the bare-metal host**
 > (installed Nov 04, 2026). It exports runner spans and metric families over
@@ -245,7 +245,7 @@ Closing that gap is collector configuration rather than a census change.
 
 **Built: the runner exports spans and metric families when configured.** The dedicated dev collector was installed on Nov 04, 2026. Production installation is not claimed. `afr_telemetry` uses the shared `af_otlp` transport when `OTEL_EXPORTER_OTLP_ENDPOINT` names a collector.
 
-Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
+Runner logs go to stderr; heartbeat, renewal and reports carry liveness and results over `/v1/admin/runners`. The runner sends nothing to PostHog. The daemon owns reported runner state and fleet liveness.
 
 Fleet-runtime leases run inside `runner.lease` spans. Private authoring takes a separate path without that span (the `afr_supervisor` worker pool).
 

@@ -11,7 +11,7 @@ import { EXECUTION_REPLY_PREFIX, executionInstructions, fixtureDefinition, fixtu
  */
 import { describe, expect, it } from "vitest";
 import { NANOS_PER_USD } from "@/lib/types";
-import { LEASE_OUTCOME } from "@/lib/api/runners-types";
+import { LEASE_OUTCOME } from "@/tests/helpers/runner-control-types";
 import {
   classifyApiFailure,
   classifyReportMissing,
@@ -110,7 +110,7 @@ describe("the terminal row is classified before it is trusted", () => {
   });
 
   it("an API refusal is the environment on 5xx and transport loss, the product on 4xx", () => {
-    const unavailable = new Error("GET /v1/fleets/runners → 503: {}");
+    const unavailable = new Error("GET /v1/admin/runners → 503: {}");
     const refused = new Error("POST /v1/workspaces/ws/fleets → 409: {}");
     const dropped = new TypeError("fetch failed");
     expect(classifyApiFailure(unavailable, JOURNEY_LEG.lease).kind).toBe(VERDICT_KIND.environment);

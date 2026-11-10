@@ -4,8 +4,6 @@ import { PageLayout } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
-import { hasScope } from "@/lib/auth/platform";
-import { SCOPE } from "@/lib/auth/scopes";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +26,6 @@ export default async function NewFleetPage({params, searchParams}: {
   if (!query.success) notFound();
   const source = "library" in query.data ? {kind: SOURCE_KIND.library, library_id: query.data.library, revision_id: query.data.revision} : "fleet" in query.data ? {kind: SOURCE_KIND.fleet, fleet_id: query.data.fleet, setup_revision: query.data.setup_revision} : undefined;
   return <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col">
-    <WorkspaceChat account={workspace.account.tenant_id} workspace={workspaceId} draft={"draft" in query.data ? query.data.draft : undefined} source={source} canPublishPlatform={await hasScope(SCOPE.PLATFORM_LIBRARY_WRITE)} canManagePlatformModels={await hasScope(SCOPE.MODEL_ADMIN)} />
+    <WorkspaceChat account={workspace.account.tenant_id} workspace={workspaceId} draft={"draft" in query.data ? query.data.draft : undefined} source={source} />
   </PageLayout>;
 }

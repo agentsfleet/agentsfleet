@@ -1,4 +1,4 @@
-//! `POST /v1/runners` — enrol a host and mint its credential.
+//! `POST /v1/admin/runners` — enrol a host and mint its credential.
 //!
 //! The one verb on the runner family that a runner cannot call. It is
 //! `Guard::Bearer` and requires `runner:enroll`, held independently of

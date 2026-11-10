@@ -19,7 +19,6 @@ export function PublicationActions({client, view, setup, dirty, onPublish}: Prop
     <p className="text-label text-muted-foreground">Publish these instructions as a versioned setup. Your conversation stays private. Existing fleets keep their setup.</p>
     <div className="space-y-xs"><Label htmlFor={inputId}>Library name</Label><Input id={inputId} value={label} onChange={(event) => setLabel(event.target.value)} maxLength={100} /></div>
     <div className="flex flex-wrap gap-sm"><Button variant="outline" disabled={disabled || !label.trim()} onClick={() => publish(false)}>Publish new entry</Button>
-      {view.draft?.publication ? <Button variant="secondary" disabled={disabled} onClick={() => publish(true)}>Publish next revision</Button> : null}
-      {client.canStagePlatform ? <Button variant="outline" disabled={disabled || !label.trim()} onClick={() => {void client.stagePlatform(label.trim()).catch(ignore);}}>Stage platform entry</Button> : null}</div>
+      {view.draft?.publication ? <Button variant="secondary" disabled={disabled} onClick={() => publish(true)}>Publish next revision</Button> : null}</div>
   </div>;
 }

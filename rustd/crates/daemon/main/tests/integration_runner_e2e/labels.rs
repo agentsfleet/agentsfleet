@@ -28,7 +28,7 @@ async fn require_tag(run: &Scenario, tag: &str) {
 }
 
 /// Replaces the runner's labels through the store verb the operator's
-/// `PATCH /v1/fleets/runners/{runner_id}` calls, and checks what it stored.
+/// `PATCH /v1/admin/runners/{runner_id}` calls, and checks what it stored.
 async fn edit_labels(run: &Scenario, labels: &[&str]) {
     let labels: Vec<Cow<'_, str>> = labels.iter().map(|label| Cow::Borrowed(*label)).collect();
     let edit = RunnerEdit {

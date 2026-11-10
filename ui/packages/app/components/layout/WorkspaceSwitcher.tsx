@@ -16,7 +16,7 @@ import { WORKSPACE_LABEL } from "./workspace-groups";
 
 type Props = {
   workspaces: TenantWorkspace[];
-  operatorScopes?: string[];
+
   collapsed?: boolean;
 };
 
@@ -24,7 +24,7 @@ const workspaceSwitcherLoader = createIntentModuleLoader(
   () => import("./WorkspaceSwitcherMenu"),
 );
 
-export default function WorkspaceSwitcher({ workspaces, operatorScopes = [], collapsed = false }: Props) {
+export default function WorkspaceSwitcher({ workspaces, collapsed = false }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const refreshed = useRef<string | null>(null);
@@ -78,7 +78,6 @@ export default function WorkspaceSwitcher({ workspaces, operatorScopes = [], col
     const Menu = workspaceSwitcher.module.default;
     return (
       <Menu
-        operatorScopes={operatorScopes}
         collapsed={collapsed}
         open={open}
         workspaces={workspaces}

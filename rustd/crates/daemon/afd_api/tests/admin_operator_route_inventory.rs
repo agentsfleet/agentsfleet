@@ -19,12 +19,12 @@ const EXPECTED: &[Endpoint] = &[
     ("/v1/admin/models", Verb::Post),
     ("/v1/admin/models/{id}", Verb::Patch),
     ("/v1/admin/models/{id}", Verb::Delete),
-    ("/v1/fleets/runners", Verb::Get),
-    ("/v1/fleets/runners/{runner_id}", Verb::Get),
-    ("/v1/fleets/runners/{runner_id}", Verb::Patch),
-    ("/v1/fleets/runners/{runner_id}", Verb::Delete),
-    ("/v1/fleets/runners/{runner_id}/events", Verb::Get),
-    ("/v1/fleets/runners/{runner_id}/leases", Verb::Get),
+    ("/v1/admin/runners", Verb::Get),
+    ("/v1/admin/runners/{runner_id}", Verb::Get),
+    ("/v1/admin/runners/{runner_id}", Verb::Patch),
+    ("/v1/admin/runners/{runner_id}", Verb::Delete),
+    ("/v1/admin/runners/{runner_id}/events", Verb::Get),
+    ("/v1/admin/runners/{runner_id}/leases", Verb::Get),
     // `/v1/fleets/streams` is absent on purpose: this daemon does not serve it,
     // by Indy's call while merging M179 into M178 — see `route::runner_ops`
     // for the reasoning. A declared divergence, so it is missing from this
