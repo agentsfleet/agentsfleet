@@ -123,6 +123,7 @@ impl Error {
                 Reason::Worker
             }
             ErrorKind::Protocol
+            | ErrorKind::Origin
             | ErrorKind::Retention { .. }
             | ErrorKind::MemorySetting { .. }
             | ErrorKind::ProxyPolicy { .. }

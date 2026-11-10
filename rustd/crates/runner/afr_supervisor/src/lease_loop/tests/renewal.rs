@@ -123,10 +123,7 @@ async fn a_hard_stop_ends_the_lease_and_its_delivery_then_tears_down() {
     let (ran, ()) = tokio::join!(rig.run(&granted), stopping);
 
     let failure = ran.unwrap_err();
-    assert_eq!(
-        failure.code(),
-        af_core::error_code::RUN_PROTOCOL_UNSUPPORTED
-    );
+    assert_eq!(failure.code(), af_core::error_code::RUN_STREAM_DISCONNECTED);
     assert!(
         rig.calls().iter().all(|call| call.verb != Verb::Report),
         "a stopped owner cannot deliver a result"

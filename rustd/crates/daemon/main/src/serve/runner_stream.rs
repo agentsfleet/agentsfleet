@@ -80,7 +80,18 @@ fn finished<E>(
     E: Coded,
 {
     if stop.is_cancelled() {
-        tracing::info!(event = "runner_stream_component_stopped", component);
+        // Drain owns the exit status; a component's own failure is still reported with its cause.
+        if let Err(error) = result {
+            let Logged { error_code, reason } = error.logged();
+            tracing::warn!(
+                event = "runner_stream_component_stopped",
+                component,
+                error_code,
+                reason
+            );
+        } else {
+            tracing::info!(event = "runner_stream_component_stopped", component);
+        }
         return;
     }
     let (outcome, Logged { error_code, reason }) = match result {

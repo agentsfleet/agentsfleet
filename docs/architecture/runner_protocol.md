@@ -167,6 +167,7 @@ The older process receives UZ-RUN-021 and halts; stop the duplicate process befo
 | [UZ-RUN-021](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-021) | A newer connection owns the runner | Stop the duplicate process; keep one intended process per token |
 | [UZ-RUN-022](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-022) | The fleet was killed | Stop that lease and report its final result |
 | [UZ-RUN-023](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-023) | Runner and daemon use different protocols | Upgrade the runner and daemon together |
+| [UZ-RUN-024](https://docs.agentsfleet.net/api-reference/error-codes#UZ-RUN-024) | The stream ended or stopped answering | None; the runner reconnects. If it repeats, check UDP and TCP reachability of the stream URL |
 
 ### Results and billing
 
