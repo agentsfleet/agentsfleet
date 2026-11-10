@@ -12,7 +12,7 @@ mod original;
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
-use af_wire::usage::{DAEMON_SEQ_BASE, DAEMON_SEQ_MAX, RequestUsage, UsageLine};
+use af_wire::usage::{RequestUsage, UsageLine};
 use afd_billing::Nanos;
 use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::price::{PriceBook, Rater, Window};
@@ -159,7 +159,7 @@ impl Pricing {
     /// wrapped as the settlement its biller charges.
     ///
     /// One line per request, at its own tier and time, plus a runtime-only line
-    /// numbered in the daemon's range when the slice measured run time. `None`
+    /// numbered by its slice's start when the slice measured run time. `None`
     /// when there is neither: logging nothing spends no line number.
     ///
     /// # Errors
@@ -174,11 +174,7 @@ impl Pricing {
         let runtime_ms = count(slice.runtime_ms);
         let runtime = (runtime_ms > 0)
             .then(|| -> Result<UsageLine> {
-                let seq = u32::try_from(slice.daemon_lines)
-                    .ok()
-                    .and_then(|count| DAEMON_SEQ_BASE.checked_add(count))
-                    .filter(|seq| *seq <= DAEMON_SEQ_MAX)
-                    .ok_or_else(sequence_corrupt)?;
+                let seq = u32::try_from(slice.runtime_seq).map_err(|_range| sequence_corrupt())?;
                 Ok(UsageLine::runtime(seq, slice.checked_at, runtime_ms))
             })
             .transpose()?;
@@ -236,9 +232,9 @@ pub(crate) fn charged(settlement: Option<&Settlement>) -> Nanos {
 /// The run time one metering pass measured, as its trailing row carries it.
 #[derive(Debug)]
 pub(crate) struct Slice {
-    /// Runtime lines the lease already logged; the next one takes the number
-    /// after them in the daemon's range.
-    pub daemon_lines: i64,
+    /// The runtime line's number: milliseconds from the lease's start to the
+    /// slice's start.
+    pub runtime_seq: i64,
     /// Where the measured time ends, which is the runtime line's `at`.
     pub checked_at: Timestamp,
     /// When the lease began, which opens the lines' pricing window.
@@ -271,14 +267,14 @@ pub(crate) struct SliceColumns {
     fleet_id: Option<Uuid7>,
     event_id: Option<Uuid7>,
     fleet_name: Option<String>,
-    daemon_lines: Option<i64>,
+    runtime_seq: Option<i64>,
 }
 
 impl SliceColumns {
     /// The measured slice, when the pass held the fence.
     pub(crate) fn into_slice(self) -> Option<Slice> {
         Some(Slice {
-            daemon_lines: self.daemon_lines?,
+            runtime_seq: self.runtime_seq?,
             checked_at: self.checked_at?.to_jiff(),
             started_at: self.started_at?.to_jiff(),
             runtime_ms: self.d_ms?,

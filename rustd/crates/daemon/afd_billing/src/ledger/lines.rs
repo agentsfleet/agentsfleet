@@ -87,7 +87,8 @@ pub async fn log_lines<'e>(
         .bind(column(lines, |line| line.price.clone()))
         .bind(unpriced)
         .bind(column(lines, |line| line.charged.as_i64()))
-        .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))
+        .bind(column(lines, |line| line.usage.kind.as_str()))
+        .bind(af_wire::usage::LineKind::Model.as_str())
         .fetch_one(executor)
         .await
         .map_err(query(CONTEXT_LOG))?;

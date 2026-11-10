@@ -137,7 +137,7 @@ pub(super) async fn record_fallback(
         .bind(&guarded.attempt.id)
         .bind(&guarded.attempt.tenant_id)
         .bind(&guarded.attempt.workspace_id)
-        .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE) + i64::from(request.call_index))
+        .bind(i64::from(request.call_index))
         .bind(guarded.draft.candidate_revision)
         .bind(disposition)
         .execute(connection)

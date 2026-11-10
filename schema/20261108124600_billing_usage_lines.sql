@@ -6,8 +6,13 @@
 --
 -- No foreign keys: a line outlives the fleet, workspace, tenant and price row it
 -- names (deletion matrix), so every reference is an opaque value and
--- `fleet_name` is the name when the line was written. `work_type` spellings and
--- `posture` spellings are application constants (RULE STS). Exactly one of
+-- `fleet_name` is the name when the line was written. `work_type`, `kind` and
+-- `posture` spellings are application constants (RULE STS); `kind` is
+-- `af_wire::usage::LineKind`: a `model` call the runner reported, a `runtime`
+-- slice the daemon measured, or a native `decision` call. Each kind numbers its
+-- own lines, so `seq` is unique within its work and kind: a model line takes
+-- the runner's request number, a runtime line the milliseconds from its work's
+-- start to its slice's start, a decision line its call's number. Exactly one of
 -- `fleet_id` / `authoring_attempt_id` is set, by `work_type`; `event_id` is set
 -- for fleet work. `platform_model_price_id` is NULL when the catalogue had no
 -- price covering the request, and `unpriced_token_count` counts tokens in any
@@ -18,6 +23,7 @@ CREATE TABLE billing.usage_lines (
     CONSTRAINT ck_usage_lines_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     work_type                   TEXT   NOT NULL,
     work_id                     UUID   NOT NULL,
+    kind                        TEXT   NOT NULL,
     seq                         BIGINT NOT NULL,
     tenant_id                   UUID   NOT NULL,
     workspace_id                UUID   NOT NULL,
@@ -42,7 +48,7 @@ CREATE TABLE billing.usage_lines (
     settled_at                  TIMESTAMPTZ(3),
     created_at                  TIMESTAMPTZ(3) NOT NULL,
     updated_at                  TIMESTAMPTZ(3) NOT NULL,
-    CONSTRAINT uq_usage_lines_work_type_work_id_seq UNIQUE (work_type, work_id, seq),
+    CONSTRAINT uq_usage_lines_work_type_work_id_kind_seq UNIQUE (work_type, work_id, kind, seq),
     CONSTRAINT ck_usage_lines_non_negative
         CHECK (seq >= 0 AND input_token_count >= 0 AND cached_input_token_count >= 0
             AND cache_write_token_count >= 0 AND cache_write_5m_token_count >= 0

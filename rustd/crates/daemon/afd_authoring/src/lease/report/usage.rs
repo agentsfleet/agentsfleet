@@ -8,7 +8,7 @@
 //! runtime at the report. The lines are logged inside the report's transaction
 //! and settled through the biller after it commits.
 
-use af_wire::usage::UsageLine;
+use af_wire::usage::{LineKind, UsageLine};
 use afd_billing::Posture;
 use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::price::{PriceBook, Rater, Window};
@@ -26,8 +26,8 @@ use crate::{
     model::dispatch_status,
 };
 
-/// The runtime line's sequence. Dispatch sequences are call indexes, which
-/// start at 1 (`call_count + 1`), so 0 can never collide with a request's line.
+/// The runtime line's sequence: its one slice starts with the attempt, 0 ms in.
+/// It is a `runtime` line, so it shares no numbers with the `model` lines.
 const RUNTIME_SEQ: u32 = 0;
 
 /// `$1` attempt, `$2` the knowledge of a receipt with authoritative figures:
@@ -81,12 +81,12 @@ pub(super) async fn settlement(
         .map(|request| {
             let seq = u32::try_from(request.sequence).map_err(|_negative| ErrorKind::Token)?;
             let tokens = (count(request.input_tokens)?, count(request.output_tokens)?);
-            Ok(rater.rate(&line(seq, request.created_at, tokens, 0))?)
+            Ok(rater.rate(&model_line(seq, request.created_at, tokens))?)
         })
         .collect::<Result<Vec<_>>>()?;
     let runtime_ms = u32::try_from(verified.runtime.as_millis())
         .map_err(|_overflow| invalid("Authoring runtime exceeds a usage line"))?;
-    lines.push(rater.rate(&line(RUNTIME_SEQ, now, (0, 0), runtime_ms))?);
+    lines.push(rater.rate(&UsageLine::runtime(RUNTIME_SEQ, now, runtime_ms))?);
     Ok(Settlement {
         work: WorkKey::AuthoringAttempt(attempt.id.clone()),
         payer: Account {
@@ -101,10 +101,11 @@ pub(super) async fn settlement(
     })
 }
 
-/// One line: a request's `(input, output)` tokens, or the attempt's runtime.
-/// Setup chat sends no cache directives, so every cache category is zero.
-const fn line(seq: u32, at: Timestamp, (input, output): (u32, u32), runtime_ms: u32) -> UsageLine {
+/// A model call's line: its `(input, output)` tokens. Setup chat sends no
+/// cache directives, so every cache category is zero.
+const fn model_line(seq: u32, at: Timestamp, (input, output): (u32, u32)) -> UsageLine {
     UsageLine {
+        kind: LineKind::Model,
         seq,
         at,
         input_tokens: input,
@@ -113,7 +114,7 @@ const fn line(seq: u32, at: Timestamp, (input, output): (u32, u32), runtime_ms: 
         cache_write_5m_tokens: 0,
         cache_write_1h_tokens: 0,
         output_tokens: output,
-        runtime_ms,
+        runtime_ms: 0,
     }
 }
 

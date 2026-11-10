@@ -218,6 +218,12 @@ impl Held {
     /// Settles and renewals meter up to the database's clock, so a test runs a
     /// slice by moving the meter's start back rather than by naming an instant.
     pub(crate) async fn run_a_slice(&self) -> Timestamp {
+        // The lease began a slice earlier too: its cursor never precedes its
+        // start (`ck_leases_metered_after_created`), and moving the start first
+        // keeps that true between the two writes.
+        self.fixtures
+            .age(Row::Lease(&self.issued.lease_id), "created_at", SLICE)
+            .await;
         self.fixtures
             .age(
                 Row::Lease(&self.issued.lease_id),

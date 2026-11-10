@@ -22,9 +22,6 @@ use crate::wire::{
 /// moment it is written, and the messages verb counts against it under the
 /// lease's fence. The lease names its event by its id (`event_id`); the
 /// actor and type are read from the event, not copied onto the lease.
-///
-/// `daemon_line_count` is `NOT NULL DEFAULT 0`, so it is populated from the
-/// insert; the renewal and the report advance it under the lease's row lock.
 const LEASE_SHAPE: &[&str] = &[
     "id",
     "runner_id",
@@ -37,7 +34,6 @@ const LEASE_SHAPE: &[&str] = &[
     "provider",
     "model",
     "last_metered_at",
-    "daemon_line_count",
     "fencing_token",
     "lease_expires_at",
     "status",
@@ -61,6 +57,7 @@ const LEDGER_SHAPE: &[&str] = &[
     "id",
     "work_type",
     "work_id",
+    "kind",
     "seq",
     "tenant_id",
     "workspace_id",
@@ -169,7 +166,8 @@ async fn assert_rows(run: &Scenario, lease_id: &str) {
     assert_shape(
         run,
         "billing.usage_lines",
-        "event_id = $1 AND seq = (SELECT max(seq) FROM billing.usage_lines WHERE event_id = $1)",
+        "id = (SELECT id FROM billing.usage_lines WHERE event_id = $1 \
+         ORDER BY requested_at DESC, id DESC LIMIT 1)",
         &run.event_id,
         LEDGER_SHAPE,
     )

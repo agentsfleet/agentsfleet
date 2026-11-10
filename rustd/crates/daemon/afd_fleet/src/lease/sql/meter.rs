@@ -32,15 +32,12 @@ use afd_db::statement::Bound;
 /// `claimed`, `new_until` and `hard_cap` for the verdict, and the measured
 /// slice (`d_ms`, the instant it ends, who pays and what the line names) for
 /// the runtime line the caller prices and logs in the same transaction.
-/// `daemon_lines` counts the runtime lines the lease already logged, and the
-/// row lock does NOT make that count current: under READ COMMITTED a statement
-/// that waits on `FOR UPDATE` re-reads the locked rows but keeps its starting
-/// snapshot for the count. A renewal and a report therefore each take the
-/// host's capacity lock (`afd_runner::capacity::lock`) in an earlier statement
-/// of the same transaction, so this one starts after the other committed and
-/// counts its line. The billing sweep needs no such lock: it bills only a
-/// lease past its deadline that has not reported, which a renewal cannot
-/// extend, and a report behind the sweep re-reads the advanced cursor and
+/// `runtime_seq` numbers the runtime line by its slice's start, read from the
+/// lease row the statement locks: a statement that waits on `FOR UPDATE`
+/// re-reads that row, so it sees the cursor a racing renewal or report
+/// advanced, and the two lines take distinct numbers (M245). The billing sweep
+/// bills only a lease past its deadline that has not reported, which a renewal
+/// cannot extend, and a report behind it re-reads the advanced cursor and
 /// measures no run time, so logs no runtime line.
 ///
 /// `$1` lease, `$2` runner, `$3` milliseconds per second, `$4` the active

@@ -80,7 +80,7 @@ impl Billing {
         tenant: &Uuid7,
         work: &crate::biller::WorkKey,
         request: &crate::report::Request,
-        after: Option<i64>,
+        after: Option<&crate::report::ChargeBoundary>,
     ) -> Result<Vec<crate::report::Charge>> {
         crate::report::details(&self.database, tenant, work, request, after).await
     }

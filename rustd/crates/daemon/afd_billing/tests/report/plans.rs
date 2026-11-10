@@ -9,7 +9,7 @@ use sqlx::AssertSqlSafe;
 const SIZES: [u32; 4] = [512, 1024, 2048, 4096];
 const PAGE: u32 = 10;
 const INDEX: &str = "idx_usage_lines_tenant_id_created_at_id";
-const DETAIL_INDEX: &str = "uq_usage_lines_work_type_work_id_seq";
+const DETAIL_INDEX: &str = "uq_usage_lines_work_type_work_id_kind_seq";
 const FOREIGN_MULTIPLIER: usize = 64;
 const OLD_MULTIPLIER: usize = 4;
 

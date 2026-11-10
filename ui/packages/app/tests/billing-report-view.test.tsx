@@ -9,6 +9,7 @@ import { BillingActivityDetails } from "@/app/(dashboard)/settings/billing/compo
 import { BillingSpending } from "@/app/(dashboard)/settings/billing/components/BillingSpending";
 import type { BillingDetail } from "@/app/(dashboard)/settings/billing/lib/report-detail";
 import { BILLING_DETAIL_STATE } from "@/app/(dashboard)/settings/billing/lib/report-detail";
+import { BILLING_CHARGE_KIND } from "@/lib/api/billing-report-values";
 import { activityKey } from "@/app/(dashboard)/settings/billing/lib/report-query";
 import type { BillingReport } from "@/lib/api/billing_report";
 import { BILLING_ACTIVITY_SETUP } from "@/lib/api/billing_report";
@@ -239,7 +240,8 @@ describe("individual activity charges", () => {
     expect(screen.getByText(BILLING_MODEL)).toBeTruthy();
     expect(screen.getByText(/Own provider key:/)).toBeTruthy();
     expect(screen.getByText(/5 tokens awaiting/)).toBeTruthy();
-    expect(screen.getByText(/Separate historical model and runtime prices are unavailable/)).toBeTruthy();
+    // Every charge is one kind (M245), so no line mixes model and runtime cost.
+    expect(screen.queryByText(/Separate historical model and runtime prices/)).toBeNull();
   });
 
   it("an empty detail page stays distinct from a failed read", () => {
@@ -248,43 +250,42 @@ describe("individual activity charges", () => {
     expect(screen.queryByText("Charges unavailable")).toBeNull();
   });
 
-  it("aligns recorded inference and runtime costs without inventing a price split", () => {
+  it("labels each charge by the kind it billed, with the runtime's duration", () => {
     const activity = billingActivity({ totals: billingTotals({ charged_nanos: "169000", input_tokens: 12, output_tokens: 3, runtime_ms: 250 }) });
     details({ status: BILLING_DETAIL_STATE.ready, page: 1, charges: { items: [
-      billingCharge({ id: "inference", charged_nanos: "109000", input_tokens: 12, output_tokens: 3, runtime_ms: 0 }),
-      billingCharge({ id: "runtime", charged_nanos: "60000", input_tokens: 0, output_tokens: 0, runtime_ms: 250 }),
+      billingCharge({ id: "inference", kind: BILLING_CHARGE_KIND.model, charged_nanos: "109000", input_tokens: 12, output_tokens: 3, runtime_ms: 0 }),
+      billingCharge({ id: "runtime", kind: BILLING_CHARGE_KIND.runtime, charged_nanos: "60000", input_tokens: 0, output_tokens: 0, runtime_ms: 250 }),
     ], total: 2, next_cursor: null } }, names, activity);
     const lines = screen.getByLabelText("Activity charge details");
     expect(within(lines).getByText("12 / 3")).toBeTruthy();
-    expect(screen.getByText("Inference").nextElementSibling?.textContent).toBe("$0.000109");
+    expect(screen.getByText("Model call").nextElementSibling?.textContent).toBe("$0.000109");
     expect(screen.getByText("Runtime · 0.25 seconds").nextElementSibling?.textContent).toBe("$0.00006");
     expect(screen.getByText("Total charged").nextElementSibling?.textContent).toBe("$0.000169");
-    expect(screen.queryByText(/Separate historical/)).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Charge pagination" })).toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.queryByText("Model usage and runtime charged to credits.")).toBeNull();
   });
 
-  it("retains model attribution and a combined charge instead of guessing component costs", () => {
+  it("names a decision call and its model, and a one-second runtime in the singular", () => {
     const other = "another-model";
     details({ status: BILLING_DETAIL_STATE.ready, page: 1, charges: {
-      items: [billingCharge()], total: 1, next_cursor: null,
+      items: [
+        billingCharge({ id: "decision", kind: BILLING_CHARGE_KIND.decision, runtime_ms: 0 }),
+        billingCharge({ id: "second", kind: BILLING_CHARGE_KIND.runtime, input_tokens: 0, output_tokens: 0, runtime_ms: 1000 }),
+      ], total: 2, next_cursor: null,
     } }, names, billingActivity({ models: [BILLING_MODEL, other] }));
-    expect(screen.getByText(`Inference & runtime · 1 second · ${BILLING_MODEL_NAME}`).nextElementSibling?.textContent).toBe("$0.0001");
+    expect(screen.getByText(`Decision call · ${BILLING_MODEL_NAME}`).nextElementSibling?.textContent).toBe("$0.0001");
+    expect(screen.getByText(`Runtime · 1 second · ${BILLING_MODEL_NAME}`)).toBeTruthy();
     expect(screen.getByText(`${BILLING_MODEL_NAME}, ${other}`)).toBeTruthy();
-    expect(screen.getByText(/Separate historical model and runtime prices are unavailable/)).toBeTruthy();
-    expect(screen.queryByText("Inference")).toBeNull();
-    expect(screen.queryByText("Runtime")).toBeNull();
   });
 
-  it("retains raw model attribution and a recorded debit when quantity metadata is absent", () => {
+  it("retains raw model attribution for a model call that recorded no quantities", () => {
     const rawModel = "unlisted-recorded-model";
     details({ status: BILLING_DETAIL_STATE.ready, page: 1, charges: { items: [billingCharge({
       model: rawModel, charged_nanos: "1", input_tokens: 0, output_tokens: 0, runtime_ms: 0,
     })], total: 1, next_cursor: null } }, names, billingActivity({ models: [BILLING_MODEL, rawModel] }));
-    expect(screen.getByText(`Recorded charge · ${rawModel}`).nextElementSibling?.textContent).toBe("$0.000000001");
+    expect(screen.getByText(`Model call · ${rawModel}`).nextElementSibling?.textContent).toBe("$0.000000001");
     expect(screen.getByText(`${BILLING_MODEL_NAME}, ${rawModel}`)).toBeTruthy();
-    expect(screen.queryByText(/Separate historical/)).toBeNull();
   });
 
   it("next and previous detail pages retain their activity and report scope", async () => {

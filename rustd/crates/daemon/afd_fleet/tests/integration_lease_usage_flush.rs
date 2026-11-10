@@ -13,7 +13,7 @@
 )]
 
 use af_wire::report::{RenewRequest, ReportRequest};
-use af_wire::usage::{DAEMON_SEQ_BASE, LINES_MAX, RequestLines, RequestUsage};
+use af_wire::usage::{LINES_MAX, RequestLines, RequestUsage};
 use afd_fleet::lease::report::RunTokens;
 
 use crate::integration_held_sandbox::report::processed;
@@ -39,7 +39,7 @@ const OUTPUT_TOKENS: u32 = 100;
 const REQUEST_LINES: &str = "SELECT count(*), count(*) FILTER (WHERE settled_at IS NOT NULL), \
      count(DISTINCT charged_nanos), COALESCE(min(seq), -1), COALESCE(max(seq), -1), \
      COALESCE(sum(input_token_count), 0)::BIGINT, COALESCE(min(charged_nanos), 0) \
-     FROM billing.usage_lines WHERE work_id = $1 AND seq < $2";
+     FROM billing.usage_lines WHERE work_id = $1 AND kind = $2";
 
 /// Every nano this lease's lines charged, runtime lines included.
 const CHARGED: &str = "SELECT COALESCE(sum(charged_nanos), 0)::BIGINT \
@@ -184,7 +184,7 @@ async fn assert_usage_settled(held: &Held, lease: &af_core::id::Uuid7) {
         i64,
     ) = sqlx::query_as(REQUEST_LINES)
         .bind(lease)
-        .bind(i64::from(DAEMON_SEQ_BASE))
+        .bind(af_wire::usage::LineKind::Model.as_str())
         .fetch_one(&mut *connection)
         .await
         .expect("the lines read");

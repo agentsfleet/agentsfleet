@@ -245,7 +245,13 @@ fn detail_filters_validate_the_identifier_and_retain_the_selected_work_type() {
 #[test]
 fn activity_and_charge_continuations_are_not_interchangeable() {
     let input = parsed("");
-    let wrong = Cursor::render(&input.scope, Position::Charge { sequence: 1 });
+    let wrong = Cursor::render(
+        &input.scope,
+        Position::Charge {
+            at: NOW.to_owned(),
+            id: ACTIVITY.to_owned(),
+        },
+    );
     assert!(
         read(
             &format!("starting_after={wrong}"),
@@ -282,7 +288,7 @@ fn activity_and_charge_continuations_are_not_interchangeable() {
 }
 
 #[test]
-fn charge_cursor_cannot_cross_activities_or_name_a_negative_sequence() {
+fn charge_cursor_cannot_cross_activities() {
     let input = read(
         "activity_type=setup",
         &tenant(TENANT),
@@ -290,7 +296,13 @@ fn charge_cursor_cannot_cross_activities_or_name_a_negative_sequence() {
         instant(NOW),
     )
     .expect("valid setup detail");
-    let token = Cursor::render(&input.scope, Position::Charge { sequence: 1 });
+    let token = Cursor::render(
+        &input.scope,
+        Position::Charge {
+            at: NOW.to_owned(),
+            id: ACTIVITY.to_owned(),
+        },
+    );
     assert!(
         read(
             &format!("activity_type=setup&starting_after={token}"),
@@ -300,14 +312,22 @@ fn charge_cursor_cannot_cross_activities_or_name_a_negative_sequence() {
         )
         .is_err()
     );
-    let negative = Cursor::render(&input.scope, Position::Charge { sequence: -1 });
-    assert!(
-        read(
-            &format!("activity_type=setup&starting_after={negative}"),
-            &tenant(TENANT),
-            Some(ACTIVITY),
-            instant(NOW)
-        )
-        .is_err()
-    );
+}
+
+// M245: a charges page resumes after a line, by its `(requested_at, id)`.
+#[test]
+fn a_charge_boundary_reads_its_instant_and_line() {
+    let boundary = super::charge_boundary(NOW, ACTIVITY).expect("a valid position");
+    assert_eq!(boundary.requested_at, instant(NOW));
+    assert_eq!(boundary.line_id.as_str(), ACTIVITY);
+}
+
+#[test]
+fn a_charge_boundary_refuses_a_malformed_instant_or_line() {
+    for (at, id) in [("yesterday", ACTIVITY), (NOW, "not-an-id"), ("", "")] {
+        assert!(
+            super::charge_boundary(at, id).is_err(),
+            "{at:?} / {id:?} is not a position"
+        );
+    }
 }

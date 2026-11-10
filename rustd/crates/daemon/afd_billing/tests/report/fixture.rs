@@ -20,21 +20,21 @@ pub(super) const RUNTIME: i64 = 31;
 
 const INSERT_LINES: &str = "\
 INSERT INTO billing.usage_lines (
-    id, work_type, work_id, seq, tenant_id, workspace_id,
+    id, work_type, work_id, seq, kind, tenant_id, workspace_id,
     fleet_id, fleet_name, authoring_attempt_id, provider, model, posture,
     requested_at, input_token_count, cached_input_token_count,
     cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count,
     output_token_count, runtime_ms, unpriced_token_count, charged_nanos,
     settled_at, created_at, updated_at
 )
-SELECT id, kind, work_id, seq, tenant, tenant,
+SELECT id, work_kind, work_id, seq, 'model', tenant, tenant,
        fleet, name, CASE WHEN fleet IS NULL THEN work_id END,
        model, model, posture, at::timestamptz, $14, 0, 0, 0, 0, $15, $16,
        unpriced, money, settled::timestamptz, at::timestamptz, at::timestamptz
   FROM unnest($1, $2::text[], $3, $4::bigint[], $5,
               $6, $7::text[], $8::text[], $9::text[], $10::text[],
               $11::text[], $12::bigint[], $13::bigint[])
-    AS source(id, kind, work_id, seq, tenant, fleet, name, model, posture, at, settled, money, unpriced)
+    AS source(id, work_kind, work_id, seq, tenant, fleet, name, model, posture, at, settled, money, unpriced)
 ";
 
 pub(super) struct Fixture {

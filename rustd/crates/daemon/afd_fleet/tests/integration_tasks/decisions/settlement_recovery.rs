@@ -10,7 +10,7 @@ use af_wire::{
         DecisionCallState, DecisionReceipt, DecisionReceiptInput, DecisionReceiptResult,
         DecisionRecordDisposition, DecisionTaskVersion, DecisionUnavailableCause,
     },
-    usage::DECISION_SEQ_BASE,
+    usage::LineKind,
 };
 use afd_billing::ledger::LedgerBiller;
 use afd_fleet::{
@@ -193,7 +193,7 @@ async fn age_recovery(fixture: &Decisions<'_>, first: &Uuid7) {
     let elapsed = GRACE.saturating_add(Duration::from_secs(1));
     held.fixtures
         .age(
-            Row::Line(&held.event_id, &sequence.to_string()),
+            Row::DecisionLine(&held.event_id, &sequence.to_string()),
             "created_at",
             elapsed,
         )
@@ -250,8 +250,8 @@ const fn expected(balance: i64, charged: i64, rows: i64, unsettled: i64) -> Fina
 }
 
 async fn financials(fixture: &Decisions<'_>) -> Financials {
-    sqlx::query_as("SELECT w.balance_nanos AS balance,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.settled_at IS NOT NULL) AS settled_cost,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.seq >= $2) AS decision_cost FROM runner.leases l JOIN billing.wallets w ON w.tenant_id=l.tenant_id WHERE l.id=$1")
-        .bind(&fixture.case.held.lease_key).bind(i64::from(DECISION_SEQ_BASE))
+    sqlx::query_as("SELECT w.balance_nanos AS balance,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.settled_at IS NOT NULL) AS settled_cost,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_rows,(SELECT count(*) FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2 AND u.settled_at IS NULL) AS unsettled,(SELECT COALESCE(sum(u.charged_nanos),0)::bigint FROM billing.usage_lines u WHERE u.work_id=l.id AND u.kind = $2) AS decision_cost FROM runner.leases l JOIN billing.wallets w ON w.tenant_id=l.tenant_id WHERE l.id=$1")
+        .bind(&fixture.case.held.lease_key).bind(LineKind::Decision.as_str())
         .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original financial state"))
         .await.expect("complete original wallet and immutable usage")
 }
@@ -266,11 +266,11 @@ async fn swept(fixture: &Decisions<'_>) -> BillingSwept {
 
 async fn original_attribution(fixture: &Decisions<'_>) {
     let held = &fixture.case.held;
-    let actual: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('seq',seq,'work_id',work_id,'tenant_id',tenant_id,'workspace_id',workspace_id,'fleet_id',fleet_id,'event_id',event_id,'provider',provider,'model',model,'charged_nanos',charged_nanos,'settled',settled_at IS NOT NULL) FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2 ORDER BY seq")
-        .bind(&held.lease_key).bind(i64::from(DECISION_SEQ_BASE))
+    let actual: Vec<Value> = sqlx::query_scalar("SELECT jsonb_build_object('seq',seq,'work_id',work_id,'tenant_id',tenant_id,'workspace_id',workspace_id,'fleet_id',fleet_id,'event_id',event_id,'provider',provider,'model',model,'charged_nanos',charged_nanos,'settled',settled_at IS NOT NULL) FROM billing.usage_lines WHERE work_id=$1 AND kind = $2 ORDER BY seq")
+        .bind(&held.lease_key).bind(LineKind::Decision.as_str())
         .fetch_all(&mut *held.fixtures.database.acquire().await.expect("original decision lines"))
         .await.expect("both original attributions remain available");
-    let expected = [DECISION_SEQ_BASE, DECISION_SEQ_BASE + 1].map(|seq| {
+    let expected = [0_u32, 1].map(|seq| {
         serde_json::json!({
             "seq":seq,"work_id":held.lease_key.as_str(),"tenant_id":held.tenant,
             "workspace_id":fixture.case.scope.workspace_id.as_str(),"fleet_id":held.fleet,

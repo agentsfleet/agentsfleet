@@ -174,7 +174,7 @@ Each renewal answer acknowledges recorded lines through `recorded_through`; the 
 
 Before its report, the settle renews with the oldest 512 until one body holds the rest (`flush` in `afr_supervisor/src/renew/mod.rs`). Each answer's `recorded_through` forgets the lines that renewal recorded.
 
-A renewal that fails after its retries, or records nothing, stops the flush. The report then carries the oldest lines left, and the newest are logged `usage_lines_unflushed`, never billed. A line sent twice is billed once, because the daemon keys lines on `(work, seq)`.
+A renewal that fails after its retries, or records nothing, stops the flush. The report then carries the oldest lines left, and the newest are logged `usage_lines_unflushed`, never billed. A line sent twice is billed once, because the daemon keys lines on `(work, kind, seq)`.
 
 ## Crates
 

@@ -58,14 +58,10 @@ impl Intent<'_> {
     async fn sequence(&self, connection: &mut PgConnection) -> Result<i64> {
         let sequence = sqlx::query_scalar(sql::SEQUENCE)
             .bind(self.lease.lease_id)
-            .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
             .fetch_one(connection)
             .await
             .map_err(query("allocate the native decision usage sequence"))?;
-        u32::try_from(sequence)
-            .ok()
-            .filter(|seq| *seq >= af_wire::usage::DECISION_SEQ_BASE)
-            .ok_or_else(sequence_corrupt)?;
+        u32::try_from(sequence).map_err(|_range| sequence_corrupt())?;
         Ok(sequence)
     }
 

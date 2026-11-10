@@ -49,7 +49,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 **Solution summary:** Five moves. The first four are in the daemon; the fifth also touches the runner and the lease it is offered.
 1. Revision-keyed caches whose versions ride the claim and the statements that use them, so no cross-replica signal is needed.
 2. The claim opens the delivery, and one statement reads the gates.
-3. The report is one statement, numbering lines from a new `runner.leases.daemon_line_count` under the lease row lock.
+3. The report is one statement, numbering its runtime line by the slice it bills, under the lease row lock (§11).
 4. Renewal is one fenced statement per host per tick, and every deadline pass runs on one expiry clock.
 5. A checkout pings only an idle connection, a run skips a fold ask the claim already answered, and no loop loads a checkpoint it cannot have.
 
@@ -115,6 +115,15 @@ pool checkout ─► pings only a connection idle for 1 s or longer
 | `ui/packages/app/app/(dashboard)/page.tsx`, `app/(dashboard)/AccountSetup.tsx`, `lib/auth/client.ts`, `lib/auth/credential.ts`, `tests/workspace-routing.test.ts`, `tests/account-setup.test.tsx` | CREATE, EDIT | §10: the setup screen, the tenant-claim check, and `useSessionRefresh` shared with the session keeper |
 | `docs/AUTH.md` | EDIT | §10: the writeback's redelivery and the dashboard's wait |
 | `docs/reviews/m245/sql-walkthrough.md`, `rustd/crates/daemon/afd_fleet/src/lease/sql/bill_expired_slice.sql` | CREATE, EDIT | Indy's request: every SQL change line by line with its reason; the expired slice computes its milliseconds once, so the line it bills and the number it takes cannot drift |
+| `schema/20261108124600_billing_usage_lines.sql`, `schema/20261108123200_runner_leases.sql` | EDIT | §11: `kind` in the usage-line key; `daemon_line_count` removed, so `runner_leases.sql` matches `main` |
+| `rustd/crates/protocol/af_wire/src/usage/{mod,tests}.rs`, `af_wire/tests/native_requests.rs`, `rustd/crates/runner/afr_agent/src/engine/mod.rs` | EDIT | §11: `LineKind`; the three seq bands removed; the runner numbers across the whole `u32` |
+| `rustd/crates/daemon/afd_billing/src/{ledger,report,price,biller,rates}/**`, `afd_billing/tests/**` | EDIT | §11: lines written, settled and re-read by kind; charges page by `(requested_at, id)` and return `kind` |
+| `rustd/crates/daemon/afd_fleet/src/lease/{usage,sql}/**`, `afd_fleet/src/task/**`, `afd_fleet/tests/**` | EDIT | §11: runtime lines numbered by slice start; decision lines from 0; task spend by kind |
+| `rustd/crates/daemon/afd_authoring/src/{lease/report/usage.rs,model/edit_intent/**}`, `afd_authoring/tests/**` | EDIT | §11: setup chat's model, runtime and decision lines by kind |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/billing_report/**`, `afd_api_wire/src/billing/usage.rs`, `afd_http/src/services/billing.rs`, `public/openapi.json` | EDIT | §11: the charges cursor and `kind` on the wire; OpenAPI regenerated |
+| `ui/packages/app/lib/api/{billing_report,billing-report-values}.ts`, `app/(dashboard)/settings/billing/components/BillingActivityDetails.tsx`, `tests/billing-report-view.test.tsx`, `tests/helpers/billing-report.ts` | EDIT | §11: the dashboard labels a charge by its kind |
+| test fixtures that insert usage lines (`afd_api`, `afd_fleet_lifecycle`, `afd_fleet_ops`, `agentsfleetd` tests) | EDIT | §11: every fixture names its line's kind |
+| `docs/architecture/{billing_and_provider_keys,postgres_schemas,data_flow,lease_flow,push_scheduler,runner_execution}.md` | EDIT | §11: the line key and numbering, as built |
 | `rustd/crates/daemon/afd_admin/src/platform_key.rs`, `model.rs`, `tests/integration_admin.rs` | EDIT | §2: `set` and `deactivate` bump `catalogue_version` through `model.rs`'s bump; Dimension 2.3 |
 | `rustd/crates/daemon/afd_credential/tests/integration_rotation/main.rs`, `secret_version.rs` | EDIT, CREATE | §2: Dimension 2.2 |
 | `rustd/crates/daemon/main/tests/integration_runner_shapes.rs` | EDIT | §2: the recorded `runner.leases` shape gains `daemon_line_count` |
@@ -352,10 +361,23 @@ The entry page catches `403 UZ-AUTH-022` on a token with no tenant claim, and on
 - **Dimension 10.5** — DONE — the setup screen mints, re-reads, gives up and retries → Test `tests/account-setup.test.tsx` (unit, fake timers): a token at once and every 2 s, a re-read only after it, nothing after 90 s until "Try again", nothing after unmount.
 - **Dimension 10.6** — the rendered page holds in a browser → Test `make dry-app` (Playwright, local): the dashboard specs pass with the entry page's new branch.
 
+### §11 — Every usage line says what it billed
+
+Folded in on Indy's direction (Discovery, Nov 10, 2026). One `u32` of line numbers was split into three bands, so a row's meaning came from which band its number sat in, and each band was a ceiling nobody chose: runner model calls below `2^31` (`RUNNER_SEQ_MAX`), daemon runtime lines from `2^31` (`DAEMON_SEQ_BASE`), native decisions from `3·2^30` (`DECISION_SEQ_BASE`). §6's `daemon_line_count` counter patched a collision inside the runtime band.
+
+`billing.usage_lines` gains `kind`: `model`, `runtime` or `decision` (`af_wire::usage::LineKind`), in the unique key `(work_type, work_id, kind, seq)`. Each kind numbers its own lines: a model line by the runner's request number across the whole `u32`, a runtime line by the milliseconds from its work's start to its slice's start, a decision line by its call. The three bands, `daemon_line_count` and the "0 cannot collide" trick in setup chat's runtime line go. The charges report returns `kind`, pages by `(requested_at, id)`, and the dashboard labels a charge by its kind instead of guessing it from which counts are non-zero.
+
+- **Dimension 11.1** — DONE — a kind round-trips its stored spelling, and the runner numbers across the whole `u32` → Tests `every_line_kind_round_trips_its_stored_spelling`, `a_spelling_no_kind_names_is_not_read_as_one`, `a_runner_numbers_its_requests_across_the_whole_u32` (unit, `af_wire`).
+- **Dimension 11.2** — DONE — model and runtime lines number independently; a slice start that does not fit is refused → Tests `requests_keep_their_numbers_and_runtime_is_numbered_by_its_slice`, `model_and_runtime_number_independently_and_refuse_an_unfit_slice` (unit, `afd_fleet`).
+- **Dimension 11.3** — a racing renewal and report bill adjacent slices under distinct numbers → Tests `test_report_behind_a_held_renewal_bills_its_own_runtime_line`, `a_renewal_racing_the_report_numbers_its_line_apart`, and the billing sweep's expiry case (integration).
+- **Dimension 11.4** — decision lines count from 0 under their own kind → Tests in `integration_tasks/decisions/**` and `decision_lifecycle` (integration).
+- **Dimension 11.5** — the charges page returns `kind` and resumes exactly after its last row → Tests `a_charge_boundary_reads_its_instant_and_line`, `a_charge_boundary_refuses_a_malformed_instant_or_line` (unit), `integration_reports` charges paging (integration), `billing-report-view.test.tsx` (dashboard unit).
+- **Dimension 11.6** — the relay skips a line kind it cannot name without blocking → Tests `a_work_whose_line_kind_this_build_cannot_name_is_left_whole`, `a_work_settles_its_lines_by_kind_and_number` (unit, `afd_billing`).
+
 ## Interfaces
 
 - **Wire:** the renewal frame and its per-lease answers keep M243's shapes. Refusals keep `UZ-RUN-006`, `UZ-RUN-011`, `UZ-RUN-012`, `UZ-RUN-015`, M243's `UZ-RUN-022` and the max-runtime code. `LeasePayload` gains `inputs_waiting`, a boolean whose absence reads as true. The runner's context-load `GET` is removed, and the checkpoint `PUT` stays. No route or error code is added.
-- **Schema:** `runner.leases.daemon_line_count INTEGER NOT NULL`; `vault.secrets.resource_version BIGINT NOT NULL`, moved by trigger on every update.
+- **Schema:** `billing.usage_lines.kind TEXT NOT NULL`, in the unique key (§11); `vault.secrets.resource_version BIGINT NOT NULL`, moved by trigger on every update.
 - **Timing (`af_core::timing`):** `FUNDS_CHECK_TICKS` = 3, asserted at least 1 and `FUNDS_CHECK_TICKS × RENEWAL_TICK < LEASE_TTL`; `EXPIRY_TICK` = 2 s, asserted below `LEASE_TTL` (TIM). `afd_db`'s pool gains `PING_AFTER_IDLE` = 1 s, asserted below its `IDLE_TIMEOUT`.
 - **Internal:** `Acquired` carries the claim's fleet facts and versions. `PriceBook` carries its `catalogue_version`. `LeaseService::renew_batch(runner, frame)` answers one verdict per lease. `Memories::hydrate_scoped` takes the claim's scope. Cache keys build only from statement rows. The runner's `ContextCheckpoints` port keeps `commit` only.
 - **Metric:** `agentsfleet_lease_cache_lookups_total{cache, outcome}`, with `cache` ∈ `definition`, `price_book`, `platform_key` and `outcome` ∈ `hit`, `miss`. Also `agentsfleet_db_pool_checkout_pings_total{role}`.
@@ -396,7 +418,7 @@ The entry page catches `403 UZ-AUTH-022` on a token with no tenant claim, and on
 
 1. **A cache answers only for a version a statement in the same pass read.** Cache keys are newtypes whose only constructors take a statement's row. No lookup by bare id compiles. A wrong version misses, never serves. `config_cache_follows_new_head_revision` is the shortest counterexample.
 2. **A statement priced from a cached book writes nothing once the catalogue moved.** `renew_batch.sql` and `commit_report.sql` compare `model.catalogue_version` with the bound priced-at version in their guards. The race is the one today's pre-transaction book read already has. Test: `catalogue_cache_reprices_after_bump`.
-3. **A lease's runtime lines carry distinct numbers.** `daemon_line_count` is read and advanced under the lease's `FOR UPDATE` lock by every writer of daemon-range lines. `uq_usage_lines_work_type_work_id_seq` backs it. Test: `report_and_renewal_number_lines_distinctly`.
+3. **A lease's runtime lines carry distinct numbers.** A runtime line is numbered by its slice's start, read from the lease row its writer locks `FOR UPDATE`; the cursor only moves forward, so two slices never share a number and one slice billed twice is one line (§11). `uq_usage_lines_work_type_work_id_kind_seq` backs it. Test: `test_report_behind_a_held_renewal_bills_its_own_runtime_line`.
 4. **A lease that fails its guard in a batch extends nothing and moves no other answer.** Every write in `renew_batch.sql` joins its lease's guard row (`FROM guard`), the pattern `meter_lease.sql` uses today. Test: `host_batch_extends_live_refuses_fenced`.
 5. **`vault.secrets.resource_version` moves on every update.** The table's `BEFORE UPDATE` trigger enforces it, whichever writer runs. Test: `secret_version_moves_on_same_kek_replace`.
 6. **A cached platform key is never rendered and is zeroed when dropped.** The value is `Zeroizing<String>`, and the entry's `Debug` is written by hand. Test: `cached_platform_key_never_renders`.
@@ -555,5 +577,12 @@ N/A: no user surface. No page, command or error code changes. The runner protoco
 - **§10, the signup fixes (Nov 10, 2026):** folded in on Indy's direction, after the signup walkthrough found both failures. Owner quotes:
   > Owner (Indy, Nov 10, 2026 22:30): "i want this to be fixed here, in this PR, you need to tell me the solution first for indy to signoff" — context: the browser-beats-the-webhook and swallowed-writeback failures, folded into M245.
   > Owner (Indy, Nov 10, 2026 22:48): "Yes go ahead with the fixes. If you find the code to be refactored go ahead and do it." — context: sign-off on the dashboard wait and the Svix redelivery, over creating the account from the first request and a durable repair sweep.
-  **Merge note:** dev already applied `vault_secrets.sql` and `runner_leases.sql`, and the migrator refuses an applied file whose checksum changed (`afd_db/src/migration.rs:14-16`). Deploying this branch to dev needs a dev database reset; issue #827 holds the merge order.
+  **Merge note:** dev already applied `vault_secrets.sql` and `billing_usage_lines.sql`, and the migrator refuses an applied file whose checksum changed (`afd_db/src/migration.rs:14-16`). Deploying this branch to dev needs a dev database reset; issue #827 holds the merge order.
+- **§11, every usage line says what it billed (Nov 10, 2026):** raised by Indy while reading the SQL walkthrough. Owner quotes:
+  > Owner (Indy, Nov 10, 2026 23:40): "I fell this is a billing sku_type as a column (..., runner or whatever you come up) and get inserted? on the same sequence. That way you know what exactly happened to billing" — context: replacing the seq bands and `daemon_line_count` with a line kind.
+  > Owner (Indy, Nov 10, 2026 23:44): "ifyou invent a number like 218998000(~2Milliion) a MAX number are saying our chat limit for billing in the system is 2Million. and we have a system limitation" — context: why the bands go, not move.
+  > Owner (Indy, Nov 10, 2026 23:47): "ensure your billing usage query from the UI has the change in as well. or its backedn sql, and the integration test, unit test covered for this" — context: the charges report, its cursor and the dashboard label.
+  > Owner (Indy, Nov 10, 2026 23:52): "what does line_kind mean, should it be just kind then" — context: the column is `kind`, as two other tables name theirs.
+  Supersedes §2's and §6's `daemon_line_count`: the column, its default and the deviation recorded for it no longer exist.
+  **Also found while building §11:** `runner.leases` gains `CHECK (last_metered_at >= created_at)`. A runtime line's number is the gap between the two, so the schema now states what the code assumed: a lease's cursor starts at its creation and only moves forward. The fleet fixture's `run_a_slice` moved the cursor back past the lease's start; it now ages `created_at` first. And one unit test whose subject moved in §4 was missed then, because §4's runs covered the integration suites and not `afd_fleet`'s lib tests: `should_raise_the_fault_and_log_a_release_the_datastore_refuses` expected an installed-fleet read after the claim, which §4 folded into the claim. Its fixture now carries an installed setup, so the pass reaches its first read after the claim, and the test asserts what it exists for: that read's fault reaches the caller and the refused release is logged under the same code.
 - **Deferrals and transfers** — none. Each one needs an owner quote below, as `> Owner (<name>, <MMM DD, YYYY HH:MM>): "<quote>" — context: <item, why>`.

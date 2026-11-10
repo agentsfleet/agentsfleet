@@ -34,7 +34,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Line charge | `⌈runtime⌉ + Σ ⌈tokens × rate⌉` | the `Rater`: run fee under both postures, each token category under platform, each rounded up on its own | §4.1 |
 | Short balance | `balance − charged`, below zero if it must | a settlement takes its whole charge; the debt refuses every funds check until a grant repays it | §3, §5, §11 |
 | Lease writes per slice | fence, cursors, one usage line | `METER_LEASE` moves no money; the line is logged in the same transaction and the relay settles it | §3 |
-| Line keying | `UNIQUE (work_type, work_id, seq)` | a retried renewal, report or relay pass settles each line once, even with two relays | §3, §11 |
+| Line keying | `UNIQUE (work_type, work_id, kind, seq)` | a retried renewal, report or relay pass settles each line once, even with two relays | §3, §11 |
 | Free usage | the starter grant only | a balance that drains, bounded by `exhausted_at`; no promotional window and no mechanism for one | §2.3 |
 | Mid-run exhaustion | refused within three renewals | funds are checked once per payer on a stream's first tick, then every `FUNDS_CHECK_TICKS` (3) ticks; a short payer's leases answer `UZ-RUN-012` and end at their current deadlines, never extended | §3, §5 |
 | Money set aside | none | a funds check reads the balance less the payer's unsettled lines; parallel runs can overdraw by at most three slices each before their next check refuses | §5, §11 |
@@ -59,7 +59,7 @@ Each trap is enforced in its owner section; this list is the index.
 - Never quote dollar amounts in docs; they go stale the moment a rate moves (preamble).
 - Metering never stops, and nothing zeroes the money column: every slice is a usage line priced at what the catalogue publishes (§2.3).
 - Never fold a catalogue read fault into "this model is not in the catalogue". The second is a value, the first is an error the pass logs as `lease_tokens_unpriced`. Both count the tokens as unpriced on the line, visibly (§4.1).
-- A re-sent request line is stored once on `(work, seq)`. A re-sent renewal measures about zero run time against the lease's cursor, so retries never charge twice (§3).
+- A re-sent request line is stored once on `(work, kind, seq)`. A re-sent renewal measures about zero run time against the lease's cursor, so retries never charge twice (§3).
 - The budget gate counts each usage line in the window it was written in. A line is one renewal interval of usage, so a long run's spend lands where it was used (§5.1).
 - No plan branch inside the charge functions, ever (§2.4).
 - The provider `api_key` never joins `secrets_map`; it rides `ExecutionPolicy` on a different path entirely (§8.2).
@@ -254,7 +254,7 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
 
    inside the lease's transaction (fenced; a lost or capped pass writes nothing):
      ① move the deadlines or flip the lease to reported, advance the lease's cursor
-     ② log every line in billing.usage_lines (work = the lease), once per (work, seq)
+     ② log every line in billing.usage_lines (work = the lease), once per (work, kind, seq)
    on the lease path, through Arc<dyn Biller>:
      issue  → nothing                      the admission gate already checked the floor
      renew  → check(floor)                 once per payer every third tick, before the host's statement
@@ -298,11 +298,11 @@ Run time is the daemon's to measure, not the runner's. `FOR UPDATE OF l, a` seri
 
 The lease path logs them with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A pass with no request and no run time logs nothing.
 
-Runtime lines take numbers from `af_wire::usage::DAEMON_SEQ_BASE`, after the runtime lines the lease already logged, read under its row lock. A runner line and a daemon line never share a number, and two passes never take one (`afd_fleet`'s lease billing races suite).
+Every line carries its `kind` (`af_wire::usage::LineKind`): `model` lines keep the runner's request number, `runtime` lines take the milliseconds from the lease's start to the slice's start, read from the locked lease row, and `decision` lines their call's number. The key includes the kind, so a model line and a runtime line may hold the same number, and two passes never bill one slice twice (`afd_fleet`'s lease billing races suite).
 
 **Settling.** The lease path never settles. The relay, `sweeper:billing`, settles each committed line on its next pass, about 2 s later. After a restart, its first pass settles what the crash left.
 
-`settle` keys on `(work, seq)`, so a retry never charges twice. A balance that cannot cover a line takes it anyway and goes below zero (§11).
+`settle` keys on `(work, kind, seq)`, so a retry never charges twice. A balance that cannot cover a line takes it anyway and goes below zero (§11).
 
 **Charges history.** `GET /v1/tenants/me/billing/charges` reads `billing.usage_lines`, newest first, one row per line, whether a fleet run (`charge_type: stage`) or a setup chat (`charge_type: authoring`) logged it.
 
@@ -685,7 +685,7 @@ They rounded differently, priced cached tokens differently, failed differently d
 ```
  work happens ─► usage lines        ─► Rater (pure)              ─► UsageLog (ours, inside the work's transaction)
  (runner, per     {seq, at, prompt,     tier by whole-request         billing.usage_lines, one row per request,
-  request;         cached_read,         prompt size, price by `at`,   unique (work, seq); the charges page reads it
+  request;         cached_read,         prompt size, price by `at`,   unique (work, kind, seq); the charges page reads it
   setup chat       cache_write,         posture, one rounding rule              │ the relay, every 2 s
   makes its own)   cache_write_5m,                                              ▼
                    cache_write_1h,                               Arc<dyn Biller>   check / settle / balance
@@ -698,14 +698,14 @@ They rounded differently, priced cached tokens differently, failed differently d
 
 The lease path calls the biller only to check. Every charge goes through one relay, `sweeper:billing`, which reads the committed lines and hands them to the biller. The usage log is therefore the outbox.
 
-A biller in another process never joins or delays our transaction, and the lease code does not change when the biller moves. `settle` is idempotent on `(work, seq)`, so a crash or a second relay never doubles a charge. A check counts the payer's unsettled lines, so the gap never hides spend.
+A biller in another process never joins or delays our transaction, and the lease code does not change when the biller moves. `settle` is idempotent on `(work, kind, seq)`, so a crash or a second relay never doubles a charge. A check counts the payer's unsettled lines, so the gap never hides spend.
 
 **The trait.** `afd_billing::biller::Biller` is an `#[async_trait] Send + Sync + Debug` trait held as `Arc<dyn Biller>`, the shape `afd_authoring`'s provider `Transport` already uses.
 
 | Method | When | Idempotent on |
 |---|---|---|
 | `check(&Ask) -> Funds` | each fleet renewal, each setup-chat renewal and model call | writes nothing |
-| `settle(&Settlement) -> Receipt` | the relay, and the relay's expired-lease pass | `(work, seq)` |
+| `settle(&Settlement) -> Receipt` | the relay, and the relay's expired-lease pass | `(work, kind, seq)` |
 | `balance(&Account) -> Balance` | the tenant billing page | read only |
 
 `WorkKey` is `FleetLease(id)` or `AuthoringAttempt(id)`, so the two products share one vocabulary. `check` answers `Funds::Covered`, `Short { available, asked }` or `Unconfirmed`, the outage policy's admission.

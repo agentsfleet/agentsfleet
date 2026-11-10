@@ -45,6 +45,7 @@ pub(crate) async fn funded_lane() -> (Lane, Account) {
 pub(crate) fn rated(seq: u32) -> RatedLine {
     RatedLine {
         usage: UsageLine {
+            kind: af_wire::usage::LineKind::Model,
             seq,
             at: Timestamp::now(),
             input_tokens: 10,

@@ -101,7 +101,7 @@ pub(super) async fn lease(
         .bind(lease.lease_id)
         .bind(lease.runner_id)
         .bind(afd_billing::biller::WorkKey::FleetLease(lease.lease_id.clone()).work_type())
-        .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))
+        .bind(af_wire::usage::LineKind::Model.as_str())
         .bind(super::super::lease::SLICE_SECONDS)
         .bind(1_000_000_000_i64)
         .execute(connection)

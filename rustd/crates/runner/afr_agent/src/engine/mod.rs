@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use af_core::clock::{Clock, SystemClock};
-use af_wire::usage::{LINES_MAX, RUNNER_SEQ_MAX, RequestLines, RequestUsage};
+use af_wire::usage::{LINES_MAX, RequestLines, RequestUsage};
 
 use crate::ExecutionResult;
 use af_egress::Mint;
@@ -217,7 +217,8 @@ impl Meter {
         let at = self.clock.now();
         let mut lines = self.lines();
         let seq = lines.next;
-        lines.next = seq.saturating_add(1).min(RUNNER_SEQ_MAX);
+        // A `model` line's number has the whole `u32`: no other kind shares it.
+        lines.next = seq.saturating_add(1);
         lines.unrecorded.push(RequestUsage {
             seq,
             at,

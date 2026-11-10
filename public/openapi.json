@@ -20577,6 +20577,7 @@
         "description": "One physically recorded charge in a billed activity.",
         "required": [
           "id",
+          "kind",
           "sequence",
           "model",
           "posture",
@@ -20601,6 +20602,10 @@
             "type": "integer",
             "format": "int64",
             "description": "Recorded input tokens."
+          },
+          "kind": {
+            "type": "string",
+            "description": "What the charge bills: `model` for a model call, `runtime` for sandbox\nrun time, `decision` for a native decision call."
           },
           "model": {
             "type": "string",
@@ -20628,7 +20633,7 @@
           "sequence": {
             "type": "integer",
             "format": "int64",
-            "description": "Position within the activity."
+            "description": "The charge's number within its activity and kind."
           },
           "settled_at": {
             "type": "string",
@@ -20792,6 +20797,7 @@
               "description": "One physically recorded charge in a billed activity.",
               "required": [
                 "id",
+                "kind",
                 "sequence",
                 "model",
                 "posture",
@@ -20816,6 +20822,10 @@
                   "type": "integer",
                   "format": "int64",
                   "description": "Recorded input tokens."
+                },
+                "kind": {
+                  "type": "string",
+                  "description": "What the charge bills: `model` for a model call, `runtime` for sandbox\nrun time, `decision` for a native decision call."
                 },
                 "model": {
                   "type": "string",
@@ -20843,7 +20853,7 @@
                 "sequence": {
                   "type": "integer",
                   "format": "int64",
-                  "description": "Position within the activity."
+                  "description": "The charge's number within its activity and kind."
                 },
                 "settled_at": {
                   "type": "string",

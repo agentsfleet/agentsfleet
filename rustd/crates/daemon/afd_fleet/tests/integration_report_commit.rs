@@ -15,8 +15,6 @@ use crate::report_commit::{
 use crate::report_seed::{DEEP_POOL, Held, SLICE_NANOS, held, run_fee};
 use crate::rows::Row;
 
-const RUNTIME_LINE: &str = "2147483648";
-
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_persists_result_with_settlement_atomically() {
@@ -260,7 +258,7 @@ async fn assert_all_four_landed(held: &Held, slice: i64) {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Line(&held.event_id, RUNTIME_LINE), "charged_nanos")
+            .text(Row::RuntimeLine(&held.event_id), "charged_nanos")
             .await,
         Some(slice.to_string()),
         "the line is priced at the slice it measured"

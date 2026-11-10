@@ -53,6 +53,7 @@ fn ask(work: &WorkKey, payer: &Account, next: Nanos) -> Ask {
 const fn line(seq: u32, charged: Nanos, runtime_ms: u32) -> RatedLine {
     RatedLine {
         usage: UsageLine {
+            kind: af_wire::usage::LineKind::Runtime,
             seq,
             at: Timestamp::UNIX_EPOCH,
             input_tokens: 0,

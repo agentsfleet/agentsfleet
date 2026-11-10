@@ -123,13 +123,13 @@ async fn fleet_charge(c: &Case, fleet: &Uuid7) -> Uuid7 {
     let line = mint();
     sqlx::query(
         "INSERT INTO billing.usage_lines
-           (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name,
+           (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name,
             event_id, authoring_attempt_id, provider, model, posture, requested_at,
             input_token_count, cached_input_token_count, cache_write_token_count,
             cache_write_5m_token_count, cache_write_1h_token_count, output_token_count,
             runtime_ms, platform_model_price_id, unpriced_token_count, charged_nanos,
             settled_at, created_at, updated_at)
-         VALUES ($1, $5, $1, 0, $2, $3, $4,
+         VALUES ($1, $5, $1, 0, 'model', $2, $3, $4,
                  (SELECT f.name FROM fleet.fleets f WHERE f.id = $4),
                  $1, NULL, 'anthropic', 'claude-opus-5', $6, now(), 0, 0, 0, 0, 0, 0, 0,
                  NULL, 0, $7, now(), now(), now())",

@@ -33,9 +33,6 @@ use sqlx::Connection as _;
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
 use crate::report_seed::{Held, held};
 
-/// The first line number the daemon's runtime lines take.
-const BASE: i64 = af_wire::usage::DAEMON_SEQ_BASE as i64;
-
 /// Holds the row the renewal's usage-line insert trigger must update.
 const HOLD_COUNTER: &str =
     "SELECT pg_backend_pid() FROM fleet.activity_counters WHERE fleet_id = $1 FOR UPDATE";
@@ -45,7 +42,7 @@ const BLOCKED_BY: &str = "SELECT pid FROM pg_stat_activity WHERE $1 = ANY(pg_blo
 
 /// The lease's runtime lines, by number, with the run time each billed.
 const RUNTIME_LINES: &str = "SELECT seq, runtime_ms FROM billing.usage_lines \
-     WHERE work_id = $1 AND seq >= $2 ORDER BY seq";
+     WHERE work_id = $1 AND kind = $2 ORDER BY seq";
 
 /// How long a wait may take before the test calls it a hang.
 const WAIT_LIMIT: Duration = Duration::from_secs(10);
@@ -127,11 +124,17 @@ async fn test_report_behind_a_held_renewal_bills_its_own_runtime_line() {
         "the report settles and bills its slice: {committed:?}"
     );
     let lines = runtime_lines(&held).await;
-    let seqs: Vec<i64> = lines.iter().map(|(seq, _ms)| *seq).collect();
+    // Each pass bills its own slice under its own number, and the report's
+    // slice starts where the renewal's ended: a runtime line is numbered by
+    // its slice's start, so the two cannot share one (M245).
+    let [(first_seq, first_ms), (second_seq, _second_ms)] = lines
+        .clone()
+        .try_into()
+        .unwrap_or_else(|_count| unreachable!("two passes, two lines: {lines:?}"));
     assert_eq!(
-        seqs,
-        [BASE, BASE + 1],
-        "each pass logs its own runtime line under its own number: {lines:?}"
+        second_seq,
+        first_seq + first_ms,
+        "the report's slice starts where the renewal's ended: {lines:?}"
     );
     let billed: i64 = lines.iter().map(|(_seq, ms)| ms).sum();
     assert_eq!(
@@ -171,7 +174,7 @@ async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     let mut connection = held.fixtures.database.acquire().await.expect("read lines");
     sqlx::query_as(RUNTIME_LINES)
         .bind(&held.issued.lease_id)
-        .bind(BASE)
+        .bind(af_wire::usage::LineKind::Runtime.as_str())
         .fetch_all(&mut *connection)
         .await
         .expect("the lines read")

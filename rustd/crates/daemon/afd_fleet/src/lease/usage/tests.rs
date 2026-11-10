@@ -4,7 +4,7 @@
 )]
 
 use af_core::test_util::trace::Capture;
-use af_wire::usage::{DAEMON_SEQ_BASE, DAEMON_SEQ_MAX, RUNNER_SEQ_MAX, RequestUsage, UsageLine};
+use af_wire::usage::{LineKind, RequestUsage, UsageLine};
 use afd_billing::rates::Posture;
 use afd_billing::{
     Nanos,
@@ -19,9 +19,9 @@ use crate::lease::test_dead;
 /// One second of runtime.
 const ONE_SECOND_MS: i64 = 1_000;
 
-fn slice(runtime_ms: i64, daemon_lines: i64) -> Slice {
+fn slice(runtime_ms: i64, runtime_seq: i64) -> Slice {
     Slice {
-        daemon_lines,
+        runtime_seq,
         checked_at: test_dead::AT,
         started_at: test_dead::AT,
         runtime_ms,
@@ -75,22 +75,33 @@ async fn an_unreadable_catalogue_logs_the_tokens_unpriced() {
     assert_eq!(event.field("lease_id"), Some("lease-fixture"));
 }
 
-/// Each request is its own line under the runner's number, and the measured
-/// time is one more line in the daemon's range, after the ones it already
-/// logged; a self-managed run pays the run fee only.
+/// Each request is a model line under the runner's number, and the measured
+/// time is one runtime line numbered by its slice's start; a self-managed run
+/// pays the run fee only.
 #[tokio::test]
-async fn requests_keep_their_numbers_and_runtime_takes_the_daemons() {
+async fn requests_keep_their_numbers_and_runtime_is_numbered_by_its_slice() {
     let pricing = pricing(Posture::SelfManaged).await;
     let settlement = pricing
         .settlement(
             &test_dead::id(4),
-            slice(ONE_SECOND_MS, 2),
+            slice(ONE_SECOND_MS, 2_000),
             &[request(0), request(1)],
         )
         .expect("prices")
         .expect("lines");
-    let numbers: Vec<u32> = settlement.lines.iter().map(|line| line.usage.seq).collect();
-    assert_eq!(numbers, [0, 1, DAEMON_SEQ_BASE + 2]);
+    let numbers: Vec<(LineKind, u32)> = settlement
+        .lines
+        .iter()
+        .map(|line| (line.usage.kind, line.usage.seq))
+        .collect();
+    assert_eq!(
+        numbers,
+        [
+            (LineKind::Model, 0),
+            (LineKind::Model, 1),
+            (LineKind::Runtime, 2_000)
+        ]
+    );
     assert_eq!(
         charged(Some(&settlement)).as_i64(),
         afd_billing::RUN_NANOS_PER_SEC,
@@ -98,43 +109,44 @@ async fn requests_keep_their_numbers_and_runtime_takes_the_daemons() {
     );
 }
 
-/// Existing coding usage remains intact at both runtime boundaries. Exhausted
-/// or malformed counters cannot enter the paid-decision sequence namespace.
+/// A model line and a runtime line may carry the same number: their kinds keep
+/// them apart, at both ends of the `u32`. A slice start that does not fit one
+/// is a corrupt row, never a wrapped number.
 #[tokio::test]
-async fn coding_and_runtime_keep_their_ranges_and_refuse_runtime_exhaustion() {
+async fn model_and_runtime_number_independently_and_refuse_an_unfit_slice() {
     let pricing = pricing(Posture::SelfManaged).await;
-    let last = i64::from(DAEMON_SEQ_MAX - DAEMON_SEQ_BASE);
-    for (ordinal, expected_seq) in [(0, DAEMON_SEQ_BASE), (last, DAEMON_SEQ_MAX)] {
+    for runtime_seq in [0, i64::from(u32::MAX)] {
+        let expected_seq = u32::try_from(runtime_seq).expect("the case fits");
         let actual = pricing
             .settlement(
                 &test_dead::id(4),
-                slice(ONE_SECOND_MS, ordinal),
-                &[request(RUNNER_SEQ_MAX)],
+                slice(ONE_SECOND_MS, runtime_seq),
+                &[request(expected_seq)],
             )
-            .expect("coding and runtime remain independently numbered")
+            .expect("model and runtime number independently")
             .expect("both writers produce a line");
         assert_eq!(actual, expected_boundary(expected_seq));
     }
-    for ordinal in [-1, last + 1, i64::from(u32::MAX), i64::MAX] {
+    for runtime_seq in [-1, i64::from(u32::MAX) + 1, i64::MAX] {
         let failure = pricing
             .settlement(
                 &test_dead::id(4),
-                slice(ONE_SECOND_MS, ordinal),
-                &[request(RUNNER_SEQ_MAX)],
+                slice(ONE_SECOND_MS, runtime_seq),
+                &[request(0)],
             )
-            .expect_err("runtime cannot reuse a decision sequence or wrap");
+            .expect_err("a slice start the wire cannot carry is refused");
         assert_eq!(failure.code(), af_core::error_code::INTERNAL_DB_QUERY);
         assert!(!failure.is_config_permanent());
         assert_eq!(
             pricing
-                .settlement(&test_dead::id(4), slice(0, ordinal), &[])
+                .settlement(&test_dead::id(4), slice(0, runtime_seq), &[])
                 .expect("an empty pass allocates no sequence"),
             None
         );
     }
 }
 
-fn expected_boundary(runtime_seq: u32) -> Settlement {
+fn expected_boundary(seq: u32) -> Settlement {
     let uncharged = |usage| RatedLine {
         usage,
         price: None,
@@ -142,7 +154,8 @@ fn expected_boundary(runtime_seq: u32) -> Settlement {
         unpriced_tokens: 0,
     };
     let coding = uncharged(UsageLine {
-        seq: RUNNER_SEQ_MAX,
+        kind: LineKind::Model,
+        seq,
         at: test_dead::AT,
         input_tokens: 25_000,
         cached_input_tokens: 2_500,
@@ -153,7 +166,8 @@ fn expected_boundary(runtime_seq: u32) -> Settlement {
         runtime_ms: 0,
     });
     let mut runtime = uncharged(UsageLine {
-        seq: runtime_seq,
+        kind: LineKind::Runtime,
+        seq,
         at: test_dead::AT,
         input_tokens: 0,
         cached_input_tokens: 0,

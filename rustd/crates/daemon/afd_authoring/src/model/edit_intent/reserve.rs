@@ -52,7 +52,7 @@ impl ModelCalls {
             .bind(&attempt.id)
             .bind(attempt.tenant_id)
             .bind(attempt.workspace_id)
-            .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE) + i64::from(request.call_index))
+            .bind(i64::from(request.call_index))
             .bind(prepared.candidate_revision)
             .bind(sqlx::types::Json(&prepared.snapshot))
             .bind(prepared.reserved_nanos)

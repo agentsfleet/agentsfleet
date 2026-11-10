@@ -3,9 +3,9 @@
 --
 -- Lock order is the report's and the renewal's: the fleet's scope, then the
 -- slot, then the lease. READ COMMITTED re-reads a locked row's latest version,
--- so the lease's `daemon_line_count` is current, and the runtime line takes
--- the next daemon-range number: a racing renewal waiting on the same lock
--- numbers after it. A common table expression cannot see its own statement's
+-- so the lease's cursor is current, and the runtime line is numbered by its
+-- slice's start: a racing renewal waiting on the same lock bills a later slice
+-- under a later number. A common table expression cannot see its own statement's
 -- writes, nor the triggers' (`trg_usage_lines_bump_budget`), so the closing
 -- row's cost and counters and the run's token sums add the lines inserted here.
 --
@@ -16,7 +16,7 @@
 --
 -- $1 lease · $2 runner · $3 milliseconds per second · $4 active status ·
 -- $5 reported status · $6 succeeded · $7 the lease work type ·
--- $8 the daemon line range's base · $9 run nanos per second ·
+-- $8 the model line kind · $9 run nanos per second ·
 -- $10 the runtime line's price · $11 posture · $12 provider · $13 model ·
 -- $14 the catalogue version the lines were priced at ·
 -- $15-$26 the runner's request lines, in parallel arrays: id, seq, requested
@@ -29,7 +29,7 @@
 -- $40 the obligation's id · $41 its receipt · $42 the answer owed ·
 -- $43 the connectors an answer can be owed to · $44 the audit row's id ·
 -- $45 its event type · $46 its metadata · $47 the fleet · $48 its workspace ·
--- $49 the most milliseconds one line carries
+-- $49 the most milliseconds one line carries · $50 the runtime line kind
 WITH scope AS MATERIALIZED (
   SELECT f.id
   FROM fleet.fleets f
@@ -45,7 +45,7 @@ WITH scope AS MATERIALIZED (
   FOR UPDATE OF s
 ), probe AS MATERIALIZED (
   SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id, l.fencing_token,
-         l.lease_expires_at, l.last_metered_at, l.daemon_line_count,
+         l.created_at, l.lease_expires_at, l.last_metered_at,
          l.posture, l.provider, l.model, l.task_id, a.fencing_token AS live_fence
   FROM runner.leases l
   JOIN locked_slot a ON a.fleet_id = l.fleet_id
@@ -72,26 +72,28 @@ WITH scope AS MATERIALIZED (
   FROM guard g
 ), runtime AS MATERIALIZED (
   -- Charged as the rater charges run time: whole nanos, rounded up, in integers.
-  SELECT $8::bigint + m.daemon_line_count AS seq, m.metered_until AS requested_at,
+  -- Numbered by the slice's start, in milliseconds from the lease's start.
+  SELECT (EXTRACT(EPOCH FROM m.last_metered_at - m.created_at) * $3::bigint)::bigint AS seq,
+         m.metered_until AS requested_at,
          m.d_ms AS runtime_ms,
          (m.d_ms * $9::bigint + $3::bigint - 1) / $3::bigint AS charged
   FROM measured m
   WHERE m.d_ms > 0
 ), lines AS (
   INSERT INTO billing.usage_lines
-      (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
+      (id, work_type, work_id, kind, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
        authoring_attempt_id, provider, model, posture, requested_at, input_token_count,
        cached_input_token_count, cache_write_token_count, cache_write_5m_token_count,
        cache_write_1h_token_count, output_token_count, runtime_ms, platform_model_price_id,
        unpriced_token_count, charged_nanos, created_at, updated_at)
-  SELECT line.id, $7, m.id, line.seq, m.tenant_id, m.workspace_id, m.fleet_id, f.name, m.event_id,
+  SELECT line.id, $7, m.id, line.kind, line.seq, m.tenant_id, m.workspace_id, m.fleet_id, f.name, m.event_id,
          NULL, m.provider, m.model, m.posture, line.requested_at, line.input, line.cached,
          line.write, line.write_5m, line.write_1h, line.output, line.runtime_ms, line.price_id,
          line.unpriced, line.charged, now(), now()
   FROM measured m
   JOIN fleet.fleets f ON f.id = m.fleet_id
   CROSS JOIN (
-      SELECT requested.id, requested.seq, requested.requested_at, requested.input,
+      SELECT requested.id, $8::text AS kind, requested.seq, requested.requested_at, requested.input,
              requested.cached, requested.write, requested.write_5m, requested.write_1h,
              requested.output, 0::bigint AS runtime_ms, requested.price_id,
              requested.unpriced, requested.charged
@@ -101,19 +103,19 @@ WITH scope AS MATERIALIZED (
           AS requested(id, seq, requested_at, input, cached, write, write_5m, write_1h,
                        output, price_id, unpriced, charged)
       UNION ALL
-      SELECT $27::uuid, r.seq, r.requested_at, 0, 0, 0, 0, 0, 0, r.runtime_ms, $10::uuid, 0,
+      SELECT $27::uuid, $50::text, r.seq, r.requested_at, 0, 0, 0, 0, 0, 0, r.runtime_ms, $10::uuid, 0,
              r.charged
       FROM runtime r
   ) line
-  ON CONFLICT (work_type, work_id, seq) DO NOTHING
-  RETURNING seq, charged_nanos, input_token_count, cached_input_token_count,
+  ON CONFLICT (work_type, work_id, kind, seq) DO NOTHING
+  RETURNING kind, charged_nanos, input_token_count, cached_input_token_count,
             cache_write_token_count + cache_write_5m_token_count + cache_write_1h_token_count
                 AS cache_write_tokens,
             output_token_count
 ), added AS MATERIALIZED (
   SELECT count(*)::bigint AS lines,
          COALESCE(sum(charged_nanos), 0)::bigint AS nanos,
-         COALESCE(sum(charged_nanos) FILTER (WHERE seq < $8::bigint), 0)::bigint AS model_nanos,
+         COALESCE(sum(charged_nanos) FILTER (WHERE kind = $8::text), 0)::bigint AS model_nanos,
          COALESCE(sum(input_token_count), 0)::bigint AS input_tokens,
          COALESCE(sum(cached_input_token_count), 0)::bigint AS cached_input_tokens,
          COALESCE(sum(cache_write_tokens), 0)::bigint AS cache_write_tokens,
@@ -123,7 +125,6 @@ WITH scope AS MATERIALIZED (
   UPDATE runner.leases l
   SET status = $5,
       last_metered_at = m.metered_until,
-      daemon_line_count = l.daemon_line_count + (SELECT count(*) FROM runtime),
       updated_at = now()
   FROM measured m
   WHERE l.id = m.id

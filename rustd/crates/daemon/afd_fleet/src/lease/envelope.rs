@@ -118,4 +118,12 @@ impl Opened {
             setup: FleetWithSession::unread(workspace_id),
         }
     }
+
+    /// The same, for a fleet whose setup is installed at `revision`.
+    pub(crate) fn installed(workspace_id: Uuid7, tenant_id: Uuid7, revision: Uuid7) -> Self {
+        Self {
+            setup: FleetWithSession::installed(workspace_id.clone(), revision),
+            ..Self::unread(workspace_id, tenant_id)
+        }
+    }
 }

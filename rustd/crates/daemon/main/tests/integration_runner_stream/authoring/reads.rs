@@ -57,7 +57,9 @@ impl AuthoringFixture {
     }
 
     pub(super) async fn charges(&self) -> Vec<(i64, i64, i64, i64)> {
-        sqlx::query_as("SELECT seq,input_token_count,output_token_count,charged_nanos FROM billing.usage_lines WHERE work_id=$1 ORDER BY seq")
+        // `kind DESC` reads runtime, then model, then decision lines: each kind
+        // numbers its own lines (M245), so `seq` alone no longer orders them.
+        sqlx::query_as("SELECT seq,input_token_count,output_token_count,charged_nanos FROM billing.usage_lines WHERE work_id=$1 ORDER BY kind DESC, seq")
             .bind(Uuid7::parse(&self.lease.attempt_id).expect("attempt id"))
             .fetch_all(&mut *self.booted.database.acquire().await.expect("accounting read connection"))
             .await.expect("durable billing lines")
