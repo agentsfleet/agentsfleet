@@ -93,7 +93,7 @@ impl Preference {
     }
 
     fn record(&mut self, outcome: Outcome, now: Instant) {
-        // Only HTTP/2 carrying after HTTP/3 failed points at UDP. Neither carrier connecting
+        // Only HTTP/2 connecting after HTTP/3 failed points at UDP. Neither carrier connecting
         // shows an unreachable daemon, and arming the skip then would send the first connection
         // after a restart to HTTP/2, where a healthy session stays.
         let udp_suspect = match outcome {

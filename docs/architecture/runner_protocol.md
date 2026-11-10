@@ -121,7 +121,7 @@ A healthy HTTP/2 session stays on HTTP/2.
 The runner tries HTTP/3 again during a later permitted connection setup, after recent UDP failure history allows another attempt.
 There is no periodic transport upgrade or hot switch.
 
-UDP failure history starts only when HTTP/3 fails and HTTP/2 then carries the session.
+UDP failure history starts only when HTTP/3 fails to connect and HTTP/2 then connects.
 If neither carrier connects, no new history starts, so a daemon restart alone does not send the runner to HTTP/2.
 
 ### Recovery and availability
@@ -143,7 +143,7 @@ This leaves time to stop the engine and reap its processes.
 | Recovery attempt | 7 seconds total | HTTP/3 setup 2 seconds, HTTP/2 setup 2 seconds, authenticated opening and rebuild 3 seconds |
 | Reconnect delay | Jittered exponential backoff, capped at 30 seconds | Failed openings and short sessions retain retry history |
 | Stable reset | 60 seconds | A stable session resets reconnect backoff |
-| UDP failure history | 30 seconds | How long a new connection skips HTTP/3 after HTTP/3 failed and HTTP/2 carried the session |
+| UDP failure history | 30 seconds | How long a new connection skips HTTP/3 after HTTP/3 failed to connect and HTTP/2 connected |
 | Replica work probe | Every 5 seconds | Finds work after a lost notification |
 
 [Timing constants](../../rustd/crates/foundation/af_core/src/timing.rs) assert the renewal and recovery relationship.
