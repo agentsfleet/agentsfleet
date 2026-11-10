@@ -170,6 +170,22 @@ fn test_a_discarded_clock_records_no_span() {
     );
 }
 
+/// A verb that reaches no stage records nothing, identified or not: a request
+/// refused before its first boundary leaves no empty span behind.
+#[test]
+fn test_a_clock_that_reached_no_stage_records_nothing() {
+    let collected = Collected::default();
+    let (_provider, tracer) = tracer(&collected);
+    let mut clock = VerbClock::<SteerStage, Moved>::start_on(Moved::new());
+    clock.identify(EVENT_ID, FLEET_ID);
+    clock.record_on(&tracer);
+    assert_eq!(
+        collected.spans().len(),
+        0,
+        "a stageless clock recorded a span"
+    );
+}
+
 /// A steer's span carries only declared keys, and its only text values are
 /// the event and fleet it was identified with: no clock method takes free text.
 #[test]

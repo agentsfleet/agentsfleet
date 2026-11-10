@@ -484,7 +484,7 @@ Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complet
 
 `fleet.steer` marks `admit` and `announce`; `fleet.offer` marks `claim`, `admit`, `issue`, `encode` and `send`. `fleet.report` marks `load`, `prepare`, `capture`, `commit`, `announce` and `ack`. The fallback `fleet.hydrate` and `fleet.capture` mark `fence`, then `memory_read` or `memory_write`.
 
-An offer pass that reaches no stage records nothing, because the recovery probe runs every 5 s per replica. A claim the gates refused reached `claim`, so it keeps its span.
+A verb that reaches no stage records nothing. The common case is an offer pass that finds no work, since the recovery probe runs every 5 s per replica. A claim the gates refused reached `claim`, so it keeps its span.
 
 Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent.
 

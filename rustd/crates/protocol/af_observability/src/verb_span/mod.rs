@@ -13,8 +13,10 @@
 //!
 //! The stage type is a closed enum per verb, so a free-form key cannot be
 //! written, and the only strings a span carries are the event and fleet
-//! identifiers. A verb that turns out to have nothing to describe, such as an
-//! offer pass that selected no work, calls [`VerbClock::discard`].
+//! identifiers. A verb that reaches no stage records nothing: an offer pass
+//! that found no work, or a request refused before its first boundary, has
+//! nothing to place, and its request span already says it ran. A verb can
+//! also give up a span it started with [`VerbClock::discard`].
 
 use std::fmt::Debug;
 use std::time::{Duration, Instant, SystemTime};
@@ -254,6 +256,10 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
     /// Records the span on `tracer` now, once.
     fn record_on<T: Tracer>(&mut self, tracer: &T) {
         if std::mem::replace(&mut self.discarded, true) {
+            return;
+        }
+        // No stage, no span: see the module note.
+        if self.stages.is_empty() {
             return;
         }
         let elapsed = self
