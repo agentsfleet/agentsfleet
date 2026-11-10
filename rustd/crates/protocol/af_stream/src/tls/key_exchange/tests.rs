@@ -5,8 +5,10 @@ use std::{path::Path, time::Duration};
 use boring::ssl::{SslAcceptor, SslFiletype, SslMethod, SslVersion};
 use tokio::net::{TcpListener, TcpStream};
 
+use af_observability::metrics::label::fleet::{StreamKeyExchange, StreamPeer};
+
 use super::KeyExchange;
-use crate::tls::Trust;
+use crate::{Reason, Transport, tls::Trust};
 
 type TestResult<T = ()> = crate::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -121,4 +123,47 @@ fn peer(directory: &Path, group: &str, version: SslVersion) -> TestResult<SslAcc
     context.set_private_key_file(key, SslFiletype::PEM)?;
     context.check_private_key()?;
     Ok(context.build())
+}
+
+#[test]
+fn every_group_keeps_its_stable_label_and_census_value() {
+    for (group, label) in [
+        (KeyExchange::X25519MlKem768, "x25519_mlkem768"),
+        (KeyExchange::X25519, "x25519"),
+        (KeyExchange::P256, "p256"),
+        (KeyExchange::P384, "p384"),
+        (KeyExchange::Other, "other"),
+    ] {
+        assert_eq!(group.as_str(), label);
+        assert_eq!(StreamKeyExchange::from(group).as_str(), label);
+    }
+}
+
+#[test]
+fn only_the_hybrid_group_passes_and_a_refusal_is_a_tls_failure() -> TestResult {
+    assert_eq!(
+        KeyExchange::X25519MlKem768.check()?,
+        KeyExchange::X25519MlKem768
+    );
+    for group in [
+        KeyExchange::X25519,
+        KeyExchange::P256,
+        KeyExchange::P384,
+        KeyExchange::Other,
+    ] {
+        let Err(refused) = group.require(Transport::H2, StreamPeer::Client) else {
+            return Err(format!("{group:?} passed the hybrid requirement").into());
+        };
+        assert_eq!(refused.reason(), Reason::Tls);
+    }
+    Ok(())
+}
+
+#[test]
+fn trust_reports_only_the_roots_its_caller_chose() {
+    assert_eq!(Trust::default().roots(), None);
+    assert_eq!(
+        Trust::with_roots("/fixture/roots.pem").roots(),
+        Some(Path::new("/fixture/roots.pem"))
+    );
 }
