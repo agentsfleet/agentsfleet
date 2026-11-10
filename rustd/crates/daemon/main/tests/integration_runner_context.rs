@@ -33,25 +33,45 @@ async fn stored(held: &Leased) -> Value {
         .expect("durable run notes")
 }
 
+// Value: protects=a run's first checkpoint publishes with nothing read
+// before it, and nothing can read it back; fails_when=the PUT needs a prior
+// load, or the GET still answers; why_new=M245 §8 removed the load;
+// seam=none; no_claim=a reclaimed turn's notes, which M247 §4 carries in the
+// delivery.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn checkpoint_retry_is_idempotent_and_superseded_assignment_cannot_read_or_replace_notes() {
+async fn first_checkpoint_commits_on_a_branch_never_loaded() {
     let mut supervisor = Supervisor::new();
     let qstash = FakeQStash::start().await;
     let held = Leased::boot(&mut supervisor, &qstash).await;
     let path = path(&held);
+    let first = document(&held, 1, "first goal");
+
+    let (published, _) = held
+        .call(Method::PUT, &path, Some(&put(&held, 0, &first)))
+        .await;
     let read = format!("{path}?fencing_token={}", held.fence);
+    let (refused, _) = held.call(Method::GET, &read, None).await;
+
+    assert_eq!(published, 204, "the first publication needs no load");
+    assert_eq!(stored(&held).await, first);
+    assert_eq!(refused, 405, "the route publishes and never reads");
+    held.finish(supervisor).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn checkpoint_retry_is_idempotent_and_superseded_assignment_cannot_replace_notes() {
+    let mut supervisor = Supervisor::new();
+    let qstash = FakeQStash::start().await;
+    let held = Leased::boot(&mut supervisor, &qstash).await;
+    let path = path(&held);
     let original = document(&held, 1, "original goal");
     let body = put(&held, 0, &original);
-    assert_eq!(held.call(Method::GET, &read, None).await, (200, json!({})));
     for _ in 0..2 {
         assert_eq!(held.call(Method::PUT, &path, Some(&body)).await.0, 204);
     }
     assert_eq!(stored(&held).await, original);
-    assert_eq!(
-        held.call(Method::GET, &read, None).await,
-        (200, json!({"checkpoint":original}))
-    );
     let mut foreign = document(&held, 2, "foreign scope");
     foreign["identity"]["scope"] = json!("draft:another-private-draft");
     assert_eq!(
@@ -69,7 +89,6 @@ async fn checkpoint_retry_is_idempotent_and_superseded_assignment_cannot_read_or
         400
     );
     held.supersede().await;
-    assert_eq!(held.call(Method::GET, &read, None).await.0, 409);
     let changed = put(&held, 1, &document(&held, 2, "stale overwrite"));
     let (status, refusal) = held.call(Method::PUT, &path, Some(&changed)).await;
     assert_eq!(status, 409);
@@ -156,13 +175,13 @@ async fn an_unusable_checkpoint_is_refused_by_the_service_without_replacing_priv
         std::error::Error::source(&error)
             .is_some_and(<dyn std::error::Error>::is::<af_context::Error>)
     );
-    assert!(
-        leases
-            .context_load(&held.run.runner_id, &lease, &lease, held.fence)
+    let kept: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM memory.context_checkpoints WHERE lease_id=$1")
+            .bind(&lease)
+            .fetch_one(&mut *held.connection().await)
             .await
-            .expect("the live assignment can read")
-            .is_none()
-    );
+            .expect("the notes table reads");
+    assert_eq!(kept, 0, "the refused notes replaced nothing");
     let diagnostic = {
         let mut connection = held.connection().await;
         let scope = Scope::Run {

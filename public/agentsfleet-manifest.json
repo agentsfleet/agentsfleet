@@ -112,13 +112,6 @@
       "actionClass": "safe"
     },
     {
-      "operationId": "runner_load_context_checkpoint",
-      "method": "GET",
-      "path": "/v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}",
-      "description": "Load private working notes for one run branch under the current runner assignment.",
-      "actionClass": "safe"
-    },
-    {
       "operationId": "runner_put_context_checkpoint",
       "method": "PUT",
       "path": "/v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}",
@@ -145,8 +138,7 @@
       "list_tenant_model_entries",
       "list_workspace_libraries",
       "get_tenant_billing_report",
-      "get_tenant_billing_activity_charges",
-      "runner_load_context_checkpoint"
+      "get_tenant_billing_activity_charges"
     ],
     "sensitive": [
       "create_fleet",

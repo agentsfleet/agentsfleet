@@ -97,7 +97,7 @@ impl Healthy {
                 // The native opening is a stream, never an HTTP fixture route.
                 | Verb::Open,
             ) => Value::Null,
-            Some(Verb::ContextLoad | Verb::ContextCommit) => serde_json::json!({}),
+            Some(Verb::ContextCommit) => serde_json::json!({}),
             Some(Verb::Heartbeat) => self.heartbeat(),
             Some(Verb::Renew) => value(&RenewResponse {
                 lease_expires_at: self.granted_until,
@@ -189,7 +189,6 @@ fn routed(method: &str, path: &str) -> Option<Verb> {
     match (path, leased) {
         (RUNNER_SELF, _) => Some(Verb::Me),
         (_, Some(LEASE_TOOL_CALLS_SUFFIX)) => Some(Verb::Records),
-        _ if context && method == GET => Some(Verb::ContextLoad),
         _ if context && method == Verb::ContextCommit.method().http().as_str() => {
             Some(Verb::ContextCommit)
         }

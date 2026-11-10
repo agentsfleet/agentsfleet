@@ -11,30 +11,9 @@ use af_context::{
 use af_core::id::Uuid7;
 use sqlx::Connection as _;
 
-const CONTEXT: &str = "access private run context checkpoint";
+const CONTEXT: &str = "publish private run context checkpoint";
 
 impl Leases {
-    /// Read private notes only while this runner still holds the assignment.
-    ///
-    /// # Errors
-    /// An absent/stale assignment or unavailable storage.
-    pub async fn context_load(
-        &self,
-        runner: &Uuid7,
-        lease: &Uuid7,
-        branch: &Uuid7,
-        fence: u64,
-    ) -> Result<Option<Checkpoint>> {
-        let mut connection = self.pool().acquire().await?;
-        let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let scope = scope(&mut tx, runner, lease, branch, fence).await?;
-        let found = Repository::new(&mut tx, scope, branch.clone())
-            .load()
-            .await?;
-        tx.commit().await.map_err(query(CONTEXT))?;
-        Ok(found)
-    }
-
     /// Publish against a generation under the live lease's publication lock.
     /// Repeating the exact document acknowledges the existing row.
     ///

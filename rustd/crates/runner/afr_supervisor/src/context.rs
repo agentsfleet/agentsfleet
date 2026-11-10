@@ -22,20 +22,6 @@ impl<'a> LeaseContext<'a> {
 
 #[async_trait::async_trait]
 impl afr_agent::ContextCheckpoints for LeaseContext<'_> {
-    async fn load(&self, branch: &str) -> Result<Option<Checkpoint>> {
-        let loaded = retrying(|| self.plane.context_load(self.lease, branch, self.fence))
-            .await
-            .map_err(Error::boundary)?;
-        let checkpoint: Option<Checkpoint> = loaded
-            .checkpoint
-            .map(serde_json::from_value)
-            .transpose()
-            .map_err(Error::boundary)?;
-        if let Some(value) = &checkpoint {
-            value.validate_document()?;
-        }
-        Ok(checkpoint)
-    }
     async fn commit(&self, branch: &str, expected: u64, checkpoint: Checkpoint) -> Result<()> {
         let request = ContextPut {
             fencing_token: self.fence,

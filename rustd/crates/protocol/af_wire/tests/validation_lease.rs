@@ -172,3 +172,23 @@ fn test_lease_resume_hold_round_trips() {
     assert!(present.resume_hold);
     assert_eq!(serde_json::to_value(&present).unwrap()["resume_hold"], true);
 }
+
+/// An older daemon sends no `inputs_waiting`, and a run then asks before its
+/// first model call; a daemon that says false lets it skip that ask.
+#[test]
+fn an_absent_inputs_waiting_reads_as_true() {
+    let text = lease("null");
+    let older: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
+    let none_waiting = text.replace(
+        r#""resume_hold":false"#,
+        r#""resume_hold":false,"inputs_waiting":false"#,
+    );
+    let answered: LeasePayload<'_> = serde_json::from_str(&none_waiting).unwrap();
+
+    assert!(older.inputs_waiting, "an absent flag asks");
+    assert!(!answered.inputs_waiting);
+    assert_eq!(
+        serde_json::to_value(&answered).unwrap()["inputs_waiting"],
+        false
+    );
+}

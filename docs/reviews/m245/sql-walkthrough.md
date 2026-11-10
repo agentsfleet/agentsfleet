@@ -29,7 +29,7 @@ task notice (durable tasks only) ► apply_report_notice.sql          §6
 | `afd_vault/src/sql/insert_secret_if_absent.sql` | edited | §2 |
 | `afd_credential/src/provider/registered/sql/platform.sql` | edited | §3 |
 | `afd_billing/src/sql/select_price_book.sql` | edited | §6 |
-| `afd_fleet/src/lease/sql/lease/claim_admission_head.sql` | edited | §4 |
+| `afd_fleet/src/lease/sql/lease/claim_admission_head.sql` | edited | §4, §8 |
 | `afd_fleet/src/lease/sql/lease/stamp_delivery.sql` | deleted | §4 |
 | `afd_fleet/src/lease/sql/select_gates.sql` | added | §5 |
 | `afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql` | edited | §5 |
@@ -111,7 +111,7 @@ compile-time assertion (`af_wire/src/usage/mod.rs`, `RUNTIME_MS_MAX`).
 |---|---|---|
 | 5 | comma, then `(SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1) AS catalogue_version` | The price book carries the catalogue version it was read at (`PriceBook.catalogue_version`). The report statement refuses lines priced under a catalogue that has since moved (`commit_report.sql:62`). `c.id = 1` is the singleton's documented identity exception (`schema/20261108121300_model_catalogue_version.sql:1-3`). |
 
-## §4 — `afd_fleet/src/lease/sql/lease/claim_admission_head.sql`
+## §4, §8 — `afd_fleet/src/lease/sql/lease/claim_admission_head.sql`
 
 On `main`, the claim was followed by a second transaction, `record_received`.
 It locked the admission, inserted the event (`afd_events`'
@@ -130,19 +130,21 @@ read the counters after commit and read the redelivery state
 | 66-68 `stamped` | `delivered_at = COALESCE(a.delivered_at, clock_timestamp())` | The body of the deleted `stamp_delivery.sql`, on the row this statement already locks and fences. |
 | 80 | `RETURNING WITH (OLD AS prior)` | Postgres 18: returns the row as it was before this update. |
 | 82 | also returns `producer`, `created_at`, `task_id` | `opened` and `installed` need them. |
-| 83 | `prior.delivered_at IS NOT NULL AS redelivered` | The stamp now happens before the event insert, so the updated row always has `delivered_at`. Only the pre-update row says whether this is a redelivery. |
-| 84-93 `prior_lease`, `bumped` | kept | |
-| 94-104 `opened` | added | The event insert from `insert_leased_fleet_event.sql:1-10`. |
-| 98 | `CASE WHEN a.producer = $14 AND NOT a.redelivered THEN a.created_at ELSE now() END` | The old `COALESCE((SELECT a.created_at … AND a.delivered_at IS NULL), now())`, rewritten on `redelivered`: the old subquery would now see the stamped row. |
-| 102-103 | `ON CONFLICT (event_id) DO UPDATE SET resumes_event_id = COALESCE(…)` | Same arm as the old insert: a re-leased event keeps its row. |
-| 104 | returns `(e.xmax = 0) AS inserted, e.created_at, e.status` | `status` is new; it replaces the `redelivery_of` read. |
-| 105-109 `counters` | added | Stored `event_count`, plus 1 when this statement inserted: a CTE cannot see its own insert's trigger bump. |
-| 110-120 `installed` | added | The revision the run uses (the task's accepted revision, else the head, line 117), the session, and the head's definition for comparison. |
-| 121-122 `catalogue` | added | The catalogue version, for the price cache key. |
-| 123-129 `platform` | added | The platform key's cache key, chosen as `platform.sql` chooses it. No locks: a stale key only misses the cache, and `platform.sql`'s locked read decides. |
-| 130-137 `tally` | kept | |
-| 139, 144-151 | final row | Returns `redelivered` and every fact above. |
-| 152-158 | joins | `CROSS JOIN fleet`: no active fleet, no row. `LEFT JOIN platform`: a deployment may have no platform default. |
+| 83 | also returns `sequence`, `reply_provider`, `reply_address` (§8) | The head's place and conversation, for `inputs_waiting` at lines 153-167. |
+| 84 | `prior.delivered_at IS NOT NULL AS redelivered` | The stamp now happens before the event insert, so the updated row always has `delivered_at`. Only the pre-update row says whether this is a redelivery. |
+| 85-94 `prior_lease`, `bumped` | kept | |
+| 95-105 `opened` | added | The event insert from `insert_leased_fleet_event.sql:1-10`. |
+| 99 | `CASE WHEN a.producer = $14 AND NOT a.redelivered THEN a.created_at ELSE now() END` | The old `COALESCE((SELECT a.created_at … AND a.delivered_at IS NULL), now())`, rewritten on `redelivered`: the old subquery would now see the stamped row. |
+| 103-104 | `ON CONFLICT (event_id) DO UPDATE SET resumes_event_id = COALESCE(…)` | Same arm as the old insert: a re-leased event keeps its row. |
+| 105 | returns `(e.xmax = 0) AS inserted, e.created_at, e.status` | `status` is new; it replaces the `redelivery_of` read. |
+| 106-110 `counters` | added | Stored `event_count`, plus 1 when this statement inserted: a CTE cannot see its own insert's trigger bump. |
+| 111-121 `installed` | added | The revision the run uses (the task's accepted revision, else the head, line 118), the session, and the head's definition for comparison. |
+| 122-123 `catalogue` | added | The catalogue version, for the price cache key. |
+| 124-130 `platform` | added | The platform key's cache key, chosen as `platform.sql` chooses it. No locks: a stale key only misses the cache, and `platform.sql`'s locked read decides. |
+| 131-138 `tally` | kept | |
+| 139-152 | final row | Returns `redelivered` and every fact above. |
+| 153-167 | `inputs_waiting` added (§8) | Whether a later unsettled message sits in the head's conversation, foldable or not. Two branches, as `claim_inputs.sql` has them: an addressed conversation by equality, the unaddressed one by `IS NULL`, so both walk `idx_admissions_pending_conversation` (`fleet_id, reply_provider, reply_address, sequence WHERE settled_at IS NULL`) and stop at the first row. `IS NOT DISTINCT FROM` would read the same rows but cannot use the index. A durable task's lease says false: its inbox is closed (`claim_inputs.sql` requires `task_id IS NULL`). The run skips its first fold ask on false; a message admitted after this snapshot folds on the ask after the answer. |
+| 168-174 | joins | `CROSS JOIN fleet`: no active fleet, no row. `LEFT JOIN platform`: a deployment may have no platform default. |
 
 ## §4 — `afd_fleet/src/lease/sql/lease/stamp_delivery.sql` (deleted)
 
@@ -325,6 +327,12 @@ that fails a check extends nothing and changes no other lease's answer.
 | 139-150 | `moved`, `slot` | Both deadlines move to the same capped instant, under the lease's fence. |
 | 151-181 | `lines` | The request lines (`unnest`, kind `$31`, `model`) and the runtime lines (kind `$32`) of passing leases, keyed `(work_type, work_id, kind, seq)` (179). |
 | 182-195 | final rows | One row per lease asked about: each check, the new deadline, whether the slot moved too (190: a lease whose slot did not move is lost, never extended past a reclaim), and what its lines charged. |
+
+## §8 — round trips with no new SQL
+
+- **Checkout ping.** No statement: sqlx's `test_before_acquire` sent a Sync on every checkout. The pools now ping in `before_acquire` only after `PING_AFTER_IDLE` (1 s) idle (`afd_db/src/pool/open.rs`), counted by `agentsfleet_db_pool_checkout_pings_total{role}`.
+- **First fold ask.** `claim_inputs.sql` is unchanged. Its first run per lease is answered by the claim's `inputs_waiting` (above) and skipped when false.
+- **Context load.** The `GET` ran `standing/select_standing_shared.sql` and `af_context`'s checkpoint read in one transaction. Both files stay: the `PUT` runs the same scope read before it publishes. The run sends neither on its way to its first model call.
 
 ## Identifiers
 

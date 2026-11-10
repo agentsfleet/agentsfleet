@@ -35,6 +35,7 @@
 name	kind	number	unit	temporality	labels	bounds	policy	live_read	category	watch_for
 agentsfleet_db_pool_connections	gauge	u64	{connection}	-	role,state	-	fixed:15	yes	saturation	actual open, idle, used, capacity and waiting readings by role
 agentsfleet_db_pool_acquire_duration_seconds	histogram	f64	s	cumulative	role,outcome	0.001,0.005,0.01,0.05,0.1,0.25,0.5,1,2,5,10,30	fixed:15	no	latency	whole connection acquisition including stall retry and cancellation
+agentsfleet_db_pool_checkout_pings_total	counter	u64	{ping}	cumulative	role	-	fixed:3	no	saturation	idle connections a checkout tested before handing out, by role: a connection used within PING_AFTER_IDLE goes out untested, so this moves only after a pool sat quiet
 agentsfleet_model_call_duration_seconds	histogram	f64	s	cumulative	gen_ai.request.model,gen_ai.provider.name,outcome	0.01,0.05,0.1,0.25,0.5,1,2,5,10,30,60,120,300	shared:cost	no	latency	individual provider stream duration by model and outcome
 agentsfleet_model_first_token_duration_seconds	histogram	f64	s	cumulative	gen_ai.request.model,gen_ai.provider.name,outcome	0.01,0.05,0.1,0.25,0.5,1,2,5,10,30,60,120	shared:cost	no	latency	first nonempty text; absent for a call with no text
 agentsfleet_model_limit_tokens	gauge	u64	{token}	-	gen_ai.request.model,gen_ai.provider.name,limit	-	shared:cost	yes	saturation	verified context and configured output limits; snapshots expire

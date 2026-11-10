@@ -51,16 +51,17 @@ pub struct ContextMemory(
     std::sync::Mutex<std::collections::HashMap<String, af_context::Checkpoint>>,
 );
 
+impl ContextMemory {
+    /// The checkpoint `branch` holds, as a test reads back what a run
+    /// published; none on a poisoned store.
+    #[must_use]
+    pub fn stored(&self, branch: &str) -> Option<af_context::Checkpoint> {
+        self.0.lock().ok()?.get(branch).cloned()
+    }
+}
+
 #[async_trait::async_trait]
 impl crate::ContextCheckpoints for ContextMemory {
-    async fn load(&self, branch: &str) -> af_context::Result<Option<af_context::Checkpoint>> {
-        Ok(self
-            .0
-            .lock()
-            .map_err(|_poisoned| af_context::Error::stale())?
-            .get(branch)
-            .cloned())
-    }
     async fn commit(
         &self,
         branch: &str,
@@ -101,9 +102,9 @@ mod tests {
     use crate::ContextCheckpoints as _;
     use std::sync::Arc;
 
-    // Value: a poisoned store cannot expose or replace the last accepted checkpoint.
+    // Value: a poisoned store cannot replace the last accepted checkpoint.
     #[tokio::test]
-    async fn a_poisoned_context_store_refuses_both_reads_and_publication() {
+    async fn a_poisoned_context_store_refuses_publication() {
         let store = Arc::new(ContextMemory::default());
         let checkpoint: af_context::Checkpoint = serde_json::from_value(serde_json::json!({
             "format_version":1,
@@ -123,7 +124,6 @@ mod tests {
             .join()
             .is_err()
         );
-        assert!(store.load("branch").await.unwrap_err().is_stale());
         assert!(
             store
                 .commit("branch", 1, checkpoint.clone())

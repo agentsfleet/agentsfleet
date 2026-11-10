@@ -235,10 +235,10 @@ fn should_redact_authoring_call_capability_and_context_but_keep_dispatch_diagnos
     );
 }
 
-// Value: checkpoint diagnostics expose generation/presence without private notes or fences.
+// Value: checkpoint diagnostics expose the generation without private notes or fences.
 #[test]
 fn should_redact_private_checkpoints_without_changing_their_wire_documents() {
-    use af_wire::context::{ContextLoaded, ContextPut};
+    use af_wire::context::ContextPut;
 
     let checkpoint = serde_json::json!({"goal": SECRET});
     let put = ContextPut {
@@ -257,14 +257,4 @@ fn should_redact_private_checkpoints_without_changing_their_wire_documents() {
             "fencing_token": 654_321, "expected_generation": 7, "checkpoint": checkpoint
         })
     );
-    for present in [false, true] {
-        let loaded = ContextLoaded {
-            checkpoint: present.then(|| checkpoint.clone()),
-        };
-        let rendered = format!("{loaded:?}");
-        assert!(!rendered.contains(SECRET));
-        assert!(rendered.contains(&format!("present: {present}")));
-        let wire = serde_json::to_value(&loaded).unwrap();
-        assert_eq!(wire.get("checkpoint"), present.then_some(&checkpoint));
-    }
 }

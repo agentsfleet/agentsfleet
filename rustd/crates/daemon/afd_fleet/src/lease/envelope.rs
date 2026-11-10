@@ -95,6 +95,9 @@ pub struct Opened {
     pub memory_reads_workspace: bool,
     /// Whether the fleet's runs publish to workspace-shared memory.
     pub memory_publishes_workspace: bool,
+    /// Whether a later message waited in the head's conversation when the
+    /// claim read it. False lets the run skip its first fold ask.
+    pub inputs_waiting: bool,
     /// The installed setup, parsed through the definition cache.
     pub(crate) setup: FleetWithSession,
 }
@@ -115,6 +118,7 @@ impl Opened {
             platform_key: None,
             memory_reads_workspace: false,
             memory_publishes_workspace: false,
+            inputs_waiting: true,
             setup: FleetWithSession::unread(workspace_id),
         }
     }

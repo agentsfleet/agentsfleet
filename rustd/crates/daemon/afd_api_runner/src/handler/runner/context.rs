@@ -1,15 +1,15 @@
-//! Private model-window notes belong to one branch under a live lease.
+//! Private model-window notes belong to one branch under a live lease. A run
+//! publishes them and never reads them back: every branch is one it minted.
 use super::schedule::lease;
 use crate::{
     auth::RunnerIdentity,
     services::{Leasing as _, Services},
 };
-use af_wire::context::{ContextLoaded, ContextPath, ContextPut, ContextQuery};
+use af_wire::context::{ContextPath, ContextPut};
 use afd_http::handler::{Refusal, read_strict_body};
 use axum::{
-    Json,
     body::Bytes,
-    extract::{Path, Query, State},
+    extract::{Path, State},
     response::{IntoResponse as _, Response},
 };
 use std::sync::Arc;
@@ -17,48 +17,6 @@ use std::sync::Arc;
 const EVENT: &str = "runner_context_checkpoint_failed";
 const MALFORMED: &str = "Malformed context checkpoint";
 const SUPERSEDED: &str = "superseded";
-
-/// Load a private checkpoint under the current assignment token.
-#[cfg_attr(feature = "openapi", utoipa::path(
-    get, path = af_wire::paths::LEASE_CONTEXT, tag = afd_http::openapi::tag::RUNNERS,
-    operation_id = "runner_load_context_checkpoint", summary = "Load private run working notes",
-    description = "Requires the current assignment. Notes belong only to this run branch and are separate from fleet memory.",
-    params(ContextPath, ContextQuery),
-    responses((status = 200, description = afd_http::openapi::OK, body = ContextLoaded),
-        (status = 400, description = afd_http::openapi::BAD_REQUEST), (status = 401, description = afd_http::openapi::UNAUTHORIZED),
-        (status = 403, description = afd_http::openapi::FORBIDDEN),
-        (status = 404, description = afd_http::openapi::NOT_FOUND), (status = 409, description = afd_http::openapi::CONFLICT),
-        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
-        (status = 500, description = afd_http::openapi::INTERNAL), (status = 503, description = afd_http::openapi::UNAVAILABLE))
-))]
-pub(crate) async fn load<D: Services>(
-    State(services): State<Arc<D>>,
-    RunnerIdentity(runner): RunnerIdentity,
-    Path(ContextPath {
-        lease_id,
-        branch_id,
-    }): Path<ContextPath>,
-    Query(query): Query<ContextQuery>,
-) -> Result<Response, Refusal> {
-    let query = garde::Unvalidated::new(query)
-        .validate()
-        .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    let checkpoint = services
-        .leases()
-        .context_load(
-            runner.id(),
-            &lease(&lease_id)?,
-            &lease(&branch_id)?,
-            query.fencing_token,
-        )
-        .await
-        .map_err(Refusal::conflict_or_at(EVENT, conflict))?;
-    let checkpoint = checkpoint
-        .map(serde_json::to_value)
-        .transpose()
-        .map_err(|_invalid| Refusal::malformed(MALFORMED))?;
-    Ok(Json(ContextLoaded { checkpoint }).into_response())
-}
 
 /// Replace private notes conditionally; identical retries have one durable effect.
 #[cfg_attr(feature = "openapi", utoipa::path(

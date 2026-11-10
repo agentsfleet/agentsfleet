@@ -13,7 +13,8 @@ use sqlx::postgres::PgPoolOptions;
 use crate::config::{DbRole, PoolConfig};
 use crate::error::{Result, classify_acquire, unreachable_datastore};
 
-use super::{IDLE_TIMEOUT, MAX_LIFETIME};
+use super::observed::pool_role;
+use super::{IDLE_TIMEOUT, MAX_LIFETIME, PING_AFTER_IDLE};
 
 /// Drops every advisory lock a returned connection still holds.
 const UNLOCK_ALL: &str = include_str!("sql/unlock_all.sql");
@@ -40,9 +41,10 @@ pub(super) async fn probe(config: &PoolConfig) -> Result<()> {
 }
 
 /// The options `config`'s pool is built with: its ceiling, its warm floor, its
-/// acquire budget, the pinned reaper, and — for the migrator alone — the
-/// advisory-lock backstop.
+/// acquire budget, the pinned reaper, the idle-gated checkout ping, and — for
+/// the migrator alone — the advisory-lock backstop.
 pub(super) fn options(config: &PoolConfig) -> PgPoolOptions {
+    let role = config.role();
     let builder = PgPoolOptions::new()
         .max_connections(config.max_connections())
         // The floor sqlx maintains in the background. Without it the pool
@@ -53,8 +55,23 @@ pub(super) fn options(config: &PoolConfig) -> PgPoolOptions {
         .acquire_timeout(config.acquire_timeout())
         // Pinned, not defaulted: see the constants for what turns on them.
         .idle_timeout(IDLE_TIMEOUT)
-        .max_lifetime(MAX_LIFETIME);
-    if config.role() != DbRole::Migrator {
+        .max_lifetime(MAX_LIFETIME)
+        // The ping moves into `before_acquire`, gated on idle time: see
+        // [`PING_AFTER_IDLE`]. A failed ping answers `Err`, which sqlx treats
+        // as its own ping failing: the connection closes hard and the checkout
+        // takes or opens another.
+        .test_before_acquire(false)
+        .before_acquire(move |connection, meta| {
+            Box::pin(async move {
+                if !due_for_ping(meta.idle_for) {
+                    return Ok(true);
+                }
+                af_observability::producers::database::pinged(pool_role(role));
+                connection.ping().await?;
+                Ok(true)
+            })
+        });
+    if role != DbRole::Migrator {
         return builder;
     }
     // The backstop for a lock nobody released. Advisory locks live on the
@@ -69,4 +86,30 @@ pub(super) fn options(config: &PoolConfig) -> PgPoolOptions {
             Ok(true)
         })
     })
+}
+
+/// Whether a checkout tests a connection that sat idle for `idle_for`.
+fn due_for_ping(idle_for: std::time::Duration) -> bool {
+    idle_for >= PING_AFTER_IDLE
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::{PING_AFTER_IDLE, due_for_ping};
+
+    #[test]
+    fn a_connection_used_inside_the_window_goes_out_untested() {
+        assert!(!due_for_ping(Duration::ZERO));
+        assert!(!due_for_ping(
+            PING_AFTER_IDLE.saturating_sub(Duration::from_millis(1))
+        ));
+    }
+
+    #[test]
+    fn a_connection_idle_for_the_window_is_tested() {
+        assert!(due_for_ping(PING_AFTER_IDLE));
+        assert!(due_for_ping(PING_AFTER_IDLE * 60));
+    }
 }

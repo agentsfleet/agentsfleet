@@ -219,11 +219,9 @@ async fn repeated_compaction_continues_past_turn_forty_two_and_keeps_tools_and_g
     assert!(summaries > 1, "the test must cross repeated compactions");
     assert_eq!(meter.backlog(), TURNS + 1 + summaries);
     assert_eq!(meter.read().output, (TURNS + 1 + summaries * 5) as u64);
-    let checkpoint =
-        crate::ContextCheckpoints::load(&contexts, "01900000-0000-7000-8000-000000000001")
-            .await
-            .unwrap()
-            .unwrap();
+    let checkpoint = contexts
+        .stored("01900000-0000-7000-8000-000000000001")
+        .unwrap();
     assert_eq!(checkpoint.generation, summaries as u64);
     assert_eq!(checkpoint.summary.goal, "finish all fifty-five steps");
     assert!(seen.messages.lock().unwrap().last().unwrap().iter().any(|message| matches!(message, Message::User(text) if text.contains("finish all fifty-five steps"))));
@@ -236,9 +234,8 @@ async fn unusable_summary_retains_known_charge_without_publishing_or_running_mor
         assert_ne!(output.result.content, "all steps finished");
         assert_eq!(seen.summaries.load(Ordering::SeqCst), 1);
         assert!(
-            crate::ContextCheckpoints::load(&contexts, "01900000-0000-7000-8000-000000000001")
-                .await
-                .unwrap()
+            contexts
+                .stored("01900000-0000-7000-8000-000000000001")
                 .is_none()
         );
         assert_eq!(meter.backlog(), seen.normal.load(Ordering::SeqCst) + 1);
