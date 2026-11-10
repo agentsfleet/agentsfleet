@@ -57,13 +57,27 @@ impl Tier {
 #[serde(deny_unknown_fields)]
 pub struct PriceBook {
     tiers: Vec<Tier>,
+    /// The catalogue version the tiers were read at, which a statement priced
+    /// from this book guards on (M245 §3). `None` for a book no read produced,
+    /// and for a model the catalogue does not carry.
+    #[serde(skip)]
+    catalogue_version: Option<i64>,
 }
 
 impl PriceBook {
     /// A book over `tiers`, in any order.
     #[must_use]
     pub const fn from_tiers(tiers: Vec<Tier>) -> Self {
-        Self { tiers }
+        Self {
+            tiers,
+            catalogue_version: None,
+        }
+    }
+
+    /// The catalogue version this book was read at, when a read produced it.
+    #[must_use]
+    pub const fn catalogue_version(&self) -> Option<i64> {
+        self.catalogue_version
     }
 
     /// The tiers `provider`'s `model` is published at.
@@ -78,13 +92,17 @@ impl PriceBook {
         provider: &str,
         model: &str,
     ) -> Result<Self> {
-        let rows: Vec<PriceColumns> = sqlx::query_as(sql::SELECT_PRICE_BOOK)
+        let rows: Vec<CodingColumns> = sqlx::query_as(sql::SELECT_PRICE_BOOK)
             .bind(provider)
             .bind(model)
             .fetch_all(executor)
             .await
             .map_err(query(CONTEXT_LOAD))?;
-        Ok(Self::from_rows(rows))
+        let catalogue_version = rows.first().map(|row| row.catalogue_version);
+        Ok(Self {
+            catalogue_version,
+            ..Self::from_rows(rows.into_iter().map(|row| row.columns).collect())
+        })
     }
 
     /// Reads the dated tiers for the lease's saved model/revision identity.
@@ -110,9 +128,7 @@ impl PriceBook {
     }
 
     fn from_rows(rows: Vec<PriceColumns>) -> Self {
-        Self {
-            tiers: rows.into_iter().map(PriceColumns::tier).collect(),
-        }
+        Self::from_tiers(rows.into_iter().map(PriceColumns::tier).collect())
     }
 
     /// Provisional native-decision reservation across every active prompt tier.
@@ -166,6 +182,15 @@ impl PriceBook {
             .filter(|tier| tier.covers(at) && tier.admits(whole_prompt))
             .max_by_key(|tier| tier.price.prompt_tokens_above)
     }
+}
+
+/// A coding quote's row: the shared projection, and the catalogue version
+/// the same statement read.
+#[derive(Debug, sqlx::FromRow)]
+struct CodingColumns {
+    #[sqlx(flatten)]
+    columns: PriceColumns,
+    catalogue_version: i64,
 }
 
 /// Coding and decision quotes share the same named projection.

@@ -122,10 +122,7 @@ async fn test_report_behind_a_held_renewal_bills_its_own_runtime_line() {
     assert!(
         matches!(
             committed,
-            Ok(Committed::Settled {
-                settlement: Some(_),
-                ..
-            })
+            Ok(Committed::Settled { charged, .. }) if charged.as_i64() > 0
         ),
         "the report settles and bills its slice: {committed:?}"
     );

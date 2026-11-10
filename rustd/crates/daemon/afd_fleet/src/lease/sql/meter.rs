@@ -93,9 +93,6 @@ impl<'a> Metering<'a> {
             .bind(af_core::timing::MAX_RUNTIME)
             .bind(super::LEASE_STATUS_REPORTED)
             .bind(succeeded)
-            .bind(afd_billing::sql::work::FLEET_LEASE)
-            .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))
-            .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
             .bind(af_wire::task::TaskState::Running.as_str())
     }
 }

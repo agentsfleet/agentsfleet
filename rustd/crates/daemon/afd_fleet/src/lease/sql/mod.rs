@@ -12,6 +12,7 @@ pub mod lease;
 pub mod meter;
 pub mod renew;
 pub mod report;
+pub mod report_statement;
 pub mod session;
 pub mod standing;
 pub mod tool_detail;

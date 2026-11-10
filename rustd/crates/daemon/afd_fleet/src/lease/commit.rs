@@ -1,11 +1,17 @@
 //! The one transaction a terminal report commits, and what it answers.
 //!
-//! Usage, admission settlement, result, checkpoint, slot release, and outbound
-//! obligation commit together. Metering locks the slot and lease before testing
-//! their fences, so a reclaim cannot interleave with the remaining writes.
-//! Dropping the transaction on any error rolls every write back.
+//! A plain chat's report is one statement ([`crate::lease::sql::report_statement`]):
+//! the metered slice and its lines, the lease and admission settled, the
+//! event closed, the session checkpointed, the slot released, the obligation
+//! owed and the audit row, under the lease's own row lock and no host lock
+//! (M245 §6). A durable task's settlement and a run's folds stay statements
+//! of their own in the same transaction, after it: the task's settlement reads
+//! the runtime the statement metered, and takes the task row after the lease
+//! row as a renewal does. Dropping the transaction on any error rolls every
+//! write back.
 
 use af_core::id::Uuid7;
+use afd_billing::Nanos;
 use afd_billing::biller::Settlement;
 use afd_events::Closed;
 use jiff::Timestamp;
@@ -14,30 +20,31 @@ use sqlx::{Acquire as _, PgConnection};
 use crate::error::{Result, query};
 use crate::lease::fold::Folds;
 use crate::lease::obligation::Owing;
-use crate::lease::settle::{Reported, Settled};
-use crate::lease::sql::meter::Metering;
+use crate::lease::report::RunTokens;
+use crate::lease::settle::Reported;
+use crate::lease::sql::report_statement::{ReportAnswer, ReportStatement, SettledReport};
 use crate::lease::store::Leases;
 use crate::lease::usage::Pricing;
 use crate::lease::verdict::Terminal;
 
-/// Statement name, for the context a transaction failure carries.
+/// What a query failure names this transaction as.
 const CONTEXT_COMMIT: &str = "report commit";
 
-/// Everything one terminal report commits, by name.
-///
-/// A struct rather than eight positional parameters for the reason
-/// [`Metering`](crate::lease::sql::meter::Metering) is one: two of these are
-/// `&str` and two are instants, and a transposition between them writes a
-/// checkpoint under a response and compiles clean.
+/// The notice a durable task's settlement puts in the run's answer's place.
+const APPLY_REPORT_NOTICE: &str = include_str!("sql/apply_report_notice.sql");
+
+/// Logged when a stored reply connector names no connector this build knows.
+const EVENT_REPLY_PROVIDER_UNKNOWN: &str = "report_reply_provider_unknown";
+
+/// Everything one terminal report writes.
 #[derive(Debug)]
 pub struct TerminalReport<'a> {
-    /// The lease being reported on.
+    /// The lease being reported.
     pub lease_id: &'a Uuid7,
-    /// The runner presenting the report — the ownership scope of every
-    /// statement below.
+    /// The runner that holds it.
     pub runner_id: &'a Uuid7,
-    /// The lease as the row holds it: the fleet, the money identities, the
-    /// event, and the token the settle is fenced on.
+    /// The lease as the report read it: its fleet, workspace, payer and
+    /// event, and the pricing facts its lines are guarded on.
     pub lease: &'a Reported,
     /// The lease's identifier as the work its usage lines name.
     pub lease_key: &'a Uuid7,
@@ -59,237 +66,258 @@ pub struct TerminalReport<'a> {
     /// The last folded message a completed model call read; its messages
     /// settle with this answer when the run succeeded.
     pub folded_through_sequence: Option<i64>,
-    /// The instant every row this transaction writes is stamped with.
+    /// The instant every identifier this transaction mints is drawn at.
     pub now: Timestamp,
 }
 
 /// What the report's transaction decided.
-///
-/// Three arms, and the usage line lives on exactly one of them — the same
-/// property [`Settled`] holds, carried up so a caller cannot settle a line off
-/// a report that committed nothing. The closed row rides [`Committed::Settled`] rather
-/// than being read again afterwards: the terminal write already returned it,
-/// and re-reading would answer about a row a concurrent reclaim may have moved
-/// on from.
 #[derive(Debug)]
 pub enum Committed {
-    /// The report won its fence and all its writes committed, the final
-    /// slice's usage line among them; `closed` is the row the terminal write
-    /// ended, absent
-    /// when the event was already terminal and there was no new ending to
-    /// announce.
+    /// The report won its fence and every write committed.
     Settled {
-        /// The final slice's usage line, logged and still to be settled; `None`
-        /// when the last window measured nothing.
-        settlement: Option<Box<Settlement>>,
-        /// The row this report ended, for the frame the caller announces.
-        ///
-        /// Boxed because a closing carries the whole event row and the fleet's
-        /// counters beside it, and an enum sized to its largest arm would make
-        /// every fenced answer that size too. `Option<Box<_>>` rather than
-        /// `Box<Option<_>>`: a report that closed nothing allocates nothing.
+        /// What the report's lines charged, its runtime line included.
+        charged: Nanos,
+        /// The run's token sums, this report's lines included.
+        tokens: RunTokens,
+        /// The row this report ended, for the frame the caller announces;
+        /// `None` when the event was already terminal.
         closed: Option<Box<Closed>>,
         /// The delivery obligation this report newly owed, for the caller to
         /// wake the outbound workers about.
-        ///
-        /// `None` when the settled event was admitted with no destination, when
-        /// the run answered nothing, and on a repeat that conflicted — so a
-        /// caller cannot ring for an answer nobody asked for, or one already
-        /// owed and in flight. Carried up rather than rung in here because the
-        /// wake is not part of the transaction and must not be able to fail it.
         owed: Option<Owing>,
-        /// Native replacement for a stale or unverified completion claim.
+        /// The task's notice, when its settlement replaced the answer.
         notice: Option<&'static str>,
-        /// The messages the run folded and read, settled with its answer.
+        /// The folds this answer settled.
         folds: Folds,
     },
-    /// This runner already settled this lease and the earlier report committed
-    /// everything below. Nothing was written and nothing logged; what the
-    /// runner is owed is the acknowledgement its lost response never carried.
+    /// This runner settled the lease before; nothing was written.
     AlreadySettled,
-    /// A newer holder has execution. Known original usage can still be recorded.
+    /// The lease's fence moved; only the runner's known request lines were
+    /// logged (blocker 4).
     Fenced {
-        /// Original known requests commit independently of execution authority.
+        /// Those request lines, logged and still to be settled.
         settlement: Option<Box<Settlement>>,
     },
 }
 
 impl Leases {
-    /// Commit a terminal report and settle its admission on one pooled connection.
+    /// Commits a terminal report.
     ///
-    /// The host's capacity lock comes first, as it does for a renewal
-    /// ([`Leases::extend`]): host row, then lease and slot rows. The metering
-    /// statement numbers its runtime line from the lines it counts, and under
-    /// READ COMMITTED a statement that waits on the lease row keeps its
-    /// starting snapshot for that count. Waiting on the host row in its own
-    /// statement means the metering statement starts after a racing renewal
-    /// committed, so it counts the renewal's line. The capacity read itself
-    /// gates nothing: a report from a cordoned, revoked or removed host still
-    /// settles, and the fence alone decides whether it wins.
+    /// A statement priced under facts the lease no longer holds — its
+    /// catalogue moved between the price read and the statement — writes
+    /// nothing, and is run once more under the lease's own facts.
     ///
     /// # Errors
-    /// Reports an entropy source that could not produce the usage line's
-    /// identifier, an instant that cannot be encoded, and a datastore that
-    /// would not answer at any statement — in which case nothing at all was
-    /// written, including the usage line and the obligation.
-    pub async fn commit_report(&self, report: TerminalReport<'_>) -> Result<Committed> {
-        let mut connection = self.pool().acquire().await?;
-        let mut transaction = connection.begin().await.map_err(query(CONTEXT_COMMIT))?;
-        crate::task::lease::report_parents(
-            &mut transaction,
-            &report.lease.fleet_id,
-            &report.lease.workspace_id,
-        )
-        .await?;
-        let _held_until_commit =
-            afd_runner::capacity::lock(&mut transaction, report.runner_id).await?;
+    /// Reports an entropy source that could not mint an identifier and a
+    /// datastore that would not answer, in which case nothing was written.
+    pub async fn commit_report(&self, mut report: TerminalReport<'_>) -> Result<Committed> {
+        let mut task_settlement = report.task_settlement.take();
+        let task = task_settlement.is_some();
+        let mut repriced: Option<Pricing> = None;
+        loop {
+            let pricing = repriced.as_ref().unwrap_or(report.pricing);
+            let mut connection = self.pool().acquire().await?;
+            let mut transaction = connection.begin().await.map_err(query(CONTEXT_COMMIT))?;
+            let answer = self
+                .run_report_statement(&mut transaction, &report, pricing)
+                .await?;
+            match answer {
+                ReportAnswer::Settled(settled) => {
+                    return self
+                        .settled(transaction, &report, *settled, task_settlement.take())
+                        .await;
+                }
+                ReportAnswer::AlreadySettled => return Ok(Committed::AlreadySettled),
+                ReportAnswer::Repriced(held) if repriced.is_none() && !task => {
+                    release(transaction).await?;
+                    repriced = Some(
+                        Pricing::load(
+                            self.pool(),
+                            Pricing::posture_of(&held.posture),
+                            &held.provider,
+                            &held.model,
+                            report.lease_id.as_str(),
+                        )
+                        .await,
+                    );
+                }
+                ReportAnswer::Repriced(_) | ReportAnswer::Fenced => {
+                    release(transaction).await?;
+                    let settlement = self
+                        .record_known_requests(
+                            report.runner_id,
+                            report.lease_key,
+                            pricing,
+                            report.requests,
+                            report.now,
+                        )
+                        .await?;
+                    return Ok(Committed::Fenced {
+                        settlement: settlement.map(Box::new),
+                    });
+                }
+            }
+        }
+    }
 
-        let metering = Metering {
+    /// The one report statement, priced under `pricing`.
+    async fn run_report_statement(
+        &self,
+        connection: &mut PgConnection,
+        report: &TerminalReport<'_>,
+        pricing: &Pricing,
+    ) -> Result<ReportAnswer> {
+        let now = report.now;
+        let lines = pricing.request_lines(report.lease.lease_created_at, now, report.requests)?;
+        let line_ids = lines
+            .iter()
+            .map(|_line| self.entropy().uuid7(now))
+            .collect::<core::result::Result<Vec<_>, _>>()?;
+        let [runtime_line_id, obligation_id, obligation_receipt, audit_id] =
+            [(); 4].map(|()| self.entropy().uuid7(now));
+        let (runtime_line_id, obligation_id, obligation_receipt, audit_id) = (
+            runtime_line_id?,
+            obligation_id?,
+            obligation_receipt?,
+            audit_id?,
+        );
+        let outcome = &report.outcome;
+        let answer = outcome.response_text;
+        let checkpoint =
+            crate::lease::finalize::checkpoint_document(report.last_event_id, report.last_response);
+        let lease = report.lease;
+        ReportStatement {
             lease_id: report.lease_id,
             runner_id: report.runner_id,
-            requests: report.requests,
-        };
-        let settlement = match self
-            .claim_and_settle(
-                &mut transaction,
-                metering,
-                report.lease_key,
-                report.pricing,
-                report.outcome.verdict.succeeded(),
-                report.now,
-            )
-            .await?
-        {
-            Settled::Claimed(settlement) => settlement.map(Box::new),
-            Settled::AlreadySettled => return Ok(Committed::AlreadySettled),
-            Settled::Fenced => {
-                let settlement = report
-                    .pricing
-                    .original_requests(
-                        &mut transaction,
-                        report.lease_key,
-                        report.runner_id,
-                        report.requests,
-                    )
-                    .await?;
-                super::usage::log_measured(
-                    &mut transaction,
-                    self.entropy(),
-                    report.now,
-                    settlement.as_ref(),
-                )
-                .await?;
-                transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
-                return Ok(Committed::Fenced {
-                    settlement: settlement.map(Box::new),
-                });
-            }
-        };
-        let (closed, owed, notice, folds) = self.record_settled(&mut transaction, report).await?;
+            fleet_id: &lease.fleet_id,
+            workspace_id: &lease.workspace_id,
+            succeeded: outcome.verdict.succeeded(),
+            posture: pricing.posture().as_str(),
+            provider: pricing.provider(),
+            model: pricing.model(),
+            catalogue_version: pricing.catalogue_version(),
+            lines: &lines,
+            line_ids: &line_ids,
+            runtime_price: pricing.runtime_price(now),
+            runtime_line_id: &runtime_line_id,
+            status: outcome.verdict.status(),
+            response_text: answer,
+            tokens: outcome.tokens,
+            wall_ms: outcome.wall_ms,
+            failure_reason: outcome.verdict.label(),
+            failure_detail: outcome.verdict.detail(),
+            tool_calls: outcome.tool_calls,
+            checkpoint: &checkpoint,
+            held_until: report.held_until,
+            obligation_id: &obligation_id,
+            obligation_receipt: &obligation_receipt,
+            answer,
+            audit_id: &audit_id,
+            audit_metadata: serde_json::json!({
+                afd_runner::sql::meta::LEASE_ID: report.lease_id.as_str(),
+                afd_runner::sql::meta::FLEET_ID: lease.fleet_id.as_str(),
+                afd_runner::sql::meta::AGENTSFLEET_EVENT_ID: lease.event_id.as_str(),
+            }),
+        }
+        .run(connection)
+        .await
+    }
 
+    /// A settled report: a durable task's model spend and settlement, the
+    /// folds, then the commit.
+    async fn settled(
+        &self,
+        mut transaction: sqlx::Transaction<'_, sqlx::Postgres>,
+        report: &TerminalReport<'_>,
+        settled: SettledReport,
+        task_settlement: Option<crate::task::TaskSettlement<'_>>,
+    ) -> Result<Committed> {
+        let mut notice = None;
+        if settled.has_task {
+            crate::task::usage::record(&mut transaction, report.lease_key, settled.model_nanos)
+                .await?;
+            notice = crate::task::settle_report(
+                &mut transaction,
+                report.lease_key,
+                report.runner_id,
+                task_settlement,
+            )
+            .await?;
+            if let Some(notice) = notice {
+                apply_notice(&mut transaction, report, notice).await?;
+            }
+        }
+        if settled.owed.is_none() {
+            warn_unknown_reply(report.lease, settled.reply_provider.as_deref());
+        }
+        let succeeded = report.outcome.verdict.succeeded();
+        // A failed or stopped run's folds settle nothing: each message stays
+        // for the fleet's next run, in order.
+        let read_through = report.folded_through_sequence.filter(|_| succeeded);
+        let answer = notice.unwrap_or(report.outcome.response_text);
+        let folds = self
+            .settle_folds(
+                &mut transaction,
+                report.lease,
+                report.lease_id,
+                read_through,
+                answer,
+            )
+            .await?;
         transaction.commit().await.map_err(query(CONTEXT_COMMIT))?;
         Ok(Committed::Settled {
-            settlement,
-            closed,
-            owed,
+            charged: settled.charged,
+            tokens: settled.tokens,
+            closed: settled.closed.map(Box::new),
+            owed: settled.owed.map(|obligation| Owing { obligation }),
             notice,
             folds,
         })
     }
+}
 
-    /// The writes a settled report owes after its money, inside its
-    /// transaction: the result, the session cursor, the freed slot, and the
-    /// delivery the answer is owed. Answers the row the result closed and the
-    /// obligation newly owed.
-    async fn record_settled(
-        &self,
-        connection: &mut PgConnection,
-        report: TerminalReport<'_>,
-    ) -> Result<(
-        Option<Box<Closed>>,
-        Option<Owing>,
-        Option<&'static str>,
-        Folds,
-    )> {
-        let TerminalReport {
-            lease_id,
-            lease,
-            mut outcome,
-            last_event_id,
-            last_response,
-            held_until,
-            task_settlement,
-            folded_through_sequence,
-            lease_key,
-            runner_id,
-            now,
-            ..
-        } = report;
+/// Ends a statement that wrote nothing before the caller takes another
+/// connection: a dropped transaction's rollback waits for its connection's
+/// next use, and the connection is still held, so the slot and lease locks it
+/// took would block the caller's own next statement on the same lease.
+async fn release(transaction: sqlx::Transaction<'_, sqlx::Postgres>) -> Result<()> {
+    transaction.rollback().await.map_err(query(CONTEXT_COMMIT))
+}
 
-        // Read before `outcome` moves into the terminal write below. This is
-        // the run's OUTPUT, which is what a destination receives — never
-        // `last_response`, which is the session checkpoint and is truncated to
-        // fit one, so delivering it would silently cut a long answer off at the
-        // byte cap.
-        let notice =
-            crate::task::settle_report(connection, lease_key, runner_id, task_settlement).await?;
-        if let Some(notice) = notice {
-            outcome.response_text = notice;
-        }
-        let answer = outcome.response_text;
-        let succeeded = outcome.verdict.succeeded();
-        let last_response = notice.unwrap_or(last_response);
+/// Puts a task's notice where the run's answer was: the event, the session
+/// and an answer still owed.
+async fn apply_notice(
+    connection: &mut PgConnection,
+    report: &TerminalReport<'_>,
+    notice: &str,
+) -> Result<()> {
+    let checkpoint = crate::lease::finalize::checkpoint_document(report.last_event_id, notice);
+    let _events: i64 = sqlx::query_scalar(APPLY_REPORT_NOTICE)
+        .bind(&report.lease.fleet_id)
+        .bind(&report.lease.event_id)
+        .bind(notice)
+        .bind(&checkpoint)
+        .fetch_one(connection)
+        .await
+        .map_err(query(CONTEXT_COMMIT))?;
+    Ok(())
+}
 
-        let closed = self
-            .mark_terminal(connection, &lease.fleet_id, &lease.event_id, outcome)
-            .await?
-            .map(Box::new);
-        // The settling fence's records describe the run whose answer stands;
-        // a reclaimed lease's are of a run that did not, so they go with it.
-        self.drop_other_fences(connection, lease).await?;
-        self.checkpoint(connection, &lease.fleet_id, last_event_id, last_response)
-            .await?;
-        self.release_through(connection, &lease.fleet_id, lease.fence, held_until)
-            .await?;
-        let owed = self.owe_answer(connection, lease, answer, now).await?;
-        // A failed or stopped run's folds settle nothing: each message stays
-        // for the fleet's next run, in order.
-        let read_through = folded_through_sequence.filter(|_| succeeded);
-        let folds = self
-            .settle_folds(connection, lease, lease_id, read_through, answer)
-            .await?;
-        Ok((closed, owed, notice, folds))
+/// Logs a stored reply connector no connector of this build names: the
+/// answer is owed nowhere, as the read used to log.
+fn warn_unknown_reply(lease: &Reported, stored: Option<&str>) {
+    let Some(stored) = stored else {
+        return;
+    };
+    if afd_connector::Provider::parse(stored).is_some() {
+        return;
     }
-
-    /// Owes the run's answer to where its question came from.
-    ///
-    /// The fifth write, and the one that closes the window between the charge
-    /// and the send: the answer is owed before anything tries to send it, so a
-    /// process that dies in between leaves a record rather than a charged run
-    /// whose answer exists nowhere. The wake is NOT here: it follows the
-    /// commit, so a refused wake cannot roll the report back.
-    ///
-    /// The lease's own `provider` is the MODEL provider billing resolved, and
-    /// it has no path in here: `Delivery` takes a connector type, which only
-    /// the event's recorded destination supplies. Answers the obligation
-    /// newly owed to it. A folded message is in the run's conversation, so
-    /// this one reply reaches it too (`claim_inputs.sql`).
-    async fn owe_answer(
-        &self,
-        connection: &mut PgConnection,
-        lease: &Reported,
-        answer: &str,
-        now: Timestamp,
-    ) -> Result<Option<Owing>> {
-        let destination =
-            Self::reply_destination(connection, &lease.fleet_id, lease.event_id.as_str()).await?;
-        let owed = match &destination {
-            Some(reply) => self
-                .owe_delivery(connection, reply.delivery(lease, answer), now)
-                .await?
-                .map(|obligation| Owing { obligation }),
-            None => None,
-        };
-        Ok(owed)
-    }
+    let fleet_id = lease.fleet_id.as_str();
+    let agentsfleet_event_id = lease.event_id.as_str();
+    tracing::warn!(
+        fleet_id,
+        agentsfleet_event_id,
+        event = EVENT_REPLY_PROVIDER_UNKNOWN,
+        "the recorded connector names no connector; the answer is owed nowhere"
+    );
 }

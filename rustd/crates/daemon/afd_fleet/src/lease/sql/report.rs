@@ -55,15 +55,3 @@ pub const SELECT_LEASE_FOR_REPORT: &str = include_str!("select_lease_for_report.
 ///
 /// `$1` lease, `$2` runner.
 pub const SELECT_LEASE_DISPOSITION: &str = include_str!("select_lease_disposition.sql");
-
-/// Record that a lease was given back.
-///
-/// Run by `Leases::record_released` in `finalize.rs`. The closing bracket of the
-/// `lease_acquired` row [`super::lease::INSERT_LEASE_WITH_EVENT`] writes, and
-/// deliberately a separate statement rather than a CTE on the settle: it is
-/// best-effort audit, and a datastore blip writing history must not fail a
-/// report whose money has already committed.
-///
-/// `$1` row id, `$2` runner, `$3` event type, `$4`–`$9` the three
-/// metadata key/value pairs.
-pub const INSERT_RUNNER_EVENT: &str = include_str!("insert_runner_event.sql");

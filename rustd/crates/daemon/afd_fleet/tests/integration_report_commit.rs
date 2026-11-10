@@ -91,7 +91,7 @@ async fn assert_the_retry_commits_all_four(
         .await
         .expect("the retry must reach the datastore");
     let Committed::Settled {
-        settlement,
+        charged,
         closed,
         owed,
         ..
@@ -105,7 +105,7 @@ async fn assert_the_retry_commits_all_four(
         "the aged meter charges at least a slice: {slice}"
     );
     assert_eq!(
-        line_charge(settlement.as_deref()),
+        charged.as_i64(),
         slice,
         "the retry logs the slice ONCE — the refused attempt logged nothing"
     );
@@ -198,7 +198,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
         .await
         .expect("the report must reach the datastore");
     let Committed::Settled {
-        settlement,
+        charged,
         closed,
         owed,
         ..
@@ -207,7 +207,7 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
         unreachable!("the lease is this runner's and still active, so the claim wins")
     };
     assert_eq!(
-        line_charge(settlement.as_deref()),
+        charged.as_i64(),
         run_fee(held.metered_from(from).await),
         "the run happened and its usage is logged, whatever the event row already said"
     );
@@ -235,12 +235,6 @@ async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     );
 
     held.fixtures.cleanup().await;
-}
-
-fn line_charge(settlement: Option<&afd_billing::biller::Settlement>) -> i64 {
-    settlement.map_or(0, |settled| {
-        settled.lines.iter().map(|line| line.charged.as_i64()).sum()
-    })
 }
 
 async fn assert_all_four_landed(held: &Held, slice: i64) {

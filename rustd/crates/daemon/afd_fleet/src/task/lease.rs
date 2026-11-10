@@ -19,20 +19,6 @@ pub(crate) async fn parents(connection: &mut PgConnection, acquired: &Acquired) 
     Ok(parent.is_some())
 }
 
-pub(crate) async fn report_parents(
-    connection: &mut PgConnection,
-    fleet: &Uuid7,
-    workspace: &Uuid7,
-) -> Result<()> {
-    let _parent: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_SCOPE)
-        .bind(fleet)
-        .bind(workspace)
-        .fetch_optional(connection)
-        .await
-        .map_err(query("hold surviving report parents before host and slot"))?;
-    Ok(())
-}
-
 #[derive(sqlx::FromRow)]
 struct Selected {
     task_id: Option<Uuid7>,

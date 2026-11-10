@@ -160,13 +160,16 @@ async fn report_after_preparation_deadline(
         .acquire()
         .await
         .expect("commit barrier");
-    let mut held = connection.begin().await.expect("host authority barrier");
-    let pid: i32 =
-        sqlx::query_scalar("SELECT pg_backend_pid() FROM runner.runners WHERE id=$1 FOR UPDATE")
-            .bind(&case.held.runner)
-            .fetch_one(&mut *held)
-            .await
-            .expect("hold report host row");
+    // The report statement locks the fleet's slot before it measures the
+    // slice; holding the slot holds the report there (M245 §6).
+    let mut held = connection.begin().await.expect("slot barrier");
+    let pid: i32 = sqlx::query_scalar(
+        "SELECT pg_backend_pid() FROM runner.fleet_slots WHERE fleet_id=$1 FOR UPDATE",
+    )
+    .bind(&case.scope.fleet_id)
+    .fetch_one(&mut *held)
+    .await
+    .expect("hold the report's slot row");
     let reporting = plane.report(&case.held.runner, report, now);
     let release = async {
         observe_report_commit(case, pid).await;
@@ -204,7 +207,7 @@ async fn observe_report_commit(case: &Case, pid: i32) {
                     .expect("report lock observer"),
             )
             .await
-            .expect("native commit host lock wait");
+            .expect("native commit slot lock wait");
             if blocked {
                 break;
             }

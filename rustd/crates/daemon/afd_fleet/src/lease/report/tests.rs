@@ -1,13 +1,11 @@
-//! What a settled report says about itself, and what a finalize step that
-//! did not land says: the posture fallback, and the warning that names the
-//! step. Split from [`super`] the way `verdict/tests.rs` is, so the verb's
+//! What a settled report says about itself: the posture fallback and the
+//! run's token sums. Split from [`super`] the way `verdict/tests.rs` is, so the verb's
 //! own file stays readable.
 
 use af_core::id::{ENTROPY_LEN, Uuid7};
 use afd_billing::rates::Posture;
 use jiff::Timestamp;
 
-use super::steps::step;
 use super::{RunTokens, posture_of};
 use crate::lease::affinity::Fence;
 use crate::lease::settle::Reported;
@@ -64,56 +62,6 @@ fn an_unparseable_stored_posture_meters_as_platform() -> Result<(), &'static str
             "an unrecognised stored posture falls back rather than guessing"
         );
     }
-    Ok(())
-}
-
-/// A finalize step renders every refusal it can be handed, and skips none.
-///
-/// The five call sites hand this whatever their step returned, at the one
-/// moment the report has ALREADY settled — so a panic in the reporting
-/// itself would lose a charge that is committed. Both `to_string` and
-/// `code` run arbitrary per-kind code, which is what makes the loop over
-/// kinds the point rather than one representative error.
-#[test]
-fn a_failed_finalize_step_renders_every_refusal() -> Result<(), &'static str> {
-    let lease = reported(Posture::Platform.as_str())?;
-
-    step("settled", &lease, "lease-fixture", Ok(()));
-
-    for failure in [
-        crate::error::stale_fence(),
-        crate::error::lease_not_found(),
-        crate::error::lease_lost(),
-        crate::error::lease_max_runtime(),
-        crate::error::renewal_no_credits(),
-        crate::error::budget_exhausted(),
-    ] {
-        assert!(
-            !failure.to_string().is_empty(),
-            "the refusal renders to something an operator can act on"
-        );
-        assert!(
-            !failure.code().as_str().is_empty(),
-            "{:?}",
-            failure.code().as_str()
-        );
-        step("released", &lease, "lease-fixture", Err(failure));
-    }
-    Ok(())
-}
-
-#[test]
-fn a_failed_report_step_reason_carries_no_code_prefix() -> Result<(), &'static str> {
-    let log = af_core::test_util::trace::Capture::install();
-    let lease = reported(Posture::Platform.as_str())?;
-    let failure = crate::error::lease_lost();
-    let (code, told) = (failure.code(), failure.told());
-
-    step("released", &lease, "lease-fixture", Err(failure));
-
-    let line = log.only("report_finalize_step_failed");
-    assert_eq!(line.field("error_code"), Some(code.as_str()));
-    assert_eq!(line.field("reason"), Some(told.as_str()));
     Ok(())
 }
 
