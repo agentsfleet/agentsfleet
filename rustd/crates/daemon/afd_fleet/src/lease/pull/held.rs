@@ -54,14 +54,22 @@ impl LeaseService {
         clock.mark(OfferStage::Admit);
         let pass = match admitted.map(Step::proceed) {
             Ok(Ok(admitted)) => {
-                let mut timed = |lease: LeasePayload<'_>, offered: Offered| {
-                    clock.mark(OfferStage::Issue);
-                    let encoded = emit(lease, offered);
-                    clock.mark(OfferStage::Encode);
-                    encoded
+                let delivered = {
+                    let mut timed = |lease: LeasePayload<'_>, offered: Offered| {
+                        clock.mark(OfferStage::Issue);
+                        let encoded = emit(lease, offered);
+                        clock.mark(OfferStage::Encode);
+                        encoded
+                    };
+                    self.deliver_with(runner_id, admitted, now, began, &mut timed)
+                        .await
                 };
-                self.deliver_with(runner_id, admitted, now, began, &mut timed)
-                    .await
+                // The issue ends where `emit` is called. When it never is (a
+                // refusal, or a failed issue as in a datastore outage), it ends
+                // here, so that attempt's time is not left unexplained; a
+                // stage already marked keeps its first reading.
+                clock.mark(OfferStage::Issue);
+                delivered
             }
             Ok(Err(ended)) => Ok(ended),
             Err(fault) => Err(fault),
