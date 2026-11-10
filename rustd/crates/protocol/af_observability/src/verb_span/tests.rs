@@ -251,8 +251,8 @@ fn test_every_stage_key_belongs_to_its_verb() {
     }
 }
 
-/// Stages summing 96 ms of a 100 ms span account for it: the gap is within
-/// the larger of 10% of the span and 5 ms.
+/// Stages summing 96 ms of a 100 ms span leave 4 ms unaccounted, within the
+/// larger of 10% of the span and 5 ms: the stages tile the verb.
 #[test]
 fn test_verb_stage_attributes_account_for_the_span() {
     let collected = Collected::default();
@@ -282,9 +282,49 @@ fn test_verb_stage_attributes_account_for_the_span() {
     .sum();
     let stages_ms = u64::try_from(stages_ms).expect("stages are not negative");
     assert_eq!((span_ms, stages_ms), (100, 96));
-    let allowed = (span_ms / 10).max(5);
+}
+
+/// A restart records the span so far, then times a fresh one from zero with no
+/// identity; an untimed clock stays untimed and records neither.
+#[test]
+fn test_a_restart_records_the_first_span_and_starts_a_fresh_one() {
+    let collected = Collected::default();
+    let (_provider, tracer) = tracer(&collected);
+    let ticks = Moved::new();
+    let mut clock = VerbClock::<OfferStage, Moved>::start_on(ticks.clone());
+    clock.identify(EVENT_ID, FLEET_ID);
+    ticks.advance(Duration::from_millis(5));
+    clock.mark(OfferStage::Claim);
+    clock.restart_on(&tracer);
+    assert!(clock.reached_nothing(), "the fresh span has no stages yet");
+    ticks.advance(Duration::from_millis(7));
+    clock.mark(OfferStage::Claim);
+    clock.record_on(&tracer);
+
+    let spans = collected.spans();
+    assert_eq!(spans.len(), 2, "{spans:?}");
+    let (first, second) = (
+        spans.first().expect("the first"),
+        spans.get(1).expect("the second"),
+    );
+    assert_eq!(millis(first, semconv::ATTR_OFFER_CLAIM_MS), Some(5));
+    assert_eq!(millis(second, semconv::ATTR_OFFER_CLAIM_MS), Some(7));
     assert!(
-        span_ms - stages_ms <= allowed,
-        "the stages leave {span_ms} - {stages_ms} ms unaccounted"
+        second
+            .attributes
+            .iter()
+            .all(|pair| pair.key.as_str() != semconv::ATTR_EVENT_ID),
+        "the fresh span inherits no event: {second:?}"
+    );
+
+    let mut untimed = VerbClock::<OfferStage>::untimed();
+    untimed.mark(OfferStage::Claim);
+    untimed.restart();
+    untimed.mark(OfferStage::Claim);
+    drop(untimed);
+    assert_eq!(
+        collected.spans().len(),
+        2,
+        "an untimed clock records nothing"
     );
 }
