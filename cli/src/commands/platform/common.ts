@@ -1,10 +1,10 @@
 import type { HttpRequestInput } from "../../services/http-client.ts";
 import { Effect, Schema } from "effect";
 import { HttpClient } from "../../services/http-client.ts";
-import { Output } from "../../services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { Stdin } from "../../services/stdin.ts";
 import { UnexpectedError, ValidationError } from "../../errors/index.ts";
-import { resolveAuthToken } from "../workspace-guards.ts";
+import { resolveAuthToken } from "../workspace/guards.ts";
 
 export const ADMIN_RUNNERS_PATH = "/v1/admin/runners";
 export const ADMIN_MODELS_PATH = "/v1/admin/models";
@@ -18,7 +18,9 @@ const RESPONSE_HINT = "verify that this terminal client and daemon use the same 
 export const platformRequest = Effect.fn("platform.request")(function* (request: HttpRequestInput) {
   const http = yield* HttpClient;
   const token = yield* resolveAuthToken;
-  return yield* http.request<unknown>({...request, token});
+  const output = yield* Output;
+  return yield* Effect.acquireUseRelease(output.progress("Contacting platform…"),
+    () => http.request<unknown>({...request, token}), stop => Effect.sync(stop));
 });
 
 export function decodePlatform<T>(schema: Schema.Codec<T, unknown>, value: unknown) {
@@ -40,16 +42,18 @@ export const readPlatformFile = Effect.fn("platform.readFile")(function* (path: 
   if (path === "-" && stdin.isTTY) return yield* Effect.fail(invalidInput("Pipe JSON into stdin or name an input file"));
   const file = Bun.file(path);
   if (path !== "-" && file.size > INPUT_MAX_BYTES) return yield* Effect.fail(invalidInput("JSON input must be at most 1 MiB"));
-  const text = path === "-" ? yield* stdin.readToEnd : yield* Effect.tryPromise({
+  const text = path === "-" ? yield* stdin.readBounded(INPUT_MAX_BYTES) : yield* Effect.tryPromise({
     try: () => file.text(), catch: () => invalidInput("The JSON input file could not be read"),
   });
   if (Buffer.byteLength(text) > INPUT_MAX_BYTES) return yield* Effect.fail(invalidInput("JSON input must be at most 1 MiB"));
   return yield* Effect.try({try: (): unknown => JSON.parse(text), catch: () => invalidInput("The input must contain valid JSON")});
 });
 
-export const platformResult = Effect.fn("platform.result")(function* (value: unknown) {
+export const platformResult = Effect.fn("platform.result")(function* (value: unknown, title: string, fields: Readonly<Record<string, string>>) {
   const output = yield* Output;
-  yield* output.printJson(value);
+  if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(value);
+  yield* output.printSection(title);
+  yield* output.printKeyValue(fields);
 });
 
 export function platformPath(base: string, id: string, suffix = "") {

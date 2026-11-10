@@ -25,7 +25,6 @@ type SidebarNavigationProps = {
 
 export function DesktopSidebarNavigation({
   workspaces,
-  operatorScopes,
 }: {
   workspaces: TenantWorkspace[];
 

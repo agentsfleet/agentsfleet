@@ -146,6 +146,25 @@ export interface RequiresPositionalArgRow {
 // `logs [fleet_id]` has an optional positional. Bare `logs` exits 2 with a
 // domain-specific stem that the generic missing-argument check does not match.
 export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = [
+  { args: ["platform", "runners", "show"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "update"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "cordon"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "drain"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "revoke"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "self-test"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "rotate-token"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "delete"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "events"], missingArgName: "runner_id" },
+  { args: ["platform", "runners", "leases"], missingArgName: "runner_id" },
+  { args: ["platform", "models", "show"], missingArgName: "model_id" },
+  { args: ["platform", "models", "update"], missingArgName: "model_id" },
+  { args: ["platform", "models", "delete"], missingArgName: "model_id" },
+  { args: ["platform", "keys", "delete"], missingArgName: "provider" },
+  { args: ["platform", "fleet-library", "show"], missingArgName: "library_id" },
+  { args: ["platform", "fleet-library", "update"], missingArgName: "library_id" },
+  { args: ["platform", "fleet-library", "publish"], missingArgName: "library_id" },
+  { args: ["platform", "fleet-library", "unpublish"], missingArgName: "library_id" },
+  { args: ["platform", "fleet-library", "delete"], missingArgName: "library_id" },
   { args: ["chat", "rename"], missingArgName: "draft-id" },
   { args: ["chat", "delete"], missingArgName: "draft-id" },
   { args: ["workspace", "create"], missingArgName: "name" },
@@ -188,6 +207,11 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
 // instead: bare `agentsfleet library` lists the gallery, so asserting it prints
 // help would be asserting the opposite of what it is for.
 export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
+  ["platform"],
+  ["platform", "runners"],
+  ["platform", "models"],
+  ["platform", "keys"],
+  ["platform", "fleet-library"],
   ["workspace"],
   ["api-key"],
   ["connector"],

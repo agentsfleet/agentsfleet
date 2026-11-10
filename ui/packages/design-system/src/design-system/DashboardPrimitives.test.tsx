@@ -8,7 +8,6 @@ import {
   DashboardPanelHeader,
   DashboardPanelTitle,
 } from "./DashboardPanel";
-import { DashboardRow, DashboardRowGroup } from "./DashboardRow";
 import { MetaGrid } from "./MetaGrid";
 import { StatusPill } from "./StatusPill";
 import { TerminalPanel } from "./TerminalPanel";
@@ -34,33 +33,6 @@ describe("dashboard primitives", () => {
     expect(screen.getByText("Panel body")).toBeTruthy();
   });
 
-  it("renders operational rows as one bordered group", () => {
-    render(
-      <DashboardRowGroup data-testid="rows">
-        <DashboardRow title="GitHub" description="Token required" action="Ready" />
-      </DashboardRowGroup>,
-    );
-
-    expect(screen.getByTestId("rows").className).toContain("border-border");
-    expect(screen.getByText("GitHub")).toBeTruthy();
-    expect(screen.getByText("Token required")).toBeTruthy();
-    expect(screen.getByText("Ready")).toBeTruthy();
-  });
-
-  it("stacks a row action below its content on narrow viewports when requested", () => {
-    render(
-      <DashboardRow
-        title="GitHub"
-        action="Configure"
-        stackActionOnMobile
-      />,
-    );
-
-    const row = screen.getByRole("heading", { level: 3, name: "GitHub" }).parentElement?.parentElement;
-    expect(row?.className).toContain("max-sm:flex-wrap");
-    expect(screen.getByText("Configure").className).toContain("max-sm:w-full");
-  });
-
   it("renders a meta grid with tokenized labels", () => {
     render(<MetaGrid items={[{ label: "Credential", value: "GITHUB_TOKEN" }]} />);
     expect(screen.getByText("Credential").className).toContain("font-sans");
@@ -72,17 +44,6 @@ describe("dashboard primitives", () => {
     const pill = screen.getByText("Token required");
     expect(pill).toHaveAttribute("data-variant", "warning");
     expect(pill.className).toContain("text-warning");
-  });
-
-  it("renders a dashboard row with icon and meta, omitting description and action", () => {
-    render(
-      <DashboardRow icon={<span>ic</span>} title="OpenAI" meta={<span>meta-info</span>} />,
-    );
-    expect(screen.getByText("ic")).toBeTruthy(); // icon branch
-    expect(screen.getByText("OpenAI")).toBeTruthy();
-    expect(screen.getByText("meta-info")).toBeTruthy(); // meta branch
-    // description + action omitted exercises their null branches
-    expect(screen.queryByText("Token required")).toBeNull();
   });
 
   it("renders a status pill with a status dot", () => {

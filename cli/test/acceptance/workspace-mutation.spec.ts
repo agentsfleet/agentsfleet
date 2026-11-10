@@ -5,7 +5,7 @@
  * directly from the API (same bootstrap as lifecycle-with-token.spec.ts —
  * the CLI only populates that file inside the login flow), then exercises
  * the workspace mutating surface confirmed against
- * `src/program/cli-tree.ts` + `src/commands/workspace.ts`:
+ * `src/program/cli-tree.ts` + `src/commands/workspace/workspace.ts`:
  *
  *   1. round-trip — `workspace create` → `workspace list` contains it →
  *      `workspace use` → `workspace show` reflects active →
@@ -21,7 +21,7 @@
  * fires after every spawn that runs in the seeded-credentials session.
  *
  * HARD SERVER CONSTRAINT: `workspace delete` removes the entry from the
- * LOCAL store only — `src/commands/workspace.ts` issues no DELETE and the
+ * LOCAL store only — `src/commands/workspace/workspace.ts` issues no DELETE and the
  * server-side workspace persists. So every created workspace is permanent
  * residue in the shared DEV tenant; names are `ACCEPTANCE_RUN_PREFIX`-scoped
  * to keep that residue attributable, and the fleets installed inside are

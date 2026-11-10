@@ -15,7 +15,7 @@ use af_wire::paths;
 #[test]
 fn test_route_templates_compose_from_their_segments() {
     let routes = [
-        ("enrol", paths::RUNNERS),
+        ("enrol", paths::ADMIN_RUNNERS),
         ("self", paths::RUNNER_SELF),
         ("heartbeats", paths::RUNNER_HEARTBEATS),
         ("leases", paths::RUNNER_LEASES),

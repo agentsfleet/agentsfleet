@@ -14,7 +14,7 @@ import { HttpClient } from "../src/services/http-client.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 
-import { stopEffectFromId, resumeEffectFromId, killEffectFromId } from "../src/commands/fleet.ts";
+import { stopEffectFromId, resumeEffectFromId, killEffectFromId } from "../src/commands/fleet/fleet.ts";
 
 const MALFORMED = "not-a-uuid";
 const WORKSPACE_ID = "0192a3b4-c5d6-7e8f-9012-3456789abcde";

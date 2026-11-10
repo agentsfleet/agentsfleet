@@ -261,7 +261,9 @@ A hold never delays a transition. The daemon's drain closes the doorbell the mom
 
 A runner needs a `agt_r` token before it can pull work. The **platform admin pre-mints it from the dashboard** and installs it on the host. The host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model).
 
-The admin opens **dashboard → Admin → Runners → "Add runner"**, and a session-authed server action calls `POST /v1/admin/runners`. `agentsfleetd` mints the `agt_r` and reveals it **once** (copy-to-clipboard, then dropped from the browser). The admin drops it into the host's vault or its `AGENTSFLEET_RUNNER_TOKEN` env var.
+The operator runs `agentsfleet platform runners enroll --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
+The CLI calls `POST /v1/admin/runners` with the operator's credential and saves the one-time runner token in an owner-only file.
+The operator installs that token on the host as `AGENTSFLEET_RUNNER_TOKEN`.
 
 No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the runner validates the `agt_r` prefix and fails loud rather than looping on a silent 401.
 
@@ -272,7 +274,7 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
 ```text
  platform admin                                          agentsfleetd
  (dashboard session carrying runner:enroll)
-   | "Add runner" server action -> POST /v1/admin/runners   GATE 1 - who may enroll:
+   | CLI enrollment -> POST /v1/admin/runners              GATE 1 - who may enroll:
    |   Authorization: Bearer <session-JWT>           runner:enroll scope required
    |   { host_id, assigned_policy{sandbox_tier,     (tenant admin / agt_t -> 403)
    |     network_policy, registry_allowlist[],
@@ -546,7 +548,7 @@ The memory tools run in the supervisor. A sandbox therefore holds **no** `agt_r`
 
 The run's working store is `afr_memory::Hydrated`, in the supervisor's memory, with no on-disk file.
 
-Durability is the supervisor's job, over the same `agt_r` `/v1/admin/runners` plane that already carries leases and reports. Two fencing-verified routes carry it, `hydrate` and `capture` under `/v1/runners/me/memory/{fleet_id}`, plus a capped recall (API reference › Runner plane).
+The supervisor reads and saves memory under `/v1/runners/me/memory/{fleet_id}` using its `agt_r` token. Fencing protects those reads, writes, and capped recalls.
 
 Capture writes under `SET ROLE memory_runtime` ([memory.md](./memory.md) §2, Isolation).
 

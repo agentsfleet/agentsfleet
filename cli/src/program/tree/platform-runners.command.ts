@@ -1,13 +1,14 @@
-import { Option } from "effect";
+import {RunnerAction, RunnerEventType, RunnerHistory} from "../../commands/platform/runner-vocabulary.ts";
+import { Option, Schema } from "effect";
 import { Command, Flag } from "effect/cli";
 import { platformRunnerAction, platformRunnerDelete, platformRunnerEnroll, platformRunnerHistory, platformRunnersList, platformRunnerRotate, platformRunnerShow, platformRunnerUpdate } from "../../commands/platform/runners.ts";
 import { guardedHandler } from "./guarded-handler.ts";
-import { platformInstantFlag, platformLabelsFlag, platformPagingFlags, platformPolicyFlag, platformTokenFlag } from "./platform-flags.ts";
-import { idArgument, requiredIdFlag, requiredTextFlag } from "./flags.ts";
+import { platformLabelsFlag, platformPagingFlags, platformPolicyFlag, platformTokenFlag } from "./platform-flags.ts";
+import { eventTimeFlag, idArgument, requiredIdFlag, requiredTextFlag, sinceFlag } from "./flags.ts";
 
 const opt = Option.getOrUndefined;
 const runnerId = {id: idArgument("runner_id", "Platform runner identifier")};
-const actionCommand = (name: string, action: string) => Command.make(name, runnerId).pipe(
+const actionCommand = (name: string, action: RunnerAction) => Command.make(name, runnerId).pipe(
   Command.withDescription(`Request ${name} (runner:write)`), guardedHandler(({id}) => platformRunnerAction(id, action)),
 );
 const list = Command.make("list", platformPagingFlags).pipe(
@@ -35,19 +36,21 @@ const remove = Command.make("delete", runnerId).pipe(
   Command.withDescription("Delete a revoked runner and its history (runner:write)"), guardedHandler(({id}) => platformRunnerDelete(id)),
 );
 const events = Command.make("events", {...runnerId, ...platformPagingFlags,
-  eventType: requiredTextFlag("event-type", "Comma-separated event types").pipe(Flag.optional),
-  since: platformInstantFlag("since"), until: platformInstantFlag("until"),
+  eventType: requiredTextFlag("event-type", "Comma-separated runner event types").pipe(
+    Flag.filter(value => value.split(",").every(Schema.is(Schema.Enum(RunnerEventType))), () => "expected known runner event types separated by commas"), Flag.optional,
+  ),
+  since: sinceFlag, until: eventTimeFlag("until", false),
 }).pipe(Command.withDescription("Read runner activity (runner:read)"), guardedHandler(({id, limit, startingAfter, eventType, since, until}) =>
-  platformRunnerHistory(id, "events", {limit: opt(limit), startingAfter: opt(startingAfter), eventType: opt(eventType), since: opt(since), until: opt(until)})));
+  platformRunnerHistory(id, RunnerHistory.Events, {limit: opt(limit), startingAfter: opt(startingAfter), eventType: opt(eventType), since: opt(since), until: opt(until)})));
 const leases = Command.make("leases", {...runnerId, ...platformPagingFlags,
   workspace: requiredIdFlag("workspace", "Filter by workspace").pipe(Flag.optional),
   fleet: requiredTextFlag("fleet", "Filter by fleet ID or exact name").pipe(Flag.optional),
 }).pipe(Command.withDescription("Read runner leases (runner:read)"), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
-  platformRunnerHistory(id, "leases", {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
+  platformRunnerHistory(id, RunnerHistory.Leases, {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
 
 export const platformRunnersCommand = Command.make("runners").pipe(
   Command.withDescription("Manage platform execution hosts"), Command.withSubcommands([
     list, show, enroll, update, rotate, remove, events, leases,
-    actionCommand("cordon", "cordon"), actionCommand("drain", "drain"), actionCommand("revoke", "revoke"), actionCommand("self-test", "self_test"),
+    actionCommand("cordon", RunnerAction.Cordon), actionCommand("drain", RunnerAction.Drain), actionCommand("revoke", RunnerAction.Revoke), actionCommand("self-test", RunnerAction.SelfTest),
   ]),
 );

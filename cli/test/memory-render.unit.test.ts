@@ -7,7 +7,7 @@
 import { describe, test, expect } from "bun:test";
 import { Exit } from "effect";
 
-import { cleanCell, memoryListEffectFromFlags, previewText, sharedBy } from "../src/commands/memory.ts";
+import { cleanCell, memoryListEffectFromFlags, previewText, sharedBy } from "../src/commands/memory/memory.ts";
 import { httpLayerReturning, newCapture, runWith } from "./helpers-memory-layers.ts";
 
 const FLEET_ID = "01900000-0000-7000-8000-0000005e4e72";

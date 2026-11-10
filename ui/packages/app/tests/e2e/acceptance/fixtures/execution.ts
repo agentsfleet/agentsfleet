@@ -15,7 +15,7 @@
  */
 import type { RunnerLeaseResponse, RunnerListResponse } from "@/tests/helpers/runner-control";
 import type { EventDetail, ThreadPage } from "@/lib/api/events";
-import { LEASE_OUTCOME } from "@/tests/helpers/runner-control-types";
+import { LeaseOutcome } from "@/tests/helpers/runner-control-types";
 import { clientFor, type ClientHandle } from "./api-client";
 import { FIXTURE_KEY } from "./constants";
 
@@ -260,7 +260,7 @@ export async function anyRunnerLive(): Promise<boolean> {
 
 /** Whether a lease outcome is one the runner has finished reporting. */
 export function leaseIsSettled(outcome: string): boolean {
-  return outcome !== LEASE_OUTCOME.running;
+  return outcome !== LeaseOutcome.Running;
 }
 
 /**

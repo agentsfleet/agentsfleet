@@ -11,6 +11,8 @@
 
 import { Effect, Layer, Context } from "effect";
 import { CliConfig } from "./config.ts";
+import { startProgress } from "../output/progress.ts";
+import { isTty } from "../output/capability.ts";
 import {
   ui as defaultUi,
   printKeyValue as printKeyValueRaw,
@@ -22,7 +24,7 @@ import {
   type EntityTableSpec,
 } from "../output/index.ts";
 
-type Stream = NodeJS.WritableStream;
+type Stream = NodeJS.WritableStream & {readonly isTTY?: boolean};
 
 /**
  * The registers this CLI writes in.
@@ -75,6 +77,7 @@ export interface OutputShape {
   readonly stdoutIsTty: boolean;
   readonly intro: (msg: string) => Effect.Effect<void>;
   readonly info: (msg: string) => Effect.Effect<void>;
+  readonly progress: (label: string) => Effect.Effect<() => void>;
   /**
    * One result, in whichever register is active.
    *
@@ -129,6 +132,7 @@ export const makeStdioOutput = ({ stdout, stderr, format }: OutputConfig): Outpu
   format,
   intro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
   info: (msg) => Effect.sync(() => writeLine(stdout, msg)),
+  progress: (label) => Effect.sync(() => startProgress(stderr, label, format === OUTPUT_FORMAT.text && isTty(stdout))),
   // The one call that answers both registers. In json the payload IS the
   // answer, so the human sentence is dropped rather than wrapped — a script
   // parsing this wants the record, not a record with a message in it.

@@ -6,7 +6,7 @@
  * `workspace-mutation.spec.ts` round-trip needs and nothing else owns.
  *
  * Surface confirmed against `src/program/cli-tree.ts` +
- * `src/program/cli-tree-fleet.ts` + `src/commands/workspace.ts`:
+ * `src/program/cli-tree-fleet.ts` + `src/commands/workspace/workspace.ts`:
  *   - `workspace create <name>`  → POST /v1/workspaces; --json → { workspace_id, name }
  *   - `workspace list --json` → { current_workspace_id, workspaces: [...] }
  *   - `workspace use <id>`    → --json → { active: <id> } (active carries the id)

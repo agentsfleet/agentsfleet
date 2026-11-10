@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit } from "effect";
-import { workspaceDeleteEffectFromArgs } from "../src/commands/workspace.ts";
+import { workspaceDeleteEffectFromArgs } from "../src/commands/workspace/workspace.ts";
 import { OUTPUT_FORMAT } from "../src/services/output.ts";
 import type { WorkspacesValue } from "../src/services/workspaces.ts";
 import { ValidationError } from "../src/errors/index.ts";

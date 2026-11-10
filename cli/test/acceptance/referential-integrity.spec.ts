@@ -219,7 +219,7 @@ if (!isLive) {
           // Server side is unaffected: the fleet is still listable by id even
           // though the local workspace pointer was removed. `list --workspace`
           // takes the explicit override without requiring the (now-deleted) local
-          // store entry (per cli/src/commands/fleet_list.ts).
+          // store entry (per cli/src/commands/fleet/list.ts).
           const listed = await run([CMD_LIST, FLAG_WORKSPACE, deletedWorkspaceId, FLAG_JSON]);
           assert.equal(listed.code, 0, `list --workspace exited ${listed.code}: ${listed.stderr}`);
           const rows = parseJson<FleetListEnvelope>(listed.stdout, "ws-fleets").items ?? [];

@@ -13,11 +13,11 @@
 import { Option } from "effect";
 import { Command, Flag } from "effect/cli";
 import { guardedHandler } from "./guarded-handler.ts";
-import { doctorEffect } from "../../commands/core-ops.ts";
+import { doctorEffect } from "../../commands/fleet/core-ops.ts";
 import { withManagedExitCode } from "../../runtime/exit-code.service.ts";
-import { whoamiEffect } from "../../commands/whoami.ts";
-import { logoutEffect } from "../../commands/auth-logout.ts";
-import { loginEffectFromFlags } from "../../commands/login.ts";
+import { whoamiEffect } from "../../commands/auth/whoami.ts";
+import { logoutEffect } from "../../commands/auth/logout.ts";
+import { loginEffectFromFlags } from "../../commands/auth/login.ts";
 import {
   apiKeyCommand,
   approvalsCommand,
@@ -136,7 +136,7 @@ export const rootCommand = Command.make(CLI_NAME).pipe(
     modelsCommand,
     platformCommand,
     chatCommand,
-      fleetCommand,
+    fleetCommand,
     listCommand,
     statusCommand,
     stopCommand,

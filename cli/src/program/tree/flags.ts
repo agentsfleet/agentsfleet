@@ -17,6 +17,7 @@ import {
 } from "../../constants/custom-endpoint.ts";
 import { API_KEY_SORTS } from "../../constants/api-key.ts";
 import { MAX_RECALL_LIMIT } from "../../constants/memory-limits.ts";
+import { eventTime } from "../../lib/event-time.ts";
 
 const NOT_A_UUIDV7 = `expected uuidv7 format (e.g. ${EXAMPLE_UUIDV7})` as const;
 
@@ -169,6 +170,7 @@ export const baseUrlFlag = Flag.String("base-url").pipe(
   Flag.withDescription(
     "Custom endpoint base URL (https; required for a custom-endpoint provider)",
   ),
+  Flag.withMetavar(METAVAR.url),
   Flag.filter(
     (raw: string) => {
       const trimmed = raw.trim();
@@ -198,7 +200,13 @@ export const dataReplacementFlag = textFlag(
 
 export const categoryFlag = textFlag("category", "Filter by category", METAVAR.name);
 export const actorFlag = textFlag("actor", "Filter by actor glob", METAVAR.glob);
-export const sinceFlag = textFlag("since", "RFC 3339 or duration (e.g. 2h)", METAVAR.when);
+export const eventTimeFlag = (name: string, relative: boolean) =>
+  requiredTextFlag(name, relative ? "RFC 3339 or duration (e.g. 2h)" : "RFC 3339 timestamp", METAVAR.when).pipe(
+    Flag.filter((value) => eventTime(value, Date.now(), relative) !== undefined,
+      () => relative ? "expected an RFC 3339 timestamp or duration (e.g. 2h)" : "expected an RFC 3339 timestamp"),
+    Flag.optional,
+  );
+export const sinceFlag = eventTimeFlag("since", true);
 
 export const cronFlag = Flag.String(FLAG.cron).pipe(
   Flag.withDescription(DESC_CRON),

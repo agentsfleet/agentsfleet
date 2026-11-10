@@ -446,7 +446,8 @@ cannot determine whether arbitrary prose is a technical value; that remains a re
 Fleet setup and Fleet conversation share a moving text highlight for active progress labels.
 Use the existing `tool-shimmer` timing and `data-chat-loading` selector in `interactions.css`.
 Animate paint without changing text geometry, and remove the loading state when work settles.
-Do not add the older braille spinner beside these progress labels. Queued text stays static.
+
+Queued text stays static.
 Reduced-motion and forced-color preferences show static, readable text.
 
 Make movement explain arrival, focus, selection, and disclosure. A finished interface should feel fluid when the person moves through it.

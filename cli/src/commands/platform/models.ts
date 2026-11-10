@@ -10,7 +10,7 @@ const MAX_CATALOGUE_PAGES = 1000;
 export const platformModelsList = Effect.fn("platform.models.list")(function* (options: RunnerPaging) {
   const response = yield* modelPage(options);
   const output = yield* Output;
-  if (output.format === OUTPUT_FORMAT.json) return yield* output.printJson(response);
+  if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(response);
   yield* output.printEntityTable({name: {key: "name", label: "NAME"}, domain: [
     {key: "id", label: "ID"}, {key: "provider", label: "PROVIDER"}, {key: "model_id", label: "MODEL"},
   ], ageKey: null}, response.models.map(({id, provider, model_id, metadata}) => ({id, provider, model_id, name: metadata.display_name})));
@@ -23,7 +23,11 @@ export const platformModelShow = Effect.fn("platform.models.show")(function* (id
   for (let page = 0; page < MAX_CATALOGUE_PAGES; page += 1) {
     const response = yield* modelPage({startingAfter});
     const model = response.models.find((row) => row.id === id);
-    if (model) return yield* platformResult(model);
+    if (model) return yield* platformResult(model, model.metadata.display_name, {
+      ID: model.id, Provider: model.provider, Model: model.model_id,
+      "Context tokens": String(model.metadata.context_cap_tokens), "Price periods": String(model.prices.length),
+      "Verified at": model.metadata.context_verified_at,
+    });
     if (response.next_cursor === null) return yield* Effect.fail(invalidInput("This model was not found in the platform catalogue"));
     if (seen.has(response.next_cursor)) break;
     seen.add(response.next_cursor); startingAfter = response.next_cursor;
@@ -35,16 +39,18 @@ export const platformModelWrite = Effect.fn("platform.models.write")(function* (
   const input = yield* readPlatformFile(file);
   if (id === undefined) {
     const body = yield* platformInput(PlatformModelCreateSchema, input);
-    yield* platformResult(yield* decodePlatform(PlatformModelSchema, yield* platformRequest({path: ADMIN_MODELS_PATH, method: HTTP_METHOD.post, body})));
+    const model = yield* decodePlatform(PlatformModelSchema, yield* platformRequest({path: ADMIN_MODELS_PATH, method: HTTP_METHOD.post, body}));
+    yield* platformResult(model, "Model created", {ID: model.id, Provider: model.provider, Model: model.model_id});
   } else {
     const body = yield* platformInput(PlatformModelSettingsSchema, input);
-    yield* platformResult(yield* decodePlatform(PlatformModelUpdatedSchema, yield* platformRequest({path: platformPath(ADMIN_MODELS_PATH, id), method: HTTP_METHOD.patch, body})));
+    const model = yield* decodePlatform(PlatformModelUpdatedSchema, yield* platformRequest({path: platformPath(ADMIN_MODELS_PATH, id), method: HTTP_METHOD.patch, body}));
+    yield* platformResult(model, "Model updated", {ID: model.id});
   }
 });
 
 export const platformModelDelete = Effect.fn("platform.models.delete")(function* (id: string) {
   yield* platformRequest({path: platformPath(ADMIN_MODELS_PATH, id), method: HTTP_METHOD.delete});
-  yield* platformResult({id, deleted: true});
+  yield* platformResult({id, deleted: true}, "Model deleted", {ID: id});
 });
 
 const modelPage = Effect.fn("platform.models.page")(function* (options: RunnerPaging) {

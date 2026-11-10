@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Instant } from "@/lib/api/decode";
-import { LEASE_DESTINATION, LEASE_KIND, LEASE_OUTCOME } from "./runner-control-types";
+import { LeaseDestination, LeaseKind, LeaseOutcome } from "./runner-control-types";
 
 const count = z.number().int().nonnegative();
 const text = z.string().min(1);
@@ -9,9 +9,9 @@ const text = z.string().min(1);
 // leaves a retained lease; its authorized destination is an explicit server fact.
 const RunnerLeaseSchema = z.object({
   id: text, fleet_id: text, fleet_name: z.string().nullable(), workspace_id: text,
-  destination: z.enum(Object.values(LEASE_DESTINATION)),
+  destination: z.enum(Object.values(LeaseDestination)),
   event_id: text, event_type: text.nullable(), actor: text.nullable(),
-  outcome: z.enum(Object.values(LEASE_OUTCOME)), kind: z.enum(Object.values(LEASE_KIND)),
+  outcome: z.enum(Object.values(LeaseOutcome)), kind: z.enum(Object.values(LeaseKind)),
   failure_label: z.string().nullable(), failure_detail: z.string().nullable(),
   fencing_token: count, provider: text, model: text, posture: text,
   metered_input_tokens: count, metered_cached_tokens: count, metered_output_tokens: count,

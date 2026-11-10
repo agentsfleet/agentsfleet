@@ -67,10 +67,14 @@ const isFetchFailed = (cause: unknown): boolean => {
 };
 
 export const ERR_WORKSPACE_NAME_EXISTS = "UZ-WORKSPACE-001" as const;
+const ERR_INSUFFICIENT_SCOPE = "UZ-AUTH-022";
 const WORKSPACE_NAME_EXISTS_SUGGESTION =
   "run `agentsfleet workspace list`, then `agentsfleet workspace use <workspace_id>`, or choose another name";
 
 const apiErrorSuggestion = (cause: ApiError, status: number): string => {
+  if (cause.code === ERR_INSUFFICIENT_SCOPE) {
+    return "ask your administrator to grant the required permissions";
+  }
   if (cause.code === ERR_WORKSPACE_NAME_EXISTS) {
     return WORKSPACE_NAME_EXISTS_SUGGESTION;
   }

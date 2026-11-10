@@ -14,7 +14,7 @@ import {
   idempotencyCheck,
   mapVerifyFailure,
   verifyAndDecryptWithRetry,
-} from "../src/commands/login-device-flow.ts";
+} from "../src/commands/auth/login-device-flow.ts";
 import { generateCliKeypair } from "../src/lib/cli-flow.ts";
 import {
   AuthError,
