@@ -2,10 +2,11 @@
 
 use super::{TestResult, operator::Operator};
 use crate::e2e::{self, Scenario};
+use af_core::clock;
 use af_crypto::{entropy::Entropy, secret::Kek};
 use af_stream::Transport;
 use afd_admission::Admissions;
-use afd_authoring::{Creations, Drafts, Setup};
+use afd_authoring::{Creations, Drafts, Setup, SystemSetup};
 use afd_bus::Handle;
 use agentsfleetd::{
     serve::{Booted, boot},
@@ -39,7 +40,7 @@ impl Fixture {
         );
         let peer = boot(&environment, e2e::EPHEMERAL, &mut replica).await?;
         let bus = run.booted.bus.clone();
-        Ok(Self {
+        let mut fixture = Self {
             run,
             peer,
             bus,
@@ -47,7 +48,45 @@ impl Fixture {
             primary,
             replica,
             siblings: Vec::new(),
-        })
+        };
+        fixture.reviewed_fleet().await?;
+        Ok(fixture)
+    }
+
+    /// Kill reads a saved review, so install through the production setup owner.
+    async fn reviewed_fleet(&mut self) -> TestResult {
+        let mut config: serde_json::Value =
+            serde_json::from_str(crate::e2e_seed::FLEET_CONFIG_JSON)?;
+        config
+            .as_object_mut()
+            .ok_or("the seed fleet configuration is an object")?
+            .insert("name".to_owned(), "cancellation-review".into());
+        let definition = crate::e2e_native::definition(
+            &config.to_string(),
+            crate::e2e_seed::FIXTURE_INSTRUCTIONS,
+        );
+        let fleet = self
+            .creations(self.bus.clone())?
+            .materialise(
+                SystemSetup {
+                    workspace: &self.run.workspace,
+                    definition: &definition,
+                },
+                clock::now(),
+            )
+            .await?;
+        crate::e2e_retire::retire_fleet(&self.run.booted, &self.run.fleet).await;
+        self.run.fleet = fleet;
+        let registered = afd_runner::Runners::new(self.run.booted.database.clone(), Entropy::new())
+            .register(
+                &crate::e2e_seed::scenario_enrolment(&self.run.fleet),
+                clock::now(),
+            )
+            .await?;
+        self.run.runner_id = registered.runner_id;
+        registered.token.expose().clone_into(&mut self.run.token);
+        self.run.event_id = self.run.enqueue_event(e2e::EVENT_TYPE).await;
+        Ok(())
     }
 
     pub(super) async fn native(&self, transport: Transport) -> Native {

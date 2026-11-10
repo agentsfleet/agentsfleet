@@ -1,9 +1,10 @@
 pub(super) use super::support::{Fixture, Result, deadline};
-use af_stream::{Connection, Outgoing, Transport};
+use af_stream::{Connection, Endpoint, Incoming, Outgoing, Transport, server::Listener};
 use af_wire::protocol::StreamKind;
-use http::Request;
-use std::{sync::atomic::Ordering, time::Duration};
+use http::{Request, Response};
+use std::{convert::Infallible, sync::atomic::Ordering, time::Duration};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio_util::sync::CancellationToken;
 
 async fn duplex(transport: Transport) -> Result {
     let fixture = Fixture::new(vec!["localhost".to_owned()], false)?;
@@ -195,4 +196,48 @@ async fn both_native_transports_negotiate_hybrid_post_quantum_key_exchange() -> 
         connection.close(deadline()).await?;
     }
     host.close().await
+}
+
+// Value: protects=a draining daemon learns a runner's close at once, not at QUIC's idle timeout;
+// fails_when=a stopped HTTP/3 client leaves without sending CONNECTION_CLOSE;
+// why_new=the shared host fixture aborts its listener, which hides a silent peer;
+// seam=public Connection::close against a draining, unaborted Listener on both carriers.
+#[tokio::test]
+async fn a_draining_listener_finishes_once_each_carrier_client_closes() -> Result {
+    let fixture = Fixture::new(vec!["localhost".to_owned()], false)?;
+    for transport in [Transport::H3, Transport::H2] {
+        let listener = Listener::bind("[::1]:0".parse()?, fixture.identity.clone()).await?;
+        let port = listener.local_addr()?.port();
+        let endpoint = Endpoint::parse(&format!("https://localhost:{port}"))?;
+        let (accepting, abort) = (CancellationToken::new(), CancellationToken::new());
+        let _abort_on_exit = abort.clone().drop_guard();
+        let serving = tokio::spawn(listener.serve(
+            |_connection| {
+                tower::service_fn(|request: Request<Incoming>| async move {
+                    Ok::<_, Infallible>(Response::new(Outgoing::new(request.into_body())))
+                })
+            },
+            accepting.clone(),
+            abort.clone(),
+        ));
+        let mut connection =
+            Connection::connect(transport, &endpoint, &fixture.trust, &abort, deadline()).await?;
+        let (upload, body) = Outgoing::pipe();
+        let request = Request::builder()
+            .method("POST")
+            .uri(endpoint.uri().clone())
+            .header(
+                af_wire::protocol::STREAM_KIND_HEADER,
+                StreamKind::Control.as_str(),
+            )
+            .body(body)?;
+        let response = connection.open(request, deadline()).await?;
+        assert_eq!(response.status(), http::StatusCode::OK);
+        accepting.cancel();
+        drop((upload, response));
+        connection.close(deadline()).await?;
+        // Far inside both QUIC's 30-second idle timeout and the daemon's 15-second drain bound.
+        tokio::time::timeout(Duration::from_secs(2), serving).await???;
+    }
+    Ok(())
 }

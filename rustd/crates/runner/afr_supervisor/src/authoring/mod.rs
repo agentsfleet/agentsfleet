@@ -16,35 +16,29 @@ use af_crypto::entropy::Entropy;
 use af_wire::authoring::{Accounting, FailureReason, Lease, Outcome, Report, Reported};
 use serde_json::Value;
 use tokio::time::Instant;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 struct Ending {
     outcome: Outcome,
     reason: Option<FailureReason>,
-    answer: Option<String>,
-}
-
-impl Zeroize for Ending {
-    fn zeroize(&mut self) {
-        if let Some(answer) = &mut self.answer {
-            answer.zeroize();
-        }
-    }
-}
-
-impl Drop for Ending {
-    fn drop(&mut self) {
-        self.zeroize();
-    }
+    /// The model's private text; its wrapper wipes the buffer when the run drops it unsent.
+    answer: Option<Zeroizing<String>>,
 }
 
 impl Ending {
-    const fn completed(answer: Option<String>) -> Self {
+    fn completed(answer: Option<String>) -> Self {
         Self {
             outcome: Outcome::Completed,
             reason: None,
-            answer,
+            answer: answer.map(Zeroizing::new),
         }
+    }
+
+    /// Hand the answer's buffer to the report unchanged; the report's owner wipes it next.
+    fn take_answer(&mut self) -> Option<String> {
+        self.answer
+            .take()
+            .map(|mut answer| std::mem::take(&mut *answer))
     }
 
     const fn unknown() -> Self {
@@ -120,7 +114,7 @@ impl Lessee {
             &id,
             Report::Terminal {
                 accounting,
-                answer: ending.answer.take(),
+                answer: ending.take_answer(),
             },
         )
         .await

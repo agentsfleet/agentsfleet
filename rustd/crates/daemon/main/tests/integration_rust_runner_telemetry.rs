@@ -210,7 +210,10 @@ fn assert_lease_trace(received: &Received, event_id: &str) {
     let unreviewed: BTreeSet<&str> = spans
         .iter()
         .map(|span| span.name.as_str())
-        .filter(|name| !SPAN_KINDS.contains(name) && *name != "runner_stream_operation")
+        .filter(|name| {
+            !SPAN_KINDS.contains(name)
+                && !matches!(*name, "runner_stream_operation" | "runner.connection")
+        })
         .collect();
     assert!(
         unreviewed.is_empty(),

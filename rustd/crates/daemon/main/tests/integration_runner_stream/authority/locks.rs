@@ -22,8 +22,9 @@ impl HostLock {
     pub(super) async fn hold(run: &Scenario) -> TestResult<Self> {
         let mut transaction =
             Transaction::begin(run.booted.database.acquire().await?, None).await?;
+        // Let admission foreign keys take KEY SHARE before the issue reaches its host lock.
         let blocker = sqlx::query_scalar(
-            "SELECT pg_backend_pid() FROM runner.runners WHERE id=$1 FOR UPDATE",
+            "SELECT pg_backend_pid() FROM runner.runners WHERE id=$1 FOR NO KEY UPDATE",
         )
         .bind(&run.runner_id)
         .fetch_one(&mut *transaction)
@@ -52,11 +53,6 @@ impl HostLock {
             }
         })
         .await?
-    }
-
-    pub(super) async fn release(self) -> TestResult {
-        self.transaction.commit().await?;
-        Ok(())
     }
 
     pub(super) async fn replace(
