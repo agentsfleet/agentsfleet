@@ -21,14 +21,20 @@
 //! prepare and the checkout run beside the model's segment, so the segments
 //! tile the wall only when the build ends before the turn needs it. What the
 //! build held the turn up by is `sandbox_wait_ms`, absent when nothing waited.
+//!
+//! The same segments are written once onto the lease's span when it concludes,
+//! under the `agentsfleet.runner.*_ms` keys, so a trace store reads them per
+//! event without the journal.
 
 use std::sync::{Mutex, PoisonError};
 use std::time::Duration;
 
 use af_core::clock::saturating_millis;
 use af_core::spelling::to_spelling;
+use af_observability::semconv::RUNNER_SEGMENT_KEYS;
 use af_wire::report::RunSegments;
 use tokio::time::Instant;
+use tracing::Span;
 
 use super::{EVENT_COMPLETED, EVENT_FAILED, LeaseRun};
 use crate::activity::RunTiming;
@@ -63,6 +69,30 @@ pub(super) struct Segments {
     tools: Option<Duration>,
     report: Option<Duration>,
     first_token: Option<Duration>,
+}
+
+impl Segments {
+    /// Writes each segment that ran onto `span`, under its declared key; a
+    /// segment that never ran writes nothing, so the span never says zero.
+    pub(super) fn record(&self, span: &Span) {
+        let ran = [
+            self.memory,
+            self.sandbox,
+            self.egress,
+            self.prepare,
+            self.checkout,
+            self.sandbox_wait,
+            self.model,
+            self.tools,
+            self.report,
+            self.first_token,
+        ];
+        for (key, elapsed) in RUNNER_SEGMENT_KEYS.into_iter().zip(ran) {
+            if let Some(elapsed) = elapsed {
+                span.record(key, saturating_millis(elapsed));
+            }
+        }
+    }
 }
 
 /// A lease's segments as they finish, written from whichever step ends one.
@@ -158,11 +188,13 @@ impl Drop for Stopwatch<'_> {
 }
 
 impl LeaseRun<'_> {
-    /// Logs how the lease ended and where its time went.
+    /// Logs how the lease ended and where its time went, and writes the same
+    /// segments onto the lease's span.
     pub(super) fn conclude(&self, ending: &Ending) {
         let lease_id = self.ids.lease.as_str();
         let wall_ms = saturating_millis(self.started.elapsed());
         let segments = *self.timeline.lock();
+        segments.record(&Span::current());
         let memory_ms = segments.memory.map(saturating_millis);
         let sandbox_ms = segments.sandbox.map(saturating_millis);
         let egress_ms = segments.egress.map(saturating_millis);
@@ -204,3 +236,7 @@ impl LeaseRun<'_> {
 #[cfg(test)]
 #[path = "tests/timing.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/span_segments.rs"]
+mod span_tests;

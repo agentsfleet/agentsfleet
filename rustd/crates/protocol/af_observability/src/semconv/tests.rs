@@ -18,7 +18,7 @@
 
 use std::collections::BTreeSet;
 
-use super::{CENSUS_LABEL_KEYS, DELIVERY_SPAN_KEYS, RUNNER_SPAN_KEYS};
+use super::{CENSUS_LABEL_KEYS, DELIVERY_SPAN_KEYS, RUNNER_SEGMENT_KEYS, RUNNER_SPAN_KEYS};
 use crate::metrics::registry::Registry;
 
 /// The namespaces a key this daemon emits may live under.
@@ -96,6 +96,18 @@ fn every_delivery_span_key_is_namespaced() {
                 .any(|namespace| key.starts_with(namespace)),
             "`{key}` is under no namespace this daemon owns, so it will collide \
              with whatever else claims the bare word"
+        );
+    }
+}
+
+/// Every segment key the lease span writes is one the runner's spans declare,
+/// so the segments never reach the exporter as keys nothing else names.
+#[test]
+fn every_runner_segment_key_is_a_runner_span_key() {
+    for key in RUNNER_SEGMENT_KEYS {
+        assert!(
+            RUNNER_SPAN_KEYS.contains(&key),
+            "`{key}` is a lease segment the runner span keys do not declare"
         );
     }
 }

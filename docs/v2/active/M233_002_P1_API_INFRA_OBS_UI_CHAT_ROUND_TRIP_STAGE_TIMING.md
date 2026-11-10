@@ -162,7 +162,7 @@ The segments are `memory`, `sandbox`, `egress`, `prepare`, `checkout`, `sandbox_
 
 - **Dimension 2.1** — DONE (shipped) — only root-owned sockets reach the receiver → Validation `make check-runner-collector-admission`: exit 0.
 - **Dimension 2.3** — a sandbox cannot post to the collector → Test `manual_sandbox_cannot_post_to_collector` (manual; on the dev host a lease under `allow_all` runs `curl -m 2 http://127.0.0.1:4318/v1/traces`; output in the Session Notes): refused or timed out.
-- **Dimension 2.5** — `runner.lease` carries the reached segments once → Test `lease_span_records_existing_segments` (unit, `lease_loop/tests/span_segments.rs`): a lease with memory 12 ms, model 400 ms and report 30 ms sets those three fields once, and leaves `sandbox` and `tools` unset.
+- **Dimension 2.5** — DONE — `runner.lease` carries the reached segments once → Test `lease_span_records_existing_segments` (unit, `lease_loop/tests/span_segments.rs`): a lease with memory 12 ms, model 400 ms and report 30 ms sets those three fields once, and leaves `sandbox` and `tools` unset.
 - **Dimension 2.7** — the runner span is found by event → Test `manual_runner_span_reaches_tempo` (manual; a dev chat, then TraceQL `{ span.agentsfleet.event.id = "<id>" }`; screenshot in the Session Notes): `runner.lease` and the three daemon verb spans return.
 
 ### §3 — The edge reports its own cost on one clock
