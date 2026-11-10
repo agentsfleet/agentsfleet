@@ -45,3 +45,14 @@ async fn cancellation_releases_a_body_waiting_for_native_data() -> Result<()> {
     assert!(body.frame().await.is_none());
     Ok(())
 }
+
+#[tokio::test]
+async fn bodies_render_no_payload_in_debug() {
+    let (_writer, outgoing) = Outgoing::pipe();
+    assert_eq!(format!("{outgoing:?}"), "Outgoing { .. }");
+    let (_sender, frames) = tokio::sync::mpsc::channel(1);
+    let incoming = Incoming::h3(frames, CancellationToken::new());
+    assert_eq!(format!("{incoming:?}"), "Incoming { finished: false, .. }");
+    let reader = incoming.reader();
+    assert_eq!(format!("{reader:?}"), "IncomingReader { .. }");
+}

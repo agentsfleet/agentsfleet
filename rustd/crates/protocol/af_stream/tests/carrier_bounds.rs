@@ -49,6 +49,15 @@ impl Lane {
             .body(body)?;
         let response = connection.open(request, deadline()).await?;
         assert_eq!(response.status(), http::StatusCode::OK, "{transport:?}");
+        assert_eq!(
+            format!("{connection:?}"),
+            format!("Connection {{ transport: {transport:?}, .. }}")
+        );
+        assert_eq!(
+            connection.network_stats().is_some(),
+            transport == Transport::H3,
+            "only QUIC reports path statistics"
+        );
         Ok(Self {
             host,
             connection,
