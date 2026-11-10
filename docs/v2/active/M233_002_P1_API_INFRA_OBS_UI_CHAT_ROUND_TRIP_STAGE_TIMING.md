@@ -145,12 +145,12 @@ Each verb builds a stage clock at its entry from `af_observability::verb_span`. 
 
 Steer's authentication runs in extractors before the clock starts, so the daemon does not time it; the edge's `auth` timing covers the app's side (§3). An offer pass that selects nothing records no span (assumption 2). **Implementation default:** the clock is a `&mut VerbClock` parameter, because a task-local would hide which functions mark.
 
-- **Dimension 1.1** — each reached stage is written once → Test `verb_clock_writes_each_reached_stage_once` (unit, in-memory exporter): a report reaching all six stages exports one `fleet.report` span with six stage attributes. A report refused at `load` exports one span with `load_ms` only.
+- **Dimension 1.1** — DONE — each reached stage is written once → Test `verb_clock_writes_each_reached_stage_once` (unit, in-memory exporter): a report reaching all six stages exports one `fleet.report` span with six stage attributes. A report refused at `load` exports one span with `load_ms` only.
 - **Dimension 1.2** — an empty offer pass records nothing → Test `empty_offer_pass_records_no_span` (integration, live Postgres, in-memory exporter): a pass that selects no candidate exports zero spans. A pass that recorded a `claim`-only span would fail it.
 - **Dimension 1.3** — one chat's spans join by event → Test `event_identity_joins_the_verb_spans` (integration, `session/verb_span_tests.rs`, live Postgres and a gateway session from `afd_gateway` `test_util`): one chat exports `fleet.steer`, `fleet.offer` and `fleet.report` with one `agentsfleet.event.id`. A fallback hydrate joins by `gen_ai.agent.id`.
-- **Dimension 1.4** — a verb span carries no payload → Test `verb_span_carries_only_declared_keys` (unit): a steer whose message is `secret-probe-7f3a` exports no attribute outside `semconv`'s verb keys, and no value containing the probe.
+- **Dimension 1.4** — DONE — a verb span carries no payload → Test `verb_span_carries_only_declared_keys` (unit): a steer whose message is `secret-probe-7f3a` exports no attribute outside `semconv`'s verb keys, and no value containing the probe.
 - **Dimension 1.5** — the span reaches the installed exporter → Test `verb_span_reaches_exporter_through_global_provider` (integration, `daemon/main/tests/integration_verb_span_export.rs`): after `telemetry::install` with an in-memory exporter, a recorded steer span is exported. A clock that took its tracer before the install exports nothing and fails it.
-- **Dimension 1.6** — the stages account for the span → Test `verb_stage_attributes_account_for_the_span` (unit, injected clock): stages summing 96 ms in a 100 ms span pass; 80 ms in 100 ms fails, because the residual exceeds the larger of 10% and 5 ms.
+- **Dimension 1.6** — DONE — the stages account for the span → Test `verb_stage_attributes_account_for_the_span` (unit, injected clock): stages summing 96 ms in a 100 ms span pass; 80 ms in 100 ms fails, because the residual exceeds the larger of 10% and 5 ms.
 
 ### §2 — The runner's segments reach Grafana
 

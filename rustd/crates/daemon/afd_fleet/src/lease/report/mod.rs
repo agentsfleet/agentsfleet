@@ -34,6 +34,7 @@
 //! a report could not settle without.
 
 use af_core::id::Uuid7;
+use af_observability::verb_span::{ReportStage, VerbClock};
 use af_wire::report::ReportRequest;
 use jiff::Timestamp;
 
@@ -74,10 +75,30 @@ impl LeaseService {
         request: &ReportRequest<'_>,
         now: Timestamp,
     ) -> Result<Reconciled> {
+        let mut untimed = VerbClock::untimed();
+        self.report_timed(runner_id, request, now, &mut untimed)
+            .await
+    }
+
+    /// [`Self::report`], marking each stage it reaches on `clock`: the load,
+    /// the preparation, the capture, the commit and the announce.
+    ///
+    /// # Errors
+    /// As [`Self::report`].
+    pub async fn report_timed(
+        &self,
+        runner_id: &Uuid7,
+        request: &ReportRequest<'_>,
+        now: Timestamp,
+        clock: &mut VerbClock<ReportStage>,
+    ) -> Result<Reconciled> {
         let lease_id = &crate::error::wire_lease(request.lease_id.as_ref())?;
-        let Some(lease) = self.leases.load_for_report(lease_id, runner_id).await? else {
+        let loaded = self.leases.load_for_report(lease_id, runner_id).await;
+        clock.mark(ReportStage::Load);
+        let Some(lease) = loaded? else {
             return Err(lease_not_found());
         };
+        clock.identify(lease.event_id.as_str(), lease.fleet_id.as_str());
 
         let lease_key = lease_id.clone();
         let task_plan = self
@@ -112,13 +133,16 @@ impl LeaseService {
         );
 
         report.task_settlement = task_settlement;
+        clock.mark(ReportStage::Prepare);
         // Boxed: the capture's state would otherwise ride inside every report
         // future, past the large-future bound, for a step most reports skip.
         Box::pin(self.capture_reported(runner_id, &lease, request, now)).await;
-        let committed = self.leases.commit_report(report).await?;
-        self.finalize_report(
+        clock.mark(ReportStage::Capture);
+        let committed = self.leases.commit_report(report).await;
+        clock.mark(ReportStage::Commit);
+        let reconciled = self.finalize_report(
             lease,
-            committed,
+            committed?,
             task_plan.as_ref(),
             finalize::Context {
                 runner_id,
@@ -127,7 +151,9 @@ impl LeaseService {
                 now,
             },
         )
-        .await
+        .await;
+        clock.mark(ReportStage::Announce);
+        reconciled
     }
 }
 

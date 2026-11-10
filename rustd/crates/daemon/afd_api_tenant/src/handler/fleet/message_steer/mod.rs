@@ -28,6 +28,7 @@
 //! that admitted it: a repeat is the same message answered again.
 
 use af_observability::metrics::label::fleet::SteerPlaced;
+use af_observability::verb_span::{SteerStage, VerbClock};
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -142,7 +143,10 @@ pub(crate) async fn steer<D: Services>(
     Path(FleetPath { fleet_id }): Path<FleetPath>,
     body: Bytes,
 ) -> Result<Response, Refusal> {
+    // After the extractors: authentication is the edge's `auth` timing.
+    let mut clock = VerbClock::<SteerStage>::start();
     let fleet = parse_fleet_id(&fleet_id)?;
+    clock.agent(fleet.as_str());
     let steer = read_steer(&body)?;
     let actor = actor_for(person.person());
     let request_json = stored_payload(&steer.message)?;
@@ -153,11 +157,14 @@ pub(crate) async fn steer<D: Services>(
     // the ceiling: a foreign fleet is a 404 before any operation id is read, and
     // a retry of a message admitted before the fleet stopped is still answered
     // with its event.
-    let steered = steering
+    let appended = steering
         .append(fleet, workspace, &actor, &request_json, operation_id)
-        .await
-        .map_err(refuse_steer)?;
+        .await;
+    clock.mark(SteerStage::Admit);
+    let steered = appended.map_err(refuse_steer)?;
+    clock.identify(&steered.event_id, fleet.as_str());
     announce_admitted(steering, fleet.as_str(), &steered, &actor, &steer.message).await;
+    clock.mark(SteerStage::Announce);
     let replayed = steered.replayed();
     Ok(accepted(steered.event_id, replayed, steered.placed))
 }

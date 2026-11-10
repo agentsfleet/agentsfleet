@@ -35,6 +35,7 @@ pub mod producers;
 pub mod product;
 pub mod runner;
 pub mod semconv;
+pub mod verb_span;
 #[cfg(feature = "test-util")]
 pub mod test_util;
 
