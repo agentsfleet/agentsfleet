@@ -1,4 +1,4 @@
-app = "nats-dev"
+app = "agentsfleet-nats-dev"
 primary_region = "iad"
 # Same region as agentsfleetd-dev, which reaches this app over 6PN: in-region
 # and WireGuard-encrypted, so the seed is plaintext `nats://`. No public

@@ -33,7 +33,9 @@ jobs:
       OTLP_COLLECTOR_ENDPOINT: http://otelcol-dev.internal:4318
       # The event bus (M244 §8): core NATS, two nodes, no volume. Its build
       # context is its own directory; the image copies nothing.
-      NATS_APP: nats-dev
+      # Fly app names are global across every organisation, and `nats-dev` is
+      # held elsewhere, so the app carries the product prefix.
+      NATS_APP: agentsfleet-nats-dev
       NATS_BUILD_CONTEXT: deploy/fly/nats-dev
       NATS_CONFIG: deploy/fly/nats-dev/fly.toml
       NATS_MACHINES: "2"
