@@ -1,6 +1,7 @@
 import {expect, test} from "bun:test";
 import {Effect} from "effect";
 import {startProgress} from "../src/output/progress.ts";
+import {resetCapabilityWarning} from "../src/output/capability.ts";
 
 test("the terminal scout flaps while waiting and stops writing after cleanup", async () => {
   const chunks: string[] = [];
@@ -32,6 +33,14 @@ test.each([{}, {NO_COLOR: "1"}])("colors the owl through the shared palette and 
   const chunks: string[] = [];
   await Effect.runPromise(Effect.scoped(startProgress({isTTY: true, write: text => chunks.push(text)}, "Scout", true, {TERM: "xterm-256color", ...env})));
   expect(chunks[0]).toBe(env.NO_COLOR ? "\r ,(o,o),  Scout" : "\r\u001b[38;5;79m ,(o,o), \u001b[0m Scout");
+});
+
+test("keeps the basic-color fallback notice on the invocation's stream", async () => {
+  resetCapabilityWarning();
+  const chunks: string[] = [];
+  await Effect.runPromise(Effect.scoped(startProgress({isTTY: true, write: text => chunks.push(text)}, "Scout", true, {TERM: "vt100"})));
+  expect(chunks[0]).toBe("note: terminal advertises <256 colors; using basic palette\n");
+  expect(chunks[1]).toBe("\r\u001b[36m ,(o,o), \u001b[0m Scout");
 });
 
 test.each([[false, true], [true, false], [true, undefined]] as const)("stays silent when disabled or redirected (enabled: %s, terminal: %s)", async (enabled, tty) => {
