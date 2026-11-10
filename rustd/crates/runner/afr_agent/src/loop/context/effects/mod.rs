@@ -75,8 +75,11 @@ pub(super) struct Store<'a> {
     pub(super) branch: &'a str,
 }
 impl CheckpointStore for Store<'_> {
+    /// Nothing: every branch is one this run minted, the lease id for the
+    /// root and a fresh identifier for a child, and only this run writes
+    /// under either (M245 §8). A reclaimed turn's notes ride its delivery.
     fn load(&mut self) -> PortFuture<'_, Option<Checkpoint>> {
-        Box::pin(self.port.load(self.branch))
+        Box::pin(std::future::ready(Ok(None)))
     }
     fn commit(&mut self, expected_generation: u64, checkpoint: Checkpoint) -> PortFuture<'_, ()> {
         Box::pin(

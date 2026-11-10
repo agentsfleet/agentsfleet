@@ -134,6 +134,10 @@ fn pool_schedule_products() -> Vec<(&'static str, usize)> {
             database::POOL_ACQUIRE_DURATION.wire_name(),
             database_labels::PoolRole::ALL.len() * database_labels::AcquireOutcome::ALL.len(),
         ),
+        (
+            database::POOL_CHECKOUT_PINGS_TOTAL.wire_name(),
+            database_labels::PoolRole::ALL.len(),
+        ),
     ]
 }
 

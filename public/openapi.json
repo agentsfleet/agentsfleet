@@ -4327,142 +4327,6 @@
       }
     },
     "/v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}": {
-      "get": {
-        "tags": [
-          "Runners"
-        ],
-        "summary": "Load private run working notes",
-        "description": "Requires the current assignment. Notes belong only to this run branch and are separate from fleet memory.",
-        "operationId": "runner_load_context_checkpoint",
-        "parameters": [
-          {
-            "name": "lease_id",
-            "in": "path",
-            "description": "The run assignment whose current holder may access the notes.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "branch_id",
-            "in": "path",
-            "description": "The root conversation or child conversation within that assignment.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "fencing_token",
-            "in": "query",
-            "description": "The assignment's current token.",
-            "required": true,
-            "schema": {
-              "type": "integer",
-              "format": "int64",
-              "minimum": 0
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ContextLoaded"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The resource was not found or is not accessible to you",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The request conflicts with the resource's current state",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "RunnerBearerAuth": []
-          }
-        ]
-      },
       "put": {
         "tags": [
           "Runners"
@@ -22577,16 +22441,6 @@
           }
         }
       },
-      "ContextLoaded": {
-        "type": "object",
-        "description": "No saved notes is an absent field; original history remains available.",
-        "properties": {
-          "checkpoint": {
-            "description": "The private branch's complete checkpoint, when one exists."
-          }
-        },
-        "additionalProperties": false
-      },
       "ContextPut": {
         "type": "object",
         "description": "Replace a branch's complete notes against the generation read before sending.",
@@ -27400,6 +27254,10 @@
               "$ref": "#/components/schemas/Turn"
             },
             "description": "The fleet's earlier turns, oldest first, ahead of this event; empty\nunless the event is a chat message."
+          },
+          "inputs_waiting": {
+            "type": "boolean",
+            "description": "Whether a later message waited in the run's conversation when the\ndaemon claimed it. False lets the run skip its first fold ask; a\nmessage that lands after the claim folds on the ask after the answer.\nAbsent on older daemons, and absent reads as true."
           },
           "instructions": {
             "type": "string",

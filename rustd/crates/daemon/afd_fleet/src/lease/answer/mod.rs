@@ -78,6 +78,7 @@ pub(super) fn payload<'a>(
         task: context.task,
         durable_tasks: installed.config.decision_policy().is_some(),
         memory: context.memory,
+        inputs_waiting: acquired.opened.inputs_waiting,
     }
 }
 

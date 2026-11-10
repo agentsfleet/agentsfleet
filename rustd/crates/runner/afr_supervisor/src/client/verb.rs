@@ -44,8 +44,6 @@ pub(crate) enum Verb {
     Open,
     /// Liveness, capability, assignment.
     Heartbeat,
-    /// Private run working notes, loaded under a live fence.
-    ContextLoad,
     /// Private run working notes, conditionally replaced.
     ContextCommit,
     /// Scoped private model invocation; never automatically redispatched.
@@ -128,10 +126,9 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 41] = [
+    pub(crate) const ALL: [Self; 40] = [
         Self::Open,
         Self::Heartbeat,
-        Self::ContextLoad,
         Self::ContextCommit,
         Self::AuthoringModel,
         Self::AuthoringActivity,
@@ -179,7 +176,6 @@ impl Verb {
             | Self::Me
             | Self::ScheduleList
             | Self::ScheduleRuns
-            | Self::ContextLoad
             | Self::TaskInputs
             | Self::TaskEffects
             | Self::TaskEffect
@@ -223,7 +219,6 @@ impl Verb {
         match self {
             Self::Open => "stream_open",
             Self::Heartbeat => "heartbeat",
-            Self::ContextLoad => "context_load",
             Self::ContextCommit => "context_commit",
             Self::AuthoringModel => "authoring_model",
             Self::AuthoringActivity => "authoring_activity",
@@ -269,8 +264,7 @@ impl Verb {
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
             Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
-            Self::ContextLoad
-            | Self::ContextCommit
+            Self::ContextCommit
             | Self::Open
             | Self::Heartbeat
             | Self::AuthoringModel

@@ -142,16 +142,6 @@ impl Leasing for NoWork {
         }))
     }
 
-    fn context_load(
-        &self,
-        _runner: &Uuid7,
-        _lease: &Uuid7,
-        _branch: &Uuid7,
-        _fence: u64,
-    ) -> impl Future<Output = afd_fleet::Result<Option<af_context::Checkpoint>>> + Send {
-        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
-    }
-
     fn context_commit(
         &self,
         _runner: &Uuid7,

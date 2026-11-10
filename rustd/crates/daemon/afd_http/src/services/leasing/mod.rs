@@ -15,18 +15,6 @@ use jiff::Timestamp;
 
 /// The fenced HTTP operations that remain outside the host session.
 pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
-    /// Read private model-window notes under the live assignment.
-    ///
-    /// # Errors
-    /// Refuses an absent or superseded assignment, or unavailable storage.
-    fn context_load(
-        &self,
-        runner: &Uuid7,
-        lease: &Uuid7,
-        branch: &Uuid7,
-        fence: u64,
-    ) -> impl Future<Output = afd_fleet::Result<Option<af_context::Checkpoint>>> + Send;
-
     /// Publish private notes against the expected generation and assignment.
     ///
     /// # Errors

@@ -80,6 +80,7 @@ WITH fleet AS MATERIALIZED (
   RETURNING WITH (OLD AS prior)
             a.id, a.workspace_id, a.actor, a.event_type, a.request_json,
             a.event_created_at, a.producer, a.created_at, a.task_id,
+            a.sequence, a.reply_provider, a.reply_address,
             prior.delivered_at IS NOT NULL AS redelivered
 ), prior_lease AS MATERIALIZED (
   SELECT l.id, l.runner_id, l.tenant_id, l.posture, l.model
@@ -148,7 +149,22 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        o.inserted, o.created_at AS opened_at, o.status AS event_status,
        k.event_count, k.budget_used_nanos,
        (SELECT resource_version FROM catalogue) AS catalogue_version,
-       pl.platform_secret_id, pl.platform_secret_version
+       pl.platform_secret_id, pl.platform_secret_version,
+       -- Whether a later message waits in the head's conversation, foldable
+       -- or not: the run's first fold ask finds nothing when this is false.
+       -- claim_inputs.sql's two branches, through the same index. A durable
+       -- task's inbox stays closed, so its lease says false.
+       a.task_id IS NULL AND CASE
+         WHEN a.reply_provider IS NOT NULL THEN EXISTS (
+           SELECT 1 FROM fleet.admissions w
+           WHERE w.fleet_id = $1 AND w.reply_provider = a.reply_provider
+             AND w.reply_address = a.reply_address
+             AND w.settled_at IS NULL AND w.sequence > a.sequence)
+         ELSE EXISTS (
+           SELECT 1 FROM fleet.admissions w
+           WHERE w.fleet_id = $1 AND w.reply_provider IS NULL AND w.reply_address IS NULL
+             AND w.settled_at IS NULL AND w.sequence > a.sequence)
+       END AS inputs_waiting
 FROM stamped a CROSS JOIN slot
 LEFT JOIN prior_lease b ON true
 CROSS JOIN fleet f

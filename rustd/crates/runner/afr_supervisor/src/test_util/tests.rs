@@ -85,14 +85,6 @@ async fn context_routes_answer_through_the_native_client() {
     let (plane, mut calls) =
         plane(move |call| json(&answers.reply(call.verb.method().http().as_str(), &call.path)));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
-    assert!(
-        plane
-            .context_load(&lease, LEASE_ID, 1)
-            .await
-            .unwrap()
-            .checkpoint
-            .is_none()
-    );
     plane
         .context_commit(
             &lease,
@@ -106,7 +98,7 @@ async fn context_routes_answer_through_the_native_client() {
         .await
         .unwrap();
     let sent = drain(&mut calls);
-    assert_eq!(sent.len(), 2);
+    assert_eq!(sent.len(), 1);
     for call in sent {
         assert_eq!(
             healthy().reply(call.verb.method().http().as_str(), &call.path),
@@ -119,9 +111,9 @@ async fn context_routes_answer_through_the_native_client() {
     }
 }
 
-// Value: the runtime adapter validates restored notes and binds writes to the lease fence.
+// Value: the runtime adapter binds writes to the lease fence and reads nothing back.
 #[tokio::test]
-async fn lease_context_restores_and_commits_through_the_native_client() {
+async fn lease_context_commits_through_the_native_client() {
     use afr_agent::ContextCheckpoints as _;
     let checkpoint: af_context::Checkpoint = serde_json::from_value(serde_json::json!({
         "format_version":1,
@@ -132,27 +124,15 @@ async fn lease_context_restores_and_commits_through_the_native_client() {
     }))
     .unwrap();
     let document = serde_json::to_value(&checkpoint).unwrap();
-    let restored = document.clone();
-    let (plane, mut calls) = plane(move |call| {
-        if call.verb == crate::client::Verb::ContextLoad {
-            json(&serde_json::json!({"checkpoint":restored}))
-        } else {
-            json(&healthy().reply(call.verb.method().http().as_str(), &call.path))
-        }
-    });
+    let (plane, mut calls) =
+        plane(move |call| json(&healthy().reply(call.verb.method().http().as_str(), &call.path)));
     let lease = Uuid7::parse(LEASE_ID).unwrap();
     let context = crate::context::LeaseContext::new(&plane, &lease, super::FENCING);
-    assert_eq!(
-        context.load(LEASE_ID).await.unwrap(),
-        Some(checkpoint.clone())
-    );
     context.commit(LEASE_ID, 0, checkpoint).await.unwrap();
     let sent = drain(&mut calls);
-    assert_eq!(sent.len(), 2);
-    let write = sent
-        .iter()
-        .find(|call| call.verb == crate::client::Verb::ContextCommit)
-        .unwrap();
+    assert_eq!(sent.len(), 1, "one write and no read: {sent:?}");
+    let write = sent.first().unwrap();
+    assert_eq!(write.verb, crate::client::Verb::ContextCommit);
     let body: serde_json::Value = serde_json::from_slice(write.body.as_ref().unwrap()).unwrap();
     assert_eq!(
         body.get("fencing_token"),

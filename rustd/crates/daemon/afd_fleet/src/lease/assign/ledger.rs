@@ -68,6 +68,7 @@ struct OpenedRow {
     catalogue_version: i64,
     platform_secret_id: Option<Uuid7>,
     platform_secret_version: Option<i64>,
+    inputs_waiting: bool,
 }
 
 impl Leases {
@@ -186,6 +187,7 @@ impl Admission {
             catalogue_version,
             platform_secret_id,
             platform_secret_version,
+            inputs_waiting,
         } = self.opened;
         let platform_key = platform_secret_id
             .zip(platform_secret_version)
@@ -213,6 +215,7 @@ impl Admission {
             platform_key,
             memory_reads_workspace: self.memory.memory_reads_workspace,
             memory_publishes_workspace: self.memory.memory_publishes_workspace,
+            inputs_waiting,
             setup: self.setup,
         };
         Acquired {

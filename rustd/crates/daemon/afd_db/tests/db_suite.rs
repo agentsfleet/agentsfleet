@@ -42,6 +42,8 @@ mod integration_platform_model;
 mod integration_pool;
 #[path = "integration_pool_faults.rs"]
 mod integration_pool_faults;
+#[path = "integration_pool_ping.rs"]
+mod integration_pool_ping;
 #[path = "integration_pool_retry.rs"]
 mod integration_pool_retry;
 #[path = "integration_pool_tls.rs"]

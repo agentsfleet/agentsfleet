@@ -44,6 +44,8 @@ tracing.workspace = true
 
 [dev-dependencies]
 sqlx = { workspace = true, features = ["derive"] }
+# The checkout-ping proof reads its counter back through the capturing provider.
+af_observability = { workspace = true, features = ["test-util"] }
 # The parser that owns the stored fixture setup's format, which the seeded
 # copy is pinned against.
 af_fleet_runtime = { workspace = true, features = ["test-util"] }

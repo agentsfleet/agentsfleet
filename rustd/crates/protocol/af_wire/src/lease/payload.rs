@@ -103,4 +103,15 @@ pub struct LeasePayload<'a> {
     /// runner then reads memory itself.
     #[serde(borrow, default, skip_serializing_if = "Option::is_none")]
     pub memory: Option<crate::memory::MemoryHydrateResponse<'a>>,
+    /// Whether a later message waited in the run's conversation when the
+    /// daemon claimed it. False lets the run skip its first fold ask; a
+    /// message that lands after the claim folds on the ask after the answer.
+    /// Absent on older daemons, and absent reads as true.
+    #[serde(default = "inputs_may_wait")]
+    pub inputs_waiting: bool,
+}
+
+/// What an absent `inputs_waiting` means: the daemon did not say, so ask.
+const fn inputs_may_wait() -> bool {
+    true
 }

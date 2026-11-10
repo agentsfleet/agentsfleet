@@ -13,16 +13,6 @@ use afd_fleet::lease::LeaseService;
 /// direction: the HTTP layer states what it needs, and the service crate stays
 /// unaware that an HTTP layer exists.
 impl Leasing for LeaseService {
-    fn context_load(
-        &self,
-        runner: &Uuid7,
-        lease: &Uuid7,
-        branch: &Uuid7,
-        fence: u64,
-    ) -> impl Future<Output = afd_fleet::Result<Option<af_context::Checkpoint>>> + Send {
-        self.leases.context_load(runner, lease, branch, fence)
-    }
-
     fn context_commit(
         &self,
         runner: &Uuid7,
