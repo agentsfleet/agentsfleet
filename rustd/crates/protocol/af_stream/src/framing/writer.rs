@@ -123,4 +123,30 @@ mod tests {
         assert_eq!(budget.available(StreamKind::Reports), available);
         Ok(())
     }
+
+    #[tokio::test]
+    async fn an_encoder_flushes_without_emitting_and_hides_its_bytes() -> Result<()> {
+        use std::io::Write as _;
+        let budget = Budget::default();
+        let mut encoder = Encoder::reserve(
+            &budget,
+            StreamKind::Control,
+            &CancellationToken::new(),
+            Instant::now() + std::time::Duration::from_secs(5),
+        )
+        .await?;
+        encoder.write_all(br#""private""#)?;
+        encoder.flush()?;
+        assert_eq!(format!("{encoder:?}"), "Encoder { .. }");
+        assert_eq!(encoder.finish()?.as_bytes(), br#""private""#);
+        let reader = crate::Reader::new(
+            tokio::io::empty(),
+            budget,
+            StreamKind::Work,
+            CancellationToken::new(),
+            std::time::Duration::from_secs(1),
+        );
+        assert_eq!(format!("{reader:?}"), "Reader { kind: Work, .. }");
+        Ok(())
+    }
 }

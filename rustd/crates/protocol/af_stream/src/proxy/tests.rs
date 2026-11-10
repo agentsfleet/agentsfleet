@@ -170,3 +170,39 @@ fn proxy_credentials_preserve_both_decoded_parts_when_the_password_exceeds_the_u
     assert!(!format!("{proxy:?}").contains("fixture"));
     Ok(())
 }
+
+#[test]
+fn a_credentialed_proxy_sends_a_sensitive_connect_authorization() -> Result<()> {
+    let env = MapEnv::from_pairs([(
+        "HTTPS_PROXY",
+        "http://fixture-user:fixture-value@proxy.test:8080",
+    )]);
+    let endpoint = Endpoint::parse("https://daemon.internal:4443")?.with_environment_route(&env)?;
+    let request = http::Request::<crate::Outgoing>::try_from(&endpoint)?;
+    assert_eq!(request.method(), http::Method::CONNECT);
+    assert_eq!(
+        request.uri().authority().map(http::uri::Authority::as_str),
+        Some("daemon.internal:4443")
+    );
+    assert!(
+        request
+            .headers()
+            .get(http::header::PROXY_AUTHORIZATION)
+            .is_some_and(http::HeaderValue::is_sensitive)
+    );
+    Ok(())
+}
+
+#[test]
+fn only_a_bare_https_origin_is_accepted() {
+    for origin in [
+        "http://daemon.internal:4443",
+        "https://fixture-user@daemon.internal:4443",
+        "https://fixture-user:fixture-value@daemon.internal:4443",
+        "https://daemon.internal:4443/?probe=1",
+        "https://daemon.internal:4443/#probe",
+        "https://daemon.internal:4443/v1",
+    ] {
+        assert!(Endpoint::parse(origin).is_err(), "{origin}");
+    }
+}
