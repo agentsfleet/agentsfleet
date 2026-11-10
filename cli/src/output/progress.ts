@@ -16,7 +16,7 @@ export function startProgress(stream: WritableStreamLike, label: string, enabled
       return;
     }
     let frame = 0;
-    const frames = FRAMES.map(value => palette.pulse(value, {env, stream}));
+    const frames = FRAMES.map(value => palette.pulse(value, {env, stream, warnStream: stream}));
     const draw = Effect.sync(() => {stream.write(`\r${frames[frame % frames.length]} ${label}`); frame += 1;});
     yield* Effect.addFinalizer(() => Effect.sync(() => {
       stream.write(`\r${" ".repeat(width)}\r`);
