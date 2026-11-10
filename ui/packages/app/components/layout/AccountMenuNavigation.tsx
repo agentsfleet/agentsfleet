@@ -12,7 +12,7 @@ import { ACCOUNT_NAV, ACCOUNT_SHORTCUTS, SERVICE_SHORTCUTS, BOTTOM_NAV, WORKSPAC
 
 export const MENU_VIEW = { home: "home", settings: "settings" } as const;
 export type MenuView = typeof MENU_VIEW[keyof typeof MENU_VIEW];
-type Props = { view: MenuView; onView: (view: MenuView) => void; workspaceId: string | null; operatorScopes: string[] };
+type Props = { view: MenuView; onView: (view: MenuView) => void; workspaceId: string | null };
 
 export function AccountMenuNavigation({ view, onView, workspaceId }: Props) {
   const backRef = useRef<HTMLDivElement>(null);

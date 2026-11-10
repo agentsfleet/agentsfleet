@@ -1,4 +1,6 @@
-import { Effect } from "effect";
+import {RunnerAction, RunnerHistory} from "./runner-vocabulary.ts";
+import { Clock, Effect } from "effect";
+import { eventTime } from "../../lib/event-time.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { ADMIN_RUNNERS_PATH, decodePlatform, invalidInput, platformInput, platformPath, platformQuery, platformRequest, platformResult, readPlatformFile } from "./common.ts";
@@ -8,46 +10,86 @@ import { withRunnerTokenFile } from "./token.ts";
 export type RunnerPaging = {readonly limit?: number | undefined; readonly startingAfter?: string | undefined};
 type RunnerRead = RunnerPaging & {readonly workspace?: string | undefined; readonly fleet?: string | undefined; readonly eventType?: string | undefined; readonly since?: string | undefined; readonly until?: string | undefined};
 type RunnerEdit = {readonly policy?: string | undefined; readonly labels?: string | undefined};
+const DEFAULT_ENGINE = "Bubblewrap";
 
 export const platformRunnersList = Effect.fn("platform.runners.list")(function* (options: RunnerPaging) {
   const path = ADMIN_RUNNERS_PATH + platformQuery({limit: options.limit, starting_after: options.startingAfter});
   const page = yield* decodePlatform(RunnerPageSchema, yield* platformRequest({path}));
   const output = yield* Output;
-  if (output.format === OUTPUT_FORMAT.json) return yield* output.printJson(page);
+  if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
   yield* output.printEntityTable({name: {key: "host_id", label: "HOST"}, domain: [
     {key: "id", label: "ID"}, {key: "status", label: "STATE"}, {key: "liveness", label: "CONNECTION"},
-  ], ageKey: null}, page.items.map(({id, host_id, status, liveness}) => ({id, host_id, status, liveness})));
+    {key: "default_engine", label: "DEFAULT ENGINE"},
+  ], ageKey: null}, page.items.map(({id, host_id, status, liveness}) => ({id, host_id, status, liveness, default_engine: DEFAULT_ENGINE})));
   if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
 });
 
 export const platformRunnerShow = Effect.fn("platform.runners.show")(function* (id: string) {
-  yield* platformResult(yield* decodePlatform(RunnerDetailSchema, yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id)})));
+  const runner = yield* decodePlatform(RunnerDetailSchema, yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id)}));
+  yield* platformResult(runner, runner.host_id, {
+    ID: runner.id, State: runner.status, Connection: runner.liveness, "Default engine": DEFAULT_ENGINE,
+    "Isolation tier": runner.assigned_policy.sandbox_tier,
+    "Network policy": runner.assigned_policy.network_policy, Workers: String(runner.assigned_policy.worker_count),
+    Labels: runner.labels.join(", ") || "None", "Last seen": runner.last_seen_at,
+    Health: runner.degraded ? `Degraded: ${runner.degraded_reason ?? "unknown reason"}` : "Ready",
+    "Active leases": String(runner.active_lease_count), "Active fleets": String(runner.active_fleet_count),
+    "Leases succeeded": String(runner.leases_succeeded), "Leases failed": String(runner.leases_failed),
+    "Self-test": runner.selftest ? runner.selftest.all_ok ? "Passed" : "Failed" : "Not reported",
+  });
+  if (runner.selftest) {
+    const output = yield* Output;
+    if (output.format === OUTPUT_FORMAT.text && output.stdoutIsTty) {
+      for (const check of runner.selftest.checks) yield* output.info(`${check.ok ? "✓" : "✕"} ${check.name}: ${check.detail}`);
+    }
+  }
 });
 
-export const platformRunnerHistory = Effect.fn("platform.runners.history")(function* (id: string, kind: "events" | "leases", options: RunnerRead) {
+export const platformRunnerHistory = Effect.fn("platform.runners.history")(function* (id: string, kind: RunnerHistory, options: RunnerRead) {
+  const now = yield* Clock.currentTimeMillis;
+  const since = options.since === undefined ? undefined : eventTime(options.since, now, true);
+  const until = options.until === undefined ? undefined : eventTime(options.until, now, false);
+  if (since !== undefined && until !== undefined && Date.parse(since) > Date.parse(until)) {
+    return yield* Effect.fail(invalidInput("--until must be at or after --since"));
+  }
   const query = platformQuery({limit: options.limit, starting_after: options.startingAfter, workspace_id: options.workspace,
-    fleet: options.fleet, event_type: options.eventType, since: options.since, until: options.until});
+    fleet: options.fleet, event_type: options.eventType, since, until});
   const body = yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id, `/${kind}`) + query});
-  if (kind === "events") yield* platformResult(yield* decodePlatform(RunnerEventsSchema, body));
-  else yield* platformResult(yield* decodePlatform(RunnerLeasesSchema, body));
+  const output = yield* Output;
+  if (kind === RunnerHistory.Events) {
+    const page = yield* decodePlatform(RunnerEventsSchema, body);
+    if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
+    yield* output.printEntityTable({id: {key: "id", label: "ID"}, domain: [
+      {key: "event_type", label: "EVENT"}, {key: "occurred_at", label: "OCCURRED"},
+    ], ageKey: null}, page.items);
+    if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
+  } else {
+    const page = yield* decodePlatform(RunnerLeasesSchema, body);
+    if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(page);
+    yield* output.printEntityTable({id: {key: "id", label: "ID"}, name: {key: "fleet", label: "FLEET"}, domain: [
+      {key: "outcome", label: "OUTCOME"}, {key: "kind", label: "KIND"}, {key: "model", label: "MODEL"},
+    ], ageKey: null}, page.items.map(row => ({...row, fleet: row.fleet_name ?? row.fleet_id})));
+    if (page.next_cursor) yield* output.info(`Next page: --starting-after ${page.next_cursor}`);
+  }
 });
 
 export const platformRunnerUpdate = Effect.fn("platform.runners.update")(function* (id: string, edit: RunnerEdit) {
   if (edit.policy === undefined && edit.labels === undefined) return yield* Effect.fail(invalidInput("Supply --policy or --labels"));
   const body = yield* runnerEdit(edit);
-  yield* platformResult(yield* decodePlatform(RunnerMutationSchema, yield* platformRequest({
+  const runner = yield* decodePlatform(RunnerMutationSchema, yield* platformRequest({
     path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.patch, body,
-  })));
+  }));
+  yield* platformResult(runner, "Runner updated", {ID: runner.id, State: runner.status});
 });
 
-export const platformRunnerAction = Effect.fn("platform.runners.action")(function* (id: string, action: string) {
+export const platformRunnerAction = Effect.fn("platform.runners.action")(function* (id: string, action: RunnerAction) {
   const response = yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.patch, body: {action}});
-  yield* platformResult(yield* decodePlatform(RunnerMutationSchema, response));
+  const runner = yield* decodePlatform(RunnerMutationSchema, response);
+  yield* platformResult(runner, "Runner action requested", {ID: runner.id, Action: action, State: runner.status});
 });
 
 export const platformRunnerDelete = Effect.fn("platform.runners.delete")(function* (id: string) {
   yield* platformRequest({path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.delete});
-  yield* platformResult({id, deleted: true});
+  yield* platformResult({id, deleted: true}, "Runner deleted", {ID: id});
 });
 
 export const platformRunnerEnroll = Effect.fn("platform.runners.enroll")(function* (host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
@@ -55,17 +97,17 @@ export const platformRunnerEnroll = Effect.fn("platform.runners.enroll")(functio
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
     const enrolled = yield* decodePlatform(RunnerEnrolledSchema, yield* platformRequest({path: ADMIN_RUNNERS_PATH, method: HTTP_METHOD.post, body, retry: null}));
     yield* save(enrolled.runner_token);
-    yield* platformResult({runner_id: enrolled.runner_id, assigned_policy: enrolled.assigned_policy, token_file: tokenFile});
+    yield* platformResult({runner_id: enrolled.runner_id, assigned_policy: enrolled.assigned_policy, token_file: tokenFile}, "Runner enrolled", {ID: enrolled.runner_id, "Token file": tokenFile});
   }));
 });
 
 export const platformRunnerRotate = Effect.fn("platform.runners.rotate")(function* (id: string, tokenFile: string) {
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
     const rotated = yield* decodePlatform(RunnerRotatedSchema, yield* platformRequest({
-      path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.patch, body: {action: "rotate"}, retry: null,
+      path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.patch, body: {action: RunnerAction.Rotate}, retry: null,
     }));
     yield* save(rotated.runner_token);
-    yield* platformResult({id: rotated.id, token_file: tokenFile});
+    yield* platformResult({id: rotated.id, token_file: tokenFile}, "Runner token rotated", {ID: rotated.id, "Token file": tokenFile});
   }));
 });
 

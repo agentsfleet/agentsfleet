@@ -1,4 +1,4 @@
-//! The exact admin/operator route and verb inventory served by M179.
+//! The exact admin/operator route and verb inventory.
 #![cfg(feature = "test-util")]
 
 use std::collections::BTreeSet;
@@ -20,6 +20,7 @@ const EXPECTED: &[Endpoint] = &[
     ("/v1/admin/models/{id}", Verb::Patch),
     ("/v1/admin/models/{id}", Verb::Delete),
     ("/v1/admin/runners", Verb::Get),
+    ("/v1/admin/runners", Verb::Post),
     ("/v1/admin/runners/{runner_id}", Verb::Get),
     ("/v1/admin/runners/{runner_id}", Verb::Patch),
     ("/v1/admin/runners/{runner_id}", Verb::Delete),
@@ -39,16 +40,13 @@ fn actual() -> BTreeSet<Endpoint> {
             .copied()
             .map(|verb| (route.meta().template, verb))
     });
-    let operator = RunnerOpsRoute::ALL
-        .iter()
-        .filter(|route| **route != RunnerOpsRoute::Register)
-        .flat_map(|route| {
-            route
-                .verbs()
-                .iter()
-                .copied()
-                .map(|verb| (route.meta().template, verb))
-        });
+    let operator = RunnerOpsRoute::ALL.iter().flat_map(|route| {
+        route
+            .verbs()
+            .iter()
+            .copied()
+            .map(|verb| (route.meta().template, verb))
+    });
 
     admin.chain(operator).collect()
 }
@@ -60,7 +58,7 @@ fn test_route_inventory_matches_interfaces() {
 
     assert_eq!(
         actual, expected,
-        "the M179 interface has an extra or missing route/verb pair"
+        "the operator interface has an extra or missing route/verb pair"
     );
     assert_eq!(
         expected.len(),

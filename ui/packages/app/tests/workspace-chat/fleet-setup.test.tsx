@@ -12,10 +12,9 @@ import { DRAFT, FLEET_ID, PUBLICATION, REVIEW, WORKSPACE, response } from "@/tes
 
 let fixture: ChatFixture;
 let client: DraftClient;
-const stage = vi.fn();
 beforeEach(async () => {
-  fixture = new ChatFixture(); fixture.mount(); stage.mockReset(); stage.mockResolvedValue(PUBLICATION);
-  client = new DraftClient({...CHAT_PROPS, subject: "creator"}, stage);
+  fixture = new ChatFixture(); fixture.mount();
+  client = new DraftClient({...CHAT_PROPS, subject: "creator"});
   await client.initialize(); await client.resume(DRAFT.id);
 });
 afterEach(() => {cleanup(); client.dispose(); vi.unstubAllGlobals();});
@@ -52,24 +51,6 @@ it("keeps publishing in its own explicit menu action", async () => {
   expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/new?library=${PUBLICATION.library_id}&revision=${PUBLICATION.revision_id}`);
   expect(fixture.writes()[0]?.body).toMatchObject({label: "Checked recipe"});
   expect(fixture.saveAttempts).toBe(0);
-});
-
-// Value: protects=platform publication refusal and retry; fails_when=refused staging claims success or saves a fleet;
-// why_new=existing publication controls exercise workspace publication only; seam=none; no_claim=durable platform publication.
-it("keeps platform staging failure visible and retries without saving a fleet", async () => {
-  stage.mockRejectedValueOnce(new SetupUnavailable("Platform staging unavailable", 503));
-  render(<LiveSetup />);
-  await chooseSetupAction("Publish to Library");
-  const button = await screen.findByRole("button", {name: "Stage platform entry"});
-  fireEvent.click(button);
-  await screen.findAllByText("Platform staging unavailable");
-  expect(screen.queryByText(/is staged/)).toBeNull();
-  expect(fixture.saveAttempts).toBe(0);
-  expect(button).toHaveProperty("disabled", true);
-  await act(async () => {await client.retry();});
-  await screen.findAllByText(/is staged/);
-  expect(stage).toHaveBeenCalledTimes(2);
-  expect(fixture.writes()).toEqual([]);
 });
 
 // Value: protects=publication version conflicts; fails_when=a refused next revision reports success or saves the fleet instead;

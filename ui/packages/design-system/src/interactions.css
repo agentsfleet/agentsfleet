@@ -24,13 +24,13 @@
   transform: scaleX(0);
   opacity: 0;
 }
-.tab-trigger[data-active="true"]::after, .tab-trigger[data-state="active"]::after {
+.tab-trigger[data-state="active"]::after {
   transform: scaleX(1);
   opacity: 1;
 }
 
 @media (forced-colors: active) {
-  .tab-trigger[data-active="true"]::after, .tab-trigger[data-state="active"]::after {
+  .tab-trigger[data-state="active"]::after {
     background: Highlight;
     forced-color-adjust: none;
   }
@@ -134,22 +134,6 @@
   [data-signal-spinner] path:nth-child(6) { animation-delay: -0.6s; }
   [data-signal-spinner] path:nth-child(7) { animation-delay: -0.4s; }
   [data-signal-spinner] path:nth-child(8) { animation-delay: -0.2s; }
-}
-
-/* The braille spinner: ten frames in a one-line window, stepped every 80 ms by
- * `transform`, so no script runs per frame. Reduced motion shows the rest frame. */
-@keyframes braille-spin {
-  from { transform: translateY(0); }
-  to { transform: translateY(-100%); }
-}
-
-[data-braille-spinner] { display: inline-block; height: 1lh; overflow: hidden; vertical-align: bottom; }
-[data-braille-frames] { display: flex; flex-direction: column; animation: braille-spin 800ms steps(10) infinite; }
-[data-braille-rest] { display: none; }
-
-@media (prefers-reduced-motion: reduce) {
-  [data-braille-frames] { display: none; animation: none; }
-  [data-braille-rest] { display: inline; }
 }
 
 /* Running icons and chat labels share a cadence. The label's moving highlight

@@ -1,16 +1,8 @@
 import { Flag } from "effect/cli";
-import { instant } from "../../lib/instant.ts";
-import { Schema } from "effect";
 import { boundedInt, METAVAR, requiredTextFlag, startingAfterFlag } from "./flags.ts";
 
 const PAGE_MIN = 1;
 const PAGE_MAX = 100;
-const INSTANT_DETAIL = "expected an RFC 3339 timestamp";
-
-export const platformInstantFlag = (name: string) => requiredTextFlag(name, "RFC 3339 event time", METAVAR.when).pipe(
-  Flag.filter(Schema.is(instant), () => INSTANT_DETAIL), Flag.optional,
-);
-
 export const platformPagingFlags = {
   limit: boundedInt("limit", PAGE_MIN, PAGE_MAX).pipe(
     Flag.withDescription("Page size supported by the API (1–100)"), Flag.optional,

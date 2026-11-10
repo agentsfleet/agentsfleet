@@ -111,10 +111,10 @@ it.each(["loading", "unavailable"] as const)("does not claim there are no models
 });
 
 
-it("takes platform model administrators to the model library when no model is configured", () => {
+it("opens workspace model settings when no model is configured", () => {
   const client = new DraftClient({...CHAT_PROPS, subject: "creator"});
-  render(<ChatModelAvailability client={client} view={{...client.getSnapshot(), listStatus: "ready"}} workspace={WORKSPACE} canManagePlatformModels />);
-  expect(screen.getByRole("link", {name: "Create model"}).getAttribute("href")).toBe("/admin/models");
+  render(<ChatModelAvailability client={client} view={{...client.getSnapshot(), listStatus: "ready"}} workspace={WORKSPACE} />);
+  expect(screen.getByRole("link", {name: "Create model"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/settings/models`);
   expect(screen.queryByRole("button", {name: "Retry"})).toBeNull();
   client.dispose();
 });

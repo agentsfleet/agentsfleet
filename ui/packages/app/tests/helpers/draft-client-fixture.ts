@@ -1,7 +1,7 @@
 // @vitest-environment node
 import type { Draft, Fleet } from "@/lib/api/draft-types";
 import { vi } from "vitest";
-import { DraftClient, type PlatformPublisher } from "@/lib/api/drafts";
+import { DraftClient } from "@/lib/api/drafts";
 import { FakeEventSource } from "./fake-event-source";
 import { ACCEPTED, APP_ORIGIN, DRAFT, DRAFT_ID, FLEET, FLEET_ID, MESSAGE, MODEL, PUBLICATION, WORKSPACE, response } from "./draft-fixtures";
 
@@ -38,12 +38,12 @@ export class DraftClientFixture {
       throw new Error(`Unexpected fixture request ${call.method} ${path}`);
     }));
   }
-  create(publisher?: PlatformPublisher): DraftClient {
-    const client = new DraftClient({account: "owner-account", workspace: WORKSPACE, subject: "creator"}, publisher);
+  create(): DraftClient {
+    const client = new DraftClient({account: "owner-account", workspace: WORKSPACE, subject: "creator"});
     this.clients.push(client); return client;
   }
-  readonly ready = async (resume = false, publisher?: PlatformPublisher): Promise<DraftClient> => {
-    const client = this.create(publisher); await client.initialize();
+  readonly ready = async (resume = false): Promise<DraftClient> => {
+    const client = this.create(); await client.initialize();
     if (resume) await client.resume(DRAFT_ID);
     return client;
   };

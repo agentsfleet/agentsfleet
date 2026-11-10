@@ -48,7 +48,6 @@ import {
   type LeaseLocation,
 } from "./fixtures/execution";
 import { saveFleetViaUI } from "./fixtures/install-ui";
-import { expectAgentLabel, leaseRowsFor, leasesTable } from "./fixtures/lease-table";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
@@ -288,12 +287,5 @@ test.describe("fleet execution", () => {
     expect(streams.fleet, "the wall opens no per-fleet stream").toBe(0);
     await wall.close();
 
-    // ── 1.2, as the operator's own view: the lease on its runner's page ──
-    await signInAs(page, FIXTURE_KEY.operator);
-    await page.goto(`/admin/runners/${lease.runnerId}`);
-    await expect(leasesTable(page)).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    const leaseRow = leaseRowsFor(page, fleetId).first();
-    await expect(leaseRow).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
-    await expectAgentLabel(leaseRow, fleetId);
   });
 });

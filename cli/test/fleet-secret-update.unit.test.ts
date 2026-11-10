@@ -9,7 +9,7 @@
 import { describe, test, expect, mock } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { secretUpdateEffectFromFlags } from "../src/commands/fleet_secret.ts";
+import { secretUpdateEffectFromFlags } from "../src/commands/secret/secret.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";

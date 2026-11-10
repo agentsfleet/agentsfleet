@@ -14,7 +14,8 @@
  */
 import * as fs from "node:fs";
 import type { ConnectorCatalogEntry } from "@/lib/api/connectors";
-import type { RunnerListItem, RunnerListResponse, RunnerLiveness } from "@/tests/helpers/runner-control";
+import type { RunnerListItem, RunnerListResponse } from "@/tests/helpers/runner-control";
+import { RunnerLiveness } from "@/tests/helpers/runner-control-types";
 import type { TenantModelEntryList } from "@/lib/types";
 import { clientFor } from "./api-client";
 import { AGENTSFLEET_CLI_ENTRY, CLI_ARTIFACT_MISSING_DIAGNOSIS } from "./cli-runner";
@@ -29,7 +30,7 @@ const FLEET_RUNNERS_PATH = "/v1/admin/runners";
 const HEARTBEAT_OBSERVATION_DELAY_MS = 12_000;
 
 // A runner doing work is as alive as an idle one — either satisfies the gate.
-const LIVE_RUNNER_STATES: readonly RunnerLiveness[] = ["online", "busy"];
+const LIVE_RUNNER_STATES: readonly RunnerLiveness[] = [RunnerLiveness.Online, RunnerLiveness.Busy];
 
 type RunnerHeartbeatSnapshot = Pick<RunnerListItem, "id" | "last_seen_at" | "liveness">;
 

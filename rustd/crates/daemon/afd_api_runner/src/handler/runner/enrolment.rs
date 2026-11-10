@@ -45,13 +45,13 @@ const DETAIL_MALFORMED_BODY: &str = "Malformed JSON body (host_id, assigned_poli
 /// Enrols a host, answering its identity and its one-time credential.
 #[cfg_attr(feature = "openapi", utoipa::path(
     post,
-    path = af_wire::paths::RUNNERS,
-    tag = afd_http::openapi::tag::FLEET,
+    path = af_wire::paths::ADMIN_RUNNERS,
+    tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "register_runner",
     summary = "Register a runner",
     description = concat!(
-        "Registers a runner and assigns its policy. Requires an administrator's dashboard ",
-        "session or `agt_t` API key. No enrollment token is accepted. Save the returned ",
+        "Registers a runner and assigns its policy. Requires `runner:enroll` on a bearer ",
+        "credential. Save the returned ",
         "`agt_r` token securely; it appears once. The runner must apply the assigned ",
         "policy.",
     ),

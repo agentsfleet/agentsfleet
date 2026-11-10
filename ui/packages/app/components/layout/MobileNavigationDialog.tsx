@@ -24,7 +24,6 @@ export default function MobileNavigationDialog({
   open,
   pathname,
   workspaceId,
-  operatorScopes,
   onOpenChange,
   restoreFocus,
 }: MobileNavigationDialogProps) {

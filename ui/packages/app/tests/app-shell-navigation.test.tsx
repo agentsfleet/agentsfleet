@@ -21,7 +21,7 @@ it("keeps explicit navigation analytics stable and derives a fallback for other 
   expect(navSource({ ...BOTTOM_NAV[0]!, label: "Reference", analyticsSource: undefined })).toBe("app_sidebar_reference");
 });
 const MENU = /Workspace and account menu/;
-function mount(scopes: string[] = []) { render(<ShellFrame workspaces={[WORKSPACE]} operatorScopes={scopes}>Page content</ShellFrame>); }
+function mount() { render(<ShellFrame workspaces={[WORKSPACE]}>Page content</ShellFrame>); }
 beforeEach(() => { mocks.pathname.mockReturnValue("/w/ws_1/fleets"); });
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -32,7 +32,7 @@ async function openMenu() {
 
 describe("conversation-first app navigation", () => {
   it("opens account navigation without workspaces and preserves external link semantics", () => {
-    const view = render(<SidebarNavigation pathname="/settings/account" workspaceId={null} operatorScopes={[]} collapsed onNavigate={() => {}} />);
+    const view = render(<SidebarNavigation pathname="/settings/account" workspaceId={null} collapsed onNavigate={() => {}} />);
     expect(screen.getByRole("button", {name: MENU})).toBeTruthy();
     view.unmount();
     render(<NavSection items={BOTTOM_NAV} activeHref="" workspaceId={null} collapsed={false} onNavigate={() => {}} />);
@@ -41,7 +41,7 @@ describe("conversation-first app navigation", () => {
     expect(docs.getAttribute("rel")).toBe("noopener noreferrer");
   });
   it("uses the compact centered New fleet icon button when collapsed", () => {
-    render(<SidebarNavigation pathname="/w/ws_1/fleets" workspaceId={WORKSPACE.id} operatorScopes={[]} collapsed onNavigate={() => {}} />);
+    render(<SidebarNavigation pathname="/w/ws_1/fleets" workspaceId={WORKSPACE.id} collapsed onNavigate={() => {}} />);
     const action = screen.getByRole("link", {name: "New fleet"});
     expect(action.classList.contains("justify-center")).toBe(true);
     expect(action.querySelector("svg")?.getAttribute("width")).toBe("18");
@@ -89,12 +89,6 @@ describe("conversation-first app navigation", () => {
     expect(screen.getByRole("menuitem", {name: "Activity"}).getAttribute("href")).toBe("/w/ws_1/events");
     expect(screen.queryByRole("menuitem", {name: "Runners"})).toBeNull();
   });
-  it("adds only the operator destinations permitted by the session", async () => {
-    mount(["runner:read", "platform-library:write"]); await openMenu();
-    await userEvent.setup().click(screen.getByRole("menuitem", { name: "Platform" }));
-    expect(screen.getByRole("menuitem", { name: "Runners" }).getAttribute("href")).toBe("/admin/runners");
-    expect(screen.queryByText("Model library")).toBeNull();
-  });
   it("opens the selected workspace's approvals inbox without operator privileges", async () => {
     mocks.pathname.mockReturnValue("/w/ws_1/approvals/gate-1");
     mount(); await openMenu();
@@ -139,13 +133,9 @@ describe("conversation-first app navigation", () => {
   });
 });
 
-it("marks the active Platform destination and keeps menu icons decorative", async () => {
-  mocks.pathname.mockReturnValue("/admin/runners/runner-1");
-  mount(["runner:read", "model:read"]);
+it("keeps account menu icons decorative", async () => {
+  mount();
   await openMenu();
-  await userEvent.click(screen.getByRole("menuitem", {name: "Platform"}));
-  expect(screen.getByRole("menuitem", {name: "Runners"}).getAttribute("aria-current")).toBe("page");
-  expect(screen.getByRole("menuitem", {name: "Model library"}).hasAttribute("aria-current")).toBe(false);
   for (const item of screen.getAllByRole("menuitem")) {
     expect(item.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   }

@@ -1,4 +1,4 @@
-// Integration + unit coverage for src/commands/fleet_steer.ts (part 1).
+// Integration + unit coverage for src/commands/fleet/steer.ts (part 1).
 // Targets branches in SSE frame callbacks, validation paths, terminal
 // status detection, and json-mode renderOutcome (lines 65-67, 93-94,
 // 97-98, 101-103, 110, 127, 231, 284-286, 340-345, 247-252).
@@ -8,14 +8,14 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
 import { runCli } from "../src/cli.ts";
-import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
+import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import {
   KIND_CHUNK,
   KIND_EVENT_COMPLETE,
   KIND_TOOL_CALL_COMPLETED,
   KIND_TOOL_CALL_STARTED,
   STATUS_COMPLETE,
-} from "../src/commands/fleet_steer_events.ts";
+} from "../src/commands/fleet/steer-events.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";

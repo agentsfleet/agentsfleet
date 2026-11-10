@@ -13,9 +13,6 @@ GLOBAL FLAGS
       Show help information
   --version, -v
       Show version information
-  --completions <bash|zsh|fish|powershell|sh|pwsh>
-      Print shell completion script (choices: bash, zsh, fish, powershell, sh,
-      pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>
       Sets the minimum log level (choices: all, trace, debug, info, warn,
       warning, error, fatal, none)
@@ -35,6 +32,7 @@ SUBCOMMANDS
   billing      Tenant billing dashboard
   library      Browse this workspace's Fleet library gallery
   models       List the model catalogue this server serves
+  platform     Administer platform resources with your existing operator scopes
   chat         Create, resume, and review a private workspace chat
   fleet        Fleet management subcommands
   list         List fleets in the active workspace (paginated)

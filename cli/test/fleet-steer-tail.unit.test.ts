@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Redacted } from "effect";
 
-import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
+import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import {
   KIND_CHUNK,
   KIND_EVENT_COMPLETE,
@@ -16,7 +16,7 @@ import {
   STATUS_COMPLETE,
   STATUS_SSE_DISCONNECTED,
   openEventTail,
-} from "../src/commands/fleet_steer_events.ts";
+} from "../src/commands/fleet/steer-events.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import {

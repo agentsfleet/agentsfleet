@@ -1,4 +1,4 @@
-// Unit coverage for src/commands/approvals_pending.ts — the lookup that turns a
+// Unit coverage for src/commands/approvals/pending.ts — the lookup that turns a
 // steer timeout into a next step, and the per-Fleet counts `status` renders.
 
 import { describe, test, expect } from "bun:test";
@@ -7,8 +7,8 @@ import { Effect, Exit, Layer, Redacted } from "effect";
 import {
   parkedGateHint,
   pendingGateCounts,
-} from "../src/commands/approvals_pending.ts";
-import { requireGateId } from "../src/commands/approvals.ts";
+} from "../src/commands/approvals/pending.ts";
+import { requireGateId } from "../src/commands/approvals/approvals.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";

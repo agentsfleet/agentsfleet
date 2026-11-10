@@ -12,7 +12,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Option, Redacted } from "effect";
-import { loginEffect } from "../src/commands/login.ts";
+import { loginEffect } from "../src/commands/auth/login.ts";
 import { Browser } from "../src/services/browser.service.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { Input } from "../src/services/input.ts";

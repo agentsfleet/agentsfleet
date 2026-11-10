@@ -4,8 +4,8 @@
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
-import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
-import { KIND_EVENT_COMPLETE } from "../src/commands/fleet_steer_events.ts";
+import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
+import { KIND_EVENT_COMPLETE } from "../src/commands/fleet/steer-events.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { exitToCliError } from "../src/lib/cli-error-render.ts";
 import type { StreamGetCallback } from "../src/lib/sse.ts";

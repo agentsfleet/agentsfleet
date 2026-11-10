@@ -52,11 +52,7 @@ function OwnedChat({identity, draft, source, fleetPage, menuItems, cache}: Props
   const [selection] = useState(() => ({identity, draft, source}));
   useEffect(() => {
     const {identity: {account, workspace, subject}, draft, source} = selection;
-    const current = new DraftClient({account, workspace, subject} ? async (body, operation) => {
-      const result = await stagePlatformLibraryAction(body, operation);
-      if (!result.ok) throw new SetupUnavailable(result.error, result.status ?? 502, {code: result.errorCode});
-      return result.data;
-    } : undefined);
+    const current = new DraftClient({account, workspace, subject});
     const unsubscribe = current.subscribe(() => {if (current.getSnapshot().inaccessible) cache.clear();});
     if (source) current.fresh(source);
     let disposed = false;
