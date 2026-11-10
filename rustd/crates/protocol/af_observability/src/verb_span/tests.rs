@@ -150,7 +150,8 @@ fn test_verb_clock_writes_each_reached_stage_once() {
         2,
         "one span per verb, recorded once: {spans:?}"
     );
-    let [all, load_only] = [&spans[0], &spans[1]];
+    let all = spans.first().expect("the six-stage report's span");
+    let load_only = spans.get(1).expect("the refused report's span");
     assert_eq!(all.name, semconv::SPAN_FLEET_REPORT);
     assert_eq!(stage_keys(all).len(), ALL_REPORT_STAGES.len());
     assert_eq!(millis(all, semconv::ATTR_REPORT_ACK_MS), Some(3));
@@ -167,7 +168,11 @@ fn test_a_discarded_clock_records_no_span() {
     clock.mark(SteerStage::Admit);
     clock.discard();
     clock.record_on(&tracer);
-    assert!(collected.spans().is_empty());
+    assert_eq!(
+        collected.spans().len(),
+        0,
+        "a discarded clock recorded a span"
+    );
 }
 
 /// A steer of a probe message exports only declared keys, and no value holds
