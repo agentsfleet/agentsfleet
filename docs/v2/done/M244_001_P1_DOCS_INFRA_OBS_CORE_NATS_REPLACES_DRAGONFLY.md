@@ -296,7 +296,7 @@ Once no old machine runs, Indy destroys `dragonfly-dev` and `dragonfly-prod`.
 | Interest not yet propagated | race | subscribe on another node | `catching_up` after subscribe; UI backfill | `frame_before_interest_is_covered_by_backfill` |
 | Unsuitable server | failure | JetStream on, no cluster, small payload | boot refuses with `UZ-STARTUP-004` | `boot_refuses_an_unsuitable_nats_server` |
 | Broker unreachable at boot | dependency unavailable | dead seeds | boot refuses naming `NATS_URL`; other replicas serve | `boot_names_nats_url_when_the_bus_is_unreachable` |
-| Broker outage after boot | dependency unavailable | all nodes down | replicas stay ready; steers accepted; tails send `catching_up` | `readyz_stays_ready_through_a_bus_outage` |
+| Broker outage after boot | dependency unavailable | all nodes down | replicas stay ready; steers accepted; tails show heartbeats only, then `catching_up` on reconnect | `readyz_stays_ready_through_a_bus_outage` |
 | Outbound ping lost | network blip | at-most-once publish | claim pass delivers within 30 s | `lost_ping_is_caught_by_the_claim_pass` |
 | Worker dies holding a claim | timeout | `SIGKILL` mid-delivery | claim lapses; retaken; late stamp refused | `lapsed_claim_is_retaken_and_the_late_stamp_refused` |
 | Lane head keeps failing | failure | destination refuses | only that lane waits; abandoned after `MAX_DELIVERY_CYCLES` | `failing_head_blocks_only_its_lane` |

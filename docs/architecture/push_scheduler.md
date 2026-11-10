@@ -134,7 +134,8 @@ browser ◄─ SSE ◄─ replica B ◄─────────────�
           reconnect or slow consumer ─► gap ─► catching_up ─► backfill again
 ```
 
-The lease target is cached per stream session, so a frame costs no Postgres read. A tail never freezes silently. A failing publish or subscription sends `catching_up`.
+The lease target is cached per stream session, so a frame costs no Postgres read. A failing subscription sends `catching_up` at once.
+A bus disconnect sends `catching_up` on reconnect, not at the drop (`afd_bus/src/nats/signals.rs`). While every NATS node is down, a tail shows heartbeats only, and the backfill on reconnect restores what it missed.
 
 ### An outbound reply
 
@@ -282,11 +283,16 @@ A size sweep ruled out the client's 65,535-byte read buffer, and the cause is op
 
 Two runs per bus, on the local daemon (`make up`). Two viewers watched one fleet's stream with one steer every 10 s, while the bus stopped for 60 s and then started. For NATS the stopped node was the one the daemon held, `nats-3` then `nats-2`.
 
-The two runs do not lose the same share of the bus. The previous broker ran all four cluster processes, two primaries and their replicas, in one container, so stopping it stopped the whole cluster. NATS lost one node of three.
+The previous broker ran all four cluster processes, two primaries and their replicas, in one container, so stopping it stopped the whole cluster.
+On Nov 10, 2026 two more NATS runs stopped all three nodes, so one column compares like with like.
 
-| | Previous broker, runs 1 and 2 | NATS, runs 1 and 2 |
-|---|---|---|
-| During the outage | heartbeats only | every steer reached both viewers live |
-| `catching_up` | 2.8 to 3.0 s after the container restarted | 0.25 to 0.3 s after the node stopped |
-| Steers in `fleet.admissions` | 19 of 19 per run | 19 of 19 per run |
-| Recovery | waited for the bus container to restart | the daemon moved to a surviving node |
+| | Previous broker, whole cluster | NATS, all three nodes | NATS, one node of three |
+|---|---|---|---|
+| During the outage | heartbeats only | heartbeats only | every steer reached both viewers live |
+| `catching_up` | 2.8 to 3.0 s after the container restarted | 3.7 s after the nodes were started | 0.25 to 0.3 s after the node stopped |
+| Steers in `fleet.admissions` | 19 of 19 per run | 19 of 19 per run | 19 of 19 per run |
+| Recovery | waited for the bus container to restart | waited for a node to return | the daemon moved to a surviving node |
+
+A whole-bus outage costs the same on both buses: tails go quiet and send `catching_up` once the bus returns.
+The NATS client retries about every 12 s while every node is down, so that wait can reach about 12 s.
+NATS differs when one node fails, because any surviving node carries every subject. The previous broker's self-hosted cluster has no failover: "Dragonfly only provides a data plane", and automatic failover is "out of the scope of Dragonfly server functionality" ([cluster mode](https://www.dragonflydb.io/docs/managing-dragonfly/cluster-mode)).
