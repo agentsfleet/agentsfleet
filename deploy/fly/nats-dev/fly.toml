@@ -7,7 +7,7 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile"
 
-# Two nodes (Indy, Nov 09, 2026: "Prod 3, dev 2"): core NATS has no quorum, so
+# Two nodes, as prod (Indy, Nov 10, 2026): core NATS has no quorum, so
 # two survive the loss of one. No volume: core NATS keeps nothing to disk, and
 # a restarted node rejoins empty.
 [[vm]]
