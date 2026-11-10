@@ -16,22 +16,7 @@ impl<S: Deliver + 'static> Inner<S> {
     /// landed for so long that the claim may lapse before the next one.
     /// Never returns while the claim is known to hold.
     pub(super) async fn renewing(&self, job: &Claimed) -> &'static str {
-        let mut held_at = tokio::time::Instant::now();
-        loop {
-            tokio::time::sleep(self.renew).await;
-            match obligation::renew(&self.database, job).await {
-                Ok(true) => held_at = tokio::time::Instant::now(),
-                Ok(false) => return "renew",
-                Err(failure) => {
-                    crate::worker::report(EVENT_RENEW_FAILED, &failure);
-                    // Stop before the claim can lapse: a replica may retake
-                    // the row, and two holders would both post it.
-                    if held_at.elapsed() + self.renew >= CLAIM_TTL {
-                        return "renew_unanswered";
-                    }
-                }
-            }
-        }
+        hold_claim(self.renew, || obligation::renew(&self.database, job)).await
     }
 
     /// A retryable cycle: give the claim back, due again later, or abandon it
@@ -86,3 +71,40 @@ impl<S: Deliver + 'static> Inner<S> {
         );
     }
 }
+
+/// Renews through `renew` every `every` until the claim is lost, and answers
+/// how, as [`Inner::renewing`] describes.
+///
+/// The claim is proved held only from the moment a renewal that landed was
+/// sent. Each renewal races a deadline half an interval before the claim could
+/// lapse, so a database that stops answering mid-call cannot keep a delivery
+/// posting past the point another replica may retake the row.
+async fn hold_claim<F, Fut>(every: Duration, mut renew: F) -> &'static str
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = crate::error::Result<bool>>,
+{
+    let mut held_at = tokio::time::Instant::now();
+    loop {
+        tokio::time::sleep(every).await;
+        let sent = tokio::time::Instant::now();
+        let give_up_at = held_at + CLAIM_TTL.saturating_sub(every / 2);
+        match tokio::time::timeout_at(give_up_at, renew()).await {
+            Err(_unanswered) => return "renew_unanswered",
+            Ok(Ok(true)) => held_at = sent,
+            Ok(Ok(false)) => return "renew",
+            Ok(Err(failure)) => {
+                crate::worker::report(EVENT_RENEW_FAILED, &failure);
+                // Stop before the claim can lapse: a replica may retake
+                // the row, and two holders would both post it.
+                if held_at.elapsed() + every >= CLAIM_TTL {
+                    return "renew_unanswered";
+                }
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+#[path = "claim_tests.rs"]
+mod tests;
