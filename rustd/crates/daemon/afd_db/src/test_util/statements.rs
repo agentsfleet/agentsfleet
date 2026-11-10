@@ -44,10 +44,9 @@ pub async fn counted_database() -> (TestDatabase, Db) {
         .run(&owner)
         .await
         .unwrap_or_else(|failure| panic!("the counted database must migrate: {failure}"));
-    let mut connection = owner
-        .acquire()
-        .await
-        .unwrap_or_else(|failure| panic!("the counted database must accept a connection: {failure}"));
+    let mut connection = owner.acquire().await.unwrap_or_else(|failure| {
+        panic!("the counted database must accept a connection: {failure}")
+    });
     sqlx::raw_sql(INSTALL)
         .execute(&mut *connection)
         .await

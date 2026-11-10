@@ -236,8 +236,8 @@ async fn insert_secret(
     sqlx::query(
         "INSERT INTO vault.secrets \
            (id, workspace_id, key_name, dek_ciphertext, dek_nonce, dek_tag, \
-            secret_nonce, secret_ciphertext, secret_tag, kek_version, created_at, updated_at) \
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
+            secret_nonce, secret_ciphertext, secret_tag, kek_version, resource_version, created_at, updated_at) \
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, now(), now())",
     )
     .bind(mint_id())
     .bind(workspace)

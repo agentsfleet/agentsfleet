@@ -32,8 +32,8 @@ INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,up
 VALUES($1,$2,$3,$4,now(),now())";
 const SECRET: &str = "\
 INSERT INTO vault.secrets(id,workspace_id,key_name,dek_ciphertext,dek_nonce,dek_tag,secret_nonce,
-secret_ciphertext,secret_tag,kek_version,meta_provider,meta_has_key,created_at,updated_at)
-VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,now(),now())";
+secret_ciphertext,secret_tag,kek_version,meta_provider,meta_has_key,resource_version, created_at,updated_at)
+VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,true,1, now(),now())";
 
 pub(super) struct Seat {
     pub(super) tenant: Uuid7,

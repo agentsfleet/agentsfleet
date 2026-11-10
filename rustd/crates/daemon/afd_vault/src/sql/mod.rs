@@ -25,7 +25,8 @@
 /// Claims a name, or reports that somebody already holds it.
 ///
 /// `$1` id · `$2` workspace · `$3` name · `$4`–`$10` the envelope ·
-/// `$11`–`$14` the projection. Both stamps are the database's `now()`.
+/// `$11`–`$14` the projection · `$15` [`crate::SECRET_FIRST_VERSION`]. Both
+/// stamps are the database's `now()`.
 ///
 /// `DO NOTHING` makes the uniqueness decision Postgres's rather than the
 /// caller's: a read-then-write in the handler leaves a window in which two

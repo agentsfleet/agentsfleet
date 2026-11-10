@@ -100,6 +100,7 @@ impl Vault {
             .bind(projection.provider.as_deref())
             .bind(projection.base_url.as_deref())
             .bind(projection.has_key)
+            .bind(crate::SECRET_FIRST_VERSION)
             .execute(&mut **transaction)
             .await
             .map_err(query(CONTEXT_CREATE))?;

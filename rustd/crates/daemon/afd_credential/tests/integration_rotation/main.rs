@@ -32,6 +32,7 @@ mod registry_tenancy;
 mod registry_walk;
 mod resolution_locks;
 mod rotation;
+mod secret_version;
 mod selection_pointer;
 
 const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
@@ -212,8 +213,8 @@ impl Fixture {
         sqlx::query(
             "INSERT INTO vault.secrets \
                (id, workspace_id, key_name, kek_version, dek_ciphertext, dek_nonce, dek_tag, \
-                secret_nonce, secret_ciphertext, secret_tag, created_at, updated_at) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now(), now())",
+                secret_nonce, secret_ciphertext, secret_tag, resource_version, created_at, updated_at) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, now(), now())",
         )
         .bind(mint_id())
         .bind(&self.workspace)
