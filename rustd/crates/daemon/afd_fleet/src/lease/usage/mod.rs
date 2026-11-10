@@ -84,6 +84,65 @@ impl Pricing {
         }
     }
 
+    /// The lease's posture as its row stores it, falling back to the
+    /// platform's as the report's own read does (`report::assembly`).
+    pub(crate) fn posture_of(stored: &str) -> Posture {
+        Posture::parse(stored).unwrap_or(Posture::Platform)
+    }
+
+    /// The posture these lines are priced under.
+    pub(crate) const fn posture(&self) -> Posture {
+        self.posture
+    }
+
+    /// The provider these lines are priced against.
+    pub(crate) fn provider(&self) -> &str {
+        &self.provider
+    }
+
+    /// The model these lines are priced against.
+    pub(crate) fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// The catalogue version a statement priced from this book guards on:
+    /// only a platform run's tokens are priced from the catalogue.
+    pub(crate) const fn catalogue_version(&self) -> Option<i64> {
+        match self.posture {
+            Posture::Platform => self.book.catalogue_version(),
+            Posture::SelfManaged => None,
+        }
+    }
+
+    /// The runner's request lines priced for a report whose window runs from
+    /// the lease's start to `until`, without the runtime line the report's
+    /// statement measures and prices itself.
+    ///
+    /// # Errors
+    /// A charge that does not fit in a signed 64-bit nano count.
+    pub(crate) fn request_lines(
+        &self,
+        from: Timestamp,
+        until: Timestamp,
+        requests: &[RequestUsage],
+    ) -> Result<Vec<afd_billing::price::RatedLine>> {
+        let rater = Rater::new(&self.book, self.posture, Window { from, until });
+        Ok(requests
+            .iter()
+            .map(|request| rater.rate(&request.line()))
+            .collect::<afd_billing::Result<Vec<_>>>()?)
+    }
+
+    /// The tier a runtime line measured at `at` is priced at, as the rater
+    /// prices a line with no tokens: the covering tier on the platform's key,
+    /// none on a self-managed one.
+    pub(crate) fn runtime_price(&self, at: Timestamp) -> Option<Uuid7> {
+        match self.posture {
+            Posture::Platform => self.book.quote(at, 0).map(|tier| tier.id.clone()),
+            Posture::SelfManaged => None,
+        }
+    }
+
     /// Prices for a pass that logs run time only, as an expired lease's last
     /// slice does: run time is charged under both postures and reads no
     /// catalogue.

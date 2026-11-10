@@ -6,6 +6,7 @@ WITH locked_slot AS MATERIALIZED (
 ), probe AS (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
            l.fencing_token, l.created_at, l.lease_expires_at, l.last_metered_at,
+           l.daemon_line_count,
            a.fencing_token AS live_fence, a.lease_expires_at AS slot_expires_at,
            l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline_at,
            l.task_runtime_accounted_at
@@ -45,7 +46,7 @@ WITH locked_slot AS MATERIALIZED (
                     AND LEAST(checked_at + $6::interval, created_at + $7::interval) > checked_at
                     AND lease_expires_at > checked_at AND slot_expires_at > checked_at
                     AND (task_id IS NULL OR (
-                        task_status = $13 AND task_generation = live_task_generation
+                        task_status = $10 AND task_generation = live_task_generation
                         AND task_stop_generation = live_stop_generation AND task_expires_at > checked_at
                         AND used_model_nanos < max_model_nanos - reserved_model_nanos
                         AND task_execution_deadline_at > checked_at
@@ -61,6 +62,8 @@ WITH locked_slot AS MATERIALIZED (
     SET status           = CASE WHEN $5::boolean THEN $8 ELSE l.status END,
         lease_expires_at = CASE WHEN $5::boolean THEN l.lease_expires_at ELSE g.capped END,
         last_metered_at  = g.metered_until,
+        -- The runtime line this pass logs takes the next daemon number.
+        daemon_line_count = l.daemon_line_count + CASE WHEN g.d_ms > 0 THEN 1 ELSE 0 END,
         updated_at = now()
     FROM guard g WHERE l.id = g.id
     RETURNING l.lease_expires_at AS capped
@@ -101,8 +104,6 @@ SELECT
     g.tenant_id AS tenant_id, g.workspace_id AS workspace_id,
     g.fleet_id AS fleet_id, g.event_id AS event_id,
     (SELECT f.name FROM fleet.fleets f WHERE f.id = g.fleet_id) AS fleet_name,
-    (SELECT count(*) FROM billing.usage_lines u
-      WHERE u.work_type = $10 AND u.work_id = g.id
-        AND u.seq >= $11 AND u.seq < $12)::bigint AS daemon_lines
+    g.daemon_line_count::bigint AS daemon_lines
 FROM (SELECT 1) AS one
 LEFT JOIN guard g ON true

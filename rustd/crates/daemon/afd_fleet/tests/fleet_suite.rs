@@ -127,6 +127,8 @@ mod integration_report_owes_destination;
 mod integration_report_renewal_lock;
 #[path = "integration_report_settle.rs"]
 mod integration_report_settle;
+#[path = "integration_report_statement.rs"]
+mod integration_report_statement;
 #[path = "integration_runner_admin.rs"]
 mod integration_runner_admin;
 mod integration_runner_beat;

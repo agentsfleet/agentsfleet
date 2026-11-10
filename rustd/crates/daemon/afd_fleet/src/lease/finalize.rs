@@ -32,24 +32,16 @@
 
 use af_core::id::Uuid7;
 use afd_events::Closed;
-use jiff::Timestamp;
 
 use sqlx::PgConnection;
 
 use crate::error::Result;
-use crate::lease::sql;
 use crate::lease::sql::session::MAX_CHECKPOINT_RESPONSE_BYTES;
 use crate::lease::store::Leases;
 use crate::lease::verdict::Terminal;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_TERMINAL: &str = "fleet event terminal";
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_CHECKPOINT: &str = "fleet session checkpoint";
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_RELEASED: &str = "runner lease released event";
 
 /// The session cursor a fleet resumes from.
 ///
@@ -59,6 +51,18 @@ const CONTEXT_RELEASED: &str = "runner lease released event";
 struct Checkpoint<'a> {
     last_event_id: &'a Uuid7,
     last_response: &'a str,
+}
+
+/// The session document a run's checkpoint stores: the event it resumes
+/// after, and its answer cut to the checkpoint's byte cap.
+pub(crate) fn checkpoint_document(last_event_id: &Uuid7, last_response: &str) -> String {
+    serde_json::json!(Checkpoint {
+        last_event_id,
+        last_response: last_response
+            .split_at(last_response.floor_char_boundary(MAX_CHECKPOINT_RESPONSE_BYTES))
+            .0,
+    })
+    .to_string()
 }
 
 impl Leases {
@@ -169,77 +173,5 @@ impl Leases {
             );
         }
         rows.iter().map(|row| Ok(Closed::read(row)?)).collect()
-    }
-
-    /// Record where this fleet's session resumes.
-    ///
-    /// Runs on the caller's connection, inside the settle's transaction: a
-    /// session left pointing at the run before this one would re-feed the
-    /// previous answer to a run that has already been paid for.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer, and a cursor that will not
-    /// serialize — which cannot happen for two string fields, and is reported
-    /// rather than swallowed so that stays true by test rather than by belief.
-    pub async fn checkpoint(
-        &self,
-        connection: &mut PgConnection,
-        fleet_id: &Uuid7,
-        last_event_id: &Uuid7,
-        last_response: &str,
-    ) -> Result<()> {
-        // `Value`, then `Display`. `serde_json::to_string` is fallible in its
-        // signature and cannot fail for two string fields, which would leave an
-        // error arm no test could reach and no caller could act on, and a
-        // fallback such as `"{}"` there would silently checkpoint a fleet to
-        // nothing. Rendering a `Value` has no failure to absorb.
-        let document = serde_json::json!(Checkpoint {
-            last_event_id,
-            last_response: last_response
-                .split_at(last_response.floor_char_boundary(MAX_CHECKPOINT_RESPONSE_BYTES))
-                .0,
-        })
-        .to_string();
-
-        sqlx::query(sql::session::UPSERT_FLEET_SESSION)
-            .bind(fleet_id)
-            .bind(&document)
-            .execute(&mut *connection)
-            .await
-            .map_err(crate::error::query(CONTEXT_CHECKPOINT))?;
-        Ok(())
-    }
-
-    /// Close the lease's history with the row that pairs its acquisition.
-    ///
-    /// # Errors
-    /// Reports an entropy source that could not produce the row's identifier,
-    /// an instant that cannot be encoded, and a datastore that would not
-    /// answer.
-    pub async fn record_released(
-        &self,
-        runner_id: &Uuid7,
-        lease_id: &str,
-        fleet_id: &Uuid7,
-        event_id: &str,
-        now: Timestamp,
-    ) -> Result<()> {
-        let row_id = self.entropy().uuid7(now)?;
-
-        let mut connection = self.pool().acquire().await?;
-        sqlx::query(sql::report::INSERT_RUNNER_EVENT)
-            .bind(row_id)
-            .bind(runner_id)
-            .bind(afd_runner::sql::event_type::LEASE_RELEASED)
-            .bind(afd_runner::sql::meta::LEASE_ID)
-            .bind(lease_id)
-            .bind(afd_runner::sql::meta::FLEET_ID)
-            .bind(fleet_id)
-            .bind(afd_runner::sql::meta::AGENTSFLEET_EVENT_ID)
-            .bind(event_id)
-            .execute(&mut *connection)
-            .await
-            .map_err(crate::error::query(CONTEXT_RELEASED))?;
-        Ok(())
     }
 }

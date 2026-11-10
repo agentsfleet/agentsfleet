@@ -6,7 +6,7 @@ use afd_billing::Nanos;
 use jiff::Timestamp;
 
 use super::{Reconciled, RunTokens, assembly::reconciled, steps, timing};
-use crate::lease::{commit::Committed, pull::LeaseService, settle::Reported, usage};
+use crate::lease::{commit::Committed, pull::LeaseService, settle::Reported};
 use crate::task::PreparedReport;
 use crate::{Result, error::stale_fence};
 
@@ -44,7 +44,8 @@ impl LeaseService {
                 ))
             }
             Committed::Settled {
-                settlement,
+                charged,
+                tokens,
                 closed,
                 owed,
                 notice,
@@ -53,7 +54,6 @@ impl LeaseService {
                 if let Some(plan) = task_plan {
                     plan.announce().await;
                 }
-                let charged = usage::charged(settlement.as_deref());
                 let answer = notice.unwrap_or_else(|| request.response_text.as_ref());
                 let completed_at = self
                     .announce(
@@ -62,7 +62,6 @@ impl LeaseService {
                         &lease,
                         steps::Completion { closed, answer },
                         charged,
-                        now,
                     )
                     .await;
                 timing::completed(&lease, now, completed_at);
@@ -71,7 +70,6 @@ impl LeaseService {
                 }
                 self.announce_folds(&lease, lease_id.as_str(), folds, answer)
                     .await;
-                let tokens = self.leases.run_tokens(lease_id).await;
                 Ok(reconciled(lease, charged, false, tokens, completed_at))
             }
         }
