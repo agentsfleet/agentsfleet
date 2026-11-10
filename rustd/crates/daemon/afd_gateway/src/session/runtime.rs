@@ -163,6 +163,7 @@ impl SessionServices {
             cache,
             output,
             accepted,
+            renewal_ticks: std::sync::atomic::AtomicU64::new(0),
             handle,
             gateway,
         }

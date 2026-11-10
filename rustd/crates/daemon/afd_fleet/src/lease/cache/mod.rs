@@ -28,7 +28,10 @@ use af_observability::producers::fleet::cache::looked_up;
 use moka::future::Cache;
 use moka::policy::EvictionPolicy;
 
+use afd_billing::rates::Posture;
+
 use crate::error::Result;
+use crate::lease::usage::Pricing;
 
 #[cfg(test)]
 mod tests;
@@ -109,9 +112,95 @@ impl Definitions {
         Ok(definition)
     }
 
+    /// The definition `key` holds, if the cache has it. A hit is counted here;
+    /// on a miss the caller reads the document and parses it through
+    /// [`Self::get_or_parse`], which counts the miss.
+    pub(crate) async fn get(&self, key: &RevisionKey) -> Option<Arc<Definition>> {
+        let found = self.entries.get(key).await;
+        if found.is_some() {
+            looked_up(LeaseCache::Definition, CacheOutcome::Hit);
+        }
+        found.map(|parsed| Arc::clone(&parsed.definition))
+    }
+
     /// Applies pending evictions, so a test reads the cache's settled state.
     #[cfg(test)]
     async fn settle(&self) {
         self.entries.run_pending_tasks().await;
     }
 }
+
+/// The price books one replica holds: a host's renewal prices every lease of
+/// one model from one read, and the next tick reads none (M245 §3, §7).
+pub const PRICE_BOOK_CAPACITY: u64 = 1_024;
+
+/// A model's price book, by the catalogue version it was read at: an edit
+/// moves the version, so a cached book is never served past it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct PriceKey {
+    posture: &'static str,
+    provider: String,
+    model: String,
+    catalogue_version: Option<i64>,
+}
+
+/// Price books by model and catalogue version.
+#[derive(Debug, Clone)]
+pub struct PriceBooks {
+    entries: Cache<PriceKey, Arc<Pricing>>,
+}
+
+impl Default for PriceBooks {
+    fn default() -> Self {
+        Self {
+            entries: Cache::builder()
+                .max_capacity(PRICE_BOOK_CAPACITY)
+                .eviction_policy(EvictionPolicy::lru())
+                .build(),
+        }
+    }
+}
+
+impl PriceBooks {
+    /// The pricing for `posture`, `provider` and `model` at `catalogue_version`,
+    /// read on a miss.
+    ///
+    /// A read that failed is not kept: it prices this pass with an empty book,
+    /// logged as the per-lease path logs it, and the next pass reads again. A
+    /// book read is kept under the version asked for, even when it is empty:
+    /// a model with no prices is an answer, and an edit moves the version.
+    pub(crate) async fn get_or_load(
+        &self,
+        database: &afd_db::Db,
+        posture: Posture,
+        provider: &str,
+        model: &str,
+        catalogue_version: Option<i64>,
+    ) -> Arc<Pricing> {
+        let key = PriceKey {
+            posture: posture.as_str(),
+            provider: provider.to_owned(),
+            model: model.to_owned(),
+            catalogue_version: catalogue_version.filter(|_| posture == Posture::Platform),
+        };
+        if let Some(pricing) = self.entries.get(&key).await {
+            looked_up(LeaseCache::PriceBook, CacheOutcome::Hit);
+            return pricing;
+        }
+        looked_up(LeaseCache::PriceBook, CacheOutcome::Miss);
+        match Pricing::try_load(database, posture, provider, model).await {
+            Ok(pricing) => {
+                let pricing = Arc::new(pricing);
+                self.entries.insert(key, Arc::clone(&pricing)).await;
+                pricing
+            }
+            Err(_fault) => {
+                Arc::new(Pricing::load(database, posture, provider, model, LABEL_BATCH).await)
+            }
+        }
+    }
+}
+
+/// What a price book read for a host's renewal names in its log line, which
+/// serves every lease of its model.
+const LABEL_BATCH: &str = "renew_batch";

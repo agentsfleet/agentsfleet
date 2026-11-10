@@ -248,7 +248,7 @@ impl Leases {
 /// A stored setup as a lease runs it: parsed, then checked as a save would be.
 ///
 /// Cached only once both pass, so a cache hit never skips the check.
-fn parse_for_save(document: &str) -> Result<Definition> {
+pub(crate) fn parse_for_save(document: &str) -> Result<Definition> {
     let definition = Definition::parse(document)?;
     definition.validate_for_save()?;
     Ok(definition)

@@ -5,7 +5,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use af_crypto::entropy::Entropy;
 use afd_billing::biller::Biller;
 use afd_billing::ledger::Resume;
 use afd_db::Db;
@@ -42,7 +41,6 @@ const REFUSED: &str = "billing_sweep_refused";
 pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, tasks: Tasks) {
     let database = database.clone();
     let biller: Arc<dyn Biller> = crate::billing::biller(database.clone());
-    let entropy = Entropy::new();
     supervisor.spawn(super::BILLING, async move |stop| {
         let mut decision_cursor = DecisionMaintenanceCursor::default();
         let mut interval = tokio::time::interval(INTERVAL);
@@ -65,11 +63,7 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, tasks: Tasks) {
                 _recovery = tasks.maintain_decisions(&mut decision_cursor) => {},
             }
             lap(&mut ticks, &resume);
-            drain(
-                || sweep_leases(&database, biller.as_ref(), &entropy, &resume),
-                &stop,
-            )
-            .await;
+            drain(|| sweep_leases(&database, biller.as_ref(), &resume), &stop).await;
         }
     });
 }
@@ -94,22 +88,15 @@ async fn drain<F: Future<Output = bool>>(
 
 /// One pass over fleet leases from where the last one stopped, logged at both
 /// ends. Answers whether to run again at once.
-async fn sweep_leases(
-    database: &Db,
-    biller: &dyn Biller,
-    entropy: &Entropy,
-    resume: &Mutex<Option<Resume>>,
-) -> bool {
+async fn sweep_leases(database: &Db, biller: &dyn Biller, resume: &Mutex<Option<Resume>>) -> bool {
     tracing::debug!(
         event = STARTED,
         pass = "leases",
         "billing relay pass starts"
     );
     let after = resume.lock().map_or(None, |at| at.clone());
-    let now = af_core::clock::now();
     let swept =
-        afd_fleet::lease::billing_sweep::sweep(database, biller, entropy, now, after.as_ref())
-            .await;
+        afd_fleet::lease::billing_sweep::settle_lines(database, biller, after.as_ref()).await;
     match swept {
         Ok(swept) => {
             if let Ok(mut at) = resume.lock() {

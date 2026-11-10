@@ -34,6 +34,7 @@ fn counted(parses: &Cell<u32>) -> impl FnOnce(&str) -> crate::error::Result<Defi
 /// each lookup answers its own revision's definition.
 #[tokio::test]
 async fn definition_cache_evicts_and_reads_again() {
+    let _counted = crate::lease::test_dead::CACHE_LOOKUPS.lock().await;
     let (first, second) = (document("Run fleet A."), document("Run fleet B."));
     let cap = u64::try_from(first.len().max(second.len())).expect("a document's size fits");
     let cache = Definitions::with_capacity(cap);
@@ -67,6 +68,7 @@ async fn definition_cache_evicts_and_reads_again() {
 /// A held revision answers from memory: the second lookup parses nothing.
 #[tokio::test]
 async fn definition_cache_parses_a_held_revision_once() {
+    let _counted = crate::lease::test_dead::CACHE_LOOKUPS.lock().await;
     let cache = Definitions::default();
     let key = RevisionKey::observed(mint_id());
     let parses = Cell::new(0);
@@ -83,6 +85,7 @@ async fn definition_cache_parses_a_held_revision_once() {
 /// A document the parser refuses is not cached: the next lookup tries again.
 #[tokio::test]
 async fn definition_cache_keeps_no_refused_document() {
+    let _counted = crate::lease::test_dead::CACHE_LOOKUPS.lock().await;
     let cache = Definitions::default();
     let key = RevisionKey::observed(mint_id());
     let parses = Cell::new(0);

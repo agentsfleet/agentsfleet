@@ -34,6 +34,9 @@ impl Pricing {
 
 impl crate::lease::Leases {
     /// Financial acknowledgement for a renewal refused before extension admission.
+    ///
+    /// Under the lease's own row lock and no host lock (M245 R8): the lines are
+    /// model lines numbered by the runner, so there is no number to race for.
     pub(crate) async fn record_known_requests(
         &self,
         runner: &Uuid7,
@@ -51,7 +54,6 @@ impl crate::lease::Leases {
             .begin()
             .await
             .map_err(query("begin original request accounting"))?;
-        let _host = afd_runner::capacity::lock(&mut tx, runner).await?;
         let settlement = pricing
             .original_requests(&mut tx, lease, runner, requests)
             .await?;

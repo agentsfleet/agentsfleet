@@ -41,7 +41,10 @@ use afd_billing::rates::Posture;
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "renew lease load";
 
+mod batch;
 mod extend;
+
+pub use self::batch::{FUNDS_CHECK_TICKS, Renewals, funds_due};
 
 /// The lease a renewal is about, as the row holds it.
 #[derive(Debug, Clone)]

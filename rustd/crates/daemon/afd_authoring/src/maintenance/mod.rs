@@ -29,8 +29,31 @@ impl Drafts {
     /// # Errors
     /// Propagates store failures; no guessed usage or automatic model resend occurs.
     pub async fn maintain(&self) -> Result<Maintenance> {
+        let interrupted = self.expire_attempts().await?;
         Ok(Maintenance {
-            interrupted: attempts::expire(self).await?,
+            interrupted,
+            ..self.housekeep().await?
+        })
+    }
+
+    /// Moves every live attempt past its deadline to accounting recovery:
+    /// what `sweeper:expiry` runs every [`af_core::timing::EXPIRY_TICK`], beside
+    /// the lease expiry pass (M245 §7).
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    pub async fn expire_attempts(&self) -> Result<u64> {
+        attempts::expire(self).await
+    }
+
+    /// The privacy purges and the replay receipts' expiry, on authoring's own
+    /// clock; `interrupted` is always 0 here.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer.
+    pub async fn housekeep(&self) -> Result<Maintenance> {
+        Ok(Maintenance {
+            interrupted: 0,
             purged_drafts: privacy::drafts(self).await?,
             expired_results: privacy::results(self).await?,
             expired_receipts: crate::replay::sweep(&mut *self.database.acquire().await?).await?,

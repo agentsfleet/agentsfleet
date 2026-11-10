@@ -170,19 +170,27 @@ pub async fn lock_host<'a>(
     }))
 }
 
-/// The authorized host row, under its lock, and the runner it names.
-async fn locked<'g>(
-    transaction: &mut Transaction<'_, Postgres>,
-    guard: impl Into<Guard<'g>>,
-) -> Result<Option<(Uuid7, Host)>> {
-    let (runner_id, digest, connection) = match guard.into() {
+/// What a guard binds: the host, and for a stream call the opening's
+/// credential digest and connection, which `lock_host.sql` and a host's
+/// renewal statement compare against the host row alike (M245 §7).
+#[must_use]
+pub fn proof<'g>(guard: impl Into<Guard<'g>>) -> (&'g Uuid7, Option<&'g str>, Option<&'g Uuid7>) {
+    match guard.into() {
         Guard::Enrolled(runner) => (runner, None, None),
         Guard::Connected {
             runner,
             connection,
             digest,
         } => (runner, Some(digest.as_str()), Some(connection)),
-    };
+    }
+}
+
+/// The authorized host row, under its lock, and the runner it names.
+async fn locked<'g>(
+    transaction: &mut Transaction<'_, Postgres>,
+    guard: impl Into<Guard<'g>>,
+) -> Result<Option<(Uuid7, Host)>> {
+    let (runner_id, digest, connection) = proof(guard);
     let host = sqlx::query_as::<_, Host>(sql::LOCK_HOST)
         .bind(runner_id)
         .bind(digest)
@@ -227,10 +235,25 @@ pub async fn lock<'a>(
     }))
 }
 
+/// The host states a renewal may run in: one list, read by the locked
+/// capacity check and by a host's renewal statement alike (M245 §7).
+const RENEWABLE: [afd_api_wire::admin::AdminState; 3] = [
+    afd_api_wire::admin::AdminState::Active,
+    afd_api_wire::admin::AdminState::Cordoned,
+    afd_api_wire::admin::AdminState::Draining,
+];
+
 fn renewable_state(state: &str) -> bool {
-    use afd_api_wire::admin::AdminState;
-    matches!(
-        af_core::spelling::from_spelling::<AdminState>(state),
-        Some(AdminState::Active | AdminState::Cordoned | AdminState::Draining)
-    )
+    af_core::spelling::from_spelling::<afd_api_wire::admin::AdminState>(state)
+        .is_some_and(|state| RENEWABLE.contains(&state))
+}
+
+/// [`RENEWABLE`]'s states spelled as `runner.runners.status` stores them, for
+/// a statement that reads the host without its lock.
+#[must_use]
+pub fn renewable_states() -> Vec<String> {
+    RENEWABLE
+        .iter()
+        .filter_map(af_core::spelling::to_spelling)
+        .collect()
 }

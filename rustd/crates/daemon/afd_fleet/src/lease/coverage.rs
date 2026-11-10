@@ -76,7 +76,7 @@ impl LeaseService {
     /// A tenant with no wallet row is admitted, for the reason the issue gate
     /// admits one. An outage the biller's outage policy admitted answers
     /// [`Funds::Unconfirmed`] and renews.
-    async fn funds_cover(
+    pub(crate) async fn funds_cover(
         &self,
         lease: &Renewing,
         lease_key: &Uuid7,
