@@ -1,6 +1,8 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { ApiError } from "@/lib/api/errors";
+import { ERROR_CODE } from "@/lib/errors";
 
 // Entry redirect + ownership guard. The URL workspaceId is a UX selector; the
 // ownership guard is defence-in-depth on top of the real security boundary
@@ -30,6 +32,12 @@ vi.mock("@/lib/api/workspaces", async (importOriginal) => ({
 vi.mock("@/components/layout/NoWorkspaceEmptyState", () => ({
   default: () =>
     React.createElement("div", { "data-testid": "no-workspace-empty-state" }),
+}));
+
+// The account-opening wait screen is a client island that polls; stub it to a
+// marker so the server component test only proves which screen it chose.
+vi.mock("../app/(dashboard)/AccountSetup", () => ({
+  default: () => React.createElement("div", { "data-testid": "account-setup" }),
 }));
 
 const OWNED = {
@@ -164,6 +172,45 @@ describe("dashboard entry page", () => {
     firstTenantWorkspace.mockRejectedValue(new Error("list endpoint down"));
     const Page = await importEntry();
     await expect(Page()).rejects.toThrow("list endpoint down");
+  });
+
+  // M245 §10: a fresh signup reaches `/` with a token minted before the webhook
+  // wrote its tenant and scopes back to Clerk, so the scope gate refuses it.
+  const scopeRefusal = () =>
+    new ApiError("insufficient scope", 403, ERROR_CODE.INSUFFICIENT_SCOPE);
+  const signedInWith = (sessionClaims: Record<string, unknown> | null) =>
+    auth.mockResolvedValue({ getToken: vi.fn().mockResolvedValue("tok_1"), sessionClaims });
+
+  it("test_account_still_opening_waits: a scope refusal on a token with no tenant renders the setup screen", async () => {
+    signedInWith({ sub: "user_new", scopes: "" });
+    firstTenantWorkspace.mockRejectedValue(scopeRefusal());
+    const Page = await importEntry();
+    const markup = renderToStaticMarkup((await Page()) as React.ReactElement);
+    expect(markup).toContain("account-setup");
+    expect(markup).not.toContain("no-workspace-empty-state");
+  });
+
+  it("a scope refusal on a token that carries a tenant propagates: waiting never brings a scope an operator removed", async () => {
+    for (const sessionClaims of [
+      { sub: "user_narrowed", metadata: { tenant_id: "tenant_1" } },
+      { sub: "user_narrowed", tenant_id: "tenant_1" },
+    ]) {
+      signedInWith(sessionClaims);
+      firstTenantWorkspace.mockRejectedValue(scopeRefusal());
+      const Page = await importEntry();
+      await expect(Page()).rejects.toThrow("insufficient scope");
+    }
+  });
+
+  it("a refusal with unreadable claims, or any other refusal, propagates rather than waiting", async () => {
+    signedInWith(null);
+    firstTenantWorkspace.mockRejectedValue(scopeRefusal());
+    const Page = await importEntry();
+    await expect(Page()).rejects.toThrow("insufficient scope");
+
+    signedInWith({ sub: "user_new" });
+    firstTenantWorkspace.mockRejectedValue(new ApiError("down", 503, "UZ-AUTH-004"));
+    await expect(Page()).rejects.toThrow("down");
   });
 
   it("redirects to /sign-in without a token", async () => {

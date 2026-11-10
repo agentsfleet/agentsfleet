@@ -119,6 +119,7 @@ fn test_every_fleet_producer_runs_its_body() {
         SignupFailure::MissingEmail,
         SignupFailure::UnverifiedEmail,
         SignupFailure::DatabaseError,
+        SignupFailure::WritebackFailed,
     ] {
         producers::fleet::signup_failed(reason);
     }

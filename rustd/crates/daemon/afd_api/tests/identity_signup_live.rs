@@ -161,10 +161,8 @@ async fn a_name_the_provider_sends_only_half_of_is_stored_without_the_gap() {
 /// call they make is refused for want of a tenant context.
 ///
 /// Nothing fails when it is missing, which is why this test exists rather
-/// than a type. The write is best-effort by design — the row is already
-/// committed, so a provider outage must not turn signup into a 500 — and an
-/// omitted best-effort call produces no error, no 500, and no failing lane.
-/// Only an assertion that it HAPPENED can see it.
+/// than a type: an omitted call produces no error and no failing lane, so
+/// only an assertion that it HAPPENED can see it.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_verified_signup_tells_the_provider_which_tenant_it_opened() {
@@ -212,44 +210,106 @@ async fn a_verified_signup_tells_the_provider_which_tenant_it_opened() {
     );
 }
 
-/// The provider refusing the writeback does not refuse the delivery.
+/// A provider whose answer no redelivery can change does not refuse the
+/// delivery.
 ///
-/// The tenant row is already committed when the write runs, so a refusal there
-/// answered to the provider would refuse an account that exists and invite a
-/// retry that can only duplicate work. The handler swallows it and LOGS it,
-/// and this case proves the swallow from both sides: the seam refuses every
-/// write, the delivery still answers 200 with the account it opened, and the
-/// seam shows the write was ATTEMPTED — a handler that skipped the call would
-/// pass a status-only assertion while leaving the operator nothing to repair
-/// from.
+/// A refused credential is the operator's `CLERK_SECRET_KEY` to fix, and an
+/// unknown subject is a person deleted since the event: a redelivery would get
+/// the same answer, so the handler answers 200 and LOGS it. Proven from both
+/// sides for each: the delivery still answers 200 with the account it opened,
+/// and the seam shows the write was ATTEMPTED — a handler that skipped the call
+/// would pass a status-only assertion while leaving the operator nothing to
+/// repair from.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_provider_that_will_not_take_the_writeback_does_not_refuse_the_delivery() {
-    let refusing = RecordingWriteback::refusing(MetadataUnwritten::Unauthorized);
-    let (fleet, _database) = live("user_identity_writeback_refused").await;
-    let router = fleet.with_signup_writeback(refusing.clone()).router();
+    for refusal in [
+        MetadataUnwritten::Unauthorized,
+        MetadataUnwritten::UnknownSubject,
+    ] {
+        let refusing = RecordingWriteback::refusing(refusal);
+        let (fleet, _database) = live("user_identity_writeback_refused").await;
+        let router = fleet.with_signup_writeback(refusing.clone()).router();
+
+        let (subject, address) = minted();
+        let body = created(&subject, &address, json!({}));
+
+        let answer = deliver(&router, &body).await;
+        assert_eq!(
+            answer.status(),
+            StatusCode::OK,
+            "{refusal:?}: a redelivery cannot change this answer, so the \
+             delivery is not refused"
+        );
+        let opened = json_body(answer).await;
+        assert_eq!(
+            opened.get("created").and_then(Value::as_bool),
+            Some(true),
+            "the case needs a fresh account, not a replay"
+        );
+        assert_eq!(
+            refusing.written().len(),
+            1,
+            "{refusal:?}: the write was attempted and refused — a handler that \
+             never asked would be a skipped write wearing a swallowed one's clothes"
+        );
+    }
+}
+
+/// A provider that could not be reached refuses the delivery, and the
+/// redelivery finishes the account (M245 §10).
+///
+/// Before, the handler answered 200 here, so the provider never sent the event
+/// again and the person's tokens carried no tenant until an operator repaired
+/// the metadata by hand. Now the first delivery answers 503 with the account
+/// committed, and the redelivery takes the replay path: it opens nothing new
+/// and writes the same tenant back.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn an_unreachable_provider_refuses_the_delivery_and_the_redelivery_writes_back() {
+    let recovering = RecordingWriteback::refusing_first(MetadataUnwritten::Unreachable);
+    let (fleet, _database) = live("user_identity_writeback_unreachable").await;
+    let router = fleet.with_signup_writeback(recovering.clone()).router();
 
     let (subject, address) = minted();
     let body = created(&subject, &address, json!({}));
 
-    let answer = deliver(&router, &body).await;
+    let first = deliver(&router, &body).await;
     assert_eq!(
-        answer.status(),
-        StatusCode::OK,
-        "the row is committed before the write runs; a refused write must not \
-         turn an opened account into a delivery the provider retries"
+        first.status(),
+        StatusCode::SERVICE_UNAVAILABLE,
+        "an unreachable provider is a delivery to send again"
     );
-    let opened = json_body(answer).await;
+    let refused = json_body(first).await;
+    assert_eq!(
+        refused.get("error_code").and_then(Value::as_str),
+        Some(af_core::error_code::AUTH_UNAVAILABLE.as_str()),
+        "{refused}"
+    );
+
+    let again = deliver(&router, &body).await;
+    assert_eq!(again.status(), StatusCode::OK, "the redelivery is answered");
+    let opened = json_body(again).await;
     assert_eq!(
         opened.get("created").and_then(Value::as_bool),
-        Some(true),
-        "the case needs a fresh account, not a replay"
+        Some(false),
+        "the first delivery committed the account; the redelivery replays it"
     );
+
+    let written = recovering.written();
+    assert_eq!(written.len(), 2, "the redelivery wrote back once more");
+    let tenants: Vec<&str> = written
+        .iter()
+        .map(|wrote| wrote.tenant_id.as_str())
+        .collect();
     assert_eq!(
-        refusing.written().len(),
-        1,
-        "the write was attempted and refused — a handler that never asked \
-         would be a skipped write wearing a swallowed one's clothes"
+        tenants.first(),
+        tenants.last(),
+        "the redelivery writes the tenant the first delivery opened"
+    );
+    assert!(
+        written.iter().all(|wrote| wrote.subject == subject),
+        "every write addresses the subject the event named"
     );
 }
 

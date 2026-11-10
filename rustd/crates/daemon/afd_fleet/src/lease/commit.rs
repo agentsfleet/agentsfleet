@@ -22,7 +22,9 @@ use crate::lease::fold::Folds;
 use crate::lease::obligation::Owing;
 use crate::lease::report::RunTokens;
 use crate::lease::settle::Reported;
-use crate::lease::sql::report_statement::{ReportAnswer, ReportStatement, SettledReport};
+use crate::lease::sql::report_statement::{
+    HeldFacts, ReportAnswer, ReportStatement, SettledReport,
+};
 use crate::lease::store::Leases;
 use crate::lease::usage::Pricing;
 use crate::lease::verdict::Terminal;
@@ -112,7 +114,6 @@ impl Leases {
     /// datastore that would not answer, in which case nothing was written.
     pub async fn commit_report(&self, mut report: TerminalReport<'_>) -> Result<Committed> {
         let mut task_settlement = report.task_settlement.take();
-        let task = task_settlement.is_some();
         let mut repriced: Option<Pricing> = None;
         loop {
             let pricing = repriced.as_ref().unwrap_or(report.pricing);
@@ -121,14 +122,14 @@ impl Leases {
             let answer = self
                 .run_report_statement(&mut transaction, &report, pricing)
                 .await?;
-            match answer {
-                ReportAnswer::Settled(settled) => {
+            match next_step(answer, repriced.is_some()) {
+                Step::Settle(settled) => {
                     return self
                         .settled(transaction, &report, *settled, task_settlement.take())
                         .await;
                 }
-                ReportAnswer::AlreadySettled => return Ok(Committed::AlreadySettled),
-                ReportAnswer::Repriced(held) if repriced.is_none() && !task => {
+                Step::AlreadySettled => return Ok(Committed::AlreadySettled),
+                Step::Reprice(held) => {
                     release(transaction).await?;
                     repriced = Some(
                         Pricing::load(
@@ -141,7 +142,7 @@ impl Leases {
                         .await,
                     );
                 }
-                ReportAnswer::Repriced(_) | ReportAnswer::Fenced => {
+                Step::KnownRequestsOnly => {
                     release(transaction).await?;
                     let settlement = self
                         .record_known_requests(
@@ -276,6 +277,37 @@ impl Leases {
     }
 }
 
+/// What a report does after one run of its statement.
+#[derive(Debug)]
+enum Step {
+    /// Every write landed; the task and folds follow in the transaction.
+    Settle(Box<SettledReport>),
+    /// This runner settled the lease before.
+    AlreadySettled,
+    /// The lease holds pricing facts other than the ones bound: price again
+    /// under these and rerun, once.
+    Reprice(HeldFacts),
+    /// The fence moved, or the catalogue moved again under the rerun: only the
+    /// runner's known request lines are logged (blocker 4), and the lease is
+    /// left to its own renewal or expiry.
+    KnownRequestsOnly,
+}
+
+/// The step after `answer`, when `repriced` says whether this is the rerun.
+///
+/// A catalogue edited between the price read and the statement costs one
+/// rerun, for every lease (the spec's failure table). A second miss means a
+/// second edit inside one report; settling under a third read would not be
+/// more right, so the report stops at its known lines.
+fn next_step(answer: ReportAnswer, repriced: bool) -> Step {
+    match answer {
+        ReportAnswer::Settled(settled) => Step::Settle(settled),
+        ReportAnswer::AlreadySettled => Step::AlreadySettled,
+        ReportAnswer::Repriced(held) if !repriced => Step::Reprice(held),
+        ReportAnswer::Repriced(_) | ReportAnswer::Fenced => Step::KnownRequestsOnly,
+    }
+}
+
 /// Ends a statement that wrote nothing before the caller takes another
 /// connection: a dropped transaction's rollback waits for its connection's
 /// next use, and the connection is still held, so the slot and lease locks it
@@ -320,4 +352,75 @@ fn warn_unknown_reply(lease: &Reported, stored: Option<&str>) {
         event = EVENT_REPLY_PROVIDER_UNKNOWN,
         "the recorded connector names no connector; the answer is owed nowhere"
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Step, next_step};
+    use crate::lease::report::RunTokens;
+    use crate::lease::sql::report_statement::{HeldFacts, ReportAnswer, SettledReport};
+
+    fn held() -> HeldFacts {
+        HeldFacts {
+            posture: "platform".to_owned(),
+            provider: "anthropic".to_owned(),
+            model: "claude-opus-5-5".to_owned(),
+            catalogue_version: 2,
+        }
+    }
+
+    fn settled() -> ReportAnswer {
+        ReportAnswer::Settled(Box::new(SettledReport {
+            has_task: false,
+            closed: None,
+            owed: None,
+            reply_provider: None,
+            tokens: RunTokens::default(),
+            charged: afd_billing::Nanos::from_i64(0),
+            model_nanos: afd_billing::Nanos::from_i64(0),
+        }))
+    }
+
+    #[test]
+    fn a_settled_answer_settles_on_either_run() {
+        for repriced in [false, true] {
+            assert!(matches!(next_step(settled(), repriced), Step::Settle(_)));
+        }
+    }
+
+    #[test]
+    fn an_answer_settled_before_writes_nothing_on_either_run() {
+        for repriced in [false, true] {
+            assert!(matches!(
+                next_step(ReportAnswer::AlreadySettled, repriced),
+                Step::AlreadySettled
+            ));
+        }
+    }
+
+    #[test]
+    fn a_first_reprice_reruns_under_the_leases_own_facts() {
+        let Step::Reprice(facts) = next_step(ReportAnswer::Repriced(held()), false) else {
+            unreachable!("a first miss reruns");
+        };
+        assert_eq!(facts, held());
+    }
+
+    #[test]
+    fn a_second_reprice_stops_at_the_known_lines() {
+        assert!(matches!(
+            next_step(ReportAnswer::Repriced(held()), true),
+            Step::KnownRequestsOnly
+        ));
+    }
+
+    #[test]
+    fn a_moved_fence_stops_at_the_known_lines_on_either_run() {
+        for repriced in [false, true] {
+            assert!(matches!(
+                next_step(ReportAnswer::Fenced, repriced),
+                Step::KnownRequestsOnly
+            ));
+        }
+    }
 }

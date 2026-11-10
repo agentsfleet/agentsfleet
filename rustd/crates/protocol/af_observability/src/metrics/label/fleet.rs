@@ -163,10 +163,10 @@ closed_set! {
 closed_set! {
     /// Why opening an account from a signup delivery did not happen.
     ///
-    /// Five, and the split is the point: the first four are the delivery being
-    /// wrong and the last is this daemon being unable to act on a delivery that
-    /// was right. An operator seeing a spike needs to know which half, because
-    /// only one of them is theirs to fix.
+    /// Six, and the split is the point: the first four are the delivery being
+    /// wrong and the last two are this daemon being unable to act on a delivery
+    /// that was right. An operator seeing a spike needs to know which half,
+    /// because only one of them is theirs to fix.
     SignupFailure {
         /// The signature did not verify.
         BadSignature => "bad_sig",
@@ -178,6 +178,9 @@ closed_set! {
         UnverifiedEmail => "unverified_email",
         /// The database refused the write.
         DatabaseError => "db_error",
+        /// The account opened, but the identity provider did not take its
+        /// tenant, so the person's next token carries none.
+        WritebackFailed => "writeback_failed",
     }
 }
 
