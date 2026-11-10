@@ -49,6 +49,8 @@ pub struct Providers {
     vault: Vault,
     kek: Arc<Kek>,
     entropy: Entropy,
+    /// The platform default's resolution, shared by every clone.
+    platform_keys: super::cache::PlatformKeys,
 }
 
 impl Providers {
@@ -64,7 +66,13 @@ impl Providers {
             database,
             kek,
             entropy,
+            platform_keys: super::cache::PlatformKeys::default(),
         }
+    }
+
+    /// The platform resolutions this replica holds, by version.
+    pub(crate) const fn platform_keys(&self) -> &super::cache::PlatformKeys {
+        &self.platform_keys
     }
 
     /// The key an envelope this store opens is sealed under.

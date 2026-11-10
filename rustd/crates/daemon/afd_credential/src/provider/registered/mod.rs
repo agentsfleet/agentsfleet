@@ -24,6 +24,9 @@ pub(super) struct Registration {
     pub(super) workspace_id: Uuid7,
     pub(super) key_name: String,
     pub(super) inference_host: Box<str>,
+    /// The versions a platform read returned, which key its cache entry; a
+    /// tenant entry carries none and is never cached (blocker 2).
+    pub(super) observed: Option<super::cache::PlatformKeyKey>,
 }
 
 /// Non-secret facts selected by an explicit reference.
@@ -65,6 +68,13 @@ struct RegisteredRow {
     key_name: String,
     base_url: Option<String>,
     inference: Option<Json<ModelInference>>,
+    /// Returned by the platform read only: `entry.sql` leaves them out.
+    #[sqlx(default)]
+    catalogue_version: Option<i64>,
+    #[sqlx(default)]
+    secret_id: Option<Uuid7>,
+    #[sqlx(default)]
+    secret_version: Option<i64>,
 }
 
 impl RegisteredRow {
@@ -163,11 +173,18 @@ pub(super) async fn read(
         _ => return Ok(None),
     };
     let inference_host = route.into_host();
+    let observed = match (row.catalogue_version, row.secret_id, row.secret_version) {
+        (Some(catalogue), Some(secret), Some(version)) => Some(
+            super::cache::PlatformKeyKey::observed(catalogue, secret, version),
+        ),
+        _ => None,
+    };
     Ok(Some(Registration {
         model,
         workspace_id: row.workspace_id,
         key_name: row.key_name,
         inference_host,
+        observed,
     }))
 }
 

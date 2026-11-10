@@ -46,6 +46,7 @@
 //! Recorded here rather than pre-built: a seam with one caller is a guess.
 
 mod activate;
+pub mod cache;
 mod cap;
 mod decision;
 mod endpoint;

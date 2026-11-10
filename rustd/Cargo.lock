@@ -797,6 +797,7 @@ dependencies = [
  "af_crypto",
  "af_fleet_runtime",
  "af_inference",
+ "af_observability",
  "af_webhook",
  "af_wire",
  "afd_admin",
