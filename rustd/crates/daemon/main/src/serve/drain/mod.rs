@@ -56,6 +56,11 @@ pub use guard::Guard;
 /// this one covers a request rather than a background task.
 pub const DRAIN_TIMEOUT: Duration = Duration::from_secs(15);
 
+const _: () = assert!(
+    af_core::timing::STREAM_ANSWER_TIMEOUT.as_nanos() < DRAIN_TIMEOUT.as_nanos(),
+    "a runner answer in flight when the drain starts must finish inside the drain bound"
+);
+
 /// What one drain did, for the log line and for a rehearsal's notes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Settled {

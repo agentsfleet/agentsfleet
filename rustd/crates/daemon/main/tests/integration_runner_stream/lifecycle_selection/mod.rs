@@ -59,8 +59,10 @@ async fn the_stream_connects_through_an_environment_proxy_without_a_direct_http3
         crate::integration_runner_stream::raw::Native::connect(&run, af_stream::Transport::H3)
             .await;
     direct.close().await;
-    let proxy = connect::Proxy::start(run.booted.runner_stream_address).await;
-    let origin = format!("https://[::1]:{}", run.booted.runner_stream_address.port());
+    let relay = relay::Relay::start(run.booted.runner_stream_address, true).await;
+    let proxy = connect::Proxy::start(relay.address).await;
+    // The proxy tunnels only to its backend's literal address, so the origin names it the same way.
+    let origin = format!("https://[::1]:{}", relay.address.port());
     let mut runner = session(&run, &origin, Some(&proxy.url)).await;
     let reply = heartbeat(&runner)
         .await
@@ -71,8 +73,14 @@ async fn the_stream_connects_through_an_environment_proxy_without_a_direct_http3
         1,
         "framed native work used the required proxy even with direct UDP reachable"
     );
+    assert_eq!(
+        relay.connections(),
+        (1, 0),
+        "the origin saw one TCP path through the proxy and no direct HTTP/3 path"
+    );
     runner.close().await.expect("downlink joins");
     proxy.close().await;
+    relay.close().await;
     supervisor.shutdown().await;
     run.cleanup().await;
 }
