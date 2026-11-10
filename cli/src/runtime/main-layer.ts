@@ -28,7 +28,6 @@ import {
 } from "../services/config.ts";
 import {
   Output,
-  outputStdioLayer,
   outputFromStreamsLayer,
 } from "../services/output.ts";
 import { Credentials, credentialsLayer } from "../services/credentials.ts";
@@ -106,9 +105,7 @@ export const mainLayerFor = (
   // config the same way HttpClient is provided its base URL. `Layer.mergeAll`
   // does not wire requirements between the layers it merges — a merged layer
   // still has to have its own deps satisfied.
-  const outputBase = (
-    input.streams !== undefined ? outputFromStreamsLayer(input.streams) : outputStdioLayer
-  ).pipe(Layer.provide(configBase));
+  const outputBase = outputFromStreamsLayer(input.streams, input.env).pipe(Layer.provide(configBase));
   const stdinBase =
     input.stdin !== undefined ? stdinFromStreamLayer(input.stdin) : stdinLayer;
 

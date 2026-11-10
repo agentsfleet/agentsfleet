@@ -45,6 +45,8 @@ import { chatCommand } from "./chat.command.ts";
 import { memoryCommand } from "./memory.command.ts";
 import { platformCommand } from "./platform.command.ts";
 import { forceFlag, logoutAllFlag, tokenNameFlag } from "./flags.ts";
+import {PET_COMMAND} from "../../constants/pet.ts";
+import {petPreview} from "../../commands/pet/preview.ts";
 
 const opt = Option.getOrUndefined;
 
@@ -117,6 +119,11 @@ const doctorCommand = Command.make("doctor").pipe(
   guardedHandler(() => withManagedExitCode(doctorEffect)),
 );
 
+const petCommand = Command.make(PET_COMMAND).pipe(
+  Command.withDescription("Watch Scout, your terminal owl, for five seconds"),
+  guardedHandler(() => petPreview),
+);
+
 export const rootCommand = Command.make(CLI_NAME).pipe(
   Command.withDescription("agentsfleet cli"),
   Command.withSharedFlags(globalFlags),
@@ -125,6 +132,7 @@ export const rootCommand = Command.make(CLI_NAME).pipe(
     logoutCommand,
     whoamiCommand,
     doctorCommand,
+    petCommand,
     workspaceCommand,
     grantCommand,
     apiKeyCommand,

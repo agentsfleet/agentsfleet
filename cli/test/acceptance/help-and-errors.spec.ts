@@ -57,6 +57,16 @@ describe("help triplet", () => {
   });
 });
 
+describe("local pet preview", () => {
+  it("works without credentials or network access and keeps JSON output clean", async () => {
+    const result = await runFleetctl(["pet", "--json"], {env: emptyEnv()});
+    assert.equal(result.code, 0);
+    assert.deepEqual(JSON.parse(result.stdout), {name: "Scout"});
+    assert.equal(result.stderr, "");
+    assertNoConnectionError(result, ["pet", "--json"]);
+  });
+});
+
 describe("--version", () => {
   it("--version exits 0 with stdout containing the package.json version", async () => {
     const result = await runFleetctl(["--version"], { env: emptyEnv() });
