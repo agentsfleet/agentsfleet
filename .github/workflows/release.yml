@@ -287,7 +287,8 @@ jobs:
       OTLP_COLLECTOR_MACHINES: "2"
       OTLP_COLLECTOR_ENDPOINT: http://otelcol-prod.internal:4318
       # The event bus (M244 §8): core NATS, two nodes, no volume, like dev.
-      NATS_APP: nats-prod
+      # Fly app names are global; the product prefix keeps this one ours.
+      NATS_APP: agentsfleet-nats-prod
       NATS_BUILD_CONTEXT: deploy/fly/nats-prod
       NATS_MACHINES: "2"
       # No config argument: flyctl reads fly.toml from the build context, and a
