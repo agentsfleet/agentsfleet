@@ -51,7 +51,7 @@ pub struct BootConfig {
     pub(super) qstash_token: Option<af_crypto::secret::SecretString>,
     pub(super) qstash_url: Option<Box<str>>,
     pub(super) slack_api_url: Option<Box<str>>,
-    pub(super) identity_webhook_secret: Option<Box<str>>,
+    pub(super) identity_webhook_secret: Option<af_crypto::secret::SecretString>,
     pub(super) qstash_keys: Option<SigningKeys>,
     pub(super) sse_max_streams: usize,
     pub(super) runner_wake: afd_bus::wake::Wake,
@@ -280,8 +280,8 @@ impl BootConfig {
     ///
     /// `None` refuses every delivery — see [`super::IDENTITY_WEBHOOK_SECRET_KNOB`].
     #[must_use]
-    pub fn identity_webhook_secret(&self) -> Option<&str> {
-        self.identity_webhook_secret.as_deref()
+    pub fn identity_webhook_secret(&self) -> Option<&af_crypto::secret::SecretString> {
+        self.identity_webhook_secret.as_ref()
     }
 
     /// The scheduler's signing keys, when this deployment configured them.
