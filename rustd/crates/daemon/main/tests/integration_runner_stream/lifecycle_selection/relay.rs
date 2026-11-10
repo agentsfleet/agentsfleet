@@ -25,6 +25,7 @@ struct State {
 
 pub(super) struct Relay {
     pub(super) origin: String,
+    pub(super) address: SocketAddr,
     state: Arc<State>,
     stop: CancellationToken,
     task: AbortOnDropHandle<std::io::Result<()>>,
@@ -50,6 +51,7 @@ impl Relay {
         });
         Self {
             origin: format!("https://localhost:{}", address.port()),
+            address,
             state,
             stop,
             task: AbortOnDropHandle::new(task),
