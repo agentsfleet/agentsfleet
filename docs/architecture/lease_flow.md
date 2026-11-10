@@ -138,12 +138,14 @@ Each fleet lease follows these steps:
 1. Admit its tools, provider and policy; claim the fleet's local turn.
 2. Load the lease's memory window, or read memory through the retained HTTP route when the window is absent.
 3. Prepare or thaw a sandbox when the admitted tools need one, then run the agent loop.
-4. Request folded inputs before model calls and send bounded activity over the native session.
+4. Request folded inputs before model calls, skipping the first ask when the lease says none waits, and send bounded activity over the native session.
 5. Freeze and hold a completed sandbox, or kill it; post full tool records through the retained HTTP route.
 6. Flush outstanding usage through renewals, then send the report with memory, timing segments and folded-input progress.
 7. Retain the report in the worker's memory until acknowledgement or a terminal refusal, then finish sandbox cleanup and drain activity.
 
 The daemon captures reported memory under the lease fence before the settlement transaction.
+
+A plain chat's report then commits in one statement, `commit_report.sql`, under the lease row lock with no host lock. It numbers its runtime line from `runner.leases.daemon_line_count` and advances the count. Each host's renewals run as one fenced statement per tick.
 Settlement records usage, event outcome, session checkpoint, admission completion, slot release and any outbound obligation.
 Only a successful report settles folded messages through `folded_through_sequence`.
 

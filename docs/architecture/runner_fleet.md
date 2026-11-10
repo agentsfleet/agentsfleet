@@ -68,7 +68,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - No secret enters a sandbox. Model keys and minted tokens stay in the supervisor, and bubblewrap starts every sandbox with a cleared environment (§Process-boundary hardening).
 
-- Config is never cached; warm mode reuses only the sandbox shell (§Cold and warm execution).
+- Config is cached only by its head revision id, which every claim reads, so the next run obeys an edit; warm mode reuses only the sandbox shell (§Config).
 
 - No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle. The deferred name layer is eBPF/FQDN (§Egress model).
 
@@ -800,7 +800,7 @@ The runner's per-lease sandbox, its measured cold start and where its bytes live
 
 A lease that ends **processed** leaves its sandbox **held** for the same fleet. The frozen sandbox keeps its workspace files for ten idle minutes ([Workspace between leases](./runner_execution.md#workspace-between-leases)). The fleet's next lease can continue in it.
 
-Every lease carries fresh config and secrets; config is never cached. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
+Every lease carries the config of the head revision its claim read, and fresh secrets. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
 
 The report writes `runner.fleet_slots.hold_expires_at` during its fencing-guarded release, clamped to that window. Every heartbeat lists the fleets the runner still holds. It clears holds missing from the list, except those reported within the last beat interval.
 
@@ -818,9 +818,9 @@ A Fleet's config is the `config` member of its selected setup revision in `fleet
 
 The claim reads it from that revision (`afd_fleet`'s installed-revision read). A reviewed improvement (`POST /v1/workspaces/{ws}/fleets/{id}/revisions`, N11 in [`api_resources.md`](./api_resources.md)) appends a new revision and selects it. `PATCH` on the fleet changes only its status and name.
 
-`agentsfleetd` resolves config fresh from Postgres on every `lease`. Config changes therefore take effect on the **next command** (the next lease) with no signaling.
+Every claim reads the fleet's `head_revision_id` in its own statement. Each replica caches the parsed definition keyed by that id, and revisions are append-only, so an id never names two documents. A config change therefore takes effect on the **next command** (the next lease) on every replica, with no signal between them.
 
-There is no in-memory config cache and no `fleet_config_changed` consumer to wait on; the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight. The next run picks it up.
+A cache key is built only from a statement's row, so no lookup by bare fleet id compiles. There is no `fleet_config_changed` consumer to wait on; the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight. The next run picks it up.
 
 ## Money gates
 

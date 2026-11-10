@@ -36,8 +36,8 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Lease writes per slice | fence, cursors, one usage line | `METER_LEASE` moves no money; the line is logged in the same transaction and the relay settles it | §3 |
 | Line keying | `UNIQUE (work_type, work_id, seq)` | a retried renewal, report or relay pass settles each line once, even with two relays | §3, §11 |
 | Free usage | the starter grant only | a balance that drains, bounded by `exhausted_at`; no promotional window and no mechanism for one | §2.3 |
-| Mid-run exhaustion | next `/renew` refused | `UZ-RUN-012`; the run ends at its current deadline, never extended | §3, §5 |
-| Money set aside | none | a funds check reads the balance less the payer's unsettled lines; parallel runs can overdraw by at most one slice each before their next check refuses | §5, §11 |
+| Mid-run exhaustion | refused within three renewals | funds are checked once per payer on a stream's first tick, then every `FUNDS_CHECK_TICKS` (3) ticks; a short payer's leases answer `UZ-RUN-012` and end at their current deadlines, never extended | §3, §5 |
+| Money set aside | none | a funds check reads the balance less the payer's unsettled lines; parallel runs can overdraw by at most three slices each before their next check refuses | §5, §11 |
 | Statement bounds | the API login role's | 2 s lock wait, 5 s statement; no billing statement sets its own; a bound reached is a biller with no answer | §11 |
 | Budget gate | per-fleet, independent of the balance gate | `daily_nanos` rolling 24 h · `monthly_nanos` Coordinated Universal Time (UTC) calendar month; mid-run refusal `UZ-RUN-015` | §5.1 |
 | Budget no-verdict posture | asymmetric | database failure → admit; no budget declared → admit; unparseable budget → refuse | §5.1 |
@@ -257,7 +257,7 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
      ② log every line in billing.usage_lines (work = the lease), once per (work, seq)
    on the lease path, through Arc<dyn Biller>:
      issue  → nothing                      the admission gate already checked the floor
-     renew  → check(floor)                 before the transaction; the spending check
+     renew  → check(floor)                 once per payer every third tick, before the host's statement
      report → nothing
    sweeper:billing, the relay, every 2 s: settle(lines)
 ```
@@ -269,7 +269,7 @@ The runner reserves and records intent and goal calls through these routes; the 
 | Step | What moves | Where in `afd_fleet` |
 |---|---|---|
 | Admit | nothing; the balance and budget gates read (§5) | the lease admit module |
-| Renew | the payer must fund one more floor after its unsettled lines; the slice is logged | the lease renew and coverage modules |
+| Renew | on a checked tick, the payer must fund one more floor after its unsettled lines; every tick logs the slice | the lease renew and coverage modules |
 | Report | the final slice is logged in the report's transaction; nothing else | the lease report and settle modules |
 | Relay | every unsettled line, and the last slice of a lease that ended unreported | the lease billing sweep, with `afd_billing::ledger::resettle` |
 
