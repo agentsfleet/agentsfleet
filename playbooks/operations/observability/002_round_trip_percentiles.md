@@ -51,6 +51,25 @@ One segment per fleet; swap in any attribute from the table:
 { name = "fleet.delivery" && span."gen_ai.agent.id" = "$fleet_id" } | quantile_over_time(span."agentsfleet.delivery.model_ms", .95, .99)
 ```
 
+Every span one chat left, daemon and runner, by its event:
+
+```traceql
+{ span."agentsfleet.event.id" = "$event_id" }
+```
+
+That returns `fleet.steer`, `fleet.offer`, `fleet.report`, `fleet.delivery` and `runner.lease`.
+A fallback `fleet.hydrate` or `fleet.capture` carries no event; find it by fleet within the window between the offer and the report:
+
+```traceql
+{ name =~ "fleet.hydrate|fleet.capture" && span."gen_ai.agent.id" = "$fleet_id" }
+```
+
+One daemon stage per fleet; each verb's stages are `agentsfleet.<verb>.<stage>_ms`:
+
+```traceql
+{ name = "fleet.report" && span."gen_ai.agent.id" = "$fleet_id" } | quantile_over_time(span."agentsfleet.report.commit_ms", .95, .99)
+```
+
 Fleet-wide per stage, against Prometheus, with no fleet identity:
 
 ```promql
