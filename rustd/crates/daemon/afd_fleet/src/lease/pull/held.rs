@@ -29,6 +29,9 @@ struct Held {
 }
 
 impl LeaseService {
+    /// [`Self::run_claimed_timed`] with no clock, for the fixtures that drive
+    /// a claimed pass directly; production passes carry the offer's clock.
+    #[cfg(feature = "test-util")]
     pub(super) async fn run_claimed_with<T, F>(
         &self,
         acquired: Acquired,
