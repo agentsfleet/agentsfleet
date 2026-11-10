@@ -133,7 +133,7 @@ impl ConfirmedSession {
 }
 
 impl SessionServices {
-    pub(super) fn connected(
+    pub(crate) fn connected(
         gateway: crate::Gateway,
         handle: Arc<SessionHandle>,
         authority: afd_runner::capacity::authority::Authority,
