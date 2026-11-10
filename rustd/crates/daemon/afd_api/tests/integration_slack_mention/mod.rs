@@ -26,7 +26,6 @@ use serde_json::Value;
 
 use self::harness::webhook::name;
 use self::harness::{json_body, send_with_headers};
-#[path = "../slack_mention_live/fixture.rs"]
 mod fixture;
 
 use self::fixture::{Admitted, BOT_USER, Fixture, SIGNING_SECRET};

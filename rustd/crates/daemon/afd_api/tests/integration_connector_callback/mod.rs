@@ -37,9 +37,7 @@ use http::{Method, StatusCode, header};
 use serde_json::Value;
 
 use self::harness::{json_body, send};
-#[path = "../support/fake_provider.rs"]
 pub(crate) mod fake_provider;
-#[path = "../connector_callback_live/fixture/mod.rs"]
 pub(crate) mod fixture;
 
 use self::fake_provider::FakeProvider;
