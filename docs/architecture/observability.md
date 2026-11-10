@@ -480,7 +480,9 @@ Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complet
 
 **Daemon verb spans name the stages a chat crosses.** A verb builds a stage clock from `af_observability`'s `verb_span` module at its entry. It marks each boundary it reaches and records one root span when it ends, on every exit. The span goes through the global tracer, asked for at record time, as `fleet.delivery` does.
 
-`fleet.steer` marks `admit` and `announce`; `fleet.report` marks `load`, `prepare`, `capture`, `commit`, `announce` and `ack`. Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent.
+`fleet.steer` marks `admit` and `announce`; `fleet.offer` marks `claim`, `admit`, `issue`, `encode` and `send`. `fleet.report` marks `load`, `prepare`, `capture`, `commit`, `announce` and `ack`. The fallback `fleet.hydrate` and `fleet.capture` mark `fence`, then `memory_read` or `memory_write`.
+
+An offer pass that reaches no stage records nothing, because the recovery probe runs every 5 s per replica. A claim the gates refused reached `claim`, so it keeps its span. Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent.
 
 The spans carry `agentsfleet.event.id` and `gen_ai.agent.id` and join `fleet.delivery` and `runner.lease` by attribute. `VERB_SPAN_KEYS` in `semconv` declares every key, and each verb's stages are a closed enum, so no free-form key compiles.
 
@@ -534,7 +536,7 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 
 Gaps left by M238, each named in M233_001:
 
-- The steer and the report record `fleet.steer` and `fleet.report` with their stages; the offer and the memory verbs do not yet (§1).
+- Steer, offer, report, hydrate and capture each record a verb span with their stages (§1).
 - The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026, and `runner.lease` carries its segments (§2).
 - The edge reports its own cost (§3). The steer route answers `Server-Timing: auth;dur=…, upstream;dur=…` after its answer is final, so a status or body never changes. The browser leaves `af:send`, `af:accepted`, `af:first-frame` and `af:complete` marks, each naming the send's operation id in `detail`.
 

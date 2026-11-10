@@ -85,6 +85,9 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 a
 | `rustd/crates/daemon/afd_gateway/src/session/verb_span_tests.rs` | CREATE | §1: Dimensions 1.2 and 1.3, `#[ignore]`d live-Postgres tests beside the crate's other session tests |
 | `rustd/crates/daemon/afd_fleet/src/lease/claim.rs`, `pull/mod.rs`, `deliver/mod.rs`, `report/mod.rs` | EDIT | §1: the clock passed in and one mark per stage boundary |
 | `rustd/crates/daemon/main/tests/integration_verb_span_export.rs` | CREATE | §1: Dimension 1.5 through `telemetry::install` |
+| `rustd/crates/daemon/main/tests/daemon_suite.rs` | EDIT | §1: registers the export test (`autotests = false`) |
+| `rustd/crates/daemon/afd_fleet/src/lease/pull/select.rs`, `pull/held.rs` | EDIT | §1: the offer clock's path to `admit_claimed`, and its `claim` and `admit` marks |
+| `rustd/crates/daemon/afd_fleet/src/lease/memory.rs` | EDIT | §1: the hydrate and capture clocks, where the fence and the memory call run |
 | `rustd/crates/runner/afr_supervisor/src/lease_loop/segments.rs`, `identity/mod.rs`, `lease_loop/tests/mod.rs`, `lease_loop/tests/span_segments.rs` | EDIT, CREATE | §2: `runner.lease` declares and records the ten segments |
 | `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/messages/route.ts`, `ui/packages/app/tests/steer-route.test.ts` | EDIT | §3: time `credential()` and the upstream call; answer `Server-Timing` |
 | `ui/packages/app/components/domain/useFleetMessageDelivery.ts`, `useFleetMessageDelivery.test.tsx`, `ui/packages/app/lib/streaming/fleet-stream-reply-registry.ts` | EDIT | §3: the four `performance` marks for one send |
@@ -318,6 +321,11 @@ N/A: nothing is deleted. The old default's span layer move and its `stage_clock`
 - **Patch-vs-refactor verdict:** a patch; §1 adds one module and marks, and §2's infrastructure is shipped.
 
 ## Discovery (consult log)
+
+- **Files Changed widened at EXECUTE, Nov 10, 2026:**
+  > Indy (Nov 10, 2026): chose "Yes, all 7 (Recommended)" — context: §1's marks cannot reach `admit_claimed` without `pull/select.rs` and `pull/held.rs`, hydrate's and capture's stages run inside `afd_fleet`'s `lease/memory.rs` behind the `Leasing` trait, and the export test needs a `daemon_suite.rs` registration.
+  - Built with fewer than the seven approved: the memory clocks start in `afd_fleet`'s `hydrate` and `capture`, so `afd_http`'s `Leasing` trait and `afd_api_runner/Cargo.toml` are unchanged, and `memory.rs` in `afd_api_runner` is untouched. The clock misses only the handler's path parse.
+  - `LeaseService::report` and `claim_fleet_with` keep their signatures for their existing test callers; the gateway calls clocked siblings.
 
 - **Rewritten for the runner stream, Nov 10, 2026:**
   > Indy (Nov 10, 2026): chose "Rewrite §1 for the gateway now" — context: asked how M233_002 should start beside M245_001, given §1 targeted handlers M243 removed.

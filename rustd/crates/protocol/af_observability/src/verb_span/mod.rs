@@ -217,6 +217,12 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         self.discarded = true;
     }
 
+    /// Whether no stage has been marked yet.
+    #[must_use]
+    pub fn reached_nothing(&self) -> bool {
+        self.stages.is_empty()
+    }
+
     /// Records the span on `tracer` now, once.
     fn record_on<T: Tracer>(&mut self, tracer: &T) {
         if std::mem::replace(&mut self.discarded, true) {

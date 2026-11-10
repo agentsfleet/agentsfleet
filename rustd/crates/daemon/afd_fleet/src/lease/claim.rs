@@ -1,6 +1,7 @@
 //! One native claim selects between independently authorized placement domains.
 
 use af_core::id::Uuid7;
+use af_observability::verb_span::{OfferStage, VerbClock};
 use af_wire::lease::{AcceptedKinds, LeaseKind, TaggedLease};
 
 use super::LeaseService;
@@ -18,6 +19,27 @@ impl LeaseService {
         drafts: &afd_authoring::Drafts,
         request: OfferRequest<'_>,
         accepted: AcceptedKinds,
+        emit: F,
+    ) -> Result<Option<T>>
+    where
+        T: Send,
+        F: for<'a> FnMut(TaggedLease<'a, afd_authoring::types::Candidate>, Offered) -> T + Send,
+    {
+        let mut untimed = VerbClock::untimed();
+        self.claim_with_timed(drafts, (request, accepted), &mut untimed, emit)
+            .await
+    }
+
+    /// [`Self::claim_with`], marking each offer stage it reaches on `clock`;
+    /// a pass that selects nothing marks none.
+    ///
+    /// # Errors
+    /// As [`Self::claim_with`].
+    pub async fn claim_with_timed<T, F>(
+        &self,
+        drafts: &afd_authoring::Drafts,
+        (request, accepted): (OfferRequest<'_>, AcceptedKinds),
+        clock: &mut VerbClock<OfferStage>,
         mut emit: F,
     ) -> Result<Option<T>>
     where
@@ -36,20 +58,20 @@ impl LeaseService {
             match kind {
                 LeaseKind::Authoring => {
                     if let Some(lease) = drafts.claim_offered(request.runner, ticket).await? {
+                        clock.mark(OfferStage::Claim);
                         let metadata = Offered {
                             lease_id: Uuid7::parse(&lease.lease_id)?,
                             expires_at: lease.expires_at,
                             target: None,
                         };
-                        return Ok(Some(emit(
-                            TaggedLease::Authoring(Box::new(lease)),
-                            metadata,
-                        )));
+                        let encoded = emit(TaggedLease::Authoring(Box::new(lease)), metadata);
+                        clock.mark(OfferStage::Encode);
+                        return Ok(Some(encoded));
                     }
                 }
                 LeaseKind::Fleet => {
                     if let Some(body) = self
-                        .claim_fleet_with(request, Some(ticket), |lease, metadata| {
+                        .claim_fleet_timed(request, Some(ticket), clock, |lease, metadata| {
                             emit(TaggedLease::Fleet(Box::new(lease)), metadata)
                         })
                         .await?
