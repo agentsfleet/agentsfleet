@@ -330,7 +330,7 @@ commit fleet.admissions row (body digest + fleet)
         │
         ├── best-effort wake notification
         ▼
-runner poll → Postgres ledger → fenced claim
+offer pass → Postgres ledger → fenced claim → runner stream
 ```
 
 Multiple fleets may intentionally subscribe to the same repository and event. Replay protection is therefore per authenticated payload body and fleet, not global. The signature-covered body digest is the replay identity; the unsigned delivery header is diagnostic only.

@@ -284,8 +284,8 @@ The fetch goes through the same-origin token-minting proxy `/live/v1/workspaces/
 ## Connection topology: the cutover collapsed the dedicated tier
 
 The Rust daemon shares one cluster command owner for ordinary Dragonfly commands.
-A lease request probes the Postgres ledger and never blocks on a Dragonfly stream.
-An empty response tells the runner when to poll again; the runner holds no Dragonfly connection.
+A claim pass probes the Postgres ledger and never blocks on a Dragonfly stream.
+The daemon pushes offers over each runner's stream; the runner holds no Dragonfly connection.
 
 ```text
 agentsfleetd replica
@@ -764,7 +764,7 @@ Before the cutover, a single worker thread owned all events for a Fleet, and the
 
 - `runner.fleet_slots` holds one slot per fleet. `Leases::select` in `afd_fleet` claims it atomically and bumps a monotonic `fencing_token`.
 
-  A runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, however many runners poll concurrently.
+  A runner wins iff the slot is free or the prior lease has expired. So **at most one lease is active per fleet at any time**, however many claim passes run concurrently.
 - The claim is the only writer of `fencing_token`, so every fencing token a lease carries is a value a claim returned.
 - A runner that loses the race for a Fleet simply gets no lease for it. It tries the next eligible fleet or backs off.
 - Durable fleet memory and bounded chat history can reach another runner’s next lease. Warm sandbox reuse is optional; session checkpoints are saved but not replayed into leases. [Workspace continuity](runner_execution.md#workspace-between-leases) owns these limits; sticky placement stays a hint, never ownership.

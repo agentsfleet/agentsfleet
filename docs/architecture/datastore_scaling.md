@@ -237,7 +237,7 @@ The [connection budget](scaling.md#connection-budget-after-the-cutover) distingu
 ```text
 producer -> commit fleet.admissions -> publish fleet:wake:{shard}
                          |
-runner poll -> PostgreSQL head probe -> slot + admission claim
+offer pass -> PostgreSQL head probe -> slot + admission claim
                          |
                   issue fenced lease
                          |
@@ -246,7 +246,7 @@ report -> usage + terminal event + settlement + delivery obligation
 
 A producer commits its identity and payload before reporting acceptance. A failed wake publish leaves that acceptance intact.
 
-Every poll probes PostgreSQL. The notification only prioritizes a recent fleet.
+Every claim pass probes PostgreSQL, and each replica probes again every 5 seconds. The notification only prioritizes a recent fleet.
 
 The candidate query first checks whether any unsettled admission exists. An empty ledger skips fleet scans.
 When work exists, it reads each eligible fleet's oldest unsettled admission through `idx_admissions_unsettled` on `(fleet_id, sequence)`.

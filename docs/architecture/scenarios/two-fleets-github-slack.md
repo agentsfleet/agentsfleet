@@ -138,15 +138,15 @@ Dragonfly fleet:wake:{shard}
 ```
 
 Hints prioritize candidate selection. Every idle poll probes the ledger even if all notifications are lost.
-[The queue design](../datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the limits and polling costs.
+[The queue design](../datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the limits and claim costs.
 
 ## 6. Pickup: two runners, two leases
 
-Each runner polls for work. Eligible fleets must be active, match runner labels and have an available slot.
+The daemon offers work to each connected runner with credits. Eligible fleets must be active, match runner labels and have an available slot.
 
 ```text
-runner R1 -> poll -> fleet A's oldest admission (PR opened)
-runner R2 -> poll -> fleet B's oldest admission (Slack mention)
+offer pass -> runner R1 -> fleet A's oldest admission (PR opened)
+offer pass -> runner R2 -> fleet B's oldest admission (Slack mention)
 
 for each claim:
   lock slot and exact oldest head with SKIP LOCKED
