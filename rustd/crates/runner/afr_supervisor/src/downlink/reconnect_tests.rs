@@ -44,7 +44,7 @@ fn the_http3_skip_window_is_thirty_seconds() {
 }
 
 #[test]
-fn http3_failing_while_http2_carries_skips_http3_for_exactly_the_window() {
+fn http3_failing_while_http2_connects_skips_http3_for_exactly_the_window() {
     let start = Instant::now();
     let mut preference = Preference::default();
     preference.record(
@@ -84,9 +84,9 @@ fn neither_carrier_connecting_leaves_http3_available_to_the_next_attempt() {
 
 #[derive(Clone, Copy, Debug)]
 enum Step {
-    /// HTTP/3 failed and HTTP/2 carried: the one outcome that suggests UDP is the problem.
+    /// HTTP/3 failed to connect and HTTP/2 connected: the one outcome that suggests UDP is the problem.
     UdpSuspect,
-    /// HTTP/3 carried.
+    /// HTTP/3 connected.
     Clean,
     /// Neither carrier connected.
     Failed,

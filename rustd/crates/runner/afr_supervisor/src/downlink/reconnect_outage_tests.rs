@@ -1,5 +1,5 @@
 //! A runner reaches a daemon that returns after an outage over HTTP/3, and skips HTTP/3 for 30
-//! seconds only after HTTP/3 failed and HTTP/2 carried.
+//! seconds only after HTTP/3 failed to connect and HTTP/2 connected.
 
 use super::Preference;
 use crate::{
@@ -200,7 +200,8 @@ async fn a_daemon_that_returns_after_a_refused_outage_is_reached_over_http3() ->
 /// UDP unanswered, TCP forwarded: the first connect tries HTTP/3 and lands on HTTP/2; the second,
 /// inside the window, goes straight to HTTP/2 and sends no datagram at all.
 #[tokio::test]
-async fn a_connect_after_http3_failed_and_http2_carried_skips_http3_without_a_datagram() -> Proof {
+async fn a_connect_after_http3_failed_and_http2_connected_skips_http3_without_a_datagram() -> Proof
+{
     let mut daemon = NativeDaemon::serve_idle(healthy(), |_frame| async {}).await?;
     let relay = daemon.tcp_only().await?;
     let config = StreamConfig {
