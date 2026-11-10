@@ -35,6 +35,7 @@ async fn a_report_resent_after_a_native_cut_is_charged_once() {
             )
             .await;
         wait_for_settlement(&run, &id).await;
+        let original = first.expect(StreamKind::Reports, "report_ack").await;
         first.close().await;
         let mut second = Native::connect(&run, transport).await;
         second
@@ -47,6 +48,11 @@ async fn a_report_resent_after_a_native_cut_is_charged_once() {
         assert_eq!(
             (*crate::wire::pointer(&replay, "/answer")),
             json!({"status":"ok", "response":{"ok":true}})
+        );
+        assert_eq!(
+            crate::wire::pointer(&replay, "/answer"),
+            crate::wire::pointer(&original, "/answer"),
+            "{transport:?}: the resent report answers with the saved result"
         );
         crate::reads::relay_settled(&run).await;
         let counts: (i64, i64) = sqlx::query_as("SELECT count(*) FILTER(WHERE seq=1), count(*) FILTER(WHERE settled_at IS NULL) FROM billing.usage_lines WHERE event_id=$1")

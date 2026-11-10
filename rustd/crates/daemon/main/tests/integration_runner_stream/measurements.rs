@@ -19,11 +19,14 @@ type Result<T = ()> = std::result::Result<T, Box<dyn std::error::Error + Send + 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_streamed_chat_reads_no_lease_target() -> Result<()> {
-    let mut supervisor = Supervisor::new();
-    let fixture = Fixture::open(&mut supervisor).await;
-    let measured = measure_cost(&fixture).await;
-    fixture.finish(supervisor).await;
-    measured
+    for transport in [Transport::H2, Transport::H3] {
+        let mut supervisor = Supervisor::new();
+        let fixture = Fixture::open(&mut supervisor).await;
+        let measured = measure_cost(&fixture, transport).await;
+        fixture.finish(supervisor).await;
+        measured?;
+    }
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -38,10 +41,10 @@ async fn a_grant_rechecks_the_host_inside_its_transaction() -> Result<()> {
 
 const ACTIVITY_FRAMES: u64 = 40;
 
-async fn measure_cost(fixture: &Fixture) -> Result<()> {
+async fn measure_cost(fixture: &Fixture, transport: Transport) -> Result<()> {
     let before = Counts::read(&fixture.owner).await?;
     let mut tail = Tail::open(&fixture.run).await?;
-    let mut native = Native::connect(&fixture.run, Transport::H2).await;
+    let mut native = Native::connect(&fixture.run, transport).await;
     let measured = turn(fixture, &mut native, &mut tail).await;
     native.close().await;
     tail.close().await?;
@@ -50,12 +53,12 @@ async fn measure_cost(fixture: &Fixture) -> Result<()> {
     assert_eq!(
         after.tokens - before.tokens,
         1,
-        "only the opening reads the runner token"
+        "{transport:?}: only the opening reads the runner token"
     );
     assert_eq!(
         after.targets - before.targets,
         0,
-        "all activity uses the native lease cache"
+        "{transport:?}: all activity uses the native lease cache"
     );
     Ok(())
 }

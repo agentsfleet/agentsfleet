@@ -97,6 +97,31 @@ pub const RECONNECT_JITTER_MAX: Duration = Duration::from_secs(2);
 pub const STREAM_STABLE_RESET_AFTER: Duration = Duration::from_secs(60);
 /// One independent ready-work probe per daemon replica, regardless of broker traffic.
 pub const OFFER_FALLBACK_TICK: Duration = Duration::from_secs(5);
+/// The shortest idle timeout a proxy or load balancer on the runner's path is assumed to apply.
+///
+/// Nothing reads it at run time. It is the floor [`STREAM_PING_INTERVAL`] is held under, so an
+/// idle stream pings before a common 60-second middlebox timeout closes it.
+pub const PROXY_IDLE_FLOOR: Duration = Duration::from_secs(60);
+
+const _: () = assert!(
+    STREAM_PING_INTERVAL.as_nanos() + STREAM_ANSWER_TIMEOUT.as_nanos() < LEASE_TTL.as_nanos(),
+    "a silent stream must be detected before an unrenewed lease lapses"
+);
+
+const _: () = assert!(
+    STREAM_PING_INTERVAL.as_nanos() < PROXY_IDLE_FLOOR.as_nanos(),
+    "an idle stream must ping before a proxy's idle timeout closes it"
+);
+
+const _: () = assert!(
+    HEARTBEAT_INTERVAL.saturating_mul(2).as_nanos() < RUNNER_OFFLINE_AFTER.as_nanos(),
+    "a session silent for two heartbeats must close before a fleet read derives its host offline"
+);
+
+const _: () = assert!(
+    OFFER_FALLBACK_TICK.as_nanos() < LEASE_TTL.as_nanos(),
+    "work stranded by a lost ring must be offered again before the lease backstop would free it"
+);
 
 const _: () = assert!(
     RENEWAL_TICK.as_nanos()
