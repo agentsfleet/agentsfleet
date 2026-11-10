@@ -20,7 +20,6 @@ use af_observability::metrics::label::fleet::DeliveryStage;
 use af_observability::producers;
 use af_wire::decision::DecisionAssignment;
 use af_wire::lease::LeaseKind;
-use afd_runner::capacity::choice;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
@@ -111,14 +110,15 @@ impl Leases {
         if !crate::task::lease::parents(&mut transaction, acquired).await? {
             return Ok(None);
         }
-        let Some(capacity) = self.lock_host_capacity(&mut transaction, runner_id).await? else {
+        let Some(host) = self.lock_host(&mut transaction, runner_id).await? else {
             return Ok(None);
         };
-        if !self.permits_issue(capacity, acquired) {
+        if !self.permits_issue(host) {
             return Ok(None);
         }
         let (lease_id, event_row_id) = self.mint(now)?;
-        let decision = super::decision::freeze(&mut transaction, runner_id, capacity).await?;
+        let decision =
+            super::decision::freeze(&mut transaction, runner_id, host.decision_selected()).await?;
         let Some(created_at) = (sql::lease::LeaseRow {
             lease_id: &lease_id,
             runner_id,
@@ -132,21 +132,20 @@ impl Leases {
             model: billed.model,
             fencing_token: acquired.fence.as_i64(),
             status: sql::LEASE_STATUS_ACTIVE,
-            checked_at: capacity.now(),
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
             decision_snapshot: decision.as_deref(),
+            lease_version: host.lease_version(),
+            lease_kind: LeaseKind::Fleet.as_str(),
+            leased_until: acquired.leased_until,
         })
         .insert(&mut transaction)
         .await?
         else {
+            // A full host, a moved fence or a moved choice wrote nothing that
+            // commits: the transaction rolls back with this return.
             return Ok(None);
         };
-        // The returned timestamp proves the fenced lease and its lifetime tally were written together.
-        // The host lock still protects the optimistic choice version.
-        if !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await? {
-            return Ok(None);
-        }
         let Some((task, expires_at)) =
             crate::task::lease::attach(&mut transaction, acquired, runner_id, &lease_id, revision)
                 .await?
@@ -167,12 +166,13 @@ impl Leases {
         }))
     }
 
-    fn permits_issue(&self, capacity: afd_runner::capacity::Capacity, acquired: &Acquired) -> bool {
-        capacity.can_claim()
-            && acquired.leased_until > capacity.now()
-            && self
-                .ticket()
-                .is_none_or(|ticket| ticket.permits(capacity, LeaseKind::Fleet))
+    /// Whether the locked host may take this lease before the insert counts
+    /// its workers and rechecks the claim's deadline itself.
+    fn permits_issue(&self, host: afd_runner::capacity::Held) -> bool {
+        host.can_claim()
+            && self.ticket().is_none_or(|ticket| {
+                ticket.permits_revision(host.lease_version(), LeaseKind::Fleet)
+            })
     }
 
     /// Draw the independent lease and audit identities.

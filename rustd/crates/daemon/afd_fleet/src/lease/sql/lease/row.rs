@@ -79,8 +79,6 @@ pub struct LeaseRow<'a> {
     pub fencing_token: i64,
     /// The status the row opens in.
     pub status: &'a str,
-    /// The database's own instant, read once `afd_runner`'s host lock was held.
-    pub checked_at: Timestamp,
     /// Identifier of the audit row this write also lands.
     pub event_row_id: &'a Uuid7,
     /// Whether this lease is a fresh pull or a reclaim, as its wire spelling.
@@ -88,6 +86,14 @@ pub struct LeaseRow<'a> {
     pub kind: &'a str,
     /// The non-secret reviewed selection delivered by this exact lease.
     pub decision_snapshot: Option<&'a DecisionAssignment>,
+    /// The placement choice's revision the host lock read; the insert
+    /// advances it, and writes nothing that commits if it moved.
+    pub lease_version: i64,
+    /// The kind the advanced choice records.
+    pub lease_kind: &'a str,
+    /// When the claim lapses, as the claim answered it: a pass that outlived
+    /// it writes no lease.
+    pub leased_until: Timestamp,
 }
 
 impl LeaseRow<'_> {
@@ -116,13 +122,15 @@ impl LeaseRow<'_> {
             .bind(self.provider)
             .bind(self.model)
             .bind(self.fencing_token)
-            .bind(self.checked_at.to_sqlx())
             .bind(self.status)
             .bind(self.event_row_id)
             .bind(afd_runner::sql::event_type::LEASE_ACQUIRED)
             .bind(sqlx::types::Json(metadata))
             .bind(self.event_created_at.to_sqlx())
             .bind(self.decision_snapshot.map(sqlx::types::Json))
+            .bind(self.lease_version)
+            .bind(self.lease_kind)
+            .bind(self.leased_until.to_sqlx())
             .fetch_optional(connection)
             .await
             .map_err(query(
