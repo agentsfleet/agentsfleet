@@ -13,6 +13,9 @@ use const_format::concatcp;
 /// Collection root for runner enrollment and the runner self-plane.
 pub const RUNNERS: &str = "/v1/runners";
 
+/// Platform operator runner administration.
+pub const ADMIN_RUNNERS: &str = "/v1/admin/runners";
+
 /// Runner-token prefix. The wire contract for the machine principal — the daemon
 /// mints and validates it, and the host checks it before the lease loop.
 pub const RUNNER_TOKEN_PREFIX: &str = "agt_r";

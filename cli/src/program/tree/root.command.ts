@@ -43,6 +43,7 @@ import {
 import { scheduleCommand } from "./schedule.command.ts";
 import { chatCommand } from "./chat.command.ts";
 import { memoryCommand } from "./memory.command.ts";
+import { platformCommand } from "./platform.command.ts";
 import { forceFlag, logoutAllFlag, tokenNameFlag } from "./flags.ts";
 
 const opt = Option.getOrUndefined;
@@ -133,6 +134,7 @@ export const rootCommand = Command.make(CLI_NAME).pipe(
     billingCommand,
     libraryCommand,
     modelsCommand,
+    platformCommand,
     chatCommand,
       fleetCommand,
     listCommand,

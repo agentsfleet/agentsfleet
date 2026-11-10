@@ -14,7 +14,7 @@
  */
 import * as fs from "node:fs";
 import type { ConnectorCatalogEntry } from "@/lib/api/connectors";
-import type { RunnerListItem, RunnerListResponse, RunnerLiveness } from "@/lib/api/runners";
+import type { RunnerListItem, RunnerListResponse, RunnerLiveness } from "@/tests/helpers/runner-control";
 import type { TenantModelEntryList } from "@/lib/types";
 import { clientFor } from "./api-client";
 import { AGENTSFLEET_CLI_ENTRY, CLI_ARTIFACT_MISSING_DIAGNOSIS } from "./cli-runner";
@@ -25,7 +25,7 @@ const PROBE_TIMEOUT_MS = 10_000;
 const HEALTHZ_PATH = "/healthz";
 const READYZ_PATH = "/readyz";
 const TENANT_MODELS_PATH = "/v1/tenants/me/models";
-const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
+const FLEET_RUNNERS_PATH = "/v1/admin/runners";
 const HEARTBEAT_OBSERVATION_DELAY_MS = 12_000;
 
 // A runner doing work is as alive as an idle one — either satisfies the gate.

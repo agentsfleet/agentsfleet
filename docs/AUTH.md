@@ -117,7 +117,7 @@ Five principal surfaces, one wire shape (`Authorization: Bearer …`), and a pre
 | Human at a terminal (CLI) | `afc_<hex>` CLI credential | backend (`POST /v1/cli-credentials`, paid for with a Clerk api-template JWT) | SHA-256 hash lookup + revocation check; scopes resolved live from Clerk on `oidc_subject` | `Guard::Bearer` → stored credential |
 | Human in a browser (dashboard) | Clerk session token | Clerk | JWKS verify + `aud` | `Guard::Bearer` → session token |
 | Service / automation | `agt_t<hex>` tenant api key | backend | SHA-256 hash lookup; scopes resolved live from Clerk for the key's creator (`created_by`) | `Guard::Bearer` → stored credential |
-| Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/runners`) | SHA-256 hash lookup in `runner.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
+| Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/admin/runners`) | SHA-256 hash lookup in `runner.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
 | Inbound webhook (provider) | HMAC signature (no Bearer) | provider | per-provider HMAC | `Guard::WebhookSignature` / `WebhookHmac` / `Svix` / `PayloadSigned` → verified in the handler |
 
 The prefix decides the path before anything is looked up, so `agt_t` and `afc_` never reach the session-token verifier. Each group of routes is a `Plane` (`rustd/crates/daemon/afd_auth/src/plane.rs`): `Plane::Tenant` accepts the session token, `agt_t` and `afc_`; `Plane::Runner` accepts only `agt_r`. A class the plane does not accept is refused before any datastore read, so runner tokens cannot satisfy tenant routes and the reverse.
@@ -153,7 +153,7 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 | `connector:read` / `connector:write` | read connector status and the catalogue / start, complete, or disconnect a connector — gates the generic `{provider}` connector routes (every registry provider: Slack OAuth, GitHub App install, …); see §"OAuth connectors: a separate surface (M106, generalized by the M108 registry)" |
 | `model:read` / `model:admin` | read the priced model catalogue / create+update+delete catalogue rows |
 | `platform-key:read` / `platform-key:admin` | read the platform default key/model / set+delete it |
-| `runner:read` / `runner:write` | list and read runners, their events and their leases (operator plane) / `PATCH /v1/fleets/runners/{runner_id}` (cordon, drain, revoke, rotate the credential, self-test, reassign policy, replace its placement labels) and `DELETE` (retire a revoked runner's record) |
+| `runner:read` / `runner:write` | list and read runners, their events and their leases (operator plane) / `PATCH /v1/admin/runners/{runner_id}` (cordon, drain, revoke, rotate the credential, self-test, reassign policy, replace its placement labels) and `DELETE` (retire a revoked runner's record) |
 
 **Discrete verbs** (no ladder, a distinct action):
 
@@ -733,13 +733,13 @@ Flows 1–3 all act *on behalf of* a human or a tenant. The **runner token** is 
 
 A runner has no credential until an **agentsfleet platform operator** mints one from the dashboard's **Add runner** action. That is a session-authed server action; M84_001 retired the `register --token` command, so no identity credential ever reaches a shell.
 
-Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/runners`) requires the `runner:enroll` scope.
+Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/admin/runners`) requires the `runner:enroll` scope.
 
 That scope is a discrete capability held only by platform operators, revocable independently of `runner:read` and `runner:write`. A caller without it, session token or `agt_t` key alike (a key holds exactly its creator's scopes), is refused `403 UZ-AUTH-022`. An empty scope set fails closed.
 
 There is no open enrollment token.
 
-The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/fleets/runners`, one runner `GET /v1/fleets/runners/{runner_id}`, and its `/events` and `/leases`; `runner:write` fronts `PATCH` and `DELETE /v1/fleets/runners/{runner_id}`.
+The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/admin/runners`, one runner `GET /v1/admin/runners/{runner_id}`, and its `/events` and `/leases`; `runner:write` fronts `PATCH` and `DELETE /v1/admin/runners/{runner_id}`.
 
 Sending `{"action":"rotate"}` atomically replaces the stored runner-token digest and returns the replacement `runner_token` once. The old token fails the next authentication read. The response and audit log never expose the old token, and the audit event records the operator subject.
 
@@ -749,7 +749,7 @@ No host ever holds an enrollment-grade credential.
 
 ```
 Platform operator — dashboard "Add runner" (session JWT, scopes ∋ runner:enroll)  agentsfleetd
-   │ server action → POST /v1/runners
+   │ server action → POST /v1/admin/runners
    │   Authorization: Bearer <session-JWT>
    │   { host_id, assigned_policy{…}, labels[] }
    ▼

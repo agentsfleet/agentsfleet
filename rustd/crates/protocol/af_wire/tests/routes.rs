@@ -44,7 +44,7 @@ fn test_route_templates_compose_from_their_segments() {
             out
         });
     insta::assert_snapshot!(rendered, @r"
-    enrol            /v1/runners
+    enrol            /v1/admin/runners
     self             /v1/runners/me
     heartbeats       /v1/runners/me/heartbeats
     leases           /v1/runners/me/leases

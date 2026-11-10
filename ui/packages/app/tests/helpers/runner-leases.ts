@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
-import type { RunnerLease } from "@/lib/api/runners";
+import type { RunnerLease } from "@/tests/helpers/runner-control";
 
 const { goToPage, changePageSize, routerPush, leaseView } = vi.hoisted(() => ({
   goToPage: vi.fn(), changePageSize: vi.fn(), routerPush: vi.fn(),

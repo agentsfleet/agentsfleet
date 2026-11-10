@@ -7,7 +7,7 @@
 
 [`data_flow.md`](./data_flow.md) traces an event through it; this file is the structural picture.
 
-Read this when a spec touches the `agentsfleet-runner` binary, the `/v1/runners` control protocol, runner registration, the node fleet, or assignment, fencing and reclaim.
+Read this when a spec touches the `agentsfleet-runner` binary, the `/v1/admin/runners` control protocol, runner registration, the node fleet, or assignment, fencing and reclaim.
 
 ---
 
@@ -23,7 +23,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the lease reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
 | Lost wake recovery | next eligible lease poll | every poll probes PostgreSQL, with or without a wake notification | §Failure recovery model |
-| Runner datastore credentials | zero | no runner crate links `sqlx` or `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
+| Runner datastore credentials | zero | no runner crate links `sqlx` or `redis`; the only platform surface is `/v1/admin/runners` + `agt_r` | §The split |
 | Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Fleet** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
@@ -123,7 +123,7 @@ Everything below follows from that one decision. Read the guarantees before the 
 | **At-most-once durable effect** | A reclaimed or duplicate runner cannot double-write state. | Every lease carries a monotonic `fencing_token`; `report` verifies it in the same atomic statement that flips the lease to `reported`. A stale holder's report is rejected (`UZ-RUN-005`). |
 | **Secrets never leave the trust boundary** | Tenant credentials are never written to a runner's disk, logs, or cache. | `secrets_map` rides the lease inline over Transport Layer Security (TLS), is substituted at send time by the supervisor's egress guard outside every sandbox, and is never saved runner-side ([Runner runtime](./runner_execution.md) §Credentials). |
 | **Tool calls are always sandboxed** | No tenant program ever runs un-isolated. | A lease offered a tool that runs in a sandbox gets one under bubblewrap, Landlock, seccomp and its own cgroup; a sandbox that cannot be built fails **closed**: the turn never runs and the lease reports `fleet_error` as `startup_posture`. A lease whose tools all run in the supervisor starts none. |
-| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Dragonfly, or the Vault. | No runner crate links `sqlx` or `redis` ([`runner_execution.md`](./runner_execution.md) §Crates); the only platform surface the runner reaches is the authenticated `/v1/runners` protocol carrying a `agt_r` token. |
+| **The runner holds no datastore credentials** | A compromised or untrusted host cannot reach Postgres, Dragonfly, or the Vault. | No runner crate links `sqlx` or `redis` ([`runner_execution.md`](./runner_execution.md) §Crates); the only platform surface the runner reaches is the authenticated `/v1/admin/runners` protocol carrying a `agt_r` token. |
 
 ### Runners are cattle, not pets
 
@@ -205,11 +205,11 @@ The pre-cutover runtime ran one `agentsfleetd` binary as `serve` (the HTTP API) 
 
 2. **The connection budget grew with the fleet**. Every per-fleet thread held a dedicated blocking datastore connection, so the connection pool ceiling capped the fleet count, not compute.
 
-The cutover moved running onto arbitrary hosts (bare metal, a Mac, a pod) that hold **no datastore credentials**. They reach the platform only over the authenticated `/v1/runners` protocol.
+The cutover moved running onto arbitrary hosts (bare metal, a Mac, a pod) that hold **no datastore credentials**. They reach the platform only over the authenticated `/v1/admin/runners` protocol.
 
 ## The split: two binaries, no sidecar
 
-- **`agentsfleetd`** — the control plane. Owns Postgres, Dragonfly, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/runners` endpoints claim inbound work from `fleet.admissions`; `XREADGROUP` and `XACK` remain on the separate outbound delivery queue.
+- **`agentsfleetd`** — the control plane. Owns Postgres, Dragonfly, the Vault API, the HTTP API, and work assignment, fencing and reclaim. Its `/v1/admin/runners` endpoints claim inbound work from `fleet.admissions`; `XREADGROUP` and `XACK` remain on the separate outbound delivery queue.
 
 - **`agentsfleet-runner`** — the host-resident runner plane, one Rust binary. A trusted supervisor runs the lease loop and the agent loop, and each lease that runs a tool in a sandbox gets one. It holds zero datastore credentials and talks to `agentsfleetd` only over Hypertext Transfer Protocol Secure (HTTPS), carrying a `runner_token`.
 
@@ -225,17 +225,17 @@ The sandbox is the same binary's `sandbox` entry, bound read-only into it. There
 
 The build graph keeps datastore crates outside the runner. [Runner process model](runner_execution.md#crates) owns the shared crate list, including cryptography for encrypted private reports.
 
-The frozen `/v1/runners` wire types live in `af_wire`. The knobs both planes key off (`LEASE_TTL` and friends) live in `af_core`, and both binaries build them. The control plane's lease, fence, reclaim, assignment and sweeper code is `afd_fleet`, `afd_runner` and `afd_api_runner`, built only into `agentsfleetd`.
+The frozen `/v1/admin/runners` wire types live in `af_wire`. The knobs both planes key off (`LEASE_TTL` and friends) live in `af_core`, and both binaries build them. The control plane's lease, fence, reclaim, assignment and sweeper code is `afd_fleet`, `afd_runner` and `afd_api_runner`, built only into `agentsfleetd`.
 
 The runner's supervisor, agent loop, tool catalog, outbound guard, in-sandbox server and sandbox engine are the `afr_*` crates under `rustd/crates/`. They import nothing from the control plane.
 
-## The control protocol: `/v1/runners`
+## The control protocol: `/v1/admin/runners`
 
 `agentsfleetd` translates the runner's calls into the Postgres writes and Dragonfly stream operations the worker did directly. The runner never sees a datastore.
 
 The routes, their methods and their request and reply shapes are in the API reference's **Runner plane** group on docs.agentsfleet.net. That group is generated from `public/openapi.json`. The enrolment route sits in its **Fleet** group; this doc does not restate them.
 
-The shape that matters here has one enrolment route, `POST /v1/runners`, called by an operator (§Registering a runner). Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
+The shape that matters here has one enrolment route, `POST /v1/admin/runners`, called by an operator (§Registering a runner). Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
 
 `me` resolves from the token. No `runner_id` appears in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints.
 
@@ -261,7 +261,7 @@ A hold never delays a transition. The daemon's drain closes the doorbell the mom
 
 A runner needs a `agt_r` token before it can pull work. The **platform admin pre-mints it from the dashboard** and installs it on the host. The host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model).
 
-The admin opens **dashboard → Admin → Runners → "Add runner"**, and a session-authed server action calls `POST /v1/runners`. `agentsfleetd` mints the `agt_r` and reveals it **once** (copy-to-clipboard, then dropped from the browser). The admin drops it into the host's vault or its `AGENTSFLEET_RUNNER_TOKEN` env var.
+The admin opens **dashboard → Admin → Runners → "Add runner"**, and a session-authed server action calls `POST /v1/admin/runners`. `agentsfleetd` mints the `agt_r` and reveals it **once** (copy-to-clipboard, then dropped from the browser). The admin drops it into the host's vault or its `AGENTSFLEET_RUNNER_TOKEN` env var.
 
 No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the runner validates the `agt_r` prefix and fails loud rather than looping on a silent 401.
 
@@ -272,7 +272,7 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
 ```text
  platform admin                                          agentsfleetd
  (dashboard session carrying runner:enroll)
-   | "Add runner" server action -> POST /v1/runners   GATE 1 - who may enroll:
+   | "Add runner" server action -> POST /v1/admin/runners   GATE 1 - who may enroll:
    |   Authorization: Bearer <session-JWT>           runner:enroll scope required
    |   { host_id, assigned_policy{sandbox_tier,     (tenant admin / agt_t -> 403)
    |     network_policy, registry_allowlist[],
@@ -291,7 +291,7 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
    |      eligibility: assigned tier + scope + secret_delivery   GATE 3 - blast radius
 ```
 
-`agentsfleetd` owns the Postgres pool, the Dragonfly pool, and the Vault API. `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/fleets/runners/{id} {"action":"rotate"}`.
+`agentsfleetd` owns the Postgres pool, the Dragonfly pool, and the Vault API. `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/admin/runners/{id} {"action":"rotate"}`.
 
 The write swaps `token_hash` and appends an actor-attributed event atomically. The write returns the replacement token once, and makes the old token fail the next auth read.
 
@@ -299,7 +299,7 @@ Revoking instead sets `status='revoked'` (M84_002) so every later call gets a 40
 
 ## Assigned policy and reconciliation (M148)
 
-Configuration flows **down**. Sandbox tier, network policy, registry allowlist and worker count are attributes the control plane ASSIGNS to the runner row. They are written at enrollment and changed through `PATCH /v1/fleets/runners/{id} {assigned_policy}`.
+Configuration flows **down**. Sandbox tier, network policy, registry allowlist and worker count are attributes the control plane ASSIGNS to the runner row. They are written at enrollment and changed through `PATCH /v1/admin/runners/{id} {assigned_policy}`.
 
 Each one rides the runner's identity on the enrollment read and on **every heartbeat reply**. A dashboard change so reaches the host within one beat, and nobody visits the host.
 
@@ -375,7 +375,7 @@ A Kubernetes-style `status` plus `conditions` JSONB split is adopted **only if**
 
 ### Operator plane + reassignment
 
-Operators read runners through `GET /v1/fleets/runners` and change them through `PATCH /v1/fleets/runners/{id}`. The read derives liveness and excludes token hashes. Lifecycle changes append actor-attributed runner events.
+Operators read runners through `GET /v1/admin/runners` and change them through `PATCH /v1/admin/runners/{id}`. The read derives liveness and excludes token hashes. Lifecycle changes append actor-attributed runner events.
 
 A runner can hold multiple active leases. Busy status derives from live leases; the server counts fleet and authoring occupancy under the runner-row lock before granting capacity. [Authoring leases](#authoring-leases) describes the shared limit.
 
@@ -457,7 +457,7 @@ Access to the runner-domain tables (`runner.runners`, `runner.leases`, `runner.f
 
 ```text
    caller (Clerk JWT, runner:enroll)                  runner (agt_r token, NO db creds)
-        |  GET/POST /v1/fleet, /v1/runners                  |  POST /v1/runners/me/leases
+        |  GET/POST /v1/fleet, /v1/admin/runners                  |  POST /v1/runners/me/leases
         v                                                   v
    +-------------------------------------------------------------------------+
    | agentsfleetd                                                            |
@@ -472,7 +472,7 @@ Access to the runner-domain tables (`runner.runners`, `runner.leases`, `runner.f
 
 Three load-bearing facts:
 
-1. **The runner never authenticates to Postgres.** It holds zero datastore credentials and reaches the platform only over `/v1/runners`. `agentsfleetd` writes every `runner.*` row *on the runner's behalf*, connecting as `api_runtime`.
+1. **The runner never authenticates to Postgres.** It holds zero datastore credentials and reaches the platform only over `/v1/admin/runners`. `agentsfleetd` writes every `runner.*` row *on the runner's behalf*, connecting as `api_runtime`.
 
    The runner schema slots grant those tables to `api_runtime` only. They never mention `worker_runtime`, dead substrate removed wholesale in the worker-substrate retirement workstream.
 
@@ -546,7 +546,7 @@ The memory tools run in the supervisor. A sandbox therefore holds **no** `agt_r`
 
 The run's working store is `afr_memory::Hydrated`, in the supervisor's memory, with no on-disk file.
 
-Durability is the supervisor's job, over the same `agt_r` `/v1/runners` plane that already carries leases and reports. Two fencing-verified routes carry it, `hydrate` and `capture` under `/v1/runners/me/memory/{fleet_id}`, plus a capped recall (API reference › Runner plane).
+Durability is the supervisor's job, over the same `agt_r` `/v1/admin/runners` plane that already carries leases and reports. Two fencing-verified routes carry it, `hydrate` and `capture` under `/v1/runners/me/memory/{fleet_id}`, plus a capped recall (API reference › Runner plane).
 
 Capture writes under `SET ROLE memory_runtime` ([memory.md](./memory.md) §2, Isolation).
 

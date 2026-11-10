@@ -2,7 +2,7 @@ import { request } from "./client";
 
 import { walkList } from "./list-walk";
 
-import { QUERY_STARTING_AFTER } from "./runners";
+import { QUERY_STARTING_AFTER } from "./paging";
 import { DEFAULT_SORT } from "./api-keys-types";
 import type { ApiKeySort } from "./api-keys-types";
 
