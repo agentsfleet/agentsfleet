@@ -22,7 +22,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Stale-writer rejection | `UZ-RUN-005` | `report` verifies the monotonic `fencing_token` in the same atomic statement that flips the lease | §System guarantees |
 | Sandbox failure fails closed | `startup_posture` | the turn never runs; the lease reports `fleet_error` naming why, and nothing runs unsandboxed in its place | §System guarantees |
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
-| Lost wake recovery | next eligible lease poll | every poll probes PostgreSQL, with or without a wake notification | §Failure recovery model |
+| Lost wake recovery | next offer pass or 5-second recovery probe | every claim pass probes PostgreSQL, with or without a wake notification | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `redis`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
 | Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Fleet** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
@@ -133,7 +133,7 @@ There is no runner the fleet cannot lose. Sticky routing (below) is a *performan
 
 ## Failure recovery model
 
-A runner's work becomes eligible when its slot expires. Another eligible runner must still poll; recovery time depends on available capacity and fleet selection.
+A runner's work becomes eligible when its slot expires. The next offer pass or 5-second recovery probe offers it to another eligible runner; recovery time depends on capacity and fleet selection.
 
 | Failure | Recovery | Durable guard |
 |---|---|---|

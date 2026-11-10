@@ -65,7 +65,7 @@ Everything below is the full reference. Headings are stable because specs cite t
 
 The per-fleet dedicated datastore connection is gone; `lease` reads non-blocking on a shared socket.
 The binding constraint is now `agentsfleetd` API replicas plus Postgres write throughput on the lease/report hot path, both horizontally scalable.
-Idle request volume follows **runner poll cadence** rather than fleet population.
+An idle runner sends only heartbeats and pings; each replica adds one recovery probe every 5 seconds.
 
 Every current number is in the Facts table at the top of this page.
 
