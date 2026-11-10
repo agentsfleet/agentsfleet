@@ -167,7 +167,73 @@ async fn issue_received(
         .expect("the claim is still held")
 }
 
+/// Another fleet's lease, held by the same runner as a [`Held`].
+pub(crate) struct Other {
+    pub(crate) lease: Uuid7,
+    pub(crate) fleet: Uuid7,
+    pub(crate) tenant: Uuid7,
+    pub(crate) workspace: Uuid7,
+}
+
+/// Room for every lease a test hands one host.
+const HOST_WORKERS: i32 = 8;
+
 impl Held {
+    /// Another fleet's lease, claimed and issued by this runner, in the same
+    /// database: one host's renewal frame names every lease it holds (M245 §7).
+    pub(crate) async fn hold_another(&self) -> Other {
+        sqlx::query("UPDATE runner.runners SET worker_count = $2 WHERE id = $1")
+            .bind(&self.runner)
+            .bind(HOST_WORKERS)
+            .execute(
+                &mut *self
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("a pooled connection"),
+            )
+            .await
+            .expect("the host takes several leases");
+        let Seeded { fleet, tenant, .. } =
+            seeded_for::<2>(&self.fixtures, ACTOR, REQUEST_JSON).await;
+        // The first fleet's placement tag, so this runner may place the second.
+        sqlx::query(
+            "UPDATE fleet.fleets SET required_tags = \
+             (SELECT required_tags FROM fleet.fleets WHERE id = $2) WHERE id = $1",
+        )
+        .bind(&fleet)
+        .bind(&self.fleet)
+        .execute(
+            &mut *self
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("a pooled connection"),
+        )
+        .await
+        .expect("the second fleet takes the first's placement tag");
+        self.fixtures.seed_wallet(&tenant, DEEP_POOL).await;
+        let acquired = crate::seed::select_fleet(&self.leases, &self.runner, &fleet)
+            .await
+            .expect("the second fleet is leasable");
+        let issued = issue_received(
+            &self.leases,
+            &self.runner,
+            &acquired,
+            &tenant,
+            self.fixtures.enrolled_at(),
+        )
+        .await;
+        Other {
+            lease: issued.lease_id,
+            fleet,
+            tenant,
+            workspace: acquired.workspace_id,
+        }
+    }
+
     /// What the billing relay does for this lease: charge every line it left
     /// unsettled. Scoped to the lease, so a test on the shared database never
     /// settles another test's lines.

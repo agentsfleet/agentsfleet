@@ -2,7 +2,6 @@
 
 use af_core::error_code;
 use af_core::test_util::trace::Capture;
-use af_crypto::entropy::Entropy;
 use afd_db::test_util::unreachable_db;
 
 use afd_fleet::lease::billing_sweep::BillingSwept;
@@ -158,13 +157,7 @@ async fn a_lease_pass_with_no_datastore_waits_for_it() {
     let biller = crate::billing::biller(database.clone());
     let capture = Capture::install();
 
-    sweep_leases(
-        &database,
-        biller.as_ref(),
-        &Entropy::new(),
-        &std::sync::Mutex::new(None),
-    )
-    .await;
+    sweep_leases(&database, biller.as_ref(), &std::sync::Mutex::new(None)).await;
 
     assert_eq!(
         capture.only(FAILED).field("error_code"),

@@ -189,6 +189,9 @@ pub(crate) struct SessionServices {
     cache: cache::LeaseCache,
     output: StreamWriters,
     accepted: AcceptedKinds,
+    /// Renewal frames this session has answered, for
+    /// [`afd_fleet::lease::renew::funds_due`]'s cadence.
+    renewal_ticks: std::sync::atomic::AtomicU64,
 }
 
 pub(crate) async fn open(

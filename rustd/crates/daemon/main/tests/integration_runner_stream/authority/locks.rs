@@ -38,10 +38,15 @@ impl HostLock {
     pub(super) async fn blocked(&self, run: &Scenario) -> TestResult<i32> {
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
+                // The issue's exclusive host lock, or a host's renewal
+                // statement, which reads the host row FOR SHARE (M245 §7).
+                // `pg_stat_activity` keeps only the first kilobyte of a
+                // statement, so the renewal is matched by its opening line.
                 let waiting: Option<i32> = sqlx::query_scalar(
                     "SELECT pid FROM pg_stat_activity \
-                     WHERE $1=ANY(pg_blocking_pids(pid)) AND query LIKE '%AS authorized%' \
-                     AND query LIKE '%FOR UPDATE%' LIMIT 1",
+                     WHERE $1=ANY(pg_blocking_pids(pid)) \
+                       AND ((query LIKE '%AS authorized%' AND query LIKE '%FOR UPDATE%') \
+                            OR query LIKE '-- One host''s renewals in one statement%') LIMIT 1",
                 )
                 .bind(self.blocker)
                 .fetch_optional(&mut *run.booted.database.acquire().await?)

@@ -157,6 +157,7 @@ fn assert_supervises_every_task(supervisor: &Supervisor) {
             agentsfleetd::sweepers::TASKS,
             agentsfleetd::sweepers::TASK_STORAGE,
             agentsfleetd::sweepers::BILLING,
+            agentsfleetd::sweepers::EXPIRY,
             agentsfleetd::inventory::BUS_SHUTDOWN,
             agentsfleetd::inventory::OUTBOUND_WORKER,
             "runner_stream_scheduler",

@@ -26,6 +26,8 @@ pub struct Leases {
     authority: Option<afd_runner::capacity::authority::Authority>,
     /// Parsed definitions by revision id, shared by every clone of this store.
     definitions: crate::lease::cache::Definitions,
+    /// Price books by model and catalogue version, shared the same way.
+    prices: crate::lease::cache::PriceBooks,
 }
 
 impl Leases {
@@ -40,7 +42,13 @@ impl Leases {
             ticket: None,
             authority: None,
             definitions: crate::lease::cache::Definitions::default(),
+            prices: crate::lease::cache::PriceBooks::default(),
         }
+    }
+
+    /// The price books this replica holds, by model and catalogue version.
+    pub(crate) const fn prices(&self) -> &crate::lease::cache::PriceBooks {
+        &self.prices
     }
 
     /// The parsed definitions this replica holds, by revision id.
@@ -66,6 +74,19 @@ impl Leases {
             Some(authority) => afd_runner::capacity::lock(tx, (runner, authority)).await?,
             None => afd_runner::capacity::lock(tx, runner).await?,
         })
+    }
+
+    /// The connection's proof for `runner`: its credential digest and
+    /// connection, or none for a trusted domain call.
+    pub(crate) fn host_proof<'a>(
+        &'a self,
+        runner: &'a af_core::id::Uuid7,
+    ) -> (Option<&'a str>, Option<&'a af_core::id::Uuid7>) {
+        let (_runner, digest, connection) = match &self.authority {
+            Some(authority) => afd_runner::capacity::proof((runner, authority)),
+            None => afd_runner::capacity::proof(runner),
+        };
+        (digest, connection)
     }
 
     /// Lock the runner row and prove its owner, leaving the census to the

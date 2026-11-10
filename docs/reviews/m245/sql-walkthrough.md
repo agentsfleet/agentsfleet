@@ -15,7 +15,8 @@ one chat                         the SQL that now does the step
 claim ──────────────────────────► lease/claim_admission_head.sql   §4  one statement
 gates ──────────────────────────► select_gates.sql                 §5  one read
 issue ──────────────────────────► lease/insert_lease_with_event.sql §5 one statement
-renew (every 5 s) ──────────────► meter_lease.sql                  §6 numbering, §7 batches
+renew (every 5 s) ──────────────► select_renewals.sql + renew_batch.sql   §7  two per host per tick
+                                  (meter_lease.sql: durable-task leases and the fallback only)
 expiry ─────────────────────────► bill_expired_slice.sql           §6 numbering
 report ─────────────────────────► commit_report.sql                §6  one statement
 task notice (durable tasks only) ► apply_report_notice.sql          §6
@@ -45,6 +46,9 @@ task notice (durable tasks only) ► apply_report_notice.sql          §6
 | `afd_billing/src/report/sql/charges.sql` | edited | §11 |
 | `afd_fleet/src/task/decision/sql/sequence.sql` | edited | §11 |
 | `afd_fleet/src/task/sql/bind_lease.sql` | edited | §11 |
+| `afd_fleet/src/lease/sql/select_renewals.sql` | added | §7 |
+| `afd_fleet/src/lease/sql/select_revision_documents.sql` | added | §7 |
+| `afd_fleet/src/lease/sql/renew_batch.sql` | added | §7 |
 
 Every statement file is prepared against the rebuilt schema by
 `afd_db`'s `test_every_sql_file_prepares`, which passed on the §6 commit.
@@ -282,6 +286,45 @@ reads the runtime the report statement metered, so it runs after.
 
 - **`insert_runner_event.sql`:** one `INSERT` of the release audit row; now `commit_report.sql`'s `audit` block.
 - **`select_run_tokens.sql`:** the token sums over a lease's lines; now the `LATERAL` at `commit_report.sql:241-251`, plus this statement's own lines.
+
+## §7 — `afd_fleet/src/lease/sql/select_renewals.sql` (added)
+
+The pre-read a host's renewal frame needs before its statement, for every lease
+it names at once.
+
+| Lines | What and why |
+|---|---|
+| 1-7 | header: why each fact is read, and that `renew_batch.sql` guards every fact it acts on. |
+| 8-10 | Each lease's status, cancel mark, payer, fleet, posture, provider, model and task, and when it began: the daemon prices request lines in Rust and routes a task lease to the per-lease path. |
+| 10-12 | The fleet's head revision (whose definition holds the ceilings) and the catalogue version, which key the definitions and price-book caches. |
+| 13-15 | Only the leases named, and only this runner's: another runner's lease answers not found. |
+
+## §7 — `afd_fleet/src/lease/sql/select_revision_documents.sql` (added)
+
+| Lines | What and why |
+|---|---|
+| 1-7 | The setup documents of the revisions the definitions cache missed, in one read for all of them. A warm cache never runs it. |
+
+## §7 — `afd_fleet/src/lease/sql/renew_batch.sql` (added)
+
+One host's renewals in one statement. Each lease is judged on its own; a lease
+that fails a check extends nothing and changes no other lease's answer.
+
+| Lines | Block | What and why |
+|---|---|---|
+| 1-31 | header | Lock order (host shared, slot, lease), why the host row is shared and never exclusive, why a task lease is refused here, the guards, the `$1-$37` map. |
+| 32-37 | `asked` | The per-lease arrays as rows: priced-at facts, runtime price and line id, ceilings and the revision they came from. |
+| 38-49 | `host` | The host row `FOR SHARE` (49): renewable state, not degraded, the opening's credential and connection (42-43, `lock_host.sql`'s `authorized`), occupancy within `worker_count`. Shared so renewals never wait on each other; a credential rotation updating the row fences every renewal behind it, which then re-reads the new credential and refuses the old connection. The states come from `afd_runner::capacity::renewable_states()`, the list the locked check reads too. |
+| 50-57 | `locked_slot` | `FOR UPDATE` on each lease's slot, in fleet order (56), so two statements never wait on each other in a cycle. |
+| 58-68 | `probe` | `FOR UPDATE` on each lease, in the same order (67), reading its fence, deadlines, cursor, cancel mark and task. |
+| 69-71 | `instant` | The instant every deadline is judged at, read once the locks are held. |
+| 72-91 | `catalogue`, `floors`, `spend` | The current catalogue version, and each budgeted fleet's day and month spend, windowed and floored as `select_fleet_spend.sql` does. |
+| 92-120 | `judged` | Every check as its own column, so the caller tells each refusal apart: the fence and deadlines; below the hard cap; priced as held, with `$6` `NULL` for a lease priced from no catalogue; ceilings current against the head revision (103); spend at or above a ceiling (107, reached as `budget::covers` reads it); the host (111); an unsettled admission. |
+| 121-129 | `guard` | The leases every check passed, with the slice's milliseconds capped as the rater caps them. |
+| 130-138 | `runtime` | Each passing lease's runtime line, numbered by its slice's start (134) and charged in integers, rounded up. |
+| 139-150 | `moved`, `slot` | Both deadlines move to the same capped instant, under the lease's fence. |
+| 151-181 | `lines` | The request lines (`unnest`, kind `$31`, `model`) and the runtime lines (kind `$32`) of passing leases, keyed `(work_type, work_id, kind, seq)` (179). |
+| 182-195 | final rows | One row per lease asked about: each check, the new deadline, whether the slot moved too (190: a lease whose slot did not move is lost, never extended past a reclaim), and what its lines charged. |
 
 ## Identifiers
 

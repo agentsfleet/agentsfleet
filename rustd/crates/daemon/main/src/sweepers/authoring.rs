@@ -33,7 +33,9 @@ pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Anal
 /// One maintenance pass, logged: what it advanced, or that its store is gone
 /// and the next tick retries.
 async fn maintain(drafts: &afd_authoring::Drafts) {
-    match drafts.maintain().await {
+    // Attempt expiry runs on `sweeper:expiry`'s clock; this one keeps the
+    // privacy purges and the replay receipts.
+    match drafts.housekeep().await {
         Ok(counts) if counts != afd_authoring::Maintenance::default() => {
             tracing::info!(
                 event = COMPLETED,

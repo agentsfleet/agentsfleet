@@ -108,6 +108,8 @@ mod integration_memory_hydrate_order;
 mod integration_money_gates;
 #[path = "integration_money_gates_debt.rs"]
 mod integration_money_gates_debt;
+#[path = "integration_renew_batch.rs"]
+mod integration_renew_batch;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage/mod.rs"]

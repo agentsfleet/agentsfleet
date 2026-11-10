@@ -55,17 +55,9 @@ impl Pricing {
         model: &str,
         lease_id: &str,
     ) -> Self {
-        let read = async {
-            if posture == Posture::SelfManaged {
-                return Ok(PriceBook::default());
-            }
-            let mut connection = database.acquire().await?;
-            PriceBook::load(&mut *connection, provider, model)
-                .await
-                .map_err(crate::Error::from)
-        }
-        .await;
-        let book = read.unwrap_or_else(|fault| {
+        let book = Self::read_book(database, posture, provider, model)
+            .await
+            .unwrap_or_else(|fault| {
             let Logged { error_code, reason } = fault.logged();
             tracing::warn!(
                 error_code,
@@ -76,6 +68,40 @@ impl Pricing {
             );
             PriceBook::default()
         });
+        Self::of(book, posture, provider, model)
+    }
+
+    /// The pricing for `posture`, `provider` and `model`, or the fault that
+    /// kept its book from being read, for a cache that must not keep a failure.
+    ///
+    /// # Errors
+    /// A datastore that would not answer, or a catalogue row it cannot read.
+    pub(crate) async fn try_load(
+        database: &Db,
+        posture: Posture,
+        provider: &str,
+        model: &str,
+    ) -> Result<Self> {
+        let book = Self::read_book(database, posture, provider, model).await?;
+        Ok(Self::of(book, posture, provider, model))
+    }
+
+    async fn read_book(
+        database: &Db,
+        posture: Posture,
+        provider: &str,
+        model: &str,
+    ) -> Result<PriceBook> {
+        if posture == Posture::SelfManaged {
+            return Ok(PriceBook::default());
+        }
+        let mut connection = database.acquire().await?;
+        PriceBook::load(&mut *connection, provider, model)
+            .await
+            .map_err(crate::Error::from)
+    }
+
+    fn of(book: PriceBook, posture: Posture, provider: &str, model: &str) -> Self {
         Self {
             book,
             posture,

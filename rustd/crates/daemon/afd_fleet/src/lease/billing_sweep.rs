@@ -97,6 +97,11 @@ impl BillingSwept {
 /// Reports a datastore that would not answer a read. A biller that refuses one
 /// settlement is counted, not raised: the rest of the batch still runs, and
 /// the next pass retries what failed.
+///
+/// Both halves of a tick in one pass, as a test drives one: the daemon runs
+/// [`bill_expired_leases`] on `sweeper:expiry`'s clock and [`settle_lines`] on
+/// the billing relay's (M245 §7).
+#[cfg(feature = "test-util")]
 pub async fn sweep(
     database: &Db,
     biller: &dyn Biller,
@@ -104,16 +109,51 @@ pub async fn sweep(
     now: Timestamp,
     after: Option<&Resume>,
 ) -> Result<BillingSwept> {
+    let expired = bill_expired_leases(database, biller, entropy, now).await?;
+    let settled = settle_lines(database, biller, after).await?;
+    Ok(BillingSwept {
+        expired_billed: expired.expired_billed,
+        expired_settle_failures: expired.expired_settle_failures,
+        refused: expired.refused.or(settled.refused),
+        ..settled
+    })
+}
+
+/// Bills the last slice of every lease expired past [`GRACE`]: what
+/// `sweeper:expiry` runs every [`af_core::timing::EXPIRY_TICK`].
+///
+/// # Errors
+/// Reports a datastore that would not answer the candidate read.
+pub async fn bill_expired_leases(
+    database: &Db,
+    biller: &dyn Biller,
+    entropy: &Entropy,
+    now: Timestamp,
+) -> Result<BillingSwept> {
     let mut swept = BillingSwept::default();
     bill_expired(database, biller, entropy, now, &mut swept).await?;
-    let lines = afd_billing::ledger::resettle(database, biller, after).await?;
-    swept.resettled = lines.settled;
-    swept.settle_failures = lines.failed;
-    swept.lines_full = lines.full;
-    swept.refused = swept.refused.or(lines.refused);
-    swept.resume = lines.resume;
-
     Ok(swept)
+}
+
+/// Settles one batch of unsettled lines after `after`: the billing relay's
+/// pass.
+///
+/// # Errors
+/// Reports a datastore that would not answer the line read.
+pub async fn settle_lines(
+    database: &Db,
+    biller: &dyn Biller,
+    after: Option<&Resume>,
+) -> Result<BillingSwept> {
+    let lines = afd_billing::ledger::resettle(database, biller, after).await?;
+    Ok(BillingSwept {
+        resettled: lines.settled,
+        settle_failures: lines.failed,
+        lines_full: lines.full,
+        refused: lines.refused,
+        resume: lines.resume,
+        ..BillingSwept::default()
+    })
 }
 
 /// Logs and settles the last slice of every lease that ended unreported.

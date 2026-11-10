@@ -30,3 +30,13 @@ pub const SELECT_LEASE_FOR_RENEW: &str = include_str!("select_lease_for_renew.sq
 
 /// Slot then lease lock order, retained until the renewal commits or is refused.
 pub const LOCK_CANCELLED: &str = include_str!("select_lease_cancelled.sql");
+
+/// A host's leases before its renewal statement: pricing facts, payer, task,
+/// cancel mark, start, head revision and catalogue version (M245 §7).
+pub const SELECT_RENEWALS: &str = include_str!("select_renewals.sql");
+
+/// Every renewal one host's frame names, in one statement (M245 §7).
+pub const RENEW_BATCH: &str = include_str!("renew_batch.sql");
+
+/// Setup documents for the revisions the definitions cache missed.
+pub const SELECT_REVISION_DOCUMENTS: &str = include_str!("select_revision_documents.sql");

@@ -39,6 +39,10 @@ pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
 /// window.
 pub const RENEWAL_TICK: Duration = Duration::from_secs(5);
 
+/// How often `sweeper:expiry` bills expired leases and expires lapsed setup
+/// attempts: one clock for every deadline pass (M245 §7).
+pub const EXPIRY_TICK: Duration = Duration::from_secs(2);
+
 /// Hard ceiling on one lease's total wall-clock, measured from the lease row's
 /// `created_at`.
 ///

@@ -27,7 +27,8 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
         native.ready().await;
         let offer = native.expect(StreamKind::Work, "offer").await;
         let (lease, _) = wire::claim(offer.pointer("/lease").expect("native response field"));
-        let (host, blocker) = hold_host(&run).await;
+        // The renewal takes no host lock (M245 §7); it waits on its fleet's slot.
+        let (host, blocker) = hold_slot(&run, &lease).await;
         native
             .send(
                 StreamKind::Control,
@@ -37,7 +38,7 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
                 }),
             )
             .await;
-        wait_for_host_wait(&run, blocker).await;
+        wait_for_slot_wait(&run, blocker).await;
         let drain = run.booted.drain.clone();
         let settled = tokio::spawn(async move { drain.settle(DRAIN_TIMEOUT).await });
         run.booted.drain.accepting().cancelled().await;
@@ -69,7 +70,7 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
     }
 }
 
-async fn hold_host(run: &Scenario) -> (Transaction<'static, Postgres>, i32) {
+async fn hold_slot(run: &Scenario, lease: &str) -> (Transaction<'static, Postgres>, i32) {
     let mut host = Transaction::begin(
         run.booted
             .database
@@ -84,17 +85,19 @@ async fn hold_host(run: &Scenario) -> (Transaction<'static, Postgres>, i32) {
         .fetch_one(&mut *host)
         .await
         .expect("owned blocker identity");
-    let held: af_core::id::Uuid7 =
-        sqlx::query_scalar("SELECT id FROM runner.runners WHERE id=$1 FOR UPDATE")
-            .bind(&run.runner_id)
-            .fetch_one(&mut *host)
-            .await
-            .expect("hold enrolled host");
-    assert_eq!(held, run.runner_id);
+    let lease = af_core::id::Uuid7::parse(lease).expect("the offer names a lease");
+    let _held: af_core::id::Uuid7 = sqlx::query_scalar(
+        "SELECT s.fleet_id FROM runner.fleet_slots s JOIN runner.leases l ON l.fleet_id = s.fleet_id \
+         WHERE l.id = $1 FOR UPDATE OF s",
+    )
+    .bind(&lease)
+    .fetch_one(&mut *host)
+    .await
+    .expect("hold the lease's slot");
     (host, blocker)
 }
 
-async fn wait_for_host_wait(run: &Scenario, blocker: i32) {
+async fn wait_for_slot_wait(run: &Scenario, blocker: i32) {
     tokio::time::timeout(STREAM_ANSWER_TIMEOUT, async {
         loop {
             let waiting: bool = sqlx::query_scalar(
@@ -111,5 +114,5 @@ async fn wait_for_host_wait(run: &Scenario, blocker: i32) {
         }
     })
     .await
-    .expect("renewal reaches the held host lock");
+    .expect("renewal reaches the held slot lock");
 }
