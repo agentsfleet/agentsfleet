@@ -12,7 +12,7 @@ use super::raw::Native;
 use crate::{e2e::scenario, wire};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_report_resent_after_a_native_cut_is_charged_once() {
     for transport in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();

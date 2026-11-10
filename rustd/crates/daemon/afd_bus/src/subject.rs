@@ -11,6 +11,9 @@ pub enum Subject {
     Wake(u16),
     /// Recheck or cancellation for one runner host.
     RunnerCommand(Uuid7),
+    /// An owed outbound answer was committed; a worker should claim now
+    /// rather than at its next pass. Lossy: a missed ping costs one pass.
+    OutboundWake,
 }
 
 impl Subject {
@@ -22,6 +25,7 @@ impl Subject {
             Self::DraftEvents(_) => "draft_events",
             Self::Wake(_) => "wake",
             Self::RunnerCommand(_) => "runner_command",
+            Self::OutboundWake => "outbound_wake",
         }
     }
 }

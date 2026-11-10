@@ -96,13 +96,12 @@ async fn single_pool(case: &Case) -> (Db, Tasks) {
     let tasks = Tasks::new(
         Leases::new(
             database.clone(),
-            case.held.fixtures.queue().clone(),
-            afd_bus::dragonfly::publisher(case.held.fixtures.queue().clone()),
+            case.held.fixtures.bus().clone(),
             Entropy::new(),
         ),
         Admissions::new(
             database.clone(),
-            afd_bus::dragonfly::publisher(case.held.fixtures.queue().clone()),
+            case.held.fixtures.bus().clone(),
             Entropy::new(),
         ),
         afd_fleet::task::TaskDependencies::from(&case.held.fixtures.plane()),

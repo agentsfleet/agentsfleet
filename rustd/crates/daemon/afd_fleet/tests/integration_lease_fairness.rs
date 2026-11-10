@@ -39,7 +39,7 @@ fn enrolment(fleet: &Uuid7) -> RegisterRequest<'static> {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_ineligible_work_cannot_hide_eligible_fleets() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (base, workspace, tenant) = seed::unique_ids();
     for _ in 0..HOT_FLEETS {
         let fleet = mint_id();
@@ -82,7 +82,7 @@ async fn test_ineligible_work_cannot_hide_eligible_fleets() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_one_notification_prioritizes_its_fleet_without_hiding_the_rest() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (first, workspace, tenant) = seed::unique_ids();
     let second = mint_id();
     let mut request = enrolment(&first);

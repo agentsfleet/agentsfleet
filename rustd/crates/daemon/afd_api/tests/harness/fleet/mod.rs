@@ -7,8 +7,8 @@ use super::*;
 use clients::{connectors, interjector, logins, schedules};
 
 /// One durable ledger shared by this fixture's admission producers.
-pub(crate) fn admissions(database: &Db, queue: &Dragonfly) -> afd_admission::Admissions {
-    afd_admission::Admissions::for_tests(database.clone(), queue.clone())
+pub(crate) fn admissions(database: &Db, bus: &afd_bus::Handle) -> afd_admission::Admissions {
+    afd_admission::Admissions::for_tests(database.clone(), bus.clone())
 }
 
 impl Fleet {
@@ -31,21 +31,17 @@ impl Fleet {
         fleet
     }
 
-    /// Keeps real pub/sub while setting the stream ceiling for the load ladder.
-    pub(crate) fn with_stream_capacity(
-        mut self,
-        hub: afd_dragonfly::SubscriptionHub,
-        capacity: usize,
-    ) -> Self {
-        self.runner_commands = afd_bus::test_util::with_hub(hub).expect("fixture bus");
-        self.live = Live::new(self.runner_commands.clone(), StreamLimit::new(capacity));
+    /// Streams through `bus` while setting the stream ceiling for the load ladder.
+    pub(crate) fn with_stream_capacity(mut self, bus: afd_bus::Handle, capacity: usize) -> Self {
+        self.runner_commands = bus.clone();
+        self.live = Live::new(bus, StreamLimit::new(capacity));
         self
     }
 
     fn stores(database: Db) -> Self {
         let Inputs {
             database,
-            queue,
+            bus,
             ledger,
             providers,
             mock_directory,
@@ -65,12 +61,12 @@ impl Fleet {
             capabilities,
             authenticator,
             runners: Runners::new(database.clone(), Entropy::new()),
-            runner_commands: afd_bus::dragonfly::publisher(queue.clone()),
+            runner_commands: bus.clone(),
             runner_lease_history: RunnerLeaseHistory::new(database.clone()),
             admin_models: AdminModels::new(database.clone(), Entropy::new()),
             platform_keys: PlatformKeys::new(database.clone()),
             leases: NoWork::default(),
-            tasks: tasks(&database, &queue, &ledger),
+            tasks: tasks(&database, &bus, &ledger),
             authoring: authoring.drafts,
             authoring_setup: authoring.setup,
             authoring_models: authoring.models,
@@ -81,10 +77,10 @@ impl Fleet {
             team: HarnessTeam::new(database.clone()),
             invite_mail: afd_mail::InviteMailer::new(vault(database.clone())),
             cli_credentials: CliCredentials::new(database.clone(), Entropy::new()),
-            logins: logins(&queue),
+            logins: logins(&database),
             fleets: clients::fleets(&database),
             secrets: vault(database.clone()),
-            connectors: connectors(&database, &queue),
+            connectors: connectors(&database),
             interjector: interjector(&database),
             signup_writeback: RecordingWriteback::accepting(),
             ingress: clients::ingress(&database, &ledger),
@@ -94,11 +90,7 @@ impl Fleet {
             signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
             identity_webhook_secret: None,
             preferences: Preferences::new(database.clone(), Entropy::new()),
-            approvals: Inbox::new(
-                database.clone(),
-                afd_bus::dragonfly::publisher(queue.clone()),
-                ledger.clone(),
-            ),
+            approvals: Inbox::new(database.clone(), bus, ledger.clone()),
             grants: IntegrationGrants::new(database.clone(), Entropy::new()),
             events: History::new(database.clone()),
             live: Live::detached(StreamLimit::new(DEFAULT_STREAM_CEILING)),
@@ -117,7 +109,7 @@ impl Fleet {
 /// Process-local dependency handles, created once before field assembly.
 struct Inputs {
     database: Db,
-    queue: Dragonfly,
+    bus: afd_bus::Handle,
     ledger: afd_admission::Admissions,
     providers: HarnessProviders,
     mock_directory: MockDirectory,
@@ -136,9 +128,8 @@ impl Inputs {
             capabilities.clone(),
             MockVerifier::refusing(VerifyError::NotConfigured),
         );
-        let queue =
-            Dragonfly::unreachable(&unreachable_queue()).expect("a lazy manager opens no socket");
-        let ledger = admissions(&database, &queue);
+        let bus = afd_bus::test_util::unreachable();
+        let ledger = admissions(&database, &bus);
         let providers = HarnessProviders::Live(Providers::new(
             database.clone(),
             Arc::new(Kek::from_bytes(FIXTURE_KEK)),
@@ -146,7 +137,7 @@ impl Inputs {
         ));
         Self {
             database,
-            queue,
+            bus,
             ledger,
             providers,
             mock_directory,
@@ -159,16 +150,11 @@ impl Inputs {
 
 fn tasks(
     database: &Db,
-    queue: &Dragonfly,
+    bus: &afd_bus::Handle,
     ledger: &afd_admission::Admissions,
 ) -> afd_fleet::task::Tasks {
     afd_fleet::task::Tasks::new(
-        afd_fleet::lease::Leases::new(
-            database.clone(),
-            queue.clone(),
-            afd_bus::dragonfly::publisher(queue.clone()),
-            Entropy::new(),
-        ),
+        afd_fleet::lease::Leases::new(database.clone(), bus.clone(), Entropy::new()),
         ledger.clone(),
         task_dependencies(database.clone()),
     )

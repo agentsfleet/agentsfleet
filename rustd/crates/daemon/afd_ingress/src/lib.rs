@@ -42,7 +42,7 @@
 //!   Scheme::verify_at       `af_webhook`, constant-time  (NOT this crate)
 //!      │
 //!      ▼
-//!   Ingress::deliver        claim + XADD, atomically, at most once
+//!   Ingress::deliver        admission ledger row, at most once
 //! ```
 //!
 //! The secret is read BEFORE the body is parsed and the body is parsed only

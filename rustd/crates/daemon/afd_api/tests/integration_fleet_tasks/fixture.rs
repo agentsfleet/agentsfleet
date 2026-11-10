@@ -54,19 +54,11 @@ impl<'lane> Tasks<'lane> {
     }
 
     pub(super) fn lifecycle(&self) -> afd_fleet::task::Tasks {
-        let queue = afd_dragonfly::Dragonfly::unreachable(&harness::unreachable_queue())
-            .expect("lazy task control queue");
-        let leases = afd_fleet::lease::Leases::new(
-            self.base.database.clone(),
-            queue.clone(),
-            afd_bus::dragonfly::publisher(queue.clone()),
-            Entropy::new(),
-        );
-        let admissions = afd_admission::Admissions::new(
-            self.base.database.clone(),
-            afd_bus::dragonfly::publisher(queue),
-            Entropy::new(),
-        );
+        let bus = afd_bus::test_util::unreachable();
+        let leases =
+            afd_fleet::lease::Leases::new(self.base.database.clone(), bus.clone(), Entropy::new());
+        let admissions =
+            afd_admission::Admissions::new(self.base.database.clone(), bus, Entropy::new());
         afd_fleet::task::Tasks::new(
             leases,
             admissions,

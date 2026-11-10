@@ -52,7 +52,7 @@ pub use self::daemon::{Daemon, Outcome, StopCause};
 pub use self::error::{BootFailure, Fault, MigrateFailure, Refusal};
 pub use self::identity::{Capabilities, Sessions};
 pub use self::inventory::{
-    ANALYTICS_FLUSH, BACKGROUND_TASKS, HUB_PUMP, OTLP_EXPORT, OUTBOUND_WORKER,
+    ANALYTICS_FLUSH, BACKGROUND_TASKS, BUS_SHUTDOWN, OTLP_EXPORT, OUTBOUND_WORKER,
 };
 pub use self::migrate::migrate;
 pub use self::plane::{Authenticator, ServingPlane, Shared};

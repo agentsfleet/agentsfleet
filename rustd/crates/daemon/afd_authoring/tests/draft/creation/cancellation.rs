@@ -34,7 +34,7 @@ async fn renamed(c: &Case, draft: &Uuid7, request: SaveFleet, name: &str) -> Sav
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn kill_restores_private_editing_and_replay_cannot_resurrect_the_fleet() {
     let c = Case::create().await;
     let (draft, request) = c.request("cancel-setup", Start::None).await;
@@ -74,7 +74,7 @@ async fn kill_restores_private_editing_and_replay_cannot_resurrect_the_fleet() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn stale_kill_does_not_cancel_a_newer_resource_revision() {
     let c = Case::create().await;
     let (_, request) = c.request("stale-kill", Start::None).await;

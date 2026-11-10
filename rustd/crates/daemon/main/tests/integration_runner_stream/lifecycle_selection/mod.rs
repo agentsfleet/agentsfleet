@@ -51,7 +51,7 @@ async fn owner(run: &Scenario) -> af_core::id::Uuid7 {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_stream_connects_through_an_environment_proxy_without_a_direct_http3_attempt() {
     let mut supervisor = agentsfleetd::supervisor::Supervisor::new();
     let run = crate::e2e::scenario(&mut supervisor).await;

@@ -86,7 +86,6 @@ fn show_banner(booted: &Booted) {
         &[
             format!("listening {}", booted.address),
             format!("postgres:{}", booted.database.role().tag()),
-            format!("redis:{}", booted.queue.role().tag()),
         ],
         std::process::id(),
     );

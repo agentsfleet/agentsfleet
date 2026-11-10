@@ -1,14 +1,15 @@
-//! A ledger handle a suite never reaches.
+//! A ledger handle whose every statement fails.
 //!
-//! The lane and backoff suites drive a FAKE queue and a poster that answers
-//! without a vendor, so no delivery ever reaches the obligation stamp. A lazy,
-//! unreachable pool is the honest handle to give them: it satisfies the type
-//! without opening a connection, and `sqlx` registers a lazy pool with the
-//! reactor without dialling anything.
+//! The lane suites drive claimed jobs straight into the lanes and a poster
+//! that answers without a vendor, so the only statements they reach are the
+//! ledger writes after a verdict: the attempt count, the stamp, the release.
+//! Each fails against this handle, which is what `lane_sharing.rs` grades: a
+//! stamp that cannot be recorded must not make the lane deliver twice. A lazy,
+//! unreachable pool satisfies the type without opening a connection, and `sqlx`
+//! registers a lazy pool with the reactor without dialling anything.
 //!
-//! Its own module rather than a copy in each suite, and deliberately NOT part
-//! of `outbound_harness` — that harness opens a real database, which is exactly
-//! what these two suites exist without.
+//! Its own module rather than a copy in each suite; the claim suites open a
+//! real database instead.
 
 use afd_db::Db;
 use afd_db::config::{DbRole, PoolConfig};

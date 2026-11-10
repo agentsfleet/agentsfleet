@@ -117,19 +117,11 @@ async fn a_spent_deployment_budget_refuses_new_work_and_still_answers_a_retry() 
 async fn the_ledger_reports_its_unsettled_rows_and_the_age_of_the_oldest() {
     let lane = EventsLane::open().await;
     // Notifications can fail without changing acceptance or backlog.
-    let unreachable = afd_dragonfly::Dragonfly::unreachable(
-        &afd_dragonfly::DragonflyConfig::from_url(
-            afd_dragonfly::DragonflyRole::Default,
-            "redis://127.0.0.1:1".to_owned(),
-        )
-        .with_request_timeout(std::time::Duration::from_millis(200)),
-    )
-    .expect("a pending handle is built without a socket");
-    let deferring = Admissions::for_tests(lane.database.clone(), unreachable);
+    let deferring = Admissions::for_tests(lane.database.clone(), afd_bus::test_util::unreachable());
     deferring
         .admit(admission(&lane, &delivery(&lane, "deferred")))
         .await
-        .expect("the row commits whatever the queue does");
+        .expect("the row commits whatever the bus does");
 
     let backlog = lane
         .admissions()

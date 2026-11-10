@@ -78,7 +78,7 @@ async fn mint(http: &reqwest::Client, run: &Scenario, lease: &str) -> (u16, Valu
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn authoring_lease_cannot_mint_a_runtime_credential_live_or_revoked() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -131,7 +131,7 @@ async fn authoring_lease_cannot_mint_a_runtime_credential_live_or_revoked() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_lease_id_that_is_not_an_identifier_is_a_bad_request_not_a_server_error() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

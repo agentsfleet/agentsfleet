@@ -102,8 +102,8 @@ const boundedInt = (name: string, min: number, max: number) =>
  * An identifier flag, checked before any request goes out.
  *
  * Canonical lowercase uuidv7, matching `af_core::id` on the server — an
- * uppercase alias is the same row in Postgres and a different key in
- * Dragonfly, so accepting one here would only move the refusal later.
+ * uppercase alias is the same row in Postgres and a different subject on
+ * the bus, so accepting one here would only move the refusal later.
  */
 const idFlag = (name: string, description: string) =>
   Flag.String(name).pipe(

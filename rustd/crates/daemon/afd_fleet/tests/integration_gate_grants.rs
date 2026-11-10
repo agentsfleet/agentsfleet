@@ -64,7 +64,7 @@ async fn test_only_approved_grants_reach_the_set() {
     // answered; `revoked` is a human who answered and then changed their mind.
     // Admitting either would mint a third-party token under an authority
     // nobody currently grants.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded { fleet, .. } = seeded::<0>(&fixtures).await;
     let grants = grant_ids();
     grant(&fixtures, &grants[0], &fleet, "github", "approved").await;
@@ -88,7 +88,7 @@ async fn test_only_approved_grants_reach_the_set() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_fleet_with_no_grants_holds_nothing_and_is_not_an_error() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded { fleet, .. } = seeded::<0>(&fixtures).await;
 
     let granted = fixtures
@@ -106,7 +106,7 @@ async fn test_another_fleets_grant_is_not_this_fleets() {
     // The row carries a `fleet_id` and the statement filters on it. Without
     // that predicate every fleet in a workspace would inherit every other
     // fleet's standing approvals.
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded { fleet: mine, .. } = seeded::<0>(&fixtures).await;
     let Seeded { fleet: theirs, .. } = seeded::<0>(&fixtures).await;
     grant(&fixtures, &grant_ids()[0], &theirs, "github", "approved").await;

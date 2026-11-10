@@ -1,4 +1,4 @@
-//! Two real daemons share the lane's Postgres and Dragonfly, with one fixture-owned operator.
+//! Two real daemons share the lane's Postgres and NATS, with one fixture-owned operator.
 
 use super::{TestResult, operator::Operator};
 use crate::e2e::{self, Scenario};
@@ -39,7 +39,7 @@ impl Fixture {
             &[],
         );
         let peer = boot(&environment, e2e::EPHEMERAL, &mut replica).await?;
-        let bus = afd_bus::dragonfly::publisher(run.booted.queue.clone());
+        let bus = run.booted.bus.clone();
         let mut fixture = Self {
             run,
             peer,

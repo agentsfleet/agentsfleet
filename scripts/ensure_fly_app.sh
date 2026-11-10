@@ -7,12 +7,9 @@
 #     scripts/ensure_fly_app.sh --create-only <app>
 #
 # The optional fourth argument is a path to the app's fly.toml, for an app
-# whose Dockerfile has to reach OUTSIDE its own directory. dragonfly-dev
-# copies scripts/dragonfly-cluster.sh, the same file the integration lane
-# runs, so its build context is the repository root while its configuration
-# stays in deploy/fly/dragonfly-dev/. Without it flyctl looks for fly.toml in
-# the context directory and would find the repository root's, which is not
-# one. Omitted, behaviour is exactly what it was.
+# whose build context is not the directory holding its configuration.
+# Without it flyctl looks for fly.toml in the context directory. Omitted,
+# behaviour is exactly what it was.
 #
 # CREATE-ONLY EXISTS BECAUSE OF AN ORDERING CONSTRAINT, not for symmetry. A
 # fresh app must exist before `flyctl secrets set --app` addresses it, and it

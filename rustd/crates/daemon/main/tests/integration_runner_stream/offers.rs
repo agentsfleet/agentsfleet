@@ -9,7 +9,7 @@ use crate::{
 use agentsfleetd::supervisor::Supervisor;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn admitted_work_reaches_an_idle_native_worker_without_a_lease_poll() {
     let mut supervisor = Supervisor::new();
     let mut run = scenario(&mut supervisor).await;

@@ -36,7 +36,7 @@ Together they cover the whole workspace. Continuous Integration (CI) runs each o
 
 A package-scoped runner, such as `cargo test -p af_wire` or `bun run test` inside a package, proves that package and nothing more. It never satisfies the repository claim.
 
-`make test-integration-rustd` needs live datastores, and so does the coverage lane that measures it (§Coverage). Docker compose brings up Postgres and Dragonfly, and the schemas reset per run.
+`make test-integration-rustd` needs live datastores, and so does the coverage lane that measures it (§Coverage). Docker compose brings up Postgres and three NATS nodes (`nats-1` to `nats-3`), and the schemas reset per run. NATS keeps nothing, so it needs no reset (`make/test-infra.mk`).
 
 No other lane needs either. `make test-unit-all` stays datastore-free, because every Rust test that needs one is `#[ignore]`d and runs only in those two lanes. `KEEP_TEST_STATE=1` skips the reset for the inner loop; CI never sets it.
 
@@ -78,7 +78,7 @@ Three shapes, and the tier is readable without opening the file.
 
 | Shape | Needs a live datastore | Lane | `#[ignore]` |
 |---|---|---|---|
-| `integration_<subject>.rs` | yes — Postgres, Dragonfly, or a booted daemon | `make test-integration-rustd` | on every test in the file |
+| `integration_<subject>.rs` | yes: Postgres, NATS, or a booted daemon | `make test-integration-rustd` | on every test in the file |
 | `<subject>.rs` | no | `make test-unit-rustd` | on nothing in the file |
 | `*_suite.rs` | — | — | declares `#[path]` modules only, holds no test of its own |
 
@@ -108,7 +108,9 @@ The filename rule above decides the tier, and this rule decides the function nam
 
 **The measurement, so a later reader can re-run it rather than trust it**. Group test functions by the day their file was introduced (`git log --diff-filter=A --follow`). Files from 2026-08-24 through 08-26 are 100% prefixed across 378 tests.
 
-From 08-27 onward the practice inverts, at 14%, 0%, 31% and 9% across 411 tests. The split is the same per crate. Every 100% crate (`afd_auth`, `afd_db`, `afd_identity`, `afd_dragonfly`, `afd_state`) predates the 27th, while `afd_api` sits at 20% and `afd_cron` and `af_webhook` at 0%.
+From 08-27 onward the practice inverts, at 14%, 0%, 31% and 9% across 411 tests. The split is the same per crate.
+
+Every 100% crate (`afd_auth`, `afd_db`, `afd_identity`, a since-deleted datastore crate, `afd_state`) predates the 27th. `afd_api` sits at 20%, and `afd_cron` and `af_webhook` at 0%.
 
 **This rule is no licence to rename.** The prefixed crates are internally consistent, and their names are not wrong, only older. Touching one test in `af_crypto` does not oblige renaming its neighbours. A crate converts, if ever, in one deliberate commit of its own.
 
@@ -124,7 +126,7 @@ A name the codebase does not use fails at exactly that job. M180 amended sevente
 
 ## Test isolation on a shared datastore (rules ISO-1 to ISO-3)
 
-The lane has one Postgres and one Dragonfly, and tests run concurrently inside every test binary. Cargo runs test binaries one at a time, and libtest runs the tests within one in parallel. So splitting files apart changes nothing for two tests in the same file, and file layout satisfies no rule below.
+The lane has one Postgres and one NATS cluster, and tests run concurrently inside every test binary. Cargo runs test binaries one at a time, and libtest runs the tests within one in parallel. So splitting files apart changes nothing for two tests in the same file, and file layout satisfies no rule below.
 
 The failure these rules codify had no error in it. Every red was a query that succeeded and returned the truth:
 
@@ -175,9 +177,9 @@ The target is **100%**, project-wide and per flag. TypeScript gates at that targ
 
 Every threshold is 0%, so a gate has no give. A patch status grades only the lines a diff touched, so on a small diff one unhit line reds the build. That is intended, and the answer is a test, never absorbed slack.
 
-The Rust gate measures the unit tier and the ignored live-datastore tier together, in three shards: `runner`, `daemon` and `substrate`. `make/test-integration-rustd.mk` lists them once. Continuous Integration runs them in parallel, each on its own runner with its own Postgres and Dragonfly.
+The Rust gate measures the unit tier and the ignored live-datastore tier together, in three shards: `runner`, `daemon` and `substrate`. `make/test-integration-rustd.mk` lists them once. Continuous Integration runs them in parallel, each on its own runner with its own Postgres and NATS.
 
-Postgres, Dragonfly, HTTP and runtime code are part of the denominator. So each shard resets its lane, applies the schema through the instrumented daemon, and runs its tests with `--include-ignored`. Each shard writes `rustd/lcov-<shard>.info` and grades nothing.
+Postgres, NATS, HTTP and runtime code are part of the denominator. So each shard resets its lane, applies the schema through the instrumented daemon, and runs its tests with `--include-ignored`. Each shard writes `rustd/lcov-<shard>.info` and grades nothing.
 
 `make test-coverage-rustd-merge` merges the shard reports and the kernel lane's report line by line. It grades the line floor once over the union. A missing report, or one measured at another commit, fails the lane instead of shrinking it.
 

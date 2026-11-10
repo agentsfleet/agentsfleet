@@ -263,10 +263,7 @@ pub fn openapi_to(out: &mut impl std::io::Write) -> u8 {
 pub fn check<E: EnvSource + ?Sized>(env: &E) -> u8 {
     match crate::preflight::preflight(env) {
         Ok(config) => {
-            let roles = [
-                format!("postgres:{}", config.api_pool().role().tag()),
-                format!("redis:{}", config.redis().role().tag()),
-            ];
+            let roles = [format!("postgres:{}", config.api_pool().role().tag())];
             crate::banner::show(env!("CARGO_PKG_VERSION"), &roles, std::process::id());
             SUCCESS
         }

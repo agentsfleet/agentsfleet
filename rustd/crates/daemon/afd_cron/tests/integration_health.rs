@@ -18,7 +18,7 @@ fn change(after: [u64; 7], before: [u64; 7]) -> Vec<i128> {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn health_tracks_real_states_and_refuses_a_closed_database() {
     let lane = CronLane::open().await;
     let now = Timestamp::now();

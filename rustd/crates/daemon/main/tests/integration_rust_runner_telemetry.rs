@@ -119,7 +119,7 @@ fn spans(received: &Received) -> Vec<Exported> {
 /// A runner pointed at a collector delivers one lease as one trace with four
 /// span kinds, its root carrying the lease and the daemon's event.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_e2e_runner_lease_trace_reaches_a_collector() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -207,19 +207,17 @@ fn assert_lease_trace(received: &Received, event_id: &str) {
         .map(|span| span.name.as_str())
         .collect();
     assert_eq!(kinds, BTreeSet::from(SPAN_KINDS), "one trace, four kinds");
+    let unreviewed: BTreeSet<&str> = spans
+        .iter()
+        .map(|span| span.name.as_str())
+        .filter(|name| {
+            !SPAN_KINDS.contains(name)
+                && !matches!(*name, "runner_stream_operation" | "runner.connection")
+        })
+        .collect();
     assert!(
-        spans
-            .iter()
-            .all(|span| SPAN_KINDS.contains(&span.name.as_str())
-                || matches!(
-                    span.name.as_str(),
-                    "runner_stream_operation" | "runner.connection"
-                )),
-        "only reviewed span kinds are exported: {:?}",
-        spans
-            .iter()
-            .map(|span| span.name.as_str())
-            .collect::<BTreeSet<_>>()
+        unreviewed.is_empty(),
+        "only reviewed span kinds are exported; also saw {unreviewed:?}"
     );
     let roots = spans
         .iter()

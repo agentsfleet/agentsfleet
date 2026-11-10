@@ -84,7 +84,6 @@ impl Error {
             ErrorKind::SetupUnavailable => error_code::AUTHORING_POLICY,
             ErrorKind::Mint { .. }
             | ErrorKind::Entropy { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::ConfigUnreadable { .. }
             | ErrorKind::Scrub { .. } => error_code::INTERNAL_OPERATION_FAILED,
             ErrorKind::VaultDataInvalid => error_code::VAULT_DATA_INVALID,

@@ -10,7 +10,7 @@ use serde_json::json;
 use crate::{e2e::scenario, wire::capable_beat};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn heartbeat_reply_names_the_holds_to_release() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -33,7 +33,7 @@ async fn heartbeat_reply_names_the_holds_to_release() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unreadable_assignment_is_refused_on_the_native_beat_and_self_read() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -76,7 +76,7 @@ async fn an_unreadable_assignment_is_refused_on_the_native_beat_and_self_read() 
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_native_heartbeat_records_liveness_without_waiting_for_work() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;

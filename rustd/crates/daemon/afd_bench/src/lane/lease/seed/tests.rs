@@ -6,21 +6,15 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_dragonfly::{DragonflyConfig, DragonflyRole};
 
 use super::{
     KIND_FLEET, KIND_TENANT, KIND_WORKSPACE, SEEDED_AT, identifier, placement_tag, ready_fleet,
 };
 use crate::fixture::RunPrefix;
 use crate::lane::sweep;
-
-/// The lane's Dragonfly URL and its certificate authority, when it serves TLS.
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 /// An index clear of every lane's population, so this fleet is this test's.
 const LIVE_INDEX: u64 = 0x2000_0000;
@@ -69,12 +63,14 @@ fn test_two_indexes_never_collide_within_a_kind() {
 }
 
 #[tokio::test]
-#[ignore = "requires TEST_DATABASE_URL and TEST_DRAGONFLY_URL — run via make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: run by hand with `cargo test -p afd_bench --all-features -- --ignored` under the lane's environment"]
 async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     let database = TestDatabase::shared().open(DbRole::Api, &[]).await;
-    let queue = live_queue().await;
+    // The admission row is the proof; the wake it publishes has no reader.
+    let bus = afd_bus::test_util::lane()
+        .await
+        .expect("the lane's NATS: export TEST_NATS_URL as the integration lane does");
     let prefix = RunPrefix::mint();
-    let bus = afd_bus::dragonfly::publisher(queue.clone());
     let seeded = ready_fleet(
         &database,
         &bus,
@@ -97,7 +93,7 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     };
     assert!(!delivered, "seeded work is still waiting");
     drop(connection);
-    assert_delivery_receipts(&database, &queue, &prefix, admission).await;
+    assert_delivery_receipts(&database, &bus, &prefix, admission).await;
     let delivered: bool =
         sqlx::query_scalar("SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
             .bind(admission)
@@ -110,20 +106,9 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
         .expect("owned fixtures sweep");
 }
 
-async fn live_queue() -> afd_dragonfly::Dragonfly {
-    let url = ProcessEnv
-        .get(DRAGONFLY_URL_KNOB)
-        .expect("the lane's Dragonfly URL is set");
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into));
-    afd_dragonfly::test_util::connect_live(&config)
-        .await
-        .expect("the lane's Dragonfly answers")
-}
-
 async fn assert_delivery_receipts(
     database: &afd_db::Db,
-    queue: &afd_dragonfly::Dragonfly,
+    bus: &afd_bus::Handle,
     prefix: &RunPrefix,
     admission: &Uuid7,
 ) {
@@ -137,8 +122,7 @@ async fn assert_delivery_receipts(
     .expect("fixture runner");
     let leases = afd_fleet::lease::Leases::new(
         database.clone(),
-        queue.clone(),
-        afd_bus::dragonfly::publisher(queue.clone()),
+        bus.clone(),
         af_crypto::entropy::Entropy::new(),
     );
     let acquired = leases

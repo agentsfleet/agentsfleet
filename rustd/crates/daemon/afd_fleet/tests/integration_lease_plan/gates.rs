@@ -22,7 +22,7 @@ const HISTORY: &str = "INSERT INTO fleet.approval_gates \
 // probe filters unrelated or expired rows; why_new=parked-head deadline lookup;
 // seam=real generic Postgres plans; no_claim=constant total cost across all fleets.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn parked_head_probes_skip_unrelated_and_expired_approval_history() {
     let fixtures = Fixtures::create_isolated().await;
     let seeded = crate::seed::seeded::<1>(&fixtures).await;

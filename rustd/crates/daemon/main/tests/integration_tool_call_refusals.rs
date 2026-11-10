@@ -75,7 +75,7 @@ async fn another_runner(run: &Scenario) -> String {
 /// A lease that is not the caller's, one that has expired, and one that does
 /// not exist each answer 404 and keep nothing.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_details_refused_for_a_lease_not_held() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -115,7 +115,7 @@ async fn test_tool_call_details_refused_for_a_lease_not_held() {
 
 /// A record holding a NUL is skipped and counted; the rest of the post stays.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_nul_tool_call_detail_skipped() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;
@@ -135,7 +135,7 @@ async fn test_nul_tool_call_detail_skipped() {
 /// Posting a call again replaces its record, and at a full budget a
 /// replacement is charged only what it adds.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_detail_repost_replaces_its_record() {
     let mut supervisor = Supervisor::new();
     let (run, token) = tenant_reader(&mut supervisor).await;
@@ -178,7 +178,7 @@ async fn test_tool_call_detail_repost_replaces_its_record() {
 /// A member of another workspace cannot read this workspace's records by
 /// naming its fleet under their own workspace.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_tool_call_detail_of_another_workspace_is_not_found() {
     let mut supervisor = Supervisor::new();
     let (run, _owner) = tenant_reader(&mut supervisor).await;
@@ -225,7 +225,7 @@ async fn test_tool_call_detail_of_another_workspace_is_not_found() {
 /// the run's answer still settles: Postgres `jsonb` cannot hold `\u0000`, and
 /// the trace is written in the statement that settles the run.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_nul_tool_trace_dropped_report_settles() {
     let mut supervisor = Supervisor::new();
     let run = scenario(&mut supervisor).await;
@@ -249,7 +249,7 @@ async fn test_nul_tool_trace_dropped_report_settles() {
 /// keep no more than the budget: 24 posts of one 64 KiB record each, released
 /// together, store exactly 16 and skip exactly 8.
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_concurrent_posts_never_pass_the_event_budget() {
     let mut supervisor = Supervisor::new();
     let (run, http, lease_id, fence) = leased(&mut supervisor).await;

@@ -14,7 +14,7 @@ mod recovery;
 mod refusals;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn ordinary_failed_and_cancelled_messages_never_save() {
     for mode in ["ordinary", "failed", "cancelled"] {
         let mut case = Case::create().await;
@@ -57,7 +57,7 @@ async fn ordinary_failed_and_cancelled_messages_never_save() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_checked_save_refusal_keeps_the_answer_and_draft_editable() {
     let mut case = Case::create().await;
     case.fund().await;
@@ -104,7 +104,7 @@ async fn a_checked_save_refusal_keeps_the_answer_and_draft_editable() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_terminal_report_saves_once_without_a_browser() {
     let mut case = Case::create().await;
     case.fund().await;

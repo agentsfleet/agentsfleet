@@ -10,6 +10,7 @@ pub mod invite;
 pub mod member;
 pub mod models;
 pub mod preference;
+pub mod session;
 pub mod signup;
 pub mod workspace;
 

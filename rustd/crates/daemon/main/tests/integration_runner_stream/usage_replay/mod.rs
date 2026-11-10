@@ -21,7 +21,7 @@ const FIRST: usize = LINES_MAX + 13;
 const SECOND: usize = LINES_MAX + 8 + 29;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn renewal_batches_acknowledge_usage_independently_across_reconnect() {
     for carrier in [Transport::H2, Transport::H3] {
         let mut supervisor = Supervisor::new();

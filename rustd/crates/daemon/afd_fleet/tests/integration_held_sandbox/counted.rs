@@ -102,7 +102,7 @@ async fn leases_at(leases: &Leases, seeded: &Seeded<1>, now: Timestamp) -> Acqui
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_the_holders_claim_counts_as_the_holders() {
     let capture = Capture::install();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = held(&fixtures).await;
     let before = claims(&capture, HOLDER);
 
@@ -122,7 +122,7 @@ async fn test_the_holders_claim_counts_as_the_holders() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_the_holders_reclaims_on_a_live_hold_count_nothing() {
     let capture = Capture::install();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let seeded = held(&fixtures).await;
     let leases = fixtures.leases();
     let first = leases_at(&leases, &seeded, fixtures.enrolled_at()).await;
@@ -153,7 +153,7 @@ async fn test_the_holders_reclaims_on_a_live_hold_count_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() {
     let capture = Capture::install();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, [holder, other]) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
     live(&fixtures, &holder).await;
@@ -178,7 +178,7 @@ async fn test_another_runners_claim_after_a_lapse_counts_as_other_after_lapse() 
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_claims_on_an_unheld_fleet_count_nothing() {
     let capture = Capture::install();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, _workspace, _tenant, runners) = seeded_parts::<2>(&fixtures).await;
     let leases = fixtures.leases();
     let before = (

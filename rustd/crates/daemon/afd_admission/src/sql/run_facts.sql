@@ -3,7 +3,7 @@
 -- and whether a message the run's claim stops at stands ahead of it. Read
 -- after the steer's admission committed and outside the fleet lock, so a send
 -- that races a run's start or end can read it one step late; the label is
--- advisory (M242_002).
+-- advisory.
 --
 -- A steer names no reply, so its conversation is the unaddressed one. With no
 -- live run, any earlier unsettled message waits ahead of it. With one, the

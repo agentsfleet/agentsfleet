@@ -19,7 +19,7 @@ const PENDING: &str = "SELECT count(*) FROM fleet.approval_gates \
 // fails_when=any expired gate admits a head still held by a live gate, or expired
 // gates never requalify it; why_new=no sweeper runs; seam=real gate and queue rows.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn parked_heads_wait_for_all_matching_deadlines_without_expiring_the_cards() {
     for first_gate_first in [false, true] {
         deadline_case(first_gate_first).await;
@@ -31,7 +31,7 @@ async fn deadline_case(first_gate_first: bool) {
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let head = enqueue(&fixtures, &fleet, &workspace).await;
     let later = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &runner).await.expect("initial head");
     let other = scoped_gate(&fixtures, &fleet, &workspace, &head).await;
     let specific = scoped_gate(&fixtures, &fleet, &workspace, &head).await;
@@ -81,11 +81,11 @@ async fn assert_answerable(fixtures: &Fixtures, fleet: &Uuid7, specific: &Uuid7)
 }
 
 async fn approve(fixtures: &Fixtures, action: &Uuid7) {
-    let queue = crate::queue::unreachable();
+    let bus = afd_bus::test_util::unreachable();
     let inbox = Inbox::new(
         fixtures.database.clone(),
-        afd_bus::dragonfly::publisher(queue.clone()),
-        Admissions::for_tests(fixtures.database.clone(), queue),
+        bus.clone(),
+        Admissions::for_tests(fixtures.database.clone(), bus),
     );
     assert!(matches!(
         inbox
@@ -106,12 +106,12 @@ async fn approve(fixtures: &Fixtures, action: &Uuid7) {
 // Value: protects=standing access cannot loop through claim and park after its
 // deadline; fails_when=deadline alone wakes it; seam=real approval and slot rows.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn standing_access_waits_for_an_answer_after_its_card_deadline() {
     let fixtures = Fixtures::create().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let head = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &runner).await.expect("initial head");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     leases

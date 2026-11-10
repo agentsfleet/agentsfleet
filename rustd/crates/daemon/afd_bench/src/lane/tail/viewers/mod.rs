@@ -25,7 +25,7 @@ use tokio_util::sync::CancellationToken;
 use super::publish::{FRAME_KIND, PROBE_KIND, frame_of, probe_until_ready, publish};
 use super::{
     ALLOCATIONS_PER_FRAME, BUSY_US_PER_FRAME, DELIVERED_FRACTION, LADDER_PAYLOAD_BYTES,
-    LADDER_VIEWERS, RECEIVE_P95_MS, push,
+    LADDER_VIEWERS, RECEIVE_P95_MS, RECEIVE_P99_MS, push,
 };
 use crate::allocations::Snapshot;
 use crate::error::Result;
@@ -118,6 +118,11 @@ impl Rung {
                 RECEIVE_P95_MS,
                 self.latency.quantile_ms(latency::P95),
             );
+            push(
+                report,
+                RECEIVE_P99_MS,
+                self.latency.quantile_ms(latency::P99),
+            );
         }
     }
 }
@@ -126,7 +131,7 @@ impl Rung {
 ///
 /// # Errors
 ///
-/// A publish Dragonfly refused, a viewer task that was lost, or a latency the
+/// A publish the Bus refused, a viewer task that was lost, or a latency the
 /// histogram would not hold.
 pub(super) async fn rung(
     live: &Live,
@@ -207,7 +212,9 @@ async fn view(
                 subscribed = true;
                 shared.ready.fetch_add(1, Ordering::Relaxed);
             }
-            KIND_CATCHING_UP => seen.lagged += 1,
+            // The tail opens with one `catching_up` before any probe can
+            // arrive; only a later one says this viewer missed frames.
+            KIND_CATCHING_UP if subscribed => seen.lagged += 1,
             _ => {}
         }
     }

@@ -36,7 +36,7 @@ async fn counts(lane: &Lane) -> (i64, i64) {
 }
 
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn concurrent_requests_share_one_active_grant_card() {
     let lane = Lane::isolated().await;
     let (first, second) = tokio::join!(request(&lane, SERVICE), request(&lane, SERVICE));
@@ -50,7 +50,7 @@ async fn concurrent_requests_share_one_active_grant_card() {
 }
 
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_second_active_reference_is_refused_by_the_database() {
     let lane = Lane::isolated().await;
     request(&lane, SERVICE).await;
@@ -79,7 +79,7 @@ async fn a_second_active_reference_is_refused_by_the_database() {
 }
 
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn resolutions_release_the_active_reference_and_keep_history() {
     for decision in [Decision::Approved, Decision::Denied] {
         let lane = Lane::isolated().await;
@@ -110,7 +110,7 @@ async fn resolutions_release_the_active_reference_and_keep_history() {
 }
 
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn expiry_releases_the_reference_for_one_replacement_card() {
     let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
@@ -129,7 +129,7 @@ async fn expiry_releases_the_reference_for_one_replacement_card() {
 }
 
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_card_insert_failure_rolls_back_the_new_grant() {
     let lane = Lane::isolated().await;
     let result = IntegrationGrants::new(lane.pool.clone(), Entropy::new())

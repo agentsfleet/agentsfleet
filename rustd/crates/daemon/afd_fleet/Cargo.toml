@@ -24,8 +24,6 @@ test-util = [
   # The capturing metric reader the lease suite reads the runs-started
   # counter back through.
   "af_observability/test-util",
-  # The queue refusal a stubbed device-flow surface answers with.
-  "afd_dragonfly/test-util",
   # The labelled billing refusal the fail-open posture suite absorbs. Taken
   # from that crate's own sample rather than named here, because the kind is
   # private to it.
@@ -86,8 +84,6 @@ scopeguard.workspace = true
 # `sql::event` and into the crate named for it, so `afd_approval` could reach
 # them without depending on leases, money, policy and four sweepers.
 afd_events.workspace = true
-# The live tail and best-effort pickup doorbell.
-afd_dragonfly.workspace = true
 # Owns `fleet.obligations`: the report path commits an obligation through
 # it. The edge runs fleet -> outbound and never back.
 afd_outbound.workspace = true
@@ -189,11 +185,6 @@ afd_auth = { workspace = true, features = ["test-util"] }
 # from. A dev-dependency on a crate this one already depends on, for the
 # `test-util` seam only the tests reach.
 af_fleet_runtime = { workspace = true, features = ["test-util"] }
-# `Redis::unreachable`, for the drop paths. The lane's Redis is shared by every
-# test binary running in parallel, so an injection that takes the SERVER away
-# fails unrelated suites; a lazy handle one test owns fails only its own
-# commands. Same shape as the `afd_db` line above, for the same reason.
-afd_dragonfly = { workspace = true, features = ["test-util"] }
 # `af_secrets::error::one_of_each_kind`, the matcher refusal a scrub raises
 # only past gigabytes of secret values, for the lift suite's scrub case.
 af_secrets = { workspace = true, features = ["test-util"] }

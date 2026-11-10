@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use serde::Serialize;
 
 mod command;
-pub mod dragonfly;
 pub mod error;
+pub mod nats;
 mod subject;
 mod subscription;
 #[cfg(any(test, feature = "test-util"))]
@@ -21,6 +21,14 @@ pub use error::{Error, Result};
 pub use subject::Subject;
 pub use subscription::{Message, Received, Subscription};
 
+/// The tail's largest batch: a final reply's inline text. A publisher's frame
+/// limit, declared here so the broker's payload floor and the publisher read
+/// one number.
+pub const TAIL_BATCH_BYTES: usize = 64 * 1024;
+
+/// The draft stream's largest frame, declared here for the same reason.
+pub const DRAFT_FRAME_BYTES: usize = 32 * 1024;
+
 /// Boot selects one adapter; callers never inspect or downcast it.
 #[async_trait]
 pub trait Bus: Debug + Send + Sync {
@@ -31,9 +39,15 @@ pub trait Bus: Debug + Send + Sync {
     async fn publish(&self, subject: &Subject, payload: &str) -> Result<()>;
     /// Publish a batch in order on one subject.
     ///
+    /// The default publishes each payload in turn and stops at the first
+    /// failure. An adapter that can tell it is shut overrides it to refuse even
+    /// an empty batch, then publishes the same way.
+    ///
     /// # Errors
     /// Returns a broker failure; a prefix may already have reached subscribers.
-    async fn publish_batch(&self, subject: &Subject, payloads: &[String]) -> Result<()>;
+    async fn publish_batch(&self, subject: &Subject, payloads: &[String]) -> Result<()> {
+        publish_each(self, subject, payloads).await
+    }
     /// Subscribe before reporting the consumer ready.
     ///
     /// # Errors
@@ -44,6 +58,29 @@ pub trait Bus: Debug + Send + Sync {
     /// # Errors
     /// Returns a native shutdown failure; the caller supplies the drain deadline.
     async fn shutdown(&self) -> Result<()>;
+    /// Whether the adapter holds a live connection right now.
+    ///
+    /// `/readyz` reports it and never gates on it. The default answers `true`
+    /// for an adapter with no connection to lose, such as a test double.
+    async fn connected(&self) -> bool {
+        true
+    }
+}
+
+/// Publishes each payload on `subject` in turn, stopping at the first failure:
+/// the one batch loop every adapter's [`Bus::publish_batch`] runs.
+///
+/// # Errors
+/// The first payload's failure; the ones before it have been published.
+pub(crate) async fn publish_each<B: Bus + ?Sized>(
+    bus: &B,
+    subject: &Subject,
+    payloads: &[String],
+) -> Result<()> {
+    for payload in payloads {
+        bus.publish(subject, payload).await?;
+    }
+    Ok(())
 }
 
 /// Shared process-wide adapter, with no broker type at a domain call site.
@@ -87,6 +124,11 @@ impl Handle {
     /// Preserves an adapter shutdown failure, including an interrupted drain.
     pub async fn shutdown(&self) -> Result<()> {
         self.0.shutdown().await
+    }
+
+    /// Whether the adapter holds a live connection right now; see [`Bus::connected`].
+    pub async fn connected(&self) -> bool {
+        self.0.connected().await
     }
 
     /// Serialize and publish a frame, retaining either failure for the caller's policy.

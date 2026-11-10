@@ -1,7 +1,7 @@
 //! The vocabulary bridge: one runner frame as the dashboard's channel carries it.
 //!
 //! Split from [`super`], which authorizes and publishes; this decides only the
-//! shape a frame takes on `fleet:{id}:activity`.
+//! shape a frame takes on the fleet's tail subject.
 //!
 //! Call ids are published fenced, `{fence}:{call_id}`; why is
 //! `lease/tool_trace/mod.rs`'s to say, because the stored trace uses the same ids.

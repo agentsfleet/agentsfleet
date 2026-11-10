@@ -24,7 +24,7 @@ const WAITER: &str = "SELECT pid FROM pg_stat_activity \
 // uncommitted park; why_new=answer-first tests miss uncommitted park writes;
 // seam=none; no_claim=all gate interleavings. A database trigger holds the write.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn answers_and_expiry_clear_a_park_that_was_uncommitted_when_resolution_started() {
     for expire in [false, true] {
         resolve_during_park(expire).await;
@@ -35,7 +35,7 @@ async fn resolve_during_park(expire: bool) {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let acquired = next(&leases, &runner).await.expect("claim");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     let owner = fixtures.open(DbRole::Migrator).await;
@@ -70,7 +70,7 @@ async fn resolve_during_park(expire: bool) {
         "expire={expire}: a resolved gate cannot strand its head"
     );
     assert_eq!(
-        next(&fixtures.leases_with_dead_queue(), &runner)
+        next(&fixtures.leases_with_dead_bus(), &runner)
             .await
             .expect("head runnable")
             .event_id,
@@ -91,11 +91,11 @@ async fn start_resolution(
             .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("age gate"))
             .await.expect("gate expires");
     }
-    let queue = crate::queue::unreachable();
+    let bus = afd_bus::test_util::unreachable();
     let inbox = Inbox::new(
         fixtures.database.clone(),
-        afd_bus::dragonfly::publisher(queue.clone()),
-        Admissions::for_tests(fixtures.database.clone(), queue),
+        bus.clone(),
+        Admissions::for_tests(fixtures.database.clone(), bus),
     );
     tokio::spawn(async move {
         if expire {

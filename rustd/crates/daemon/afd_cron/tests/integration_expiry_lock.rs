@@ -1,4 +1,4 @@
-//! Dimension 4.8 for schedules: a sync lease that lapses while a guard waits on
+//! For schedules, a sync lease that lapses while a guard waits on
 //! the schedule's row lock no longer holds the schedule once the guard has it.
 //!
 //! The holder only locks the row and writes nothing. A holder that wrote it
@@ -134,7 +134,7 @@ async fn replace_recipes(lane: &CronLane, recipes: &[Recipe]) -> afd_cron::Resul
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn test_expiry_checks_read_clock_after_lock() {
     let lane = CronLane::open().await;
     let (workspace, fleet) = (lane.workspace_id(), lane.fleet_id());

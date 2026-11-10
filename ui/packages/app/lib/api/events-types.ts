@@ -28,7 +28,7 @@ export function buildQuery(opts?: EventsQuery): string {
   return qs.length > 0 ? `?${qs}` : "";
 }
 
-// Live frames published on `fleet:{id}:activity` (Redis pub/sub), fanned out
+// Live frames published on the NATS subject `af.fleet.{id}.tail`, fanned out
 // as SSE messages by the backend handler. `hello`, `catching_up` and
 // `access_revoked` are rustd/crates/daemon/afd_sse/src/frame/mod.rs's `KIND_*` control
 // frames. The four mid-run frames are the

@@ -89,15 +89,14 @@ pub enum Committed {
         /// every fenced answer that size too. `Option<Box<_>>` rather than
         /// `Box<Option<_>>`: a report that closed nothing allocates nothing.
         closed: Option<Box<Closed>>,
-        /// The delivery obligation this report newly owed, and where, for the
-        /// caller to append and receipt.
+        /// The delivery obligation this report newly owed, for the caller to
+        /// wake the outbound workers about.
         ///
         /// `None` when the settled event was admitted with no destination, when
         /// the run answered nothing, and on a repeat that conflicted — so a
-        /// caller cannot append an entry for an answer nobody asked for, or one
-        /// already owed and in flight. Carried up rather than appended in here
-        /// because the append is not part of the transaction and must not be
-        /// able to fail it.
+        /// caller cannot ring for an answer nobody asked for, or one already
+        /// owed and in flight. Carried up rather than rung in here because the
+        /// wake is not part of the transaction and must not be able to fail it.
         owed: Option<Owing>,
         /// Native replacement for a stale or unverified completion claim.
         notice: Option<&'static str>,
@@ -267,8 +266,8 @@ impl Leases {
     /// The fifth write, and the one that closes the window between the charge
     /// and the send: the answer is owed before anything tries to send it, so a
     /// process that dies in between leaves a record rather than a charged run
-    /// whose answer exists nowhere. The append itself is NOT here — see
-    /// `obligation` for why it cannot be.
+    /// whose answer exists nowhere. The wake is NOT here: it follows the
+    /// commit, so a refused wake cannot roll the report back.
     ///
     /// The lease's own `provider` is the MODEL provider billing resolved, and
     /// it has no path in here: `Delivery` takes a connector type, which only
@@ -288,10 +287,7 @@ impl Leases {
             Some(reply) => self
                 .owe_delivery(connection, reply.delivery(lease, answer), now)
                 .await?
-                .map(|obligation| Owing {
-                    obligation,
-                    reply: reply.clone(),
-                }),
+                .map(|obligation| Owing { obligation }),
             None => None,
         };
         Ok(owed)

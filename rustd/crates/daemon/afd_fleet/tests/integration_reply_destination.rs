@@ -99,7 +99,7 @@ async fn admit(fixtures: &Fixtures, admission: Admission<'_>) -> Admitted {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn existing_producers_record_no_reply_destination() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
 
     for producer in NO_SURFACE {
@@ -128,7 +128,7 @@ async fn existing_producers_record_no_reply_destination() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn reply_destination_is_both_or_neither() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
     let key = producer_key(&fleet, "stated");
     let stated = Reply::To {
@@ -170,7 +170,7 @@ async fn reply_destination_is_both_or_neither() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn continuation_inherits_the_resumed_destination() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
 
     let asked_key = producer_key(&fleet, "asked-in-a-thread");
@@ -228,7 +228,7 @@ async fn continuation_inherits_the_resumed_destination() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn retried_key_with_a_new_destination_keeps_the_first() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let (fleet, workspace, _tenant, _runners) = seeded_parts::<0>(&fixtures).await;
     let key = producer_key(&fleet, "retried");
     let first_reply = Reply::To {
@@ -286,7 +286,7 @@ async fn retried_key_with_a_new_destination_keeps_the_first() {
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn the_reply_lookup_index_holds_only_rows_that_owe() {
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let mut connection = fixtures
         .database
         .acquire()

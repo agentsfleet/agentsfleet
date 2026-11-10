@@ -38,7 +38,7 @@ async fn run(connection: &mut PgConnection, statement: &str) {
 // the backlog; why_new=the empty-ledger precheck adds a separate plan branch;
 // seam=none; no_claim=constant total discovery cost with many active fleets.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn backlog_growth_does_not_expand_each_fleets_head_probe() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = crate::seed::seeded_parts::<1>(&fixtures).await;

@@ -1,8 +1,8 @@
 //! One workspace holding one fleet and one schedule, over both live stores.
 //!
-//! `Fleet::live` alone would not do: its schedules plane appends to a Dragonfly
-//! nothing resolves, and the accepted fire is the one path that writes. This
-//! fixture arranges the queue too — see [`harness::Fleet::with_live_fire`].
+//! `Fleet::live` alone would not do: its schedules plane notifies a bus nothing
+//! reaches, and the accepted fire is the one path that writes. This fixture
+//! arranges the bus too — see [`harness::Fleet::with_live_fire`].
 
 use af_core::id::Uuid7;
 use afd_auth::scope::{Scope, ScopeSet};
@@ -10,7 +10,6 @@ use afd_cron::{DesiredStatus, Source};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, UserSeed, WorkspaceSeed, mint_id};
-use afd_dragonfly::Dragonfly;
 use afd_fleet_lifecycle::FleetStatus;
 
 use crate::harness;
@@ -32,7 +31,7 @@ const MESSAGE: &str = "run the nightly sweep";
 pub(crate) struct Fixture {
     lane: TestDatabase,
     database: Db,
-    queue: Dragonfly,
+    bus: afd_bus::Handle,
     subject: String,
     tenant: Uuid7,
     workspace: Uuid7,
@@ -47,7 +46,7 @@ impl Fixture {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            queue: harness::connect_redis().await,
+            bus: harness::bus().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
             workspace: mint_id(),
@@ -58,7 +57,7 @@ impl Fixture {
         }
     }
 
-    /// The production router, resolving through Postgres AND the queue.
+    /// The production router, resolving through Postgres AND the bus.
     pub(crate) fn router(&self) -> axum::Router {
         harness::Fleet::live(
             self.database.clone(),
@@ -69,7 +68,7 @@ impl Fixture {
             crate::webhook_qstash_route::CURRENT_KEY,
             crate::webhook_qstash_route::NEXT_KEY,
         )
-        .with_live_fire(self.database.clone(), self.queue.clone())
+        .with_live_fire(self.database.clone(), self.bus.clone())
         .router()
     }
 

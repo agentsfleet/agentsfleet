@@ -48,7 +48,7 @@ const BILL_TO_DEADLINE: &str =
     "UPDATE runner.leases SET last_metered_at = lease_expires_at WHERE id = $1";
 
 async fn isolated() -> Held {
-    held_in(Fixtures::create_isolated_with_queue().await).await
+    held_in(Fixtures::create_isolated().await).await
 }
 
 async fn close(held: Held) {

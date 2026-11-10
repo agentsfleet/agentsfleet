@@ -59,9 +59,6 @@ pub(crate) enum ErrorKind {
     #[error("the bench database would not open")]
     DatabaseUnavailable { source: afd_db::Error },
 
-    #[error("the bench queue would not open")]
-    QueueUnavailable { source: afd_dragonfly::Error },
-
     #[error("the notification bus would not answer")]
     BusUnavailable { source: afd_bus::Error },
 
@@ -70,6 +67,9 @@ pub(crate) enum ErrorKind {
 
     #[error("the lease path would not run")]
     LeasePathFaulted { source: afd_fleet::Error },
+
+    #[error("the outbound ledger would not take an owed answer")]
+    OutboundPathFaulted { source: afd_outbound::Error },
 
     #[error("the admission ledger would not answer")]
     LedgerUnreadable { source: afd_admission::Error },

@@ -5,7 +5,7 @@ use super::*;
 use http::header;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn initial_save_requires_a_message_without_spending_its_operation() {
     let case = Case::create().await;
     case.fund().await;
@@ -27,7 +27,7 @@ async fn initial_save_requires_a_message_without_spending_its_operation() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_unnamed_instance_saves_with_its_definition_name() {
     let mut case = Case::create().await;
     case.fund().await;
@@ -75,7 +75,7 @@ async fn an_unnamed_instance_saves_with_its_definition_name() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn retired_policy_refuses_the_save_without_discarding_the_answer() {
     let mut case = Case::create().await;
     case.fund().await;

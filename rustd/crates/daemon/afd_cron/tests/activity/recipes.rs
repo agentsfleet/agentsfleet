@@ -10,7 +10,7 @@ use crate::support::{CronLane, SEED_AT};
 // fails_when=recipe writers omit receipts or persist them outside the caller transaction;
 // seam=caller rollback is deliberate; no_claim=authoring HTTP or external registration.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn rolled_back_setup_schedule_writes_leave_neither_state_nor_history() {
     let lane = CronLane::open().await;
     let recipe = Recipe::parse(EXPRESSION, ZONE, MESSAGE).expect("recipe");
@@ -43,7 +43,7 @@ async fn rolled_back_setup_schedule_writes_leave_neither_state_nor_history() {
 // fails_when=question-only revisions duplicate schedule history or removal is called confirmed;
 // seam=none; no_claim=external registration or authoring HTTP.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn setup_schedule_revisions_commit_their_activity_atomically() {
     let lane = CronLane::open().await;
     let recipe = Recipe::parse(EXPRESSION, ZONE, MESSAGE).expect("recipe");
@@ -106,7 +106,7 @@ async fn save(lane: &CronLane, revision: i64, recipes: &[Recipe]) {
 // fails_when=ordinary API edits bypass receipts or a rejected edit still records one;
 // seam=none; no_claim=HTTP validation or browser rendering.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn conditional_schedule_edits_record_the_saved_revision_only() {
     let lane = CronLane::open().await;
     let row = registered(&lane).await;

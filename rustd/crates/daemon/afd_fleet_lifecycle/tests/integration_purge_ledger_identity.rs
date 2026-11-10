@@ -212,7 +212,7 @@ async fn seed_approval_gates(connection: &mut sqlx::PgConnection, lane: &Lane, f
 /// was actually dropped, and the name survives only if the capture happened at
 /// charge time rather than being joined at read time.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn test_m201_ledger_retains_fleet_id_across_purge() {
     let lane = Lane::create().await;
     let fleet = lane.fleet().await;
@@ -260,7 +260,7 @@ async fn test_m201_ledger_retains_fleet_id_across_purge() {
 /// sides, and separating them lets a fixture drift so each passes against a
 /// different fleet.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs the lane's Postgres and Dragonfly"]
+#[ignore = "needs the lane's Postgres"]
 async fn test_m201_purge_destroys_no_less_than_before() {
     let lane = Lane::create().await;
     let fleet = lane.fleet().await;

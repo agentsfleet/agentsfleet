@@ -10,7 +10,7 @@ use http::{Method, StatusCode};
 use serde_json::{Value, json};
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn refused_setup_saved_receipt_rolls_back_allocation_and_retries_once() {
     let case = Case::create().await;
     case.fund().await;
@@ -54,7 +54,7 @@ async fn refused_setup_saved_receipt_rolls_back_allocation_and_retries_once() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn refused_ready_receipt_keeps_installing_then_retry_activates_once() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     assert_eq!(
@@ -86,7 +86,7 @@ async fn refused_ready_receipt_keeps_installing_then_retry_activates_once() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn refused_access_receipt_rolls_back_secret_create_and_replace_before_retry() {
     let saved = Saved::create(json!({"credentials":[SERVICE]})).await;
     let mut reader = Reader::open(&saved, &saved.fleet).await;
@@ -124,7 +124,7 @@ async fn refused_access_receipt_rolls_back_secret_create_and_replace_before_retr
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn refused_memory_receipt_rolls_back_both_grants_and_retry_records_one_change() {
     let saved = Saved::create(json!({})).await;
     let mut reader = Reader::open(&saved, &saved.fleet).await;

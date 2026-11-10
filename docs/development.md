@@ -8,9 +8,10 @@
 
 ## Shared development worktrees
 
-Each checkout runs its own compiled `agentsfleetd`, the API daemon, while linked worktrees share Postgres, Dragonfly, Mailpit and Upstash QStash.
+Each checkout runs its own compiled `agentsfleetd`, the API daemon, while linked worktrees share Postgres, three NATS nodes, Mailpit and Upstash QStash.
 The [Glossary](architecture/README.md#glossary) defines the daemon, the runner and the other names used here.
-Each daemon gets a separate Postgres database, Dragonfly namespace and stable port.
+
+Each daemon gets a separate Postgres database, NATS subject namespace and stable port.
 Production and deployed `api-dev` continue using their existing deployment settings.
 
 Shared state lives under `${XDG_STATE_HOME:-$HOME/.local/state}/agentsfleet/dev-<USER_ID>-<REPOSITORY_CHECKSUM>`.
@@ -37,9 +38,10 @@ Namespace: wt_<WORKTREE_CHECKSUM>
 With healthy shared services, repeating it rebuilds and restarts only this daemon while preserving its database.
 The default `FOLLOW_LOGS=1` follows the daemon log after startup.
 
-The launcher reuses existing `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `DRAGONFLY_URL`, `API_URL` and QStash settings with local addresses.
+The launcher reuses existing `DATABASE_URL_API`, `DATABASE_URL_MIGRATOR`, `NATS_URL`, `API_URL` and QStash settings with local addresses.
 `API_URL` uses the default network interface's IPv4 address and this worktree's port.
 Native clients and QStash therefore receive the same reachable origin.
+
 `AGENTSFLEET_DEV_NAMESPACE` is the only new application setting; the launcher supplies it.
 Mailpit shares its inbox, so use distinct development recipients and avoid deleting other worktrees' mail.
 

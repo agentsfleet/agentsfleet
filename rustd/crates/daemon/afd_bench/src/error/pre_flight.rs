@@ -50,9 +50,9 @@ impl Error {
             | ErrorKind::InstrumentUnflushable { .. }
             | ErrorKind::InstrumentPoisoned
             | ErrorKind::DatabaseUnavailable { .. }
-            | ErrorKind::QueueUnavailable { .. }
             | ErrorKind::BusUnavailable { .. }
             | ErrorKind::LeasePathFaulted { .. }
+            | ErrorKind::OutboundPathFaulted { .. }
             | ErrorKind::SteerPathFaulted { .. }
             | ErrorKind::LedgerUnreadable { .. }
             | ErrorKind::FixtureUnseedable { .. }

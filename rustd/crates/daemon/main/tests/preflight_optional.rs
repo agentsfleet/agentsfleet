@@ -15,9 +15,7 @@ use agentsfleetd::preflight::{
 };
 
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
-const DRAGONFLY_KNOB: &str = "DRAGONFLY_URL";
 const GOOD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:5432/agentsfleet";
-const GOOD_DRAGONFLY_URL: &str = "redis://127.0.0.1:6379";
 const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const PLATFORM_WORKSPACE: &str = "019329c5-0000-7000-8000-0000000000a1";
 
@@ -25,11 +23,11 @@ fn with_optional<'a>(optional: impl IntoIterator<Item = (&'a str, &'a str)>) -> 
     MapEnv::from_pairs(
         [
             (DATABASE_KNOB, GOOD_DATABASE),
-            (DRAGONFLY_KNOB, GOOD_DRAGONFLY_URL),
             (ENCRYPTION_MASTER_KEY_KNOB, GOOD_KEK),
         ]
         .into_iter()
         .chain(crate::support::SESSION_PEPPER)
+        .chain(crate::support::BUS)
         .chain(crate::support::runner_stream::environment())
         .chain(crate::support::IDENTITY)
         .chain(optional),

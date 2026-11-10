@@ -45,7 +45,6 @@ members = [
     "crates/daemon/afd_cron",
     "crates/foundation/af_crypto",
     "crates/daemon/afd_db",
-    "crates/daemon/afd_dragonfly",
     "crates/daemon/afd_events",
     "crates/daemon/afd_fleet",
     "crates/daemon/afd_fleet_lifecycle",
@@ -168,8 +167,8 @@ af_inference = { path = "crates/protocol/af_inference" }
 # Deliberately NOT folded into `afd_fleet`, which is the runner plane and is
 # already 25,500 lines — 3.5 times its nearest sibling, and the exact condition
 # that forced `afd_tenant` out of it. Nor into `afd_tenant`, whose api-key and
-# login modules would then rebuild behind a configuration parser and a Redis
-# stream client they never call.
+# login modules would then rebuild behind a configuration parser and a bus
+# client they never call.
 afd_fleet_lifecycle = { path = "crates/daemon/afd_fleet_lifecycle" }
 # The operator's READ plane: cross-table projections a dashboard asks for, over
 # a pool and the wire types and nothing else. Separate from `afd_runner`, which
@@ -199,7 +198,6 @@ af_observability = { path = "crates/protocol/af_observability" }
 # the exporters inside `af_observability`'s counting wrappers, the globals.
 af_otlp = { path = "crates/protocol/af_otlp" }
 afd_outbound = { path = "crates/daemon/afd_outbound" }
-afd_dragonfly = { path = "crates/daemon/afd_dragonfly" }
 afd_bus = { path = "crates/daemon/afd_bus" }
 # The HOST's plane, split from `afd_fleet` (the RUN's plane): enrolment,
 # liveness, the assertion verdict, and the offline/retention sweepers. The two
@@ -269,7 +267,7 @@ csv = "1.4.0"
 serde_json = { version = "1.0.154", default-features = false, features = ["std", "preserve_order", "raw_value"] }
 # Test-only Rust tokenization and literal decoding for the compiled-prompt guard.
 proc-macro2 = "=1.0.107"
-syn = { version = "=3.0.9", default-features = false, features = ["parsing"] }
+syn = { version = "=3.0.10", default-features = false, features = ["parsing"] }
 # A tool's parameters are the JSON Schema of the type its arguments parse into,
 # derived from that type so the two cannot drift. rig-core already builds it.
 schemars = { version = "1.2.3", default-features = false, features = ["derive", "std"] }
@@ -361,7 +359,7 @@ url = { version = "2.5.8", default-features = false }
 # Return completed SQL sessions to the pool; detach cancelled task transactions.
 scopeguard = "1.2.0"
 
-uuid = { version = "1.29.1", default-features = false, features = ["v7", "std"] }
+uuid = { version = "1.29.2", default-features = false, features = ["v7", "std"] }
 
 # Civil-calendar arithmetic, for the monthly budget window.
 #
@@ -418,7 +416,7 @@ jiff = { version = "0.2.40", default-features = false, features = [
 # every crate here from implementing sqlx's traits for jiff's type, so row
 # fields decode through `#[sqlx(try_from = "jiff_sqlx::Timestamp")]` and binds go
 # through `ToSqlx`. Postgres only; its sqlite half stays off.
-jiff-sqlx = { version = "0.2.1", default-features = false, features = ["postgres"] }
+jiff-sqlx = { version = "0.2.2", default-features = false, features = ["postgres"] }
 
 # Base64url, for JSON Web Key components and the three segments of a session
 # token. `default-features = false` is load-bearing here rather than habitual:
@@ -572,30 +570,10 @@ sqlx = { version = "0.9.0", default-features = false, features = [
 # refuses instantly when the instance is full and hands back a permit that
 # releases on drop, so a shed needs no counter arithmetic and a completed
 # request needs no release path to forget. It was already reaching these crates
-# through redis and sqlx's own feature sets — naming it here makes three
+# through sqlx's own feature set — naming it here makes three
 # existing call sites (`hub.rs`, `jwks/cache.rs`) depend on a stated feature
 # rather than on unification holding.
 tokio = { version = "1.54.1", default-features = false, features = ["rt", "sync", "time", "macros"] }
-# Redis. The crate owns the RESP parsing, connection pooling and pub/sub
-# plumbing a hand-rolled client would carry. `connection-manager` is the piece
-# that earns it: one multiplexed connection that reconnects itself, rather than
-# a pool of request/reply sockets behind a mutex.
-#
-# `tokio-rustls-comp` for the same no-C posture as everything else here. The
-# local compose Redis serves a self-signed certificate, so the CA arrives by
-# path (`DRAGONFLY_TLS_CA_CERT_FILE`) rather than from a trust store.
-#
-# `cluster-async` is the Dragonfly Swarm half: slot routing, MOVED/ASK
-# following, per-node connections and sharded pub/sub over RESP3, all the
-# driver's. This workspace never parses a redirect itself.
-redis = { version = "1.8.1", default-features = false, features = [
-    "tokio-comp",
-    "tokio-rustls-comp",
-    "connection-manager",
-    "cluster-async",
-    "streams",
-    "script",
-] }
 # Latency percentiles for the measurement lanes, and only for them.
 #
 # The lanes report a p95 and a p99 over every operation they issued, which is a
@@ -656,12 +634,10 @@ axum = { version = "0.8.9", default-features = false, features = [
     "http2",
     "tokio",
 ] }
-# The retry LOOP, rather than the schedule. `afd_dragonfly::Backoff` computes the
-# delays and is proven on the subscription hub's reconnect; what was hand-rolled
-# beside it was the counter and the terminal rule — and the loop guard is
-# precisely where a hand-rolled loop goes wrong, leaving the last delay
-# unreachable. 26.9M recent downloads against tokio-retry's 10.1M, and on 1.x
-# where tokio-retry is still 0.3.
+# The retry loop and its delays. The counter and the terminal rule are where a
+# hand-rolled loop goes wrong, leaving the last delay unreachable. 26.9M recent
+# downloads against tokio-retry's 10.1M, and on 1.x where tokio-retry is still
+# 0.3.
 #
 # `std` is NOT optional here, however much it looks like a default worth
 # dropping. `std = ["fastrand/std"]`, and without it `ExponentialBackoff` takes
@@ -689,6 +665,9 @@ h2 = { version = "0.4.20", default-features = false }
 boring = { version = "5.4.0", default-features = false }
 tokio-boring = { version = "5.4.0", default-features = false }
 tokio-quiche = { version = "=0.20.1", default-features = false }
+# Core NATS only: default features off keeps JetStream, KV and the object store
+# out of the build, so no signal can come to depend on broker-side state.
+async-nats = { version = "=0.52.0", default-features = false }
 http-body = { version = "1.1.0", default-features = false }
 http-body-util = { version = "0.1.5", default-features = false }
 hyper = { version = "1.12.0", default-features = false, features = ["server", "client", "http1", "http2"] }
@@ -710,7 +689,12 @@ hyper-util = { version = "0.1.21", default-features = false, features = [
 # tokio-rustls. All three on aws-lc-rs, the provider rustls already builds
 # with here, so no second crypto backend arrives.
 rcgen = { version = "0.14.10", default-features = false, features = ["aws_lc_rs", "pem"] }
-rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "std", "tls12"] }
+# `prefer-post-quantum` is a rustls default that `default-features = false`
+# drops: without it every client offers classical X25519 first and the hybrid
+# X25519MLKEM768 last. With it, every rustls connection (sqlx, reqwest,
+# async-nats, lettre, object_store) offers the hybrid first, as `af_stream`
+# does on BoringSSL, so no client of ours is the classical-only one.
+rustls = { version = "0.23.46", default-features = false, features = ["aws_lc_rs", "prefer-post-quantum", "std", "tls12"] }
 tokio-rustls = { version = "0.26.6", default-features = false, features = ["aws_lc_rs", "tls12"] }
 # The HTTP vocabulary types, shared with axum rather than re-exported through
 # it: `route_meta` names methods and statuses and has no business depending on
@@ -725,9 +709,8 @@ http = { version = "1.5.0", default-features = false, features = ["std"] }
 # because `unused_crate_dependencies` makes a crate's manifest a statement about
 # what that crate actually names in its own types.
 bytes = { version = "1.12.1", default-features = false, features = ["std"] }
-# The checksum the cluster keys slots by, for the readiness partition of a
-# fleet — the driver already compiles it in; naming it here is what lets
-# `afd_dragonfly` compute the same number the cluster would.
+# The checksum `afd_bus::wake` shards a fleet's ready wake by, so every
+# replica maps one fleet to the same wake subject.
 crc16 = { version = "0.4.0", default-features = false }
 # A sharded concurrent map: a lookup or a retire locks one shard, not the
 # whole map, and the entry API holds that shard for exactly the check-then-
@@ -834,16 +817,6 @@ opentelemetry_sdk = { version = "0.33.1", default-features = false, features = [
 # polled flag pays its polling interval on every shutdown.
 tokio-util = { version = "0.7.20", default-features = false }
 
-
-# `gethostname`, which `std` does not expose. The outbound worker's consumer
-# name must be the same string across restarts of one instance, or every
-# unacknowledged answer strands in a pending list nothing reads again — and
-# `HOSTNAME` is a shell variable, not an exported one, so a systemd unit sees
-# no value at all.
-# A safe wrapper over the one call, rather than `libc` and an `unsafe` block
-# of our own.
-hostname = { version = "0.4.2", default-features = false }
-
 # Stream combinators for the pub/sub pump. `std` only — no executor, no
 # thread pool; the runtime is tokio's.
 futures-util = { version = "0.3.34", default-features = false, features = ["std"] }
@@ -854,7 +827,7 @@ futures-util = { version = "0.3.34", default-features = false, features = ["std"
 # NOTE, and it is a measurement note rather than a style one: `tracing`'s `log`
 # feature is NOT requested here, but sqlx-core and sqlx-postgres request it and
 # Cargo unifies features across the workspace, so it is on for every crate —
-# afd_dragonfly included, which never asked for it. With `log` enabled the event
+# afd_bus included, which never asked for it. With `log` enabled the event
 # macros compile each field expression TWICE, once for the event and once for a
 # `log` record that never runs when a subscriber is installed, and llvm-cov maps
 # both copies to the same source line and reports the DEAD one. The consequence
@@ -1047,10 +1020,10 @@ suspicious = { level = "deny", priority = -1 }
 # ours to remove:
 #
 #   syn 2 ← url → idna → icu_normalizer → icu_collections → yoke-derive, and
-#           `url` arrives from redis AND reqwest AND sqlx-core independently
+#           `url` arrives from async-nats AND reqwest AND sqlx-core independently
 #   syn 3 ← serde_derive, thiserror-impl
 #
-# Dropping either means dropping Redis, HTTP or Postgres. The lint reads the
+# Dropping either means dropping NATS, HTTP or Postgres. The lint reads the
 # whole workspace resolve and attaches its diagnostic to whichever crate is
 # being compiled, so which member goes red is an artefact of build order rather
 # than of anything that member did — `afd_api` fails it today with a graph that

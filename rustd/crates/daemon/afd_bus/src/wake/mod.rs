@@ -166,4 +166,6 @@ async fn receive(wake: Wake, mut subscription: crate::Subscription, stop: Cancel
 }
 
 #[cfg(test)]
+mod listen_tests;
+#[cfg(test)]
 mod tests;

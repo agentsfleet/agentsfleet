@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 // why_new=observer-direct tests cannot prove native dispatch invokes the observer;
 // seam=production native router and real issued fleet leases over existing live stores.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn failed_native_reports_emit_classified_and_unclassified_fleet_errors() {
     let mut fixture = Fixture::create().await;
     let (services, recorded) = Fleet::live(
@@ -30,14 +30,9 @@ async fn failed_native_reports_emit_classified_and_unclassified_fleet_errors() {
         .await
         .expect("the enrolled runner opens a native session");
     report(&mut session, &fixture, 2, Some("timeout_kill")).await;
-    let queue = harness::connect_redis().await;
-    let admissions = Admissions::for_tests(fixture.database.clone(), queue.clone());
-    let leases = Leases::new(
-        fixture.database.clone(),
-        queue.clone(),
-        afd_bus::dragonfly::publisher(queue),
-        Entropy::new(),
-    );
+    let bus = harness::bus().await;
+    let admissions = Admissions::for_tests(fixture.database.clone(), bus.clone());
+    let leases = Leases::new(fixture.database.clone(), bus, Entropy::new());
     fixture.lease = acquire(&leases, &admissions, &fixture.owner, &fixture.runner).await;
     report(&mut session, &fixture, 3, None).await;
     let exits: Vec<_> = recorded

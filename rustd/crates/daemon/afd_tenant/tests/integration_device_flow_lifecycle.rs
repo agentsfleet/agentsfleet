@@ -1,5 +1,5 @@
-//! §1 — a device-flow login's terminal states and its cancels, against a real
-//! queue: a redeemed session stays gone, and a cancel reaches its owner's
+//! A device-flow login's terminal states and its cancels, against live
+//! Postgres: a redeemed session stays gone, and a cancel reaches its owner's
 //! logins and nobody else's.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
@@ -12,19 +12,17 @@
 
 use af_core::error_code;
 use af_crypto::entropy::Entropy;
-use afd_dragonfly::SessionStore;
-use afd_dragonfly::session::SessionState;
 use afd_tenant::session::SessionStatus;
 use afd_tenant::session::input::{Code, Opening};
 
 use crate::device_flow_lane::{CODE, NOW, approval, origin, owner, surface};
-use crate::dragonfly_harness::DragonflyHarness;
+use crate::session_harness::SessionHarness;
 
-/// Dimension 1.2 — a redeemed session is terminal, and reads as gone.
+/// A redeemed session is terminal, and reads as gone.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_terminal_states_are_terminal() {
-    let harness = DragonflyHarness::connect().await;
+    let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
     let approver = owner("terminal");
 
@@ -33,7 +31,7 @@ async fn test_device_flow_terminal_states_are_terminal() {
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), &approver, NOW)
+        .approve(&opened.session_id, &approval(), &approver)
         .await
         .expect("approve");
     sessions
@@ -41,7 +39,6 @@ async fn test_device_flow_terminal_states_are_terminal() {
             &opened.session_id,
             &Code::parse(CODE).expect("digits"),
             &origin(&opened.session_id),
-            NOW,
         )
         .await
         .expect("verify");
@@ -66,9 +63,9 @@ async fn test_device_flow_terminal_states_are_terminal() {
 
 /// A login is aborted by its owner's bulk cancel and by nobody else's.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
-    let harness = DragonflyHarness::connect().await;
+    let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
     let approver = owner("idempotent");
 
@@ -77,7 +74,7 @@ async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), &approver, NOW)
+        .approve(&opened.session_id, &approval(), &approver)
         .await
         .expect("approve");
 
@@ -105,11 +102,11 @@ async fn test_device_flow_cancel_is_owner_checked_and_idempotent() {
     assert_eq!(refusal.code(), error_code::SESSION_ABORTED);
 }
 
-/// Dimension 1.2 — one person's bulk cancel touches nobody else's logins.
+/// One person's bulk cancel touches nobody else's logins.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
-    let harness = DragonflyHarness::connect().await;
+    let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
     let owner = owner("bulk");
     let other = format!("{owner}_other");
@@ -121,7 +118,7 @@ async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
             .await
             .expect("open");
         sessions
-            .approve(&opened.session_id, &approval(), &owner, NOW)
+            .approve(&opened.session_id, &approval(), &owner)
             .await
             .expect("approve");
         mine.push(opened.session_id);
@@ -131,7 +128,7 @@ async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
         .await
         .expect("open");
     sessions
-        .approve(&theirs.session_id, &approval(), &other, NOW)
+        .approve(&theirs.session_id, &approval(), &other)
         .await
         .expect("approve");
 
@@ -152,50 +149,40 @@ async fn test_device_flow_bulk_cancel_is_scoped_to_its_owner() {
     assert_eq!(survivor.status, SessionStatus::VerificationPending);
 }
 
-/// A session the queue holds as `expired` is refused as expired by a poll and
-/// by a code presented against it, and an id the queue never held is missing
+/// A session the table holds as `expired` is refused as expired by a poll and
+/// by a code presented against it, and an id the table never held is missing
 /// to a code as it is to a poll.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_expired_and_unknown_sessions_refuse_a_code() {
-    let harness = DragonflyHarness::connect().await;
+    let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
     let expired = Entropy::new().uuid7(NOW).expect("an identifier");
-    SessionStore::new(harness.redis.clone())
-        .put(&SessionState {
-            session_id: expired.as_str().to_owned(),
-            status: SessionStatus::Expired,
-            cli_public_key: "cli-key".to_owned(),
-            token_name: "laptop".to_owned(),
-            dashboard_public_key: None,
-            ciphertext: None,
-            nonce: None,
-            verification_code_hmac_hex: None,
-            verification_attempts: 0,
-            created_at: NOW,
-            expires_at: NOW,
-            approved_at: None,
-            consumed_at: None,
-            aborted_reason: None,
-            clerk_user_id: None,
-            consumed_client_fingerprint_hex: None,
-            consume_payload_expires_at: None,
-        })
-        .await
-        .expect("seeding an expired session");
+    let mut connection = harness.database.acquire().await.expect("a connection");
+    sqlx::query(
+        "INSERT INTO identity.device_sessions \
+         (id, status, cli_public_key, token_name, verification_attempt_count, created_at, updated_at, expires_at) \
+         VALUES ($1, $2, 'cli-key', 'laptop', 0, now(), now(), now() + interval '5 minutes')",
+    )
+    .bind(&expired)
+    .bind(SessionStatus::Expired.as_str())
+    .execute(&mut *connection)
+    .await
+    .expect("seeding an expired session");
+    drop(connection);
     let code = Code::parse(CODE).expect("digits");
 
     let polled = sessions.poll(expired.as_str()).await.expect_err("expired");
     assert_eq!(polled.code(), error_code::SESSION_EXPIRED);
     let presented = sessions
-        .verify(expired.as_str(), &code, &origin(expired.as_str()), NOW)
+        .verify(expired.as_str(), &code, &origin(expired.as_str()))
         .await
         .expect_err("expired");
     assert_eq!(presented.code(), error_code::SESSION_EXPIRED);
 
     let never = Entropy::new().uuid7(NOW).expect("an identifier");
     let missing = sessions
-        .verify(never.as_str(), &code, &origin(never.as_str()), NOW)
+        .verify(never.as_str(), &code, &origin(never.as_str()))
         .await
         .expect_err("never opened");
     assert_eq!(missing.code(), error_code::SESSION_NOT_FOUND);

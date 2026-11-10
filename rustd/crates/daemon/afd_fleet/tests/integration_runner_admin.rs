@@ -62,7 +62,7 @@ async fn transition(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_admin_transitions() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;
@@ -104,7 +104,7 @@ async fn test_runner_admin_transitions() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn concurrent_identical_transitions_append_one_event() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;
@@ -158,7 +158,7 @@ fn reassignment(worker_count: u32) -> AssignedPolicy<'static> {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_policy_assignment_is_atomic_idempotent_and_reconciled() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;
@@ -284,7 +284,7 @@ async fn store_full_capability(fixtures: &Fixtures, runner: &Uuid7) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_policy_assignment_refuses_revocation() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;

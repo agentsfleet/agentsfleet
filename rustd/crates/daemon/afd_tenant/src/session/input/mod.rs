@@ -3,10 +3,10 @@
 //! # Parse, don't validate — and why that matters HERE specifically
 //!
 //! A store that validates inside the write — four length checks and a digit
-//! run at the top of the function that then issues the `EVAL` — leaves only
+//! run at the top of the function that then issues the `UPDATE` — leaves only
 //! those five remembered `if`s between an unbounded caller-supplied blob and a
-//! Dragonfly key. Add a sixth field later and nothing fails until somebody
-//! parks a megabyte in the queue.
+//! session row. Add a sixth field later and nothing fails until somebody
+//! parks a megabyte in the table.
 //!
 //! Here the bound is the TYPE. [`Sessions::approve`](super::Sessions::approve)
 //! takes an [`Approval`], and an `Approval` can only be built out of a request
@@ -32,7 +32,7 @@ use crate::error::{self, SessionField};
 ///
 /// A base64url P-256 `SubjectPublicKeyInfo` is 124 characters; the ceiling is
 /// generous rather than exact because the encoding is the client's business,
-/// and it exists to stop an unauthenticated caller parking a blob in Dragonfly for
+/// and it exists to stop an unauthenticated caller parking a blob in a session row for
 /// the full time-to-live rather than to check a curve.
 const PUBLIC_KEY_MAX: usize = 200;
 

@@ -17,7 +17,7 @@ const READ_SESSION: &str = "SELECT context_json FROM fleet.sessions WHERE fleet_
 // fails_when=the parent lock conflicts with KEY SHARE and the insert times out;
 // seam=native finalization and schema; no_claim=terminal report or runner guard execution.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn schedule_history_wait_allows_a_first_session_to_commit() {
     let lane = CronLane::open().await;
     let token = CronLane::token();

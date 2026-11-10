@@ -41,7 +41,9 @@ use jiff::Timestamp;
 use crate::lease::envelope::Acquired;
 use crate::lease::store::Leases;
 
-const MAX_INLINE_FINAL_REPLY_BYTES: usize = 64 * 1024;
+/// The tail batch the bus admits is the bound, so a reply this inlines always
+/// fits the frame the broker accepts (`afd_bus::nats::preflight`).
+const MAX_INLINE_FINAL_REPLY_BYTES: usize = afd_bus::TAIL_BATCH_BYTES;
 
 /// The event a steer body this daemon cannot show is logged under.
 const EVENT_STEER_BODY_UNREADABLE: &str = "steer_body_unreadable";

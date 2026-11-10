@@ -200,13 +200,12 @@ pub const INTERNAL_DB_QUERY: ErrorCode = ErrorCode::declare("UZ-INTERNAL-002");
 /// failure row behind.
 pub const STARTUP_MIGRATION_CHECK: ErrorCode = ErrorCode::declare("UZ-STARTUP-005");
 
-/// Dragonfly could not be reached, or did not answer in time.
+/// The message bus could not be reached, or did not answer in time.
 ///
-/// Boot reports this when the dependency is absent. A request-path timeout
-/// answers the same code because the caller's situation is identical — the
-/// datastore is not there — and the operator's distinction is kept in
-/// `afd_dragonfly::Error`'s variants rather than on the wire.
-pub const STARTUP_DRAGONFLY_CONNECT: ErrorCode = ErrorCode::declare("UZ-STARTUP-004");
+/// Boot reports this when no `NATS_URL` seed answers, or when the server that
+/// does is unsuitable. The operator's distinction is kept in `afd_bus::Error`'s
+/// variants rather than on the wire.
+pub const STARTUP_BUS_CONNECT: ErrorCode = ErrorCode::declare("UZ-STARTUP-004");
 
 /// A knob is unset, blank, or not the shape this daemon can use.
 ///

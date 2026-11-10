@@ -8,7 +8,7 @@ use sqlx::{Postgres, Transaction};
 use std::time::Duration;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_model_call_waiting_on_the_host_lock_cannot_use_its_pre_wait_expiry_check() {
     let mut supervisor = Supervisor::new();
     let fixture = AuthoringFixture::start(&mut supervisor, false).await;

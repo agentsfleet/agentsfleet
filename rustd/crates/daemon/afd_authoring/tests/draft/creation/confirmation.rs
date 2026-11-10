@@ -91,7 +91,7 @@ impl Retained {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_missing_confirmation_keeps_the_saved_identity_until_the_same_key_answers() {
     let retained = Retained::create("confirm-missing").await;
     retained.pending(retained.event.as_str()).await;
@@ -124,7 +124,7 @@ async fn a_missing_confirmation_keeps_the_saved_identity_until_the_same_key_answ
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_confirmation_for_another_event_cannot_accept_the_initial_run() {
     let retained = Retained::create("confirm-mismatch").await;
     let unexpected = mint();
@@ -140,13 +140,13 @@ async fn a_confirmation_for_another_event_cannot_accept_the_initial_run() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_confirmation_outage_is_logged_and_a_retry_accepts_without_another_admission() {
     let retained = Retained::create("confirm-outage").await;
     retained.pending(retained.event.as_str()).await;
     let admissions = Admissions::new(
         afd_db::test_util::unreachable_db(),
-        afd_bus::dragonfly::publisher(retained.case.queue.clone()),
+        retained.case.bus.clone(),
         Entropy::new(),
     );
     let creations = Creations::new(retained.case.setup.clone(), admissions);

@@ -3,7 +3,7 @@
 > Parent: [`README.md`](./README.md).
 
 > References: [`../data_flow.md`](../data_flow.md) for trigger → run → watch; [`../lease_flow.md`](../lease_flow.md) for one lease.
-> [`../runner_fleet.md`](../runner_fleet.md) §"Datastore topology" and [`../datastore_scaling.md`](../datastore_scaling.md) §"Target design" own queue and datastore details.
+> [`../runner_fleet.md`](../runner_fleet.md) §"Datastore topology" and [`../datastore_scaling.md`](../datastore_scaling.md) §"Target design" own queue, bus and datastore details.
 > See also [`github-pr-reviewer.md`](./github-pr-reviewer.md) and [`slack-incident-responder.md`](./slack-incident-responder.md).
 
 > One workspace, two fleets, three ways in. Each picture shows one step and links its rules. When a picture disagrees with a linked section, the linked section wins and this page is stale.
@@ -18,15 +18,15 @@ The words this page leans on; the rest are in [`../README.md`](../README.md) §"
 |---|---|
 | **Workspace** | Your team's space; every fleet, secret and connection lives in one. |
 | **Fleet** | One saved agent: its reviewed setup, meaning its instructions and the triggers, tools, secrets, network and budget it may use. A `fleet.fleets` row that selects one immutable `fleet.revisions` row. |
-| **`agentsfleetd`** | The control plane. Owns Postgres, Dragonfly, the vault, HTTP and private authoring model dispatch. Fleet runtime model calls run on the runner. |
+| **`agentsfleetd`** | The control plane. Owns Postgres, its NATS connection, the vault, HTTP and private authoring model dispatch. Fleet runtime model calls run on the runner. |
 | **`agentsfleet-runner`** | The worker on a host. Asks for work, runs the agent loop, reports back; holds no datastore credential. |
 | **Admission** | "We accepted this job", a `fleet.admissions` row committed **before** the sender hears yes. |
 | **Queue** | Unsettled `fleet.admissions` rows, oldest first within each fleet. |
-| **Doorbell** | Best-effort fleet hints on sixteen `fleet:wake:{shard}` channels. Every idle poll also probes Postgres. |
+| **Wake ring** | A best-effort fleet hint on one of sixteen `af.wake.<shard>` NATS subjects. It starts an offer pass; a 5 s recovery probe on each replica covers a lost ring. |
 | **Lease** | A time-limited permission to run one job for one fleet, carrying a **fencing token** that only goes up, so a stale worker cannot overwrite a newer one. |
 | **Report** | The worker handing the answer back; settles money, history and the bookmark in one transaction. |
 | **Obligation** | "We still owe someone this answer", a `fleet.obligations` row, written only when the job came from somewhere a reply can go. |
-| **Activity channel** | The live tail, `fleet:{id}:activity`, a sharded pub/sub channel (`SPUBLISH` / `SSUBSCRIBE`); frames for screens, never the record. |
+| **Activity channel** | The live tail, `af.fleet.<fleet_id>.tail`, a core NATS subject delivered at most once; frames for screens, never the record. |
 
 ```
   WORKSPACE "indy-ws"
@@ -85,12 +85,12 @@ GitHub pull_request -> verified App delivery -> matching fleet A
                                    producer=webhook_app
                                    stable delivery key and event identity
                                                     |
-                                      attempt fleet:wake:{shard}
+                                      attempt af.wake.<shard>
                                                     |
                                       202 {matched: 1, enqueued: 1}
 ```
 
-The admission is the queued job. A lost notification leaves it available to the next idle poll.
+The admission is the queued job. A lost wake ring leaves it for the next 5 s recovery probe.
 
 ## 3. Trigger two: a Slack mention wakes fleet B
 
@@ -102,7 +102,7 @@ signed mention -> workspace and fleet B -> commit fleet.admissions
                                          producer=slack_mention
                                          reply=Slack channel and thread
                                                   |
-                                    attempt fleet:wake:{shard}
+                                    attempt af.wake.<shard>
 ```
 
 That destination is what makes fleet B's report owe an outbound reply.
@@ -116,14 +116,14 @@ Admission records it under producer `steer`; the request's operation identity de
 ```text
 person -> POST fleet messages -> commit a second admission for fleet A
                                           |
-                              attempt fleet:wake:{shard}
+                              attempt af.wake.<shard>
                                           |
                                    202 {event_id}
 ```
 
 All six producers use the same ledger shape. Actor and event type describe the job; the admission row owns its stable identity.
 
-## 5. The waiting room: inboxes, shelves and doorbells
+## 5. The waiting room: inboxes, shelves and wake rings
 
 Fleet A has two unsettled admissions and fleet B has one.
 Postgres orders each fleet's queue by admission `sequence`.
@@ -133,20 +133,22 @@ Postgres fleet.admissions
   fleet A: [PR opened] [steer: check migration]
   fleet B: [Slack mention]
 
-Dragonfly fleet:wake:{shard}
-  sixteen channels -> each daemon's buffer of at most 64 distinct fleet hints
+NATS af.wake.<shard>
+  sixteen subjects -> each daemon's queue of at most 64 distinct fleets
 ```
 
-Hints prioritize candidate selection. Every idle poll probes the ledger even if all notifications are lost.
-[The queue design](../datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the limits and claim costs.
+A wake ring starts an offer pass and puts its fleet first.
+Each replica's recovery probe reads the ledger every 5 s, even if every ring is lost.
+[The queue design](../datastore_scaling.md#the-admissions-ledger-is-the-queue) owns the limits and probe costs.
 
 ## 6. Pickup: two runners, two leases
 
-The daemon offers work to each connected runner with credits. Eligible fleets must be active, match runner labels and have an available slot.
+Each runner holds one stream to `agentsfleetd`, and the offer pass pushes work down it.
+Eligible fleets must be active, match runner labels and have an available slot.
 
 ```text
-offer pass -> runner R1 -> fleet A's oldest admission (PR opened)
-offer pass -> runner R2 -> fleet B's oldest admission (Slack mention)
+offer pass -> runner R1's stream <- fleet A's oldest admission (PR opened)
+offer pass -> runner R2's stream <- fleet B's oldest admission (Slack mention)
 
 for each claim:
   lock slot and exact oldest head with SKIP LOCKED
@@ -191,7 +193,7 @@ Canonical: [`../runner_execution.md`](../runner_execution.md) §"One lease, end 
   │        │  POST /repos/…/pulls/{n}/reviews        ✗ no rule matches               │
   │        │      → the model reads "[request_policy_not_allowed] …" and goes on     │
   │        ▼                                                                         │
-  │   each step → an activity frame → POST …/activity → the daemon SPUBLISHes it:    │
+  │   each step → an activity frame → POST …/activity → the daemon publishes it:     │
   │      tool_call_started · fleet_response_chunk · tool_call_progress ·             │
   │      tool_call_completed                                                         │
   │                                                                                  │
@@ -215,7 +217,7 @@ runner -> report -> one Postgres transaction
                      outbound obligation when a reply is owed
                             | commit
                             +-> publish terminal activity
-                            +-> append connector:outbound and record its receipt
+                            +-> publish af.outbound.wake
 ```
 
 A stale holder receives `UZ-RUN-005` without durable changes. A repeat committed report charges nothing again.
@@ -231,28 +233,28 @@ Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §"6. 
   FLEET B (Slack)                                 FLEET A (GitHub)
   ───────────────                                 ────────────────
   fleet.obligations row                      no obligation row
-    receipt NULL, delivered_at NULL                 (admitted with Reply::None)
+    claim lapsed, delivered_at NULL                 (admitted with Reply::None)
         │                                                │
-        │ XADD connector:outbound                        │
+        │ af.outbound.wake ping, or the 30 s pass        │
         ▼                                                ▼
   ┌─────────────── outbound worker ───────────────┐  the answer lives in:
-  │ its own Dragonfly socket, XREADGROUP BLOCK    │   fleet.events.response_text,
+  │ claims the lane head, FOR UPDATE SKIP LOCKED  │   fleet.events.response_text,
   │ SlackPoster:                                  │   the live tail, the dashboard
   │   the bot token from vault "slack"            │   and `agentsfleet events`
   │   escape & < >  (literal text only)           │
   │   chat.postMessage(channel_id, thread_ts)     │  ON GITHUB: nothing.
   │   ─────────────────────────► #ci-dev thread   │   egress refused the review POST
   │   stamp delivered_at  (by the POSTER,         │   (part 7), and no GitHub poster
-  │                        never by the XACK)     │   exists (Indy parked it)
+  │                        holding the claim)     │   exists (Indy parked it)
   └───────────────────────────────────────────────┘
 ```
 
 ```
-   receipt IS NULL             → committed, never queued    (a crash before the outbound append)
-   receipt set, delivered NULL → queued, nobody received it (a lost stream or host)
-   delivered_at set            → a person has it
+   claim lapsed, delivered NULL → owed; any replica may claim it (a new row starts lapsed)
+   claim live, delivered NULL   → one worker holds it and posts; it renews every 10 s
+   delivered_at set             → a person has it
 
-   afd_outbound re-queues the first state once it is 30 s old and the second after 5 min;
+   a worker that dies stops renewing; its claim lapses after 30 s and another replica takes it;
    a destination that refuses for good, or twelve failed cycles, stamps it abandoned.
 ```
 
@@ -266,11 +268,11 @@ Canonical: [`../data_flow.md`](../data_flow.md) §"D. WATCH".
   fleet page (ChatView)   ── EventSource ──► /live/v1/…/fleets/{id}/events/stream
   fleet wall (FleetWall)  ── EventSource ──► /live/v1/workspaces/{ws}/events/stream
                                                 │
-   Next.js /live/* proxy (Clerk session → Bearer) ──► agentsfleetd ── SubscriptionHub ──┐
+   Next.js /live/* proxy (Clerk session → Bearer) ──► agentsfleetd ── NATS hub ─────────┐
                                                        ▲                                │
   CLI steer ── Server-Sent Events (SSE), Bearer ───────┘                                │
                                                                                         │
-          shared Dragonfly pub/sub owner: SSUBSCRIBE fleet:{id}:activity                │
+          one NATS connection: one subscription per af.fleet.<id>.tail                  │
           frames copied into each viewer's bounded queue ◄──────────────────────────────┘
 
    frames: event_admitted → event_received → tool_call_started →
@@ -278,7 +280,7 @@ Canonical: [`../data_flow.md`](../data_flow.md) §"D. WATCH".
            (+ gate_opened / gate_resolved when a person is asked)
 
    a dropped tab:   on reconnect, read fleet.events since (last − 2 s), merge by id
-   a lost channel:  catching_up {dropped:0}, then the same backfill
+   a lost subscription: catching_up {dropped:0}, then the same backfill
    the live tail is for watching; fleet.events is the record
 ```
 
@@ -295,8 +297,8 @@ A browser's `EventSource` cannot send an `Authorization` header, so the dashboar
                        |
                        +-> each admission attempts a wake notification
 
- R1  poll -> Postgres -> claim A#1 + A's slot -> run -> report A#1
- R2  poll -> Postgres -> claim B#1 + B's slot -> run -> report B#1
+ R1  offer -> Postgres -> claim A#1 + A's slot -> run -> report A#1
+ R2  offer -> Postgres -> claim B#1 + B's slot -> run -> report B#1
              |                                           |
              |       both fleets can run concurrently    +-> thread reply
              v

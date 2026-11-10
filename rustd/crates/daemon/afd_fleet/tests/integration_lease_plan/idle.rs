@@ -15,7 +15,7 @@ const IDLE_FLEETS: &str = "INSERT INTO fleet.fleets \
 // fleet; why_new=backlog tests do not grow idle fleet population; seam=none;
 // no_claim=constant server work when unsettled admissions exist.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_empty_ledger_skips_fleet_scans_at_twenty_thousand_idle_fleets() {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, _, _, [runner]) = crate::seed::seeded_parts::<1>(&fixtures).await;
