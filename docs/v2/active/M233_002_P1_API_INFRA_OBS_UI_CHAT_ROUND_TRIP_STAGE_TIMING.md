@@ -129,7 +129,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 a
 
 A shared vCPU's baseline is 5 ms per 80 ms, and on `shared-cpu-1x` every dev request was throttled. The dev daemon now declares `shared-cpu-2x` 1 GB (`deploy/fly/agentsfleetd-dev/fly.toml`). M244 deleted `dragonfly-dev`, so its half of this Section is gone.
 
-- **Dimension 0.2** — IN_PROGRESS — the live daemon matches its file → Test `manual_dev_size_matches_live` (manual; Indy or the implementer runs `fly scale show -a agentsfleetd-dev`; output in the Pull Request Session Notes): `shared` 2 CPUs 1024 MB. A machine still on one CPU fails it.
+- **Dimension 0.2** — DONE (Nov 10, 2026: `fly scale show -a agentsfleetd-dev` → `app │ 1 │ shared │ 2 │ 1024 MB │ iad`) — the live daemon matches its file → Test `manual_dev_size_matches_live` (manual; Indy or the implementer runs `fly scale show -a agentsfleetd-dev`; output in the Pull Request Session Notes): `shared` 2 CPUs 1024 MB. A machine still on one CPU fails it.
 - **Dimension 0.3** — the dev daemon is unthrottled at rest → Test `manual_dev_daemon_unthrottled_at_rest` (manual; one hour after a deploy, `rate(fly_instance_cpu_throttle[30m])` = 0 and `fly_instance_cpu_balance` > 0 for `agentsfleetd-dev`; values in the Session Notes).
 
 ### §1 — The daemon names every stage a chat crosses
@@ -324,6 +324,12 @@ N/A: nothing is deleted. The old default's span layer move and its `stage_clock`
 - **Patch-vs-refactor verdict:** a patch; §1 adds one module and marks, and §2's infrastructure is shipped.
 
 ## Discovery (consult log)
+
+- **Changelog skipped, Nov 10, 2026:**
+  > Indy (Nov 10, 2026): "skip" — context: the CHORE(close) changelog entry for this Pull Request.
+- **Dev checks run by the agent, Nov 10, 2026** (Indy asked "can you do those checks?"):
+  - 0.2: `fly scale show -a agentsfleetd-dev` printed `app │ 1 │ shared │ 2 │ 1024 MB │ iad`; one machine `started`, 1 of 1 checks passing, updated 14:58:20 UTC.
+  - 0.3: not read. `fly_instance_cpu_*` is absent from Grafana's `grafanacloud-prom` (`gcx metrics series` returned `[]`), and Fly's Prometheus answered 401 "something went wrong resolving organization" to the logged-in session. Reading it needs a read-only Fly org token, which the agent did not mint.
 
 - **Review decisions, Nov 10, 2026** (gstack review and `orly-standards-reviewer`):
   > Indy (Nov 10, 2026): chose "Change in place (Recommended)" — context: rule NLG; the untimed twins (`report`, `claim_with`, `claim_fleet_with`, `run_claimed_with`) are replaced by one signature taking the clock, and their test callers in `afd_fleet` pass `VerbClock::untimed()`.
