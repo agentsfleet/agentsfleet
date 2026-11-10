@@ -195,6 +195,50 @@ pub const ATTR_LEASE_ID: &str = "agentsfleet.lease.id";
 /// rather than a fresh one; absent from a lease that used no sandbox.
 pub const ATTR_SANDBOX_REUSED: &str = "agentsfleet.sandbox.reused";
 
+/// The lease's memory hydrate, on the fallback path only.
+pub const ATTR_RUNNER_MEMORY_MS: &str = "agentsfleet.runner.memory_ms";
+
+/// The sandbox, from sizing through checkout.
+pub const ATTR_RUNNER_SANDBOX_MS: &str = "agentsfleet.runner.sandbox_ms";
+
+/// Inside the sandbox segment: the egress bind.
+pub const ATTR_RUNNER_EGRESS_MS: &str = "agentsfleet.runner.egress_ms";
+
+/// Inside the sandbox segment: a held sandbox thawed, or a fresh one built.
+pub const ATTR_RUNNER_PREPARE_MS: &str = "agentsfleet.runner.prepare_ms";
+
+/// Inside the sandbox segment: the bound repositories checked out.
+pub const ATTR_RUNNER_CHECKOUT_MS: &str = "agentsfleet.runner.checkout_ms";
+
+/// How long the turn's sandbox-side calls waited for the build.
+pub const ATTR_RUNNER_SANDBOX_WAIT_MS: &str = "agentsfleet.runner.sandbox_wait_ms";
+
+/// The model's turns, less the tools they called.
+pub const ATTR_RUNNER_MODEL_MS: &str = "agentsfleet.runner.model_ms";
+
+/// The tools the model's turns called.
+pub const ATTR_RUNNER_TOOLS_MS: &str = "agentsfleet.runner.tools_ms";
+
+/// The settle, from hold-or-destroy to the posted report.
+pub const ATTR_RUNNER_REPORT_MS: &str = "agentsfleet.runner.report_ms";
+
+/// Inside the model segment: the run's first answer chunk.
+pub const ATTR_RUNNER_FIRST_TOKEN_MS: &str = "agentsfleet.runner.first_token_ms";
+
+/// The lease span's segment keys, in the order the lease's last line logs them.
+pub const RUNNER_SEGMENT_KEYS: [&str; 10] = [
+    ATTR_RUNNER_MEMORY_MS,
+    ATTR_RUNNER_SANDBOX_MS,
+    ATTR_RUNNER_EGRESS_MS,
+    ATTR_RUNNER_PREPARE_MS,
+    ATTR_RUNNER_CHECKOUT_MS,
+    ATTR_RUNNER_SANDBOX_WAIT_MS,
+    ATTR_RUNNER_MODEL_MS,
+    ATTR_RUNNER_TOOLS_MS,
+    ATTR_RUNNER_REPORT_MS,
+    ATTR_RUNNER_FIRST_TOKEN_MS,
+];
+
 /// One model turn.
 pub const OPERATION_CHAT: &str = "chat";
 
@@ -216,6 +260,16 @@ pub const RUNNER_SPAN_KEYS: &[&str] = &[
     ATTR_SANDBOX_REUSED,
     ATTR_EVENT_ID,
     ATTR_AGENT_ID,
+    ATTR_RUNNER_MEMORY_MS,
+    ATTR_RUNNER_SANDBOX_MS,
+    ATTR_RUNNER_EGRESS_MS,
+    ATTR_RUNNER_PREPARE_MS,
+    ATTR_RUNNER_CHECKOUT_MS,
+    ATTR_RUNNER_SANDBOX_WAIT_MS,
+    ATTR_RUNNER_MODEL_MS,
+    ATTR_RUNNER_TOOLS_MS,
+    ATTR_RUNNER_REPORT_MS,
+    ATTR_RUNNER_FIRST_TOKEN_MS,
     ATTR_OPERATION_NAME,
     ATTR_PROVIDER_NAME,
     ATTR_REQUEST_MODEL,

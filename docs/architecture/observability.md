@@ -281,7 +281,10 @@ no telemetry knob, so hardening still sees a single thread.
   an event.
 
   Each lease is its own root trace carrying `agentsfleet.lease.id`
-  and `agentsfleet.event.id`. The tool span names its tool by the published catalog, or `_other` for anything else. A name the model made up therefore never leaves the host.
+  and `agentsfleet.event.id`. When the lease concludes, `runner.lease` gains
+  each segment it reached as `agentsfleet.runner.<segment>_ms`, the values its
+  `lease_completed` line logs. `RUNNER_SEGMENT_KEYS` in `semconv` declares
+  the ten keys, and an unreached segment stays off the span. The tool span names its tool by the published catalog, or `_other` for anything else. A name the model made up therefore never leaves the host.
 
 - **A fixed span budget** (`afr_telemetry`'s `budget` module): at most
   `MAX_LEASE_SPANS` (256) spans per lease, its root included. The runner-wide cap is `RUNNER_SPANS_PER_SECOND` (128) per monotonic second. A
@@ -519,14 +522,14 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 | Held heartbeat (`afd_api_runner` heartbeat, `wake.rs`) | `runner_wake_refused` | `agentsfleet_runner_wake_answers_total{reason}` | request span only |
 | Lease issued (`afd_fleet` lease delivery) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_lease}` | request span only |
 | Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_lease_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
-| Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease`, same condition |
+| Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease` with its segment attributes, same condition |
 | Report settled (`afd_fleet` lease report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{lease_to_report, report_to_complete, event_to_complete}` | `fleet.delivery` with segment attributes |
 | First chunk (`afd_fleet` lease activity) | none | `delivery_stage{lease_to_first_chunk, event_to_first_chunk, zombie_to_first_chunk}` | none |
 
 Gaps left by M238, each named in M233_001:
 
 - The steer and lease handlers carry no stage attributes on their request spans (§1).
-- The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026 (§2).
+- The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026, and `runner.lease` carries its segments (§2).
 - The edge reports nothing of its own (§3).
 
 ## M243 runner stream instrumentation
