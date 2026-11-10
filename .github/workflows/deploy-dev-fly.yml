@@ -35,8 +35,9 @@ jobs:
       # context is its own directory; the image copies nothing.
       NATS_APP: nats-dev
       NATS_BUILD_CONTEXT: deploy/fly/nats-dev
-      NATS_CONFIG: deploy/fly/nats-dev/fly.toml
       NATS_MACHINES: "2"
+      # No config argument: flyctl reads fly.toml from the build context, and a
+      # repository-relative --config would resolve inside that context.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -110,7 +111,7 @@ jobs:
           bash scripts/ensure_fly_app.sh --create-only "$NATS_APP"
           flyctl secrets set NATS_URL="$NATS_URL" --stage --app "$NATS_APP"
           bash scripts/ensure_fly_app.sh \
-            "$NATS_APP" "$NATS_BUILD_CONTEXT" "$NATS_MACHINES" "$NATS_CONFIG"
+            "$NATS_APP" "$NATS_BUILD_CONTEXT" "$NATS_MACHINES"
         env:
           FLY_API_TOKEN: ${{ env.FLY_API_TOKEN }}
           FLY_ORG: agentsfleet-dev
