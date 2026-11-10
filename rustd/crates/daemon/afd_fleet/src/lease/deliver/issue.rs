@@ -77,7 +77,7 @@ impl LeaseService {
                 &admitted.acquired,
                 admitted.event_type,
             ),
-            self.window_for(&admitted.acquired.fleet_id),
+            self.window_for(&admitted.acquired),
         )
         .await;
         let metadata = metadata(&issued, &admitted.acquired);
