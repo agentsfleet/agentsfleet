@@ -224,7 +224,7 @@ test_should_skip_absent_and_production_wireguard() {
 test_should_probe_each_private_carrier_and_refuse_failures() {
   local output status=0 boundary
   output="$(run_script ENV=dev bash "$VERIFY")" || status=$?
-  if [ "$status" -ne 0 ] || [[ "$output" != *'private runner h2:'*'private runner h3:'* ]] ||
+  if [ "$status" -ne 0 ] || [[ "$output" != *'private runner h2: verified TLSv1.3'*'private runner h3: verified QUICv1'* ]] ||
     ! grep -Fq -- '-tls1_3 -alpn h2' "$calls" || ! grep -Fq -- '-quic -alpn h3' "$calls" ||
     ! grep -Fq -- '-groups X25519MLKEM768' "$calls" ||
     grep -Eq -- '-quic.*-tls1_3|-tls1_3.*-quic|-sess_out|-keylogfile' "$calls"; then
