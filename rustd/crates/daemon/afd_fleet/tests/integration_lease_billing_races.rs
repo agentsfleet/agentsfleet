@@ -23,22 +23,25 @@ use crate::report_seed::held;
 const ROUNDS: usize = 5;
 
 /// The usage lines `lease` has logged, by line number.
-async fn line_numbers(fixtures: &crate::support::Fixtures, lease: &Uuid7) -> Vec<i64> {
-    sqlx::query_scalar("SELECT seq FROM billing.usage_lines WHERE work_id = $1 ORDER BY seq")
-        .bind(lease)
-        .fetch_all(
-            &mut *fixtures
-                .database
-                .acquire()
-                .await
-                .expect("a pooled connection"),
-        )
-        .await
-        .expect("the lines read")
+/// The lease's lines as `(kind, seq)`, model lines first.
+async fn line_numbers(fixtures: &crate::support::Fixtures, lease: &Uuid7) -> Vec<(String, i64)> {
+    sqlx::query_as(
+        "SELECT kind, seq FROM billing.usage_lines WHERE work_id = $1 ORDER BY kind, seq",
+    )
+    .bind(lease)
+    .fetch_all(
+        &mut *fixtures
+            .database
+            .acquire()
+            .await
+            .expect("a pooled connection"),
+    )
+    .await
+    .expect("the lines read")
 }
 
-/// The first line number the daemon's runtime lines take.
-const BASE: i64 = af_wire::usage::DAEMON_SEQ_BASE as i64;
+const MODEL: &str = af_wire::usage::LineKind::Model.as_str();
+const RUNTIME: &str = af_wire::usage::LineKind::Runtime.as_str();
 
 const REQUEST_INPUT_TOKENS: u32 = 1_000;
 
@@ -83,16 +86,23 @@ async fn two_reports_of_one_lease_log_one_final_line() {
             [&first, &second].contains(&&Settled::AlreadySettled),
             "the other is told this runner already settled it"
         );
-        assert_eq!(line_numbers(&held.fixtures, lease).await, [0, BASE]);
+        let lines = line_numbers(&held.fixtures, lease).await;
+        let kinds: Vec<&str> = lines.iter().map(|(kind, _seq)| kind.as_str()).collect();
+        assert_eq!(
+            kinds,
+            [MODEL, RUNTIME],
+            "one request and one slice: {lines:?}"
+        );
+        assert_eq!(lines.first().map(|line| line.1), Some(0), "{lines:?}");
 
         held.fixtures.cleanup().await;
     }
 }
 
 /// A renewal and the report race on one lease, both carrying the same request:
-/// the request is stored once, and whichever pass runs second numbers its
-/// runtime line after the first's, so the lease never holds two lines under
-/// one number and never loses one to the `(work, seq)` guard. The second pass
+/// the request is stored once, and each pass numbers its runtime line by the
+/// slice it bills, so the lease never holds two lines under one number and
+/// never loses one to the `(work, kind, seq)` guard. The second pass
 /// may measure no runtime, and log no runtime line, when the two land within a
 /// millisecond.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -129,19 +139,22 @@ async fn a_renewal_racing_the_report_numbers_its_line_apart() {
             "the report wins its own lease whatever order: {settled:?}"
         );
         let lines = line_numbers(&held.fixtures, lease).await;
-        let (requested, runtime): (Vec<i64>, Vec<i64>) = lines.iter().partition(|seq| **seq < BASE);
+        let seqs_of = |wanted: &str| -> Vec<i64> {
+            lines
+                .iter()
+                .filter(|(kind, _seq)| kind == wanted)
+                .map(|line| line.1)
+                .collect()
+        };
         assert_eq!(
-            requested,
+            seqs_of(MODEL),
             [0],
             "the shared request is stored once: {lines:?}"
         );
-        let dense = runtime
-            .iter()
-            .zip(BASE..)
-            .all(|(seq, expected)| *seq == expected);
+        let runtime = seqs_of(RUNTIME);
         assert!(
-            dense && !runtime.is_empty(),
-            "runtime lines stay distinct and dense from the daemon's base: {lines:?}, renewed {renewed:?}"
+            !runtime.is_empty() && runtime.windows(2).all(|pair| pair.first() < pair.last()),
+            "each slice is its own runtime line, by its start: {lines:?}, renewed {renewed:?}"
         );
         if matches!(
             renewed,

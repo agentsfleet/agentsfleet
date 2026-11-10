@@ -5,7 +5,7 @@ import type { BillingDetail } from "../lib/report-detail";
 import { formatCount } from "@/lib/events/run-figures-format";
 import { MS_PER_SECOND } from "@/lib/utils";
 import { BILLING_DETAIL_STATE } from "../lib/report-detail";
-import { BILLING_ACTIVITY_SETUP } from "@/lib/api/billing-report-values";
+import { BILLING_ACTIVITY_SETUP, BILLING_CHARGE_KIND, type BillingChargeKind } from "@/lib/api/billing-report-values";
 import { useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button, DescriptionDetails, DescriptionList, DescriptionTerm, EMPTY_STATE_SURFACE, EmptyState, PAGINATION_KIND, Pagination, UnavailableState } from "@agentsfleet/design-system";
@@ -43,8 +43,6 @@ export function BillingActivityDetails({ activity, detail, modelNames }: Props) 
     </DescriptionList>
     {detail.charges.items.length === 0 ? <EmptyState title="No matching settled charges" description="This activity has no settled lines for these filters." surface={EMPTY_STATE_SURFACE.plain} /> : null}
     {activity.totals.unpriced_tokens > 0 ? <p className="mt-sm text-muted-foreground">{formatCount(activity.totals.unpriced_tokens)} tokens awaiting a platform price</p> : null}
-    {detail.charges.items.some(charge => charge.runtime_ms > 0 && charge.input_tokens + charge.output_tokens > 0) ?
-      <p className="mt-sm text-muted-foreground">Separate historical model and runtime prices are unavailable for combined charges.</p> : null}
     {providerNote ? <p className="mt-sm text-muted-foreground">{providerNote}</p> : null}
     {paged ? <p className="mt-sm text-muted-foreground">Showing charge page {detail.page}. Total charged covers the entire activity.</p> : null}
     {paged ? <Pagination kind={PAGINATION_KIND.page} page={detail.page} pageSize={DETAIL_PAGE_SIZE}
@@ -60,10 +58,16 @@ function DetailLine({ label, value, total = false }: { label: string; value: str
   </div>;
 }
 
+// Each charge says what it billed (M245), so the label reads it rather than
+// inferring it from which counts are non-zero.
+const CHARGE_KIND_LABEL = {
+  [BILLING_CHARGE_KIND.model]: "Model call",
+  [BILLING_CHARGE_KIND.runtime]: "Runtime",
+  [BILLING_CHARGE_KIND.decision]: "Decision call",
+} as const satisfies Record<BillingChargeKind, string>;
+
 function chargeLabel(charge: BillingCharge, model: string | null): string {
-  const inference = charge.input_tokens + charge.output_tokens + charge.unpriced_tokens > 0;
-  const kind = charge.runtime_ms > 0 ? inference ? "Inference & runtime" : "Runtime" : inference ? "Inference" : "Recorded charge";
   const unit = charge.runtime_ms === MS_PER_SECOND ? "second" : "seconds";
-  const duration = charge.runtime_ms > 0 ? ` · ${runtimeSecondsLabel(charge.runtime_ms)} ${unit}` : "";
-  return `${kind}${duration}${model ? ` · ${model}` : ""}`;
+  const duration = charge.kind === BILLING_CHARGE_KIND.runtime ? ` · ${runtimeSecondsLabel(charge.runtime_ms)} ${unit}` : "";
+  return `${CHARGE_KIND_LABEL[charge.kind]}${duration}${model ? ` · ${model}` : ""}`;
 }

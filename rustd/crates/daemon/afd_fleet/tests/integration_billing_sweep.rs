@@ -12,7 +12,7 @@ use std::{panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_wire::usage::{DAEMON_SEQ_BASE, DECISION_SEQ_BASE, UsageLine};
+use af_wire::usage::{LineKind, UsageLine};
 use afd_billing::biller::{Account, Attribution, Biller, Settlement, WorkKey};
 use afd_billing::ledger::{LedgerBiller, log_lines};
 use afd_billing::price::RatedLine;
@@ -77,7 +77,7 @@ async fn the_relay_settles_orphaned_lines() {
 
 /// A lease that ended unreported owes the run time between its last renewal
 /// and the deadline it was granted (spec Dimension 9.5). The sweeper logs it as
-/// one runtime line in the daemon's range, settles it, and a second pass finds
+/// one runtime line numbered by its slice's start, settles it, and a second pass finds
 /// nothing more to bill.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -112,7 +112,8 @@ async fn expiry_after_decision(held: &Held) {
     "jev-latest".clone_into(&mut decision.model);
     decision.lines = vec![RatedLine {
         usage: UsageLine {
-            seq: DECISION_SEQ_BASE,
+            kind: LineKind::Decision,
+            seq: 0,
             at: held.now,
             input_tokens: 1_000,
             cached_input_tokens: 0,
@@ -131,11 +132,11 @@ async fn expiry_after_decision(held: &Held) {
         .await
         .expect("known decision charge");
     let first_ms = renew_runtime(held, &biller).await;
-    assert_eq!(
-        runtime_lines(held).await,
-        [(i64::from(DAEMON_SEQ_BASE), first_ms)],
-        "renewal counts runtime only, despite the existing decision receipt"
-    );
+    let renewed = runtime_lines(held).await;
+    let [(first_seq, billed_ms)] = renewed.clone().try_into().unwrap_or_else(|_count| {
+        unreachable!("renewal bills one runtime line, despite the decision receipt: {renewed:?}")
+    });
+    assert_eq!(billed_ms, first_ms, "{renewed:?}");
     let before = DEEP_POOL - DECISION_CHARGE.as_i64() - crate::report_seed::run_fee(first_ms);
     assert_eq!(held.fixtures.balance(&held.tenant).await, Some(before));
     let tail_ms = abandon(held).await;
@@ -157,11 +158,8 @@ async fn expiry_after_decision(held: &Held) {
     );
     assert_eq!(
         runtime_lines(held).await,
-        [
-            (i64::from(DAEMON_SEQ_BASE), first_ms),
-            (i64::from(DAEMON_SEQ_BASE) + 1, tail_ms)
-        ],
-        "expiry uses the next runtime sequence without counting decision usage"
+        [(first_seq, first_ms), (first_seq + first_ms, tail_ms)],
+        "expiry bills the next slice, numbered by where the renewal's ended"
     );
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
@@ -257,7 +255,9 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
 
 /// Leaves `held`'s lease active but abandoned: its deadline and its cursor
 /// both pushed back past the sweeper's grace, with three seconds of run time
-/// between them that no renewal billed. Answers that tail in milliseconds.
+/// between them that no renewal billed. The lease's start moves back with its
+/// cursor, as elapsed time moves both, so the tail starts where the last
+/// renewal ended. Answers that tail in milliseconds.
 pub(crate) async fn abandon(held: &Held) -> i64 {
     let lease = &held.issued.lease_id;
     let mut connection = held
@@ -268,7 +268,9 @@ pub(crate) async fn abandon(held: &Held) -> i64 {
         .expect("a pooled connection");
     sqlx::query(
         "UPDATE runner.leases SET lease_expires_at = now() - $2::interval, \
-         last_metered_at = now() - $2::interval - $3::interval WHERE id = $1",
+         last_metered_at = now() - $2::interval - $3::interval, \
+         created_at = created_at - (last_metered_at - (now() - $2::interval - $3::interval)) \
+         WHERE id = $1",
     )
     .bind(lease)
     .bind(GRACE.saturating_mul(2))
@@ -286,11 +288,10 @@ const TAIL: Duration = Duration::from_secs(3);
 async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     sqlx::query_as(
         "SELECT seq, runtime_ms FROM billing.usage_lines \
-         WHERE work_id = $1 AND seq >= $2 AND seq < $3 ORDER BY seq",
+         WHERE work_id = $1 AND kind = $2 ORDER BY seq",
     )
     .bind(&held.lease_key)
-    .bind(i64::from(DAEMON_SEQ_BASE))
-    .bind(i64::from(DECISION_SEQ_BASE))
+    .bind(LineKind::Runtime.as_str())
     .fetch_all(
         &mut *held
             .fixtures
@@ -368,6 +369,7 @@ pub(crate) async fn settlement(held: &Held) -> Settlement {
         posture: Posture::Platform,
         lines: vec![RatedLine {
             usage: UsageLine {
+                kind: LineKind::Runtime,
                 seq: 0,
                 at: held.now,
                 input_tokens: 0,

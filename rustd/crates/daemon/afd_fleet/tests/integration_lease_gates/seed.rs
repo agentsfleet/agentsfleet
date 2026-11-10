@@ -128,12 +128,12 @@ pub(super) async fn seed_spend(fixtures: &Fixtures, ready: &Ready, tenant: &Uuid
         .expect("a pooled connection");
     sqlx::query(
         "INSERT INTO billing.usage_lines \
-           (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, \
+           (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, \
             event_id, provider, model, posture, requested_at, input_token_count, \
             cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
             cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
             charged_nanos, created_at, updated_at) \
-         VALUES ($7, $8, $7, 0, $1, $2, $3, $3, $4, 'anthropic', \
+         VALUES ($7, $8, $7, 0, 'model', $1, $2, $3, $3, $4, 'anthropic', \
                  $5, 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $6, now(), now())",
     )
     .bind(tenant)

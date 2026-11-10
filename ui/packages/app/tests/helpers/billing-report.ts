@@ -1,6 +1,7 @@
 import type { BillingActivity, BillingCharge, BillingReport, BillingTotals } from "@/lib/api/billing_report";
 import { PROVIDER_MODE } from "@/lib/types";
 import { BILLING_ACTIVITY_RUNTIME, BILLING_PERIOD_MONTH } from "@/lib/api/billing_report";
+import { BILLING_CHARGE_KIND } from "@/lib/api/billing-report-values";
 
 export const BILLING_AT = "2026-10-25T12:00:00Z";
 export const BILLING_MODEL = "accounts/fireworks/models/minimax-m3p1-flash";
@@ -25,7 +26,7 @@ export function billingActivity(overrides: Partial<BillingActivity> = {}): Billi
 }
 
 export function billingCharge(overrides: Partial<BillingCharge> = {}): BillingCharge {
-  return { id: "charge-1", sequence: 0, model: BILLING_MODEL, posture: PROVIDER_MODE.platform,
+  return { id: "charge-1", kind: BILLING_CHARGE_KIND.model, sequence: 0, model: BILLING_MODEL, posture: PROVIDER_MODE.platform,
     charged_nanos: BILLING_CHARGE_NANOS, input_tokens: 40, output_tokens: 10, runtime_ms: BILLING_RUNTIME_MS,
     unpriced_tokens: 0, requested_at: BILLING_AT, settled_at: BILLING_AT, ...overrides };
 }

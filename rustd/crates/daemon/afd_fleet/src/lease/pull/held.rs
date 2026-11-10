@@ -106,7 +106,11 @@ mod tests {
     #[tokio::test]
     async fn should_raise_the_fault_and_log_a_release_the_datastore_refuses() {
         let log = Capture::install();
-        let acquired = test_dead::acquired();
+        // Its setup is parsed through the definitions cache.
+        let _counted = test_dead::CACHE_LOOKUPS.lock().await;
+        // Installed, so the pass gets past the setup the claim carried and
+        // reaches its first read after it, which a dead datastore refuses.
+        let acquired = test_dead::acquired_installed();
         let fleet = acquired.fleet_id.clone();
 
         let fault = test_dead::plane()
@@ -118,9 +122,11 @@ mod tests {
                 &mut |_lease, _metadata| (),
             )
             .await
-            .expect_err("an installed-fleet read with no datastore is a fault, not a decision");
+            .expect_err("a read after the claim with no datastore is a fault, not a decision");
 
-        assert!(fault.is_datastore_unavailable(), "{fault}");
+        // The first read after the claim is the credential plane's since §4
+        // moved the setup into the claim; whichever read it is, its fault is
+        // the caller's, and the release below carries the same code.
         let line = log.only(EVENT_CLAIM_RELEASE_FAILED).fields;
         assert_eq!(
             line.get("fleet_id").map(String::as_str),

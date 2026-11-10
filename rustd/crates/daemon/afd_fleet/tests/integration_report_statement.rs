@@ -7,7 +7,7 @@
 )]
 
 use af_core::id::Uuid7;
-use af_wire::usage::{DAEMON_SEQ_BASE, RequestUsage, UsageLine};
+use af_wire::usage::{LineKind, RequestUsage, UsageLine};
 use afd_billing::price::{PriceBook, Rater, Window};
 use afd_billing::rates::Posture;
 use afd_db::config::DbRole;
@@ -23,7 +23,7 @@ use crate::support::Fixtures;
 
 /// The lease's runtime lines: their number, milliseconds, charge and tier.
 const RUNTIME_LINES: &str = "SELECT seq, runtime_ms, charged_nanos, platform_model_price_id \
-    FROM billing.usage_lines WHERE work_id = $1 AND seq >= $2 ORDER BY seq";
+    FROM billing.usage_lines WHERE work_id = $1 AND kind = $2 ORDER BY seq";
 
 /// What [`RUNTIME_LINES`] answers.
 type RuntimeLine = (i64, i64, i64, Option<Uuid7>);
@@ -34,7 +34,7 @@ const THREAD: &str = "C0FIXTURE:1700000000.000100";
 async fn runtime_lines(held: &Held) -> Vec<RuntimeLine> {
     sqlx::query_as(RUNTIME_LINES)
         .bind(&held.lease_key)
-        .bind(i64::from(DAEMON_SEQ_BASE))
+        .bind(LineKind::Runtime.as_str())
         .fetch_all(&mut *held.fixtures.database.acquire().await.expect("observer"))
         .await
         .expect("runtime lines")
@@ -267,12 +267,12 @@ async fn closing_cost_counts_the_reports_own_lines() {
     const LOGGED: i64 = 500;
     let held = held().await;
     sqlx::query(
-        "INSERT INTO billing.usage_lines (id, work_type, work_id, seq, tenant_id, workspace_id, \
+        "INSERT INTO billing.usage_lines (id, work_type, work_id, seq, kind, tenant_id, workspace_id, \
          fleet_id, fleet_name, event_id, provider, model, posture, requested_at, \
          input_token_count, cached_input_token_count, cache_write_token_count, \
          cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, \
          unpriced_token_count, charged_nanos, created_at, updated_at) \
-         SELECT uuidv7(), $2, l.id, 7, l.tenant_id, l.workspace_id, l.fleet_id, 'Support triage', \
+         SELECT uuidv7(), $2, l.id, 7, 'model', l.tenant_id, l.workspace_id, l.fleet_id, 'Support triage', \
                 l.event_id, l.provider, l.model, l.posture, now(), 0, 0, 0, 0, 0, 0, 0, 0, $3, now(), now() \
          FROM runner.leases l WHERE l.id = $1",
     )
@@ -351,7 +351,7 @@ async fn statement_lines_match_rater() {
     .await
     .expect("the book reads");
     let line = UsageLine::runtime(
-        u32::try_from(seq).expect("a daemon number"),
+        u32::try_from(seq).expect("a slice start"),
         held.now,
         u32::try_from(runtime_ms).expect("a slice's milliseconds"),
     );
@@ -365,7 +365,7 @@ async fn statement_lines_match_rater() {
     )
     .rate(&line)
     .expect("the line rates");
-    assert_eq!(seq, i64::from(DAEMON_SEQ_BASE), "the first daemon number");
+    assert_eq!(seq, 0, "the lease's first slice starts with the lease");
     assert_eq!(charged, rated.charged.as_i64());
     assert_eq!(price, rated.price);
     held.fixtures.cleanup().await;

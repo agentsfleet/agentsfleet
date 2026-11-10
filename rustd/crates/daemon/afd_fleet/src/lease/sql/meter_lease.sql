@@ -6,7 +6,6 @@ WITH locked_slot AS MATERIALIZED (
 ), probe AS (
     SELECT l.id, l.fleet_id, l.workspace_id, l.tenant_id, l.event_id,
            l.fencing_token, l.created_at, l.lease_expires_at, l.last_metered_at,
-           l.daemon_line_count,
            a.fencing_token AS live_fence, a.lease_expires_at AS slot_expires_at,
            l.task_id, l.task_generation, l.task_stop_generation, l.task_execution_deadline_at,
            l.task_runtime_accounted_at
@@ -62,8 +61,6 @@ WITH locked_slot AS MATERIALIZED (
     SET status           = CASE WHEN $5::boolean THEN $8 ELSE l.status END,
         lease_expires_at = CASE WHEN $5::boolean THEN l.lease_expires_at ELSE g.capped END,
         last_metered_at  = g.metered_until,
-        -- The runtime line this pass logs takes the next daemon number.
-        daemon_line_count = l.daemon_line_count + CASE WHEN g.d_ms > 0 THEN 1 ELSE 0 END,
         updated_at = now()
     FROM guard g WHERE l.id = g.id
     RETURNING l.lease_expires_at AS capped
@@ -104,6 +101,9 @@ SELECT
     g.tenant_id AS tenant_id, g.workspace_id AS workspace_id,
     g.fleet_id AS fleet_id, g.event_id AS event_id,
     (SELECT f.name FROM fleet.fleets f WHERE f.id = g.fleet_id) AS fleet_name,
-    g.daemon_line_count::bigint AS daemon_lines
+    -- The runtime line's number: the milliseconds from the lease's start to the
+    -- slice's. The cursor only moves forward under the lease's row lock, so no
+    -- two slices share a start, and the same slice billed twice is one line.
+    (EXTRACT(EPOCH FROM g.last_metered_at - g.created_at) * $3::bigint)::bigint AS runtime_seq
 FROM (SELECT 1) AS one
 LEFT JOIN guard g ON true

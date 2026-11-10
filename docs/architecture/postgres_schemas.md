@@ -313,7 +313,7 @@ Routing follows those settings; credential endpoint restrictions must match them
 |---|---|---|
 | `wallets` | The tenant's balance; the only row money moves on | `balance_nanos` is signed: negative while the tenant owes a debt |
 | `authoring_report_receipts` | Acknowledges an interim report without settling | append-only |
-| `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page, fleet budgets and the fleet list's `budget_used_nanos` trigger read | `UNIQUE (work_type, work_id, seq)` · fleet runs and setup chat both write it (billing §11) |
+| `usage_lines` | One priced provider request or runtime slice of billed work; what the charges page, fleet budgets and the fleet list's `budget_used_nanos` trigger read | `UNIQUE (work_type, work_id, kind, seq)` · fleet runs and setup chat both write it (billing §11) |
 
 Nothing is set aside before work runs. A funds check reads the balance less the payer's unsettled
 lines, and no `holds` table exists (billing §11).
@@ -376,9 +376,11 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 - **`runner.leases.last_metered_at`: kept.** The file `20261108123200_runner_leases.sql` declares it as the lease's runtime cursor
   (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `renew_batch.sql` and `commit_report.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
   `bill_expired_slice.sql`).
-- **`runner.leases.daemon_line_count`: added by M245.** The count of daemon-range lines the lease has logged. `renew_batch.sql`,
-  `commit_report.sql` and `bill_expired_slice.sql` read and advance it under the lease row lock, so a racing renewal and
-  report never number a runtime line the same.
+- **`billing.usage_lines.kind`: added by M245.** What the line bills: `model` (a call the runner reported, numbered by its
+  request), `runtime` (a slice the daemon measured, numbered by the milliseconds from its work's start to the slice's start)
+  or `decision` (a native decision call, numbered by its call). The unique key is `(work_type, work_id, kind, seq)`, so no
+  kind's numbers are carved out of another's; the `u32` bands `DAEMON_SEQ_BASE` and `DECISION_SEQ_BASE` that kept them
+  apart are gone. Spellings are `af_wire::usage::LineKind`.
 - **`vault.secrets.resource_version`: added by M245.** A `BEFORE UPDATE` trigger moves it on every update, whichever writer
   runs. The lease claim and the platform key cache read it, so a same-KEK (key-encryption key) replace misses the cache.
 

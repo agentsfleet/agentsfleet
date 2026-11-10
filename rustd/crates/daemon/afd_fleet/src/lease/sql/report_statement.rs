@@ -70,7 +70,7 @@ impl ReportStatement<'_> {
             .bind(crate::lease::sql::LEASE_STATUS_REPORTED)
             .bind(self.succeeded)
             .bind(afd_billing::sql::work::FLEET_LEASE)
-            .bind(i64::from(af_wire::usage::DAEMON_SEQ_BASE))
+            .bind(af_wire::usage::LineKind::Model.as_str())
             .bind(afd_billing::RUN_NANOS_PER_SEC)
             .bind(self.runtime_price.as_ref())
             .bind(self.posture)
@@ -129,6 +129,7 @@ impl ReportStatement<'_> {
             .bind(self.fleet_id)
             .bind(self.workspace_id)
             .bind(i64::from(u32::MAX))
+            .bind(af_wire::usage::LineKind::Runtime.as_str())
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;

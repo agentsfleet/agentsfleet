@@ -5,11 +5,11 @@
 //! settles them (billing §11). [`unsettled`] hands them back as one
 //! [`Settlement`] per work and pricing header, and [`resettle`] passes each to a biller, so a
 //! biller in another process sees the same calls an in-process one does and
-//! `(work, seq)` keeps a retried or repeated pass from charging twice.
+//! `(work, kind, seq)` keeps a retried or repeated pass from charging twice.
 
 use af_core::error_code::ErrorCode;
 use af_core::id::Uuid7;
-use af_wire::usage::UsageLine;
+use af_wire::usage::{LineKind, UsageLine};
 use jiff::Timestamp;
 use sqlx::PgExecutor;
 
@@ -199,19 +199,28 @@ fn grouped(mut rows: Vec<UnsettledRow>) -> Result<Vec<Settlement>> {
     rows.sort_unstable_by(|left, right| {
         left.identity()
             .cmp(&right.identity())
+            .then_with(|| left.kind.cmp(&right.kind))
             .then_with(|| left.seq.cmp(&right.seq))
     });
     let mut rows = rows.into_iter().peekable();
     let mut settlements = Vec::new();
     while let Some(row) = rows.next() {
-        // Skip future work kinds without blocking the relay's cursor.
+        let mut group = Vec::new();
+        while let Some(next) = rows.next_if(|next| next.identity() == row.identity()) {
+            group.push(next);
+        }
+        // Skip a work or a line kind this build cannot name without blocking
+        // the relay's cursor: the daemon that wrote it settles it.
         let Some(work) = row.work() else {
             continue;
         };
-        let mut lines = vec![row.line()?];
-        while let Some(next) = rows.next_if(|next| next.identity() == row.identity()) {
-            lines.push(next.line()?);
-        }
+        let lines = std::iter::once(&row)
+            .chain(&group)
+            .map(UnsettledRow::line)
+            .collect::<Result<Option<Vec<_>>>>()?;
+        let Some(lines) = lines else {
+            continue;
+        };
         settlements.push(row.settlement(work, lines)?);
     }
     Ok(settlements)
@@ -222,6 +231,7 @@ fn grouped(mut rows: Vec<UnsettledRow>) -> Result<Vec<Settlement>> {
 struct UnsettledRow {
     work_type: String,
     work_id: Uuid7,
+    kind: String,
     seq: i64,
     tenant_id: Uuid7,
     workspace_id: Uuid7,
@@ -261,8 +271,12 @@ impl UnsettledRow {
         )
     }
 
-    /// The row's line as the work priced it.
-    fn line(&self) -> Result<RatedLine> {
+    /// The row's line as the work priced it; `None` for a line kind this
+    /// build cannot name.
+    fn line(&self) -> Result<Option<RatedLine>> {
+        let Some(kind) = LineKind::parse(&self.kind) else {
+            return Ok(None);
+        };
         let price = self
             .price_id
             .as_ref()
@@ -271,8 +285,9 @@ impl UnsettledRow {
                     .map_err(row_malformed(TABLE_LINES, "platform_model_price_id"))
             })
             .transpose()?;
-        Ok(RatedLine {
+        Ok(Some(RatedLine {
             usage: UsageLine {
+                kind,
                 seq: count(self.seq),
                 at: self.requested_at,
                 input_tokens: count(self.input_token_count),
@@ -286,7 +301,7 @@ impl UnsettledRow {
             price,
             charged: Nanos::from_i64(self.charged_nanos),
             unpriced_tokens: u64::try_from(self.unpriced_token_count).unwrap_or(0),
-        })
+        }))
     }
 
     /// The work this row belongs to, by its stored kind.
@@ -333,4 +348,106 @@ impl UnsettledRow {
 /// sweeper.
 fn count(stored: i64) -> u32 {
     u32::try_from(stored).unwrap_or(u32::MAX)
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::expect_used,
+    reason = "a test asserts by panicking; the daemon's restriction set is the manifest's"
+)]
+mod tests {
+    use af_core::id::{ENTROPY_LEN, Uuid7};
+    use af_wire::usage::LineKind;
+    use jiff::Timestamp;
+
+    use super::{UnsettledRow, grouped};
+    use crate::biller::WorkKey;
+    use crate::sql::work;
+
+    fn id(byte: u8) -> Uuid7 {
+        Uuid7::encode(Timestamp::UNIX_EPOCH, [byte; ENTROPY_LEN])
+            .unwrap_or_else(|_unencodable| unreachable!("the epoch encodes"))
+    }
+
+    /// One unsettled setup-chat line of `work`, of `kind` and number `seq`.
+    fn row(work: u8, work_type: &str, kind: &str, seq: i64) -> UnsettledRow {
+        UnsettledRow {
+            work_type: work_type.to_owned(),
+            work_id: id(work),
+            kind: kind.to_owned(),
+            seq,
+            tenant_id: id(2),
+            workspace_id: id(3),
+            fleet_id: None,
+            fleet_name: None,
+            event_id: None,
+            provider: "anthropic".to_owned(),
+            model: "claude-opus-5-5".to_owned(),
+            posture: "platform".to_owned(),
+            requested_at: Timestamp::UNIX_EPOCH,
+            input_token_count: 0,
+            cached_input_token_count: 0,
+            cache_write_token_count: 0,
+            cache_write_5m_token_count: 0,
+            cache_write_1h_token_count: 0,
+            output_token_count: 0,
+            runtime_ms: 0,
+            price_id: None,
+            unpriced_token_count: 0,
+            charged_nanos: 1,
+            logged_at: Timestamp::UNIX_EPOCH,
+            line_id: id(9),
+        }
+    }
+
+    // M245: a model line and a runtime line may share a number; their kinds
+    // keep them apart, and the settlement carries each as the kind it is.
+    #[test]
+    fn a_work_settles_its_lines_by_kind_and_number() {
+        let settlements = grouped(vec![
+            row(1, work::AUTHORING_ATTEMPT, LineKind::Runtime.as_str(), 0),
+            row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        ])
+        .expect("both lines read");
+        let [settlement] = settlements.as_slice() else {
+            unreachable!("one work, one settlement: {settlements:?}");
+        };
+        assert_eq!(settlement.work, WorkKey::AuthoringAttempt(id(1)));
+        let lines: Vec<(LineKind, u32)> = settlement
+            .lines
+            .iter()
+            .map(|line| (line.usage.kind, line.usage.seq))
+            .collect();
+        assert_eq!(lines, [(LineKind::Model, 0), (LineKind::Runtime, 0)]);
+    }
+
+    #[test]
+    fn a_work_whose_line_kind_this_build_cannot_name_is_left_whole() {
+        let settlements = grouped(vec![
+            row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+            row(1, work::AUTHORING_ATTEMPT, "storage", 1),
+            row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        ])
+        .expect("an unknown kind is skipped, not an error");
+        let works: Vec<&WorkKey> = settlements
+            .iter()
+            .map(|settlement| &settlement.work)
+            .collect();
+        assert_eq!(
+            works,
+            [&WorkKey::AuthoringAttempt(id(4))],
+            "the work with an unnamed kind is left for the daemon that wrote it, \
+             whole: settling only its known lines would undercharge it"
+        );
+    }
+
+    #[test]
+    fn a_work_type_this_build_cannot_name_is_left_for_its_writer() {
+        let settlements = grouped(vec![
+            row(1, "future_work", LineKind::Model.as_str(), 0),
+            row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        ])
+        .expect("an unknown work type is skipped, not an error");
+        assert_eq!(settlements.len(), 1, "{settlements:?}");
+    }
 }

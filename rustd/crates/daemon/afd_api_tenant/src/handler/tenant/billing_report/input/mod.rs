@@ -6,7 +6,7 @@ use af_validate::{Limit, Sentences, nul_free};
 use afd_api_wire::admin::MODEL_ID_MAX_BYTES;
 use afd_billing::report::{
     BILLING_ACTIVITY_RUNTIME, BILLING_ACTIVITY_SETUP, BILLING_PERIOD_MONTH, BILLING_PERIOD_TODAY,
-    Boundary, Filter, Request, Window,
+    Boundary, ChargeBoundary, Filter, Request, Window,
 };
 use afd_billing::sql::work;
 use jiff::Timestamp;
@@ -186,6 +186,15 @@ pub(super) fn work_type(kind: Option<&str>) -> Result<Option<&'static str>, Refu
         Some(BILLING_ACTIVITY_SETUP) => Ok(Some(work::AUTHORING_ATTEMPT)),
         Some(_) => Err(Refusal::malformed(DETAIL_QUERY)),
     }
+}
+
+/// The line a charges page resumes after, from its cursor's position.
+pub(super) fn charge_boundary(at: &str, id: &str) -> Result<ChargeBoundary, Refusal> {
+    Ok(ChargeBoundary {
+        requested_at: af_wire::instant::parse(at)
+            .map_err(|_instant| Refusal::malformed(DETAIL_CURSOR))?,
+        line_id: identifier(id)?,
+    })
 }
 
 fn activity_boundary(

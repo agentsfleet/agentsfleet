@@ -5,10 +5,7 @@
 
 use garde::Validate as _;
 
-use super::{
-    DAEMON_SEQ_BASE, LINES_MAX, RUNNER_SEQ_MAX, RUNTIME_MS_MAX, RequestLines, RequestUsage,
-    UsageLine,
-};
+use super::{LINES_MAX, LineKind, RUNTIME_MS_MAX, RequestLines, RequestUsage, UsageLine};
 
 const AT: &str = "2026-10-19T10:00:00.123Z";
 const PROMPT: u32 = 1_000;
@@ -19,6 +16,7 @@ const WRITE_1H: u32 = 50;
 
 fn line(seq: u32) -> UsageLine {
     UsageLine {
+        kind: LineKind::Model,
         seq,
         at: crate::instant::parse(AT).expect("the fixture instant parses"),
         input_tokens: PROMPT,
@@ -94,24 +92,46 @@ fn a_batch_carries_none_to_the_most_requests() {
     }
 }
 
+// M245: no kind's numbers are carved out of another's, so the runner numbers
+// its model calls across the whole `u32` the wire carries.
 #[test]
-fn a_runner_numbers_below_the_daemons_range() {
-    request(RUNNER_SEQ_MAX)
+fn a_runner_numbers_its_requests_across_the_whole_u32() {
+    RequestLines(vec![request(0), request(u32::MAX)])
         .validate()
-        .expect("the top of the runner range");
-    RequestLines(vec![request(0), request(DAEMON_SEQ_BASE)])
-        .validate()
-        .expect_err("a request in the daemon's range is refused");
+        .expect("every u32 is a model line's number");
 }
 
 #[test]
-fn a_request_claims_no_runtime_and_a_runtime_line_no_tokens() {
+fn a_request_is_a_model_line_and_a_runtime_line_carries_no_tokens() {
     let request_line = request(4).line();
+    assert_eq!(request_line.kind, LineKind::Model);
     assert_eq!(request_line.runtime_ms, 0);
     assert_eq!(request_line.whole_prompt(), line(4).whole_prompt());
-    let runtime = UsageLine::runtime(DAEMON_SEQ_BASE, line(0).at, 2_000);
+    let runtime = UsageLine::runtime(0, line(0).at, 2_000);
+    assert_eq!(runtime.kind, LineKind::Runtime);
     assert_eq!((runtime.whole_prompt(), runtime.output_tokens), (0, 0));
     assert_eq!(runtime.runtime_ms, 2_000);
+}
+
+#[test]
+fn every_line_kind_round_trips_its_stored_spelling() {
+    for kind in LineKind::ALL {
+        assert_eq!(LineKind::parse(kind.as_str()), Some(kind));
+        let json = serde_json::to_value(kind).expect("a kind serialises");
+        assert_eq!(json, serde_json::json!(kind.as_str()));
+    }
+    assert_eq!(
+        ["model", "runtime", "decision"],
+        LineKind::ALL.map(LineKind::as_str),
+        "the spellings billing.usage_lines stores"
+    );
+}
+
+#[test]
+fn a_spelling_no_kind_names_is_not_read_as_one() {
+    for stored in ["", "Model", "tokens", "runtime "] {
+        assert_eq!(LineKind::parse(stored), None, "{stored:?}");
+    }
 }
 
 #[test]

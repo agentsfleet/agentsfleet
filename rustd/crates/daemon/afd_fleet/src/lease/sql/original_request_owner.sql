@@ -1,4 +1,4 @@
-SELECT 0::bigint AS daemon_lines, LEAST(clock_timestamp(), l.lease_expires_at) AS checked_at,
+SELECT 0::bigint AS runtime_seq, LEAST(clock_timestamp(), l.lease_expires_at) AS checked_at,
        l.created_at AS started_at, 0::bigint AS d_ms, l.tenant_id,
        l.workspace_id, l.fleet_id, f.name AS fleet_name, l.event_id
 FROM runner.leases l JOIN fleet.events e ON e.event_id = l.event_id

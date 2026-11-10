@@ -9,10 +9,12 @@
 //! each into a [`UsageLine`] and adds its own runtime-only line, measured on
 //! its own clock, for the time the run held its lease.
 //!
-//! Lines are numbered per work and stored once per `(work, seq)`, so a retried
-//! renewal or report re-sends lines harmlessly. Coding, runtime and native
-//! decisions use disjoint ranges, so their independently recorded receipts
-//! cannot claim one sequence number.
+//! Every line says what it bills, as its [`LineKind`], and is stored once per
+//! `(work, kind, seq)`, so a retried renewal or report re-sends lines
+//! harmlessly. Each kind numbers its own lines: a model line by the runner's
+//! request number, a runtime line by when its slice began, a decision line by
+//! its call. No kind's numbers can claim another's, and none is capped below
+//! the `u32` the wire carries (M245).
 
 use std::time::Duration;
 
@@ -49,21 +51,42 @@ pub const RUNTIME_MS_MAX: u32 = {
     RUNTIME_MAX.as_millis() as u32
 };
 
-/// The first line number the daemon's own runtime lines take.
+/// What one usage line bills.
 ///
-/// The runner numbers its request lines from zero up to [`RUNNER_SEQ_MAX`]; the
-/// daemon numbers runtime lines from here through [`DAEMON_SEQ_MAX`].
-pub const DAEMON_SEQ_BASE: u32 = 1 << 31;
+/// Stored in `billing.usage_lines.kind` by [`LineKind::as_str`]; the spellings
+/// live here, not in a schema `CHECK` (RULE STS).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LineKind {
+    /// A model call the runner made and reported, numbered by its request.
+    Model,
+    /// A slice of run time the daemon measured, numbered by the milliseconds
+    /// from its work's start to the slice's start.
+    Runtime,
+    /// A native decision call the daemon made, numbered by its call.
+    Decision,
+}
 
-/// The highest number a runner's request line may take.
-pub const RUNNER_SEQ_MAX: u32 = DAEMON_SEQ_BASE - 1;
+impl LineKind {
+    /// Every kind, for a reader that must name them all.
+    pub const ALL: [Self; 3] = [Self::Model, Self::Runtime, Self::Decision];
 
-/// First native decision sequence; the upper quarter is reserved for paid
-/// decision calls, including known receipts received after their lease ended.
-pub const DECISION_SEQ_BASE: u32 = 3 * (1 << 30);
+    /// The spelling `billing.usage_lines.kind` stores.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Model => "model",
+            Self::Runtime => "runtime",
+            Self::Decision => "decision",
+        }
+    }
 
-/// Last runtime sequence, before the native decision namespace begins.
-pub const DAEMON_SEQ_MAX: u32 = DECISION_SEQ_BASE - 1;
+    /// The kind a stored spelling names, if any.
+    #[must_use]
+    pub fn parse(stored: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.as_str() == stored)
+    }
+}
 
 /// Token counts for one provider request, without double counting.
 ///
@@ -80,7 +103,7 @@ pub const DAEMON_SEQ_MAX: u32 = DECISION_SEQ_BASE - 1;
 #[serde(deny_unknown_fields)]
 pub struct RequestUsage {
     /// This request's number within its run, from zero.
-    #[garde(range(max = RUNNER_SEQ_MAX))]
+    #[garde(skip)]
     pub seq: u32,
     /// Request time as an RFC 3339 timestamp. The server limits it to the assignment's time
     /// window before calculating cost.
@@ -119,6 +142,7 @@ impl RequestUsage {
     #[must_use]
     pub const fn line(self) -> UsageLine {
         UsageLine {
+            kind: LineKind::Model,
             seq: self.seq,
             at: self.at,
             input_tokens: self.input_tokens,
@@ -147,7 +171,10 @@ pub struct RequestLines(#[garde(length(max = LINES_MAX), dive)] pub Vec<RequestU
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct UsageLine {
-    /// This line's number within its work.
+    /// What the line bills.
+    #[garde(skip)]
+    pub kind: LineKind,
+    /// This line's number within its work and kind.
     #[garde(skip)]
     pub seq: u32,
     /// When the request was made or the slice was measured, RFC 3339.
@@ -178,10 +205,12 @@ pub struct UsageLine {
 }
 
 impl UsageLine {
-    /// A runtime-only line: `runtime_ms` of run time measured at `at`.
+    /// A runtime-only line: `runtime_ms` of run time measured at `at`, for the
+    /// slice that began `seq` milliseconds after its work began.
     #[must_use]
     pub const fn runtime(seq: u32, at: Timestamp, runtime_ms: u32) -> Self {
         Self {
+            kind: LineKind::Runtime,
             seq,
             at,
             input_tokens: 0,

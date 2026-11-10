@@ -22,9 +22,6 @@ use afd_fleet::lease::sql;
 use self::report_seed::{DEEP_POOL, SLICE_NANOS, held, run_fee};
 use crate::rows::{LAPSE, Row};
 
-/// The line number a lease's first runtime line takes: the daemon's base.
-const RUNTIME_LINE: &str = "2147483648";
-
 /// Dimension 3.1 — the report's writes land, and every row says what it should.
 ///
 /// Six writes ride one statement and this asserts all of them, because the
@@ -80,14 +77,14 @@ async fn test_report_writes_row_parity() {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Line(&held.event_id, RUNTIME_LINE), "charged_nanos")
+            .text(Row::RuntimeLine(&held.event_id), "charged_nanos")
             .await,
         Some(slice.to_string()),
         "the usage line records what the slice cost"
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Line(&held.event_id, RUNTIME_LINE), "runtime_ms")
+            .text(Row::RuntimeLine(&held.event_id), "runtime_ms")
             .await,
         Some(wall_ms.to_string()),
         "the usage line carries the span it measured"
@@ -154,7 +151,7 @@ async fn test_report_stale_fence_rejected() {
     );
     assert_eq!(
         held.fixtures
-            .text(Row::Line(&held.event_id, RUNTIME_LINE), "charged_nanos")
+            .text(Row::RuntimeLine(&held.event_id), "charged_nanos")
             .await,
         None,
         "a fenced report logs no usage line at all, not a zero-valued one"

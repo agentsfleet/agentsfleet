@@ -145,7 +145,7 @@ Each fleet lease follows these steps:
 
 The daemon captures reported memory under the lease fence before the settlement transaction.
 
-A plain chat's report then commits in one statement, `commit_report.sql`, under the lease row lock with no host lock. It numbers its runtime line from `runner.leases.daemon_line_count` and advances the count. Each host's renewals run as one fenced statement per tick.
+A plain chat's report then commits in one statement, `commit_report.sql`, under the lease row lock with no host lock. Its runtime line is a `runtime`-kind usage line numbered by its slice's start, read from the locked lease row. Each host's renewals run as one fenced statement per tick.
 Settlement records usage, event outcome, session checkpoint, admission completion, slot release and any outbound obligation.
 Only a successful report settles folded messages through `folded_through_sequence`.
 

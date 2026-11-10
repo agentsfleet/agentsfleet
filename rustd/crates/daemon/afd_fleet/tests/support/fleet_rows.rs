@@ -42,8 +42,12 @@ pub(crate) enum Row<'a> {
     Attempt(&'a Uuid7),
     /// A `fleet.events` row, by fleet id and event id.
     Event(&'a Uuid7, &'a Uuid7),
-    /// A `billing.usage_lines` row, by event id and line number.
-    Line(&'a Uuid7, &'a str),
+    /// A `model` usage line, by event id and the runner's request number.
+    ModelLine(&'a Uuid7, &'a str),
+    /// A `decision` usage line, by event id and its call's number.
+    DecisionLine(&'a Uuid7, &'a str),
+    /// The event's `runtime` usage line, for a run that billed one slice.
+    RuntimeLine(&'a Uuid7),
 }
 
 /// The second key a two-key predicate reads.
@@ -73,11 +77,25 @@ impl<'a> Row<'a> {
                 fleet,
                 Some(Second::Id(event)),
             ),
-            Self::Line(event, seq) => (
+            // The kinds are `af_wire::usage::LineKind`'s spellings; a line
+            // number is unique only within its kind (M245).
+            Self::ModelLine(event, seq) => (
                 "billing.usage_lines",
-                "event_id = $1 AND seq = $2::bigint",
+                "event_id = $1 AND kind = 'model' AND seq = $2::bigint",
                 event,
                 Some(Second::Seq(seq)),
+            ),
+            Self::DecisionLine(event, seq) => (
+                "billing.usage_lines",
+                "event_id = $1 AND kind = 'decision' AND seq = $2::bigint",
+                event,
+                Some(Second::Seq(seq)),
+            ),
+            Self::RuntimeLine(event) => (
+                "billing.usage_lines",
+                "event_id = $1 AND kind = 'runtime'",
+                event,
+                None,
             ),
         }
     }

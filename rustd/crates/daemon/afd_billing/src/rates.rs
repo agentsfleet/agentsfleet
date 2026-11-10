@@ -148,6 +148,7 @@ impl Accounts {
 /// The issue-time floor priced against `book` at `now`.
 fn floor(book: &PriceBook, now: Timestamp) -> Result<Estimate> {
     let line = UsageLine {
+        kind: af_wire::usage::LineKind::Model,
         seq: 0,
         at: now,
         input_tokens: ESTIMATE_FLOOR_INPUT_TOKENS,

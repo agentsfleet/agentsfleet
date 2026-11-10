@@ -32,9 +32,12 @@ pub(super) enum Position {
         #[garde(skip)]
         work_type: String,
     },
+    /// After this line, in the `(requested_at, id)` order a page reads.
     Charge {
-        #[garde(range(min = 0))]
-        sequence: i64,
+        #[garde(skip)]
+        at: String,
+        #[garde(skip)]
+        id: String,
     },
 }
 

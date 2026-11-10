@@ -114,13 +114,13 @@ pub(crate) async fn charges<D: Services>(
         Some(work::AUTHORING_ATTEMPT) => WorkKey::AuthoringAttempt(id),
         _ => return Err(Refusal::malformed(input::DETAIL_QUERY)),
     };
-    let after = match input.position {
-        Some(cursor::Position::Charge { sequence }) => Some(sequence),
+    let after = match input.position.as_ref() {
+        Some(cursor::Position::Charge { at, id }) => Some(input::charge_boundary(at, id)?),
         _ => None,
     };
     let rows = services
         .billing()
-        .activity_charges(&tenant, &work, &input.request, after)
+        .activity_charges(&tenant, &work, &input.request, after.as_ref())
         .await
         .map_err(Refusal::at(EVENT_DETAILS))?;
     Ok((

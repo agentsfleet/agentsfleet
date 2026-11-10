@@ -37,12 +37,12 @@ WITH runner AS (
             NULL, NULL, now(), now())
 ), line AS (
     INSERT INTO billing.usage_lines
-      (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
+      (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, event_id,
        authoring_attempt_id, provider, model, posture, requested_at, input_token_count,
        cached_input_token_count, cache_write_token_count, cache_write_5m_token_count,
        cache_write_1h_token_count, output_token_count, runtime_ms, platform_model_price_id,
        unpriced_token_count, charged_nanos, created_at, updated_at)
-    VALUES ($10, $9, $5, 0, $1, $2, $3, 'Doomed', $6, NULL,
+    VALUES ($10, $9, $5, 0, 'model', $1, $2, $3, 'Doomed', $6, NULL,
             'anthropic', 'model-a', 'platform', now(), 10, 2, 0, 0, 0, 3, 0, NULL, 15, 0,
             now(), now())
 )

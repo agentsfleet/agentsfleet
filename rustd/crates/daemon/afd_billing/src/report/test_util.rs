@@ -40,7 +40,7 @@ pub fn charges_query<'q, O, S>(
     tenant: &'q Uuid7,
     work: &'q WorkKey,
     request: &'q Request,
-    after: Option<i64>,
+    after: Option<&'q super::ChargeBoundary>,
 ) -> QueryAs<'q, Postgres, O, PgArguments>
 where
     O: for<'r> FromRow<'r, PgRow>,

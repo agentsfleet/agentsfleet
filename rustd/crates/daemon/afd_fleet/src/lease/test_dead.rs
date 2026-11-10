@@ -88,6 +88,20 @@ pub(crate) fn id(seed: u8) -> Uuid7 {
 }
 
 /// A claimed fresh event on fleet `id(1)`, as a poll would have handed it.
+/// Held by every unit test that looks a definition up through a cache, while
+/// `cache_lookups_counted_by_outcome` reads the process-wide lookup counters:
+/// an unrelated lookup in its window would move them.
+pub(crate) static CACHE_LOOKUPS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+/// [`acquired`], for a fleet whose setup is installed, so a pass reaches the
+/// reads after it.
+pub(crate) fn acquired_installed() -> Acquired {
+    Acquired {
+        opened: crate::lease::envelope::Opened::installed(id(2), id(3), id(7)),
+        ..acquired()
+    }
+}
+
 pub(crate) fn acquired() -> Acquired {
     Acquired {
         fleet_id: id(1),

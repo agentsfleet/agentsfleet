@@ -290,4 +290,33 @@ impl FleetWithSession {
             current_definition: None,
         }
     }
+
+    /// An active fleet with the fewest-fields setup installed at `revision`,
+    /// for a unit test whose pass must get past the setup.
+    pub(crate) fn installed(workspace_id: Uuid7, revision: Uuid7) -> Self {
+        Self {
+            definition: Some(MINIMAL_DEFINITION.to_owned()),
+            runtime_model_ref: Some("fixture-model".to_owned()),
+            policy_semantics: Some(POLICY_SEMANTICS.to_owned()),
+            revision_id: Some(revision.clone()),
+            head_revision_id: Some(revision),
+            ..Self::unread(workspace_id)
+        }
+    }
 }
+
+/// The fewest fields a setup needs, as the definition corpus's `minimal.json`.
+#[cfg(test)]
+const MINIMAL_DEFINITION: &str = r#"{
+  "schema_version": 1,
+  "description": "The fewest fields a setup needs.",
+  "instructions_md": "You are a minimal agent. Instructions go here.",
+  "config": {
+    "name": "minimal-setup",
+    "x-agentsfleet": {
+      "triggers": [{ "type": "cron", "schedule": "0 9 * * *" }],
+      "tools": ["agentmail"],
+      "budget": { "daily_nanos": "1000000000" }
+    }
+  }
+}"#;

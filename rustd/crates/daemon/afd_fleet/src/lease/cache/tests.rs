@@ -99,6 +99,7 @@ async fn definition_cache_keeps_no_refused_document() {
 /// `{definition, hit}` by one each, and no other series.
 #[tokio::test]
 async fn cache_lookups_counted_by_outcome() {
+    let _counted = crate::lease::test_dead::CACHE_LOOKUPS.lock().await;
     let metrics = Metrics::install();
     let series = [
         ("definition", "hit"),
