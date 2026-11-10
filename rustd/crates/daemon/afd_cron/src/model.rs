@@ -2,7 +2,7 @@
 //!
 //! # Why these are enums and not the strings the column holds
 //!
-//! `schema/1750_fleet_schedules.sql` stores `source`, `desired_status` and
+//! `schema/20261108122800_fleet_schedules.sql` stores `source`, `desired_status` and
 //! `sync_status` as `TEXT` with no `CHECK`, deliberately — RULE STS bans a
 //! frozen vocabulary in the schema, because changing one then means a migration
 //! rather than a release. The vocabulary still has to be closed SOMEWHERE, and
@@ -219,7 +219,7 @@ pub struct Schedule {
     /// The optimistic-concurrency counter, always above zero.
     pub resource_version: i64,
     /// The syncer holding this row, when one does.
-    pub sync_token: Option<String>,
+    pub sync_token: Option<Uuid7>,
     /// When that hold expires, so a syncer that died does not hold forever.
     pub sync_lease_expires_at: Option<Timestamp>,
     /// How the last attempt failed, when one did.

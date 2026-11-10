@@ -1,5 +1,6 @@
 //! Immutable parent locks run as the API role without granting mutation rights.
 
+use af_core::id::Uuid7;
 use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed, mint_id};
 use afd_fleet::task::{
     CHECKPOINT_WORKSPACE_LOCK_STATEMENT, TASK_COMPLETION_COLLECTION_STATEMENT,
@@ -10,10 +11,10 @@ use sqlx::Connection as _;
 use super::*;
 
 struct Scope {
-    workspace: String,
-    other: String,
-    unfinished: String,
-    fleet: String,
+    workspace: Uuid7,
+    other: Uuid7,
+    unfinished: Uuid7,
+    fleet: Uuid7,
 }
 
 async fn seed(db: &afd_db::Db) -> Scope {
@@ -80,14 +81,14 @@ async fn api_parent_locks_preserve_immutability_and_exact_scope() {
     let mut connection = db.acquire().await.expect("lock owner");
     let mut held = connection.begin().await.expect("parent transaction");
     api(&mut held).await;
-    let locked: String = sqlx::query_scalar(TASK_SCOPE_LOCK_STATEMENT)
+    let locked: Uuid7 = sqlx::query_scalar(TASK_SCOPE_LOCK_STATEMENT)
         .bind(&scope.fleet)
         .bind(&scope.workspace)
         .fetch_one(&mut *held)
         .await
         .expect("API scope lock");
     assert_eq!(locked, scope.fleet);
-    let missing: Option<String> = sqlx::query_scalar(TASK_SCOPE_LOCK_STATEMENT)
+    let missing: Option<Uuid7> = sqlx::query_scalar(TASK_SCOPE_LOCK_STATEMENT)
         .bind(&scope.fleet)
         .bind(mint_id())
         .fetch_optional(&mut *held)
@@ -101,7 +102,7 @@ async fn api_parent_locks_preserve_immutability_and_exact_scope() {
 
     let mut checkpoint = connection.begin().await.expect("checkpoint transaction");
     api(&mut checkpoint).await;
-    let locked: String = sqlx::query_scalar(CHECKPOINT_WORKSPACE_LOCK_STATEMENT)
+    let locked: Uuid7 = sqlx::query_scalar(CHECKPOINT_WORKSPACE_LOCK_STATEMENT)
         .bind(&scope.workspace)
         .fetch_one(&mut *checkpoint)
         .await
@@ -111,7 +112,7 @@ async fn api_parent_locks_preserve_immutability_and_exact_scope() {
     assert_parent_locked(&mut contender, &scope.workspace).await;
     checkpoint.commit().await.expect("release checkpoint lock");
     assert_eq!(
-        sqlx::query("DELETE FROM identity.workspaces WHERE id=$1::uuid")
+        sqlx::query("DELETE FROM identity.workspaces WHERE id=$1")
             .bind(&scope.workspace)
             .execute(&mut *contender)
             .await
@@ -127,15 +128,15 @@ async fn api_parent_locks_preserve_immutability_and_exact_scope() {
 
 async fn completions(
     connection: &mut PgConnection,
-    workspace: &str,
+    workspace: &Uuid7,
     count: usize,
     age: Duration,
     finished: bool,
-) -> Vec<String> {
+) -> Vec<Uuid7> {
     let ids: Vec<_> = (0..count).map(|_| mint_id()).collect();
-    sqlx::query("INSERT INTO fleet.task_completions (id, workspace_id, installation_id, repository_id, head_oid, workflow_id, run_id, run_number, run_attempt, conclusion, body_digest, received_at, created_at) SELECT id::uuid, $1::uuid, 1, 1, repeat('a',40), 1, number, number, 1, 'success', repeat('b',64), statement_timestamp()-$3::interval, statement_timestamp() FROM unnest($2::text[]) WITH ORDINALITY AS owned(id,number)")
+    sqlx::query("INSERT INTO fleet.task_completions (id, workspace_id, installation_id, repository_id, head_oid, workflow_id, run_id, run_number, run_attempt, conclusion, body_digest, received_at, created_at) SELECT id, $1, 1, 1, repeat('a',40), 1, number, number, 1, 'success', repeat('b',64), statement_timestamp()-$3::interval, statement_timestamp() FROM unnest($2) WITH ORDINALITY AS owned(id,number)")
         .bind(workspace).bind(&ids).bind(age).execute(&mut *connection).await.expect("owned immutable completions");
-    sqlx::query("INSERT INTO fleet.task_completion_fanout (task_completion_id, next_attempt_at, finished_at, created_at, updated_at) SELECT id::uuid, statement_timestamp(), CASE WHEN $2 THEN statement_timestamp() ELSE NULL END, statement_timestamp(), statement_timestamp() FROM unnest($1::text[]) AS owned(id)")
+    sqlx::query("INSERT INTO fleet.task_completion_fanout (task_completion_id, next_attempt_at, finished_at, created_at, updated_at) SELECT id, statement_timestamp(), CASE WHEN $2 THEN statement_timestamp() ELSE NULL END, statement_timestamp(), statement_timestamp() FROM unnest($1) AS owned(id)")
         .bind(&ids).bind(finished).execute(connection).await.expect("owned fanout custody");
     ids
 }
@@ -179,7 +180,7 @@ async fn api_completion_gc_skips_held_parents_and_enforces_policy_bounds() {
         .await
         .expect("hold completion before collection");
     let first = old.first().expect("seeded old receipt");
-    sqlx::query("SELECT id FROM fleet.task_completions WHERE id=$1::uuid FOR UPDATE")
+    sqlx::query("SELECT id FROM fleet.task_completions WHERE id=$1 FOR UPDATE")
         .bind(first)
         .execute(&mut *held)
         .await
@@ -202,21 +203,19 @@ async fn api_completion_gc_skips_held_parents_and_enforces_policy_bounds() {
     assert_eq!(collect(&mut collector, Some("1 hour"), Some(1)).await, 1);
     assert_eq!(collect(&mut collector, Some("1 hour"), Some(1)).await, 0);
     collector.commit().await.expect("finish collection");
-    let recent: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.task_completions WHERE workspace_id=$1::uuid",
-    )
-    .bind(&scope.other)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("recent receipt survives");
+    let recent: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fleet.task_completions WHERE workspace_id=$1")
+            .bind(&scope.other)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("recent receipt survives");
     assert_eq!(recent, 1);
-    let unfinished: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.task_completions WHERE workspace_id=$1::uuid",
-    )
-    .bind(&scope.unfinished)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("unfinished receipt survives");
+    let unfinished: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fleet.task_completions WHERE workspace_id=$1")
+            .bind(&scope.unfinished)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("unfinished receipt survives");
     assert_eq!(unfinished, 1);
     drop(holder);
     drop(connection);
@@ -227,7 +226,7 @@ async fn api_completion_gc_skips_held_parents_and_enforces_policy_bounds() {
 async fn blocked_parent_and_unrelated_delete(connection: &mut PgConnection, scope: &Scope) {
     assert_parent_locked(connection, &scope.workspace).await;
     assert_eq!(
-        sqlx::query("DELETE FROM identity.workspaces WHERE id=$1::uuid")
+        sqlx::query("DELETE FROM identity.workspaces WHERE id=$1")
             .bind(&scope.other)
             .execute(&mut *connection)
             .await
@@ -237,7 +236,7 @@ async fn blocked_parent_and_unrelated_delete(connection: &mut PgConnection, scop
     );
 }
 
-async fn seed_receipts(connection: &mut PgConnection, scope: &Scope) -> Vec<String> {
+async fn seed_receipts(connection: &mut PgConnection, scope: &Scope) -> Vec<Uuid7> {
     let old = completions(
         connection,
         &scope.workspace,
@@ -270,14 +269,13 @@ async fn invalid_collection_inputs(connection: &mut PgConnection) {
     }
 }
 
-async fn assert_parent_locked(connection: &mut PgConnection, workspace: &str) {
+async fn assert_parent_locked(connection: &mut PgConnection, workspace: &Uuid7) {
     let mut deletion = connection.begin().await.expect("deletion attempt");
-    let blocked =
-        sqlx::query("SELECT id FROM identity.workspaces WHERE id=$1::uuid FOR UPDATE NOWAIT")
-            .bind(workspace)
-            .fetch_one(&mut *deletion)
-            .await
-            .expect_err("workspace deletion fence");
+    let blocked = sqlx::query("SELECT id FROM identity.workspaces WHERE id=$1 FOR UPDATE NOWAIT")
+        .bind(workspace)
+        .fetch_one(&mut *deletion)
+        .await
+        .expect_err("workspace deletion fence");
     assert_eq!(
         blocked
             .as_database_error()

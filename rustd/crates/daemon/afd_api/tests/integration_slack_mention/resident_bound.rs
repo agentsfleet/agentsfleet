@@ -5,7 +5,7 @@ use super::notice::owed;
 use super::*;
 use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
-use afd_ingress::slack::{KIND_NOTICE_OWNER, notice_key};
+use afd_ingress::slack::KIND_NOTICE_OWNER;
 
 pub(super) fn owner_document() -> String {
     document("notice-carrier", CHANNEL, None)
@@ -13,15 +13,15 @@ pub(super) fn owner_document() -> String {
 
 pub(super) async fn bind(fixture: &Fixture, fleet: &Uuid7) {
     let mut connection = fixture.database().acquire().await.expect("connection");
-    sqlx::query("INSERT INTO connector.channels (id, provider, external_account_id, external_channel_id, fleet_id, binding_type, created_at, updated_at) VALUES ($1::uuid,$2,$3,$4,$5::uuid,$6,now(),now())")
+    sqlx::query("INSERT INTO connector.channels (id, provider, external_account_id, external_channel_id, fleet_id, binding_type, created_at, updated_at) VALUES ($1,$2,$3,$4,$5,$6,now(),now())")
         .bind(mint_id()).bind(PROVIDER.id()).bind(&fixture.team).bind(CHANNEL)
-        .bind(fleet.as_str()).bind(KIND_NOTICE_OWNER)
+        .bind(fleet).bind(KIND_NOTICE_OWNER)
         .execute(&mut *connection).await.expect("binding seeds");
 }
 
-pub(super) async fn bound(fixture: &Fixture) -> (String, String) {
+pub(super) async fn bound(fixture: &Fixture) -> (Uuid7, Uuid7) {
     let mut connection = fixture.database().acquire().await.expect("connection");
-    sqlx::query_as("SELECT c.fleet_id::text, f.workspace_id::text FROM connector.channels c JOIN fleet.fleets f ON f.id=c.fleet_id WHERE c.provider=$1 AND c.external_account_id=$2 AND c.external_channel_id=$3")
+    sqlx::query_as("SELECT c.fleet_id, f.workspace_id FROM connector.channels c JOIN fleet.fleets f ON f.id=c.fleet_id WHERE c.provider=$1 AND c.external_account_id=$2 AND c.external_channel_id=$3")
         .bind(PROVIDER.id()).bind(&fixture.team).bind(CHANNEL)
         .fetch_one(&mut *connection).await.expect("channel binding")
 }
@@ -59,10 +59,10 @@ async fn a_moved_team_uses_its_current_workspaces_notice_carrier() {
     );
     assert_eq!(
         bound(&fixture).await,
-        (first.to_string(), fixture.workspace().to_string())
+        (first.clone(), fixture.workspace().clone())
     );
     assert_eq!(fixture.admissions().await, 0);
-    let notices = owed(&fixture, &notice_key(&fixture.team, "EvMoved01")).await;
+    let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "responder");
     fixture.cleanup().await;
@@ -88,7 +88,7 @@ async fn a_stopped_subscriber_owes_the_paused_notice_without_admission() {
         StatusCode::OK
     );
     assert_eq!(fixture.admissions().await, 0);
-    let notices = owed(&fixture, &notice_key(&fixture.team, "EvStopped01")).await;
+    let notices = owed(&fixture).await;
     assert_eq!(notices.len(), 1);
     assert_eq!(notices[0].owner, "notice-carrier");
     assert!(
@@ -125,11 +125,7 @@ async fn a_killed_bound_carrier_drops_notices_even_with_active_subscribers() {
         Some("notice_owner_killed")
     );
     assert_eq!(fixture.admissions().await, 0);
-    assert!(
-        owed(&fixture, &notice_key(&fixture.team, "EvKilled02"))
-            .await
-            .is_empty()
-    );
+    assert!(owed(&fixture).await.is_empty());
     assert_eq!(bound(&fixture).await.0, killed.as_str());
     fixture.cleanup().await;
 }

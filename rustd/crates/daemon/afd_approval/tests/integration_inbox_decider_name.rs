@@ -27,6 +27,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_approval::{Decision, Filter, Resolution};
 
 use crate::lane::{Lane, Window};
@@ -64,10 +65,10 @@ const WHOLE_PAGE: i64 = 50;
 
 /// The name reaches the row the operator reads.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decider_with_a_user_row_reads_as_their_name() {
     let lane = Lane::isolated().await;
-    seed_person(&lane, lane.tenant.as_str(), KNOWN_SUBJECT, KNOWN_NAME).await;
+    seed_person(&lane, &lane.tenant, KNOWN_SUBJECT, KNOWN_NAME).await;
     let action = lane.seed_gate(Window::Open).await;
     resolve_as(&lane, &action, KNOWN_SUBJECT).await;
 
@@ -95,7 +96,7 @@ async fn a_decider_with_a_user_row_reads_as_their_name() {
 /// the only record of who decided would be worse than printing it ugly, so the
 /// read must return the subject with an empty name rather than skipping the row.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decider_with_no_user_row_keeps_the_row_and_answers_no_name() {
     let lane = Lane::isolated().await;
     let action = lane.seed_gate(Window::Open).await;
@@ -123,7 +124,7 @@ async fn a_decider_with_no_user_row_keeps_the_row_and_answers_no_name() {
 /// scoped the subject per tenant would silently turn the capture cross-tenant,
 /// and this test is what fails when it does.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_user_row_in_another_tenant_does_not_name_this_gate() {
     let lane = Lane::isolated().await;
     let other_tenant = seed_other_tenant(&lane).await;
@@ -149,7 +150,7 @@ async fn a_user_row_in_another_tenant_does_not_name_this_gate() {
 /// DEFAULT. The waiting gate is still on the page: an absent name was never a
 /// reason to drop a row.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_pending_gate_carries_neither_a_decider_nor_a_name() {
     let lane = Lane::isolated().await;
     lane.seed_gate(Window::Open).await;
@@ -170,10 +171,10 @@ async fn a_pending_gate_carries_neither_a_decider_nor_a_name() {
 /// failure mode worth pinning: the detail page is where an operator looks when
 /// the table's answer surprised them.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_single_gate_read_names_the_decider_too() {
     let lane = Lane::isolated().await;
-    seed_person(&lane, lane.tenant.as_str(), KNOWN_SUBJECT, KNOWN_NAME).await;
+    seed_person(&lane, &lane.tenant, KNOWN_SUBJECT, KNOWN_NAME).await;
     let action = lane.seed_gate(Window::Open).await;
     resolve_as(&lane, &action, KNOWN_SUBJECT).await;
 
@@ -182,7 +183,7 @@ async fn the_single_gate_read_names_the_decider_too() {
         .page(&lane.workspace, Filter::default(), None, WHOLE_PAGE)
         .await
         .expect("the queue read must not fault");
-    let gate_id = af_core::id::Uuid7::parse(&listed.first().expect("the resolved gate").gate_id)
+    let gate_id = Uuid7::parse(listed.first().expect("the resolved gate").gate_id.as_str())
         .expect("the read returns a well-formed gate id");
 
     let one = lane
@@ -201,7 +202,7 @@ async fn the_single_gate_read_names_the_decider_too() {
 /// permanently. The browser lookup this replaced fell back to the address, and
 /// dropping that would show a shortened subject where a human string used to be.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decider_with_no_display_name_reads_as_their_address() {
     let lane = Lane::isolated().await;
     seed_nameless_person(&lane, NAMELESS_SUBJECT, NAMELESS_EMAIL).await;
@@ -228,12 +229,12 @@ async fn seed_nameless_person(lane: &Lane, subject: &str, email: &str) {
     sqlx::query(
         "INSERT INTO identity.users
            (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, NULL, now(), now())
+         VALUES ($1, $2, $3, $4, NULL, now(), now())
          ON CONFLICT (oidc_subject) DO UPDATE
            SET tenant_id = EXCLUDED.tenant_id, display_name = NULL",
     )
     .bind(afd_db::test_util::mint_id())
-    .bind(lane.tenant.as_str())
+    .bind(&lane.tenant)
     .bind(subject)
     .bind(email)
     .execute(&mut *connection(lane).await)
@@ -242,10 +243,10 @@ async fn seed_nameless_person(lane: &Lane, subject: &str, email: &str) {
 }
 
 /// Answers `action` as `subject`, asserting the decision landed.
-async fn resolve_as(lane: &Lane, action: &str, subject: &str) {
+async fn resolve_as(lane: &Lane, action: &Uuid7, subject: &str) {
     let resolved = lane
         .inbox
-        .resolve(action, Decision::Approved, subject, NOTE, None)
+        .resolve(action.as_str(), Decision::Approved, subject, NOTE, None)
         .await
         .expect("the resolve must not fault");
     assert!(
@@ -258,11 +259,11 @@ async fn resolve_as(lane: &Lane, action: &str, subject: &str) {
 ///
 /// `ON CONFLICT (oidc_subject)` rather than on the primary key: the subject is
 /// what the join reads and what a re-run collides on.
-async fn seed_person(lane: &Lane, tenant: &str, subject: &str, name: &str) {
+async fn seed_person(lane: &Lane, tenant: &Uuid7, subject: &str, name: &str) {
     sqlx::query(
         "INSERT INTO identity.users
            (id, tenant_id, oidc_subject, email, display_name, created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, $3, $4, $5, now(), now())
+         VALUES ($1, $2, $3, $4, $5, now(), now())
          ON CONFLICT (oidc_subject) DO UPDATE
            SET tenant_id = EXCLUDED.tenant_id, display_name = EXCLUDED.display_name",
     )
@@ -277,7 +278,7 @@ async fn seed_person(lane: &Lane, tenant: &str, subject: &str, name: &str) {
 }
 
 /// A second tenant, so a cross-tenant user row can exist to be excluded.
-async fn seed_other_tenant(lane: &Lane) -> String {
+async fn seed_other_tenant(lane: &Lane) -> Uuid7 {
     let tenant = afd_db::test_util::mint_id();
     afd_db::test_util::TenantSeed::new(&tenant)
         .insert(&mut *connection(lane).await)

@@ -24,26 +24,26 @@ pub(super) const PAST: Duration = DAY.saturating_add(Duration::from_hours(1));
 /// own id in one statement.
 const REFILE: &str = "\
 WITH old AS (
- DELETE FROM authoring.replay_receipts WHERE operation_id=$1::uuid AND resource_id=$2::uuid
+ DELETE FROM authoring.replay_receipts WHERE operation_id=$1 AND resource_id=$2
  RETURNING *
 )
 INSERT INTO authoring.replay_receipts
  (id,workspace_id,user_id,scope,operation_id,request_digest,resource_id,created_at)
-SELECT id,workspace_id,$3::uuid,scope,operation_id,request_digest,resource_id,
+SELECT id,workspace_id,$3,scope,operation_id,request_digest,resource_id,
        statement_timestamp() - $4::interval
   FROM old";
 
 pub(super) async fn refile(
     f: &Fixture,
     operation: &Uuid7,
-    resource: &str,
+    resource: &Uuid7,
     user: &Uuid7,
     age: Duration,
 ) {
     let filed = sqlx::query(REFILE)
-        .bind(operation.as_str())
+        .bind(operation)
         .bind(resource)
-        .bind(user.as_str())
+        .bind(user)
         .bind(age)
         .execute(&mut *f.connection().await)
         .await
@@ -53,20 +53,18 @@ pub(super) async fn refile(
 }
 
 /// The id of the message at `sequence` in `draft`.
-pub(super) async fn message_id(f: &Fixture, draft: &Uuid7, sequence: i64) -> String {
-    sqlx::query_scalar(
-        "SELECT id::text FROM authoring.messages WHERE draft_id=$1::uuid AND sequence=$2",
-    )
-    .bind(draft.as_str())
-    .bind(sequence)
-    .fetch_one(&mut *f.connection().await)
-    .await
-    .expect("accepted message")
+pub(super) async fn message_id(f: &Fixture, draft: &Uuid7, sequence: i64) -> Uuid7 {
+    sqlx::query_scalar("SELECT id FROM authoring.messages WHERE draft_id=$1 AND sequence=$2")
+        .bind(draft)
+        .bind(sequence)
+        .fetch_one(&mut *f.connection().await)
+        .await
+        .expect("accepted message")
 }
 
 /// How many receipts name `resource`.
-pub(super) async fn receipts(f: &Fixture, resource: &str) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE resource_id=$1::uuid")
+pub(super) async fn receipts(f: &Fixture, resource: &Uuid7) -> i64 {
+    sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE resource_id=$1")
         .bind(resource)
         .fetch_one(&mut *f.connection().await)
         .await
@@ -144,13 +142,13 @@ async fn a_deleted_draft_answers_gone_inside_the_window_and_is_new_at_its_bounda
     let created = f.drafts.create(f.access(), request.clone(), now()).await;
     let old = created.expect("create").draft.id;
     f.drafts.delete(f.access(), &old).await.expect("delete");
-    refile(&f, &key, old.as_str(), &f.owner, INSIDE).await;
+    refile(&f, &key, &old, &f.owner, INSIDE).await;
     let gone = f.drafts.create(f.access(), request.clone(), now()).await;
     assert_eq!(
         gone.expect_err("deleted inside the window").code(),
         AUTHORING_GONE
     );
-    refile(&f, &key, old.as_str(), &f.owner, DAY).await;
+    refile(&f, &key, &old, &f.owner, DAY).await;
     let created = f.drafts.create(f.access(), request, now()).await;
     let fresh = created.expect("the key is new at the boundary").draft.id;
     assert_ne!(fresh, old);
@@ -166,7 +164,7 @@ async fn concurrent_claims_on_an_expired_key_file_exactly_one_new_receipt() {
     let request = f.request(key.clone(), Some("Watch checkout"));
     let created = f.drafts.create(f.access(), request.clone(), now()).await;
     let old = created.expect("create").draft.id;
-    refile(&f, &key, old.as_str(), &f.owner, PAST).await;
+    refile(&f, &key, &old, &f.owner, PAST).await;
     let (left, right) = tokio::join!(
         f.drafts.create(f.access(), request.clone(), now()),
         f.drafts.create(f.access(), request, now()),
@@ -180,8 +178,8 @@ async fn concurrent_claims_on_an_expired_key_file_exactly_one_new_receipt() {
         right.accepted.expect("first message").replayed,
         "one claim filed the receipt and the other replayed it"
     );
-    assert_eq!(receipts(&f, old.as_str()).await, 0);
-    assert_eq!(receipts(&f, left.draft.id.as_str()).await, 1);
+    assert_eq!(receipts(&f, &old).await, 0);
+    assert_eq!(receipts(&f, &left.draft.id).await, 1);
     assert_eq!(
         f.counts().await.0,
         2,

@@ -38,7 +38,8 @@ impl Drafts {
         let mut connection = self.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let mut guarded = guard::bound(&mut tx, runner, lease, &counters).await?;
-        let host = afd_runner::capacity::lock(&mut tx, runner)
+        let host = self
+            .lock_host_capacity(&mut tx, runner)
             .await?
             .ok_or(ErrorKind::Hidden)?;
         if !host.can_renew() {
@@ -59,7 +60,7 @@ impl Drafts {
         };
         let now = guard::refresh(&mut tx, &guarded, &counters).await?;
         let until: Option<jiff_sqlx::Timestamp> = sqlx::query_scalar(sql::EXTEND)
-            .bind(guarded.attempt.id.as_str())
+            .bind(guarded.attempt.id)
             .bind(now.to_sqlx())
             .bind(LEASE_TTL)
             .bind(clock::saturating_millis_signed(verified.runtime))

@@ -43,24 +43,22 @@ impl Fixture {
             token: format!("agt_t{}{}", mint(), mint()).replace('-', ""),
         };
         f.cleanup.record(
-            "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1::uuid",
-            f.workspace.as_str(),
+            "DELETE FROM authoring.replay_receipts WHERE workspace_id=$1",
+            &f.workspace,
         );
         f.cleanup.record(
-            "DELETE FROM fleet.fleets WHERE workspace_id=$1::uuid",
-            f.workspace.as_str(),
+            "DELETE FROM fleet.fleets WHERE workspace_id=$1",
+            &f.workspace,
         );
         f.cleanup.record(
-            "DELETE FROM authoring.library_entries WHERE tenant_id=$1::uuid",
-            f.tenant.as_str(),
+            "DELETE FROM authoring.library_entries WHERE tenant_id=$1",
+            &f.tenant,
         );
+        f.cleanup
+            .record("DELETE FROM identity.tenants WHERE id=$1", &f.tenant);
         f.cleanup.record(
-            "DELETE FROM identity.tenants WHERE id=$1::uuid",
-            f.tenant.as_str(),
-        );
-        f.cleanup.record(
-            "DELETE FROM model.platform_models WHERE id=$1::uuid",
-            f.catalogue.as_str(),
+            "DELETE FROM model.platform_models WHERE id=$1",
+            &f.catalogue,
         );
         let digest = Digest::of(&Presented::new(&f.token).expect("fixture token"));
         seed::account(&f, digest.as_str()).await;
@@ -76,6 +74,7 @@ impl Fixture {
         )
         .at(af_core::clock::now())
         .with_owned_workspace(self.workspace.clone())
+        .with_native_authoring(self.db.clone())
     }
 
     pub(super) fn router(&self) -> Router {
@@ -88,27 +87,25 @@ impl Fixture {
 
     pub(super) fn own_runner(&mut self, id: &Uuid7) {
         self.cleanup
-            .record("DELETE FROM runner.runners WHERE id=$1::uuid", id.as_str());
+            .record("DELETE FROM runner.runners WHERE id=$1", id);
     }
 
     /// Removes a second account a case seeds, with its people and keys.
     pub(super) fn own_tenant(&mut self, id: &Uuid7) {
-        self.cleanup.record(
-            "DELETE FROM identity.tenants WHERE id=$1::uuid",
-            id.as_str(),
-        );
+        self.cleanup
+            .record("DELETE FROM identity.tenants WHERE id=$1", id);
     }
 
     pub(super) fn own_library(&mut self, id: &str) {
         self.cleanup.record(
-            "DELETE FROM authoring.library_revisions WHERE library_entry_id=$1::uuid",
-            id,
+            "DELETE FROM authoring.library_revisions WHERE library_entry_id=$1",
+            &Uuid7::parse(id).expect("a tenant library is addressed by its id"),
         );
     }
 
     pub(super) fn own_platform_library(&mut self, slug: &str) {
-        self.cleanup.record("DELETE FROM authoring.library_revisions WHERE library_entry_id IN (SELECT id FROM authoring.library_entries WHERE platform_slug=$1)", slug);
-        self.cleanup.record(
+        self.cleanup.record_text("DELETE FROM authoring.library_revisions WHERE library_entry_id IN (SELECT id FROM authoring.library_entries WHERE platform_slug=$1)", slug);
+        self.cleanup.record_text(
             "DELETE FROM authoring.library_entries WHERE platform_slug=$1",
             slug,
         );

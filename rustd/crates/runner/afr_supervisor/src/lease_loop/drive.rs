@@ -69,9 +69,9 @@ impl LeaseRun<'_> {
             &self.lessee.plane,
             &self.ids.lease,
             self.lease.fencing_token,
-            &self.lessee.spool,
-            &self.lessee.held,
+            &self.lessee.halt,
             &self.interrupt,
+            &self.decisions,
         );
         let run = AssertUnwindSafe(self.lessee.agent.run(AgentRun {
             recovered_task,
@@ -103,6 +103,14 @@ impl LeaseRun<'_> {
         let first_chunk = timing.first_chunk;
         self.timeline.ran(timing);
         drop(sink);
+        self.ended(output, first_chunk)
+    }
+
+    fn ended(
+        &self,
+        output: Option<std::thread::Result<afr_agent::Result<afr_agent::RunOutput>>>,
+        first_chunk: Option<std::time::Duration>,
+    ) -> Ending {
         match output {
             Some(Ok(Ok(output))) => Ending::Ran {
                 output: Box::new(output),

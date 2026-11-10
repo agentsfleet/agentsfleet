@@ -8,7 +8,7 @@ use http::{Method, StatusCode};
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_family_never_borrows_another_familys_proof() {
     let fixture = Fixture::create().await;
     fixture.seed(Runnable::Active, Secret::Stored).await;
@@ -33,7 +33,7 @@ async fn a_family_never_borrows_another_familys_proof() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn two_families_on_one_fleet_each_verify_at_their_own_url() {
     let fixture = Fixture::create().await;
     fixture.seed(Runnable::Active, Secret::Stored).await;

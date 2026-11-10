@@ -3,19 +3,18 @@
 //!
 //! # The shape of a run
 //!
-//! Queue N jobs across D destinations, then start the real `Worker` and let it
-//! drain them. The worker is one task reading one entry at a time and awaiting
-//! its retry ladder inline, so every job's delivery latency includes the time
-//! every earlier job spent — which is exactly the head-of-line cost this lane
-//! exists to measure. Nothing here changes that shape; the numbers are what
-//! say whether it should change.
+//! Owe N answers across D destination fleets, then start the real `Worker` and
+//! let it claim and drain them from `fleet.obligations`. Every job is
+//! paid by one workspace, so they share one (provider, workspace) lane and
+//! deliver one at a time: each job's latency includes the time every earlier
+//! job spent, which is exactly the head-of-line cost this lane measures.
 //!
 //! # The clock starts when the worker does
 //!
-//! Every job's latency is measured from the LATER of its enqueue and the
-//! worker's start. The reader's connect and the enqueue loop happen before
-//! that instant, and the first version charged them to job zero — a head-of-
-//! line number that scaled with how many jobs were queued behind it.
+//! Every job's latency is measured from the LATER of its owe and the worker's
+//! start. The seeding and owe loop happen before that instant, and charging
+//! them to job zero would give a head-of-line number that scaled with how many
+//! jobs were owed behind it.
 //!
 //! # The window ends at the last settlement, not the next tick
 //!
@@ -33,18 +32,23 @@
 pub mod poster;
 mod record;
 
+use af_core::id::Uuid7;
 use core::time::Duration;
 use std::collections::{BTreeMap, HashMap};
 use std::time::Instant;
 
-use afd_dragonfly::{OutboundJob, OutboundQueue, OutboundReader, outbound_consumer};
+use af_crypto::entropy::Entropy;
+use afd_connector::Provider;
+use afd_db::Db;
+use afd_db::test_util::{FleetSeed, TenantSeed, WorkspaceSeed};
+use afd_outbound::obligation::{self, Delivery};
 use afd_outbound::{Posters, Worker};
 use tokio_util::sync::CancellationToken;
 
 use self::poster::{Behaviour, Scripted};
 use self::record::{Drained, record, window_end};
-use crate::datastores::{Datastores, dragonfly_calls, postgres_transactions};
-use crate::error::{ErrorKind, Result};
+use crate::datastores::{Datastores, postgres_transactions};
+use crate::error::{ErrorKind, Result, seed_refused};
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::knobs::{RETRYABLE_FRACTION_VARIABLE, SLOW_FRACTION_VARIABLE};
 use crate::lane::sweep;
@@ -68,7 +72,7 @@ const REPLY_ADDRESS: &str = r#"{"channel_id":"C0BENCH","thread_ts":"1700000000.0
 
 /// The provider every queued job names, so the worker routes it to the one
 /// poster this build ships.
-const PROVIDER: &str = "slack";
+const PROVIDER: Provider = Provider::Slack;
 
 /// A generated answer; never a tenant's text (RULE PRI).
 const ANSWER: &str = "bench answer";
@@ -125,18 +129,17 @@ pub async fn run(
     prefix: &RunPrefix,
 ) -> Result<Report> {
     parameters.admit(profile)?;
-    let queue = OutboundQueue::new(stores.queue.clone());
-    queue.ensure_group().await?;
 
-    let behaviours = script(prefix, parameters);
+    let behaviours = script(prefix, parameters)?;
     let poster = Scripted::new(behaviours.clone(), FAST_ANSWER, SLOW_ANSWER);
     let destinations: Vec<&String> = behaviours.keys().collect();
 
-    let (mut ledger, queued_at) = enqueue(&queue, prefix, &destinations, parameters.jobs).await?;
+    let payer = parents(&stores.database, prefix, &destinations).await?;
+    let (mut ledger, owed) =
+        owe_all(&stores.database, &payer, &destinations, parameters.jobs).await?;
 
-    let drained = drain(stores, queue, poster.clone(), parameters).await?;
-    let ids: Vec<String> = queued_at.keys().cloned().collect();
-    ledger.swept(sweep::outbound_entries(&stores.queue, &ids).await?);
+    let drained = drain(stores, poster.clone(), parameters).await?;
+    ledger.swept(sweep::outbound_obligations(&stores.database, &owed.rows).await?);
 
     let mut report = Report::new(Lane::Outbound, profile, provenance);
     report.created = true;
@@ -153,7 +156,7 @@ pub async fn run(
         &mut report,
         &drained,
         &poster,
-        &queued_at,
+        &owed.queued_at,
         &behaviours,
         parameters.jobs,
     )?;
@@ -161,39 +164,111 @@ pub async fn run(
     Ok(report)
 }
 
-/// Queue `jobs` jobs dealt round-robin over `destinations`, noting when each
-/// id was queued and counting each in the fixture ledger.
-async fn enqueue(
-    queue: &OutboundQueue,
-    prefix: &RunPrefix,
+/// The paying tenant and workspace, and one fleet per destination; answers
+/// the payer, whose one lane every job shares.
+async fn parents(database: &Db, prefix: &RunPrefix, destinations: &[&String]) -> Result<Uuid7> {
+    let now = af_core::clock::now();
+    let tenant = crate::lane::lease::seed::identifier(KIND_TENANT, 0)?;
+    let payer = crate::lane::lease::seed::identifier(KIND_PAYER, 0)?;
+    let mut connection = database.acquire().await?;
+    TenantSeed::new(&tenant)
+        .name(&prefix.name("tenant"))
+        .at(now)
+        .insert(&mut *connection)
+        .await
+        .map_err(seed_refused)?;
+    WorkspaceSeed::new(&payer, &tenant)
+        .name(&prefix.name("workspace"))
+        .at(now)
+        .insert(&mut *connection)
+        .await
+        .map_err(seed_refused)?;
+    for (index, destination) in destinations.iter().enumerate() {
+        FleetSeed::new(
+            &Uuid7::parse(destination)?,
+            &payer,
+            &tenant,
+            afd_fleet::lease::sql::FLEET_STATUS_ACTIVE,
+        )
+        .name(&prefix.name(&format!("fleet-{index}")))
+        .at(now)
+        .insert(&mut *connection)
+        .await
+        .map_err(seed_refused)?;
+    }
+    Ok(payer)
+}
+
+/// What the owe loop handed out, under the two names each job goes by.
+///
+/// The poster sees a job as the event it answers, so the latency clock is
+/// keyed by event; the sweep deletes by obligation row. One map keyed by row
+/// would never match a stamp, and every latency would silently drop out.
+struct Owed {
+    /// When each job was owed, by the event it answers.
+    queued_at: HashMap<Uuid7, Instant>,
+    /// Every obligation row this run inserted, for the sweep.
+    rows: Vec<Uuid7>,
+}
+
+/// Owe `jobs` answers dealt round-robin over `destinations`, noting when each
+/// was owed and counting each in the fixture ledger.
+async fn owe_all(
+    database: &Db,
+    payer: &Uuid7,
     destinations: &[&String],
     jobs: u64,
-) -> Result<(FixtureLedger, HashMap<String, Instant>)> {
+) -> Result<(FixtureLedger, Owed)> {
     let mut ledger = FixtureLedger::new();
-    let mut queued_at = HashMap::new();
+    let mut owed = Owed {
+        queued_at: HashMap::new(),
+        rows: Vec::new(),
+    };
+    let entropy = Entropy::new();
+    let mut connection = database.acquire().await?;
     for (index, destination) in (0..jobs).zip(destinations.iter().cycle()) {
-        let id = queue
-            .enqueue(OutboundJob {
+        let fleet = Uuid7::parse(destination)?;
+        let event = crate::lane::lease::seed::identifier(KIND_ANSWERED, index)?;
+        let row = entropy.uuid7(af_core::clock::now())?;
+        let token = entropy.uuid7(af_core::clock::now())?;
+        obligation::owe(
+            &mut connection,
+            &row,
+            &token,
+            Delivery {
+                fleet_id: &fleet,
+                workspace_id: payer,
                 provider: PROVIDER,
                 destination: REPLY_ADDRESS,
-                workspace_id: prefix.as_str(),
-                fleet_id: destination,
-                event_id: &prefix.name(&format!("event-{index}")),
+                event_id: &event,
                 answer: ANSWER,
-            })
-            .await?;
-        queued_at.insert(id.as_str().to_owned(), Instant::now());
+            },
+        )
+        .await?;
+        owed.queued_at.insert(event, Instant::now());
+        owed.rows.push(row);
         ledger.created(1);
     }
-    Ok((ledger, queued_at))
+    Ok((ledger, owed))
 }
+
+/// The identifier kinds this lane mints: a destination fleet, the paying
+/// workspace, an answered event, and the paying tenant. Distinct from the
+/// lease seeds' kinds.
+const KIND_DESTINATION: u32 = 0x0d1;
+const KIND_PAYER: u32 = 0x0d2;
+const KIND_ANSWERED: u32 = 0x0d3;
+const KIND_TENANT: u32 = 0x0d4;
 
 /// Assign a behaviour to each destination by the requested fractions.
 ///
 /// A `BTreeMap`, so the order jobs are dealt to destinations — and therefore
 /// which position in each cycle the slow one occupies — is a function of the
 /// parameters and not of a hash seed that changes per process.
-pub(crate) fn script(prefix: &RunPrefix, parameters: Parameters) -> BTreeMap<String, Behaviour> {
+pub(crate) fn script(
+    _prefix: &RunPrefix,
+    parameters: Parameters,
+) -> Result<BTreeMap<String, Behaviour>> {
     let slow = fraction_of(DESTINATIONS, parameters.slow_fraction);
     let retryable = fraction_of(DESTINATIONS, parameters.retryable_fraction);
     (0..DESTINATIONS)
@@ -205,7 +280,10 @@ pub(crate) fn script(prefix: &RunPrefix, parameters: Parameters) -> BTreeMap<Str
             } else {
                 Behaviour::Fast
             };
-            (prefix.name(&format!("destination-{index:02}")), behaviour)
+            Ok((
+                crate::lane::lease::seed::identifier(KIND_DESTINATION, index)?.to_string(),
+                behaviour,
+            ))
         })
         .collect()
 }
@@ -225,28 +303,18 @@ pub(crate) fn fraction_of(total: u64, fraction: f64) -> u64 {
 
 /// Start the real worker, wait for it to settle every job or the deadline,
 /// stop it.
-async fn drain(
-    stores: &Datastores,
-    queue: OutboundQueue,
-    poster: Scripted,
-    parameters: Parameters,
-) -> Result<Drained> {
-    let reader = OutboundReader::new(
-        stores.dedicated(afd_outbound::LONGEST_PARK).await?,
-        outbound_consumer(),
-    );
-    let dragonfly_before = dragonfly_calls(&stores.queue).await?;
+async fn drain(stores: &Datastores, poster: Scripted, parameters: Parameters) -> Result<Drained> {
     let transactions_before = postgres_transactions(&stores.database).await?;
     let token = CancellationToken::new();
     let started = Instant::now();
     let worker = tokio::spawn(
         Worker::new(
-            reader,
-            queue,
             stores.database.clone(),
+            stores.bus.clone(),
             Posters {
                 slack: poster.clone(),
             },
+            Entropy::new(),
         )
         .run(token.clone()),
     );
@@ -262,9 +330,6 @@ async fn drain(
         started,
         ended,
         settled,
-        dragonfly_calls: dragonfly_calls(&stores.queue)
-            .await?
-            .saturating_sub(dragonfly_before),
         transactions: postgres_transactions(&stores.database)
             .await?
             .saturating_sub(transactions_before),

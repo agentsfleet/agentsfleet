@@ -144,7 +144,8 @@ async function arrangeWebhookFleet(workspaceId: string, tag: string) {
  * Waits for a runner to take the event, or reports why nobody did.
  *
  * NO row exists until a runner leases the event. The ingress writes nothing to
- * Postgres — it claims the delivery in Redis and answers 202, and the row is
+ * `fleet.events` — it admits the delivery to the admissions ledger and answers
+ * 202, and the row is
  * written by the lease (`afd_ingress::deliver`, module note: "the row appears
  * when the runner leases the event, and a daemon that inserted one at ingress
  * would be racing its own runner to describe the same event").

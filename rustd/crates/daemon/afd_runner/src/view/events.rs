@@ -76,27 +76,27 @@ pub(super) fn statement<'a>(
     let until = filter.until().map(Timestamp::to_sqlx);
     match cursor {
         None => sqlx::query_as(sql::runner_view::LIST_EVENTS_FIRST)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(event_types)
             .bind(since)
             .bind(until)
-            .bind(i64::from(limit)),
+            .bind(super::store::past_page(limit)),
         Some(boundary) => sqlx::query_as(sql::runner_view::LIST_EVENTS_AFTER)
-            .bind(runner.as_str())
+            .bind(runner)
             .bind(event_types)
             .bind(since)
             .bind(until)
             .bind(boundary.created_at().to_sqlx())
-            .bind(boundary.id().as_str())
-            .bind(i64::from(limit)),
+            .bind(boundary.id())
+            .bind(super::store::past_page(limit)),
     }
 }
 
 pub(super) fn cursor(
     items: &[RunnerEventItem<'static>],
-    limit: u32,
+    more: bool,
 ) -> Result<Option<KeysetCursor>> {
-    if items.len() != usize::try_from(limit).unwrap_or(usize::MAX) {
+    if !more {
         return Ok(None);
     }
     items

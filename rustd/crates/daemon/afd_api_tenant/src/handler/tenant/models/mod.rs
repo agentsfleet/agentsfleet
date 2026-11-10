@@ -163,7 +163,7 @@ fn serialize(page: &LibraryPage, provider: Option<&str>, advanced: bool, limit: 
                 v: cursor::CURSOR_VERSION,
                 display_key: boundary.display_key.clone(),
                 vendor_key: boundary.vendor_key.clone(),
-                id: boundary.id.clone(),
+                id: boundary.id.clone().into(),
                 provider: provider.map(str::to_owned),
                 advanced,
                 limit,

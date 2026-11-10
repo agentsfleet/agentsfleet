@@ -26,20 +26,20 @@ pub(super) struct Hint {
 /// [`sql::CANDIDATES`]'s row, by column name.
 #[derive(sqlx::FromRow)]
 struct HintRow {
-    id: String,
-    workspace_id: String,
-    tenant_id: String,
-    user_id: String,
+    id: Uuid7,
+    workspace_id: Uuid7,
+    tenant_id: Uuid7,
+    user_id: Uuid7,
 }
 
-impl HintRow {
-    fn decode(self) -> Result<Hint> {
-        Ok(Hint {
-            id: Uuid7::parse(&self.id)?,
-            workspace_id: Uuid7::parse(&self.workspace_id)?,
-            tenant_id: Uuid7::parse(&self.tenant_id)?,
-            user_id: Uuid7::parse(&self.user_id)?,
-        })
+impl From<HintRow> for Hint {
+    fn from(row: HintRow) -> Self {
+        Self {
+            id: row.id,
+            workspace_id: row.workspace_id,
+            tenant_id: row.tenant_id,
+            user_id: row.user_id,
+        }
     }
 }
 
@@ -47,7 +47,7 @@ impl HintRow {
 #[derive(sqlx::FromRow)]
 struct Next {
     sequence: i64,
-    tenant_model_id: Option<String>,
+    tenant_model_id: Option<Uuid7>,
 }
 
 /// What authorizing one candidate found.
@@ -77,7 +77,7 @@ pub(super) async fn candidates(database: &Db) -> Result<Vec<Hint>> {
         .fetch_all(&mut *database.acquire().await?)
         .await
         .map_err(query(sql::CONTEXT))?;
-    rows.into_iter().map(HintRow::decode).collect()
+    Ok(rows.into_iter().map(Hint::from).collect())
 }
 
 pub(super) async fn authorize(
@@ -106,7 +106,7 @@ async fn held(connection: &mut PgConnection, hint: &Hint) -> Result<bool> {
     let mut savepoint = connection.begin().await.map_err(query(sql::CONTEXT))?;
     for (statement, id) in [(sql::HOLD_USER, &hint.user_id), (sql::HOLD_DRAFT, &hint.id)] {
         let taken = sqlx::query(statement)
-            .bind(id.as_str())
+            .bind(id)
             .fetch_optional(&mut *savepoint)
             .await;
         match taken {
@@ -162,7 +162,7 @@ async fn selected(
 
 async fn subject(connection: &mut PgConnection, hint: &Hint) -> Result<Option<String>> {
     sqlx::query_scalar(crate::sql::access::SUBJECT)
-        .bind(hint.user_id.as_str())
+        .bind(&hint.user_id)
         .fetch_optional(connection)
         .await
         .map_err(query(sql::CONTEXT))
@@ -177,7 +177,7 @@ async fn select_message(
         return Ok(None);
     }
     let next: Option<Next> = sqlx::query_as(sql::MESSAGE)
-        .bind(draft.id.as_str())
+        .bind(&draft.id)
         .bind(QUEUED)
         .bind(draft.cancelled_through_sequence)
         .fetch_optional(connection)
@@ -198,10 +198,10 @@ async fn cancel_revoked(
     owed: &mut Owed,
 ) -> Result<()> {
     let cancelled = sqlx::query(sql::CANCEL_REVOKED)
-        .bind(hint.id.as_str())
-        .bind(hint.workspace_id.as_str())
-        .bind(hint.tenant_id.as_str())
-        .bind(hint.user_id.as_str())
+        .bind(&hint.id)
+        .bind(&hint.workspace_id)
+        .bind(&hint.tenant_id)
+        .bind(&hint.user_id)
         .bind(CANCELLED)
         .bind(QUEUED)
         .execute(connection)
@@ -226,9 +226,9 @@ impl<'a> From<&'a Hint> for Message<'a> {
 #[cfg(feature = "test-util")]
 pub(super) async fn hint(connection: &mut PgConnection, draft: &Uuid7) -> Result<Hint> {
     let row: HintRow = sqlx::query_as(crate::sql::draft::HINT)
-        .bind(draft.as_str())
+        .bind(draft)
         .fetch_one(connection)
         .await
         .map_err(query(sql::CONTEXT))?;
-    row.decode()
+    Ok(row.into())
 }

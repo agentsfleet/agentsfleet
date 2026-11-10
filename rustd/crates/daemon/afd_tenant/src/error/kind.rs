@@ -11,12 +11,6 @@ pub(crate) enum ErrorKind {
         source: afd_db::Error,
     },
 
-    #[error("the queue backing the tenant plane would not answer")]
-    Queue {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
-
     #[error("statement failed during {context}")]
     Query {
         context: &'static str,
@@ -24,18 +18,16 @@ pub(crate) enum ErrorKind {
         source: sqlx::Error,
     },
 
+    #[error("a device session row is unreadable: {what}")]
+    SessionUnreadable {
+        /// What about the row this build cannot read.
+        what: Box<str>,
+    },
+
     #[error("a stored role holds {stored}, which this build does not know")]
     RoleUnknown {
         /// The stored bytes, so the log names what a newer daemon wrote.
         stored: Box<str>,
-    },
-
-    #[error("a {table} row holds a value this daemon cannot read: {column}")]
-    RowMalformed {
-        table: &'static str,
-        column: &'static str,
-        #[source]
-        source: af_core::error::Error,
     },
 
     /// Every `af_crypto` failure lands here: a draw from the entropy source,
@@ -130,6 +122,9 @@ pub(crate) enum ErrorKind {
 
     #[error("an invite address was refused")]
     EmailInvalid,
+
+    #[error("a paging cursor named a row identifier this daemon never issued")]
+    CursorInvalid,
 
     #[error("the catalogue page statement would not answer")]
     LibraryPageUnavailable {

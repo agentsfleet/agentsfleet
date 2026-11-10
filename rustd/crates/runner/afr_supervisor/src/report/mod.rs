@@ -1,5 +1,7 @@
 //! A lease's terminal report, built from how its run ended.
 
+pub(crate) mod delivery;
+
 use std::borrow::Cow;
 use std::time::Duration;
 
@@ -76,7 +78,7 @@ pub(crate) fn report<'a>(
     ending: &'a Ending,
     meter: &Meter,
     wall: Duration,
-    trace: Option<&'a str>,
+    trace: Option<af_wire::tool_trace::RawToolTrace<'a>>,
     held_until: Option<Timestamp>,
 ) -> ReportRequest<'a> {
     let (outcome, failure_reason, failure_detail) = verdict(ending);
@@ -105,26 +107,17 @@ pub(crate) fn report<'a>(
         response_text: response_text.clone(),
         tokens,
         requests: meter.unrecorded(),
-        telemetry: ReportTelemetry {
-            time_to_first_token_ms: narrow(first_chunk.map_or(0, saturating_millis)),
-            wall_ms: saturating_millis(wall),
-            segments: None,
-        },
+        telemetry: report_telemetry(first_chunk, wall),
         checkpoint: ReportCheckpoint {
             last_event_id: Cow::Borrowed(&lease.event.event_id),
             last_response: response_text,
         },
-        tool_calls: trace.and_then(|encoded| serde_json::from_str(encoded).ok()),
+        tool_calls: trace,
         // The wire still spells this instant as epoch milliseconds.
         held_until,
         // Only a processed run's folds settle with its answer; any other
         // ending leaves them for the fleet's next run.
-        folded_through_sequence: match ending {
-            Ending::Ran { output, .. } if outcome == Outcome::Processed => {
-                output.folded_through_sequence
-            }
-            Ending::Ran { .. } | Ending::Failed { .. } => None,
-        },
+        folded_through_sequence: folded_through(ending, outcome),
         memory: Vec::new(),
     }
 }
@@ -156,3 +149,20 @@ pub(crate) fn narrow(count: u64) -> u32 {
 
 #[cfg(test)]
 mod tests;
+
+fn folded_through(ending: &Ending, outcome: Outcome) -> Option<i64> {
+    match ending {
+        Ending::Ran { output, .. } if outcome == Outcome::Processed => {
+            output.folded_through_sequence
+        }
+        Ending::Ran { .. } | Ending::Failed { .. } => None,
+    }
+}
+
+fn report_telemetry(first_chunk: Option<Duration>, wall: Duration) -> ReportTelemetry {
+    ReportTelemetry {
+        time_to_first_token_ms: narrow(first_chunk.map_or(0, saturating_millis)),
+        wall_ms: saturating_millis(wall),
+        segments: None,
+    }
+}

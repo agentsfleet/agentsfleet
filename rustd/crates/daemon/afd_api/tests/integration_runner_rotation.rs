@@ -37,7 +37,7 @@ async fn platform_operator_rotates_runner_token_once() {
         .register(&enrolment(), NOW)
         .await
         .expect("the runner enrols");
-    let runner_id = enrolled.runner_id.as_str().to_owned();
+    let runner_id = enrolled.runner_id.clone();
     let old_token = enrolled.token.expose().to_owned();
     let router = Fleet::live(
         fixtures.database.clone(),
@@ -126,11 +126,11 @@ struct Fixtures {
 impl Fixtures {
     async fn create() -> Self {
         let lane = TestDatabase::shared();
-        let first = mint_id().replace('-', "");
-        let second = mint_id().replace('-', "");
+        let first = mint_id().as_str().replace('-', "");
+        let second = mint_id().as_str().replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            tenant: Uuid7::parse(&mint_id()).expect("the fixture tenant id is well formed"),
+            tenant: mint_id(),
             operator_token: format!("agt_t{first}{second}"),
             lane,
         }
@@ -140,24 +140,24 @@ impl Fixtures {
         let digest =
             Digest::of(&Presented::new(&self.operator_token).expect("fixture token is valid"));
         let mut connection = self.database.acquire().await.expect("an API connection");
-        TenantSeed::new(self.tenant.as_str())
+        TenantSeed::new(&self.tenant)
             .name("Rotation test")
             .insert(&mut *connection)
             .await
             .expect("the operator's tenant seeds");
         let key = mint_id();
-        ApiKeySeed::new(&key, self.tenant.as_str(), digest.as_str(), OPERATOR)
+        ApiKeySeed::new(&key, &self.tenant, digest.as_str(), OPERATOR)
             .name("operator")
             .insert(&mut *connection)
             .await
             .expect("the operator credential seeds");
     }
 
-    async fn rotation_actor(&self, runner_id: &str) -> String {
+    async fn rotation_actor(&self, runner_id: &Uuid7) -> String {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
             "SELECT metadata ->> 'actor_id' FROM runner.events \
-             WHERE runner_id = $1::uuid AND event_type = 'runner_token_rotated'",
+             WHERE runner_id = $1 AND event_type = 'runner_token_rotated'",
         )
         .bind(runner_id)
         .fetch_one(&mut *connection)

@@ -1,6 +1,5 @@
-//! Real ledger behavior with a scripted notification transport for failure injection.
+//! Real ledger behavior over the lane's NATS, or over an in-process bus where a
+//! case reads the wake rings, with a dead or silent one for failure injection.
 #![cfg(feature = "test-util")]
-
-use afd_dragonfly::test_util::fake_redis;
 
 mod receipts;

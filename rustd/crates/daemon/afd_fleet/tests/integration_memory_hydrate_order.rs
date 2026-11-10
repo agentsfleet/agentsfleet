@@ -16,7 +16,6 @@
 
 use crate::report_seed;
 
-use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 
 use self::report_seed::held;
@@ -28,20 +27,20 @@ const CLOCK_SKEW: std::time::Duration = std::time::Duration::from_secs(1);
 /// [`CLOCK_SKEW`] before the held lease — and moves the live sequence to it.
 const INSERT_EARLIER_SUCCESSOR: &str = "\
 INSERT INTO runner.leases \
-  (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at, \
+  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at, \
    posture, provider, model, last_metered_at, fencing_token, \
    lease_expires_at, status, posted_message_count, created_at, updated_at) \
-SELECT $2::uuid, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, \
+SELECT $2, runner_id, fleet_id, workspace_id, tenant_id, event_id, \
    event_created_at, posture, provider, model, last_metered_at, \
    fencing_token + 1, lease_expires_at, status, 0, created_at - $3::interval, updated_at \
-FROM runner.leases WHERE id = $1::uuid \
+FROM runner.leases WHERE id = $1 \
 RETURNING fencing_token";
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_hydrate_trusts_the_higher_token_over_the_clock() {
     let run = held().await;
-    let fleet_id = Uuid7::parse(&run.fleet).expect("the fixture id is a v7 spelling");
+    let fleet_id = run.fleet.clone();
     let plane = run.fixtures.plane();
 
     // Positive control: the lone held lease hydrates.
@@ -69,7 +68,7 @@ async fn issue_earlier_successor(run: &report_seed::Held) {
         .await
         .expect("a pooled connection");
     let token: i64 = sqlx::query_scalar(INSERT_EARLIER_SUCCESSOR)
-        .bind(run.issued.lease_id.as_str())
+        .bind(&run.issued.lease_id)
         .bind(mint_id())
         .bind(CLOCK_SKEW)
         .fetch_one(&mut *connection)
@@ -79,7 +78,7 @@ async fn issue_earlier_successor(run: &report_seed::Held) {
         token > run.fence.as_i64(),
         "the successor must outrank the held lease, or this test proves nothing"
     );
-    sqlx::query("UPDATE runner.fleet_slots SET fencing_token = $2 WHERE fleet_id = $1::uuid")
+    sqlx::query("UPDATE runner.fleet_slots SET fencing_token = $2 WHERE fleet_id = $1")
         .bind(&run.fleet)
         .bind(token)
         .execute(&mut *connection)

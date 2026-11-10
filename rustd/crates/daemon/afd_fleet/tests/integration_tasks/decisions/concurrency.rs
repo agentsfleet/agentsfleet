@@ -2,7 +2,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use af_core::error_code;
+use af_core::{error_code, id::Uuid7};
 use af_wire::{
     task::{DecisionAssessment, DecisionCallState, DecisionRecordDisposition},
     usage::DECISION_SEQ_BASE,
@@ -192,9 +192,9 @@ async fn saved_replay(
 }
 
 async fn assert_line(fixture: &Decisions<'_>) {
-    let row: (i64, i64, i64, i64, i64, i64, String, String, String) = sqlx::query_as(
-        "SELECT seq,input_token_count,cached_input_token_count,output_token_count,runtime_ms,charged_nanos,provider,model,tenant_id::text FROM billing.usage_lines WHERE work_id=$1::uuid AND seq >= $2")
-        .bind(fixture.case.held.lease_key.as_str()).bind(i64::from(DECISION_SEQ_BASE))
+    let row: (i64, i64, i64, i64, i64, i64, String, String, Uuid7) = sqlx::query_as(
+        "SELECT seq,input_token_count,cached_input_token_count,output_token_count,runtime_ms,charged_nanos,provider,model,tenant_id FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2")
+        .bind(&fixture.case.held.lease_key).bind(i64::from(DECISION_SEQ_BASE))
         .fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("original work ledger"))
         .await.expect("one complete charge line");
     assert_eq!(

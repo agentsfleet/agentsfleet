@@ -25,11 +25,6 @@
 //! is the isolation that does the work; a database per test was belt over
 //! braces, and the braces are the ones holding.
 //!
-//! It is the same isolation the Dragonfly side has always relied on, for the reason
-//! it has always relied on it: Dragonfly has no per-test database, so suites
-//! namespace their keys by the identifiers they mint. That worked. This is the
-//! same argument applied to Postgres.
-//!
 //! **The obligation it puts on a test:** assert on rows you MINTED, never on a
 //! table's whole contents. A count must carry a workspace or a tenant in its
 //! predicate. `SELECT count(*) FROM …` with no `WHERE` is a test that will pass
@@ -285,23 +280,29 @@ impl TestDatabase {
 ///
 /// The version nibble is `7` and the variant nibble is `8`, so the result
 /// passes both the schema's `ck_*_id_uuidv7` checks and `af_core::id::Uuid7`.
+///
+/// # Panics
+/// Only if the fixed spelling above stops being a `UUIDv7`, a fixture bug.
 #[must_use]
-pub fn mint_id() -> String {
-    format!(
+pub fn mint_id() -> af_core::id::Uuid7 {
+    let text = format!(
         "01900000-0000-7000-8000-{:06x}{:06x}",
         std::process::id(),
         SEQUENCE.fetch_add(1, Ordering::Relaxed)
-    )
+    );
+    af_core::id::Uuid7::parse(&text)
+        .unwrap_or_else(|failure| panic!("mint_id spells a canonical UUIDv7: {failure}"))
 }
 
-/// [`mint_id`] as the typed identifier, for the suites that hold a `Uuid7`.
+/// A fixed `UUIDv7`, for a fixture whose value is pinned by a digest or a
+/// literal and so cannot be minted.
 ///
 /// # Panics
-/// Never in practice: [`mint_id`] spells a canonical `UUIDv7` by construction.
+/// Only if `text` is not a canonical `UUIDv7`, a fixture bug.
 #[must_use]
-pub fn mint_uuid7() -> af_core::id::Uuid7 {
-    af_core::id::Uuid7::parse(&mint_id())
-        .unwrap_or_else(|failure| panic!("mint_id spells a canonical UUIDv7: {failure}"))
+pub fn fixed_id(text: &str) -> af_core::id::Uuid7 {
+    af_core::id::Uuid7::parse(text)
+        .unwrap_or_else(|failure| panic!("{text} is a canonical UUIDv7: {failure}"))
 }
 
 /// The lane's connection URL, or a panic naming the knob that is unset.

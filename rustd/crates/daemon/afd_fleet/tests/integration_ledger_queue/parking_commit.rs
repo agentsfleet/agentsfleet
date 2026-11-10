@@ -1,5 +1,6 @@
 //! An answer or expiry waits for a park that has written but not committed.
 
+use af_core::id::Uuid7;
 use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, Resolution};
 use afd_db::config::DbRole;
@@ -23,7 +24,7 @@ const WAITER: &str = "SELECT pid FROM pg_stat_activity \
 // uncommitted park; why_new=answer-first tests miss uncommitted park writes;
 // seam=none; no_claim=all gate interleavings. A database trigger holds the write.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn answers_and_expiry_clear_a_park_that_was_uncommitted_when_resolution_started() {
     for expire in [false, true] {
         resolve_during_park(expire).await;
@@ -34,24 +35,12 @@ async fn resolve_during_park(expire: bool) {
     let fixtures = Fixtures::create_isolated().await;
     let (fleet, workspace, _, [runner]) = seeded_parts::<1>(&fixtures).await;
     let event = enqueue(&fixtures, &fleet, &workspace).await;
-    let leases = fixtures.leases_with_dead_queue();
+    let leases = fixtures.leases_with_dead_bus();
     let acquired = next(&leases, &runner).await.expect("claim");
     let action = seed_gate(&fixtures, &fleet, &workspace).await;
     let owner = fixtures.open(DbRole::Migrator).await;
     let mut blocker = owner.acquire().await.expect("owner");
-    sqlx::raw_sql(PAUSE_PARK)
-        .execute(&mut *blocker)
-        .await
-        .expect("pause trigger");
-    sqlx::query(LOCK)
-        .bind(&fleet)
-        .execute(&mut *blocker)
-        .await
-        .expect("hold pause");
-    let blocker_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
-        .fetch_one(&mut *blocker)
-        .await
-        .expect("pause owner");
+    let blocker_pid = hold_park(&mut blocker, &fleet).await;
     let parking_event = event.clone();
     let parking = tokio::spawn(async move {
         leases
@@ -64,14 +53,14 @@ async fn resolve_during_park(expire: bool) {
     let resolving = start_resolution(&fixtures, action, expire).await;
     let _wait = waiter(&fixtures, park_pid, Some(&resolving)).await;
     sqlx::query(UNLOCK)
-        .bind(&fleet)
+        .bind(fleet.as_str())
         .execute(&mut *blocker)
         .await
         .expect("release park");
     parking.await.expect("park task").expect("park commits");
     resolving.await.expect("resolution task");
     let parked: bool =
-        sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id=$1::uuid")
+        sqlx::query_scalar("SELECT parked_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
             .bind(&event)
             .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
             .await
@@ -81,7 +70,7 @@ async fn resolve_during_park(expire: bool) {
         "expire={expire}: a resolved gate cannot strand its head"
     );
     assert_eq!(
-        next(&fixtures.leases_with_dead_queue(), &runner)
+        next(&fixtures.leases_with_dead_bus(), &runner)
             .await
             .expect("head runnable")
             .event_id,
@@ -94,7 +83,7 @@ async fn resolve_during_park(expire: bool) {
 
 async fn start_resolution(
     fixtures: &Fixtures,
-    action: String,
+    action: Uuid7,
     expire: bool,
 ) -> tokio::task::JoinHandle<()> {
     if expire {
@@ -102,11 +91,11 @@ async fn start_resolution(
             .bind(&action).execute(&mut *fixtures.database.acquire().await.expect("age gate"))
             .await.expect("gate expires");
     }
-    let queue = crate::queue::unreachable();
+    let bus = afd_bus::test_util::unreachable();
     let inbox = Inbox::new(
         fixtures.database.clone(),
-        queue.clone(),
-        Admissions::for_tests(fixtures.database.clone(), queue),
+        bus.clone(),
+        Admissions::for_tests(fixtures.database.clone(), bus),
     );
     tokio::spawn(async move {
         if expire {
@@ -114,7 +103,13 @@ async fn start_resolution(
         } else {
             assert!(matches!(
                 inbox
-                    .resolve(&action, Decision::Approved, "fixture:human", "", None)
+                    .resolve(
+                        action.as_str(),
+                        Decision::Approved,
+                        "fixture:human",
+                        "",
+                        None
+                    )
                     .await
                     .expect("answer commits"),
                 Resolution::Resolved(_)
@@ -148,4 +143,22 @@ async fn waiter(
     })
     .await
     .expect("operation reaches lock boundary")
+}
+
+async fn hold_park(blocker: &mut sqlx::PgConnection, fleet: &Uuid7) -> i32 {
+    sqlx::raw_sql(PAUSE_PARK)
+        .execute(&mut *blocker)
+        .await
+        .expect("pause trigger");
+    // The advisory key is the fleet id's text, as the trigger hashes it.
+    sqlx::query(LOCK)
+        .bind(fleet.as_str())
+        .execute(&mut *blocker)
+        .await
+        .expect("hold pause");
+    let blocker_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+        .fetch_one(&mut *blocker)
+        .await
+        .expect("pause owner");
+    blocker_pid
 }

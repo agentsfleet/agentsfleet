@@ -16,7 +16,7 @@ use jiff::Timestamp;
 pub(super) struct Running {
     pub(super) fixtures: Fixtures,
     pub(super) runner: Uuid7,
-    pub(super) fleet: String,
+    pub(super) fleet: Uuid7,
     pub(super) lease: Uuid7,
     pub(super) now: Timestamp,
 }
@@ -24,7 +24,7 @@ pub(super) struct Running {
 impl Running {
     /// A runtime lease on the lane's shared database.
     pub(super) async fn create() -> Self {
-        Self::issue_on(Fixtures::create_with_queue().await).await
+        Self::issue_on(Fixtures::create().await).await
     }
 
     /// The same, on a database of this test's own.
@@ -35,7 +35,7 @@ impl Running {
     /// A private database makes this test's draft the only candidate, and its
     /// platform defaults the only ones. `cleanup` drops it.
     pub(super) async fn create_isolated() -> Self {
-        Self::issue_on(Fixtures::create_isolated_with_queue().await).await
+        Self::issue_on(Fixtures::create_isolated().await).await
     }
 
     async fn issue_on(fixtures: Fixtures) -> Self {
@@ -55,7 +55,6 @@ impl Running {
                     selftest: None,
                     holds: HeldFleets::default(),
                     closing: false,
-                    wake: false,
                 },
                 None,
                 now,
@@ -70,7 +69,6 @@ impl Running {
             .record_received(&acquired)
             .await
             .expect("open event history");
-        let tenant = Uuid7::parse(&tenant).expect("fixture tenant");
         let issued = leases
             .issue(
                 &runner,
@@ -108,7 +106,7 @@ impl Running {
             .leases()
             .extend(
                 Metering {
-                    lease_id: self.lease.as_str(),
+                    lease_id: &self.lease,
                     runner_id: &self.runner,
                     requests: &[],
                 },

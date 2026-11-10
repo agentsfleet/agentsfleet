@@ -2,13 +2,14 @@
 
 use std::time::Duration;
 
+use af_core::id::Uuid7;
 use af_wire::task::DecisionAssessment;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _};
 use sqlx::Connection as _;
 use tokio::time::{sleep, timeout};
 
 use super::{
-    super::fixture::{Case, exercise},
+    super::fixture::{Case, exercise, id},
     fixture::{Decisions, known, lock_slot},
     maintenance::{budget, due, state, unissued},
 };
@@ -24,7 +25,7 @@ async fn issuance_wins(case: &Case) {
     let input = fixture.reservation(DecisionAssessment::Message, None);
     let call = unissued(&fixture, &input).await;
     let database = &case.held.fixtures.database;
-    sqlx::query("UPDATE runner.decision_calls SET logical_expires_at=clock_timestamp()+interval '1 second' WHERE id=$1::uuid")
+    sqlx::query("UPDATE runner.decision_calls SET logical_expires_at=clock_timestamp()+interval '1 second' WHERE id=$1")
         .bind(&call).execute(&mut *database.acquire().await.expect("short fixture deadline"))
         .await.expect("valid future issuance window");
     let mut connection = database.acquire().await.expect("in-flight issuer");
@@ -33,7 +34,7 @@ async fn issuance_wins(case: &Case) {
         .await
         .expect("native issuance transaction");
     let _pid = lock_slot(&mut issuer, case).await;
-    let grant = sqlx::query("UPDATE runner.decision_calls SET issued_at=clock_timestamp(), status=$2 WHERE id=$1::uuid AND issued_at IS NULL AND logical_expires_at>clock_timestamp()")
+    let grant = sqlx::query("UPDATE runner.decision_calls SET issued_at=clock_timestamp(), status=$2 WHERE id=$1 AND issued_at IS NULL AND logical_expires_at>clock_timestamp()")
         .bind(&call).bind("issued").execute(&mut *issuer).await.expect("issuance begins before expiry");
     assert_eq!(grant.rows_affected(), 1);
     sleep(Duration::from_millis(1_050)).await;
@@ -82,7 +83,7 @@ async fn competing(case: &Case) {
     let task = fixture.bind_goal().await;
     let input = fixture.reservation(
         DecisionAssessment::Goal {
-            action_group_id: afd_db::test_util::mint_id(),
+            action_group_id: afd_db::test_util::mint_id().into(),
         },
         Some(task.clone()),
     );
@@ -103,7 +104,7 @@ async fn competing(case: &Case) {
         state(&fixture, &call).await,
         ("not_sent".into(), false, true, Some(0))
     );
-    assert_eq!(budget(&fixture, &task.task_id).await, (0, 0));
+    assert_eq!(budget(&fixture, &id(&task.task_id)).await, (0, 0));
     assert_eq!(fixture.counts().await, (1, 1, 0));
     let (key, replay) = fixture.reserve(&input).await;
     assert!(!key);
@@ -115,9 +116,9 @@ async fn competing(case: &Case) {
         .expect("decision model fixture lifecycle");
 }
 
-async fn account_late(fixture: &Decisions<'_>, call: &str) {
+async fn account_late(fixture: &Decisions<'_>, call: &Uuid7) {
     let request: sqlx::types::Json<af_wire::decision::DecisionRequest> = sqlx::query_scalar(
-        "SELECT request FROM runner.decision_payloads WHERE decision_call_id=$1::uuid",
+        "SELECT request FROM runner.decision_payloads WHERE decision_call_id=$1",
     )
     .bind(call)
     .fetch_one(
@@ -132,7 +133,7 @@ async fn account_late(fixture: &Decisions<'_>, call: &str) {
     )
     .await
     .expect("retained frozen request");
-    let result = fixture.record(call, known(&request.0)).await;
+    let result = fixture.record(call.as_str(), known(&request.0)).await;
     assert_eq!(result.charged_nanos.as_deref(), Some("3"));
     assert_eq!(
         state(fixture, call).await,

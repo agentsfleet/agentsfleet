@@ -7,27 +7,22 @@ mod probe;
 use self::probe::{
     FLEETS_TABLE_BYTES, admission_read_ms, candidate_ms, postgres_at_population, table_sizes,
 };
-use crate::datastores::{Datastores, dragonfly_used_memory};
+use crate::datastores::Datastores;
 use crate::error::Result;
 use crate::fixture::{FixtureLedger, RunPrefix};
 use crate::lane::lease::seed::{self, ROWS_PER_FLEET, ROWS_PER_RUNNER, SEEDED_AT};
 use crate::profile::{Parameter, Profile, Target};
-use crate::report::{Fixture, Lane, Provenance, Report, count, ratio};
+use crate::report::{Fixture, Lane, Provenance, Report, count};
+use af_core::id::Uuid7;
 
 /// Series key: the fleet population at each rung.
 const LADDER: &str = "ladder_fleets";
-
-/// Series key: Dragonfly bytes per fleet at each rung, over the rung below.
-const BYTES_PER_FLEET: &str = "dragonfly_bytes_per_fleet";
 
 /// Series key: candidate query latency at each rung, milliseconds.
 const CANDIDATE_MS: &str = "candidate_ms";
 
 /// Series key: one admission head read latency at each rung, milliseconds.
 const ADMISSION_READ_MS: &str = "admission_read_ms";
-
-/// Measurement key: Dragonfly bytes the whole population added.
-const DRAGONFLY_BYTES_TOTAL: &str = "dragonfly_bytes_total";
 
 /// How many rungs the ladder has below its ceiling, each ten times the last.
 ///
@@ -112,11 +107,8 @@ async fn climb(
     let tag = seed::placement_tag(prefix);
     let runner = seed::runner(&stores.database, &prefix.name("host"), &tag, SEEDED_AT).await?;
     ledger.created(ROWS_PER_RUNNER);
-    let baseline = dragonfly_used_memory(&stores.queue).await?;
 
     let mut seeded_to = 0;
-    let mut previous_bytes = baseline;
-    let mut previous_rung = 0;
     let mut last_fleet = String::new();
     for rung in rungs(parameters.fleets) {
         seed_rung(
@@ -129,32 +121,14 @@ async fn climb(
         )
         .await?;
         seeded_to = rung;
-
-        let bytes = dragonfly_used_memory(&stores.queue).await?;
-        let added = bytes.saturating_sub(previous_bytes);
-        let fleets_added = rung.saturating_sub(previous_rung);
-        measure_rung(
-            stores,
-            report,
-            rung,
-            ratio(added, fleets_added),
-            &last_fleet,
-            runner.as_str(),
-        )
-        .await?;
-        previous_bytes = bytes;
-        previous_rung = rung;
+        measure_rung(stores, report, rung, &last_fleet, runner.as_str()).await?;
     }
-    report.measurement(
-        DRAGONFLY_BYTES_TOTAL,
-        count(previous_bytes.saturating_sub(baseline)),
-    );
     capacity::record(stores, report).await?;
-    postgres_at_population(stores, &runner.to_string(), report).await
+    postgres_at_population(stores, &runner, report).await
 }
 
 /// Seed the fleets `indices` names, ready to lease, noting the last one
-/// seeded in `last_fleet` — the fleet the rung's stream read is timed on.
+/// seeded in `last_fleet` — the fleet the rung's admission read is timed on.
 async fn seed_rung(
     stores: &Datastores,
     prefix: &RunPrefix,
@@ -164,42 +138,33 @@ async fn seed_rung(
     last_fleet: &mut String,
 ) -> Result<()> {
     for index in indices {
-        let fleet = seed::ready_fleet(
-            &stores.database,
-            &stores.queue,
-            prefix,
-            tag,
-            index,
-            SEEDED_AT,
-        )
-        .await?;
-        *last_fleet = fleet.fleet;
+        let fleet =
+            seed::ready_fleet(&stores.database, &stores.bus, prefix, tag, index, SEEDED_AT).await?;
+        *last_fleet = fleet.fleet.into();
         ledger.created(ROWS_PER_FLEET);
     }
     Ok(())
 }
 
-/// Record one rung's samples: the population, the bytes each fleet the rung
-/// added cost, and the two read latencies at that population.
+/// Record one rung's samples: the population, and the two read latencies at
+/// that population.
 async fn measure_rung(
     stores: &Datastores,
     report: &mut Report,
     rung: u64,
-    bytes_per_fleet: f64,
     last_fleet: &str,
     runner: &str,
 ) -> Result<()> {
     push(report, LADDER, count(rung));
-    push(report, BYTES_PER_FLEET, bytes_per_fleet);
     push(
         report,
         CANDIDATE_MS,
-        candidate_ms(&stores.database, runner).await?,
+        candidate_ms(&stores.database, &Uuid7::parse(runner)?).await?,
     );
     push(
         report,
         ADMISSION_READ_MS,
-        admission_read_ms(&stores.database, last_fleet).await?,
+        admission_read_ms(&stores.database, &Uuid7::parse(last_fleet)?).await?,
     );
     Ok(())
 }

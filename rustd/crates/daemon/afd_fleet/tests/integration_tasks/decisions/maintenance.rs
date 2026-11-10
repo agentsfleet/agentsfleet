@@ -1,5 +1,6 @@
 //! Abandoned issuance recovers capacity while uncertain paid calls remain owed.
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use af_core::error_code;
@@ -14,7 +15,7 @@ use sqlx::Connection as _;
 use tokio::time::timeout;
 
 use super::{
-    super::fixture::{Case, exercise},
+    super::fixture::{Case, exercise, id},
     fixture::{Decisions, known, request},
 };
 use crate::seed::{MODEL, PROVIDER};
@@ -31,7 +32,7 @@ async fn capacity(case: &Case) {
     let goal = || {
         fixture.reservation(
             DecisionAssessment::Goal {
-                action_group_id: mint_id(),
+                action_group_id: mint_id().into(),
             },
             Some(task.clone()),
         )
@@ -42,19 +43,15 @@ async fn capacity(case: &Case) {
     let message = fixture.reservation(DecisionAssessment::Message, Some(task.clone()));
     let source = unissued(&fixture, &message).await;
     let (_, issued) = fixture.reserve(&goal()).await;
-    let paid = issued
+    let paid = id(issued
         .get("call_id")
         .and_then(Value::as_str)
-        .expect("issued call");
+        .expect("issued call"));
     let unknown = DecisionReceipt::Unknown {
         cause: DecisionUnavailableCause::Timeout,
     };
-    fixture.record(paid, unknown).await;
-    due(
-        &fixture,
-        &[expired.clone(), source.clone(), paid.to_owned()],
-    )
-    .await;
+    fixture.record(paid.as_str(), unknown).await;
+    due(&fixture, &[expired.clone(), source.clone(), paid.clone()]).await;
     let swept = fixture
         .tasks
         .maintain_decisions(&mut DecisionMaintenanceCursor::default())
@@ -62,9 +59,10 @@ async fn capacity(case: &Case) {
         .expect("bounded native recovery");
     assert_eq!((swept.scanned, swept.expired), (2, 2));
     assert!(swept.oldest_overdue_ms >= 1_000);
-    assert_pending_states(&fixture, &expired, &source, &future, paid, &task.task_id).await;
+    let task_id = id(&task.task_id);
+    assert_pending_states(&fixture, &expired, &source, &future, &paid, &task_id).await;
     index_bound(&fixture).await;
-    replay_and_late_usage(&fixture, &abandoned, &expired, &issued, &task.task_id).await;
+    replay_and_late_usage(&fixture, &abandoned, &expired, &issued, &task_id).await;
     fixture
         .model
         .finish()
@@ -74,11 +72,11 @@ async fn capacity(case: &Case) {
 
 async fn assert_pending_states(
     fixture: &Decisions<'_>,
-    expired: &str,
-    source: &str,
-    future: &str,
-    paid: &str,
-    task: &str,
+    expired: &Uuid7,
+    source: &Uuid7,
+    future: &Uuid7,
+    paid: &Uuid7,
+    task: &Uuid7,
 ) {
     assert_eq!(
         state(fixture, expired).await,
@@ -103,9 +101,9 @@ async fn assert_pending_states(
 async fn replay_and_late_usage(
     fixture: &Decisions<'_>,
     abandoned: &garde::Valid<DecisionReservationInput>,
-    expired: &str,
+    expired: &Uuid7,
     issued: &Value,
-    task: &str,
+    task: &Uuid7,
 ) {
     let again = fixture
         .tasks
@@ -120,7 +118,7 @@ async fn replay_and_late_usage(
     let receipt = DecisionReceipt::NotSent {
         cause: DecisionNotSentCause::Preflight,
     };
-    assert!(fixture.record(expired, receipt).await.replayed);
+    assert!(fixture.record(expired.as_str(), receipt).await.replayed);
     let paid = issued
         .get("call_id")
         .and_then(Value::as_str)
@@ -142,7 +140,7 @@ async fn erased(case: &Case) {
     let input = fixture.reservation(DecisionAssessment::Message, None);
     let call = unissued(&fixture, &input).await;
     due(&fixture, std::slice::from_ref(&call)).await;
-    sqlx::query("DELETE FROM fleet.fleets WHERE id=$1::uuid")
+    sqlx::query("DELETE FROM fleet.fleets WHERE id=$1")
         .bind(&case.held.fleet)
         .execute(
             &mut *case
@@ -248,7 +246,7 @@ async fn blocked(case: &Case) {
 pub(super) async fn unissued(
     fixture: &Decisions<'_>,
     input: &garde::Valid<DecisionReservationInput>,
-) -> String {
+) -> Uuid7 {
     let case = fixture.case;
     let mut connection = case
         .held
@@ -268,14 +266,26 @@ pub(super) async fn unissued(
         .expect_err("native intent commits before funding refuses");
     assert_eq!(fault.code(), error_code::TASK_DECISION_UNAVAILABLE);
     case.held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
-    sqlx::query_scalar("SELECT id::text FROM runner.decision_calls WHERE original_lease_id=$1::uuid AND operation_id=$2::uuid")
-        .bind(case.held.lease_key.as_str()).bind(&input.operation_id)
-        .fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("retained native identity"))
-        .await.expect("saved physical intent")
+    sqlx::query_scalar(
+        "SELECT id FROM runner.decision_calls WHERE original_lease_id=$1 AND operation_id=$2",
+    )
+    .bind(&case.held.lease_key)
+    .bind(id(&input.operation_id))
+    .fetch_one(
+        &mut *case
+            .held
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("retained native identity"),
+    )
+    .await
+    .expect("saved physical intent")
 }
 
-pub(super) async fn due(fixture: &Decisions<'_>, ids: &[String]) {
-    let changed = sqlx::query("UPDATE runner.decision_calls SET logical_expires_at=clock_timestamp()-interval '1 second' WHERE id::text=ANY($1::text[])")
+pub(super) async fn due(fixture: &Decisions<'_>, ids: &[Uuid7]) {
+    let changed = sqlx::query("UPDATE runner.decision_calls SET logical_expires_at=clock_timestamp()-interval '1 second' WHERE id=ANY($1)")
         .bind(ids).execute(&mut *fixture.case.held.fixtures.database.acquire().await.expect("deadline fixture"))
         .await.expect("valid elapsed logical deadlines");
     assert_eq!(
@@ -284,29 +294,30 @@ pub(super) async fn due(fixture: &Decisions<'_>, ids: &[String]) {
     );
 }
 
-pub(super) async fn state(fixture: &Decisions<'_>, id: &str) -> (String, bool, bool, Option<i64>) {
-    sqlx::query_as("SELECT status, issued_at IS NOT NULL, accounted_at IS NOT NULL, charged_nanos FROM runner.decision_calls WHERE id=$1::uuid")
+pub(super) async fn state(
+    fixture: &Decisions<'_>,
+    id: &Uuid7,
+) -> (String, bool, bool, Option<i64>) {
+    sqlx::query_as("SELECT status, issued_at IS NOT NULL, accounted_at IS NOT NULL, charged_nanos FROM runner.decision_calls WHERE id=$1")
         .bind(id).fetch_one(&mut *fixture.case.held.fixtures.database.acquire().await.expect("financial state"))
         .await.expect("retained call")
 }
 
-pub(super) async fn budget(fixture: &Decisions<'_>, task: &str) -> (i64, i64) {
-    sqlx::query_as(
-        "SELECT reserved_model_nanos, used_model_nanos FROM fleet.tasks WHERE id=$1::uuid",
-    )
-    .bind(task)
-    .fetch_one(
-        &mut *fixture
-            .case
-            .held
-            .fixtures
-            .database
-            .acquire()
-            .await
-            .expect("task budget"),
-    )
-    .await
-    .expect("original task budget owner")
+pub(super) async fn budget(fixture: &Decisions<'_>, task: &Uuid7) -> (i64, i64) {
+    sqlx::query_as("SELECT reserved_model_nanos, used_model_nanos FROM fleet.tasks WHERE id=$1")
+        .bind(task)
+        .fetch_one(
+            &mut *fixture
+                .case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("task budget"),
+        )
+        .await
+        .expect("original task budget owner")
 }
 
 async fn index_bound(fixture: &Decisions<'_>) {
@@ -331,7 +342,7 @@ async fn index_bound(fixture: &Decisions<'_>) {
         let plan: sqlx::types::Json<Value> = sqlx::query_scalar(STATEMENT)
             .bind(100_i64)
             .bind(after.map(jiff_sqlx::Timestamp::from))
-            .bind(after.map(|_| fixture.case.held.lease_key.as_str()))
+            .bind(after.map(|_| &fixture.case.held.lease_key))
             .bind(after.map(jiff_sqlx::Timestamp::from))
             .fetch_one(&mut *tx)
             .await

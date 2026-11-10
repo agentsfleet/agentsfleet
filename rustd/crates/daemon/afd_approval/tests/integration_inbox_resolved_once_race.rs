@@ -1,4 +1,4 @@
-//! Dimension 4.6 — two resolutions of one gate, on two tasks released at once.
+//! Two resolutions of one gate, on two tasks released at once.
 //!
 //! `integration_inbox_resolved_once.rs` answers a gate twice in sequence; this
 //! file answers it twice in parallel. Each resolve runs on its own spawned task
@@ -33,7 +33,7 @@ const ROUNDS: usize = 8;
 /// Two concurrent resolutions: exactly one wins, the other is told the
 /// standing decision, and the row carries the winner's answer.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_resolution_happens_once_under_concurrent_resolves() {
     let lane = Lane::isolated().await;
     for _ in 0..ROUNDS {
@@ -45,7 +45,9 @@ async fn test_resolution_happens_once_under_concurrent_resolves() {
             let action = action.clone();
             tokio::spawn(async move {
                 barrier.wait().await;
-                inbox.resolve(&action, decision, who, NOTE, None).await
+                inbox
+                    .resolve(action.as_str(), decision, who, NOTE, None)
+                    .await
             })
         };
         let approve = spawn(Decision::Approved, APPROVER);

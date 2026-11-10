@@ -12,9 +12,9 @@ const DIGEST: &str = "authoring:v1:sha256:aa";
 
 fn receipt(user: &str, digest: &str, live: bool) -> Receipt {
     Receipt {
-        user_id: user.to_owned(),
+        user_id: Uuid7::parse(user).expect("a canonical actor"),
         request_digest: digest.to_owned(),
-        resource_id: RESOURCE.to_owned(),
+        resource_id: Uuid7::parse(RESOURCE).expect("a canonical resource"),
         live,
     }
 }

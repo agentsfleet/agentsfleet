@@ -25,7 +25,7 @@ pub(crate) async fn accepted(
     sequence: i64,
 ) -> crate::Result<Accepted> {
     sqlx::query_as(include_str!("accepted.sql"))
-        .bind(draft.as_str())
+        .bind(draft)
         .bind(sequence)
         .fetch_one(connection)
         .await

@@ -1,26 +1,78 @@
 //! Which messages a claim answers, in which order, and to whom.
 
-use afd_admission::Producer;
+use afd_admission::{Producer, Reply};
 
 use super::support::{
-    Checked, STEER_JSON, STEER_TEXT, WEBHOOK_JSON, claim, claim_as_holder, park, send, workspace_of,
+    Checked, STEER_JSON, STEER_TEXT, WEBHOOK_JSON, claim, claim_as_holder, park, send, send_as,
+    stamp_claim, workspace_of,
 };
 use crate::report_seed::held;
 
-/// Every message after the run's own folds, whatever sent it, oldest first,
-/// and its text is what the model would read had it started the run.
+/// A person's later steers in the run's conversation fold, oldest first, as
+/// the text the model would read had they started the run; the send reads as
+/// one that folds.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_a_live_run_claims_every_later_message_oldest_first() -> Checked {
+async fn test_a_live_run_claims_a_persons_messages_oldest_first() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
-    let steer = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
-    let webhook = send(&held, &workspace, Producer::Webhook, WEBHOOK_JSON).await?;
+    let first = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+    let second = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+    let live = second
+        .run
+        .live_run
+        .as_ref()
+        .ok_or("the held lease is live")?;
+    assert!(
+        !live.durable_task && live.same_conversation && !second.run.earlier_waiting,
+        "the send folds: {:?}",
+        second.run
+    );
     assert_eq!(
         claim_as_holder(&held, 0).await?,
-        [steer.claimed(STEER_TEXT), webhook.claimed(WEBHOOK_JSON)]
+        [first.claimed(STEER_TEXT), second.claimed(STEER_TEXT)]
     );
     held.fixtures.cleanup().await;
+    Ok(())
+}
+
+/// A message no person sent is never folded and never passed: a webhook, a
+/// gate's continuation or a machine's steer runs as a run of its own, and a
+/// person's steer behind it waits, and reads as waiting.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_message_no_person_sent_stops_the_fold() -> Checked {
+    let machine = afd_events::ACTOR_MACHINE;
+    for (producer, actor) in [
+        (Producer::Webhook, crate::seed::ACTOR),
+        (Producer::GateContinuation, crate::seed::ACTOR),
+        (Producer::Steer, machine),
+    ] {
+        let held = held().await;
+        let workspace = workspace_of(&held).await?;
+        let before = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+        let barrier = send_as(
+            &held,
+            &workspace,
+            producer,
+            actor,
+            WEBHOOK_JSON,
+            Reply::None,
+        );
+        let barrier = barrier.await?;
+        let behind = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+        assert!(
+            behind.run.earlier_waiting,
+            "{producer:?} by {actor} waits ahead of this send"
+        );
+        assert_eq!(
+            claim_as_holder(&held, 0).await?,
+            [before.claimed(STEER_TEXT)],
+            "{producer:?} by {actor} (seq {}) is neither folded nor passed",
+            barrier.sequence
+        );
+        held.fixtures.cleanup().await;
+    }
     Ok(())
 }
 
@@ -32,7 +84,7 @@ async fn test_a_parked_message_stops_the_fold() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
     let before = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
-    let gated = send(&held, &workspace, Producer::Webhook, WEBHOOK_JSON).await?;
+    let gated = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     park(&held, &gated.id).await?;
     let behind = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert!(
@@ -47,6 +99,21 @@ async fn test_a_parked_message_stops_the_fold() -> Checked {
     Ok(())
 }
 
+/// A claim never replaces a stamp a later fence wrote: the message stays
+/// with the lease that claimed it last.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_claim_never_replaces_a_later_fences_stamp() -> Checked {
+    let held = held().await;
+    let workspace = workspace_of(&held).await?;
+    let sent = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
+    let later = i64::try_from(held.fence.as_u64())? + 1;
+    stamp_claim(&held, &sent.id, later).await?;
+    assert_eq!(claim_as_holder(&held, 0).await?, Vec::new());
+    held.fixtures.cleanup().await;
+    Ok(())
+}
+
 /// Only the runner holding the lease, under its current fence, claims.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -54,12 +121,6 @@ async fn test_another_runner_or_a_superseded_fence_claims_nothing() -> Checked {
     let held = held().await;
     let workspace = workspace_of(&held).await?;
     let sent = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
-    let live = sent.run.live_run.as_ref().ok_or("the held lease is live")?;
-    assert!(
-        !live.durable_task && !sent.run.earlier_waiting,
-        "the send folds: {:?}",
-        sent.run
-    );
     let fence = held.fence.as_u64();
     assert_eq!(claim(&held, &held.spare, fence, 0).await?, Vec::new());
     assert_eq!(
@@ -91,7 +152,7 @@ async fn test_a_repeated_claim_answers_the_same_messages() -> Checked {
     Ok(())
 }
 
-/// Internal setup keys are not admission identifiers, so they cannot own folds.
+/// An internal setup event is no admission, so it cannot own folds.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_an_internal_setup_event_is_not_an_admission_head() -> Checked {
@@ -99,11 +160,14 @@ async fn test_an_internal_setup_event_is_not_an_admission_head() -> Checked {
     let workspace = workspace_of(&held).await?;
     let before = send(&held, &workspace, Producer::Steer, STEER_JSON).await?;
     assert!(before.run.live_run.is_some());
+    // Moves the lease and its event row to an event id no admission holds.
     let changed = sqlx::query(
-        "UPDATE fleet.events SET event_id=$2 WHERE id=(SELECT fleet_event_id FROM runner.leases WHERE id=$1::uuid)",
+        "WITH moved AS (UPDATE fleet.events e SET event_id = $2 FROM runner.leases l \
+         WHERE l.id = $1 AND e.event_id = l.event_id RETURNING e.event_id) \
+         UPDATE runner.leases SET event_id = $2 WHERE id = $1 AND EXISTS (SELECT 1 FROM moved)",
     )
-    .bind(held.lease_key.as_str())
-    .bind("setup_ready:1")
+    .bind(&held.lease_key)
+    .bind(afd_db::test_util::mint_id())
     .execute(&mut *held.fixtures.database.acquire().await?)
     .await?;
     assert_eq!(changed.rows_affected(), 1);

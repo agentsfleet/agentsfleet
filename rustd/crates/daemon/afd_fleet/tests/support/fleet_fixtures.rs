@@ -15,11 +15,11 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
+use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_dragonfly::Dragonfly;
 use afd_fleet::lease::Leases;
 use afd_gate::gate::Gates;
 use afd_runner::Runners;
@@ -34,7 +34,7 @@ const CATALOGUE_OFFLINE: &str = "platform_models_offline";
 pub(crate) struct Fixtures {
     lane: TestDatabase,
     pub(crate) database: Db,
-    queue: Option<Dragonfly>,
+    bus: afd_bus::Handle,
     runners: Runners,
     enrolled: Timestamp,
 }
@@ -45,13 +45,9 @@ impl Fixtures {
         self.lane.shared_handle()
     }
 
-    /// Opens the api-role pool against the database the lane already migrated.
-    ///
-    /// No Dragonfly. Most suites here assert on ROWS and never read the queue, and
-    /// connecting one anyway is not free: each is a TLS handshake, and a suite
-    /// running its tests in parallel opened enough at once to time out against
-    /// a healthy server. Use [`Fixtures::create_with_queue`] where the queue is
-    /// actually read.
+    /// Opens the api-role pool against the database the lane already migrated,
+    /// and one connection to the lane's NATS that every store here shares, so
+    /// a frame a suite reads on [`Fixtures::bus`] crossed the real broker.
     pub(crate) async fn create() -> Self {
         Self::from_lane(TestDatabase::shared()).await
     }
@@ -77,7 +73,9 @@ impl Fixtures {
         Self {
             runners: Runners::new(database.clone(), Entropy::new()),
             database,
-            queue: None,
+            bus: afd_bus::test_util::lane()
+                .await
+                .expect("the lane's NATS: run through make test-integration-rustd"),
             lane,
             enrolled: af_core::clock::now(),
         }
@@ -94,9 +92,8 @@ impl Fixtures {
     /// between the two clocks. A suite that needs a lease to lapse ages its row,
     /// not its clock.
     ///
-    /// Per fixture, never per binary: a lease lives `LEASE_TTL` (30 s) past
-    /// this instant, so one shared instant expired every lease a test took
-    /// after the suite's first 30 s.
+    /// Per fixture, never per binary: a lease lives `LEASE_TTL` past this
+    /// instant. Sharing one instant expires leases taken after that interval.
     pub(crate) const fn enrolled_at(&self) -> Timestamp {
         self.enrolled
     }
@@ -105,36 +102,6 @@ impl Fixtures {
     /// hands the code under test, such as a report sent after the run.
     pub(crate) fn after(&self, by: std::time::Duration) -> Timestamp {
         af_core::clock::after(self.enrolled, by)
-    }
-
-    /// The same as [`Fixtures::create_isolated`], plus the lane's Dragonfly.
-    ///
-    /// The pairing a deployment-WIDE assertion needs. A budget counted across
-    /// every unsettled row in the database cannot be proven to clear on the
-    /// shared lane, where a sibling suite's deferred row keeps the count up;
-    /// a private database makes this test the only writer of the number it
-    /// asserts on. Dragonfly stays shared, which is harmless — its keys are
-    /// namespaced by the fleet ids this test mints.
-    pub(crate) async fn create_isolated_with_queue() -> Self {
-        Self::create_in_with_queue(TestDatabase::create().await).await
-    }
-
-    /// The ordinary isolated fixture, using an explicitly supplied lane handle.
-    pub(crate) async fn create_in_with_queue(lane: TestDatabase) -> Self {
-        let mut fixtures = Self::create_in(lane).await;
-        fixtures.queue = Some(crate::queue::connect().await);
-        fixtures
-    }
-
-    /// The same, plus the lane's Dragonfly.
-    ///
-    /// Shared rather than per-test: Dragonfly has no database-per-test equivalent,
-    /// and the keys these suites touch are namespaced by the fleet ids each
-    /// test declares for itself.
-    pub(crate) async fn create_with_queue() -> Self {
-        let mut fixtures = Self::create().await;
-        fixtures.queue = Some(crate::queue::connect().await);
-        fixtures
     }
 
     /// A further pool for `role` on this fixture's database — the shared lane's
@@ -154,11 +121,11 @@ impl Fixtures {
     }
 
     /// The event types written for a runner, oldest first.
-    pub(crate) async fn events(&self, runner: &str) -> Vec<String> {
+    pub(crate) async fn events(&self, runner: &Uuid7) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar(
             "SELECT event_type FROM runner.events \
-             WHERE runner_id = $1::uuid ORDER BY created_at, id",
+             WHERE runner_id = $1 ORDER BY created_at, id",
         )
         .bind(runner)
         .fetch_all(&mut *connection)
@@ -167,11 +134,11 @@ impl Fixtures {
     }
 
     /// Operator subjects recorded on administrative events, oldest first.
-    pub(crate) async fn admin_event_actors(&self, runner: &str) -> Vec<String> {
+    pub(crate) async fn admin_event_actors(&self, runner: &Uuid7) -> Vec<String> {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar(
             "SELECT metadata ->> 'actor_id' FROM runner.events \
-             WHERE runner_id = $1::uuid AND metadata ? 'actor_id' ORDER BY created_at, id",
+             WHERE runner_id = $1 AND metadata ? 'actor_id' ORDER BY created_at, id",
         )
         .bind(runner)
         .fetch_all(&mut *connection)
@@ -200,19 +167,19 @@ impl Fixtures {
     /// connections — which is also what makes it honest for a test to hold one
     /// beside [`Fixtures::runners`].
     pub(crate) fn leases(&self) -> Leases {
-        Leases::new(self.database.clone(), self.queue().clone(), Entropy::new())
+        Leases::new(self.database.clone(), self.bus().clone(), Entropy::new())
     }
 
-    /// The same store, over a queue that will not answer.
+    /// The same store, over a bus that will not answer.
     ///
-    /// Live Postgres, dead Dragonfly — which is the shape a partial outage actually
+    /// Live Postgres, dead bus — which is the shape a partial outage actually
     /// takes and the only one that proves the publish path degrades rather than
     /// failing the verb. A fixture that took BOTH away would refuse at the
     /// first row read and never reach the publish at all.
-    pub(crate) fn leases_with_dead_queue(&self) -> Leases {
+    pub(crate) fn leases_with_dead_bus(&self) -> Leases {
         Leases::new(
             self.database.clone(),
-            crate::queue::unreachable(),
+            afd_bus::test_util::unreachable(),
             Entropy::new(),
         )
     }
@@ -222,14 +189,13 @@ impl Fixtures {
     /// Built per call for the same reason [`Fixtures::leases`] is: a handle
     /// over the same `Arc`-backed pool.
     pub(crate) fn gates(&self) -> Gates {
-        Gates::new(self.database.clone(), self.queue().clone(), Entropy::new())
+        Gates::new(self.database.clone(), self.bus().clone(), Entropy::new())
     }
 
-    /// Dragonfly for tests reading activity frames or outbound delivery.
-    pub(crate) const fn queue(&self) -> &Dragonfly {
-        self.queue
-            .as_ref()
-            .expect("this fixture has no queue — build it with Fixtures::create_with_queue")
+    /// The bus this fixture's stores publish on, for tests reading activity
+    /// frames.
+    pub(crate) const fn bus(&self) -> &afd_bus::Handle {
+        &self.bus
     }
 
     /// Takes the model catalogue away from the api role, or gives it back.
@@ -264,16 +230,16 @@ impl Fixtures {
         let Self {
             lane,
             database,
-            queue,
+            bus,
             runners,
             ..
         } = self;
         // Our own handles go first, so nothing is still borrowing a connection
         // when the lane handle is released.
         drop(runners);
-        // The queue handle goes with the destructuring: it is a clone over a
-        // connection the other suites still hold, so there is nothing to close.
-        drop((database, queue));
+        // Each fixture owns its NATS connection, so dropping it closes nothing
+        // another test holds.
+        drop((database, bus));
         lane.cleanup().await;
     }
 }

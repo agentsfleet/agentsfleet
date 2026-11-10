@@ -22,7 +22,7 @@ use af_wire::tool_detail::{
 use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found, stale_fence};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::standing::LiveLease;
 
 /// A record was not kept; the run is unaffected.
@@ -128,7 +128,7 @@ enum Kept {
     },
 }
 
-impl Plane {
+impl LeaseService {
     /// Keep the full record of each finished call a lease posts.
     ///
     /// # Errors
@@ -143,11 +143,12 @@ impl Plane {
         request: &ToolCallRecordsRequest<'_>,
         now: Timestamp,
     ) -> Result<ToolCallRecordsStored> {
+        let lease_id = crate::error::wire_lease(lease_id)?;
         let (candidates, mut skipped) = narrow_all(&request.calls);
         let presented = request.fencing_token;
         let decided = self
             .leases
-            .keep_records(lease_id, runner_id, presented, candidates, now)
+            .keep_records(&lease_id, runner_id, presented, candidates, now)
             .await?;
         let (target, stored_count, over) = match decided {
             Kept::NoLease => return Err(lease_not_found()),

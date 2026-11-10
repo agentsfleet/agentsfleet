@@ -72,7 +72,7 @@ impl<'a> EnvelopeRow<'a> {
     /// Binds this row to [`sql::UPDATE_SECRET_ENVELOPE`] in `$n` order.
     fn bind(self, statement: afd_db::statement::Bound<'a>) -> afd_db::statement::Bound<'a> {
         statement
-            .bind(self.key.workspace_id.as_str())
+            .bind(self.key.workspace_id)
             .bind(self.key.name)
             .bind(self.sealed.wrapped_dek())
             .bind(self.sealed.dek_nonce().as_slice())
@@ -102,7 +102,7 @@ impl Vault {
         let mut transaction = connection.begin().await.map_err(query(CONTEXT_ROTATE))?;
 
         let row = sqlx::query_as::<_, StoredEnvelope>(sql::LOCK_SECRET)
-            .bind(key.workspace_id.as_str())
+            .bind(key.workspace_id)
             .bind(key.name)
             .fetch_optional(&mut *transaction)
             .await

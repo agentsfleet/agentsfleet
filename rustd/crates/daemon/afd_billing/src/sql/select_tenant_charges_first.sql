@@ -3,13 +3,13 @@ WITH page AS MATERIALIZED (
            work_type, posture, model, charged_nanos, input_token_count, output_token_count,
            runtime_ms, created_at
       FROM billing.usage_lines
-     WHERE tenant_id = $1::uuid
+     WHERE tenant_id = $1
      ORDER BY created_at DESC, id DESC
      LIMIT $2
 )
-SELECT p.id::text, p.tenant_id::text, p.workspace_id::text,
-       COALESCE(p.fleet_id, f.id)::text AS fleet_id, COALESCE(p.fleet_name, f.name) AS fleet_name,
-       p.event_id, p.authoring_attempt_id::text,
+SELECT p.id, p.tenant_id, p.workspace_id,
+       COALESCE(p.fleet_id, f.id) AS fleet_id, COALESCE(p.fleet_name, f.name) AS fleet_name,
+       p.event_id AS event_id, p.authoring_attempt_id,
        CASE WHEN p.work_type = $4 THEN $5 ELSE $3 END AS charge_type,
        p.posture, p.model, p.charged_nanos, p.input_token_count, p.output_token_count,
        p.runtime_ms AS wall_ms, p.created_at

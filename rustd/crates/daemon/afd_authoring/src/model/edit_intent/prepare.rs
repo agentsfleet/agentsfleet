@@ -24,7 +24,10 @@ impl ModelCalls {
     ) -> Result<Option<Prepared>> {
         let mut connection = self.drafts.database.acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-        let guarded = guard::publication(&mut tx, runner, lease, counters).await?;
+        let guarded = self
+            .drafts
+            .publication(&mut tx, runner, lease, counters)
+            .await?;
         let prepared = self.edit_inputs(&mut tx, runner, request, &guarded).await;
         let prepared = match prepared {
             Ok(prepared) => Some(prepared),
@@ -46,15 +49,7 @@ impl ModelCalls {
         input: &ModelCallInput,
         guarded: &guard::Guarded,
     ) -> Result<Prepared> {
-        self.decisions.as_ref().ok_or(ErrorKind::Model)?;
-        let unresolved: bool = sqlx::query_scalar(include_str!("sql/paid_unavailable.sql"))
-            .bind(guarded.attempt.id.as_str())
-            .fetch_one(&mut *connection)
-            .await
-            .map_err(query(CONTEXT))?;
-        if unresolved {
-            return Err(ErrorKind::Balance.into());
-        }
+        self.require_edit_balance(connection, guarded).await?;
         let selected = afd_runner::decision_assignment_on(connection, runner)
             .await?
             .ok_or(ErrorKind::Model)?;
@@ -113,6 +108,22 @@ impl ModelCalls {
             },
         })
     }
+    async fn require_edit_balance(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        guarded: &guard::Guarded,
+    ) -> Result<()> {
+        self.decisions.as_ref().ok_or(ErrorKind::Model)?;
+        let unresolved: bool = sqlx::query_scalar(include_str!("sql/paid_unavailable.sql"))
+            .bind(&guarded.attempt.id)
+            .fetch_one(&mut *connection)
+            .await
+            .map_err(query(CONTEXT))?;
+        if unresolved {
+            return Err(ErrorKind::Balance.into());
+        }
+        Ok(())
+    }
 }
 
 pub(super) async fn record_fallback(
@@ -122,10 +133,10 @@ pub(super) async fn record_fallback(
     disposition: &'static str,
 ) -> Result<()> {
     sqlx::query(include_str!("sql/fallback.sql"))
-        .bind(&request.dispatch_id)
-        .bind(guarded.attempt.id.as_str())
-        .bind(guarded.attempt.tenant_id.as_str())
-        .bind(guarded.attempt.workspace_id.as_str())
+        .bind(super::super::dispatch_id(request)?)
+        .bind(&guarded.attempt.id)
+        .bind(&guarded.attempt.tenant_id)
+        .bind(&guarded.attempt.workspace_id)
         .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE) + i64::from(request.call_index))
         .bind(guarded.draft.candidate_revision)
         .bind(disposition)

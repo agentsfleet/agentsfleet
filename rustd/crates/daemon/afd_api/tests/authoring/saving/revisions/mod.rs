@@ -121,8 +121,8 @@ impl Fleet {
     }
 
     async fn revision_count(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE fleet_id=$1::uuid")
-            .bind(self.saved["id"].as_str().expect("fleet ID"))
+        sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE fleet_id=$1")
+            .bind(crate::authoring::id_field(&self.saved["id"]))
             .fetch_one(
                 &mut *self
                     .case

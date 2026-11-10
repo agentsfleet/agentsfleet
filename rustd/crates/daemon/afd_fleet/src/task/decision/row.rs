@@ -16,21 +16,21 @@ use crate::{
 
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct Call {
-    pub id: String,
-    pub original_runner_id: String,
-    pub original_lease_id: String,
-    pub source_admission_id: String,
-    pub fleet_id: String,
-    pub workspace_id: String,
-    pub tenant_id: String,
-    pub task_id: Option<String>,
+    pub id: Uuid7,
+    pub original_runner_id: Uuid7,
+    pub original_lease_id: Uuid7,
+    pub source_admission_id: Uuid7,
+    pub fleet_id: Uuid7,
+    pub workspace_id: Uuid7,
+    pub tenant_id: Uuid7,
+    pub task_id: Option<Uuid7>,
     pub fencing_token: i64,
     pub request_digest: String,
-    pub assessment_id: String,
+    pub assessment_id: Uuid7,
     pub assessment_key: String,
     #[sqlx(try_from = "i16")]
     pub attempt_number: u8,
-    pub retry_of_decision_call_id: Option<String>,
+    pub retry_of_decision_call_id: Option<Uuid7>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub logical_expires_at: jiff::Timestamp,
     pub purpose: String,
@@ -63,9 +63,15 @@ pub(super) struct Payload {
 
 #[derive(Clone, Copy)]
 pub(super) enum Lookup<'a> {
-    Id(&'a str),
-    Operation { lease: &'a str, operation: &'a str },
-    Assessment { key: &'a str, attempt: i16 },
+    Id(&'a Uuid7),
+    Operation {
+        lease: &'a Uuid7,
+        operation: &'a Uuid7,
+    },
+    Assessment {
+        key: &'a str,
+        attempt: i16,
+    },
 }
 
 pub(super) async fn find(
@@ -75,7 +81,7 @@ pub(super) async fn find(
     find_with(connection, lookup, super::locks::Mode::Wait).await
 }
 
-pub(super) async fn read_on(connection: &mut PgConnection, id: &str) -> Result<Option<Call>> {
+pub(super) async fn read_on(connection: &mut PgConnection, id: &Uuid7) -> Result<Option<Call>> {
     statement(sql::PEEK_CALL, Lookup::Id(id))
         .fetch_optional(connection)
         .await
@@ -124,7 +130,10 @@ fn statement<'a>(
         .bind(attempt)
 }
 
-pub(super) async fn payload(connection: &mut PgConnection, call: &str) -> Result<Option<Payload>> {
+pub(super) async fn payload(
+    connection: &mut PgConnection,
+    call: &Uuid7,
+) -> Result<Option<Payload>> {
     sqlx::query_as(sql::PAYLOAD)
         .bind(call)
         .fetch_optional(connection)
@@ -132,7 +141,7 @@ pub(super) async fn payload(connection: &mut PgConnection, call: &str) -> Result
         .map_err(query("read private saved decision payload"))
 }
 
-pub(super) async fn saved_payload(database: &afd_db::Db, call: &str) -> Result<Option<Payload>> {
+pub(super) async fn saved_payload(database: &afd_db::Db, call: &Uuid7) -> Result<Option<Payload>> {
     Ok(crate::task::fetch::rows(
         database,
         sqlx::query_as(sql::PAYLOAD).bind(call),

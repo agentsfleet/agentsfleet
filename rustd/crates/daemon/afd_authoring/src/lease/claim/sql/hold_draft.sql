@@ -1,1 +1,1 @@
-SELECT id::text FROM authoring.drafts WHERE id = $1::uuid FOR UPDATE NOWAIT
+SELECT id FROM authoring.drafts WHERE id = $1 FOR UPDATE NOWAIT

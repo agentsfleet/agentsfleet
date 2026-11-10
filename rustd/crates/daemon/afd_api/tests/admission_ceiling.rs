@@ -11,6 +11,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+#[path = "support/mod.rs"]
 mod support;
 
 use std::num::NonZeroUsize;

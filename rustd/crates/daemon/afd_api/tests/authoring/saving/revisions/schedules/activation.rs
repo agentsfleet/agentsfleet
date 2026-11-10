@@ -38,29 +38,27 @@ async fn resumed(scheduled: &Scheduled, stopped: &Value) -> Value {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_schedule_whose_sync_errors_does_not_fail_the_resume() {
     let scheduled = Scheduled::create().await;
     let stopped = stopped(&scheduled).await;
     let row = scheduled.read().await;
     // The claim bumps `resource_version`, so a row already at the ceiling makes
     // the database refuse the claim itself: a sync error, not a refused push.
-    sqlx::query(
-        "UPDATE fleet.schedules SET resource_version=9223372036854775807 WHERE id=$1::uuid",
-    )
-    .bind(row["schedule_id"].as_str().expect("schedule ID"))
-    .execute(
-        &mut *scheduled
-            .fleet
-            .case
-            .base
-            .db
-            .acquire()
-            .await
-            .expect("schedule connection"),
-    )
-    .await
-    .expect("seed the version ceiling");
+    sqlx::query("UPDATE fleet.schedules SET resource_version=9223372036854775807 WHERE id=$1")
+        .bind(crate::authoring::id_field(&row["schedule_id"]))
+        .execute(
+            &mut *scheduled
+                .fleet
+                .case
+                .base
+                .db
+                .acquire()
+                .await
+                .expect("schedule connection"),
+        )
+        .await
+        .expect("seed the version ceiling");
 
     let resumed = resumed(&scheduled, &stopped).await;
 
@@ -70,7 +68,7 @@ async fn a_schedule_whose_sync_errors_does_not_fail_the_resume() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_schedule_whose_sync_stalls_does_not_hold_the_resume_past_its_limit() {
     let scheduled = Scheduled::create().await;
     let stopped = stopped(&scheduled).await;
@@ -85,8 +83,8 @@ async fn a_schedule_whose_sync_stalls_does_not_hold_the_resume_past_its_limit() 
         .await
         .expect("lock connection");
     let mut holder = connection.begin().await.expect("lock transaction");
-    sqlx::query("SELECT id FROM fleet.schedules WHERE id=$1::uuid FOR UPDATE")
-        .bind(row["schedule_id"].as_str().expect("schedule ID"))
+    sqlx::query("SELECT id FROM fleet.schedules WHERE id=$1 FOR UPDATE")
+        .bind(crate::authoring::id_field(&row["schedule_id"]))
         .execute(&mut *holder)
         .await
         .expect("hold the schedule row");

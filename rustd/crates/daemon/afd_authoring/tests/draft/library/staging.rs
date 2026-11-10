@@ -7,8 +7,7 @@ use serde_json::json;
 use sqlx::Connection as _;
 
 /// Holds the draft row the way a staging's capture locks it.
-const LOCK_DRAFT: &str =
-    "SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE";
+const LOCK_DRAFT: &str = "SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1 FOR UPDATE";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -39,7 +38,7 @@ async fn two_stagings_under_one_key_stage_one_platform_entry() {
     let mut holder = c.base.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
     let pid: i32 = sqlx::query_scalar(LOCK_DRAFT)
-        .bind(draft.id.as_str())
+        .bind(draft.id)
         .fetch_one(&mut *held)
         .await
         .expect("hold the draft");

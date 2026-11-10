@@ -19,7 +19,7 @@ use afd_tenant::sql::invite::{INSERT_INVITE, MARK_ACCEPTED, REVOKE_INVITE};
 use afd_tenant::team::Email;
 use jiff::Timestamp;
 
-use crate::access_lane::{Fixture, id};
+use crate::access_lane::Fixture;
 
 /// The instant each identifier a case mints is minted at.
 const NOW: Timestamp = Timestamp::constant(1_767_225_600, 0);
@@ -30,21 +30,22 @@ const PENDING_INDEX: &str = "uq_invites_tenant_id_email_pending";
 /// How long a hand-inserted invite stays open.
 const OPEN_FOR: Duration = Duration::from_secs(3_600);
 
-/// `(status, resolved_at, accepted_by_user_id)` as stored, text for exactness.
-async fn resolution(fixture: &Fixture, invite: &Uuid7) -> (String, Option<String>, Option<String>) {
+/// `(status, resolved_at, accepted_by_user_id)` as stored, the stamp as text
+/// for exactness.
+async fn resolution(fixture: &Fixture, invite: &Uuid7) -> (String, Option<String>, Option<Uuid7>) {
     let mut connection = fixture.database.acquire().await.expect("a connection");
     sqlx::query_as(
-        "SELECT status, resolved_at::text, accepted_by_user_id::text
-           FROM identity.invites WHERE id = $1::uuid",
+        "SELECT status, resolved_at::text, accepted_by_user_id
+           FROM identity.invites WHERE id = $1",
     )
-    .bind(invite.as_str())
+    .bind(invite)
     .fetch_one(&mut *connection)
     .await
     .expect("the invite reads")
 }
 
 /// The issuing statement run by hand, past the service's own conflict check.
-async fn insert_pending(fixture: &Fixture, address: &str) -> Result<String, sqlx::Error> {
+async fn insert_pending(fixture: &Fixture, address: &str) -> Result<Uuid7, sqlx::Error> {
     let email = Email::parse(address, |_| true).expect("a fixture address parses");
     let invite = mint_id();
     let mut connection = fixture.database.acquire().await.expect("a connection");
@@ -79,7 +80,7 @@ async fn test_resolution_happens_once_for_an_accepted_invite() {
     let first = resolution(&fixture, &invite).await;
     assert_eq!(first.0, "accepted");
     assert!(first.1.is_some(), "an accept stamps resolved_at");
-    assert_eq!(first.2.as_deref(), Some(fixture.carol.user.as_str()));
+    assert_eq!(first.2.as_ref(), Some(&fixture.carol.user));
 
     let again = fixture
         .team
@@ -90,7 +91,7 @@ async fn test_resolution_happens_once_for_an_accepted_invite() {
 
     let mut connection = fixture.database.acquire().await.expect("a connection");
     let accepted = sqlx::query(MARK_ACCEPTED)
-        .bind(invite.as_str())
+        .bind(&invite)
         .bind(&fixture.bob.user)
         .bind("accepted")
         .execute(&mut *connection)
@@ -103,7 +104,7 @@ async fn test_resolution_happens_once_for_an_accepted_invite() {
     );
     let revoked = sqlx::query(REVOKE_INVITE)
         .bind(&fixture.john.tenant)
-        .bind(invite.as_str())
+        .bind(&invite)
         .bind("revoked")
         .execute(&mut *connection)
         .await
@@ -145,7 +146,7 @@ async fn a_second_pending_invite_for_one_address_is_refused_by_the_index() {
 
     fixture
         .team
-        .revoke_invitation(&id(&fixture.john.tenant), &first)
+        .revoke_invitation(&fixture.john.tenant, &first)
         .await
         .expect("the revoke lands");
     let second = insert_pending(&fixture, &fixture.carol.email)
@@ -158,7 +159,7 @@ async fn a_second_pending_invite_for_one_address_is_refused_by_the_index() {
         .expect_err("the hand-issued invite is pending now");
     assert_eq!(third.code(), error_code::INVITE_CONFLICT);
     assert_eq!(third.invite_conflict(), Some(InviteConflict::Invited));
-    let pending = resolution(&fixture, &id(&second)).await;
+    let pending = resolution(&fixture, &second).await;
     assert_eq!(pending, ("pending".to_owned(), None, None));
     fixture.cleanup().await;
 }

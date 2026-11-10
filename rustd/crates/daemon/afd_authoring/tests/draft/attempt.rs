@@ -17,7 +17,7 @@ INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user
 draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
 lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
 reported_runtime_ms,last_activity_sequence,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,1,1,$1,$8::jsonb,
+VALUES($1,$2,$3,$4,$5,$6,$7,1,1,$1,$8::jsonb,
 'active',now()+interval '1 minute',now()+interval '1 minute',0,false,0,0,0,0,now(),now())";
 
 /// The host's isolation: no sandbox and no egress.
@@ -35,7 +35,7 @@ pub(super) struct Attempt {
 
 impl Attempt {
     pub(super) async fn start(f: &Fixture, access: Access<'_>, source: Source) -> Self {
-        RunnerSeed::new(f.runner.as_str(), "active", POLICY)
+        RunnerSeed::new(&f.runner, "active", POLICY)
             .insert(&mut *f.connection().await)
             .await
             .expect("isolated authoring runner");
@@ -72,19 +72,19 @@ impl Attempt {
             &f.member
         };
         sqlx::query(ATTEMPT)
-            .bind(attempt.id.as_str())
-            .bind(attempt.lease.as_str())
-            .bind(f.runner.as_str())
-            .bind(f.workspace.as_str())
-            .bind(f.tenant.as_str())
-            .bind(creator.as_str())
-            .bind(attempt.draft.id.as_str())
+            .bind(&attempt.id)
+            .bind(&attempt.lease)
+            .bind(&f.runner)
+            .bind(&f.workspace)
+            .bind(&f.tenant)
+            .bind(creator)
+            .bind(&attempt.draft.id)
             .bind(serde_json::to_string(&model).expect("pinned nonsecret metadata"))
             .execute(&mut *connection)
             .await
             .expect("admitted attempt row");
-        sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1::uuid")
-            .bind(attempt.draft.id.as_str())
+        sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1")
+            .bind(&attempt.draft.id)
             .execute(&mut *connection)
             .await
             .expect("owned running message");
@@ -105,12 +105,10 @@ impl Attempt {
     }
 
     pub(super) async fn activity_count(&self, f: &Fixture) -> i64 {
-        sqlx::query_scalar(
-            "SELECT count(*) FROM authoring.activity_receipts WHERE attempt_id=$1::uuid",
-        )
-        .bind(self.id.as_str())
-        .fetch_one(&mut *f.connection().await)
-        .await
-        .expect("owned activity count")
+        sqlx::query_scalar("SELECT count(*) FROM authoring.activity_receipts WHERE attempt_id=$1")
+            .bind(&self.id)
+            .fetch_one(&mut *f.connection().await)
+            .await
+            .expect("owned activity count")
     }
 }

@@ -16,13 +16,14 @@ use crate::{
     },
 };
 use af_core::clock;
+use af_core::id::Uuid7;
 use af_wire::task::{CheckpointMode, CheckpointPlan, CheckpointPlanInput};
 use sqlx::{PgConnection, types::Json};
 
 #[derive(sqlx::FromRow)]
 struct Base {
-    id: String,
-    page_ids: Vec<String>,
+    id: Uuid7,
+    page_ids: Vec<Uuid7>,
     manifest_root: Option<String>,
     logical_bytes: i64,
     entry_count: i32,
@@ -41,22 +42,19 @@ pub(in crate::task) async fn create(
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     let current = task_guard::lease(&mut tx, lease).await?;
-    if current.task_id.as_deref() != Some(input.task.task_id.as_str()) {
-        return Err(TaskRefusal::NotFound.into());
-    }
-    let existing: Option<String> = sqlx::query_scalar(include_str!("sql/plan_replay.sql"))
-        .bind(&input.task.task_id)
-        .bind(&input.operation_id)
+    let task = current
+        .task_id
+        .clone()
+        .filter(|task| *task == input.task.task_id)
+        .ok_or(TaskRefusal::NotFound)?;
+    let existing: Option<Uuid7> = sqlx::query_scalar(include_str!("sql/plan_replay.sql"))
+        .bind(&task)
+        .bind(task_guard::wire(&input.operation_id)?)
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("read immutable checkpoint plan replay"))?;
     if let Some(id) = existing {
-        let plan = Plan::load(
-            &mut tx,
-            &task_guard::id(&id, "checkpoint_id")?,
-            &input.task.task_id,
-        )
-        .await?;
+        let plan = Plan::load(&mut tx, &id, &task).await?;
         if plan.request_digest != digest {
             return Err(TaskRefusal::ReplayConflict.into());
         }
@@ -76,7 +74,7 @@ pub(in crate::task) async fn create(
     let owned = execution::on_current(&mut tx, current, &input.task).await?;
     let (repository, commit) = target(
         &mut tx,
-        &input.task.task_id,
+        &task,
         &owned.current.fleet_id,
         input.commit_oid.as_deref(),
     )
@@ -92,8 +90,8 @@ pub(in crate::task) async fn create(
     }
     identity::quota(&mut tx, &owned.current.workspace_id).await?;
     sqlx::query(include_str!("sql/abandon_capture.sql"))
-        .bind(&input.task.task_id)
-        .bind(lease.lease_id.as_str())
+        .bind(&task)
+        .bind(lease.lease_id)
         .bind(owned.current.fence)
         .execute(&mut *tx)
         .await
@@ -114,7 +112,7 @@ pub(in crate::task) async fn create(
         (repository, commit),
     )
     .await?;
-    let plan = Plan::load(&mut tx, &id, &input.task.task_id).await?;
+    let plan = Plan::load(&mut tx, &id, &task).await?;
     let pin = super::pins::insert(tasks, &mut tx, &owned, &plan, lease, "writer").await?;
     let response = plan.wire(&pin, false)?;
     tx.commit()
@@ -153,17 +151,16 @@ async fn allocate(
     repository_target: (String, Option<String>),
 ) -> Result<af_core::id::Uuid7> {
     let (repository, commit) = repository_target;
+    let task = owned
+        .current
+        .task_id
+        .as_ref()
+        .ok_or(TaskRefusal::NotFound)?;
     // A `u32` always fits the `usize` of every target this daemon builds for.
     let page_count = usize::try_from(input.page_count).unwrap_or(usize::MAX);
-    let mut pages = std::iter::repeat_with(|| {
-        tasks
-            .leases
-            .entropy()
-            .uuid7(clock::now())
-            .map(|id| id.as_str().to_owned())
-    })
-    .take(page_count)
-    .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut pages = std::iter::repeat_with(|| tasks.leases.entropy().uuid7(clock::now()))
+        .take(page_count)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
     let base = base(
         tasks,
         connection,
@@ -179,21 +176,23 @@ async fn allocate(
         .as_ref()
         .filter(|base| input.mode == CheckpointMode::RetainBase && base.ready);
     sqlx::query(include_str!("sql/plan_insert.sql"))
-        .bind(id.as_str())
-        .bind(&input.task.task_id)
+        .bind(&id)
+        .bind(task)
         .bind(&owned.current.fleet_id)
         .bind(&owned.current.workspace_id)
         .bind(i64::try_from(input.task.generation).map_err(|_overflow| TaskRefusal::StaleState)?)
-        .bind(owned.snapshot.context.accepted_revision_id.as_ref())
+        .bind(task_guard::wire(
+            &owned.snapshot.context.accepted_revision_id,
+        )?)
         .bind(
             i64::try_from(owned.snapshot.context.stop_generation)
                 .map_err(|_overflow| TaskRefusal::StaleState)?,
         )
-        .bind(&input.operation_id)
+        .bind(task_guard::wire(&input.operation_id)?)
         .bind(digest)
         .bind(input.mode.as_str())
         .bind(repository)
-        .bind(base.as_ref().map(|base| base.id.as_str()))
+        .bind(base.as_ref().map(|base| &base.id))
         .bind(commit)
         .bind(
             i32::try_from(input.format_version)
@@ -214,7 +213,7 @@ async fn allocate(
             i32::try_from(input.entry_count).map_err(|_overflow| TaskRefusal::LimitExhausted)?,
             |base| base.entry_count,
         ))
-        .bind(lease.lease_id.as_str())
+        .bind(lease.lease_id)
         .bind(owned.current.fence)
         .bind(super::TRANSFER_SECONDS)
         .bind(ready_base.and_then(|base| base.manifest_root.as_deref()))
@@ -223,7 +222,7 @@ async fn allocate(
         .map_err(query("persist native checkpoint plan"))?;
     if input.mode == CheckpointMode::Incremental {
         sqlx::query(include_str!("sql/pages_allocate.sql"))
-            .bind(id.as_str())
+            .bind(&id)
             .bind(&pages)
             .execute(&mut *connection)
             .await
@@ -234,8 +233,8 @@ async fn allocate(
 
 async fn target(
     connection: &mut PgConnection,
-    task: &str,
-    fleet: &str,
+    task: &Uuid7,
+    fleet: &Uuid7,
     commit: Option<&str>,
 ) -> Result<(String, Option<String>)> {
     let Json(target): Json<serde_json::Value> =
@@ -265,16 +264,16 @@ async fn base(
     tasks: &Tasks,
     connection: &mut PgConnection,
     input: &CheckpointPlanInput,
-    workspace: &str,
+    workspace: &Uuid7,
     repository: &str,
     commit: Option<&str>,
-    pages: &mut Vec<String>,
+    pages: &mut Vec<Uuid7>,
 ) -> Result<Option<Base>> {
     if let Some(base) = &input.base_id {
         // The retained base can precede publication; the checkpoint stores the
         // current head separately and report/checkpoint.sql validates that head.
         let base: Base = sqlx::query_as(include_str!("sql/base_selected.sql"))
-            .bind(base)
+            .bind(crate::task::guard::wire(base)?)
             .bind(workspace)
             .bind(repository)
             .bind(sql_small_counter(
@@ -323,7 +322,7 @@ async fn base(
     }
     let id = tasks.leases.entropy().uuid7(clock::now())?;
     sqlx::query(include_str!("sql/base_insert.sql"))
-        .bind(id.as_str())
+        .bind(&id)
         .bind(workspace)
         .bind(repository)
         .bind(commit)
@@ -349,13 +348,13 @@ async fn base(
         .await
         .map_err(query("allocate retained base identity"))?;
     sqlx::query(include_str!("sql/base_pages_allocate.sql"))
-        .bind(id.as_str())
+        .bind(&id)
         .bind(&*pages)
         .execute(connection)
         .await
         .map_err(query("allocate immutable base page identities"))?;
     Ok(Some(Base {
-        id: id.as_str().to_owned(),
+        id: id.clone(),
         page_ids: pages.clone(),
         manifest_root: None,
         logical_bytes: sql_counter(input.logical_bytes, "checkpoint logical_bytes")?,

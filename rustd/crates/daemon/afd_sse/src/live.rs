@@ -1,114 +1,178 @@
 //! The live surface, composed: the pub/sub connection and the instance's
 //! stream budget, as one value a handler holds.
 //!
-//! # A deployment with no hub is a value, not a `None` every handler renders
+//! # A surface with no bus is a value, not a `None` every handler renders
 //!
-//! `afd_fleet::bundle::Bundles::unconfigured` is the shape this follows. An
-//! instance with no pub/sub connection still SERVES the stream routes: the
-//! connection opens, the ceiling is charged, the heartbeat runs, and no frame
-//! ever arrives. That is the honest behaviour — the events list is still there
-//! and a client polls it — where a 500 would take the dashboard down over a
-//! surface that is by construction best-effort.
+//! `afd_fleet::bundle::Bundles::unconfigured` is the shape this follows. A
+//! surface with no pub/sub connection still SERVES the stream routes: the
+//! connection opens, the ceiling is charged and the heartbeat runs. A fleet
+//! tail tells the viewer it is catching up rather than going silent, so the
+//! UI backfills from Postgres. Boot always connects a bus; suites build the
+//! detached surface to prove what a stream does without one.
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use afd_dragonfly::SubscriptionHub;
+use afd_bus::Handle;
 use futures_util::StreamExt as _;
 use futures_util::stream::{self, BoxStream};
 
-use crate::ceiling::{Ceiling, Slot};
 use crate::fanin::FanIn;
 use crate::frame::Frame;
-use crate::tail::tail;
-use afd_dragonfly::fleet_activity_channel;
+use crate::resubscribe::{Link, Resubscribe, resilient};
+use crate::stream_limit::{StreamLimit, StreamPermit};
+
+/// What one subscribe attempt found.
+#[derive(Debug)]
+pub(crate) enum Subscribed {
+    /// The subscription is live.
+    Open(afd_bus::Subscription),
+    /// No bus, or one that may answer on a later attempt.
+    Unavailable,
+    /// The bus shut down; the stream ends and the client reconnects elsewhere.
+    Closed,
+}
 
 /// What the two stream routes act through.
 #[derive(Debug, Clone)]
 pub struct Live {
-    hub: Option<SubscriptionHub>,
-    ceiling: Ceiling,
+    bus: Option<Handle>,
+    stream_limit: StreamLimit,
+    resubscribe: Resubscribe,
 }
 
 impl Live {
     /// The live surface of an instance holding a pub/sub connection.
     #[must_use]
-    pub const fn new(hub: SubscriptionHub, ceiling: Ceiling) -> Self {
+    pub fn new(bus: Handle, stream_limit: StreamLimit) -> Self {
         Self {
-            hub: Some(hub),
-            ceiling,
+            bus: Some(bus),
+            stream_limit,
+            resubscribe: Resubscribe::default(),
         }
     }
 
-    /// The live surface of an instance with no pub/sub connection.
-    ///
-    /// Its streams open, count against the ceiling, and stay silent. See the
-    /// module header for why that is the behaviour rather than a refusal.
+    /// Replaces how a lost tail retries, so a suite need not wait out the
+    /// production backoff.
+    #[cfg(test)]
     #[must_use]
-    pub const fn detached(ceiling: Ceiling) -> Self {
-        Self { hub: None, ceiling }
+    pub(crate) const fn with_resubscribe(mut self, resubscribe: Resubscribe) -> Self {
+        self.resubscribe = resubscribe;
+        self
+    }
+
+    /// How a lost tail retries.
+    #[must_use]
+    pub(crate) const fn resubscribe(&self) -> &Resubscribe {
+        &self.resubscribe
+    }
+
+    /// The live surface with no pub/sub connection.
+    ///
+    /// Its streams open and count against the ceiling. A fleet tail sends
+    /// `hello` and `catching_up`, then retries quietly; a fan-in stays
+    /// pending. The module header says why that is the behaviour rather than
+    /// a refusal.
+    #[must_use]
+    pub fn detached(stream_limit: StreamLimit) -> Self {
+        Self {
+            bus: None,
+            stream_limit,
+            resubscribe: Resubscribe::default(),
+        }
     }
 
     /// The hub behind this surface, for the shutdown that closes it.
     ///
     /// `None` on a detached instance, which has nothing to close.
     #[must_use]
-    pub const fn hub(&self) -> Option<&SubscriptionHub> {
-        self.hub.as_ref()
+    pub const fn bus(&self) -> Option<&Handle> {
+        self.bus.as_ref()
     }
 
     /// A slot for one stream, or `None` when the instance is full or draining.
     #[must_use]
-    pub fn admit(&self) -> Option<Slot> {
-        self.ceiling.admit()
+    pub fn admit(&self) -> Option<StreamPermit> {
+        self.stream_limit.admit()
     }
 
     /// How many streams this instance is carrying.
     #[must_use]
     pub fn carrying(&self) -> usize {
-        self.ceiling.live()
+        self.stream_limit.live()
     }
 
     /// How many it will carry.
     #[must_use]
     pub const fn capacity(&self) -> usize {
-        self.ceiling.capacity()
+        self.stream_limit.capacity()
     }
 
-    /// Every frame published for one fleet, numbered from zero.
-    pub fn tail_of(&self, fleet_id: &str) -> BoxStream<'static, Frame> {
-        match self.hub.as_ref() {
-            Some(hub) => {
-                // Subscribe FIRST, then announce. The `hello` is the client's
-                // signal that this connection is carrying activity, and an
-                // announcement made before the subscription existed would be a
-                // claim about a stream nobody had attached to yet.
-                let subscription = hub.subscribe(&fleet_activity_channel(fleet_id));
-                // Without it the first byte of an idle fleet's body is the
-                // keep-alive heartbeat, `HEARTBEAT_INTERVAL` away. The browser
-                // opens the socket immediately, but the surface reports itself
-                // live off the first FRAME -- so a quiet fleet rendered
-                // "Connecting…" for fifteen seconds while nothing whatever was
-                // wrong. The wall stream has always opened this way; the
-                // per-fleet route is what lacked it.
-                let opening = Frame::hello(&[fleet_id.to_owned()], &BTreeMap::new());
-                stream::once(async move { opening })
-                    .chain(tail(subscription))
-                    .boxed()
+    /// Share the same concurrent-stream permits with the native runner listener.
+    #[must_use]
+    pub const fn stream_limit(&self) -> &StreamLimit {
+        &self.stream_limit
+    }
+
+    /// Subscribe before announcing a live fleet stream, then tell the viewer
+    /// to backfill once: frames published before the interest reached the
+    /// publisher's node are only in Postgres. A failed subscribe still opens
+    /// the stream and keeps retrying, so the viewer is never left with only
+    /// heartbeats.
+    pub async fn tail_of(&self, fleet: &af_core::id::Uuid7) -> BoxStream<'static, Frame> {
+        let link = self.link(afd_bus::Subject::FleetTail(fleet.clone())).await;
+        let opening = [
+            Frame::hello(&[fleet.to_string()], &BTreeMap::new()),
+            Frame::catching_up(0),
+        ];
+        stream::iter(opening).chain(resilient(link)).boxed()
+    }
+
+    /// A link to `subject`, subscribed once before it returns; a failed
+    /// subscribe leaves it retrying on the backoff.
+    pub async fn link(&self, subject: afd_bus::Subject) -> Link {
+        Link::open(self.clone(), subject).await
+    }
+
+    /// Subscribe, telling a bus that may answer later from one that closed.
+    ///
+    /// `attempt` counts from 0. The first attempt's failure warns; a retry's
+    /// logs at debug, so an outage warns once rather than once per retry.
+    pub(crate) async fn try_subscribe(
+        &self,
+        subject: &afd_bus::Subject,
+        attempt: u32,
+    ) -> Subscribed {
+        let Some(bus) = self.bus.as_ref() else {
+            return Subscribed::Unavailable;
+        };
+        match bus.subscribe(subject).await {
+            Ok(subscription) => Subscribed::Open(subscription),
+            Err(error) => {
+                let error_code = error.code().as_str();
+                let reason = error.reason();
+                if attempt == 0 {
+                    tracing::warn!(event = "sse_subscription_unavailable", error_code, reason);
+                } else {
+                    tracing::debug!(
+                        event = "sse_subscription_unavailable",
+                        attempt,
+                        error_code,
+                        reason
+                    );
+                }
+                if error.is_closed() {
+                    Subscribed::Closed
+                } else {
+                    Subscribed::Unavailable
+                }
             }
-            // Deliberately silent. This instance holds no pub/sub connection,
-            // so there is nothing to say hello ABOUT: the route still serves,
-            // the ceiling is still charged and the heartbeat still runs, per
-            // this module's header. A `hello` here would report a live stream
-            // on a deployment that can never deliver a frame, which is worse
-            // than the wait it would paper over.
-            None => stream::pending().boxed(),
         }
     }
 
     /// A fan-in the caller attaches a workspace's fleets to.
     #[must_use]
     pub fn fan_in(&self) -> FanIn {
-        FanIn::new(self.hub.clone())
+        FanIn::new(self.bus.clone())
     }
 
     /// The frames a fan-in carrying `fleets` would produce, as one stream.
@@ -116,9 +180,9 @@ impl Live {
     /// The convenience the per-fleet route gets for free: a workspace whose
     /// fleet set never changes for the life of the connection needs no refresh
     /// tick, and a caller that DOES need one drives [`FanIn`] itself.
-    pub fn multiplex_of(&self, fleets: &BTreeSet<String>) -> BoxStream<'static, Frame> {
+    pub async fn multiplex_of(&self, fleets: &BTreeSet<String>) -> BoxStream<'static, Frame> {
         let mut fan_in = self.fan_in();
-        fan_in.sync_to(fleets);
+        fan_in.sync_to(fleets).await;
         stream::unfold(fan_in, async move |mut fan_in| {
             let frame = fan_in.next_frame().await;
             Some((frame, fan_in))
@@ -139,23 +203,36 @@ mod tests {
 
     use futures_util::StreamExt as _;
 
-    use super::Live;
-    use crate::ceiling::Ceiling;
+    use super::{Live, StreamLimit};
 
     #[tokio::test]
-    async fn detached_live_streams_are_admitted_but_stay_silent() {
-        let live = Live::detached(Ceiling::new(2));
-        assert!(live.hub().is_none());
+    async fn detached_live_streams_are_admitted_and_announce_the_gap() {
+        let live = Live::detached(StreamLimit::new(2));
+        assert!(live.bus().is_none());
         assert_eq!(live.capacity(), 2);
         let slot = live.admit().expect("the first detached stream is admitted");
         assert_eq!(live.carrying(), 1);
 
-        let mut tail = live.tail_of("fleet-a");
+        let mut tail = live
+            .tail_of(
+                &af_core::id::Uuid7::parse("0195b4ba-8d3a-7000-8abc-000000000001")
+                    .expect("canonical fleet"),
+            )
+            .await;
+        for kind in ["hello", "catching_up"] {
+            let frame = tail.next().await.expect("the detached tail opens");
+            assert_eq!(
+                frame.kind, kind,
+                "a detached tail announces it cannot follow"
+            );
+        }
         tokio::time::timeout(Duration::from_millis(1), tail.next())
             .await
-            .expect_err("a detached tail must remain pending");
+            .expect_err("then a detached tail retries quietly");
 
-        let mut multiplex = live.multiplex_of(&BTreeSet::from(["fleet-a".to_owned()]));
+        let mut multiplex = live
+            .multiplex_of(&BTreeSet::from(["fleet-a".to_owned()]))
+            .await;
         tokio::time::timeout(Duration::from_millis(1), multiplex.next())
             .await
             .expect_err("a detached fan-in must remain pending");

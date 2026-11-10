@@ -7,13 +7,14 @@ use afd_db::test_util::mint_id;
 use super::*;
 
 /// The immutable tables: rows written once, then read or removed.
-const IMMUTABLE: [&str; 20] = [
+const IMMUTABLE: [&str; 21] = [
     "authoring.activity_receipts",
     "authoring.answer_receipts",
     "authoring.candidates",
     "authoring.library_revisions",
     "authoring.replay_receipts",
     "billing.authoring_report_receipts",
+    "connector.oauth_nonces",
     "fleet.revisions",
     "fleet.task_adoptions",
     "fleet.task_checkpoint_operations",
@@ -103,36 +104,36 @@ async fn test_immutable_tables_refuse_update() {
 async fn assert_refused_yet_cascaded(connection: &mut PgConnection) {
     let tenant = mint_id();
     let workspace = mint_id();
-    sqlx::query("INSERT INTO identity.tenants (id, name, created_at, updated_at) VALUES ($1::uuid, $2, now(), now())")
+    sqlx::query("INSERT INTO identity.tenants (id, name, created_at, updated_at) VALUES ($1, $2, now(), now())")
         .bind(&tenant)
         .bind("tenant")
         .execute(&mut *connection)
         .await
         .unwrap();
-    sqlx::query("INSERT INTO identity.workspaces (id, tenant_id, created_at) VALUES ($1::uuid, $2::uuid, now())")
-        .bind(&workspace)
-        .bind(&tenant)
-        .execute(&mut *connection)
-        .await
-        .unwrap();
+    sqlx::query(
+        "INSERT INTO identity.workspaces (id, tenant_id, created_at) VALUES ($1, $2, now())",
+    )
+    .bind(&workspace)
+    .bind(&tenant)
+    .execute(&mut *connection)
+    .await
+    .unwrap();
 
-    let update =
-        sqlx::query("UPDATE identity.workspaces SET created_at = now() WHERE id = $1::uuid")
-            .bind(&workspace)
-            .execute(&mut *connection)
-            .await;
+    let update = sqlx::query("UPDATE identity.workspaces SET created_at = now() WHERE id = $1")
+        .bind(&workspace)
+        .execute(&mut *connection)
+        .await;
     assert!(update.is_err(), "an immutable row was updated");
 
-    sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+    sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
         .bind(&tenant)
         .execute(&mut *connection)
         .await
         .unwrap();
-    let left: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM identity.workspaces WHERE id = $1::uuid")
-            .bind(&workspace)
-            .fetch_one(&mut *connection)
-            .await
-            .unwrap();
+    let left: i64 = sqlx::query_scalar("SELECT count(*) FROM identity.workspaces WHERE id = $1")
+        .bind(&workspace)
+        .fetch_one(&mut *connection)
+        .await
+        .unwrap();
     assert_eq!(left, 0, "the cascade from the tenant removes the workspace");
 }

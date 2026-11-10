@@ -1,7 +1,7 @@
 //! What the gate plane tells the fleet's live tail: a human has been asked.
 //!
-//! A park writes its row and its reference and then says so on
-//! `fleet:{id}:activity`, count included, so a console watching the fleet
+//! A park writes its row and its reference and then says so on the fleet's
+//! tail subject, `af.fleet.{id}.tail`, count included, so a console watching the fleet
 //! shows the gate waiting without a read. Beside the lifecycle suite rather
 //! than inside it, so each file stays about one property.
 #![cfg(feature = "test-util")]
@@ -16,24 +16,20 @@ mod fixture;
 use std::time::Duration;
 
 use af_crypto::entropy::Entropy;
-use afd_dragonfly::SubscriptionHub;
-use afd_dragonfly::hub::Received;
+use afd_bus::{Received, Subject};
+use afd_db::test_util::mint_id;
 use afd_gate::gate::{Gates, Verdict, Waiting};
 use serde_json::json;
 
-use self::fixture::{Fixture, NOW, config_gates, connect_redis, dragonfly_config};
-
-/// How long the hub's pump is given to register the subscription before the
-/// park publishes; `subscribe` queues the command rather than round-tripping.
-const SUBSCRIBE_SETTLE: Duration = Duration::from_millis(250);
+use self::fixture::{Fixture, NOW, bus, config_gates};
 
 /// How long a published frame is given to reach the subscriber.
 const FRAME_DEADLINE: Duration = Duration::from_secs(5);
 
 /// The policy that parks this fixture's event.
 ///
-/// A write binding parked every first-encounter event until M202 and this suite
-/// used one. It no longer parks anything — the standing integration grant
+/// A write binding once parked every first-encounter event and this suite used
+/// one. It no longer parks anything — the standing integration grant
 /// authorises the write — so the gate is opened by an authored rule instead.
 /// What is under test here is the ANNOUNCEMENT, not which policy raised it.
 const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"approve","gate_kind":"deploy","blast_radius":"production"}]}"#;
@@ -44,31 +40,46 @@ const APPROVE_EVERY_CHAT: &str = r#"{"rules":[{"tool":"chat","action":"user:fixt
 /// names; the count rides the frame so the console can show the gate waiting
 /// without a read of its own.
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = Gates::new(
-        fixture.database.clone(),
-        connect_redis().await,
-        Entropy::new(),
-    );
-    let hub = SubscriptionHub::start(dragonfly_config())
+    let bus = bus().await;
+    let gates = Gates::new(fixture.database.clone(), bus.clone(), Entropy::new());
+    let mut tail = bus
+        .subscribe(&Subject::FleetTail(fixture.fleet.clone()))
         .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", fixture.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+        .expect("the lane's NATS subscribes");
+    let event = mint_id();
 
     assert_eq!(
         gates
             .check(
-                fixture.check("event-announced", &config_gates(APPROVE_EVERY_CHAT)),
+                fixture.check(&event, &config_gates(APPROVE_EVERY_CHAT)),
                 NOW,
             )
             .await,
         Verdict::Await(Waiting::Parked)
     );
 
+    let frame = parked_frame(&mut tail).await;
+    assert_eq!(frame.get("kind"), Some(&json!("gate_opened")));
+    assert_eq!(frame.get("event_id"), Some(&json!(event)));
+    assert!(
+        frame
+            .get("gate_id")
+            .is_some_and(serde_json::Value::is_string)
+    );
+    assert_eq!(
+        frame.get("pending_approvals"),
+        Some(&json!(1)),
+        "the gate just raised is the one waiting"
+    );
+    assert_park_counters(&fixture, &frame).await;
+    fixture.cleanup().await;
+}
+
+async fn parked_frame(tail: &mut afd_bus::Subscription) -> serde_json::Value {
     let received = tokio::time::timeout(FRAME_DEADLINE, tail.recv())
         .await
         .expect("the park reaches the fleet's tail")
@@ -82,21 +93,13 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
     .expect("the tail carried the park's frame, not a lag or gap notice");
     let frame: serde_json::Value =
         serde_json::from_str(&message.payload).expect("the frame is JSON");
-    assert_eq!(frame.get("kind"), Some(&json!("gate_opened")));
-    assert_eq!(frame.get("event_id"), Some(&json!("event-announced")));
-    assert!(
-        frame
-            .get("gate_id")
-            .is_some_and(serde_json::Value::is_string)
-    );
-    assert_eq!(
-        frame.get("pending_approvals"),
-        Some(&json!(1)),
-        "the gate just raised is the one waiting"
-    );
+    frame
+}
+
+async fn assert_park_counters(fixture: &Fixture, frame: &serde_json::Value) {
     // The park's frame carries where the fleet stands, read on the insert's
     // own connection: the figures on the wire are the database's.
-    let counters = afd_events::fleet_counters(&fixture.database, fixture.fleet.as_str())
+    let counters = afd_events::fleet_counters(&fixture.database, &fixture.fleet)
         .await
         .expect("the counters read back");
     assert_eq!(
@@ -109,5 +112,4 @@ async fn a_parked_gate_is_announced_on_the_fleets_live_tail() {
         Some(&json!(counters.budget_used_nanos.to_string())),
         "gate_opened carries the fleet's spend"
     );
-    fixture.cleanup().await;
 }

@@ -161,9 +161,9 @@ impl Saved {
         let digest = canonical_digest(&definition).expect("neighbor setup digest");
         let definition = serde_json::to_string(&definition).expect("canonical neighbor setup");
         FleetSeed::new(
-            id.as_str(),
-            self.case.base.workspace.as_str(),
-            self.case.base.tenant.as_str(),
+            &id,
+            &self.case.base.workspace,
+            &self.case.base.tenant,
             "active",
         )
         .name(name)

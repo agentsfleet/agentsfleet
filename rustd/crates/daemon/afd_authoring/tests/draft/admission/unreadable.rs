@@ -15,7 +15,7 @@ const OVERFLOWING_LINE: &str = "INSERT INTO billing.usage_lines \
       input_token_count,cached_input_token_count,cache_write_token_count, \
       cache_write_5m_token_count,cache_write_1h_token_count,output_token_count,runtime_ms, \
       unpriced_token_count,charged_nanos,created_at,updated_at) \
-     VALUES($1::uuid,'fixture',$1::uuid,0,$2::uuid,$3::uuid,'fixture','fixture','platform',now(), \
+     VALUES($1,'fixture',$1,0,$2,$3,'fixture','fixture','platform',now(), \
       0,0,0,0,0,0,0,0,9223372036854775807,now(),now())";
 
 #[tokio::test]
@@ -25,9 +25,9 @@ async fn a_ledger_that_cannot_sum_its_unsettled_lines_refuses_the_claim_and_the_
     let mut connection = f.connection().await;
     for _ in 0..2 {
         sqlx::query(OVERFLOWING_LINE)
-            .bind(mint().as_str())
-            .bind(f.tenant.as_str())
-            .bind(f.workspace.as_str())
+            .bind(mint())
+            .bind(&f.tenant)
+            .bind(&f.workspace)
             .execute(&mut *connection)
             .await
             .expect("a corrupt unsettled line");
@@ -54,8 +54,8 @@ async fn a_ledger_that_cannot_sum_its_unsettled_lines_refuses_the_claim_and_the_
     let mut owner = sqlx::PgConnection::connect(&f.owner_url())
         .await
         .expect("an owner connection");
-    sqlx::query("DELETE FROM billing.usage_lines WHERE tenant_id = $1::uuid")
-        .bind(f.tenant.as_str())
+    sqlx::query("DELETE FROM billing.usage_lines WHERE tenant_id = $1")
+        .bind(&f.tenant)
         .execute(&mut owner)
         .await
         .expect("the corrupt lines are removed");

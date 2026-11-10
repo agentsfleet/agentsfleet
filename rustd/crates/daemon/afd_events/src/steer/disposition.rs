@@ -1,9 +1,9 @@
 //! Where an accepted steer went, decided from what the ledger saw.
 //!
-//! A live run claims the messages its fleet receives at its next model call:
-//! a durable task a person's messages in its conversation
-//! (`pending_inputs.sql`), any other run every message, up to the first parked
-//! or task-bound one (`claim_inputs.sql`). Such a send is `folded`. A send with
+//! A live run claims, at its next model call, the messages a person sends in
+//! its conversation: a durable task through `pending_inputs.sql`, any other
+//! run through `claim_inputs.sql`, which also stops at the first message of
+//! that conversation it must not fold. Such a send is `folded`. A send with
 //! nothing waiting and no live run starts a run of its own. Anything else
 //! waits its turn.
 
@@ -23,9 +23,9 @@ pub struct Placed {
 
 /// Names where a steer from `actor` went, given the run the ledger saw.
 ///
-/// A durable task reads steers whose actor is a person's, never the
-/// machine's, in its conversation. Any other run folds every message unless
-/// one it must not pass waits ahead of it.
+/// Every live run folds a person's steer in its conversation, never the
+/// machine's; a run that is not a durable task only when no message it must
+/// not pass waits ahead of it.
 ///
 /// `message_id` is the admission this answer is for. A retry of the send that
 /// started the live run meets that run as its head, and a message cannot fold
@@ -37,11 +37,8 @@ pub fn of(run: &RunFacts, actor: &str, message_id: &str) -> Placed {
         if live.event_id == message_id {
             return without_run(SteerDisposition::Started);
         }
-        let folds = if live.durable_task {
-            is_steer_actor(actor) && actor != ACTOR_MACHINE && live.same_conversation
-        } else {
-            !run.earlier_waiting
-        };
+        let person = is_steer_actor(actor) && actor != ACTOR_MACHINE;
+        let folds = person && live.same_conversation && (live.durable_task || !run.earlier_waiting);
         if folds {
             return Placed {
                 disposition: SteerDisposition::Folded,
@@ -125,9 +122,14 @@ mod tests {
             ..plain.clone()
         };
         assert_eq!(
-            of(&plain_clear, ACTOR_MACHINE, LATER).disposition,
+            of(&plain_clear, &person, LATER).disposition,
             SteerDisposition::Folded,
-            "any other run folds every send, a machine's included"
+            "any other run folds a person's send in its conversation"
+        );
+        assert_eq!(
+            of(&plain_clear, ACTOR_MACHINE, LATER).disposition,
+            SteerDisposition::Queued,
+            "no run folds a machine's send"
         );
         assert_eq!(
             of(
@@ -142,13 +144,13 @@ mod tests {
                 LATER
             )
             .disposition,
-            SteerDisposition::Folded,
-            "whatever conversation it came from"
+            SteerDisposition::Queued,
+            "no run folds another conversation's send"
         );
         assert_eq!(
             of(&plain, &person, LATER).disposition,
             SteerDisposition::Queued,
-            "a parked or task-bound message ahead is never passed"
+            "a message the run stops at, ahead of this one, is never passed"
         );
 
         let waiting = RunFacts {
@@ -162,10 +164,9 @@ mod tests {
     }
 
     /// An actor that is not a steer's at all, such as a webhook's, is not a
-    /// person: a durable task leaves its message for a later run even in the
-    /// task's own conversation, where any other run still folds it.
+    /// person: no run folds its message, even in the run's own conversation.
     #[test]
-    fn a_durable_task_leaves_a_message_whose_actor_is_no_steer() {
+    fn no_run_folds_a_message_whose_actor_is_no_steer() {
         for actor in ["webhook:github", "cron:nightly", ""] {
             assert_eq!(
                 of(&live_task(), actor, LATER).disposition,
@@ -179,7 +180,7 @@ mod tests {
         };
         assert_eq!(
             of(&plain_clear, "webhook:github", LATER).disposition,
-            SteerDisposition::Folded
+            SteerDisposition::Queued
         );
     }
 

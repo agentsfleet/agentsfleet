@@ -62,14 +62,14 @@
 //! else: the message is durable, and a reload reads it from the ledger.
 
 use af_core::error_code;
-use af_wire::event::EventType;
-use afd_admission::{Admission, Admissions, Key, Producer, Repeated, Reply};
+use af_core::id::Uuid7;
+use afd_admission::{Admission, Admissions, Key, PersonSteer, Repeated, RunFacts};
 use afd_api_wire::tail::TailFrame;
 
 use crate::error::{Result, operation_conflict};
 
-/// Joins the fleet to the caller's operation id in the ledger key.
-const KEY_SEPARATOR: &str = ":";
+mod admission;
+use admission::{scoped_key, steer_admission};
 
 /// What a refused reuse's warn names as the half that differed: the row sits
 /// on another fleet, or it holds another message or sender.
@@ -171,13 +171,13 @@ impl Steer {
     /// failure the ledger exists to absorb.
     pub async fn append(
         &self,
-        fleet: &str,
-        workspace: &str,
+        fleet: &Uuid7,
+        workspace: &Uuid7,
         actor: &str,
         request_json: &str,
         operation_id: Option<&str>,
     ) -> Result<Steered> {
-        let key = operation_id.map(|operation| scoped_key(fleet, operation));
+        let key = operation_id.map(|operation| scoped_key(fleet.as_str(), operation));
         let admission = steer_admission(fleet, workspace, actor, request_json, key.as_deref());
         let admitted = match self.admissions.admit_runnable(admission).await {
             Ok(admitted) => admitted,
@@ -198,7 +198,8 @@ impl Steer {
             // The insert met a row already under this key: a retry, or a send
             // with the same id that won the race to the insert. Its event is
             // this caller's answer only if the row holds this caller's payload.
-            let placed = disposition::of(&admitted.run, actor, &admitted.stored.id);
+            let run = self.run_facts(fleet, &admitted.stored.id).await;
+            let placed = disposition::of(&run, actor, admitted.stored.id.as_str());
             return answer_repeat(&admission, admitted.stored)
                 .map(|event_id| Steered::repeat(event_id, placed));
         }
@@ -208,23 +209,68 @@ impl Steer {
         // scores the dead copy (LOG-HOIST, `.orly/standards/domains/logging.md`).
         let id = admitted.stored.id.as_str();
         tracing::debug!(
-            fleet_id = fleet,
-            workspace_id = workspace,
+            fleet_id = %fleet,
+            workspace_id = %workspace,
             actor,
-            event_id = id,
+            event_id = %id,
             event = "steer_appended",
         );
+        let run = self.run_facts(fleet, &admitted.stored.id).await;
         Ok(Steered {
-            placed: disposition::of(&admitted.run, actor, &admitted.stored.id),
-            event_id: admitted.stored.id,
+            placed: disposition::of(&run, actor, admitted.stored.id.as_str()),
+            event_id: admitted.stored.id.into(),
             admitted_at: Some(admitted.stored.created_at),
         })
+    }
+
+    /// What the steer `admission` meets on `fleet`, for its disposition.
+    ///
+    /// Best-effort, as the label is advisory: the message is already
+    /// committed, so a read that fails answers `queued`, which the message
+    /// then is or does better than, and is logged rather than refused.
+    async fn run_facts(&self, fleet: &Uuid7, admission: &Uuid7) -> RunFacts {
+        let pattern = format!("{ACTOR_PREFIX}%");
+        let person = PersonSteer {
+            machine_actor: ACTOR_MACHINE,
+            actor_pattern: &pattern,
+        };
+        match self.admissions.run_facts(fleet, admission, person).await {
+            Ok(facts) => facts,
+            Err(unread) => {
+                let error_code = unread.code().as_str();
+                tracing::warn!(
+                    fleet_id = %fleet,
+                    event_id = %admission,
+                    error_code,
+                    event = "steer_run_facts_unread",
+                );
+                RunFacts {
+                    live_run: None,
+                    earlier_waiting: true,
+                }
+            }
+        }
     }
 
     /// Puts `frame` on `fleet`'s live tail, best-effort: a queue that will
     /// not take it is logged by the publisher and changes no answer.
     pub async fn announce(&self, fleet: &str, frame: &TailFrame<'_>) {
-        self.admissions.streams().publish_frame(fleet, frame).await;
+        let Ok(fleet) = Uuid7::parse(fleet) else {
+            let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+            tracing::warn!(
+                event = "tail_frame_dropped",
+                error_code,
+                reason = "invalid_fleet_identifier"
+            );
+            return;
+        };
+        let subject = afd_bus::Subject::FleetTail(fleet);
+        let publication = self
+            .admissions
+            .streams()
+            .publish_frame(&subject, frame)
+            .await;
+        afd_bus::observe_notification(&subject, publication);
     }
 
     /// A capacity refusal, unless the key is a repeat: then its event.
@@ -273,12 +319,12 @@ fn despite(repeat: Result<Option<String>>, refused: afd_admission::Error) -> Res
 /// somebody else's event; and a row some other fleet holds under this key is
 /// refused the same way rather than answered.
 fn answer_repeat(admission: &Admission<'_>, repeated: Repeated) -> Result<String> {
-    let cause = if repeated.fleet != admission.fleet {
+    let cause = if repeated.fleet != *admission.fleet {
         CONFLICT_CAUSE_FLEET
     } else if repeated.digest != admission.payload_digest() {
         CONFLICT_CAUSE_PAYLOAD
     } else {
-        return Ok(repeated.id);
+        return Ok(repeated.id.into());
     };
     // A client that reused its own id is a defect somebody should see; the
     // refusal itself logs at debug like every other caller fault. The cause is
@@ -288,46 +334,12 @@ fn answer_repeat(admission: &Admission<'_>, repeated: Repeated) -> Result<String
     let event_id = repeated.id.as_str();
     tracing::warn!(
         error_code = code,
-        fleet_id,
-        event_id,
+        fleet_id = %fleet_id,
+        event_id = %event_id,
         cause,
         event = "steer_operation_conflict",
     );
     Err(operation_conflict())
-}
-
-/// The ledger key a caller's operation id becomes on one fleet.
-fn scoped_key(fleet: &str, operation: &str) -> String {
-    [fleet, operation].join(KEY_SEPARATOR)
-}
-
-/// The admission a steer asks for: the same fields on the first send and on
-/// every repeat, which is what makes the digest comparison mean anything.
-const fn steer_admission<'a>(
-    fleet: &'a str,
-    workspace: &'a str,
-    actor: &'a str,
-    request_json: &'a str,
-    key: Option<&'a str>,
-) -> Admission<'a> {
-    Admission {
-        producer: Producer::Steer,
-        // Mapped explicitly, never by `unwrap_or`-ing into a default: `Key`'s
-        // own note warns that an `Option` lets a caller which HAS an identity
-        // lose deduplication by omission, and this is the call site that would
-        // do it.
-        key: match key {
-            Some(repeated) => Key::Repeated(repeated),
-            None => Key::Unrepeatable,
-        },
-        fleet,
-        workspace,
-        actor,
-        event_type: EventType::Chat,
-        request_json,
-        // A steer is read on the event tail that carried it, never posted to a thread.
-        reply: Reply::None,
-    }
 }
 
 #[cfg(test)]

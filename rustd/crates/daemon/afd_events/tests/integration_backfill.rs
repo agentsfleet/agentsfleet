@@ -17,9 +17,9 @@
 //! window up guarantees the two sets OVERLAP instead.
 //!
 //! An overlap is only safe if the client can tell one event seen twice from two
-//! events, and that is what the event id is: the stream entry id, carried
-//! identically on the live frame and on the row (dimension 5.3 pins that they
-//! are the same value). So the price of never missing an event is receiving a
+//! events, and that is what the event id is: the admission row's identifier,
+//! carried identically on the live frame and on the row (dimension 5.3 pins
+//! that they are the same value). So the price of never missing an event is receiving a
 //! few twice, and the merge is what the client pays it with.
 //!
 //! # What is proven here, and what belongs to the client
@@ -28,16 +28,15 @@
 //! `created_at`, that it returns the gap rows, and that it deliberately returns
 //! rows the client already has. The merge itself is the client's arithmetic, and
 //! it is performed here over the two REAL sets — frames actually delivered
-//! through a live hub, rows actually read back through `History` — because the
+//! through the bus and a tail, rows actually read back through `History` — because the
 //! claim worth making is about those two sets together. A merge run over two
 //! hand-written vectors would prove only that `HashSet` deduplicates.
 //!
 //! Marked `#[ignore]` so `make test-unit-all` still COMPILES and lints this
-//! without datastores, and `make test-integration-rustd` — which runs
+//! without Postgres or NATS, and `make test-integration-rustd` — which runs
 //! `--ignored` and nothing else — is the only lane that executes it.
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
@@ -45,10 +44,8 @@ use std::collections::BTreeSet;
 use std::time::Duration;
 
 use af_core::id::Uuid7;
+use afd_bus::Subject;
 use afd_db::test_util::mint_id;
-use afd_dragonfly::SubscriptionHub;
-use afd_dragonfly::fleet_activity_channel;
-use afd_dragonfly::streams::FleetStreams;
 use afd_events::{Filter, History, MAX_LIMIT, Since};
 use afd_sse::tail;
 use futures_util::StreamExt as _;
@@ -104,7 +101,7 @@ fn after_now(span: Duration) -> Timestamp {
 /// Dimension 5.4 — a reconnect misses nothing, and the client sees each event
 /// once.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_sse_reconnect_backfill() {
     let lane = EventsLane::open().await;
 
@@ -113,32 +110,28 @@ async fn test_sse_reconnect_backfill() {
     // than inventing one this daemon never serves.
     let delivered = [mint_id(), mint_id(), mint_id()];
     let gap = [mint_id(), mint_id()];
-    let delivered_ids = delivered.each_ref().map(String::as_str);
-    let gap_ids = gap.each_ref().map(String::as_str);
 
-    lane.seed_event(delivered_ids[0], before_now(FIRST_DELIVERY_AGO))
+    lane.seed_event(&delivered[0], before_now(FIRST_DELIVERY_AGO))
         .await;
-    lane.seed_event(delivered_ids[1], before_now(SECOND_DELIVERY_AGO))
+    lane.seed_event(&delivered[1], before_now(SECOND_DELIVERY_AGO))
         .await;
-    lane.seed_event(delivered_ids[2], before_now(LAST_DELIVERY_AGO))
+    lane.seed_event(&delivered[2], before_now(LAST_DELIVERY_AGO))
         .await;
 
-    // The live half, over a real hub. These three are what the connection was
+    // The live half, over the bus. These three are what the connection was
     // handed before it dropped; the last of them is the delivery the client
     // measures its reconnect window from.
-    let live = deliver_live(&lane, &delivered_ids).await;
+    let live = deliver_live(&lane, &delivered).await;
     assert_eq!(
         live.len(),
-        delivered_ids.len(),
+        delivered.len(),
         "the fixture must actually have delivered the frames it claims"
     );
 
     // The drop. These two rows land while nobody is subscribed, so pub/sub
     // never offers them to anyone — recovering them is the whole job.
-    lane.seed_event(gap_ids[0], after_now(FIRST_GAP_AFTER))
-        .await;
-    lane.seed_event(gap_ids[1], after_now(SECOND_GAP_AFTER))
-        .await;
+    lane.seed_event(&gap[0], after_now(FIRST_GAP_AFTER)).await;
+    lane.seed_event(&gap[1], after_now(SECOND_GAP_AFTER)).await;
 
     // The reconnect. The client backs its window up from its LAST DELIVERY —
     // not from "now", which it has no reason to trust, and not from the first
@@ -149,8 +142,8 @@ async fn test_sse_reconnect_backfill() {
         .expect("a fixture instant is in range");
     let backfill = page_since(&lane, Since::From(since)).await;
 
-    assert_window(&backfill, &delivered_ids, &gap_ids);
-    assert_merged(&live, &backfill, &delivered_ids, &gap_ids);
+    assert_window(&backfill, &delivered, &gap);
+    assert_merged(&live, &backfill, &delivered, &gap);
 
     lane.cleanup().await;
 }
@@ -158,19 +151,19 @@ async fn test_sse_reconnect_backfill() {
 /// The window is an INCLUSIVE lower bound, and it is doing both of its jobs:
 /// it reaches back far enough to re-serve an event the client already has, and
 /// forward far enough to carry the two it does not.
-fn assert_window(backfill: &BTreeSet<String>, delivered: &[&str; 3], gap: &[&str; 2]) {
+fn assert_window(backfill: &BTreeSet<Uuid7>, delivered: &[Uuid7; 3], gap: &[Uuid7; 2]) {
     assert!(
-        backfill.contains(delivered[2]),
+        backfill.contains(&delivered[2]),
         "the two-second overlap must re-serve the last delivered event; a \
          window that started exactly at the last delivery would race the \
          commit of an event published just before the drop"
     );
     assert!(
-        backfill.contains(gap[0]) && backfill.contains(gap[1]),
+        backfill.contains(&gap[0]) && backfill.contains(&gap[1]),
         "every event written during the gap must be in the backfill"
     );
     assert!(
-        !backfill.contains(delivered[0]) && !backfill.contains(delivered[1]),
+        !backfill.contains(&delivered[0]) && !backfill.contains(&delivered[1]),
         "the window is bounded below: events older than it must not be resent, \
          or a long-lived client would refetch its whole history on every blip"
     );
@@ -178,12 +171,12 @@ fn assert_window(backfill: &BTreeSet<String>, delivered: &[&str; 3], gap: &[&str
 
 /// The merge — the client's half, over the two sets it really holds.
 fn assert_merged(
-    live: &[String],
-    backfill: &BTreeSet<String>,
-    delivered: &[&str; 3],
-    gap: &[&str; 2],
+    live: &[Uuid7],
+    backfill: &BTreeSet<Uuid7>,
+    delivered: &[Uuid7; 3],
+    gap: &[Uuid7; 2],
 ) {
-    let mut merged: BTreeSet<String> = live.iter().cloned().collect();
+    let mut merged: BTreeSet<Uuid7> = live.iter().cloned().collect();
     let before_merge = merged.len() + backfill.len();
     merged.extend(backfill.iter().cloned());
     assert!(
@@ -191,11 +184,7 @@ fn assert_merged(
         "the two sets must OVERLAP: an overlap the merge has nothing to remove \
          would mean the window never reached back over the seam"
     );
-    let expected: BTreeSet<String> = delivered
-        .iter()
-        .chain(gap.iter())
-        .map(|id| (*id).to_owned())
-        .collect();
+    let expected: BTreeSet<Uuid7> = delivered.iter().chain(gap.iter()).cloned().collect();
     assert_eq!(
         merged, expected,
         "merged by event id, the client holds every event exactly once — \
@@ -203,49 +192,24 @@ fn assert_merged(
     );
 }
 
-/// The event ids the client is delivered live, through a real hub.
+/// The event ids the client is delivered live, through the bus.
 ///
-/// Publishes each event's frame and reads it back off the tail, so the returned
-/// set is what a connection ACTUALLY received rather than what the fixture
-/// intended it to.
-async fn deliver_live(lane: &EventsLane, ids: &[&str]) -> Vec<String> {
-    let publisher = FleetStreams::new(lane.queue.clone());
-    let activity = fleet_activity_channel(&lane.fleet);
-    let hub = SubscriptionHub::start(EventsLane::redis())
-        .await
-        .expect("the hub starts");
-
-    // A primer, so the server-side SUBSCRIBE is known live before anything the
-    // test counts is published. `subscribe` queues the command and the pump
-    // issues it, so the registration is asynchronous by construction.
-    let mut primer = hub.subscribe(&activity);
-    let marker = r#"{"kind":"primer"}"#;
-    let deadline = tokio::time::Instant::now() + DELIVERY_BUDGET;
-    loop {
-        publisher
-            .publish(&activity, marker)
+/// Publishes each event's frame on the lane's bus and reads it back off a tail
+/// subscribed to it, so the returned set is what a connection ACTUALLY
+/// received rather than what the fixture intended it to.
+async fn deliver_live(lane: &EventsLane, ids: &[Uuid7]) -> Vec<Uuid7> {
+    let activity = Subject::FleetTail(lane.fleet.clone());
+    let mut stream = Box::pin(tail(
+        lane.bus
+            .subscribe(&activity)
             .await
-            .expect("the publish reaches Dragonfly");
-        match tokio::time::timeout(Duration::from_millis(100), primer.recv()).await {
-            Ok(Ok(afd_dragonfly::hub::Received::Message(message))) if message.payload == marker => {
-                break;
-            }
-            Ok(Ok(_other)) => {}
-            Ok(Err(closed)) => panic!("the hub closed while priming: {closed}"),
-            Err(_elapsed) => {}
-        }
-        assert!(
-            tokio::time::Instant::now() < deadline,
-            "the subscription never went live on {activity}"
-        );
-    }
-
-    let mut stream = Box::pin(tail(hub.subscribe(&activity)));
+            .expect("the bus subscribes"),
+    ));
     for id in ids {
-        publisher
+        lane.bus
             .publish(&activity, &activity_payload(id))
             .await
-            .expect("the publish reaches Dragonfly");
+            .expect("the publish reaches the bus");
     }
 
     let mut received = Vec::with_capacity(ids.len());
@@ -263,8 +227,8 @@ async fn deliver_live(lane: &EventsLane, ids: &[&str]) -> Vec<String> {
 ///
 /// `kind` leads because that is the anchor the frame's `event:` name is read
 /// from, and `event_id` carries the value the merge is performed on — the same
-/// stream entry id the row is stored under.
-fn activity_payload(event_id: &str) -> String {
+/// id the row is stored under.
+fn activity_payload(event_id: &Uuid7) -> String {
     format!(r#"{{"kind":"run_output","event_id":"{event_id}"}}"#)
 }
 
@@ -273,14 +237,14 @@ fn activity_payload(event_id: &str) -> String {
 /// Parsed rather than assumed: the frame's data is the publisher's bytes
 /// forwarded unrewritten, and reading the id back out is precisely what a
 /// client does before merging.
-fn event_id_of(data: &str) -> String {
+fn event_id_of(data: &str) -> Uuid7 {
     let parsed: serde_json::Value =
         serde_json::from_str(data).expect("a delivered frame carries JSON");
-    parsed
+    let text = parsed
         .get("event_id")
         .and_then(serde_json::Value::as_str)
-        .expect("every activity frame names the event it belongs to")
-        .to_owned()
+        .expect("every activity frame names the event it belongs to");
+    Uuid7::parse(text).expect("a delivered frame's event id is a UUIDv7")
 }
 
 /// A relative window is measured back from the DATABASE's clock: rows an hour
@@ -289,7 +253,7 @@ fn event_id_of(data: &str) -> String {
 /// clock, which shares a machine with the lane's Postgres; the margins are
 /// minutes, so no skew between the two decides the outcome.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_since_span_is_measured_on_the_database_clock() {
     let lane = EventsLane::open().await;
     let (old, recent) = (mint_id(), mint_id());
@@ -309,17 +273,15 @@ async fn test_since_span_is_measured_on_the_database_clock() {
 }
 
 /// The event ids the history returns for this fleet from `since` onward.
-async fn page_since(lane: &EventsLane, since: Since) -> BTreeSet<String> {
+async fn page_since(lane: &EventsLane, since: Since) -> BTreeSet<Uuid7> {
     let history = History::new(lane.database.clone());
-    let workspace = Uuid7::parse(&lane.workspace).expect("the fixture workspace id is canonical");
-    let fleet = Uuid7::parse(&lane.fleet).expect("the fixture fleet id is canonical");
     let filter = Filter {
         actor_like: None,
         since: Some(since),
     };
 
     history
-        .page_for_fleet(&workspace, &fleet, &filter, None, MAX_LIMIT)
+        .page_for_fleet(&lane.workspace, &lane.fleet, &filter, None, MAX_LIMIT)
         .await
         .expect("the history read must run")
         .into_iter()

@@ -15,28 +15,20 @@
 //! and splitting it away from the plane it creates would put the mint and the
 //! thing it mints for in two different places.
 
-pub(crate) mod activity;
-pub(crate) mod authoring;
 pub(crate) mod context;
 pub(crate) mod credential;
 pub(crate) mod decisions;
 pub(crate) mod enrolment;
-pub(crate) mod folds;
-pub(crate) mod heartbeat;
-pub(crate) mod lease;
 pub(crate) mod memory;
 pub(crate) mod message;
-pub(crate) mod renew;
-pub(crate) mod report;
 pub(crate) mod schedule;
 pub(crate) mod schedule_edit;
 pub(crate) mod schedule_run;
 pub(crate) mod self_record;
+pub(crate) mod stream;
 pub(crate) mod task_bindings;
 pub(crate) mod task_checkpoints;
 pub(crate) mod task_effects;
 pub(crate) mod task_input_receipts;
 pub(crate) mod task_inputs;
 pub(crate) mod tool_call;
-mod usage;
-mod wake;

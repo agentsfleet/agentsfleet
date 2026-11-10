@@ -30,8 +30,11 @@ pub struct Drafts {
     /// pool. They cache neither authorization nor a database ordering decision.
     pub(crate) senders: Cache<Uuid7, Arc<Mutex<()>>>,
     /// Moves a setup chat's money: the same biller fleet leases bill through
-    /// (billing §11), built once where the daemon is assembled.
+    /// (one billing lifecycle behind the `Biller` trait, per
+    /// `docs/architecture/billing_and_provider_keys.md`), built once where the
+    /// daemon is assembled.
     pub(crate) biller: Arc<dyn Biller>,
+    pub(crate) authority: Option<afd_runner::capacity::authority::Authority>,
 }
 
 impl Drafts {
@@ -47,7 +50,46 @@ impl Drafts {
             analytics: Analytics::silent(),
             senders: Cache::new(MAX_CACHED_SEND_GATES),
             biller,
+            authority: None,
         }
+    }
+
+    /// Fence streamed authoring grants with the same owner as fleet grants.
+    #[must_use]
+    pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
+        self.authority = Some(authority);
+        self
+    }
+
+    /// Lock the runner row through this transaction and count its occupied workers.
+    /// Stream grants also recheck the opening credential and connection owner.
+    pub(crate) async fn lock_host_capacity(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &Uuid7,
+    ) -> Result<Option<afd_runner::capacity::Capacity>> {
+        Ok(match &self.authority {
+            Some(authority) => afd_runner::capacity::lock(tx, (runner, authority)).await?,
+            None => afd_runner::capacity::lock(tx, runner).await?,
+        })
+    }
+
+    /// Recheck a streamed mutation after its draft/attempt lock, preserving lock order.
+    pub(crate) async fn check_connection(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &Uuid7,
+    ) -> Result<()> {
+        if self.authority.is_some() {
+            let host = self
+                .lock_host_capacity(tx, runner)
+                .await?
+                .ok_or(crate::error::ErrorKind::Hidden)?;
+            if !host.can_renew() {
+                return Err(crate::error::ErrorKind::Fence.into());
+            }
+        }
+        Ok(())
     }
 
     /// Reports the private-chat-to-fleet funnel steps to `analytics`. Every

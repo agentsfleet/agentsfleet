@@ -1,7 +1,7 @@
 //! The activity verb: live-tail frames a runner forwards while its child works.
 //!
-//! A runner holds no Dragonfly, so it ships progress frames here and the daemon
-//! publishes them to `fleet:{id}:activity` for the dashboard's live tail.
+//! A runner holds no bus connection, so it ships progress frames here and the
+//! daemon publishes them on the fleet's tail subject for the dashboard.
 //!
 //! # Best-effort, and what that actually licenses
 //!
@@ -33,7 +33,7 @@ use af_wire::activity::ActivityFrame;
 use jiff::Timestamp;
 
 use self::published::Published;
-use crate::error::{Result, query, row_malformed};
+use crate::error::{Result, query};
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -61,7 +61,7 @@ pub struct Target {
     /// The fleet whose channel carries the tail.
     pub fleet_id: Uuid7,
     /// The event the frames describe.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// Both instants are stamped by the control plane, so their differences
     /// from activity receipt do not compare clocks across hosts.
     pub lease_created_at: Timestamp,
@@ -86,17 +86,17 @@ impl Leases {
         &self,
         target: &Target,
         runner_id: &Uuid7,
-        lease_id: &str,
+        lease_id: &Uuid7,
         records: &[af_wire::activity::TaskActivityRecord],
     ) -> Result<Option<af_wire::activity::TaskActivityHistory>> {
         let mut connection = self.pool().acquire().await?;
         let history: Option<sqlx::types::Json<af_wire::activity::TaskActivityHistory>> =
             sqlx::query_scalar(include_str!("task_history.sql"))
-                .bind(target.fleet_id.as_str())
+                .bind(&target.fleet_id)
                 .bind(&target.event_id)
                 .bind(sqlx::types::Json(records))
                 .bind(lease_id)
-                .bind(runner_id.as_str())
+                .bind(runner_id)
                 .bind(target.fence)
                 .bind(sql::LEASE_STATUS_ACTIVE)
                 .bind(TASK_HISTORY_FACTS)
@@ -113,8 +113,8 @@ impl Leases {
     ///
     /// Never fails the verb. Each frame is encoded independently so one
     /// unencodable frame does not silence the rest of the batch. The encodable
-    /// frames are published together in order; a Dragonfly outage costs the
-    /// tail rather than the run.
+    /// frames are published together in order; a bus outage costs the tail
+    /// rather than the run.
     pub async fn publish_activity(&self, target: &Target, frames: &[ActivityFrame<'_>]) {
         let fleet = target.fleet_id.as_str();
         let streams = self.streams();
@@ -146,7 +146,13 @@ impl Leases {
             // no drop arm to take.
             payloads.extend(serde_json::to_string(published).ok());
         }
-        if let Err(unreachable_queue) = streams.publish_tail_batch(fleet, &payloads).await {
+        if let Err(unreachable_queue) = streams
+            .publish_batch(
+                &afd_bus::Subject::FleetTail(target.fleet_id.clone()),
+                &payloads,
+            )
+            .await
+        {
             let Logged { error_code, reason } = unreachable_queue.logged();
             tracing::debug!(
                 error_code,
@@ -170,13 +176,13 @@ impl Leases {
     /// an identifier.
     pub async fn load_activity_target(
         &self,
-        lease_id: &str,
+        lease_id: &Uuid7,
         runner_id: &Uuid7,
     ) -> Result<Option<Target>> {
         let mut connection = self.pool().acquire().await?;
         let found: Option<LeaseTarget> = sqlx::query_as(sql::activity::SELECT_LEASE_TARGET)
             .bind(lease_id)
-            .bind(runner_id.as_str())
+            .bind(runner_id)
             .bind(sql::LEASE_STATUS_ACTIVE)
             .fetch_optional(&mut *connection)
             .await
@@ -185,8 +191,7 @@ impl Leases {
             return Ok(None);
         };
         Ok(Some(Target {
-            fleet_id: Uuid7::parse(&found.fleet_id)
-                .map_err(row_malformed("runner.leases", "fleet_id"))?,
+            fleet_id: found.fleet_id.clone(),
             event_id: found.event_id,
             lease_created_at: found.created_at,
             event_created_at: found.event_created_at,
@@ -199,8 +204,8 @@ impl Leases {
 /// What [`sql::activity::SELECT_LEASE_TARGET`] answers for one lease.
 #[derive(sqlx::FromRow)]
 struct LeaseTarget {
-    fleet_id: String,
-    event_id: String,
+    fleet_id: Uuid7,
+    event_id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -209,7 +214,7 @@ struct LeaseTarget {
     live: bool,
 }
 
-impl crate::lease::pull::Plane {
+impl crate::lease::pull::LeaseService {
     /// Forward one batch of live-tail frames for a lease this runner holds.
     ///
     /// # Errors
@@ -222,6 +227,7 @@ impl crate::lease::pull::Plane {
         lease_id: &str,
         frames: &[ActivityFrame<'_>],
     ) -> Result<()> {
+        let lease_id = &crate::error::wire_lease(lease_id)?;
         let Some(target) = self
             .leases
             .load_activity_target(lease_id, runner_id)
@@ -229,6 +235,22 @@ impl crate::lease::pull::Plane {
         else {
             return Err(crate::error::lease_not_found());
         };
+        self.activity_for_target(runner_id, lease_id, &target, frames)
+            .await
+    }
+
+    /// Publish from a session's confirmed target without another lease-target lookup.
+    /// Task progress still saves canonical history under its live database fence.
+    ///
+    /// # Errors
+    /// Preserves failures to retain durable task observations.
+    pub async fn activity_for_target(
+        &self,
+        runner_id: &Uuid7,
+        lease_id: &Uuid7,
+        target: &Target,
+        frames: &[ActivityFrame<'_>],
+    ) -> Result<()> {
         let retained: Vec<_> = frames
             .iter()
             .filter_map(ActivityFrame::task_activity)
@@ -238,7 +260,7 @@ impl crate::lease::pull::Plane {
         } else if target.timing_eligible {
             let history = self
                 .leases
-                .retain_task_activity(&target, runner_id, lease_id, &retained)
+                .retain_task_activity(target, runner_id, lease_id, &retained)
                 .await?;
             history::canonical(frames, &history.unwrap_or_default())
         } else {
@@ -249,8 +271,8 @@ impl crate::lease::pull::Plane {
                 .cloned()
                 .collect()
         };
-        record_first_chunk(&target, frames);
-        self.leases.publish_activity(&target, &published).await;
+        record_first_chunk(target, frames);
+        self.leases.publish_activity(target, &published).await;
         Ok(())
     }
 }

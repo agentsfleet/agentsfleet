@@ -153,22 +153,6 @@ async fn a_grant_that_will_not_open_is_retried_without_a_request() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_workspace_id_that_will_not_parse_is_permanent_without_a_request() {
-    // This daemon queued the job, so an identifier that will not parse is its
-    // own bug: no retry re-parses it differently. `Permanent` from a poster
-    // aimed where nothing listens proves no request was built.
-    let fixture = Fixture::create().await;
-    let mut job = fixture.job();
-    job.workspace_id = "not-a-workspace".to_owned();
-    assert_eq!(
-        fixture.poster(NOBODY_LISTENING).deliver(&job).await,
-        Verdict::Permanent
-    );
-    fixture.cleanup().await;
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_unreadable_address_is_permanent_without_a_request() {
     // Missing a field, empty, or not JSON — one answer for all three, because a
     // caller does the same thing with each: the job names nowhere to post, and
@@ -252,7 +236,7 @@ async fn an_answer_naming_the_channel_posts_as_text() {
     fixture.seed().await;
     fixture.seal_grant(BOT_TOKEN).await;
     let slack = slack_answering(200, r#"{"ok":true}"#).await;
-    let paging = afd_dragonfly::OutboundDelivery {
+    let paging = afd_outbound::Outgoing {
         answer: "<!channel> <https://x.example|docs>".to_owned(),
         ..fixture.job()
     };

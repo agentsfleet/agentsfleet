@@ -2,13 +2,13 @@
 //!
 //! §5 shipped [`Dependencies`] as a trait and stopped there deliberately:
 //! routing and the response shape are `afd_api`'s, and what it MEANS to reach
-//! Postgres and Dragonfly belongs to whoever owns the connections. This is that
+//! Postgres and the bus belongs to whoever owns the connections. This is that
 //! half.
 //!
 //! # Both at once, and both bounded
 //!
 //! The two probes run concurrently. Sequentially, a Postgres that is timing out
-//! would delay the Dragonfly answer by the whole database budget, and `/readyz`
+//! would delay the bus answer by the whole database budget, and `/readyz`
 //! would take longer to say "not ready" the worse things got — the moment an
 //! orchestrator most needs a fast answer.
 //!
@@ -23,13 +23,12 @@
 //! `probe` cannot fail. An unreachable dependency is a `false`, because a third
 //! outcome beyond ready and not-ready is one an orchestrator has nothing to do
 //! with — and because the two fields stay separate all the way to the wire, a
-//! red database and a red queue remain different incidents.
+//! red database and a red bus remain different incidents.
 
 use std::time::Duration;
 
 use afd_api::router::{Dependencies, ReadyInputs};
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 
 /// How long either dependency has to answer before it counts as unreachable.
 ///
@@ -41,19 +40,19 @@ pub const PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 #[derive(Debug)]
 pub struct LiveDependencies {
     database: Db,
-    queue: Dragonfly,
+    bus: afd_bus::Handle,
 }
 
 impl LiveDependencies {
-    /// Probes against an already-connected pool and Dragonfly client.
+    /// Probes against an already-connected pool and event bus.
     ///
     /// Takes both CONNECTED rather than taking configuration, because boot has
     /// already proven they answer — preflight resolves, boot connects, and this
     /// only reports. A probe that could open its own connection would be a
     /// second way to reach a datastore, and the two would drift.
     #[must_use]
-    pub const fn new(database: Db, queue: Dragonfly) -> Self {
-        Self { database, queue }
+    pub const fn new(database: Db, bus: afd_bus::Handle) -> Self {
+        Self { database, bus }
     }
 
     /// Whether Postgres will hand out a connection right now.
@@ -67,10 +66,10 @@ impl LiveDependencies {
         matches!(acquired, Ok(Ok(_connection)))
     }
 
-    /// Whether Dragonfly replies to a PING right now.
+    /// Whether the event bus holds a live connection right now.
     async fn queue_answers(&self) -> bool {
-        let pinged = tokio::time::timeout(PROBE_TIMEOUT, self.queue.ping()).await;
-        matches!(pinged, Ok(Ok(())))
+        let connected = tokio::time::timeout(PROBE_TIMEOUT, self.bus.connected()).await;
+        matches!(connected, Ok(true))
     }
 }
 

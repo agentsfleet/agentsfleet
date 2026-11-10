@@ -2,12 +2,12 @@
 //!
 //! Split from `obligation.rs` at the file cap, along the line its own note
 //! draws between OWING an answer and DELIVERING one. Everything here runs on
-//! the worker's side of the queue, once per cycle, and each write is guarded so
-//! a duplicate queue entry for the same answer changes nothing.
+//! the holder's side, once per cycle, and each write matches the holder's
+//! token, so a holder whose claim lapsed changes nothing.
 
 use afd_db::Db;
 
-use super::sql;
+use super::{Claimed, sql};
 use crate::error::Result;
 
 /// Statement name, for the context a failure carries.
@@ -31,9 +31,8 @@ pub enum AbandonReason {
     Refused,
     /// Every delivery cycle it was allowed ended retryable.
     CyclesExhausted,
-    /// Its stored connector id names no connector, so no queue entry could
-    /// deliver it: a connector removed from the catalogue, or an edit made
-    /// out of band.
+    /// Its stored connector id names no connector, so no poster could deliver
+    /// it: a connector removed from the catalogue, or an edit made out of band.
     Unaddressable,
 }
 
@@ -49,65 +48,58 @@ impl AbandonReason {
     }
 }
 
-/// Record that a worker has taken this obligation for a delivery cycle.
+/// Record that this holder has taken the obligation for a delivery cycle,
+/// and hold the claim for a fresh [`CLAIM_TTL`](super::CLAIM_TTL) from now.
 ///
 /// Answers the count this call produced, or `None` when the row was already
-/// delivered and nothing was counted — which is what a duplicate queue entry
-/// for an answer somebody already received looks like from here.
+/// delivered or another holder has it and nothing was counted.
 ///
-/// Called at the START of the cycle, so the number survives the cycle failing.
-/// That makes it best-effort in one direction and only one: a process that dies
-/// between this write and the delivery has counted a cycle that produced
-/// nothing, and a process that dies before it has delivered a cycle it never
-/// counted. Neither can move `delivered_at`, which is the fact anything
-/// downstream acts on.
+/// Called at the START of the cycle, so the number survives the cycle failing,
+/// and so the post that follows runs under a claim this call just proved.
 ///
 /// # Errors
 /// Reports a database that would not answer. A caller must log that and DELIVER
 /// ANYWAY: the answer is owed to a person and bookkeeping is not.
-pub async fn count_attempt(database: &Db, fleet_id: &str, event_id: &str) -> Result<Option<i64>> {
+pub async fn count_attempt(database: &Db, job: &Claimed) -> Result<Option<i64>> {
     let mut connection = database.acquire().await?;
     sqlx::query_scalar(sql::COUNT_ATTEMPT)
-        .bind(fleet_id)
-        .bind(event_id)
+        .bind(&job.id)
+        .bind(&job.token)
+        .bind(super::CLAIM_TTL)
         .fetch_optional(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_COUNT))
 }
 
-/// Record that a destination accepted this answer.
+/// Record that a destination accepted this answer; `false` when the claim
+/// lapsed and the stamp changed nothing.
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn stamp_delivered(database: &Db, fleet_id: &str, event_id: &str) -> Result<()> {
+pub async fn stamp_delivered(database: &Db, job: &Claimed) -> Result<bool> {
     let mut connection = database.acquire().await?;
-    sqlx::query(sql::STAMP_DELIVERED)
-        .bind(fleet_id)
-        .bind(event_id)
+    let stamped = sqlx::query(sql::STAMP_DELIVERED)
+        .bind(&job.id)
+        .bind(&job.token)
         .execute(&mut *connection)
         .await
         .map_err(crate::error::query(CONTEXT_STAMP))?;
-    Ok(())
+    Ok(stamped.rows_affected() == 1)
 }
 
-/// Record that nobody can take this answer, so no scan offers it again.
+/// Record that nobody can take this answer, so no claim offers it again.
 ///
 /// Answers the attempt count when THIS call stamped the row, and `None` when
-/// the row was already delivered or abandoned — so a caller announces an
-/// abandonment once, whatever duplicate entries reach it.
+/// the row was already delivered or abandoned or the claim lapsed — so a
+/// caller announces an abandonment once.
 ///
 /// # Errors
 /// Reports a database that would not answer.
-pub async fn abandon(
-    database: &Db,
-    fleet_id: &str,
-    event_id: &str,
-    reason: AbandonReason,
-) -> Result<Option<i64>> {
+pub async fn abandon(database: &Db, job: &Claimed, reason: AbandonReason) -> Result<Option<i64>> {
     let mut connection = database.acquire().await?;
     sqlx::query_scalar(sql::ABANDON)
-        .bind(fleet_id)
-        .bind(event_id)
+        .bind(&job.id)
+        .bind(&job.token)
         .bind(reason.as_str())
         .fetch_optional(&mut *connection)
         .await

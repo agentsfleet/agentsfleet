@@ -21,10 +21,10 @@ const RUNTIME_LINE: &str = "2147483648";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_report_persists_result_with_settlement_atomically() {
     let held = held().await;
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
     let settled_at = held.now;
     let from = held.run_a_slice().await;
-    let leases = held.fixtures.leases_with_dead_queue();
+    let leases = held.fixtures.leases_with_dead_bus();
     let lease = leases
         .load_for_report(lease_id, &held.runner)
         .await
@@ -44,7 +44,7 @@ async fn assert_a_refused_result_charges_nothing(
     lease: &Reported,
     settled_at: Timestamp,
 ) {
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
     let refused = leases
         .commit_report(report(
             lease_id,
@@ -78,7 +78,7 @@ async fn assert_the_retry_commits_all_four(
     settled_at: Timestamp,
     from: Timestamp,
 ) -> i64 {
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
     let committed = leases
         .commit_report(report(
             lease_id,
@@ -147,7 +147,7 @@ async fn assert_the_repeat_changes_nothing(
 ) {
     let repeated = leases
         .commit_report(report(
-            held.issued.lease_id.as_str(),
+            &held.issued.lease_id,
             &held.runner,
             lease,
             (&held.lease_key, &held.pricing),
@@ -168,10 +168,10 @@ async fn assert_the_repeat_changes_nothing(
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_report_over_an_ended_event_keeps_the_stored_result() {
     let held = held().await;
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
     let settled_at = held.now;
     let from = held.run_a_slice().await;
-    let leases = held.fixtures.leases_with_dead_queue();
+    let leases = held.fixtures.leases_with_dead_bus();
     let lease = leases
         .load_for_report(lease_id, &held.runner)
         .await
@@ -244,16 +244,15 @@ fn line_charge(settlement: Option<&afd_billing::biller::Settlement>) -> i64 {
 }
 
 async fn assert_all_four_landed(held: &Held, slice: i64) {
-    let settled: bool = sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1::uuid",
-    )
-    .bind(&held.event_id)
-    .fetch_one(&mut *held.fixtures.database.acquire().await.expect("database"))
-    .await
-    .expect("admission settlement");
+    let settled: bool =
+        sqlx::query_scalar("SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id = $1")
+            .bind(&held.event_id)
+            .fetch_one(&mut *held.fixtures.database.acquire().await.expect("database"))
+            .await
+            .expect("admission settlement");
     assert!(settled, "the successful report settles its queue row");
 
-    let lease_id = held.issued.lease_id.as_str();
+    let lease_id = &held.issued.lease_id;
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
         Some(DEEP_POOL),

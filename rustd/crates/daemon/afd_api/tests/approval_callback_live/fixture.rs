@@ -54,6 +54,8 @@ const SUBJECT_PREFIX: &str = "user_live_approval_callback_";
 pub(super) struct Fixture {
     lane: TestDatabase,
     pub(super) database: Db,
+    /// The bus the router's approval queue rings.
+    bus: afd_bus::Handle,
     /// Who the dashboard half acts as, and what its `resolved_by` will say.
     ///
     /// Minted per fixture rather than named once for the file, because
@@ -61,20 +63,20 @@ pub(super) struct Fixture {
     /// tests in this file seed their rows in parallel. A shared spelling makes
     /// the first fixture to commit win and every other one fail its seed.
     pub(super) subject: String,
-    tenant: String,
+    tenant: Uuid7,
     workspace: Uuid7,
     pub(super) other_workspace: Uuid7,
     admin: Uuid7,
-    pub(super) fleet: String,
-    other_fleet: String,
-    user: String,
-    key: String,
-    pub(super) gate: String,
-    pub(super) other_gate: String,
-    pub(super) action: String,
-    pub(super) other_action: String,
-    pub(super) event: String,
-    pub(super) other_event: String,
+    pub(super) fleet: Uuid7,
+    other_fleet: Uuid7,
+    user: Uuid7,
+    key: Uuid7,
+    pub(super) gate: Uuid7,
+    pub(super) other_gate: Uuid7,
+    pub(super) action: Uuid7,
+    pub(super) other_action: Uuid7,
+    pub(super) event: Uuid7,
+    pub(super) other_event: Uuid7,
     pub(super) token: String,
 }
 
@@ -84,11 +86,12 @@ impl Fixture {
         let bits = format!("{}{}", mint_id(), mint_id()).replace('-', "");
         Self {
             database: lane.open(DbRole::Api, &[]).await,
+            bus: harness::bus().await,
             subject: format!("{SUBJECT_PREFIX}{}", mint_id()),
             tenant: mint_id(),
-            workspace: minted(),
-            other_workspace: minted(),
-            admin: minted(),
+            workspace: mint_id(),
+            other_workspace: mint_id(),
+            admin: mint_id(),
             fleet: mint_id(),
             other_fleet: mint_id(),
             user: mint_id(),
@@ -104,9 +107,8 @@ impl Fixture {
         }
     }
 
-    /// The production router over this fixture's rows, its queue and its vault.
-    pub(super) async fn router(&self) -> axum::Router {
-        let queue = harness::connect_redis().await;
+    /// The production router over this fixture's rows, its bus and its vault.
+    pub(super) fn router(&self) -> axum::Router {
         harness::Fleet::live(
             self.database.clone(),
             &self.subject,
@@ -114,7 +116,7 @@ impl Fixture {
         )
         .with_owned_workspace(self.other_workspace.clone())
         .with_platform_admin(self.admin.clone())
-        .with_approval_queue(self.database.clone(), queue)
+        .with_approval_queue(self.database.clone(), self.bus.clone())
         .router()
     }
 
@@ -138,7 +140,7 @@ impl Fixture {
             (&self.other_workspace, "dashboard"),
             (&self.admin, "platform-admin"),
         ] {
-            WorkspaceSeed::new(workspace.as_str(), &self.tenant)
+            WorkspaceSeed::new(workspace, &self.tenant)
                 .name(name)
                 .insert(&mut *connection)
                 .await
@@ -163,7 +165,7 @@ impl Fixture {
         ] {
             FleetSeed::new(
                 fleet,
-                workspace.as_str(),
+                workspace,
                 &self.tenant,
                 afd_state::sql::FLEET_STATUS_ACTIVE,
             )
@@ -184,21 +186,21 @@ impl Fixture {
                (id, fleet_id, workspace_id, action_id, tool_name, action_name, gate_type, \
                 proposed_action, evidence, blast_radius, expires_at, resolved_by, status, \
                 detail, created_at, updated_at, event_id, spend_count, spend_ceiling) \
-             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, 'git', 'push', 'tool', \
+             VALUES ($1, $2, $3, $4, 'git', 'push', 'tool', \
                      'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
                      'pending', '', now(), now(), $5, 0, 32), \
-                    ($6::uuid, $7::uuid, $8::uuid, $10, 'git', 'push', 'tool', \
+                    ($6, $7, $8, $10, 'git', 'push', 'tool', \
                      'open a pull request', '{}', 'one repository', $9::timestamptz, '', \
                      'pending', '', now(), now(), $11, 0, 32)",
         )
         .bind(&self.gate)
         .bind(&self.fleet)
-        .bind(self.workspace.as_str())
+        .bind(&self.workspace)
         .bind(&self.action)
         .bind(&self.event)
         .bind(&self.other_gate)
         .bind(&self.other_fleet)
-        .bind(self.other_workspace.as_str())
+        .bind(&self.other_workspace)
         .bind(GATE_EXPIRES_AT)
         .bind(&self.other_action)
         .bind(&self.other_event)
@@ -234,11 +236,11 @@ impl Fixture {
     }
 
     /// The gate's state and the door that answered it.
-    pub(super) async fn gate_state(&self, gate: &str) -> (String, String) {
+    pub(super) async fn gate_state(&self, gate: &Uuid7) -> (String, String) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_as(
             "SELECT status, coalesce(resolved_by, '') FROM fleet.approval_gates \
-             WHERE id = $1::uuid",
+             WHERE id = $1",
         )
         .bind(gate)
         .fetch_one(&mut *connection)
@@ -252,7 +254,7 @@ impl Fixture {
     /// history: a fleet accumulates events for reasons that have nothing to do
     /// with an approval, and a count over all of them would pass on the wrong
     /// row.
-    pub(super) async fn continuations(&self, event: &str) -> i64 {
+    pub(super) async fn continuations(&self, event: &Uuid7) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar(
             "SELECT COUNT(*) FROM fleet.events \
@@ -270,12 +272,12 @@ impl Fixture {
         let mut transaction = sqlx::Acquire::begin(&mut *connection)
             .await
             .expect("the cleanup transaction opens");
-        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1::uuid")
-            .bind(self.admin.as_str())
+        sqlx::query("DELETE FROM vault.secrets WHERE workspace_id = $1")
+            .bind(&self.admin)
             .execute(&mut *transaction)
             .await
             .expect("the sealed signing secret cleans up");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *transaction)
             .await
@@ -288,9 +290,4 @@ impl Fixture {
         drop(self.database);
         self.lane.cleanup().await;
     }
-}
-
-/// A minted workspace identifier, parsed once.
-fn minted() -> Uuid7 {
-    Uuid7::parse(&mint_id()).expect("a minted workspace is canonical")
 }

@@ -49,12 +49,6 @@ use crate::support::install_subscriber;
 /// Where the lane publishes the Postgres it brought up.
 pub(crate) const DATABASE_LANE_KNOB: &str = "TEST_DATABASE_URL";
 
-/// Where the lane publishes the TLS Dragonfly it brought up.
-pub(crate) const DRAGONFLY_LANE_KNOB: &str = "TEST_DRAGONFLY_URL";
-
-/// Where the lane extracted the Dragonfly certificate authority to.
-pub(crate) const DRAGONFLY_CA_LANE_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
-
 /// The port that asks the kernel to choose one.
 ///
 /// Bind-and-hold: `boot` binds the listener itself and reports the address it
@@ -103,30 +97,20 @@ pub(crate) fn lane(knob: &str) -> String {
     })
 }
 
-/// The lane's Dragonfly, as a configuration a second client can be built from.
-///
-/// The activity suite needs a SUBSCRIBER alongside the daemon's own connection,
-/// and `Booted` hands out a `Dragonfly` rather than the config it was opened with —
-/// so the knobs are read again here rather than reached back through the
-/// daemon. Same three values `daemon_environment` passes it, which is what
-/// keeps the subscriber pointed at the server the publish lands on.
-pub(crate) fn dragonfly_config() -> afd_dragonfly::DragonflyConfig {
-    afd_dragonfly::DragonflyConfig::from_url(
-        afd_dragonfly::DragonflyRole::Default,
-        lane(DRAGONFLY_LANE_KNOB),
-    )
-    .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_LANE_KNOB).map(Into::into))
-}
-
 /// A fleet, workspace and tenant no other scenario in this lane will name.
 ///
 /// Process id and a counter, in a version-7 spelling because every one of these
 /// columns CHECKs the version nibble — a random UUID is refused by the schema
 /// rather than by the code under test.
-pub(crate) fn unique_ids() -> (String, String, String) {
+pub(crate) fn unique_ids() -> (Uuid7, Uuid7, Uuid7) {
     let run = SEQUENCE.fetch_add(1, Ordering::Relaxed);
     let pid = std::process::id();
-    let id = |slot: u32| format!("0195b4ba-8d3a-7{run:03x}-8abc-{pid:08x}{slot:04x}");
+    let id = |slot: u32| {
+        Uuid7::parse(&format!(
+            "0195b4ba-8d3a-7{run:03x}-8abc-{pid:08x}{slot:04x}"
+        ))
+        .expect("a scenario id is a canonical UUIDv7")
+    };
     (id(1), id(2), id(3))
 }
 
@@ -141,17 +125,18 @@ pub(crate) struct Scenario {
     /// Where to send requests, already spelled as an origin.
     pub(crate) base: String,
     /// The fleet holding the seeded event.
-    pub(crate) fleet: String,
+    pub(crate) fleet: Uuid7,
     /// Its workspace.
-    pub(crate) workspace: String,
+    pub(crate) workspace: Uuid7,
     /// Its billing tenant.
-    pub(crate) tenant: String,
+    pub(crate) tenant: Uuid7,
     /// The admission identifier shared by the lease, report, and narrative.
-    pub(crate) event_id: String,
+    pub(crate) event_id: Uuid7,
     /// The enrolled runner's durable identifier.
     pub(crate) runner_id: Uuid7,
     /// Its bearer token, revealed once at enrolment.
     pub(crate) token: String,
+    pub(crate) native: tokio::sync::OnceCell<afr_supervisor::test_util::Session>,
     /// The instant the seed was stamped with.
     pub(crate) seeded_at: Timestamp,
     /// This scenario's hold on the platform default, released after the daemon
@@ -203,13 +188,7 @@ pub(crate) async fn scenario_with(
     // apiece, and on the ready stream by the guard above.
     let database_url = scenario_database(&lane(DATABASE_LANE_KNOB));
 
-    let booted = boot(
-        &daemon_environment(&database_url, provider_base, extra),
-        EPHEMERAL,
-        supervisor,
-    )
-    .await
-    .expect("the lane's Postgres and Dragonfly are up");
+    let booted = scenario_boot(&database_url, provider_base, extra, supervisor).await;
     let base = format!("http://{}", booted.address);
     let now = af_core::clock::now();
 
@@ -223,13 +202,7 @@ pub(crate) async fn scenario_with(
     let default = seed_platform_default(&booted, &workspace, now).await;
     seed_provider_key(&booted, &workspace, now).await;
 
-    // Through the production verb, not an INSERT: enrolment mints the token
-    // and stores only its digest, and a seeded row would let the suite present
-    // a credential the daemon's own minting never produced.
-    let enrolled = Runners::new(booted.database.clone(), Entropy::new())
-        .register(&scenario_enrolment(&fleet), now)
-        .await
-        .expect("enrolment must succeed");
+    let (runner_id, token) = enrolled_runner(&booted, &fleet, now).await;
 
     let event_id = enqueue(&booted, &fleet, &workspace, EVENT_TYPE).await;
 
@@ -239,8 +212,9 @@ pub(crate) async fn scenario_with(
         workspace,
         tenant,
         event_id,
-        runner_id: enrolled.runner_id,
-        token: enrolled.token.expose().to_owned(),
+        runner_id,
+        token,
+        native: tokio::sync::OnceCell::new(),
         seeded_at: now,
         booted,
         _default: default,
@@ -249,13 +223,44 @@ pub(crate) async fn scenario_with(
 }
 
 impl Scenario {
+    /// Connects once through the production native downlink.
+    pub(crate) async fn native_session(&self) -> &afr_supervisor::test_util::Session {
+        self.native
+            .get_or_init(|| async {
+                let origin = format!(
+                    "https://localhost:{}",
+                    self.booted.runner_stream_address.port()
+                );
+                let root = crate::support::runner_stream::root_file()
+                    .to_string_lossy()
+                    .into_owned();
+                let env = af_core::env::MapEnv::from_pairs([
+                    (afr_supervisor::config::ENV_API_URL, self.base.as_str()),
+                    (
+                        afr_supervisor::config::ENV_RUNNER_TOKEN,
+                        self.token.as_str(),
+                    ),
+                    (afr_supervisor::config::ENV_STREAM_URL, origin.as_str()),
+                    (afr_supervisor::config::ENV_STREAM_CA, root.as_str()),
+                ]);
+                let config = afr_supervisor::config::Config::from_env(&env)
+                    .expect("the native fixture configuration is valid");
+                let session = afr_supervisor::test_util::Session::connect(&config)
+                    .await
+                    .expect("the native fixture connects");
+                session.capacity(1);
+                session
+            })
+            .await
+    }
+
     /// Admits another event under this scenario's ready fleet.
-    pub(crate) async fn enqueue_event(&self, event_type: EventType) -> String {
+    pub(crate) async fn enqueue_event(&self, event_type: EventType) -> Uuid7 {
         enqueue(&self.booted, &self.fleet, &self.workspace, event_type).await
     }
 
     /// Puts an event of a type this daemon cannot name on the fleet's stream.
-    pub(crate) async fn enqueue_unsupported_event(&self, event_type: &str) -> String {
+    pub(crate) async fn enqueue_unsupported_event(&self, event_type: &str) -> Uuid7 {
         enqueue_unsupported(
             &self.booted,
             &self.fleet,
@@ -289,4 +294,31 @@ impl Scenario {
         retire_fleet(&booted, &fleet).await;
         drop(booted);
     }
+}
+
+async fn enrolled_runner(booted: &Booted, fleet: &Uuid7, now: jiff::Timestamp) -> (Uuid7, String) {
+    // Through the production verb, not an INSERT: enrolment mints the token
+    // and stores only its digest, and a seeded row would let the suite present
+    // a credential the daemon's own minting never produced.
+    let enrolled = Runners::new(booted.database.clone(), Entropy::new())
+        .register(&scenario_enrolment(fleet), now)
+        .await
+        .expect("enrolment must succeed");
+
+    (enrolled.runner_id, enrolled.token.expose().to_owned())
+}
+
+async fn scenario_boot(
+    database_url: &str,
+    provider_base: Option<&str>,
+    extra: &[(&str, &str)],
+    supervisor: &mut Supervisor,
+) -> Booted {
+    boot(
+        &daemon_environment(database_url, provider_base, extra),
+        EPHEMERAL,
+        supervisor,
+    )
+    .await
+    .expect("the lane's Postgres and NATS are up")
 }

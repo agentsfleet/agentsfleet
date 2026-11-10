@@ -6,6 +6,7 @@
 )]
 
 use crate::harness;
+use af_core::id::Uuid7;
 
 use afd_auth::credential::Presented;
 use afd_auth::directory::Digest;
@@ -196,12 +197,12 @@ struct Fixture {
     /// The lane owner's pool. Seeding and cleanup write rows `api_runtime`
     /// may not, so they never borrow the API login's grants.
     migrator: Db,
-    tenant: String,
-    key: String,
+    tenant: Uuid7,
+    key: Uuid7,
     token: String,
     provider: String,
-    model_rows: [String; 2],
-    ledger_rows: [String; 2],
+    model_rows: [Uuid7; 2],
+    ledger_rows: [Uuid7; 2],
 }
 
 impl Fixture {
@@ -212,7 +213,7 @@ impl Fixture {
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             migrator: lane.open(DbRole::Migrator, &[]).await,
-            provider: format!("live{}", tenant.replace('-', "")),
+            provider: format!("live{}", tenant.as_str().replace('-', "")),
             tenant,
             key: mint_id(),
             token: format!("agt_t{token_bits}"),
@@ -247,6 +248,7 @@ impl Fixture {
                 .expect("the priced model seeds");
         }
 
+        let charged_fleet = Uuid7::parse(CHARGED_FLEET).expect("the charged fleet is a UUIDv7");
         for (index, id) in self.ledger_rows.iter().enumerate() {
             let instant = 100_f64 + f64::from(u32::try_from(index).unwrap_or_default());
             sqlx::query(
@@ -256,16 +258,16 @@ impl Fixture {
                     cached_input_token_count, cache_write_token_count, \
                     cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, \
                     runtime_ms, unpriced_token_count, charged_nanos, created_at, updated_at) \
-                 VALUES ($1::uuid, 'fleet_lease', $1::uuid, 0, $2::uuid, $2::uuid, $6::uuid, $7, \
+                 VALUES ($1, 'fleet_lease', $1, 0, $2, $2, $6, $7, \
                          $3, 'anthropic', $4, 'platform', to_timestamp($5), 11, 2, 0, 0, 0, 13, \
                          17, 0, 7, to_timestamp($5), to_timestamp($5))",
             )
             .bind(id)
             .bind(&self.tenant)
-            .bind(format!("live-charge-{}-{index}", self.tenant))
+            .bind(mint_id())
             .bind(format!("model-{index}"))
             .bind(instant)
-            .bind(CHARGED_FLEET)
+            .bind(&charged_fleet)
             .bind(CHARGED_FLEET_NAME)
             .execute(&mut *connection)
             .await
@@ -275,7 +277,7 @@ impl Fixture {
 
     async fn remove_wallet(&self) {
         let mut connection = self.migrator.acquire().await.expect("a seeding connection");
-        sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1::uuid")
+        sqlx::query("DELETE FROM billing.wallets WHERE tenant_id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
@@ -284,7 +286,7 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.migrator.acquire().await.expect("a seeding connection");
-        sqlx::query("DELETE FROM billing.usage_lines WHERE tenant_id = $1::uuid")
+        sqlx::query("DELETE FROM billing.usage_lines WHERE tenant_id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
@@ -294,7 +296,7 @@ impl Fixture {
             .execute(&mut *connection)
             .await
             .expect("the scoped catalogue cleans up");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

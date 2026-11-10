@@ -179,10 +179,10 @@ async fn delete_secret_twice(router: &axum::Router, token: &str, collection: &st
 struct Fixture {
     lane: TestDatabase,
     database: Db,
-    tenant: String,
+    tenant: Uuid7,
     workspace: Uuid7,
-    user: String,
-    key: String,
+    user: Uuid7,
+    key: Uuid7,
     token: String,
 }
 
@@ -193,7 +193,7 @@ impl Fixture {
         Self {
             database: lane.open(DbRole::Api, &[]).await,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             user: mint_id(),
             key: mint_id(),
             token: format!("agt_t{token_bits}"),
@@ -209,7 +209,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("preferences")
             .insert(&mut *connection)
             .await
@@ -231,7 +231,7 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await

@@ -12,13 +12,10 @@
 )]
 
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_dragonfly::SubscriptionHub;
 use serde_json::{Value, json};
 
-use crate::lane::{Lane, Window, dead_queue, dragonfly_config};
-use crate::tail_watch::{
-    NOTE, OPERATOR, SUBSCRIBE_SETTLE, delivery_unparked, next_frame, park_delivery,
-};
+use crate::lane::{Lane, Window};
+use crate::tail_watch::{NOTE, OPERATOR, delivery_unparked, next_frame, park_delivery, tail};
 
 /// A gate that held no run is answered, announced with no event, and
 /// continues nothing.
@@ -28,26 +25,22 @@ use crate::tail_watch::{
 /// where a run's answer would name its event, rather than fail after the
 /// row moved or continue a run that never was.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
     let lane = Lane::isolated().await;
     park_delivery(&lane).await;
 
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+    let mut tail = tail(&lane).await;
 
     let runless = lane.seed_runless_gate(Window::Open).await;
     let outcome = lane
         .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(runless.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
     let continued = match outcome {
         Resolution::Resolved(resolved) => resolved.continuation_event_id,
-        Resolution::AlreadyResolved(_) | Resolution::NotFound => Some(String::new()),
+        Resolution::AlreadyResolved(_) | Resolution::NotFound => Some(afd_db::test_util::mint_id()),
     };
     assert_eq!(continued, None, "nothing to continue, and nothing invented");
 
@@ -69,7 +62,7 @@ async fn an_approval_of_a_gate_that_held_no_run_continues_nothing() {
 /// The loser receives `AlreadyResolved` and the original delivery stays
 /// available to the ledger probe.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_already_resolved_runless_gate_keeps_its_delivery_unparked() {
     let lane = Lane::isolated().await;
     park_delivery(&lane).await;
@@ -77,7 +70,7 @@ async fn an_already_resolved_runless_gate_keeps_its_delivery_unparked() {
 
     let first = lane
         .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(runless.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the first answer resolves the gate");
     assert!(matches!(first, Resolution::Resolved(_)));
@@ -89,7 +82,7 @@ async fn an_already_resolved_runless_gate_keeps_its_delivery_unparked() {
 
     let second = lane
         .inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(runless.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("the repeated answer reads the standing decision");
     assert!(matches!(second, Resolution::AlreadyResolved(_)));
@@ -107,7 +100,7 @@ async fn an_already_resolved_runless_gate_keeps_its_delivery_unparked() {
 /// fleet for every answer that leaves a delivery parked, not only a runless
 /// gate's.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_already_denied_gate_keeps_its_delivery_unparked() {
     let lane = Lane::isolated().await;
     park_delivery(&lane).await;
@@ -115,7 +108,7 @@ async fn an_already_denied_gate_keeps_its_delivery_unparked() {
 
     let first = lane
         .inbox
-        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(gate.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the first answer resolves the gate");
     assert!(matches!(first, Resolution::Resolved(_)));
@@ -128,7 +121,7 @@ async fn an_already_denied_gate_keeps_its_delivery_unparked() {
 
     let second = lane
         .inbox
-        .resolve(&gate, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(gate.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the retry reads the standing decision");
     assert!(matches!(second, Resolution::AlreadyResolved(_)));
@@ -140,19 +133,19 @@ async fn an_already_denied_gate_keeps_its_delivery_unparked() {
 
 /// A lost notification cannot undo the answer or leave its delivery parked.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_runless_gate_with_a_lost_notification_still_resolves() {
     let lane = Lane::isolated().await;
     park_delivery(&lane).await;
     let inbox = Inbox::new(
         lane.pool.clone(),
-        dead_queue(),
-        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
+        afd_bus::test_util::unreachable(),
+        afd_admission::Admissions::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
     );
     let runless = lane.seed_runless_gate(Window::Open).await;
 
     let outcome = inbox
-        .resolve(&runless, Decision::Approved, OPERATOR, NOTE, None)
+        .resolve(runless.as_str(), Decision::Approved, OPERATOR, NOTE, None)
         .await
         .expect("a lost notification does not reject the answer");
     assert!(matches!(outcome, Resolution::Resolved(_)));

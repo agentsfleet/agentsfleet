@@ -50,9 +50,7 @@ pub(super) const BETA_FIELDS: &[(&str, &[&str])] = &[
     // fire. `source` grew a third value with the fleet as an author, and both
     // are read by that same new runner.
     ("View", &["source", "once"]),
-    // The held heartbeat and the memory window on the lease are new, and so
-    // is the runner release that reads them.
-    ("HeartbeatResponse", &["woken"]),
+    // The memory window travels in native offers and may still change shape.
     ("LeasePayload", &["memory"]),
     // Where a steer went is new, and folding may reshape it.
     ("SteerAccepted", &["disposition", "folded_into_event_id"]),

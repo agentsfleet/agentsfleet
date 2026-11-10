@@ -5,6 +5,7 @@
     reason = "integration preconditions must fail loudly"
 )]
 
+mod cancellation;
 mod expiry;
 mod fixture;
 mod holders;

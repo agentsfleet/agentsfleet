@@ -41,8 +41,8 @@ pub async fn fleet_spend<'e>(
     fleet_id: &Uuid7,
 ) -> Result<Spend> {
     let spent: Spent = sqlx::query_as(SELECT_FLEET_SPEND)
-        .bind(workspace_id.as_str())
-        .bind(fleet_id.as_str())
+        .bind(workspace_id)
+        .bind(fleet_id)
         .bind(af_core::timing::DAY)
         .fetch_one(executor)
         .await

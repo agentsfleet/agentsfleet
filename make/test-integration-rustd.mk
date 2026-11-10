@@ -1,5 +1,5 @@
 # =============================================================================
-# TEST-INTEGRATION-RUSTD — the Rust substrate against live Postgres + Dragonfly
+# TEST-INTEGRATION-RUSTD — the Rust substrate against live Postgres + NATS
 # =============================================================================
 # M175 §6 deleted `make/test-integration.mk` with the retired daemon's gating.
 # The datastores did not go away with it: `make/test-infra.mk` survived, because
@@ -24,11 +24,11 @@
 #      that matches nothing exits 0, and "0 tests ran" is indistinguishable from
 #      "everything passed" by exit status alone — the retired lane learned this
 #      the expensive way (it ran green for a week against a dead port).
-#   3. `$(TEST_STATE_DEP)` — a gate run drops schemas and flushes the Dragonfly
-#      cluster first, while `KEEP_TEST_STATE=1` keeps the inner loop fast. CI
-#      never sets that escape hatch.
-#   4. The three service knobs are NOT passed on the command line. `test-infra.mk`
-#      exports `TEST_DATABASE_URL`, `TEST_DRAGONFLY_URL` and `TEST_DRAGONFLY_CA_CERT`,
+#   3. `$(TEST_STATE_DEP)` — a gate run drops schemas first, while
+#      `KEEP_TEST_STATE=1` keeps the inner loop fast. CI never sets that escape
+#      hatch.
+#   4. The service settings are NOT passed on the command line. `test-infra.mk`
+#      exports `TEST_DATABASE_URL` and `TEST_NATS_URL`,
 #      and the suites read those names directly. This file used to resolve a URL
 #      through a shell macro and hand it to cargo under a fourth, `AFD_`-prefixed
 #      name; the rename bought nothing and cost a reader two files to answer
@@ -144,21 +144,19 @@ endef
 # invocations share: the parallel lane skips them, the second runs only them,
 # and neither can drift from the other.
 #
-# A test earns a place here by needing to observe the SERVER's whole client
-# set. `integration_hub_exclusive` snapshots every node's `CLIENT LIST`, starts
-# the hub, and kills the difference -- Dragonfly implements no `CLIENT KILL
-# TYPE` and exposes no subscriber marker, so a diff is the only way to name the
-# hub's connections at all. A sibling opening a connection inside that window
-# would be killed by it, which is why this cannot ride the parallel lane.
+# A test earns a place here by acting on the cluster every sibling shares.
+# `integration_bus_exclusive` stops a real NATS node, which drops every
+# sibling's client on it.
 #
-# Still a hard gate: `_rust_lane` fails a selection that matched nothing, so a
-# renamed or deleted module here fails the lane rather than silently passing.
-EXCLUSIVE_FILTER := integration_hub_exclusive
+# Still a hard gate: `_rust_lane` fails a selection that matched nothing, so
+# deleting every module here fails the lane rather than silently passing.
+EXCLUSIVE_FILTER := integration_bus_exclusive
+EXCLUSIVE_SKIP := $(addprefix --skip ,$(EXCLUSIVE_FILTER))
 
-test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + Dragonfly
+test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust substrate integration suite against compose Postgres + NATS
 	@command -v cargo >/dev/null 2>&1 || { echo "✗ cargo not found. Install via: mise install rust"; exit 1; }
 	@echo "→ [rustd] Running the Rust integration suite against $(TEST_DATABASE_URL)..."; \
-	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --skip $(EXCLUSIVE_FILTER))
+	$(call _rust_lane,rustd-integration.log,[rustd] integration suite,cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored $(EXCLUSIVE_SKIP))
 	@echo "→ [rustd] Running the tests that need the cluster to themselves..."; \
 	$(call _rust_lane,rustd-integration-exclusive.log,[rustd] integration suite (exclusive),cargo test --workspace --exclude afd_bench --all-features --test "*" -- --ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 
@@ -193,9 +191,12 @@ test-integration-rustd: $(TEST_STATE_DEP) _migrate-test-db  ## Run the Rust subs
 #   99.5 -> 98.5 (2026-11-06) on Indy's M236 closeout instruction:
 #   "overall Rust gate at 99%? if that is possible? or 98.5%". Exact-head
 #   CI measured 98.5561%, 97,948 of 99,383 lines, on 9499b0552.
+#   98.5 -> 98 (2026-11-08) on Indy's instruction: "if it fails again move the
+#   coverage down to 98 on the safer side and push". PR #817 changes no Rust and
+#   twice measured under the floor, 98.4981% and 98.4991% of 101,407 lines.
 # `scripts/rustd_coverage.py` compares in exact decimals, so a half point is
 # enforced rather than rounded. The 100% contract in the header remains the goal.
-RUSTD_COVERAGE_FLOOR ?= 98.5
+RUSTD_COVERAGE_FLOOR ?= 98
 
 # Test scaffolding leaves the DENOMINATOR, on Indy's call (2026-09-02).
 #
@@ -273,13 +274,18 @@ RUSTD_COVERAGE_IGNORE ?= (/src/test_util(/mod)?\.rs$$|/crates/daemon/afd_bench/)
 # Indy reset patch coverage on Nov 06, 2026: "95% or what ever you have done"
 # so subsequent milestones can raise it from verified work. CI measured
 # 94.3990%, 21,000 of 22,246 changed lines, on 9499b0552; 94% is the floor.
+# Indy raised it on Nov 08, 2026: "move the coverage from 94 to 97.5", on
+# #816's measured 97.6744%, 2,184 of 2,236 changed lines.
+# Indy lowered it on Nov 10, 2026: "move the gate to downwards", "since i want
+# to test", "to 95%", "i want the CI gate to pass too", on #819's measured
+# 95.9156%, 11,859 of 12,364 changed lines.
 # codecov.yml uses the same patch and overall Rust floors; TypeScript stays 100%.
-RUSTD_PATCH_FLOOR ?= 94
+RUSTD_PATCH_FLOOR ?= 95
 RUSTD_PATCH_BASE ?= $(shell git merge-base HEAD origin/main 2>/dev/null)
 _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage.py --floor $(RUSTD_COVERAGE_FLOOR) \
   $(if $(RUSTD_PATCH_BASE),--patch-floor $(RUSTD_PATCH_FLOOR) --patch-base $(RUSTD_PATCH_BASE))
 
-# Shards: three, each on its own runner with its own Postgres and Dragonfly,
+# Each shard owns its Postgres and NATS,
 # measured in parallel and graded together by `test-coverage-rustd-merge`.
 #
 #   runner     the Rust runner's crates, plus the daemon suite's
@@ -287,14 +293,15 @@ _RUSTD_COVERAGE_JUDGE = PYTHONDONTWRITEBYTECODE=1 python3 scripts/rustd_coverage
 #              daemon. A runner leases any fleet whose required tags it carries,
 #              so on the shared lane it was offered every fleet the other
 #              scenarios had left behind; on its own datastores it is offered its own.
-#   daemon     `agentsfleetd`, every target, minus the runner's modules.
+#   daemon     `agentsfleetd`, minus the runner and native-stream modules.
+#   stream     the native-stream scenarios from the daemon suite.
 #   api        the API and fleet crates, whose live-service suites dominate
 #              the remaining test time when they share substrate's runner.
-#   substrate  every other crate: the workspace minus the three above.
+#   substrate  every other crate: the workspace minus the packages above.
 #
 # The partition is total by construction. `substrate` is defined by exclusion,
-# so a crate added later lands there without an edit, and `daemon` skips exactly
-# the filter `runner` selects. No test can fall between shards, and a filter
+# so a crate added later lands there without an edit. `daemon` skips exactly
+# the filters `runner` and `stream` select. No test can fall between shards, and a filter
 # that matches nothing fails its invocation through `_rust_lane`'s zero-tests
 # guard rather than passing empty.
 #
@@ -307,7 +314,8 @@ RUSTD_RUNNER_PACKAGES := afr_agent afr_executor afr_sandbox afr_supervisor agent
 RUSTD_DAEMON_PACKAGES := agentsfleetd
 RUSTD_API_PACKAGES := afd_api afd_fleet
 RUSTD_RUNNER_IN_DAEMON := integration_rust_runner::
-RUSTD_SHARDS := runner daemon api substrate
+RUSTD_STREAM_IN_DAEMON := integration_runner_stream::
+RUSTD_SHARDS := runner daemon stream api substrate
 RUSTD_SHARD ?= $(RUSTD_SHARDS)
 # Every report the floor is graded over: the shards, and the kernel lane's
 # (`test-coverage-runner-kernel`, make/test-unit.mk), which needs root and a
@@ -350,6 +358,12 @@ _RUSTD_SHARD_LCOV := $(RUSTD_DIR)/lcov-$(RUSTD_SHARD).info
 # The exclusive hub suite gets the cluster to itself here too. The single
 # `--include-ignored` invocation this replaces ran it beside every other suite,
 # the one thing `EXCLUSIVE_FILTER` says it must never do.
+# Each step reports its own time: the migrate line its build and run, Cargo's
+# "Finished `test` profile" line the test build, `_rust_lane` the build and the
+# tests together, and the render line the report. The migrate build cannot
+# share the test build's dependencies: tests turn on dev-dependency features
+# (`tokio`'s `process` and `test-util` among them), so every crate above
+# `tokio` builds twice. Measured Nov 08, 2026 with `cargo tree -e features`.
 test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under coverage against live datastores (RUSTD_SHARD=<one> for a Continuous Integration shard)
 	@command -v cargo-llvm-cov >/dev/null 2>&1 || { echo "✗ cargo-llvm-cov not found. Install via: cargo install cargo-llvm-cov"; exit 1; }
 	@$(if $(_RUSTD_SHARD_UNKNOWN),echo "✗ [rustd] unknown RUSTD_SHARD: $(_RUSTD_SHARD_UNKNOWN) (known: $(RUSTD_SHARDS))"; exit 1,true)
@@ -357,10 +371,11 @@ test-coverage-rustd: $(TEST_STATE_DEP)  ## Run both Rust test tiers under covera
 	@echo "→ [rustd] Removing stale instrumented workspace artifacts..."; \
 	cd $(RUSTD_DIR) && cargo llvm-cov clean --workspace
 	@echo "→ [infra] Applying migrations through the instrumented daemon..."; \
+	started=$$(date +%s); \
 	cd $(RUSTD_DIR) && DATABASE_URL_MIGRATOR="$(TEST_DATABASE_URL)" \
 	  cargo llvm-cov run --all-features --no-report --bin agentsfleetd -- migrate \
-	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }
-	@echo "✓ [infra] Instrumented schema applied"
+	  || { echo "✗ [infra] instrumented migrate failed"; exit 1; }; \
+	echo "✓ [infra] Instrumented schema applied ($$(( $$(date +%s) - started ))s, its build included)"
 	@$(_api_login)
 ifneq ($(filter runner,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard runner: the runner crates, then the runner against the daemon..."; \
@@ -368,8 +383,12 @@ ifneq ($(filter runner,$(RUSTD_SHARD)),)
 	$(call _rust_lane,rustd-coverage-runner-daemon.log,[rustd] coverage: runner against the daemon,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_RUNNER_IN_DAEMON))
 endif
 ifneq ($(filter daemon,$(RUSTD_SHARD)),)
-	@echo "→ [rustd] Shard daemon: agentsfleetd without the runner's modules..."; \
-	$(call _rust_lane,rustd-coverage-daemon.log,[rustd] coverage: daemon,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_DAEMON_PACKAGES)) -- --include-ignored --skip $(RUSTD_RUNNER_IN_DAEMON))
+	@echo "→ [rustd] Shard daemon: agentsfleetd without runner and native-stream modules..."; \
+	$(call _rust_lane,rustd-coverage-daemon.log,[rustd] coverage: daemon,$(_RUSTD_COVER) $(call _rustd_packages,$(RUSTD_DAEMON_PACKAGES)) -- --include-ignored --skip $(RUSTD_RUNNER_IN_DAEMON) --skip $(RUSTD_STREAM_IN_DAEMON))
+endif
+ifneq ($(filter stream,$(RUSTD_SHARD)),)
+	@echo "→ [rustd] Shard stream: native runner sessions against the daemon..."; \
+	$(call _rust_lane,rustd-coverage-stream.log,[rustd] coverage: native runner streams,$(_RUSTD_COVER) -p agentsfleetd --test daemon_suite -- --include-ignored $(RUSTD_STREAM_IN_DAEMON))
 endif
 ifneq ($(filter api,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard api: the API and fleet suites..."; \
@@ -377,7 +396,7 @@ ifneq ($(filter api,$(RUSTD_SHARD)),)
 endif
 ifneq ($(filter substrate,$(RUSTD_SHARD)),)
 	@echo "→ [rustd] Shard substrate: the remaining crates, then the suites that need the cluster alone..."; \
-	$(call _rust_lane,rustd-coverage-substrate.log,[rustd] coverage: substrate,$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --skip $(EXCLUSIVE_FILTER)); \
+	$(call _rust_lane,rustd-coverage-substrate.log,[rustd] coverage: substrate,$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored $(EXCLUSIVE_SKIP)); \
 	$(call _rust_lane,rustd-coverage-substrate-exclusive.log,[rustd] coverage: substrate (exclusive),$(_RUSTD_COVER) $(_RUSTD_SUBSTRATE) -- --include-ignored --test-threads=1 $(EXCLUSIVE_FILTER))
 endif
 ifeq ($(_RUSTD_SHARD_ALL),yes)
@@ -388,9 +407,11 @@ ifeq ($(_RUSTD_SHARD_ALL),yes)
 	@$(_RUSTD_COVERAGE_JUDGE) --out $(RUSTD_DIR)/lcov.info $(RUSTD_DIR)/lcov-all.info
 else
 	@echo "→ [rustd] Rendering shard $(RUSTD_SHARD)'s profile; test-coverage-rustd-merge grades the floor..."; \
+	started=$$(date +%s); \
 	cd $(RUSTD_DIR) && cargo llvm-cov report --workspace \
 	  --ignore-filename-regex '$(RUSTD_COVERAGE_IGNORE)' --lcov --output-path lcov-$(RUSTD_SHARD).info \
-	  || { echo "✗ [rustd] lcov report failed"; exit 1; }
+	  || { echo "✗ [rustd] lcov report failed"; exit 1; }; \
+	echo "✓ [rustd] shard $(RUSTD_SHARD)'s profile rendered ($$(( $$(date +%s) - started ))s)"
 	@git rev-parse HEAD > $(RUSTD_DIR)/lcov-$(RUSTD_SHARD).rev
 	@echo "✓ [rustd] shard $(RUSTD_SHARD) measured: $(_RUSTD_SHARD_LCOV)"
 endif

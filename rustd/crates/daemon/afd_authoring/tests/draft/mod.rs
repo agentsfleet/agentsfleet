@@ -45,7 +45,7 @@ use serde_json::json;
 const FUNDED_NANOS: i64 = 1_000 * NANOS_PER_USD;
 
 fn mint() -> Uuid7 {
-    Uuid7::parse(&afd_db::test_util::mint_id()).expect("fixture UUIDv7")
+    afd_db::test_util::mint_id()
 }
 
 fn definition() -> Definition {

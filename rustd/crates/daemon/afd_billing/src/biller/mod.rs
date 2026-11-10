@@ -79,7 +79,7 @@ pub enum Attribution {
         /// The fleet's name when the line was written.
         fleet_name: String,
         /// The event the run answered.
-        event_id: String,
+        event_id: Uuid7,
     },
     /// A setup-chat attempt; the attempt is the work itself.
     SetupChat,

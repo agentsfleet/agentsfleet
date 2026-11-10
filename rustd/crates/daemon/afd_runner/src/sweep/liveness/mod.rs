@@ -105,7 +105,7 @@ impl Due {
 /// [`sql::sweep::SELECT_DUE_RUNNERS`]'s row, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct DueRow {
-    id: String,
+    id: Uuid7,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     last_seen_at: Timestamp,
     status: String,
@@ -119,13 +119,13 @@ impl DueRow {
     /// A status this daemon does not model is a row it cannot reason about,
     /// so the pass reports it rather than guessing — guessing `active` would
     /// leave a revoked runner leasing.
-    fn parse(self) -> Result<Due> {
-        Ok(Due {
-            id: Uuid7::parse(&self.id)?,
+    fn parse(self) -> Due {
+        Due {
+            id: self.id.clone(),
             last_seen_at: self.last_seen_at,
             checked_at: self.checked_at,
             status: spelling::from_spelling(&self.status),
-        })
+        }
     }
 }
 
@@ -163,7 +163,7 @@ impl Liveness {
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_DUE))?;
-        rows.into_iter().map(DueRow::parse).collect()
+        Ok(rows.into_iter().map(DueRow::parse).collect())
     }
 
     /// Everything one due runner needs done, and nothing it does not.
@@ -211,8 +211,8 @@ impl Liveness {
 
         let event_id = self.event_id()?;
         let inserted: i64 = sqlx::query_scalar(sql::sweep::INSERT_OFFLINE_EVENT)
-            .bind(event_id.as_str())
-            .bind(runner.id.as_str())
+            .bind(event_id)
+            .bind(&runner.id)
             .bind(sql::event_type::RUNNER_OFFLINE)
             .bind(sql::meta::LAST_SEEN_AT)
             .bind(runner.last_seen_at.to_sqlx())
@@ -244,11 +244,11 @@ impl Liveness {
         let mut connection = self.database.acquire().await?;
         let event_id = self.event_id()?;
         let drained: i64 = sqlx::query_scalar(sql::sweep::MARK_DRAINED_IF_IDLE)
-            .bind(runner_id.as_str())
+            .bind(runner_id)
             .bind(sql::RUNNER_STATUS_DRAINED)
             .bind(sql::RUNNER_STATUS_DRAINING)
             .bind(sql::LEASE_STATUS_ACTIVE)
-            .bind(event_id.as_str())
+            .bind(event_id)
             .bind(sql::event_type::RUNNER_DRAINED)
             .bind(sql::meta::FROM_STATUS)
             .bind(sql::meta::TO_STATUS)
@@ -269,7 +269,7 @@ where
     E: sqlx::Executor<'a, Database = sqlx::Postgres>,
 {
     sqlx::query_scalar(sql::sweep::EXPIRE_ACTIVE_LEASE_SLOTS)
-        .bind(runner_id.as_str())
+        .bind(runner_id)
         .bind(sql::LEASE_STATUS_ACTIVE)
         .bind(EXPIRE_PAST)
         .fetch_one(executor)

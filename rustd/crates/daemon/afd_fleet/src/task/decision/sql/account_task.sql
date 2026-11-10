@@ -4,5 +4,5 @@ SET reserved_model_nanos = reserved_model_nanos - $4,
     -- an over-limit late charge from losing accounting to an aggregate overflow.
     used_model_nanos = LEAST(used_model_nanos::numeric + $5, $6)::bigint,
     resource_version = resource_version + 1, updated_at = clock_timestamp()
-WHERE id = $1::uuid AND fleet_id = $2::uuid AND workspace_id = $3::uuid
+WHERE id = $1 AND fleet_id = $2 AND workspace_id = $3
 RETURNING resource_version

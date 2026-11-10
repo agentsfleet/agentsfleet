@@ -12,7 +12,7 @@ WITH configured AS (
              LIMIT 1
            ) w ON true
       JOIN vault.secrets s ON s.workspace_id = w.id AND s.key_name = e.secret_ref
-     WHERE e.tenant_id = $1::uuid
+     WHERE e.tenant_id = $1
     UNION ALL
     (SELECT $2::text, p.provider, m.model_name, s.meta_base_url, s.meta_has_key
        FROM model.platform_defaults p

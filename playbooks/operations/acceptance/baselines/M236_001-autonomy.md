@@ -1525,7 +1525,7 @@ These checks use controlled data and do not establish live DT acceptance.
 
 | Owner | Change |
 |---|---|
-| `schema/2320_runner_decision_calls.sql`, `2330_runner_decision_payloads.sql`; migration, role and upgrade inventories | Retain financial call identity after live-owner deletion; cascade private request/results with their owners; enforce operation, retry and sequence uniqueness. |
+| `schema/20261108125500_runner_decision_calls.sql`, `20261108125600_runner_decision_payloads.sql`; migration, role and upgrade inventories | Retain financial call identity after live-owner deletion; cascade private request/results with their owners; enforce operation, retry and sequence uniqueness. |
 | `afd_fleet/src/task/decision/{ownership,prepare,compile,request,context}.rs` | Resolve trusted lease/source/task state and accepted criteria; compile complete bounded questions and native assessment identity. |
 | `afd_fleet/src/task/decision/{allocate,attempt,intent,fund,dispatch,row,replay,sql}.rs` and statements | Commit intent, bound retries, confirm whole-work credit, resolve fresh keys, issue once and return credential-free replays. |
 | `afd_fleet/src/task/decision/{account,journal,record,semantic}.rs` | Normalize usage, price the frozen quote, atomically record the original payer's charge and separately judge current answer usability. |

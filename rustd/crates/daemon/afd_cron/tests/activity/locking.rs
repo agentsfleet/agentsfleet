@@ -10,15 +10,14 @@ use super::fixture::*;
 use crate::support::CronLane;
 
 const WAIT_BUDGET: Duration = Duration::from_secs(5);
-const LOCK_SCHEDULE: &str =
-    "SELECT pg_backend_pid() FROM fleet.schedules WHERE id=$1::uuid FOR UPDATE";
-const READ_SESSION: &str = "SELECT context_json FROM fleet.sessions WHERE fleet_id=$1::uuid";
+const LOCK_SCHEDULE: &str = "SELECT pg_backend_pid() FROM fleet.schedules WHERE id=$1 FOR UPDATE";
+const READ_SESSION: &str = "SELECT context_json FROM fleet.sessions WHERE fleet_id=$1";
 
 // Value: protects=history waits permit a first session's real foreign-key check;
 // fails_when=the parent lock conflicts with KEY SHARE and the insert times out;
 // seam=native finalization and schema; no_claim=terminal report or runner guard execution.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn schedule_history_wait_allows_a_first_session_to_commit() {
     let lane = CronLane::open().await;
     let token = CronLane::token();
@@ -26,7 +25,7 @@ async fn schedule_history_wait_allows_a_first_session_to_commit() {
     let mut connection = lane.connection().await;
     let mut held = connection.begin().await.expect("schedule holder");
     let pid: i32 = sqlx::query_scalar(LOCK_SCHEDULE)
-        .bind(row.schedule_id.as_str())
+        .bind(&row.schedule_id)
         .fetch_one(&mut *held)
         .await
         .expect("lock this schedule only");
@@ -47,7 +46,7 @@ async fn schedule_history_wait_allows_a_first_session_to_commit() {
 
 async fn assert_committed(lane: &CronLane, row: &Schedule, finalized: Schedule) {
     assert_eq!(
-        (finalized.sync_status, finalized.sync_token.as_deref()),
+        (finalized.sync_status, finalized.sync_token.as_ref()),
         (SyncStatus::Synced, None)
     );
     assert_eq!(stored(lane, &row.schedule_id).await, Some(finalized));
@@ -65,7 +64,7 @@ async fn assert_committed(lane: &CronLane, row: &Schedule, finalized: Schedule) 
         ],
     );
     let saved: Value = sqlx::query_scalar(READ_SESSION)
-        .bind(lane.fleet.as_str())
+        .bind(&lane.fleet)
         .fetch_one(&mut *lane.connection().await)
         .await
         .expect("the session committed");
@@ -84,7 +83,7 @@ async fn checkpoint_while_finalizer_waits(
     let mut observer = lane.connection().await;
     wait_for_blocked_finalizer(&mut observer, pid).await;
     let absent: Option<Value> = sqlx::query_scalar(READ_SESSION)
-        .bind(lane.fleet.as_str())
+        .bind(&lane.fleet)
         .fetch_optional(&mut *observer)
         .await
         .expect("inspect the first session");
@@ -98,9 +97,9 @@ async fn checkpoint_while_finalizer_waits(
         .expect("bound the lock wait");
     let written = sqlx::query(
         "INSERT INTO fleet.sessions (fleet_id,context_json,created_at,updated_at) \
-        VALUES ($1::uuid,$2,now(),now())",
+        VALUES ($1,$2,now(),now())",
     )
-    .bind(lane.fleet.as_str())
+    .bind(&lane.fleet)
     .bind(sqlx::types::Json(
         json!({"last_event_id":"support-review","last_response":"Support queue reviewed."}),
     ))

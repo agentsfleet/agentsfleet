@@ -31,7 +31,10 @@ impl ModelCalls {
         let (mut attempt, mut funding) = {
             let mut connection = self.drafts.database.acquire().await?;
             let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
-            let guarded = guard::bound(&mut tx, runner, lease, counters).await?;
+            let guarded = self
+                .drafts
+                .invocation(&mut tx, runner, lease, counters)
+                .await?;
             capability::check(&guarded.attempt, request)?;
             guard::current_model(&mut tx, &guarded).await?;
             if i64::from(request.call_index) != i64::from(guarded.attempt.call_count) + 1 {
@@ -49,7 +52,7 @@ impl ModelCalls {
             )
             .await?;
             let spent: i64 = sqlx::query_scalar(include_str!("spent.sql"))
-                .bind(guarded.attempt.id.as_str())
+                .bind(&guarded.attempt.id)
                 .bind(super::dispatch_status::KNOWN)
                 .fetch_one(&mut *tx)
                 .await
@@ -139,7 +142,7 @@ impl Funding {
         same_counting_key(self.counting_key.as_ref(), key)?;
         self.snapshot.verify(connection, guarded, request).await?;
         sqlx::query(include_str!("fund.sql"))
-            .bind(guarded.attempt.id.as_str())
+            .bind(&guarded.attempt.id)
             .bind(self.ceiling)
             .execute(connection)
             .await

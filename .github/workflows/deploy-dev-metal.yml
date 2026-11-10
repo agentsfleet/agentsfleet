@@ -51,6 +51,9 @@ jobs:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           TS_OAUTH_CLIENT_ID: op://${{ vars.VAULT_PROD }}/tailscale/oauth-client-id
           TS_OAUTH_SECRET: op://${{ vars.VAULT_PROD }}/tailscale/oauth-secret
+          RUNNER_STREAM_CA_CERTIFICATE: op://${{ vars.VAULT_DEV }}/agentsfleet-runner-stream/ca-certificate
+          RUNNER_STREAM_SERVER_NAME: op://${{ vars.VAULT_DEV }}/agentsfleet-runner-stream/server-name
+          RUNNER_STREAM_WIREGUARD_CONFIG: op://${{ vars.VAULT_DEV }}/agentsfleet-runner-stream/wireguard-config
 
       - name: Join Tailscale network
         uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0

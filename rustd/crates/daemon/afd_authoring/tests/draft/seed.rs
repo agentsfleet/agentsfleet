@@ -23,7 +23,7 @@ const OUTPUT_NANOS_PER_MTOK: i64 = 2 * NANOS_PER_USD;
 /// The member joining the owner's account.
 const MEMBERSHIP: &str = "\
 INSERT INTO identity.memberships(id,tenant_id,user_id,role,created_at)
-VALUES ($1::uuid,$2::uuid,$3::uuid,'member',now())";
+VALUES ($1,$2,$3,'member',now())";
 
 pub(super) async fn people(f: &Fixture) {
     let mut connection = f.connection().await;
@@ -31,29 +31,24 @@ pub(super) async fn people(f: &Fixture) {
         (&f.tenant, "authoring-owner", &f.owner),
         (&f.member_tenant, "authoring-member", &f.member),
     ] {
-        TenantSeed::new(tenant.as_str())
+        TenantSeed::new(tenant)
             .name(name)
             .insert(&mut *connection)
             .await
             .expect("seed an isolated account");
-        UserSeed::new(
-            person.as_str(),
-            tenant.as_str(),
-            person.as_str(),
-            person.as_str(),
-        )
-        .insert(&mut *connection)
-        .await
-        .expect("seed its person");
+        UserSeed::new(person, tenant, person.as_str(), person.as_str())
+            .insert(&mut *connection)
+            .await
+            .expect("seed its person");
     }
-    WorkspaceSeed::new(f.workspace.as_str(), f.tenant.as_str())
+    WorkspaceSeed::new(&f.workspace, &f.tenant)
         .insert(&mut *connection)
         .await
         .expect("seed the owner's workspace");
     sqlx::query(MEMBERSHIP)
-        .bind(super::mint().as_str())
-        .bind(f.tenant.as_str())
-        .bind(f.member.as_str())
+        .bind(super::mint())
+        .bind(&f.tenant)
+        .bind(&f.member)
         .execute(&mut *connection)
         .await
         .expect("seed the membership");
@@ -80,7 +75,7 @@ pub(super) async fn credential(f: &Fixture) {
 
 pub(super) async fn model(f: &Fixture, catalogue: &Uuid7, entry: &Uuid7) {
     let model = format!("workspace-model-{catalogue}");
-    ModelSeed::new(catalogue.as_str(), "openai", &model, 128_000)
+    ModelSeed::new(catalogue, "openai", &model, 128_000)
         .rates(
             INPUT_NANOS_PER_MTOK,
             CACHED_INPUT_NANOS_PER_MTOK,
@@ -93,10 +88,10 @@ pub(super) async fn model(f: &Fixture, catalogue: &Uuid7, entry: &Uuid7) {
         .expect("seed isolated priced model");
     sqlx::query(
         "INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at) \
-        VALUES($1::uuid,$2::uuid,$3,'authoring-model',now(),now())",
+        VALUES($1,$2,$3,'authoring-model',now(),now())",
     )
-    .bind(entry.as_str())
-    .bind(f.tenant.as_str())
+    .bind(entry)
+    .bind(&f.tenant)
     .bind(&model)
     .execute(&mut *f.connection().await)
     .await

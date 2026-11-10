@@ -7,7 +7,7 @@
 
 use af_core::id::Uuid7;
 
-use super::{Notice, Subscriber, notice_key, notice_text};
+use super::{Notice, Subscriber, notice_text};
 
 fn subscriber(name: &str, id: &str) -> Subscriber {
     Subscriber {
@@ -57,6 +57,4 @@ fn each_notice_kind_owes_one_fixed_text() {
         paused.contains("`agentsfleet resume 0199a0b0-0000-7000-8000-000000000002`"),
         "the notice names the command, with the fleet filled in: {paused}"
     );
-
-    assert_eq!(notice_key("T024BE7LD", "Ev01"), "T024BE7LD:Ev01:notice");
 }

@@ -3,18 +3,17 @@
 use std::future::ready;
 use std::task::{Context, Poll, Waker};
 
+use crate::obligation::Outgoing;
 use af_core::env::MapEnv;
 use afd_db::{
     Db,
     config::{DbRole, PoolConfig},
 };
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundQueue};
 use dashmap::try_result::TryResult;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use super::job;
+use super::{answer, job};
 use crate::lanes::{Destination, Job, LANE_DEPTH, Lanes};
 use crate::poster::{Deliver, Posters, Verdict};
 
@@ -22,7 +21,7 @@ use crate::poster::{Deliver, Posters, Verdict};
 struct UnusedPoster;
 
 impl Deliver for UnusedPoster {
-    fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, _job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         ready(Verdict::Delivered)
     }
 }
@@ -54,16 +53,10 @@ fn full_lane() -> FullLane {
     let environment =
         MapEnv::from_pairs([(DbRole::Api.url_knob(), "postgres://nowhere/agentsfleet")]);
     let pool = PoolConfig::resolve(&environment, DbRole::Api).expect("lazy pool config resolves");
-    let queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        "redis://127.0.0.1:1/".to_owned(),
-    ))
-    .expect("an unused queue handle resolves");
     let lanes = Lanes::new(
         Posters {
             slack: UnusedPoster,
         },
-        OutboundQueue::new(queue),
         Db::unreachable(&pool),
         CancellationToken::new(),
     );
@@ -118,8 +111,8 @@ async fn a_closed_full_lane_returns_the_waiting_job_to_its_replacement() {
     let delivered = received
         .try_recv()
         .expect("the replacement receives the waiting job");
-    assert_eq!(delivered.event_id, format!("answer-{next}"));
-    assert_eq!(delivered.answer, format!("answer {next}"));
+    assert_eq!(delivered.outgoing.event_id, answer(next));
+    assert_eq!(delivered.outgoing.answer, format!("answer {next}"));
     assert!(matches!(
         received.try_recv(),
         Err(mpsc::error::TryRecvError::Empty)
@@ -129,8 +122,9 @@ async fn a_closed_full_lane_returns_the_waiting_job_to_its_replacement() {
             lane.receiver
                 .try_recv()
                 .expect("original queued jobs survive")
+                .outgoing
                 .event_id,
-            format!("answer-{n}")
+            answer(n)
         );
     }
     assert!(matches!(
@@ -155,8 +149,9 @@ async fn a_full_lane_waits_without_a_map_guard_then_publishes_once() {
         lane.receiver
             .try_recv()
             .expect("the first queued job remains")
+            .outgoing
             .event_id,
-        "answer-0"
+        answer(0)
     );
     assert!(matches!(
         dispatch.as_mut().poll(&mut context),
@@ -169,8 +164,9 @@ async fn a_full_lane_waits_without_a_map_guard_then_publishes_once() {
             lane.receiver
                 .try_recv()
                 .expect("each queued job arrives once")
+                .outgoing
                 .event_id,
-            format!("answer-{n}")
+            answer(n)
         );
     }
     assert!(matches!(
@@ -198,8 +194,9 @@ async fn cancelling_a_full_lane_dispatch_leaves_no_job_or_reserved_capacity() {
             lane.receiver
                 .try_recv()
                 .expect("cancellation preserves queued jobs")
+                .outgoing
                 .event_id,
-            format!("answer-{n}")
+            answer(n)
         );
     }
     assert!(matches!(
@@ -214,8 +211,9 @@ async fn cancelling_a_full_lane_dispatch_leaves_no_job_or_reserved_capacity() {
         lane.receiver
             .try_recv()
             .expect("a later send can use the lane")
+            .outgoing
             .event_id,
-        format!("answer-{cancelled}")
+        answer(cancelled)
     );
     lane.lanes.drain().await;
 }

@@ -11,13 +11,12 @@
 use std::borrow::Cow;
 
 use af_core::error_code;
-use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
 use af_wire::memory::{MAX_CONTENT_LEN, MemoryDelta, Visibility};
 use af_wire::report::{Outcome, ReportCheckpoint, ReportRequest, ReportTelemetry};
 use afd_db::test_util::unreachable_db;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 use afd_memory::Memories;
 
 use crate::report_commit::{RESPONSE_ACCEPTED, RESUME_EVENT_ID, RESUME_RESPONSE};
@@ -59,7 +58,7 @@ pub(crate) fn report<'a>(
         folded_through_sequence: None,
         task: None,
         lease_id: Cow::Borrowed(held.issued.lease_id.as_str()),
-        event_id: Cow::Borrowed(&held.event_id),
+        event_id: Cow::Borrowed(held.event_id.as_str()),
         fencing_token: token,
         outcome: Outcome::Processed,
         failure_reason: None,
@@ -84,7 +83,7 @@ pub(crate) fn report<'a>(
 
 /// What the fleet's store holds, key and content, sorted.
 async fn stored(held: &Held) -> Vec<(String, String)> {
-    let fleet = Uuid7::parse(&held.fleet).expect("the fixture id is a v7 spelling");
+    let fleet = held.fleet.clone();
     let mut window: Vec<(String, String)> =
         Memories::new(held.fixtures.database.clone(), Entropy::new())
             .hydrate(&fleet)
@@ -228,7 +227,7 @@ async fn test_oversize_report_memory_is_cut_and_counted() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_failed_capture_still_settles() {
     let held = held().await;
-    let forgetful = Plane {
+    let forgetful = LeaseService {
         task_reports: None,
         memories: Memories::new(unreachable_db(), Entropy::new()),
         ..held.fixtures.plane()

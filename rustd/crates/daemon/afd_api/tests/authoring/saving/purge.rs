@@ -8,7 +8,7 @@ use af_core::error_code;
 use http::{Method, StatusCode, header};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn retrying_save_after_purge_returns_gone_without_allocating_another_fleet() {
     let case = Case::create().await;
     case.fund().await;
@@ -79,25 +79,24 @@ async fn assert_delete_refusals(case: &Case, item: &str, stale: &str, current: &
 async fn assert_retained_identity(case: &Case, key: &af_core::id::Uuid7) {
     let mut connection = case.base.db.acquire().await.expect("purge inspection");
     let remaining: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid")
-            .bind(case.base.workspace.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1")
+            .bind(&case.base.workspace)
             .fetch_one(&mut *connection)
             .await
             .expect("fleet census");
     assert_eq!(remaining, 0);
-    let receipts: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM authoring.replay_receipts WHERE operation_id=$1::uuid",
-    )
-    .bind(key.as_str())
-    .fetch_one(&mut *connection)
-    .await
-    .expect("receipt census");
+    let receipts: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE operation_id=$1")
+            .bind(key)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("receipt census");
     assert_eq!(receipts, 1, "the receipt outlives the purged fleet");
     drop(connection);
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_current_tag_does_not_authorize_purging_a_live_or_foreign_fleet() {
     let case = Case::create().await;
     case.fund().await;

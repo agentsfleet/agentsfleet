@@ -1,8 +1,8 @@
 //! The supervisor: the trusted half of the runner, outside every sandbox.
 //!
 //! It speaks the runner verbs through [`af_wire`] and keeps every duty the
-//! daemon relies on — the worker pool, renewal, the report spooled before it is
-//! posted and drained until answered, the bounded activity sender, memory
+//! daemon relies on — the worker pool, renewal, the report retained in memory
+//! until acknowledged, the bounded activity sender, memory
 //! hydrate and fenced push, native instructions and the capability report
 //! (`docs/architecture/runner_fleet.md` §The control protocol). Model keys live
 //! only here; no sandbox ever holds one. The boot sweep of what a crashed
@@ -12,7 +12,7 @@
 //!
 //! `client` is the one seam to the daemon, a trait a test fakes with a
 //! closure. Each duty is its own module over that seam, and [`run`] composes
-//! them: the heartbeat, the spool drain and the worker pool side by side until
+//! them: the heartbeat and the worker pool side by side until
 //! shutdown. No state is shared behind a lock: the
 //! heartbeat publishes its assignment on a watch channel, a coordinator task
 //! owns which fleet is busy, each lease is one task that owns its sandbox, and
@@ -37,11 +37,9 @@ mod authoring;
 mod client;
 mod context;
 mod credentials;
-mod deadline;
-mod drainer;
+mod downlink;
 mod egress;
 mod halt;
-mod heartbeat;
 mod holds;
 mod identity;
 mod lease_loop;
@@ -50,9 +48,10 @@ mod records;
 mod recovery;
 mod renew;
 mod report;
-mod report_spool;
+mod shutdown;
 mod storage_home;
 mod turns;
+mod uplink;
 mod verbs;
 mod worker_pool;
 
@@ -71,7 +70,7 @@ use af_core::env::EnvSource;
 use af_egress::SystemResolver;
 use afr_agent::AgentEngine;
 use afr_sandbox::{Engine, HostProbe, Limits};
-use tokio::sync::{Notify, watch};
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 pub use self::client::ControlPlane;
@@ -80,13 +79,11 @@ pub use self::error::{Error, Result};
 pub use self::storage_home::StorageHome;
 
 use self::client::HttpRunnerApi;
-use self::drainer::Drainer;
+use self::downlink::policy::{Assignment, Heartbeat};
 use self::halt::Halt;
-use self::heartbeat::{Assignment, Heartbeat};
 use self::holds::Holds;
 use self::identity::Whoami;
 use self::lease_loop::Lessee;
-use self::report_spool::ReportSpool;
 use self::workspace_clone::{GITHUB_ORIGIN, Mirrors};
 
 /// Everything a runner process is made of.
@@ -94,6 +91,8 @@ use self::workspace_clone::{GITHUB_ORIGIN, Mirrors};
 pub(crate) struct Runner {
     /// The daemon.
     pub(crate) plane: ControlPlane,
+    pub(crate) downlink: downlink::Downlink,
+    pub(crate) offers: tokio::sync::mpsc::Receiver<downlink::Offered>,
     /// The storage root.
     pub(crate) home: StorageHome,
     /// Builds each lease's sandbox.
@@ -124,6 +123,10 @@ pub fn boot(env: &impl EnvSource) -> Result<(Config, StorageHome)> {
 
 /// Runs the supervisor against the configured daemon until `shutdown`, or
 /// until the daemon says stop.
+///
+/// Caller shutdown retains accepted work and memory-only delivery for
+/// [`af_core::timing::LEASE_TTL`], then stops remaining work. Process exit
+/// after that grace can lose reports or usage that the daemon has not acknowledged.
 ///
 /// # Errors
 /// A client that cannot be built, or a daemon that refused this runner's
@@ -167,8 +170,11 @@ fn compose(
     agent: Box<dyn AgentEngine>,
     probe: HostProbe,
 ) -> Result<Runner> {
+    let (stream, downlink, offers) = downlink::Downlink::new(config)?;
     Ok(Runner {
-        plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?)),
+        plane: ControlPlane::new(Box::new(HttpRunnerApi::new(config)?), stream),
+        downlink,
+        offers,
         home,
         engine,
         agent,
@@ -187,6 +193,8 @@ pub(crate) async fn serve(runner: Runner, shutdown: CancellationToken) -> Result
 async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -> Result<()> {
     let Runner {
         plane,
+        downlink,
+        offers,
         home,
         engine,
         agent,
@@ -194,69 +202,66 @@ async fn serve_from(runner: Runner, origin: &str, shutdown: CancellationToken) -
         limits,
         clock,
     } = runner;
-    let authoring_spool = open_authoring_spool(&home, &clock).await?;
-    let spool = ReportSpool::new(&home);
-    spool.recover_decisions().await?;
     let lessee = Arc::new(Lessee {
         plane,
         engine,
         resolver: Box::new(SystemResolver),
         agent,
-        spool,
-        authoring_spool,
         mirrors: Mirrors::new(home.mirrors(), origin),
         limits,
         holds: Holds::start(Arc::clone(&clock)),
         clock,
         halt: Halt::new(shutdown),
-        held: Notify::new(),
         whoami: Whoami::default(),
-        wake: worker_pool::Wake::default(),
     });
+    serve_composed(lessee, downlink, offers, &probe).await
+}
+
+async fn serve_composed(
+    lessee: Arc<Lessee>,
+    downlink: downlink::Downlink,
+    offers: tokio::sync::mpsc::Receiver<downlink::Offered>,
+    probe: &HostProbe,
+) -> Result<()> {
     let (assignment, watching) = watch::channel(Assignment::initial());
-    let heartbeat = Heartbeat::new(&lessee.plane, &probe, &lessee.holds)
-        .with_wake(&lessee.wake)
-        .keep_beating(&assignment, &lessee.halt);
-    let drainer = Drainer {
-        spool: &lessee.spool,
-        plane: &lessee.plane,
-        halt: &lessee.halt,
-        held: &lessee.held,
-        holds: &lessee.holds,
+    let heartbeat =
+        Heartbeat::new(&lessee.plane, probe, &lessee.holds).keep_beating(&assignment, &lessee.halt);
+    let pool = worker_pool::serve(Arc::clone(&lessee), watching, offers);
+    let duties = shutdown::finish(&lessee.halt, async {
+        tokio::join!(heartbeat, pool);
+    });
+    tokio::pin!(duties);
+    // The connection remains available while accepted workers finish and their reports settle.
+    let session_stop = CancellationToken::new();
+    let session_halt = Halt::new(session_stop.clone());
+    let mut connection = Box::pin(downlink.run(&session_halt));
+    let result = tokio::select! {
+        result = &mut connection => {
+            lessee.halt.stop();
+            duties.await;
+            result
+        }
+        () = &mut duties => {
+            session_stop.cancel();
+            connection.await
+        }
     };
-    let pool = worker_pool::serve(Arc::clone(&lessee), watching);
-    let authoring_drain = lessee.authoring_spool.run(&lessee.plane, &lessee.halt);
-    tokio::join!(heartbeat, drainer.run(), authoring_drain, pool);
     lessee.holds.shutdown().await;
+    result?;
     if lessee.halt.token_refused() {
         return Err(error::token_refused());
     }
     Ok(())
 }
 
-/// Opens the authoring report spool under `home`, off the async workers
-/// because opening it touches the disk, then sweeps what an earlier process
-/// left in it — before [`serve_from`] starts any lease that could append.
-async fn open_authoring_spool(
-    home: &StorageHome,
-    clock: &Arc<dyn Clock>,
-) -> Result<report_spool::authoring::Spool> {
-    let spool_home = home.clone();
-    let spool_clock = Arc::clone(clock);
-    let authoring_spool = tokio::task::spawn_blocking(move || {
-        report_spool::authoring::Spool::open(&spool_home, spool_clock)
-    })
-    .await??;
-    authoring_spool.sweep().await?;
-    Ok(authoring_spool)
-}
-
-/// `len` as the `u64` byte count the wire and the spool files carry; a length
-/// held in memory is far below `u64::MAX`.
+/// `len` as the wire's byte count; supported hosts have pointers no wider than 64 bits.
 pub(crate) fn byte_count(len: usize) -> u64 {
-    u64::try_from(len).unwrap_or(u64::MAX)
+    len as u64
 }
 
 #[cfg(test)]
 #[path = "lib_tests.rs"]
 mod tests;
+
+#[cfg(all(test, feature = "test-util"))]
+mod native_flow_tests;

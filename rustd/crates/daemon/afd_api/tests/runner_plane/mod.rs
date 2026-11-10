@@ -44,7 +44,7 @@ const TENANT_KEY: &str = "agt_t0123456789abcdef0123456789abcdef0123456789abcdef0
 
 /// The runner plane's own paths.
 const SELF_PATH: &str = "/v1/runners/me";
-const HEARTBEAT_PATH: &str = "/v1/runners/me/heartbeats";
+const STREAM_PATH: &str = af_wire::paths::RUNNER_STREAM;
 const ENROL_PATH: &str = "/v1/admin/runners";
 
 /// Stable identifiers for runner-route payload and path fixtures.
@@ -230,46 +230,28 @@ async fn test_revocation_immediate() {
     );
 }
 
-/// A heartbeat is admitted on the same terms as every other runner verb.
-///
-/// The heartbeat REPLY is unconditionally `ok`, so the only thing that can
-/// refuse a beat is the guard — which makes this the one route where the guard
-/// is the entire access-control story.
+/// The native opening is authenticated before its service sees the request.
 #[tokio::test]
-async fn test_heartbeat_is_guarded_like_every_other_runner_verb() {
+async fn the_native_stream_opening_is_guarded_like_every_other_runner_verb() {
     let router = Fleet::new()
         .with_runner(RUNNER_TOKEN, &runner_id(), Liveness::Live)
         .router();
-
-    let refused = send(&router, Method::POST, HEARTBEAT_PATH, None, "{}").await;
+    let refused = send(&router, Method::POST, STREAM_PATH, None, "{}").await;
     assert_eq!(refused.status(), StatusCode::UNAUTHORIZED);
     assert_eq!(code_of(refused).await, "UZ-RUN-001");
-
-    let admitted = send(
-        &router,
-        Method::POST,
-        HEARTBEAT_PATH,
-        Some(RUNNER_TOKEN),
-        "{}",
-    )
-    .await;
-    assert_eq!(
-        admitted.status(),
-        StatusCode::SERVICE_UNAVAILABLE,
-        "past the guard, into the policy read, onto the missing datastore"
-    );
+    let admitted = send(&router, Method::POST, STREAM_PATH, Some(RUNNER_TOKEN), "{}").await;
+    assert_eq!(admitted.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(code_of(admitted).await, "UZ-INTERNAL-003");
 }
 
 mod authorization;
 
 mod decisions;
 
-mod folds;
+mod retired;
 
 mod memory;
 
 mod satellites;
-
-mod usage;
 
 mod schedule_guard;

@@ -12,7 +12,7 @@ use afd_db::test_util::mint_id;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
-use super::{Fallible, lane::Lane, queue::over_fake};
+use super::{Fallible, lane::Lane, queue::over_lane};
 
 /// A connector and a thread, as a producer owning a reply surface states them.
 pub(super) const CONNECTOR: &str = "slack";
@@ -48,10 +48,10 @@ pub(super) async fn admit(admissions: &Admissions, admission: Admission<'_>) -> 
     Ok(admissions.admit(admission).await?)
 }
 
-async fn stamps(lane: &Lane, id: &str) -> Fallible<Stamps> {
+async fn stamps(lane: &Lane, id: &Uuid7) -> Fallible<Stamps> {
     Ok(sqlx::query_as(
         "SELECT created_at, updated_at, event_created_at, sequence \
-         FROM fleet.admissions WHERE id = $1::uuid",
+         FROM fleet.admissions WHERE id = $1",
     )
     .bind(id)
     .fetch_one(&mut *lane.database.acquire().await?)
@@ -61,26 +61,20 @@ async fn stamps(lane: &Lane, id: &str) -> Fallible<Stamps> {
 /// The event id an admission answers with is its row's `UUIDv7`, and a retry
 /// under the same key answers the same one.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let admissions = over_lane(&lane).await?;
     let key = mint_id();
 
-    let first = admit(&admissions, steer(&lane, &key, ReplyTo::None)).await?;
-    let retried = admit(&admissions, steer(&lane, &key, ReplyTo::None)).await?;
+    let first = admit(&admissions, steer(&lane, key.as_str(), ReplyTo::None)).await?;
+    let retried = admit(&admissions, steer(&lane, key.as_str(), ReplyTo::None)).await?;
 
-    let row: String =
-        sqlx::query_scalar("SELECT id::text FROM fleet.admissions WHERE producer_key = $1")
-            .bind(&key)
-            .fetch_one(&mut *lane.database.acquire().await?)
-            .await?;
+    let row: Uuid7 = sqlx::query_scalar("SELECT id FROM fleet.admissions WHERE producer_key = $1")
+        .bind(key.as_str())
+        .fetch_one(&mut *lane.database.acquire().await?)
+        .await?;
     assert_eq!(first.stored.id, row, "the event id is the row id");
-    assert!(
-        Uuid7::parse(&first.stored.id).is_ok(),
-        "{}",
-        first.stored.id
-    );
     assert!(retried.replayed);
     assert_eq!(
         retried.stored.id, first.stored.id,
@@ -93,12 +87,12 @@ async fn an_admitted_event_is_named_by_its_row_id() -> Fallible {
 /// Every instant on the row is the database's: one `now()` for all three, and
 /// the one the producer was answered with.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let admissions = over_lane(&lane).await?;
 
-    let admitted = admit(&admissions, steer(&lane, &mint_id(), ReplyTo::None)).await?;
+    let admitted = admit(&admissions, steer(&lane, mint_id().as_str(), ReplyTo::None)).await?;
     let row = stamps(&lane, &admitted.stored.id).await?;
 
     assert_eq!(row.created_at, row.event_created_at);
@@ -115,16 +109,16 @@ async fn the_database_stamps_every_instant_on_the_row() -> Fallible {
 /// microsecond, and still sort in the order they were inserted: inside one
 /// instant, `sequence` decides.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn two_admissions_in_one_instant_order_by_their_sequence() -> Fallible {
     let lane = Lane::seed().await?;
-    let (_server, admissions) = over_fake(&lane, &[]).await?;
+    let admissions = over_lane(&lane).await?;
     let (first_key, second_key) = (mint_id(), mint_id());
     let first = admissions
-        .prepare(steer(&lane, &first_key, ReplyTo::None))
+        .prepare(steer(&lane, first_key.as_str(), ReplyTo::None))
         .await?;
     let second = admissions
-        .prepare(steer(&lane, &second_key, ReplyTo::None))
+        .prepare(steer(&lane, second_key.as_str(), ReplyTo::None))
         .await?;
 
     let mut connection = lane.database.acquire().await?;
@@ -146,8 +140,8 @@ async fn two_admissions_in_one_instant_order_by_their_sequence() -> Fallible {
         first_row.sequence < second_row.sequence,
         "the sequence keeps insertion order"
     );
-    let ordered: Vec<String> = sqlx::query_scalar(
-        "SELECT id::text FROM fleet.admissions WHERE fleet_id = $1::uuid \
+    let ordered: Vec<Uuid7> = sqlx::query_scalar(
+        "SELECT id FROM fleet.admissions WHERE fleet_id = $1 \
          ORDER BY created_at, sequence",
     )
     .bind(&lane.fleet)

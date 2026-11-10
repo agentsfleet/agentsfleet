@@ -1,10 +1,10 @@
-//! The delivery lanes, graded without a live queue: a fake that accepts every
-//! acknowledgement, and a poster whose destinations answer when the test says.
+//! The delivery lanes, graded without a live ledger: a handle whose every
+//! write fails, and a poster whose destinations answer when the test says.
 //!
 //! The half of the fairness dimension that lives on the delivery side. A
 //! destination that will not answer is played by a gate the test holds shut;
-//! what is asserted is that answers to OTHER destinations are delivered and
-//! acknowledged while it is shut, that answers to ONE destination leave in
+//! what is asserted is that answers to OTHER destinations are delivered while
+//! it is shut, that answers to ONE destination leave in
 //! the order they were queued, and that the number of vendor calls in flight
 //! never passes the ceiling.
 #![expect(
@@ -15,31 +15,20 @@
 
 use std::time::Duration;
 
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_dragonfly::streams::EventId;
-use afd_dragonfly::{Dragonfly, OutboundDelivery, OutboundQueue};
-use afd_outbound::{IN_FLIGHT_DELIVERIES, Lanes, Posters};
+use af_core::id::Uuid7;
+use afd_outbound::{Claimed, IN_FLIGHT_DELIVERIES, Lanes, Outgoing, Posters};
 use tokio_util::sync::CancellationToken;
 
 #[path = "../support/gated_poster.rs"]
 mod gated_poster;
-#[path = "../support/hanging_queue.rs"]
-#[allow(
-    clippy::expect_used,
-    reason = "test support: an unmet precondition should fail the test loudly"
-)]
-#[allow(
-    dead_code,
-    reason = "shared support: the read suite grades the reads, the lane suite the acks"
-)]
-mod hanging_queue;
 #[path = "../support/no_ledger.rs"]
 mod no_ledger;
 
 use self::gated_poster::Gated;
-use self::hanging_queue::HangingQueue;
 
 mod contention;
+mod ledger_outage;
+mod shutdown;
 
 /// The thread an owed answer is addressed to, as a Slack producer records it.
 const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000.000100"}"#;
@@ -48,7 +37,7 @@ const DESTINATION: &str = r#"{"channel_id":"C0123456789","thread_ts":"1700000000
 ///
 /// Harness patience, NOT a budget any of these tests assert. Nothing here
 /// claims a latency: the claims are the ceiling (`high_water <= ceiling`), the
-/// concurrency (`high_water > 1`) and that every answer is acknowledged. Those
+/// concurrency (`high_water > 1`) and that every answer is delivered. Those
 /// hold or fail regardless of how long the wait is allowed to be, which is why
 /// this number can be generous without softening anything.
 ///
@@ -65,40 +54,53 @@ const PATIENCE: Duration = Duration::from_secs(30);
 /// The gap between two looks at a condition.
 const POLL: Duration = Duration::from_millis(5);
 
-/// The deadline the client gives the fake for any one command.
-const REQUEST_DEADLINE: Duration = Duration::from_secs(2);
-
 const PROVIDER: &str = "slack";
 const FLEET_ID: &str = "0199a0b0-0000-7000-8000-0000000000f1";
-const SLOW_WORKSPACE: &str = "slow";
-const FAST_WORKSPACE: &str = "fast";
+/// The workspace whose destination a test holds shut, by number.
+const SLOW_WORKSPACE: usize = 1;
+/// The workspace whose destination answers, by number.
+const FAST_WORKSPACE: usize = 2;
 
-/// A job addressed to `workspace`, numbered `n` in both of its ids.
-fn job(workspace: &str, n: u32) -> Box<OutboundDelivery> {
-    Box::new(OutboundDelivery {
-        id: EventId::of(&format!("1700000000{n:03}-0")),
-        provider: PROVIDER.to_owned(),
-        destination: DESTINATION.to_owned(),
-        workspace_id: workspace.to_owned(),
-        fleet_id: FLEET_ID.to_owned(),
-        event_id: format!("{workspace}-{n}"),
-        answer: format!("answer {n} for {workspace}"),
+/// A fixture identifier spelled in full.
+fn id(text: &str) -> Uuid7 {
+    Uuid7::parse(text).expect("a fixture identifier is a canonical UUIDv7")
+}
+
+/// Workspace number `w`, so a test can address as many as it needs.
+fn workspace(w: usize) -> Uuid7 {
+    id(&format!("0199a0b0-0000-7000-8000-{w:012x}"))
+}
+
+/// The event job `n` to workspace `w` answers. Both numbers are in it, so a
+/// delivery log names the workspace as well as the job.
+fn event(w: usize, n: u32) -> Uuid7 {
+    id(&format!("0199a0b0-{w:04x}-7000-8000-{n:012x}"))
+}
+
+/// A job addressed to workspace `w`, numbered `n` in both of its ids.
+fn job(w: usize, n: u32) -> Box<Claimed> {
+    Box::new(Claimed {
+        id: event(w, n),
+        token: af_core::id::Uuid7::parse("0195b4ba-8d3a-7000-8abc-0000000000ff")
+            .expect("a fixture token"),
+        outgoing: Outgoing {
+            provider: PROVIDER.to_owned(),
+            destination: DESTINATION.to_owned(),
+            workspace_id: workspace(w),
+            fleet_id: id(FLEET_ID),
+            event_id: event(w, n),
+            answer: format!("answer {n} for workspace {w}"),
+        },
     })
 }
 
-/// Lanes over a fresh fake queue, and the poster they deliver through.
-async fn lanes_against(server: &HangingQueue, token: &CancellationToken) -> (Lanes<Gated>, Gated) {
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, server.url())
-        .with_request_timeout(REQUEST_DEADLINE);
-    let redis = Dragonfly::connect(&config)
-        .await
-        .expect("the fake queue answers a ping");
+/// Lanes over no ledger, and the poster they deliver through.
+fn lanes_against(token: &CancellationToken) -> (Lanes<Gated>, Gated) {
     let poster = Gated::default();
     let lanes = Lanes::new(
         Posters {
             slack: poster.clone(),
         },
-        OutboundQueue::new(redis),
         no_ledger::no_ledger(),
         token.clone(),
     );
@@ -120,27 +122,25 @@ where
 }
 
 /// A destination that will not answer holds only its own lane: answers to
-/// another workspace queued BEHIND it are delivered and acknowledged while
-/// it is still waiting.
+/// another workspace queued BEHIND it are delivered while it is still
+/// waiting.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_slow_destination_does_not_hold_unrelated_answers() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
-    let gate = poster.shut(SLOW_WORKSPACE);
+    let (lanes, poster) = lanes_against(&token);
+    let gate = poster.shut(&workspace(SLOW_WORKSPACE));
 
     lanes.dispatch(job(SLOW_WORKSPACE, 1)).await;
     lanes.dispatch(job(FAST_WORKSPACE, 2)).await;
     lanes.dispatch(job(FAST_WORKSPACE, 3)).await;
 
-    await_until(
-        "the fast workspace's two answers to be acknowledged",
-        || server.acks().len() == 2,
-    )
+    await_until("the fast workspace's two answers to be delivered", || {
+        poster.delivered().len() == 2
+    })
     .await;
     assert_eq!(
         poster.delivered(),
-        vec!["fast-2".to_owned(), "fast-3".to_owned()],
+        vec![event(FAST_WORKSPACE, 2), event(FAST_WORKSPACE, 3)],
         "the fast answers left while the slow one was still held"
     );
     assert!(
@@ -149,18 +149,18 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
     );
 
     gate.notify_one();
-    await_until("the slow answer to be acknowledged", || {
-        server.acks().len() == 3
+    await_until("the slow answer to be delivered", || {
+        poster.delivered().len() == 3
     })
     .await;
     assert_eq!(
-        server.acks(),
+        poster.delivered(),
         vec![
-            "1700000000002-0".to_owned(),
-            "1700000000003-0".to_owned(),
-            "1700000000001-0".to_owned(),
+            event(FAST_WORKSPACE, 2),
+            event(FAST_WORKSPACE, 3),
+            event(SLOW_WORKSPACE, 1),
         ],
-        "every delivered answer is acknowledged by its stream id"
+        "every answer is delivered once, the held one last"
     );
 
     token.cancel();
@@ -168,25 +168,22 @@ async fn a_slow_destination_does_not_hold_unrelated_answers() {
 }
 
 /// Answers to one destination leave in the order they were queued, however
-/// long each takes, and are acknowledged in that order.
+/// long each takes.
 #[tokio::test(flavor = "multi_thread")]
 async fn answers_to_one_destination_leave_in_the_order_they_were_queued() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
 
     let count = 12_u32;
     for n in 1..=count {
         lanes.dispatch(job(FAST_WORKSPACE, n)).await;
     }
-    await_until("every answer to be acknowledged", || {
-        server.acks().len() == count as usize
+    await_until("every answer to be delivered", || {
+        poster.delivered().len() == count as usize
     })
     .await;
 
-    let expected: Vec<String> = (1..=count)
-        .map(|n| format!("{FAST_WORKSPACE}-{n}"))
-        .collect();
+    let expected: Vec<Uuid7> = (1..=count).map(|n| event(FAST_WORKSPACE, n)).collect();
     assert_eq!(
         poster.delivered(),
         expected,
@@ -206,19 +203,17 @@ async fn answers_to_one_destination_leave_in_the_order_they_were_queued() {
 /// never passes the ceiling, and every one of them is still delivered.
 #[tokio::test(flavor = "multi_thread")]
 async fn in_flight_deliveries_never_exceed_the_ceiling() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
 
     let destinations = 5 * IN_FLIGHT_DELIVERIES;
     for n in 0..destinations {
-        let workspace = format!("workspace-{n}");
         lanes
-            .dispatch(job(&workspace, u32::try_from(n).expect("small")))
+            .dispatch(job(n, u32::try_from(n).expect("small")))
             .await;
     }
-    await_until("every destination's answer to be acknowledged", || {
-        server.acks().len() == destinations
+    await_until("every destination's answer to be delivered", || {
+        poster.delivered().len() == destinations
     })
     .await;
 
@@ -242,25 +237,24 @@ async fn in_flight_deliveries_never_exceed_the_ceiling() {
 /// delivered.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_retired_lane_is_replaced_and_order_survives_the_hand_over() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
 
     lanes.dispatch(job(FAST_WORKSPACE, 1)).await;
-    await_until("the first answer to be acknowledged", || {
-        server.acks().len() == 1
+    await_until("the first answer to be delivered", || {
+        poster.delivered().len() == 1
     })
     .await;
     await_until("the lane to retire", || lanes.active() == 0).await;
 
     lanes.dispatch(job(FAST_WORKSPACE, 2)).await;
-    await_until("the second answer to be acknowledged", || {
-        server.acks().len() == 2
+    await_until("the second answer to be delivered", || {
+        poster.delivered().len() == 2
     })
     .await;
     assert_eq!(
         poster.delivered(),
-        vec!["fast-1".to_owned(), "fast-2".to_owned()],
+        vec![event(FAST_WORKSPACE, 1), event(FAST_WORKSPACE, 2)],
         "the fresh lane delivered after the retired one"
     );
 
@@ -268,15 +262,15 @@ async fn a_retired_lane_is_replaced_and_order_survives_the_hand_over() {
     lanes.drain().await;
 }
 
-/// Cancellation finishes the delivery in hand and acknowledges it; what was
-/// still queued behind it is neither delivered nor acknowledged, so the next
-/// process finds it pending.
+/// Cancellation finishes the delivery in hand; the lane starts nothing after
+/// it. The job it takes next gives its claim back and the one queued behind
+/// keeps its claim until it lapses, so either way another holder delivers
+/// them, never this one.
 #[tokio::test(flavor = "multi_thread")]
-async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledged() {
-    let server = HangingQueue::spawn().await;
+async fn cancellation_finishes_the_job_in_hand_and_starts_nothing_else() {
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
-    let gate = poster.shut(SLOW_WORKSPACE);
+    let (lanes, poster) = lanes_against(&token);
+    let gate = poster.shut(&workspace(SLOW_WORKSPACE));
 
     lanes.dispatch(job(SLOW_WORKSPACE, 1)).await;
     lanes.dispatch(job(SLOW_WORKSPACE, 2)).await;
@@ -292,13 +286,8 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
 
     assert_eq!(
         poster.delivered(),
-        vec!["slow-1".to_owned()],
+        vec![event(SLOW_WORKSPACE, 1)],
         "the delivery in hand finished; nothing queued behind it was started"
-    );
-    assert_eq!(
-        server.acks(),
-        vec!["1700000000001-0".to_owned()],
-        "only the finished delivery is acknowledged; the rest stay pending"
     );
 }
 
@@ -314,24 +303,21 @@ async fn cancellation_finishes_the_job_in_hand_and_leaves_the_rest_unacknowledge
 /// so reaching it means aiming at it repeatedly rather than once.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_job_rescued_from_a_retiring_lane_is_not_overtaken() {
-    let server = HangingQueue::spawn().await;
     let token = CancellationToken::new();
-    let (lanes, poster) = lanes_against(&server, &token).await;
+    let (lanes, poster) = lanes_against(&token);
 
     let rounds = 60_u32;
     for round in 0..rounds {
         lanes.dispatch(job(FAST_WORKSPACE, round * 2 + 1)).await;
         lanes.dispatch(job(FAST_WORKSPACE, round * 2 + 2)).await;
-        let acknowledged = (round as usize + 1) * 2;
-        await_until("the pair to be acknowledged", || {
-            server.acks().len() == acknowledged
+        let delivered = (round as usize + 1) * 2;
+        await_until("the pair to be delivered", || {
+            poster.delivered().len() == delivered
         })
         .await;
     }
 
-    let expected: Vec<String> = (1..=rounds * 2)
-        .map(|n| format!("{FAST_WORKSPACE}-{n}"))
-        .collect();
+    let expected: Vec<Uuid7> = (1..=rounds * 2).map(|n| event(FAST_WORKSPACE, n)).collect();
     assert_eq!(
         poster.delivered(),
         expected,

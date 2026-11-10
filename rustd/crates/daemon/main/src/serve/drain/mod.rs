@@ -45,6 +45,9 @@ use std::time::Duration;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+mod guard;
+pub use guard::Guard;
+
 /// How long in-flight requests may take to finish before the drain gives up.
 ///
 /// A deadline at the call site, per Invariant 4. Shorter than the supervisor's
@@ -52,6 +55,11 @@ use tokio_util::sync::CancellationToken;
 /// first on a slow host; the two are independent bounds on different phases, and
 /// this one covers a request rather than a background task.
 pub const DRAIN_TIMEOUT: Duration = Duration::from_secs(15);
+
+const _: () = assert!(
+    af_core::timing::STREAM_ANSWER_TIMEOUT.as_nanos() < DRAIN_TIMEOUT.as_nanos(),
+    "a runner answer in flight when the drain starts must finish inside the drain bound"
+);
 
 /// What one drain did, for the log line and for a rehearsal's notes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -61,6 +69,8 @@ pub struct Settled {
     /// Connections still being served when the drain gave up. Zero is a clean
     /// drain; anything else is what the supervisor then cut.
     pub abandoned: usize,
+    /// False if an accept loop, gateway or native listener did not finish within the bound.
+    pub completed: bool,
 }
 
 impl Settled {
@@ -69,12 +79,13 @@ impl Settled {
     pub const EMPTY: Self = Self {
         in_flight_at_close: 0,
         abandoned: 0,
+        completed: true,
     };
 
     /// True when every in-flight request finished inside the bound.
     #[must_use]
     pub const fn is_clean(&self) -> bool {
-        self.abandoned == 0
+        self.completed && self.abandoned == 0
     }
 }
 
@@ -102,9 +113,15 @@ pub struct Drain {
     /// Recorded by the accept loop before it wakes any stopped waiters.
     at_close: Arc<AtomicUsize>,
     idle: Arc<Notify>,
-    /// Closed when accepting stops, so held heartbeats end at once rather
-    /// than keep the drain waiting until their deadline.
-    doorbell: Option<afd_dragonfly::Doorbell>,
+    runner_streams: Option<RunnerDrain>,
+}
+
+/// Sessions drain before the bus and native drivers are cancelled by the supervisor.
+#[derive(Clone, Debug)]
+struct RunnerDrain {
+    gateway: afd_gateway::Gateway,
+    stop: CancellationToken,
+    closed: CancellationToken,
 }
 
 impl Drain {
@@ -118,14 +135,23 @@ impl Drain {
             live: Arc::new(AtomicUsize::new(0)),
             at_close: Arc::new(AtomicUsize::new(0)),
             idle: Arc::new(Notify::new()),
-            doorbell: None,
+            runner_streams: None,
         }
     }
 
-    /// The same drain, closing `doorbell` when it stops accepting.
+    /// Shares native session shutdown with the public request drain.
     #[must_use]
-    pub fn with_doorbell(mut self, doorbell: afd_dragonfly::Doorbell) -> Self {
-        self.doorbell = Some(doorbell);
+    pub fn with_runner_streams(
+        mut self,
+        gateway: afd_gateway::Gateway,
+        stop: CancellationToken,
+        closed: CancellationToken,
+    ) -> Self {
+        self.runner_streams = Some(RunnerDrain {
+            gateway,
+            stop,
+            closed,
+        });
         self
     }
 
@@ -190,23 +216,61 @@ impl Drain {
     /// here would make every caller decide what an expired bound means, and the
     /// answer is always the same one — carry on to the supervisor.
     pub async fn settle(&self, bound: Duration) -> Settled {
+        let deadline = tokio::time::Instant::now() + bound;
         self.accepting.cancel();
-        if let Some(doorbell) = &self.doorbell {
-            doorbell.close();
+        let (mut settled, runners_completed) =
+            tokio::join!(self.settle_http(deadline), self.settle_runners(deadline));
+        settled.completed &= runners_completed;
+        settled
+    }
+
+    async fn settle_runners(&self, deadline: tokio::time::Instant) -> bool {
+        let Some(runners) = &self.runner_streams else {
+            return true;
+        };
+        if let Err(error) = runners.gateway.drain(deadline).await {
+            let error_code = error.code().as_str();
+            let in_flight = runners.gateway.in_flight();
+            tracing::warn!(event = "runner_stream_drain_failed", error_code, in_flight);
+            runners.stop.cancel();
+            return false;
         }
+        if tokio::time::timeout_at(deadline, runners.closed.cancelled())
+            .await
+            .is_ok()
+        {
+            return true;
+        }
+        runners.stop.cancel();
+        let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
+        tracing::warn!(event = "runner_stream_native_drain_timed_out", error_code);
+        false
+    }
+
+    async fn settle_http(&self, deadline: tokio::time::Instant) -> Settled {
+        self.accepting.cancel();
         // Cancelling only ASKS the loop to stop; it is parked in `accept()` and
         // leaves on its next poll, so a connection can still be accepted and
         // counted in between. The loop records its close count before waking
         // us: a connection may finish before this task is scheduled again.
         // With no loop attached, nobody will signal a close; sample directly.
-        let in_flight_at_close = if self.attached.load(Ordering::Acquire) {
-            self.stopped.cancelled().await;
+        let completed_accepting = if self.attached.load(Ordering::Acquire) {
+            // The absolute deadline covers a stuck accept loop as well as in-flight work.
+            tokio::time::timeout_at(deadline, self.stopped.cancelled())
+                .await
+                .is_ok()
+        } else {
+            true
+        };
+        let in_flight_at_close = if self.stopped.is_cancelled() {
             self.at_close.load(Ordering::Acquire)
         } else {
             self.in_flight()
         };
         if in_flight_at_close > 0 {
-            let bound_ms = af_core::clock::saturating_millis(bound);
+            let bound_ms = af_core::clock::saturating_millis(
+                deadline.saturating_duration_since(tokio::time::Instant::now()),
+            );
             tracing::info!(
                 in_flight = in_flight_at_close,
                 bound_ms,
@@ -216,9 +280,10 @@ impl Drain {
         }
         // A timeout around the wait, not inside it: the wait itself has no
         // failure mode, so the bound is the only thing that can end it early.
-        drop(tokio::time::timeout(bound, self.idle()).await);
+        let completed =
+            tokio::time::timeout_at(deadline, self.idle()).await.is_ok() && completed_accepting;
         let abandoned = self.in_flight();
-        if abandoned > 0 {
+        if !completed {
             // Hoisted: the `log` bridge duplicates field expressions and
             // llvm-cov scores the dead copy.
             let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
@@ -232,6 +297,7 @@ impl Drain {
         Settled {
             in_flight_at_close,
             abandoned,
+            completed,
         }
     }
 
@@ -258,29 +324,6 @@ impl Drain {
 impl Default for Drain {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-/// One connection's claim on the drain, released by dropping it.
-///
-/// `Drop` rather than an explicit `release`, because the connection task can end
-/// by returning, by an error, or by being cancelled mid-await, and only `Drop`
-/// covers all three. A count that leaked on the cancelled path would make every
-/// drain after the first one wait out its whole bound.
-#[derive(Debug)]
-pub struct Guard {
-    live: Arc<AtomicUsize>,
-    idle: Arc<Notify>,
-}
-
-impl Drop for Guard {
-    fn drop(&mut self) {
-        // `fetch_sub` returns the PREVIOUS value, so 1 means this guard was the
-        // last one. Notifying only then keeps a busy server from waking the
-        // waiter on every completed request.
-        if self.live.fetch_sub(1, Ordering::AcqRel) == 1 {
-            self.idle.notify_waiters();
-        }
     }
 }
 

@@ -11,6 +11,18 @@ use super::Answer;
 use crate::client::{Call, ControlPlane, RunnerApi};
 use crate::error;
 
+mod stream;
+
+#[derive(Debug)]
+struct SharedApi(std::sync::Arc<dyn RunnerApi>);
+
+#[async_trait::async_trait]
+impl RunnerApi for SharedApi {
+    async fn send(&self, call: Call) -> crate::Result<Bytes> {
+        self.0.send(call).await
+    }
+}
+
 const TEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(crate) async fn bounded<T>(operation: &str, future: impl Future<Output = T>) -> T {
@@ -20,6 +32,7 @@ pub(crate) async fn bounded<T>(operation: &str, future: impl Future<Output = T>)
 }
 
 pub(crate) struct Calls {
+    pub(crate) stopped: tokio_util::sync::CancellationToken,
     received: mpsc::UnboundedReceiver<Call>,
     /// Each answer that panicked, as the fake daemon reports it.
     failures: mpsc::UnboundedReceiver<String>,
@@ -94,7 +107,51 @@ where
     F: Fn(&Call) -> Answer + Send + Sync + 'static,
 {
     let (api, calls) = fake(answer);
-    (ControlPlane::new(Box::new(api)), calls)
+    let api: std::sync::Arc<dyn RunnerApi> = std::sync::Arc::new(api);
+    let stream = stream::start(&api, calls.stopped.clone());
+    (ControlPlane::new(Box::new(SharedApi(api)), stream), calls)
+}
+
+/// Task HTTP boundaries use a real client while session operations keep their scripted frame path.
+pub(crate) fn plane_with_http<F>(api: Box<dyn RunnerApi>, answer: F) -> (ControlPlane, Calls)
+where
+    F: Fn(&Call) -> Answer + Send + Sync + 'static,
+{
+    let (native, calls) = plane(answer);
+    (ControlPlane::new(api, native.stream), calls)
+}
+
+/// A controllable batch writer keeps batching tests independent of asynchronous native delivery.
+pub(crate) fn activities<F>(answer: F) -> (impl crate::activity::ActivityWriter, Calls)
+where
+    F: Fn(&Call) -> Answer + Send + Sync,
+{
+    let (api, calls) = fake(answer);
+    (ActivityWrites(api), calls)
+}
+
+struct ActivityWrites<F>(FakeApi<F>);
+
+impl<F> crate::activity::ActivityWriter for ActivityWrites<F>
+where
+    F: Fn(&Call) -> Answer + Send + Sync,
+{
+    async fn activity(
+        &self,
+        _lease: &af_core::id::Uuid7,
+        request: &af_wire::activity::ActivityRequest<'_>,
+    ) -> crate::Result<()> {
+        self.0
+            .send(Call {
+                verb: crate::client::Verb::Activity,
+                path: std::borrow::Cow::Borrowed(af_wire::paths::RUNNER_STREAM),
+                body: Some(bytes::Bytes::from(
+                    serde_json::to_vec(request).map_err(error::encode)?,
+                )),
+            })
+            .await?;
+        Ok(())
+    }
 }
 
 fn fake<F>(answer: F) -> (FakeApi<F>, Calls)
@@ -109,7 +166,14 @@ where
         calls,
         failures: failed,
     };
-    (api, Calls { received, failures })
+    (
+        api,
+        Calls {
+            received,
+            failures,
+            stopped: tokio_util::sync::CancellationToken::new(),
+        },
+    )
 }
 
 pub(crate) fn drain(calls: &mut Calls) -> Vec<Call> {

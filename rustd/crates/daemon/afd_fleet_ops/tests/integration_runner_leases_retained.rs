@@ -13,27 +13,27 @@
 
 use afd_api_wire::operator::{LeaseDestination, LeaseOutcome, RunnerLeaseItem};
 use afd_db::config::DbRole;
-use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_uuid7};
+use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
 use afd_fleet_ops::RunnerLeaseHistory;
 use afd_state::sql::FLEET_STATUS_ACTIVE;
 
 /// One runner, one processed event on the fleet, one reported lease of it and
 /// one usage line the lease logged.
-/// `$1` tenant · `$2` workspace · `$3` fleet · `$4` runner · `$5` event row ·
-/// `$6` lease · `$7` event id · `$8` host · `$9` token hash · `$10` the lines'
-/// work type · `$11` the line.
+/// `$1` tenant · `$2` workspace · `$3` fleet · `$4` runner · `$5` lease ·
+/// `$6` event id · `$7` host · `$8` token hash · `$9` the lines' work type ·
+/// `$10` the line.
 const SEED: &str = r"
 WITH runner AS (
     INSERT INTO runner.runners
       (id, host_id, token_hash, sandbox_tier, status, labels, network_policy,
        registry_allowlist, worker_count, lease_version, last_seen_at, created_at, updated_at)
-    VALUES ($4::uuid, $8, $9, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress',
+    VALUES ($4, $7, $8, 'dev_none', 'active', '[]'::jsonb, 'deny_all_egress',
             '[]'::jsonb, 1, 0, now(), now(), now())
 ), event AS (
     INSERT INTO fleet.events
-      (id, fleet_id, workspace_id, event_id, actor, event_type, status, request_json, wall_ms,
+      (fleet_id, workspace_id, event_id, actor, event_type, status, request_json, wall_ms,
        failure_reason, failure_detail, created_at, updated_at)
-    VALUES ($5::uuid, $3::uuid, $2::uuid, $7, 'user:a', 'chat', 'processed', '{}'::jsonb, 900,
+    VALUES ($3, $2, $6, 'user:a', 'chat', 'processed', '{}'::jsonb, 900,
             NULL, NULL, now(), now())
 ), line AS (
     INSERT INTO billing.usage_lines
@@ -42,20 +42,20 @@ WITH runner AS (
        cached_input_token_count, cache_write_token_count, cache_write_5m_token_count,
        cache_write_1h_token_count, output_token_count, runtime_ms, platform_model_price_id,
        unpriced_token_count, charged_nanos, created_at, updated_at)
-    VALUES ($11::uuid, $10, $6::uuid, 0, $1::uuid, $2::uuid, $3::uuid, 'Doomed', $7, NULL,
+    VALUES ($10, $9, $5, 0, $1, $2, $3, 'Doomed', $6, NULL,
             'anthropic', 'model-a', 'platform', now(), 10, 2, 0, 0, 0, 3, 0, NULL, 15, 0,
             now(), now())
 )
 INSERT INTO runner.leases
-  (id, runner_id, fleet_id, workspace_id, tenant_id, fleet_event_id, event_created_at,
+  (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at, fencing_token, lease_expires_at, status, posted_message_count,
    created_at, updated_at)
-VALUES ($6::uuid, $4::uuid, $3::uuid, $2::uuid, $1::uuid, $5::uuid, now(), 'platform',
+VALUES ($5, $4, $3, $2, $1, $6, now(), 'platform',
         'anthropic', 'model-a', now(), 1, now(), 'reported', 0, now(), now())
 ";
 
 /// Deletes the fleet row the way a purge's final statement does.
-const DELETE_FLEET: &str = "DELETE FROM fleet.fleets WHERE id = $1::uuid";
+const DELETE_FLEET: &str = "DELETE FROM fleet.fleets WHERE id = $1";
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -63,45 +63,34 @@ async fn a_settled_lease_outlives_its_fleet_and_names_its_destination() {
     let lane = TestDatabase::shared();
     let database = lane.open(DbRole::Api, &[]).await;
     let mut connection = database.acquire().await.expect("an API connection");
-    let (tenant, workspace, fleet, runner, lease) = (
-        mint_uuid7(),
-        mint_uuid7(),
-        mint_uuid7(),
-        mint_uuid7(),
-        mint_uuid7(),
-    );
-    TenantSeed::new(tenant.as_str())
+    let (tenant, workspace, fleet, runner, lease) =
+        (mint_id(), mint_id(), mint_id(), mint_id(), mint_id());
+    TenantSeed::new(&tenant)
         .name("Retention test")
         .insert(&mut *connection)
         .await
         .expect("the tenant seeds");
-    WorkspaceSeed::new(workspace.as_str(), tenant.as_str())
+    WorkspaceSeed::new(&workspace, &tenant)
         .name("primary")
         .insert(&mut *connection)
         .await
         .expect("the workspace seeds");
-    FleetSeed::new(
-        fleet.as_str(),
-        workspace.as_str(),
-        tenant.as_str(),
-        FLEET_STATUS_ACTIVE,
-    )
-    .name("Doomed")
-    .insert(&mut *connection)
-    .await
-    .expect("the fleet seeds");
+    FleetSeed::new(&fleet, &workspace, &tenant, FLEET_STATUS_ACTIVE)
+        .name("Doomed")
+        .insert(&mut *connection)
+        .await
+        .expect("the fleet seeds");
     sqlx::query(SEED)
-        .bind(tenant.as_str())
-        .bind(workspace.as_str())
-        .bind(fleet.as_str())
-        .bind(runner.as_str())
-        .bind(mint_uuid7().as_str())
-        .bind(lease.as_str())
-        .bind(format!("event-{lease}"))
+        .bind(&tenant)
+        .bind(&workspace)
+        .bind(&fleet)
+        .bind(&runner)
+        .bind(&lease)
+        .bind(mint_id())
         .bind(format!("host-{lease}"))
         .bind(format!("hash-{lease}"))
         .bind(afd_billing::sql::work::FLEET_LEASE)
-        .bind(mint_uuid7().as_str())
+        .bind(mint_id())
         .execute(&mut *connection)
         .await
         .expect("the runner, event and lease seed");
@@ -114,7 +103,7 @@ async fn a_settled_lease_outlives_its_fleet_and_names_its_destination() {
 
     let elsewhere = only(
         history
-            .list(&mint_uuid7(), &runner, None, None, None, 10)
+            .list(&mint_id(), &runner, None, None, None, 10)
             .await
             .expect("the history reads"),
     );
@@ -126,7 +115,7 @@ async fn a_settled_lease_outlives_its_fleet_and_names_its_destination() {
     );
 
     sqlx::query(DELETE_FLEET)
-        .bind(fleet.as_str())
+        .bind(&fleet)
         .execute(&mut *connection)
         .await
         .expect("the fleet row deletes");

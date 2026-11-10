@@ -11,6 +11,24 @@ use crate::profile::Profile;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ErrorKind {
+    #[error("the in-process runner stream failed")]
+    StreamFaulted { source: afd_gateway::Error },
+    #[error("the benchmark wake subscription closed")]
+    WakeClosed {
+        source: tokio::sync::watch::error::RecvError,
+    },
+    #[error("the provider transport could not initialize")]
+    ProviderTransportFaulted { source: reqwest::Error },
+    #[error("the runner stream returned an unexpected answer")]
+    StreamAnswer,
+    #[error("the runner stream refused the operation with {error_code}")]
+    StreamRefused { error_code: String },
+    #[error("the requested benchmark concurrency cannot be represented on this platform")]
+    ConcurrencyUnrepresentable {
+        #[source]
+        source: std::num::TryFromIntError,
+    },
+
     /// Raised on the way in rather than defaulted, because defaulting an
     /// unrecognised profile would silently pick someone's blast radius.
     #[error("unknown profile {name:?}: expected one of {expected}")]
@@ -41,14 +59,17 @@ pub(crate) enum ErrorKind {
     #[error("the bench database would not open")]
     DatabaseUnavailable { source: afd_db::Error },
 
-    #[error("the bench queue would not open")]
-    QueueUnavailable { source: afd_dragonfly::Error },
+    #[error("the notification bus would not answer")]
+    BusUnavailable { source: afd_bus::Error },
 
     #[error("the steer path would not run")]
     SteerPathFaulted { source: afd_events::Error },
 
     #[error("the lease path would not run")]
     LeasePathFaulted { source: afd_fleet::Error },
+
+    #[error("the outbound ledger would not take an owed answer")]
+    OutboundPathFaulted { source: afd_outbound::Error },
 
     #[error("the admission ledger would not answer")]
     LedgerUnreadable { source: afd_admission::Error },

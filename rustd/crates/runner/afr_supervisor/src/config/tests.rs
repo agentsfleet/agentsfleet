@@ -13,7 +13,17 @@ const URL: &str = "https://api.example.test";
 const TOKEN: &str = "agt_r_secret";
 
 fn read(pairs: &[(&str, &str)]) -> crate::Result<Config> {
-    Config::from_env(&MapEnv::from_pairs(pairs.iter().copied()))
+    Config::from_env(&MapEnv::from_pairs(
+        std::iter::once((super::ENV_STREAM_URL, "https://runner.example.test:4443"))
+            .chain(pairs.iter().copied()),
+    ))
+}
+
+#[test]
+fn the_native_stream_origin_is_required_independently_of_the_http_api() {
+    let env = MapEnv::from_pairs([(ENV_API_URL, URL), (ENV_RUNNER_TOKEN, TOKEN)]);
+    let refusal = Config::from_env(&env).unwrap_err();
+    assert!(refusal.to_string().contains(super::ENV_STREAM_URL));
 }
 
 #[test]

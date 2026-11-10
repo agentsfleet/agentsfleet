@@ -8,105 +8,37 @@
 #[path = "support/gate_fixture.rs"]
 mod fixture;
 
-use af_core::id::Uuid7;
-use af_core::test_util::trace::Capture;
 use af_crypto::entropy::Entropy;
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
-use afd_gate::gate::{
-    Check, Claim, GateRef, Gates, Park, Parked, Stated, Trigger, Verdict, Waiting,
-};
+use afd_db::test_util::mint_id;
+use afd_gate::gate::{Claim, Evaluation, GateRef, Gates, Park, Parked, Stated, Trigger, Verdict};
 
-use self::fixture::{Fixture, NOW, config, config_gates, connect_redis};
+use self::fixture::{Fixture, NOW, config, config_gates};
 
-/// A queue address nothing listens on.
-const NOWHERE: &str = "redis://127.0.0.1:1";
-
-/// The timeout the hand-recorded reference is kept alive for.
+/// How long a parked question waits for its answer.
 const REFERENCE_TIMEOUT: std::time::Duration = std::time::Duration::from_hours(1);
 
 /// A rule that stops the fleet on every chat.
 const KILL_EVERY_CHAT: &str =
     r#"{"rules":[{"tool":"chat","action":"user:fixture","behavior":"auto_kill"}]}"#;
 
-/// A recorded gate's decision that could not be read.
-const EVENT_DECISION_UNREADABLE: &str = "gate_decision_read_failed";
-
-/// The `reason` an event carried, proven free of a code prefix and of a
-/// backtrace, which begins on a line of its own.
-fn told_reason(capture: &Capture, event: &str) -> String {
-    let logged = capture.only(event);
-    assert!(
-        logged
-            .field("error_code")
-            .is_some_and(|code| !code.is_empty()),
-        "{event} names no error_code"
-    );
-    logged.assert_uncoded_reason();
-    logged.field("reason").unwrap_or_default().to_owned()
-}
-
-#[tokio::test]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn an_unreadable_gate_decision_reason_carries_no_code_prefix() {
-    let gates = Gates::new(
-        afd_db::test_util::unreachable_db(),
-        connect_redis().await,
-        Entropy::new(),
-    );
-    let fleet = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let action = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let event_id = "event-decision-unreadable";
-    gates
-        .record(&fleet, event_id, &GateRef::new(action), REFERENCE_TIMEOUT)
-        .await
-        .expect("the live queue holds the reference");
-    let config = config(false);
-
-    let capture = Capture::install();
-    let verdict = gates
-        .check(
-            Check {
-                fleet_id: &fleet,
-                workspace_id: &fleet,
-                event_id,
-                event_type: "chat",
-                actor: "user:fixture",
-                request_json: "{}",
-                config: &config,
-            },
-            NOW,
-        )
-        .await;
-
-    assert_eq!(
-        verdict,
-        Verdict::Await(Waiting::Unreadable),
-        "a decision nobody could read waits rather than denying an approval"
-    );
-    told_reason(&capture, EVENT_DECISION_UNREADABLE);
-}
-
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_policy_kill_pauses_the_fleet_even_when_dragonfly_is_unreachable() {
+async fn a_policy_kill_pauses_the_fleet_even_when_the_bus_is_unreachable() {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let dead_queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail");
-    let gates = Gates::new(fixture.database.clone(), dead_queue, Entropy::new());
+    let gates = Gates::new(
+        fixture.database.clone(),
+        afd_bus::test_util::unreachable(),
+        Entropy::new(),
+    );
     let policy_kill = config_gates(KILL_EVERY_CHAT);
 
-    let verdict = gates
-        .check(fixture.check("event-ready-stale", &policy_kill), NOW)
-        .await;
+    let event = mint_id();
+    let verdict = gates.check(fixture.check(&event, &policy_kill), NOW).await;
 
     assert_eq!(verdict, Verdict::Killed(Trigger::Policy));
-    let status: String = sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1::uuid")
-        .bind(fixture.fleet.as_str())
+    let status: String = sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id = $1")
+        .bind(&fixture.fleet)
         .fetch_one(&mut *fixture.database.acquire().await.expect("live database"))
         .await
         .expect("the stopped fleet remains readable");
@@ -114,121 +46,39 @@ async fn a_policy_kill_pauses_the_fleet_even_when_dragonfly_is_unreachable() {
     fixture.cleanup().await;
 }
 
-/// The mirror's spelling of an approval, as the resolver writes it.
-const MIRRORED_APPROVE: &str = "approve";
-
-/// How long the hand-written mirror is kept, in seconds.
-const MIRROR_TTL_SECONDS: i64 = 3_600;
-
-/// A gate that could not be raised.
-const EVENT_PARK_UNAVAILABLE: &str = "gate_park_unavailable";
-
-/// Gates over `database` and a queue that refuses every command.
-fn gates_without_a_queue(database: afd_db::Db) -> Gates {
-    let dead_queue = Dragonfly::unreachable(&DragonflyConfig::from_url(
-        DragonflyRole::Default,
-        NOWHERE.to_owned(),
-    ))
-    .expect("a lazy handle opens no socket and cannot fail");
-    Gates::new(database, dead_queue, Entropy::new())
+/// Gates over `database` and a bus that refuses every publish and subscribe.
+fn gates_without_a_bus(database: afd_db::Db) -> Gates {
+    Gates::new(database, afd_bus::test_util::unreachable(), Entropy::new())
 }
 
 #[tokio::test]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
-async fn a_mirrored_answer_decides_without_reading_the_durable_row() {
-    // The pool refuses: an answer that arrives proves the mirror alone gave it.
-    let queue = connect_redis().await;
-    let gates = Gates::new(
-        afd_db::test_util::unreachable_db(),
-        queue.clone(),
-        Entropy::new(),
-    );
-    let fleet = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let action = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let event_id = "event-mirror-answers";
-    gates
-        .record(
-            &fleet,
-            event_id,
-            &GateRef::new(action.clone()),
-            REFERENCE_TIMEOUT,
-        )
-        .await
-        .expect("the live queue holds the reference");
-    queue
-        .set_for(
-            &afd_gate::gate::key::response(action.as_str()),
-            MIRRORED_APPROVE,
-            MIRROR_TTL_SECONDS,
-        )
-        .await
-        .expect("the live queue holds the mirrored answer");
-    let config = config(false);
-
-    let verdict = gates
-        .check(
-            Check {
-                fleet_id: &fleet,
-                workspace_id: &fleet,
-                event_id,
-                event_type: "chat",
-                actor: "user:fixture",
-                request_json: "{}",
-                config: &config,
-            },
-            NOW,
-        )
-        .await;
-
-    assert_eq!(
-        verdict,
-        Verdict::Pass,
-        "the human's mirrored yes releases the event"
-    );
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn a_reference_whose_row_is_gone_keeps_the_event_waiting() {
     let fixture = Fixture::create().await;
-    let gates = Gates::new(
-        fixture.database.clone(),
-        connect_redis().await,
-        Entropy::new(),
-    );
-    let action = Uuid7::parse(&afd_db::test_util::mint_id()).expect("a canonical identifier");
-    let event_id = "event-row-gone";
-    gates
-        .record(
-            &fixture.fleet,
-            event_id,
-            &GateRef::new(action),
-            REFERENCE_TIMEOUT,
-        )
-        .await
-        .expect("the live queue holds the reference");
-    let config = config(false);
+    let gates = gates_without_a_bus(fixture.database.clone());
 
-    let verdict = gates.check(fixture.check(event_id, &config), NOW).await;
+    let evaluation = gates
+        .evaluate(&GateRef::new(mint_id()))
+        .await
+        .expect("the durable read answers");
 
     assert_eq!(
-        verdict,
-        Verdict::Await(Waiting::Pending),
-        "no row means no deadline to lapse; the key's own lifetime ends the wait"
+        evaluation,
+        Evaluation::Pending,
+        "no row means no deadline to lapse; waiting is the fail-safe direction"
     );
     fixture.cleanup().await;
 }
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_park_whose_reference_cannot_be_written_fails_closed_after_the_row() {
+async fn parked_event_finds_its_gate_from_the_table() -> Result<(), &'static str> {
     let fixture = Fixture::create().await;
     fixture.seed().await;
-    let gates = gates_without_a_queue(fixture.database.clone());
-    let event_id = "event-reference-unwritable";
+    let gates = gates_without_a_bus(fixture.database.clone());
+    let event_id = &mint_id();
     let config = config(false);
     let scope = fixture.check(event_id, &config);
-    let capture = Capture::install();
 
     let parked = gates
         .park(
@@ -236,25 +86,32 @@ async fn a_park_whose_reference_cannot_be_written_fails_closed_after_the_row() {
                 fleet_id: scope.fleet_id,
                 workspace_id: scope.workspace_id,
                 event_id,
-                stated: Stated::of("chat", "user:fixture", event_id, None, REFERENCE_TIMEOUT),
+                stated: Stated::of(
+                    "chat",
+                    "user:fixture",
+                    event_id.as_str(),
+                    None,
+                    REFERENCE_TIMEOUT,
+                ),
                 claim: &Claim::of(None),
             },
             NOW,
         )
         .await;
+    let Parked::Awaiting(reference) = parked else {
+        return Err("a parked event awaits its human");
+    };
+
+    let found = gates
+        .recorded(scope.fleet_id, event_id)
+        .await
+        .expect("the durable read answers");
 
     assert_eq!(
-        parked,
-        Parked::Unavailable,
-        "nothing points at the row, so nobody is asked"
-    );
-    let logged = capture.only(EVENT_PARK_UNAVAILABLE);
-    assert_eq!(logged.field("write"), Some("event_reference"));
-    drop(capture);
-    assert_eq!(
-        fixture.card_count().await,
-        1,
-        "the durable row survives the failed reference write"
+        found.as_ref().map(GateRef::action_id),
+        Some(reference.action_id()),
+        "the gate's action is found from approval_gates, with no cache"
     );
     fixture.cleanup().await;
+    Ok(())
 }

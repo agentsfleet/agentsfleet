@@ -259,7 +259,7 @@ It arises *after* one, and only because the credential is durable: the row outli
 
 The Rust handler answers every event type other than `user.created` with `200 {"ignored":"<event type>"}` (`identity_route.rs`). A destructive delete does not belong in the milestone that opens accounts. The gap is visible in the answer rather than hidden behind a 404.
 
-Until teardown lands there is no `DELETE FROM identity.users`, so `1160_identity_cli_credentials.sql`'s `ON DELETE CASCADE` never fires and the credential row outlives the person indefinitely. The same branch also covers the cases a teardown webhook would miss anyway:
+Until teardown lands there is no `DELETE FROM identity.users`, so `20261108120800_identity_cli_credentials.sql`'s `ON DELETE CASCADE` never fires and the credential row outlives the person indefinitely. The same branch also covers the cases a teardown webhook would miss anyway:
 
 - a wiped Clerk development instance replays no per-user events
 - a delivery can be lost or rejected
@@ -331,19 +331,20 @@ a sign-up method that admits unverified addresses is ever enabled.
 
 **Idempotent on `oidc_subject`.** An identity provider retries, and a second
 delivery for a subject already opened must answer exactly as the first did. The
-handler reads before it writes and reports the replay. That pre-read is an
-optimisation, not the arbiter: two concurrent deliveries can both pass it, so the
-second trips `uq_users_oidc_subject` (`schema/1120_identity_users.sql`), re-reads what the
-winner committed, and answers as a replay. An index holds under concurrency and a
-read never can.
+handler reads before it writes and reports the replay.
+
+That pre-read is an optimisation, not the arbiter, because two concurrent
+deliveries can both pass it. The second trips `uq_users_oidc_subject`
+(`schema/20261108120400_identity_users.sql`), re-reads what the winner committed,
+and answers as a replay. An index holds under concurrency and a read never can.
 
 **The writeback cannot fail the delivery**. The tenant row is already committed. Refusing the delivery would reject an existing account and invite a retry that can only duplicate work.
 
 A failed writeback is logged with the tenant and the reason; the subject stays out of the log line. The cost is a person whose next token carries no tenant. An operator repairs that from the provider's dashboard, and only if the log gave them something to repair from.
 
-**Signup writes nothing to Dragonfly.** No key, no stream, no queue. The account
-is five Postgres rows and one outbound call to the identity provider; the
-datastore learns about a tenant when that tenant's first fleet is installed.
+**Signup publishes nothing on the bus.** `afd_tenant`, which runs it, does not
+depend on `afd_bus` (`rustd/crates/daemon/afd_tenant/Cargo.toml`). The account
+is five Postgres rows and one outbound call to the identity provider.
 
 ## Memberships and roles
 
@@ -767,6 +768,28 @@ Platform operator — agentsfleet platform runners enroll                    age
 
 `runner.runners` is a dedicated schema, because runner identity must not share a trust boundary with tenant data in `core`. Rotation swaps `token_hash`; revocation sets `admin_state='revoked'`; cordon and drain use the same non-active runner gate.
 
+### Native runner stream authentication
+
+The native stream draft shares the existing HTTP authentication middleware.
+`BearerAuthentication` serves ordinary guarded routes and the initial runner opening through `afd_auth`'s credential registry.
+The common guard still checks the route's required scopes.
+
+`RunnerStreamAuthentication` uses that registry once for the control stream.
+Later streams reuse the server-created connection proof and must match its current owner.
+Headers alone cannot create that proof or attach another physical connection.
+
+Ownership uses `prepared`, `confirm` and `welcome` before offers begin.
+The runner records both possible owners before confirmation, allowing recovery when a welcome is lost.
+A database comparison prevents a replaced process from acquiring ownership again.
+
+Heartbeat policy reads check status, the opening credential digest and the durable connection owner.
+Grant and renewal transactions check the same authority under the host row lock.
+Broker commands trigger durable checks; a broker message never grants authority.
+
+Error codes remain defined by `af_core::error_code`, its registry and the matching problem entries.
+Stream refusals carry a stable code, a safe human explanation and a retry decision.
+Original causes remain available to server diagnostics without putting payloads or bearer tokens in logs.
+
 ### Validation: a separate middleware, on purpose
 
 Every later call carries `Bearer agt_r`. Every `/v1/runners/me/*` route is `Guard::RunnerBearer` (`rustd/crates/daemon/afd_http/src/route/runner.rs`), which authenticates on `Plane::Runner` only:
@@ -791,7 +814,7 @@ A per-process memo used to front this read, with entries living at most `HEARTBE
 
 What that costs: one indexed single-row read per runner request. The lease verb is not a blocking long poll. It returns 200 with `retry_after_ms` (`NO_WORK_RETRY_AFTER` = 1 s), so an idle runner authenticates about once a second per worker.
 
-The sizing assumes ~100 runners (`runner.runners`, `schema/1800_runner_runners.sql`). That is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the lease gate never re-reads the row it just authenticated against.
+The sizing assumes ~100 runners (`runner.runners`, `schema/20261108123100_runner_runners.sql`). That is a few hundred index probes a second against a table whose pages never leave cache. The `degraded` flag rides the same read onto the principal, so the lease gate never re-reads the row it just authenticated against.
 
 It also means a Postgres outage fails runner auth immediately rather than being absorbed for up to one heartbeat. That surfaces as `503 UZ-AUTH-004`, which the runner treats as retryable (`Error::is_retryable`, `rustd/crates/runner/afr_supervisor/src/error/mod.rs`), **not** as a token refusal. Only a refused token stops the runner (`rustd/crates/runner/afr_supervisor/src/halt/mod.rs`), so an outage cannot shut a healthy fleet down.
 
@@ -1163,7 +1186,7 @@ Each of these is a real concern, named here so future fleets and security-review
 | 4 | **Verification-code entropy uplift** — 6 digits → 8 alphanumeric characters in a segmented format (e.g. `X4K9-TQ`). Hygiene, not correctness: the 5-attempt cap and 5-minute time-to-live already bound brute force ([`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Cryptographic primitives (pinned)*). | Future follow-up spec (no milestone yet). |
 | 5 | **Dashboard-JS-compromise hardening** — Sub-Resource Integrity (SRI) on the dashboard bundle, Content Security Policy (CSP) hardening, dependency-supply-chain pinning. Addresses [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Threats this flow does NOT close* row 1. | Future spec (no milestone yet). |
 | 6 | **API-minted access tokens** instead of a persisted Clerk JWT — **delivered by M160_002**, except two parts. The dashboard still brokers a Clerk JWT for the handoff rather than the API minting directly from the approval. And there are no *per-install* scopes: the credential resolves the person's own scopes with no ceiling below them (§CLI credential: resolved, not granted, *Known gap*). | Per-install scope ceilings: future spec (no milestone yet) — a row column plus an intersection at `parse_claim`. |
-| 7 | **Pub/sub for sub-second session-state push** — *obsolete.* Would have replaced the 1-5s CLI poll with a Redis pub/sub channel on `auth:session:{id}:state`, but M74_003 dropped CLI polling entirely (the CLI prompts for the code immediately), so no CLI-side poll remains to optimize. | Closed — superseded by the M74_003 poll removal. |
+| 7 | **Pub/sub for sub-second session-state push** — *obsolete.* Would have replaced the 1-5s CLI poll with a pub/sub channel per session, but M74_003 dropped CLI polling entirely (the CLI prompts for the code immediately), so no CLI-side poll remains to optimize. | Closed — superseded by the M74_003 poll removal. |
 | 8 | **Hardware-backed CLI key storage** (TPM / Secure Enclave / WebAuthn / passkey) — closes [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Threats this flow does NOT close* row 2 (malware on the CLI host). | Future spec (no milestone yet). |
 
 ---

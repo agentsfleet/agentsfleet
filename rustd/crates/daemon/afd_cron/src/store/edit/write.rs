@@ -24,21 +24,21 @@ impl Schedules {
         let (effective, inherited) = input::replacement(&row, request.patch)?;
         let encoded = inherited.as_ref().map(serde_json::to_string).transpose()?;
         sqlx::query(sql::UPDATE)
-            .bind(request.schedule.as_str())
+            .bind(request.schedule)
             .bind(effective.cron)
             .bind(effective.timezone)
             .bind(effective.message)
             .bind(effective.status.as_str())
             .bind(encoded)
             .bind(SyncStatus::Syncing.as_str())
-            .bind(token.as_str())
+            .bind(token)
             .bind(SYNC_LEASE)
             .execute(&mut *tx)
             .await
             .map_err(error::query(CONTEXT))?;
         let edited = sqlx::query_as::<_, Schedule>(crate::sql::SELECT_ONE)
-            .bind(request.schedule.as_str())
-            .bind(request.fleet.as_str())
+            .bind(request.schedule)
+            .bind(request.fleet)
             .fetch_one(&mut *tx)
             .await
             .map_err(error::query(CONTEXT))?;
@@ -51,7 +51,6 @@ impl Schedules {
         let status = (edited.desired_status != row.desired_status).then_some(edited.desired_status);
         let announcement = Receipt {
             schedule: &edited,
-            operation: token.as_str(),
             fact: Fact::mutation(status),
         }
         .record_on(&mut tx, request.workspace)

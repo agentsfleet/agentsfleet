@@ -1,5 +1,5 @@
 //! The scope a gate test parks in: a tenant, a workspace, a fleet, and the
-//! two datastores the gate plane needs. Shared by the lifecycle suite and the
+//! Postgres and NATS the gate plane needs. Shared by the lifecycle suite and the
 //! live-tail suite, so each compiles its own copy and uses a subset.
 #![allow(
     dead_code,
@@ -10,16 +10,11 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
-use std::time::Duration;
-
-use af_core::env::{EnvSource as _, ProcessEnv};
 use af_core::id::Uuid7;
 use af_fleet_runtime::FleetConfig;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use afd_fleet_lifecycle::FleetStatus;
 use afd_gate::gate::Check;
 use jiff::Timestamp;
@@ -27,8 +22,6 @@ use jiff::Timestamp;
 /// The instant a park mints its identifiers at. Only identifiers: every stamp
 /// and deadline on a gate is the database's.
 pub(crate) const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
 
 pub(crate) fn config(repository_write: bool) -> FleetConfig {
     let repository = if repository_write {
@@ -49,23 +42,14 @@ pub(crate) fn config_gates(gates: &str) -> FleetConfig {
     FleetConfig::stored(&document).expect("the gate policy fixture resolves")
 }
 
-pub(crate) fn dragonfly_config() -> DragonflyConfig {
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the panic carries the VarError (unset, or not Unicode); an EnvSource answers an Option and would drop which one it was"
-    )]
-    let url = std::env::var(DRAGONFLY_URL_KNOB)
-        .expect("TEST_DRAGONFLY_URL is set by make test-integration-rustd");
-    DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
-        .with_connect_timeout(Duration::from_secs(5))
-        .with_request_timeout(Duration::from_secs(5))
-}
-
-pub(crate) async fn connect_redis() -> Dragonfly {
-    afd_dragonfly::test_util::connect_live(&dragonfly_config())
+/// The lane's NATS, which the gate plane publishes on.
+///
+/// One per test: clones share the connection, so a subscribe then a publish
+/// stay ordered.
+pub(crate) async fn bus() -> afd_bus::Handle {
+    afd_bus::test_util::lane()
         .await
-        .expect("the lane's Dragonfly must be reachable")
+        .expect("the lane's NATS: run through make test-integration-rustd")
 }
 
 pub(crate) struct Fixture {
@@ -81,16 +65,16 @@ impl Fixture {
         let lane = TestDatabase::shared();
         Self {
             database: lane.open(DbRole::Api, &[]).await,
-            tenant: id(),
-            workspace: id(),
-            fleet: id(),
+            tenant: mint_id(),
+            workspace: mint_id(),
+            fleet: mint_id(),
             lane,
         }
     }
 
     pub(crate) const fn check<'fixture>(
         &'fixture self,
-        event_id: &'fixture str,
+        event_id: &'fixture Uuid7,
         config: &'fixture FleetConfig,
     ) -> Check<'fixture> {
         Check {
@@ -106,19 +90,19 @@ impl Fixture {
 
     pub(crate) async fn seed(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        TenantSeed::new(self.tenant.as_str())
+        TenantSeed::new(&self.tenant)
             .name("Gate lifecycle")
             .insert(&mut *connection)
             .await
             .expect("the gate scope seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), self.tenant.as_str())
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .insert(&mut *connection)
             .await
             .expect("the gate scope seeds");
         FleetSeed::new(
-            self.fleet.as_str(),
-            self.workspace.as_str(),
-            self.tenant.as_str(),
+            &self.fleet,
+            &self.workspace,
+            &self.tenant,
             FleetStatus::Active.as_str(),
         )
         .name(self.fleet.as_str())
@@ -127,7 +111,7 @@ impl Fixture {
         .expect("the gate scope seeds");
     }
 
-    pub(crate) async fn resolve(&self, event_id: &str, status: &str) {
+    pub(crate) async fn resolve(&self, event_id: &Uuid7, status: &str) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let changed = sqlx::query(
             "UPDATE fleet.approval_gates \
@@ -135,11 +119,11 @@ impl Fixture {
                  resolved_at = now(), updated_at = now() \
              WHERE id = ( \
                SELECT id FROM fleet.approval_gates \
-               WHERE fleet_id = $1::uuid AND event_id = $2 AND resolved_at IS NULL \
+               WHERE fleet_id = $1 AND event_id = $2 AND resolved_at IS NULL \
                ORDER BY created_at DESC, id DESC LIMIT 1 \
              )",
         )
-        .bind(self.fleet.as_str())
+        .bind(&self.fleet)
         .bind(event_id)
         .bind(status)
         .execute(&mut *connection)
@@ -150,14 +134,14 @@ impl Fixture {
 
     /// Moves the pending gate `event_id` holds behind the database's clock, as
     /// a deadline passing would.
-    pub(crate) async fn lapse(&self, event_id: &str) {
+    pub(crate) async fn lapse(&self, event_id: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("an API connection");
         let changed = sqlx::query(
             "UPDATE fleet.approval_gates \
              SET expires_at = now() - interval '1 second', updated_at = now() \
-             WHERE fleet_id = $1::uuid AND event_id = $2 AND resolved_at IS NULL",
+             WHERE fleet_id = $1 AND event_id = $2 AND resolved_at IS NULL",
         )
-        .bind(self.fleet.as_str())
+        .bind(&self.fleet)
         .bind(event_id)
         .execute(&mut *connection)
         .await
@@ -173,9 +157,9 @@ impl Fixture {
     pub(crate) async fn card_count(&self) -> i64 {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query_scalar::<_, i64>(
-            "SELECT COUNT(*) FROM fleet.approval_gates WHERE fleet_id = $1::uuid",
+            "SELECT COUNT(*) FROM fleet.approval_gates WHERE fleet_id = $1",
         )
-        .bind(self.fleet.as_str())
+        .bind(&self.fleet)
         .fetch_one(&mut *connection)
         .await
         .expect("the gate rows are readable")
@@ -183,8 +167,8 @@ impl Fixture {
 
     pub(crate) async fn activate(&self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("UPDATE fleet.fleets SET status = $2, updated_at = now() WHERE id = $1::uuid")
-            .bind(self.fleet.as_str())
+        sqlx::query("UPDATE fleet.fleets SET status = $2, updated_at = now() WHERE id = $1")
+            .bind(&self.fleet)
             .bind(FleetStatus::Active.as_str())
             .execute(&mut *connection)
             .await
@@ -196,8 +180,8 @@ impl Fixture {
     /// DELETE on `fleet.approval_gates`, and needs none here.
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
-            .bind(self.tenant.as_str())
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
+            .bind(self.tenant)
             .execute(&mut *connection)
             .await
             .expect("the scoped fixture cleans up");
@@ -205,8 +189,4 @@ impl Fixture {
         drop(self.database);
         self.lane.cleanup().await;
     }
-}
-
-fn id() -> Uuid7 {
-    Uuid7::parse(&mint_id()).expect("the minted fixture id is UUIDv7")
 }

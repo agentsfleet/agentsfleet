@@ -52,7 +52,7 @@ enum During {
 #[derive(Debug)]
 struct Rotating {
     database: Db,
-    workspace: String,
+    workspace: Uuid7,
     during: During,
 }
 
@@ -67,7 +67,7 @@ impl Exchanger for Rotating {
                 let mut connection = self.database.acquire().await.expect("a pooled connection");
                 sqlx::query(
                     "UPDATE vault.secrets SET secret_tag = decode(repeat('00', 16), 'hex')
-                     WHERE workspace_id = $1::uuid AND key_name = $2",
+                     WHERE workspace_id = $1 AND key_name = $2",
                 )
                 .bind(&self.workspace)
                 .bind(CONNECTOR_ZOHO)
@@ -95,7 +95,7 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
         workspace: owner.workspace.clone(),
         during,
     };
-    let plane = afd_fleet::lease::Plane {
+    let plane = afd_fleet::lease::LeaseService {
         task_reports: None,
         broker: Arc::new(Broker::new(Arc::new(Registry::default()), Arc::new(vendor))),
         ..fixtures.plane()
@@ -104,7 +104,7 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
     let minted = plane
         .mint(
             &owner.runner,
-            &requests::mint(&owner.lease, CONNECTOR_ZOHO),
+            &requests::mint(owner.lease.as_str(), CONNECTOR_ZOHO),
             fixtures.enrolled_at(),
         )
         .await
@@ -114,12 +114,11 @@ async fn mint_rotating(fixtures: &Fixtures, handle: &str, during: During) -> (Bo
 
 /// The stored handle's fields, opened the way the next mint will open them.
 async fn stored(fixtures: &Fixtures, owner: &Bound) -> Value {
-    let workspace = Uuid7::parse(&owner.workspace).expect("a seeded workspace id");
     let held = fixtures
         .plane()
         .vault
         .open(KeyRef {
-            workspace_id: &workspace,
+            workspace_id: &owner.workspace,
             name: CONNECTOR_ZOHO,
         })
         .await
@@ -154,10 +153,10 @@ fn breadcrumb(capture: &Capture, level: Level, owner: &Bound) -> CapturedEvent {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_rotated_refresh_token_is_written_back_before_the_mint_returns() {
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let handle = format!(
         r#"{{"integration":"zoho","refresh_token":"{POSTED}","accounts_base":"{EU_ACCOUNTS}"}}"#
     );
@@ -184,12 +183,12 @@ async fn test_a_rotated_refresh_token_is_written_back_before_the_mint_returns() 
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_handle_that_posted_no_refresh_token_is_left_as_stored() {
     // Nothing to compare the stored row against, so nothing is written: a
     // replacement with no posted value could overwrite a reconnect's token.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let handle = format!(r#"{{"integration":"zoho","accounts_base":"{EU_ACCOUNTS}"}}"#);
 
     let (owner, minted) = mint_rotating(&fixtures, &handle, During::Nothing).await;
@@ -202,12 +201,12 @@ async fn test_a_handle_that_posted_no_refresh_token_is_left_as_stored() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires a live Postgres; run through `make test-integration-rustd`"]
+#[ignore = "requires a live Postgres and NATS; run through `make test-integration-rustd`"]
 async fn test_a_failed_write_back_still_hands_over_the_minted_token() {
     // The vendor already consumed the posted token and issued a working access
     // token; refusing now would cost the run a credential it holds.
     support::install_subscriber();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let handle = format!(r#"{{"integration":"zoho","refresh_token":"{POSTED}"}}"#);
 
     let capture = Capture::install();

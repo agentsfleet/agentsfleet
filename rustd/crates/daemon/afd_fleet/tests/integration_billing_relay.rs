@@ -31,7 +31,7 @@ use crate::support::Fixtures;
 
 /// `(lines, unsettled lines, charged nanos)` logged for one lease.
 const LINES: &str = "SELECT count(*), count(*) FILTER (WHERE settled_at IS NULL), \
-     COALESCE(sum(charged_nanos), 0)::BIGINT FROM billing.usage_lines WHERE work_id = $1::uuid";
+     COALESCE(sum(charged_nanos), 0)::BIGINT FROM billing.usage_lines WHERE work_id = $1";
 
 /// How long a report may take while the wallet row is held: the billing
 /// lock timeout. The row stays locked for the whole report, so a report that
@@ -39,7 +39,7 @@ const LINES: &str = "SELECT count(*), count(*) FILTER (WHERE settled_at IS NULL)
 const REPORT_BOUND: Duration = Duration::from_secs(2);
 
 async fn isolated() -> Held {
-    held_in(Fixtures::create_isolated_with_queue().await).await
+    held_in(Fixtures::create_isolated().await).await
 }
 
 fn biller(held: &Held) -> LedgerBiller {
@@ -53,7 +53,7 @@ fn biller(held: &Held) -> LedgerBiller {
 /// `held`'s lease's lines, unsettled lines and total charge.
 async fn lines(held: &Held) -> (i64, i64, i64) {
     sqlx::query_as(LINES)
-        .bind(held.lease_key.as_str())
+        .bind(&held.lease_key)
         .fetch_one(
             &mut *held
                 .fixtures
@@ -79,7 +79,7 @@ async fn report_returns_while_the_wallet_row_is_locked() {
 
     let mut locker = database.acquire().await.expect("a pooled connection");
     let mut lock = locker.begin().await.expect("a transaction opens");
-    sqlx::query("SELECT 1 FROM billing.wallets WHERE tenant_id = $1::uuid FOR UPDATE")
+    sqlx::query("SELECT 1 FROM billing.wallets WHERE tenant_id = $1 FOR UPDATE")
         .bind(&held.tenant)
         .execute(&mut *lock)
         .await
@@ -133,7 +133,7 @@ async fn a_renewal_logs_its_slice_and_leaves_it_unsettled() {
     plane
         .renew(
             &held.runner,
-            held.issued.lease_id.as_str(),
+            &held.issued.lease_id,
             RenewRequest { requests },
             held.now,
         )

@@ -4,7 +4,7 @@
 use std::sync::atomic::AtomicUsize;
 
 use af_providers::Usage;
-use af_wire::report::{RenewRequest, RenewResponse};
+use af_wire::report::RenewResponse;
 use af_wire::usage::{LINES_MAX, RequestUsage};
 use afr_agent::scripted::{ScriptedEngine, Step};
 
@@ -32,8 +32,9 @@ fn spending(requests: usize) -> ScriptedEngine {
 
 /// The lines one renewal carried.
 fn renewed(call: &Call) -> Vec<RequestUsage> {
-    serde_json::from_slice::<RenewRequest>(call.body.as_ref().unwrap())
+    serde_json::from_slice::<af_wire::protocol::Renewal<'_>>(call.body.as_ref().unwrap())
         .unwrap()
+        .request
         .requests
         .0
 }

@@ -11,7 +11,6 @@ use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::Dashboard;
 use afd_cron::SigningKeys;
 use afd_db::PoolConfig;
-use afd_dragonfly::DragonflyConfig;
 use afd_identity::ProviderSecret;
 
 /// The identity provider a deployment has, when it has one.
@@ -39,7 +38,7 @@ pub struct IdentityConfig {
 #[derive(Debug)]
 pub struct BootConfig {
     pub(super) api_pool: PoolConfig,
-    pub(super) redis: DragonflyConfig,
+    pub(super) bus: afd_bus::nats::Config,
     pub(super) kek: Kek,
     pub(super) session_code_pepper: SecretBytes,
     pub(super) app_url: Dashboard,
@@ -51,9 +50,12 @@ pub struct BootConfig {
     pub(super) qstash_token: Option<af_crypto::secret::SecretString>,
     pub(super) qstash_url: Option<Box<str>>,
     pub(super) slack_api_url: Option<Box<str>>,
-    pub(super) identity_webhook_secret: Option<Box<str>>,
+    pub(super) identity_webhook_secret: Option<af_crypto::secret::SecretString>,
     pub(super) qstash_keys: Option<SigningKeys>,
     pub(super) sse_max_streams: usize,
+    pub(super) runner_wake: afd_bus::wake::Wake,
+    pub(super) frame_memory: af_stream::MemoryLimits,
+    pub(super) runner_listener: super::runner_listener::RunnerListenerConfig,
     pub(super) posthog: Option<PostHogConfig>,
     pub(super) otlp: Option<super::OtlpConfig>,
     /// A test boot's stand-in for the vendors' token endpoints.
@@ -62,6 +64,9 @@ pub struct BootConfig {
     /// A test boot's connector vendor boundary; never an environment option.
     #[cfg(feature = "test-util")]
     pub(super) connector_endpoint: Option<String>,
+    /// A test boot's provider HTTP boundary; never an environment option.
+    #[cfg(feature = "test-util")]
+    pub(super) authoring_transport: Option<afd_authoring::Network>,
 }
 
 /// Where product events go, when this deployment sends any.
@@ -78,6 +83,39 @@ pub struct PostHogConfig {
 }
 
 impl BootConfig {
+    /// Pins provider HTTP to the boundary owned by this integration test.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn with_authoring_transport(mut self, transport: afd_authoring::Network) -> Self {
+        self.authoring_transport = Some(transport);
+        self
+    }
+
+    /// The explicitly supplied provider boundary, if this is a test boot.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn authoring_transport(&self) -> Option<afd_authoring::Network> {
+        self.authoring_transport.clone()
+    }
+
+    /// Private native listener settings, resolved before opening datastores.
+    #[must_use]
+    pub const fn runner_listener(&self) -> &super::runner_listener::RunnerListenerConfig {
+        &self.runner_listener
+    }
+
+    /// Frame memory settings shared by every native runner session.
+    #[must_use]
+    pub const fn frame_memory(&self) -> af_stream::MemoryLimits {
+        self.frame_memory
+    }
+
+    /// The validated queue is shared by every session in this replica.
+    #[must_use]
+    pub const fn runner_wake(&self) -> &afd_bus::wake::Wake {
+        &self.runner_wake
+    }
+
     /// Private storage configuration resolved before opening any connection.
     #[must_use]
     pub const fn checkpoint_storage(
@@ -92,10 +130,10 @@ impl BootConfig {
         &self.api_pool
     }
 
-    /// Settings for the API role's Dragonfly client.
+    /// Settings for the event bus: the NATS seeds and this deployment's namespace.
     #[must_use]
-    pub const fn redis(&self) -> &DragonflyConfig {
-        &self.redis
+    pub const fn bus(&self) -> &afd_bus::nats::Config {
+        &self.bus
     }
 
     /// How many concurrent event streams this instance carries.
@@ -130,8 +168,8 @@ impl BootConfig {
     ///
     /// Held as the raw configured BYTES rather than as a decoded key, and that
     /// is a wire-format fact rather than an oversight: the HMAC is keyed with
-    /// the sixty-four hexadecimal characters as text, and a Lua script compares
-    /// the stored and presented digests as strings. Decoding here would change
+    /// the sixty-four hexadecimal characters as text, and every digest stored in
+    /// `identity.device_sessions` was taken that way. Decoding here would change
     /// every digest and silently invalidate every pending session.
     #[must_use]
     pub const fn session_code_pepper(&self) -> &SecretBytes {
@@ -241,8 +279,8 @@ impl BootConfig {
     ///
     /// `None` refuses every delivery — see [`super::IDENTITY_WEBHOOK_SECRET_KNOB`].
     #[must_use]
-    pub fn identity_webhook_secret(&self) -> Option<&str> {
-        self.identity_webhook_secret.as_deref()
+    pub fn identity_webhook_secret(&self) -> Option<&af_crypto::secret::SecretString> {
+        self.identity_webhook_secret.as_ref()
     }
 
     /// The scheduler's signing keys, when this deployment configured them.

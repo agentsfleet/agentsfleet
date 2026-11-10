@@ -25,7 +25,7 @@ use crate::rows::Row;
 const ACTOR: &str = "fixture:platform-operator";
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_views_parity() {
     let fixtures = Fixtures::create().await;
     let seeded = seed_runner_views(&fixtures).await;
@@ -37,7 +37,7 @@ async fn test_runner_views_parity() {
 
 struct SeededViews {
     live_runner: Uuid7,
-    ordered_ids: Vec<String>,
+    ordered_ids: Vec<Uuid7>,
     /// The database clock before the live runner's beat and after its cordon.
     window: (Timestamp, Timestamp),
 }
@@ -55,10 +55,10 @@ async fn seed_runner_views(fixtures: &Fixtures) -> SeededViews {
     let mut keyed = Vec::with_capacity(runners.len());
     for runner in runners {
         let created = fixtures
-            .instant(Row::Runner(runner.as_str()), "created_at")
+            .instant(Row::Runner(&runner), "created_at")
             .await
             .expect("an enrolled runner has a creation stamp");
-        keyed.push((created, runner.as_str().to_owned()));
+        keyed.push((created, runner));
     }
     keyed.sort_by(|left, right| right.cmp(left));
     let ordered_ids = keyed.into_iter().map(|(_, id)| id).collect::<Vec<_>>();
@@ -150,7 +150,7 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
         // set bounds this walk without depending on those unrelated writes.
         let found = walked
             .iter()
-            .filter(|item| seeded.ordered_ids.iter().any(|id| id == item.id().as_str()))
+            .filter(|item| seeded.ordered_ids.contains(item.id()))
             .count();
         if cursor.is_none() || found == seeded.ordered_ids.len() {
             break;
@@ -165,7 +165,7 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
 
     let ids = walked
         .iter()
-        .map(|item| item.id().as_str().to_owned())
+        .map(|item| item.id().clone())
         .collect::<Vec<_>>();
     let unique = ids.iter().collect::<std::collections::HashSet<_>>();
     assert_eq!(
@@ -186,7 +186,7 @@ async fn assert_runner_pages(fixtures: &Fixtures, seeded: &SeededViews) {
 
     for item in walked
         .iter()
-        .filter(|item| seeded.ordered_ids.contains(&item.id().as_str().to_owned()))
+        .filter(|item| seeded.ordered_ids.contains(item.id()))
     {
         let expected = if item.id() == &seeded.live_runner {
             RunnerLiveness::Online
@@ -238,14 +238,15 @@ async fn assert_event_pages(fixtures: &Fixtures, runner: &Uuid7, window: (Timest
         .runner_events(runner, &unfiltered, first.next_cursor(), limit)
         .await
         .expect("the second event page loads");
-    let third = fixtures
-        .runners()
-        .runner_events(runner, &unfiltered, second.next_cursor(), limit)
-        .await
-        .expect("the terminal event page loads");
-    assert_eq!((first.total(), second.total(), third.total()), (4, 4, 4));
-    assert_eq!(third.items(), []);
-    assert!(third.next_cursor().is_none());
+    assert_eq!((first.total(), second.total()), (4, 4));
+    assert!(
+        first.next_cursor().is_some(),
+        "a full first page with a row behind it hands back a cursor"
+    );
+    assert!(
+        second.next_cursor().is_none(),
+        "the second page ends exactly on the last row, so there is no cursor"
+    );
     let event_types = first
         .into_items()
         .into_iter()

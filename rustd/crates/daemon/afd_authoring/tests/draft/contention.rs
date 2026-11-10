@@ -36,8 +36,8 @@ async fn deletion_before_creation_replay_neither_deadlocks_nor_recreates_text() 
         .fetch_one(&mut *lock)
         .await
         .expect("lock owner");
-    sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE")
-        .bind(created.draft.id.as_str())
+    sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+        .bind(&created.draft.id)
         .fetch_one(&mut *lock)
         .await
         .expect("hold private row");

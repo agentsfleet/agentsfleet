@@ -98,3 +98,13 @@ required-features = ["test-util"]
 name = "scheduler_observations"
 path = "tests/scheduler_observations.rs"
 required-features = ["test-util"]
+
+[[test]]
+name = "stream_observations"
+path = "tests/stream_observations.rs"
+required-features = ["test-util"]
+
+[[test]]
+name = "transport_observations"
+path = "tests/transport_observations.rs"
+required-features = ["test-util"]

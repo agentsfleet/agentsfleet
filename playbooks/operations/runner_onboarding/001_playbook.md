@@ -1,85 +1,68 @@
-# Add or Replace a Runner
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
 
-**Owner:** Human
-**Executors:** Human creates external state; Agent prepares the host; Pipeline
-deploys and verifies the runner
+# Add or replace a runner
 
-Use this operation after the founding installation. Use the chronological setup
-route after a wipe.
+## What this does
 
-| Environment | Dashboard | Vault | Runner inventory |
-|---|---|---|---|
-| Development | `https://app-dev.agentsfleet.net` | `ZMB_CD_DEV` | `agentsfleet-dev-runner-ant` |
-| Production | `https://app.agentsfleet.net` | `ZMB_CD_PROD` | `PROD_RUNNER_HOSTS` |
+Adds a runner host after the founding installation; after a wipe, follow the [founding route](../../README.md#chronological-setup) instead.
+Indy creates external state, the agent prepares the host, and the deployment pipeline installs and verifies the runner.
 
-## Execution and verification
+| Environment | Dashboard | 1Password item in the environment's vault |
+|---|---|---|
+| Development | `https://app-dev.agentsfleet.net` | `agentsfleet-dev-runner-ant` |
+| Production | `https://app.agentsfleet.net` | A `vault_key` listed in the `PROD_RUNNER_HOSTS` repository variable |
 
-| Order | Executor | Action | Verifier | Required evidence |
-|---|---|---|---|---|
-| 1 | Human | Install Debian, create the deploy user, and join Tailscale as `tag:worker`. | Agent | Expected Tailscale hostname is online. |
-| 2 | Agent | Prepare packages and directories after Human approval. | `prepare.sh` | Preparation exits zero without deploying a binary. |
-| 3 | Human | Create the runner in the dashboard and store its one-time token. | Agent | Required vault fields exist without printing values. |
-| 4 | Agent | Add the production item to inventory when applicable and start the routine deployment. | Pipeline | Runner deployment and verification jobs are green. |
-| 5 | Human | Approve the production fleet after its canary is green. | Pipeline | Remaining production runners deploy sequentially. |
+## Before you begin
 
-## Prepare the host
+1. Indy installs Debian, creates the deploy user and joins Tailscale as `tag:worker`.
+2. The agent confirms the expected Tailscale hostname is online.
+3. Indy fills `tailscale-hostname` and `deploy-user` in the item.
+   Create no placeholder token; deployment refuses an `agt_rFAKE` value.
 
-The 1Password item must contain `tailscale-hostname` and `deploy-user`. Do not
-create a placeholder token.
+## Steps
 
-Development:
+1. After Indy approves, the agent prepares a development host.
 
-```bash
-ALLOW_VAULT_READS=1 \
-ALLOW_RUNNER_HOST_PREPARE=1 \
-  ./playbooks/founding/05_runner_bootstrap_dev/prepare.sh
-```
+   ```bash
+   ALLOW_VAULT_READS=1 ALLOW_RUNNER_HOST_PREPARE=1 ./playbooks/founding/05_runner_bootstrap_dev/prepare.sh
+   ```
 
-Production:
+   ```text
+   PASS: agentsfleet-dev-runner-ant host preparation completed
+   ```
 
-```bash
-ALLOW_VAULT_READS=1 \
-ALLOW_RUNNER_HOST_PREPARE=1 \
-ENV=prod \
-RUNNER_ITEM=<PRODUCTION_RUNNER_ITEM> \
-  ./playbooks/lib/runner/prepare.sh
-```
+   For production, `<PRODUCTION_RUNNER_ITEM>` is the host's `vault_key`:
 
-Preparation installs host dependencies and creates deployment directories. It
-does not install a runner binary, write a token, or start a service.
+   ```bash
+   ALLOW_VAULT_READS=1 ALLOW_RUNNER_HOST_PREPARE=1 ENV=prod RUNNER_ITEM=<PRODUCTION_RUNNER_ITEM> ./playbooks/lib/runner/prepare.sh
+   ```
 
-## Create the runner
+   ```text
+   PASS: <PRODUCTION_RUNNER_ITEM> host preparation completed
+   ```
 
-The Human signs in to the matching dashboard and opens **Avatar → Platform →
-Runners → Add runner**.
+   Preparation checks the `cpu`, `io`, `memory` and `pids` cgroup v2 controllers, installs packages, enables IPv4 forwarding and creates directories.
+   It installs no binary, writes no token and starts no service.
+2. Indy opens **Avatar → Platform → Runners → Add runner** in the dashboard and enters:
+   - **Host name**: the exact `tailscale-hostname` value.
+   - Isolation: **Landlock** (`landlock_full` in the API).
+   - **Labels (optional)**: `dev` or `prod`, matching the environment.
+3. Indy saves the once-revealed `agt_r` value in the concealed `runner-token` field of the same item.
+   If the value is lost, revoke the runner and create it again.
+4. For production, the agent adds `{"vault_key": "<PRODUCTION_RUNNER_ITEM>"}` to `PROD_RUNNER_HOSTS`.
+5. The agent starts the routine deployment: [development](../../deploy/dev/001_playbook.md) or [production](../../deploy/prod/001_playbook.md).
+   The pipeline downloads its checked binary, installs the tracked systemd unit, starts the service and runs the host gate; a workstation never deploys it.
+6. For production, Indy approves the fleet after the canary is green; the remaining runners deploy one at a time.
 
-| Field | Value |
-|---|---|
-| Host identifier | Exact `tailscale-hostname` from 1Password |
-| Isolation | **Landlock** (`landlock_full` on the API) |
-| Labels | `dev` or `prod`, matching the environment |
+## Verify it works
 
-Store the once-revealed `agt_r` value in the concealed `runner-token` field on
-the same 1Password item. If the value is lost, revoke the runner and create it
-again.
-
-For production, add the vault item to `PROD_RUNNER_HOSTS` before starting the
-deployment.
-
-## Deploy through the Pipeline
-
-- Development follows
-  [`deploy/dev/001_playbook.md`](../../deploy/dev/001_playbook.md).
-- Production follows
-  [`deploy/prod/001_playbook.md`](../../deploy/prod/001_playbook.md).
-
-The Pipeline downloads its checked binary, installs the tracked systemd unit,
-starts the service, and runs the host gate. A workstation does not deploy the
-binary.
-
-## Complete when
-
-- The vault item has a real one-time token and no placeholder.
-- The runner deployment job is green.
-- The gate verifies `cpu`, `memory`, and `pids` delegation.
-- The dashboard reports the exact host identifier as `online`.
+- The item holds a real `runner-token`, not a placeholder.
+- The runner deployment and verification jobs are green.
+- The host gate confirms `cpu`, `io`, `memory` and `pids` delegation.
+- The dashboard shows the exact host name as `online`.

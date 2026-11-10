@@ -1,4 +1,4 @@
-SELECT u.id::text AS user_id, t.id::text AS tenant_id, w.id::text AS workspace_id,
+SELECT u.id AS user_id, t.id AS tenant_id, w.id AS workspace_id,
        w.name AS workspace_name
 FROM identity.users u
 JOIN identity.memberships m ON m.user_id = u.id AND m.role = $2

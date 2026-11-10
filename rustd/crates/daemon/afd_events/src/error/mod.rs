@@ -71,13 +71,6 @@ pub(crate) enum ErrorKind {
         source: afd_db::Error,
     },
 
-    /// The queue would not be subscribed to, or would not take a frame.
-    #[error("the fleet's stream could not be reached")]
-    Queue {
-        #[source]
-        source: afd_dragonfly::Error,
-    },
-
     /// The acceptance could not be recorded.
     #[error("the message could not be admitted")]
     Admission {
@@ -102,7 +95,7 @@ impl Error {
                 (error_code::INTERNAL_DB_QUERY, DETAIL_DATABASE_ERROR)
             }
             ErrorKind::CursorMalformed => (error_code::INVALID_REQUEST, DETAIL_CURSOR),
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => (
+            ErrorKind::Datastore { .. } => (
                 error_code::INTERNAL_DB_UNAVAILABLE,
                 DETAIL_DATABASE_UNAVAILABLE,
             ),
@@ -136,7 +129,7 @@ impl Error {
     #[must_use]
     pub const fn is_datastore_unavailable(&self) -> bool {
         match self.kind() {
-            ErrorKind::Datastore { .. } | ErrorKind::Queue { .. } => true,
+            ErrorKind::Datastore { .. } => true,
             ErrorKind::Admission { source } => source.is_datastore_unavailable(),
             ErrorKind::Query { .. }
             | ErrorKind::RowMalformed { .. }
@@ -165,7 +158,6 @@ impl Error {
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::CursorMalformed
             | ErrorKind::Datastore { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::OperationConflict => false,
         }
     }
@@ -179,7 +171,6 @@ impl Error {
             | ErrorKind::RowMalformed { .. }
             | ErrorKind::CursorMalformed
             | ErrorKind::Datastore { .. }
-            | ErrorKind::Queue { .. }
             | ErrorKind::OperationConflict => None,
         }
     }

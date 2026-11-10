@@ -66,6 +66,7 @@ pub mod message_verb;
 pub mod nanos;
 pub mod paths;
 pub mod policy;
+pub mod protocol;
 pub mod redact;
 pub mod report;
 pub mod runner;

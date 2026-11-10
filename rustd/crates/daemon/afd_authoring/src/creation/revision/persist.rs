@@ -46,8 +46,8 @@ impl Creations {
             &row.status
         };
         sqlx::query(sql::ADVANCE)
-            .bind(row.id.as_str())
-            .bind(revision.as_str())
+            .bind(&row.id)
+            .bind(revision)
             .bind(status)
             .execute(&mut *connection)
             .await
@@ -91,15 +91,15 @@ async fn settle_draft(
         .id;
     if status == INSTALLING {
         sqlx::query(sql::LINK)
-            .bind(draft.as_str())
-            .bind(row.id.as_str())
+            .bind(draft)
+            .bind(&row.id)
             .bind(DraftState::Saving.as_str())
             .execute(connection)
             .await
             .map_err(query(CONTEXT))?;
     } else {
         sqlx::query(sql::CLOSE_DRAFT)
-            .bind(draft.as_str())
+            .bind(draft)
             .bind(DraftState::Closed.as_str())
             .bind(PRIVATE_RETENTION)
             .execute(connection)

@@ -24,7 +24,7 @@ use af_wire::message_verb::{MESSAGES_PER_RUN_MAX, MessageRequest};
 use afd_outbound::Interim;
 
 use crate::error::{Result, lease_not_found, message_limit_reached, message_no_channel, query};
-use crate::lease::pull::Plane;
+use crate::lease::pull::LeaseService;
 use crate::lease::sql;
 use crate::lease::sql::standing::COUNT_MESSAGE;
 use crate::lease::standing::Standing;
@@ -33,7 +33,7 @@ use crate::lease::store::Leases;
 /// Statement name, for the context a count failure carries.
 const CONTEXT_COUNT: &str = "count interim message";
 
-impl Plane {
+impl LeaseService {
     /// One line for `lease_id`'s thread, fenced, counted and scrubbed.
     ///
     /// # Errors
@@ -54,8 +54,8 @@ impl Plane {
             let mut connection = self.leases.pool().acquire().await?;
             Leases::reply_destination(
                 &mut connection,
-                standing.fleet_id.as_str(),
-                &standing.event_id,
+                &standing.fleet_id,
+                standing.event_id.as_str(),
             )
             .await?
         }
@@ -83,10 +83,10 @@ impl Plane {
         Ok(Interim {
             provider: reply.provider,
             destination: reply.address,
-            workspace_id: workspace_id.into(),
-            fleet_id: fleet_id.into(),
+            workspace_id,
+            fleet_id,
             event_id,
-            lease_id: lease_id.into(),
+            lease_id,
             text,
             part,
         })
@@ -126,7 +126,7 @@ impl Leases {
     async fn count_message(&self, lease_id: &Uuid7, presented: u64) -> Result<Option<u32>> {
         let mut connection = self.pool().acquire().await?;
         let counted: Option<i32> = sqlx::query_scalar(COUNT_MESSAGE)
-            .bind(lease_id.as_str())
+            .bind(lease_id)
             .bind(i32::try_from(MESSAGES_PER_RUN_MAX).unwrap_or(i32::MAX))
             .bind(i64::try_from(presented).unwrap_or(i64::MAX))
             .bind(sql::LEASE_STATUS_ACTIVE)

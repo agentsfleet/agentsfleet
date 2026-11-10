@@ -105,10 +105,10 @@ async fn routing_rows(round: &Round) -> i64 {
     let mut connection = round.database.acquire().await.expect("a pooled connection");
     sqlx::query_scalar(
         "SELECT count(*) FROM connector.installs \
-         WHERE provider = $1 AND workspace_id = $2::uuid",
+         WHERE provider = $1 AND workspace_id = $2",
     )
     .bind(PROVIDER.id())
-    .bind(round.workspace.as_str())
+    .bind(&round.workspace)
     .fetch_one(&mut *connection)
     .await
     .expect("the routing read runs")
@@ -126,13 +126,13 @@ async fn handle_held(round: &Round) -> bool {
 }
 
 /// Names the grant's key from the tenant's model registry.
-async fn reference_grant(round: &Round) -> String {
+async fn reference_grant(round: &Round) -> Uuid7 {
     let id = mint_id();
     let mut connection = round.database.acquire().await.expect("a pooled connection");
     sqlx::query(
         "INSERT INTO model.tenant_models \
            (id, tenant_id, model_name, secret_ref, created_at, updated_at) \
-         VALUES ($1::uuid, $2::uuid, 'fixture-model', $3, now(), now())",
+         VALUES ($1, $2, 'fixture-model', $3, now(), now())",
     )
     .bind(&id)
     .bind(&round.tenant)
@@ -144,9 +144,9 @@ async fn reference_grant(round: &Round) -> String {
 }
 
 /// Removes the entry [`reference_grant`] wrote.
-async fn drop_entry(round: &Round, id: &str) {
+async fn drop_entry(round: &Round, id: &Uuid7) {
     let mut connection = round.database.acquire().await.expect("a pooled connection");
-    sqlx::query("DELETE FROM model.tenant_models WHERE id = $1::uuid")
+    sqlx::query("DELETE FROM model.tenant_models WHERE id = $1")
         .bind(id)
         .execute(&mut *connection)
         .await

@@ -8,7 +8,7 @@ use afd_cron::{Change, DesiredStatus, SyncStatus};
 // fails_when=state commits without history or claims registration early;
 // seam=none; no_claim=external scheduler or browser rendering.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn schedule_mutations_commit_history_with_their_rows() {
     let lane = CronLane::open().await;
     let token = CronLane::token();
@@ -51,7 +51,7 @@ async fn schedule_mutations_commit_history_with_their_rows() {
 // fails_when=removal loses text or a stale finalize appends history;
 // seam=none; no_claim=upstream removal without native caller confirmation.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn schedule_removal_commits_confirmed_history_once() {
     let lane = CronLane::open().await;
     let row = registered(&lane).await;
@@ -92,7 +92,7 @@ async fn schedule_removal_commits_confirmed_history_once() {
 // fails_when=active once removal is labelled registered, fired or ordinary deletion;
 // seam=backdated fire_at is a reachable missed instant; no_claim=vendor delivery.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn missed_one_off_expiry_keeps_its_message_without_a_run() {
     let lane = CronLane::open().await;
     let token = CronLane::token();

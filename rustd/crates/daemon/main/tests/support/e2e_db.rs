@@ -28,7 +28,7 @@
 use af_core::env::MapEnv;
 use sqlx::AssertSqlSafe;
 
-use crate::e2e::{DRAGONFLY_CA_LANE_KNOB, DRAGONFLY_LANE_KNOB, GOOD_KEK, lane};
+use crate::e2e::GOOD_KEK;
 use crate::support::{IDENTITY, SESSION_PEPPER};
 
 /// Runs one statement on the lane's admin database.
@@ -54,7 +54,7 @@ pub(crate) fn scenario_database(base_url: &str) -> String {
     base_url.to_owned()
 }
 
-/// An environment pointing the daemon at `database` and the lane's Dragonfly, on an
+/// An environment pointing the daemon at `database` and the lane's NATS, on an
 /// ephemeral port.
 ///
 /// The database is a parameter rather than the lane knob: each scenario boots
@@ -69,10 +69,11 @@ pub(crate) fn daemon_environment(
     MapEnv::from_pairs(
         [
             ("DATABASE_URL_API", database),
-            ("DRAGONFLY_URL", lane(DRAGONFLY_LANE_KNOB).as_str()),
             (
-                "DRAGONFLY_TLS_CA_CERT_FILE",
-                lane(DRAGONFLY_CA_LANE_KNOB).as_str(),
+                "NATS_URL",
+                afd_bus::test_util::lane_url()
+                    .expect("the lane's NATS seeds: run through make test-integration-rustd")
+                    .as_str(),
             ),
             ("ENCRYPTION_MASTER_KEY", GOOD_KEK),
         ]
@@ -80,6 +81,7 @@ pub(crate) fn daemon_environment(
         // Required at boot, and resolved rather than used: this lane boots the
         // daemon for real, so it has to satisfy preflight in full.
         .chain(SESSION_PEPPER)
+        .chain(crate::support::runner_stream::environment())
         .chain(IDENTITY)
         // LAST, so a caller's live provider wins over the fixture base above.
         // The runner scenarios keep the non-resolving fixture — their plane

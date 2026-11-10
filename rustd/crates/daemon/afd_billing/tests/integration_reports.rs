@@ -86,7 +86,7 @@ async fn tied_activity_times_page_without_skips_or_duplicates() {
         let last = report.activities.get(2).unwrap();
         request.after = Some(Boundary {
             recorded_at: last.recorded_at,
-            work_id: af_core::id::Uuid7::parse(&last.work_id).unwrap(),
+            work_id: last.work_id.clone(),
             work_type: if last.work_type == work::FLEET_LEASE {
                 work::FLEET_LEASE
             } else {
@@ -184,7 +184,7 @@ async fn exact_filters_preserve_unfiltered_choices_and_deleted_fleet_labels() {
 async fn individual_charges_keep_tenant_filters_and_sequence_bounds() {
     let f = Fixture::shared().await;
     let first = Line::runtime(&f.tenant, &f.fleet, 17);
-    let work = WorkKey::FleetLease(af_core::id::Uuid7::parse(&first.work_id).unwrap());
+    let work = WorkKey::FleetLease(first.work_id.clone());
     let mut second = Line::runtime(&f.tenant, &f.fleet, 23);
     second.work_id.clone_from(&first.work_id);
     second.sequence = 1;

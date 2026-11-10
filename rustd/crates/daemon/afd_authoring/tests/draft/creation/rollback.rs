@@ -23,15 +23,15 @@ fn refusal(name: &str, event: &str, when: &str) -> [String; 2] {
 }
 
 async fn residents(c: &Case) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1::uuid")
-        .bind(c.base.workspace.as_str())
+    sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE workspace_id=$1")
+        .bind(&c.base.workspace)
         .fetch_one(&mut *c.base.connection().await)
         .await
         .expect("the workspace's fleets")
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_resident_whose_activation_fails_is_removed_unless_the_removal_fails_too() {
     // Its own database: the refusing triggers are on the shared fleets table.
     let c = Case::isolated().await;

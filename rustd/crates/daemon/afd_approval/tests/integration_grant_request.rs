@@ -40,9 +40,7 @@ const SERVICE: &str = "github";
 /// matched could not tell a swapped pair apart.
 const CREDENTIAL: &str = "gh";
 
-/// How many consecutive polls stand in for a parked delivery redelivering.
-///
-/// Ten, which at `NO_WORK_RETRY_AFTER` is ten seconds of a parked event.
+/// Repeated grant requests prove parked redelivery reuses its approval card.
 const POLLS: usize = 10;
 
 /// Who the fixture records as answering a card.
@@ -74,9 +72,9 @@ async fn request(lane: &Lane) -> Requested {
 async fn grant_rows(lane: &Lane) -> Vec<(String, String, String)> {
     sqlx::query_as(
         "SELECT service, status, requested_reason
-           FROM connector.integration_grants WHERE fleet_id = $1::uuid",
+           FROM connector.integration_grants WHERE fleet_id = $1",
     )
-    .bind(lane.fleet.as_str())
+    .bind(&lane.fleet)
     .fetch_all(&mut *lane.pool.acquire().await.expect("the lane must answer"))
     .await
     .expect("the grant rows are readable")
@@ -84,13 +82,13 @@ async fn grant_rows(lane: &Lane) -> Vec<(String, String, String)> {
 
 /// Every gate this suite's kind raised on the lane's fleet, as
 /// `(action_id, evidence service, event_id)`.
-async fn cards(lane: &Lane) -> Vec<(String, Option<String>, Option<String>)> {
+async fn cards(lane: &Lane) -> Vec<(Uuid7, Option<String>, Option<Uuid7>)> {
     sqlx::query_as(
         "SELECT action_id, evidence->>'service', event_id
            FROM fleet.approval_gates
-          WHERE fleet_id = $1::uuid AND gate_type = $2",
+          WHERE fleet_id = $1 AND gate_type = $2",
     )
-    .bind(lane.fleet.as_str())
+    .bind(&lane.fleet)
     .bind(KIND_INTEGRATION_GRANT)
     .fetch_all(&mut *lane.pool.acquire().await.expect("the lane must answer"))
     .await
@@ -110,7 +108,7 @@ async fn fleet_is_ready(lane: &Lane) -> bool {
 /// A named helper rather than `cards(..).remove(0)` at four call sites: the
 /// suite asserts elsewhere that exactly one card exists, and a panic here says
 /// which precondition failed rather than reporting an index out of bounds.
-async fn first_card_action(lane: &Lane) -> String {
+async fn first_card_action(lane: &Lane) -> Uuid7 {
     cards(lane)
         .await
         .into_iter()
@@ -125,7 +123,7 @@ async fn first_card_action(lane: &Lane) -> String {
 /// so a fleet declaring `github` parked every delivery on a decision nobody
 /// could be asked for.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_request_writes_the_grant_and_the_card_together() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -155,7 +153,7 @@ async fn a_request_writes_the_grant_and_the_card_together() {
 
 /// A repeated install writes one row, and the table is what says so.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_repeated_request_does_not_duplicate_the_grant() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -173,7 +171,7 @@ async fn a_repeated_request_does_not_duplicate_the_grant() {
 /// a rate limit, which is the difference between "one question stands" and "one
 /// question a minute".
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_redelivering_park_raises_one_card_not_one_per_second() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -197,7 +195,7 @@ async fn a_redelivering_park_raises_one_card_not_one_per_second() {
 ///
 /// The approve half, reached for the first time by a row this crate wrote.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn approving_the_card_grants_the_integration() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -207,7 +205,7 @@ async fn approving_the_card_grants_the_integration() {
     let resolved = lane
         .inbox
         .resolve(
-            &action,
+            action.as_str(),
             Decision::Approved,
             REVIEWER,
             "",
@@ -240,7 +238,7 @@ async fn approving_the_card_grants_the_integration() {
 /// poll and writes a terminal row instead of parking again. Proven on the lease
 /// path in `afd_fleet`; proven HERE as the column transition it depends on.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn denying_the_card_revokes_the_grant() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -249,7 +247,7 @@ async fn denying_the_card_revokes_the_grant() {
 
     lane.inbox
         .resolve(
-            &action,
+            action.as_str(),
             Decision::Denied,
             REVIEWER,
             "",
@@ -273,7 +271,7 @@ async fn denying_the_card_revokes_the_grant() {
 
 /// A standing yes is not asked about again.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_approved_grant_raises_no_second_card() {
     let lane = Lane::isolated().await;
     crate::tail_watch::park_delivery(&lane).await;
@@ -281,7 +279,7 @@ async fn an_approved_grant_raises_no_second_card() {
     let action = first_card_action(&lane).await;
     lane.inbox
         .resolve(
-            &action,
+            action.as_str(),
             Decision::Approved,
             REVIEWER,
             "",
@@ -298,9 +296,9 @@ async fn an_approved_grant_raises_no_second_card() {
 /// When the grant was approved, as the resolve stamped it.
 async fn approved_at(lane: &Lane) -> Option<Timestamp> {
     sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(
-        "SELECT approved_at FROM connector.integration_grants WHERE fleet_id = $1::uuid",
+        "SELECT approved_at FROM connector.integration_grants WHERE fleet_id = $1",
     )
-    .bind(lane.fleet.as_str())
+    .bind(&lane.fleet)
     .fetch_one(&mut *lane.pool.acquire().await.expect("the lane must answer"))
     .await
     .expect("approved_at is readable")
@@ -308,7 +306,7 @@ async fn approved_at(lane: &Lane) -> Option<Timestamp> {
 }
 
 /// When the card for `action` was resolved.
-async fn card_resolved_at(lane: &Lane, action: &str) -> Option<Timestamp> {
+async fn card_resolved_at(lane: &Lane, action: &Uuid7) -> Option<Timestamp> {
     sqlx::query_scalar::<_, Option<jiff_sqlx::Timestamp>>(
         "SELECT resolved_at FROM fleet.approval_gates WHERE action_id = $1",
     )
@@ -321,7 +319,7 @@ async fn card_resolved_at(lane: &Lane, action: &str) -> Option<Timestamp> {
 
 /// One fleet's request is not another's.
 #[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_request_names_the_fleet_that_asked() {
     let mine = Lane::isolated().await;
     let theirs = Lane::isolated().await;

@@ -1,6 +1,7 @@
 //! An interim line goes out through the answer's poster, under its own marker
 //! part, and a repeat of it looks for that part rather than for the answer.
 
+use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_outbound::{Interim, Interjector};
 
@@ -21,7 +22,7 @@ fn interim(fixture: &Fixture, part: u32) -> Interim {
         workspace_id: job.workspace_id,
         fleet_id: job.fleet_id,
         event_id: job.event_id,
-        lease_id: LEASE.to_owned(),
+        lease_id: Uuid7::parse(LEASE).expect("the fixture lease is canonical"),
         text: LINE.to_owned(),
         part,
     }
@@ -120,8 +121,8 @@ async fn a_line_whose_acknowledgement_was_lost_is_not_posted_twice() {
     let slack = slack_answering(503, r#"{"ok":false}"#).await;
     let landed = interim(&fixture, 4);
     let marker = afd_connector::slack::AnswerMarker {
-        fleet_id: landed.fleet_id.clone(),
-        event_id: landed.event_id.clone(),
+        fleet_id: landed.fleet_id.clone().into(),
+        event_id: landed.event_id.clone().into(),
         part: Some(afd_connector::slack::Part {
             lease_id: LEASE.to_owned(),
             line: 4,

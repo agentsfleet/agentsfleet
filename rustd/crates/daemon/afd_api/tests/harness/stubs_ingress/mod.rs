@@ -23,9 +23,9 @@
 //! is the record of that — a test asserts on the `event_id` the route composed,
 //! which is the route's own output.
 //!
-//! It does not prove the at-most-once claim. That is one Lua script on Dragonfly
-//! ([`afd_dragonfly::streams::FleetStreams::append_once`]), and a claim
-//! re-implemented here would agree with the suite whatever the script did. The
+//! It does not prove the at-most-once claim. That is the admission ledger's
+//! unique producer key in Postgres ([`afd_admission::Admissions`]), and a claim
+//! re-implemented here would agree with the suite whatever the ledger did. The
 //! claim below exists only so a redelivery reaches the route's replay-rendering
 //! branch; the guarantee itself is the integration lane's, under `#[ignore]`.
 
@@ -35,14 +35,7 @@ use std::sync::{Arc, Mutex};
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretBytes;
 use afd_api::services::WebhookIngress;
-use afd_dragonfly::streams::EventId;
 use afd_ingress::{Binding, Ingress, Surface};
-
-/// The shape Dragonfly renders an entry id in, which a stub id has to share.
-///
-/// A route reads the id back out and puts it in a response body, so an id of
-/// another shape would let a renderer that mangled it still pass.
-const ENTRY_ID_SEQUENCE: &str = "-0";
 
 /// Which ingress a suite is driving.
 ///
@@ -72,7 +65,7 @@ pub(crate) struct Recorded {
     /// Which claim window the route asked for.
     pub(crate) surface: Surface,
     /// The fleet the append was made against.
-    pub(crate) fleet: String,
+    pub(crate) fleet: Uuid7,
     /// The identifier a redelivery has to repeat.
     pub(crate) event_id: String,
     /// Who the history records as having woken the fleet.
@@ -110,7 +103,7 @@ pub(crate) struct Scripted {
     /// whose URL names no provider.
     asked: Mutex<Vec<String>>,
     /// The first id each claim key was answered with.
-    claimed: Mutex<BTreeMap<String, String>>,
+    claimed: Mutex<BTreeMap<String, Uuid7>>,
 }
 
 impl Scripted {

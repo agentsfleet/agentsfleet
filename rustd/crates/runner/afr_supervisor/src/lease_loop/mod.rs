@@ -3,7 +3,7 @@
 //! ```text
 //!   admit ─► turn ─► memory (the lease's window, or read) ─► [size, egress, checkout plan] ─► run
 //!                                  └─► [take hold or prepare ─► checkout] ─┘ beside it
-//!   ─► [hold frozen, or kill] ─► [no window: memory push] ─► report spooled ─► report posted
+//!   ─► [hold frozen, or kill] ─► current report retained in memory ─► report acknowledged
 //!   ─► [release the killed sandbox's disk ∥ activity drained]
 //!   └──────────── renewal alongside, until the report is answered ─────────┘
 //! ```
@@ -25,20 +25,16 @@ use std::time::Duration;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_wire::lease::LeasePayload;
-use af_wire::memory::MemoryHydrateResponse;
 use af_wire::report::FailureClass;
 use afr_agent::Meter;
-use afr_executor::{ExecutorSlot, Unavailable};
-use afr_memory::Seed;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
 
-use crate::activity::{self, ActivitySink};
+use crate::activity;
 use crate::egress::Egress;
 use crate::error::Result;
 use crate::identity::lease_span;
-use crate::memory;
 use crate::renew::Renewal;
 use crate::report::Ending;
 use crate::turns::FleetTurns;
@@ -52,9 +48,10 @@ mod recovery;
 mod refusal;
 mod segments;
 mod settle;
+mod work;
 mod workspace;
 
-use self::hold::{Fate, Kept, Worked};
+use self::hold::{Kept, Worked};
 pub(crate) use self::lessee::Lessee;
 use self::refusal::failed;
 use self::segments::{Segment, Timeline};
@@ -94,9 +91,10 @@ pub(super) struct LeaseRun<'a> {
     egress: &'a Egress,
     ids: Ids,
     interrupt: CancellationToken,
+    decisions: crate::verbs::PendingDecisions,
     /// What the run has spent so far, read into every renewal, its lines
     /// stamped by the lessee's clock.
-    meter: Meter,
+    meter: Arc<Meter>,
     /// When the lease began, for its wall time.
     started: Instant,
     /// Where the lease's time went, for its last line.
@@ -115,16 +113,21 @@ impl Lessee {
     ///
     /// # Errors
     /// Identifiers that are not canonical; nothing has started then. Every
-    /// failure after that ends in a report, spooled or posted.
+    /// failure after that is reported; an unacknowledged terminal refusal is returned.
     pub(crate) async fn run(
         &self,
         turns: &FleetTurns,
         lease: &LeasePayload<'_>,
         egress: &Egress,
+        interrupt: CancellationToken,
     ) -> Result<()> {
         let identity = self.whoami.get(&self.plane).await;
         let span = lease_span(identity, lease);
-        Box::pin(self.run_lease(turns, lease, egress).instrument(span)).await
+        Box::pin(
+            self.run_lease(turns, lease, egress, interrupt)
+                .instrument(span),
+        )
+        .await
     }
 
     async fn run_lease(
@@ -132,6 +135,7 @@ impl Lessee {
         turns: &FleetTurns,
         lease: &LeasePayload<'_>,
         egress: &Egress,
+        interrupt: CancellationToken,
     ) -> Result<()> {
         let run = LeaseRun {
             lessee: self,
@@ -141,8 +145,9 @@ impl Lessee {
                 lease: Uuid7::parse(&lease.lease_id)?,
                 fleet: Uuid7::parse(&lease.event.fleet_id)?,
             },
-            interrupt: CancellationToken::new(),
-            meter: Meter::new(Arc::clone(&self.clock)),
+            interrupt,
+            decisions: crate::verbs::PendingDecisions::default(),
+            meter: Arc::new(Meter::new(Arc::clone(&self.clock))),
             started: Instant::now(),
             timeline: Timeline::default(),
         };
@@ -150,15 +155,13 @@ impl Lessee {
         let lease_id = run.ids.lease.as_str();
         let event = EVENT_ACQUIRED;
         tracing::info!(lease_id, event);
-        let ending = Box::pin(run.lease(turns)).await;
-        run.conclude(&ending);
-        Ok(())
+        Box::pin(run.lease(turns)).await.map(drop)
     }
 }
 
 impl LeaseRun<'_> {
     /// The run, its renewal and its live tail, then the settle.
-    async fn lease(&self, turns: &FleetTurns) -> Ending {
+    async fn lease(&self, turns: &FleetTurns) -> Result<Ending> {
         let lessee = self.lessee;
         let (sink, mut pump) = activity::channel(&lessee.plane, &self.ids.lease);
         let renewal = Renewal::new(
@@ -215,16 +218,16 @@ impl LeaseRun<'_> {
         mut renewal: Pin<&mut impl Future<Output = FailureClass>>,
         mut pumping: Pin<&mut impl Future<Output = ()>>,
         mut live: Live,
-    ) -> Ending {
+    ) -> Result<Ending> {
         let reporting = self.timeline.start(Segment::Report);
-        let fate: Fate = {
+        let (fate, reported) = {
             let settle = async {
                 let fate = self.keep(kept, &mut ending).await;
-                let superseded = self.settle(&mut ending, &fate, &reporting).await;
-                if superseded && fate.held_until().is_some() {
+                let reported = self.settle(&mut ending, &fate, &reporting).await;
+                if reported.is_err() && fate.held_until().is_some() {
                     self.lessee.holds.supersede(self.ids.lease.clone());
                 }
-                fate
+                (fate, reported)
             };
             tokio::pin!(settle);
             loop {
@@ -257,115 +260,9 @@ impl LeaseRun<'_> {
                 "the live tail did not drain; the report already settled"
             );
         }
-        ending
-    }
-
-    /// Everything that holds the fleet's turn: setup and the run. The sandbox
-    /// the run used comes back with its ending, for the lease to hold or
-    /// destroy once the cut and the report decide.
-    ///
-    /// The interrupt ends the run early, and the caller's ending replaces
-    /// whatever this returns.
-    async fn work(&self, turns: &FleetTurns, sink: ActivitySink) -> Worked {
-        let lessee = self.lessee;
-        let needs = match lessee.agent.admit(&self.lease.policy) {
-            Ok(needs) => needs,
-            Err(refusal) => return self.unhosted(&refusal).into(),
-        };
-        let claimed = tokio::select! {
-            turn = turns.claim(&self.ids.fleet) => turn,
-            () = self.interrupt.cancelled() => {
-                return failed(FailureClass::RenewalTerminate, DETAIL_RENEWAL).into();
-            }
-        };
-        let Some(_turn) = claimed else {
-            return failed(FailureClass::StartupPosture, DETAIL_TURN).into();
-        };
-        let verbs = crate::verbs::FencedVerbs::new(
-            &lessee.plane,
-            &self.ids.lease,
-            self.lease.fencing_token,
-            &lessee.spool,
-            &lessee.held,
-            &self.interrupt,
-        );
-        let prepared = match lessee
-            .agent
-            .prepare_task(self.lease, &verbs, &self.meter, &self.interrupt)
-            .await
-        {
-            Ok(prepared) => prepared,
-            Err(failure) => {
-                return self
-                    .fail(
-                        &failure,
-                        FailureClass::StartupPosture,
-                        "task_preparation_failed",
-                        "native task intent could not be established",
-                    )
-                    .into();
-            }
-        };
-        // The window rides the lease from a daemon at this release; only a
-        // lease without one costs the memory read, and only that read is timed.
-        let read;
-        let decoded;
-        let memory = if let Some(window) = self.lease.memory.as_ref() {
-            afr_telemetry::record::memory_source(afr_telemetry::labels::MemorySource::Inline);
-            window
-        } else {
-            afr_telemetry::record::memory_source(afr_telemetry::labels::MemorySource::Fallback);
-            let hydrating = self.timeline.start(Segment::Memory);
-            read = match memory::hydrate(&lessee.plane, &self.ids.fleet).await {
-                Ok(read) => read,
-                Err(failure) => {
-                    return self
-                        .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
-                        .into();
-                }
-            };
-            decoded = match read.decode::<MemoryHydrateResponse<'_>>() {
-                Ok(decoded) => decoded,
-                Err(failure) => {
-                    return self
-                        .refuse(&failure, EVENT_HYDRATE_FAILED, DETAIL_MEMORY)
-                        .into();
-                }
-            };
-            hydrating.stop();
-            &decoded
-        };
-        let recaller = memory::Recaller::new(&lessee.plane, &self.ids.fleet, self.lease);
-        let seed = Seed {
-            window: &memory.memory,
-            shared: &memory.shared,
-            publish: memory.publish,
-            recall: Some(&recaller),
-        };
-        if needs.sandbox
-            && prepared
-                .as_ref()
-                .is_none_or(|prepared| prepared.allow_actions)
-        {
-            self.sandboxed(seed, sink, prepared.as_ref()).await
-        } else {
-            let none = ExecutorSlot::unavailable(Unavailable::NoSandbox);
-            let recovered = match self.recover_without_sandbox(prepared.as_ref()).await {
-                Ok(recovered) => recovered,
-                Err(failure) => {
-                    return self
-                        .refuse(
-                            &failure,
-                            "task_restore_failed",
-                            "durable task recovery could not be established",
-                        )
-                        .into();
-                }
-            };
-            self.drive(seed, &none, sink, prepared.as_ref(), recovered.as_ref())
-                .await
-                .into()
-        }
+        self.conclude(&ending);
+        reported?;
+        Ok(ending)
     }
 }
 

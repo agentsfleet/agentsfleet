@@ -26,6 +26,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_db::config::DbRole;
 use afd_db::test_util::{TenantSeed, TestDatabase, mint_id};
 use afd_db::{Db, Migrator};
@@ -50,7 +51,7 @@ const SEEDED_AT: Timestamp = Timestamp::constant(1_700_000_000, 0);
 const SEED_SPREAD: &str = "
 WITH workspace AS (
     INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
-    VALUES (uuidv7(), $1::uuid, 'hold-plan', $2)
+    VALUES (uuidv7(), $1, 'hold-plan', $2)
     RETURNING id
 ), runners AS (
     INSERT INTO runner.runners
@@ -66,7 +67,7 @@ WITH workspace AS (
     INSERT INTO fleet.fleets
       (id, workspace_id, tenant_id, name, status, required_tags, memory_reads_workspace,
        memory_publishes_workspace, resource_version, created_at, updated_at)
-    SELECT uuidv7(), workspace.id, $1::uuid, 'hold-plan-' || f, 'active', '{}', false, false,
+    SELECT uuidv7(), workspace.id, $1, 'hold-plan-' || f, 'active', '{}', false, false,
            1, $2, $2
       FROM workspace, generate_series(1, $3 * $4) f
     RETURNING id
@@ -88,9 +89,9 @@ const ANALYZE_SLOTS: &str = "ANALYZE runner.fleet_slots";
 const FORCE_GENERIC: &str = "SET LOCAL plan_cache_mode = force_generic_plan";
 
 /// The reconcile's text prepared with the types sqlx binds it with: the
-/// runner and the listed fleets as text, the beat interval as an interval,
+/// runner and the listed fleets as uuids, the beat interval as an interval,
 /// and whether the beat is closing.
-const PREPARE_CLEAR: &str = "PREPARE clear_dropped_holds (text, text[], interval, boolean) AS ";
+const PREPARE_CLEAR: &str = "PREPARE clear_dropped_holds (uuid, uuid[], interval, boolean) AS ";
 
 /// Its plan. The values are placeholders a generic plan never reads.
 const EXPLAIN_CLEAR: &str = "EXPLAIN EXECUTE clear_dropped_holds \
@@ -109,7 +110,7 @@ async fn run(connection: &mut PgConnection, statement: &str) {
 }
 
 /// A database of this test's own, migrated from `schema/`, and its tenant.
-async fn private_database() -> (TestDatabase, Db, String) {
+async fn private_database() -> (TestDatabase, Db, Uuid7) {
     let database = TestDatabase::create().await;
     let db = database.open(DbRole::Migrator, &[]).await;
     Migrator::new()
@@ -119,7 +120,7 @@ async fn private_database() -> (TestDatabase, Db, String) {
     let tenant = mint_id();
     let mut connection = db.acquire().await.expect("a private connection");
     // The one tenant every seeded row belongs to.
-    TenantSeed::new(tenant.as_str())
+    TenantSeed::new(&tenant)
         .name("hold-plan")
         .at(SEEDED_AT)
         .insert(&mut *connection)
@@ -132,7 +133,7 @@ async fn private_database() -> (TestDatabase, Db, String) {
 /// The reconcile's generic plan against one spread, which rolls back.
 async fn generic_plan(
     db: &Db,
-    tenant: &str,
+    tenant: &Uuid7,
     (runners, each, held_one_in): (i32, i32, i32),
 ) -> String {
     let mut connection = db.acquire().await.expect("a private connection");

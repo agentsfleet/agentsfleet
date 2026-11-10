@@ -1,5 +1,5 @@
 WITH current_state AS (
-  SELECT id, status FROM runner.runners WHERE id = $1::uuid FOR UPDATE
+  SELECT id, status FROM runner.runners WHERE id = $1 FOR UPDATE
 ), updated AS (
   UPDATE runner.runners r
   SET selftest_requested_at = now(), updated_at = now()

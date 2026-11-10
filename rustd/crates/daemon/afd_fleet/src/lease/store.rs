@@ -11,32 +11,53 @@
 //! beside it add the gates and the row.
 
 use af_crypto::entropy::Entropy;
+use afd_bus::{Handle, wake::Wake};
 use afd_db::Db;
-use afd_dragonfly::doorbell::Waited;
-use afd_dragonfly::{Doorbell, Dragonfly, FleetStreams, OutboundQueue};
 
-/// Queue selection and lease writes use Postgres. Dragonfly carries the live
-/// tail, outbound delivery and disposable recent-work notifications.
+/// Queue selection, lease writes and owed answers use Postgres. The bus
+/// carries the live tail and the disposable notifications.
 #[derive(Debug, Clone)]
 pub struct Leases {
     database: Db,
-    queue: Dragonfly,
+    bus: Handle,
     entropy: Entropy,
-    doorbell: Doorbell,
+    wake: Wake,
     ticket: Option<afd_runner::capacity::choice::Ticket>,
+    authority: Option<afd_runner::capacity::authority::Authority>,
 }
 
 impl Leases {
-    /// A store reading and writing through `database` and `queue`.
+    /// A store reading and writing through `database`, announcing on `bus`.
     #[must_use]
-    pub fn new(database: Db, queue: Dragonfly, entropy: Entropy) -> Self {
+    pub fn new(database: Db, bus: Handle, entropy: Entropy) -> Self {
         Self {
             database,
-            queue,
+            bus,
             entropy,
-            doorbell: Doorbell::new(),
+            wake: Wake::default(),
             ticket: None,
+            authority: None,
         }
+    }
+
+    /// Bind streamed lease operations to the credential and owner acquired at opening.
+    #[must_use]
+    pub fn for_connection(mut self, authority: afd_runner::capacity::authority::Authority) -> Self {
+        self.authority = Some(authority);
+        self
+    }
+
+    /// Lock the runner row through this transaction and count its occupied workers.
+    /// Stream grants also recheck the opening credential and connection owner.
+    pub(crate) async fn lock_host_capacity(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &af_core::id::Uuid7,
+    ) -> crate::Result<Option<afd_runner::capacity::Capacity>> {
+        Ok(match &self.authority {
+            Some(authority) => afd_runner::capacity::lock(tx, (runner, authority)).await?,
+            None => afd_runner::capacity::lock(tx, runner).await?,
+        })
     }
 
     pub(super) const fn with_ticket(
@@ -51,13 +72,10 @@ impl Leases {
         self.ticket
     }
 
-    /// The same store, taking recent fleet hints from `doorbell`.
-    ///
-    /// Without one nothing rings, and polls find fresh work through the
-    /// Postgres probe alone. The daemon hands in the doorbell its hub listens for.
+    /// Share the replica's notification queue with placement and scheduling.
     #[must_use]
-    pub fn with_doorbell(mut self, doorbell: Doorbell) -> Self {
-        self.doorbell = doorbell;
+    pub fn with_wake(mut self, wake: Wake) -> Self {
+        self.wake = wake;
         self
     }
 
@@ -69,31 +87,15 @@ impl Leases {
         &self.entropy
     }
 
-    /// The doorbell every poll through this store takes rung partitions from,
-    /// and every held heartbeat waits on.
+    /// Recent-work reminders supplement the authoritative candidate read.
     #[must_use]
-    pub const fn doorbell(&self) -> &Doorbell {
-        &self.doorbell
-    }
-
-    /// Holds a runner's heartbeat until fresh work is admitted anywhere this
-    /// process hears of it, or `deadline`, unless `max` beats are held.
-    pub async fn wait_for_work(&self, deadline: std::time::Duration, max: usize) -> Waited {
-        self.doorbell.wait_for_ring(deadline, max).await
+    pub const fn wake(&self) -> &Wake {
+        &self.wake
     }
 
     /// The fleet event streams, bound to this store's connection.
-    pub(crate) fn streams(&self) -> FleetStreams {
-        FleetStreams::new(self.queue.clone())
-    }
-
-    /// The outbound delivery queue, bound to this store's connection.
-    ///
-    /// Constructed per call for the reason [`Leases::streams`] is: the handle is
-    /// a thin wrapper over the shared connection, and keeping `queue` private
-    /// means no caller can reach past the verbs this store exposes.
-    pub(crate) fn outbound(&self) -> OutboundQueue {
-        OutboundQueue::new(self.queue.clone())
+    pub(crate) fn streams(&self) -> Handle {
+        self.bus.clone()
     }
 
     /// The pool this store reads through, for the sibling modules that add

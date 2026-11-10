@@ -9,7 +9,6 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::id::Uuid7;
 use af_wire::runner::{NetworkPolicy, SandboxTier};
 use afd_api_wire::admin::RunnerAdminAction;
 use afd_fleet::lease::Billed;
@@ -23,7 +22,7 @@ const ACTOR: &str = "fixture:platform-operator";
 
 /// A record is retired only from the terminal state, and only once.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_runner_record_is_retired_only_once_revoked() {
     let fixtures = Fixtures::create().await;
     let enrolled = fixtures
@@ -82,11 +81,11 @@ async fn test_a_runner_record_is_retired_only_once_revoked() {
 /// through; retiring the runner under it would strand the slot until the
 /// lease's own expiry. Once the lease is gone the record retires as usual.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
-    // With a queue: this is the one retirement test that takes a lease, and
-    // the lease path publishes to it.
-    let fixtures = Fixtures::create_with_queue().await;
+    // The one retirement test that takes a lease, so the one whose lease path
+    // publishes on the fixture's bus.
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
         tenant,
@@ -108,14 +107,13 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         .record_received(&held)
         .await
         .expect("the narrative log opens");
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
     let issued = fixtures
         .leases()
         .issue(
             &runner,
             &held,
             Billed {
-                tenant_id: &tenant_id,
+                tenant_id: &tenant,
                 posture: POSTURE,
                 provider: PROVIDER,
                 model: MODEL,
@@ -125,7 +123,7 @@ async fn test_a_leased_runner_keeps_its_record_until_the_lease_is_gone() {
         .await
         .expect("the lease row must be written")
         .expect("the claim is still held");
-    let lease = issued.lease_id.as_str().to_owned();
+    let lease = issued.lease_id;
 
     fixtures
         .runners()

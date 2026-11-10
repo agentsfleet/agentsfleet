@@ -16,7 +16,7 @@ use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
 use crate::sql::workspace as sql;
-use crate::{Result, error, stored};
+use crate::{Result, error};
 
 use super::Workspaces;
 use super::name::{self, Chosen};
@@ -32,7 +32,7 @@ const CONTEXT_TENANT: &str = "check tenant exists";
 
 /// The index that arbitrates a per-tenant name.
 ///
-/// Must equal the name in `schema/1110_identity_workspaces.sql`, because classification
+/// Must equal the name in `schema/20261108120300_identity_workspaces.sql`, because classification
 /// is by exact constraint: a rename landing on one side turns a duplicate-name
 /// conflict into a 500.
 const NAME_CONSTRAINT: &str = "uq_workspaces_tenant_id_name";
@@ -107,7 +107,7 @@ impl Workspaces {
     /// cannot read.
     pub async fn page(
         &self,
-        tenants: &[&str],
+        tenants: &[&Uuid7],
         filter: Option<&str>,
         after: Option<&After>,
         limit: u32,
@@ -123,7 +123,7 @@ impl Workspaces {
             (None, Some(boundary)) => sqlx::query_as(sql::SELECT_TENANT_WORKSPACES_PAGE_AFTER)
                 .bind(tenants)
                 .bind(boundary.created_at.to_sqlx())
-                .bind(boundary.id.as_str())
+                .bind(&boundary.id)
                 .bind(fetch),
             (Some(name), None) => sqlx::query_as(sql::SELECT_TENANT_WORKSPACES_PAGE_FIRST_BY_NAME)
                 .bind(tenants)
@@ -134,7 +134,7 @@ impl Workspaces {
                     .bind(tenants)
                     .bind(name)
                     .bind(boundary.created_at.to_sqlx())
-                    .bind(boundary.id.as_str())
+                    .bind(&boundary.id)
                     .bind(fetch)
             }
         };
@@ -146,7 +146,7 @@ impl Workspaces {
         let mut rows = fetched
             .into_iter()
             .map(PageRow::parse)
-            .collect::<Result<Vec<WorkspaceRow>>>()?;
+            .collect::<Vec<WorkspaceRow>>();
         // A `u32` always fits the `usize` of every target this daemon builds for.
         let limit = usize::try_from(limit).unwrap_or(usize::MAX);
         let more = rows.len() > limit;
@@ -175,7 +175,7 @@ impl Workspaces {
         // tenant, and this sentence beats the foreign key's 500. The race
         // between check and insert stays, and loses only a clearer refusal.
         let exists: Option<i32> = sqlx::query_scalar(sql::SELECT_TENANT_EXISTS)
-            .bind(tenant.as_str())
+            .bind(tenant)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_TENANT))?;
@@ -228,8 +228,8 @@ impl Workspaces {
         name: &str,
     ) -> std::result::Result<(), sqlx::Error> {
         sqlx::query(sql::INSERT_WORKSPACE)
-            .bind(id.as_str())
-            .bind(tenant.as_str())
+            .bind(id)
+            .bind(tenant)
             .bind(name)
             .execute(connection.as_mut())
             .await
@@ -240,21 +240,21 @@ impl Workspaces {
 /// One page row, by column name.
 #[derive(Debug, sqlx::FromRow)]
 struct PageRow {
-    id: String,
+    id: Uuid7,
     name: Option<String>,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     created_at: Timestamp,
-    tenant_id: String,
+    tenant_id: Uuid7,
 }
 
 impl PageRow {
-    /// The workspace this row stores; its tenant parses here.
-    fn parse(self) -> Result<WorkspaceRow> {
-        Ok(WorkspaceRow {
-            id: self.id,
+    /// The workspace this row stores.
+    fn parse(self) -> WorkspaceRow {
+        WorkspaceRow {
+            id: self.id.into(),
             name: self.name,
             created_at: self.created_at,
-            tenant_id: stored::tenant(&self.tenant_id)?,
-        })
+            tenant_id: self.tenant_id,
+        }
     }
 }

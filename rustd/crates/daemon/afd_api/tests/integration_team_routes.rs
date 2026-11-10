@@ -163,18 +163,18 @@ async fn john_manages_the_account(routers: &Routers, members: &Members, invite: 
     let (john, bob, stranger) = (&members.john, &members.bob, &members.stranger);
     let (_, roster) = call(&routers.john, Method::GET, MEMBERS, john, "").await;
     let role_of = |user: &str| find(&roster, "user_id", user).and_then(|m| text(m, "role"));
-    assert_eq!(role_of(&john.user), Some(ROLE_OWNER));
-    assert_eq!(role_of(&stranger.user), Some(ROLE_MEMBER));
+    assert_eq!(role_of(john.user.as_str()), Some(ROLE_OWNER));
+    assert_eq!(role_of(stranger.user.as_str()), Some(ROLE_MEMBER));
     let joined_of = |user: &str| {
         find(&roster, "user_id", user).and_then(|m| m.get("joined_at").and_then(Value::as_str))
     };
     assert_eq!(
-        joined_of(&john.user),
+        joined_of(john.user.as_str()),
         Some("1970-01-01T00:00:00.001Z"),
         "signup's owner membership"
     );
     assert_eq!(
-        joined_of(&bob.user),
+        joined_of(bob.user.as_str()),
         Some("1970-01-01T00:00:00.002Z"),
         "Bob's seeded membership"
     );

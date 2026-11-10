@@ -12,6 +12,7 @@
     reason = "test support: shared by several test binaries, each using a subset"
 )]
 
+use af_core::id::Uuid7;
 use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
 use afd_db::test_util::{FleetSeed, SetupRevision, TenantSeed, WorkspaceSeed};
 use jiff::Timestamp;
@@ -34,11 +35,10 @@ pub(crate) const COLUMN_LAST_METERED: &str = "last_metered_at";
 
 /// The runtime cursor of `fleet`'s newest lease.
 const NEWEST_LEASE_METERED: &str = "SELECT last_metered_at FROM runner.leases \
-     WHERE fleet_id = $1::uuid ORDER BY fencing_token DESC LIMIT 1";
+     WHERE fleet_id = $1 ORDER BY fencing_token DESC LIMIT 1";
 
 /// Whether the workspace a seed would write already exists.
-const WORKSPACE_EXISTS: &str =
-    "SELECT EXISTS (SELECT 1 FROM identity.workspaces WHERE id = $1::uuid)";
+const WORKSPACE_EXISTS: &str = "SELECT EXISTS (SELECT 1 FROM identity.workspaces WHERE id = $1)";
 
 /// The database clock, rounded as a `TIMESTAMPTZ(3)` column rounds it, so a
 /// stamp the code under test stored compares against it exactly.
@@ -49,14 +49,14 @@ const MAKE_STICKY: &str = "\
 INSERT INTO runner.fleet_slots
   (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
    created_at, updated_at)
-VALUES ($1::uuid, $2::uuid, 1, now() - interval '1 day', NULL, now(), now())";
+VALUES ($1, $2, 1, now() - interval '1 day', NULL, now(), now())";
 
 impl Fixtures {
     /// Expires one lease in place, as the liveness sweep would once its holder
     /// stopped renewing.
-    pub(crate) async fn expire_lease(&self, lease: &str) {
+    pub(crate) async fn expire_lease(&self, lease: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query("UPDATE runner.leases SET status = $2::text WHERE id = $1::uuid")
+        sqlx::query("UPDATE runner.leases SET status = $2::text WHERE id = $1")
             .bind(lease)
             .bind(afd_state::sql::LEASE_STATUS_EXPIRED)
             .execute(&mut *connection)
@@ -70,9 +70,9 @@ impl Fixtures {
     /// The race it stands in for is narrow and real: a report loads its lease,
     /// the sweep removes the row, and the claim then matches nothing for a
     /// reason that is neither a lost fence nor a settled lease.
-    pub(crate) async fn delete_lease(&self, lease: &str) {
+    pub(crate) async fn delete_lease(&self, lease: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query("DELETE FROM runner.leases WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM runner.leases WHERE id = $1")
             .bind(lease)
             .execute(&mut *connection)
             .await
@@ -91,7 +91,13 @@ impl Fixtures {
     ///
     /// The tenant and workspace are written once, by the first fleet that
     /// names them: a suite seeds many fleets in one workspace.
-    pub(crate) async fn seed_fleet(&self, fleet: &str, workspace: &str, tenant: &str, tag: &str) {
+    pub(crate) async fn seed_fleet(
+        &self,
+        fleet: &Uuid7,
+        workspace: &Uuid7,
+        tenant: &Uuid7,
+        tag: &str,
+    ) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         let owned: bool = sqlx::query_scalar(WORKSPACE_EXISTS)
             .bind(workspace)
@@ -135,7 +141,7 @@ impl Fixtures {
     /// Makes `runner` the fleet's last holder, its claim long expired, so the
     /// candidate scan sorts the fleet sticky for that runner and nothing holds
     /// its slot.
-    pub(crate) async fn make_sticky(&self, fleet: &str, runner: &str) {
+    pub(crate) async fn make_sticky(&self, fleet: &Uuid7, runner: &Uuid7) {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query(MAKE_STICKY)
             .bind(fleet)
@@ -149,9 +155,9 @@ impl Fixtures {
     ///
     /// Fleet-scoped on purpose: the ledger is deployment-wide and a total would
     /// count whatever a sibling suite admitted in parallel (ISO-1).
-    pub(crate) async fn admissions_for(&self, fleet: &str) -> i64 {
+    pub(crate) async fn admissions_for(&self, fleet: &Uuid7) -> i64 {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
             .bind(fleet)
             .fetch_one(&mut *connection)
             .await
@@ -174,7 +180,7 @@ impl Fixtures {
 
     /// Whether `fleet`'s slot is free: its claim's deadline is already behind
     /// the database clock, so the next claim may take it.
-    pub(crate) async fn slot_is_free(&self, fleet: &str) -> bool {
+    pub(crate) async fn slot_is_free(&self, fleet: &Uuid7) -> bool {
         let deadline = self
             .instant(Row::Slot(fleet), COLUMN_LEASED_UNTIL)
             .await
@@ -197,7 +203,7 @@ impl Fixtures {
     /// The instant `fleet`'s newest lease's runtime meter last advanced to,
     /// which issue and renewal stamp from the database clock. A slice a test
     /// reports is measured from here, as the report's own charge is.
-    pub(crate) async fn metered_since(&self, fleet: &str) -> Timestamp {
+    pub(crate) async fn metered_since(&self, fleet: &Uuid7) -> Timestamp {
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         sqlx::query_scalar::<_, jiff_sqlx::Timestamp>(NEWEST_LEASE_METERED)
             .bind(fleet)

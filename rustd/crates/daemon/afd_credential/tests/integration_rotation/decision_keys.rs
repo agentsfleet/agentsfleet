@@ -163,8 +163,8 @@ async fn unreadable_envelopes_and_closed_storage_preserve_failures_without_anoth
     admin
         .seed("typesafe", br#"{"api_key":"never-return-this"}"#)
         .await;
-    sqlx::query("UPDATE vault.secrets SET secret_ciphertext=set_byte(secret_ciphertext,0,get_byte(secret_ciphertext,0)#1) WHERE workspace_id=$1::uuid AND key_name=$2")
-        .bind(admin.workspace.as_str()).bind("typesafe").execute(&mut *admin.database.acquire().await.expect("corruption fixture connection")).await.expect("simulate damaged envelope");
+    sqlx::query("UPDATE vault.secrets SET secret_ciphertext=set_byte(secret_ciphertext,0,get_byte(secret_ciphertext,0)#1) WHERE workspace_id=$1 AND key_name=$2")
+        .bind(&admin.workspace).bind("typesafe").execute(&mut *admin.database.acquire().await.expect("corruption fixture connection")).await.expect("simulate damaged envelope");
     let refused = reader(&admin)
         .resolve_decision_key(&admin.workspace, DecisionApi::Typesafe)
         .await

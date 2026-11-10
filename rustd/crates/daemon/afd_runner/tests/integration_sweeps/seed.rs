@@ -137,7 +137,7 @@ impl Fixture {
     async fn seed_aged_event(&self, connection: &mut sqlx::PgConnection, at: Timestamp) {
         sqlx::query(
             "INSERT INTO runner.events (id, runner_id, event_type, metadata, created_at) \
-             VALUES ($1::uuid, $2::uuid, 'lease_acquired', '{}', $3::timestamptz)",
+             VALUES ($1, $2, 'lease_acquired', '{}', $3::timestamptz)",
         )
         .bind(&self.old_event)
         .bind(&self.stale)

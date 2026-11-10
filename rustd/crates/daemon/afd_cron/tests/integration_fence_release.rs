@@ -20,7 +20,7 @@ use self::support::CronLane;
 
 /// The finalize is conditioned on the claim, not merely on the row existing.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_finalize_from_a_syncer_that_lost_the_row_does_not_land() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-lost", "0 3 * * *").await;
@@ -69,11 +69,11 @@ async fn a_finalize_from_a_syncer_that_lost_the_row_does_not_land() {
         SyncStatus::Syncing,
         "the row must still belong to the winner, mid-push"
     );
-    assert_eq!(current.sync_token.as_deref(), Some(winner.as_str()));
+    assert_eq!(current.sync_token.as_ref(), Some(&winner));
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_finalize_from_the_holder_releases_the_fence_and_records_success() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-synced", "0 3 * * *").await;
@@ -108,7 +108,7 @@ async fn a_finalize_from_the_holder_releases_the_fence_and_records_success() {
 
 /// A failure is a STORED state, which is the whole reason `/sync` can retry it.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_failed_push_keeps_its_reason_and_stays_retryable() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-failed", "0 3 * * *").await;
@@ -156,7 +156,7 @@ async fn a_failed_push_keeps_its_reason_and_stays_retryable() {
 
 /// A delete is a finalize that removes the row, and it is fenced identically.
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_delete_from_a_syncer_that_lost_the_row_removes_nothing() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-delete-lost", "0 3 * * *").await;
@@ -197,7 +197,7 @@ async fn a_delete_from_a_syncer_that_lost_the_row_removes_nothing() {
 }
 
 #[tokio::test]
-#[ignore = "needs the lane's Postgres"]
+#[ignore = "needs the lane's Postgres and NATS"]
 async fn a_delete_from_the_holder_removes_the_row() {
     let lane = CronLane::open().await;
     let created = lane.settled("key-delete", "0 3 * * *").await;

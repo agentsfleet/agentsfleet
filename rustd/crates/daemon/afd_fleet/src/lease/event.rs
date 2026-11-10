@@ -129,17 +129,17 @@ impl Leases {
         {
             return Err(crate::error::stale_fence());
         }
-        let admission = Uuid7::parse(&acquired.event_id).ok();
+        let admission = Some(acquired.event_id.clone());
         let landed: Landed = sqlx::query_as(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
-            .bind(acquired.fleet_id.as_str())
+            .bind(&acquired.fleet_id)
             .bind(&acquired.event_id)
-            .bind(acquired.workspace_id.as_str())
+            .bind(&acquired.workspace_id)
             .bind(&acquired.actor)
             .bind(&acquired.event_type)
             .bind(&acquired.request_json)
-            .bind(Option::<&str>::None)
+            .bind(Option::<&Uuid7>::None)
             .bind(af_core::event::status::RECEIVED)
-            .bind(admission.as_ref().map(Uuid7::as_str))
+            .bind(admission.as_ref())
             .bind(afd_admission::Producer::Steer.as_str())
             .fetch_one(&mut *transaction)
             .await
@@ -150,7 +150,7 @@ impl Leases {
         } = landed;
 
         sqlx::query(queue::STAMP_DELIVERY)
-            .bind(acquired.fleet_id.as_str())
+            .bind(&acquired.fleet_id)
             .bind(&acquired.event_id)
             .bind(acquired.fence.as_i64())
             .execute(&mut *transaction)
@@ -173,8 +173,7 @@ impl Leases {
         // Read optional tail figures after commit so a refused SELECT cannot
         // abort the durable delivery.
         let counters = if inserted {
-            afd_events::fleet_counters_best_effort_on(&mut connection, acquired.fleet_id.as_str())
-                .await
+            afd_events::fleet_counters_best_effort_on(&mut connection, &acquired.fleet_id).await
         } else {
             None
         };
@@ -206,7 +205,7 @@ impl Leases {
         acquired: &Acquired,
     ) -> Result<Delivery> {
         let stored: Option<String> = sqlx::query_scalar(afd_events::sql::SELECT_FLEET_EVENT_STATUS)
-            .bind(acquired.fleet_id.as_str())
+            .bind(&acquired.fleet_id)
             .bind(&acquired.event_id)
             .fetch_optional(&mut *connection)
             .await
@@ -265,7 +264,7 @@ impl Leases {
             return Err(crate::error::stale_fence());
         }
         let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_FAILURE)
-            .bind(acquired.fleet_id.as_str())
+            .bind(&acquired.fleet_id)
             .bind(&acquired.event_id)
             .bind(af_core::event::status::GATE_BLOCKED)
             .bind(refusal.label)

@@ -12,13 +12,9 @@ use std::fmt;
 use std::time::Duration;
 
 use af_core::id::Uuid7;
-use af_wire::activity::ActivityRequest;
 use af_wire::credentials::MintCredentialRequest;
-use af_wire::lease::{AcceptedKinds, LeaseRequest};
 use af_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
 use af_wire::paths;
-use af_wire::report::{RenewRequest, RenewResponse};
-use af_wire::runner::{HeartbeatRequest, HeldFleets};
 use backon::{ExponentialBuilder, Retryable as _};
 use bytes::Bytes;
 use serde::{Deserialize, Serialize};
@@ -30,6 +26,7 @@ mod authoring;
 mod context;
 mod http;
 mod lease_verbs;
+pub(crate) mod stream;
 mod task;
 mod verb;
 
@@ -39,7 +36,7 @@ pub(crate) use self::verb::Method;
 pub(crate) use self::verb::Verb;
 
 /// Attempts a retryable call gets before its caller decides what a failure
-/// means: keep the report spooled, fail the lease's start.
+/// means: fail the lease's start or leave the caller to retry.
 const RETRY_ATTEMPTS: usize = 4;
 /// The first pause between attempts; each later one doubles, with jitter.
 const RETRY_FIRST_DELAY: Duration = Duration::from_millis(250);
@@ -106,60 +103,13 @@ impl Body {
 #[derive(Debug)]
 pub struct ControlPlane {
     api: Box<dyn RunnerApi>,
+    pub(crate) stream: crate::uplink::StreamHandle,
 }
 
 impl ControlPlane {
     /// Speaks every verb through `api`.
-    pub(crate) fn new(api: Box<dyn RunnerApi>) -> Self {
-        Self { api }
-    }
-
-    /// Beats, carrying the capability report and any self-test.
-    pub(crate) async fn heartbeat(&self, request: &HeartbeatRequest<'_>) -> Result<Body> {
-        let path = Cow::Borrowed(paths::RUNNER_HEARTBEATS);
-        self.send_json(Verb::Heartbeat, path, request).await
-    }
-
-    /// Polls for the next lease, naming the fleets whose sandboxes this
-    /// runner holds so a held fleet's next event comes here first.
-    pub(crate) async fn lease(&self, held: &[Uuid7]) -> Result<Body> {
-        let path = Cow::Borrowed(paths::RUNNER_LEASES);
-        let holds = held.iter().map(|fleet| Cow::Borrowed(fleet.as_str()));
-        let request = LeaseRequest {
-            holds: HeldFleets(holds.collect()),
-            accepted_kinds: AcceptedKinds::ALL,
-        };
-        self.send_json(Verb::Lease, path, &request).await
-    }
-
-    /// Renews a held lease with the run's cumulative tokens, and returns its
-    /// new expiry.
-    pub(crate) async fn renew(
-        &self,
-        lease_id: &Uuid7,
-        spent: &RenewRequest,
-    ) -> Result<RenewResponse> {
-        let path = lease_path(lease_id, paths::LEASE_RENEW_SUFFIX);
-        let body = self.send_json(Verb::Renew, path, spent).await?;
-        body.decode::<RenewResponse>()
-    }
-
-    /// Posts one batch of live-tail frames.
-    pub(crate) async fn activity(
-        &self,
-        lease_id: &Uuid7,
-        request: &ActivityRequest<'_>,
-    ) -> Result<()> {
-        let path = lease_path(lease_id, paths::LEASE_ACTIVITY_SUFFIX);
-        self.send_json(Verb::Activity, path, request)
-            .await
-            .map(drop)
-    }
-
-    /// Posts a report, byte for byte as it was spooled.
-    pub(crate) async fn report(&self, report: Bytes) -> Result<()> {
-        let path = Cow::Borrowed(paths::RUNNER_REPORTS);
-        self.send(Verb::Report, path, Some(report)).await.map(drop)
+    pub(crate) fn new(api: Box<dyn RunnerApi>, stream: crate::uplink::StreamHandle) -> Self {
+        Self { api, stream }
     }
 
     /// Posts one body of finished calls' full records, already encoded.
@@ -267,7 +217,7 @@ pub(crate) fn backoff() -> ExponentialBuilder {
         .with_jitter()
 }
 
-/// The pauses for a path that never gives up: polls, the spool drain, boot.
+/// Jittered pauses for connection recovery and in-memory report delivery.
 pub(crate) fn endless() -> backon::ExponentialBackoff {
     backon::BackoffBuilder::build(backoff().without_max_times())
 }

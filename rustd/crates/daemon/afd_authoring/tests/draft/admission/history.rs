@@ -26,8 +26,8 @@ const CONTENTION_TIMEOUT: Duration = Duration::from_secs(5);
 const CONTENTION_POLL: Duration = Duration::from_millis(10);
 const MIN_WAITERS: i64 = 2;
 const BLOCKED: &str = "WITH RECURSIVE queued(pid) AS (SELECT $1::int UNION SELECT a.pid FROM pg_stat_activity a JOIN queued q ON q.pid = ANY(pg_blocking_pids(a.pid))) SELECT count(*) - 1 FROM queued";
-const CLONE_HISTORY: &str = "INSERT INTO authoring.attempts SELECT r.* FROM authoring.attempts a CROSS JOIN unnest($2::uuid[],$3::uuid[],$4::bigint[]) n(id,lease_id,sequence) CROSS JOIN LATERAL jsonb_populate_record(NULL::authoring.attempts,to_jsonb(a)||jsonb_build_object('id',n.id,'lease_id',n.lease_id,'message_sequence',n.sequence,'reserved_nanos',0)) r WHERE a.id=$1::uuid";
-const CUTOFF: &str = "UPDATE authoring.drafts SET last_message_sequence=$2,cancelled_through_sequence=$2 WHERE id=$1::uuid";
+const CLONE_HISTORY: &str = "INSERT INTO authoring.attempts SELECT r.* FROM authoring.attempts a CROSS JOIN unnest($2,$3,$4::bigint[]) n(id,lease_id,sequence) CROSS JOIN LATERAL jsonb_populate_record(NULL::authoring.attempts,to_jsonb(a)||jsonb_build_object('id',n.id,'lease_id',n.lease_id,'message_sequence',n.sequence,'reserved_nanos',0)) r WHERE a.id=$1";
+const CUTOFF: &str = "UPDATE authoring.drafts SET last_message_sequence=$2,cancelled_through_sequence=$2 WHERE id=$1";
 const EXPLAIN: &str = const_format::concatcp!(
     "EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ",
     Drafts::CURRENT_ATTEMPT_QUERY
@@ -41,7 +41,7 @@ async fn history(f: &Fixture, draft: &Draft, lease: &Claimed) {
     for last in HISTORY {
         seed(&mut owner, draft, lease, first, last).await;
         let plan: Value = sqlx::query_scalar(EXPLAIN)
-            .bind(draft.id.as_str())
+            .bind(&draft.id)
             .bind(["awaiting_accounting", "settled"])
             .bind(last)
             .fetch_one(&mut owner)
@@ -59,24 +59,17 @@ pub(super) async fn seed(
     first: i64,
     last: i64,
 ) {
+    let attempt = Uuid7::parse(&lease.attempt_id).expect("the lease names its attempt");
     sqlx::query(CLONE_HISTORY)
-        .bind(&lease.attempt_id)
-        .bind(
-            (first..=last)
-                .map(|_| mint().to_string())
-                .collect::<Vec<_>>(),
-        )
-        .bind(
-            (first..=last)
-                .map(|_| mint().to_string())
-                .collect::<Vec<_>>(),
-        )
+        .bind(&attempt)
+        .bind((first..=last).map(|_| mint()).collect::<Vec<_>>())
+        .bind((first..=last).map(|_| mint()).collect::<Vec<_>>())
         .bind((first..=last).collect::<Vec<_>>())
         .execute(&mut *owner)
         .await
         .expect("retained historical attempts");
     sqlx::query(CUTOFF)
-        .bind(draft.id.as_str())
+        .bind(&draft.id)
         .bind(last)
         .execute(&mut *owner)
         .await
@@ -124,8 +117,8 @@ async fn sends(f: Arc<Fixture>, id: &Uuid7, peer: Drafts) {
         .fetch_one(&mut *held)
         .await
         .expect("holder backend");
-    sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE")
-        .bind(id.as_str())
+    sqlx::query("SELECT id FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+        .bind(id)
         .execute(&mut *held)
         .await
         .expect("lock the owned draft");
@@ -221,8 +214,8 @@ async fn claims(f: Arc<Fixture>, draft: &Draft) {
         (HISTORY_MAX + 1).to_string()
     );
     let count: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE draft_id=$1::uuid")
-            .bind(draft.id.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM authoring.attempts WHERE draft_id=$1")
+            .bind(&draft.id)
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("retained and current attempts");

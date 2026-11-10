@@ -104,7 +104,7 @@ impl Directory {
         }
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query_as::<_, DescriptorRow>(sql::SELECT_SECRET_DESCRIPTORS)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(names)
             .fetch_all(connection.as_mut())
             .await

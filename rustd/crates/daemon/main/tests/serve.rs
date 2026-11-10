@@ -19,9 +19,6 @@ use agentsfleetd::supervisor::Supervisor;
 /// The API role's Postgres knob.
 const DATABASE_KNOB: &str = "DATABASE_URL_API";
 
-/// The API role's Dragonfly knob.
-const DRAGONFLY_KNOB: &str = "DRAGONFLY_URL";
-
 /// The master-key knob.
 const KEK_KNOB: &str = "ENCRYPTION_MASTER_KEY";
 
@@ -31,23 +28,18 @@ const GOOD_KEK: &str = "0123456789abcdef0123456789abcdef0123456789abcdef01234567
 /// A Postgres URL that parses and points at nothing listening.
 const DEAD_DATABASE: &str = "postgres://afd:afd@127.0.0.1:1/afd?sslmode=disable";
 
-/// A Dragonfly URL that parses and points at nothing listening.
-const DEAD_DRAGONFLY_URL: &str = "redis://127.0.0.1:1";
-
 /// An environment whose knobs all parse but whose datastores are not there.
 fn parses_but_dead() -> MapEnv {
     MapEnv::from_pairs(
-        [
-            (DATABASE_KNOB, DEAD_DATABASE),
-            (DRAGONFLY_KNOB, DEAD_DRAGONFLY_URL),
-            (KEK_KNOB, GOOD_KEK),
-        ]
-        .into_iter()
-        // Both are required at boot and resolved rather than dialled, so
-        // supplying them well-formed keeps this fixture's failure the DATASTORE
-        // one it is asserting about.
-        .chain(crate::support::SESSION_PEPPER)
-        .chain(crate::support::IDENTITY),
+        [(DATABASE_KNOB, DEAD_DATABASE), (KEK_KNOB, GOOD_KEK)]
+            .into_iter()
+            // Both are required at boot and resolved rather than dialled, so
+            // supplying them well-formed keeps this fixture's failure the DATASTORE
+            // one it is asserting about.
+            .chain(crate::support::SESSION_PEPPER)
+            .chain(crate::support::BUS)
+            .chain(crate::support::runner_stream::environment())
+            .chain(crate::support::IDENTITY),
     )
 }
 
@@ -75,7 +67,7 @@ async fn test_boot_refuses_an_unusable_environment_before_connecting() {
     );
 
     let rendered = failure.to_string();
-    for knob in [DATABASE_KNOB, DRAGONFLY_KNOB, KEK_KNOB] {
+    for knob in [DATABASE_KNOB, KEK_KNOB] {
         assert!(
             rendered.contains(knob),
             "the refusal names every missing knob; {knob} is absent from: {rendered}"
@@ -149,18 +141,6 @@ fn test_every_boot_failure_renders_a_reason() {
     assert!(
         matches!(lifted, BootFailure::Listen(_)),
         "an io error lifts to the listen variant on its own"
-    );
-
-    let (_kind, queue_source) = afd_dragonfly::error::one_of_each_kind()
-        .into_iter()
-        .next()
-        .expect("the Dragonfly error fixture is exhaustive");
-    let queue = BootFailure::from(queue_source);
-    assert_eq!(queue.phase(), "queue");
-    assert_eq!(queue.code(), af_core::error_code::STARTUP_DRAGONFLY_CONNECT);
-    assert!(
-        std::error::Error::source(&queue).is_some(),
-        "the queue failure preserves the original Dragonfly error"
     );
 }
 

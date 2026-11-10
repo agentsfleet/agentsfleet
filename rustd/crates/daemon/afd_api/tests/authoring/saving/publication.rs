@@ -4,11 +4,12 @@ use super::{
     super::{json_body, mint, send, send_with_headers},
     fixture::Case,
 };
+use af_core::id::Uuid7;
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn explicit_publication_is_reused_by_save_and_deletion_preserves_the_installed_snapshot() {
     let mut case = Case::create().await;
     case.fund().await;
@@ -23,10 +24,8 @@ async fn explicit_publication_is_reused_by_save_and_deletion_preserves_the_insta
     let saved = json_body(saved).await;
     assert_eq!(saved["status"], "active");
     assert_eq!(
-        installed_pin(&case, saved["id"].as_str().expect("fleet identity")).await,
-        published["revision_id"]
-            .as_str()
-            .expect("accepted revision")
+        installed_pin(&case, &crate::authoring::id_field(&saved["id"])).await,
+        crate::authoring::id_field(&published["revision_id"])
     );
     assert_library_deletion_hides_it(&case, &library).await;
     let retained = send(&case.router, Method::GET, &item, Some(&case.base.token), "").await;
@@ -68,14 +67,12 @@ async fn publish_candidate(case: &mut Case, request: &Value) -> (String, Value) 
 
 /// The Library revision the setup chat that saved `fleet` published: the
 /// publication Save reused rather than minting a second one.
-async fn installed_pin(case: &Case, fleet: &str) -> String {
-    sqlx::query_scalar(
-        "SELECT library_revision_id::text FROM authoring.drafts WHERE fleet_id=$1::uuid",
-    )
-    .bind(fleet)
-    .fetch_one(&mut *case.base.db.acquire().await.expect("pin connection"))
-    .await
-    .expect("installed publication pin")
+async fn installed_pin(case: &Case, fleet: &Uuid7) -> Uuid7 {
+    sqlx::query_scalar("SELECT library_revision_id FROM authoring.drafts WHERE fleet_id=$1")
+        .bind(fleet)
+        .fetch_one(&mut *case.base.db.acquire().await.expect("pin connection"))
+        .await
+        .expect("installed publication pin")
 }
 
 /// Deletes the Library entry and proves it no longer reads back.

@@ -21,18 +21,13 @@ impl Schedules {
         let mut transaction = Transaction::begin(self.database.acquire().await?, None)
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
-        let workspace: Option<String> = sqlx::query_scalar(LOCK_SCOPE)
-            .bind(fleet.as_str())
+        let workspace: Option<Uuid7> = sqlx::query_scalar(LOCK_SCOPE)
+            .bind(fleet)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(error::query(CONTEXT_WRITE))?;
         // Keep this transaction even when the parent is absent: a runner's
         // guard must still answer before a missing schedule is reported.
-        let workspace = workspace
-            .as_deref()
-            .map(Uuid7::parse)
-            .transpose()
-            .map_err(|_shape| error::row_unreadable(error::COLUMN_WORKSPACE))?;
         Ok(TransactionScope {
             transaction,
             workspace,

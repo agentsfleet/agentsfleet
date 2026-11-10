@@ -4,6 +4,7 @@ use super::{
     effect_readback::seed,
     fixture::Decisions,
 };
+use af_core::id::Uuid7;
 use af_wire::task::TaskEffectState;
 use afd_fleet::task::TaskLifecycle as _;
 use serde_json::Value;
@@ -14,11 +15,12 @@ async fn reclaimed_owner_refuses_prepared_effect_without_spending_publication() 
     exercise(async |case| {
         let fixture = Decisions::create(case).await;
         let task = fixture.bind_goal().await;
-        let effect = seed(case, &task.task_id, 1, "prepared").await;
+        let task_id = id(&task.task_id);
+        let effect = seed(case, &task_id, 1, "prepared").await;
         let before = state(case, &effect).await;
         let prepared = fixture
             .tasks
-            .effect(case.lease(), &id(&effect))
+            .effect(case.lease(), &effect)
             .await
             .expect("live original issuer retains preparation");
         assert_eq!(prepared.state, TaskEffectState::Prepared);
@@ -26,14 +28,14 @@ async fn reclaimed_owner_refuses_prepared_effect_without_spending_publication() 
         assert!(prepared.commit.is_none());
         assert_eq!(state(case, &effect).await, before);
         reclaim_and_abandon(&fixture, &effect).await;
-        assert_unspent(case, &task.task_id).await;
+        assert_unspent(case, &task_id).await;
         assert_eq!(fixture.counts().await, (0, 0, 0));
         fixture.model.finish().await.expect("model fixture cleanup");
     })
     .await;
 }
 
-async fn reclaim_and_abandon(fixture: &Decisions<'_>, effect: &str) {
+async fn reclaim_and_abandon(fixture: &Decisions<'_>, effect: &Uuid7) {
     let case = fixture.case;
     let original = intent(case, effect).await;
     let default = super::lease_recovery::support::provider(fixture).await;
@@ -46,11 +48,11 @@ async fn reclaim_and_abandon(fixture: &Decisions<'_>, effect: &str) {
     };
     let refused = fixture
         .tasks
-        .effect(current, &id(effect))
+        .effect(current, effect)
         .await
         .expect("fenced original preparation is safely abandoned");
     assert_eq!(refused.state, TaskEffectState::Refused);
-    assert_eq!(refused.effect_id, effect);
+    assert_eq!(refused.effect_id, *effect);
     assert_eq!(refused.ordinal, 1);
     assert!(refused.commit.is_none());
     assert_replay(fixture, current, &refused).await;
@@ -59,8 +61,8 @@ async fn reclaim_and_abandon(fixture: &Decisions<'_>, effect: &str) {
     drop(default);
 }
 
-async fn intent(case: &Case, effect: &str) -> Value {
-    let row: (Value, bool) = sqlx::query_as("SELECT to_jsonb(e),issuance_expires_at>clock_timestamp() FROM fleet.task_effects e WHERE id=$1::uuid")
+async fn intent(case: &Case, effect: &Uuid7) -> Value {
+    let row: (Value, bool) = sqlx::query_as("SELECT to_jsonb(e),issuance_expires_at>clock_timestamp() FROM fleet.task_effects e WHERE id=$1")
         .bind(effect).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("immutable intent observer"))
         .await.expect("original future issuance capability");
     assert!(
@@ -70,26 +72,24 @@ async fn intent(case: &Case, effect: &str) -> Value {
     row.0
 }
 
-async fn state(case: &Case, effect: &str) -> Value {
-    sqlx::query_scalar(
-        "SELECT to_jsonb(s) FROM fleet.task_effect_states s WHERE task_effect_id=$1::uuid",
-    )
-    .bind(effect)
-    .fetch_one(
-        &mut *case
-            .held
-            .fixtures
-            .database
-            .acquire()
-            .await
-            .expect("intent state observer"),
-    )
-    .await
-    .expect("retained effect state")
+async fn state(case: &Case, effect: &Uuid7) -> Value {
+    sqlx::query_scalar("SELECT to_jsonb(s) FROM fleet.task_effect_states s WHERE task_effect_id=$1")
+        .bind(effect)
+        .fetch_one(
+            &mut *case
+                .held
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("intent state observer"),
+        )
+        .await
+        .expect("retained effect state")
 }
 
-async fn assert_unspent(case: &Case, task: &str) {
-    let row: (i32, i64, i64, bool) = sqlx::query_as("SELECT used_publications,effect_cursor,(SELECT count(*) FROM fleet.task_effects WHERE task_id=$1::uuid),(SELECT issued_at IS NULL FROM fleet.task_effect_states s JOIN fleet.task_effects e ON e.id=s.task_effect_id WHERE e.task_id=$1::uuid) FROM fleet.tasks WHERE id=$1::uuid")
+async fn assert_unspent(case: &Case, task: &Uuid7) {
+    let row: (i32, i64, i64, bool) = sqlx::query_as("SELECT used_publications,effect_cursor,(SELECT count(*) FROM fleet.task_effects WHERE task_id=$1),(SELECT issued_at IS NULL FROM fleet.task_effect_states s JOIN fleet.task_effects e ON e.id=s.task_effect_id WHERE e.task_id=$1) FROM fleet.tasks WHERE id=$1")
         .bind(task).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("publication accounting observer"))
         .await.expect("unissued original allocation");
     assert_eq!(row, (0, 1, 1, true));
@@ -102,24 +102,23 @@ async fn assert_replay(
     refused: &af_wire::task::TaskEffect,
 ) {
     let case = fixture.case;
-    let effect = &refused.effect_id;
-    let terminal = state(case, effect).await;
+    let effect = id(&refused.effect_id);
+    let terminal = state(case, &effect).await;
     let replay = fixture
         .tasks
-        .effect(current, &id(effect))
+        .effect(current, &effect)
         .await
         .expect("terminal abandonment replay");
     assert_eq!(replay.state, TaskEffectState::Refused);
     assert_eq!(replay.effect_id, refused.effect_id);
     assert!(replay.commit.is_none());
-    assert_eq!(state(case, effect).await, terminal);
+    assert_eq!(state(case, &effect).await, terminal);
 }
 
 async fn replacement(case: &Case) -> (af_core::id::Uuid7, u64) {
     super::lease_recovery::support::expire(case).await;
     let acquired = super::lease_recovery::support::claim(case).await;
-    let response = super::lease_recovery::reclaimed(case, acquired).await;
-    let lease = response.get("lease").expect("ordinary reclaimed lease");
+    let lease = super::lease_recovery::reclaimed(case, acquired).await;
     let lease_id = id(lease
         .get("lease_id")
         .and_then(Value::as_str)

@@ -31,7 +31,7 @@ impl Providers {
     pub async fn reset(&self, tenant_id: &Uuid7) -> Result<()> {
         let mut connection = self.pool().acquire().await?;
         sqlx::query(sql::RESET_TENANT_SELECTION)
-            .bind(tenant_id.as_str())
+            .bind(tenant_id)
             .execute(&mut *connection)
             .await
             .map_err(query(CONTEXT_RESET))?;

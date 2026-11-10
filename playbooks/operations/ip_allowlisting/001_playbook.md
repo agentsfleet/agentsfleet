@@ -1,94 +1,86 @@
-# Data-Plane IP Allowlisting
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
 
-**Updated:** Sep 17, 2026
-**Owners:** 🤠 Indy approves cost and provider writes; 🦉 Orly validates
-inventory, applies PlanetScale restrictions, and verifies them.
+# Restrict PlanetScale ingress to Fly.io egress
 
-Only Fly.io control-plane egress belongs in these allowlists. An
-`agentsfleet-runner` holds no Postgres or datastore credential and reaches only
-the agentsfleet API, so a runner-host address must not be added.
+## What this does
 
-**One provider, since M196.** The datastore used to be the second: a hosted
-service with a public endpoint, whose egress ranges had to be allowlisted in
-its dashboard and attested in the vault because its API would report whether
-allowlisting was on but not which ranges were set. Self-hosted Dragonfly has
-no public endpoint. It runs on a Fly machine reached over 6PN, a private
-network that admits nothing from outside it, so there is no range to allowlist,
-no dashboard to edit and no attestation to keep fresh. The control was not
-dropped — it was answered by where the datastore now runs.
+Restricts each PlanetScale database to the `agentsfleetd` Fly.io static egress addresses.
+Add only control-plane egress; never add a runner-host address, because `agentsfleet-runner` holds no datastore credential.
+NATS needs no allowlist: it runs on Fly [private networking (6PN)](https://fly.io/docs/networking/private-networking/) with no public endpoint.
 
-## Prerequisites
+## Before you begin
 
-Fly.io outbound addresses are unstable by default. For each environment, 🤠
-Indy first approves one app-scoped static egress allocation in region `iad`;
-🦉 Orly then runs:
+1. 🤠 Indy approves one app-scoped static [egress allocation](https://fly.io/docs/networking/egress-ips/) per environment.
+2. 🦉 The agent allocates it.
+
+   ```bash
+   fly ips allocate-egress --app agentsfleetd-dev --region iad
+   fly ips allocate-egress --app agentsfleetd-prod --region iad
+   ```
+
+   ```text
+   <varies: one IPv4 address per app>
+   ```
+
+3. Store each address as a `/32` JSON array in the vault `VAULT_DEV` or `VAULT_PROD` names.
+
+   | Item | Fields |
+   |---|---|
+   | `fly-egress-ips` | `cidrs`, `updated-at` (UTC, such as `2026-07-31T10:00:00Z`) |
+   | `planetscale-dev` / `planetscale-prod` | `organization`, `database`, `service-token` |
+
+   The gate fails on inventory older than seven days (`MAX_EGRESS_AGE_DAYS`, default 7).
+   The service token needs `read_database` and `write_database`.
+
+## Steps
+
+`ENV=dev` or `ENV=prod` scopes a run; unset checks both.
+
+1. 🦉 The agent runs the read-only inventory and target check.
+
+   ```bash
+   export ALLOW_VAULT_READS=1
+   ACTION=check ./playbooks/operations/ip_allowlisting/00_gate.sh
+   ```
+
+   ```text
+   PASS: egress inventory
+   PASS: provider targets
+   PASS: IP allowlisting check completed for all
+   ```
+
+2. 🤠 Indy reviews the development and production targets and approves with `ALLOW_PROVIDER_WRITES=1`.
+3. 🦉 The agent applies the idempotent [restriction](https://planetscale.com/docs/api/reference/list_database_postgres_cidrs), which then verifies.
+
+   ```bash
+   ALLOW_PROVIDER_WRITES=1 ACTION=apply ./playbooks/operations/ip_allowlisting/00_gate.sh
+   ```
+
+   ```text
+   PASS: PlanetScale IP restrictions applied
+   PASS: provider IP restrictions verified
+   ```
+
+## Verify it works
+
+Re-check at any time without writing.
 
 ```bash
-fly ips allocate-egress --app agentsfleetd-dev --region iad
-fly ips allocate-egress --app agentsfleetd-prod --region iad
-```
-
-Store each returned IPv4 address as a `/32` JSON array:
-
-| Vault | Item | Fields |
-|---|---|---|
-| `ZMB_CD_DEV` | `fly-egress-ips` | `cidrs`, `updated-at` |
-| `ZMB_CD_PROD` | `fly-egress-ips` | `cidrs`, `updated-at` |
-
-`updated-at` is a Coordinated Universal Time timestamp such as
-`2026-07-31T10:00:00Z`. Inventory older than seven days fails the gate.
-
-Provider management fields:
-
-| Vault | Item | Fields |
-|---|---|---|
-| `ZMB_CD_DEV` | `planetscale-dev` | `organization`, `database`, `service-token` |
-| `ZMB_CD_PROD` | `planetscale-prod` | `organization`, `database`, `service-token` |
-
-The PlanetScale service token needs `read_database` and `write_database`.
-
-## Handoff
-
-| Order | Owner | Action |
-|---|---|---|
-| 1 | 🦉 Orly | Run the read-only inventory and target check. |
-| 2 | 🤠 Indy | Review the exact development and production targets. |
-| 3 | 🤠 Indy | Approve provider writes by setting `ALLOW_PROVIDER_WRITES=1`. |
-| 4 | 🦉 Orly | Apply the idempotent PlanetScale restriction. |
-| 5 | 🦉 Orly | Run provider verification. |
-
-Steps 5 through 7 of the previous revision were the datastore's half: enabling
-allowlisting in a provider dashboard, copying the ranges into the vault as a
-human attestation, and checking that attestation was no more than seven days
-old. All three are gone with the hosted store.
-
-## Run
-
-```bash
-export ALLOW_VAULT_READS=1
-
-# Read-only inventory and target separation.
-ACTION=check ./playbooks/operations/ip_allowlisting/00_gate.sh
-
-# After 🤠 Indy reviews the targets and approves provider writes.
-export ALLOW_PROVIDER_WRITES=1
-ACTION=apply ./playbooks/operations/ip_allowlisting/00_gate.sh
-
-# Re-check later without provider mutation.
 ACTION=verify ./playbooks/operations/ip_allowlisting/00_gate.sh
 ```
 
-Use `ENV=dev` or `ENV=prod` to scope a run; the default checks both.
+```text
+PASS: development PlanetScale IP restrictions
+PASS: production PlanetScale IP restrictions
+PASS: provider IP restrictions verified
+PASS: IP allowlisting verify completed for all
+```
 
-## Required result
-
-- Development and production database identifiers differ.
-- PlanetScale has exactly one unrestricted role/schema entry whose ranges equal
-  the current Fly.io IPv4 inventory.
-- No provider credential appears in process arguments or output.
-
-Provider references:
-
-- [Fly.io app-scoped egress addresses](https://fly.io/docs/networking/egress-ips/)
-- [PlanetScale IP restriction API](https://planetscale.com/docs/api/reference/list_database_postgres_cidrs)
-- [Fly.io private networking (6PN)](https://fly.io/docs/networking/private-networking/)
+A pass means the two database identifiers differ and each has exactly one unrestricted role and schema entry equal to the Fly.io inventory.
+No provider credential appears in process arguments or output.

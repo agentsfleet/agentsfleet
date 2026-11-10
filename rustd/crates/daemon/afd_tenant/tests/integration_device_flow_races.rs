@@ -1,6 +1,6 @@
-//! §1, Dimension 1.3 — the device-flow state machine under concurrent
-//! callers, against a real queue: one approval wins, one redemption wins, the
-//! first caller alone may replay, and the attempt ceiling is terminal.
+//! The device-flow state machine under concurrent callers, against live
+//! Postgres: one approval wins, one redemption wins, the first caller alone
+//! may replay, and the attempt ceiling is terminal.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without needing a datastore; `make test-integration-rustd` runs them.
@@ -15,13 +15,13 @@ use afd_tenant::session::Fingerprint;
 use afd_tenant::session::input::{Code, Opening};
 
 use crate::device_flow_lane::{APPROVER, CODE, NOW, approval, origin, surface};
-use crate::dragonfly_harness::DragonflyHarness;
+use crate::session_harness::SessionHarness;
 
-/// Dimension 1.3 — two dashboards click Approve, and exactly one wins.
+/// Two dashboards click Approve, and exactly one wins.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_state_races_on_approve() {
-    let harness = DragonflyHarness::connect().await;
+    let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -34,11 +34,7 @@ async fn test_device_flow_state_races_on_approve() {
     let attempts = (0..100_u16).map(|_| {
         let sessions = sessions.clone();
         let session_id = opened.session_id.clone();
-        tokio::spawn(async move {
-            sessions
-                .approve(&session_id, &approval(), APPROVER, NOW)
-                .await
-        })
+        tokio::spawn(async move { sessions.approve(&session_id, &approval(), APPROVER).await })
     });
 
     let mut approved = 0_u32;
@@ -56,15 +52,15 @@ async fn test_device_flow_state_races_on_approve() {
     assert_eq!(conflicted, 99);
 }
 
-/// Dimension 1.3 — a hundred callers present the right code, and one redeems.
+/// A hundred callers present the right code, and one redeems.
 ///
 /// The others are refused as ALREADY CONSUMED rather than replayed, because
 /// each is given a distinct fingerprint: the replay window is for the caller
 /// who asked first losing its reply, not for a crowd sharing one answer.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_state_races_on_verify() {
-    let harness = DragonflyHarness::connect().await;
+    let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -72,7 +68,7 @@ async fn test_device_flow_state_races_on_verify() {
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, NOW)
+        .approve(&opened.session_id, &approval(), APPROVER)
         .await
         .expect("approve");
 
@@ -86,7 +82,6 @@ async fn test_device_flow_state_races_on_verify() {
                     &session_id,
                     &Code::parse(CODE).expect("digits"),
                     &Fingerprint::of("203.0.113.7", &agent, &session_id),
-                    NOW,
                 )
                 .await
         })
@@ -105,11 +100,11 @@ async fn test_device_flow_state_races_on_verify() {
     assert_eq!(redeemed, 1, "a device-flow code is redeemed exactly once");
 }
 
-/// Dimension 1.3 — the caller who asked first may ask again, and only them.
+/// The caller who asked first may ask again, and only them.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_replays_for_the_original_caller_only() {
-    let harness = DragonflyHarness::connect().await;
+    let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -117,14 +112,14 @@ async fn test_device_flow_replays_for_the_original_caller_only() {
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, NOW)
+        .approve(&opened.session_id, &approval(), APPROVER)
         .await
         .expect("approve");
 
     let code = Code::parse(CODE).expect("digits");
     let first = origin(&opened.session_id);
     let redeemed = sessions
-        .verify(&opened.session_id, &code, &first, NOW)
+        .verify(&opened.session_id, &code, &first)
         .await
         .expect("verify");
     assert!(!redeemed.repeated);
@@ -132,7 +127,7 @@ async fn test_device_flow_replays_for_the_original_caller_only() {
     // The same request again, inside the window: the same envelope, flagged as
     // a repeat for the audit trail and identical on the wire.
     let again = sessions
-        .verify(&opened.session_id, &code, &first, NOW)
+        .verify(&opened.session_id, &code, &first)
         .await
         .expect("replay");
     assert!(again.repeated);
@@ -141,17 +136,17 @@ async fn test_device_flow_replays_for_the_original_caller_only() {
     // Anybody else asking is told it is gone.
     let stranger = Fingerprint::of("198.51.100.4", "curl/8", &opened.session_id);
     let refusal = sessions
-        .verify(&opened.session_id, &code, &stranger, NOW)
+        .verify(&opened.session_id, &code, &stranger)
         .await
         .expect_err("consumed");
     assert_eq!(refusal.code(), error_code::SESSION_CONSUMED);
 }
 
-/// Dimension 1.3 — verifying before approval never advances the machine.
+/// Verifying before approval never advances the machine.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
-    let harness = DragonflyHarness::connect().await;
+    let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -163,7 +158,7 @@ async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
 
     for _ in 0..5 {
         let refusal = sessions
-            .verify(&opened.session_id, &code, &fingerprint, NOW)
+            .verify(&opened.session_id, &code, &fingerprint)
             .await
             .expect_err("not approved");
         assert_eq!(refusal.code(), error_code::SESSION_NOT_APPROVED);
@@ -172,20 +167,20 @@ async fn test_device_flow_verify_before_approve_leaves_it_approvable() {
     // Five early attempts must not have spent the attempt ceiling: no code was
     // ever checked, so nothing was wrong to count.
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, NOW)
+        .approve(&opened.session_id, &approval(), APPROVER)
         .await
         .expect("still approvable");
     sessions
-        .verify(&opened.session_id, &code, &fingerprint, NOW)
+        .verify(&opened.session_id, &code, &fingerprint)
         .await
         .expect("redeems normally");
 }
 
-/// Dimension 1.3 — the attempt ceiling is terminal, and says so distinctly.
+/// The attempt ceiling is terminal, and says so distinctly.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn test_device_flow_attempt_ceiling_aborts_the_session() {
-    let harness = DragonflyHarness::connect().await;
+    let harness = SessionHarness::connect().await;
     let sessions = surface(&harness);
 
     let opened = sessions
@@ -193,7 +188,7 @@ async fn test_device_flow_attempt_ceiling_aborts_the_session() {
         .await
         .expect("open");
     sessions
-        .approve(&opened.session_id, &approval(), APPROVER, NOW)
+        .approve(&opened.session_id, &approval(), APPROVER)
         .await
         .expect("approve");
 
@@ -204,13 +199,13 @@ async fn test_device_flow_attempt_ceiling_aborts_the_session() {
     // ones before it, so a command line stops prompting.
     for _ in 0..4 {
         let refusal = sessions
-            .verify(&opened.session_id, &wrong, &fingerprint, NOW)
+            .verify(&opened.session_id, &wrong, &fingerprint)
             .await
             .expect_err("rejected");
         assert_eq!(refusal.code(), error_code::VERIFICATION_FAILED);
     }
     let refusal = sessions
-        .verify(&opened.session_id, &wrong, &fingerprint, NOW)
+        .verify(&opened.session_id, &wrong, &fingerprint)
         .await
         .expect_err("ceiling");
     assert_eq!(refusal.code(), error_code::SESSION_ABORTED);
@@ -221,7 +216,6 @@ async fn test_device_flow_attempt_ceiling_aborts_the_session() {
             &opened.session_id,
             &Code::parse(CODE).expect("digits"),
             &fingerprint,
-            NOW,
         )
         .await
         .expect_err("aborted");

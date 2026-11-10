@@ -18,11 +18,16 @@ const ADMISSION: i64 = 46_384_007;
 #[ignore = "requires live Postgres"]
 async fn an_unaffordable_input_price_refuses_before_reservation_or_dispatch() {
     let f = configured().await;
-    sqlx::query("UPDATE model.platform_model_prices SET input_nanos_per_mtok=$2 WHERE platform_model_id=$1::uuid")
-        .bind(f.catalogue.first().expect("owned model").as_str()).bind(i64::MAX)
-        .execute(&mut *f.connection().await).await.expect("an input price outside this wallet's capacity");
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=2000000 WHERE id=$1::uuid")
-        .bind(f.catalogue.first().expect("owned model").as_str())
+    sqlx::query(
+        "UPDATE model.platform_model_prices SET input_nanos_per_mtok=$2 WHERE platform_model_id=$1",
+    )
+    .bind(f.catalogue.first().expect("owned model"))
+    .bind(i64::MAX)
+    .execute(&mut *f.connection().await)
+    .await
+    .expect("an input price outside this wallet's capacity");
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=2000000 WHERE id=$1")
+        .bind(f.catalogue.first().expect("owned model"))
         .execute(&mut *f.connection().await)
         .await
         .expect("a model that can retain this history");
@@ -39,8 +44,8 @@ async fn an_unaffordable_input_price_refuses_before_reservation_or_dispatch() {
         12,
     )
     .await;
-    sqlx::query("UPDATE authoring.messages SET answer_text=repeat('private evidence ',7000) WHERE draft_id=$1::uuid AND sequence<=12")
-        .bind(draft.id.as_str()).execute(&mut *f.connection().await).await.expect("twelve valid prior exchanges");
+    sqlx::query("UPDATE authoring.messages SET answer_text=repeat('private evidence ',7000) WHERE draft_id=$1 AND sequence<=12")
+        .bind(draft.id).execute(&mut *f.connection().await).await.expect("twelve valid prior exchanges");
     let error = calls
         .call(
             &f.runner,
@@ -100,8 +105,8 @@ fn request(lease: &Claimed, index: u32) -> ModelCallInput {
 }
 
 async fn durable(f: &Fixture, lease: &Claimed) -> (i64, i64) {
-    sqlx::query_as("SELECT a.reserved_nanos,(SELECT count(*) FROM authoring.dispatches d WHERE d.attempt_id=a.id) FROM authoring.attempts a WHERE a.id=$1::uuid")
-        .bind(&lease.attempt_id).fetch_one(&mut *f.connection().await).await.expect("the attempt's bound and receipts")
+    sqlx::query_as("SELECT a.reserved_nanos,(SELECT count(*) FROM authoring.dispatches d WHERE d.attempt_id=a.id) FROM authoring.attempts a WHERE a.id=$1")
+        .bind(Uuid7::parse(&lease.attempt_id).expect("attempt")).fetch_one(&mut *f.connection().await).await.expect("the attempt's bound and receipts")
 }
 
 #[tokio::test]

@@ -14,7 +14,9 @@
 use afd_billing::Accounts;
 use afd_fleet::lease::admit::{Admission, money_gates};
 
-use crate::integration_money_gates::{AMPLE_DAILY_NANOS, biller, budgeted, id, request};
+use afd_db::test_util::mint_id;
+
+use crate::integration_money_gates::{AMPLE_DAILY_NANOS, biller, budgeted, request};
 use crate::seed::unique_ids;
 use crate::support::Fixtures;
 
@@ -29,7 +31,7 @@ const DEBT_NANOS: i64 = 50;
 /// alone, and an admission gate that clamped the balance at zero would cover a
 /// zero floor and admit a payer who owes money.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
     let fixtures = Fixtures::create().await;
     let accounts = Accounts::new(fixtures.database.clone());
@@ -40,12 +42,13 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
         .await;
     fixtures.seed_wallet(&tenant, -DEBT_NANOS).await;
     let config = budgeted(AMPLE_DAILY_NANOS);
+    let (in_debt, repaid) = (mint_id(), mint_id());
 
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&id(&workspace)).await,
-        request(&id(&workspace), &id(&fleet), "event-in-debt", &config),
+        accounts.payer(&workspace).await,
+        request(&workspace, &fleet, &in_debt, &config),
         fixtures.enrolled_at(),
     )
     .await
@@ -59,8 +62,8 @@ async fn a_tenant_in_debt_is_refused_until_its_balance_is_repaid() {
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&id(&workspace)).await,
-        request(&id(&workspace), &id(&fleet), "event-repaid", &config),
+        accounts.payer(&workspace).await,
+        request(&workspace, &fleet, &repaid, &config),
         fixtures.enrolled_at(),
     )
     .await

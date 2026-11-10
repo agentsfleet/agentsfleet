@@ -33,8 +33,8 @@ pub(super) async fn stamp(
 ) -> Result<Schedule> {
     let fire_at = crate::next::next_fire(&held.cron, &held.timezone, from);
     sqlx::query_as::<_, Schedule>(sql::SET_FIRE_AT)
-        .bind(held.schedule_id.as_str())
-        .bind(token.as_str())
+        .bind(&held.schedule_id)
+        .bind(token)
         .bind(fire_at.map(Timestamp::to_sqlx))
         .fetch_one(connection)
         .await

@@ -1,10 +1,10 @@
 //! The writes a won report owes, and which side of the commit each falls on.
 //!
-//! The terminal event row, the session checkpoint, the stream acknowledgement
-//! and the audit row that closes the lease's history. Two of them commit with
-//! the money; the other two run after it, each logged if it does not land.
+//! The terminal event row, the session checkpoint, and the audit row that
+//! closes the lease's history. Two of them commit with the money; the audit
+//! row runs after it, logged if it does not land.
 //!
-//! # Two of these are the report, and two are about it
+//! # Two of these are the report, and one is about it
 //!
 //! [`Leases::mark_terminal`] and [`Leases::checkpoint`] take the connection
 //! their caller is already inside, because the RESULT of a run and the money
@@ -14,20 +14,15 @@
 //! with the settle in [`Leases::commit_report`](crate::lease::commit) or
 //! neither does.
 //!
-//! [`Leases::acknowledge`] and [`Leases::record_released`] stay outside it, and
-//! not because they matter less. The acknowledgement is a QUEUE write, and no
-//! transaction spans Postgres and Dragonfly; putting it inside would mean
-//! acknowledging an entry a rollback then un-did, which is the one ordering
-//! that loses work outright. It therefore runs after the commit, where a
-//! failure leaves the entry pending and re-delivered rather than a result
-//! unrecoverable. The audit row is history — a datastore blip writing it must
-//! not fail a report whose money has committed.
+//! [`Leases::record_released`] stays outside it. The audit row is history, and
+//! a datastore blip writing it must not fail a report whose money has
+//! committed.
 //!
-//! Both post-commit writes are attempted, logged on failure, and never
+//! The post-commit write is attempted, logged on failure, and never
 //! propagated: by then the lease is `reported` and the wallet is drawn down, so
 //! failing the response would tell the runner to retry a report whose money
-//! cannot be charged twice. What an operator gets is a warn line naming which
-//! one did not land.
+//! cannot be charged twice. What an operator gets is a warn line naming the
+//! write that did not land.
 //!
 //! # The cap lands on a character boundary
 //!
@@ -62,7 +57,7 @@ const CONTEXT_RELEASED: &str = "runner lease released event";
 /// are escaped the way any JSON reader expects.
 #[derive(Debug, serde::Serialize)]
 struct Checkpoint<'a> {
-    last_event_id: &'a str,
+    last_event_id: &'a Uuid7,
     last_response: &'a str,
 }
 
@@ -87,7 +82,7 @@ impl Leases {
         &self,
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
-        event_id: &str,
+        event_id: &Uuid7,
         outcome: Terminal<'_>,
     ) -> Result<Option<Closed>> {
         let Terminal {
@@ -98,7 +93,7 @@ impl Leases {
             tool_calls,
         } = outcome;
         let closed = sqlx::query(afd_events::sql::UPDATE_FLEET_EVENT_RESULT)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(event_id)
             .bind(verdict.status())
             .bind(response_text)
@@ -116,14 +111,64 @@ impl Leases {
         let Some(row) = closed else {
             let fleet = fleet_id.as_str();
             tracing::warn!(
-                fleet_id = fleet,
-                agentsfleet_event_id = event_id,
+                fleet_id = %fleet,
+                agentsfleet_event_id = %event_id,
                 event = "terminal_write_skipped_nonreceived",
                 "the event was already terminal; the settled result stands"
             );
             return Ok(None);
         };
         Ok(Some(Closed::read(&row)?))
+    }
+
+    /// [`Self::mark_terminal`] for every event in `event_ids` at once, each
+    /// closed with the same `outcome`: the folded messages a run answered.
+    /// Answers each event it closed; one already terminal keeps its result
+    /// and is left out.
+    ///
+    /// # Errors
+    /// Reports a datastore that would not answer, and a closing this daemon
+    /// cannot read.
+    pub(crate) async fn mark_terminal_each(
+        &self,
+        connection: &mut PgConnection,
+        fleet_id: &Uuid7,
+        event_ids: &[Uuid7],
+        outcome: Terminal<'_>,
+    ) -> Result<Vec<Closed>> {
+        let Terminal {
+            verdict,
+            response_text,
+            tokens,
+            wall_ms,
+            tool_calls,
+        } = outcome;
+        let rows = sqlx::query(afd_events::sql::CLOSE_FOLDED_EVENTS)
+            .bind(fleet_id)
+            .bind(event_ids)
+            .bind(verdict.status())
+            .bind(response_text)
+            .bind(tokens)
+            .bind(wall_ms)
+            .bind(verdict.label())
+            .bind(af_core::event::status::RECEIVED)
+            .bind(verdict.detail())
+            .bind(afd_api_wire::approval::status::PENDING)
+            .bind(tool_calls)
+            .fetch_all(&mut *connection)
+            .await
+            .map_err(crate::error::query(CONTEXT_TERMINAL))?;
+        let skipped = event_ids.len().saturating_sub(rows.len());
+        if skipped > 0 {
+            let fleet = fleet_id.as_str();
+            tracing::warn!(
+                fleet_id = fleet,
+                skipped,
+                event = "terminal_write_skipped_nonreceived",
+                "folded events were already terminal; their settled results stand"
+            );
+        }
+        rows.iter().map(|row| Ok(Closed::read(row)?)).collect()
     }
 
     /// Record where this fleet's session resumes.
@@ -140,7 +185,7 @@ impl Leases {
         &self,
         connection: &mut PgConnection,
         fleet_id: &Uuid7,
-        last_event_id: &str,
+        last_event_id: &Uuid7,
         last_response: &str,
     ) -> Result<()> {
         // `Value`, then `Display`. `serde_json::to_string` is fallible in its
@@ -157,7 +202,7 @@ impl Leases {
         .to_string();
 
         sqlx::query(sql::session::UPSERT_FLEET_SESSION)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(&document)
             .execute(&mut *connection)
             .await
@@ -183,13 +228,13 @@ impl Leases {
 
         let mut connection = self.pool().acquire().await?;
         sqlx::query(sql::report::INSERT_RUNNER_EVENT)
-            .bind(row_id.as_str())
-            .bind(runner_id.as_str())
+            .bind(row_id)
+            .bind(runner_id)
             .bind(afd_runner::sql::event_type::LEASE_RELEASED)
             .bind(afd_runner::sql::meta::LEASE_ID)
             .bind(lease_id)
             .bind(afd_runner::sql::meta::FLEET_ID)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(afd_runner::sql::meta::AGENTSFLEET_EVENT_ID)
             .bind(event_id)
             .execute(&mut *connection)

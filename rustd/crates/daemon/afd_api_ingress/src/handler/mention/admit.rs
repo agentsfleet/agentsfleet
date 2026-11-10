@@ -113,7 +113,7 @@ pub(super) async fn routed<D: Services>(
         event = EVENT_ROUTED,
     );
     Ok(Outcome::Accepted(Accepted {
-        event_id: Cow::Owned(admitted.stored.id),
+        event_id: Cow::Owned(admitted.stored.id.into()),
         replayed: admitted.replayed,
     }))
 }

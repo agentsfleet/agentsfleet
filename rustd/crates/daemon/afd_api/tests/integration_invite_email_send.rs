@@ -2,13 +2,8 @@
 //! over live Postgres and a scripted relay: every refusal names its code, and
 //! every case reads back what the invite row kept.
 #![cfg(feature = "test-util")]
-#![expect(
-    clippy::expect_used,
-    reason = "integration preconditions should fail the test loudly"
-)]
 
 use af_core::error_code;
-use af_core::id::Uuid7;
 use afd_db::test_util::mint_id;
 use afd_mail::test_util::{FakeRelay, Session};
 use afd_tenant::team::{EMAIL_STATUS_FAILED, EMAIL_STATUS_SENT};
@@ -16,7 +11,9 @@ use http::{Method, StatusCode};
 use serde_json::json;
 
 use crate::harness::{self, TeamStep, items, text};
-use crate::integration_invite_email::{id_of, invite, key_header, listed_status, owner_fleet};
+use crate::integration_invite_email::{
+    id_of, invite, invite_id, key_header, listed_status, owner_fleet,
+};
 use crate::integration_team_routes::{INVITES, MEMBERS, call, send_again};
 use crate::integration_workspace_members::fixture::Members;
 
@@ -64,7 +61,7 @@ async fn test_send_again_unconfigured_refused() {
         Some(error_code::INVITE_EMAIL_UNAVAILABLE.as_str())
     );
 
-    let unknown = Uuid7::parse(&mint_id()).expect("a minted id is canonical");
+    let unknown = mint_id();
     let (status, problem) = send_again(&router, &members.john, unknown.as_str()).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(
@@ -102,12 +99,12 @@ async fn test_send_again_refusals_leave_the_row_true() {
     );
 
     let (revoked, _address) = invite(&router, &members).await;
-    let revoked = id_of(&revoked).to_owned();
+    let revoked = invite_id(&revoked);
     let counted = members.email_attempts(&revoked).await;
     let revoke = format!("{INVITES}/{revoked}");
     let (status, _) = call(&router, Method::DELETE, &revoke, &members.john, "").await;
     assert_eq!(status, StatusCode::NO_CONTENT);
-    let (status, problem) = send_again(&router, &members.john, &revoked).await;
+    let (status, problem) = send_again(&router, &members.john, revoked.as_str()).await;
     assert_eq!(status, StatusCode::NOT_FOUND, "{problem}");
     assert_eq!(
         harness::error_code(&problem),
@@ -135,26 +132,26 @@ async fn test_email_count_failure_keeps_invite() {
         .with_team_fault(TeamStep::BeginEmail, 1);
     let router = fleet.router();
     let (created, _address) = invite(&router, &members).await;
-    let id = id_of(&created).to_owned();
+    let id = invite_id(&created);
     assert_eq!(failpoint.fired(), 1);
     assert!(relay.received().is_empty(), "nothing sent");
     assert_eq!(members.email_attempts(&id).await, 0, "nothing counted");
     assert_eq!(
-        listed_status(&router, &members, &id).await,
+        listed_status(&router, &members, id.as_str()).await,
         EMAIL_STATUS_FAILED
     );
 
-    let (status, answered) = send_again(&router, &members.john, &id).await;
+    let (status, answered) = send_again(&router, &members.john, id.as_str()).await;
     assert_eq!(status, StatusCode::OK, "{answered}");
     let received = relay.received();
     assert_eq!(received.len(), 1);
     assert!(
         received
             .iter()
-            .all(|message| message.contains(&key_header(&id, 1)))
+            .all(|message| message.contains(&key_header(id.as_str(), 1)))
     );
     assert_eq!(
-        listed_status(&router, &members, &id).await,
+        listed_status(&router, &members, id.as_str()).await,
         EMAIL_STATUS_SENT
     );
     members.cleanup().await;
@@ -175,17 +172,17 @@ async fn test_email_unrecorded_keeps_invite() {
         .with_team_fault(TeamStep::RecordEmail, 1);
     let router = fleet.router();
     let (created, _address) = invite(&router, &members).await;
-    let id = id_of(&created).to_owned();
+    let id = invite_id(&created);
     assert_eq!(failpoint.fired(), 1);
     assert_eq!(text(&created, "email_status"), Some(EMAIL_STATUS_SENT));
     assert_eq!(relay.received().len(), 1, "the relay took it");
     assert_eq!(members.email_attempts(&id).await, 1);
     assert_eq!(
-        listed_status(&router, &members, &id).await,
+        listed_status(&router, &members, id.as_str()).await,
         EMAIL_STATUS_FAILED
     );
 
-    let (status, _) = send_again(&router, &members.john, &id).await;
+    let (status, _) = send_again(&router, &members.john, id.as_str()).await;
     assert_eq!(status, StatusCode::OK);
     let received = relay.received();
     assert_eq!(
@@ -196,10 +193,10 @@ async fn test_email_unrecorded_keeps_invite() {
     assert!(
         received
             .last()
-            .is_some_and(|message| message.contains(&key_header(&id, 2)))
+            .is_some_and(|message| message.contains(&key_header(id.as_str(), 2)))
     );
     assert_eq!(
-        listed_status(&router, &members, &id).await,
+        listed_status(&router, &members, id.as_str()).await,
         EMAIL_STATUS_SENT
     );
     members.cleanup().await;
@@ -244,7 +241,7 @@ async fn test_invite_gone_before_its_email_sends_nothing() {
     let (created, _address) = invite(&fleet.router(), &members).await;
     assert_eq!(failpoint.fired(), 1);
     assert!(relay.received().is_empty(), "{:?}", relay.received());
-    assert_eq!(members.email_attempts(id_of(&created)).await, 0);
+    assert_eq!(members.email_attempts(&invite_id(&created)).await, 0);
     members.cleanup().await;
 }
 

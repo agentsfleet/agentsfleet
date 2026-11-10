@@ -12,7 +12,7 @@ use af_core::id::Uuid7;
 use afd_tenant::team::EmailStatus;
 use jiff::Timestamp;
 
-use crate::access_lane::{Fixture, id};
+use crate::access_lane::Fixture;
 
 /// The instant each identifier a case mints is minted at. Every stamp a send
 /// records is the database clock's.
@@ -70,7 +70,7 @@ async fn nothing_counts_but_the_pending_invite_of_its_own_account(
     fixture: &Fixture,
     invite: &Uuid7,
 ) {
-    let (tenant, other) = (id(&fixture.john.tenant), id(&fixture.carol.tenant));
+    let (tenant, other) = (fixture.john.tenant.clone(), fixture.carol.tenant.clone());
     let foreign = fixture.team.begin_email(&other, invite).await;
     assert!(
         foreign.expect("another account's send answers").is_none(),

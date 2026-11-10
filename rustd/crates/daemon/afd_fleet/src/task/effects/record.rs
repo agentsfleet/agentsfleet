@@ -4,7 +4,7 @@ use super::row::Effect;
 use crate::{
     Result,
     error::query,
-    task::{TaskLease, TaskRefusal, TaskScope, Tasks, execution, guard, transaction},
+    task::{TaskLease, TaskRefusal, TaskScope, Tasks, execution, transaction},
 };
 use af_core::id::Uuid7;
 use af_wire::task::TaskEffectInput;
@@ -88,11 +88,7 @@ pub(super) async fn issue<'a>(
         return Err(TaskRefusal::EffectUncertain.into());
     }
     recovery
-        .insert(
-            &mut tx,
-            &owned.scope.workspace_id,
-            &Uuid7::parse(&effect.id)?,
-        )
+        .insert(&mut tx, &owned.scope.workspace_id, &effect.id)
         .await?;
     sqlx::query(include_str!("sql/debit.sql"))
         .bind(&effect.task_id)
@@ -105,7 +101,7 @@ pub(super) async fn issue<'a>(
     transaction::recycle(connection);
     Ok(PublicationPermit {
         deadline,
-        effect_id: effect.id.clone(),
+        effect_id: effect.id.clone().into(),
         target: effect.target()?.clone(),
         input,
     })
@@ -113,18 +109,18 @@ pub(super) async fn issue<'a>(
 
 pub(super) async fn confirm(tasks: &Tasks, effect: &Effect, commit: &str) -> Result<()> {
     let scope = TaskScope {
-        fleet_id: guard::id(&effect.fleet_id, "fleet_id")?,
-        workspace_id: guard::id(&effect.workspace_id, "workspace_id")?,
+        fleet_id: effect.fleet_id.clone(),
+        workspace_id: effect.workspace_id.clone(),
     };
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
-    let _parent: Option<String> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE)
+    let _parent: Option<Uuid7> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE)
         .bind(&effect.fleet_id)
         .bind(&effect.workspace_id)
         .fetch_optional(&mut *tx)
         .await
         .map_err(query("protect any remaining publication parent"))?;
-    let _slot: Option<String> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE_SLOT)
+    let _slot: Option<Uuid7> = sqlx::query_scalar(super::super::sql::LOCK_SCOPE_SLOT)
         .bind(&effect.fleet_id)
         .fetch_optional(&mut *tx)
         .await
@@ -166,7 +162,7 @@ pub(super) async fn confirm(tasks: &Tasks, effect: &Effect, commit: &str) -> Res
         .map_err(query("commit confirmed publication receipt"))?;
     transaction::recycle(connection);
     if held.is_some() {
-        let id = Uuid7::parse(&effect.task_id)?;
+        let id = effect.task_id.clone();
         if let Ok(snapshot) = super::super::read::read(tasks, &scope, &id).await {
             tasks
                 .publish_changed(&scope, &id, snapshot.resource_version)

@@ -62,11 +62,11 @@ async fn transition(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_admin_transitions() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;
-    let runner = enrolled.as_str().to_owned();
+    let runner = enrolled.clone();
 
     transition(&fixtures, &enrolled, RunnerAdminAction::Cordon, 1)
         .await
@@ -104,7 +104,7 @@ async fn test_runner_admin_transitions() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn concurrent_identical_transitions_append_one_event() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;
@@ -133,7 +133,7 @@ async fn concurrent_identical_transitions_append_one_event() {
         );
     }
     assert_eq!(
-        fixtures.events(enrolled.as_str()).await,
+        fixtures.events(&enrolled).await,
         vec!["runner_registered".to_owned(), "runner_cordoned".to_owned(),],
         "the row lock lets only one contender append the state-change event"
     );
@@ -158,11 +158,11 @@ fn reassignment(worker_count: u32) -> AssignedPolicy<'static> {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_policy_assignment_is_atomic_idempotent_and_reconciled() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;
-    let runner = enrolled.as_str();
+    let runner = &enrolled;
 
     let first = assign(&fixtures, &enrolled, &reassignment(u32::MAX), 1)
         .await
@@ -230,7 +230,12 @@ async fn assign(
 }
 
 /// Asserts the runner row's degraded flag and the reason it records.
-async fn assert_degraded(fixtures: &Fixtures, runner: &str, degraded: &str, reason: Option<&str>) {
+async fn assert_degraded(
+    fixtures: &Fixtures,
+    runner: &Uuid7,
+    degraded: &str,
+    reason: Option<&str>,
+) {
     assert_eq!(
         fixtures
             .text(Row::Runner(runner), "(degraded_reason IS NOT NULL)")
@@ -249,7 +254,7 @@ async fn assert_degraded(fixtures: &Fixtures, runner: &str, degraded: &str, reas
 
 /// Stores a capability report that can enforce every assigned posture, as a
 /// heartbeat from a fully capable host would.
-async fn store_full_capability(fixtures: &Fixtures, runner: &str) {
+async fn store_full_capability(fixtures: &Fixtures, runner: &Uuid7) {
     let capability = serde_json::to_string(&CapabilityReport {
         durable_tasks_v1: false,
         build_id: None,
@@ -269,7 +274,7 @@ async fn store_full_capability(fixtures: &Fixtures, runner: &str) {
         .acquire()
         .await
         .expect("a pooled connection");
-    sqlx::query("UPDATE runner.runners SET capability_report = $2::jsonb WHERE id = $1::uuid")
+    sqlx::query("UPDATE runner.runners SET capability_report = $2::jsonb WHERE id = $1")
         .bind(runner)
         .bind(capability)
         .execute(&mut *connection)
@@ -279,7 +284,7 @@ async fn store_full_capability(fixtures: &Fixtures, runner: &str) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_runner_policy_assignment_refuses_revocation() {
     let fixtures = Fixtures::create().await;
     let enrolled = enrol(&fixtures).await;

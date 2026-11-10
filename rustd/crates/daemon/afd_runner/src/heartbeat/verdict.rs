@@ -32,14 +32,14 @@ pub(super) async fn persist(
         Some(report) => {
             let report_json = render_object(report);
             let write = sqlx::query(sql::runner::UPDATE_RUNNER_CAPABILITY_AND_VERDICT)
-                .bind(runner.as_str())
+                .bind(runner)
                 .bind(report_json)
                 .bind(verdict.reason());
             best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
         }
         None if stored.differs_from(verdict) => {
             let write = sqlx::query(sql::runner::UPDATE_RUNNER_VERDICT)
-                .bind(runner.as_str())
+                .bind(runner)
                 .bind(verdict.reason());
             best_effort(write, connection, EVENT_VERDICT_WRITE, runner).await;
         }

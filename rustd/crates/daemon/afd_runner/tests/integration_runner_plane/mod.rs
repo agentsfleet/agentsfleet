@@ -10,10 +10,10 @@
     reason = "integration preconditions should fail the test loudly"
 )]
 
+mod connections;
 mod decision;
 mod decision_races;
 mod durable_policy;
-mod durable_upgrade;
 mod faults;
 mod lifecycle;
 mod operator;
@@ -99,8 +99,8 @@ impl Fixture {
 
     async fn cleanup(self) {
         let mut connection = self.owner.acquire().await.expect("an owner connection");
-        let ids: Vec<&str> = self.enrolled.iter().map(Uuid7::as_str).collect();
-        sqlx::query("DELETE FROM runner.runners WHERE id = ANY(($1::text[])::uuid[])")
+        let ids: Vec<&Uuid7> = self.enrolled.iter().collect();
+        sqlx::query("DELETE FROM runner.runners WHERE id = ANY($1)")
             .bind(&ids)
             .execute(&mut *connection)
             .await

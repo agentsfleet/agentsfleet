@@ -1,6 +1,6 @@
 //! A lease proved on the transaction of the write it guards.
 //!
-//! [`crate::lease::pull::Plane::standing`] proves a lease and lets go: right for
+//! [`crate::lease::pull::LeaseService::standing`] proves a lease and lets go: right for
 //! a read, and wrong for a write that lands afterwards, since a reclaim can take
 //! the fleet in between. [`WriteFence`] proves the same lease again, on the
 //! write's own transaction and under a shared lock on the lease row. A reclaim,
@@ -47,8 +47,8 @@ impl Precondition for WriteFence {
     ) -> Pin<Box<dyn Future<Output = sqlx::Result<bool>> + Send + 'c>> {
         Box::pin(async move {
             let found: Option<LiveLease> = sqlx::query_as(SELECT_STANDING_SHARED)
-                .bind(self.lease.as_str())
-                .bind(self.runner.as_str())
+                .bind(&self.lease)
+                .bind(&self.runner)
                 .bind(sql::LEASE_STATUS_ACTIVE)
                 .fetch_optional(connection)
                 .await?;

@@ -37,10 +37,11 @@ async fn finish_turn(case: &Case, lease: &str, token: &str) {
         "runtime_ms":0,"provider_cost_nanos":"0"});
     let report = json!({"kind":"terminal","fence":"1",
         "report_id":mint(),"outcome":"completed","usage":usage,"answer":"Scheduled."});
-    let finished = send(
+    let finished = crate::harness::native::send(
         &case.router,
-        Method::POST,
-        &format!("/v1/runners/me/authoring-leases/{lease}/reports"),
+        &crate::harness::native::Operation::Report(
+            af_core::id::Uuid7::parse(lease).expect("lease id"),
+        ),
         Some(token),
         &report.to_string(),
     )
@@ -51,11 +52,36 @@ async fn finish_turn(case: &Case, lease: &str, token: &str) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_proposed_cron_trigger_is_saved_as_a_schedule() {
     let mut case = Case::create().await;
     case.fund().await;
 
+    let (item, before) = idle_draft(&case).await;
+
+    propose_schedule(&mut case, &item, &before).await;
+
+    // The person saves the candidate the proposal committed.
+    let reviewed = draft(&case, &item).await;
+    let save = json!({"source":{"kind":"draft","draft_candidate_id":reviewed["candidate"]["id"]},
+        "name":INSTANCE, "review_digest":reviewed["review"]["review_digest"],"start":{"kind":"none"}});
+    let response = case.save(mint().as_str(), &save).await;
+    let status = response.status();
+    let saved = json_body(response).await;
+    assert_eq!(status, StatusCode::CREATED, "{saved}");
+
+    let schedules = saved["schedules"].as_array().expect("schedules");
+    assert_eq!(
+        schedules.len(),
+        1,
+        "one cron trigger, one schedule: {saved}"
+    );
+    assert_eq!(schedules[0]["cron"], SCHEDULE, "{saved}");
+
+    case.cleanup().await;
+}
+
+async fn idle_draft(case: &Case) -> (String, Value) {
     // An idle draft first: the authoring model and instance name are replaced
     // only while no turn is pending, so the message that lets a runner hold a
     // lease is sent after the PATCH, not with the create.
@@ -94,7 +120,10 @@ async fn test_a_proposed_cron_trigger_is_saved_as_a_schedule() {
     let status = response.status();
     let before = json_body(response).await;
     assert_eq!(status, StatusCode::OK, "{before}");
+    (item, before)
+}
 
+async fn propose_schedule(case: &mut Case, item: &str, before: &Value) {
     // The pending message the runner's lease is for.
     let message = json!({"message": "Add a morning schedule", "operation_id": mint()});
     let sent = send(
@@ -115,8 +144,8 @@ async fn test_a_proposed_cron_trigger_is_saved_as_a_schedule() {
     let token = format!("agt_r{}{}", mint(), mint()).replace('-', "");
     let lease = mint();
     let digest = Digest::of(&Presented::new(&token).expect("fixture runner token"));
-    let draft_id = before["id"].as_str().expect("draft id");
-    attempt::seed(&case.base, &runner, &lease, draft_id, digest.as_str()).await;
+    let draft_id = crate::authoring::id_field(&before["id"]);
+    attempt::seed(&case.base, &runner, &lease, &draft_id, digest.as_str()).await;
 
     let proposal = json!({"fence":"1","sequence":"1","activity_sequence":"1",
         "event":{"kind":"proposal","proposal":{"kind":"edit",
@@ -125,37 +154,13 @@ async fn test_a_proposed_cron_trigger_is_saved_as_a_schedule() {
             "config_ops":[{"op":"add","path":"/config/x-agentsfleet/triggers",
                 "value":[{"type":"cron","schedule":SCHEDULE,"timezone":TIMEZONE,"message":MESSAGE}]}],
             "instruction_edits":[]}}});
-    let activity = format!("/v1/runners/me/authoring-leases/{lease}/activity");
-    let proposed = send(
-        &case.router,
-        Method::POST,
-        &activity,
-        Some(&token),
-        &proposal.to_string(),
-    )
-    .await;
+    let activity = crate::harness::native::Operation::Activity(lease.clone());
+    let proposed =
+        crate::harness::native::send(&case.router, &activity, Some(&token), &proposal.to_string())
+            .await;
     let status = proposed.status();
     let proposed = json_body(proposed).await;
     assert_eq!(status, StatusCode::ACCEPTED, "{proposed}");
 
-    finish_turn(&case, &lease.to_string(), &token).await;
-
-    // The person saves the candidate the proposal committed.
-    let reviewed = draft(&case, &item).await;
-    let save = json!({"source":{"kind":"draft","draft_candidate_id":reviewed["candidate"]["id"]},
-        "name":INSTANCE, "review_digest":reviewed["review"]["review_digest"],"start":{"kind":"none"}});
-    let response = case.save(mint().as_str(), &save).await;
-    let status = response.status();
-    let saved = json_body(response).await;
-    assert_eq!(status, StatusCode::CREATED, "{saved}");
-
-    let schedules = saved["schedules"].as_array().expect("schedules");
-    assert_eq!(
-        schedules.len(),
-        1,
-        "one cron trigger, one schedule: {saved}"
-    );
-    assert_eq!(schedules[0]["cron"], SCHEDULE, "{saved}");
-
-    case.cleanup().await;
+    finish_turn(case, &lease.to_string(), &token).await;
 }

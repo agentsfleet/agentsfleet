@@ -48,6 +48,8 @@ mod integration_pool_retry;
 mod integration_pool_tls;
 #[path = "integration_seeds.rs"]
 mod integration_seeds;
+#[path = "integration_uuid_text.rs"]
+mod integration_uuid_text;
 #[path = "lock_policy.rs"]
 mod lock_policy;
 #[path = "migrations.rs"]

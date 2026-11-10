@@ -3,8 +3,8 @@
 //!
 //! No model runs. Each kind is fixed text naming the fleets it is about and the
 //! next step a person can take. It is owed through the ledger an answer is owed
-//! through (`afd_outbound::obligation`), by a stable channel notice owner, under a key
-//! derived from the chat event's own id, so a retried delivery owes it once.
+//! through (`afd_outbound::obligation`), by a stable channel notice owner, under
+//! its own minted id. A provider's retry of the same mention owes it again.
 
 use af_core::id::Uuid7;
 use afd_connector::Provider;
@@ -15,19 +15,8 @@ use super::{Notice, Subscriber};
 use crate::Ingress;
 use crate::error::Result;
 
-/// What a notice's obligation key ends in, so it can never share a key with an
-/// answer the same owner owes for an admitted event.
-const KEY_SUFFIX: &str = "notice";
-
 /// What separates the fleet names a notice lists.
 const NAME_SEPARATOR: &str = ", ";
-
-/// The obligation key a notice for chat event `event_id` in `team` is owed
-/// under: `<team>:<event_id>:notice`.
-#[must_use]
-pub fn notice_key(team: &str, event_id: &str) -> String {
-    format!("{team}:{event_id}:{KEY_SUFFIX}")
-}
 
 /// The fixed text `notice` answers with.
 #[must_use]
@@ -75,8 +64,6 @@ pub struct NoticeOwed<'a> {
     pub workspace: &'a Uuid7,
     /// The connector that carries it back.
     pub provider: Provider,
-    /// [`notice_key`] for the mention's event.
-    pub key: &'a str,
     /// The thread it is posted in, as the connector's poster reads it.
     pub address: &'a str,
     /// [`notice_text`].
@@ -84,32 +71,34 @@ pub struct NoticeOwed<'a> {
 }
 
 impl Ingress {
-    /// Owes one notice to the mention's thread.
-    ///
-    /// Answers `true` when this call wrote the obligation, and `false` for a
-    /// retried delivery whose notice is already owed. `now` mints the row's id;
-    /// the ledger stamps the row on the database clock.
+    /// Owes one notice to the mention's thread, and answers the id it is owed
+    /// under. `now` mints that id; the ledger stamps the row on the database
+    /// clock.
     ///
     /// # Errors
     /// Reports entropy or an instant that would not mint the row's id, and a
     /// ledger that would not record it.
-    pub async fn owe_notice(&self, owed: NoticeOwed<'_>, now: Timestamp) -> Result<bool> {
+    pub async fn owe_notice(&self, owed: NoticeOwed<'_>, now: Timestamp) -> Result<Uuid7> {
         let row = self.entropy.uuid7(now)?;
+        // Unpinged: the notice is claimable at once, and the outbound claim
+        // pass takes it within one pass.
+        let token = self.entropy.uuid7(now)?;
         let mut connection = self.database.acquire().await?;
-        let written = obligation::owe(
+        obligation::owe(
             connection.as_mut(),
-            row.as_str(),
+            &row,
+            &token,
             Delivery {
-                fleet_id: owed.owner.as_str(),
-                workspace_id: owed.workspace.as_str(),
+                fleet_id: owed.owner,
+                workspace_id: owed.workspace,
                 provider: owed.provider,
                 destination: owed.address,
-                event_id: owed.key,
+                event_id: &row,
                 answer: owed.text,
             },
         )
         .await?;
-        Ok(written)
+        Ok(row)
     }
 }
 

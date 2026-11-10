@@ -42,7 +42,7 @@
 //!   Scheme::verify_at       `af_webhook`, constant-time  (NOT this crate)
 //!      │
 //!      ▼
-//!   Ingress::deliver        claim + XADD, atomically, at most once
+//!   Ingress::deliver        admission ledger row, at most once
 //! ```
 //!
 //! The secret is read BEFORE the body is parsed and the body is parsed only
@@ -134,7 +134,7 @@ impl Ingress {
     pub async fn binding(&self, fleet: &Uuid7, source: &str) -> Result<Option<Binding>> {
         let mut connection = self.database.acquire().await?;
         let row: Option<IngressRow> = sqlx::query_as(sql::SELECT_FLEET_INGRESS)
-            .bind(fleet.as_str())
+            .bind(fleet)
             .fetch_optional(connection.as_mut())
             .await
             .map_err(error::query(CONTEXT_BINDING))?;
@@ -147,8 +147,7 @@ impl Ingress {
         // value that will not parse is a broken invariant rather than a race —
         // and it is reported as this daemon's fault, not answered as "no such
         // fleet", which would send an operator looking at the wrong thing.
-        let workspace = Uuid7::parse(&row.workspace_id)
-            .map_err(|_shape| error::row_unreadable(error::COLUMN_WORKSPACE))?;
+        let workspace = row.workspace_id.clone();
 
         Binding::read_for_source(fleet.clone(), workspace, &row.status, &row.document, source)
     }
@@ -158,7 +157,7 @@ impl Ingress {
 #[derive(Debug, sqlx::FromRow)]
 struct IngressRow {
     /// The owning workspace, as text.
-    workspace_id: String,
+    workspace_id: Uuid7,
     /// The stored status word.
     status: String,
     /// The head revision's configuration, as JSON text.

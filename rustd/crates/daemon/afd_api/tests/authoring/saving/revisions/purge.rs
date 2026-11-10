@@ -4,7 +4,7 @@ use super::{Fleet, Method, StatusCode, header, json_body, mint, send_with_header
 use af_core::error_code;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn retrying_apply_after_purge_returns_gone_without_reviving_the_fleet() {
     let fleet = Fleet::create().await;
     let (_, request) = fleet.improvement().await;
@@ -25,7 +25,7 @@ async fn retrying_apply_after_purge_returns_gone_without_reviving_the_fleet() {
         0,
         "no revision survives or returns"
     );
-    assert_only_the_tombstone_remains(&fleet, key.as_str()).await;
+    assert_only_the_tombstone_remains(&fleet, &key).await;
     fleet.case.cleanup().await;
 }
 
@@ -53,7 +53,7 @@ async fn kill_and_purge(fleet: &Fleet) {
 
 /// The replay recreated no fleet row, and the Apply receipt survives as a
 /// tombstone that expires exactly one tombstone window after the purge.
-async fn assert_only_the_tombstone_remains(fleet: &Fleet, key: &str) {
+async fn assert_only_the_tombstone_remains(fleet: &Fleet, key: &af_core::id::Uuid7) {
     let mut connection = fleet
         .case
         .base
@@ -61,18 +61,17 @@ async fn assert_only_the_tombstone_remains(fleet: &Fleet, key: &str) {
         .acquire()
         .await
         .expect("purge inspection");
-    let fleets: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE id=$1::uuid")
-        .bind(fleet.saved["id"].as_str().expect("fleet ID"))
+    let fleets: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.fleets WHERE id=$1")
+        .bind(crate::authoring::id_field(&fleet.saved["id"]))
         .fetch_one(&mut *connection)
         .await
         .expect("fleet census");
     assert_eq!(fleets, 0, "the replay recreated nothing");
-    let receipts: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM authoring.replay_receipts WHERE operation_id=$1::uuid",
-    )
-    .bind(key)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("receipt census");
+    let receipts: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM authoring.replay_receipts WHERE operation_id=$1")
+            .bind(key)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("receipt census");
     assert_eq!(receipts, 1, "the Apply receipt outlives the purged fleet");
 }

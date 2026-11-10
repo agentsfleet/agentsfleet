@@ -6,6 +6,7 @@
 
 use std::collections::BTreeMap;
 
+use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_wire::tool_detail::{
     DETAIL_EVENT_MAX_BYTES, DETAIL_FIELD_MAX_BYTES, DetailRejection, ToolCallRecordsRequest,
@@ -27,11 +28,15 @@ fn record(call_number: u64, output_bytes: usize) -> String {
     .to_string()
 }
 
+/// The event every fixture lease runs.
+const EVENT: &str = "01924f4e-0000-7000-8000-0000000000e9";
+
 fn target(fence: i64, live_seq: i64) -> LiveLease {
     LiveLease {
-        fleet_id: "01924f4e-0000-7000-8000-00000000fee7".to_owned(),
-        workspace_id: "01924f4e-0000-7000-8000-000000000001".to_owned(),
-        event_id: "1700000000000-0".to_owned(),
+        fleet_id: Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7").expect("fixture fleet id"),
+        workspace_id: Uuid7::parse("01924f4e-0000-7000-8000-000000000001")
+            .expect("fixture workspace id"),
+        event_id: Uuid7::parse(EVENT).expect("fixture event id"),
         actor: "steer:api".to_owned(),
         fence,
         live_seq,
@@ -135,7 +140,7 @@ fn a_skip_is_logged_by_position_and_size_never_content() {
     assert_eq!(line.field("reason"), Some("too_large"));
     assert_eq!(line.field("position"), Some("2"));
     assert_eq!(line.field("bytes"), Some("70000"));
-    assert_eq!(line.field("agentsfleet_event_id"), Some("1700000000000-0"));
+    assert_eq!(line.field("agentsfleet_event_id"), Some(EVENT));
 }
 
 /// One KiB, the unit the budget cases below are written in.

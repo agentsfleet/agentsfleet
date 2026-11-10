@@ -3,11 +3,12 @@
 use std::ops::Range;
 
 use af_core::error_code::{self, ErrorCode};
+use af_core::id::Uuid7;
 use af_wire::task::TaskLimits;
 use afd_admission::Producer;
 use afd_fleet::task::{PreparedPlan, PreparedTask, TaskLifecycle as _};
 
-use super::fixture::{Case, GOALS, exercise, id, items, questions};
+use super::fixture::{Case, GOALS, exercise, items, questions};
 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -18,7 +19,7 @@ async fn only_current_claimed_human_intent_can_allocate_work() {
 async fn source_authority(case: &Case) {
     let tasks = &case.tasks;
     let missing = case.source_plan(
-        id(&afd_db::test_util::mint_id()),
+        afd_db::test_util::mint_id(),
         "missing",
         1,
         TaskLimits::default(),
@@ -73,7 +74,7 @@ async fn interpretation_bounds(case: &Case) {
         refused(case, &plan, expected).await;
     }
     for limits in lower_limits().into_iter().chain(upper_limits()) {
-        let plan = case.source_plan(id(&case.held.event_id), "invalid-allowance", 3, limits);
+        let plan = case.source_plan(case.held.event_id.clone(), "invalid-allowance", 3, limits);
         refused(case, &plan, error_code::TASK_LIMIT_EXHAUSTED).await;
     }
     let accepted = tasks
@@ -97,7 +98,7 @@ fn span_plan(case: &Case, span: Range<i32>) -> PreparedPlan {
         TaskLimits::default(),
     );
     PreparedPlan::from_parts(
-        id(&case.held.event_id),
+        case.held.event_id.clone(),
         case.revision.clone(),
         "invalid-span".to_owned(),
         vec![item],
@@ -181,8 +182,7 @@ async fn a_new_interpretation_requires_the_current_saved_setup_revision() {
 async fn revision(case: &Case) {
     case.held
         .fixtures
-        .native_config(
-            &case.held.fleet,
+        .native_config(&case.held.fleet,
             r#"{"name":"revised-repair-criteria","x-agentsfleet":{"tools":[],"triggers":[],"budget":{"daily_nanos":"1000000000"}}}"#,
         )
         .await;
@@ -192,8 +192,8 @@ async fn revision(case: &Case) {
         error_code::TASK_STALE_STATE,
     )
     .await;
-    let (revision, number): (String, i64) =
-        sqlx::query_as("SELECT f.head_revision_id::text,r.revision FROM fleet.fleets f JOIN fleet.revisions r ON r.id=f.head_revision_id WHERE f.id=$1::uuid")
+    let (revision, number): (Uuid7, i64) =
+        sqlx::query_as("SELECT f.head_revision_id,r.revision FROM fleet.fleets f JOIN fleet.revisions r ON r.id=f.head_revision_id WHERE f.id=$1")
             .bind(&case.held.fleet)
             .fetch_one(
                 &mut *case
@@ -206,17 +206,17 @@ async fn revision(case: &Case) {
             )
             .await
             .expect("current saved revision");
-    assert_ne!(revision, case.revision.as_str());
+    assert_ne!(revision, case.revision);
     let number = u64::try_from(number).expect("positive saved revision");
     assert_eq!(number, case.revision_number + 1);
     accepted_revision(case, &revision, number).await;
 }
 
-async fn accepted_revision(case: &Case, revision: &str, number: u64) {
+async fn accepted_revision(case: &Case, revision: &Uuid7, number: u64) {
     let (tasks, scope) = (&case.tasks, &case.scope);
     let plan = PreparedPlan::from_parts(
-        id(&case.held.event_id),
-        id(revision),
+        case.held.event_id.clone(),
+        revision.clone(),
         "new-setup".to_owned(),
         items(3, TaskLimits::default()),
     );
@@ -243,7 +243,7 @@ async fn accepted_revision(case: &Case, revision: &str, number: u64) {
                 task.context.generation,
                 task.resource_version
             ),
-            (revision, number, 1, 1)
+            (revision.as_str(), number, 1, 1)
         );
     }
 }

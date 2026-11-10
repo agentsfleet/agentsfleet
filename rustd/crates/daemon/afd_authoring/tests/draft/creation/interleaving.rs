@@ -9,8 +9,7 @@ use afd_authoring::{SavedFleet, types::Start};
 use sqlx::Connection as _;
 
 /// Holds the fixture tenant's wallet the way activation locks it.
-const LOCK_WALLET: &str =
-    "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1::uuid FOR UPDATE";
+const LOCK_WALLET: &str = "SELECT balance_nanos FROM billing.wallets WHERE tenant_id=$1 FOR UPDATE";
 
 /// The holding session, so a proof can wait for work to queue behind it.
 const BACKEND: &str = "SELECT pg_backend_pid()";
@@ -32,14 +31,14 @@ fn installing(saved: &SavedFleet) {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn setup_waiting_past_its_budget_answers_installing_and_the_key_finishes_it() {
     let c = Case::create().await;
     let (key, request, fleet) = funded_retained(&c, "budget-elapsed").await;
     let mut holder = c.base.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
     sqlx::query(LOCK_WALLET)
-        .bind(c.base.tenant.as_str())
+        .bind(&c.base.tenant)
         .execute(&mut *held)
         .await
         .expect("hold the wallet");
@@ -61,7 +60,7 @@ async fn setup_waiting_past_its_budget_answers_installing_and_the_key_finishes_i
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_stream_record_lost_while_activation_waited_holds_the_fleet_installing() {
     let c = Case::create().await;
     let (key, request, fleet) = funded_retained(&c, "readiness-lost").await;
@@ -72,14 +71,14 @@ async fn a_stream_record_lost_while_activation_waited_holds_the_fleet_installing
         .await
         .expect("holder session");
     sqlx::query(LOCK_WALLET)
-        .bind(c.base.tenant.as_str())
+        .bind(&c.base.tenant)
         .execute(&mut *held)
         .await
         .expect("hold the wallet");
     let (waited, ()) = tokio::join!(c.save(&key, request.clone()), async {
         c.base.waits_on(pid, 1).await;
-        sqlx::query("UPDATE fleet.fleets SET setup_stream_ready=false WHERE id=$1::uuid")
-            .bind(fleet.as_str())
+        sqlx::query("UPDATE fleet.fleets SET setup_stream_ready=false WHERE id=$1")
+            .bind(&fleet)
             .execute(&mut *c.base.connection().await)
             .await
             .expect("lose the stream record");
@@ -98,7 +97,7 @@ async fn a_stream_record_lost_while_activation_waited_holds_the_fleet_installing
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_activation_update_that_matches_nothing_rolls_back_as_setup_changed() {
     let c = Case::create().await;
     let (key, request, fleet) = funded_retained(&c, "activation-skipped").await;

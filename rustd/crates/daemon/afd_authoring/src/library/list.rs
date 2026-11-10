@@ -28,7 +28,7 @@ impl Listed {
     fn card(self) -> Result<(Timestamp, af_core::id::Uuid7, LibraryCard)> {
         let entry = self.entry.decode()?;
         let head: Revision = RevisionRow {
-            id: entry.head_revision_id.to_string(),
+            id: entry.head_revision_id.clone(),
             revision: self.head_revision,
             definition: self.head_definition,
             canonical_digest: self.head_canonical_digest,
@@ -64,11 +64,11 @@ impl Setup {
         ))?;
         let after = paging::boundary(request.starting_after.as_deref(), &binding)?;
         let rows: Vec<Listed> = sqlx::query_as(sql::PAGE)
-            .bind(person.owner.as_str())
+            .bind(&person.owner)
             .bind(owned)
             .bind(PLATFORM)
             .bind(after.as_ref().map(|(at, _)| at.to_sqlx()))
-            .bind(after.as_ref().map(|(_, id)| id.as_str()))
+            .bind(after.as_ref().map(|(_, id)| id))
             .bind(i64::from(request.limit) + 1)
             .bind(super::TENANT)
             .fetch_all(&mut *tx)

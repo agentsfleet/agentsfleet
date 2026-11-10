@@ -5,7 +5,7 @@ WITH current_row AS (
            WHERE l.runner_id = r.id AND l.status = $3::text
          ) AS leased
   FROM runner.runners r
-  WHERE r.id = $1::uuid
+  WHERE r.id = $1
 ), deleted AS (
   DELETE FROM runner.runners r
   USING current_row c

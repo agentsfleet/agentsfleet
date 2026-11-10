@@ -48,7 +48,6 @@ impl Schedules {
         }
         Receipt {
             schedule: &written,
-            operation: "setup",
             fact: Fact::Changed(if old.is_none() {
                 ScheduleChange::Created
             } else {
@@ -82,8 +81,8 @@ impl Schedules {
         } else {
             let id = self.mint(set.now)?;
             sqlx::query_as::<_, Schedule>(sql::INSERT)
-                .bind(id.as_str())
-                .bind(set.fleet.as_str())
+                .bind(&id)
+                .bind(set.fleet)
                 .bind(Source::Trigger.as_str())
                 .bind(format!("recipe:{slot}"))
                 .bind(&projection.effective.cron)

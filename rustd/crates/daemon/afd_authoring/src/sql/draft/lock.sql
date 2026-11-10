@@ -5,34 +5,34 @@ WITH locked AS MATERIALIZED (
            last_message_sequence, cancelled_through_sequence, resource_version,
            closed_at, expires_at
       FROM authoring.drafts
-     WHERE id = $1::uuid AND workspace_id = $2::uuid AND user_id = $3::uuid
+     WHERE id = $1 AND workspace_id = $2 AND user_id = $3
        FOR UPDATE
 ), clock AS MATERIALIZED (
     SELECT clock_timestamp() AS locked_at FROM locked
 )
-SELECT d.id::text AS id,
+SELECT d.id AS id,
        d.status,
        d.title,
        d.resource_version,
-       d.tenant_model_id::text AS tenant_model_id,
-       d.head_candidate_id::text AS head_candidate_id,
+       d.tenant_model_id AS tenant_model_id,
+       d.head_candidate_id AS head_candidate_id,
        COALESCE(c.revision, 0) AS candidate_revision,
        d.last_message_sequence,
        d.cancelled_through_sequence,
-       d.fleet_id::text AS fleet_id,
+       d.fleet_id AS fleet_id,
        d.closed_at,
        d.expires_at,
-       d.workspace_id::text AS workspace_id,
-       d.tenant_id::text AS tenant_id,
-       d.user_id::text AS user_id,
+       d.workspace_id AS workspace_id,
+       d.tenant_id AS tenant_id,
+       d.user_id AS user_id,
        d.instance_name,
        d.source_type,
        COALESCE(sl.platform_slug, sl.id::text) AS source_library_id,
-       sr.id::text AS source_library_revision_id,
-       sf.fleet_id::text AS source_fleet_id,
+       sr.id AS source_library_revision_id,
+       sf.fleet_id AS source_fleet_id,
        sf.revision AS source_fleet_revision,
        COALESCE(pl.platform_slug, pl.id::text) AS publication_library_id,
-       pr.id::text AS publication_revision_id,
+       pr.id AS publication_revision_id,
        pr.canonical_digest AS publication_digest
   FROM locked d
  CROSS JOIN clock

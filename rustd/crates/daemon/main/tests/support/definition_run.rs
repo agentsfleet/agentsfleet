@@ -11,10 +11,13 @@
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use std::sync::Arc;
 use std::time::Duration;
 
-use afr_supervisor::config::{ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME};
+use afr_supervisor::config::{
+    ENV_API_URL, ENV_RUNNER_TOKEN, ENV_STORAGE_HOME, ENV_STREAM_CA, ENV_STREAM_URL,
+};
 use tokio_util::sync::CancellationToken;
 
 use crate::definition_install::MINTED_TOKEN;
@@ -33,7 +36,7 @@ const SETTLED: [&str; 3] = ["processed", "fleet_error", "gate_blocked"];
 
 /// A settled event's answer, NULL when no run produced one.
 const ANSWER: &str = "SELECT response_text FROM fleet.events \
-                      WHERE fleet_id = $1::uuid AND event_id = $2";
+                      WHERE fleet_id = $1 AND event_id = $2";
 
 /// How one run's event ended.
 #[derive(Debug)]
@@ -49,7 +52,7 @@ pub(crate) struct Settled {
 /// event settles.
 pub(crate) async fn run_event(
     run: &Scenario,
-    event_id: &str,
+    event_id: &Uuid7,
     upstream: &Upstream,
     model: FakeModel,
 ) -> Settled {
@@ -61,7 +64,7 @@ pub(crate) async fn run_event(
 /// is given.
 pub(crate) async fn run_event_from(
     run: &Scenario,
-    event_id: &str,
+    event_id: &Uuid7,
     upstream: &Upstream,
     model: FakeModel,
     origin: Option<String>,
@@ -97,7 +100,7 @@ pub(crate) async fn run_event_from(
 }
 
 /// What the run answered, or `None` for an event that ended without a run.
-async fn answer_of(run: &Scenario, event_id: &str) -> Option<String> {
+async fn answer_of(run: &Scenario, event_id: &Uuid7) -> Option<String> {
     let mut connection = run
         .booted
         .database
@@ -113,7 +116,7 @@ async fn answer_of(run: &Scenario, event_id: &str) -> Option<String> {
 }
 
 /// The event's status once it settles, or `None` past the deadline.
-pub(crate) async fn settled(run: &Scenario, event_id: &str) -> Option<String> {
+pub(crate) async fn settled(run: &Scenario, event_id: &Uuid7) -> Option<String> {
     let deadline = tokio::time::Instant::now() + SETTLE_DEADLINE;
     while tokio::time::Instant::now() < deadline {
         let status = event_column(run, event_id, "status").await;
@@ -139,8 +142,17 @@ pub(crate) fn runner(
     shutdown: CancellationToken,
 ) -> impl Future<Output = afr_supervisor::Result<()>> + use<> {
     let home = home.to_string_lossy().into_owned();
+    let stream_origin = format!(
+        "https://localhost:{}",
+        run.booted.runner_stream_address.port()
+    );
+    let root = crate::support::runner_stream::root_file()
+        .to_string_lossy()
+        .into_owned();
     let env = af_core::env::MapEnv::from_pairs([
         (ENV_API_URL, run.base.as_str()),
+        (ENV_STREAM_URL, stream_origin.as_str()),
+        (ENV_STREAM_CA, root.as_str()),
         (ENV_RUNNER_TOKEN, run.token.as_str()),
         (ENV_STORAGE_HOME, home.as_str()),
     ]);

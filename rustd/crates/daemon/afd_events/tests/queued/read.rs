@@ -13,10 +13,10 @@ async fn test_thread_read_includes_queued_steers() {
         .await
         .expect("the steer is admitted");
     let history = History::new(lane.database.clone());
-    let (workspace, fleet) = (uuid(&lane.workspace), uuid(&lane.fleet));
+    let (workspace, fleet) = (&lane.workspace, &lane.fleet);
 
     let page = history
-        .thread_page(&workspace, &fleet, None, PAGE)
+        .thread_page(workspace, fleet, None, PAGE)
         .await
         .expect("the thread reads");
     let first = page.first().expect("the waiting message is on the page");
@@ -46,15 +46,15 @@ async fn test_thread_read_dedupes_leased_steer() {
         .expect("a fresh admission has an instant");
     let mut connection = lane.connection().await;
     sqlx::query(MARK_DELIVERED)
-        .bind(lane.fleet.as_str())
+        .bind(&lane.fleet)
         .execute(&mut *connection)
         .await
         .expect("the lease's delivery stamp lands");
     drop(connection);
-    lane.seed_event(&steered.event_id, admitted_at).await;
+    lane.seed_event(&uuid(&steered.event_id), admitted_at).await;
 
     let page = History::new(lane.database.clone())
-        .thread_page(&uuid(&lane.workspace), &uuid(&lane.fleet), None, PAGE)
+        .thread_page(&lane.workspace, &lane.fleet, None, PAGE)
         .await
         .expect("the thread reads");
     let rows: Vec<_> = page
@@ -75,8 +75,8 @@ async fn test_thread_read_dedupes_leased_steer() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn task_history_preserves_records_and_truncation_in_detail_and_thread() {
     let lane = EventsLane::open().await;
-    let event = "01924f4e-0000-7000-8000-000000000236";
-    lane.seed_event(event, jiff::Timestamp::now()).await;
+    let event = afd_db::test_util::mint_id();
+    lane.seed_event(&event, jiff::Timestamp::now()).await;
     let items = serde_json::json!([{
         "kind": "task_decision_started",
         "progress": {
@@ -88,24 +88,24 @@ async fn task_history_preserves_records_and_truncation_in_detail_and_thread() {
     let mut connection = lane.connection().await;
     sqlx::query(
         "UPDATE fleet.events SET task_activity = $3, task_activity_sequence = 2, \
-                 task_activity_truncated = true WHERE fleet_id = $1::uuid AND event_id = $2",
+                 task_activity_truncated = true WHERE fleet_id = $1 AND event_id = $2",
     )
-    .bind(lane.fleet.as_str())
-    .bind(event)
+    .bind(&lane.fleet)
+    .bind(&event)
     .bind(&items)
     .execute(&mut *connection)
     .await
     .expect("saved history fixture");
     drop(connection);
     let history = History::new(lane.database.clone());
-    let (workspace, fleet) = (uuid(&lane.workspace), uuid(&lane.fleet));
+    let (workspace, fleet) = (&lane.workspace, &lane.fleet);
     let detail = history
-        .detail(&workspace, &fleet, event)
+        .detail(workspace, fleet, &event)
         .await
         .expect("detail decodes split storage")
         .expect("event exists");
     let page = history
-        .thread_page(&workspace, &fleet, None, PAGE)
+        .thread_page(workspace, fleet, None, PAGE)
         .await
         .expect("thread decodes split storage");
     let thread = page

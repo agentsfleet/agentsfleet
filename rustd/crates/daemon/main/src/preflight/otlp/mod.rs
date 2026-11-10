@@ -67,10 +67,12 @@ fn endpoint<E: EnvSource + ?Sized>(env: &E) -> Option<(Box<str>, &'static str)> 
 /// Every header an export carries; a name written twice keeps its last value.
 fn headers<E: EnvSource + ?Sized>(env: &E, faults: &mut Vec<Fault>) -> Vec<(String, String)> {
     let mut headers = Vec::new();
-    let Some(raw) = super::optional(env, OTEL_HEADERS_KNOB) else {
+    // The collector credential is read into a wiping owner; the exporter keeps its own copies.
+    let Some(raw) = super::optional_secret(env, OTEL_HEADERS_KNOB) else {
         return headers;
     };
     for pair in raw
+        .expose()
         .split(',')
         .map(str::trim)
         .filter(|pair| !pair.is_empty())

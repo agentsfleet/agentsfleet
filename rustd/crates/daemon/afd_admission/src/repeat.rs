@@ -7,6 +7,7 @@
 //! and a spent deployment ceiling then refuses before the insert can meet it,
 //! so a producer that must answer a repeat on that path reads the row here.
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 use crate::error::{Result, query};
@@ -24,12 +25,12 @@ const CONTEXT_FIND_REPEATED: &str = "find a repeated admission";
 pub struct Repeated {
     /// The event id the row's admission was answered with: the row's own
     /// `UUIDv7`, as text.
-    pub id: String,
+    pub id: Uuid7,
     /// The payload digest it was admitted with, which a retry is checked
     /// against ([`crate::Admission::payload_digest`]).
     pub digest: String,
     /// The fleet the row was admitted for.
-    pub fleet: String,
+    pub fleet: Uuid7,
     /// When the database admitted the row — the event's own `created_at`.
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     pub created_at: Timestamp,

@@ -1,7 +1,6 @@
 //! A real lifecycle transition invalidates the previous strong resource tag.
 #![expect(clippy::expect_used, reason = "test preconditions fail loudly")]
 
-use af_core::id::Uuid7;
 use afd_fleet::task::{TaskControl, TaskLifecycle as _, TaskScope};
 use http::{Method, StatusCode, header};
 use serde_json::{Value, json};
@@ -52,9 +51,9 @@ pub(super) async fn change(
 ) {
     let scope = TaskScope {
         workspace_id: fixture.base.workspace.clone(),
-        fleet_id: Uuid7::parse(&fixture.base.fleet).expect("fleet identity"),
+        fleet_id: fixture.base.fleet.clone(),
     };
-    let task = Uuid7::parse(&fixture.ids[1]).expect("task identity");
+    let task = fixture.ids[1].clone();
     let changed = fixture
         .lifecycle()
         .control(&scope, &task, previous_tag, 1, TaskControl::Pause)

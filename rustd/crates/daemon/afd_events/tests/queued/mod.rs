@@ -37,10 +37,10 @@ const PAGE: i64 = 26;
 
 /// What a lease writes to the admission when a runner takes it.
 const MARK_DELIVERED: &str = "UPDATE fleet.admissions SET delivered_at = now() \
-     WHERE fleet_id = $1::uuid AND delivered_at IS NULL";
+     WHERE fleet_id = $1 AND delivered_at IS NULL";
 
 /// The two indexes that hold only undelivered admissions, keyed on the fleet
-/// and the admission order (`schema/1720_fleet_admissions.sql`).
+/// and the admission order (`schema/20261108125100_fleet_admissions.sql`).
 const IN_FLIGHT_INDEXES: [&str; 1] = ["idx_admissions_delivery_lookup"];
 
 /// Ledger history, most of it delivered, across many fleets of one workspace:
@@ -49,14 +49,14 @@ const IN_FLIGHT_INDEXES: [&str; 1] = ["idx_admissions_delivery_lookup"];
 const SEED_LEDGER: &str = "
 WITH workspace AS (
     INSERT INTO identity.workspaces (id, tenant_id, name, created_at)
-    VALUES (uuidv7(), $1::uuid, 'queued-plan', $2::timestamptz)
+    VALUES (uuidv7(), $1, 'queued-plan', $2::timestamptz)
     RETURNING id
 ), fleets AS (
     INSERT INTO fleet.fleets
       (id, workspace_id, tenant_id, name, status, required_tags,
        memory_reads_workspace, memory_publishes_workspace, resource_version,
        created_at, updated_at)
-    SELECT uuidv7(), workspace.id, $1::uuid, 'queued-plan-' || f, 'active',
+    SELECT uuidv7(), workspace.id, $1, 'queued-plan-' || f, 'active',
            '{}'::text[], false, false, 1, $2::timestamptz, $2::timestamptz
       FROM workspace, generate_series(1, $3) f
     RETURNING id, workspace_id

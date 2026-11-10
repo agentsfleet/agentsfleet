@@ -1,1 +1,1 @@
-DELETE FROM identity.tenants WHERE id = $1::uuid
+DELETE FROM identity.tenants WHERE id = $1

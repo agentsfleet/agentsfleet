@@ -26,13 +26,13 @@ impl History {
     ) -> Result<Vec<EventRow>> {
         let query = match cursor {
             None => sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR)
-                .bind(workspace.as_str())
-                .bind(fleet.as_str()),
+                .bind(workspace)
+                .bind(fleet),
             Some(at) => sqlx::query(SELECT_FLEET_PAGE_OF_ACTOR_AFTER)
-                .bind(workspace.as_str())
-                .bind(fleet.as_str())
+                .bind(workspace)
+                .bind(fleet)
                 .bind(at.created_at.to_sqlx())
-                .bind(at.event_id.as_str()),
+                .bind(&at.event_id),
         };
         let mut connection = self.database.acquire().await?;
         let rows = query

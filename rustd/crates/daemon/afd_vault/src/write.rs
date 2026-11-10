@@ -86,8 +86,8 @@ impl Vault {
         let projection = body.projection();
 
         let written = sqlx::query(sql::INSERT_SECRET_IF_ABSENT)
-            .bind(id.as_str())
-            .bind(workspace.as_str())
+            .bind(id)
+            .bind(workspace)
             .bind(name.as_str())
             .bind(envelope.wrapped_dek())
             .bind(envelope.dek_nonce().as_slice())
@@ -174,7 +174,7 @@ impl Vault {
         let projection = body.projection();
 
         let written = sqlx::query(sql::UPDATE_SECRET)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(name.as_str())
             .bind(envelope.wrapped_dek())
             .bind(envelope.dek_nonce().as_slice())

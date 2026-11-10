@@ -1,4 +1,4 @@
-//! Dimension 4.1 — the draft and fleet deletion roots keep the money and scrub
+//! The draft and fleet deletion roots keep the money and scrub
 //! private output at once; an open draft and an installing fleet survive their
 //! sweeps.
 //!
@@ -51,11 +51,11 @@ fn settling_report() -> Report {
 /// `(attempts with an outcome, usage lines, settled usage lines)` for `attempt`.
 async fn attempt_money(c: &Case, attempt: &Uuid7) -> (i64, i64, i64) {
     sqlx::query_as(
-        "SELECT (SELECT count(*) FROM authoring.attempts WHERE id=$1::uuid AND outcome IS NOT NULL), \
-         (SELECT count(*) FROM billing.usage_lines WHERE work_type=$2 AND work_id=$1::uuid), \
-         (SELECT count(settled_at) FROM billing.usage_lines WHERE work_type=$2 AND work_id=$1::uuid)",
+        "SELECT (SELECT count(*) FROM authoring.attempts WHERE id=$1 AND outcome IS NOT NULL), \
+         (SELECT count(*) FROM billing.usage_lines WHERE work_type=$2 AND work_id=$1), \
+         (SELECT count(settled_at) FROM billing.usage_lines WHERE work_type=$2 AND work_id=$1)",
     )
-    .bind(attempt.as_str())
+    .bind(attempt)
     .bind(AUTHORING_ATTEMPT)
     .fetch_one(&mut *c.base.connection().await)
     .await
@@ -66,9 +66,9 @@ async fn attempt_money(c: &Case, attempt: &Uuid7) -> (i64, i64, i64) {
 async fn dispatch_output(c: &Case, attempt: &Uuid7) -> (i64, i64, i64) {
     sqlx::query_as(
         "SELECT count(*), count(result), count(native_reply) \
-         FROM authoring.dispatches WHERE attempt_id=$1::uuid",
+         FROM authoring.dispatches WHERE attempt_id=$1",
     )
-    .bind(attempt.as_str())
+    .bind(attempt)
     .fetch_one(&mut *c.base.connection().await)
     .await
     .expect("the attempt's dispatches read")
@@ -76,18 +76,27 @@ async fn dispatch_output(c: &Case, attempt: &Uuid7) -> (i64, i64, i64) {
 
 /// How many rows of `table` carry `id`. The table name is a literal from this file.
 async fn rows(c: &Case, table: &str, id: &Uuid7) -> i64 {
-    let statement = sqlx::AssertSqlSafe(format!("SELECT count(*) FROM {table} WHERE id=$1::uuid"));
+    let statement = sqlx::AssertSqlSafe(format!("SELECT count(*) FROM {table} WHERE id=$1"));
     sqlx::query_scalar(statement)
-        .bind(id.as_str())
+        .bind(id)
         .fetch_one(&mut *c.base.connection().await)
         .await
         .expect("the row count reads")
 }
 
+/// One read of a single identifier column of one row, by id.
+async fn id_column(c: &Case, statement: &'static str, id: &Uuid7) -> Option<Uuid7> {
+    sqlx::query_scalar(statement)
+        .bind(id)
+        .fetch_optional(&mut *c.base.connection().await)
+        .await
+        .expect("the column reads")
+}
+
 /// One read of a single text column of one row, by id.
 async fn column(c: &Case, statement: &'static str, id: &Uuid7) -> Option<String> {
     sqlx::query_scalar(statement)
-        .bind(id.as_str())
+        .bind(id)
         .fetch_optional(&mut *c.base.connection().await)
         .await
         .expect("the column reads")
@@ -98,11 +107,11 @@ async fn dispatch_with_output(c: &Case, attempt: &Uuid7) {
     sqlx::query(
         "INSERT INTO authoring.dispatches (id, attempt_id, sequence, request_digest, status, \
          result, usage, native_reply, private_expires_at, dispatch_expires_at, created_at, updated_at) \
-         VALUES ($1::uuid, $2::uuid, 1, 'fixture', 'known', $3::jsonb, '{}'::jsonb, $3::jsonb, \
+         VALUES ($1, $2, 1, 'fixture', 'known', $3::jsonb, '{}'::jsonb, $3::jsonb, \
          now() + interval '1 day', now() + interval '30 seconds', now(), now())",
     )
-    .bind(mint().as_str())
-    .bind(attempt.as_str())
+    .bind(mint())
+    .bind(attempt)
     .bind(PRIVATE_RESULT)
     .execute(&mut *c.base.connection().await)
     .await
@@ -120,15 +129,15 @@ async fn fleet_charge(c: &Case, fleet: &Uuid7) -> Uuid7 {
             cache_write_5m_token_count, cache_write_1h_token_count, output_token_count,
             runtime_ms, platform_model_price_id, unpriced_token_count, charged_nanos,
             settled_at, created_at, updated_at)
-         VALUES ($1::uuid, $5, $1::uuid, 0, $2::uuid, $3::uuid, $4::uuid,
-                 (SELECT f.name FROM fleet.fleets f WHERE f.id = $4::uuid),
+         VALUES ($1, $5, $1, 0, $2, $3, $4,
+                 (SELECT f.name FROM fleet.fleets f WHERE f.id = $4),
                  $1, NULL, 'anthropic', 'claude-opus-5', $6, now(), 0, 0, 0, 0, 0, 0, 0,
                  NULL, 0, $7, now(), now(), now())",
     )
-    .bind(line.as_str())
-    .bind(c.base.tenant.as_str())
-    .bind(c.base.workspace.as_str())
-    .bind(fleet.as_str())
+    .bind(&line)
+    .bind(&c.base.tenant)
+    .bind(&c.base.workspace)
+    .bind(fleet)
     .bind(FLEET_LEASE)
     .bind(Posture::Platform.as_str())
     .bind(FLEET_CHARGE_NANOS)
@@ -139,7 +148,7 @@ async fn fleet_charge(c: &Case, fleet: &Uuid7) -> Uuid7 {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_deletion_matrix_keeps_money() {
     let c = Case::create().await;
     let fleets = Fleets::new(c.base.db.clone());
@@ -186,13 +195,13 @@ async fn the_draft_root_keeps_money(c: &Case) -> (Uuid7, (i64, i64, i64)) {
     );
     assert_eq!(attempt_money(c, &a.id).await, money, "the money stays");
     assert_eq!(
-        column(
+        id_column(
             c,
-            "SELECT draft_id::text FROM authoring.attempts WHERE id=$1::uuid",
+            "SELECT draft_id FROM authoring.attempts WHERE id=$1",
             &a.id
         )
         .await,
-        Some(a.draft.id.to_string()),
+        Some(a.draft.id.clone()),
         "the attempt keeps the deleted draft's id, now opaque"
     );
     (a.id, money)
@@ -222,19 +231,19 @@ async fn the_fleet_root_keeps_money(c: &Case, fleets: &Fleets) {
         .expect("a killed fleet purges");
     assert_eq!(rows(c, "fleet.fleets", &saved.id).await, 0);
     assert_eq!(
-        column(
+        id_column(
             c,
-            "SELECT fleet_id::text FROM billing.usage_lines WHERE id=$1::uuid",
+            "SELECT fleet_id FROM billing.usage_lines WHERE id=$1",
             &line
         )
         .await,
-        Some(saved.id.to_string()),
+        Some(saved.id.clone()),
         "the charge outlives its fleet and still names it"
     );
     assert_eq!(
         column(
             c,
-            "SELECT (settled_at IS NOT NULL)::text FROM billing.usage_lines WHERE id=$1::uuid",
+            "SELECT (settled_at IS NOT NULL)::text FROM billing.usage_lines WHERE id=$1",
             &line
         )
         .await
@@ -258,21 +267,21 @@ async fn the_sweeps_leave_open_work(c: &Case, fleets: &Fleets) {
     let installing = c.save(&mint(), request).await;
     assert_eq!(installing.status, INSTALLING);
     assert_eq!(
-        column(
+        id_column(
             c,
-            "SELECT fleet_id::text FROM authoring.drafts WHERE id=$1::uuid",
+            "SELECT fleet_id FROM authoring.drafts WHERE id=$1",
             &setup_draft
         )
         .await,
-        Some(installing.id.to_string()),
+        Some(installing.id.clone()),
         "the setup draft names its installing fleet"
     );
     for (draft, status) in [(&open.id, None), (&setup_draft, Some("closed"))] {
         sqlx::query(
             "UPDATE authoring.drafts SET status=COALESCE($2, status), expires_at='epoch' \
-             WHERE id=$1::uuid",
+             WHERE id=$1",
         )
-        .bind(draft.as_str())
+        .bind(draft)
         .bind(status)
         .execute(&mut *c.base.connection().await)
         .await
@@ -301,7 +310,7 @@ async fn the_sweeps_leave_open_work(c: &Case, fleets: &Fleets) {
     assert_eq!(
         column(
             c,
-            "SELECT status FROM fleet.fleets WHERE id=$1::uuid",
+            "SELECT status FROM fleet.fleets WHERE id=$1",
             &installing.id
         )
         .await,

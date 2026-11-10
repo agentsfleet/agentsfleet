@@ -14,6 +14,7 @@
     reason = "test target: an unmet precondition should fail the test loudly, and one case panics on purpose"
 )]
 
+use af_core::id::Uuid7;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
@@ -30,9 +31,9 @@ const CAP: i32 = 1_000;
 struct Scene {
     database: Db,
     provider: String,
-    tenant: String,
-    workspace: String,
-    model_row: String,
+    tenant: Uuid7,
+    workspace: Uuid7,
+    model_row: Uuid7,
 }
 
 impl Scene {
@@ -41,7 +42,7 @@ impl Scene {
         let database = lane.open(DbRole::Api, &[]).await;
         // The id is time-ordered, so its random tail, not its head, keeps two
         // cases seeded in the same millisecond on different providers.
-        let id = mint_id().replace('-', "");
+        let id = mint_id().to_string().replace('-', "");
         let provider = format!("guard{}", &id[id.len() - 12..]);
         let scene = Self {
             database,
@@ -63,7 +64,7 @@ impl Scene {
             "INSERT INTO model.platform_models \
                (id, model_name, provider, display_name, context_cap_tokens, context_source_url, \
                 context_verified_at, advanced, created_at, updated_at) \
-             VALUES ($1::uuid, $2, $3, $2, $4, $5, now(), false, now(), now())",
+             VALUES ($1, $2, $3, $2, $4, $5, now(), false, now(), now())",
         )
         .bind(&scene.model_row)
         .bind(MODEL)
@@ -87,10 +88,10 @@ impl Scene {
     }
 
     /// The workspace this provider's default names, if it has one.
-    async fn default_names(&self) -> Option<String> {
+    async fn default_names(&self) -> Option<Uuid7> {
         let mut connection = self.database.acquire().await.expect("a connection");
         sqlx::query_scalar(
-            "SELECT source_workspace_id::text FROM model.platform_defaults \
+            "SELECT source_workspace_id FROM model.platform_defaults \
              WHERE provider = $1",
         )
         .bind(&self.provider)
@@ -105,7 +106,7 @@ impl Scene {
         sqlx::query(
             "INSERT INTO model.platform_defaults \
                (provider, source_workspace_id, active, platform_model_id, created_at, updated_at) \
-             VALUES ($1, $2::uuid, FALSE, $3::uuid, now(), now())",
+             VALUES ($1, $2, FALSE, $3, now(), now())",
         )
         .bind(&self.provider)
         .bind(&self.workspace)
@@ -118,23 +119,21 @@ impl Scene {
     /// Removes everything this case wrote, the default first.
     async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("a connection");
+        sqlx::query("DELETE FROM model.platform_defaults WHERE provider = $1")
+            .bind(&self.provider)
+            .execute(&mut *connection)
+            .await
+            .expect("the fixture cleanup runs");
         for (statement, id) in [
             (
-                "DELETE FROM model.platform_defaults WHERE provider = $1",
-                &self.provider,
-            ),
-            (
-                "DELETE FROM model.platform_models WHERE id = $1::uuid",
+                "DELETE FROM model.platform_models WHERE id = $1",
                 &self.model_row,
             ),
             (
-                "DELETE FROM identity.workspaces WHERE id = $1::uuid",
+                "DELETE FROM identity.workspaces WHERE id = $1",
                 &self.workspace,
             ),
-            (
-                "DELETE FROM identity.tenants WHERE id = $1::uuid",
-                &self.tenant,
-            ),
+            ("DELETE FROM identity.tenants WHERE id = $1", &self.tenant),
         ] {
             sqlx::query(statement)
                 .bind(id)
@@ -193,8 +192,8 @@ async fn a_default_that_already_existed_survives_a_passing_and_a_failing_hold() 
 
     drop(PlatformDefault::hold(&scene.database, scene.seed_for_hold()).await);
     assert_eq!(
-        scene.default_names().await.as_deref(),
-        Some(scene.workspace.as_str()),
+        scene.default_names().await.as_ref(),
+        Some(&scene.workspace),
         "a passing hold left the row it did not create"
     );
 
@@ -222,8 +221,8 @@ async fn a_default_that_already_existed_survives_a_passing_and_a_failing_hold() 
 
     assert!(failed.is_panic(), "the task failed by panicking: {failed}");
     assert_eq!(
-        scene.default_names().await.as_deref(),
-        Some(scene.workspace.as_str()),
+        scene.default_names().await.as_ref(),
+        Some(&scene.workspace),
         "a failing hold left the row it did not create"
     );
     scene.cleanup().await;

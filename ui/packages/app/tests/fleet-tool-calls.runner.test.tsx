@@ -66,14 +66,14 @@ describe("FleetThread — runner tool cells", () => {
 
     // The web and schedule lookups change nothing, so they fold with the other looks.
     renderCalls([
-      call(TOOL_NAME.WEB_SEARCH, { query: "dragonfly cluster" }),
+      call(TOOL_NAME.WEB_SEARCH, { query: "nats cluster" }),
       call(TOOL_NAME.WEB_FETCH, { url: "https://docs.example/ops" }),
       call(TOOL_NAME.CRON_LIST, undefined),
       call(TOOL_NAME.PUSHOVER, { message: "Done" }),
     ]);
     const tools = screen.getByRole("list", {name: TOOL_CALLS_LABEL});
     expect(within(tools).getAllByRole("listitem")).toHaveLength(4);
-    expect(cell(TOOL_NAME.WEB_SEARCH).textContent).toContain("dragonfly cluster");
+    expect(cell(TOOL_NAME.WEB_SEARCH).textContent).toContain("nats cluster");
     expect(cell(TOOL_NAME.WEB_FETCH).textContent).toContain("https://docs.example/ops");
     expect(cell(TOOL_NAME.CRON_LIST)).toBeTruthy();
     expect(cell(TOOL_NAME.PUSHOVER).textContent).toContain("Done");

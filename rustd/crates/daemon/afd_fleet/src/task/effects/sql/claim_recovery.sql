@@ -8,7 +8,7 @@ WITH candidates AS MATERIALIZED (
     SET due_at = clock_timestamp() + make_interval(secs => $2), updated_at = now()
     FROM candidates c WHERE r.task_effect_id = c.task_effect_id RETURNING r.*
 )
-SELECT e.id::text, e.task_id::text, e.fleet_id::text, e.workspace_id::text,
+SELECT e.id, e.task_id, e.fleet_id, e.workspace_id,
        e.task_generation, e.stop_generation, e.ordinal, e.expected_head, e.tested_tree,
        e.request_digest, NULL::jsonb AS target, s.status AS state, s.commit_oid,
        c.dek_ciphertext, c.dek_nonce, c.dek_tag, c.secret_nonce, c.secret_ciphertext,

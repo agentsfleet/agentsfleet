@@ -33,7 +33,7 @@ fn should_accept_a_canonical_lowercase_version_7_identifier() {
 
 /// Catches the bug the lowercase rule exists to prevent: one entity reachable under
 /// two spellings, because Postgres folds `::uuid` to lowercase while every
-/// text-keyed store (Dragonfly dedupe keys, session keys, string equality) does not.
+/// text-keyed use (dedupe keys, bus subjects, string equality) does not.
 #[test]
 fn test_uuid_v7_rejects_uppercase() {
     let upper = CANONICAL.to_uppercase();
@@ -258,4 +258,19 @@ fn should_give_up_its_canonical_text_when_converted_to_a_string() {
     let id = Uuid7::parse(text).expect("the fixture is a v7 spelling");
     let given: String = id.into();
     assert_eq!(given, text);
+}
+
+/// An identifier compares equal to its own spelling from either side, so a
+/// wire field and a typed id can be checked without a parse.
+#[test]
+fn should_equal_its_canonical_text_from_either_side() {
+    let text = "0197a4ba-8d3a-7f13-8abc-123456789abc";
+    let id = Uuid7::parse(text).expect("the fixture is a v7 spelling");
+    let owned = text.to_owned();
+    assert_eq!(id, *text);
+    assert_eq!(*text, id);
+    assert_eq!(text, id);
+    assert_eq!(id, owned);
+    assert_eq!(owned, id);
+    assert_ne!(id, *"0197a4ba-8d3a-7f13-8abc-123456789abd");
 }

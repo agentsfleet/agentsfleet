@@ -8,6 +8,7 @@ use crate::{
     error::query,
     task::{Tasks, transaction},
 };
+use af_core::id::Uuid7;
 use sqlx::PgConnection;
 use std::collections::BTreeMap;
 
@@ -32,7 +33,7 @@ pub(in crate::task) async fn maintain(
         .await
         .map_err(query("page genuinely unreferenced private objects"))?;
     transaction::recycle(connection);
-    let mut workspaces: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let mut workspaces: BTreeMap<Uuid7, Vec<Uuid7>> = BTreeMap::new();
     for object in candidates {
         workspaces
             .entry(object.workspace_id)
@@ -44,13 +45,13 @@ pub(in crate::task) async fn maintain(
         let mut tx = transaction::begin(&mut connection).await?;
         if lock(&mut tx, &workspace).await? {
             // A second statement observes refs committed while the first waited for object locks.
-            let _locked: Vec<String> = sqlx::query_scalar(include_str!("../sql/orphan_lock.sql"))
+            let _locked: Vec<Uuid7> = sqlx::query_scalar(include_str!("../sql/orphan_lock.sql"))
                 .bind(&workspace)
                 .bind(&ids)
                 .fetch_all(&mut *tx)
                 .await
                 .map_err(query("serialize object tombstones against new references"))?;
-            let tombstoned: Vec<String> =
+            let tombstoned: Vec<Uuid7> =
                 sqlx::query_scalar(include_str!("../sql/orphan_tombstone.sql"))
                     .bind(&workspace)
                     .bind(&ids)
@@ -80,12 +81,12 @@ pub(in crate::task) async fn maintain(
 
 #[derive(sqlx::FromRow)]
 struct Candidate {
-    id: String,
-    workspace_id: String,
+    id: Uuid7,
+    workspace_id: Uuid7,
 }
 
-async fn lock(connection: &mut PgConnection, workspace: &str) -> Result<bool> {
-    let parent: Option<String> = sqlx::query_scalar(crate::task::sql::LOCK_WORKSPACE)
+async fn lock(connection: &mut PgConnection, workspace: &Uuid7) -> Result<bool> {
+    let parent: Option<Uuid7> = sqlx::query_scalar(crate::task::sql::LOCK_WORKSPACE)
         .bind(workspace)
         .fetch_optional(&mut *connection)
         .await

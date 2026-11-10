@@ -29,8 +29,8 @@ pub(in crate::creation) async fn store(
     initial: &InitialStart,
 ) -> Result<()> {
     sqlx::query(sql::INITIAL)
-        .bind(fleet.as_str())
-        .bind(access.workspace.as_str())
+        .bind(fleet)
+        .bind(access.workspace)
         .bind(serde_json::to_string(initial).map_err(stored)?)
         .execute(connection)
         .await

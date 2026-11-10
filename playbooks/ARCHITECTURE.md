@@ -1,53 +1,49 @@
+---
+type: explanation
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
+
 # Private API Ingress
 
-This is the supported ingress topology for the `agentsfleetd` API. The
-Vercel-hosted dashboard and installer are separate surfaces.
+## What it is
+
+Cloudflare Tunnel is the only public path to `agentsfleetd`.
+The Vercel dashboard and installer are separate surfaces.
 
 ```text
-client
-  → Cloudflare edge
-  → outbound Cloudflare Tunnel connector on Fly.io
-  → agentsfleetd-<env>.internal:3000
-  → agentsfleetd
+client → Cloudflare edge → cloudflared-<env> on Fly.io → agentsfleetd-<env>.internal:3000 → agentsfleetd
 ```
 
-The connector reaches `agentsfleetd` over Fly's private Internet Protocol
-version 6 network (6PN). The API apps define neither `[http_service]` nor
-`[[services]]`, so Fly does not publish an API origin.
-
-| Environment | Public API target | Connector app | Private origin |
+| Environment | Public API | Connector app | Private origin |
 |---|---|---|---|
 | Development | `api-dev.agentsfleet.net` | `cloudflared-dev` | `agentsfleetd-dev.internal:3000` |
 | Production | `api.agentsfleet.net` | `cloudflared-prod` | `agentsfleetd-prod.internal:3000` |
 
-## Health behavior
+## How it behaves
 
-- `/healthz` proves the process can answer HTTP.
-- `/readyz` proves PostgreSQL and the Dragonfly cluster are reachable.
-- Fly checks `/readyz` over the private network.
-- Continuous Integration (CI) checks both endpoints through the public
-  Cloudflare route.
+- The connector reaches `agentsfleetd` over Fly's private IPv6 network (6PN).
+- The API `fly.toml` files declare neither `[http_service]` nor `[[services]]`, so Fly publishes no API origin.
+- Every API and connector config sets `[[restart]] policy = "always"`.
+- 6PN traffic skips Fly's public proxy, so the development workflow starts API machines before it polls the Cloudflare route.
+- `/healthz` proves the process answers HTTP. `/readyz` gates on PostgreSQL and reports the NATS bus without gating on it, because every bus signal has a PostgreSQL backstop.
+- Fly checks `/readyz` privately. Continuous Integration (CI) checks both endpoints through Cloudflare.
+- `agentsfleet-runner` runs on its own host and calls the public API over HTTPS with a runner token.
+- A runner holds no PostgreSQL or NATS credential and joins no datastore allowlist.
 
-Private 6PN traffic does not use Fly's public proxy. The development workflow
-therefore starts API machines explicitly before polling the Cloudflare route.
-All API and connector configs use an always-restart rule.
+## Limits
 
-## Boundaries
+The API image is distroless: the daemon, a certificate bundle and a clock.
+`flyctl ssh console` gives no prompt there, and that is expected.
+Diagnose from `flyctl logs` (logfmt), `/readyz` and `/healthz` through the tunnel, and the metrics families.
 
-- Cloudflare Tunnel is the only supported public path to `agentsfleetd`.
-- `agentsfleet-runner` runs on a separate host and calls the public API over
-  HTTPS with a runner token.
-- A runner has no PostgreSQL or Dragonfly credential and does not join datastore
-  allowlists.
-- A hostname in a playbook is target state. Only the verification steps prove
-  that its DNS and route are live.
+A question none of those answers needs a new emit from the daemon, not a shell.
 
-## Checked-in sources
+## Related pages
 
-- `deploy/fly/agentsfleetd-dev/fly.toml`
-- `deploy/fly/agentsfleetd-prod/fly.toml`
-- `deploy/fly/cloudflared-dev/config.yml`
-- `deploy/fly/cloudflared-prod/config.yml`
-- `.github/workflows/deploy-dev.yml`
-- `.github/workflows/release.yml`
-- `playbooks/founding/03_priming_infra/001_playbook.md`
+- `deploy/fly/agentsfleetd-dev/fly.toml`, `deploy/fly/agentsfleetd-prod/fly.toml`
+- `deploy/fly/cloudflared-dev/config.yml`, `deploy/fly/cloudflared-prod/config.yml`
+- `.github/workflows/deploy-dev-verify.yml`, `.github/workflows/release.yml`
+- [Infrastructure priming](./founding/03_priming_infra/001_playbook.md)

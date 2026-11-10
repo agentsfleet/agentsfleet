@@ -14,25 +14,19 @@
 )]
 
 use afd_approval::error::one_of_each_kind;
-use afd_dragonfly::SubscriptionHub;
 
 use crate::lane::Lane;
-
-/// The gate identifier the good row names; the wake and the frame only carry it.
-const GATE: &str = "gate-fixture";
 
 /// A bad row ahead of a good one: the good row's fleet is still woken, and the
 /// sweep still answers the bad row's error.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_undecodable_row_does_not_strand_the_rows_that_decoded() {
     let lane = Lane::isolated().await;
-    let fleet = lane.fleet.as_str().to_owned();
-    let hub = SubscriptionHub::start(crate::lane::dragonfly_config())
-        .await
-        .expect("live hub");
-    let mut tail = hub.subscribe(&format!("fleet:{fleet}:activity"));
-    tokio::time::sleep(crate::tail_watch::SUBSCRIBE_SETTLE).await;
+    let fleet = lane.fleet.clone();
+    // The gate the good row names; the wake and the frame only carry it.
+    let gate = afd_db::test_util::mint_id();
+    let mut tail = crate::tail_watch::tail(&lane).await;
     let (label, undecodable) = one_of_each_kind()
         .into_iter()
         .next()
@@ -41,10 +35,7 @@ async fn an_undecodable_row_does_not_strand_the_rows_that_decoded() {
 
     let raised = lane
         .inbox
-        .serve_swept(vec![
-            Err(undecodable),
-            Ok((GATE.to_owned(), fleet.clone(), None, 0)),
-        ])
+        .serve_swept(vec![Err(undecodable), Ok((gate, fleet.clone(), None, 0))])
         .await
         .expect_err("a row that does not decode still fails the sweep");
 

@@ -7,8 +7,9 @@
 //! covered lines: the delegating adapter and the SQL behind it never run.
 //!
 //! These do run them. The row comes out of `fleet.revisions`, the secret out of
-//! `vault.secrets`, and the claim lands in a live Dragonfly — so a delivery here
-//! crosses the same three stores in the same order the daemon crosses them.
+//! `vault.secrets`, and the claim lands in the live admission ledger — so a
+//! delivery here crosses the same three stores in the same order the daemon
+//! crosses them.
 //!
 //! # What this suite is for, and what `webhook_fleet_route/mod.rs` keeps
 //!
@@ -17,7 +18,7 @@
 //! there. What lives here is only what a stub cannot answer honestly: that the
 //! stored document resolves to the binding the reader believes it does, that
 //! the sealed credential opens to the secret the wall then verifies against,
-//! and that an append reaches the queue.
+//! and that an admission reaches the ledger.
 
 #![cfg(feature = "test-util")]
 #![expect(
@@ -82,13 +83,14 @@ async fn deliver(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores() {
     // The whole order in one pass, and the only test that proves the stores
     // answer at all: the binding is read from the head `fleet.revisions` document,
     // the secret is opened out of `vault.secrets`, the tag verifies against it,
-    // and the claim reaches Dragonfly. A stub can answer each of those; none of
-    // them can be WRONG under a stub, which is what this is here to catch.
+    // and the claim reaches the admission ledger. A stub can answer each of
+    // those; none of them can be WRONG under a stub, which is what this is here
+    // to catch.
     let fixture = Fixture::create().await;
     fixture.seed(Runnable::Active, Secret::Stored).await;
     let router = fixture.router();
@@ -119,12 +121,12 @@ async fn a_signed_delivery_resolves_its_fleet_and_secret_out_of_the_live_stores(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn the_same_delivery_arriving_twice_is_claimed_once() {
-    // At-most-once over a REAL Dragonfly, which is the half a stub cannot prove: the
-    // claim is a `SET NX` in the queue, so a scripted store asserting "the
-    // handler asked for a claim" says nothing about whether the queue would
-    // have granted it twice.
+    // At-most-once over the REAL admission ledger, which is the half a stub
+    // cannot prove: the claim is the ledger's unique producer key in Postgres, so
+    // a scripted store asserting "the handler asked for a claim" says nothing
+    // about whether the ledger would have granted it twice.
     let fixture = Fixture::create().await;
     fixture.seed(Runnable::Active, Secret::Stored).await;
     let router = fixture.router();
@@ -171,7 +173,7 @@ async fn deliver_to(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn identical_bytes_to_two_sources_are_two_events_and_a_retry_is_one() {
     // The per-source routes key a delivery by its body's hash, so the repeat
     // key must carry the source: the same bytes from two configured sources
@@ -202,7 +204,7 @@ async fn identical_bytes_to_two_sources_are_two_events_and_a_retry_is_one() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_delivery_signed_with_the_wrong_secret_is_refused_by_the_stored_one() {
     // The refusal has to come from the SEALED bytes rather than from a script,
     // because that is the failure a mis-sealed credential produces in
@@ -224,7 +226,7 @@ async fn a_delivery_signed_with_the_wrong_secret_is_refused_by_the_stored_one() 
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_workspace_holding_no_credential_refuses_before_it_verifies() {
     // `UZ-WH-020`, reached the way a deployment reaches it: the trigger names a
     // credential and the vault holds no row under that name. The reader answers
@@ -249,7 +251,7 @@ async fn a_workspace_holding_no_credential_refuses_before_it_verifies() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_paused_fleet_is_acknowledged_from_its_stored_status() {
     // The status column is read on the same statement as the document, and this
     // is what proves it is read at all: a paused fleet is answered 200 with a
@@ -273,7 +275,7 @@ async fn a_paused_fleet_is_acknowledged_from_its_stored_status() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_fleet_this_deployment_does_not_serve_is_refused_without_naming_it() {
     // No row at all. `Ok(None)` for a fleet with no row AND for one declaring no
     // webhook trigger, answered identically on purpose: telling them apart would

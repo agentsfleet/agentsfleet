@@ -2,8 +2,8 @@
   "lane": "lease-burst",
   "profile": "rig",
   "provenance": {
-    "revision": "737c6a73d",
-    "datastore_image": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2",
+    "revision": "2bea47c3d",
+    "datastore_image": "nats:2.15.2-alpine",
     "owned": true
   },
   "created": false,
@@ -11,19 +11,17 @@
     "BENCH_RATE": 10
   },
   "measurements": {
-    "burst_accepted": 29953.0,
-    "burst_append_p95_ms": 35.743,
-    "burst_backlog_peak": 29779.0,
-    "burst_pickup_p50_ms": 28508.159,
-    "burst_pickup_p95_ms": 54165.503,
-    "burst_pickup_p99_ms": 56131.583,
+    "burst_accepted": 29921.0,
+    "burst_append_p95_ms": 38.399,
+    "burst_backlog_peak": 25339.0,
+    "burst_folded": 4544.0,
+    "burst_pickup_p50_ms": 250.239,
+    "burst_pickup_p95_ms": 494.591,
+    "burst_pickup_p99_ms": 523.519,
     "burst_refused": 0.0,
-    "burst_unleased": 29729.0
+    "burst_unleased": 25153.0
   },
   "datastores": {
-    "dragonfly": {
-      "operations": 0
-    },
     "postgres": {
       "operations": 0
     }

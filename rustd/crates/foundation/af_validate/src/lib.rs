@@ -31,4 +31,4 @@ mod serialized;
 pub use self::limit::{Ceiling, Limit, LimitBreak};
 pub use self::rules::{ascii_digits, charset, finite, not_relative, nul_free};
 pub use self::sentences::{PathTable, Sentences};
-pub use self::serialized::serialized_within;
+pub use self::serialized::{serialized_len, serialized_within};

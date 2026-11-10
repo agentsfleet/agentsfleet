@@ -56,8 +56,8 @@ async fn a_revoked_model_is_durable_and_accounting_cannot_restore_its_answer() {
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let calls = fixture::calls(&f, &a, Arc::new(fixture::Provider::known())).await;
-    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
-        .bind(f.model.as_str())
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
+        .bind(&f.model)
         .execute(&mut *f.connection().await)
         .await
         .expect("revoke model");
@@ -103,8 +103,8 @@ async fn a_forged_capability_cannot_write_failure_evidence_even_after_revocation
     let f = Fixture::create().await;
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let calls = fixture::calls(&f, &a, Arc::new(fixture::Provider::known())).await;
-    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1::uuid")
-        .bind(f.model.as_str())
+    sqlx::query("DELETE FROM model.tenant_models WHERE id=$1")
+        .bind(&f.model)
         .execute(&mut *f.connection().await)
         .await
         .expect("revoke model");
@@ -119,8 +119,8 @@ async fn a_forged_capability_cannot_write_failure_evidence_even_after_revocation
         error_code::AUTHORING_FENCE
     );
     let reason: Option<String> =
-        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1::uuid")
-            .bind(a.id.as_str())
+        sqlx::query_scalar("SELECT failure_reason FROM authoring.attempts WHERE id=$1")
+            .bind(a.id)
             .fetch_one(&mut *f.connection().await)
             .await
             .expect("saved authority");

@@ -46,7 +46,7 @@ async fn beats_holding(fixtures: &Fixtures, runner: &Uuid7, fleet: &str, now: Ti
 
 /// A host that loses a mechanism is degraded on the next beat, and named.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
     let fixtures = Fixtures::create().await;
     let request = enrolment(SandboxTier::LandlockFull, NetworkPolicy::AllowAll, 1);
@@ -55,7 +55,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
         .register(&request, fixtures.enrolled_at())
         .await
         .expect("enrolment must succeed");
-    let runner = enrolled.runner_id.as_str().to_owned();
+    let runner = enrolled.runner_id.clone();
 
     for (offset, report) in [
         (ONE_BEAT, capable()),
@@ -78,7 +78,6 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
                     selftest: None,
                     holds: HeldFleets::default(),
                     closing: false,
-                    wake: false,
                 },
                 None,
                 fixtures.after(offset),
@@ -97,7 +96,7 @@ async fn test_a_lost_guarantee_degrades_the_row_on_the_next_beat() {
 
 /// A stored report repairs a stale verdict without needing a fresh report.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_stored_report_repairs_a_stale_verdict() {
     let fixtures = Fixtures::create().await;
     let enrolled = fixtures
@@ -116,9 +115,9 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
         .expect("a pooled connection");
     sqlx::query(
         "UPDATE runner.runners SET capability_report = $2::jsonb, \
-         degraded_reason = 'stale fixture' WHERE id = $1::uuid",
+         degraded_reason = 'stale fixture' WHERE id = $1",
     )
-    .bind(enrolled.runner_id.as_str())
+    .bind(&enrolled.runner_id)
     .bind(report)
     .execute(&mut *connection)
     .await
@@ -139,7 +138,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
     assert_eq!(answered.verdict, Verdict::Healthy);
     assert_eq!(
         fixtures
-            .text(Row::Runner(enrolled.runner_id.as_str()), "degraded_reason")
+            .text(Row::Runner(&enrolled.runner_id), "degraded_reason")
             .await,
         None,
         "a healthy verdict clears the reason"
@@ -149,7 +148,7 @@ async fn test_a_stored_report_repairs_a_stale_verdict() {
 
 /// A token that authenticated against a row since reaped fails closed.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_vanished_runner_is_its_own_failure() {
     let fixtures = Fixtures::create().await;
     let enrolled = fixtures
@@ -188,7 +187,7 @@ async fn test_a_vanished_runner_is_its_own_failure() {
 /// listed fleet, which no slot of this runner's holds, is answered back for
 /// release while the read works, so the empty answer is the failure's.
 #[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
     let fixtures = Fixtures::create_isolated().await;
     let enrolled = fixtures
@@ -201,20 +200,19 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
         .expect("enrolment must succeed");
     let runner = &enrolled.runner_id;
     let fleet = mint_id();
-    let working = beats_holding(&fixtures, runner, &fleet, fixtures.after(ONE_BEAT)).await;
+    let working = beats_holding(&fixtures, runner, fleet.as_str(), fixtures.after(ONE_BEAT)).await;
     // Renaming a table is the owner's right; the beat under test keeps the
     // api pool.
-    let owner = fixtures.open(DbRole::Migrator).await;
-    let mut connection = owner.acquire().await.expect("an owner connection");
-    sqlx::query(MOVE_FLEETS)
-        .execute(&mut *connection)
-        .await
-        .expect("the private database's table moves");
-    drop(connection);
-    owner.close().await;
+    move_fleets(&fixtures).await;
 
     let log = Capture::install();
-    let failed = beats_holding(&fixtures, runner, &fleet, fixtures.after(ONE_BEAT * 2)).await;
+    let failed = beats_holding(
+        &fixtures,
+        runner,
+        fleet.as_str(),
+        fixtures.after(ONE_BEAT * 2),
+    )
+    .await;
     let warned = log.only(HOLDS_RECONCILE_FAILED).fields;
     drop(log);
 
@@ -233,4 +231,15 @@ async fn test_a_release_read_that_fails_releases_nothing_and_warns() {
         Some(runner.as_str())
     );
     fixtures.cleanup().await;
+}
+
+async fn move_fleets(fixtures: &Fixtures) {
+    let owner = fixtures.open(DbRole::Migrator).await;
+    let mut connection = owner.acquire().await.expect("an owner connection");
+    sqlx::query(MOVE_FLEETS)
+        .execute(&mut *connection)
+        .await
+        .expect("the private database's table moves");
+    drop(connection);
+    owner.close().await;
 }

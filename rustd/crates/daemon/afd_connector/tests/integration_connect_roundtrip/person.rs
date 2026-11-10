@@ -1,6 +1,7 @@
 //! A verified person link requires continuing membership and the same installation.
 
 use super::{FakeAtlassian, NOW, Provider, Round, TenantSeed, mint_id};
+use af_core::id::Uuid7;
 use afd_db::test_util::UserSeed;
 
 #[tokio::test]
@@ -47,7 +48,7 @@ async fn slack_person_authority_is_scoped_revocable_and_does_not_follow_a_reinst
         .acquire()
         .await
         .expect("membership connection");
-    sqlx::query("INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) VALUES ($1::uuid, $2::uuid, $3::uuid, 'member', now())")
+    sqlx::query("INSERT INTO identity.memberships (id, tenant_id, user_id, role, created_at) VALUES ($1, $2, $3, 'member', now())")
         .bind(mint_id()).bind(&round.tenant).bind(&user).execute(&mut *connection).await.expect("invited member");
     drop(connection);
     // Fixture establishes the proof the subject-checked OAuth callback supplies.
@@ -67,14 +68,12 @@ async fn slack_person_authority_is_scoped_revocable_and_does_not_follow_a_reinst
         .acquire()
         .await
         .expect("revocation connection");
-    sqlx::query(
-        "DELETE FROM identity.memberships WHERE tenant_id = $1::uuid AND user_id = $2::uuid",
-    )
-    .bind(&round.tenant)
-    .bind(&user)
-    .execute(&mut *connection)
-    .await
-    .expect("revoke membership");
+    sqlx::query("DELETE FROM identity.memberships WHERE tenant_id = $1 AND user_id = $2")
+        .bind(&round.tenant)
+        .bind(&user)
+        .execute(&mut *connection)
+        .await
+        .expect("revoke membership");
     drop(connection);
     assert!(!allowed(&round, &actor).await);
     round
@@ -83,13 +82,12 @@ async fn slack_person_authority_is_scoped_revocable_and_does_not_follow_a_reinst
         .await
         .expect("disconnect installation");
     let mut connection = round.database.acquire().await.expect("read cascaded links");
-    let remaining: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM connector.person_links WHERE workspace_id = $1::uuid",
-    )
-    .bind(round.workspace.as_str())
-    .fetch_one(&mut *connection)
-    .await
-    .expect("links count");
+    let remaining: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM connector.person_links WHERE workspace_id = $1")
+            .bind(&round.workspace)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("links count");
     assert_eq!(remaining, 0);
     drop(connection);
     round
@@ -106,8 +104,8 @@ async fn slack_person_authority_is_scoped_revocable_and_does_not_follow_a_reinst
 }
 
 async fn allowed(round: &Round, actor: &str) -> bool {
-    sqlx::query_scalar("SELECT connector.slack_person_allowed($1::uuid, $2, $3, $4, $5)")
-        .bind(round.workspace.as_str())
+    sqlx::query_scalar("SELECT connector.slack_person_allowed($1, $2, $3, $4, $5)")
+        .bind(&round.workspace)
         .bind(actor)
         .bind(Provider::Slack.id())
         .bind(afd_connector::slack::PERSON_ACTOR_PATTERN)
@@ -135,18 +133,18 @@ async fn link(round: &Round, team: &str, person: &str, subject: &str) -> u64 {
     .expect("native verified-person insert")
 }
 
-async fn remove_person(round: &Round, user: &str, tenant: &str) {
+async fn remove_person(round: &Round, user: &Uuid7, tenant: &Uuid7) {
     let mut connection = round
         .database
         .acquire()
         .await
         .expect("person cleanup connection");
-    sqlx::query("DELETE FROM identity.users WHERE id = $1::uuid")
+    sqlx::query("DELETE FROM identity.users WHERE id = $1")
         .bind(user)
         .execute(&mut *connection)
         .await
         .expect("remove fixture person");
-    sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+    sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
         .bind(tenant)
         .execute(&mut *connection)
         .await

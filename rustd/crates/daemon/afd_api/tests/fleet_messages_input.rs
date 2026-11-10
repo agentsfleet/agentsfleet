@@ -22,6 +22,7 @@ use crate::harness;
 use crate::harness::code_of;
 
 use af_core::error_code;
+use af_core::id::Uuid7;
 use afd_auth::scope::{Scope, ScopeSet};
 use http::{Method, StatusCode};
 
@@ -174,10 +175,11 @@ async fn a_continuation_this_walk_did_not_issue_is_refused() {
 /// wherever it is raised, so a client backs off rather than treating it as its
 /// own request being wrong.
 #[tokio::test]
-async fn a_well_formed_read_reaches_the_store_and_reports_the_outage() {
+async fn a_well_formed_read_reaches_the_store_and_reports_the_outage() -> af_core::error::Result<()>
+{
     let issued = afd_events::Cursor::after(
         jiff::Timestamp::constant(1_700_000_000, 0),
-        "01924f4e-0000-7000-8000-00000000fee7",
+        &Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")?,
     )
     .encode();
     for query in [
@@ -198,4 +200,5 @@ async fn a_well_formed_read_reaches_the_store_and_reports_the_outage() {
             "{query}: the refusal is the datastore's"
         );
     }
+    Ok(())
 }

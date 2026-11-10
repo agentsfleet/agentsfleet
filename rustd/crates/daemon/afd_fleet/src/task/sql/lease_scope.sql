@@ -1,3 +1,3 @@
-SELECT fleet_id::text, workspace_id::text
+SELECT fleet_id, workspace_id
 FROM runner.leases
-WHERE id = $1::uuid AND runner_id = $2::uuid
+WHERE id = $1 AND runner_id = $2

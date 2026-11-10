@@ -1,10 +1,11 @@
 //! One creator-private editor read includes shared readiness and filtered receipts.
 
 use super::fixture::Saved;
+use af_core::id::Uuid7;
 use serde_json::json;
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn editor_context_requires_the_private_draft_write_scope() {
     use crate::authoring::send;
     use afd_auth::Scope;
@@ -30,7 +31,7 @@ async fn editor_context_requires_the_private_draft_write_scope() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn editor_context_combines_fleet_private_draft_and_receipts() {
     let saved = Saved::create(json!({})).await;
     let view = saved.get("/authoring-context").await;
@@ -53,7 +54,7 @@ async fn editor_context_combines_fleet_private_draft_and_receipts() {
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn editor_history_pages_bind_creator_and_never_expose_another_members_chat() {
     use crate::authoring::{privacy, send};
     use http::{Method, StatusCode};
@@ -92,16 +93,14 @@ async fn editor_history_pages_bind_creator_and_never_expose_another_members_chat
 }
 
 #[tokio::test]
-#[ignore = "needs isolated local Postgres and Dragonfly"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn editor_returns_a_recent_window_with_a_reusable_message_boundary() {
     use crate::authoring::{json_body, send};
     use http::{Method, StatusCode};
     let saved = Saved::create(json!({})).await;
     let context = saved.get("/authoring-context").await;
-    let id = context["conversations"][0]["draft"]["id"]
-        .as_str()
-        .expect("own draft");
-    seed_recent_history(&saved, id).await;
+    let id = crate::authoring::id_field(&context["conversations"][0]["draft"]["id"]);
+    seed_recent_history(&saved, &id).await;
     let context = saved.get("/authoring-context").await;
     let chat = &context["conversations"][0];
     assert_eq!(chat["truncated"], true);
@@ -192,16 +191,16 @@ fn assert_private_conversations(
     }
 }
 
-async fn seed_recent_history(saved: &Saved, id: &str) {
+async fn seed_recent_history(saved: &Saved, id: &Uuid7) {
     use crate::authoring::mint;
     let mut connection = saved.case.base.db.acquire().await.expect("seed history");
     for sequence in 1..=15_i64 {
         sqlx::query("INSERT INTO authoring.messages(id,draft_id,sequence,operation_id,status,user_text,answer_text,created_at,updated_at,finished_at)
-            VALUES($1::uuid,$2::uuid,$3,$4::uuid,'completed','Earlier private request','Durable answer',now(),now(),now())")
-            .bind(mint().as_str()).bind(id).bind(sequence).bind(mint().as_str())
+            VALUES($1,$2,$3,$4,'completed','Earlier private request','Durable answer',now(),now(),now())")
+            .bind(mint()).bind(id).bind(sequence).bind(mint())
             .execute(&mut *connection).await.expect("settled history");
     }
-    sqlx::query("UPDATE authoring.drafts SET last_message_sequence=15 WHERE id=$1::uuid")
+    sqlx::query("UPDATE authoring.drafts SET last_message_sequence=15 WHERE id=$1")
         .bind(id)
         .execute(&mut *connection)
         .await

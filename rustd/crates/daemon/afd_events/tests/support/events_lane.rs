@@ -1,4 +1,5 @@
-//! The lane's two datastores, and the rows every event hangs from.
+//! The lane's database, a connection to the lane's NATS, and the rows every
+//! event hangs from.
 //!
 //! `fleet.events` has foreign keys into `fleet.fleets` and
 //! `identity.workspaces`, so no history test can seed a single row without first
@@ -11,13 +12,13 @@
 //! Postgres is the SHARED lane database — `TestDatabase::shared`, never a
 //! database per test, for the reason `make/test-integration-rustd.mk` states at
 //! length: a database per test meant applying forty-seven schema files per test.
-//! Dragonfly has no database-per-test equivalent at all. What replaces isolation in
-//! both is that every fixture mints its OWN workspace and fleet identifiers, so
-//! two suites running in parallel address disjoint rows and disjoint keys.
+//! What replaces isolation is that every fixture mints its OWN workspace and
+//! fleet identifiers, so two suites running in parallel address disjoint rows.
+//! The bus is one lane NATS connection per fixture, and a fleet's frames ride
+//! subjects named for that fleet, so no fixture hears another's.
 
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 #![expect(
@@ -25,50 +26,43 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
-use af_core::env::{EnvSource as _, ProcessEnv};
+use afd_bus::Handle;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use jiff::Timestamp;
 use jiff_sqlx::ToSqlx as _;
 
-/// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-
-/// The knob carrying the lane's CA bundle, where the lane speaks TLS.
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
-
-/// How long anything crossing a datastore is given before the test fails.
+/// How long a frame crossing the bus is given before the test fails.
 pub(crate) const DELIVERY_BUDGET: Duration = Duration::from_secs(5);
 
 /// A tenant, a workspace and a fleet nothing else in the suite addresses, over
-/// both live datastores.
+/// the live database and the lane's NATS.
 pub(crate) struct EventsLane {
     lane: TestDatabase,
     pub(crate) database: Db,
-    pub(crate) queue: Dragonfly,
-    pub(crate) tenant: String,
-    pub(crate) workspace: String,
-    pub(crate) fleet: String,
+    pub(crate) bus: Handle,
+    pub(crate) tenant: Uuid7,
+    pub(crate) workspace: Uuid7,
+    pub(crate) fleet: Uuid7,
 }
 
 impl EventsLane {
-    /// Opens both datastores and seeds the row chain a fleet event needs.
+    /// Opens the database and a bus, and seeds the row chain a fleet event needs.
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
-        let queue = afd_dragonfly::test_util::connect_live(&dragonfly_config())
+        let bus = afd_bus::test_util::lane()
             .await
-            .expect("the lane's Dragonfly must be reachable");
+            .expect("the lane's NATS: run through make test-integration-rustd");
 
         let seeded = Self {
             lane,
             database,
-            queue,
+            bus,
             tenant: mint_id(),
             workspace: mint_id(),
             fleet: mint_id(),
@@ -77,17 +71,12 @@ impl EventsLane {
         seeded
     }
 
-    /// The lane's Dragonfly configuration, for a caller that opens its own handle.
     /// The admission ledger every producer in this suite writes through.
     ///
-    /// Built from the lane's own pool and queue, so a test names what it is
+    /// Built from the lane's own pool and bus, so a test names what it is
     /// exercising rather than restating how a ledger is assembled.
     pub(crate) fn admissions(&self) -> afd_admission::Admissions {
-        afd_admission::Admissions::for_tests(self.database.clone(), self.queue.clone())
-    }
-
-    pub(crate) fn redis() -> DragonflyConfig {
-        dragonfly_config()
+        afd_admission::Admissions::for_tests(self.database.clone(), self.bus.clone())
     }
 
     /// A pooled connection, or a failed test.
@@ -103,19 +92,18 @@ impl EventsLane {
     /// `created_at` is a parameter rather than a clock read: every claim these
     /// suites make about a `since` window is a claim about ROW TIMESTAMPS, and
     /// a fixture that stamped rows with "now" could only ever seed one instant.
-    /// The row id is the column's own `uuidv7()`.
-    pub(crate) async fn seed_event(&self, event_id: &str, created_at: Timestamp) {
+    pub(crate) async fn seed_event(&self, event_id: &Uuid7, created_at: Timestamp) {
         let mut connection = self.connection().await;
         sqlx::query(
             "INSERT INTO fleet.events
                (fleet_id, workspace_id, event_id, actor, event_type, status,
                 request_json, created_at, updated_at)
-             VALUES ($1::uuid, $2::uuid, $3, 'steer:api', 'chat', 'completed',
+             VALUES ($1, $2, $3, 'steer:api', 'chat', 'completed',
                      '{}'::jsonb, $4, $4)
-             ON CONFLICT (fleet_id, event_id) DO NOTHING",
+             ON CONFLICT (event_id) DO NOTHING",
         )
-        .bind(self.fleet.as_str())
-        .bind(self.workspace.as_str())
+        .bind(&self.fleet)
+        .bind(&self.workspace)
         .bind(event_id)
         .bind(created_at.to_sqlx())
         .execute(&mut *connection)
@@ -124,13 +112,13 @@ impl EventsLane {
     }
 
     /// Whether the lane holds a row under `event_id`.
-    pub(crate) async fn has_event(&self, event_id: &str) -> bool {
+    pub(crate) async fn has_event(&self, event_id: &Uuid7) -> bool {
         let mut connection = self.connection().await;
         let count: i64 = sqlx::query_scalar(
             "SELECT count(*) FROM fleet.events
-             WHERE fleet_id = $1::uuid AND event_id = $2",
+             WHERE fleet_id = $1 AND event_id = $2",
         )
-        .bind(self.fleet.as_str())
+        .bind(&self.fleet)
         .bind(event_id)
         .fetch_one(&mut *connection)
         .await
@@ -178,13 +166,3 @@ const SEEDED_AT: Timestamp = Timestamp::constant(1_700_000_000, 0);
 
 /// The status the fixture fleet is seeded live under.
 const FLEET_ACTIVE: &str = "active";
-
-/// The lane's Dragonfly configuration.
-fn dragonfly_config() -> DragonflyConfig {
-    let url = ProcessEnv.get(DRAGONFLY_URL_KNOB).unwrap_or_else(|| {
-        panic!("{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`")
-    });
-    DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
-        .with_request_timeout(Duration::from_secs(5))
-}

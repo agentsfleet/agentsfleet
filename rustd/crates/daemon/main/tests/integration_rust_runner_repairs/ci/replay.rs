@@ -7,31 +7,35 @@ use crate::https::Upstream;
 use crate::integration_rust_runner_repairs::LINKWARDEN;
 use crate::repair_remote::{Acknowledgement, Readback, Remote};
 use crate::repair_walk;
+use af_core::id::Uuid7;
 use afd_gate::policy::repair::branch_for;
 use agentsfleetd::supervisor::Supervisor;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn should_keep_one_draft_for_replayed_producer_event() {
     let mut supervisor = Supervisor::new();
     let (run, producer) = ready_producer(&mut supervisor).await;
     let receipts = concurrent_deliveries(&producer, &run).await;
-    let event = receipts[0]["event_id"]
-        .as_str()
-        .expect("the producer returned its event");
-    assert_replayed_receipts(&receipts, event, &run.event_id);
-    producer.assert_admission(&run, event).await;
+    let event = Uuid7::parse(
+        receipts[0]["event_id"]
+            .as_str()
+            .expect("the producer returned its event"),
+    )
+    .expect("the producer answers a canonical event id");
+    assert_replayed_receipts(&receipts, &event, &run.event_id);
+    producer.assert_admission(&run, &event).await;
     let remote = Remote::new(
         LINKWARDEN,
-        &branch_for(event),
+        &branch_for(event.as_str()),
         Acknowledgement::Delivered,
         Readback::Exact,
     );
     let upstream = Upstream::serve(remote.routes()).await;
     let (model, transcript) =
         FakeModel::deciding(repair_walk::script(LINKWARDEN, head_reads(LINKWARDEN)));
-    let result = run_event(&run, event, &upstream, model).await;
+    let result = run_event(&run, &event, &upstream, model).await;
     assert_eq!(
         result.answer,
         "https://github.com/agentsfleet/linkwarden/pull/9"
@@ -43,14 +47,14 @@ async fn should_keep_one_draft_for_replayed_producer_event() {
     assert!(
         transcript.asked()[0]
             .instructions
-            .contains(&format!("repair branch: {}", branch_for(event)))
+            .contains(&format!("repair branch: {}", branch_for(event.as_str())))
     );
     assert_eq!(
         producer.deliver(&run).await,
         serde_json::json!({"event_id": event, "replayed": true})
     );
-    producer.assert_admission(&run, event).await;
-    assert_one_execution(&run, event).await;
+    producer.assert_admission(&run, &event).await;
+    assert_one_execution(&run, &event).await;
     assert_eq!(
         (remote.state().ref_posts, remote.state().draft_posts),
         (1, 1)
@@ -63,9 +67,13 @@ async fn should_keep_one_draft_for_replayed_producer_event() {
     run.cleanup().await;
 }
 
-fn assert_replayed_receipts(receipts: &[serde_json::Value], event: &str, initial: &str) {
+fn assert_replayed_receipts(receipts: &[serde_json::Value], event: &Uuid7, initial: &Uuid7) {
     assert_ne!(event, initial);
-    assert!(receipts.iter().all(|receipt| receipt["event_id"] == event));
+    assert!(
+        receipts
+            .iter()
+            .all(|receipt| receipt["event_id"] == event.as_str())
+    );
     assert_eq!(
         receipts
             .iter()
@@ -79,7 +87,7 @@ async fn ready_producer(supervisor: &mut Supervisor) -> (crate::e2e::Scenario, P
     let (run, producer) = Producer::install(supervisor).await;
     let remote = Remote::new(
         LINKWARDEN,
-        &branch_for(&run.event_id),
+        &branch_for(run.event_id.as_str()),
         Acknowledgement::Delivered,
         Readback::Exact,
     );
@@ -109,22 +117,21 @@ async fn concurrent_deliveries(
     receipts
 }
 
-async fn assert_one_execution(run: &crate::e2e::Scenario, event: &str) {
+async fn assert_one_execution(run: &crate::e2e::Scenario, event: &Uuid7) {
     let mut connection = run
         .booted
         .database
         .acquire()
         .await
         .expect("the scoped pool");
-    let events: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.events WHERE fleet_id=$1::uuid AND event_id=$2",
-    )
-    .bind(&run.fleet)
-    .bind(event)
-    .fetch_one(&mut *connection)
-    .await
-    .expect("the event count");
-    let leases: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.leases l JOIN fleet.events e ON e.id=l.fleet_event_id WHERE e.fleet_id=$1::uuid AND e.event_id=$2")
+    let events: i64 =
+        sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE fleet_id=$1 AND event_id=$2")
+            .bind(&run.fleet)
+            .bind(event)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("the event count");
+    let leases: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.leases l JOIN fleet.events e ON e.event_id=l.event_id WHERE e.fleet_id=$1 AND e.event_id=$2")
         .bind(&run.fleet).bind(event).fetch_one(&mut *connection).await.expect("the lease count");
     assert_eq!((events, leases), (1, 1));
 }

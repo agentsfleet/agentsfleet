@@ -37,16 +37,6 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
             .map(|(_kind, error)| error)
             .ok_or("database test utility has no outage kind")
     };
-    // By name, not by position. `one_of_each_kind` enumerates EVERY kind, and
-    // its data-only ones — a missing URL knob, a closed hub — truthfully carry
-    // no cause. Taking the first entry made this case's `source()` assertion a
-    // hostage to that vector's ordering; "unreachable" is the kind this test
-    // actually means, because it is the one that wraps a driver failure.
-    let queue = afd_dragonfly::error::one_of_each_kind()
-        .into_iter()
-        .find(|(kind, _error)| *kind == "unreachable")
-        .map(|(_kind, error)| error)
-        .ok_or("queue test utility exposes no unreachable error")?;
     let identifier = af_core::id::Uuid7::parse("not-an-id")
         .err()
         .ok_or("the malformed fixture unexpectedly parsed")?;
@@ -61,23 +51,22 @@ fn composed_failures_delegate_classification_and_keep_causes() -> Result<(), &'s
     // The third column is whether the gate is a NEW causal link. Every variant
     // here wraps a failure that happened in another crate, and every one adds
     // the fact that crate cannot carry: WHICH plane was using it. `afd_db`,
-    // `afd_dragonfly`, `afd_credential`, `afd_billing`, `af_crypto` and
+    // `afd_credential`, `afd_billing`, `af_crypto` and
     // `af_core` are each shared by many planes, so "entropy pool exhausted"
     // alone leaves an operator without the one thing they need to act on.
     //
     // `Entropy` and `Identifier` used to be `#[error(transparent)]` and so
     // carried no link, which read as a deliberate distinction and was not one:
-    // `code()` and `detail()` already answer for `Queue`, `Entropy` and
-    // `Identifier` in a single arm, so three variants identical at the API
-    // boundary had two different internal shapes. They now say which plane and
-    // keep the inner error as their `source`, like their four siblings.
+    // `code()` and `detail()` already answer for `Entropy` and `Identifier`
+    // in a single arm, so variants identical at the API boundary had two
+    // different internal shapes. They now say which plane and
+    // keep the inner error as their `source`, like their three siblings.
     //
     // What stays non-uniform is the SECOND column. Only a datastore failure is
     // an availability signal; a refused entropy draw is not, however it is
     // worded.
     let cases = [
         ("database", Error::from(database()?), true, true),
-        ("queue", Error::from(queue), false, true),
         (
             "credential",
             Error::from(afd_credential::Error::from(database()?)),
@@ -119,12 +108,12 @@ impl serde::Serialize for Unwritable {
 #[test]
 fn an_unwritable_record_is_refused_under_the_sentence_its_caller_names() -> Result<(), &'static str>
 {
-    let refused = super::encoded(&Unwritable, super::DETAIL_GATE_REFERENCE_UNWRITABLE)
+    let refused = super::encoded(&Unwritable, super::DETAIL_GATE_BINDING_UNWRITABLE)
         .err()
         .ok_or("a serializer error is a refusal, never a stored half-record")?;
 
     assert!(refused.is_rejected());
-    assert_eq!(refused.detail(), super::DETAIL_GATE_REFERENCE_UNWRITABLE);
+    assert_eq!(refused.detail(), super::DETAIL_GATE_BINDING_UNWRITABLE);
     assert_eq!(
         super::encoded(&["approve"], super::DETAIL_GATE_BINDING_UNWRITABLE)
             .as_deref()

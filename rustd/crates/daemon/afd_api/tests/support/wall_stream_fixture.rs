@@ -18,8 +18,7 @@ use futures_util::StreamExt as _;
 use http::{Method, StatusCode};
 
 use afd_auth::scope::{Scope, ScopeSet};
-use afd_dragonfly::SubscriptionHub;
-use afd_dragonfly::streams::{FleetStreams, fleet_activity_channel};
+use afd_bus::Subject;
 use afd_fleet_lifecycle::Fleets;
 use axum::body::BodyDataStream;
 
@@ -63,7 +62,7 @@ pub(crate) async fn open_stream(router: &axum::Router, fixture: &Fixture) -> Bod
         .expect("the SSE body is infallible");
     let opening = std::str::from_utf8(&chunk).expect("SSE is UTF-8");
     assert!(opening.contains("event: hello"));
-    assert!(opening.contains(&fixture.fleet));
+    assert!(opening.contains(fixture.fleet.as_str()));
     announces_counters(opening, fixture).await;
     body
 }
@@ -121,10 +120,10 @@ pub(crate) async fn stream_ends(body: &mut BodyDataStream) -> bool {
 pub(crate) struct Fixture {
     pub(crate) lane: TestDatabase,
     pub(crate) database: Db,
-    pub(crate) tenant: String,
+    pub(crate) tenant: Uuid7,
     pub(crate) workspace: Uuid7,
-    pub(crate) fleet: String,
-    pub(crate) key: String,
+    pub(crate) fleet: Uuid7,
+    pub(crate) key: Uuid7,
     pub(crate) token: String,
 }
 
@@ -139,7 +138,7 @@ impl Fixture {
         Self {
             database: lane.open(DbRole::Api, settings).await,
             tenant: mint_id(),
-            workspace: Uuid7::parse(&mint_id()).expect("a minted workspace is canonical"),
+            workspace: mint_id(),
             fleet: mint_id(),
             key: mint_id(),
             token: format!("agt_t{token_bits}"),
@@ -156,7 +155,7 @@ impl Fixture {
             .insert(&mut *connection)
             .await
             .expect("the tenant seeds");
-        WorkspaceSeed::new(self.workspace.as_str(), &self.tenant)
+        WorkspaceSeed::new(&self.workspace, &self.tenant)
             .name("stream")
             .at(SEEDED_AT)
             .insert(&mut *connection)
@@ -169,7 +168,7 @@ impl Fixture {
             .expect("the authenticated workspace seeds");
         FleetSeed::new(
             &self.fleet,
-            self.workspace.as_str(),
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -186,7 +185,7 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         FleetSeed::new(
             &fleet,
-            self.workspace.as_str(),
+            &self.workspace,
             &self.tenant,
             afd_state::sql::FLEET_STATUS_ACTIVE,
         )
@@ -196,12 +195,12 @@ impl Fixture {
         .insert(&mut *connection)
         .await
         .expect("the second live fleet seeds");
-        fleet
+        fleet.into()
     }
 
     pub(crate) async fn cleanup(self) {
         let mut connection = self.database.acquire().await.expect("an API connection");
-        sqlx::query("DELETE FROM identity.tenants WHERE id = $1::uuid")
+        sqlx::query("DELETE FROM identity.tenants WHERE id = $1")
             .bind(&self.tenant)
             .execute(&mut *connection)
             .await
@@ -217,45 +216,44 @@ pub(crate) struct Wall {
     pub(crate) fixture: Fixture,
     pub(crate) ownership: OneWorkspace,
     pub(crate) store: Fleets,
-    pub(crate) hub: SubscriptionHub,
+    /// The bus the wall's router streams through, and the one a test publishes on.
+    pub(crate) bus: afd_bus::Handle,
     pub(crate) body: BodyDataStream,
-    pub(crate) publisher: FleetStreams,
 }
 
 impl Wall {
     pub(crate) async fn open(fixture: Fixture) -> Self {
+        Self::open_over(fixture, harness::bus().await).await
+    }
+
+    /// The same wall over `bus`, for a test that must control delivery, such
+    /// as overflowing a reader's buffer exactly.
+    pub(crate) async fn open_over(fixture: Fixture, bus: afd_bus::Handle) -> Self {
         fixture.seed().await;
-        let hub = harness::live_hub().await;
         let fleet = Fleet::live(
             fixture.database.clone(),
             SUBJECT,
             ScopeSet::from_scopes(&Scope::ALL),
         )
         .with_owned_workspace(fixture.workspace.clone())
-        .with_live_hub(hub.clone());
+        .with_live_bus(bus.clone());
         let ownership = fleet.ownership();
         let store = fleet.fleet_store();
         let body = open_stream(&fleet.router(), &fixture).await;
-        let publisher = FleetStreams::new(
-            afd_dragonfly::Dragonfly::connect(&harness::dragonfly_config())
-                .await
-                .expect("the lane's Dragonfly accepts a publisher"),
-        );
         Self {
             fixture,
             ownership,
             store,
-            hub,
+            bus,
             body,
-            publisher,
         }
     }
 
     pub(crate) async fn publish(&self, count: usize) {
-        let channel = fleet_activity_channel(&self.fixture.fleet);
+        let subject = Subject::FleetTail(self.fixture.fleet.clone());
         for _ in 0..count {
-            self.publisher
-                .publish(&channel, CHUNK)
+            self.bus
+                .publish(&subject, CHUNK)
                 .await
                 .expect("the frame publishes");
         }
@@ -289,7 +287,6 @@ impl Wall {
 
     pub(crate) async fn close(self) {
         drop(self.body);
-        self.hub.shutdown();
         self.fixture.cleanup().await;
     }
 }

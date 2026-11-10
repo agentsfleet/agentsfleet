@@ -41,12 +41,16 @@ pub(super) async fn with_execution(
     let plan = Plan::load(
         connection,
         checkpoint,
-        &owned.current.task_id.clone().ok_or(TaskRefusal::NotFound)?,
+        owned
+            .current
+            .task_id
+            .as_ref()
+            .ok_or(TaskRefusal::NotFound)?,
     )
     .await?;
     let pin: Pin = sqlx::query_as(include_str!("sql/pin.sql"))
-        .bind(pin.as_str())
-        .bind(checkpoint.as_str())
+        .bind(pin)
+        .bind(checkpoint)
         .fetch_optional(&mut *connection)
         .await
         .map_err(query("lock checkpoint pin"))?

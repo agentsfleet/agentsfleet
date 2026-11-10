@@ -12,6 +12,7 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
+use af_core::id::Uuid7;
 use jiff::Timestamp;
 use sqlx::AssertSqlSafe;
 
@@ -26,60 +27,59 @@ pub(crate) const LAPSE: std::time::Duration = af_core::timing::LEASE_TTL.saturat
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Row<'a> {
     /// A `runner.runners` row, by runner id.
-    Runner(&'a str),
+    Runner(&'a Uuid7),
     /// A `runner.leases` row, by lease id.
-    Lease(&'a str),
+    Lease(&'a Uuid7),
     /// A fleet's `runner.fleet_slots` row, by fleet id.
-    Slot(&'a str),
+    Slot(&'a Uuid7),
     /// A runner's `runner.lifetime_counters` row, by runner id.
-    Counters(&'a str),
+    Counters(&'a Uuid7),
     /// A fleet's `fleet.sessions` row, by fleet id.
-    Session(&'a str),
+    Session(&'a Uuid7),
     /// A `fleet.admissions` row, by its id, which is the logical event id.
-    Admission(&'a str),
+    Admission(&'a Uuid7),
     /// An `authoring.attempts` row, by attempt id.
-    Attempt(&'a str),
+    Attempt(&'a Uuid7),
     /// A `fleet.events` row, by fleet id and event id.
-    Event(&'a str, &'a str),
+    Event(&'a Uuid7, &'a Uuid7),
     /// A `billing.usage_lines` row, by event id and line number.
-    Line(&'a str, &'a str),
+    Line(&'a Uuid7, &'a str),
+}
+
+/// The second key a two-key predicate reads.
+#[derive(Debug, Clone, Copy)]
+enum Second<'a> {
+    /// An identifier, bound as a `uuid`.
+    Id(&'a Uuid7),
+    /// A line number, spelled as text and cast by the predicate.
+    Seq(&'a str),
 }
 
 impl<'a> Row<'a> {
-    /// The table, the predicate that finds the row, and its two keys (the
-    /// second is ignored by a one-key predicate).
-    const fn locate(self) -> (&'static str, &'static str, &'a str, &'a str) {
+    /// The table, the predicate that finds the row, and its keys: the first
+    /// always, the second only for a two-key predicate.
+    const fn locate(self) -> (&'static str, &'static str, &'a Uuid7, Option<Second<'a>>) {
         match self {
-            Self::Runner(id) => ("runner.runners", "id = $1::uuid", id, ""),
-            Self::Lease(id) => ("runner.leases", "id = $1::uuid", id, ""),
-            Self::Slot(fleet) => ("runner.fleet_slots", "fleet_id = $1::uuid", fleet, ""),
-            Self::Counters(runner) => (
-                "runner.lifetime_counters",
-                "runner_id = $1::uuid",
-                runner,
-                "",
-            ),
-            Self::Session(fleet) => ("fleet.sessions", "fleet_id = $1::uuid", fleet, ""),
-            Self::Admission(id) => ("fleet.admissions", "id = $1::uuid", id, ""),
-            Self::Attempt(id) => ("authoring.attempts", "id = $1::uuid", id, ""),
+            Self::Runner(id) => ("runner.runners", "id = $1", id, None),
+            Self::Lease(id) => ("runner.leases", "id = $1", id, None),
+            Self::Slot(fleet) => ("runner.fleet_slots", "fleet_id = $1", fleet, None),
+            Self::Counters(runner) => ("runner.lifetime_counters", "runner_id = $1", runner, None),
+            Self::Session(fleet) => ("fleet.sessions", "fleet_id = $1", fleet, None),
+            Self::Admission(id) => ("fleet.admissions", "id = $1", id, None),
+            Self::Attempt(id) => ("authoring.attempts", "id = $1", id, None),
             Self::Event(fleet, event) => (
                 "fleet.events",
-                "fleet_id = $1::uuid AND event_id = $2",
+                "fleet_id = $1 AND event_id = $2",
                 fleet,
-                event,
+                Some(Second::Id(event)),
             ),
             Self::Line(event, seq) => (
                 "billing.usage_lines",
                 "event_id = $1 AND seq = $2::bigint",
                 event,
-                seq,
+                Some(Second::Seq(seq)),
             ),
         }
-    }
-
-    /// Whether the predicate reads a second key.
-    const fn keyed_twice(self) -> bool {
-        matches!(self, Self::Event(..) | Self::Line(..))
     }
 }
 
@@ -115,10 +115,12 @@ impl Fixtures {
         let statement = AssertSqlSafe(format!(
             "SELECT {expression} FROM {table} WHERE {predicate}"
         ));
-        let mut query = sqlx::query_scalar::<_, Option<T>>(statement).bind(first);
-        if row.keyed_twice() {
-            query = query.bind(second);
-        }
+        let query = sqlx::query_scalar::<_, Option<T>>(statement).bind(first);
+        let query = match second {
+            Some(Second::Id(id)) => query.bind(id),
+            Some(Second::Seq(seq)) => query.bind(seq),
+            None => query,
+        };
         let mut connection = self.database.acquire().await.expect("a pooled connection");
         query
             .fetch_optional(&mut *connection)
@@ -143,7 +145,7 @@ impl Fixtures {
 impl Fixtures {
     /// Lapses both deadlines a holder that stopped renewing leaves behind: its
     /// lease's and its fleet's slot's.
-    pub(crate) async fn lapse_holder(&self, lease: &str, fleet: &str) {
+    pub(crate) async fn lapse_holder(&self, lease: &Uuid7, fleet: &Uuid7) {
         self.age(Row::Lease(lease), "lease_expires_at", LAPSE).await;
         self.age(Row::Slot(fleet), "lease_expires_at", LAPSE).await;
     }
@@ -160,12 +162,14 @@ pub(crate) async fn age_on(
     let (table, predicate, first, second) = row.locate();
     let statement = AssertSqlSafe(format!(
         "UPDATE {table} SET {column} = {column} - ${shift}::interval WHERE {predicate}",
-        shift = if row.keyed_twice() { 3 } else { 2 }
+        shift = if second.is_some() { 3 } else { 2 }
     ));
-    let mut query = sqlx::query(statement).bind(first);
-    if row.keyed_twice() {
-        query = query.bind(second);
-    }
+    let query = sqlx::query(statement).bind(first);
+    let query = match second {
+        Some(Second::Id(id)) => query.bind(id),
+        Some(Second::Seq(seq)) => query.bind(seq),
+        None => query,
+    };
     let aged = query
         .bind(by)
         .execute(&mut *connection)

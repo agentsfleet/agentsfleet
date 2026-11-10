@@ -1,12 +1,12 @@
-//! A whole-instructions edit at the character cap crosses the real runner route.
+//! A whole-instructions edit at the character cap crosses the real native session.
 //!
 //! The cap counts characters, so a two-byte character fills it with twice the
 //! bytes: 32,768 of them is a 64 KiB edit inside a larger JSON body. One past
 //! the cap is refused with the head unchanged.
 
-use super::{attempt::Running, json_body, send};
+use super::{attempt::Running, json_body};
 use af_fleet_runtime::definition::MAX_INSTRUCTIONS_CHARS;
-use http::{Method, StatusCode};
+use http::StatusCode;
 use serde_json::{Value, json};
 
 /// Two UTF-8 bytes, one character.
@@ -46,7 +46,8 @@ async fn an_instruction_edit_at_the_character_cap_crosses_the_router_and_one_pas
 }
 
 async fn activity(r: &Running, body: &str) -> (StatusCode, Value) {
-    let response = send(&r.router, Method::POST, &r.path, Some(&r.token), body).await;
+    let response =
+        crate::harness::native::send(&r.router, &r.operation, Some(&r.token), body).await;
     let status = response.status();
     (status, json_body(response).await)
 }
@@ -73,16 +74,16 @@ fn edit(base: &str, revision: &str, end: usize, text: &str, activity: u32) -> St
 
 async fn instructions(r: &Running, candidate: &str) -> String {
     sqlx::query_scalar(
-        "SELECT definition->>'instructions_md' FROM authoring.candidates WHERE id=$1::uuid",
+        "SELECT definition->>'instructions_md' FROM authoring.candidates WHERE id=$1",
     )
-    .bind(candidate)
+    .bind(af_core::id::Uuid7::parse(candidate).expect("a candidate id is a UUIDv7"))
     .fetch_one(&mut *r.f.db.acquire().await.expect("observer"))
     .await
     .expect("the committed version's instructions")
 }
 
 async fn candidates(r: &Running) -> i64 {
-    sqlx::query_scalar("SELECT count(*) FROM authoring.candidates WHERE draft_id=$1::uuid")
+    sqlx::query_scalar("SELECT count(*) FROM authoring.candidates WHERE draft_id=$1")
         .bind(&r.draft)
         .fetch_one(&mut *r.f.db.acquire().await.expect("observer"))
         .await

@@ -136,6 +136,34 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUN_STREAM_SUPERSEDED,
+        status: 409,
+        title: "Runner stream superseded",
+        hint: "A newer connection owns this runner. Stop this process and check for another process using its token.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_LEASE_CANCELLED,
+        status: 409,
+        title: "Lease cancelled",
+        hint: "The fleet was killed. Stop this lease and report its final result.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_PROTOCOL_UNSUPPORTED,
+        status: 400,
+        title: "Runner protocol unsupported",
+        hint: "Upgrade the runner and daemon together so they use the same runner protocol.",
+        user_message: None,
+    },
+    Problem {
+        code: error_code::RUN_STREAM_DISCONNECTED,
+        status: 503,
+        title: "Runner stream disconnected",
+        hint: "The runner reconnects on its own. If this repeats, check that it can reach AGENTSFLEET_RUNNER_STREAM_URL over UDP or TCP.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         // 424: the fleet's own request is well-formed; what is missing is a
         // credential it depends on, which is the distinction this status

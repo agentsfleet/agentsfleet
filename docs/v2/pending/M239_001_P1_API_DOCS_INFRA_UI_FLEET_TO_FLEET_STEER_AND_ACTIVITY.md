@@ -54,7 +54,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 1. `rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs` — the person's steer route: ownership, replay before the status check, ingress status, `Steer::append`, `announce`. The fleet steer handler composes the same `Services` calls.
 2. `rustd/crates/runner/afr_tools/src/verbs/message/mod.rs`, `rustd/crates/runner/afr_supervisor/src/client/lease_verbs/mod.rs` and `rustd/crates/daemon/afd_api_runner/src/handler/runner/message.rs` — one verb end to end: tool, `LeaseVerbs`, supervisor client, runner route, refusal codes the model reads.
 3. `rustd/crates/daemon/afd_events/src/steer/mod.rs` and `rustd/crates/daemon/afd_admission/src/sql/insert_admission.sql` — the steer key, the repeat path, and the `LEFT JOIN` that copies an inherited reply destination only within one fleet.
-4. `rustd/crates/daemon/afd_fleet/src/lease/sql/count_message.sql` and `schema/1810_runner_leases.sql` — the guarded per-run counter the steer cap mirrors.
+4. `rustd/crates/daemon/afd_fleet/src/lease/sql/count_message.sql` and `schema/20261108123200_runner_leases.sql` — the guarded per-run counter the steer cap mirrors.
 5. `docs/architecture/scenarios/fleet-to-fleet.md` — the shape, what it reuses and the bounds.
 
 ## Files Changed (blast radius)

@@ -34,8 +34,8 @@ mod sweep;
 use af_core::id::Uuid7;
 use afd_admission::Admissions;
 use afd_api_wire::approval::GateStatus;
+use afd_bus::Handle;
 use afd_db::Db;
-use afd_dragonfly::Dragonfly;
 use jiff_sqlx::ToSqlx as _;
 
 pub use self::row::{Cursor, Filter, GateRow, Resolution, Resolved};
@@ -60,9 +60,9 @@ const CONTEXT_ONE: &str = "gate.inbox.one";
 #[derive(Debug, Clone)]
 pub struct Inbox {
     database: Db,
-    queue: Dragonfly,
+    bus: Handle,
     /// Where an approved gate's continuation is accepted, before anything is
-    /// queued. Distinct from [`Self::queue`], which still publishes the
+    /// queued. Distinct from [`Self::bus`], which still publishes the
     /// answer frame a watcher sees.
     admissions: Admissions,
 }
@@ -71,10 +71,10 @@ impl Inbox {
     /// A queue over `database`, continuing approved runs through
     /// `admissions` and announcing them on `queue`.
     #[must_use]
-    pub const fn new(database: Db, queue: Dragonfly, admissions: Admissions) -> Self {
+    pub const fn new(database: Db, bus: Handle, admissions: Admissions) -> Self {
         Self {
             database,
-            queue,
+            bus,
             admissions,
         }
     }
@@ -95,9 +95,9 @@ impl Inbox {
     ) -> Result<Vec<GateRow>> {
         let mut connection = self.database.acquire().await?;
         let rows = sqlx::query_as::<_, StoredGate>(sql::SELECT_GATE_PAGE)
-            .bind(workspace.as_str())
+            .bind(workspace)
             .bind(filter.status.map_or(NO_FILTER, GateStatus::as_str))
-            .bind(filter.fleet_id.unwrap_or(NO_FILTER))
+            .bind(filter.fleet_id)
             .bind(filter.gate_type.unwrap_or(NO_FILTER))
             .bind(cursor.is_some())
             // NULL, not a stand-in instant or `''`, when there is no cursor:
@@ -124,8 +124,8 @@ impl Inbox {
     pub async fn one(&self, workspace: &Uuid7, gate: &Uuid7) -> Result<Option<GateRow>> {
         let mut connection = self.database.acquire().await?;
         let row = sqlx::query_as::<_, StoredGate>(sql::SELECT_GATE_BY_ID)
-            .bind(gate.as_str())
-            .bind(workspace.as_str())
+            .bind(gate)
+            .bind(workspace)
             .fetch_optional(&mut *connection)
             .await
             .map_err(error::query(CONTEXT_ONE))?;

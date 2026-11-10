@@ -1,4 +1,4 @@
 SELECT answer_digest
   FROM authoring.answer_receipts
- WHERE attempt_id = $1::uuid AND report_id = $2::uuid
+ WHERE attempt_id = $1 AND report_id = $2
    AND expires_at > statement_timestamp()

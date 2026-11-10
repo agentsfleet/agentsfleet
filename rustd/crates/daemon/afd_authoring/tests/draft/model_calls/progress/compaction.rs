@@ -15,8 +15,8 @@ async fn ready() -> (Fixture, Attempt, Live) {
 }
 
 async fn ready_in(f: Fixture) -> (Fixture, Attempt, Live) {
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1::uuid")
-        .bind(f.catalogue.first().expect("owned model").as_str())
+    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1")
+        .bind(f.catalogue.first().expect("owned model"))
         .execute(&mut *f.connection().await)
         .await
         .expect("force summary preparation");
@@ -35,15 +35,15 @@ async fn finish(live: &Live, text: &str) {
 }
 
 async fn checkpoint(f: &Fixture, attempt: &Attempt) -> Option<Value> {
-    sqlx::query_scalar("SELECT document FROM memory.context_checkpoints WHERE draft_id=$1::uuid")
-        .bind(attempt.draft.id.as_str())
+    sqlx::query_scalar("SELECT document FROM memory.context_checkpoints WHERE draft_id=$1")
+        .bind(&attempt.draft.id)
         .fetch_optional(&mut *f.connection().await)
         .await
         .expect("observe only committed notes")
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn summary_progress_resumes_only_after_a_checkpoint_is_readable() {
     let (f, attempt, mut live) = ready().await;
     let request = model_calls::fixture::request(&attempt);
@@ -85,7 +85,7 @@ async fn summary_progress_resumes_only_after_a_checkpoint_is_readable() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn unusable_summary_reports_interruption_and_retains_known_usage_without_a_checkpoint() {
     let (f, attempt, mut live) = ready().await;
     let task = live.call(&f.runner, &attempt, model_calls::fixture::request(&attempt));
@@ -116,7 +116,7 @@ async fn unusable_summary_reports_interruption_and_retains_known_usage_without_a
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn stop_withholds_the_summary_ending_while_its_known_usage_still_settles() {
     let (f, attempt, mut live) = ready().await;
     let task = live.call(&f.runner, &attempt, model_calls::fixture::request(&attempt));
@@ -147,7 +147,7 @@ async fn stop_withholds_the_summary_ending_while_its_known_usage_still_settles()
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "requires live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "requires live Postgres: make test-integration-rustd"]
 async fn changed_or_removed_history_withholds_late_notes_but_settles_known_usage() {
     for remove in [false, true] {
         let (f, attempt, mut live) = ready().await;
@@ -158,12 +158,12 @@ async fn changed_or_removed_history_withholds_late_notes_but_settles_known_usage
             ContextState::Summarizing
         );
         let mutation = if remove {
-            "DELETE FROM authoring.messages WHERE draft_id=$1::uuid AND sequence < 181"
+            "DELETE FROM authoring.messages WHERE draft_id=$1 AND sequence < 181"
         } else {
-            "UPDATE authoring.messages SET answer_text='changed-private-history' WHERE draft_id=$1::uuid AND sequence=1"
+            "UPDATE authoring.messages SET answer_text='changed-private-history' WHERE draft_id=$1 AND sequence=1"
         };
         sqlx::query(mutation)
-            .bind(attempt.draft.id.as_str())
+            .bind(&attempt.draft.id)
             .execute(&mut *f.connection().await)
             .await
             .expect("change only this private history while its model is waiting");

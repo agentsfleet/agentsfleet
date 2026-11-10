@@ -47,20 +47,6 @@ fn a_query_failure_keeps_its_cause_and_internal_mapping() {
     assert!(!failure.is_credential_missing());
 }
 
-#[test]
-fn a_malformed_row_keeps_table_column_and_cause() -> Result<(), &'static str> {
-    let source = af_core::id::Uuid7::parse("not-an-id")
-        .err()
-        .ok_or("malformed fixture unexpectedly parsed")?;
-    let failure = super::row_malformed("provider_selections", "tenant_id")(source);
-
-    assert_eq!(failure.code(), error_code::INTERNAL_DB_QUERY);
-    assert!(failure.to_string().contains("provider_selections"));
-    assert!(failure.to_string().contains("tenant_id"));
-    assert!(failure.source().is_some());
-    Ok(())
-}
-
 /// A KEK hex string that will not decode, for the two crypto-sourced kinds.
 ///
 /// Short AND non-hex, so it fails whichever check `decode_hex_into` reaches

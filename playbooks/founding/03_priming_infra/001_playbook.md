@@ -1,226 +1,128 @@
+---
+type: how-to
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
+
 # Infrastructure Priming
 
-**Updated:** Jul 31, 2026
-**Owner:** Human
-**Executors:** Human handles external consoles; Agent creates scriptable
-resources and verifies handoffs
-**Prerequisite:** The `bootstrap` stage of
-`playbooks/founding/02_preflight/00_gate.sh` passes for both environments.
+## What this does
 
-This step creates empty development and production infrastructure. It does not
-deploy application code or claim that the public domains are ready.
-
-## Resource map
+The Human and Agent create empty development and production infrastructure.
+No application code deploys here, and no public domain is proven live.
 
 | Surface | Development | Production |
 |---|---|---|
+| Fly.io organization | `agentsfleet-dev` | `agentsfleet-prod` |
 | Fly.io API app | `agentsfleetd-dev` | `agentsfleetd-prod` |
 | Fly.io tunnel app | `cloudflared-dev` | `cloudflared-prod` |
 | API domain | `api-dev.agentsfleet.net` | `api.agentsfleet.net` |
 | Dashboard domain | `app-dev.agentsfleet.net` | `app.agentsfleet.net` |
-| PlanetScale item | `planetscale-dev` | `planetscale-prod` |
-| Dragonfly item | `dragonfly-dev` | `dragonfly-prod` |
-| Clerk item | `clerk-dev` | `clerk-prod` |
+| 1Password items | `planetscale-dev`, `nats-dev`, `clerk-dev` | `planetscale-prod`, `nats-prod`, `clerk-prod` |
 | Cloudflare R2 item | `cloudflare-r2` | `cloudflare-r2` |
 
-## Execution and verification
+## Before you begin
 
-| Order | Executor | Action | Verifier | Required evidence |
-|---|---|---|---|---|
-| 1 | Human | Confirm provider billing and account access. | Human | Named accounts and organizations recorded. |
-| 2 | Agent | Create six Fly.io apps. | Fly command-line query | All six app names resolve in the intended organization. |
-| 3 | Human | Create two PlanetScale databases and store each Dragonfly cluster's seed. | Deployment gate | Both environments pass and database roles differ. |
-| 4 | Human | Create two Cloudflare tunnels, route API domains, and store tokens. | Agent | Tunnel identifiers and DNS routes recorded without token values. |
-| 5 | Human | Configure Clerk session claims. | Pipeline | Authenticated development acceptance passes after deployment. |
-| 6 | Human | Approve billed Fly.io static egress. | Human | Approval recorded before allocation. |
-| 7 | Agent | Allocate egress and set repository variables with runners disabled. | Agent | Recent IPv4 inventories and repository variable values recorded. |
-| 8 | Agent | Run the deployment credential gate. | `00_gate.sh` | Green output for development and production. |
+The `bootstrap` gate in [step 02](../02_preflight/001_playbook.md) passes for `ENV=all`.
 
-## 1. Create Fly.io apps
+## Steps
+
+### 1. Create Fly.io organizations, apps and tokens
+
+The Agent creates one organization per environment, so access to one grants nothing in the other:
 
 ```bash
 fly orgs create agentsfleet-dev
 fly orgs create agentsfleet-prod
-
 fly apps create agentsfleetd-dev --org agentsfleet-dev
 fly apps create cloudflared-dev --org agentsfleet-dev
-fly apps create otelcol-dev --org agentsfleet-dev
 fly apps create agentsfleetd-prod --org agentsfleet-prod
 fly apps create cloudflared-prod --org agentsfleet-prod
-fly apps create otelcol-prod --org agentsfleet-prod
 ```
 
-**One organisation per environment, and the split buys access separation, not
-separate bills.** An access grant to one environment is not a grant to the
-other; that is the whole reason for the split. Billing is the opposite — see
-below.
+The deploy workflows create `otelcol-<env>` and `agentsfleet-nats-<env>` themselves with `scripts/ensure_fly_app.sh --create-only`.
 
-**Billing is pooled, and it has to be set up before the first deploy.** A new
-organisation starts on Pay As You Go and **refuses to deploy until it can
-pay**. Two ways to satisfy that: put a card on each organisation, or make one
-organisation the **Billing Organization** and link the others to it, which
-pools that organisation's prepaid credits across all of them. This project
-took the second route on Sep 04, 2026 — `personal` holds the credits and both
-`agentsfleet-dev` and `agentsfleet-prod` are linked to it, from
-`https://fly.io/dashboard/<org>/billing` → *Link billing to another
-Organization*.
+A new organization refuses to deploy until it can pay.
+Both organizations are linked to the Billing Organization `personal`, which holds the prepaid credits.
+The Human links each one at `https://fly.io/dashboard/<ORG>/billing` → **Link billing to another Organization**.
 
-> **`personal` is now load-bearing. Do not delete it.** It is empty of apps,
-> which makes it look disposable, and it is the payer for both environments.
-> Linking is **irreversible** — Fly does not support detaching a linked
-> organisation — so removing the billing organisation cannot be undone by
-> relinking.
+> **Warning:** Never delete `personal`. It holds no apps, and it pays for both environments.
+> Linking is irreversible, so a deleted billing organization cannot be relinked.
 
-**Each environment needs its own org-scoped deploy token, and moving an app
-between organisations invalidates the old one.** A Fly deploy token is scoped
-to the organisation it was minted in, and billing linkage does NOT grant
-access — linked organisations share credits and nothing else. So the moment
-the apps left `personal`, the `personal`-scoped token the pipelines read went
-blind and every deploy failed with `Could not find App "<name>"`, an error
-that names the app and says nothing about the token, which is what makes it
-expensive to diagnose.
+Fly organizations cannot be renamed. To move apps, create the organization, then run `fly apps move`.
 
-Mint one token per organisation and store it in that environment's vault:
+A deploy token works only in the organization that minted it; billing links grant no access.
+Mint one token per organization:
 
 ```bash
 fly tokens create org --org agentsfleet-dev  --name agentsfleet-dev-ci  --expiry 8760h
 fly tokens create org --org agentsfleet-prod --name agentsfleet-prod-ci --expiry 8760h
 ```
 
-`--org` is a flag, not a positional argument. `fly tokens create org
-agentsfleet-dev` is accepted and mints against the DEFAULT organisation, so the
-token looks fine and is scoped to the wrong place — the same failure this
-section exists to prevent.
+`--org` must be a flag.
+`fly tokens create org agentsfleet-dev` silently mints against the default organization.
+A token from the wrong organization fails every deploy with `Could not find App "<NAME>"`.
 
-| Vault | Item and field | Organisation |
+Write each token straight from the command output into 1Password, never into a log, history or file:
+
+| Vault | Item and field | Organization |
 |---|---|---|
 | `ZMB_CD_DEV` | `fly-api-token/credential` | `agentsfleet-dev` |
 | `ZMB_CD_PROD` | `fly-api-token/credential` | `agentsfleet-prod` |
 
-Write each value straight into 1Password from the command's output; it is
-shown once and belongs in no log, shell history or file. Revoke the superseded
-token with `fly tokens revoke <id>` — `fly tokens list --org personal --scope
-org` names it — once both pipelines are green, not before.
+Once both pipelines are green, revoke a superseded token.
+`fly tokens list --org personal --scope org` names it; `fly tokens revoke <ID>` removes it.
 
-These lines read `--org agentsfleet` until Sep 04, 2026, naming an
-organisation that has never existed: `fly orgs list` returned exactly one
-organisation, `personal`, and all four apps that existed were created there
-regardless of what this page said. Anyone running the commands verbatim would
-have been refused.
+The checked-in app definitions under `deploy/fly/` are canonical: `agentsfleetd-<env>/fly.toml`, `cloudflared-<env>/`, `otelcol-<env>/` and `nats-<env>/`.
+The release workflow scales `agentsfleetd-prod` to exactly three machines and fails unless all three run.
 
-**Fly organisations cannot be renamed — any of them.** The six apps were
-therefore moved into the two organisations above rather than `personal` being
-renamed. This is Fly's own prescribed workaround, not a local invention:
-create the organisation, `fly apps move` the apps, delete the old one. Skip
-that last step here, for the billing reason above. A replacement organisation
-is always created as `SHARED`, so the `PERSONAL` type cannot be re-minted
-either — another reason `personal` is not named in the commands above.
+### 2. Create datastores
 
-The checked-in deployment definitions are canonical:
-
-- `deploy/fly/agentsfleetd-dev/fly.toml`
-- `deploy/fly/agentsfleetd-prod/fly.toml`
-- `deploy/fly/cloudflared-dev/`
-- `deploy/fly/cloudflared-prod/`
-- `deploy/fly/otelcol-dev/`
-- `deploy/fly/otelcol-prod/`
-
-The two collector apps carry the OTLP hop the daemon exports through: the
-daemon addresses `http://otelcol-<env>.internal:4318` and the collector holds
-the Grafana Cloud credentials and forwards. They are listed here because the
-deploy workflows DEPLOY them but never CREATE them — `flyctl secrets set --app
-otelcol-dev` is the first thing that addresses the app, and it fails on an app
-that does not exist. Omitting these two lines is what leaves the development
-deploy red at "Ensure the OTLP collector is running".
-
-The release workflow sets the production API app to exactly three machines and
-fails unless all three are running before it checks the tunnel and public API.
-
-Only `agentsfleetd` owns Postgres, Redis, and the vault. A host-resident
-`agentsfleet-runner` reaches the API over HTTPS and is bootstrapped later.
-
-## 2. Create data stores
-
-The Human creates separate development and production resources, then stores:
+The Human creates separate development and production PlanetScale databases, then stores:
 
 ```text
-planetscale-{env}/api-connection-string
-planetscale-{env}/migrator-connection-string
-dragonfly-{env}/api-url
+planetscale-<env>/api-connection-string
+planetscale-<env>/migrator-connection-string
+nats-<env>/api-url
 ```
 
-Create each PlanetScale Postgres database in the `us-east` region (AWS
-us-east-1, Northern Virginia). The daemon runs in Fly `iad`, which is the
-same metro; a database in any other region puts a cross-region round trip on
-every connection handshake and every query. A region cannot be changed once a
-branch exists — moving one is
-`playbooks/operations/database_region_move/001_playbook.md`.
+Create each PlanetScale Postgres database in `us-east` (AWS us-east-1), the metro of Fly `iad`.
+A region cannot change once a branch exists; moving one is [`database_region_move`](../../operations/database_region_move/001_playbook.md).
 
-The two PlanetScale strings must differ, and they name different ports:
-
-| Field | Port | Why |
+| Field | Port | Target |
 |---|---|---|
-| `api-connection-string` | `6432` | PlanetScale's PgBouncer. Every database ships one; same host and credentials as the direct connection, only the port changes. It multiplexes the daemon's request-path connections onto a bounded server pool, so two replicas at `DATABASE_POOL_SIZE` each cannot exhaust the cluster's `max_connections`. |
-| `migrator-connection-string` | `5432` | Postgres itself. The migrator holds a session advisory lock, and a transaction pooler cannot keep a session. |
+| `api-connection-string` | `6432` | PlanetScale PgBouncer: same host and credentials, transaction pooling |
+| `migrator-connection-string` | `5432` | Postgres directly; the migrator holds a session advisory lock |
 
-The deployment preflight (`02_preflight/02_credentials.sh`) refuses either
-string on the other port.
+Read the cluster's `max_connections` under **Clusters → Parameters** before sizing.
+Every replica's `DATABASE_POOL_SIZE_API` (set in `fly.toml`), the migrator during a release, operator sessions and PgBouncer's `default_pool_size` (default 20) must fit inside it.
+Past that ceiling Postgres refuses with `53300 too_many_connections`.
 
-Read the cluster's `max_connections` under **Clusters → Parameters** before
-sizing anything: it is a conservative per-cluster-size default, and the
-daemon's direct connections — every replica's `DATABASE_POOL_SIZE`, plus the
-migrator during a release — must fit inside it with room for operator
-sessions. PgBouncer's own server pool (`default_pool_size`, 20 by default)
-counts against the same ceiling once. A pool that asks for a connection past
-that ceiling is refused with `53300 too_many_connections`, which the driver
-retries silently until its acquire budget runs out; the daemon reports that
-as a stall (`UZ-INTERNAL-001`, "the pool held N of M and could not open
-another") rather than an outage.
+The daemon then reports a stall, `UZ-INTERNAL-001` (`the pool held <N> of <M>`), not an outage.
 
-The Dragonfly `api-url` is the cluster's seed, reached over Fly's private
-network: `redis://:<password>@dragonfly-{env}.internal:7001`. There is no
-second, root-level credential. The hosted store had one, and the teardown
-runbook that needed it applies to the store being retired, not to this one —
-a self-hosted cluster is torn down by deleting its Fly app.
+The NATS `api-url` is the cluster seed on Fly's private network: `nats://agentsfleet:<PASSWORD>@agentsfleet-nats-<env>.internal:4222`. Fly app names are global, so the NATS app carries the product prefix; the 1Password item stays `nats-<env>`.
+The daemon and every NATS node read this one credential; there is no second, root-level NATS credential.
 
-Do not apply schema files manually. The checked-in migration runner applies
-them in order during deployment. The current namespaces come from
-`schema/1000_schemas.sql`; each later slot creates its owning table and grants.
+Never apply schema files by hand.
+The migration runner applies `schema/*.sql` in order during deployment, starting with `schema/20261108120000_schemas.sql`.
 
-## 3. Create Cloudflare tunnels
+### 3. Create Cloudflare tunnels
 
-The Human creates `agentsfleetd-dev` and `agentsfleetd-prod` in Cloudflare Zero
-Trust, copies each one-time tunnel token directly to the matching 1Password
-item, and routes:
+In Cloudflare Zero Trust, the Human creates tunnels `agentsfleetd-dev` and `agentsfleetd-prod`.
+Copy each one-time tunnel token straight into `ZMB_CD_DEV/cloudflare-tunnel-dev/credential` or `ZMB_CD_PROD/cloudflare-tunnel-prod/credential`.
+Route `api-dev.agentsfleet.net` to the `agentsfleetd-dev` tunnel and `api.agentsfleet.net` to `agentsfleetd-prod`.
 
-```text
-api-dev.agentsfleet.net → agentsfleetd-dev tunnel
-api.agentsfleet.net     → agentsfleetd-prod tunnel
-```
+The tunnel origins are pinned in [`ARCHITECTURE.md`](../../ARCHITECTURE.md).
 
-Vault fields:
-
-```text
-ZMB_CD_DEV/cloudflare-tunnel-dev/credential
-ZMB_CD_PROD/cloudflare-tunnel-prod/credential
-```
-
-The tunnel origins are already pinned in the checked-in configuration:
-
-```text
-agentsfleetd-dev.internal:3000
-agentsfleetd-prod.internal:3000
-```
-
-No public `*.fly.dev` service is part of the supported topology.
-
-## 4. Configure Clerk claims
+### 4. Configure Clerk claims
 
 In each Clerk instance, the Human sets the default session-token claims:
 
 ```json
 {
-  "aud": "<environment API URL>",
+  "aud": "<API_URL>",
   "scopes": "{{user.public_metadata.scopes}}",
   "metadata": {
     "tenant_id": "{{user.public_metadata.tenant_id}}"
@@ -228,25 +130,23 @@ In each Clerk instance, the Human sets the default session-token claims:
 }
 ```
 
-Use `https://api-dev.agentsfleet.net` for development and
-`https://api.agentsfleet.net` for production. The audience must match the
-`OIDC_AUDIENCE` literal in the corresponding workflow. Sign out and back in
-after saving so a new JSON Web Token (JWT) carries the claims.
+`<API_URL>` is `https://api-dev.agentsfleet.net` or `https://api.agentsfleet.net`.
+It must equal the `OIDC_AUDIENCE` literal in `deploy-dev-fly.yml` or `release.yml`.
+Sign out and back in so a new JSON Web Token (JWT) carries the claims.
 
-## 5. Allocate stable Fly.io egress
+### 5. Allocate static Fly.io egress
 
-After the Human approves the billed addresses, the Agent runs:
+The Human approves the billed addresses first. Then the Agent runs:
 
 ```bash
 fly ips allocate-egress --app agentsfleetd-dev --region iad
 fly ips allocate-egress --app agentsfleetd-prod --region iad
 ```
 
-Store each returned IPv4 address as a `/32` JSON array in
-`fly-egress-ips/cidrs`, with the current Coordinated Universal Time in
-`fly-egress-ips/updated-at`. The allowlisting operation consumes these values.
+Store each address as a `/32` JSON array in that vault's `fly-egress-ips/cidrs`.
+Store the current Coordinated Universal Time (UTC) in `fly-egress-ips/updated-at`.
 
-## 6. Set repository variables
+### 6. Set repository variables
 
 ```bash
 gh variable set VAULT_DEV --body ZMB_CD_DEV --repo agentsfleet/agentsfleet
@@ -257,18 +157,17 @@ gh variable set DEV_RUNNER_READY --body false --repo agentsfleet/agentsfleet
 gh variable set PROD_RUNNER_READY --body false --repo agentsfleet/agentsfleet
 ```
 
-Keep both runner switches false until their bootstrap gates pass. This is what
-allows the first control-plane deployment to run before either runner exists.
+Both runner switches stay `false` until their bootstrap gates pass.
+That lets the first control-plane deployment run before any runner exists.
 
-## Required result
+## Verify it works
 
-- The six Fly.io apps exist in the `agentsfleet` organization.
-- Development and production databases and Redis resources are distinct.
-- Both Cloudflare tunnels exist and hold the intended API route.
-- Clerk claim audiences match the workflow literals.
-- Both environments have a recent static IPv4 egress inventory.
-- `DEV_RUNNER_READY` and `PROD_RUNNER_READY` are false.
-- `ENV=all STAGE=deployment ./playbooks/founding/02_preflight/00_gate.sh`
-  exits zero.
+- `fly apps list --org agentsfleet-dev` and `--org agentsfleet-prod` each show the API and tunnel apps.
+- Development and production databases are distinct.
+- Both tunnels exist and route their API domain.
+- Clerk audiences match the workflow `OIDC_AUDIENCE` literals.
+- Both vaults hold a recent `fly-egress-ips` inventory.
+- `DEV_RUNNER_READY` and `PROD_RUNNER_READY` are `false`.
+- The `deployment` gate in [step 02](../02_preflight/001_playbook.md#steps) exits 0 for `ENV=all`.
 
-Continue to `playbooks/founding/04_deploy_dev/001_playbook.md`.
+Continue to [step 04](../04_deploy_dev/001_playbook.md).

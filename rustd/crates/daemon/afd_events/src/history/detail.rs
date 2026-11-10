@@ -85,14 +85,6 @@ impl EventDetailRow {
     }
 }
 
-/// The fleet every fixture row belongs to.
-#[cfg(feature = "test-util")]
-const FIXTURE_FLEET_ID: &str = "01924f4e-0000-7000-8000-00000000fee7";
-
-/// The workspace that fleet belongs to.
-#[cfg(feature = "test-util")]
-const FIXTURE_WORKSPACE_ID: &str = "01924f4e-0000-7000-8000-000000000001";
-
 /// The actor a fixture row records — a steer, which is what a thread carries.
 #[cfg(feature = "test-util")]
 const FIXTURE_ACTOR: &str = "steer:user_2fixture";
@@ -123,12 +115,18 @@ const FIXTURE_REQUEST_JSON: &str = r#"{"message":"hello"}"#;
 impl EventDetailRow {
     /// One row of a thread, identified by `event_id` at `created_at`.
     #[must_use]
-    pub fn fixture(event_id: &str, created_at: jiff::Timestamp, response_text: String) -> Self {
+    pub fn fixture(
+        event_id: &af_core::id::Uuid7,
+        created_at: jiff::Timestamp,
+        response_text: String,
+    ) -> Self {
         Self {
             row: EventRow {
-                fleet_id: FIXTURE_FLEET_ID.to_owned(),
+                // Neither decision a fixture proves reads the scope, so the
+                // fleet and workspace reuse the event's own identifier.
+                fleet_id: event_id.to_owned(),
                 event_id: event_id.to_owned(),
-                workspace_id: FIXTURE_WORKSPACE_ID.to_owned(),
+                workspace_id: event_id.to_owned(),
                 actor: FIXTURE_ACTOR.to_owned(),
                 event_type: FIXTURE_EVENT_TYPE.to_owned(),
                 status: FIXTURE_STATUS.to_owned(),

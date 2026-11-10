@@ -5,6 +5,7 @@ use crate::{
     error::query,
     task::{Tasks, transaction},
 };
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 #[derive(sqlx::FromRow)]
@@ -15,7 +16,7 @@ struct Progress {
 
 pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
     let mut connection = tasks.leases.pool().acquire().await?;
-    let rows: Vec<String> = sqlx::query_scalar(include_str!("sql/fanout_due.sql"))
+    let rows: Vec<Uuid7> = sqlx::query_scalar(include_str!("sql/fanout_due.sql"))
         .bind(PASS_LIMIT)
         .fetch_all(&mut *connection)
         .await
@@ -47,17 +48,16 @@ pub(super) async fn maintain(tasks: &Tasks) -> Result<()> {
     Ok(())
 }
 
-async fn one(tasks: &Tasks, completion: &str) -> Result<Option<Progress>> {
+async fn one(tasks: &Tasks, completion: &Uuid7) -> Result<Option<Progress>> {
     let mut connection = transaction::acquire(tasks.leases.pool()).await?;
     let mut tx = transaction::begin(&mut connection).await?;
     // No SKIP LOCKED on the wait: advancing past a busy row would lose its signal.
     // One wait lock prevents cycles with mixed-input transitions over several tasks.
     // Advance over non-matching workflows too: the pass bounds examined rows,
     // rather than scanning an arbitrary number just to find one match.
-    // Every native wait is UUIDv7, above UUID's lower bound on the first page.
+    // A cursor that has advanced over no wait yet starts at the first one.
     let progress = sqlx::query_as(include_str!("sql/fanout_one.sql"))
         .bind(completion)
-        .bind("00000000-0000-0000-0000-000000000000")
         .fetch_optional(&mut *tx)
         .await
         .map_err(query(
@@ -70,7 +70,7 @@ async fn one(tasks: &Tasks, completion: &str) -> Result<Option<Progress>> {
     Ok(progress)
 }
 
-async fn defer(tasks: &Tasks, completion: &str) -> Result<()> {
+async fn defer(tasks: &Tasks, completion: &Uuid7) -> Result<()> {
     let mut connection = tasks.leases.pool().acquire().await?;
     sqlx::query(include_str!("sql/defer_fanout.sql"))
         .bind(completion)

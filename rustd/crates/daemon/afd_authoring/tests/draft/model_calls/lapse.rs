@@ -1,4 +1,4 @@
-//! Dimension 4.8: a locking validity check reads the clock once its lock is
+//! A locking validity check reads the clock once its lock is
 //! held, so a row that lapses while the check waits on the lock is refused.
 //!
 //! Each case lets the row lapse while another transaction only holds its lock
@@ -21,35 +21,34 @@ const LAPSES_IN: Duration = Duration::from_millis(500);
 /// Moves the attempt's lease deadline to `$2` past database time.
 const LEASE_LAPSES: &str = "UPDATE authoring.attempts \
 SET lease_expires_at = date_trunc('milliseconds', clock_timestamp()) + $2::interval \
-WHERE id = $1::uuid";
+WHERE id = $1";
 
 /// Closes the draft with its retention deadline `$2` past database time.
 const DRAFT_LAPSES: &str = "UPDATE authoring.drafts \
 SET closed_at = now(), expires_at = date_trunc('milliseconds', clock_timestamp()) + $2::interval \
-WHERE id = $1::uuid";
+WHERE id = $1";
 
 /// Takes the attempt row's lock and writes nothing.
 const LOCK_ATTEMPT: &str =
-    "SELECT pg_backend_pid() FROM authoring.attempts WHERE id = $1::uuid FOR UPDATE";
+    "SELECT pg_backend_pid() FROM authoring.attempts WHERE id = $1 FOR UPDATE";
 
 /// Takes the draft row's lock and writes nothing.
-const LOCK_DRAFT: &str =
-    "SELECT pg_backend_pid() FROM authoring.drafts WHERE id = $1::uuid FOR UPDATE";
+const LOCK_DRAFT: &str = "SELECT pg_backend_pid() FROM authoring.drafts WHERE id = $1 FOR UPDATE";
 
 /// Whether the attempt's lease is still live on database time.
 const LEASE_LIVE: &str =
-    "SELECT lease_expires_at > clock_timestamp() FROM authoring.attempts WHERE id = $1::uuid";
+    "SELECT lease_expires_at > clock_timestamp() FROM authoring.attempts WHERE id = $1";
 
 /// Whether the draft's retention deadline is still ahead on database time.
 const DRAFT_LIVE: &str =
-    "SELECT expires_at > clock_timestamp() FROM authoring.drafts WHERE id = $1::uuid";
+    "SELECT expires_at > clock_timestamp() FROM authoring.drafts WHERE id = $1";
 
 /// Whether any backend is waiting on `$1`'s locks.
 const BLOCKING: &str =
     "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid)))";
 
 /// The answer receipts a report left for the attempt.
-const ANSWERS: &str = "SELECT count(*) FROM authoring.answer_receipts WHERE attempt_id = $1::uuid";
+const ANSWERS: &str = "SELECT count(*) FROM authoring.answer_receipts WHERE attempt_id = $1";
 
 /// One row whose deadline the case moves, and the statements that judge it.
 struct Row<'a> {
@@ -77,14 +76,14 @@ async fn hold_past_deadline(f: &Fixture, held: Transaction<'_, Postgres>, pid: i
         tokio::task::yield_now().await;
     }
     let live: bool = sqlx::query_scalar(row.live)
-        .bind(row.id.as_str())
+        .bind(row.id)
         .fetch_one(&mut *probe)
         .await
         .expect("read the deadline");
     assert!(live, "the check must queue before the row lapses");
     tokio::time::sleep(LAPSES_IN).await;
     let live: bool = sqlx::query_scalar(row.live)
-        .bind(row.id.as_str())
+        .bind(row.id)
         .fetch_one(&mut *probe)
         .await
         .expect("read the deadline");
@@ -103,13 +102,13 @@ async fn lapse_and_lock(
     row: &Row<'_>,
 ) -> i32 {
     sqlx::query(deadline)
-        .bind(row.id.as_str())
+        .bind(row.id)
         .bind(LAPSES_IN)
         .execute(&mut *f.connection().await)
         .await
         .expect("move the deadline");
     sqlx::query_scalar(row.lock)
-        .bind(row.id.as_str())
+        .bind(row.id)
         .fetch_one(&mut **held)
         .await
         .expect("take the row lock")
@@ -186,7 +185,7 @@ async fn test_expiry_checks_read_clock_after_lock() {
     );
     assert!(reported.expect("the accounting settles").settled);
     let answers: i64 = sqlx::query_scalar(ANSWERS)
-        .bind(a.id.as_str())
+        .bind(a.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("count answer receipts");

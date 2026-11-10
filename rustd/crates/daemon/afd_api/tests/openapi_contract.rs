@@ -45,12 +45,7 @@ const WRITES: [&str; 3] = ["post", "put", "patch"];
 /// The writes that read no body, and why each is honest about it.
 ///
 /// Every other write names what it reads, so a client can send it.
-const BODILESS_WRITES: [(&str, &str, &str); 6] = [
-    (
-        "post",
-        "/v1/runners/me/leases",
-        "the poll reads nothing: one wire shape, no negotiation",
-    ),
+const BODILESS_WRITES: [(&str, &str, &str); 5] = [
     (
         "post",
         "/v1/connectors/{provider}/callback",

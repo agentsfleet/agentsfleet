@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 # test-infra-ports.sh — print the host ports this checkout's test infra should
-# publish on, as "<postgres> <qstash> <dragonfly-base>".
+# publish on, as "<postgres> <qstash> <api> <nats-base>".
 #
-#     bash scripts/test-infra-ports.sh     # e.g. "26400 26402 26403"
+#     bash scripts/test-infra-ports.sh     # e.g. "26400 26402 26403 26412"
 #
-# The third number is the FIRST of eight consecutive ports the Dragonfly
-# cluster publishes: four data ports, then four admin ports (offset 4). Eight
-# and not one because every node announces its own address and a redirect
-# names it, so the cluster needs its published numbers to equal the numbers
-# the nodes bind — see scripts/dragonfly-cluster.sh.
+# The fourth number is the first of three NATS client ports, one per node.
+# NATS clients use the seed list rather than advertised addresses, so the
+# container side of each is the server default 4222.
+#
+# The third number is the daemon container's API port; mailpit's SMTP port and
+# web page are the two after it (make/test-infra.mk).
 #
 # Prints only. It deliberately writes no file: an earlier version wrote `.env`,
 # which Compose reads automatically — convenient locally, but in CI the make
@@ -60,17 +61,19 @@ set -euo pipefail
 
 DEFAULT_PG=5432
 DEFAULT_QSTASH=8080
-DEFAULT_DRAGONFLY=7001
+DEFAULT_API=7006
+DEFAULT_NATS=4222
 
-# Twelve ports per slot: Postgres, QStash and the cluster's eight, with two
-# spares; slot offset 1 is unused, so no port moves when the old Redis slot went. 750 slots keep the whole range inside 20000-28999.
-SLOT_STRIDE=12
+# Sixteen ports per slot: Postgres, QStash, the daemon API, mailpit's two and the
+# three NATS nodes, with spares. Slot offset 1 is unused, so no port moved when a
+# retired service went. 750 slots keep the whole range inside 20000-28999.
+SLOT_STRIDE=16
 SLOT_COUNT=750
 RANGE_START=20000
 
 # Not a git checkout at all -> nothing to isolate from; use the conventional ports.
 if ! repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"; then
-  printf '%s %s %s\n' "$DEFAULT_PG" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
+  printf '%s %s %s %s\n' "$DEFAULT_PG" "$DEFAULT_QSTASH" "$DEFAULT_API" "$DEFAULT_NATS"
   exit 0
 fi
 
@@ -80,7 +83,7 @@ git_dir="$(git rev-parse --absolute-git-dir 2>/dev/null || echo "")"
 common_dir="$(cd "$repo_root" && cd "$(git rev-parse --git-common-dir 2>/dev/null || echo .)" && pwd)"
 
 if [ -z "$git_dir" ] || [ "$git_dir" = "$common_dir" ]; then
-  printf '%s %s %s\n' "$DEFAULT_PG" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
+  printf '%s %s %s %s\n' "$DEFAULT_PG" "$DEFAULT_QSTASH" "$DEFAULT_API" "$DEFAULT_NATS"
   exit 0
 fi
 
@@ -94,7 +97,7 @@ elif command -v sha256sum >/dev/null 2>&1; then
 else
   # No hasher is not a reason to fail the build; the conventional ports are a
   # correct answer for a single checkout, which is the only case this can be.
-  printf '%s %s %s\n' "$DEFAULT_PG" "$DEFAULT_QSTASH" "$DEFAULT_DRAGONFLY"
+  printf '%s %s %s %s\n' "$DEFAULT_PG" "$DEFAULT_QSTASH" "$DEFAULT_API" "$DEFAULT_NATS"
   exit 0
 fi
 
@@ -103,4 +106,4 @@ fi
 slot=$(( 16#${digest: -6} % SLOT_COUNT ))
 pg_port=$(( RANGE_START + slot * SLOT_STRIDE ))
 
-printf '%s %s %s\n' "$pg_port" "$(( pg_port + 2 ))" "$(( pg_port + 3 ))"
+printf '%s %s %s %s\n' "$pg_port" "$(( pg_port + 2 ))" "$(( pg_port + 8 ))" "$(( pg_port + 12 ))"

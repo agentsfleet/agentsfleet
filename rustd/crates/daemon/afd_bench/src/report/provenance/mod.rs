@@ -6,7 +6,7 @@
 //! deciding whether the datastore change was safe. Two files whose numbers
 //! differ are evidence only if everything else about the two runs was the
 //! same — the same code, the same server build, the same kind of target. Absent
-//! that, a 20% regression is as likely to be a different Dragonfly image as a
+//! that, a 20% regression is as likely to be a different datastore image as a
 //! different daemon, and the comparison is not weak, it is meaningless.
 //!
 //! So every field here REFUSES to be absent:
@@ -89,7 +89,7 @@ impl Provenance {
     pub(crate) fn for_test() -> Self {
         Self {
             revision: "0000000000000000000000000000000000000000".to_owned(),
-            datastore_image: "dragonfly:test".to_owned(),
+            datastore_image: "nats:test".to_owned(),
             owned: true,
         }
     }

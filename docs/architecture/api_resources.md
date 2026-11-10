@@ -319,37 +319,28 @@ The [shared context lifecycle](context_lifecycle.md) owns checkpoint format, ret
 | GET | Query `fencing_token` | 200 `{checkpoint?:Checkpoint}`; absent when no notes exist | Malformed input 400; authentication 401/403; absent assignment 404; superseded assignment 409; capacity 429; dependency 500/503 |
 | PUT | `{fencing_token,expected_generation,checkpoint}` | 204; an identical retry acknowledges the saved document | GET refusals, oversized body 413; changed scope or generation 409 with `current_state:superseded` |
 
-Runner route identities live in `afd_http`'s runner routes; path constants live in `af_wire`'s paths module. There is one claim: `POST /v1/runners/me/leases`. Claim input is `{holds?:UUIDv7[<=64],accepted_kinds}` with `accepted_kinds:["fleet","authoring"]`; absence is invalid in the cutover.
+Runner route identities live in `afd_http`; path constants and native message types live in `af_wire`.
+Each host opens one authenticated session through `POST /v1/runners/me/stream` on the private listener.
+The [runner guide](runner_protocol.md) owns connection setup, trust and recovery.
 
-The claim returns 200 `{lease: TaggedLease|null,retry_after_ms?:integer}`; no-work uses `lease:null` plus the backoff hint. This keeps the existing poll envelope from `af_wire`'s lease module. A host may opt into fleet-only work; both kinds still count against daemon-enforced worker_count.
+The daemon pushes fleet and authoring offers when the host advertises capacity.
+Both kinds count against the same daemon-enforced worker limit.
+Heartbeats, renewal batches, activity, folded inputs and reports use that session.
 
-A fleet lease reports usage on its own routes, `POST /v1/runners/me/leases/{lease_id}/renew` and `POST /v1/runners/me/reports`, one line per provider request. Each body carries at most 512 lines (`af_wire::usage::LINES_MAX`). A renewal past the cap still extends and records nothing; a report past it is refused 400 `UZ-REQ-001`.
+Fleet renewal and report messages carry at most 512 provider usage records (`af_wire::usage::LINES_MAX`).
+Each renewal answer includes its lease's `recorded_through` acknowledgement.
+The report carries the remaining records and uses its original lease identity when retried.
 
-A body carrying the retired cumulative totals (`input_tokens`, `cached_input_tokens`, `output_tokens`) is refused on both, naming the field. A renewal answers 400 `UZ-RUN-013` and does not extend; a report answers 400 `UZ-REQ-001`. Authoring leases carry a `Meter` instead (below), and the cap does not apply to them.
+The native `folds` request carries `fencing_token` and `after_sequence`, returning at most 32 inputs (`FOLDS_PER_CLAIM_MAX`).
+Only a successful report settles inputs through its `folded_through_sequence`.
 
-A fleet lease claims the messages that folded into its run through `POST /v1/runners/me/leases/{lease_id}/folds` with `{fencing_token,after_sequence}`. One claim returns at most 32 inputs (`FOLDS_PER_CLAIM_MAX`). The report's `folded_through_sequence` names the last one the run answered; only a succeeded report settles them.
+Authoring offers carry the scoped model capability and current candidate identity, revision and definition when present.
+Fence and sequence values are decimal strings; the attempt identifier and capability are machine-only.
+The capability accompanies model calls on the authenticated session.
 
-```text
-{kind:"fleet", ...existing fleet lease payload}
-{kind:"authoring",lease_id,attempt_id,draft_id,sequence,fence,
- expires_at,model:{ref,provider,model,pricing},
- model_access:{token,expires_at,invocation_path},candidate?:Candidate,
- messages[],limits:{input_per_call:<selected physical model window>,
- output_per_turn:<saved model maximum>,max_calls:8,wall_seconds:300,provider_timeout_seconds:300}}
-```
-
-Authoring model access is a daemon-issued opaque capability plus the runner's existing bearer authentication. Fence, generation, and sequence are decimal strings. Internal attempt ID and capability are machine-only.
-
-The lease includes the current candidate identity/revision/definition when present, so a runner can address its first edit.
-
-Four new machine routes under `/v1/runners/me/authoring-leases/{lease_id}`:
-
-| Method / suffix | Request | Success | Failures |
-|---|---|---|---|
-| POST `/renew` | `{fence,usage:Meter}`; current own unexpired lease | 200 `{expires_at,stop_requested,remaining_output_tokens,model_access_expires_at}`; capability hash remains bound to renewed lease | FENCE, HIDDEN, STATE, BALANCE, AUTH |
-| POST `/activity` | `{fence,sequence,activity_sequence,event:{kind:"progress",text}|{kind:"proposal",proposal:Proposal}}`; bounded and no arbitrary channels | 202 `{accepted,replayed,candidate?:{id,revision}}`; proposal receipt includes committed version, progress omits it | FENCE, HIDDEN, INPUT, STALE, STATE, REPLAY |
-| POST `/reports` | `{kind:"terminal",fence,report_id,outcome:"completed"|"failed"|"timed_out"|"cancelled",failure_reason?,answer?,usage:Meter}`; report_id UUIDv7; accounting-only variant and independent replay rules below | 200 `{settled,replayed,sequence,state}`; fenced stale body cannot mutate candidate, private text, or charge twice | FENCE, REPLAY, INPUT, HIDDEN, STATE |
-| POST `/model-calls` | `ModelCall` below; runner bearer plus lease capability; one in-flight dispatch | 200 `ModelResult` after durable dispatch-result receipt; exact completed retry returns its stored result | AUTH, HIDDEN, FENCE, REPLAY, STATE, MODEL, TOKEN, PROVIDER, UNKNOWN, TIMEOUT, DEPENDENCY |
+Authoring model calls, proposals, renewals and completion use `authoring_model`, `authoring_activity`, `authoring_renew` and `authoring_report` messages.
+The [runner guide](runner_protocol.md#authoring-operations-on-the-native-session) describes their authority and recovery rules.
+Their existing proposal, accounting and dispatch rules follow below.
 
 `Proposal={kind:"initialize",definition:Definition}` is allowed only when no candidate exists and caps first generated instructions at 12,288 characters. Subsequent proposals are `{kind:"edit",base_candidate_id,base_candidate_revision,config_ops:ConfigOp[],instruction_edits:InstructionEdit[]}`. Match both base fields against the current version before atomically replacing it.
 
@@ -389,9 +380,12 @@ Current membership, model and capability checks precede private reads. Expired o
 
 Responses fit 128 KiB and the remaining output-token allowance.
 
-A proposal result is untrusted until `/activity` commits it. No separate model-call read route or raw provider response exists.
+A proposal result is untrusted until `authoring_activity` commits it.
+No separate model-call read route or raw provider response exists.
 
-1. Admission creates a random 256-bit token, stores its hash, and binds it to runner, owner, draft, sequence, attempt, fence, generation, and pinned model. Issue it only in the lease over the authenticated daemon transport. Never log or spool it.
+1. Admission creates a random 256-bit token, stores its hash and binds it to the current runner, owner, draft and attempt.
+   The binding also covers sequence, fence, generation and pinned model.
+   Issue the capability only in the lease over the authenticated daemon transport; never log it or write it to disk.
 2. The daemon verifies runner identity, token hash/bindings, current membership/model policy, cancellation, and unexpired lease using authoritative database time. Capability expiry follows the lease and cannot exceed the attempt's 300-second deadline; renewal cannot revive expiry.
 3. Measure the complete request under subject → attempt locks, release the transaction, and confirm its billed hold. Recheck authority, exact request digest and output allowance under a second transaction. Commit dispatch identity before provider access; no provider request holds these locks.
 
@@ -401,7 +395,9 @@ A proposal result is untrusted until `/activity` commits it. No separate model-c
 
    Apply the outbound address guard and reject unsafe private/custom destinations. Authoring transport disables redirects and every provider retry. Each physical dispatch consumes one index and the shared output/time budget; ordinary runtime transport stays separate.
 
-5. Save bounded result and authoritative usage before returning 200. Exact completed replay rechecks live authorization and returns the same result without dispatch/debit. Changed-body reuse returns REPLAY.
+5. Save the bounded result and authoritative usage before answering `authoring_model`.
+   Exact completed replay rechecks live authorization and returns the saved result without another provider call or charge.
+   Changed-body reuse returns REPLAY.
 
    A crash after dispatch intent, a lost provider reply, or missing usage marks the obligation unknown and fences further calls. Never redispatch that intent.
 
@@ -416,10 +412,11 @@ Purpose adapters retain their credential, authorization and tool boundaries.
 Dispatch intent records its deadline, bounded by the attempt expiry and the shared 300-second provider limit.
 
 Replay uses that recorded deadline; an unfinished intent never sends the request again.
-The runner allows 310 seconds for the HTTP response and receipt settlement.
+The runner allows 310 seconds for the native answer and receipt settlement.
 The [shared chat explanation](shared_chat_verification.md#backend-ownership) describes the methods and failure behavior.
 
-The capability grants no runtime tools, memory, schedules, fleet messages, or credential minting. Existing raw-key runtime delivery remains source evidence, not this implementation: `afd_fleet`'s lease answer and `af_providers`' connect module. The new machine route and daemon provider adapter are explicit additions in the file inventory; person-route counts remain 17/7/2.
+The authoring capability grants no runtime tools, memory, schedules, fleet messages or credential minting.
+Fleet runtime credentials retain their separate path through `afd_fleet`'s lease answer and `af_providers`' connect module.
 
 `Meter={knowledge:"known"|"unknown",calls,input_tokens?,output_tokens?,runtime_ms,provider_cost_nanos?}` is cumulative, monotone, and bound-checked against pinned model prices. Daemon dispatch receipts supply authoritative provider usage; runner meters cannot replace those facts or clear an unknown obligation. Unknown usage is never relabeled known by local estimates.
 

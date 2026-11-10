@@ -22,7 +22,7 @@ use af_crypto::entropy::Entropy;
 use af_wire::lease::AcceptedKinds;
 use af_wire::report::{Outcome, RenewRequest, ReportRequest};
 use afd_billing::Nanos;
-use afd_db::test_util::mint_uuid7;
+use afd_db::test_util::mint_id;
 use afd_fleet::lease::Renewed;
 use afd_fleet::lease::sql::meter::Metering;
 
@@ -30,18 +30,18 @@ use crate::integration_held_sandbox::report::processed;
 use crate::report_seed::{Held, held};
 
 /// A host's degraded verdict, which bars it from claiming and renewing alike.
-const DEGRADE_HOST: &str = "UPDATE runner.runners SET degraded_reason = $2 WHERE id = $1::uuid";
+const DEGRADE_HOST: &str = "UPDATE runner.runners SET degraded_reason = $2 WHERE id = $1";
 const HOST_DEGRADED: &str = "cgroup controller missing";
 
 /// Moves the lease's runtime cursor past the database clock, so the next
 /// window measures no run time at all.
 const CURSOR_AHEAD: &str = "UPDATE runner.leases \
-     SET last_metered_at = now() + interval '1 hour' WHERE id = $1::uuid";
+     SET last_metered_at = now() + interval '1 hour' WHERE id = $1";
 
 /// Ends the leased event before its report lands, as a redelivery's first
 /// report would have.
 const FINISH_EVENT: &str = "UPDATE fleet.events SET status = $3 \
-     WHERE fleet_id = $1::uuid AND event_id = $2";
+     WHERE fleet_id = $1 AND event_id = $2";
 
 /// A finished event's status.
 const PROCESSED: &str = "processed";
@@ -59,19 +59,28 @@ const OVERFLOWING_LINES: &str = "INSERT INTO billing.usage_lines \
             l.provider, l.model, l.posture, now(), $3::bigint, 0, 0, 0, 0, 0, 0, 0, 0, \
             now(), now(), now() \
        FROM runner.leases l JOIN fleet.fleets f ON f.id = l.fleet_id \
-            CROSS JOIN (VALUES (0, $5::uuid), (1, $6::uuid)) AS s(seq, id) \
-      WHERE l.id = $4::uuid";
+            CROSS JOIN (VALUES (0, $5), (1, $6)) AS s(seq, id) \
+      WHERE l.id = $4";
 
 /// The line a failed token read is logged under.
 const TOKENS_UNREAD: &str = "report_run_tokens_unread";
 
-/// The line an answered no-work poll is logged under.
-const NO_WORK: &str = "runner_lease_no_work";
+/// One value a fixture statement binds, in its column's own type.
+#[derive(Debug, Clone, Copy)]
+enum Bind<'a> {
+    /// An identifier, bound as a `uuid`.
+    Id(&'a Uuid7),
+    /// Anything the statement reads as text, or casts from it.
+    Text(&'a str),
+}
 
-async fn execute(held: &Held, statement: &'static str, binds: &[&str]) {
+async fn execute(held: &Held, statement: &'static str, binds: &[Bind<'_>]) {
     let mut query = sqlx::query(statement);
     for bind in binds {
-        query = query.bind(*bind);
+        query = match *bind {
+            Bind::Id(id) => query.bind(id),
+            Bind::Text(text) => query.bind(text),
+        };
     }
     query
         .execute(
@@ -94,8 +103,8 @@ async fn execute(held: &Held, statement: &'static str, binds: &[&str]) {
 async fn test_a_renewal_its_host_or_its_lease_no_longer_allows_is_lost() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let lease_id = held.issued.lease_id.as_str();
-    let stranger = mint_uuid7();
+    let lease_id = &held.issued.lease_id;
+    let stranger = mint_id();
 
     let unknown = held
         .leases
@@ -111,14 +120,19 @@ async fn test_a_renewal_its_host_or_its_lease_no_longer_allows_is_lost() {
         )
         .await
         .expect("an unknown host is a verdict");
-    execute(&held, DEGRADE_HOST, &[held.runner.as_str(), HOST_DEGRADED]).await;
+    execute(
+        &held,
+        DEGRADE_HOST,
+        &[Bind::Id(&held.runner), Bind::Text(HOST_DEGRADED)],
+    )
+    .await;
     let degraded = plane
         .renew(&held.runner, lease_id, RenewRequest::default(), held.now)
         .await;
     execute(
         &held,
-        "UPDATE runner.runners SET degraded_reason = NULL WHERE id = $1::uuid",
-        &[held.runner.as_str()],
+        "UPDATE runner.runners SET degraded_reason = NULL WHERE id = $1",
+        &[Bind::Id(&held.runner)],
     )
     .await;
     plane
@@ -143,8 +157,8 @@ async fn test_a_renewal_its_host_or_its_lease_no_longer_allows_is_lost() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_renewal_that_measured_nothing_charges_nothing() {
     let held = held().await;
-    let lease_id = held.issued.lease_id.as_str();
-    execute(&held, CURSOR_AHEAD, &[lease_id]).await;
+    let lease_id = &held.issued.lease_id;
+    execute(&held, CURSOR_AHEAD, &[Bind::Id(lease_id)]).await;
 
     let (expires_at, charged) = held
         .fixtures
@@ -166,24 +180,19 @@ async fn test_a_renewal_that_measured_nothing_charges_nothing() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
     let held = held().await;
-    let lease_id = held.issued.lease_id.as_str();
-    execute(&held, CURSOR_AHEAD, &[lease_id]).await;
-    execute(
-        &held,
-        FINISH_EVENT,
-        &[&held.fleet, &held.event_id, PROCESSED],
-    )
-    .await;
+    let lease_id = &held.issued.lease_id;
+    execute(&held, CURSOR_AHEAD, &[Bind::Id(lease_id)]).await;
+    finish_reported_event(&held).await;
     execute(
         &held,
         OVERFLOWING_LINES,
         &[
-            afd_billing::sql::work::FLEET_LEASE,
-            &held.event_id,
-            &i64::MAX.to_string(),
-            lease_id,
-            mint_uuid7().as_str(),
-            mint_uuid7().as_str(),
+            Bind::Text(afd_billing::sql::work::FLEET_LEASE),
+            Bind::Id(&held.event_id),
+            Bind::Text(&i64::MAX.to_string()),
+            Bind::Id(lease_id),
+            Bind::Id(&mint_id()),
+            Bind::Id(&mint_id()),
         ],
     )
     .await;
@@ -204,7 +213,7 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
 
     let unread = capture.only(TOKENS_UNREAD);
     drop(capture);
-    assert_eq!(unread.field("lease_id"), Some(lease_id));
+    assert_eq!(unread.field("lease_id"), Some(lease_id.as_str()));
     assert_eq!(
         unread.field("error_code"),
         Some(error_code::INTERNAL_DB_QUERY.as_str())
@@ -221,29 +230,55 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
 async fn test_a_runner_with_no_lease_or_no_host_row_gets_no_work() {
     let held = held().await;
     let plane = held.fixtures.plane();
-    let fleet = Uuid7::parse(&held.fleet).expect("a fleet id is a v7 spelling");
     let drafts = afd_authoring::Drafts::new(
         held.fixtures.database.clone(),
         Entropy::new(),
         std::sync::Arc::clone(&plane.biller),
     );
-    let stranger = mint_uuid7();
+    let stranger = mint_id();
 
-    let window = plane.hydrate(&held.spare, &fleet).await;
+    let window = plane.hydrate(&held.spare, &held.fleet).await;
     let capture = Capture::install();
     let answer = plane
-        .claim(&drafts, &stranger, &[], AcceptedKinds::ALL, false, held.now)
+        .claim_with(
+            &drafts,
+            afd_fleet::lease::OfferRequest {
+                runner: &stranger,
+                held: &[],
+                degraded: false,
+                now: held.now,
+            },
+            AcceptedKinds::ALL,
+            |_lease, _metadata| (),
+        )
         .await
         .expect("an unknown host is answered, not refused");
 
-    let line = capture.only(NO_WORK);
+    assert!(
+        !capture
+            .events()
+            .iter()
+            .any(|event| event.field("event") == Some("runner_lease_no_work"))
+    );
     drop(capture);
     assert_eq!(
         window.err().map(|error| error.code()),
         Some(error_code::RUN_LEASE_NOT_FOUND)
     );
-    assert!(answer.contains("\"lease\":null"), "{answer}");
-    assert_eq!(line.field("runner_id"), Some(stranger.as_str()));
+    assert!(answer.is_none(), "{answer:?}");
     drop(plane);
     held.fixtures.cleanup().await;
+}
+
+async fn finish_reported_event(held: &Held) {
+    execute(
+        held,
+        FINISH_EVENT,
+        &[
+            Bind::Id(&held.fleet),
+            Bind::Id(&held.event_id),
+            Bind::Text(PROCESSED),
+        ],
+    )
+    .await;
 }

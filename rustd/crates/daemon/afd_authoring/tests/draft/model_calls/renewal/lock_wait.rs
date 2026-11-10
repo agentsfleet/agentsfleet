@@ -25,9 +25,9 @@ async fn expiry_during_observed_attempt_wait_denies_renewal_without_meter_advanc
     let mut connection = f.connection().await;
     let mut held = connection.begin().await.expect("attempt blocker");
     let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM authoring.attempts WHERE id=$1::uuid FOR UPDATE",
+        "SELECT pg_backend_pid() FROM authoring.attempts WHERE id=$1 FOR UPDATE",
     )
-    .bind(a.id.as_str())
+    .bind(&a.id)
     .fetch_one(&mut *held)
     .await
     .expect("own attempt lock");
@@ -36,7 +36,7 @@ async fn expiry_during_observed_attempt_wait_denies_renewal_without_meter_advanc
             .await
             .expect("renewal actually waits");
         sqlx::query(EXPIRE_NOW)
-            .bind(a.id.as_str())
+            .bind(&a.id)
             .execute(&mut *held)
             .await
             .expect("expiry wins while waiting");
@@ -72,13 +72,13 @@ async fn blocked(f: &Fixture, pid: i32) {
 /// Leaves the attempt's lease one second live on database time.
 const ONE_SECOND_LEFT: &str = "UPDATE authoring.attempts \
 SET lease_expires_at=date_trunc('milliseconds',clock_timestamp())+interval '1 second' \
-WHERE id=$1::uuid";
+WHERE id=$1";
 
 // The expiry is read once, before the hold, and the wait compares it with the
 // database clock only: polling `authoring.attempts` while the hold stands would
 // queue behind any other test's DDL on that table, which itself waits on this
 // renewal — a cross-test wait Postgres cannot see as a deadlock.
-const EXPIRES: &str = "SELECT lease_expires_at::text FROM authoring.attempts WHERE id=$1::uuid";
+const EXPIRES: &str = "SELECT lease_expires_at::text FROM authoring.attempts WHERE id=$1";
 /// Whether the attempt's lease has run out on database time.
 const LAPSED: &str = "SELECT $1::timestamptz <= clock_timestamp()";
 
@@ -89,13 +89,13 @@ async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_cloc
     let a = Attempt::start(&f, f.access(), Source::Blank).await;
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     sqlx::query(ONE_SECOND_LEFT)
-        .bind(a.id.as_str())
+        .bind(&a.id)
         .execute(&mut *f.connection().await)
         .await
         .expect("a lease about to lapse");
     let before = snapshot(&f, &a).await;
     let expires: String = sqlx::query_scalar(EXPIRES)
-        .bind(a.id.as_str())
+        .bind(&a.id)
         .fetch_one(&mut *f.connection().await)
         .await
         .expect("read the lease expiry");
@@ -104,9 +104,9 @@ async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_cloc
     // The model check reads the owner's model FOR SHARE, after the guard has
     // already passed the still-live lease.
     let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM model.tenant_models WHERE id=$1::uuid FOR UPDATE",
+        "SELECT pg_backend_pid() FROM model.tenant_models WHERE id=$1 FOR UPDATE",
     )
-    .bind(f.model.as_str())
+    .bind(&f.model)
     .fetch_one(&mut *held)
     .await
     .expect("hold the owner's model");
@@ -138,7 +138,7 @@ async fn expiry_while_the_model_check_waits_denies_the_renewal_at_its_final_cloc
 }
 
 /// Takes the runner's host row only if nobody holds it.
-const TAKE_HOST_NOW: &str = "SELECT id FROM runner.runners WHERE id=$1::uuid FOR UPDATE NOWAIT";
+const TAKE_HOST_NOW: &str = "SELECT id FROM runner.runners WHERE id=$1 FOR UPDATE NOWAIT";
 
 /// A renewal that waits on a busy draft waits holding nothing of the
 /// runner's: the host row stays free for the runner's other placements, and
@@ -151,13 +151,12 @@ async fn test_a_renewal_waiting_on_a_busy_draft_leaves_the_host_free() {
     let _calls = fixture::calls(&f, &a, Arc::new(Provider::known())).await;
     let mut connection = f.connection().await;
     let mut held = connection.begin().await.expect("draft holder");
-    let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE",
-    )
-    .bind(a.draft.id.as_str())
-    .fetch_one(&mut *held)
-    .await
-    .expect("hold the draft");
+    let pid: i32 =
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+            .bind(&a.draft.id)
+            .fetch_one(&mut *held)
+            .await
+            .expect("hold the draft");
     let probe = async {
         tokio::time::timeout(Duration::from_secs(5), blocked(&f, pid))
             .await
@@ -165,7 +164,7 @@ async fn test_a_renewal_waiting_on_a_busy_draft_leaves_the_host_free() {
         let mut session = f.connection().await;
         let mut taken = session.begin().await.expect("host probe");
         let host = sqlx::query(TAKE_HOST_NOW)
-            .bind(f.runner.as_str())
+            .bind(&f.runner)
             .fetch_optional(&mut *taken)
             .await;
         taken.rollback().await.expect("release the probe");

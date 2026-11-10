@@ -1,14 +1,15 @@
 //! Apply preserves the instance overlay; Restore reads the newly pinned recipe.
 
 use super::*;
+use af_core::id::Uuid7;
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn overlay_survives_apply_after_registration_and_restore_uses_the_new_base() {
     let scheduled = Scheduled::create().await;
     let overlaid = pause_with_instance_intent(&scheduled).await;
-    let id = overlaid["schedule_id"].as_str().expect("schedule ID");
-    record_registered_identity(&scheduled, id).await;
+    let id = crate::authoring::id_field(&overlaid["schedule_id"]);
+    record_registered_identity(&scheduled, &id).await;
     apply_revised_recipe(&scheduled).await;
     let current = scheduled.read().await;
     assert_eq!(current["schedule_id"], overlaid["schedule_id"]);
@@ -53,8 +54,8 @@ async fn pause_with_instance_intent(scheduled: &Scheduled) -> Value {
 /// Stands in for a successful upstream registration, which replaces
 /// `source_key`. Inheritance must keep its own identity so a subsequent Apply
 /// does not allocate a new row.
-async fn record_registered_identity(scheduled: &Scheduled, id: &str) {
-    sqlx::query("UPDATE fleet.schedules SET provider_schedule_id=$2 WHERE id=$1::uuid")
+async fn record_registered_identity(scheduled: &Scheduled, id: &Uuid7) {
+    sqlx::query("UPDATE fleet.schedules SET provider_schedule_id=$2 WHERE id=$1")
         .bind(id)
         .bind(format!("fleet-schedule-{id}"))
         .execute(
@@ -90,12 +91,12 @@ async fn apply_revised_recipe(scheduled: &Scheduled) {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn restore_after_repeated_applies_reads_the_latest_base_and_admits_one_of_two_racers() {
     let scheduled = Scheduled::create().await;
     let overlaid = pause_with_instance_intent(&scheduled).await;
-    let id = overlaid["schedule_id"].as_str().expect("schedule ID");
-    record_registered_identity(&scheduled, id).await;
+    let id = crate::authoring::id_field(&overlaid["schedule_id"]);
+    record_registered_identity(&scheduled, &id).await;
     apply_revised_recipe(&scheduled).await;
     apply_second_recipe(&scheduled).await;
     let current = scheduled.read().await;

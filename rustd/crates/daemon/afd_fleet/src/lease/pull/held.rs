@@ -10,12 +10,13 @@
 use std::time::Instant;
 
 use af_core::id::Uuid7;
+use af_wire::lease::LeasePayload;
 use jiff::Timestamp;
 
-use super::Plane;
-use super::Polled;
+use super::LeaseService;
 use super::step::{Leased, Step};
 use crate::error::Result;
+use crate::lease::Offered;
 use crate::lease::affinity::Fence;
 use crate::lease::envelope::Acquired;
 
@@ -23,24 +24,22 @@ use crate::lease::envelope::Acquired;
 struct Held {
     fleet_id: Uuid7,
     fence: Fence,
-    event_id: String,
+    event_id: Uuid7,
 }
 
-impl Plane {
-    /// Every step after a won claim, then what becomes of the claim.
-    ///
-    /// A lease keeps it. Anything else frees it. A park stamps the admission
-    /// and frees the slot together, so later work waits for the gate answer.
-    ///
-    /// `began` is when the poll began on the monotonic clock, so the issued
-    /// lease's queue wait can count the time the poll itself took.
-    pub(super) async fn run_claimed(
+impl LeaseService {
+    pub(super) async fn run_claimed_with<T, F>(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
         now: Timestamp,
         began: Instant,
-    ) -> Result<Polled> {
+        emit: &mut F,
+    ) -> Result<Option<T>>
+    where
+        T: Send,
+        F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
+    {
         let held = Held {
             fleet_id: acquired.fleet_id.clone(),
             fence: acquired.fence,
@@ -51,17 +50,20 @@ impl Plane {
             .await
             .map(Step::proceed)
         {
-            Ok(Ok(admitted)) => self.deliver(runner_id, admitted, now, began).await,
+            Ok(Ok(admitted)) => {
+                self.deliver_with(runner_id, admitted, now, began, emit)
+                    .await
+            }
             Ok(Err(ended)) => Ok(ended),
             Err(fault) => Err(fault),
         };
         match pass {
-            Ok(Step::Go(Leased(answer))) => Ok(Polled::Lease(answer)),
-            Ok(Step::Stop(answer)) => {
+            Ok(Step::Go(Leased(answer))) => Ok(Some(answer)),
+            Ok(Step::Stop) => {
                 self.let_go(&held).await;
-                Ok(Polled::Empty(answer))
+                Ok(None)
             }
-            Ok(Step::Park(answer)) => {
+            Ok(Step::Park) => {
                 if let Err(fault) = self
                     .leases
                     .park(&held.fleet_id, &held.event_id, held.fence)
@@ -70,7 +72,7 @@ impl Plane {
                     self.let_go(&held).await;
                     return Err(fault);
                 }
-                Ok(Polled::Empty(answer))
+                Ok(None)
             }
             Err(fault) => {
                 self.let_go(&held).await;
@@ -108,11 +110,12 @@ mod tests {
         let fleet = acquired.fleet_id.clone();
 
         let fault = test_dead::plane()
-            .run_claimed(
+            .run_claimed_with(
                 acquired,
                 &test_dead::id(9),
                 test_dead::AT,
                 std::time::Instant::now(),
+                &mut |_lease, _metadata| (),
             )
             .await
             .expect_err("an installed-fleet read with no datastore is a fault, not a decision");

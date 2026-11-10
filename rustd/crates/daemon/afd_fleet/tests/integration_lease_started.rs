@@ -25,7 +25,6 @@
 
 use crate::seed;
 use crate::support;
-use af_core::id::Uuid7;
 use af_observability::test_util::Capture;
 use afd_fleet::lease::{Billed, Kind};
 
@@ -50,7 +49,7 @@ const RECLAIMED: &str = "reclaimed";
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_fresh_grant_counts_one_run() {
     let capture = Capture::install();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [runner],
         fleet,
@@ -80,7 +79,7 @@ async fn test_fresh_grant_counts_one_run() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn test_reclaim_counts_as_reclaimed() {
     let capture = Capture::install();
-    let fixtures = Fixtures::create_with_queue().await;
+    let fixtures = Fixtures::create().await;
     let Seeded {
         runners: [first, second],
         fleet,
@@ -97,7 +96,7 @@ async fn test_reclaim_counts_as_reclaimed() {
         .record_received(&held)
         .await
         .expect("the narrative log must open");
-    let tenant_id = Uuid7::parse(&tenant).expect("the fixture id is a v7 spelling");
+    let tenant_id = tenant.clone();
     leases
         .issue(
             &first,

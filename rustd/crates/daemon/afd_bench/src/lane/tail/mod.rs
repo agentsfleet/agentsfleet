@@ -1,19 +1,19 @@
 //! What the live tail costs: per delivered frame as viewers pile onto one
 //! fleet, and per open stream as a replica holds more of them.
 //!
-//! # Two ladders, one hub
+//! # Three ladders, one broker
 //!
 //! ```text
-//!   publisher ──SPUBLISH──► Dragonfly ──push──► hub (one per process)
-//!                                              │  broadcast per channel
-//!                                              ├──► viewer 1 ─► afd_sse tail ─► frame
-//!                                              ├──► viewer 2 ─► …
-//!                                              └──► viewer N
+//!   publisher ──publish──► NATS ──push──► hub (one per process)
+//!                                       │  broadcast per subject
+//!                                       ├──► viewer 1 ─► afd_sse tail ─► frame
+//!                                       ├──► viewer 2 ─► …
+//!                                       └──► viewer N
 //! ```
 //!
 //! The VIEWER ladder puts 1, 64, 256 and 1024 viewers on one fleet's channel
 //! and publishes frames of 200 B, 4 KiB and 64 KiB through the product's own
-//! `SPUBLISH` path. Each viewer is the per-fleet SSE stream the tenant route
+//! Bus publish path. Each viewer is the per-fleet SSE stream the tenant route
 //! serves (`afd_sse::Live::tail_of`), so what a frame costs includes the
 //! per-viewer copy and the frame built from it — the costs a shared payload
 //! would remove. It reports allocations, runtime busy time and publish-to-
@@ -23,6 +23,11 @@
 //! own fleet, holds each through one delivered frame, and reports the heap
 //! each one keeps and the p95 of one frame published to every one of them.
 //! Those are the numbers `SSE_MAX_STREAMS` should be sized from.
+//!
+//! The WAKE ladder times one doorbell ring from publish to the first of 1, 2
+//! and 4 replicas that takes it, and counts the rings none took within a
+//! second ([`wake`]). It lives here because, like a frame, a ring is one
+//! broker hop, and the broker comparison reads both.
 //!
 //! # Every frame must arrive, so the publisher waits for the slowest viewer
 //!
@@ -40,9 +45,9 @@
 mod publish;
 mod streams;
 mod viewers;
+mod wake;
 
-use afd_dragonfly::FleetStreams;
-use afd_sse::{Ceiling, Live};
+use afd_sse::{Live, StreamLimit};
 
 use crate::allocations;
 use crate::datastores::Datastores;
@@ -79,6 +84,9 @@ const BUSY_US_PER_FRAME: &str = "busy_us_per_delivered_frame";
 /// Series key: publish-to-receive latency at the 95th percentile.
 const RECEIVE_P95_MS: &str = "receive_p95_ms";
 
+/// Series key: publish-to-receive latency at the 99th percentile.
+const RECEIVE_P99_MS: &str = "receive_p99_ms";
+
 /// Series key: the fraction of frames × viewers that arrived.
 const DELIVERED_FRACTION: &str = "delivered_fraction";
 
@@ -94,6 +102,9 @@ const HEAP_BYTES_PER_STREAM: &str = "heap_bytes_per_stream";
 /// Series key: publish-to-receive p95 of one frame per stream, per stream rung.
 const STREAM_RECEIVE_P95_MS: &str = "stream_receive_p95_ms";
 
+/// Series key: publish-to-receive p99 of one frame per stream, per stream rung.
+const STREAM_RECEIVE_P99_MS: &str = "stream_receive_p99_ms";
+
 /// Measurement key: frames × viewers that never arrived, over every rung,
 /// and timed frames a live stream never heard.
 pub const FRAMES_UNDELIVERED: &str = "frames_undelivered";
@@ -104,13 +115,14 @@ pub const LAG_NOTICES: &str = "lag_notices";
 /// Measurement key: streams that never received their frame, over every rung.
 pub const STREAMS_UNREACHED: &str = "streams_unreached";
 
-/// Run both ladders and return the report.
+/// Run the three ladders and return the report.
 ///
 /// # Errors
 ///
 /// A cap refusal before anything opens, a hub that will not start, a publish
-/// Dragonfly refused, or a lost viewer task. A frame that did not arrive is a
-/// measurement, not an error.
+/// the Bus refused, a replica connection that will not open, or a lost viewer
+/// or listener task. A frame or ring that did not arrive is a measurement, not
+/// an error.
 pub async fn run(
     profile: Profile,
     provenance: Provenance,
@@ -124,19 +136,16 @@ pub async fn run(
         .copied()
         .unwrap_or(0);
     profile.check(Parameter::Concurrency, widest)?;
-    let hub = stores.hub().await?;
-    let live = Live::new(
-        hub.clone(),
-        Ceiling::new(usize::try_from(widest).unwrap_or(usize::MAX)),
-    );
-    let publisher = FleetStreams::new(stores.queue.clone());
+    let bus = stores.bus.clone();
+    let live = Live::new(bus.clone(), StreamLimit::new(usize::try_from(widest)?));
+    let publisher = bus.clone();
     let counting = allocations::installed();
     let mut report = Report::new(Lane::Tail, profile, provenance);
     report.created = true;
     let mut missing = Totals::default();
     for viewers in VIEWER_LADDER {
         for bytes in PAYLOAD_LADDER {
-            let fleet = prefix.name(&format!("tail-{viewers}-{bytes}"));
+            let fleet = af_crypto::entropy::Entropy::new().uuid7(af_core::clock::now())?;
             let rung = viewers::rung(&live, &publisher, &fleet, viewers, bytes).await?;
             missing.frames += rung.expected().saturating_sub(rung.delivered);
             missing.lags += rung.lagged;
@@ -149,7 +158,7 @@ pub async fn run(
         missing.frames += rung.live.saturating_sub(rung.timed);
         rung.record(&mut report, counting);
     }
-    hub.shutdown();
+    wake::ladder(stores, &mut report).await?;
     report.measurement(FRAMES_UNDELIVERED, count(missing.frames));
     report.measurement(LAG_NOTICES, count(missing.lags));
     report.measurement(STREAMS_UNREACHED, count(missing.streams));
@@ -166,27 +175,29 @@ struct Totals {
 }
 
 /// The viewer rungs' series, in the order a summary line prints them.
-const VIEWER_COLUMNS: [&str; 6] = [
+const VIEWER_COLUMNS: [&str; 7] = [
     LADDER_VIEWERS,
     LADDER_PAYLOAD_BYTES,
     DELIVERED_FRACTION,
     ALLOCATIONS_PER_FRAME,
     BUSY_US_PER_FRAME,
     RECEIVE_P95_MS,
+    RECEIVE_P99_MS,
 ];
 
 /// The stream rungs' series, in the order a summary line prints them.
-const STREAM_COLUMNS: [&str; 4] = [
+const STREAM_COLUMNS: [&str; 5] = [
     LADDER_STREAMS,
     STREAMS_LIVE,
     HEAP_BYTES_PER_STREAM,
     STREAM_RECEIVE_P95_MS,
+    STREAM_RECEIVE_P99_MS,
 ];
 
 /// The headline totals, printed last.
 const TOTALS: [&str; 3] = [FRAMES_UNDELIVERED, LAG_NOTICES, STREAMS_UNREACHED];
 
-/// Both ladders as `key=value` lines, one per rung, then the totals.
+/// Every ladder as `key=value` lines, one per rung, then the totals.
 ///
 /// Printed rather than left only in the file because the ladder is read by a
 /// person deciding a stream ceiling, and twelve rungs read better as twelve
@@ -196,6 +207,7 @@ const TOTALS: [&str; 3] = [FRAMES_UNDELIVERED, LAG_NOTICES, STREAMS_UNREACHED];
 pub fn summary(report: &Report) -> String {
     let mut lines = rows(report, &VIEWER_COLUMNS);
     lines.extend(rows(report, &STREAM_COLUMNS));
+    lines.extend(wake::summary_lines(report));
     lines.push(
         TOTALS
             .iter()

@@ -13,6 +13,7 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
+use af_core::id::Uuid7;
 use afd_fleet::lease::sql::meter::Metering;
 use afd_fleet::lease::{Renewed, Settled};
 
@@ -22,8 +23,8 @@ use crate::report_seed::held;
 const ROUNDS: usize = 5;
 
 /// The usage lines `lease` has logged, by line number.
-async fn line_numbers(fixtures: &crate::support::Fixtures, lease: &str) -> Vec<i64> {
-    sqlx::query_scalar("SELECT seq FROM billing.usage_lines WHERE work_id = $1::uuid ORDER BY seq")
+async fn line_numbers(fixtures: &crate::support::Fixtures, lease: &Uuid7) -> Vec<i64> {
+    sqlx::query_scalar("SELECT seq FROM billing.usage_lines WHERE work_id = $1 ORDER BY seq")
         .bind(lease)
         .fetch_all(
             &mut *fixtures
@@ -65,7 +66,7 @@ async fn two_reports_of_one_lease_log_one_final_line() {
     for _round in 0..ROUNDS {
         let held = held().await;
         held.run_a_slice().await;
-        let lease = held.issued.lease_id.as_str();
+        let lease = &held.issued.lease_id;
         let requests = [request(&held, 0)];
         let report = || {
             held.fixtures
@@ -100,7 +101,7 @@ async fn a_renewal_racing_the_report_numbers_its_line_apart() {
     for _round in 0..ROUNDS {
         let held = held().await;
         held.run_a_slice().await;
-        let lease = held.issued.lease_id.as_str();
+        let lease = &held.issued.lease_id;
         let requests = [request(&held, 0)];
         let renew = held.leases.extend(
             Metering {

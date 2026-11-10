@@ -1,4 +1,4 @@
-//! The lane's Postgres, and the row chain a schedule hangs from.
+//! The lane's Postgres and NATS, and the row chain a schedule hangs from.
 //!
 //! `fleet.schedules.fleet_id` references `fleet.fleets`, which references a
 //! workspace and a tenant, so no schedule test can seed a single row without
@@ -17,7 +17,6 @@
 
 #![expect(
     clippy::expect_used,
-    clippy::panic,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
 // `allow`, not `expect`: this module is compiled once per test binary and each
@@ -29,15 +28,12 @@
     reason = "test support: shared by two test binaries, each using a subset"
 )]
 
-use af_core::env::{EnvSource, ProcessEnv};
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_cron::{NewSchedule, Refused, Schedule, Schedules, Source};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{FleetSeed, TenantSeed, TestDatabase, WorkspaceSeed, mint_id};
-use afd_dragonfly::Dragonfly;
-use afd_dragonfly::config::{DragonflyConfig, DragonflyRole};
 use jiff::Timestamp;
 
 /// The instant the seeded rows are stamped with, and the one a create mints
@@ -47,34 +43,31 @@ pub(crate) const SEED_AT: Timestamp = Timestamp::constant(1_760_000_000, 0);
 /// The status the fixture fleet is seeded live under.
 const FLEET_ACTIVE: &str = "active";
 
-/// The knob `make test-integration-rustd` exports the lane's Dragonfly under.
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-
-/// The knob carrying the lane's CA bundle, where the lane speaks TLS.
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
-
-/// How long anything crossing a datastore is given before the test fails.
-const REQUEST_BUDGET: std::time::Duration = std::time::Duration::from_secs(5);
-
 /// A tenant, workspace and fleet nothing else in the suite addresses.
 pub(crate) struct CronLane {
     lane: TestDatabase,
     pub(crate) database: Db,
+    /// The lane's NATS, which every ledger this lane builds publishes on.
+    bus: afd_bus::Handle,
     pub(crate) store: Schedules,
-    pub(crate) tenant: String,
-    pub(crate) workspace: String,
-    pub(crate) fleet: String,
+    pub(crate) tenant: Uuid7,
+    pub(crate) workspace: Uuid7,
+    pub(crate) fleet: Uuid7,
 }
 
 impl CronLane {
-    /// Opens Postgres and seeds the row chain a schedule needs.
+    /// Opens Postgres and NATS, and seeds the row chain a schedule needs.
     pub(crate) async fn open() -> Self {
         let lane = TestDatabase::shared();
         let database = lane.open(DbRole::Api, &[]).await;
+        let bus = afd_bus::test_util::lane()
+            .await
+            .expect("the lane's NATS: run through make test-integration-rustd");
         let seeded = Self {
             lane,
             store: Schedules::new(database.clone(), Entropy::new()),
             database,
+            bus,
             tenant: mint_id(),
             workspace: mint_id(),
             fleet: mint_id(),
@@ -85,17 +78,17 @@ impl CronLane {
 
     /// This lane's fleet, as the store takes it.
     pub(crate) fn fleet_id(&self) -> Uuid7 {
-        Uuid7::parse(&self.fleet).expect("the minted fleet id is canonical")
+        self.fleet.clone()
     }
 
     /// This lane's workspace, as the store takes it.
     pub(crate) fn workspace_id(&self) -> Uuid7 {
-        Uuid7::parse(&self.workspace).expect("the minted workspace id is canonical")
+        self.workspace.clone()
     }
 
     /// A fresh syncer token, which is just a minted identifier.
     pub(crate) fn token() -> Uuid7 {
-        Uuid7::parse(&mint_id()).expect("a minted token is canonical")
+        mint_id()
     }
 
     /// Creates one schedule on this lane's fleet, expecting it to be admitted.
@@ -172,35 +165,12 @@ impl CronLane {
             .expect("the lane's Postgres must answer")
     }
 
-    /// The lane's Dragonfly, opened on demand.
-    ///
-    /// Not held on the struct: only the fire suite needs a queue, and opening
-    /// one for every store and fence case would make a datastore lane out of a
-    /// Postgres lane for no gain.
     /// The admission ledger every fire in this suite writes through.
     ///
-    /// Built from the lane's own pool and a live queue, so a test names what it
-    /// is exercising rather than restating how a ledger is assembled.
-    pub(crate) async fn admissions(&self) -> afd_admission::Admissions {
-        afd_admission::Admissions::for_tests(self.database.clone(), Self::queue().await)
-    }
-
-    pub(crate) async fn queue() -> Dragonfly {
-        afd_dragonfly::test_util::connect_live(&Self::redis())
-            .await
-            .expect("the lane's Dragonfly must be reachable")
-    }
-
-    /// The lane's Dragonfly configuration.
-    pub(crate) fn redis() -> DragonflyConfig {
-        let url = ProcessEnv.get(DRAGONFLY_URL_KNOB).unwrap_or_else(|| {
-            panic!(
-                "{DRAGONFLY_URL_KNOB} is unset — run these through `make test-integration-rustd`"
-            )
-        });
-        DragonflyConfig::from_url(DragonflyRole::Default, url)
-            .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into))
-            .with_request_timeout(REQUEST_BUDGET)
+    /// Built from the lane's own pool and its bus, so a test names what it is
+    /// exercising rather than restating how a ledger is assembled.
+    pub(crate) fn admissions(&self) -> afd_admission::Admissions {
+        afd_admission::Admissions::for_tests(self.database.clone(), self.bus.clone())
     }
 
     /// One connection on the lane, for the direct reads a case needs.
@@ -223,9 +193,9 @@ impl CronLane {
         sqlx::query(
             "UPDATE fleet.schedules \
              SET sync_lease_expires_at = clock_timestamp() - interval '1 millisecond' \
-             WHERE id = $1::uuid",
+             WHERE id = $1",
         )
-        .bind(schedule.as_str())
+        .bind(schedule)
         .execute(&mut *connection)
         .await
         .expect("expiring a lease");
@@ -240,9 +210,9 @@ impl CronLane {
         let mut connection = self.connection().await;
         sqlx::query(
             "UPDATE fleet.schedules SET fire_at = updated_at - interval '1 minute' \
-             WHERE id = $1::uuid",
+             WHERE id = $1",
         )
-        .bind(schedule.as_str())
+        .bind(schedule)
         .execute(&mut *connection)
         .await
         .expect("backdating a fire instant");
@@ -251,13 +221,11 @@ impl CronLane {
     /// The rows this lane's fleet currently holds.
     pub(crate) async fn count(&self) -> i64 {
         let mut connection = self.connection().await;
-        sqlx::query_scalar::<_, i64>(
-            "SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1::uuid",
-        )
-        .bind(self.fleet.as_str())
-        .fetch_one(&mut *connection)
-        .await
-        .expect("counting this fleet's schedules")
+        sqlx::query_scalar::<_, i64>("SELECT count(*) FROM fleet.schedules WHERE fleet_id = $1")
+            .bind(&self.fleet)
+            .fetch_one(&mut *connection)
+            .await
+            .expect("counting this fleet's schedules")
     }
 
     async fn seed_fleet(&self) {

@@ -19,6 +19,5 @@ pub(crate) fn view_heartbeat() -> HeartbeatRequest<'static> {
         }),
         holds: af_wire::runner::HeldFleets::default(),
         closing: false,
-        wake: false,
     }
 }

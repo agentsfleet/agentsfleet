@@ -2,7 +2,8 @@
 //! dispatched and knows the usage of (completed, or failed with usage the
 //! provider still billed), plus the attempt's runtime.
 //!
-//! Every line is priced by the one [`Rater`] fleet runs use (billing §11): a
+//! Every line is priced by the one [`Rater`] fleet runs use (the one billing
+//! lifecycle of `docs/architecture/billing_and_provider_keys.md`): a
 //! request by its whole-prompt tier at the instant it was dispatched, the
 //! runtime at the report. The lines are logged inside the report's transaction
 //! and settled through the biller after it commits.
@@ -70,7 +71,7 @@ pub(super) async fn settlement(
         },
     );
     let dispatched: Vec<Dispatched> = sqlx::query_as(KNOWN_DISPATCHES)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .bind(dispatch_status::KNOWN)
         .fetch_all(connection)
         .await

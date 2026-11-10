@@ -13,8 +13,8 @@ async fn concurrent_drafts_share_one_host_slot_and_one_draft_never_overlaps() {
     let (a, b) = tokio::join!(claim(&f, &first), claim(&f, &second));
     assert_eq!(usize::from(a.is_some()) + usize::from(b.is_some()), 1);
     assert_eq!(fixture::attempts(&f).await, 1);
-    sqlx::query("UPDATE runner.runners SET worker_count=2 WHERE id=$1::uuid")
-        .bind(f.runner.as_str())
+    sqlx::query("UPDATE runner.runners SET worker_count=2 WHERE id=$1")
+        .bind(&f.runner)
         .execute(&mut *f.connection().await)
         .await
         .expect("grow owned capacity");
@@ -33,8 +33,8 @@ async fn runtime_occupancy_blocks_authoring_until_original_runtime_expiry() {
     let fleet = fixture::runtime(&f, af_core::clock::after(now(), Duration::from_mins(1))).await;
     assert!(claim(&f, &draft).await.is_none());
     assert_eq!(fixture::attempts(&f).await, 0);
-    sqlx::query("UPDATE runner.leases SET lease_expires_at=now() WHERE fleet_id=$1::uuid")
-        .bind(fleet.as_str())
+    sqlx::query("UPDATE runner.leases SET lease_expires_at=now() WHERE fleet_id=$1")
+        .bind(fleet)
         .execute(&mut *f.connection().await)
         .await
         .expect("original runtime expired");

@@ -3,6 +3,7 @@
 use super::{TaskLease, TaskRefusal, TaskScope, TaskSnapshot, guard, read, sql};
 use crate::{Result, error::query};
 use af_core::clock;
+use af_core::id::Uuid7;
 use af_wire::task::{DecisionTaskVersion, TaskState};
 use sqlx::PgConnection;
 
@@ -26,7 +27,7 @@ pub(super) async fn on_current(
     current: guard::LeaseRow,
     expected: &DecisionTaskVersion,
 ) -> Result<Owned> {
-    if current.task_id.as_deref() != Some(expected.task_id.as_str()) {
+    if current.task_id.as_ref().map(Uuid7::as_str) != Some(expected.task_id.as_str()) {
         return Err(TaskRefusal::StaleState.into());
     }
     let owned = attached(connection, current).await?;
@@ -44,15 +45,19 @@ pub(super) async fn attached(
         return Err(TaskRefusal::StaleState.into());
     }
     let scope = TaskScope {
-        fleet_id: guard::id(&current.fleet_id, "fleet_id")?,
-        workspace_id: guard::id(&current.workspace_id, "workspace_id")?,
+        fleet_id: current.fleet_id.clone(),
+        workspace_id: current.workspace_id.clone(),
     };
     let id = guard::id(
-        current.task_id.as_deref().ok_or(TaskRefusal::NotFound)?,
+        current
+            .task_id
+            .as_ref()
+            .ok_or(TaskRefusal::NotFound)?
+            .as_str(),
         "task_id",
     )?;
     let _held: (String,) = sqlx::query_as(sql::LOCK_TASK)
-        .bind(id.as_str())
+        .bind(&id)
         .bind(&current.fleet_id)
         .bind(&current.workspace_id)
         .fetch_optional(&mut *connection)

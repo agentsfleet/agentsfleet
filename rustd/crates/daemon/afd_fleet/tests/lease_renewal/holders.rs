@@ -11,23 +11,23 @@ use jiff::Timestamp;
 use sqlx::Connection as _;
 
 const LIVE_HOLDERS: &str = "\
-SELECT id::text FROM runner.leases
-WHERE fleet_id = $1::uuid AND status = $2 AND lease_expires_at > clock_timestamp()";
+SELECT id FROM runner.leases
+WHERE fleet_id = $1 AND status = $2 AND lease_expires_at > clock_timestamp()";
 const EVENT_LEASES: &str = "\
-SELECT count(*) FROM runner.leases l JOIN fleet.events e ON e.id = l.fleet_event_id
-WHERE l.fleet_id = $1::uuid AND e.event_id = $2";
+SELECT count(*) FROM runner.leases l JOIN fleet.events e ON e.event_id = l.event_id
+WHERE l.fleet_id = $1 AND e.event_id = $2";
 const HOST_OCCUPANCY: &str = "\
 SELECT r.worker_count::bigint,
   (SELECT count(*) FROM runner.leases l WHERE l.runner_id = r.id AND l.status = $2
      AND l.lease_expires_at > clock_timestamp())
   + (SELECT count(*) FROM authoring.attempts a WHERE a.runner_id = r.id
      AND a.status = $2 AND a.lease_expires_at > clock_timestamp())
-FROM runner.runners r WHERE r.id = $1::uuid";
+FROM runner.runners r WHERE r.id = $1";
 
 /// The state both replicas left, read back after the race.
 pub(super) struct Outcome<'a> {
     pub(super) order: &'a str,
-    pub(super) original_event: &'a str,
+    pub(super) original_event: &'a Uuid7,
     pub(super) readmitted: &'a Uuid7,
     pub(super) expired: (Timestamp, Timestamp, Timestamp),
 }
@@ -44,14 +44,14 @@ pub(super) async fn assert_one_holder(running: &Running, replica: &Replica, outc
     assert_eq!(
         original(running).await,
         (
-            outcome.original_event.to_owned(),
+            outcome.original_event.clone(),
             afd_runner::sql::LEASE_STATUS_EXPIRED.to_owned()
         ),
         "{order}: re-admission retires the original holder's row"
     );
     assert_eq!(
         live_holders(running).await,
-        vec![outcome.readmitted.to_string()],
+        vec![outcome.readmitted.clone()],
         "{order}: exactly one live holder, and it is the re-admitting replica"
     );
     assert_eq!(
@@ -72,7 +72,7 @@ pub(super) async fn assert_one_holder(running: &Running, replica: &Replica, outc
         .leases
         .extend(
             afd_fleet::lease::sql::meter::Metering {
-                lease_id: outcome.readmitted.as_str(),
+                lease_id: outcome.readmitted,
                 runner_id: &running.runner,
                 requests: &[],
             },
@@ -88,7 +88,7 @@ pub(super) async fn assert_one_holder(running: &Running, replica: &Replica, outc
     );
 }
 
-async fn live_holders(running: &Running) -> Vec<String> {
+async fn live_holders(running: &Running) -> Vec<Uuid7> {
     sqlx::query_scalar(LIVE_HOLDERS)
         .bind(&running.fleet)
         .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
@@ -97,7 +97,7 @@ async fn live_holders(running: &Running) -> Vec<String> {
         .expect("live holders")
 }
 
-async fn event_leases(running: &Running, event: &str) -> i64 {
+async fn event_leases(running: &Running, event: &Uuid7) -> i64 {
     sqlx::query_scalar(EVENT_LEASES)
         .bind(&running.fleet)
         .bind(event)
@@ -111,7 +111,7 @@ async fn event_leases(running: &Running, event: &str) -> i64 {
 pub(super) async fn assert_host_full(running: &Running, order: &str) {
     let mut connection = running.fixtures.database.acquire().await.expect("census");
     let (workers, occupied): (i64, i64) = sqlx::query_as(HOST_OCCUPANCY)
-        .bind(running.runner.as_str())
+        .bind(&running.runner)
         .bind(afd_runner::sql::LEASE_STATUS_ACTIVE)
         .fetch_one(&mut *connection)
         .await

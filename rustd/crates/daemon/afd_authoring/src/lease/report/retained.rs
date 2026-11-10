@@ -41,7 +41,7 @@ async fn settled(
     saved: Reported,
 ) -> Result<Reported> {
     let raw: String = sqlx::query_scalar(sql::SETTLED_OUTCOME)
-        .bind(attempt.id.as_str())
+        .bind(&attempt.id)
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT))?;

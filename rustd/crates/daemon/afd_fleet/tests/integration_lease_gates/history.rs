@@ -1,7 +1,7 @@
 //! A chat lease's earlier turns, as the plane hands them to a runner.
 //!
 //! `integration_lease_history.rs` proves the read; these drive the path around
-//! it: `Plane::lease_claimed` issues a lease, `Plane::report` ends it, and the
+//! it: `LeaseService::claim_selected` issues a lease, `LeaseService::report` ends it, and the
 //! next lease's payload carries what that report left. They live under this
 //! suite because an issued lease needs the provider seed only it owns.
 
@@ -11,7 +11,7 @@ use std::time::Duration;
 use af_wire::event::EventType;
 use afd_db::test_util::unreachable_db;
 use afd_events::History;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 
 use super::chat::{ASKED_LATER, Chat, FIRST_ANSWER, FIRST_MESSAGE, FOLLOW_UP, first_turn};
 use crate::report_seed::SLICE;
@@ -108,7 +108,7 @@ async fn test_follow_up_lease_is_issued_when_its_thread_will_not_answer() {
     let asked = chat
         .ask(EventType::Chat, FOLLOW_UP, chat.fixtures.after(ASKED_LATER))
         .await;
-    let silent = Plane {
+    let silent = LeaseService {
         task_reports: None,
         thread: Arc::new(History::new(unreachable_db())),
         ..chat.fixtures.plane()

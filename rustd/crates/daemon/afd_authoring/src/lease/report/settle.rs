@@ -1,6 +1,6 @@
 //! Final settlement: the attempt's usage lines and its replay acknowledgement
-//! commit together; the billing relay moves the money from those lines
-//! (billing §11).
+//! commit together; the billing relay moves the money from those lines (the
+//! one billing lifecycle of `docs/architecture/billing_and_provider_keys.md`).
 
 use af_core::clock;
 use af_wire::authoring::{Knowledge, Outcome, Report, Reported};
@@ -83,7 +83,7 @@ pub(super) async fn commit(
 async fn reconcile(connection: &mut PgConnection, s: &Settlement<'_>) -> Result<()> {
     use af_wire::authoring::FailureReason;
     sqlx::query(sql::RESOLVED_REASON)
-        .bind(s.attempt.draft_id.as_str())
+        .bind(&s.attempt.draft_id)
         .bind(s.attempt.message_sequence)
         .bind(verdict::reason(
             s.verdict.reason.unwrap_or(FailureReason::ProviderFailed),
@@ -112,7 +112,7 @@ async fn update_attempt(
     known: bool,
 ) -> Result<()> {
     sqlx::query(sql::ATTEMPT)
-        .bind(s.attempt.id.as_str())
+        .bind(&s.attempt.id)
         .bind(
             if known {
                 Status::Settled
@@ -172,17 +172,11 @@ async fn write_message(
         Report::Terminal { .. } | Report::Accounting { .. } => None,
     };
     sqlx::query(sql::MESSAGE)
-        .bind(s.attempt.draft_id.as_str())
+        .bind(&s.attempt.draft_id)
         .bind(s.attempt.message_sequence)
         .bind(verdict::outcome(s.verdict.outcome))
         .bind(answer)
-        .bind(
-            private
-                .draft
-                .head_candidate_id
-                .as_ref()
-                .map(af_core::id::Uuid7::as_str),
-        )
+        .bind(private.draft.head_candidate_id.as_ref())
         .bind(s.verdict.reason.map(verdict::reason))
         .bind(RUNNING)
         .execute(connection)

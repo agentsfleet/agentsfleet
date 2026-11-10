@@ -6,10 +6,9 @@
     reason = "a test asserts by panicking on an unmet precondition"
 )]
 
-use af_core::env::{EnvSource as _, ProcessEnv};
+use af_core::id::Uuid7;
 use afd_db::config::DbRole;
 use afd_db::test_util::TestDatabase;
-use afd_dragonfly::{DragonflyConfig, DragonflyRole};
 
 use super::{
     KIND_FLEET, KIND_TENANT, KIND_WORKSPACE, SEEDED_AT, identifier, placement_tag, ready_fleet,
@@ -17,22 +16,18 @@ use super::{
 use crate::fixture::RunPrefix;
 use crate::lane::sweep;
 
-/// The lane's Dragonfly URL and its certificate authority, when it serves TLS.
-const DRAGONFLY_URL_KNOB: &str = "TEST_DRAGONFLY_URL";
-const DRAGONFLY_CA_KNOB: &str = "TEST_DRAGONFLY_CA_CERT";
-
 /// An index clear of every lane's population, so this fleet is this test's.
 const LIVE_INDEX: u64 = 0x2000_0000;
 
 /// The fleet's admission rows, with whether each carries its receipt.
 const SELECT_ADMISSIONS: &str =
-    "SELECT id::text, delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1::uuid";
+    "SELECT id, delivered_at IS NOT NULL FROM fleet.admissions WHERE fleet_id = $1";
 
 #[test]
 fn test_an_identifier_passes_the_schemas_version_check() {
-    let id = identifier(KIND_FLEET, 0);
+    let id = identifier(KIND_FLEET, 0).expect("index 0 yields an identifier");
 
-    let groups: Vec<&str> = id.split('-').collect();
+    let groups: Vec<&str> = id.as_str().split('-').collect();
     assert_eq!(groups.len(), 5, "a UUID has five groups, got {id}");
     assert_eq!(
         groups.iter().map(|g| g.len()).collect::<Vec<_>>(),
@@ -44,16 +39,17 @@ fn test_an_identifier_passes_the_schemas_version_check() {
             .is_some_and(|version| version.starts_with('7')),
         "the character after the second dash must be 7 or `fleet.fleets` refuses the row: {id}"
     );
-    assert!(id.chars().all(|c| c.is_ascii_hexdigit() || c == '-'));
+    assert!(
+        id.as_str()
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() || c == '-')
+    );
 }
 
 #[test]
 fn test_the_three_kinds_never_collide_for_one_index() {
-    let (t, w, f) = (
-        identifier(KIND_TENANT, 9),
-        identifier(KIND_WORKSPACE, 9),
-        identifier(KIND_FLEET, 9),
-    );
+    let id = |kind| identifier(kind, 9).expect("index 9 yields an identifier");
+    let (t, w, f) = (id(KIND_TENANT), id(KIND_WORKSPACE), id(KIND_FLEET));
     assert_ne!(t, w);
     assert_ne!(w, f);
     assert_ne!(t, f);
@@ -61,29 +57,23 @@ fn test_the_three_kinds_never_collide_for_one_index() {
 
 #[test]
 fn test_two_indexes_never_collide_within_a_kind() {
-    assert_ne!(identifier(KIND_FLEET, 1), identifier(KIND_FLEET, 2));
-    assert_ne!(
-        identifier(KIND_FLEET, 0),
-        identifier(KIND_FLEET, u32::MAX.into())
-    );
+    let fleet = |index| identifier(KIND_FLEET, index).expect("the index yields an identifier");
+    assert_ne!(fleet(1), fleet(2));
+    assert_ne!(fleet(0), fleet(u32::MAX.into()));
 }
 
 #[tokio::test]
-#[ignore = "requires TEST_DATABASE_URL and TEST_DRAGONFLY_URL — run via make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: run by hand with `cargo test -p afd_bench --all-features -- --ignored` under the lane's environment"]
 async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     let database = TestDatabase::shared().open(DbRole::Api, &[]).await;
-    let url = ProcessEnv
-        .get(DRAGONFLY_URL_KNOB)
-        .expect("the lane's Dragonfly URL is set");
-    let config = DragonflyConfig::from_url(DragonflyRole::Default, url)
-        .with_ca_cert_file(ProcessEnv.get(DRAGONFLY_CA_KNOB).map(Into::into));
-    let queue = afd_dragonfly::test_util::connect_live(&config)
+    // The admission row is the proof; the wake it publishes has no reader.
+    let bus = afd_bus::test_util::lane()
         .await
-        .expect("the lane's Dragonfly answers");
+        .expect("the lane's NATS: export TEST_NATS_URL as the integration lane does");
     let prefix = RunPrefix::mint();
     let seeded = ready_fleet(
         &database,
-        &queue,
+        &bus,
         &prefix,
         &placement_tag(&prefix),
         LIVE_INDEX,
@@ -93,7 +83,7 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     .expect("a ready fleet seeds");
 
     let mut connection = database.acquire().await.expect("a connection");
-    let rows: Vec<(String, bool)> = sqlx::query_as(SELECT_ADMISSIONS)
+    let rows: Vec<(Uuid7, bool)> = sqlx::query_as(SELECT_ADMISSIONS)
         .bind(&seeded.fleet)
         .fetch_all(&mut *connection)
         .await
@@ -103,17 +93,36 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
     };
     assert!(!delivered, "seeded work is still waiting");
     drop(connection);
+    assert_delivery_receipts(&database, &bus, &prefix, admission).await;
+    let delivered: bool =
+        sqlx::query_scalar("SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1")
+            .bind(admission)
+            .fetch_one(&mut *database.acquire().await.expect("connection"))
+            .await
+            .expect("durable delivery");
+    assert!(delivered);
+    sweep::everything(&database, &prefix)
+        .await
+        .expect("owned fixtures sweep");
+}
+
+async fn assert_delivery_receipts(
+    database: &afd_db::Db,
+    bus: &afd_bus::Handle,
+    prefix: &RunPrefix,
+    admission: &Uuid7,
+) {
     let runner = super::runner(
-        &database,
+        database,
         &prefix.name("proof-host"),
-        &placement_tag(&prefix),
+        &placement_tag(prefix),
         SEEDED_AT,
     )
     .await
     .expect("fixture runner");
     let leases = afd_fleet::lease::Leases::new(
         database.clone(),
-        queue.clone(),
+        bus.clone(),
         af_crypto::entropy::Entropy::new(),
     );
     let acquired = leases
@@ -132,15 +141,4 @@ async fn test_a_seeded_event_stands_on_its_admission_row_and_is_stamped_once() {
         .expect("repeat delivery");
     assert_eq!(first.delivery, afd_fleet::lease::Delivery::First);
     assert_eq!(again.delivery, afd_fleet::lease::Delivery::Repeat);
-    let delivered: bool = sqlx::query_scalar(
-        "SELECT delivered_at IS NOT NULL FROM fleet.admissions WHERE id=$1::uuid",
-    )
-    .bind(admission)
-    .fetch_one(&mut *database.acquire().await.expect("connection"))
-    .await
-    .expect("durable delivery");
-    assert!(delivered);
-    sweep::everything(&database, &prefix)
-        .await
-        .expect("owned fixtures sweep");
 }

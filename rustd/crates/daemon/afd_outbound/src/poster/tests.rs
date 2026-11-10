@@ -1,6 +1,7 @@
 //! Which poster a job reaches, and which attempt it reaches it as.
 
 use super::*;
+use afd_db::test_util::mint_id;
 use std::sync::atomic::AtomicUsize;
 
 /// The thread an owed answer is addressed to, as a Slack producer records it.
@@ -13,20 +14,19 @@ struct Counting {
 }
 
 impl Deliver for Counting {
-    fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, _job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         self.calls.fetch_add(1, Ordering::Relaxed);
         std::future::ready(Verdict::Delivered)
     }
 }
 
-fn job(provider: &str) -> OutboundDelivery {
-    OutboundDelivery {
-        id: afd_dragonfly::streams::EventId::of("1700000000001-0"),
+fn job(provider: &str) -> Outgoing {
+    Outgoing {
         provider: provider.to_owned(),
         destination: DESTINATION.to_owned(),
-        workspace_id: "0199a0b0-0000-7000-8000-000000000001".to_owned(),
-        fleet_id: "0199a0b0-0000-7000-8000-000000000002".to_owned(),
-        event_id: "1700000000000-0".to_owned(),
+        workspace_id: mint_id(),
+        fleet_id: mint_id(),
+        event_id: mint_id(),
         answer: "Aurora is healthy.".to_owned(),
     }
 }
@@ -117,11 +117,11 @@ impl Recording {
 }
 
 impl Deliver for Recording {
-    fn deliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, _job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         self.answer(Attempt::First)
     }
 
-    fn redeliver(&self, _job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn redeliver(&self, _job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         self.answer(Attempt::Repeat)
     }
 }

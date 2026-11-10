@@ -123,8 +123,8 @@ impl Sealed {
     ) -> Result<()> {
         let envelope = &self.envelope;
         sqlx::query(include_str!("sql/recovery_insert.sql"))
-            .bind(effect.as_str())
-            .bind(workspace.as_str())
+            .bind(effect)
+            .bind(workspace)
             .bind(envelope.wrapped_dek())
             .bind(envelope.dek_nonce().as_slice())
             .bind(envelope.dek_tag().as_slice())

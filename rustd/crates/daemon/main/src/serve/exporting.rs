@@ -204,24 +204,7 @@ pub(crate) fn open_telemetry(
 
     let database = database.clone();
     supervisor.spawn(crate::OTLP_EXPORT, async move |token| {
-        // The resident-set sampler, on the reader's own cadence so the gauge
-        // the callback loads is never older than one collection.
-        let mut sampler = tokio::time::interval(crate::telemetry::COLLECT_INTERVAL);
-        sampler.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            tokio::select! {
-                () = token.cancelled() => break,
-                _tick = sampler.tick() => {
-                    af_observability::producers::memory::resident_observed(
-                        crate::telemetry::resident_bytes(),
-                    );
-                    tokio::select! {
-                        () = token.cancelled() => break,
-                        () = super::observations::refresh(&database) => {}
-                    }
-                }
-            }
-        }
+        sample_until_stopped(&database, &token).await;
         // The last thing that happens to telemetry. Every signal the process
         // still holds is delivered here, before the pools it described are
         // dropped — which is the same ordering the analytics flush has, and
@@ -234,6 +217,28 @@ pub(crate) fn open_telemetry(
     Ok(())
 }
 
+/// Keep both boot-owned gauges on the exporter's existing collection cadence.
+async fn sample_until_stopped(database: &afd_db::Db, token: &tokio_util::sync::CancellationToken) {
+    // The resident-set sampler, on the reader's own cadence so the gauge
+    // the callback loads is never older than one collection.
+    let mut sampler = tokio::time::interval(crate::telemetry::COLLECT_INTERVAL);
+    sampler.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    loop {
+        tokio::select! {
+            () = token.cancelled() => break,
+            _tick = sampler.tick() => {
+                af_observability::producers::memory::resident_observed(
+                    crate::telemetry::resident_bytes(),
+                );
+                tokio::select! {
+                    () = token.cancelled() => break,
+                    () = super::observations::refresh(database) => {}
+                }
+            }
+        }
+    }
+}
+
 #[cfg(all(test, feature = "test-util"))]
 mod snapshot_tests {
     use super::*;
@@ -242,7 +247,7 @@ mod snapshot_tests {
     async fn pool_callback_reads_actual_capacity_and_withdraws_a_closed_pool() {
         let database = afd_db::test_util::unreachable_db();
         let admission = Admission::new(afd_api::DEFAULT_MAX_IN_FLIGHT);
-        let live = afd_sse::Live::detached(afd_sse::Ceiling::new(1));
+        let live = afd_sse::Live::detached(afd_sse::StreamLimit::new(1));
         let sources = gauge_sources(&admission, &live, &database);
         let readings = (sources.database_pools)();
         assert_eq!(readings.len(), 5);

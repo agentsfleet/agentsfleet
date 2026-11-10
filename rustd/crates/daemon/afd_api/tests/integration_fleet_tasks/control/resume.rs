@@ -140,7 +140,7 @@ async fn task_resume_retains_exhausted_allowance_and_queues_nothing() {
         .acquire()
         .await
         .expect("exhaustion connection");
-    sqlx::query("UPDATE fleet.tasks SET used_leases=max_leases WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.tasks SET used_leases=max_leases WHERE id=$1")
         .bind(&fixture.ids[2])
         .execute(&mut *connection)
         .await
@@ -182,7 +182,7 @@ async fn task_resume_policy_refusal_rolls_back_with_the_original_state() {
         .acquire()
         .await
         .expect("setup connection");
-    sqlx::query("UPDATE fleet.fleets SET head_revision_id=NULL WHERE id=$1::uuid")
+    sqlx::query("UPDATE fleet.fleets SET head_revision_id=NULL WHERE id=$1")
         .bind(&fixture.base.fleet)
         .execute(&mut *connection)
         .await

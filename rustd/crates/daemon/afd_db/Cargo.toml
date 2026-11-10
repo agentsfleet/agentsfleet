@@ -22,7 +22,7 @@ test-util = ["af_core/test-util", "dep:jiff", "dep:jiff-sqlx"]
 
 [dependencies]
 # The wire codes a datastore failure answers.
-af_core.workspace = true
+af_core = { workspace = true, features = ["sqlx"] }
 af_observability.workspace = true
 sqlx.workspace = true
 # The seed fixtures stamp `TIMESTAMPTZ(3)` columns with `jiff::Timestamp`.
@@ -35,7 +35,7 @@ backon.workspace = true
 # same parse sqlx acts on rather than from a substring scan over the raw bytes.
 # `sqlx_core::Url` IS this crate at this version, so a second grammar is not
 # being introduced — one is being removed. Already in the lock through
-# sqlx-core, redis and reqwest independently; this is a manifest entry on a
+# sqlx-core, async-nats and reqwest independently; this is a manifest entry on a
 # crate that was already compiling.
 url.workspace = true
 thiserror.workspace = true

@@ -13,7 +13,7 @@ INSERT INTO authoring.attempts(id,lease_id,runner_id,workspace_id,tenant_id,user
 draft_id,message_sequence,fencing_token,model_token_hash,model_snapshot,status,
 lease_expires_at,expires_at,reserved_nanos,usage_unknown,call_count,output_token_count,
 reported_runtime_ms,last_activity_sequence,created_at,updated_at)
-VALUES($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5::uuid,$6::uuid,$7::uuid,1,1,$1,$8::jsonb,
+VALUES($1,$2,$3,$4,$5,$6,$7,1,1,$1,$8::jsonb,
 'active',now()+interval '1 minute',now()+interval '1 minute',0,false,0,0,0,0,now(),now())";
 
 /// The host's isolation: no sandbox and no egress.
@@ -26,8 +26,9 @@ pub(super) struct Running {
     pub(super) f: Fixture,
     pub(super) router: Router,
     pub(super) token: String,
-    pub(super) path: String,
-    pub(super) draft: String,
+    pub(super) operation: crate::harness::native::Operation,
+    pub(super) lease: Uuid7,
+    pub(super) draft: Uuid7,
 }
 
 impl Running {
@@ -48,12 +49,14 @@ impl Running {
         )
         .await;
         assert_eq!(created.status(), StatusCode::CREATED);
-        let draft = json_body(created)
-            .await
-            .get("id")
-            .and_then(Value::as_str)
-            .expect("draft id")
-            .to_owned();
+        let draft = Uuid7::parse(
+            json_body(created)
+                .await
+                .get("id")
+                .and_then(Value::as_str)
+                .expect("draft id"),
+        )
+        .expect("the draft id is a UUIDv7");
         let lease = mint();
         let digest = Digest::of(&Presented::new(&token).expect("fixture runner token"));
         seed(&f, &runner, &lease, &draft, digest.as_str()).await;
@@ -61,7 +64,8 @@ impl Running {
             f,
             router,
             token,
-            path: format!("/v1/runners/me/authoring-leases/{lease}/activity"),
+            operation: crate::harness::native::Operation::Activity(lease.clone()),
+            lease,
             draft,
         }
     }
@@ -76,9 +80,9 @@ impl Running {
 
 /// Seeds a runner presenting `digest` and an admitted authoring attempt for
 /// `draft` under `lease`, with the draft's pending message marked running.
-pub(super) async fn seed(f: &Fixture, runner: &Uuid7, lease: &Uuid7, draft: &str, digest: &str) {
+pub(super) async fn seed(f: &Fixture, runner: &Uuid7, lease: &Uuid7, draft: &Uuid7, digest: &str) {
     let mut connection = f.db.acquire().await.expect("seed connection");
-    RunnerSeed::new(runner.as_str(), "active", POLICY)
+    RunnerSeed::new(runner, "active", POLICY)
         .token_hash(digest)
         .insert(&mut *connection)
         .await
@@ -92,18 +96,18 @@ pub(super) async fn seed(f: &Fixture, runner: &Uuid7, lease: &Uuid7, draft: &str
     .expect("registered metadata")
     .expect("owner model exists");
     sqlx::query(ATTEMPT)
-        .bind(mint().as_str())
-        .bind(lease.as_str())
-        .bind(runner.as_str())
-        .bind(f.workspace.as_str())
-        .bind(f.tenant.as_str())
-        .bind(f.owner.as_str())
+        .bind(mint())
+        .bind(lease)
+        .bind(runner)
+        .bind(&f.workspace)
+        .bind(&f.tenant)
+        .bind(&f.owner)
         .bind(draft)
         .bind(serde_json::to_string(&model).expect("metadata JSON"))
         .execute(&mut *connection)
         .await
         .expect("admitted fixture attempt");
-    sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1::uuid")
+    sqlx::query("UPDATE authoring.messages SET status='running' WHERE draft_id=$1")
         .bind(draft)
         .execute(&mut *connection)
         .await

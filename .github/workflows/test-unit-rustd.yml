@@ -46,7 +46,7 @@ name: test-unit-rustd
 # installs its own pinned nightly because Miri is unavailable on stable.
 #
 # No coverage measurement here. These jobs run the unit tier only — the
-# integration tests are `#[ignore]`d and need Postgres and Dragonfly, which this
+# integration tests are `#[ignore]`d and need Postgres and NATS, which this
 # workflow deliberately does not have. `test-integration-rustd.yml` measures
 # both tiers in the runs that execute them.
 
@@ -129,7 +129,7 @@ jobs:
   test-miri-secret-wiping:
     runs-on: ubuntu-latest
     env:
-      MIRI_TOOLCHAIN: nightly-2026-10-22
+      MIRI_TOOLCHAIN: nightly-2026-11-10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the pinned Miri toolchain
@@ -158,7 +158,7 @@ jobs:
         run: bun install --frozen-lockfile
       # lint-rustd fails on unused dependencies through `cargo shear`; the
       # version matches CARGO_SHEAR_VERSION in make/quality.mk.
-      - uses: taiki-e/install-action@682ce6c3c696a4cd5168a05f98e51aa02b877941 # v2.89.1
+      - uses: taiki-e/install-action@3a3daafd3b7f23b8f65d9f5ba2db203fb59b79e2 # v2.90.2
         with:
           tool: cargo-shear@1.14.0
       - name: Lint the Rust workspace

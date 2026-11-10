@@ -1,5 +1,6 @@
 //! Cleanup is armed before seeding, so failed assertions release their own rows.
 
+use af_core::id::Uuid7;
 use std::time::Duration;
 
 use af_core::error_code::{Coded as _, Logged};
@@ -15,7 +16,15 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 #[derive(Debug)]
 struct Row {
     statement: &'static str,
-    identifier: String,
+    key: Key,
+}
+
+/// The one parameter a cleanup statement binds: a row id, or a text key such
+/// as a platform slug or a placement label for rows no id reaches.
+#[derive(Debug)]
+enum Key {
+    Id(Uuid7),
+    Text(String),
 }
 
 /// Deletes only the row identities a fixture registers, including on unwind.
@@ -39,10 +48,19 @@ impl OwnedRows {
     }
 
     /// Registers a static, single-parameter cleanup statement and its owned ID.
-    pub fn record(&mut self, statement: &'static str, identifier: &str) {
+    pub fn record(&mut self, statement: &'static str, identifier: &Uuid7) {
         self.rows.push(Row {
             statement,
-            identifier: identifier.to_owned(),
+            key: Key::Id(identifier.clone()),
+        });
+    }
+
+    /// Registers a static, single-parameter cleanup statement keyed by text,
+    /// for owned rows no id reaches.
+    pub fn record_text(&mut self, statement: &'static str, key: &str) {
+        self.rows.push(Row {
+            statement,
+            key: Key::Text(key.to_owned()),
         });
     }
 
@@ -113,8 +131,12 @@ async fn remove(url: &str, rows: &[Row]) -> Result<()> {
         .await
         .map_err(|source| error::query(CONTEXT, source))?;
     for row in rows {
-        sqlx::query(row.statement)
-            .bind(&row.identifier)
+        let statement = sqlx::query(row.statement);
+        let statement = match &row.key {
+            Key::Id(id) => statement.bind(id),
+            Key::Text(text) => statement.bind(text.as_str()),
+        };
+        statement
             .execute(&mut *tx)
             .await
             .map_err(|source| error::query(CONTEXT, source))?;
@@ -134,7 +156,7 @@ mod tests {
     use af_core::error_code::{self, Coded as _};
     use af_core::test_util::trace::Capture;
 
-    use super::{CLEANUP_PANICKED, NOT_REMOVED, OwnedRows, Row, unremoved};
+    use super::{CLEANUP_PANICKED, Key, NOT_REMOVED, OwnedRows, Row, unremoved};
 
     /// A Postgres nobody listens on: port 1 is reserved and unbound.
     const NOWHERE: &str = "postgres://fixture:fixture@127.0.0.1:1/fixture";
@@ -144,8 +166,8 @@ mod tests {
         OwnedRows {
             url: NOWHERE.to_owned(),
             rows: vec![Row {
-                statement: "DELETE FROM fleet.fleets WHERE id = $1::uuid",
-                identifier: "0199f0c0-0000-7000-8000-000000000001".to_owned(),
+                statement: "DELETE FROM fleet.fleets WHERE id = $1",
+                key: Key::Id(crate::test_util::mint_id()),
             }],
         }
     }

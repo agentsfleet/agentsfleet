@@ -6,13 +6,12 @@ use afd_db::constraint::violates_foreign_key;
 use jiff::Timestamp;
 use sqlx::Acquire as _;
 
-use crate::error::{Result, query, row};
+use crate::error::{Result, query};
 use crate::sql;
 
 const CONTEXT_LIST: &str = "list platform keys";
 const CONTEXT_SET: &str = "set platform key";
 const CONTEXT_DEACTIVATE: &str = "deactivate platform key";
-const DEFAULTS_TABLE: &str = "model.platform_defaults";
 
 /// The foreign key a platform default holds on its source workspace.
 const SOURCE_WORKSPACE_FK: &str = "platform_defaults_source_workspace_id_fkey";
@@ -49,7 +48,7 @@ pub struct PlatformKey {
 #[derive(Debug, sqlx::FromRow)]
 struct DefaultRow {
     provider: String,
-    source_workspace_id: String,
+    source_workspace_id: Uuid7,
     model_name: Option<String>,
     active: bool,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
@@ -57,15 +56,14 @@ struct DefaultRow {
 }
 
 impl DefaultRow {
-    fn parse(self) -> Result<PlatformKey> {
-        Ok(PlatformKey {
+    fn parse(self) -> PlatformKey {
+        PlatformKey {
             provider: self.provider,
-            source_workspace_id: Uuid7::parse(&self.source_workspace_id)
-                .map_err(row(DEFAULTS_TABLE, "source_workspace_id"))?,
+            source_workspace_id: self.source_workspace_id.clone(),
             model: self.model_name,
             active: self.active,
             updated_at: self.updated_at,
-        })
+        }
     }
 }
 
@@ -101,7 +99,7 @@ impl PlatformKeys {
             .fetch_all(&mut *connection)
             .await
             .map_err(query(CONTEXT_LIST))?;
-        rows.into_iter().map(DefaultRow::parse).collect()
+        Ok(rows.into_iter().map(DefaultRow::parse).collect())
     }
 
     /// Activates one existing workspace-vault key and catalogued model.
@@ -121,7 +119,7 @@ impl PlatformKeys {
         let upserted: std::result::Result<Option<jiff_sqlx::Timestamp>, _> =
             sqlx::query_scalar(sql::UPSERT_PLATFORM_DEFAULT)
                 .bind(&input.provider)
-                .bind(input.source_workspace_id.as_str())
+                .bind(&input.source_workspace_id)
                 .bind(&input.model)
                 .bind(&input.base_url)
                 .fetch_optional(&mut *transaction)

@@ -97,7 +97,7 @@ dev_load_environment() {
   [ -n "${ENCRYPTION_MASTER_KEY:-}" ] || dev_fail 'ENCRYPTION_MASTER_KEY is missing; load the local developer environment'
   export DATABASE_URL_API="postgresql://agentsfleet:agentsfleet@127.0.0.1:$AGENTSFLEET_PG_HOST_PORT/$DEV_DB?sslmode=disable"
   export DATABASE_URL_MIGRATOR="$DATABASE_URL_API"
-  export DRAGONFLY_URL="redis://:agentsfleet@127.0.0.1:$AGENTSFLEET_DRAGONFLY_BASE_PORT"
+  export NATS_URL="nats://agentsfleet:agentsfleet@127.0.0.1:$AGENTSFLEET_NATS_BASE_PORT,nats://agentsfleet:agentsfleet@127.0.0.1:$AGENTSFLEET_NATS_PORT_2,nats://agentsfleet:agentsfleet@127.0.0.1:$AGENTSFLEET_NATS_PORT_3"
   export AGENTSFLEET_DEV_NAMESPACE="$DEV_ID"
   export API_URL
   API_URL="$(dev_api_origin)"

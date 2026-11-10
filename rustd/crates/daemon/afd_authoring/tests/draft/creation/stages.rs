@@ -65,7 +65,7 @@ async fn assert_finishes_once(c: &Case, key: &Uuid7, request: SaveFleet, fleet: 
     let event = accepted(&finished).to_owned();
     let rows = c.admissions(fleet).await;
     assert_eq!(rows.len(), 1, "one initial admission: {rows:?}");
-    assert_eq!(rows.first().map(String::as_str), Some(event.as_str()));
+    assert_eq!(rows.first().map(Uuid7::as_str), Some(event.as_str()));
     let again = c.save(key, request).await;
     assert_eq!(accepted(&again), event);
     assert_eq!(c.admissions(fleet).await, rows);
@@ -73,7 +73,7 @@ async fn assert_finishes_once(c: &Case, key: &Uuid7, request: SaveFleet, fleet: 
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_once() {
     let c = Case::create().await;
     let (draft, request) = c.request("activation-fault", run_now()).await;
@@ -123,12 +123,12 @@ async fn an_aborted_activation_rolls_back_its_run_and_the_same_key_finishes_it_o
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_initial_run_over_the_deployment_backlog_budget_activates_blocked() {
     let c = Case::create().await;
     c.fund().await;
     let full =
-        Admissions::new(c.base.db.clone(), c.queue.clone(), Entropy::new()).with_budgets(Budgets {
+        Admissions::new(c.base.db.clone(), c.bus.clone(), Entropy::new()).with_budgets(Budgets {
             deployment_backlog: 0,
         });
     let creations = Creations::new(c.setup.clone(), full);

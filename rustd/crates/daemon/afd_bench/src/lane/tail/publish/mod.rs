@@ -8,7 +8,8 @@ use core::time::Duration;
 use std::sync::atomic::Ordering;
 use std::time::Instant;
 
-use afd_dragonfly::FleetStreams;
+use af_core::id::Uuid7;
+use afd_bus::Handle;
 
 use super::viewers::{FRAMES, Shared};
 use crate::error::Result;
@@ -19,9 +20,12 @@ pub(super) const FRAME_KIND: &str = "bench_frame";
 
 /// How far the publisher may run ahead of the slowest viewer, in frames.
 ///
-/// A quarter of the hub's per-channel buffer: far enough that the pipeline
-/// stays full, short enough that no viewer can be lapped into a lag notice.
-pub(super) const WINDOW: u64 = 64;
+/// One: each frame is published only once every viewer holds the one before,
+/// so a frame's latency is one trip through the bus and the fan-out. A wider
+/// window measured queueing instead, and unevenly: a bus whose publish waits
+/// for the server's reply paced itself, while one whose publish returns at
+/// once ran the whole window ahead.
+pub(super) const WINDOW: u64 = 1;
 
 /// The kind a readiness probe carries.
 pub(super) const PROBE_KIND: &str = "bench_probe";
@@ -43,14 +47,16 @@ pub(super) const RUNG_DEADLINE: Duration = Duration::from_secs(60);
 /// is delivered to nobody. Probing until every viewer has seen one is the only
 /// proof that the next frame reaches all of them.
 pub(super) async fn probe_until_ready(
-    publisher: &FleetStreams,
-    fleet: &str,
+    publisher: &Handle,
+    fleet: &Uuid7,
     shared: &Shared,
     viewers: u64,
 ) -> Result<()> {
     let deadline = Instant::now() + RUNG_DEADLINE;
     while shared.ready.load(Ordering::Relaxed) < viewers && Instant::now() < deadline {
-        publisher.publish_tail(fleet, PROBE).await?;
+        publisher
+            .publish(&afd_bus::Subject::FleetTail(fleet.clone()), PROBE)
+            .await?;
         tokio::time::sleep(PROBE_INTERVAL).await;
     }
     Ok(())
@@ -59,8 +65,8 @@ pub(super) async fn probe_until_ready(
 /// Publish every frame, never more than [`WINDOW`] ahead of the slowest
 /// viewer, then wait for the last to arrive.
 pub(super) async fn publish(
-    publisher: &FleetStreams,
-    fleet: &str,
+    publisher: &Handle,
+    fleet: &Uuid7,
     payload: &str,
     shared: &Shared,
     viewers: u64,
@@ -71,7 +77,9 @@ pub(super) async fn publish(
         wait_for(shared, behind, deadline).await;
         let stamp = u64::try_from(shared.epoch.elapsed().as_nanos()).unwrap_or(u64::MAX);
         slot.store(stamp, Ordering::Release);
-        publisher.publish_tail(fleet, payload).await?;
+        publisher
+            .publish(&afd_bus::Subject::FleetTail(fleet.clone()), payload)
+            .await?;
     }
     wait_for(shared, FRAMES.saturating_mul(viewers), deadline).await;
     Ok(())

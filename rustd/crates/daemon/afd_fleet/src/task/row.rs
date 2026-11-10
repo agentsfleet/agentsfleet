@@ -1,5 +1,6 @@
 //! Checked conversion of stored task state to its shared protocol context.
 
+use af_core::id::Uuid7;
 use std::borrow::Cow;
 
 use af_wire::task::{TaskContext, TaskLimits, TaskState, TaskUsage};
@@ -10,12 +11,12 @@ use crate::error::{Error, ErrorKind, Result};
 
 #[derive(Debug, sqlx::FromRow)]
 pub(super) struct TaskRow {
-    pub id: String,
-    pub originating_item_id: String,
+    pub id: Uuid7,
+    pub originating_item_id: Uuid7,
     pub target: String,
     pub dependency: Option<String>,
     pub publication: Option<String>,
-    pub accepted_revision_id: String,
+    pub accepted_revision_id: Uuid7,
     pub accepted_revision_number: i64,
     pub title: String,
     pub objective: String,
@@ -28,7 +29,7 @@ pub(super) struct TaskRow {
     pub covered_input_sequence: i64,
     pub input_sequence: i64,
     #[sqlx(rename = "task_checkpoint_id")]
-    pub checkpoint_id: Option<String>,
+    pub checkpoint_id: Option<Uuid7>,
     pub checkpoint_generation: Option<i64>,
     pub effect_cursor: i64,
     pub confirmed_effect_watermark: i64,
@@ -80,12 +81,12 @@ impl TaskRow {
             resource_version: counter(self.resource_version, "resource_version")?,
             accepted_revision_number: counter(self.accepted_revision_number, "revision")?,
             context: TaskContext {
-                task_id: Cow::Owned(self.id),
-                originating_item_id: Cow::Owned(self.originating_item_id),
+                task_id: Cow::Owned(self.id.into()),
+                originating_item_id: Cow::Owned(self.originating_item_id.into()),
                 target: target(&self.target)?,
                 generation: counter(self.generation, "generation")?,
                 stop_generation: counter(self.stop_generation, "stop_generation")?,
-                accepted_revision_id: Cow::Owned(self.accepted_revision_id),
+                accepted_revision_id: Cow::Owned(self.accepted_revision_id.into()),
                 objective: Cow::Owned(self.objective),
                 goal_digest: Cow::Owned(self.goal_digest),
                 questions,
@@ -100,7 +101,7 @@ impl TaskRow {
                     self.confirmed_effect_watermark,
                     "confirmed_effect_watermark",
                 )?,
-                checkpoint_id: self.checkpoint_id.map(Cow::Owned),
+                checkpoint_id: self.checkpoint_id.map(|id| Cow::Owned(id.into())),
                 checkpoint_generation: self
                     .checkpoint_generation
                     .map(|generation| counter(generation, "checkpoint generation"))

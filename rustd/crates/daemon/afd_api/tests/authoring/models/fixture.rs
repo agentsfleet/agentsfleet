@@ -1,6 +1,7 @@
 //! The only substituted boundary is the physical provider request.
 
 use super::super::{attempt::Running, mint};
+use af_core::id::Uuid7;
 use afd_auth::Scope;
 use afd_authoring::{ProviderRequest, ProviderResponse, Transport};
 use serde_json::{Value, json};
@@ -54,7 +55,7 @@ impl Transport for Provider {
 pub(super) struct Model {
     pub(super) running: Running,
     pub(super) provider: Arc<Provider>,
-    pub(super) path: String,
+    pub(super) operation: crate::harness::native::Operation,
     pub(super) request: Value,
 }
 
@@ -84,24 +85,24 @@ impl Model {
             .acquire()
             .await
             .expect("owned setup connection");
-        sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1::uuid,$2,now(),now())")
-            .bind(running.f.tenant.as_str()).bind(crate::authoring::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");
-        let attempt: String = sqlx::query_scalar("UPDATE authoring.attempts SET model_token_hash=$2,reserved_nanos=30000000 WHERE draft_id=$1::uuid RETURNING id::text")
+        sqlx::query("INSERT INTO billing.wallets(tenant_id,balance_nanos,created_at,updated_at) VALUES($1,$2,now(),now())")
+            .bind(&running.f.tenant).bind(crate::authoring::FUNDED_NANOS).execute(&mut *connection).await.expect("owned wallet");
+        let attempt: Uuid7 = sqlx::query_scalar("UPDATE authoring.attempts SET model_token_hash=$2,reserved_nanos=30000000 WHERE draft_id=$1 RETURNING id")
             .bind(&running.draft).bind(hex_hash()).fetch_one(&mut *connection).await.expect("bound admitted capability");
         drop(connection);
-        let path = format!("{}/model-calls", running.path.trim_end_matches("/activity"));
+        let operation = crate::harness::native::Operation::Model(running.lease.clone());
         let request = json!({"capability_token":CAPABILITY,"attempt_id":attempt,"fence":"1",
             "dispatch_id":mint(),"call_index":1,"request":{"messages":[{"role":"user","text":"Investigate checkout"}],"max_output_tokens":128}});
         Self {
             running,
             provider,
-            path,
+            operation,
             request,
         }
     }
 
     pub(super) async fn receipts(&self) -> i64 {
-        sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches d JOIN authoring.attempts a ON a.id=d.attempt_id WHERE a.draft_id=$1::uuid")
+        sqlx::query_scalar("SELECT count(*) FROM authoring.dispatches d JOIN authoring.attempts a ON a.id=d.attempt_id WHERE a.draft_id=$1")
             .bind(&self.running.draft).fetch_one(&mut *self.running.f.db.acquire().await.expect("receipt read")).await.expect("durable receipt count")
     }
 }

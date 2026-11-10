@@ -32,20 +32,14 @@
 //! The poster escapes every text it sends (`crate::slack`), so a line is handed
 //! over as the fleet wrote it and escaped exactly once.
 
+use crate::obligation::Outgoing;
+use af_core::id::Uuid7;
 use afd_connector::Provider;
 use afd_connector::slack::Part;
-use afd_dragonfly::OutboundDelivery;
-use afd_dragonfly::streams::EventId;
 use tokio_util::sync::CancellationToken;
 
 use crate::poster::{Attempt, Deliver, Posters, Verdict, deliver_with_retry};
 use crate::slack::SlackPoster;
-
-/// The entry id an interim job carries.
-///
-/// The job never rides the stream, so it names no entry. The stream's minimum
-/// id, which no append ever mints, so it can never be mistaken for one.
-const UNQUEUED: &str = "0-0";
 
 /// Logged once per line, delivered or not; the text is never logged.
 const EVENT_POSTED: &str = "fleet_message_posted";
@@ -62,13 +56,13 @@ pub struct Interim {
     /// Where that connector posts it, as the event's producer recorded it.
     pub destination: String,
     /// The workspace whose grant pays for it.
-    pub workspace_id: String,
+    pub workspace_id: Uuid7,
     /// The fleet that is speaking.
-    pub fleet_id: String,
+    pub fleet_id: Uuid7,
     /// The event whose thread it lands in.
-    pub event_id: String,
+    pub event_id: Uuid7,
     /// The lease that said it, whose count `part` is.
-    pub lease_id: String,
+    pub lease_id: Uuid7,
     /// What to say, already scrubbed of the fleet's secret values.
     pub text: String,
     /// Which line of the run this is, from one.
@@ -105,8 +99,8 @@ impl Interjector {
             text,
             part,
         } = interim;
-        let job = OutboundDelivery {
-            id: EventId::of(UNQUEUED),
+        // An interjection posts directly and is never owed or claimed.
+        let job = Outgoing {
             provider: provider.id().to_owned(),
             destination,
             workspace_id,
@@ -118,7 +112,7 @@ impl Interjector {
             slack: Line {
                 slack: &self.slack,
                 part: Part {
-                    lease_id,
+                    lease_id: lease_id.into(),
                     line: part,
                 },
             },
@@ -150,11 +144,11 @@ struct Line<'p> {
 }
 
 impl Deliver for Line<'_> {
-    fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn deliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         self.slack.deliver_part(job, Some(&self.part))
     }
 
-    fn redeliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn redeliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         self.slack.redeliver_part(job, Some(&self.part))
     }
 }

@@ -31,7 +31,7 @@ impl Leases {
     /// the lease between the fence check and the write (`SELECT_LIVE_LEASE`).
     pub(super) async fn keep_records(
         &self,
-        lease_id: &str,
+        lease_id: &Uuid7,
         runner_id: &Uuid7,
         presented: u64,
         candidates: BTreeMap<u64, Admissible<'_>>,
@@ -80,9 +80,7 @@ impl Leases {
     ) -> Result<()> {
         let mut columns = Columns::default();
         for Admissible { record, bytes, .. } in kept {
-            columns
-                .ids
-                .push(self.entropy().uuid7(now)?.as_str().to_owned());
+            columns.ids.push(self.entropy().uuid7(now)?);
             columns
                 .numbers
                 .push(i64::try_from(record.call_number).unwrap_or(i64::MAX));
@@ -129,7 +127,7 @@ impl Leases {
     ) -> Result<()> {
         drop_others(
             connection,
-            lease.fleet_id.as_str(),
+            &lease.fleet_id,
             &lease.event_id,
             lease.fence.as_i64(),
         )
@@ -140,12 +138,12 @@ impl Leases {
 /// The lease `lease_id` names, if `runner_id` holds it live, locked.
 async fn locked_target(
     connection: &mut PgConnection,
-    lease_id: &str,
+    lease_id: &Uuid7,
     runner_id: &Uuid7,
 ) -> Result<Option<LiveLease>> {
     sqlx::query_as(statement::SELECT_LIVE_LEASE)
         .bind(lease_id)
-        .bind(runner_id.as_str())
+        .bind(runner_id)
         .bind(sql::LEASE_STATUS_ACTIVE)
         .fetch_optional(&mut *connection)
         .await
@@ -189,8 +187,8 @@ fn to_usize(stored: i64) -> usize {
 /// Delete every record of the event outside `fence`.
 async fn drop_others(
     connection: &mut PgConnection,
-    fleet_id: &str,
-    event_id: &str,
+    fleet_id: &Uuid7,
+    event_id: &Uuid7,
     fence: i64,
 ) -> Result<()> {
     sqlx::query(statement::DELETE_OTHER_FENCES)
@@ -206,7 +204,7 @@ async fn drop_others(
 /// The upsert's arrays, one per column, filled in step.
 #[derive(Debug, Default)]
 struct Columns {
-    ids: Vec<String>,
+    ids: Vec<Uuid7>,
     numbers: Vec<i64>,
     arguments: Vec<String>,
     truncated_arguments: Vec<bool>,

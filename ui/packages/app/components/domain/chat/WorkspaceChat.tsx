@@ -17,7 +17,7 @@ import { appliedNotice, isRunning } from "@/lib/api/draft-types";
 import { PUBLISHED_NOTICE } from "@/lib/api/draft-publication";
 import { useCurrentUser } from "@/lib/auth/client";
 import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bridge";
-import { ChatAvailability, ChatModelAvailability } from "./ChatAvailability";
+import { ChatAvailability } from "./ChatAvailability";
 import { FleetSetup } from "./FleetSetup";
 import { DraftChatHeading } from "./DraftChatHeading";
 
@@ -98,8 +98,7 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
     {view.notice && view.notice !== appliedNotice([]) && view.notice !== PUBLISHED_NOTICE ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} returnToFleet={source?.kind === SOURCE_KIND.fleet ? source.fleet_id : undefined} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
-    <ChatModelAvailability client={client} view={view} workspace={workspace} />
-    <DraftConversation client={client} view={view} workspace={workspace} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
+    <DraftConversation client={client} view={view} workspace={workspace} modelsHref={`/w/${workspace}/settings/models`} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
       <FleetSetup client={client} view={view} workspace={workspace} />
     </DraftConversation>
     </>}

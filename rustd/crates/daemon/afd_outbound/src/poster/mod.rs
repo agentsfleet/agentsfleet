@@ -16,8 +16,8 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::obligation::Outgoing;
 use afd_connector::Provider;
-use afd_dragonfly::OutboundDelivery;
 use backon::Retryable as _;
 use tokio_util::sync::CancellationToken;
 
@@ -26,7 +26,7 @@ use crate::retry::delivery_schedule;
 /// What one delivery attempt was worth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
-    /// The destination has the answer. Acknowledge and move on.
+    /// The destination has the answer. Stamp it delivered and move on.
     Delivered,
     /// It might work later: a rate limit, a 5xx, a transport failure, a
     /// deadline. Worth another attempt on the backoff schedule.
@@ -81,7 +81,7 @@ pub trait Deliver: Send + Sync {
     /// could return `Err` would push the decision of what to do about it into
     /// the worker's loop — where the answer would have to be invented again per
     /// provider.
-    fn deliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send;
+    fn deliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send;
 
     /// Attempts delivery again, when an earlier attempt may have landed
     /// without its verdict saying so.
@@ -89,7 +89,7 @@ pub trait Deliver: Send + Sync {
     /// Defaults to [`Self::deliver`]: a destination that cannot be asked what
     /// it already holds is posted to again, at least once over at most once.
     /// A poster that CAN ask overrides this to look before it posts.
-    fn redeliver(&self, job: &OutboundDelivery) -> impl Future<Output = Verdict> + Send {
+    fn redeliver(&self, job: &Outgoing) -> impl Future<Output = Verdict> + Send {
         self.deliver(job)
     }
 }
@@ -109,11 +109,11 @@ pub struct Posters<S> {
 ///
 /// Returns [`Verdict::Permanent`] for a provider string this build ships no
 /// connector for, and for one it ships no poster for yet. Both are the same
-/// answer for the same reason: the job cannot be delivered by any retry, and
-/// leaving it unacknowledged would redeliver it forever.
+/// answer for the same reason: the job cannot be delivered by any retry, so
+/// the lane abandons it, where releasing it would claim and fail it forever.
 pub async fn dispatch<S: Deliver>(
     posters: &Posters<S>,
-    job: &OutboundDelivery,
+    job: &Outgoing,
     attempt: Attempt,
 ) -> Verdict {
     let Some(provider) = Provider::parse(&job.provider) else {
@@ -122,8 +122,9 @@ pub async fn dispatch<S: Deliver>(
     match (provider, attempt) {
         (Provider::Slack, Attempt::First) => posters.slack.deliver(job).await,
         (Provider::Slack, Attempt::Repeat) => posters.slack.redeliver(job).await,
-        // Tabled, not yet posted. These four connect and hold a grant — §4
-        // serves all five — but none has an answer surface yet: there is no
+        // Tabled, not yet posted. These four connect and hold a grant, as
+        // Slack does — `afd_connector`'s OAuth and grant catalogue serve all
+        // five providers — but none has an answer surface yet: there is no
         // Jira comment to reply on until the ingress that reads one lands. A
         // job naming one is therefore this daemon's own bug rather than a
         // vendor problem, and it is dropped rather than redelivered.
@@ -137,9 +138,9 @@ pub async fn dispatch<S: Deliver>(
 ///
 /// A free function rather than a [`crate::Worker`] method, because the retry
 /// POLICY has nothing to do with the worker's state — it needs the posters, the
-/// job and the token, and none of the reader, the queue or the loop. That is
+/// job and the token, and none of the claim, the lane or the loop. That is
 /// also what makes it gradeable: Dimension 5.1 asks what a vendor sees after
-/// three 5xx, and a test can answer that without a Dragonfly.
+/// three 5xx, and a test can answer that without a database.
 ///
 /// The loop AND the schedule are `backon`'s — see [`crate::retry`] on why this
 /// one has no adapter. `when` is what makes the retry mean something twice
@@ -151,7 +152,7 @@ pub async fn dispatch<S: Deliver>(
 /// [`Attempt::Repeat`], because the attempt it follows may have landed.
 pub async fn deliver_with_retry<S: Deliver>(
     posters: &Posters<S>,
-    job: &OutboundDelivery,
+    job: &Outgoing,
     token: &CancellationToken,
     opening: Attempt,
 ) -> Verdict {
@@ -195,7 +196,7 @@ pub async fn deliver_with_retry<S: Deliver>(
 /// (LOG-RENAME, `.orly/standards/domains/logging.md`), and `reason` is what separates the
 /// two cases it covers — a provider no connector answers to, and one that
 /// connects but has no answer surface yet.
-fn unroutable(job: &OutboundDelivery, reason: &'static str) -> Verdict {
+fn unroutable(job: &Outgoing, reason: &'static str) -> Verdict {
     // Hoisted: see the `tracing` note in the workspace Cargo.toml.
     let error_code = af_core::error_code::INTERNAL_OPERATION_FAILED.as_str();
     let provider = job.provider.as_str();

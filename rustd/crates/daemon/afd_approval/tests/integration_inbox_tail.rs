@@ -1,13 +1,13 @@
-//! Dimension 6.4 — what the inbox tells the fleet's live tail.
+//! What the inbox tells the fleet's live tail.
 //!
-//! A decision and a sweep both move a row and then say so on
-//! `fleet:{id}:activity`, count included, so a console watching the fleet
-//! shows how many answers it is still owed without a read. Proven against the
-//! production subscriber for the reason the daemon's activity suite is: a raw
-//! `SUBSCRIBE` would agree with a publisher that had drifted from its reader.
+//! A decision and a sweep both move a row and then say so on the fleet's
+//! live tail, `Subject::FleetTail`, count included, so a console watching the
+//! fleet shows how many answers it is still owed without a read. Read back
+//! through the bus's own subscribe on that subject, the one the console's tail
+//! reads, so a publisher that drifted from its reader fails here.
 //!
 //! This file holds the ANNOUNCEMENT concern: that a frame goes out, what it
-//! counts, and what happens when the queue will not take it. The continuation
+//! counts, and what happens when the bus will not take it. The continuation
 //! and runless concerns are siblings.
 
 #![expect(
@@ -16,11 +16,10 @@
 )]
 
 use afd_approval::{Decision, Inbox, Resolution};
-use afd_dragonfly::SubscriptionHub;
 use serde_json::json;
 
-use crate::lane::{Lane, Window, dead_queue, dragonfly_config, sweeper_exclusive};
-use crate::tail_watch::{NOTE, OPERATOR, SUBSCRIBE_SETTLE, SWEEPER, next_frame};
+use crate::lane::{Lane, Window, sweeper_exclusive};
+use crate::tail_watch::{NOTE, OPERATOR, SWEEPER, next_frame, tail};
 
 /// A decision is announced on the fleet's live tail, count included.
 ///
@@ -29,25 +28,30 @@ use crate::tail_watch::{NOTE, OPERATOR, SUBSCRIBE_SETTLE, SWEEPER, next_frame};
 /// console shows how many approvals still wait without a read of its own —
 /// which is why a second gate is seeded: the count must say ONE, not zero.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_decision_is_announced_on_the_fleets_live_tail() {
     let _sweeper = sweeper_exclusive().await;
     let lane = Lane::isolated().await;
 
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+    let mut tail = tail(&lane).await;
 
     let answered = lane.seed_gate(Window::Open).await;
     let _still_waiting = lane.seed_gate(Window::Open).await;
     lane.inbox
-        .resolve(&answered, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(answered.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
-    let frame = next_frame(&mut tail)
+    assert_decision_frame(&lane, &answered, &mut tail).await;
+    assert_swept_frames(&lane, &mut tail).await;
+}
+
+async fn assert_decision_frame(
+    lane: &Lane,
+    answered: &af_core::id::Uuid7,
+    tail: &mut afd_bus::Subscription,
+) {
+    let frame = next_frame(tail)
         .await
         .expect("the decision reaches the fleet's tail");
     assert_eq!(frame.get("kind"), Some(&json!("gate_resolved")));
@@ -55,12 +59,12 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     assert_eq!(frame.get("resolved_by"), Some(&json!(OPERATOR)));
     assert_eq!(
         frame.get("event_id"),
-        Some(&json!(lane.gate_column(&answered, "event_id").await)),
+        Some(&json!(lane.gate_column(answered, "event_id").await)),
         "the frame names the event the gate held"
     );
     assert_eq!(
         frame.get("gate_id"),
-        Some(&json!(lane.gate_column(&answered, "id").await)),
+        Some(&json!(lane.gate_column(answered, "id").await)),
         "and the gate itself"
     );
     assert_eq!(
@@ -68,17 +72,19 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
         Some(&json!(1)),
         "the sibling gate still waits, and the frame says so"
     );
+}
 
+async fn assert_swept_frames(lane: &Lane, tail: &mut afd_bus::Subscription) {
     // The sweeper announces what it takes, the same way: two seeded lapsed,
     // so this sweep takes both — reading the fleet's counters once for the
     // pair — and the sibling above stays.
     let lapsed = lane.seed_gate(Window::Lapsed).await;
     let lapsed_too = lane.seed_gate(Window::Lapsed).await;
     lane.inbox.expire().await.expect("the sweep must not fault");
-    let swept = next_frame(&mut tail)
+    let swept = next_frame(tail)
         .await
         .expect("the sweep reaches the fleet's tail");
-    let swept_too = next_frame(&mut tail)
+    let swept_too = next_frame(tail)
         .await
         .expect("the second swept gate reaches the tail too");
     assert_eq!(swept_too.get("kind"), Some(&json!("gate_resolved")));
@@ -90,7 +96,7 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
     assert_eq!(swept.get("kind"), Some(&json!("gate_resolved")));
     assert_eq!(swept.get("status"), Some(&json!("timed_out")));
     assert_eq!(swept.get("resolved_by"), Some(&json!(SWEEPER)));
-    let counters = afd_events::fleet_counters(&lane.pool, lane.fleet.as_str())
+    let counters = afd_events::fleet_counters(&lane.pool, &lane.fleet)
         .await
         .expect("the counters read back");
     assert_eq!(
@@ -123,21 +129,17 @@ async fn a_decision_is_announced_on_the_fleets_live_tail() {
 /// stand as pending — so it must leave out everything the statement moved,
 /// not the one row the caller happened to read back.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_re_raised_actions_rows_are_counted_out_together() {
     let lane = Lane::isolated().await;
 
-    let hub = SubscriptionHub::start(dragonfly_config())
-        .await
-        .expect("the lane's Dragonfly accepts a subscriber");
-    let mut tail = hub.subscribe(&format!("fleet:{}:activity", lane.fleet));
-    tokio::time::sleep(SUBSCRIBE_SETTLE).await;
+    let mut tail = tail(&lane).await;
 
     let re_raised = lane.seed_gate(Window::Open).await;
     lane.seed_gate_for(&re_raised, Window::Open).await;
     let _sibling = lane.seed_gate(Window::Open).await;
     lane.inbox
-        .resolve(&re_raised, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(re_raised.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
         .expect("the resolve must not fault");
 
@@ -152,27 +154,28 @@ async fn a_re_raised_actions_rows_are_counted_out_together() {
     );
 }
 
-/// A queue that will not take the frame does not fail the decision.
+/// A bus that will not take the frame does not fail the decision.
 ///
 /// The row moved over live Postgres before the announcement ran, and a
 /// person's answer must not be reported as failed because nobody could be told
-/// about it. The denial arm is the one to prove: an approval also appends a
-/// continuation to the queue, which a dead queue refuses for its own reason.
+/// about it. The denial arm proves the announcement alone; an approval also
+/// lands a continuation, which
+/// `an_approval_with_a_lost_notification_still_commits_its_continuation` proves.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_queue_that_will_not_take_the_frame_does_not_fail_the_decision() {
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_bus_that_will_not_take_the_frame_does_not_fail_the_decision() {
     let lane = Lane::isolated().await;
     let inbox = Inbox::new(
         lane.pool.clone(),
-        dead_queue(),
-        afd_admission::Admissions::for_tests(lane.pool.clone(), dead_queue()),
+        afd_bus::test_util::unreachable(),
+        afd_admission::Admissions::for_tests(lane.pool.clone(), afd_bus::test_util::unreachable()),
     );
     let action = lane.seed_gate(Window::Open).await;
 
     let outcome = inbox
-        .resolve(&action, Decision::Denied, OPERATOR, NOTE, None)
+        .resolve(action.as_str(), Decision::Denied, OPERATOR, NOTE, None)
         .await
-        .expect("the decision stands whatever the queue does");
+        .expect("the decision stands whatever the bus does");
     assert!(
         matches!(outcome, Resolution::Resolved(_)),
         "the operator decided; the lost announcement is the log's, not theirs"

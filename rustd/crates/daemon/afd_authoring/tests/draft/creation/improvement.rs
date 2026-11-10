@@ -47,8 +47,8 @@ async fn improvement(c: &Case, saved: &SavedFleet) -> (Uuid7, ApplyRevision) {
 }
 
 async fn status(c: &Case, fleet: &Uuid7) -> String {
-    sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id=$1::uuid")
-        .bind(fleet.as_str())
+    sqlx::query_scalar("SELECT status FROM fleet.fleets WHERE id=$1")
+        .bind(fleet)
         .fetch_one(&mut *c.base.connection().await)
         .await
         .expect("the saved fleet")
@@ -57,10 +57,10 @@ async fn status(c: &Case, fleet: &Uuid7) -> String {
 /// The stored first revision's runtime choice, and whether its definition
 /// names a model of its own.
 const REVISION_MODEL: &str = "SELECT runtime_model_ref, \
-     definition->'config'->'x-agentsfleet' ? 'model' FROM fleet.revisions WHERE fleet_id=$1::uuid";
+     definition->'config'->'x-agentsfleet' ? 'model' FROM fleet.revisions WHERE fleet_id=$1";
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_improvement_chat_inherits_the_model_its_fleet_resolved_at_save() {
     let c = Case::create().await;
     let draft = c
@@ -95,7 +95,7 @@ async fn an_improvement_chat_inherits_the_model_its_fleet_resolved_at_save() {
     };
     let saved = c.save(&mint(), request).await;
     let (resolved, named): (Option<String>, bool) = sqlx::query_as(REVISION_MODEL)
-        .bind(saved.id.as_str())
+        .bind(&saved.id)
         .fetch_one(&mut *c.base.connection().await)
         .await
         .expect("the first revision");
@@ -120,13 +120,13 @@ async fn an_improvement_chat_inherits_the_model_its_fleet_resolved_at_save() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_paused_fleet_takes_the_revision_without_reinstalling_and_closes_the_chat() {
     let c = Case::create().await;
     let saved = active(&c, "improve-paused").await;
     let (draft, apply) = improvement(&c, &saved).await;
-    sqlx::query("UPDATE fleet.fleets SET status='paused' WHERE id=$1::uuid")
-        .bind(saved.id.as_str())
+    sqlx::query("UPDATE fleet.fleets SET status='paused' WHERE id=$1")
+        .bind(&saved.id)
         .execute(&mut *c.base.connection().await)
         .await
         .expect("an operator paused the fleet");
@@ -154,7 +154,7 @@ async fn a_paused_fleet_takes_the_revision_without_reinstalling_and_closes_the_c
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_killed_fleet_refuses_the_revision_and_keeps_its_head() {
     let c = Case::create().await;
     let saved = active(&c, "improve-killed").await;
@@ -194,7 +194,7 @@ async fn a_killed_fleet_refuses_the_revision_and_keeps_its_head() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn a_candidate_under_retired_policy_semantics_cannot_be_applied() {
     let c = Case::create().await;
     let saved = active(&c, "improve-policy").await;
@@ -229,7 +229,7 @@ async fn a_candidate_under_retired_policy_semantics_cannot_be_applied() {
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn two_applies_under_one_key_write_one_revision_and_the_waiter_replays_it() {
     use sqlx::Connection as _;
     let c = Case::create().await;
@@ -238,13 +238,12 @@ async fn two_applies_under_one_key_write_one_revision_and_the_waiter_replays_it(
     let key = mint();
     let mut holder = c.base.connection().await;
     let mut held = holder.begin().await.expect("holder transaction");
-    let pid: i32 = sqlx::query_scalar(
-        "SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1::uuid FOR UPDATE",
-    )
-    .bind(chat.as_str())
-    .fetch_one(&mut *held)
-    .await
-    .expect("hold the chat the way a capture locks it");
+    let pid: i32 =
+        sqlx::query_scalar("SELECT pg_backend_pid() FROM authoring.drafts WHERE id=$1 FOR UPDATE")
+            .bind(&chat)
+            .fetch_one(&mut *held)
+            .await
+            .expect("hold the chat the way a capture locks it");
     let run = || {
         c.creations.apply_revision(
             c.base.access(),
@@ -267,8 +266,8 @@ async fn two_applies_under_one_key_write_one_revision_and_the_waiter_replays_it(
     assert_eq!(winner.setup_revision, "2");
     assert_eq!(waiter.setup_revision, winner.setup_revision);
     let revisions: i64 =
-        sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE fleet_id=$1::uuid")
-            .bind(saved.id.as_str())
+        sqlx::query_scalar("SELECT count(*) FROM fleet.revisions WHERE fleet_id=$1")
+            .bind(saved.id)
             .fetch_one(&mut *c.base.connection().await)
             .await
             .expect("the fleet's revisions");
@@ -277,7 +276,7 @@ async fn two_applies_under_one_key_write_one_revision_and_the_waiter_replays_it(
 }
 
 #[tokio::test]
-#[ignore = "needs live Postgres and Dragonfly: make test-integration-rustd"]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn an_apply_that_loses_its_key_to_a_lapsed_claim_writes_no_revision() {
     let c = Case::create().await;
     let saved = active(&c, "improve-lost-key").await;

@@ -1,28 +1,40 @@
+---
+type: troubleshooting
+audience: operator
+verified: 2026-11-08
+product_version: 0.75.0
+executable: false
+---
+
 # Development user teardown
 
-Deleting a Clerk user currently leaves that user's database account intact.
-The signed identity endpoint handles `user.created`; it answers `user.deleted` with `status: ignored`.
-Resending the deletion event does not change that result.
+## Symptom
 
-## Inspect before deleting an identity
+A deleted Clerk user still has a database account.
 
-Record the non-secret Clerk user identifier from the selected development application's user page.
-Use that value for `<CLERK_USER_ID>` in the development database console:
+## Why it happened
 
-```sql
-SELECT id, tenant_id FROM identity.users WHERE oidc_subject = '<CLERK_USER_ID>';
-```
+The signed identity endpoint acts on `user.created` and answers `user.deleted` with `status: ignored`.
+Resending the deletion event changes nothing.
+See `rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`, section `Why user.deleted is answered and not acted on`.
 
-Expected output is the matching account row, or zero rows if no signup was saved.
-A successful Clerk deletion is not evidence of a database purge.
+## How to fix it
 
-## Current removal options
-
-For an approved complete development rebuild, use [database teardown](../database/001_playbook.md), then the [clean-database priming route](../../../README.md#prime-a-clean-database).
-That action removes every account in the selected database and needs separate approval.
-
-There is no documented per-user purge API on this branch.
-Stop before claiming erasure; do not improvise deletion SQL across identity, private content, and retained billing records.
+No per-user purge API exists.
 The Human owns identity deletion and any decision to erase application data.
 
-Source: `rustd/crates/daemon/afd_api_ingress/src/handler/webhook/identity_route.rs`, section `Why user.deleted is answered and not acted on`.
+1. Copy the Clerk user identifier from the development application's user page.
+2. Inspect the account in the development database console.
+
+   ```sql
+   SELECT id, tenant_id FROM identity.users WHERE oidc_subject = '<CLERK_USER_ID>';
+   ```
+
+   ```text
+   <varies: the account row, or zero rows if no signup was saved>
+   ```
+
+3. Stop before claiming erasure.
+   Never improvise deletion SQL across identity, private content and retained billing records.
+4. For an approved full development rebuild, run [database teardown](../database/001_playbook.md), then the [clean-database priming route](../../../README.md#prime-a-clean-database).
+   That removes every account in the database and needs separate approval.

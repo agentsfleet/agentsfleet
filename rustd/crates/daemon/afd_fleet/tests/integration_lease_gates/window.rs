@@ -11,7 +11,7 @@ use af_crypto::entropy::Entropy;
 use af_wire::event::EventType;
 use af_wire::memory::{MemoryDelta, Visibility};
 use afd_db::test_util::unreachable_db;
-use afd_fleet::lease::Plane;
+use afd_fleet::lease::LeaseService;
 use afd_memory::Memories;
 
 use super::chat::{ASKED_LATER, Chat, FIRST_ANSWER, FIRST_MESSAGE, FOLLOW_UP};
@@ -119,7 +119,7 @@ async fn test_window_read_failure_issues_without_a_window() {
     let asked = chat
         .ask(EventType::Chat, FIRST_MESSAGE, chat.fixtures.enrolled_at())
         .await;
-    let forgetful = Plane {
+    let forgetful = LeaseService {
         task_reports: None,
         memories: Memories::new(unreachable_db(), Entropy::new()),
         ..chat.fixtures.plane()
@@ -141,7 +141,7 @@ async fn test_window_read_failure_issues_without_a_window() {
                 .is_some_and(|code| code.starts_with("UZ-")),
             failed.field("fleet_id").map(str::to_owned),
         ),
-        (asked, None, true, Some(chat.fleet().to_owned()))
+        (asked, None, true, Some(chat.fleet().as_str().to_owned()))
     );
     chat.fixtures.cleanup().await;
 }

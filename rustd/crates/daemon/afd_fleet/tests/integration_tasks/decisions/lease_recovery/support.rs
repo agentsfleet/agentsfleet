@@ -1,5 +1,6 @@
 //! Native provider and runner configuration precede ordinary task reissuance.
 use super::super::{super::fixture::Case, fixture::Decisions};
+use af_core::id::Uuid7;
 use afd_db::test_util::{DefaultSeed, PlatformDefault};
 use afd_fleet::lease::Acquired;
 use afd_vault::{SecretBody, SecretName};
@@ -31,7 +32,7 @@ pub(in super::super) async fn provider(fixture: &Decisions<'_>) -> PlatformDefau
         &case.held.fixtures.database,
         DefaultSeed {
             provider: crate::seed::PROVIDER,
-            source_workspace_id: case.scope.workspace_id.as_str(),
+            source_workspace_id: &case.scope.workspace_id,
             model: crate::seed::MODEL,
             context_cap_tokens: 200_000,
             created_at: case.held.fixtures.enrolled_at(),
@@ -73,10 +74,10 @@ pub(in super::super) async fn expire(case: &Case) {
         .acquire()
         .await
         .expect("elapsed fixture clock");
-    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1::uuid")
+    sqlx::query("UPDATE runner.fleet_slots SET lease_expires_at=clock_timestamp()-interval '1 second',hold_expires_at=NULL WHERE fleet_id=$1")
         .bind(&case.held.fleet).execute(&mut *connection).await.expect("prior slot elapsed");
-    sqlx::query("UPDATE runner.leases SET status='expired' WHERE id=$1::uuid")
-        .bind(case.held.lease_key.as_str())
+    sqlx::query("UPDATE runner.leases SET status='expired' WHERE id=$1")
+        .bind(&case.held.lease_key)
         .execute(&mut *connection)
         .await
         .expect("old execution expired");
@@ -91,18 +92,18 @@ pub(in super::super) async fn claim(case: &Case) -> Acquired {
     acquired
 }
 
-pub(super) async fn assert_issued(case: &Case, task: &str, lease: &str, fence: i64) {
-    let row: (String, i64, i64, i64, bool, bool, i32) = sqlx::query_as("SELECT l.task_id::text,l.task_generation,l.task_stop_generation,l.fencing_token,l.lease_expires_at<=l.task_execution_deadline_at AND l.lease_expires_at=(SELECT s.lease_expires_at FROM runner.fleet_slots s WHERE s.fleet_id=l.fleet_id),l.task_execution_deadline_at<=t.expires_at AND l.task_execution_deadline_at<=l.task_started_at+interval '600 seconds',t.used_leases FROM runner.leases l JOIN fleet.tasks t ON t.id=l.task_id WHERE l.id=$1::uuid")
+pub(super) async fn assert_issued(case: &Case, task: &Uuid7, lease: &Uuid7, fence: i64) {
+    let row: (Uuid7, i64, i64, i64, bool, bool, i32) = sqlx::query_as("SELECT l.task_id,l.task_generation,l.task_stop_generation,l.fencing_token,l.lease_expires_at<=l.task_execution_deadline_at AND l.lease_expires_at=(SELECT s.lease_expires_at FROM runner.fleet_slots s WHERE s.fleet_id=l.fleet_id),l.task_execution_deadline_at<=t.expires_at AND l.task_execution_deadline_at<=l.task_started_at+interval '600 seconds',t.used_leases FROM runner.leases l JOIN fleet.tasks t ON t.id=l.task_id WHERE l.id=$1")
         .bind(lease).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("issued ownership observer")).await.expect("ordinary lease owns exact task");
-    assert_eq!(row, (task.to_owned(), 1, 0, fence, true, true, 2));
-    let rows: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM runner.leases WHERE fleet_id=$1::uuid),(SELECT count(*) FROM runner.leases WHERE fleet_id=$1::uuid AND status='active')")
-        .bind(case.scope.fleet_id.as_str()).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("single execution observer")).await.expect("old and new leases");
+    assert_eq!(row, (task.clone(), 1, 0, fence, true, true, 2));
+    let rows: (i64, i64) = sqlx::query_as("SELECT (SELECT count(*) FROM runner.leases WHERE fleet_id=$1),(SELECT count(*) FROM runner.leases WHERE fleet_id=$1 AND status='active')")
+        .bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("single execution observer")).await.expect("old and new leases");
     assert_eq!(rows, (2, 1));
 }
 
-pub(super) async fn assert_blocked(case: &Case, task: &str) {
-    let row: (String, String, i64, i64, i32, i64) = sqlx::query_as("SELECT status,status_reason,generation,stop_generation,used_leases,(SELECT count(*) FROM runner.leases WHERE fleet_id=$2::uuid) FROM fleet.tasks WHERE id=$1::uuid")
-        .bind(task).bind(case.scope.fleet_id.as_str()).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("refusal observer")).await.expect("blocked original task");
+pub(super) async fn assert_blocked(case: &Case, task: &Uuid7) {
+    let row: (String, String, i64, i64, i32, i64) = sqlx::query_as("SELECT status,status_reason,generation,stop_generation,used_leases,(SELECT count(*) FROM runner.leases WHERE fleet_id=$2) FROM fleet.tasks WHERE id=$1")
+        .bind(task).bind(&case.scope.fleet_id).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("refusal observer")).await.expect("blocked original task");
     assert_eq!(
         row,
         (
@@ -115,7 +116,7 @@ pub(super) async fn assert_blocked(case: &Case, task: &str) {
         )
     );
     let live: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM fleet.admissions WHERE task_id=$1::uuid AND settled_at IS NULL",
+        "SELECT count(*) FROM fleet.admissions WHERE task_id=$1 AND settled_at IS NULL",
     )
     .bind(task)
     .fetch_one(
@@ -145,16 +146,15 @@ async fn chat_source(case: &Case) {
         .acquire()
         .await
         .expect("native event fixture");
-    let admission = sqlx::query(
-        "UPDATE fleet.admissions SET event_type=$2 WHERE id=$1::uuid AND event_type='steer'",
-    )
-    .bind(&case.held.event_id)
-    .bind(af_wire::event::EventType::Chat.as_str())
-    .execute(&mut *connection)
-    .await
-    .expect("native human admission kind");
+    let admission =
+        sqlx::query("UPDATE fleet.admissions SET event_type=$2 WHERE id=$1 AND event_type='steer'")
+            .bind(&case.held.event_id)
+            .bind(af_wire::event::EventType::Chat.as_str())
+            .execute(&mut *connection)
+            .await
+            .expect("native human admission kind");
     assert_eq!(admission.rows_affected(), 1);
-    let event = sqlx::query("UPDATE fleet.events SET event_type=$3 WHERE fleet_id=$1::uuid AND event_id=$2 AND event_type='steer'")
+    let event = sqlx::query("UPDATE fleet.events SET event_type=$3 WHERE fleet_id=$1 AND event_id=$2 AND event_type='steer'")
         .bind(&case.held.fleet).bind(&case.held.event_id).bind(af_wire::event::EventType::Chat.as_str())
         .execute(&mut *connection).await.expect("same native history kind");
     assert_eq!(event.rows_affected(), 1);

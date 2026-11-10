@@ -4,14 +4,14 @@ use af_core::error_code;
 use af_wire::task::{DecisionTaskVersion, TaskInputMode, TaskInputReceiptInput};
 use afd_fleet::task::{TaskBindings, TaskLifecycle as _};
 
-use super::fixture::{Case, exercise};
+use super::fixture::{Case, exercise, id};
 
 fn receipt(case: &Case, bindings: &TaskBindings, mode: TaskInputMode) -> TaskInputReceiptInput {
     let item = bindings.items.first().expect("accepted item");
     TaskInputReceiptInput {
         fencing_token: case.lease().fencing_token,
-        operation_id: afd_db::test_util::mint_id(),
-        source_admission_id: case.held.event_id.clone(),
+        operation_id: afd_db::test_util::mint_id().into(),
+        source_admission_id: case.held.event_id.clone().into(),
         plan_digest: "a".repeat(64),
         item_id: item.item_id.to_string(),
         task: Some(DecisionTaskVersion {
@@ -56,9 +56,9 @@ async fn queued_item_receipt_preserves_original_answer_on_replay_and_conflict() 
         assert_eq!(replayed.item_id, accepted.item_id);
         conflicting_answer(case, &input).await;
         let rows: Vec<String> = sqlx::query_scalar(
-            "SELECT response_text FROM fleet.task_input_receipts WHERE task_item_id=$1::uuid",
+            "SELECT response_text FROM fleet.task_input_receipts WHERE task_item_id=$1",
         )
-        .bind(&input.item_id)
+        .bind(id(&input.item_id))
         .fetch_all(
             &mut *case
                 .held
@@ -95,9 +95,9 @@ async fn input_receipts_refuse_changed_identity_generation_and_mode_without_writ
             assert_eq!(error.code(), code);
         }
         let count: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM fleet.task_input_receipts WHERE task_item_id=$1::uuid",
+            "SELECT count(*) FROM fleet.task_input_receipts WHERE task_item_id=$1",
         )
-        .bind(original.item_id)
+        .bind(id(&original.item_id))
         .fetch_one(
             &mut *case
                 .held
@@ -117,7 +117,7 @@ async fn input_receipts_refuse_changed_identity_generation_and_mode_without_writ
 async fn conflicting_answer(case: &Case, input: &TaskInputReceiptInput) {
     let different = TaskInputReceiptInput {
         mode: TaskInputMode::Answered,
-        operation_id: afd_db::test_util::mint_id(),
+        operation_id: afd_db::test_util::mint_id().into(),
         response_text: Some("A conflicting replacement answer".to_owned()),
         ..input.clone()
     };

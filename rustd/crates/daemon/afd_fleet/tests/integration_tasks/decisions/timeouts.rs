@@ -39,7 +39,7 @@ async fn blocked(case: &Case, capture: &Capture) {
         .begin()
         .await
         .expect("source blocker transaction");
-    sqlx::query("SELECT id FROM fleet.admissions WHERE id=$1::uuid FOR UPDATE")
+    sqlx::query("SELECT id FROM fleet.admissions WHERE id=$1 FOR UPDATE")
         .bind(&case.held.event_id)
         .execute(&mut *blocker)
         .await
@@ -81,7 +81,7 @@ pub(super) async fn single_connection(fixture: &Decisions<'_>) -> (Db, Tasks) {
     let tasks = Tasks::new(
         Leases::new(
             database.clone(),
-            case.held.fixtures.queue().clone(),
+            case.held.fixtures.bus().clone(),
             af_crypto::entropy::Entropy::new(),
         ),
         case.admissions.clone(),

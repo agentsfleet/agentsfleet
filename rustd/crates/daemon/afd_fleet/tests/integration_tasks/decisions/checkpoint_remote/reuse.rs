@@ -49,8 +49,21 @@ pub(super) async fn verify(
         reused.items.first().expect("reused object").status,
         CheckpointObjectStatus::Reused
     ));
-    let quota: (i64, i64) = sqlx::query_as("SELECT reserved_bytes, stored_bytes FROM fleet.task_storage_quota WHERE workspace_id=$1::uuid")
-        .bind(case.scope.workspace_id.as_str()).fetch_one(&mut *case.held.fixtures.database.acquire().await.expect("quota observer")).await.expect("unique stored bytes");
+    let quota: (i64, i64) = sqlx::query_as(
+        "SELECT reserved_bytes, stored_bytes FROM fleet.task_storage_quota WHERE workspace_id=$1",
+    )
+    .bind(&case.scope.workspace_id)
+    .fetch_one(
+        &mut *case
+            .held
+            .fixtures
+            .database
+            .acquire()
+            .await
+            .expect("quota observer"),
+    )
+    .await
+    .expect("unique stored bytes");
     assert_eq!(
         quota,
         (

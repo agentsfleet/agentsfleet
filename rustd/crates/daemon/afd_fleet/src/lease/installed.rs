@@ -19,7 +19,7 @@
 use af_core::id::Uuid7;
 use af_fleet_runtime::{Definition, FleetConfig, definition::POLICY_SEMANTICS};
 
-use crate::error::{Result, query, row_malformed};
+use crate::error::{Result, query};
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
@@ -28,9 +28,6 @@ const CONTEXT_INSTALLED: &str = "fleet claim read";
 
 /// Statement name for the renewal's ceiling read.
 const CONTEXT_STORED_CONFIG: &str = "fleet ceiling read";
-
-/// The table a malformed value is reported against.
-const TABLE_FLEETS: &str = "fleet.fleets";
 
 /// The session context a fleet with no checkpoint starts from.
 ///
@@ -43,9 +40,9 @@ pub const FRESH_CONTEXT: &str = "{}";
 #[derive(Debug, Clone)]
 pub struct IssueRevision {
     /// Accepted setup whose text and policy were assembled.
-    pub accepted: String,
+    pub accepted: Uuid7,
     /// Current authority ceiling observed during assembly.
-    pub current: String,
+    pub current: Uuid7,
     /// Native generation, absent before the initial interpretation.
     pub task_generation: Option<i64>,
 }
@@ -110,7 +107,7 @@ impl Leases {
     pub(crate) async fn installed_for_admission(
         &self,
         fleet_id: &Uuid7,
-        event: Option<&str>,
+        event: Option<&Uuid7>,
     ) -> Result<Option<Installed>> {
         let mut connection = self.pool().acquire().await?;
         Self::installed_on(&mut connection, fleet_id, event).await
@@ -119,10 +116,10 @@ impl Leases {
     pub(crate) async fn installed_on(
         connection: &mut sqlx::PgConnection,
         fleet_id: &Uuid7,
-        event: Option<&str>,
+        event: Option<&Uuid7>,
     ) -> Result<Option<Installed>> {
         let found: Option<FleetWithSession> = sqlx::query_as(sql::fleet::SELECT_FLEET_WITH_SESSION)
-            .bind(fleet_id.as_str())
+            .bind(fleet_id)
             .bind(event)
             .fetch_optional(connection)
             .await
@@ -162,8 +159,7 @@ impl Leases {
         }
 
         Ok(Some(Installed {
-            workspace_id: Uuid7::parse(&workspace)
-                .map_err(row_malformed(TABLE_FLEETS, "workspace_id"))?,
+            workspace_id: workspace,
             name,
             config: definition.runtime().clone(),
             instructions: definition.instructions_md().to_owned(),
@@ -194,13 +190,13 @@ impl Leases {
     /// daemon cannot read, as [`Self::installed`] does.
     pub(crate) async fn stored_config(&self, fleet_id: &Uuid7) -> Result<Option<FleetConfig>> {
         let mut connection = self.pool().acquire().await?;
-        Self::stored_config_on(&mut connection, fleet_id.as_str(), None).await
+        Self::stored_config_on(&mut connection, fleet_id, None).await
     }
 
     pub(crate) async fn stored_config_on(
         connection: &mut sqlx::PgConnection,
-        fleet_id: &str,
-        revision_id: Option<&str>,
+        fleet_id: &Uuid7,
+        revision_id: Option<&Uuid7>,
     ) -> Result<Option<FleetConfig>> {
         let document: Option<String> = sqlx::query_scalar(sql::fleet::SELECT_FLEET_CONFIG)
             .bind(fleet_id)
@@ -222,15 +218,15 @@ impl Leases {
 /// revision and its session, each revision column absent until one is installed.
 #[derive(sqlx::FromRow)]
 struct FleetWithSession {
-    workspace_id: String,
+    workspace_id: Uuid7,
     definition: Option<String>,
     status: String,
     runtime_model_ref: Option<String>,
     name: String,
     context_json: Option<String>,
     policy_semantics: Option<String>,
-    revision_id: Option<String>,
-    head_revision_id: Option<String>,
+    revision_id: Option<Uuid7>,
+    head_revision_id: Option<Uuid7>,
     task_generation: Option<i64>,
     current_definition: Option<String>,
 }

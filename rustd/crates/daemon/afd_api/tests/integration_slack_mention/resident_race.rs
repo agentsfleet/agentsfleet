@@ -77,13 +77,13 @@ async fn write_uncommitted_binding(
         "INSERT INTO connector.channels \
            (id, provider, external_account_id, external_channel_id, fleet_id, binding_type, \
             created_at, updated_at) \
-         VALUES ($1::uuid, $2, $3, $4, $5::uuid, $6, now(), now())",
+         VALUES ($1, $2, $3, $4, $5, $6, now(), now())",
     )
     .bind(mint_id())
     .bind(PROVIDER.id())
     .bind(&fixture.team)
     .bind(CHANNEL)
-    .bind(winner.as_str())
+    .bind(winner)
     .bind(KIND_NOTICE_OWNER)
     .execute(&mut *connection)
     .await

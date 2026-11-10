@@ -2,8 +2,8 @@
 //!
 //! One template carrying two verbs that are not the same authority: reading
 //! what a fleet has been told is a read, and telling it something is a write
-//! that starts a billable run. Row behaviour needs live Postgres and Dragonfly and
-//! is proven in the integration lane; the values each verb accepts are their
+//! that starts a billable run. Row behaviour needs live Postgres and is proven
+//! in the integration lane; the values each verb accepts are their
 //! own suite next door (`fleet_messages_input.rs`), split the way
 //! `workspace_fleets_input` splits from `workspace_fleets`.
 //!

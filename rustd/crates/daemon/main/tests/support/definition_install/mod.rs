@@ -114,19 +114,19 @@ pub(super) async fn install_with(
     seed_model_rate(&booted, now).await;
     let default = seed_platform_default(&booted, &workspace, now).await;
     seed_provider_key(&booted, &workspace, now).await;
-    let workspace_id = Uuid7::parse(&workspace).expect("a minted workspace id");
-    seal_credentials(&booted, &workspace, &workspace_id, secrets, now).await;
-    let fleet = install(&booted, &workspace_id, &tenant, fleet_name, now, channel).await;
+    seal_credentials(&booted, &workspace, secrets, now).await;
+    let fleet = install(&booted, &workspace, &tenant, fleet_name, now, channel).await;
     let enrolled = enrol(&booted, &fleet, now).await;
-    let event_id = enqueue(&booted, &fleet.to_string(), &workspace, EventType::Chat).await;
+    let event_id = enqueue(&booted, &fleet, &workspace, EventType::Chat).await;
     Scenario {
         base: format!("http://{}", booted.address),
-        fleet: fleet.to_string(),
+        fleet,
         workspace,
         tenant,
         event_id,
         runner_id: enrolled.0,
         token: enrolled.1,
+        native: tokio::sync::OnceCell::new(),
         seeded_at: now,
         booted,
         _default: default,
@@ -158,23 +158,17 @@ async fn boot_minting(
     } else {
         boot_with_exchanger(&env, EPHEMERAL, supervisor, Arc::new(MintedToken)).await
     };
-    boot.expect("the lane's Postgres and Dragonfly are up")
+    boot.expect("the lane's Postgres and NATS are up")
 }
 
 /// Seals the GitHub handle for a fresh installation, lands that
 /// installation's routing row, then seals every credential the definition
 /// declares.
-async fn seal_credentials(
-    booted: &Booted,
-    workspace: &str,
-    workspace_id: &Uuid7,
-    secrets: &[Secret],
-    now: Timestamp,
-) {
+async fn seal_credentials(booted: &Booted, workspace: &Uuid7, secrets: &[Secret], now: Timestamp) {
     let installation = fresh_installation();
     seal(
         booted,
-        workspace_id,
+        workspace,
         "github",
         &github_handle(&installation),
         now,
@@ -184,7 +178,7 @@ async fn seal_credentials(
     for secret in secrets {
         seal(
             booted,
-            workspace_id,
+            workspace,
             secret.name,
             &secret.body.to_string(),
             now,

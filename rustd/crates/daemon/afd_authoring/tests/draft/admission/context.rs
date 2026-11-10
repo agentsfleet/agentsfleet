@@ -15,8 +15,8 @@ async fn blank(f: &Fixture) -> Draft {
 }
 
 async fn complete(f: &Fixture, draft: &Draft, answer: &str) {
-    sqlx::query("UPDATE authoring.messages SET status='completed',answer_text=$2 WHERE draft_id=$1::uuid AND sequence=1")
-        .bind(draft.id.as_str()).bind(answer).execute(&mut *f.connection().await)
+    sqlx::query("UPDATE authoring.messages SET status='completed',answer_text=$2 WHERE draft_id=$1 AND sequence=1")
+        .bind(&draft.id).bind(answer).execute(&mut *f.connection().await)
         .await.expect("saved prior assistant answer");
 }
 
@@ -55,8 +55,13 @@ async fn a_blank_draft_keeps_completed_history_in_the_daemon_without_a_candidate
         .map(|m| (matches!(m.role, ContextRole::Assistant), m.text.as_str()))
         .collect();
     assert_eq!(actual, [(false, "Next question")]);
-    let original: (String, String) = sqlx::query_as("SELECT user_text,answer_text FROM authoring.messages WHERE draft_id=$1::uuid AND sequence=1")
-        .bind(draft.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("authoritative original exchange");
+    let original: (String, String) = sqlx::query_as(
+        "SELECT user_text,answer_text FROM authoring.messages WHERE draft_id=$1 AND sequence=1",
+    )
+    .bind(draft.id)
+    .fetch_one(&mut *f.connection().await)
+    .await
+    .expect("authoritative original exchange");
     assert_eq!(original, ("First question".into(), "Earlier answer".into()));
     f.cleanup().await;
 }
@@ -81,8 +86,8 @@ async fn saved_history_over_the_old_row_or_transfer_bound_remains_available_for_
             for _ in 2..65 {
                 send(&f, &draft).await;
             }
-            sqlx::query("UPDATE authoring.messages SET status='completed' WHERE draft_id=$1::uuid")
-                .bind(draft.id.as_str())
+            sqlx::query("UPDATE authoring.messages SET status='completed' WHERE draft_id=$1")
+                .bind(&draft.id)
                 .execute(&mut *f.connection().await)
                 .await
                 .expect("completed owned history");
@@ -96,8 +101,13 @@ async fn saved_history_over_the_old_row_or_transfer_bound_remains_available_for_
             lease.messages.first().expect("current request").text,
             "Next question"
         );
-        let saved: (i64, String) = sqlx::query_as("SELECT count(*)::bigint,min(answer_text) FROM authoring.messages WHERE draft_id=$1::uuid")
-            .bind(draft.id.as_str()).fetch_one(&mut *f.connection().await).await.expect("complete durable history");
+        let saved: (i64, String) = sqlx::query_as(
+            "SELECT count(*)::bigint,min(answer_text) FROM authoring.messages WHERE draft_id=$1",
+        )
+        .bind(draft.id)
+        .fetch_one(&mut *f.connection().await)
+        .await
+        .expect("complete durable history");
         assert_eq!(saved, (rows, answer));
         assert_eq!(fixture::attempts(&f).await, 1);
         f.cleanup().await;
