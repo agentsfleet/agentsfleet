@@ -48,7 +48,7 @@ impl RequestSlots {
 
 /// A frame is decoded once in its worker; the proof then reserves its correlation id.
 #[derive(Default)]
-pub(super) struct RequestTracker(DashSet<NonZeroU64>);
+pub(crate) struct RequestTracker(DashSet<NonZeroU64>);
 
 impl RequestTracker {
     pub(super) fn register(

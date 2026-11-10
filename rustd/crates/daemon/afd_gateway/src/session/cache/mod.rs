@@ -34,7 +34,7 @@ impl CachedLeases {
 /// One bounded snapshot uses a nonpoisoning lock, so guards need no unwrap or panic recovery.
 /// Reads and mutations are short; database I/O and frame encoding always happen after releasing it.
 #[derive(Debug)]
-pub(super) struct LeaseCache(RwLock<CachedLeases>);
+pub(crate) struct LeaseCache(RwLock<CachedLeases>);
 
 impl Default for LeaseCache {
     fn default() -> Self {
@@ -44,7 +44,7 @@ impl Default for LeaseCache {
 
 impl LeaseCache {
     /// Rebuild only from durable, unexpired ownership; unlisted leases are allowed to lapse.
-    pub(super) async fn rebuild(database: &Db, runner: &Uuid7) -> Result<Self> {
+    pub(crate) async fn rebuild(database: &Db, runner: &Uuid7) -> Result<Self> {
         let cache = Self::default();
         cache.refresh(database, runner).await?;
         Ok(cache)

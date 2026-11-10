@@ -163,3 +163,32 @@ impl<D: Services> RunnerStreamAuthentication<D> {
         Ok(principal)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{AuthenticatedRunnerCredential, AuthenticatedRunnerStream};
+    use af_core::id::Uuid7;
+    use af_wire::protocol::StreamKind;
+    use afd_auth::{credential::Presented, directory::Digest};
+
+    #[test]
+    fn the_retained_runner_credential_never_prints_its_digest()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let presented = Presented::from_authorization("Bearer agt_r_fixture_credential")?;
+        let credential = AuthenticatedRunnerCredential(Digest::of(&presented));
+        let shown = format!("{credential:?}");
+        assert_eq!(shown, "AuthenticatedRunnerCredential { .. }");
+        assert!(!shown.contains(credential.digest().as_str()));
+        Ok(())
+    }
+
+    #[test]
+    fn a_bound_secondary_stream_reports_its_kind_and_owning_session()
+    -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let session = Uuid7::parse("019f0000-0000-7000-8000-000000000001")?;
+        let stream = AuthenticatedRunnerStream::new(StreamKind::Reports, session.clone());
+        assert_eq!(stream.kind(), StreamKind::Reports);
+        assert_eq!(stream.session(), &session);
+        Ok(())
+    }
+}
