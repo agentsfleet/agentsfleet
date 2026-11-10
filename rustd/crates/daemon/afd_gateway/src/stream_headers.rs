@@ -30,30 +30,33 @@ impl TryFrom<&HeaderMap> for StreamHeaders {
         let session = one(headers, protocol::SESSION_HEADER)?
             .map(|raw| Uuid7::parse(raw).map_err(|source| ErrorKind::SessionIdentifier { source }))
             .transpose()?;
-        let bearer = one(headers, AUTHORIZATION_HEADER)?;
+        let bearer = one(headers, AUTHORIZATION_HEADER)?.is_some();
         match kind {
             StreamKind::Control => {
-                if bearer.is_none() {
+                if !bearer {
                     return Err(ErrorKind::ControlBearerMissing.into());
                 }
                 Ok(Self::Control { previous: session })
             }
-            kind => {
-                if bearer.is_some() {
-                    return Err(ErrorKind::UnexpectedBearer.into());
-                }
-                let session = session.ok_or(ErrorKind::MissingHeader {
-                    header: protocol::SESSION_HEADER,
-                })?;
-                Ok(match kind {
-                    StreamKind::Work => Self::Work { session },
-                    StreamKind::Reports => Self::Reports { session },
-                    StreamKind::Activity => Self::Activity { session },
-                    StreamKind::Control => return Err(ErrorKind::UnknownStream.into()),
-                })
+            StreamKind::Work => secondary(bearer, session).map(|session| Self::Work { session }),
+            StreamKind::Reports => {
+                secondary(bearer, session).map(|session| Self::Reports { session })
+            }
+            StreamKind::Activity => {
+                secondary(bearer, session).map(|session| Self::Activity { session })
             }
         }
     }
+}
+
+/// A secondary lane binds to the authenticated session and never carries its own bearer.
+fn secondary(bearer: bool, session: Option<Uuid7>) -> Result<Uuid7> {
+    if bearer {
+        return Err(ErrorKind::UnexpectedBearer.into());
+    }
+    Ok(session.ok_or(ErrorKind::MissingHeader {
+        header: protocol::SESSION_HEADER,
+    })?)
 }
 
 impl StreamHeaders {
@@ -95,4 +98,113 @@ fn one<'a>(headers: &'a HeaderMap, name: &'static str) -> Result<Option<&'a str>
         return Err(ErrorKind::RepeatedHeader { header: name }.into());
     }
     Ok(first)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{StreamHeaders, StreamKind};
+    use crate::error::ErrorKind;
+    use af_wire::protocol;
+    use http::{HeaderMap, HeaderValue};
+
+    const SESSION: &str = "019f0000-0000-7000-8000-000000000001";
+
+    fn headers(pairs: &[(&'static str, &'static [u8])]) -> HeaderMap {
+        let mut map = HeaderMap::new();
+        map.append(
+            protocol::VERSION_HEADER,
+            HeaderValue::from_static(protocol::VERSION),
+        );
+        for (name, value) in pairs {
+            if let Ok(value) = HeaderValue::from_bytes(value) {
+                map.append(*name, value);
+            }
+        }
+        map
+    }
+
+    #[test]
+    fn control_carries_the_bearer_and_secondary_lanes_bind_the_session() {
+        let control = StreamHeaders::try_from(&headers(&[
+            (protocol::STREAM_KIND_HEADER, b"control"),
+            ("authorization", b"Bearer agt_r_fixture"),
+            (protocol::SESSION_HEADER, SESSION.as_bytes()),
+        ]));
+        let control = control.map_err(|error| error.to_string());
+        assert!(
+            matches!(&control, Ok(StreamHeaders::Control { previous: Some(_) })),
+            "{control:?}"
+        );
+        for (kind, name) in [
+            (StreamKind::Work, b"work".as_slice()),
+            (StreamKind::Reports, b"reports"),
+            (StreamKind::Activity, b"activity"),
+        ] {
+            let mut map = headers(&[(protocol::SESSION_HEADER, SESSION.as_bytes())]);
+            map.append(
+                protocol::STREAM_KIND_HEADER,
+                HeaderValue::from_bytes(name).unwrap_or(HeaderValue::from_static("")),
+            );
+            let bound = StreamHeaders::try_from(&map).map_err(|error| error.to_string());
+            assert_eq!(
+                bound.as_ref().map(StreamHeaders::stream_kind).ok(),
+                Some(kind)
+            );
+            assert_eq!(
+                bound
+                    .as_ref()
+                    .ok()
+                    .and_then(StreamHeaders::session)
+                    .map(af_core::id::Uuid7::as_str),
+                Some(SESSION)
+            );
+        }
+    }
+
+    type Pairs<'a> = &'a [(&'static str, &'static [u8])];
+    type Expected = fn(&ErrorKind) -> bool;
+
+    #[test]
+    fn every_lane_binding_violation_is_refused_with_its_own_kind() {
+        let cases: [(Pairs<'_>, Expected); 5] = [
+            (&[(protocol::STREAM_KIND_HEADER, b"control")], |kind| {
+                matches!(kind, ErrorKind::ControlBearerMissing)
+            }),
+            (
+                &[
+                    (protocol::STREAM_KIND_HEADER, b"work"),
+                    (protocol::SESSION_HEADER, SESSION.as_bytes()),
+                    ("authorization", b"Bearer agt_r_fixture"),
+                ],
+                |kind| matches!(kind, ErrorKind::UnexpectedBearer),
+            ),
+            (
+                &[(protocol::STREAM_KIND_HEADER, b"reports")],
+                |kind| matches!(kind, ErrorKind::MissingHeader { header } if *header == protocol::SESSION_HEADER),
+            ),
+            (
+                &[
+                    (protocol::STREAM_KIND_HEADER, b"activity"),
+                    (protocol::SESSION_HEADER, SESSION.as_bytes()),
+                    (protocol::SESSION_HEADER, SESSION.as_bytes()),
+                ],
+                |kind| matches!(kind, ErrorKind::RepeatedHeader { header } if *header == protocol::SESSION_HEADER),
+            ),
+            (
+                &[
+                    (protocol::STREAM_KIND_HEADER, b"work"),
+                    (protocol::SESSION_HEADER, b"\xff"),
+                ],
+                |kind| matches!(kind, ErrorKind::HeaderEncoding { header, .. } if *header == protocol::SESSION_HEADER),
+            ),
+        ];
+        for (pairs, expected) in cases {
+            let refused = StreamHeaders::try_from(&headers(pairs));
+            assert!(
+                refused.as_ref().is_err_and(|error| expected(error.kind())),
+                "{:?}",
+                refused.map_err(|error| error.to_string())
+            );
+        }
+    }
 }

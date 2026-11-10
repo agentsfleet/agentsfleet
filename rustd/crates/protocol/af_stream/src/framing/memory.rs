@@ -146,4 +146,31 @@ mod tests {
         }
         Ok(())
     }
+
+    /// An operator who omits the settings gets the documented 16 MiB and 48 MiB budgets.
+    #[test]
+    fn unset_settings_resolve_to_the_documented_defaults() -> crate::Result<()> {
+        let settings = MemorySettings::default();
+        assert_eq!((settings.control_mib, settings.data_mib), (16, 48));
+        let limits =
+            MemoryLimits::from_env(&af_core::env::MapEnv::from_pairs([("UNRELATED", "1")]))?;
+        assert_eq!(
+            (limits.control_bytes, limits.data_bytes),
+            (16 * MIB, 48 * MIB)
+        );
+        Ok(())
+    }
+
+    /// A non-numeric value names its setting rather than falling back to a default.
+    #[test]
+    fn a_nonnumeric_setting_is_refused_by_name() {
+        let env = af_core::env::MapEnv::from_pairs([(super::DATA_MEMORY_ENV, "lots")]);
+        let refused = MemoryLimits::from_env(&env).err();
+        assert!(
+            refused.as_ref().is_some_and(|error| error
+                .to_string()
+                .contains("Set AGENTSFLEET_RUNNER_DATA_MEMORY_MIB to a whole number of mebibytes")),
+            "{refused:?}"
+        );
+    }
 }
