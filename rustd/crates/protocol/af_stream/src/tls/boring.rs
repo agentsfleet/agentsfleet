@@ -39,10 +39,22 @@ impl Identity {
     }
 }
 
-/// Trust roots; runners never load a client identity or CA signing key.
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+/// Trust roots and the datagram size a runner accepts; runners never load a client identity or CA
+/// signing key.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Trust {
     roots: Option<PathBuf>,
+    /// The largest UDP payload this runner tells the daemon it accepts.
+    receive: usize,
+}
+
+impl Default for Trust {
+    fn default() -> Self {
+        Self {
+            roots: None,
+            receive: crate::mtu::MAX_DATAGRAM_BYTES,
+        }
+    }
 }
 
 impl Trust {
@@ -51,7 +63,21 @@ impl Trust {
     pub fn with_roots(roots: impl Into<PathBuf>) -> Self {
         Self {
             roots: Some(roots.into()),
+            ..Self::default()
         }
+    }
+
+    /// Advertise `bytes` as the largest datagram this runner accepts, to model a runner with no
+    /// ceiling of its own: the daemon's limit is then the only one left.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub const fn with_receive_limit(mut self, bytes: usize) -> Self {
+        self.receive = bytes;
+        self
+    }
+
+    pub(crate) const fn receive_limit(&self) -> usize {
+        self.receive
     }
 
     fn configure(&self, context: &mut SslContextBuilder) -> Result<()> {
