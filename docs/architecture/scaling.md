@@ -74,7 +74,7 @@ Every current number is in the Facts table at the top of this page.
 
 v2 ships hosted on Fly.io. Postgres is the only datastore, and the message bus is **self-hosted core NATS** with JetStream off.
 
-`nats-prod` runs three `shared-cpu-2x` 1 GB machines and `nats-dev` two `shared-cpu-1x` 512 MB machines. Both sit in `iad` with no volume (`deploy/fly/nats-*/fly.toml`, `NATS_MACHINES` in the deploy workflows).
+`nats-prod` and `nats-dev` each run two `shared-cpu-1x` 512 MB machines. Both sit in `iad` with no volume (`deploy/fly/nats-*/fly.toml`, `NATS_MACHINES` in the deploy workflows).
 
 The daemon reaches them over Fly's private network (6PN). `datastore_scaling.md` is canonical for the target and wins over this page where the two disagree.
 

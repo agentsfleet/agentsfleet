@@ -7,13 +7,12 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile"
 
-# Three nodes (Indy, Nov 09, 2026: "Prod 3, dev 2"): core NATS has no quorum;
-# the third covers a crash during a NATS deploy. No volume: core NATS keeps
-# nothing to disk, and
+# Two small nodes, as dev (Indy, Nov 10, 2026: "I want prod 2 small like dev"): core NATS has no quorum, so
+# two survive the loss of one. No volume: core NATS keeps nothing to disk, and
 # a restarted node rejoins empty.
 [[vm]]
-  size = "shared-cpu-2x"
-  memory = "1gb"
+  size = "shared-cpu-1x"
+  memory = "512mb"
 
 # The monitoring port's own readiness answer; `ensure_fly_app.sh` waits for it
 # to pass on every machine before the daemon deploys.
