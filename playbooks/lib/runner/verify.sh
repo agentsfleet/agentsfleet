@@ -23,7 +23,7 @@ verify_files_and_service() {
     test -x $HOST_DEPLOY_DIR/deploy.sh
     test -x $INSTALL_DIR/$BINARY_NAME
     test -r $UNIT_STREAM_CA_FILE
-    grep -q '^AGENTSFLEET_RUNNER_STREAM_URL=' $UNIT_ENV_FILE
+    sudo grep -q '^AGENTSFLEET_RUNNER_STREAM_URL=' $UNIT_ENV_FILE
     test -f $SYSTEMD_DIR/$SERVICE_NAME
     systemctl is-enabled --quiet $SERVICE_NAME
     test \"\$(systemctl is-active $SERVICE_NAME)\" = active
