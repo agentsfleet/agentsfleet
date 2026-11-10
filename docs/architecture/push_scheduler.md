@@ -282,6 +282,8 @@ A size sweep ruled out the client's 65,535-byte read buffer, and the cause is op
 
 Two runs per bus, on the local daemon (`make up`). Two viewers watched one fleet's stream with one steer every 10 s, while the bus stopped for 60 s and then started. For NATS the stopped node was the one the daemon held, `nats-3` then `nats-2`.
 
+The two runs do not lose the same share of the bus. The previous broker ran all four cluster processes, two primaries and their replicas, in one container, so stopping it stopped the whole cluster. NATS lost one node of three.
+
 | | Previous broker, runs 1 and 2 | NATS, runs 1 and 2 |
 |---|---|---|
 | During the outage | heartbeats only | every steer reached both viewers live |
