@@ -174,5 +174,6 @@ async fn an_unavailable_daemon_hands_the_run_nothing_and_logs_the_verbs_code() {
 async fn an_unreadable_reply_hands_the_run_nothing_and_logs_the_verbs_code() {
     let claimed = claim(|_call| json(&serde_json::json!(["not", "a", "reply"]))).await;
 
-    assert_failed_claim(&claimed, error_code::RUN_PROTOCOL_UNSUPPORTED);
+    // The undecodable reply closes the session, so the claim reports its stream cut.
+    assert_failed_claim(&claimed, error_code::RUN_STREAM_DISCONNECTED);
 }

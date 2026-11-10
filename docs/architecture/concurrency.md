@@ -361,14 +361,14 @@ Every draft writer takes that draft lock too: a sent message, an edit, an applie
 ```
 BEFORE — the claim waits                      AFTER — the claim skips
                                               
- runner R polls                                runner R polls
+ offer pass (R)                                offer pass (R)
    │ lock host row R                             │ lock host row R
    ├─ draft A1 (tenant A) ── held by a writer    ├─ draft A1 ── held? NOWAIT refuses
    │     ⏳ waits until the writer commits        │     ↩ savepoint rolls back, A1 skipped
    │     (host row R held, ~1 s per write)       ├─ draft B1 (tenant B) ── free
    ├─ draft B1 (tenant B) ── never reached       │     ✔ admitted, lease issued
    │     until A's write ends                    └─ commit; A1 is admitted on a later
-   └─ every poll repeats the wait                    poll, once its writer lets go
+   └─ every pass repeats the wait                    pass, once its writer lets go
 ```
 
 
@@ -376,7 +376,7 @@ BEFORE — the claim waits                      AFTER — the claim skips
 
 A refused lock raises `55P03 lock_not_available`. Rolling the savepoint back keeps the claim's transaction, and its host lock, usable for the next candidate. A released savepoint keeps its row locks until the claim commits, so the reads after it never wait.
 
-The skip logs `authoring_claim_draft_skipped` at `debug`, because under contention it fires on every poll of the walk. A skipped draft is passed over, not dropped. Its order by age resumes on the first poll after the writer commits.
+The skip logs `authoring_claim_draft_skipped` at `debug`, because under contention it fires on every claim pass of the walk. A skipped draft is passed over, not dropped. Its order by age resumes on the first claim pass after the writer commits.
 
 `make bench-lease BENCH_SHAPE=saturation` measures it with 40 hosts on a 20-connection pool. One writer holds a tenant's drafts 1 s of every 1.25 s. Medians of three runs: open-transaction age p95 959 → 17 ms, chat lease p95 3 006 → 707 ms, 41.7 → 62.7 leases/s.
 

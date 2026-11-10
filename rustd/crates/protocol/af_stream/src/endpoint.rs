@@ -36,7 +36,7 @@ impl Endpoint {
             || parsed.fragment().is_some()
             || parsed.path() != "/"
         {
-            return Err(ErrorKind::Protocol.into());
+            return Err(ErrorKind::Origin.into());
         }
         let host = parsed
             .host_str()

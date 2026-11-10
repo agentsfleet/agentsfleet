@@ -129,6 +129,9 @@ pub const RUN_LEASE_CANCELLED: ErrorCode = ErrorCode::declare("UZ-RUN-022");
 /// Runner and daemon do not speak the same application protocol.
 pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023");
 
+/// The runner's stream ended or stopped answering; the runner reconnects on its own.
+pub const RUN_STREAM_DISCONNECTED: ErrorCode = ErrorCode::declare("UZ-RUN-024");
+
 /// A fleet declared a credential the vault does not hold.
 ///
 /// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it

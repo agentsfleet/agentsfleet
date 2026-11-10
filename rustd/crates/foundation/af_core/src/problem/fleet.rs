@@ -157,6 +157,13 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
+        code: error_code::RUN_STREAM_DISCONNECTED,
+        status: 503,
+        title: "Runner stream disconnected",
+        hint: "The runner reconnects on its own. If this repeats, check that it can reach AGENTSFLEET_RUNNER_STREAM_URL over UDP or TCP.",
+        user_message: None,
+    },
+    Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         // 424: the fleet's own request is well-formed; what is missing is a
         // credential it depends on, which is the distinction this status

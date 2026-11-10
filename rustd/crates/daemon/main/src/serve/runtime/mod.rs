@@ -147,7 +147,7 @@ async fn open_broker(
 fn identity_webhook_secret(config: &BootConfig) -> Option<af_crypto::secret::SecretBytes> {
     config
         .identity_webhook_secret()
-        .map(|secret| af_crypto::secret::SecretBytes::new(secret.as_bytes().to_vec()))
+        .map(|secret| af_crypto::secret::SecretBytes::new(secret.expose().as_bytes().to_vec()))
 }
 
 /// What the login flow signs codes with and redirects between.

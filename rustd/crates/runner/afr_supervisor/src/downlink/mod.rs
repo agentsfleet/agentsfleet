@@ -260,7 +260,7 @@ impl Downlink {
     async fn finish(
         &self,
         connection: af_stream::Connection,
-        mut workers: JoinSet<Result<()>>,
+        workers: JoinSet<Result<()>>,
         requests: &pending::Requests,
         stop: &CancellationToken,
         result: Result<Progress>,
@@ -268,27 +268,7 @@ impl Downlink {
         self.current.send_replace(None);
         stop.cancel();
         requests.close();
-        while let Some(done) = workers.join_next().await {
-            match done {
-                Ok(Ok(())) => {}
-                Ok(Err(error)) => {
-                    let error_code = error.code().as_str();
-                    tracing::debug!(event = "runner_stream_worker_ended", error_code);
-                }
-                Err(error) => {
-                    let is_panic = error.is_panic();
-                    let is_cancelled = error.is_cancelled();
-                    let failure: crate::Error = error.into();
-                    let error_code = failure.code().as_str();
-                    tracing::warn!(
-                        event = "runner_stream_worker_failed",
-                        error_code,
-                        is_panic,
-                        is_cancelled
-                    );
-                }
-            }
-        }
+        io::join(workers).await;
         let closed = connection
             .close(Instant::now() + af_core::timing::STREAM_ANSWER_TIMEOUT)
             .await;
