@@ -20,13 +20,13 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Priority:** P1, customers will point their own hosts at the cloud `agentsfleetd`, and today any enrolled host receives every tenant's work and the platform model key
 
-**Categories:** API, CLI, DOCS, UI
+**Categories:** API, CLI, DOCS, INFRA, OBS, UI
 
 **Batch:** B1, milestone 6 of the push-scheduler programme; starts after M243 merges, and ships as its own Pull Request because it moves a security boundary (SPEC-BOUNDARY)
 
-**Depends on:** M243_001, tenant runners connect over its runner stream, which authenticates once per connection, re-checks on an interval and closes on revoke; M241_001, which creates `push_scheduler.md` and the bench baselines
+**Depends on:** M243_001, tenant runners connect over its runner stream, which authenticates once per connection, re-checks on an interval and closes on revoke; M241_001, which creates `push_scheduler.md` and the bench baselines; for §0, the Linux runner kernel lane (`make test-runner-kernel`) and the trusted host's sandbox cleanup
 
-**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 06, 2026) from the EGM brief and source research on main 14539a73e
+**Provenance:** LLM-drafted (Claude Opus 5.5, Nov 06, 2026) from the EGM brief and source research on main 14539a73e; §0 is the former pending M240_001 audit, written at Indy's explicit audit request (Nov 04, 2026, baseline `1920ff345`) and folded in on Nov 10, 2026
 
 **Canonical architecture:** `docs/architecture/push_scheduler.md` §M246 (created by M241_001); `docs/AUTH.md` §"Runner token (`agt_r`) — the machine principal" and `docs/architecture/runner_fleet.md` §"Registering a runner" own the trust model this changes
 
@@ -41,8 +41,9 @@ SPEC AUTHORING RULES (the one comment that survives):
 - Nothing keeps another tenant's work off a host. Placement checks only `required_tags <@ labels` (`select_ledger_candidates.sql`), so an untagged fleet matches any runner. The claim (`claim_admission_head.sql`) and issue (`afd_fleet/src/lease/issue.rs`) re-check neither labels nor owner, and authoring's `candidates.sql` has no runner filter at all.
 - Every lease carries the resolved model key, the platform's included (`afd_gate/src/policy/build/mod.rs`, `billing_and_provider_keys.md:33`, `runner_fleet.md:192`). The runner also reports its own token counts (`billing_and_provider_keys.md:230`), so a tenant host would write its own platform token bill.
 - Rotation overwrites `token_hash` and the old token dies on the next read (`rotate_runner_token.sql`). The runner reads `AGENTSFLEET_RUNNER_TOKEN` once at boot (`afr_supervisor/src/config/mod.rs`), so every rotation is a restart.
+- Nobody has measured whether a tenant shell can stop or signal its own trusted executor. Shared namespace and credential assumptions may allow it, and source configuration alone does not prove reachability. On a tenant-owned host, that executor is the boundary between the tenant and the platform.
 
-**Solution summary:** `runner.runners` gains an owner tenant (NULL is a platform host). Tenant owners enrol and manage their own runners under a new `runner:own` scope, from the dashboard and the command-line interface (CLI). A hard ownership filter sits in the claim statement and is re-checked at issue under the host lock, for fleet and setup (authoring) leases alike. A tenant setting picks one of three placements. A tenant runner on platform posture gets a proxied model-call capability, and the daemon calls the provider and meters the tokens. Rotation keeps the old digest for an overlap window, and the runner reloads its token from a file on SIGHUP or a 401.
+**Solution summary:** `runner.runners` gains an owner tenant (NULL is a platform host). Tenant owners enrol and manage their own runners under a new `runner:own` scope, from the dashboard and the command-line interface (CLI). A hard ownership filter sits in the claim statement and is re-checked at issue under the host lock, for fleet and setup (authoring) leases alike. A tenant setting picks one of three placements. A tenant runner on platform posture gets a proxied model-call capability, and the daemon calls the provider and meters the tokens. Rotation keeps the old digest for an overlap window, and the runner reloads its token from a file on SIGHUP or a 401. First, §0 measures the executor's signal boundary on a real Linux kernel; it authorizes the probe and the inventory, and any runtime change waits for Indy's mechanism review.
 
 **Design flow:**
 
@@ -81,13 +82,18 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 3. `rustd/crates/daemon/afd_authoring/src/model/capability.rs`, `af_wire/src/authoring/lease.rs` (`ModelAccess`) and `afd_api_runner/src/handler/runner/authoring/model_call.rs` — the proxied capability §4 mirrors.
 4. `docs/AUTH.md` §"Runner token (`agt_r`) — the machine principal" — the trust model, per-request runner auth and why the principal carries no tenant.
 5. `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/api_key.rs` with `cli/src/commands/api_key.ts` and `ui/packages/app/app/(dashboard)/settings/api-keys/` — the tenant-minted, reveal-once credential surfaces §2 and §6 mirror.
+6. `rustd/crates/runner/afr_sandbox/src/bubblewrap/mod.rs`, `afr_sandbox/src/harden/` and `rustd/crates/runner/afr_executor/src/server/launch/` (with `launch/tenant/`) — for §0: the PID namespace, sandbox user and group IDs, the seccomp and Landlock rules at each process boundary, inherited credentials, process groups and tenant cgroup placement.
+7. `make test-runner-kernel` in `make/test-unit.mk` and `rustd/crates/runner/afr_sandbox/examples/kernel_lane/` — for §0: the lane's privileges, supported-kernel checks and cleanup ownership. `afr_executor/src/client/` and `afr_tools/src/sandbox/oneshot/` hold the response-time mitigation, whose proof stays separate.
 
 ## Files Changed (blast radius)
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M246_001_P1_API_CLI_DOCS_UI_TENANT_OWNED_RUNNERS.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
+| `docs/v2/pending/M246_001_P1_API_CLI_DOCS_INFRA_OBS_UI_TENANT_OWNED_RUNNERS.md` | CREATE, then MOVE to `active/` and `done/` | this spec |
 | `schema/2850_runner_runners_owner_and_token_overlap.sql`, `2860_runner_tenant_placements.sql`, `2870_runner_leases_model_token.sql`, `2880_runner_enrolment_receipts.sql` | CREATE | §1; placeholder numbers, renumbered from `origin/main` at CHORE(open) |
+| `docs/v2/pending/M240_001_P1_INFRA_OBS_EXECUTOR_SIGNAL_ISOLATION_AUDIT.md` | DELETE | folded in as §0 (Discovery) |
+| `rustd/crates/runner/afr_sandbox/examples/kernel_lane/` and its fixtures | CREATE, EDIT | §0: the identity record, the stop probe and the signal-route inventory |
+| `rustd/crates/runner/afr_sandbox/src/bubblewrap/mod.rs`, `afr_sandbox/src/harden/`, `afr_executor/src/server/launch/` | EDIT, only after Indy's mechanism review | §0: identity mapping, tenant launch placement or child-specific hardening, whichever the probe shows is needed |
 | `rustd/crates/daemon/afd_db/src/migration.rs` and its position assertions | EDIT | §1: register the slots (MIG) |
 | `rustd/crates/daemon/afd_state/src/sql/select_runner_token.sql`, `credentials/mod.rs`, `credentials/rows.rs`, `credentials/tests.rs` | EDIT | §1, §5: the previous digest authenticates inside its window |
 | `rustd/crates/foundation/af_core/src/timing.rs` | EDIT | §3, §5: `PLATFORM_FALLBACK_AFTER`, `RUNNER_TOKEN_OVERLAP`, with their assertions |
@@ -120,7 +126,7 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 | `ui/packages/app/lib/api/tenant_runners.ts`, `lib/auth/scopes.ts`, `lib/analytics/events.ts` | CREATE, EDIT | §6: client, scope, product events |
 | `ui/packages/app/app/(dashboard)/admin/runners/components/RunnerTile.tsx`, `AddRunnerDialog.tsx` | EDIT | §6: owner badge; the dialog takes its server action |
 | `ui/packages/app/tests/runners-settings-*.test.tsx`, `tests/e2e/dashboard-smoke.spec.ts`, `tests/e2e/acceptance/settings-runners.spec.ts` | CREATE, EDIT | §6 |
-| `docs/AUTH.md`, `docs/architecture/runner_fleet.md`, `billing_and_provider_keys.md`, `runner_execution.md`, `postgres_schemas.md`, `observability.md`, `push_scheduler.md` | EDIT | §7 |
+| `docs/AUTH.md`, `docs/architecture/runner_fleet.md`, `billing_and_provider_keys.md`, `runner_execution.md`, `postgres_schemas.md`, `observability.md`, `push_scheduler.md` | EDIT | §7; `runner_execution.md` also records §0's observed results |
 | `public/openapi.json` | EDIT (regenerated with `--no-banner`) | §7 |
 | `~/Projects/docs`, branch `chore/m246-tenant-runners-changelog` | EDIT | §7: changelog and a runner setup page; API pages after merge |
 
@@ -132,6 +138,7 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 - **`domains/http-responses.md`** — HTTP-STATEEXT, HTTP-NEWCODE, HTTP-LEAK, HTTP-PAGE; **`domains/http-surface.md`** — HTTP-OPENAPI, HTTP-SURFACE, HTTP-ENUM
 - **`languages/rust.md`** — ERR-RS, RS-FROM, RS-MAPERR, RS-SENTINEL, RS-NEWTYPE; **`languages/typescript.md`** — TS-SCHEMA, TS-ERRSTYLE, TS-BUNTEST
 - **`code.md`** — CODE-SEAM, FLL, NLG, CODE-ERRREG; **`domains/logging.md`** — LOG-SECRET, LOG-EVENT, OBS
+- **§0** — the repository error shell and typed native failures; the existing namespace and cgroup helpers and kernel-lane Make targets. An unrun probe establishes nothing, and an unsupported kernel is recorded as unsupported, never as a pass.
 - **`tests.md`** — TEST-NEG, TEST-REAL, TEST-ABSENT, TEST-RACE, TEST-LANE; **`docs.md`** — DOC-02, DOC-03, DOC-11; **`domains/architecture.md`** — ARCH-LAND, ARCH-PUBLISHED
 
 ## Applicable Gates
@@ -145,10 +152,12 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 | Metrics census and producer tests | yes, two families | census rows, declarations and producers in one commit |
 | `docs.language` at `orly gate verify` and `orly gate pr` | yes, `AUTH.md` and five architecture pages | sentences under 25 words, paragraphs of at most three |
 | Vitest coverage lock | yes, new app files | tests land with each component |
+| `make test-runner-kernel` | yes, §0 | the probe runs on a real Linux kernel with root, bubblewrap, Landlock and cgroup v2; no new harness, privileged bypass or inferred passing baseline |
 | File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes, `afd_fleet` lease, the claim SQL binds and the tenant handlers | `model_call/` split into call and meter; tenant handlers split by verb |
 
 ## Prior-Art / Reference Implementations
 
+- **Reference:** the trusted host's existing sandbox process handle and cgroup cleanup — §0 reuses both. Kernel signal permissions, separate credentials and child-specific confinement are judged against the deployed launch shape, and a mechanism is chosen only after the probe shows which boundary failed and which process control tenants need.
 - **Reference:** GitLab's runner scopes (https://docs.gitlab.com/ci/runners/runners_scope/) — project runners serve only their project while instance runners serve everyone, which is the one-way widening here; `runner_fleet.md:227` already follows GitLab's "create runner, then token" enrolment. Divergence: the tenant chooses whether platform hosts may take its work.
 - **Reference:** `afd_runner::Runners::register` and `afd_api_runner/.../enrolment.rs` — the mint, the digest-only row and the reveal-once response; divergence: an owner, and an `Idempotency-Key` receipt.
 - **Reference:** `afd_authoring/src/model/capability.rs` and the authoring model-call route — a lease-bound capability checked in constant time; divergence: the runtime turn streams chunk frames instead of one bounded result, and meters runtime usage.
@@ -156,6 +165,29 @@ rotate: current ← new digest, previous ← old digest until now + RUNNER_TOKEN
 - **Reference:** `cli/src/commands/api_key.ts` — the CLI follows all six practices: command, handler and error layers apart; handlers that neither print nor exit; one rendering layer; structured JSON errors with suggestion and retry fields; handler, in-process and subprocess tests; JSON by default when stdout is not a terminal.
 
 ## Sections (implementation slices)
+
+### §0 — The executor's signal boundary is measured first
+
+This Section authorizes measurement and inventory only. Every runtime change it leads to waits for Indy's mechanism review. The runner ending deadline mitigates an unresponsive connection; it neither explains why an executor stopped nor proves signal isolation.
+
+The kernel lane first records the executor's and the tenant shell's facts: their namespace and host process IDs, real and effective user and group IDs, capabilities, cgroup placement, and where each receives its seccomp and Landlock rules. It proves that every target belongs to this test's sandbox before signalling it. Namespace PID 1 signal rules are measured, never assumed.
+
+The controlled stop probe then runs in five steps:
+1. The trusted host starts the sandbox and keeps its stable process handle.
+2. A tenant shell finds its own executor through the verified namespace mapping.
+3. That shell runs `kill -STOP <executor pid>`.
+4. The host checks on its own whether the executor stopped and whether its native channel stopped answering.
+5. An external watchdog always resumes the executor and destroys the test sandbox, on failure or cancellation too.
+
+The host stays outside the target's stoppable group, and a host PID is never substituted into the tenant namespace without a proven mapping. The syscall result, the actual process state and the connection behaviour are recorded separately, because a successful return alone proves nothing and a mocked executor proves no isolation.
+
+Finally, the lane inventories the equivalent routes: `kill`, process-group signals, `tkill`, `tgkill` and `pidfd_send_signal`, including capabilities and inherited descriptors. It checks whether separate identity, child-specific signal confinement or another existing kernel boundary closes the routes it demonstrated. No ABI upgrade or global syscall denial is deployed on the original hypothesis alone. The chosen mechanism keeps ordinary shell jobs, cancellation, process groups, terminals and executor-driven termination, and Indy sees the measured mechanism and its exact source scope before implementation.
+
+- **Dimension 0.1** — kernel evidence binds both actors to the intended sandbox → Test `executor_signal_probe_records_trusted_process_identity` (integration, `make test-runner-kernel`): the record names each process's namespace and host PID, user and group IDs, capabilities and cgroup, and a target outside this test's sandbox is refused before any signal.
+- **Dimension 0.2** — a tenant stop attempt has an observed kernel outcome → Test `tenant_stop_of_executor_is_observed_and_always_cleaned_up` (integration, `make test-runner-kernel`): the record holds the syscall result, the executor's observed state and the native channel's answer as three separate facts, and the sandbox ends resumed and destroyed.
+- **Dimension 0.3** — a timeout or failed assertion leaves no stopped sandbox → Test `executor_signal_probe_cleanup_survives_interruption` (integration, `make test-runner-kernel`): a probe cancelled mid-run leaves no stopped executor and no sandbox behind.
+- **Dimension 0.4** — tenant process control still works → Test `tenant_job_control_survives_executor_signal_isolation` (integration, `make test-runner-kernel`): inside the sandbox, shell jobs, process groups and cancellation still stop and resume the tenant's own processes.
+- **Dimension 0.5** — equivalent routes stay blocked → Test `tenant_signal_variants_cannot_control_the_executor` (integration, `make test-runner-kernel`): `kill`, a process-group signal, `tkill`, `tgkill` and `pidfd_send_signal` from the tenant shell each leave the executor running and its channel answering.
 
 ### §1 — The runner row carries its owner and a second token
 
@@ -279,10 +311,16 @@ A proxied lease's policy carries no key:
 
 A direct lease carries `{"type": "direct", "api_key", "inference_host", "base_url"}`. The operator list and detail gain `owner_tenant_id` (UUID or null). `UZ-RUN-024` is a `409` carrying `current_state: "enrolled"`. The runner reads `AGENTSFLEET_RUNNER_TOKEN_FILE` and reloads on SIGHUP. `af_core::timing` adds `RUNNER_TOKEN_OVERLAP` and `PLATFORM_FALLBACK_AFTER`; the second's value is open blocker 1. PATCH with `{"action": "rotate"}` is not idempotent: each call mints a token, and §5's overlap rule makes a retry safe.
 
+§0 reuses the current sandbox and executor interfaces and their stable process handles, and adds no endpoint or permission grant. Any kernel requirement or identity change it leads to needs an explicit compatibility and activation decision.
+
 ## Failure Modes
 
 | Mode | Kind | Cause | Handling (response and what the caller observes) | Test |
 |------|------|-------|--------------------------------------------------|------|
+| Tenant shell stops its executor | security | shared namespace or credentials let a tenant signal the trusted executor | the probe records the kernel outcome; a demonstrated route goes to Indy's mechanism review | `tenant_stop_of_executor_is_observed_and_always_cleaned_up` |
+| Probe interrupted | timeout, failure | the probe times out or an assertion fails mid-run | the watchdog resumes the executor and destroys the sandbox | `executor_signal_probe_cleanup_survives_interruption` |
+| Another signal route | security | `tkill`, `tgkill`, `pidfd_send_signal` or a process-group signal | each route is inventoried, and the chosen mechanism blocks all of them | `tenant_signal_variants_cannot_control_the_executor` |
+| A remedy breaks tenant job control | failure | the isolation also blocks the tenant's own signals | the mechanism is refused at review | `tenant_job_control_survives_executor_signal_isolation` |
 | Foreign runner at the claim | security | a scan bug, or a direct claim | no row; slot, fence and admission untouched | `claim_statement_refuses_a_foreign_runner` |
 | Hole in the claim filter | security | a claim predicate regression | issue refuses under the host lock, no lease row, the counter rises | `issue_refuses_a_foreign_runner_under_the_host_lock` |
 | Setup draft to a foreign host | security | authoring scan or claim | never offered, `admit` refuses | `authoring_placement_refuses_a_foreign_runner` |
@@ -339,6 +377,7 @@ R rows read the logs the S lanes write: `.tmp/rustd-integration.log` from S3 and
 | R9 | A tenant lists and touches only its own runners (§2) | `grep -c "tenant_lists_only_its_runners ... ok" .tmp/rustd-integration.log` | `1` | P0 | |
 | R10 | The tenant surface is published (§7) | `grep -c "/v1/tenants/me/runner-placement" public/openapi.json` | `1` or more | P1 | |
 | R11 | The new page renders and stays first-party (§6) | `make dry-app` | exit 0 | P1 | |
+| R12 | The executor's signal boundary has an observed kernel outcome, with job control kept (§0) | `make test-runner-kernel` | exit 0 | P1 | |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
@@ -363,6 +402,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
 - Sharing one runner across tenants, and per-workspace runners: not planned.
 - An `Idempotency-Key` on operator enrolment and API-key creation: those routes are unchanged here.
 - Data residency: history, checkpoints and keys pass through `agentsfleet` whatever the setting (brief M12), and the docs page says so.
+- For §0: claiming that the ending deadline fixes signal isolation, probing production, broad host process control, and kernel-policy changes nobody has reviewed. No host-wide filter or broad process-kill command is authorized. No credential store, model client, scheduler or Durable Task API change belongs to §0.
 
 ---
 
@@ -381,7 +421,7 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** schema first, then the tenant routes that create owned hosts, then the filter that confines them, then the key boundary, then rotation, then the surfaces and the docs. Each Section is testable on the one before it.
+- **Chosen shape:** the signal-boundary measurement first, because it decides whether a tenant may hold a host at all; then schema, then the tenant routes that create owned hosts, then the filter that confines them, then the key boundary, then rotation, then the surfaces and the docs. Each Section is testable on the one before it.
 - **Alternatives considered:** labels as the control, rejected because an untagged fleet matches any runner; the owner on the principal, rejected because the host-lock read is the authority; a byte-forwarding proxy, rejected because it needs a usage parser per format and forwards any body on the platform key; tenant keys only, which is open blocker 2; a tenant filter on the operator list, rejected because a missing tenant would list every host; rotating twice to kill a leaked token, rejected because a retried rotation would cut off a healthy host, so a leak is a revoke.
 - **Patch-vs-refactor verdict:** a **patch** because it adds a column, a predicate and one route family to paths that keep their shape; the only reshaped type is `ExecutionPolicy`'s model access.
 
@@ -399,6 +439,11 @@ Schema this milestone leaves with no runtime reader or writer is dropped in a ne
   > Indy (Nov 06, 2026: 10:43 AM): "1. Yes placement rules are via the tags and labels 2. Respawn across ownership - this is a tenant setting ... Based on the scope i would like to build this ... 4. Yes, but donot overengineer now, we can improve this." — context: labels stay placement; the three-option setting; the smallest design.
   - Programme decisions recorded in the reviewed EGM brief (`concepts_brief.md`, Nov 06, 2026), not quoted verbatim: runners carry an owner tenant, NULL a platform host; the ownership filter sits in the claim and is re-checked at issue under the host lock; widening is one way, and setup placement gets the same filter; the setting has three options; platform keys never leave the daemon; rotation overlaps old and new digests and the runner reloads from a file on a 401 or SIGHUP; enrolment is the dashboard and CLI mint with a new tenant scope, and one-time codes are out of scope.
   > Indy (Nov 06, 2026: 04:18 PM): "yes" — context: blanket approval, asked as "Should each milestone drop the tables and columns it leaves with no reader or writer?": a milestone drops, in a new slot in its own Pull Request, any table, column or index it leaves with no runtime reader or writer (`.orly/standards/domains/sql.md` destructive-change approval).
+- **Folded audit (§0)** — the former pending `M240_001` (Audit tenant-to-executor signal isolation), written Nov 04, 2026 at Indy's explicit audit request and carried in PR #803. Its runtime mechanism remains unapproved, and its causal explanation remains a hypothesis: no kernel signal probe has run, and the source establishes the launch configuration, not the alleged causal path.
+  > Indy: "The root cause is still open."
+  > Indy: "Running kill -STOP <executor pid> from a shell call in the Linux kernel lane would settle it, and that belongs in its own spec."
+  > Indy, superseding an earlier separate-PR instruction: "no new PR" — context: the audit stayed in PR #803.
+  > Indy (Nov 10, 2026): chose "Fold into M246" — context: the pending M240_001 executor signal-isolation audit becomes §0; tenant-owned hosts raise its stakes, M246 already edits the kernel lane and af_core/src/signal.rs, and the move frees the M240_001 id, which docs/v2/done/M240_001_P1_API_DOCS_INFRA_OBS_LEASE_QUEUE_ONE_STATEMENT_CLAIM.md also uses. This supersedes "belongs in its own spec" above. The spec gains the INFRA and OBS categories, so its file is renamed to match.
 - **Model reviews** — none yet. The EGM (Elephant-Goldfish Model) review runs before this spec leaves `pending/`.
 - **Open blockers** —
   1. **The platform-fallback threshold for `own_then_platform`.** Question for Indy: how long does a tenant's work wait for its own runners before a platform host may take it, and is the trigger time or liveness? Options: a platform-wide wait in `af_core::timing` (☠️ my call: 30 s, one `LEASE_TTL`, so a dead own host is replaced as fast as a lapsed lease is today); fall back only when none of the tenant's runners is online, which needs a runner scan in the claim; or a per-tenant value, a column on `runner.tenant_placements`. Dimension 3.6 binds whichever he picks.
