@@ -6,6 +6,9 @@ import { PENDING_SEND_STATE, type PendingSend, type PendingSendWriters } from ".
 import { DEFAULT_REQUEST_TIMEOUT_MS } from "@/lib/api/client";
 import { RETRY_DEFAULTS } from "@/lib/api/retry-config";
 import { ERROR_CODE } from "@/lib/errors";
+import type { LiveFrame } from "@/lib/api/events";
+import { FRAME_KIND } from "@/lib/api/events-types";
+import { SEND_MARK, markSendFrame } from "@/lib/streaming/fleet-stream-reply-registry";
 
 const postSteer = vi.hoisted(() => vi.fn());
 const mint = vi.hoisted(() => ({ unavailable: false }));
@@ -105,7 +108,28 @@ function expectSentAgainAsNew(text: string): void {
   expect(sentId(2)).not.toBe(sentId(1));
 }
 
+// The stream's frames for `eventId`, as the reply registry sees them.
+function chunkOf(eventId: string): LiveFrame {
+  return { kind: FRAME_KIND.CHUNK, event_id: eventId } as unknown as LiveFrame;
+}
+
+function completionOf(eventId: string): LiveFrame {
+  return { kind: FRAME_KIND.EVENT_COMPLETE, event_id: eventId } as unknown as LiveFrame;
+}
+
+// Every send mark left so far, as (name, operation id), in the order left.
+function sendMarks(): Array<[string, string]> {
+  const names = new Set<string>(Object.values(SEND_MARK));
+  return performance
+    .getEntriesByType("mark")
+    .filter((entry) => names.has(entry.name))
+    .map((entry) => [entry.name, ((entry as PerformanceMark).detail as { operationId: string }).operationId]);
+}
+
+const IN_ORDER = [SEND_MARK.SEND, SEND_MARK.ACCEPTED, SEND_MARK.FIRST_FRAME, SEND_MARK.COMPLETE];
+
 afterEach(() => {
+  performance.clearMarks();
   cleanup();
   vi.clearAllMocks();
   vi.useRealTimers();
@@ -291,5 +315,45 @@ describe("a reused operation id", () => {
     await expect(hook.result.current.onNew(message(DEPLOY))).rejects.toBeInstanceOf(MessageNotSentError);
     expect(ctx.writers.dismiss).not.toHaveBeenCalled();
     expect(postSteer).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a send's performance marks", () => {
+  it("test_delivery_marks_send_accepted_first_frame_complete: one send leaves four marks under its id, in order", async () => {
+    postSteer.mockResolvedValue(ACCEPTED);
+    const { hook } = delivery();
+    await act(() => hook.result.current.onNew(message(DEPLOY)));
+    markSendFrame(chunkOf(EVENT_ID));
+    markSendFrame(chunkOf(EVENT_ID));
+    markSendFrame(completionOf(EVENT_ID));
+    expect(sendMarks()).toEqual(IN_ORDER.map((name) => [name, sentId(1)]));
+  });
+
+  it("two overlapping sends leave eight marks, four per id, each id's in order", async () => {
+    const SECOND_EVENT_ID = "1790573387481-567";
+    let answerFirst: (result: typeof ACCEPTED) => void = () => undefined;
+    postSteer.mockImplementationOnce(() => new Promise((resolve) => { answerFirst = resolve; }));
+    postSteer.mockResolvedValueOnce({ ok: true, data: { status: "accepted", event_id: SECOND_EVENT_ID, replayed: false } });
+    const { hook } = delivery();
+    const first = hook.result.current.onNew(message(DEPLOY));
+    const second = hook.result.current.onNew(message(STOP));
+    // The first steer goes out on the queue's next turn; answer it once it has.
+    await vi.waitFor(() => expect(postSteer).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      answerFirst(ACCEPTED);
+      await Promise.all([first, second]);
+    });
+    for (const frame of [chunkOf(SECOND_EVENT_ID), chunkOf(EVENT_ID), completionOf(SECOND_EVENT_ID), completionOf(EVENT_ID)]) markSendFrame(frame);
+    const marks = sendMarks();
+    expect(marks).toHaveLength(8);
+    for (const operationId of [sentId(1), sentId(2)]) {
+      expect(marks.filter(([, id]) => id === operationId).map(([name]) => name)).toEqual(IN_ORDER);
+    }
+  });
+
+  it("leaves no frame mark for an event no send here was accepted under", () => {
+    markSendFrame(chunkOf("someone-elses-event"));
+    markSendFrame(completionOf("someone-elses-event"));
+    expect(sendMarks()).toEqual([]);
   });
 });

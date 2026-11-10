@@ -530,7 +530,7 @@ Gaps left by M238, each named in M233_001:
 
 - The steer and lease handlers carry no stage attributes on their request spans (§1).
 - The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026, and `runner.lease` carries its segments (§2).
-- The edge reports nothing of its own (§3).
+- The edge reports its own cost (§3). The steer route answers `Server-Timing: auth;dur=…, upstream;dur=…` after its answer is final, so a status or body never changes. The browser leaves `af:send`, `af:accepted`, `af:first-frame` and `af:complete` marks, each naming the send's operation id in `detail`.
 
 ## M243 runner stream instrumentation
 

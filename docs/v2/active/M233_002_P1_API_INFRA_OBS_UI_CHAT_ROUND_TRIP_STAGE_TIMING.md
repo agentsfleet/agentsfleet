@@ -173,9 +173,9 @@ In the throttled measurement, 584 ms passed between the browser's Send and the d
 
 The browser leaves four marks per send: `af:send`, `af:accepted`, `af:first-frame` and `af:complete`, each with `detail.operationId` set to the send's operation id. Overlapping sends therefore never share a mark. Their order holds by construction, because a send's own frames wait for its 202 (`lib/streaming/fleet-stream-held.ts`).
 
-- **Dimension 3.1** — the route answers `Server-Timing` → Test `steer_route_answers_server_timing` (unit, `tests/steer-route.test.ts`): a stubbed credential of 12 ms and upstream of 40 ms answer a header naming `auth` and `upstream` with durations at least those.
-- **Dimension 3.2** — timing never changes the answer → Test `server_timing_never_changes_the_answer` (unit, `tests/steer-route.test.ts`): an upstream 409, and an unreachable upstream, answer the same status and body as without timing, with `auth` present.
-- **Dimension 3.3** — one send leaves four ordered marks → Test `delivery_marks_send_accepted_first_frame_complete` (unit, `useFleetMessageDelivery.test.tsx`): one simulated send leaves four marks with one `operationId`, in order. Two overlapping sends leave eight, four per id.
+- **Dimension 3.1** — DONE — the route answers `Server-Timing` → Test `steer_route_answers_server_timing` (unit, `tests/steer-route.test.ts`): a stubbed credential of 12 ms and upstream of 40 ms answer a header naming `auth` and `upstream` with durations at least those.
+- **Dimension 3.2** — DONE — timing never changes the answer → Test `server_timing_never_changes_the_answer` (unit, `tests/steer-route.test.ts`): an upstream 409, and an unreachable upstream, answer the same status and body as without timing, with `auth` present.
+- **Dimension 3.3** — DONE — one send leaves four ordered marks → Test `delivery_marks_send_accepted_first_frame_complete` (unit, `useFleetMessageDelivery.test.tsx`): one simulated send leaves four marks with one `operationId`, in order. Two overlapping sends leave eight, four per id.
 - **Dimension 3.4** — the edge and the daemon agree → Test `manual_probes_satisfy_coverage_and_edge_ordering` (manual; Indy sends 10 dev chats and reads DevTools and Tempo; values in the Session Notes): each event has all three verb spans, and `af:accepted − af:send` ≥ route `auth + upstream` ≥ `fleet.steer`'s duration.
 
 ### §4 — Round-trip percentiles from settled delivery spans
