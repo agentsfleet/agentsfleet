@@ -16,10 +16,11 @@ const MODEL_ID_CLASS = "font-mono text-label leading-label text-muted-foreground
 export type ProviderModelSelectProps = {
   id: string; provider?: string; model: string;
   onModelChange: (value: string) => void; label?: string;
+  details?: "inline" | "disclosure";
 };
 
 /** Names, evidence and exact identifiers, scoped to the selected provider. */
-export default function ProviderModelSelect({ id, provider, model, onModelChange, label = "Model" }: ProviderModelSelectProps) {
+export default function ProviderModelSelect({ id, provider, model, onModelChange, label = "Model", details = "inline" }: ProviderModelSelectProps) {
   const { models, status } = useModelCatalogue();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const available = provider ? modelsForProvider(models, provider) : uniqueModelIds(models);
@@ -30,7 +31,10 @@ export default function ProviderModelSelect({ id, provider, model, onModelChange
     <ModelControl id={id} label={label} model={model} onModelChange={onModelChange}
       options={options} selected={selected} status={status} />
     <CatalogueBrowseControls id={`${id}-advanced`} advanced={showAdvanced} onAdvancedChange={setShowAdvanced} />
-    {selected ? <CatalogueModelDetails model={selected} /> : null}
+    {selected ? details === "disclosure" ? <details className="text-label">
+      <summary className="min-h-11 cursor-pointer rounded-sm py-sm text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-h-9">Model details</summary>
+      <CatalogueModelDetails model={selected} />
+    </details> : <CatalogueModelDetails model={selected} /> : null}
   </div>;
 }
 

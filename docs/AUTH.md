@@ -601,6 +601,21 @@ sequenceDiagram
     Next-->>Browser: rendered page or action result
 ```
 
+### Personal profile and browser sessions
+
+Profile and Security consume app-owned types from `ui/packages/app/lib/auth/account-types.ts`.
+`account-client.ts` isolates the provider hooks and native recent-verification flow. Profile names update through the existing browser SDK; email/password/passkey/multi-factor verification and account deletion stay reachable through the provider's secure account controls behind that adapter. No application view receives a provider resource. The existing subject used by chat, pending sends and caches is unchanged.
+
+Browser-session reads and remote sign-out use `account-actions.ts`, resolving the verified current person/session in `credential.ts`. A caller-supplied expected subject is only a stale-tab guard. It never selects another person's account. Personal-session operations reject impersonated identities before any privileged provider request. Browser sessions are separate from CLI device credentials and agentsfleet API keys.
+
+Session reads call the provider Backend API fresh, with the current person filter, active status, explicit pagination and 50-row pages. The browser SDK's cached `user.getSessions()` is not the refresh source. The adapter maps browser/device/location/last-active metadata into neutral data; absent timestamps remain unknown and no session token or provider error body reaches the client.
+
+Remote sign-out refuses the current session, requires `has({reverification: "strict"})`, and returns the provider's documented challenge hint when recent verification is missing. After verification, the server rechecks identity, reads the target, proves its ownership, and revokes only that person's other session. A confirmed ended state is idempotent; a missing, failed or ambiguous response is not confirmation. The current device signs out through the existing client sign-out flow.
+
+`account-provider.ts` holds the private provider transport. It uses the existing `CLERK_SECRET_KEY`, fixes its destination to `https://api.clerk.com/v1`, refuses redirects, and pins `Clerk-API-Version: 2026-05-12` to the installed SDK's version. A single ten-second abort signal covers each operation, including both target read and revocation. Responses are limited to one MiB and parsed with runtime schemas. Mutations are not automatically replayed. No additional provider keys or credentials are introduced.
+
+Mounted settings state belongs to one subject/session generation. Changing identities, including an A → B → A round trip, invalidates pending native challenge callbacks and discards late read results. Ordinary resource refreshes do not change that owner. A confirmed remote sign-out remains visible even if the following refresh fails. Profile drafts survive failed form actions; untouched fields adopt confirmed changes made through secure account controls.
+
 ### SSE stream: Next Route Handler injects Bearer
 
 The seven token-minting proxy routes (per-fleet and workspace `events` + `events/stream`, the per-fleet event detail `events/{eventId}`, one tool call in full `events/{eventId}/tool-calls/{callId}`, and the steer `POST messages`) live under `/live/*`, deliberately OUTSIDE the `/backend/:path*` rewrite: on Vercel the edge router let the rewrite shadow same-prefix filesystem route handlers, sending EventSource requests cookie-only to the API (401 `UZ-AUTH-002`). A prefix the rewrite cannot match makes the routing unambiguous on every platform. `tests/stream-proxy-routing.test.ts` checks that no proxy URL starts with a rewrite prefix and that each has a handler on disk.

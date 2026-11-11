@@ -15,6 +15,8 @@ import { DraftSidebarItem } from "@/components/layout/DraftSidebarItem";
 import { CHAT_ACTIVITY } from "@/lib/api/draft-summary";
 import { Section } from "@agentsfleet/design-system";
 import { RefreshVisualFixture } from "./refresh-visual-probe";
+import { AccountSettingsFixture } from "./account-settings-probe";
+import { ResourceSettingsFixture } from "./resource-settings-probe";
 
 const client = new DraftClient({account: "fixture-owner", workspace: WORKSPACE, subject: "creator"});
 const view = {...EMPTY_DRAFT_VIEW, draft: DRAFT, model: MODEL.ref, models: [MODEL], messages: [
@@ -27,7 +29,7 @@ if (!root) throw new Error("Chat fixture root is missing");
 const query = new URLSearchParams(location.search);
 const blank = {...EMPTY_DRAFT_VIEW, model: MODEL.ref, models: [MODEL]};
 const SETUP_CREATED_AT = new Date("2026-11-01T13:00:00Z");
-createRoot(root).render(query.has("visual") ? <RefreshVisualFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
+createRoot(root).render(query.has("resources") ? <ResourceSettingsFixture /> : query.has("accountSettings") ? <AccountSettingsFixture /> : query.has("visual") ? <RefreshVisualFixture /> : query.has("setupAlignment") ? <SetupAlignmentFixture /> : query.has("alignment") ? <ChatAlignmentFixture /> : query.has("starters") ? <main className="flex h-dvh flex-col bg-background text-foreground">
   <DraftConversation client={client} view={blank} workspace={WORKSPACE} unfinished={<UnfinishedFixture />} />
 </main> : query.has("scroll") ? <ChatScrollFixture /> : query.has("schedules") ? <ScheduleFixture /> : query.has("tasks") ? <TaskFixture /> : query.has("setup") ? <SetupFixture /> : query.has("activity") ? <ActivityFixture /> : <main className="flex h-dvh flex-col bg-background text-foreground">
   <p className="px-xl py-sm text-eyebrow text-muted-foreground">Typography fixture · deterministic conversation</p>

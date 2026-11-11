@@ -250,8 +250,8 @@ The credential choice offers Add new key or Use saved key. Filter saved keys by 
 Use Key name for a new credential. Reusing a key must not rotate or replace it.
 
 Keep Base URL and optional credentials for supported custom endpoints. Explain saved-key scope beside the picker when it affects selection.
-Model registration and active-model selection are account-scoped. The current API resolves model credentials from the account's primary workspace vault.
-Use that workspace for saved-key choices and new-key storage. A different selected workspace must not imply its keys can activate account models.
+Model registration and active-model selection are account-scoped. Each registered model references the workspace that stores its credential.
+Use the form's explicit workspace for saved-key choices and new-key storage. Switching workspaces never relocates a key or changes a registered model's source reference.
 
 Show completed steps when key storage, model registration, and activation succeed separately. Keep a registered model visible if activation fails.
 Retry activation alone after an activation failure. Storage success does not establish that a provider key works.
@@ -261,13 +261,15 @@ Keep that management in the CLI; this refresh adds no platform-default administr
 Account Models retains Create model and Make active. Its choices never grant platform administration.
 Preserve model, platform credential, and vault access checks when renaming or regrouping other surfaces.
 
-Security combines account API keys and browser sessions. Keep provider credentials under Models and Secrets.
+Security lists personal browser sessions. API keys remain a separate account page; provider credentials belong under Models and Secrets.
 Keep profile information available through the account identity and custom profile controls backed by the auth adapter.
 Sign out remains in the avatar menu.
 
 The app owns profile and session data shapes; Clerk supplies the current implementation through a dedicated adapter.
 Keep Clerk-specific objects and errors out of product components. A component re-export alone does not make the provider replaceable.
 Use Last active for activity timestamps and Signed in only for recorded session creation. Mark the current session and preserve real revoke behavior.
+Keep an absent activity time unknown. Require confirmation and recent verification before signing out another device, and reconcile an uncertain response before repeating the request.
+Retain edited profile names after a failed save. Photo, email and authentication-factor changes use the provider's verified account controls behind the adapter.
 
 Keep **Avatar → Team**. Current membership gives access to every workspace in the account; do not label this workspace-only access.
 Preserve Owner and Member roles, owner protection, pending invitations, and member removal.

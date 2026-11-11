@@ -1,33 +1,7 @@
+import { redirect } from "next/navigation";
 import { requireCredential } from "@/lib/auth/credential";
-import Link from "next/link";
-import { workspacePath } from "@/lib/workspace-routes";
-import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
-import { ShieldIcon } from "@phosphor-icons/react/ssr";
 
-export const dynamic = "force-dynamic";
-
-// Workspace-scoped concept page: it carries the `/w/[workspaceId]` segment (the
-// security policy it will host is per-workspace) even though it renders no data
-// yet.
-export default async function SettingsSecurityPage({
-  params,
-}: {
-  params: Promise<{ workspaceId: string }>;
-}) {
-  const { workspaceId } = await params;
+export default async function SettingsSecurityPage(_props: {params: Promise<{workspaceId: string}>}) {
   await requireCredential();
-
-  return (
-    <PageLayout>
-      <PageHeader className="flex-col sm:flex-col">
-        <PageTitle>Security</PageTitle>
-      </PageHeader>
-      <EmptyState
-        icon={<ShieldIcon size={32} />}
-        title="Workspace policies aren’t available yet"
-        description="Manage account security from your account menu. Workspace policy controls will appear here when available."
-        action={<Button asChild><Link href={workspacePath(workspaceId, "fleets")}>Back to fleets</Link></Button>}
-      />
-    </PageLayout>
-  );
+  redirect("/settings/security");
 }

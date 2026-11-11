@@ -75,7 +75,7 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
               <SelectContent>{providers.map(provider => <SelectItem key={provider} value={provider}>{providerLabel(provider)}</SelectItem>)}<SelectItem value={OPENAI_COMPATIBLE_PROVIDER}>{providerLabel(OPENAI_COMPATIBLE_PROVIDER)}</SelectItem></SelectContent>
             </Select> : <Input id={`${id}-provider`} value={values.provider} onChange={event => change({provider: event.target.value, model: "", savedRef: "", apiKey: ""})} placeholder="Provider ID" autoComplete="off" spellCheck={false} />}
           </div>
-          <ProviderModelSelect id={`${id}-model`} provider={values.provider || undefined} model={values.model} onModelChange={model => change({model})} />
+          <ProviderModelSelect id={`${id}-model`} provider={values.provider || undefined} model={values.model} onModelChange={model => change({model})} details="disclosure" />
         </div>
         <ModelCredentialFields id={id} values={values} secrets={secrets} onChange={change} />
         <div className="flex items-start gap-lg">

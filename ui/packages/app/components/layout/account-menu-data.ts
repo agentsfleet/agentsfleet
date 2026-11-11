@@ -1,4 +1,4 @@
-import { PulseIcon, BookOpenIcon, CpuIcon, CheckCircleIcon, ChartLineUpIcon, KeyIcon, LockKeyIcon, PlugsConnectedIcon, UsersIcon, UserCircleIcon } from "@phosphor-icons/react/ssr";
+import { PulseIcon, BookOpenIcon, CpuIcon, CheckCircleIcon, ChartLineUpIcon, KeyIcon, LockKeyIcon, PlugsConnectedIcon, UsersIcon, UserCircleIcon, ShieldCheckIcon } from "@phosphor-icons/react/ssr";
 import type { NavEntry } from "./sidebar-navigation-data";
 
 export const WORKSPACE_NAV: NavEntry[] = [
@@ -11,6 +11,7 @@ export const WORKSPACE_NAV: NavEntry[] = [
 // Each person manages the account signup created for them.
 export const ACCOUNT_NAV: NavEntry[] = [
   { label: "Profile", path: "/settings/account", icon: UserCircleIcon },
+  { label: "Security", path: "/settings/security", icon: ShieldCheckIcon },
   { label: "Team", path: "/settings/members", icon: UsersIcon },
 ];
 

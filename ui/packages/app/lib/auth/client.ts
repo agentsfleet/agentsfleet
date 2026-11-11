@@ -87,10 +87,9 @@ export function useCurrentUser(): {
 // directly. Replacing the auth provider later = swap these named exports
 // to the new library's equivalents; no consumer changes.
 //
-// Note: server-side dashboard pages call `auth()` directly from
-// `@clerk/nextjs/server`. The lone surviving api-template mint is in
-// `app/cli-auth/[session_id]/page.tsx` — the CLI handshake carve-out.
+// Personal settings use account-client.ts for app-owned profile/session shapes;
+// server-side credential and personal-session authority stay in credential.ts.
 export const AuthProvider = ClerkProvider;
-export { SignOutButton as AuthSignOutButton, UserProfile as AuthUserProfile } from "@clerk/nextjs";
+export { SignOutButton as AuthSignOutButton } from "@clerk/nextjs";
 export const AuthSignIn = SignIn;
 export const AuthSignUp = SignUp;

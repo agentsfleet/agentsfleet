@@ -105,11 +105,7 @@ describe("app layouts and pages", () => {
   });
 });
 
-it("renders account settings as a themed page with reloadable profile routes", async () => {
+it("redirects former embedded-profile security links to account Security", async () => {
   const { default: AccountPage } = await import("../app/(dashboard)/settings/account/[[...account]]/page");
-  const markup = renderToStaticMarkup(React.createElement(AccountPage));
-  expect(markup).toContain("Profile");
-  expect(markup).toContain('data-user-profile="/settings/account"');
-  expect(markup).toContain('data-routing="path"');
-  expect(markup).toContain("colorPrimary");
+  await expect(AccountPage({params: Promise.resolve({account: ["security"]})})).rejects.toThrow("redirect:/settings/security");
 });
