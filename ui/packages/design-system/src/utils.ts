@@ -12,9 +12,12 @@ export type { ClassValue };
 const twMerge = extendTailwindMerge({
   extend: {
     theme: {
+      radius: ["control"],
+      leading: ["display-xl", "display-lg", "display-md", "heading", "eyebrow", "body-lg", "body", "body-sm", "label", "mono", "prose", "conversation", "composer"],
       spacing: ["xs", "sm", "md", "lg", "xl", "2xl", "3xl", "4xl", "5xl", "6xl", "chat-input", "chat-inset", "table-inline", "table-block"],
     },
     classGroups: {
+      "font-weight": ["font-title", "font-control"],
       "font-size": [
         "text-display-xl",
         "text-display-lg",
@@ -27,6 +30,7 @@ const twMerge = extendTailwindMerge({
         "text-label",
         "text-mono",
         "text-conversation",
+        "text-composer",
         "text-chat-title",
         "text-fluid-hero",
         "text-fluid-display-lg",

@@ -1,4 +1,4 @@
-import { AlertTriangleIcon } from "lucide-react";
+import { WarningIcon } from "@phosphor-icons/react/ssr";
 import { Alert, AlertTitle, AlertDescription, Time } from "@agentsfleet/design-system";
 import type { TenantBilling } from "@/lib/types";
 import { SUPPORT_EMAIL } from "@/lib/contact";
@@ -9,7 +9,7 @@ export default function ExhaustionBanner({ billing }: Props) {
   if (!billing?.is_exhausted) return null;
   return (
     <Alert variant="destructive" className="mb-6">
-      <AlertTriangleIcon size={18} className="mt-0.5 shrink-0" aria-hidden />
+      <WarningIcon size={18} className="mt-0.5 shrink-0" aria-hidden />
       <div className="min-w-0 flex-1">
         <AlertTitle>Your credit balance is exhausted.</AlertTitle>
         <AlertDescription className="text-destructive/80">

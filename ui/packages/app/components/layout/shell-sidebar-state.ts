@@ -5,11 +5,11 @@ import { useSyncExternalStore } from "react";
 type SidebarListener = () => void;
 
 export class ShellSidebarState {
-  #collapsed = false;
+  #collapsed = true;
   #listeners = new Set<SidebarListener>();
 
   readonly getSnapshot = (): boolean => this.#collapsed;
-  readonly getServerSnapshot = (): boolean => false;
+  readonly getServerSnapshot = (): boolean => true;
 
   readonly subscribe = (listener: SidebarListener): (() => void) => {
     this.#listeners.add(listener);
@@ -27,7 +27,7 @@ export class ShellSidebarState {
   };
 
   reset(): void {
-    this.setCollapsed(false);
+    this.setCollapsed(true);
   }
 }
 
@@ -47,9 +47,9 @@ const EXPANDED_ASIDE_CLASS = "w-60";
 const EXPANDED_HEADER_CLASS = "md:w-60";
 export const SIDEBAR_COLUMN = {
   /** The column itself, inside an `<aside>` that is already `md:`-gated. */
-  aside: { expanded: EXPANDED_ASIDE_CLASS, collapsed: "w-16" },
+  aside: { expanded: EXPANDED_ASIDE_CLASS, collapsed: "w-18" },
   /** The header's leading cluster, which is a column only from `md` up. */
-  header: { expanded: EXPANDED_HEADER_CLASS, collapsed: "md:w-16" },
+  header: { expanded: EXPANDED_HEADER_CLASS, collapsed: "md:w-18" },
 } as const;
 
 export const shellSidebarState = new ShellSidebarState();

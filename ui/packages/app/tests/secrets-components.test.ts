@@ -42,20 +42,21 @@ vi.mock("@/components/domain/island-dynamic/AddSecretFormDynamic", async () => {
 // Use the real ConfirmDialog (for errorMessage rendering) and lucide stubs;
 // stub only the form primitives that pull radix client-only providers we
 // don't need at unit level.
-vi.mock("lucide-react", () => {
+vi.mock("@phosphor-icons/react/ssr", async (original) => {
+  const actual = await original<Record<string, unknown>>();
   const make = (name: string) => {
     const C = (p: Record<string, unknown>) =>
       React.createElement("svg", { ...p, "data-icon": name });
     C.displayName = name;
     return C;
   };
-  return {
-    Trash2Icon: make("Trash2Icon"),
+  return { ...actual,
+    TrashIcon: make("TrashIcon"),
     Loader2Icon: make("Loader2Icon"),
-    KeyRoundIcon: make("KeyRoundIcon"),
-    PencilIcon: make("PencilIcon"),
+    KeyIcon: make("KeyIcon"),
+    PencilSimpleIcon: make("PencilSimpleIcon"),
     PlusIcon: make("PlusIcon"),
-    CircleHelpIcon: make("CircleHelpIcon"),
+    QuestionIcon: make("QuestionIcon"),
     XIcon: make("XIcon"),
   };
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button, cn, Spinner } from "@agentsfleet/design-system";
-import { ChevronDownIcon, UserRoundIcon } from "lucide-react";
+import { CaretDownIcon, UserCircleIcon } from "@phosphor-icons/react/ssr";
 import type { ComponentProps } from "react";
 import { useCurrentUser } from "@/lib/auth/client";
 
@@ -24,14 +24,14 @@ export function WorkspaceSwitcherTrigger({ activeLabel, busy = false, failed = f
     {menuLabel ? <span className="sr-only">{menuLabel}</span> : null}
     <span className="flex size-7.5 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-colors duration-snap group-hover:bg-primary group-hover:text-primary-foreground">
       {busy ? <Spinner size="sm" srLabel="Loading workspace menu" /> : initials
-        ? <span aria-hidden="true" className="text-eyebrow font-normal">{initials}</span> : <UserRoundIcon size={18} aria-hidden="true" />}
+        ? <span aria-hidden="true" className="text-eyebrow font-normal">{initials}</span> : <UserCircleIcon size={18} aria-hidden="true" />}
     </span>
     {!collapsed ? <>
       <span className="flex min-w-0 flex-1 flex-col items-start">
         <span className="w-full truncate text-left text-body-sm font-semibold leading-body-sm text-foreground" title={name}>{displayLabel}</span>
         <span className="w-full truncate text-left text-label font-normal leading-label text-muted-foreground" title={activeLabel}>{subtitle}</span>
       </span>
-      <ChevronDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
+      <CaretDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" />
     </> : null}
   </Button>;
 }

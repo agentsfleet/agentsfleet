@@ -3,7 +3,7 @@
 import { TIME_LABEL } from "@/lib/time-labels";
 import { type Ref, useDeferredValue, useImperativeHandle, useMemo, useState, useTransition } from "react";
 import { Badge, DataTable, type DataTableColumn, EmptyState, IconAction, Time } from "@agentsfleet/design-system";
-import { BanIcon, KeyRoundIcon, Trash2Icon } from "lucide-react";
+import { ProhibitIcon, KeyIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import { type ApiKeyListResponse, type ApiKeyRow } from "@/lib/api/api_keys";
 import { byInstant } from "@/lib/api/decode";
 import { DEFAULT_SORT, type ApiKeySort } from "@/lib/api/api-keys-types";
@@ -122,7 +122,7 @@ export default function ApiKeyList({
         onSortChange={(key) => setSort(NEXT_SORT[key as "name" | "activity"][sort ?? DEFAULT_SORT])}
         empty={
           <EmptyState
-            icon={<KeyRoundIcon size={28} />}
+            icon={<KeyIcon size={28} />}
             title={query ? "No matching keys" : "Connect your first tool"}
             description={query ? "Try another name or clear your search." : "Create an API key for a script, automation, or service. You’ll copy its value once after creating it."}
           />
@@ -170,11 +170,11 @@ function KeyActionsCell({
   // carries the verb + key name, the glyph carries the affordance.
   return k.active ? (
     <IconAction type="button" variant="destructive" disabled={pending} onClick={onRevoke} label={`Revoke API key ${k.key_name}`}>
-      <BanIcon size={14} />
+      <ProhibitIcon size={14} />
     </IconAction>
   ) : (
     <IconAction type="button" variant="destructive" disabled={pending} onClick={onDelete} label={`Delete API key ${k.key_name}`}>
-      <Trash2Icon size={14} />
+      <TrashIcon size={14} />
     </IconAction>
   );
 }

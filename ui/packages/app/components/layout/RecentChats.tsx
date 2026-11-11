@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import type { z } from "zod";
 import Link from "next/link";
 import { NavItem, IconAction, Button } from "@agentsfleet/design-system";
-import { Trash2Icon } from "lucide-react";
+import { TrashIcon } from "@phosphor-icons/react/ssr";
 import { FleetListSchema, type NativeFleetSummary } from "@/lib/api/fleet-detail";
 import { RecentCollection } from "@/lib/api/recent-collection";
 import { FleetDeleteDialog } from "./FleetDeleteDialog";
@@ -48,7 +48,7 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
       </NavItem>
       <IconAction variant="ghost" label={`Delete fleet: ${fleet.name}`} disabled={selected !== null}
         className="absolute right-xs top-1/2 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-snap group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
-        onClick={() => setSelected(fleet)}><Trash2Icon size={14} aria-hidden="true" /></IconAction>
+        onClick={() => setSelected(fleet)}><TrashIcon size={14} aria-hidden="true" /></IconAction>
     </div>)}
     {page.loading && !page.items.length ? <output className="px-md text-label text-muted-foreground">Loading fleets…</output> : null}
     {!page.loading && !page.error && !page.items.length ? <p className="px-md text-label text-muted-foreground">Saved fleets will appear here.</p> : null}

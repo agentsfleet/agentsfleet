@@ -20,18 +20,19 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/integrations/connector-actions", () =
   disconnectConnectorAction: disconnectConnectorActionMock,
   startConnectAction: startConnectActionMock,
 }));
-vi.mock("lucide-react", () => {
+vi.mock("@phosphor-icons/react/ssr", async (original) => {
+  const actual = await original<Record<string, unknown>>();
   const make = (name: string) => (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": name });
-  return {
-    SearchIcon: make("SearchIcon"),
+  return { ...actual,
+    MagnifyingGlassIcon: make("MagnifyingGlassIcon"),
     BriefcaseIcon: make("BriefcaseIcon"),
     GitPullRequestIcon: make("GitPullRequestIcon"),
-    Grid2x2Icon: make("Grid2x2Icon"),
+    SquaresFourIcon: make("SquaresFourIcon"),
     HashIcon: make("HashIcon"),
-    PlugIcon: make("PlugIcon"),
+    PlugsConnectedIcon: make("PlugsConnectedIcon"),
     TicketIcon: make("TicketIcon"),
-    UnplugIcon: make("UnplugIcon"),
+    PlugsIcon: make("PlugsIcon"),
   };
 });
 

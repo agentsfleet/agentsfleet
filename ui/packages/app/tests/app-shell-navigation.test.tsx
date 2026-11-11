@@ -40,13 +40,15 @@ describe("conversation-first app navigation", () => {
     expect(docs.getAttribute("target")).toBe("_blank");
     expect(docs.getAttribute("rel")).toBe("noopener noreferrer");
   });
-  it("uses the compact centered New fleet icon button when collapsed", () => {
+  it("names the compact New fleet icon and exposes its tooltip on keyboard focus", async () => {
     render(<SidebarNavigation pathname="/w/ws_1/fleets" workspaceId={WORKSPACE.id} collapsed onNavigate={() => {}} />);
     const action = screen.getByRole("link", {name: "New fleet"});
     expect(action.classList.contains("justify-center")).toBe(true);
-    expect(action.querySelector("svg")?.getAttribute("width")).toBe("18");
+    expect(action.querySelector("svg")?.getAttribute("width")).toBe("20");
     expect(action.getAttribute("href")).toBe("/w/ws_1/fleets/new");
-    expect(action.getAttribute("title")).toBe("New fleet");
+    await userEvent.setup().tab();
+    expect(document.activeElement).toBe(action);
+    expect(await screen.findByRole("tooltip", {name: "New fleet"})).toBeTruthy();
   });
   it("keeps the expanded sidebar free of search and fleet recents", () => {
     mount();
@@ -73,7 +75,7 @@ describe("conversation-first app navigation", () => {
     expect(screen.queryByRole("menu")).toBeNull();
     expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_settings_account", surface: "app_sidebar", target: "/settings/account"});
   });
-  it("keeps the two primary destinations and moves settings off the canvas", () => {
+  it("keeps fleet and resource destinations and moves settings off the canvas", () => {
     mount();
     expect(screen.getByRole("link", { name: "New fleet" }).getAttribute("href")).toBe("/w/ws_1/fleets/new");
     expect(screen.getByRole("link", { name: "Your fleets" }).getAttribute("aria-current")).toBe("page");
@@ -109,7 +111,7 @@ describe("conversation-first app navigation", () => {
     expect(document.activeElement).toBe(back);
     expect(screen.getByRole("menuitem", { name: "Models" }).getAttribute("href")).toBe("/w/ws_1/settings/models");
     expect(screen.getByText("Workspace")).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Fleet library" }).getAttribute("href")).toBe("/w/ws_1/library");
+    expect(screen.queryByRole("menuitem", {name: "Fleet library"})).toBeNull();
     expect(screen.getByRole("menuitem", { name: "Team" }).getAttribute("href")).toBe("/settings/members");
     for (const name of ["API keys", "Integrations", "Secrets", "Billing"]) {
       expect(screen.queryByRole("menuitem", { name })).toBeNull();
@@ -121,7 +123,7 @@ describe("conversation-first app navigation", () => {
   });
   it("keeps collapsed controls named and opens full navigation on mobile", async () => {
     mount(); const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+    expect(screen.getByRole("button", {name: "Expand sidebar"})).toBeTruthy();
     expect(screen.queryByText("Your fleets")).toBeNull();
     expect(screen.getByRole("link", { name: "Your fleets" })).toBeTruthy();
     expect(screen.getByRole("button", { name: MENU })).toBeTruthy();

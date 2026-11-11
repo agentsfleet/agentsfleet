@@ -40,6 +40,7 @@ const nextConfig: NextConfig = {
   // retired JavaScript compiler API (vercel/next.js#95831, stable in 16.2.12).
   experimental: {
     useTypeScriptCli: true,
+    optimizePackageImports: ["@phosphor-icons/react", "@phosphor-icons/react/ssr"],
   },
 
   // Same-origin proxy for API calls. Browser hits /backend/v1/... (no CORS);

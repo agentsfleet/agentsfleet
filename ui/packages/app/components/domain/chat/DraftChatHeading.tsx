@@ -5,9 +5,8 @@ import type { DraftView } from "@/lib/api/draft-state";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label } from "@agentsfleet/design-system";
-import { ChatSummaryToggle } from "./ChatSummary";
 import Link from "next/link";
-import { ArrowLeftIcon, EllipsisIcon, PencilIcon } from "lucide-react";
+import { ArrowLeftIcon, DotsThreeIcon, PencilSimpleIcon } from "@phosphor-icons/react/ssr";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
@@ -45,8 +44,7 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
       <HeadingTitle client={client} view={view} state={state} label={label} locked={locked} primary={!fleetPage && Boolean(view.draft || view.preview || view.fleet)} />
       {view.fleet && fleetPage && view.fleet.status === AGENTSFLEET_STATUS.INSTALLING
         ? <EditSetupButton workspace={workspace} fleet={view.fleet.id} revision={view.fleet.setup_revision} /> : null}
-      {canEdit ? <Button variant="ghost" size="icon" aria-label="Edit instructions" title="Edit instructions" disabled={locked} onClick={() => {void state.prepare(false).catch(ignore);}}><PencilIcon size={16} aria-hidden="true" /></Button> : null}
-      <ChatSummaryToggle />
+      {canEdit ? <Button variant="ghost" size="icon" aria-label="Edit instructions" title="Edit instructions" disabled={locked} onClick={() => {void state.prepare(false).catch(ignore);}}><PencilSimpleIcon size={16} aria-hidden="true" /></Button> : null}
       <DraftSaveButton client={client} view={view} dirty={state.dirty} />
       {canEdit || draft ? <HeadingMenu state={state} label={label} canEdit={canEdit} locked={locked} canRename={draft?.state === DRAFT_STATE.editing}>{menuItems}</HeadingMenu> : null}
     </div>
@@ -110,7 +108,7 @@ function HeadingTitle({client, view, state, label, locked, primary}: {client: Dr
 }
 
 function HeadingMenu({state, label, canEdit, locked, canRename, children}: {state: HeadingState; label: string; canEdit: boolean; locked: boolean; canRename: boolean; children?: ReactNode}) {
-  return <DropdownMenu><DropdownMenuTrigger asChild><Button ref={state.trigger} variant="ghost" size="icon-compact" aria-label="Setup chat actions"><EllipsisIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
+  return <DropdownMenu><DropdownMenuTrigger asChild><Button ref={state.trigger} variant="ghost" size="icon-compact" aria-label="Setup chat actions"><DotsThreeIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
     <DropdownMenuContent align="end">
       <DropdownMenuItem disabled={locked || !canEdit} onSelect={() => {void state.prepare(false).catch(ignore);}}>{INSTRUCTIONS}</DropdownMenuItem>
       <DropdownMenuItem disabled={locked || !canEdit} onSelect={() => {void state.prepare(true).catch(ignore);}}>{PUBLISH}</DropdownMenuItem>

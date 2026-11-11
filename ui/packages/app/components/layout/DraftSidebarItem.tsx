@@ -3,10 +3,9 @@
 import type { SidebarDraft } from "@/lib/api/draft-summary";
 import Link from "next/link";
 import { IconAction, NavItem, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@agentsfleet/design-system";
-import { ChevronRightIcon, Trash2Icon } from "lucide-react";
+import { CaretRightIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import { CHAT_ACTIVITY } from "@/lib/api/draft-summary";
 import { workspacePath } from "@/lib/workspace-routes";
-import { NAV_ICON_STROKE_WIDTH } from "./sidebar-navigation-data";
 
 type Props = {card: SidebarDraft; workspace: string; active: boolean; disabled: boolean; onNavigate: () => void;
   onDelete: () => void};
@@ -19,10 +18,10 @@ export function DraftSidebarItem({card, workspace, active, disabled, onNavigate,
       <Link href={`${workspacePath(workspace, "fleets/new")}?draft=${encodeURIComponent(card.id)}`} prefetch={false} aria-label={card.title} aria-describedby={`${card.id}-state`} title={card.title}>
         <span className="col-start-1 min-w-0 truncate leading-body-sm text-foreground">{card.title}</span>
         <span id={`${card.id}-state`} className="sr-only">{status}</span>
-        <span className="col-start-3 inline-flex shrink-0 items-center gap-sm text-eyebrow text-pulse">Resume<ChevronRightIcon className="size-3.5" aria-hidden="true" /></span>
+        <span className="col-start-3 inline-flex shrink-0 items-center gap-sm text-eyebrow text-pulse">Resume<CaretRightIcon className="size-3.5" aria-hidden="true" /></span>
       </Link>
     </NavItem></TooltipTrigger><TooltipContent side="right" className="ph-no-capture ph-no-record max-w-xs break-words"><p>{card.title}</p><p className="text-muted-foreground">{status}</p></TooltipContent></Tooltip></TooltipProvider>
     <IconAction variant="ghost" label={`Delete chat: ${card.title}`} disabled={disabled} className="col-start-2 row-start-1 z-10 text-muted-foreground opacity-0 transition-opacity duration-snap group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
-      onClick={onDelete}><Trash2Icon size={CHAT_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} aria-hidden="true" /></IconAction>
+      onClick={onDelete}><TrashIcon size={CHAT_ICON_SIZE} aria-hidden="true" /></IconAction>
   </div>;
 }

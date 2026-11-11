@@ -8,15 +8,15 @@ describe("shell sidebar state", () => {
     const observed: boolean[] = [];
     const unsubscribe = state.subscribe(() => observed.push(state.getSnapshot()));
 
-    expect(state.getServerSnapshot()).toBe(false);
-    expect(state.getSnapshot()).toBe(false);
+    expect(state.getServerSnapshot()).toBe(true);
+    expect(state.getSnapshot()).toBe(true);
     state.toggle();
     state.toggle();
     unsubscribe();
     state.toggle();
 
-    expect(observed).toEqual([true, false]);
-    expect(state.getSnapshot()).toBe(true);
+    expect(observed).toEqual([false, true]);
+    expect(state.getSnapshot()).toBe(false);
   });
 
   it("resets once and ignores idempotent writes", () => {
@@ -25,14 +25,14 @@ describe("shell sidebar state", () => {
     state.subscribe(listener);
 
     state.reset();
-    state.setCollapsed(false);
+    state.setCollapsed(true);
     expect(listener).not.toHaveBeenCalled();
 
-    state.setCollapsed(true);
-    state.setCollapsed(true);
+    state.setCollapsed(false);
+    state.setCollapsed(false);
     state.reset();
     state.reset();
     expect(listener).toHaveBeenCalledTimes(2);
-    expect(state.getSnapshot()).toBe(false);
+    expect(state.getSnapshot()).toBe(true);
   });
 });

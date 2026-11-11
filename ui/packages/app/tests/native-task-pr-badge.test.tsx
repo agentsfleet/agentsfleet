@@ -39,10 +39,9 @@ it("shows a standard PR badge before the mobile drawer opens, sharing reads and 
   expect(badge.classList.contains("ph-no-capture")).toBe(true);
   expect(badge.classList.contains("ph-no-record")).toBe(true);
   expect(badge.getAttribute("href")).toBe("https://github.com/a/b/pull/803");
-  expect(badge.querySelector("svg.lucide-git-pull-request")).toBeTruthy();
-  expect(screen.queryByRole("region", {name: "Current work"})).toBeNull();
+  expect(badge.querySelector("svg")).toBeTruthy();
+  expect(screen.getByRole("region", {name: "Current work"})).toBeTruthy();
   expect(fetcher).toHaveBeenCalledTimes(2);
-  fireEvent.click(screen.getByRole("button", {name: "Work context"}));
   await screen.findByRole("region", {name: "Outputs"});
   expect(fetcher).toHaveBeenCalledTimes(2);
   const draft = screen.getByRole("textbox", {name: "Draft", hidden: true});

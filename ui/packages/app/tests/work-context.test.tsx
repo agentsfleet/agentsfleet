@@ -1,5 +1,5 @@
 import type { TaskActivity } from "@/lib/task-activity";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { FleetWorkSidebar } from "@/components/domain/FleetWorkSidebar";
 import { WorkAction, workActivity } from "@/components/domain/chat/WorkActivity";
@@ -8,11 +8,10 @@ import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail, TASK_IDS } from "./helpers/task-reads";
 afterEach(() => {cleanup(); vi.restoreAllMocks();});
 
-it("uses the existing accessible dialog on mobile without touching the conversation draft", () => {
+it("shows Summary inline on mobile without touching the conversation draft", () => {
   render(<><textarea aria-label="Draft" defaultValue="Keep my exact draft" /><FleetWorkSidebar><p>PR 123 evidence</p></FleetWorkSidebar></>);
-  expect(screen.queryByText("PR 123 evidence")).toBeNull();
-  fireEvent.click(screen.getByRole("button", {name: "Work context"}));
-  expect(screen.getByRole("dialog").textContent).toContain("PR 123 evidence");
+  expect(screen.getByRole("complementary", {name: "Summary"}).textContent).toContain("PR 123 evidence");
+  expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.getByRole("textbox", {name: "Draft", hidden: true})).toHaveProperty("value", "Keep my exact draft");
 });
 
@@ -20,7 +19,7 @@ it("mounts one desktop sidebar, and no work surface when no child exists", () =>
   const original = window.matchMedia;
   vi.spyOn(window, "matchMedia").mockImplementation(query => ({...original(query), matches: true}));
   const view = render(<FleetWorkSidebar><p>PR 123 evidence</p></FleetWorkSidebar>);
-  expect(screen.getByRole("complementary", {name: "Work context"}).textContent).toBe("PR 123 evidence");
+  expect(screen.getByRole("complementary", {name: "Summary"}).textContent).toContain("PR 123 evidence");
   expect(screen.queryByRole("button", {name: "Work context"})).toBeNull();
   view.rerender(<FleetWorkSidebar>{null}</FleetWorkSidebar>);
   expect(screen.queryByText("PR 123 evidence")).toBeNull();
@@ -57,7 +56,7 @@ it("explains saved dependencies without inventing a next action from status", ()
   expect(screen.getByText("Waiting on: checks.yml.")).toBeTruthy();
 });
 
-it("hydrates server-rendered mobile controls into exactly one desktop work surface", async () => {
+it("hydrates the server-rendered Summary without mounting another reader", async () => {
   const {renderToString} = await import("react-dom/server");
   const original = window.matchMedia;
   vi.spyOn(window, "matchMedia").mockImplementation(query => ({...original(query), matches: true}));
@@ -65,10 +64,10 @@ it("hydrates server-rendered mobile controls into exactly one desktop work surfa
   const container = document.createElement("div");
   container.innerHTML = renderToString(element);
   document.body.append(container);
-  expect(container.textContent).toContain("Work context");
-  expect(container.textContent).not.toContain("Confirmed repair evidence");
+  expect(container.textContent).toContain("Summary");
+  expect(container.textContent).toContain("Confirmed repair evidence");
   render(element, {container, hydrate: true});
-  expect(await screen.findByRole("complementary", {name: "Work context"})).toBeTruthy();
+  expect(await screen.findByRole("complementary", {name: "Summary"})).toBeTruthy();
   expect(screen.getAllByText("Confirmed repair evidence")).toHaveLength(1);
   expect(screen.queryByRole("button", {name: "Work context"})).toBeNull();
 });

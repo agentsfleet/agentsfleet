@@ -30,7 +30,7 @@ export function BillingActivities({ report, pageSize, modelNames, detail, select
   };
   return <DataTable columns={activityColumns(modelNames)} rows={report.activities.items} rowKey={activityKey} caption="Billing activity"
     surface={DATA_TABLE_SURFACE.plain} isLoading={pending || feed.isLoading} stickyHeader={false}
-    className="billing-activity-table [&_table]:font-system [&_table]:text-eyebrow [&_table]:table-fixed [&_th]:h-auto [&_th]:py-2.5 [&_th]:font-normal [&_th]:text-eyebrow [&_th:first-child]:w-2/5 [&_th:nth-child(2)]:w-1/4 [&_td:not([colspan])]:h-auto [&_td:not([colspan])]:py-sm [&_td]:break-words"
+    className="billing-activity-table [&_table]:font-sans [&_table]:text-eyebrow [&_table]:table-fixed [&_th]:h-auto [&_th]:py-2.5 [&_th]:font-normal [&_th]:text-eyebrow [&_th:first-child]:w-2/5 [&_th:nth-child(2)]:w-1/4 [&_td:not([colspan])]:h-auto [&_td:not([colspan])]:py-sm [&_td]:break-words"
     empty={<EmptyState title="No settled activity" description="Settled setup chats and fleet work will appear here. Try another period or filter." surface={EMPTY_STATE_SURFACE.plain} />}
     rowDisclosure={{expandedRow: selected, onExpandedRowChange: open,
       label: activity => `Charges for ${activityLabel(activity)} at ${activity.recorded_at}`,

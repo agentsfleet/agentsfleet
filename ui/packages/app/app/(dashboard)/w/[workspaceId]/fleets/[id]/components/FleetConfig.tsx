@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2Icon } from "lucide-react";
+import { TrashIcon } from "@phosphor-icons/react/ssr";
 import { Button, ConfirmDialog } from "@agentsfleet/design-system";
 import { deleteFleetAction } from "../../actions";
 import { workspacePath } from "@/lib/workspace-routes";
@@ -51,7 +51,7 @@ export default function FleetConfig(props: Props) {
         size="sm"
         className="min-h-11 sm:min-h-0"
       >
-        <Trash2Icon size={14} /> Delete fleet
+        <TrashIcon size={14} /> Delete fleet
       </Button>
 
       <ConfirmDialog

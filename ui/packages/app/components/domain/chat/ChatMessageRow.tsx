@@ -14,7 +14,7 @@ export function ChatMessageRow({sender, operator, children, messageRole, dimmed,
       <div className={cn("flex min-w-0 flex-col gap-sm", operator ? "max-w-11/12 items-end sm:max-w-4/5" : "w-full items-start")}>
         {!operator || showSender ? <div className="flex h-6 w-full min-w-0 items-center gap-sm" data-testid="chat-message-header"><span aria-hidden="true" data-testid="fleet-message-sender"
           className="inline-flex min-w-0 items-center gap-sm text-label leading-label text-muted-foreground">
-          {!operator ? <BrandMark className="size-3.5 shrink-0 text-pulse" /> : null}<span className="truncate">{sender}</span>
+          {!operator ? <BrandMark className="size-4 shrink-0 text-pulse" /> : null}<span className="truncate">{sender}</span>
         </span>{annotation}</div> : null}
         <div className={cn("min-w-0 max-w-full break-words font-sans text-conversation leading-conversation text-foreground",
           operator ? "w-fit rounded-xl bg-muted px-md py-2.5" : "w-full")}>

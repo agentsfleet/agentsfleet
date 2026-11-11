@@ -14,15 +14,7 @@ import {
   StatusPill,
   type StatusPillVariant,
 } from "@agentsfleet/design-system";
-import {
-  BriefcaseIcon,
-  GitPullRequestIcon,
-  Grid2x2Icon,
-  HashIcon,
-  PlugIcon,
-  TicketIcon,
-  UnplugIcon,
-} from "lucide-react";
+import { BriefcaseIcon, GitPullRequestIcon, SquaresFourIcon, HashIcon, PlugsConnectedIcon, TicketIcon, PlugsIcon } from "@phosphor-icons/react/ssr";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { disconnectConnectorAction, startConnectAction } from "../connector-actions";
 import { presentErrorString, unexpectedErrorMessage } from "@/lib/errors";
@@ -60,7 +52,7 @@ const PROVIDER_ICON: Record<string, ComponentType<{ size?: number }>> = {
   slack: HashIcon,
   zoho: BriefcaseIcon,
   jira: TicketIcon,
-  linear: Grid2x2Icon,
+  linear: SquaresFourIcon,
 };
 
 // Registry-sourced strings key this lookup, so restrict to OWN keys — a provider
@@ -69,7 +61,7 @@ const PROVIDER_ICON: Record<string, ComponentType<{ size?: number }>> = {
 // then be rendered as a component).
 export function providerIcon(id: string): ComponentType<{ size?: number }> {
   const icon = Object.hasOwn(PROVIDER_ICON, id) ? PROVIDER_ICON[id] : undefined;
-  return icon ?? PlugIcon;
+  return icon ?? PlugsConnectedIcon;
 }
 
 // oauth2 / app_install connectors: connect is a redirect. The action returns the
@@ -183,11 +175,11 @@ export function OAuthConnectorRow({
       {isConnected ? <Button variant="ghost" size="sm"
         aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`}
         disabled={disconnecting} aria-busy={disconnecting} onClick={() => void disconnect()}>
-        {disconnecting ? <Spinner size="sm" className="text-info" /> : <UnplugIcon size={16} aria-hidden="true" />}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
+        {disconnecting ? <Spinner size="sm" className="text-info" /> : <PlugsIcon size={16} aria-hidden="true" />}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
       </Button> : <Button variant="secondary" size="sm"
         aria-label={connecting ? CONNECTING_LABEL : `${CONNECT_LABEL} ${entry.display_name}`}
         disabled={connecting} aria-busy={connecting} onClick={() => void connect()}>
-        {connecting ? <Spinner size="sm" className="text-info" /> : <PlugIcon size={16} className="text-pulse" aria-hidden="true" />}{connecting ? CONNECTING_LABEL : CONNECT_LABEL}
+        {connecting ? <Spinner size="sm" className="text-info" /> : <PlugsConnectedIcon size={16} className="text-pulse" aria-hidden="true" />}{connecting ? CONNECTING_LABEL : CONNECT_LABEL}
       </Button>}
     </div> : null}
   </DashboardPanel>;

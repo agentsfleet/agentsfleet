@@ -2,6 +2,7 @@
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { type ComponentProps, type HTMLAttributes, useRef } from "react";
+import { XIcon } from "@phosphor-icons/react/ssr";
 import { cn } from "../utils";
 import { Button } from "./Button";
 
@@ -98,20 +99,7 @@ function DialogCloseButton({ disabled }: { disabled: boolean }) {
   return (
     <DialogClose asChild>
       <Button variant="ghost" size="icon" className="absolute right-sm top-sm" disabled={disabled}>
-        <svg
-          className="h-4 w-4"
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          aria-hidden="true"
-        >
-          <path d="M18 6 6 18" />
-          <path d="m6 6 12 12" />
-        </svg>
+        <XIcon size={16} aria-hidden="true" />
         <span className="sr-only">Close</span>
       </Button>
     </DialogClose>
@@ -128,7 +116,7 @@ export function DialogTitle({ className, ref, ...props }: DialogTitleProps) {
   return (
     <DialogPrimitive.Title
       ref={ref}
-      className={cn("font-sans text-heading font-semibold leading-heading tracking-display-md", className)}
+      className={cn("font-sans text-heading font-title leading-heading tracking-display-md", className)}
       {...props}
     />
   );

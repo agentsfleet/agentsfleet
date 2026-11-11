@@ -17,7 +17,7 @@ import {
   PageTitle,
   Time,
 } from "@agentsfleet/design-system";
-import { CircleCheckIcon, MailOpenIcon } from "lucide-react";
+import { CheckCircleIcon, EnvelopeOpenIcon } from "@phosphor-icons/react/ssr";
 import type { WaitingInvite } from "@/lib/api/invites";
 import { presentErrorString } from "@/lib/errors";
 import { DASHBOARD_ROOT_PATH, DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
@@ -83,7 +83,7 @@ export function InvitesView({ waiting, linkedId }: Props) {
           caption="Invites waiting for you"
           empty={
             <EmptyState
-              icon={<MailOpenIcon size={28} />}
+              icon={<EnvelopeOpenIcon size={28} />}
               title="No invites waiting"
               description="When someone invites your address into their account, it shows up here."
             />
@@ -122,7 +122,7 @@ function columns(pending: boolean, accept: (inviteId: string) => void): DataTabl
           onClick={() => accept(invite.id)}
           label={`${ACCEPT_LABEL} invite into ${accountLabel(invite.account.owner_name)}`}
         >
-          <CircleCheckIcon size={14} />
+          <CheckCircleIcon size={14} />
         </IconAction>
       ),
     },

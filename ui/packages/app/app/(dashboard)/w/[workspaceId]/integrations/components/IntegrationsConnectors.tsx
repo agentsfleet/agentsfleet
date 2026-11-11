@@ -5,7 +5,7 @@ import { useDeferredValue, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
 import { useWorkspaceNotice, WorkspaceNotice } from "@/components/layout/WorkspaceNotice";
-import { PlugIcon } from "lucide-react";
+import { PlugsConnectedIcon } from "@phosphor-icons/react/ssr";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { OAuthConnectorRow } from "./connector-rows";
 import { CONNECT_APPS_COPY } from "../copy";
@@ -52,7 +52,7 @@ export default function IntegrationsConnectors({
         // plainly instead of the ambiguous "no connectors" framing.
         <EmptyState
           data-testid="connectors-empty"
-          icon={<PlugIcon size={32} />}
+          icon={<PlugsConnectedIcon size={32} />}
           title="Couldn't load connectors"
           description={connectorsLoadFailedDescription(catalogError)}
           action={<Button variant="secondary" disabled={refreshing} onClick={() => startRefresh(() => router.refresh())}>{refreshing ? "Retrying…" : "Retry"}</Button>}

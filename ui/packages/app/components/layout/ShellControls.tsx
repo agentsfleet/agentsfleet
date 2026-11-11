@@ -3,12 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  MenuIcon,
-  PanelLeftCloseIcon,
-  PanelLeftOpenIcon,
-  RefreshCwIcon,
-} from "lucide-react";
+import { ListIcon, SidebarSimpleIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react/ssr";
 import { cn, Button, Spinner, BrandMark } from "@agentsfleet/design-system";
 import { setAnalyticsContext } from "@/lib/analytics/posthog";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
@@ -130,9 +125,9 @@ function MobileNavigationTrigger({ navigation }: { navigation: ReturnType<typeof
       {mobileLoading ? (
         <Spinner size="sm" srLabel="Loading navigation" />
       ) : mobileFailed ? (
-        <RefreshCwIcon size={18} />
+        <ArrowsClockwiseIcon size={18} />
       ) : (
-        <MenuIcon size={18} />
+        <ListIcon size={18} />
       )}
     </Button>
   );
@@ -155,9 +150,9 @@ function SidebarToggle({
       onClick={shellSidebarState.toggle}
     >
       {collapsed ? (
-        <PanelLeftOpenIcon size={18} />
+        <SidebarSimpleIcon size={18} />
       ) : (
-        <PanelLeftCloseIcon size={18} />
+        <SidebarSimpleIcon size={18} />
       )}
     </Button>
   );

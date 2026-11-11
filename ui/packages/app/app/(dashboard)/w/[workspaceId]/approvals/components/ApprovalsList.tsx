@@ -14,7 +14,7 @@ import {
   EmptyState,
   SectionHeader,
 } from "@agentsfleet/design-system";
-import { CheckCircle2Icon } from "lucide-react";
+import { CheckCircleIcon } from "@phosphor-icons/react/ssr";
 
 import { RefreshButton } from "@/components/domain/RefreshButton";
 
@@ -229,7 +229,7 @@ export default function ApprovalsList({
     if (items.length > 0 || error !== null) return <></>;
     return (
       <EmptyState
-        icon={<CheckCircle2Icon size={EMPTY_ICON_SIZE} />}
+        icon={<CheckCircleIcon size={EMPTY_ICON_SIZE} />}
         title={NO_APPROVALS_TITLE}
         description={NO_APPROVALS_DESCRIPTION}
       />

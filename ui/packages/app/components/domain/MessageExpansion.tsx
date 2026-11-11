@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useCallback, useId, useState } from "react";
-import { ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { CaretDownIcon, CaretUpIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@agentsfleet/design-system";
 
 const LONG_MESSAGE_CHARACTERS = 1000;
@@ -16,7 +16,7 @@ export function MessageExpansion({length, running = false, children}: {length: n
   const canFold = !running && length > LONG_MESSAGE_CHARACTERS;
   const collapsed = canFold && !expanded;
   const display = useCallback((text: string) => collapsed ? `${text.slice(0, MESSAGE_PREVIEW_CHARACTERS).trimEnd()}…` : text, [collapsed]);
-  const Icon = expanded ? ChevronUpIcon : ChevronDownIcon;
+  const Icon = expanded ? CaretUpIcon : CaretDownIcon;
   return <>
     <div id={id}>{children(display)}</div>
     {canFold ? <Button variant="ghost" size="sm" className="mt-sm w-fit gap-xs px-0 text-muted-foreground" aria-expanded={expanded} aria-controls={id} onClick={() => setExpanded(value => !value)}>

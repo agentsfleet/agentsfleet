@@ -1,7 +1,7 @@
 import type { DraftClient } from "@/lib/api/drafts";
 import { useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { CHAT_PROPS, chatRouter, chooseSetupAction } from "./fixture";
 import { DefinitionEditor } from "@/components/domain/chat/DefinitionEditor";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
@@ -121,7 +121,7 @@ it.each([false, true])("reopens saved instructions and creator history (restored
   await act(async () => {await Promise.resolve();});
   expect(await screen.findByRole("textbox", {name: "Instructions"})).toHaveProperty("value", INSTRUCTIONS);
   expect(screen.queryByText(/This fleet changed/)).toBeNull();
-  expect(screen.getByText("Investigate failures")).toBeTruthy();
+  expect(within(screen.getByRole("log")).getByText("Investigate failures")).toBeTruthy();
   expect(fixture.mutations()).toEqual(writes);
   const reads = fixture.calls.length;
   page.rerender(<WorkspaceChat {...CHAT_PROPS} source={{kind: "fleet", fleet_id: FLEET_ID, setup_revision: "2"}} />);

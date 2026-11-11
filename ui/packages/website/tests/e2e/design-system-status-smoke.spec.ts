@@ -40,7 +40,7 @@ test.describe("Tooltip — computed styles", () => {
     const bg = await content.evaluate((el) => getComputedStyle(el).backgroundColor);
     expect(bg).not.toBe("rgba(0, 0, 0, 0)");
     const font = await content.evaluate((el) => getComputedStyle(el).fontFamily);
-    expect(font).toContain("Instrument Sans");
+    expect(font).toContain("Manrope");
   });
 });
 

@@ -91,7 +91,7 @@ describe("ApiKeyList component", () => {
     expect(screen.getByRole("button", { name: /^created$/i })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Name" }).getAttribute("aria-sort")).toBe("none");
     expect(screen.getByRole("columnheader", { name: "Created" }).getAttribute("aria-sort")).toBe("none");
-    expect(screen.getByRole("button", { name: /^created$/i }).querySelector(".lucide-chevrons-up-down")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^created$/i }).querySelector("svg")).toBeTruthy();
   });
 
   it("renders active and revoked badges in a separate Status column", async () => {

@@ -17,13 +17,8 @@ import {
   Section,
   Time,
 } from "@agentsfleet/design-system";
-import {
-  ActivityIcon,
-  AlertTriangleIcon,
-  CheckCircle2Icon,
-  CircleXIcon,
-  type LucideIcon,
-} from "lucide-react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { PulseIcon, WarningIcon, CheckCircleIcon, XCircleIcon } from "@phosphor-icons/react/ssr";
 import type { EventDetail, EventLocator, EventRow } from "@/lib/api/events";
 import { byInstant } from "@/lib/api/decode";
 import { useEventDetail } from "./use-event-detail";
@@ -57,7 +52,7 @@ const FleetMarkdown = nextDynamic(
 type EventTone = {
   alertVariant: AlertVariant;
   iconLabel: string;
-  Icon: LucideIcon;
+  Icon: PhosphorIcon;
 };
 
 const EVENT_DETAILS_TITLE = "Event details";
@@ -80,25 +75,25 @@ const TYPE_LABEL = "Type:";
 const WARNING_TONE: EventTone = {
   alertVariant: "warning",
   iconLabel: "Warning event",
-  Icon: AlertTriangleIcon,
+  Icon: WarningIcon,
 };
 
 const EVENT_TONES: Record<string, EventTone> = {
   processed: {
     alertVariant: "success",
     iconLabel: "Successful event",
-    Icon: CheckCircle2Icon,
+    Icon: CheckCircleIcon,
   },
   fleet_error: {
     alertVariant: "destructive",
     iconLabel: "Failed event",
-    Icon: CircleXIcon,
+    Icon: XCircleIcon,
   },
   gate_blocked: WARNING_TONE,
   received: {
     alertVariant: "info",
     iconLabel: "Event in progress",
-    Icon: ActivityIcon,
+    Icon: PulseIcon,
   },
 };
 

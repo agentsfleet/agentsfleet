@@ -2,7 +2,7 @@
 
 import type { Definition, Review } from "@/lib/api/draft-types";
 import Link from "next/link";
-import { CircleCheckIcon, CircleIcon, CircleAlertIcon } from "lucide-react";
+import { CheckCircleIcon, CircleIcon, WarningCircleIcon } from "@phosphor-icons/react/ssr";
 import { Button, List, ListItem } from "@agentsfleet/design-system";
 import { safeActionHref } from "./chat-defaults";
 import { SetupAccess } from "./SetupAccess";
@@ -30,10 +30,10 @@ export function SetupChecks({checks, label, workspace, definition, onRefresh}: {
       const grant = GRANT_KINDS.has(check.kind);
       const service = SERVICE_LABELS[check.subject] ?? check.subject;
       const text = credential || grant ? `${service} ${ACCESS_LABELS[check.kind]}` : Object.hasOwn(CHECK_LABELS, check.kind) ? CHECK_LABELS[check.kind] : check.subject || check.kind;
-      const Icon = ready ? CircleCheckIcon : check.state === BLOCKED ? CircleAlertIcon : CircleIcon;
+      const Icon = ready ? CheckCircleIcon : check.state === BLOCKED ? WarningCircleIcon : CircleIcon;
       const href = credential ? null : safeActionHref(check.next_action?.href);
       const status = <span className={`inline-flex items-center gap-xs text-label ${ready ? "text-muted-foreground" : "text-warning"}`} title={check.state}>
-          <Icon className={`size-3.5 shrink-0 ${ready ? "text-success" : check.state === BLOCKED ? "text-destructive" : "text-warning"}`} aria-hidden="true" />
+          <Icon className={`size-4 shrink-0 ${ready ? "text-success" : check.state === BLOCKED ? "text-destructive" : "text-warning"}`} aria-hidden="true" />
           <span>{text}{ready || grant ? "" : " needed"}</span><span className="sr-only">: {check.state}</span>
         </span>;
       return <ListItem key={`${check.kind}:${check.subject}`} className="flex items-center gap-xs p-0">

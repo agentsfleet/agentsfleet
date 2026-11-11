@@ -1,4 +1,4 @@
-import { AlertTriangleIcon } from "lucide-react";
+import { WarningIcon } from "@phosphor-icons/react/ssr";
 import { Badge, formatTimeAbsolute } from "@agentsfleet/design-system";
 
 type Props = { exhaustedAt: string | null };
@@ -12,7 +12,7 @@ export default function ExhaustionBadge({ exhaustedAt }: Props) {
       aria-label="Balance exhausted"
       title={when ? `Exhausted since ${when}` : "Balance exhausted"}
     >
-      <AlertTriangleIcon size={12} aria-hidden="true" />
+      <WarningIcon size={12} aria-hidden="true" />
       Balance exhausted
     </Badge>
   );

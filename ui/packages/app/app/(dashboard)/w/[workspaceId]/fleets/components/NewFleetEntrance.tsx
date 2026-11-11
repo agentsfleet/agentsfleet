@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRightIcon, PlusIcon } from "lucide-react";
+import { ArrowUpRightIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import { BrandMark, Button, PageTitle } from "@agentsfleet/design-system";
 import { workspacePath } from "@/lib/workspace-routes";
 

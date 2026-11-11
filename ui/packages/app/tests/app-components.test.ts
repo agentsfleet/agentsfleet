@@ -74,7 +74,7 @@ describe("app components", () => {
     );
 
     // Clicking a sidebar nav link emits a navigation-analytics event.
-    await user.click(screen.getByText("Your fleets"));
+    await user.click(screen.getByRole("link", {name: "Your fleets"}));
     expect(mocks.trackNavigationClicked).toHaveBeenCalled();
 
     // Brand-mark + wordmark are the topbar shape — Operational Restraint:

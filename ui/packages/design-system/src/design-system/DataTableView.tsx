@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type ReactNode } from "react";
 import type { ReactTable } from "@tanstack/react-table";
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, CaretUpDownIcon } from "@phosphor-icons/react/ssr";
 
 import { cn } from "../utils";
 import { Button } from "./Button";
@@ -36,9 +36,9 @@ const SORT_ICON_SIZE = 14;
 // single arrow's 14, so beside a compact column label it read as the
 // heaviest glyph in the header while meaning "no sort applied".
 function sortIndicator(direction: false | "asc" | "desc") {
-  if (direction === "asc") return <ArrowUp size={SORT_ICON_SIZE} aria-hidden="true" />;
-  if (direction === "desc") return <ArrowDown size={SORT_ICON_SIZE} aria-hidden="true" />;
-  return <ChevronsUpDown size={SORT_ICON_SIZE} aria-hidden="true" />;
+  if (direction === "asc") return <ArrowUpIcon size={SORT_ICON_SIZE} aria-hidden="true" />;
+  if (direction === "desc") return <ArrowDownIcon size={SORT_ICON_SIZE} aria-hidden="true" />;
+  return <CaretUpDownIcon size={SORT_ICON_SIZE} aria-hidden="true" />;
 }
 
 function DataTableHead<T extends DataTableRowData>({

@@ -1,12 +1,12 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 import Link from "next/link";
-import { cn, NavItem as NavigationItem } from "@agentsfleet/design-system";
+import { cn, NavItem as NavigationItem, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@agentsfleet/design-system";
 import { useFreshFleetChat } from "./draft-sidebar-state";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
-import { NAV_SURFACE, NAV_ICON_SIZE, NAV_ICON_STROKE_WIDTH, navSource, resolveHref, type NavEntry } from "./sidebar-navigation-data";
+import { NAV_SURFACE, navSource, resolveHref, type NavEntry } from "./sidebar-navigation-data";
 
 export type NavListProps = {
   activeHref: string;
@@ -48,9 +48,9 @@ function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed }: Nav
 
 function NavGroup({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-xs px-md">
+    <TooltipProvider><div className="flex flex-col gap-md px-lg">
       {children}
-    </div>
+    </div></TooltipProvider>
   );
 }
 
@@ -65,7 +65,7 @@ function NavItem({
 }: {
   href: string;
   label: string;
-  Icon: LucideIcon;
+  Icon: PhosphorIcon;
   active?: boolean;
   external?: boolean;
   collapsed?: boolean;
@@ -73,18 +73,19 @@ function NavItem({
 }) {
   const content = (
     <>
-      <Icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0" aria-hidden="true" />
+      <Icon size={20} className="shrink-0" aria-hidden="true" />
       {collapsed ? null : label}
     </>
   );
   const common = {
-    title: collapsed ? label : undefined,
     "aria-label": collapsed ? label : undefined,
-    className: cn("gap-md", collapsed ? "justify-center px-0" : "px-lg"),
+    className: cn("min-h-12 gap-lg", collapsed ? "justify-center px-0" : "px-lg", label === "New fleet" && "bg-cta text-cta-foreground hover:bg-cta-hover hover:text-cta-foreground data-[active=true]:bg-cta data-[active=true]:text-cta-foreground"),
     onClick,
   };
-  if (external) {
-    return <NavigationItem href={href} target="_blank" rel="noopener noreferrer" {...common}>{content}</NavigationItem>;
-  }
-  return <NavigationItem asChild active={active} {...common}><Link href={href}>{content}</Link></NavigationItem>;
+  const item = external
+    ? <NavigationItem href={href} target="_blank" rel="noopener noreferrer" {...common}>{content}</NavigationItem>
+    : <NavigationItem asChild active={active} {...common}><Link href={href}>{content}</Link></NavigationItem>;
+  return collapsed
+    ? <Tooltip><TooltipTrigger asChild>{item}</TooltipTrigger><TooltipContent side="right">{label}</TooltipContent></Tooltip>
+    : item;
 }

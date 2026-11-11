@@ -35,7 +35,7 @@ describe("cn", () => {
     const scale = [
       "text-display-xl", "text-display-lg", "text-display-md", "text-heading",
       "text-eyebrow", "text-body-lg", "text-body", "text-body-sm",
-      "text-label", "text-mono", "text-conversation", "text-chat-title",
+      "text-label", "text-mono", "text-conversation", "text-composer", "text-chat-title",
     ];
     for (const token of scale) {
       expect(cn(token, "text-foreground")).toBe(`${token} text-foreground`);
@@ -53,6 +53,15 @@ describe("cn", () => {
     expect(cn("gap-md", "gap-2.5")).toBe("gap-2.5");
     expect(cn("px-3", "px-md")).toBe("px-md");
     expect(cn("md:px-md", "md:px-lg")).toBe("md:px-lg");
+  });
+
+  it("preserves the font family while resolving semantic weight and size overrides", () => {
+    expect(cn("font-sans font-control", "font-semibold")).toBe("font-sans font-semibold");
+    expect(cn("font-sans font-semibold", "font-title")).toBe("font-sans font-title");
+    expect(cn("text-foreground text-composer leading-composer", "text-muted-foreground"))
+      .toBe("text-composer leading-composer text-muted-foreground");
+    expect(cn("text-composer leading-composer", "text-label leading-label"))
+      .toBe("text-label leading-label");
   });
 
   it("test_ds_cn_merges_and_keeps_fontsize — a semantic font-size token survives beside a color token", () => {

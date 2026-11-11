@@ -4,13 +4,21 @@ import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 import { DRAFT } from "@/tests/helpers/draft-fixtures";
 import { SCHEDULE_EVENT } from "@/tests/helpers/schedule-activity";
 
-test("setup and fleet activity share a stable loading sheen with accessible motion fallbacks", async ({page, chatProbe}) => {
+test("setup and fleet status text has a muted darker sweep with accessible motion fallbacks", async ({page, chatProbe}) => {
   for (const route of ["?loading=1", "?activity=1"]) {
     await page.emulateMedia({reducedMotion: "no-preference", forcedColors: "none"});
     await page.goto(`${chatProbe}${route}`);
     const label = page.locator('[data-chat-loading="true"]').first();
     await expect(label).toBeVisible();
-    await expect(label).toHaveCSS("animation-name", "tool-shimmer");
+    await expect(label).toHaveCSS("animation-name", "chat-status-sweep");
+    await expect(label).toHaveCSS("animation-duration", "2.8s");
+    await expect(label).toHaveCSS("opacity", "1");
+    for (const theme of ["light", "dark"]) {
+      await page.locator("html").evaluate((node, value) => node.setAttribute("data-theme", value), theme);
+      const gradient = await label.evaluate(node => getComputedStyle(node).backgroundImage);
+      expect(gradient).toContain(theme === "dark" ? "rgb(163, 171, 183)" : "rgb(94, 104, 118)");
+      expect(gradient).toContain(theme === "dark" ? "rgb(143, 152, 166)" : "rgb(48, 58, 72)");
+    }
     const before = await label.boundingBox();
     const position = await label.evaluate(element => getComputedStyle(element).backgroundPosition);
     await expect.poll(() => label.evaluate(element => getComputedStyle(element).backgroundPosition)).not.toBe(position);
@@ -69,25 +77,27 @@ test("incoming progress preserves the draft and reading position until the reade
   await expect(input).toHaveValue("");
 });
 
-test("conversation and composer use the shared 14px typography", async ({page, chatProbe}, info) => {
+test("conversation and composer use the approved Manrope scale", async ({page, chatProbe}, info) => {
   const errors: string[] = []; page.on("pageerror", error => {errors.push(error.message); console.error(error);});
   await page.goto(chatProbe);
   const answer = page.getByText("The request has an owner.", {exact: false});
   const user = page.getByText("Investigate the failing test and explain the evidence.", {exact: true});
   const input = page.getByRole("textbox");
   await expect(answer).toBeVisible();
+  const mobile = info.project.name === "mobile-chromium";
   for (const text of [answer, user, input]) {
-    await expect(text).toHaveCSS("font-size", "14px");
-    await expect(text).toHaveCSS("line-height", "24.5px");
+    await expect(text).toHaveCSS("font-size", mobile ? "16px" : "13px");
+    await expect(text).toHaveCSS("line-height", mobile ? text === input ? "24px" : "26px" : "20px");
+    await expect(text).toHaveCSS("font-weight", "400");
   }
-  expect(await page.evaluate(async () => (await document.fonts.load('14px "Instrument Sans Variable"', "Typography")).length)).toBeGreaterThan(0);
+  expect(await page.evaluate(async () => (await document.fonts.load('13px "Manrope Variable"', "Typography")).length)).toBeGreaterThan(0);
   await input.fill("Keep the diagnosis concise and cite the source.");
   await expect(input).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);
-  const screenshot = info.outputPath("chat-14px-fixture.png");
+  const screenshot = info.outputPath("chat-manrope-fixture.png");
   await page.screenshot({path: screenshot});
-  await info.attach("chat-14px-fixture", {path: screenshot, contentType: "image/png"});
+  await info.attach("chat-manrope-fixture", {path: screenshot, contentType: "image/png"});
 });
 
 test("the pull request starter remains editable and readable before any setup request", async ({page, chatProbe}, info) => {
@@ -124,7 +134,7 @@ test("the pull request starter remains editable and readable before any setup re
   const edited = `${await input.inputValue()}\n\nOnly review the API changes; preserve session expiry.`;
   await input.fill(edited);
   await expect(input).toHaveValue(edited);
-  await expect(input).toHaveCSS("font-size", "14px");
+  await expect(input).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
   await expect(page.getByRole("button", {name: "Send message"})).toBeEnabled();
   expect(writes).toEqual([]);
   expect(errors).toEqual([]);
@@ -145,16 +155,16 @@ test("setup checks use enclosed icons and incoming messages have readable detail
   await expect(checks.getByText("GitHub credential", {exact: true})).toBeVisible();
   await expect(checks.getByText("GitHub connection", {exact: true})).toBeVisible();
   await expect(checks.getByText("GitHub approval", {exact: true})).toBeVisible();
-  await expect(checks.locator("svg.lucide-circle-check")).toHaveCount(6);
-  await expect(checks.locator("svg").first()).toHaveCSS("width", "14px");
+  await expect(checks.locator("svg.text-success")).toHaveCount(6);
+  await expect(checks.locator("svg").first()).toHaveCSS("width", "16px");
   await expect(page.getByText("Message received", {exact: true})).toBeVisible();
   const disclosure = page.getByRole("button", {name: "View message"});
   await disclosure.focus(); await page.keyboard.press("Enter");
   await expect(page.getByText("Diagnose the failed title regression using the current source.")).toBeVisible();
-  await expect(page.locator("pre, svg.lucide-braces, svg.lucide-check")).toHaveCount(0);
+  await expect(page.locator("pre")).toHaveCount(0);
   const failure = page.getByRole("status").filter({hasText: "The response was interrupted."});
   await expect(failure).toBeVisible();
-  await expect(failure).toHaveCSS("font-size", "14px");
+  await expect(failure).toHaveCSS("font-size", "13px");
   const details = failure.locator("..").getByRole("button", {name: "View details"});
   await expect(page.getByText("The connection to the model provider was lost mid-turn.")).not.toBeVisible();
   await details.focus(); await page.keyboard.press("Enter");
@@ -191,8 +201,8 @@ test("recorded actions stay visible and distinguish every terminal outcome", asy
   const screenshot = info.outputPath("chat-tool-activity-fixture.png");
   await page.screenshot({path: screenshot});
   await info.attach("chat-tool-activity-fixture", {path: screenshot, contentType: "image/png"});
-  for (const [state, wording, color] of [["succeeded", "Opened pull request", "rgb(74, 222, 128)"], ["failed", "Failed: opening pull request", "rgb(252, 165, 165)"],
-    ["interrupted", "Interrupted: opening pull request", "rgb(251, 191, 36)"], ["unconfirmed", "Outcome unavailable: opening pull request", "rgb(148, 160, 151)"]] as const) {
+  for (const [state, wording, color] of [["succeeded", "Opened pull request", "rgb(182, 228, 200)"], ["failed", "Failed: opening pull request", "rgb(255, 179, 182)"],
+    ["interrupted", "Interrupted: opening pull request", "rgb(243, 203, 135)"], ["unconfirmed", "Outcome unavailable: opening pull request", "rgb(163, 171, 183)"]] as const) {
     await page.getByRole("button", {name: `Show ${state}`, exact: true}).click();
     await expect(pull.locator("[data-command-heading]")).toContainText(wording);
     await expect(pull.locator("[data-tool-bullet]")).toHaveCSS("color", color);
@@ -218,7 +228,6 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
   for (const window of [{width: 1280, height: 800}, {width: 1280, height: 360}, {width: 390, height: 667}]) {
     await page.setViewportSize(window);
     await expect(page.getByRole("link", {name: /^Pull request #123 ·/})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden/pull/123");
-    if (window.width < 1024) await page.getByRole("button", {name: "Work context", exact: true}).click();
     const panel = page.getByRole("region", {name: "Current work"});
     await expect(panel.getByRole("heading", {name: "Durable tasks"})).toBeVisible();
     for (const section of ["Outputs", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
@@ -234,7 +243,7 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     expect(await page.getByTestId("fleet-chat-footer").evaluate(node => !!node.querySelector('[aria-label="Current work"]'))).toBe(false);
     if (window.width < 1024) await page.keyboard.press("Escape");
     await expect(input).toHaveValue("Keep the redirect fix in the callback handler.");
-    await expect(input).toHaveCSS("font-size", "14px");
+    await expect(input).toHaveCSS("font-size", window.width <= 680 || info.project.name === "mobile-chromium" ? "16px" : "13px");
     const composer = await page.getByRole("form", {name: "Chat composer"}).boundingBox();
     expect(composer).not.toBeNull();
     expect(composer!.y + composer!.height).toBeLessThanOrEqual(window.height + 1);
@@ -253,14 +262,14 @@ test("fleet_schedule_activity_rows_show_confirmed_facts", async ({page, chatProb
     await expect(page.getByText(`Schedule At 9:00 AM (Asia/Kolkata) ${fact}`, {exact: false})).toBeVisible();
   await expect(page.getByText(/could not sync:.*Scheduler refused. Will retry on the next sync./)).toBeVisible();
   await expect(page.getByText("Schedule At 9:00 AM (Asia/Kolkata) fired: Review support failures — 東京 🦉")).toHaveCount(3);
-  await expect(page.getByText("Schedule At 9:00 AM (Asia/Kolkata) fired: Review support failures — 東京 🦉").first()).toHaveCSS("font-size", "14px");
+  await expect(page.getByText("Schedule At 9:00 AM (Asia/Kolkata) fired: Review support failures — 東京 🦉").first()).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
   await expect(page.getByText("Support queue reviewed.", {exact: true})).toBeVisible();
   await expect(page.getByText(/Ran out of memory/)).toBeVisible();
   await expect(page.getByRole("button", {name: "Run details"})).toHaveCount(2);
   await expect(page.locator("pre")).toHaveCount(0);
   expect(reads).toEqual([]);
   const details = page.getByRole("button", {name: "Run details"}).first();
-  await expect(details).toHaveCSS("font-size", "14px");
+  await expect(details).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
   await details.focus(); await page.keyboard.press("Enter");
   const dialog = page.getByRole("dialog", {name: "Event details"});
   await expect(dialog.getByText("Native recorded support review.", {exact: true})).toBeVisible();
@@ -275,7 +284,7 @@ test("saved_schedule_summaries_and_activity_survive_reload", async ({page, chatP
   await page.goto(`${chatProbe}?schedules=1`);
   const summary = page.getByRole("region", {name: "Schedules"});
   await expect(summary.getByText("At 9:00 AM (Asia/Kolkata) · Registration pending", {exact: true})).toBeVisible();
-  await expect(summary.getByText("Review support failures — 東京 🦉", {exact: true})).toHaveCSS("font-size", "14px");
+  await expect(summary.getByText("Review support failures — 東京 🦉", {exact: true})).toHaveCSS("font-size", info.project.name === "mobile-chromium" ? "16px" : "13px");
   await expect(page.getByText(/Save the fleet to activate it/)).toHaveCount(0);
   await page.getByRole("button", {name: "Retry registration"}).click();
   await expect(summary.getByText("At 9:00 AM (Asia/Kolkata) · Active", {exact: true})).toBeVisible();
@@ -293,8 +302,8 @@ test("saved_schedule_summaries_and_activity_survive_reload", async ({page, chatP
 
 async function expectActivityGeometry(page: Page, action: Locator, tools: Locator, mobile: boolean) {
   for (const icon of await page.locator('[data-tool-bullet], [data-signal-spinner], [data-testid="fleet-message-sender"] svg').all()) {
-    await expect(icon).toHaveCSS("width", "14px");
-    await expect(icon).toHaveCSS("height", "14px");
+    await expect(icon).toHaveCSS("width", "16px");
+    await expect(icon).toHaveCSS("height", "16px");
   }
   await expect(action).toHaveCSS("outline-style", "solid");
   await expect(action).toHaveCSS("outline-width", "2px");
@@ -306,7 +315,7 @@ async function expectActivityGeometry(page: Page, action: Locator, tools: Locato
     expect((await button.locator("..").boundingBox())?.height).toBeGreaterThanOrEqual(mobile ? 44 : 36);
   }
   const heading = action.locator("[data-command-heading]");
-  await expect(heading.getByText("Opening pull request", {exact: true})).toHaveCSS("font-size", "14px");
+  await expect(heading.getByText("Opening pull request", {exact: true})).toHaveCSS("font-size", "13px");
   const verb = await heading.getByText("Opening pull request", {exact: true}).boundingBox();
   const target = await heading.getByText("agentsfleet/linkwarden", {exact: true}).boundingBox();
   expect(verb).not.toBeNull(); expect(target).not.toBeNull();
@@ -324,8 +333,8 @@ async function expectSourceHierarchy(panel: Locator) {
       icon: node.querySelector("svg")!.getBoundingClientRect().width,
       gap: node.getBoundingClientRect().top - heading.getBoundingClientRect().bottom};
   });
-  expect(metrics.heading).toBeGreaterThan(metrics.row);
-  expect(metrics.icon).toBe(12);
+  expect(metrics.heading).toBe(metrics.row);
+  expect(metrics.icon).toBe(16);
   expect(metrics.gap).toBeGreaterThanOrEqual(0);
   expect(metrics.gap).toBeLessThanOrEqual(4);
 }

@@ -21,7 +21,7 @@ import {
   Spinner,
   TooltipButton,
 } from "@agentsfleet/design-system";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon } from "@phosphor-icons/react/ssr";
 import { createSecretAction } from "@/app/(dashboard)/w/[workspaceId]/secrets/actions";
 import { createModelEntryAction, replaceSecretAction, setProviderSelfManagedAction } from "../actions";
 import { isHttpsUrl, BASE_URL_NOT_HTTPS } from "../lib/custom-endpoint";

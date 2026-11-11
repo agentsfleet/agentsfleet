@@ -9,7 +9,7 @@ import {
   EmptyState,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { KeyRoundIcon } from "lucide-react";
+import { KeyIcon } from "@phosphor-icons/react/ssr";
 import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
 import { deleteSecretAction } from "../actions";
 import type { Secret } from "@/lib/api/secrets";
@@ -214,7 +214,7 @@ export default function SecretsList({
           status region never announces an emptiness the server may retract. */}
       {secrets.length === 0 ? (
         <EmptyState
-          icon={<KeyRoundIcon size={28} />}
+          icon={<KeyIcon size={28} />}
           title="Keep your credentials in one place"
           description="Create a secret for the services your fleets need. Saved values are encrypted and stay hidden; you can replace them whenever needed."
         />

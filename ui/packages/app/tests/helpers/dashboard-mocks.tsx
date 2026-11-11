@@ -73,35 +73,36 @@ export function workspaceMock() {
   };
 }
 
-// Union of every lucide icon the dashboard test files reference. Each renders a
+// Union of every Phosphor icon the dashboard test files reference. Each renders a
 // stub <svg data-icon="…"> so name-based queries keep working.
-const LUCIDE_ICONS = [
-  "UsersIcon", "UserRoundIcon", "UserIcon", "ChevronsUpDownIcon", "ArrowLeftIcon", "ArrowUpRightIcon", "LayersIcon", "LogOutIcon", "SearchIcon",
-  "AlertTriangleIcon", "CheckIcon", "CopyIcon", "DownloadIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
-  "KeyRoundIcon", "KeyIcon", "Trash2Icon", "ChevronDownIcon", "ChevronRightIcon", "ArrowRightIcon", "SettingsIcon",
-  "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "ActivityIcon", "BrainCircuitIcon", "BoxesIcon",
-  "SlidersHorizontalIcon", "PencilIcon", "PanelRightIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
-  "BotIcon", "PlugIcon", "UnplugIcon", "CheckCircle2Icon", "CircleCheckIcon", "CircleHelpIcon", "CircleXIcon", "LayoutTemplateIcon",
-  "BookOpenIcon", "LibraryIcon", "ServerIcon", "MenuIcon", "PanelLeftCloseIcon", "PanelLeftOpenIcon",
-  "BrainIcon", "LayoutDashboardIcon", "PanelsTopLeftIcon", "CpuIcon", "ChartNoAxesCombinedIcon", "LibraryBigIcon",
+const PHOSPHOR_ICONS = [
+  "NotePencilIcon", "XIcon",
+  "UsersIcon", "UserCircleIcon", "UserIcon", "ChevronsUpDownIcon", "ArrowLeftIcon", "ArrowUpRightIcon", "LayersIcon", "SignOutIcon", "MagnifyingGlassIcon",
+  "WarningIcon", "CheckIcon", "CopyIcon", "DownloadIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
+  "KeyIcon", "KeyIcon", "TrashIcon", "CaretDownIcon", "CaretRightIcon", "ArrowRightIcon", "GearIcon",
+  "WalletIcon", "ZapIcon", "ReceiptIcon", "CreditCardIcon", "PulseIcon", "BrainCircuitIcon", "BoxesIcon",
+  "SlidersHorizontalIcon", "PencilSimpleIcon", "SidebarIcon", "GitPullRequestIcon", "BriefcaseIcon", "HashIcon",
+  "BotIcon", "PlugsConnectedIcon", "PlugsIcon", "CheckCircleIcon", "CheckCircleIcon", "QuestionIcon", "XCircleIcon", "LayoutTemplateIcon",
+  "BookOpenIcon", "PuzzlePieceIcon", "ServerIcon", "ListIcon", "SidebarSimpleIcon", "SidebarSimpleIcon",
+  "BrainIcon", "LayoutDashboardIcon", "StackIcon", "CpuIcon", "ChartLineUpIcon", "PuzzlePieceIcon",
   // The gallery card's tier marks: which catalogue an entry came from.
   "GlobeIcon", "Building2Icon",
   "MessageSquareIcon", "Code2Icon", "FolderIcon",
-  "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUp", "ArrowDown", "ChevronsUpDown",
+  "ArrowUpIcon", "ArrowDownIcon", "ArrowUpDownIcon", "ArrowUpIcon", "ArrowDownIcon", "CaretUpDownIcon",
   // The fleet lifecycle controls, which carry a glyph the way runner actions do.
-  "CircleStopIcon", "PlayIcon", "PowerOffIcon", "SquareIcon", "EllipsisIcon",
+  "StopCircleIcon", "PlayIcon", "PowerIcon", "SquareIcon", "DotsThreeIcon",
   // The status lines' glyphs and the runner checks badge.
-  "CircleAlertIcon", "CoinsIcon", "HourglassIcon", "LoaderCircleIcon", "TimerIcon", "HeartPulseIcon",
-  "ShieldCheckIcon", "ShieldAlertIcon", "LockKeyholeIcon",
+  "WarningCircleIcon", "CoinsIcon", "HourglassIcon", "CircleNotchIcon", "TimerIcon", "HeartPulseIcon",
+  "ShieldCheckIcon", "ShieldAlertIcon", "LockKeyIcon",
 ] as const;
 
-export function lucideMock() {
+export function phosphorMock() {
   const icon = (name: string) => {
     const C = (p: Record<string, unknown>) => React.createElement("svg", { ...p, "data-icon": name });
     C.displayName = name;
     return C;
   };
-  return Object.fromEntries(LUCIDE_ICONS.map((n) => [n, icon(n)]));
+  return Object.fromEntries(PHOSPHOR_ICONS.map((n) => [n, icon(n)]));
 }
 
 // Design-system core shared by both files. Superset behavior: Button carries

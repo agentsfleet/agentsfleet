@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { ThreadPrimitive, useAuiState } from "@assistant-ui/react";
-import { ArrowDownIcon } from "lucide-react";
+import { ArrowDownIcon } from "@phosphor-icons/react/ssr";
 import { Button, Section } from "@agentsfleet/design-system";
 
 /** The viewport owns scrolling; its capped footer keeps the composer reachable. */

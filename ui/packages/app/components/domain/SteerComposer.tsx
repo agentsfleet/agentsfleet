@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ComposerPrimitive, useAui, useAuiState } from "@assistant-ui/react";
 import { Alert, Button, List, ListItem } from "@agentsfleet/design-system";
-import { ArrowUpIcon } from "lucide-react";
+import { ArrowUpIcon } from "@phosphor-icons/react/ssr";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
@@ -125,11 +125,11 @@ function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef
         variant="default"
         size="icon"
         aria-label={SEND_LABEL}
-        className="shrink-0 self-end rounded-full"
+        className="shrink-0 self-end rounded-full [&_svg]:size-4.5"
         onClick={() => draftRef.current?.focus({preventScroll: true})}
         {...(tooLong || modelChanging ? { disabled: true } : {})}
       >
-        <ArrowUpIcon size={16} aria-hidden="true" />
+        <ArrowUpIcon size={18} aria-hidden="true" />
       </Button>
     </ComposerPrimitive.Send>
   );

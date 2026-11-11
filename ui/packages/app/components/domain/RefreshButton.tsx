@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
-import { CircleCheckIcon, RefreshCwIcon } from "lucide-react";
+import { CheckCircleIcon, ArrowsClockwiseIcon } from "@phosphor-icons/react/ssr";
 import { TooltipButton, cn } from "@agentsfleet/design-system";
 
 /** How long the acknowledgement stands before it fades out. */
@@ -79,9 +79,9 @@ export function RefreshButton({
         onClick={refresh}
       >
         {refreshed ? (
-          <CircleCheckIcon aria-hidden="true" className="text-success" />
+          <CheckCircleIcon aria-hidden="true" className="text-success" />
         ) : (
-          <RefreshCwIcon aria-hidden="true" className={cn(refreshing && "animate-spin")} />
+          <ArrowsClockwiseIcon aria-hidden="true" className={cn(refreshing && "animate-spin")} />
         )}
       </TooltipButton>
     </>

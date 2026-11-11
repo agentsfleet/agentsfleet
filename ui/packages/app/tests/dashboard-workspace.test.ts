@@ -42,8 +42,8 @@ vi.mock("@clerk/nextjs/server", async () =>
 vi.mock("@/lib/workspace", async () =>
   (await import("./helpers/dashboard-mocks")).workspaceMock(),
 );
-vi.mock("lucide-react", async () =>
-  (await import("./helpers/dashboard-mocks")).lucideMock(),
+vi.mock("@phosphor-icons/react/ssr", async () =>
+  (await import("./helpers/dashboard-mocks")).phosphorMock(),
 );
 vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");

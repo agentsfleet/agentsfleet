@@ -58,10 +58,11 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretDialog", 
     React.createElement("div", { "data-testid": "add-secret-dialog", "data-workspace": workspaceId }),
 }));
 
-vi.mock("lucide-react", () => {
+vi.mock("@phosphor-icons/react/ssr", async (original) => {
+  const actual = await original<Record<string, unknown>>();
   const make = (name: string) => (p: Record<string, unknown>) =>
     React.createElement("svg", { ...p, "data-icon": name });
-  return { ZapIcon: make("ZapIcon") };
+  return { ...actual, ZapIcon: make("ZapIcon") };
 });
 
 import { PROVIDER_MODE } from "@/lib/types";

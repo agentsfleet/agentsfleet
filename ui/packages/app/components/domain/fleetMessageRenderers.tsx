@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
-import { GitPullRequestIcon } from "lucide-react";
+import { GitPullRequestIcon } from "@phosphor-icons/react/ssr";
 import {
   FleetActivityRow,
   FleetGroupRow,

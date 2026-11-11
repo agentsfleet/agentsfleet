@@ -1,12 +1,12 @@
-/* agentsfleet visual tokens. Source: docs/DESIGN_SYSTEM.md.
- * Charcoal, warm white, and mint; sans UI, expressive display, mono technical data.
- * Fonts are bundled locally. Theme utilities forward these values in theme.css. */
+/* agentsfleet shared default tokens. Source: docs/DESIGN_SYSTEM.md.
+ * Manrope for interface and display; Commit Mono for code and technical data.
+ * The dashboard imports app-tokens.css to override its visual values.
+ * Fonts are bundled locally. Only theme.css defines Tailwind utility mappings. */
 @import "@fontsource/commit-mono/400.css";
 @import "@fontsource/commit-mono/500.css";
 @import "@fontsource/commit-mono/600.css";
 @import "@fontsource/commit-mono/700.css";
-@import "@fontsource-variable/instrument-sans";
-@import "@fontsource-variable/bricolage-grotesque";
+@import "@fontsource-variable/manrope";
 @import "./interactions.css";
 
 :root {
@@ -64,13 +64,8 @@
   --r-lg: 12px;
 
   --ff-mono: "Commit Mono", "JetBrains Mono", ui-monospace, "Cascadia Code", monospace;
-  --ff-display: "Bricolage Grotesque Variable", "Instrument Sans Variable", sans-serif;
-  --ff-sans: "Instrument Sans Variable", system-ui, -apple-system, sans-serif;
-  --ff-system: system-ui, sans-serif;
-  /* Prototype only. System faces, no download: this exists so the serif
-     question can be looked at before it is paid for. A shipped serif means a
-     webfont and a bundle conversation. */
-  --ff-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  --ff-sans: "Manrope Variable", system-ui, -apple-system, sans-serif;
+  --ff-display: var(--ff-sans);
 
   --fs-display-xl: 4.5rem;
   --fs-display-lg: 2.5rem;
@@ -82,6 +77,10 @@
   --fs-body-sm: 0.875rem;
   --fs-label: 0.8125rem;
   --fs-mono: 0.8125rem;
+  --fs-ui-sm: 0.875rem;
+  --fs-ui-xs: 0.75rem;
+  --lh-ui-sm: 1.25rem;
+  --lh-ui-xs: 1rem;
 
   --letter-spacing-display-xl: -0.025em;
   --letter-spacing-display-lg: -0.02em;
