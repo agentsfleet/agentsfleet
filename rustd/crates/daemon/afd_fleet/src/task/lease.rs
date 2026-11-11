@@ -137,12 +137,9 @@ const NANOS_PER_SECOND: i64 = 1_000_000_000;
 impl crate::lease::Leases {
     /// A changed live setup blocks the old task instead of stranding a Ready owner.
     pub(crate) async fn block_changed_task_setup(&self, acquired: &Acquired) -> Result<()> {
-        use sqlx::Connection as _;
-        let mut connection = self.pool().acquire().await?;
-        let mut tx = connection
-            .begin()
-            .await
-            .map_err(query("begin changed task authority refusal"))?;
+        // Cancellation closes the socket, so a blocked statement holds no lock.
+        let mut connection = super::transaction::acquire(self.pool()).await?;
+        let mut tx = super::transaction::begin(&mut connection).await?;
         if !parents(&mut tx, acquired).await? {
             return Ok(());
         }
@@ -182,6 +179,7 @@ impl crate::lease::Leases {
         tx.commit()
             .await
             .map_err(query("commit task setup authority refusal"))?;
+        super::transaction::recycle(connection);
         if let Some((task, version)) = changed {
             let frame = afd_api_wire::tail::TailFrame::TaskChanged {
                 task_id: std::borrow::Cow::Borrowed(task.as_str()),

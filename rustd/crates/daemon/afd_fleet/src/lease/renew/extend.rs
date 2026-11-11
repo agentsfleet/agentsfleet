@@ -108,6 +108,9 @@ impl Extension<'_> {
         self.commit(transaction, settlement.as_ref()).await?;
         Ok(match (verdict, settlement) {
             (Renewed::Cancelled, _) => Renewed::Cancelled,
+            // The ceiling is the answer whatever settled beside it: the
+            // runner stops for its runtime, not because it lost the lease.
+            (Renewed::MaxRuntime, _) => Renewed::MaxRuntime,
             (_, Some(settlement)) => Renewed::Stopped {
                 settlement: Some(Box::new(settlement)),
             },

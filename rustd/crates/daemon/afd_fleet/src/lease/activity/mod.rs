@@ -45,6 +45,7 @@ mod vocabulary;
 #[cfg(feature = "test-util")]
 pub use self::vocabulary::{ACTIVITY_VARIANTS, RenderedFrame, rendered_frames};
 
+#[cfg(any(test, feature = "test-util"))]
 /// Statement name, for the context a query failure carries.
 const CONTEXT_TARGET: &str = "activity lease load";
 
@@ -164,6 +165,7 @@ impl Leases {
         }
     }
 
+    #[cfg(any(test, feature = "test-util"))]
     /// The lease `lease_id` names, if it belongs to `runner_id`.
     ///
     /// No `status` predicate: an expired lease still resolves, because a
@@ -201,6 +203,7 @@ impl Leases {
     }
 }
 
+#[cfg(any(test, feature = "test-util"))]
 /// What [`sql::activity::SELECT_LEASE_TARGET`] answers for one lease.
 #[derive(sqlx::FromRow)]
 struct LeaseTarget {
@@ -215,6 +218,7 @@ struct LeaseTarget {
 }
 
 impl crate::lease::pull::LeaseService {
+    #[cfg(any(test, feature = "test-util"))]
     /// Forward one batch of live-tail frames for a lease this runner holds.
     ///
     /// # Errors
