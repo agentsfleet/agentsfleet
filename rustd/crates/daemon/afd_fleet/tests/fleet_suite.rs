@@ -131,8 +131,6 @@ mod integration_report_memory;
 mod integration_report_owes_destination;
 #[path = "integration_report_renewal_lock.rs"]
 mod integration_report_renewal_lock;
-#[path = "integration_report_settle.rs"]
-mod integration_report_settle;
 #[path = "integration_report_statement.rs"]
 mod integration_report_statement;
 #[path = "integration_runner_admin.rs"]

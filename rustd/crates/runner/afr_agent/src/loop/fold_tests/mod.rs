@@ -39,13 +39,11 @@ async fn a_message_waiting_when_the_run_starts_joins_its_opening_turn() -> crate
 }
 
 /// The claims one answering run asks for, under a lease whose
-/// `inputs_waiting` is `flag`, or absent when `None`.
-async fn answered(flag: Option<bool>) -> crate::Result<Vec<i64>> {
+/// `inputs_waiting` is `waiting`.
+async fn answered(waiting: bool) -> crate::Result<Vec<i64>> {
     let script = Script::new([vec![say("Deployed to staging.")]]);
     let mut payload = lease(&[HTTP_REQUEST.name()], unbounded());
-    if let Some(waiting) = flag {
-        payload.inputs_waiting = waiting;
-    }
+    payload.inputs_waiting = waiting;
     let inbox = Arriving::default();
     run_with(&script, &payload, &inbox, &CancellationToken::new()).await?;
     Ok(inbox.asked())
@@ -54,21 +52,12 @@ async fn answered(flag: Option<bool>) -> crate::Result<Vec<i64>> {
 // Value: protects=a lease whose claim found nothing waiting skips the ask
 // before its first model call, and asks after the answer; fails_when=the skip
 // never happens, swallows the ask after the answer, or fires on a lease that
-// said true or nothing; why_new=M245 §8 moved that ask into the claim;
+// said true; why_new=M245 §8 moved that ask into the claim;
 // seam=none; no_claim=what the daemon computes, which its claim test proves.
 #[tokio::test]
 async fn first_model_call_skips_the_answered_fold_ask() -> crate::Result<()> {
-    assert_eq!(
-        answered(Some(false)).await?,
-        [0],
-        "one ask, after the answer"
-    );
-    assert_eq!(answered(Some(true)).await?, [0, 0], "before and after");
-    assert_eq!(
-        answered(None).await?,
-        [0, 0],
-        "an absent flag reads as true"
-    );
+    assert_eq!(answered(false).await?, [0], "one ask, after the answer");
+    assert_eq!(answered(true).await?, [0, 0], "before and after");
     Ok(())
 }
 

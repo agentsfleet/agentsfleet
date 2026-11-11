@@ -1,11 +1,11 @@
-//! The one metering statement: a renewal and a settle measure the same slice
-//! the same way and differ only in how the lease ends the pass.
+//! The per-lease renewal's metering statement: it measures the slice since the
+//! lease's cursor and extends the lease. The report and the host batch carry
+//! their own measurement inside their statements.
 
 use af_core::id::Uuid7;
 use afd_db::statement::Bound;
 
-/// Measure the run time since the lease's cursor, then extend the lease or
-/// settle it.
+/// Measure the run time since the lease's cursor, then extend the lease.
 ///
 /// `probe` reads the lease and the slot under `FOR UPDATE OF l, a`; that slot
 /// lock is what serialises a racing reclaim behind this statement. The run
@@ -19,16 +19,14 @@ use afd_db::statement::Bound;
 /// holder writes nothing rather than some prefix of the writes. A renewal must
 /// still be the live holder, before both deadlines, with
 /// `capped = LEAST(now + LEASE_TTL, created_at + MAX_RUNTIME)` still ahead; a
-/// run at its hard ceiling writes nothing and is not charged for asking. A
-/// settle needs only that no reclaim superseded it.
+/// run at its hard ceiling writes nothing and is not charged for asking.
 ///
-/// `moved` extends the lease to `capped` or flips it to reported, and advances
-/// its cursor; `slot` extends the slot's deadline the same way. Both deadline
-/// rows move together because the claim checks the slot while the runner stops
-/// its child on the lease: advancing one alone gets a healthy run reclaimed.
-/// `tally` counts only settles that flipped a lease.
+/// `moved` extends the lease to `capped` and advances its cursor; `slot`
+/// extends the slot's deadline the same way. Both deadline rows move together
+/// because the claim checks the slot while the runner stops its child on the
+/// lease: advancing one alone gets a healthy run reclaimed.
 ///
-/// The statement moves no money. Its trailing row answers both callers:
+/// The statement moves no money. Its trailing row answers its caller:
 /// `claimed`, `new_until` and `hard_cap` for the verdict, and the measured
 /// slice (`d_ms`, the instant it ends, who pays and what the line names) for
 /// the runtime line the caller prices and logs in the same transaction.
@@ -41,25 +39,10 @@ use afd_db::statement::Bound;
 /// measures no run time, so logs no runtime line.
 ///
 /// `$1` lease, `$2` runner, `$3` milliseconds per second, `$4` the active
-/// status, `$5` whether this settles, `$6` the lease lifetime a renewal grants,
-/// `$7` the hard cap on a run, `$8` the reported status, `$9` whether the run
-/// succeeded, `$10` the usage lines' work type, `$11` the first daemon line
-/// number, `$12` the first decision sequence (runtime's exclusive upper bound).
-/// The metering instant is `clock_timestamp()`, read once the rows are
-/// locked.
+/// status, `$5` the lease lifetime a renewal grants, `$6` the hard cap on a
+/// run, `$7` the running state a task must hold. The metering instant is
+/// `clock_timestamp()`, read once the rows are locked.
 pub const METER_LEASE: &str = include_str!("meter_lease.sql");
-
-/// How a metering pass ends the lease's current slice.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Ending {
-    /// Extend both deadlines, capped at the run's hard ceiling.
-    Renew,
-    /// Flip the lease to reported and count the run's outcome.
-    Settle {
-        /// Whether the run succeeded, which lifetime counter it moves.
-        succeeded: bool,
-    },
-}
 
 /// What one metering pass measures: the lease, the runner holding it and the
 /// provider requests it reports.
@@ -75,21 +58,14 @@ pub struct Metering<'a> {
 
 impl<'a> Metering<'a> {
     /// [`METER_LEASE`] with every parameter bound, in `$n` order.
-    pub(crate) fn bind(&self, ending: Ending) -> Bound<'a> {
-        let (settles, succeeded) = match ending {
-            Ending::Renew => (false, false),
-            Ending::Settle { succeeded } => (true, succeeded),
-        };
+    pub(crate) fn bind(&self) -> Bound<'a> {
         sqlx::query(METER_LEASE)
             .bind(self.lease_id)
             .bind(self.runner_id)
             .bind(afd_billing::nanos::MS_PER_SEC)
             .bind(super::LEASE_STATUS_ACTIVE)
-            .bind(settles)
             .bind(af_core::timing::LEASE_TTL)
             .bind(af_core::timing::MAX_RUNTIME)
-            .bind(super::LEASE_STATUS_REPORTED)
-            .bind(succeeded)
             .bind(af_wire::task::TaskState::Running.as_str())
     }
 }

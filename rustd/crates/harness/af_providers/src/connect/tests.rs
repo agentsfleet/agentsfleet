@@ -25,7 +25,7 @@ fn lease(provider: &str) -> LeasePayload<'static> {
             "api_key": KEY, "inference_host": "", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 200_000}},
-        "instructions": "", "limits": null, "history": [], "resume_hold": false
+        "instructions": "", "limits": null, "history": [], "resume_hold": false, "inputs_waiting": true
     });
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());
     serde_json::from_str(text).unwrap()

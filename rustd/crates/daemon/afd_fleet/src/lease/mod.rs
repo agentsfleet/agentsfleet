@@ -71,7 +71,7 @@ pub use self::pull::LeaseService;
 pub use self::reclaim::Reused;
 pub use self::renew::{Renewed, Renewing};
 pub use self::scope::MintScope;
-pub use self::settle::{Reported, Settled};
+pub use self::settle::Reported;
 pub use self::standing::Standing;
 pub use self::store::Leases;
 pub use self::verdict::{Terminal, Verdict};

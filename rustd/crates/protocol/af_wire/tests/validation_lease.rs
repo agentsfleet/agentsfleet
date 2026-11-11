@@ -83,7 +83,7 @@ fn lease(limits: &str) -> String {
         "inference_host":"h","base_url":null,"repository_binding":null,
         "http_origin_policies":[],"context":{{"tool_window":1,"memory_checkpoint_every":1,
         "stage_chunk_threshold":0.5,"model":"m","context_cap_tokens":0}}}},
-        "instructions":"","limits":{limits},"history":[],"resume_hold":false}}"#
+        "instructions":"","limits":{limits},"history":[],"resume_hold":false,"inputs_waiting":true}}"#
     )
 }
 
@@ -139,9 +139,13 @@ fn the_published_bounds_are_the_enforced_ones() {
 /// The daemon always names the fleet's history and whether the held sandbox
 /// resumes; a lease missing either is refused rather than read as a default.
 #[test]
-fn a_lease_must_name_its_history_and_resume_hold() {
+fn a_lease_must_name_its_history_resume_hold_and_waiting_inputs() {
     let text = lease("null");
-    for key in [r#","history":[]"#, r#","resume_hold":false"#] {
+    for key in [
+        r#","history":[]"#,
+        r#","resume_hold":false"#,
+        r#","inputs_waiting":true"#,
+    ] {
         let missing = text.replace(key, "");
         assert_ne!(missing, text, "{key} is in the fixture");
         assert!(
@@ -171,24 +175,4 @@ fn test_lease_resume_hold_round_trips() {
     assert!(!fresh.resume_hold);
     assert!(present.resume_hold);
     assert_eq!(serde_json::to_value(&present).unwrap()["resume_hold"], true);
-}
-
-/// An older daemon sends no `inputs_waiting`, and a run then asks before its
-/// first model call; a daemon that says false lets it skip that ask.
-#[test]
-fn an_absent_inputs_waiting_reads_as_true() {
-    let text = lease("null");
-    let older: LeasePayload<'_> = serde_json::from_str(&text).unwrap();
-    let none_waiting = text.replace(
-        r#""resume_hold":false"#,
-        r#""resume_hold":false,"inputs_waiting":false"#,
-    );
-    let answered: LeasePayload<'_> = serde_json::from_str(&none_waiting).unwrap();
-
-    assert!(older.inputs_waiting, "an absent flag asks");
-    assert!(!answered.inputs_waiting);
-    assert_eq!(
-        serde_json::to_value(&answered).unwrap()["inputs_waiting"],
-        false
-    );
 }

@@ -71,6 +71,7 @@ pub struct Issued {
 }
 
 impl Leases {
+    #[cfg(any(test, feature = "test-util"))]
     /// Write the lease row for `acquired`, and the audit row that explains it.
     ///
     /// One statement lands the lease, its `lease_acquired` event, the runner's

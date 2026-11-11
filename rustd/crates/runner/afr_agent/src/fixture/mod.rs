@@ -46,7 +46,7 @@ pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'
             "mintable": [], "provider": "anthropic", "api_key": API_KEY,
             "inference_host": "h", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": null},
-        "instructions": "Read the run.", "limits": null, "history": [], "resume_hold": false
+        "instructions": "Read the run.", "limits": null, "history": [], "resume_hold": false, "inputs_waiting": true
     });
     *document.pointer_mut(CONTEXT_POINTER).unwrap() = budget;
     // Leaked so the borrowed payload lives as long as the test that reads it.

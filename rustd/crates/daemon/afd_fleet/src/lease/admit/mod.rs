@@ -37,10 +37,8 @@ pub use self::declined::Declined;
 
 use af_core::id::Uuid7;
 use af_fleet_runtime::config::Budget;
-use jiff::Timestamp;
 
 use crate::error::Result;
-use afd_billing::Accounts;
 use afd_billing::biller::Biller;
 use afd_billing::rates::Posture;
 use afd_gate::gate::Waiting;
@@ -183,6 +181,7 @@ pub fn payer_gate(
     }
 }
 
+#[cfg(any(test, feature = "test-util"))]
 /// Run the money gates in the worker's order.
 ///
 /// Payer → balance → fleet budget. Every gate that can refuse permanently
@@ -196,11 +195,11 @@ pub fn payer_gate(
 /// own according to its declared posture. An `Err` here is a fault with no gate
 /// to absorb it, which today is a payer read the payer gate does not absorb.
 pub async fn money_gates(
-    accounts: &Accounts,
+    accounts: &afd_billing::Accounts,
     biller: &dyn Biller,
     payer: Payer,
     request: Request<'_>,
-    now: Timestamp,
+    now: jiff::Timestamp,
 ) -> Result<Admission> {
     let spend = accounts.spend(request.workspace_id, request.fleet_id).await;
     let estimate = accounts

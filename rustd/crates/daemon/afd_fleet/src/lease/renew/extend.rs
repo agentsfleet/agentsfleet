@@ -10,10 +10,7 @@ use crate::{
     Result,
     error::query,
     lease::{
-        sql::{
-            self,
-            meter::{Ending, Metering},
-        },
+        sql::{self, meter::Metering},
         store::Leases,
         usage::{self, Pricing, SliceColumns},
     },
@@ -77,7 +74,7 @@ impl Extension<'_> {
         }
         let row = self
             .lease
-            .bind(Ending::Renew)
+            .bind()
             .fetch_one(&mut *transaction)
             .await
             .map_err(query(CONTEXT))?;
