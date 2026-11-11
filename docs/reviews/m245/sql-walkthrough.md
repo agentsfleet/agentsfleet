@@ -396,7 +396,7 @@ A streamed report no longer runs this statement at all: the offer carries what i
 
 ### `afd_fleet/src/lease/sql/execution_deadline.sql` and `task/sql/issue_source.sql`
 
-Unchanged, and no longer run for a plain chat. `execution_deadline.sql` answers `LEAST(created_at + MAX_RUNTIME, task_execution_deadline_at)`, and only a task's attach sets the second column, so the issue computes `created_at + MAX_RUNTIME` from the `created_at` the insert returned (`deadline::untasked`).
+Unchanged, and run only when a task binds. The lease payload no longer carries an execution deadline (no runner read it), so a chat's issue neither reads nor computes one. `execution_deadline.sql` answers `LEAST(created_at + MAX_RUNTIME, task_execution_deadline_at)`: the immutable ceiling a task binding receipt carries (`deadline::read`).
 
 ### `afd_fleet/src/lease/sql/select_renewals.sql`
 
