@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 import { useUser, ClerkProvider, SignIn, SignUp } from "@clerk/nextjs";
 
-// `useClientToken()` was retired in M64_006. Every dashboard mutation/read
-// now flows through a Server Action that calls `auth().getToken()`
-// server-side. The in-browser SDK keeps only the `__session` cookie fresh;
-// application code never receives its token value or builds a Bearer header.
+// The in-browser SDK keeps only the `__session` cookie fresh. Every dashboard
+// read and mutation resolves its bearer server-side (`credential.ts`), so
+// application code never receives a token value or builds a Bearer header.
 
 // Clerk session tokens live for roughly one minute. Refresh with enough
 // headroom that a long dashboard journey cannot submit a Server Action POST
@@ -80,7 +79,7 @@ export function AuthSessionKeeper(): null {
 }
 
 // Hook returning the current user's identity. Keyed on Clerk today;
-// swapping to fleet-auth means replacing only this file + server.ts.
+// swapping to fleet-auth means replacing only this file and `credential.ts`.
 export function useCurrentUser(): {
   isLoaded: boolean;
   isSignedIn: boolean;
@@ -102,9 +101,10 @@ export function useCurrentUser(): {
 // directly. Replacing the auth provider later = swap these named exports
 // to the new library's equivalents; no consumer changes.
 //
-// Note: server-side dashboard pages call `auth()` directly from
-// `@clerk/nextjs/server`. The lone surviving api-template mint is in
-// `app/cli-auth/[session_id]/page.tsx` — the CLI handshake carve-out.
+// Note: server code resolves its bearer through `credential.ts`, the only
+// caller of `auth()` from `@clerk/nextjs/server`. The lone surviving
+// api-template mint is in `app/cli-auth/[session_id]/page.tsx` — the CLI
+// handshake carve-out.
 export const AuthProvider = ClerkProvider;
 export { SignOutButton as AuthSignOutButton, UserProfile as AuthUserProfile } from "@clerk/nextjs";
 export const AuthSignIn = SignIn;

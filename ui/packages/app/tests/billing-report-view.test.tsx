@@ -240,8 +240,8 @@ describe("individual activity charges", () => {
     expect(screen.getByText(BILLING_MODEL)).toBeTruthy();
     expect(screen.getByText(/Own provider key:/)).toBeTruthy();
     expect(screen.getByText(/5 tokens awaiting/)).toBeTruthy();
-    // Every charge is one kind (M245), so no line mixes model and runtime cost.
-    expect(screen.queryByText(/Separate historical model and runtime prices/)).toBeNull();
+    // The row names the kind it billed, beside its amount.
+    expect(screen.getByText("Model call").nextElementSibling?.textContent).toBe("$0.000000001");
   });
 
   it("an empty detail page stays distinct from a failed read", () => {

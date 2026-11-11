@@ -20,7 +20,7 @@ const listTenantWorkspacesCached = vi.fn();
 // different call on a different surface, so the two are mocked separately.
 const firstTenantWorkspace = vi.fn();
 
-vi.mock("next/navigation", () => ({ notFound, redirect }));
+vi.mock("next/navigation", () => ({ notFound, redirect, useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@clerk/nextjs/server", () => ({ auth }));
 vi.mock("@/lib/workspace", () => ({ listTenantWorkspacesCached }));
 vi.mock("@/lib/api/workspaces", async (importOriginal) => ({
@@ -34,11 +34,19 @@ vi.mock("@/components/layout/NoWorkspaceEmptyState", () => ({
     React.createElement("div", { "data-testid": "no-workspace-empty-state" }),
 }));
 
-// The account-opening wait screen is a client island that polls; stub it to a
-// marker so the server component test only proves which screen it chose.
-vi.mock("../app/(dashboard)/AccountSetup", () => ({
-  default: () => React.createElement("div", { "data-testid": "account-setup" }),
+// The account-opening wait screen renders for real, so the page test proves
+// which screen it chose by that screen's own title. It reads the signed-in user
+// through Clerk's client hook, faked at the SDK boundary; nothing here runs its
+// polling, because static markup runs no effects.
+vi.mock("@clerk/nextjs", () => ({
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
+  SignIn: () => null,
+  SignUp: () => null,
+  useUser: () => ({ isLoaded: false, isSignedIn: false, user: null }),
 }));
+
+// The page title of the screen a new account waits on.
+const SETUP_TITLE = "Setting up your workspace";
 
 const OWNED = {
   items: [
@@ -174,8 +182,8 @@ describe("dashboard entry page", () => {
     await expect(Page()).rejects.toThrow("list endpoint down");
   });
 
-  // M245 §10: a fresh signup reaches `/` with a token minted before the webhook
-  // wrote its tenant and scopes back to Clerk, so the scope gate refuses it.
+  // A fresh signup reaches `/` with a token minted before the webhook wrote its
+  // tenant and scopes back to Clerk, so the scope gate refuses it.
   const scopeRefusal = () =>
     new ApiError("insufficient scope", 403, ERROR_CODE.INSUFFICIENT_SCOPE);
   const signedInWith = (sessionClaims: Record<string, unknown> | null) =>
@@ -186,7 +194,7 @@ describe("dashboard entry page", () => {
     firstTenantWorkspace.mockRejectedValue(scopeRefusal());
     const Page = await importEntry();
     const markup = renderToStaticMarkup((await Page()) as React.ReactElement);
-    expect(markup).toContain("account-setup");
+    expect(markup).toContain(SETUP_TITLE);
     expect(markup).not.toContain("no-workspace-empty-state");
   });
 
@@ -211,6 +219,39 @@ describe("dashboard entry page", () => {
     signedInWith({ sub: "user_new" });
     firstTenantWorkspace.mockRejectedValue(new ApiError("down", 503, "UZ-AUTH-004"));
     await expect(Page()).rejects.toThrow("down");
+  });
+
+  // A tenant the daemon cannot use is no tenant: it reads the same claim, so a
+  // token whose tenant is empty, mistyped or buried under a metadata that is not
+  // an object is still waiting for the webhook's writeback.
+  it.each([
+    { sub: "user_new", tenant_id: "" },
+    { sub: "user_new", tenant_id: 7 },
+    { sub: "user_new", metadata: { tenant_id: "" } },
+    { sub: "user_new", metadata: { tenant_id: 7 } },
+    { sub: "user_new", metadata: "tenant_1" },
+    { sub: "user_new", metadata: 7 },
+    { sub: "user_new", metadata: null },
+  ])("a scope refusal on a token whose tenant is unusable still waits: %j", async (sessionClaims) => {
+    signedInWith(sessionClaims);
+    firstTenantWorkspace.mockRejectedValue(scopeRefusal());
+    const Page = await importEntry();
+    const markup = renderToStaticMarkup((await Page()) as React.ReactElement);
+    expect(markup).toContain(SETUP_TITLE);
+  });
+
+  it("reads the top-level tenant before the nested one, as the daemon does", async () => {
+    // A usable top-level tenant ends the wait whatever sits under `metadata`.
+    signedInWith({ sub: "user_new", tenant_id: "tenant_1", metadata: { tenant_id: "" } });
+    firstTenantWorkspace.mockRejectedValue(scopeRefusal());
+    const Page = await importEntry();
+    await expect(Page()).rejects.toThrow("insufficient scope");
+
+    // An empty top-level tenant shadows a usable nested one: the daemon reads
+    // the top level first and finds no tenant, so the token is still waiting.
+    signedInWith({ sub: "user_new", tenant_id: "", metadata: { tenant_id: "tenant_1" } });
+    const markup = renderToStaticMarkup((await Page()) as React.ReactElement);
+    expect(markup).toContain(SETUP_TITLE);
   });
 
   it("redirects to /sign-in without a token", async () => {

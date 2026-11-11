@@ -2,26 +2,38 @@ import React from "react";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// M245 §10: the screen a new account waits on mints a fresh session token and
-// re-runs the entry page each tick, until the entry page redirects it away or
-// it gives up and says so.
+// The screen a new account waits on mints a fresh session token and re-runs the
+// entry page each tick, until the entry page redirects it away or it gives up
+// and says so. Clerk is faked at the SDK boundary: `user.reload()` is what
+// mints the token, so the real `useSessionRefresh` runs under the screen.
 
-const { refreshSession, routerRefresh } = vi.hoisted(() => ({
-  refreshSession: vi.fn<() => Promise<void>>(),
+const { reload, routerRefresh, useUser } = vi.hoisted(() => ({
+  reload: vi.fn<() => Promise<unknown>>(),
   routerRefresh: vi.fn(),
+  useUser: vi.fn(),
 }));
 
-vi.mock("@/lib/auth/client", () => ({
-  useSessionRefresh: () => ({ signedInUserId: "user_new", refresh: refreshSession }),
+vi.mock("@clerk/nextjs", () => ({
+  ClerkProvider: ({ children }: { children: React.ReactNode }) => children,
+  SignIn: () => null,
+  SignUp: () => null,
+  useUser,
 }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: routerRefresh }),
 }));
 
-import AccountSetup, {
+import {
   ACCOUNT_SETUP_GIVE_UP_MS,
   ACCOUNT_SETUP_POLL_MS,
+  AccountSetup,
 } from "@/app/(dashboard)/AccountSetup";
+
+const PAGE_TITLE = "Setting up your workspace";
+const WAITING_TITLE = "Creating your account";
+const STALLED_TITLE = "This is taking longer than usual";
+/** The loader's class, matched as a whole token so a bare `animate-spin` does not pass. */
+const SPINNER = '[class~="motion-safe:animate-spin"]';
 
 /** Lets the awaited token refresh settle before the router refresh is read. */
 async function tick(ms: number): Promise<void> {
@@ -32,7 +44,8 @@ describe("AccountSetup", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    refreshSession.mockResolvedValue(undefined);
+    reload.mockResolvedValue({});
+    useUser.mockReturnValue({ isLoaded: true, isSignedIn: true, user: { id: "user_new", reload } });
   });
 
   afterEach(() => {
@@ -45,18 +58,18 @@ describe("AccountSetup", () => {
     await tick(0);
     // At once, not after the first interval: a new account's webhook usually
     // lands within seconds of the redirect.
-    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
     expect(routerRefresh).toHaveBeenCalledTimes(1);
 
     await tick(ACCOUNT_SETUP_POLL_MS);
-    expect(refreshSession).toHaveBeenCalledTimes(2);
+    expect(reload).toHaveBeenCalledTimes(2);
     expect(routerRefresh).toHaveBeenCalledTimes(2);
     expect(screen.queryByTestId("account-setup-retry")).toBeNull();
   });
 
   it("re-reads only after the fresh token: the entry page must see the new cookie", async () => {
     let settle: () => void = () => undefined;
-    refreshSession.mockImplementationOnce(
+    reload.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
           settle = resolve;
@@ -64,32 +77,45 @@ describe("AccountSetup", () => {
     );
     render(<AccountSetup />);
     await tick(0);
-    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
     expect(routerRefresh).not.toHaveBeenCalled();
 
     await act(async () => settle());
     expect(routerRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps trying when a token mint fails: the next tick mints again", async () => {
+    reload.mockRejectedValueOnce(new Error("offline"));
+    render(<AccountSetup />);
+    await tick(0);
+    expect(reload).toHaveBeenCalledTimes(1);
+    // A transient Clerk failure is not the end of the wait.
+    expect(screen.queryByTestId("account-setup-retry")).toBeNull();
+
+    await tick(ACCOUNT_SETUP_POLL_MS);
+    expect(reload).toHaveBeenCalledTimes(2);
+    expect(routerRefresh).toHaveBeenCalledTimes(2);
+  });
+
   it("test_account_setup_gives_up_and_can_try_again", async () => {
     render(<AccountSetup />);
     await tick(ACCOUNT_SETUP_GIVE_UP_MS);
-    const calls = refreshSession.mock.calls.length;
+    const calls = reload.mock.calls.length;
     expect(screen.getByTestId("account-setup-retry")).toBeTruthy();
 
     // Stalled means stopped: no more tokens are minted until the person asks.
     await tick(ACCOUNT_SETUP_POLL_MS * 5);
-    expect(refreshSession.mock.calls.length).toBe(calls);
+    expect(reload.mock.calls.length).toBe(calls);
 
     fireEvent.click(screen.getByTestId("account-setup-retry"));
     await tick(0);
-    expect(refreshSession.mock.calls.length).toBe(calls + 1);
+    expect(reload.mock.calls.length).toBe(calls + 1);
     expect(screen.queryByTestId("account-setup-retry")).toBeNull();
   });
 
   it("does not re-read for a token that lands after the screen has gone", async () => {
     let settle: () => void = () => undefined;
-    refreshSession.mockImplementationOnce(
+    reload.mockImplementationOnce(
       () =>
         new Promise<void>((resolve) => {
           settle = resolve;
@@ -107,6 +133,25 @@ describe("AccountSetup", () => {
     await tick(0);
     unmount();
     await tick(ACCOUNT_SETUP_POLL_MS * 5);
-    expect(refreshSession).toHaveBeenCalledTimes(1);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it("titles the page once and states what is happening in its own heading", async () => {
+    render(<AccountSetup />);
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(PAGE_TITLE);
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe(WAITING_TITLE);
+
+    await tick(ACCOUNT_SETUP_GIVE_UP_MS);
+    // The state changes; the page's title does not, and never repeats beneath it.
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(PAGE_TITLE);
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe(STALLED_TITLE);
+  });
+
+  it("turns the loader only while waiting, and only for people who allow motion", async () => {
+    const { container } = render(<AccountSetup />);
+    expect(container.querySelector(SPINNER)).not.toBeNull();
+
+    await tick(ACCOUNT_SETUP_GIVE_UP_MS);
+    expect(container.querySelector(SPINNER)).toBeNull();
   });
 });
