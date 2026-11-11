@@ -1,8 +1,8 @@
 ---
 type: how-to
 audience: operator
-verified: 2026-11-08
-product_version: 0.75.0
+verified: 2026-11-11
+product_version: 0.76.0
 executable: false
 ---
 
@@ -27,9 +27,14 @@ The environment's [admin bootstrap](../admin_bootstrap/001_playbook.md) is compl
 
 1. From one Upstash account and region, Indy copies the token, both signing keys and the API base that account shows.
    Never infer a regional hostname or mix values from different accounts.
-2. Indy stores the `qstash` fields: `token`, `current-signing-key`, `next-signing-key`, and `url` (the HTTPS API base).
-3. The agent syncs `qstash` with the [shared bag procedure](../admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag), then the control plane restarts.
-   `agentsfleetd` loads these values at startup.
+2. Indy stores the `qstash` fields: `token`, `current-signing-key`, `next-signing-key`, and `url` (the HTTPS API base, such as `https://<host>/v2`, with no query or fragment).
+   `agentsfleetd` refuses any other `url` and names the field, because the bearer rides every call under it.
+   Only a loopback host may use plain `http`, for the local emulator.
+3. The agent syncs `qstash` with the [shared bag procedure](../admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag).
+   Every deploy re-syncs it too (`deploy-dev-verify.yml`, `release.yml`).
+   `agentsfleetd` reads the bag each time it registers a schedule or verifies a fire, so no restart is needed.
+   Nothing reads `QSTASH_*` environment settings.
+   `agentsfleetd` logs a missing or incomplete bag as `scheduler_bag_unusable` and names the field at fault.
 
 Each delivery carries a JSON Web Token (JWT) that `agentsfleetd` checks against the current and next keys.
 See [QStash signing keys](https://upstash.com/docs/qstash/api-reference/signing-keys/get-signing-keys) and [QStash schedules](https://upstash.com/docs/qstash/features/schedules).
@@ -44,9 +49,7 @@ See [QStash signing keys](https://upstash.com/docs/qstash/api-reference/signing-
 
 ## Rotate the signing keys
 
-1. Copy the provider's current and next keys to 1Password and rerun the sync.
-2. Restart `agentsfleetd`.
-3. Rotate once in Upstash.
-4. Copy the new current and next keys, rerun the sync, and restart again.
+1. Rotate once in Upstash.
+2. Copy the new current and next keys to 1Password and rerun the sync.
 
-Never rotate twice before step 4; the daemon must keep overlap with the provider's active key pair.
+The daemon reads the new pair on the next fire. Never rotate twice before step 2: the bag must keep overlap with the provider's active key pair.

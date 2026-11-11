@@ -19,78 +19,19 @@
     reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
 )]
 
+#[path = "support/fire_token.rs"]
+mod fire_token;
+
 use afd_cron::SigningKeys;
 use afd_cron::verifier::{MAX_TOKEN_BYTES, verify_at};
-use base64::Engine as _;
-use jsonwebtoken::{Algorithm, EncodingKey, Header};
-use serde::Serialize;
-use sha2::{Digest as _, Sha256};
 
-/// The destination this fixture deployment's schedules are registered against.
-const DESTINATION: &str = "https://api.fixture.test/v1/ingress/qstash/schedules";
+use self::fire_token::{BODY, DESTINATION, FireClaims, mint, now};
 
 /// The key the scheduler is signing with in these tests.
 const CURRENT_KEY: &str = "fixture-current-signing-key";
 
 /// The key it rotates to next.
 const NEXT_KEY: &str = "fixture-next-signing-key";
-
-/// The delivery body a fire carries.
-const BODY: &[u8] = br#"{"schedule_id":"01J0000000000000000000000A"}"#;
-
-/// Seconds since the epoch, for the `exp`/`nbf` the crate reads a system clock
-/// against. There is no seam to hand an instant in — see `verify_at`'s note —
-/// so the fixtures are placed generously around now rather than pinned.
-#[expect(
-    clippy::disallowed_methods,
-    reason = "the token claims want unsigned whole seconds and a panic on a pre-epoch clock, which `clock::now` reports as negative milliseconds instead"
-)]
-fn now() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("the fixture clock is after the epoch")
-        .as_secs()
-}
-
-/// The claims a fire token carries, as the scheduler mints them.
-#[derive(Serialize)]
-struct FireClaims {
-    iss: String,
-    sub: String,
-    exp: u64,
-    nbf: u64,
-    jti: String,
-    body: String,
-}
-
-impl FireClaims {
-    /// A token the wall should believe.
-    fn good() -> Self {
-        Self {
-            iss: "Upstash".to_owned(),
-            sub: DESTINATION.to_owned(),
-            exp: now() + 300,
-            nbf: now() - 10,
-            jti: "msg_fixture_0001".to_owned(),
-            body: digest_of(BODY),
-        }
-    }
-}
-
-/// The `body` claim the scheduler puts in a token: base64url, unpadded.
-fn digest_of(body: &[u8]) -> String {
-    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(body))
-}
-
-/// Signs `claims` with `key`, as the scheduler would.
-fn mint(claims: &FireClaims, key: &str) -> String {
-    jsonwebtoken::encode(
-        &Header::new(Algorithm::HS256),
-        claims,
-        &EncodingKey::from_secret(key.as_bytes()),
-    )
-    .expect("the fixture claims serialise")
-}
 
 /// Both of this deployment's keys.
 fn keys() -> SigningKeys {
@@ -177,6 +118,45 @@ fn an_empty_or_oversized_token_is_malformed() {
         "token_malformed",
         "the bound is on the work one unauthenticated request can ask of the \
          decoder, so it is checked before decoding"
+    );
+}
+
+/// The compact form a signed token takes is three base64url segments joined by
+/// dots. Anything else is refused as malformed before a key is tried, so a
+/// stranger's guess is never mistaken for a forged signature.
+#[test]
+fn a_string_that_is_not_three_dotted_segments_is_malformed() {
+    for token in [
+        "garbage",
+        "two.segments",
+        "four.dotted.segments.here",
+        ".empty.first",
+        "empty..middle",
+        "empty.last.",
+        "has space.in.it",
+        "padded.base64.token==",
+        "line\nbreak.in.token",
+        "non-ascii.tök.en",
+    ] {
+        assert_eq!(
+            verify_at(&keys(), DESTINATION, token, BODY)
+                .expect_err("this token must not be believed")
+                .refusal_word(),
+            "token_malformed",
+            "{token:?}"
+        );
+    }
+}
+
+/// The shape check is not a signature check: a token shaped right and signed
+/// by nobody this deployment trusts is still a forgery, not a malformed token.
+#[test]
+fn a_token_shaped_right_but_signed_by_nobody_is_a_forgery_not_malformed() {
+    assert_eq!(
+        verify_at(&keys(), DESTINATION, "aaa.bbb.ccc", BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "signature_invalid"
     );
 }
 

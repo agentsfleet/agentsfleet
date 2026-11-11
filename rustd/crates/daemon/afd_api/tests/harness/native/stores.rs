@@ -24,7 +24,7 @@ impl Fleet {
             biller,
             memories: Memories::new(database.clone(), Entropy::new()),
             providers: self.providers.store().clone(),
-            vault: afd_credential::vault::Vault::new(database.clone(), key),
+            vault: afd_vault::Vault::new(database.clone(), key, Entropy::new()),
             broker: Arc::new(afd_credential::credential::Broker::new(
                 Arc::new(afd_credential::secrets::Registry::default()),
                 Arc::new(afd_credential::credential::Vendors::new(

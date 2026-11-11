@@ -9,7 +9,7 @@ pub(in crate::task) use transfer::StorageSession;
 
 use af_core::id::Uuid7;
 use af_crypto::secret::Kek;
-use afd_credential::vault::Vault;
+use afd_vault::Vault;
 use garde::Validate;
 use std::sync::Arc;
 

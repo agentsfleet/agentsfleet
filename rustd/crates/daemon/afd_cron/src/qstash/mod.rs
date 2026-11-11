@@ -19,19 +19,23 @@
 //! times on a short schedule; see [`retry`].
 
 use af_core::id::Uuid7;
-use url::Url;
+use afd_vault::Vault;
 
+pub use self::destination::{INGRESS_PATH, MAX_DESTINATION_BYTES, destination_url};
 pub use self::retry::Attempts;
+use self::source::Source;
 
+use crate::credentials::Credentials;
 use crate::error::{self, Result};
 use crate::upstream::{HEADER_SCHEDULE_ID, upstream_id};
+use crate::verifier::VerifiedFire;
 
-/// Where the scheduler's management calls go when a deployment names no base.
+/// Where the scheduler's management calls go when a bag names no base.
 ///
-/// A DEFAULT, not a constant the client reaches for directly: the client takes
-/// its base as a parameter, because a hardcoded US host breaks every deployment
-/// in another region. Such a deployment names its own base; this value is what
-/// a deployment that names none falls back to.
+/// A DEFAULT, not a constant the client reaches for directly: the base is the
+/// bag's `url`, because a hardcoded US host breaks every deployment in another
+/// region. Such a deployment names its own base; this value is what a bag that
+/// names none falls back to.
 pub const API_BASE: &str = "https://qstash.upstash.io/v2";
 
 /// The path a schedule is created under, before the destination.
@@ -49,46 +53,6 @@ const HEADER_CONTENT_TYPE: &str = "Content-Type";
 /// See [`HEADER_CONTENT_TYPE`].
 const CONTENT_TYPE_JSON: &str = "application/json";
 
-/// The path the signed fire arrives back on.
-///
-/// Pinned byte-for-byte: it is half of the `sub` claim a fire token is verified
-/// against, so a change here would make every schedule already registered
-/// unverifiable.
-pub const INGRESS_PATH: &str = "/v1/ingress/qstash/schedules";
-
-/// The longest destination this daemon will register.
-pub const MAX_DESTINATION_BYTES: usize = 2048;
-
-/// Where the scheduler should call back to, for this deployment.
-///
-/// # Errors
-/// A refusal rather than a silently truncated URL: one kind for a value that
-/// is not a URL or is past [`MAX_DESTINATION_BYTES`], another for a query or a
-/// fragment. The destination
-/// rides RAW inside the provider's own request path, so a `?` or `#` here would
-/// be read as the provider request's query or fragment and register a callback
-/// this daemon never meant.
-pub fn destination_url(api_url: &str) -> Result<String> {
-    let parsed = Url::parse(api_url).map_err(|_unparsed| error::destination_unusable())?;
-
-    // Asked of the PARSED url rather than of the string. A `#` inside a
-    // percent-encoded path is not a fragment and a `?` in userinfo is not a
-    // query, so a substring search answers this question wrongly in both
-    // directions — which for a value that rides raw inside the provider's own
-    // request path is the difference between a callback that works and one
-    // silently truncated at the first `?`.
-    if parsed.query().is_some() || parsed.fragment().is_some() {
-        return Err(error::destination_not_plain_origin());
-    }
-
-    let base = parsed.as_str().trim_end_matches('/');
-    let destination = format!("{base}{INGRESS_PATH}");
-    if destination.len() > MAX_DESTINATION_BYTES {
-        return Err(error::destination_unusable());
-    }
-    Ok(destination)
-}
-
 /// What the scheduler answered a management call with.
 #[derive(Debug, Clone)]
 pub struct Registered {
@@ -101,44 +65,85 @@ pub struct Registered {
 ///
 /// Cheap to clone: `reqwest::Client` is a handle over a shared connection pool,
 /// so every clone shares one set of TLS sessions rather than opening its own.
+///
+/// The credentials are NOT fields. They live in the admin workspace's
+/// `qstash` bag and are read before each call, the way the invite mailer reads
+/// `smtp-relay`, so a rotation reaches the next call without a restart.
 #[derive(Debug, Clone)]
 pub struct QStash {
     /// The client every call here goes out on.
     client: reqwest::Client,
-    /// This deployment's bearer for the scheduler.
-    token: af_crypto::secret::SecretString,
+    /// Where the credentials are read from.
+    credentials: Source,
     /// Where a fire should arrive back.
     destination: String,
-    /// Where this deployment's management calls go.
-    api_base: String,
 }
 
 impl QStash {
-    /// Binds a client to this deployment's credential, callback and scheduler.
+    /// Binds a client to this deployment's vault, admin workspace and callback.
     ///
-    /// `api_base` carries no default here on purpose: a caller that forgets it
-    /// should not silently get the US region. [`API_BASE`] is what the
-    /// boot path resolves when a deployment names none, where the decision is
-    /// visible.
+    /// `admin` is `None` on a deployment with no admin workspace, and every
+    /// call then fails as a deployment with no credentials does.
     #[must_use]
     pub const fn new(
+        client: reqwest::Client,
+        vault: Vault,
+        admin: Option<Uuid7>,
+        destination: String,
+    ) -> Self {
+        Self {
+            client,
+            credentials: Source::Vault { vault, admin },
+            destination,
+        }
+    }
+
+    /// A client over fixed credentials, for a suite with no vault behind it.
+    ///
+    /// The signing keys are blank: no suite reads them through this client.
+    #[cfg(any(test, feature = "test-util"))]
+    #[must_use]
+    pub fn fixed(
         client: reqwest::Client,
         token: af_crypto::secret::SecretString,
         destination: String,
         api_base: String,
     ) -> Self {
+        let blank = || af_crypto::secret::SecretString::new(String::new());
         Self {
             client,
-            token,
+            credentials: Source::Fixed(Credentials {
+                token,
+                api_base,
+                keys: crate::verifier::SigningKeys {
+                    current: blank(),
+                    next: blank(),
+                },
+            }),
             destination,
-            api_base,
         }
     }
 
-    /// Where this deployment's management calls go.
+    /// The same fixed client, verifying fires against `keys`.
+    ///
+    /// For the fire-route suites, which mint tokens under known keys. A client
+    /// over the vault ignores it: its keys are the bag's.
+    #[cfg(any(test, feature = "test-util"))]
     #[must_use]
-    pub fn api_base(&self) -> &str {
-        &self.api_base
+    pub fn with_keys(mut self, keys: crate::verifier::SigningKeys) -> Self {
+        if let Source::Fixed(credentials) = &mut self.credentials {
+            credentials.keys = keys;
+        }
+        self
+    }
+
+    /// The credentials as the `qstash` bag holds them now.
+    ///
+    /// # Errors
+    /// An unusable bag (absent, malformed, a field missing) and a vault that
+    /// would not answer, the second retryable.
+    pub(crate) async fn credentials(&self) -> Result<Credentials> {
+        self.credentials.read().await
     }
 
     /// Where a fire from this deployment's schedules arrives.
@@ -172,8 +177,9 @@ impl QStash {
         attempts: Attempts,
     ) -> Result<Registered> {
         let id = upstream_id(schedule);
+        let credentials = self.credentials().await?;
         retry::send(attempts, &id, || {
-            self.upsert_once(&id, cron, timezone, message)
+            self.upsert_once(&credentials, &id, cron, timezone, message)
         })
         .await
     }
@@ -181,6 +187,7 @@ impl QStash {
     /// One push of the schedule filed under `id`.
     async fn upsert_once(
         &self,
+        credentials: &Credentials,
         id: &str,
         cron: &str,
         timezone: &str,
@@ -190,10 +197,10 @@ impl QStash {
             .client
             .post(format!(
                 "{}{SCHEDULES_PATH}{}",
-                self.api_base, self.destination
+                credentials.api_base, self.destination
             ))
             .timeout(retry::ATTEMPT_TIMEOUT)
-            .bearer_auth(self.token.expose())
+            .bearer_auth(credentials.token.expose())
             .header(HEADER_SCHEDULE_ID, id)
             .header(HEADER_CRON, cron)
             .header(HEADER_TIMEZONE, timezone)
@@ -225,22 +232,27 @@ impl QStash {
     /// # Errors
     /// As [`Self::upsert`].
     pub async fn remove(&self, provider_schedule_id: &str, attempts: Attempts) -> Result<()> {
+        let credentials = self.credentials().await?;
         retry::send(attempts, provider_schedule_id, || {
-            self.remove_once(provider_schedule_id)
+            self.remove_once(&credentials, provider_schedule_id)
         })
         .await
     }
 
     /// One removal of the schedule filed under `provider_schedule_id`.
-    async fn remove_once(&self, provider_schedule_id: &str) -> Result<()> {
+    async fn remove_once(
+        &self,
+        credentials: &Credentials,
+        provider_schedule_id: &str,
+    ) -> Result<()> {
         let answer = self
             .client
             .delete(format!(
                 "{}{SCHEDULES_PATH}{provider_schedule_id}",
-                self.api_base
+                credentials.api_base
             ))
             .timeout(retry::ATTEMPT_TIMEOUT)
-            .bearer_auth(self.token.expose())
+            .bearer_auth(credentials.token.expose())
             .send()
             .await?;
 
@@ -249,6 +261,32 @@ impl QStash {
             return Ok(());
         }
         Err(error::upstream_refused(status.as_u16()))
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::scheduler::Scheduler for QStash {
+    async fn upsert(
+        &self,
+        schedule: &Uuid7,
+        cron: &str,
+        timezone: &str,
+        message: &str,
+        attempts: Attempts,
+    ) -> Result<Registered> {
+        Self::upsert(self, schedule, cron, timezone, message, attempts).await
+    }
+
+    async fn remove(&self, provider_schedule_id: &str, attempts: Attempts) -> Result<()> {
+        Self::remove(self, provider_schedule_id, attempts).await
+    }
+
+    /// Checked against the keys the `qstash` bag holds now, and this
+    /// deployment's destination as the token's subject.
+    async fn verify(&self, signature: &str, body: &[u8]) -> Result<VerifiedFire> {
+        crate::verifier::bounded(signature)?;
+        let credentials = self.credentials().await?;
+        crate::verifier::verify_at(&credentials.keys, &self.destination, signature, body)
     }
 }
 
@@ -277,7 +315,9 @@ fn confirmed(sent: String, body: &str) -> Result<Registered> {
     Ok(Registered { schedule_id: sent })
 }
 
+mod destination;
 mod retry;
+mod source;
 
 /// The retry schedule's floor, bound for the retry suite so the least wait it
 /// asserts follows the schedule instead of a copied number.
@@ -289,39 +329,3 @@ pub mod retry_schedule {
 
 #[cfg(test)]
 mod tests;
-
-#[cfg(test)]
-mod accessor_tests {
-    use super::QStash;
-
-    /// The two hosts a fire travels between, kept apart.
-    ///
-    /// `api_base` is where this daemon POSTS a schedule, and `destination` is
-    /// where the vendor later CALLS BACK. They are different hosts serving
-    /// different directions, and the accessors exist so a caller cannot reach
-    /// past them into the struct and take whichever field it happened to
-    /// remember. Swapping the two registers every schedule to fire at the
-    /// scheduler's own API — a loop that looks configured and delivers nothing.
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "the client is only stored for the accessors to read past, never sent"
-    )]
-    fn the_scheduler_host_and_the_callback_host_are_not_the_same_value() {
-        let config = QStash::new(
-            reqwest::Client::new(),
-            af_crypto::secret::SecretString::new("token-fixture".to_owned()),
-            "https://daemon.example.test/v1/fires".to_owned(),
-            "https://qstash.example.test".to_owned(),
-        );
-
-        assert_eq!(config.api_base(), "https://qstash.example.test");
-        assert_eq!(config.destination(), "https://daemon.example.test/v1/fires");
-        assert_ne!(
-            config.api_base(),
-            config.destination(),
-            "the host a schedule is registered AT and the host it fires BACK to \
-             are opposite ends of the round trip"
-        );
-    }
-}

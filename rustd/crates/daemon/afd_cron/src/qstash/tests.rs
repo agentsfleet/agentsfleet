@@ -5,7 +5,7 @@
     reason = "test target: an answer the case expects to be read should fail the test loudly"
 )]
 
-use super::confirmed;
+use super::{QStash, confirmed};
 use crate::error::detail::UPSTREAM_UNAVAILABLE;
 
 /// The id a push sent, as `upstream_id` writes one.
@@ -59,4 +59,34 @@ fn the_waits_between_three_attempts_add_up_to_at_most_one_point_two_seconds() {
     // 400ms, and the second, doubled to the 800ms cap, to 800ms. The budget
     // assertion beside the schedule adds this to the attempts' timeouts.
     assert_eq!(super::retry::longest_waits(), 1_200);
+}
+
+/// The two hosts a fire travels between, kept apart.
+///
+/// `api_base` is where this daemon POSTS a schedule, and `destination` is
+/// where the vendor later CALLS BACK. Swapping the two registers every
+/// schedule to fire at the scheduler's own API — a loop that looks configured
+/// and delivers nothing.
+#[tokio::test]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the client is only stored for the accessors to read past, never sent"
+)]
+async fn the_scheduler_host_and_the_callback_host_are_not_the_same_value() {
+    let config = QStash::fixed(
+        reqwest::Client::new(),
+        af_crypto::secret::SecretString::new("token-fixture".to_owned()),
+        "https://daemon.example.test/v1/fires".to_owned(),
+        "https://qstash.example.test".to_owned(),
+    );
+    let credentials = config.credentials().await.expect("fixed credentials read");
+
+    assert_eq!(credentials.api_base, "https://qstash.example.test");
+    assert_eq!(config.destination(), "https://daemon.example.test/v1/fires");
+    assert_ne!(
+        credentials.api_base,
+        config.destination(),
+        "the host a schedule is registered AT and the host it fires BACK to \
+         are opposite ends of the round trip"
+    );
 }

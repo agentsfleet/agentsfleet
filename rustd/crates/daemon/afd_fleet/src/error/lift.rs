@@ -49,3 +49,12 @@ af_core::error_lifts!(Error, ErrorKind:
     af_crypto::error::Error => Entropy,
     af_secrets::Error => Scrub,
 );
+
+/// A vault failure reaches this crate through the credential plane, which
+/// decided what a caller is told about it, so one conversion serves every read
+/// of the vault here.
+impl From<afd_vault::Error> for Error {
+    fn from(source: afd_vault::Error) -> Self {
+        Self::from(afd_credential::Error::from(source))
+    }
+}

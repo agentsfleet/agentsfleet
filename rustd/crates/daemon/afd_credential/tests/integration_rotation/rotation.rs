@@ -3,7 +3,8 @@
 
 use af_core::error_code;
 use afd_credential::credential::platform::Platform;
-use afd_credential::vault::rotate::Rotated;
+use afd_credential::secrets::{Rotated, rotate_refresh_token};
+use afd_vault::SecretName;
 use serde_json::Value;
 
 use super::{Fixture, KEY_NAME};
@@ -12,7 +13,10 @@ use super::{Fixture, KEY_NAME};
 async fn stored_handle(fixture: &Fixture, name: &str) -> Value {
     let opened = fixture
         .vault
-        .open(fixture.key(name))
+        .load(
+            &fixture.workspace,
+            &SecretName::parse(name).expect("a valid name"),
+        )
         .await
         .expect("the envelope opens")
         .expect("the row exists");
@@ -26,12 +30,18 @@ async fn refresh_rotation_persists_only_the_handle_that_was_redeemed() {
     fixture
         .seed(KEY_NAME, br#"{"refresh_token":"old","account":"kept"}"#)
         .await;
-    let key = fixture.key(KEY_NAME);
+    let rotate = |name: &'static str, posted: &'static str, replacement: &'static str| {
+        rotate_refresh_token(
+            &fixture.vault,
+            &fixture.workspace,
+            name,
+            posted,
+            replacement,
+        )
+    };
 
     assert_eq!(
-        fixture
-            .vault
-            .rotate_refresh_token(key, "old", "replacement")
+        rotate(KEY_NAME, "old", "replacement")
             .await
             .expect("the matching handle rotates"),
         Rotated::Persisted
@@ -44,26 +54,20 @@ async fn refresh_rotation_persists_only_the_handle_that_was_redeemed() {
     assert_eq!(body.get("account").and_then(Value::as_str), Some("kept"));
 
     assert_eq!(
-        fixture
-            .vault
-            .rotate_refresh_token(key, "old", "must-not-win")
+        rotate(KEY_NAME, "old", "must-not-win")
             .await
             .expect("a stale exchange is a typed outcome"),
         Rotated::SkippedStale
     );
     assert_eq!(
-        fixture
-            .vault
-            .rotate_refresh_token(fixture.key("missing"), "old", "new")
+        rotate("missing", "old", "new")
             .await
             .expect("a deleted handle is a typed outcome"),
         Rotated::SkippedStale
     );
 
     fixture.seed("malformed", b"[]").await;
-    let invalid = fixture
-        .vault
-        .rotate_refresh_token(fixture.key("malformed"), "old", "new")
+    let invalid = rotate("malformed", "old", "new")
         .await
         .expect_err("a stored handle must be a JSON object");
     assert_eq!(invalid.code(), error_code::VAULT_DATA_INVALID);

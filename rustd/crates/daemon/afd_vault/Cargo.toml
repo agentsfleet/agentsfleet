@@ -33,6 +33,8 @@ af_core = { workspace = true, features = ["sqlx"] }
 af_crypto.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
+# A bag's `Stored` schema is a serde struct — see `bag`.
+serde.workspace = true
 # The stored plaintext is a JSON OBJECT by contract, and the projection is read
 # out of the same parse the ciphertext is produced from.
 serde_json.workspace = true
@@ -55,10 +57,13 @@ url.workspace = true
 test-util = ["af_core/test-util", "afd_db/test-util"]
 
 [dev-dependencies]
+# `Capture`, which reads back the records the fault logger writes.
+af_core = { workspace = true, features = ["test-util"] }
 # The integration lane drives a real Postgres, so it needs a runtime with
 # threads under it: the delete-versus-create race is worthless single-threaded,
 # because the interleaving the reference lock exists to serialize cannot happen.
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+# `sync` for the barrier that releases the rewrite race together.
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "sync"] }
 
 [[test]]
 name = "vault_suite"

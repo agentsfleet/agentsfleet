@@ -37,6 +37,8 @@ pub(crate) struct StubScheduler {
     release: mpsc::Sender<(u16, String)>,
     /// The `upstash-schedule-id` each request carried, in arrival order.
     schedule_ids: Arc<Mutex<Vec<Option<String>>>>,
+    /// The `authorization` each request carried, in arrival order.
+    authorizations: Arc<Mutex<Vec<Option<String>>>>,
 }
 
 /// The status [`StubScheduler::answer_lost`] queues: read the request, then
@@ -55,6 +57,8 @@ impl StubScheduler {
         let (release, released) = mpsc::channel::<(u16, String)>();
         let schedule_ids = Arc::new(Mutex::new(Vec::new()));
         let seen = Arc::clone(&schedule_ids);
+        let authorizations = Arc::new(Mutex::new(Vec::new()));
+        let bearers = Arc::clone(&authorizations);
         std::thread::spawn(move || {
             for stream in listener.incoming() {
                 let Ok(mut stream) = stream else { return };
@@ -69,6 +73,7 @@ impl StubScheduler {
                 // lose the answer it was owed.
                 let mut length = 0;
                 let mut schedule_id = None;
+                let mut authorization = None;
                 let mut header = String::new();
                 while reader.read_line(&mut header).is_ok_and(|read| read > 2) {
                     if let Some((name, value)) = header.split_once(':') {
@@ -76,11 +81,17 @@ impl StubScheduler {
                             length = value.trim().parse().expect("a numeric content-length");
                         } else if name.eq_ignore_ascii_case("upstash-schedule-id") {
                             schedule_id = Some(value.trim().to_owned());
+                        } else if name.eq_ignore_ascii_case("authorization") {
+                            authorization = Some(value.trim().to_owned());
                         }
                     }
                     header.clear();
                 }
                 seen.lock().expect("the id log").push(schedule_id);
+                bearers
+                    .lock()
+                    .expect("the authorization log")
+                    .push(authorization);
                 let mut body = vec![0; length];
                 if reader.read_exact(&mut body).is_err() {
                     return;
@@ -107,7 +118,13 @@ impl StubScheduler {
             arrived,
             release,
             schedule_ids,
+            authorizations,
         }
+    }
+
+    /// The base URL this scheduler answers on, for a bag's `url` field.
+    pub(crate) fn base(&self) -> &str {
+        &self.base
     }
 
     /// A client for this scheduler, as the boot path builds one.
@@ -144,6 +161,14 @@ impl StubScheduler {
         self.answer_with(LOST, "");
     }
 
+    /// The `authorization` header of every request so far, in order.
+    pub(crate) fn authorizations(&self) -> Vec<Option<String>> {
+        self.authorizations
+            .lock()
+            .expect("the authorization log")
+            .clone()
+    }
+
     /// The `upstash-schedule-id` header of every request so far, in order.
     pub(crate) fn schedule_ids(&self) -> Vec<Option<String>> {
         self.schedule_ids.lock().expect("the id log").clone()
@@ -170,7 +195,7 @@ pub(crate) fn unreachable_client() -> QStash {
     reason = "the stub listens on loopback; no environment proxy is in play"
 )]
 pub(crate) fn client_at(base: String) -> QStash {
-    QStash::new(
+    QStash::fixed(
         reqwest::Client::new(),
         SecretString::new("stub-token".to_owned()),
         DESTINATION.to_owned(),

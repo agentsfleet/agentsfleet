@@ -11,11 +11,11 @@ use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
-use afd_credential::vault::Vault;
 use afd_db::test_util::WalletSeed;
 use afd_fleet::lease::{LeaseService, Leases};
 use afd_gate::gate::Gates;
 use afd_memory::Memories;
+use afd_vault::Vault;
 
 use super::platform;
 use crate::datastores::Datastores;
@@ -150,7 +150,7 @@ pub(in crate::lane::lease) fn plane(stores: &Datastores, kek: &Arc<Kek>) -> Leas
         )),
         memories: Memories::new(database.clone(), Entropy::new()),
         providers: Providers::new(database.clone(), Arc::clone(kek), Entropy::new()),
-        vault: Vault::new(database.clone(), Arc::clone(kek)),
+        vault: Vault::new(database.clone(), Arc::clone(kek), Entropy::new()),
         broker: Arc::new(Broker::new(
             Arc::new(Registry::default()),
             Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),

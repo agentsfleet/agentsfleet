@@ -9,7 +9,6 @@
 use af_core::id::Uuid7;
 use af_crypto::secret::{Kek, SecretBytes};
 use afd_connector::Dashboard;
-use afd_cron::SigningKeys;
 use afd_db::PoolConfig;
 use afd_identity::ProviderSecret;
 
@@ -47,11 +46,8 @@ pub struct BootConfig {
     pub(super) platform_admin_workspace: Option<Uuid7>,
     pub(super) checkpoint_storage:
         Option<garde::Valid<afd_fleet::task::storage::CheckpointStorageConfig>>,
-    pub(super) qstash_token: Option<af_crypto::secret::SecretString>,
-    pub(super) qstash_url: Option<Box<str>>,
     pub(super) slack_api_url: Option<Box<str>>,
     pub(super) identity_webhook_secret: Option<af_crypto::secret::SecretString>,
-    pub(super) qstash_keys: Option<SigningKeys>,
     pub(super) sse_max_streams: usize,
     pub(super) runner_wake: afd_bus::wake::Wake,
     pub(super) frame_memory: af_stream::MemoryLimits,
@@ -248,23 +244,6 @@ impl BootConfig {
         self
     }
 
-    /// This deployment's bearer for the external scheduler, when it has one.
-    #[must_use]
-    pub fn qstash_token(&self) -> Option<&str> {
-        self.qstash_token
-            .as_ref()
-            .map(af_crypto::secret::SecretString::expose)
-    }
-
-    /// Which scheduler deployment the management calls go to.
-    ///
-    /// `None` means this deployment named none and the boot path resolves
-    /// [`afd_cron::qstash::API_BASE`] — see [`super::QSTASH_URL_KNOB`].
-    #[must_use]
-    pub fn qstash_url(&self) -> Option<&str> {
-        self.qstash_url.as_deref()
-    }
-
     /// Which Slack API the outbound posters post to: the knob's, or
     /// `slack.com`'s when this deployment named none — see
     /// [`super::SLACK_API_URL_KNOB`].
@@ -281,13 +260,5 @@ impl BootConfig {
     #[must_use]
     pub fn identity_webhook_secret(&self) -> Option<&af_crypto::secret::SecretString> {
         self.identity_webhook_secret.as_ref()
-    }
-
-    /// The scheduler's signing keys, when this deployment configured them.
-    ///
-    /// `None` refuses every fire — see [`super::QSTASH_CURRENT_KEY_KNOB`].
-    #[must_use]
-    pub const fn qstash_signing_keys(&self) -> Option<&SigningKeys> {
-        self.qstash_keys.as_ref()
     }
 }

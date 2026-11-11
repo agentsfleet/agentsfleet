@@ -35,7 +35,11 @@ pub(super) async fn build(
         .validate()
         .expect("bounded storage configuration"),
         owner.workspace.clone(),
-        afd_credential::vault::Vault::new(database.clone(), std::sync::Arc::clone(&storage_key)),
+        afd_vault::Vault::new(
+            database.clone(),
+            std::sync::Arc::clone(&storage_key),
+            af_crypto::entropy::Entropy::new(),
+        ),
         storage_key,
         afd_identity::direct::direct(std::time::Duration::from_secs(1))
             .build()

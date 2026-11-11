@@ -1,4 +1,7 @@
 //! Scheduler credentials must not escape through diagnostic formatting.
+
+#![cfg(feature = "test-util")]
+
 use afd_cron::{SigningKeys, qstash::QStash};
 
 #[test]
@@ -18,7 +21,7 @@ fn signing_keys_do_not_render_either_rotation_key() {
     reason = "the client is only formatted, never sent"
 )]
 fn scheduler_client_does_not_render_its_bearer() {
-    let client = QStash::new(
+    let client = QStash::fixed(
         reqwest::Client::new(),
         af_crypto::secret::SecretString::new("scheduler-private-value".to_owned()),
         "https://daemon.example.test/fires".to_owned(),

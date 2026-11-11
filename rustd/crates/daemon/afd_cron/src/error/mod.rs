@@ -32,8 +32,9 @@ pub use self::raise::one_of_each_kind;
 
 pub use self::raise::retire_held;
 pub(crate) use self::raise::{
-    body_mismatch, destination_not_plain_origin, destination_unusable, keys_missing, query,
-    row_unreadable, signature_invalid, token_malformed, upstream_refused, upstream_unreadable,
+    bag_unusable, body_mismatch, destination_not_plain_origin, destination_unusable, keys_missing,
+    query, row_unreadable, signature_invalid, token_malformed, upstream_refused,
+    upstream_unreadable,
 };
 
 /// The result every fallible function in this crate returns.
@@ -155,7 +156,9 @@ pub(crate) enum ErrorKind {
     /// This deployment holds no signing key to check a fire against.
     ///
     /// Fail-closed: with no key there is nothing to verify, and accepting the
-    /// fire would let anyone who found the URL wake every fleet on it.
+    /// fire would let anyone who found the URL wake every fleet on it. The bag
+    /// reader already refuses an absent or empty key as an unusable bag, so this
+    /// is defence in depth for a verifier built over blank keys.
     #[error("no signing key is configured to verify a schedule fire")]
     KeysMissing,
 
@@ -183,6 +186,29 @@ pub(crate) enum ErrorKind {
     /// [`crate::qstash::destination_url`].
     #[error("the configured api url carries a query or a fragment")]
     DestinationNotPlainOrigin,
+
+    /// The admin workspace's `qstash` bag is absent, malformed or missing a
+    /// field, so there is no credential to call the scheduler with and no key
+    /// to check a fire against.
+    ///
+    /// Not retried: the bag stays as it is until an operator syncs it, and a
+    /// reconcile records the row as failed so `:sync` tries again after.
+    #[error("the scheduler credentials bag is unusable: {fault}")]
+    BagUnusable {
+        /// What is wrong with it, by field name and never by value.
+        fault: afd_vault::bag::BagFault,
+    },
+
+    /// The vault holding the `qstash` bag would not answer.
+    ///
+    /// Retryable when the datastore would not answer or a statement failed in
+    /// flight; an envelope that will not open is a key fault and is not (see
+    /// [`Error::is_retryable`]).
+    #[error("the vault holding the scheduler credentials would not answer")]
+    BagUnreadable {
+        #[source]
+        source: afd_vault::Error,
+    },
 }
 
 /// [`Error::refusal_word`] for a deployment holding no signing key.
@@ -193,6 +219,8 @@ const REASON_TOKEN_MALFORMED: &str = "token_malformed";
 const REASON_SIGNATURE_INVALID: &str = "signature_invalid";
 /// [`Error::refusal_word`] for a genuine token over different bytes.
 const REASON_BODY_MISMATCH: &str = "body_mismatch";
+/// [`Error::refusal_word`] for a deployment whose `qstash` bag is unusable.
+const REASON_BAG_UNUSABLE: &str = "scheduler_bag_unusable";
 /// [`Error::refusal_word`] for every kind that is not a refused fire.
 const REASON_OPERATIONAL: &str = "operational_fault";
 
@@ -207,16 +235,20 @@ impl Error {
     /// retryable for the same reason a vendor that would not answer is.
     #[must_use]
     pub const fn is_retryable(&self) -> bool {
-        matches!(
-            self.kind(),
-            ErrorKind::UpstreamUnreachable { .. } | ErrorKind::Datastore { .. }
-        )
+        match self.kind() {
+            ErrorKind::UpstreamUnreachable { .. } | ErrorKind::Datastore { .. } => true,
+            // An outage heals on its own, and so does a statement that failed in
+            // flight. An envelope that will not open under this key does not,
+            // and waiting on it would retry a config fault.
+            ErrorKind::BagUnreadable { source } => source.is_retryable(),
+            _otherwise => false,
+        }
     }
 
     /// The stable word an operator greps for when a schedule stops firing.
     ///
     /// One word per reason a fire was not believed, because each means a
-    /// different repair: a missing key is a deployment to configure, and a body
+    /// different repair: an unusable bag is a deployment to configure, and a body
     /// mismatch is somebody replaying a captured token. A word rather than a
     /// `Debug` rendering, so a rename that meant nothing to the operator does
     /// not change what they search for. Every other kind is this daemon
@@ -233,6 +265,7 @@ impl Error {
             ErrorKind::TokenMalformed => REASON_TOKEN_MALFORMED,
             ErrorKind::SignatureInvalid => REASON_SIGNATURE_INVALID,
             ErrorKind::BodyMismatch => REASON_BODY_MISMATCH,
+            ErrorKind::BagUnusable { .. } => REASON_BAG_UNUSABLE,
             ErrorKind::Patch
             | ErrorKind::Precondition
             | ErrorKind::Stale { .. }
@@ -251,7 +284,18 @@ impl Error {
             | ErrorKind::RowUnreadable { .. }
             | ErrorKind::RetireHeld
             | ErrorKind::DestinationUnusable
-            | ErrorKind::DestinationNotPlainOrigin => REASON_OPERATIONAL,
+            | ErrorKind::DestinationNotPlainOrigin
+            | ErrorKind::BagUnreadable { .. } => REASON_OPERATIONAL,
+        }
+    }
+
+    /// The fault in the `qstash` bag, when that is what failed.
+    #[must_use]
+    pub const fn bag_fault(&self) -> Option<afd_vault::bag::BagFault> {
+        if let ErrorKind::BagUnusable { fault } = self.kind() {
+            Some(*fault)
+        } else {
+            None
         }
     }
 
