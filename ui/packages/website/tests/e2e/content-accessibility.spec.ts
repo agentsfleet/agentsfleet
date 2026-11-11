@@ -7,7 +7,16 @@ for (const width of [320, 375, 768, 1440]) {
   test(`conversation and evidence work with keyboard at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/#how-it-works");
+    // A direct fragment URL starts tab order at that fragment. Check the
+    // homepage's skip link before entering the example through its real link.
+    await page.goto("/");
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.locator("main")).toBeFocused();
+    const example = page.getByRole("link", { name: /Investigate an incident.*Explore example run/ });
+    await example.focus();
+    await page.keyboard.press("Enter");
     await expect(page.getByRole("textbox")).toHaveCount(0);
     if (width < 768) {
       const titleWidth = await page.locator(".workbench-bar h2").evaluate(element => element.getBoundingClientRect().width);
@@ -17,10 +26,6 @@ for (const width of [320, 375, 768, 1440]) {
       });
       expect(titleWidth).toBeCloseTo(rowWidth);
     }
-    await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
-    await page.keyboard.press("Enter");
-    await expect(page.locator("main")).toBeFocused();
     const evidence = page.getByRole("button", { name: "E2 · GitHub" });
     await evidence.focus(); await page.keyboard.press("Enter");
     await expect(page.getByRole("region", { name: "Sample evidence" })).toContainText(BROWSER_TIMEOUT_DEFAULT);

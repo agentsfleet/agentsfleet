@@ -84,6 +84,8 @@ describe("app shell frame", () => {
     ) as HTMLElement;
     const brand = container.querySelector('[aria-label="agentsfleet home"]') as HTMLElement;
 
+    act(() => shellSidebarState.setCollapsed(false));
+
     // Expanded: the cluster IS the column, brand on the nav items' leading
     // edge and toggle on their trailing edge.
     expect(cluster.className).toContain(SIDEBAR_COLUMN.header.expanded);
@@ -91,7 +93,7 @@ describe("app shell frame", () => {
     expect(cluster.className).toContain("md:px-5");
     expect(brand.className).not.toContain("md:hidden");
 
-    // Collapsed: a 64px rail holds one control. The wordmark stands down from
+    // Collapsed: a 72px rail holds one control. The wordmark stands down from
     // `md` up only — the mobile header has no rail and keeps its brand.
     act(() => shellSidebarState.setCollapsed(true));
     expect(cluster.className).toContain(SIDEBAR_COLUMN.header.collapsed);

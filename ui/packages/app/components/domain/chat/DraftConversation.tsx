@@ -8,7 +8,6 @@ import { useMemo, useState, useCallback } from "react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import Link from "next/link";
 import nextDynamic from "next/dynamic";
-import { useChatSummary } from "./ChatSummary";
 import { FleetConversationLayout } from "../FleetWorkSidebar";
 import { BrandMark, Button, PageTitle } from "@agentsfleet/design-system";
 import { MESSAGE_ROLE, MESSAGE_STATE } from "@/lib/api/draft-types";
@@ -61,8 +60,6 @@ export function DraftConversation({client, view, workspace, children, unfinished
   );
 }
 function SetupConversationLayout({view, children}: {view: DraftView; children: ReactNode}) {
-  const summary = useChatSummary();
-  if (!summary) return children;
   return <FleetConversationLayout work={<SetupSummary definition={view.draft?.candidate?.definition ?? view.preview?.definition ?? view.fleet?.definition} requirements={view.draft?.review?.requirements} />}>
     {children}
   </FleetConversationLayout>;

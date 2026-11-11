@@ -13,7 +13,7 @@ import {
   Section,
   Time,
 } from "@agentsfleet/design-system";
-import { BrainIcon } from "lucide-react";
+import { BrainIcon } from "@phosphor-icons/react/ssr";
 import { byInstant } from "@/lib/api/decode";
 import type { MemoryEntry } from "@/lib/types";
 import { forgetMemoryAction } from "../../actions";

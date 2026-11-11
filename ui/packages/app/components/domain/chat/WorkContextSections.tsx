@@ -3,7 +3,7 @@ import type { FleetSources } from "@/lib/fleet-sources";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import type { TaskDetails } from "./use-task-details";
 import { Section } from "@agentsfleet/design-system";
-import { FilePenLine, FolderGit2, GitPullRequest, ShieldCheck } from "lucide-react";
+import { FileTextIcon, GitBranchIcon, GitPullRequestIcon, ShieldCheckIcon } from "@phosphor-icons/react/ssr";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_NAME } from "../tool-call-shape";
 import { confirmed } from "./use-task-read";
@@ -26,7 +26,7 @@ export function WorkOutputs({details}: {details: TaskDetails}) {
   if (!outputs.length) return null;
   return <WorkSection title="Outputs">
     {<ul className="space-y-sm">{outputs.map(({target, title, stale}) => <li key={target.url}>
-      <a className="flex items-start gap-sm break-words text-eyebrow hover:underline" href={target.url} target="_blank" rel="noopener noreferrer"><GitPullRequest size={12} className="mt-xs shrink-0 text-info" aria-hidden="true" /><span>{title} <span className="text-muted-foreground">#{target.number}</span></span></a>
+      <a className="flex items-start gap-sm break-words text-label leading-label hover:underline" href={target.url} target="_blank" rel="noopener noreferrer"><GitPullRequestIcon size={16} className="mt-xs shrink-0 text-info" aria-hidden="true" /><span>{title} <span className="text-muted-foreground">#{target.number}</span></span></a>
       <p className="text-eyebrow text-muted-foreground">{target.repository}{stale ? " · last confirmed" : ""}</p>
     </li>)}</ul>}
   </WorkSection>;
@@ -50,7 +50,7 @@ export function WorkChanges({events}: {events: readonly FleetEvent[]}) {
   if (!changes.length) return null;
   return <WorkSection title="Changes">
     {<details><summary className="cursor-pointer text-eyebrow">{changes.length} recorded {changes.length === 1 ? "file" : "files"}</summary>
-      <ul className="mt-sm space-y-sm">{changes.map(change => <li key={change.path} className="break-all text-eyebrow"><span className="flex items-start gap-sm"><FilePenLine size={12} className={`mt-xs shrink-0 ${change.running ? "text-info" : "text-success"}`} aria-hidden="true" />{change.path}</span><span className="block text-muted-foreground">{change.running ? "Write in progress" : "Local write recorded"}</span></li>)}</ul>
+      <ul className="mt-sm space-y-sm">{changes.map(change => <li key={change.path} className="break-all text-eyebrow"><span className="flex items-start gap-sm"><FileTextIcon size={16} className={`mt-xs shrink-0 ${change.running ? "text-info" : "text-success"}`} aria-hidden="true" />{change.path}</span><span className="block text-muted-foreground">{change.running ? "Write in progress" : "Local write recorded"}</span></li>)}</ul>
     </details>}
   </WorkSection>;
 }
@@ -58,9 +58,9 @@ export function WorkChanges({events}: {events: readonly FleetEvent[]}) {
 export function WorkSources({sources}: {sources?: FleetSources}) {
   return <WorkSection title="Sources">
     {sources?.repositories.length ? <>
-      <ul className="space-y-sm">{sources.repositories.map(repository => <li key={repository} className="break-words text-eyebrow"><a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-sm hover:underline"><FolderGit2 size={12} className="shrink-0 text-evidence" aria-hidden="true" />{repository}</a></li>)}</ul>
+      <ul className="space-y-sm">{sources.repositories.map(repository => <li key={repository} className="break-words text-label leading-label"><a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-sm hover:underline"><GitBranchIcon size={16} className="shrink-0 text-evidence" aria-hidden="true" />{repository}</a></li>)}</ul>
       <details className="text-eyebrow text-muted-foreground"><summary className="cursor-pointer">Repository access</summary>
-        <p className="mt-sm flex items-start gap-xs"><ShieldCheck size={12} className="shrink-0 text-evidence" aria-hidden="true" /><span>Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></p>
+        <p className="mt-sm flex items-start gap-xs"><ShieldCheckIcon size={16} className="shrink-0 text-evidence" aria-hidden="true" /><span>Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></p>
       </details>
     </> : <p className="text-eyebrow text-muted-foreground">No saved repository scope.</p>}
   </WorkSection>;

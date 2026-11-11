@@ -140,7 +140,7 @@ describe("buttonVariants / buttonClassName", () => {
   it("buttonClassName returns the full class string for a variant", () => {
     const cls = buttonClassName("default");
     expect(cls).toContain("text-cta-foreground");
-    expect(cls).toContain("rounded-md");
+    expect(cls).toContain("rounded-control");
     expect(cls).toContain("inline-flex");
     expect(cls).toContain("font-sans");
   });

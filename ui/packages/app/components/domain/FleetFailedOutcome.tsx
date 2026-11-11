@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { CircleXIcon } from "lucide-react";
+import { XCircleIcon } from "@phosphor-icons/react/ssr";
 import { cn } from "@agentsfleet/design-system";
 
 const FAILED_OUTCOME_CLASS = "flex min-h-6 items-start gap-xs text-label font-medium leading-label text-foreground";
@@ -17,7 +17,7 @@ export function FleetFailedOutcome({ children, className }: { children: ReactNod
   return (
     <p className={cn(FAILED_OUTCOME_CLASS, className)} data-failed-outcome="true">
       <span className="flex size-4 shrink-0 items-center justify-center">
-        <CircleXIcon size={12} className="text-destructive" aria-hidden="true" />
+        <XCircleIcon size={12} className="text-destructive" aria-hidden="true" />
       </span>
       <span>{children}</span>
     </p>

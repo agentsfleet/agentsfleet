@@ -1,5 +1,5 @@
 import { CopyButton, IconAction, Time } from "@agentsfleet/design-system";
-import { KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { KeyIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import type { Secret } from "@/lib/api/secrets";
 
 type SecretActionProps = {
@@ -15,7 +15,7 @@ export function SecretActions({ secret, pending, protectedFromDelete, onEdit, on
   return (
     <div className="flex justify-end gap-1">
       <IconAction type="button" variant="ghost" onClick={() => onEdit(secret.name)} disabled={pending} label={`Edit secret ${secret.name}`}>
-        <PencilIcon size={14} />
+        <PencilSimpleIcon size={14} />
       </IconAction>
       <IconAction
         type="button"
@@ -25,7 +25,7 @@ export function SecretActions({ secret, pending, protectedFromDelete, onEdit, on
         label={protectedFromDelete ? `Secret ${secret.name} is in model setup` : `Delete secret ${secret.name}`}
         title={protectedFromDelete ? "Switch model setup to platform defaults or another secret before deleting this one." : undefined}
       >
-        <Trash2Icon size={14} />
+        <TrashIcon size={14} />
       </IconAction>
     </div>
   );
@@ -45,7 +45,7 @@ export function SecretNameCell({ secret }: {secret: Secret}) {
           way and the name takes what the row has left, or the row would push
           its actions behind a horizontal scroll. */}
       <div className="flex min-w-0 items-center gap-1">
-        <KeyRoundIcon size={14} className="shrink-0 text-evidence" aria-hidden="true" />
+        <KeyIcon size={14} className="shrink-0 text-evidence" aria-hidden="true" />
         <span className="block min-w-0 truncate font-mono text-mono leading-mono sm:min-w-trim sm:max-w-trim" title={secret.name}>
           {secret.name}
         </span>

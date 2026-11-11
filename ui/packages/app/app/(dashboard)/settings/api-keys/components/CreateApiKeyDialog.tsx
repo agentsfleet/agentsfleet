@@ -25,7 +25,7 @@ import {
   Spinner,
   TooltipButton,
 } from "@agentsfleet/design-system";
-import { InfoIcon, PlusIcon } from "lucide-react";
+import { InfoIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import { type CreatedApiKey } from "@/lib/api/api_keys";
 import { KEY_NAME_REGEX, DESCRIPTION_MAX } from "@/lib/api/api-keys-types";
 import { presentErrorString } from "@/lib/errors";

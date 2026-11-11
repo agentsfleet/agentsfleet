@@ -11,7 +11,7 @@ import {
   TooltipButton,
   cn,
 } from "@agentsfleet/design-system";
-import { BanIcon, SendIcon, UserMinusIcon } from "lucide-react";
+import { ProhibitIcon, PaperPlaneTiltIcon, UserMinusIcon } from "@phosphor-icons/react/ssr";
 import type { InviteSummary } from "@/lib/api/invites";
 import { EMAIL_STATUS, type EmailStatus } from "@/lib/api/invites-types";
 import type { MemberSummary } from "@/lib/api/tenant-members";
@@ -148,7 +148,7 @@ function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers &
           onClick={() => onResend(invite)}
           label={`Send the invite email to ${invite.email} again`}
         >
-          <SendIcon size={14} />
+          <PaperPlaneTiltIcon size={14} />
         </IconAction>
       )}
       <CopyButton value={invite.link} label={`Copy invite link for ${invite.email}`} />
@@ -159,7 +159,7 @@ function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers &
         onClick={() => onRevoke(invite)}
         label={`Revoke invite for ${invite.email}`}
       >
-        <BanIcon size={14} />
+        <ProhibitIcon size={14} />
       </IconAction>
     </div>
   );

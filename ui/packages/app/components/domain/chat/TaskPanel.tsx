@@ -6,7 +6,7 @@ import type { TaskResource } from "./use-task-read";
 import type { TaskDetails } from "./use-task-details";
 import type { FleetTaskProps } from "./FleetTaskProvider";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Section } from "@agentsfleet/design-system";
-import { CircleDot, Clock3, TriangleAlert } from "lucide-react";
+import { DotOutlineIcon, ClockIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { taskActivityLabel } from "@/lib/task-activity";
 import { TaskDetailView } from "./TaskDetail";
 import { confirmed } from "./use-task-read";
@@ -77,7 +77,7 @@ function TaskAction({task, details, events}: Pick<RowsProps, "details" | "events
 }
 
 function TaskIcon({task}: {task: TaskSummary}) {
-  if (task.status === "running") return <CircleDot size={14} className="shrink-0 text-info" aria-label="In progress" />;
-  if (task.status === "blocked" || task.status === "exhausted") return <TriangleAlert size={14} className="shrink-0 text-warning" aria-label="Needs attention" />;
-  return <Clock3 size={14} className={`shrink-0 ${task.status === "waiting" || task.status === "paused" ? "text-warning" : "text-muted-foreground"}`} aria-label={task.status === "waiting" ? "Waiting" : task.status === "paused" ? "Paused" : "Queued"} />;
+  if (task.status === "running") return <DotOutlineIcon size={14} className="shrink-0 text-info" aria-label="In progress" />;
+  if (task.status === "blocked" || task.status === "exhausted") return <WarningIcon size={14} className="shrink-0 text-warning" aria-label="Needs attention" />;
+  return <ClockIcon size={14} className={`shrink-0 ${task.status === "waiting" || task.status === "paused" ? "text-warning" : "text-muted-foreground"}`} aria-label={task.status === "waiting" ? "Waiting" : task.status === "paused" ? "Paused" : "Queued"} />;
 }

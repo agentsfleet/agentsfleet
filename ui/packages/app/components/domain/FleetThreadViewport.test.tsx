@@ -116,12 +116,11 @@ describe("FleetThreadViewport layout", () => {
   });
 });
 
- it("keeps work outside the composer and opens mobile context without modifying its text", () => {
+ it("keeps work outside the composer and shows inline Summary without modifying its text", () => {
   const view = render(<View work={<p>Saved PR evidence</p>} />);
   const composer = view.getByRole("textbox", {name: "Message your fleet…"});
   fireEvent.change(composer, {target: {value: "Keep session expiry unchanged"}});
   expect(view.getByTestId("fleet-chat-footer").textContent).not.toContain("Saved PR evidence");
-  fireEvent.click(view.getByRole("button", {name: "Work context"}));
-  expect(view.getByRole("dialog").textContent).toContain("Saved PR evidence");
+  expect(view.getByRole("complementary", {name: "Summary"}).textContent).toContain("Saved PR evidence");
   expect(composer).toHaveProperty("value", "Keep session expiry unchanged");
  });

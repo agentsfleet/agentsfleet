@@ -15,7 +15,7 @@ export function Input({ className, type, ref, ...props }: InputProps) {
       ref={ref}
       type={type}
       className={cn(
-        "flex h-9 w-full rounded-md border border-border-strong bg-secondary pointer-coarse:min-h-11",
+        "flex h-9 w-full rounded-control border border-border-strong bg-secondary pointer-coarse:min-h-11",
         "px-md py-sm text-body-sm text-foreground font-sans",
         "placeholder:text-muted-foreground",
         "enabled:hover:border-ring",

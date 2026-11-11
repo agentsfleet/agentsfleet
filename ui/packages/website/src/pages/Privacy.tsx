@@ -3,7 +3,7 @@ import { SUPPORT_EMAIL } from "../lib/contact";
 
 /*
  * Privacy — single-column long-form prose. Per DESIGN_SYSTEM.md §Layout
- * docs: ~68ch measure, Instrument Sans section headings and body.
+ * docs: ~68ch measure, Manrope section headings and body.
  */
 export default function Privacy() {
   return (

@@ -32,7 +32,7 @@ for (const scenario of CASES) {
       expect(inputStyle.fontSize).toBe(SIZES.input);
       expect(modelStyle.fontSize).toBe(SIZES.model);
       expect(hintStyle.fontSize).toBe(SIZES.hint);
-      expect(inputStyle.fontFamily).toContain("Instrument Sans");
+      expect(inputStyle.fontFamily).toContain("Manrope");
       await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(1);
       await setupInput.fill("Keep my unsent setup edit");
       await (await setupAction(page, CHAT_COPY.editSetup)).click();

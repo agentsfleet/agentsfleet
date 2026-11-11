@@ -237,7 +237,6 @@ it("loads setup inspection when the summary is opened while preserving the draft
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT.id} />);
   const input = await screen.findByRole("textbox", {name: CHAT_PLACEHOLDER});
   fireEvent.change(input, {target: {value: "Preserve this unsent setup request"}});
-  fireEvent.click(screen.getByRole("button", {name: "Toggle fleet summary"}));
   expect(await screen.findByRole("region", {name: "Fleet purpose"})).toBeTruthy();
   expect(screen.getByRole("textbox", {name: CHAT_PLACEHOLDER, hidden: true})).toHaveProperty("value", "Preserve this unsent setup request");
 });

@@ -1,7 +1,7 @@
 import { test } from "./fixtures/chat-probe";
 import { expect } from "@playwright/test";
 
-test("fleet header opens the summary directly and model stays beside Send", async ({page, chatProbe}, info) => {
+test("fleet Summary is always inline and model stays beside Send", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?alignment=1`);
   await expect(page.getByRole("link", {name: "Back to your fleets", exact: true})).toHaveCount(0);
   if (info.project.name !== "mobile-chromium") {
@@ -24,13 +24,12 @@ test("fleet header opens the summary directly and model stays beside Send", asyn
   await expect(edit).toHaveText("");
   await expect(edit).toHaveAttribute("href", /fleets\/new\?fleet=/);
   await page.screenshot({path: info.outputPath("fleet-conversation.png")});
-  await page.getByRole("button", {name: "Toggle fleet summary"}).click();
   await expect(page.getByRole("button", {name: /Validate the Linkwarden repair/})).toBeVisible();
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
   await expect(page.getByRole("heading", {name: "Durable tasks"})).toBeVisible();
+  await expect(page.getByRole("complementary", {name: "Summary"})).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.screenshot({path: info.outputPath("fleet-summary.png")});
-  if (info.project.name === "mobile-chromium") await page.getByRole("button", {name: "Close", exact: true}).click();
-  else await page.getByRole("button", {name: "Toggle fleet summary"}).click();
   await expect(input).toHaveValue("Keep my exact unsent instruction");
 });
 
@@ -44,10 +43,7 @@ test("saved setup has the same composer placement, pencil, summary and return ro
   const input = page.getByRole("textbox");
   await input.fill("Preserve the existing regression assertions");
   await page.screenshot({path: info.outputPath("fleet-setup.png")});
-  await page.getByRole("button", {name: "Toggle fleet summary"}).click();
   await expect(page.getByRole("region", {name: "Fleet purpose"})).toBeVisible();
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
-  if (info.project.name === "mobile-chromium") await page.getByRole("button", {name: "Close", exact: true}).click();
-  else await page.getByRole("button", {name: "Toggle fleet summary"}).click();
   await expect(input).toHaveValue("Preserve the existing regression assertions");
 });

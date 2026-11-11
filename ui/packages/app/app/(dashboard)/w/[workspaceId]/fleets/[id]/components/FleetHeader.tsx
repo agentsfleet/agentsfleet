@@ -6,7 +6,6 @@ import ExhaustionBadge from "@/components/domain/ExhaustionBadge";
 import FleetConfig from "./FleetConfig";
 import KillSwitch from "./KillSwitch";
 import { EditSetupButton } from "@/components/domain/chat/FleetSetupWorkspace";
-import { ChatSummaryToggle } from "@/components/domain/chat/ChatSummary";
 import { MemoryMenu } from "./MemoryMenu";
 
 export function FleetHeader({
@@ -34,8 +33,7 @@ export function FleetHeader({
           <ExhaustionBadge exhaustedAt={exhaustedAt} />
         ) : null}
         <EditSetupButton workspace={workspaceId} fleet={fleet.id} revision={fleet.setup_revision} />
-        <ChatSummaryToggle />
-        {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
+          {fleet.status === AGENTSFLEET_STATUS.INSTALLING || fleet.status === AGENTSFLEET_STATUS.ACTIVE ? null : fleet.status === AGENTSFLEET_STATUS.KILLED ? (
           <FleetConfig
             workspaceId={workspaceId}
             fleetId={fleet.id}

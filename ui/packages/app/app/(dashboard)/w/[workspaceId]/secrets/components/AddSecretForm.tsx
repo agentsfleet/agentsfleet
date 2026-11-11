@@ -19,7 +19,7 @@ import {
   Spinner,
   TooltipButton,
 } from "@agentsfleet/design-system";
-import { XIcon } from "lucide-react";
+import { XIcon } from "@phosphor-icons/react/ssr";
 import { createSecretAction, replaceSecretAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import { SECRET_NAME_MAX } from "../lib/secret-data";

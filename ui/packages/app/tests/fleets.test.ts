@@ -12,7 +12,7 @@ vi.mock("@clerk/nextjs/server", async () => (await import("./helpers/dashboard-m
 vi.mock("@clerk/nextjs", async () => (await import("./helpers/dashboard-mocks")).clerkMock());
 vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
 vi.mock("@/lib/workspace", async () => (await import("./helpers/dashboard-mocks")).workspaceMock());
-vi.mock("lucide-react", async () => (await import("./helpers/dashboard-mocks")).lucideMock());
+vi.mock("@phosphor-icons/react/ssr", async () => (await import("./helpers/dashboard-mocks")).phosphorMock());
 vi.mock("@agentsfleet/design-system", async (orig) => {
   const h = await import("./helpers/dashboard-mocks");
   return { ...h.designSystemCore(await orig<Record<string, unknown>>()), ...h.designSystemTabs() };

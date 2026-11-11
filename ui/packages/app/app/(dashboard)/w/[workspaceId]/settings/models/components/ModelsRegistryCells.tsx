@@ -6,7 +6,7 @@ import {
   CopyButton,
   IconAction,
 } from "@agentsfleet/design-system";
-import { ArrowLeftRightIcon, CircleCheckIcon, EyeIcon, KeyRoundIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { ArrowsLeftRightIcon, CheckCircleIcon, EyeIcon, KeyIcon, PencilSimpleIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import { OLLAMA_PROVIDER, type LibraryModel } from "@/lib/api/model-library-types";
 import {
   EMPTY_VALUE,
@@ -143,10 +143,10 @@ export function RatesCell({
 }
 
 export function StatusCell({ row, isDefaultLive }: { row: RegistryRow; isDefaultLive: boolean }) {
-  if (row.kind === "default") return isDefaultLive ? <Badge variant="green"><CircleCheckIcon size={12} aria-hidden="true" />Active</Badge> : null;
+  if (row.kind === "default") return isDefaultLive ? <Badge variant="green"><CheckCircleIcon size={12} aria-hidden="true" />Active</Badge> : null;
   const { entry } = row;
-  if (entry.active) return <Badge variant="green"><CircleCheckIcon size={12} aria-hidden="true" />Active</Badge>;
-  if (!entry.has_key) return <Badge variant="default"><KeyRoundIcon size={12} aria-hidden="true" />no key · local</Badge>;
+  if (entry.active) return <Badge variant="green"><CheckCircleIcon size={12} aria-hidden="true" />Active</Badge>;
+  if (!entry.has_key) return <Badge variant="default"><KeyIcon size={12} aria-hidden="true" />no key · local</Badge>;
   return null;
 }
 
@@ -189,7 +189,7 @@ export function ActionsCell({
           onClick={onSwitchDefault}
           aria-label="Use default"
         >
-          <ArrowLeftRightIcon size={14} aria-hidden="true" />Use default
+          <ArrowsLeftRightIcon size={14} aria-hidden="true" />Use default
         </Button>
         {!platformDefaultAvailable ? <span className="text-xs text-muted-foreground">{PLATFORM_UNAVAILABLE_NOTE}</span> : null}
       </div>
@@ -212,7 +212,7 @@ export function ActionsCell({
         onPointerEnter={onEditHoverIntent}
         label={`Edit ${entry.model_id}`}
       >
-        <PencilIcon size={14} />
+        <PencilSimpleIcon size={14} />
       </IconAction>
       <IconAction
         type="button"
@@ -232,7 +232,7 @@ export function ActionsCell({
           onClick={() => onSwitchEntry(entry)}
           aria-label={`Switch to ${entry.model_id}`}
         >
-          <ArrowLeftRightIcon size={14} aria-hidden="true" />Use model
+          <ArrowsLeftRightIcon size={14} aria-hidden="true" />Use model
         </Button>
       ) : null}
       <IconAction
@@ -242,7 +242,7 @@ export function ActionsCell({
         onClick={() => onRemove(entry)}
         label={entry.active ? `Cannot remove ${entry.model_id} while it is active` : `Remove ${entry.model_id}`}
       >
-        <Trash2Icon size={14} />
+        <TrashIcon size={14} />
       </IconAction>
     </div>
   );

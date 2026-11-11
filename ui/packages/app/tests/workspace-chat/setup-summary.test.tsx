@@ -34,7 +34,7 @@ it("treats an omitted triggers list as manual, matching runtime defaults", () =>
 
 it("does not infer manual operation when the saved definition is unavailable", () => {
   render(<SetupSummary />);
-  expect(screen.getByText(/Open the fleet to see its saved instructions/)).toBeTruthy();
+  expect(screen.getByText(/purpose will appear here/)).toBeTruthy();
   expect(screen.getByText(UNKNOWN)).toBeTruthy();
   expect(screen.queryByText(MANUAL)).toBeNull();
 });

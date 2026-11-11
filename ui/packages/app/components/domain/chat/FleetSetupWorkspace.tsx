@@ -3,8 +3,7 @@
 import type { ReactNode } from "react";
 import { createContext, useContext, useMemo } from "react";
 import Link from "next/link";
-import { PencilIcon } from "lucide-react";
-import { ChatSummaryProvider } from "./ChatSummary";
+import { PencilSimpleIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "@agentsfleet/design-system";
 import { useCurrentUser } from "@/lib/auth/client";
 import { FleetStreamProvider } from "../FleetStreamProvider";
@@ -25,7 +24,7 @@ export function FleetSetupWorkspace({account, workspace, fleet, revision, model 
   if (isLoaded && !userId) return null;
   return <FleetStreamProvider key={`${account}:${workspace}:${subject}`}>
     <SetupContext value={{location: {workspace, fleet, revision}, modelOwner, modelState, modelChanging: modelState.saving || modelState.pending}}>
-      <ChatSummaryProvider>{header}{children}</ChatSummaryProvider>
+      {header}{children}
     </SetupContext>
   </FleetStreamProvider>;
 }
@@ -36,9 +35,9 @@ export function EditSetupButton(props: SetupLocation | {inline: true}) {
   const location = inline ? setup?.location : props;
   if (!location) return <>Edit setup</>;
   const query = new URLSearchParams({fleet: location.fleet, setup_revision: location.revision});
-  if (setup?.modelChanging) return <Button variant={inline ? "link" : "outline"} size={inline ? "sm" : "icon"} aria-label="Edit setup" disabled>{inline ? "Edit setup" : <PencilIcon size={16} aria-hidden="true" />}</Button>;
+  if (setup?.modelChanging) return <Button variant={inline ? "link" : "outline"} size={inline ? "sm" : "icon"} aria-label="Edit setup" disabled>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Button>;
   return <Button variant={inline ? "link" : "outline"} size={inline ? "eyebrow" : "icon"} aria-label="Edit setup" title="Edit setup" asChild
     className={inline ? "h-auto px-0 align-baseline text-eyebrow" : undefined}>
-    <Link href={`/w/${location.workspace}/fleets/new?${query}`}>{inline ? "Edit setup" : <PencilIcon size={16} aria-hidden="true" />}</Link>
+    <Link href={`/w/${location.workspace}/fleets/new?${query}`}>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Link>
   </Button>;
 }

@@ -37,7 +37,7 @@ for (const route of AUTH_ROUTES) {
     const strongBorder = await tokenColor(page, "--border-strong");
     await expect(input).toHaveCSS("border-width", "1px");
     await expect(input).toHaveCSS("border-color", strongBorder);
-    await expect(input).toHaveCSS("font-family", /Instrument Sans Variable/);
+    await expect(input).toHaveCSS("font-family", /Manrope Variable/);
     await input.hover();
     await expect(input).toHaveCSS("border-color", pulse);
     await input.focus();

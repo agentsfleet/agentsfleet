@@ -1,0 +1,101 @@
+/* Dashboard theme: import after tokens.css. Values only; theme.css owns utilities.
+ * The website imports the shared defaults without this dashboard profile. */
+:root {
+  color-scheme: dark;
+  --fs-body: 0.8125rem;
+  --fs-body-sm: 0.8125rem;
+  --fs-ui-sm: 0.8125rem;
+  --fs-body-lg: 0.8125rem;
+  --fs-label: 0.8125rem;
+  --fs-eyebrow: 0.75rem;
+  --fs-heading: 1.125rem;
+  --fs-display-md: 1.25rem;
+  --fs-chat-title: 0.8125rem;
+  --fs-conversation: 0.8125rem;
+  --fs-composer: var(--fs-conversation);
+  --lh-body: 1.25rem;
+  --lh-body-sm: 1.25rem;
+  --lh-body-lg: 1.25rem;
+  --lh-label: 1.25rem;
+  --lh-eyebrow: 1rem;
+  --lh-heading: 1.5rem;
+  --lh-display-md: 1.75rem;
+  --lh-conversation: 1.25rem;
+  --lh-composer: var(--lh-conversation);
+  --letter-spacing-display-md: 0;
+  --letter-spacing-label: 0;
+  --letter-spacing-eyebrow: 0;
+  --fw-title: 650;
+  --fw-control: 500;
+
+  --surface-deep: #101114;
+  --bg: #181a1e;
+  --surface-1: #202328;
+  --surface-2: #2b2e35;
+  --surface-3: #2b2e35;
+  --border: #3d424b;
+  --border-strong: #828e9e;
+  --text: #f5f6f8;
+  --text-chat: #f5f6f8;
+  --text-muted: #c2c7d0;
+  --text-subtle: #a3abb7;
+  --text-dim: #a3abb7;
+  --chat-loading-base: #a3abb7;
+  --chat-loading-sweep: #8f98a6;
+  --pulse: #c1f0d6;
+  --pulse-dim: #afe4c7;
+  --pulse-glow: rgb(193 240 214 / 15%);
+  --on-pulse: #153d29;
+  --success: #b6e4c8;
+  --warn: #f3cb87;
+  --error: #ffb3b6;
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 22px;
+  --r-control: 10px;
+  --icon-rail: 20px;
+  --icon-control: 16px;
+  --icon-composer: 18px;
+  --summary-width: 248px;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+  --surface-deep: #e9ebee;
+  --bg: #fafbfc;
+  --surface-1: #f0f2f5;
+  --surface-2: #e3e7ec;
+  --surface-3: #e3e7ec;
+  --border: #bdc5ce;
+  --border-strong: #697586;
+  --text: #20242b;
+  --text-chat: #20242b;
+  --text-muted: #495361;
+  --text-subtle: #5e6876;
+  --text-dim: #5e6876;
+  --chat-loading-base: #5e6876;
+  --chat-loading-sweep: #303a48;
+  --pulse: #24593d;
+  --pulse-dim: #1d4c33;
+  --pulse-glow: rgb(36 89 61 / 15%);
+  --on-pulse: #fff;
+  --success: #286644;
+  --warn: #765017;
+  --error: #a42938;
+  --cta: var(--pulse);
+  --cta-hover: var(--pulse-dim);
+}
+
+@media (max-width: 42.5rem) {
+  :root {
+    --fs-conversation: 1rem;
+    --lh-conversation: 1.625rem;
+    --fs-composer: 1rem;
+    --lh-composer: 1.5rem;
+  }
+}
+
+@media (pointer: coarse) {
+  :root { --fs-composer: 1rem; --lh-composer: 1.5rem; }
+}
+

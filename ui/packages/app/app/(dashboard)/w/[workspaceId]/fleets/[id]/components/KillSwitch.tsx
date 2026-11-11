@@ -3,7 +3,7 @@
 import { useState, useOptimistic, useTransition } from "react";
 import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { EllipsisIcon, PowerOffIcon, CircleStopIcon, PlayIcon } from "lucide-react";
+import { DotsThreeIcon, PowerIcon, StopCircleIcon, PlayIcon } from "@phosphor-icons/react/ssr";
 import { Button, ConfirmDialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@agentsfleet/design-system";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import type { FleetStatusSettable } from "@/lib/api/fleets";
@@ -136,11 +136,11 @@ export default function KillSwitch({ workspaceId, fleet, children }: KillSwitchP
   return (
     <>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-compact" aria-label="Fleet actions"><EllipsisIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button variant="ghost" size="icon-compact" aria-label="Fleet actions"><DotsThreeIcon aria-hidden="true" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-80 max-w-full p-sm">
             {actions.map((action) => <DropdownMenuItem key={action.target} onSelect={() => setPendingAction(action)}
               className={action.target === AGENTSFLEET_STATUS.KILLED ? "text-destructive focus:text-destructive" : undefined}>
-              {action.target === AGENTSFLEET_STATUS.KILLED ? <PowerOffIcon aria-hidden="true" /> : action.target === AGENTSFLEET_STATUS.STOPPED ? <CircleStopIcon aria-hidden="true" /> : <PlayIcon aria-hidden="true" />}
+              {action.target === AGENTSFLEET_STATUS.KILLED ? <PowerIcon aria-hidden="true" /> : action.target === AGENTSFLEET_STATUS.STOPPED ? <StopCircleIcon aria-hidden="true" /> : <PlayIcon aria-hidden="true" />}
               {action.buttonLabel}
             </DropdownMenuItem>)}
             {children}

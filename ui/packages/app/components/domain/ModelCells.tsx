@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Badge, CopyButton, cn } from "@agentsfleet/design-system";
-import { LockIcon } from "lucide-react";
+import { LockIcon } from "@phosphor-icons/react/ssr";
 import { providerLabel } from "@/lib/api/model-library-types";
 import { modelIdCopyLabel, modelLabel } from "@/lib/models/display";
 

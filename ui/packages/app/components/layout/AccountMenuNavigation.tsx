@@ -3,11 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { ArrowLeftIcon, ChevronRightIcon, LogOutIcon, SettingsIcon } from "lucide-react";
+import { ArrowLeftIcon, CaretRightIcon, SignOutIcon, GearIcon } from "@phosphor-icons/react/ssr";
 import { cn, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@agentsfleet/design-system";
 import { AuthSignOutButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
-import { NAV_SURFACE, NAV_ICON_SIZE, NAV_ICON_STROKE_WIDTH, navSource, resolveActiveHref, resolveHref, type NavEntry } from "./sidebar-navigation-data";
+import { NAV_SURFACE, NAV_ICON_SIZE, navSource, resolveActiveHref, resolveHref, type NavEntry } from "./sidebar-navigation-data";
 import { ACCOUNT_NAV, ACCOUNT_SHORTCUTS, SERVICE_SHORTCUTS, BOTTOM_NAV, WORKSPACE_NAV } from "./account-menu-data";
 
 export const MENU_VIEW = { home: "home", settings: "settings" } as const;
@@ -19,17 +19,17 @@ export function AccountMenuNavigation({ view, onView, workspaceId }: Props) {
   useEffect(() => { backRef.current?.focus(); }, [view]);
   if (view === MENU_VIEW.home) return <>
     <DropdownMenuSeparator />
-    <MenuDestination label="Settings" Icon={SettingsIcon} onSelect={() => onView(MENU_VIEW.settings)} />
+    <MenuDestination label="Settings" Icon={GearIcon} onSelect={() => onView(MENU_VIEW.settings)} />
     <MenuLinks items={ACCOUNT_SHORTCUTS} workspaceId={workspaceId} />
     <DropdownMenuSeparator />
     <MenuLinks items={SERVICE_SHORTCUTS} workspaceId={workspaceId} />
     <MenuLinks items={BOTTOM_NAV} workspaceId={workspaceId} />
     <DropdownMenuSeparator />
-    <AuthSignOutButton redirectUrl="/sign-in"><DropdownMenuItem><LogOutIcon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" />Sign out</DropdownMenuItem></AuthSignOutButton>
+    <AuthSignOutButton redirectUrl="/sign-in"><DropdownMenuItem><SignOutIcon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" />Sign out</DropdownMenuItem></AuthSignOutButton>
   </>;
   return <>
     <DropdownMenuItem ref={backRef} onSelect={(event) => { event.preventDefault(); onView(MENU_VIEW.home); }}>
-      <ArrowLeftIcon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" />Back
+      <ArrowLeftIcon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" />Back
     </DropdownMenuItem>
     <DropdownMenuSeparator />
     <>
@@ -42,9 +42,9 @@ export function AccountMenuNavigation({ view, onView, workspaceId }: Props) {
   </>;
 }
 
-function MenuDestination({ label, Icon, onSelect }: { label: string; Icon: typeof SettingsIcon; onSelect: () => void }) {
+function MenuDestination({ label, Icon, onSelect }: { label: string; Icon: typeof GearIcon; onSelect: () => void }) {
   return <DropdownMenuItem onSelect={(event) => { event.preventDefault(); onSelect(); }}>
-    <Icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">{label}</span><ChevronRightIcon size={14} className="text-muted-foreground" aria-hidden="true" />
+    <Icon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">{label}</span><CaretRightIcon size={14} className="text-muted-foreground" aria-hidden="true" />
   </DropdownMenuItem>;
 }
 
@@ -57,7 +57,7 @@ function MenuLinks({ items, workspaceId }: { items: NavEntry[]; workspaceId: str
       <Link href={href} aria-current={href === activeHref ? "page" : undefined}
         className={cn(href === activeHref && "bg-accent text-primary")}
         {...(entry.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
-        <entry.icon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">{entry.label}</span>
+        <entry.icon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">{entry.label}</span>
       </Link>
     </DropdownMenuItem>;
   });

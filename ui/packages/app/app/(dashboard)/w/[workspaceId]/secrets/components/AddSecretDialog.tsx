@@ -10,7 +10,7 @@ import {
   DialogTrigger,
   TooltipButton,
 } from "@agentsfleet/design-system";
-import { PlusIcon } from "lucide-react";
+import { PlusIcon } from "@phosphor-icons/react/ssr";
 import AddSecretFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
 import { CREATE_SECRET_TOOLTIP } from "../copy";
 import { SecretValueNotice } from "./SecretValueNotice";

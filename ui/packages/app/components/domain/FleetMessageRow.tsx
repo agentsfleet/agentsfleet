@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, type ReactNode } from "react";
-import { FileTextIcon } from "lucide-react";
+import { FileTextIcon } from "@phosphor-icons/react/ssr";
 import {
   Accordion,
   AccordionContent,

@@ -1,6 +1,6 @@
 "use client";
 
-import { GitPullRequest } from "lucide-react";
+import { GitPullRequestIcon } from "@phosphor-icons/react/ssr";
 import { readTaskActivityHistory } from "@/lib/task-activity";
 import { useFleetTaskDetails } from "./FleetTaskProvider";
 import { confirmed } from "./use-task-read";
@@ -21,6 +21,6 @@ export function NativeTaskPrBadge({activity}: {activity: unknown}) {
     aria-label={`Pull request #${target.number} · ${target.repository} · ${detail.title}`}
     title={`${detail.title} · ${target.repository}${resource.kind !== "ready" ? " · last confirmed" : ""}`}
     className="ph-no-capture ph-no-record inline-flex h-5 shrink-0 items-center gap-xs rounded-md border border-border px-sm text-body-sm text-muted-foreground hover:text-foreground">
-    <GitPullRequest size={14} aria-hidden="true" />#{target.number}
+    <GitPullRequestIcon size={14} aria-hidden="true" />#{target.number}
   </a>;
 }

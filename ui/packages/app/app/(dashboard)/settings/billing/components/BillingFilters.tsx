@@ -49,10 +49,10 @@ function Filter({ label, value, choices, onChange, disabled }: {
   label: string; value: string; choices: Choice[]; onChange: (value: string) => void; disabled: boolean;
 }) {
   return <div className="flex min-w-0 flex-1 basis-32 flex-col gap-sm">
-    <Label className="mb-0 block font-system text-eyebrow font-normal leading-eyebrow">{label}</Label>
+    <Label className="mb-0 block font-sans text-eyebrow font-normal leading-eyebrow">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger aria-label={label} className="w-full font-system text-label font-normal [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
-      <SelectContent className="font-system">{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectContent>
+      <SelectTrigger aria-label={label} className="w-full font-sans text-label font-normal [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
+      <SelectContent className="font-sans">{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectContent>
     </Select>
   </div>;
 }

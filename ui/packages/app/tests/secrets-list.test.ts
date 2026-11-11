@@ -16,30 +16,29 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   deleteSecretAction: deleteSecretActionMock,
 }));
 
-vi.mock("lucide-react", () => {
+vi.mock("@phosphor-icons/react/ssr", async (original) => {
+  const actual = await original<Record<string, unknown>>();
   const make = (name: string) => {
     const C = (p: Record<string, unknown>) =>
       React.createElement("svg", { ...p, "data-icon": name });
     C.displayName = name;
     return C;
   };
-  return {
-    Trash2Icon: make("Trash2Icon"),
+  return { ...actual,
+    TrashIcon: make("TrashIcon"),
     // CopyButton (design-system) renders these three.
     CopyIcon: make("CopyIcon"),
-    CircleCheckIcon: make("CircleCheckIcon"),
+    CheckCircleIcon: make("CheckCircleIcon"),
     XIcon: make("XIcon"),
     Loader2Icon: make("Loader2Icon"),
-    KeyRoundIcon: make("KeyRoundIcon"),
-    SearchIcon: make("SearchIcon"),
-    PencilIcon: make("PencilIcon"),
-    CircleHelpIcon: make("CircleHelpIcon"),
+    KeyIcon: make("KeyIcon"),
+    MagnifyingGlassIcon: make("MagnifyingGlassIcon"),
+    PencilSimpleIcon: make("PencilSimpleIcon"),
+    QuestionIcon: make("QuestionIcon"),
     ArrowUpIcon: make("ArrowUpIcon"),
     ArrowDownIcon: make("ArrowDownIcon"),
     ArrowUpDownIcon: make("ArrowUpDownIcon"),
-    ArrowUp: make("ArrowUp"),
-    ArrowDown: make("ArrowDown"),
-    ChevronsUpDown: make("ChevronsUpDown"),
+    CaretUpDownIcon: make("CaretUpDownIcon"),
   };
 });
 

@@ -9,7 +9,7 @@ import {
   Time,
   type DataTableColumn,
 } from "@agentsfleet/design-system";
-import { CircleCheckIcon, XIcon } from "lucide-react";
+import { CheckCircleIcon, XIcon } from "@phosphor-icons/react/ssr";
 
 import type { ApprovalGate } from "@/lib/api/approvals";
 import { APPROVAL_STATUS, type ApprovalStatusTag } from "@/lib/api/approvals-types";
@@ -156,7 +156,7 @@ function ApprovalActions({ gate, actions }: { gate: ApprovalGate; actions: RowAc
         label={`${APPROVE_LABEL}: ${name}`}
         title={APPROVE_LABEL}
       >
-        <CircleCheckIcon size={ICON_SIZE} />
+        <CheckCircleIcon size={ICON_SIZE} />
       </IconAction>
       <IconAction
         type="button"

@@ -45,11 +45,12 @@ Prefer one coherent visual treatment across a route family over isolated effects
 
 | Role | Family | Use |
 |---|---|---|
-| Display | Bricolage Grotesque | Website hero and large section headings |
-| Interface and reading | Manrope | App titles, navigation, controls, tables, and conversation |
+| Display | Manrope | Website hero and large section headings |
+| Interface and reading | Manrope | Website and app titles, navigation, controls, tables, and conversation |
 | Technical | Commit Mono | Code, logs, identifiers, exact timestamps, and technical values |
 
 Bundle fonts locally and load them through the shared theme. Keep `font-display`, `font-sans`, and `font-mono` as shared roles.
+Manrope is shared across the website and app, as explicitly requested on November 11, 2026. Both display and interface roles resolve to it. Commit Mono remains reserved for technical content.
 Remove consumer font overrides during migration, including Usage's local system-font treatment.
 Keep website display sizes separate from the app scale.
 
@@ -255,12 +256,10 @@ Use that workspace for saved-key choices and new-key storage. A different select
 Show completed steps when key storage, model registration, and activation succeed separately. Keep a registered model visible if activation fails.
 Retry activation alone after an activation failure. Storage success does not establish that a provider key works.
 
-Platform administrators manage the shared default under **Admin → Models**.
-Each catalogue row offers **Set platform default**; the selected row shows **Platform default**.
-Keep this action distinct from an account's **Make active** choice. Workspace membership alone never grants platform administration.
-The confirmation names the provider, model, and shared impact. Keep credential entry or authorized reuse within that form.
-Retain existing catalogue pricing and inference requirements. Show **Platform default updated** only after the server confirms the change.
-Preserve the existing vault and platform authorization checks; do not broaden access when renaming APIs.
+Platform operators set the shared default through the existing `agentsfleet platform keys` commands.
+Keep that management in the CLI; this refresh adds no platform-default administration screen.
+Account Models retains Create model and Make active. Its choices never grant platform administration.
+Preserve model, platform credential, and vault access checks when renaming or regrouping other surfaces.
 
 Security combines account API keys and browser sessions. Keep provider credentials under Models and Secrets.
 Keep profile information available through the account identity and custom profile controls backed by the auth adapter.
@@ -556,8 +555,10 @@ Check narrow screens, keyboard focus, reduced motion, and repeated reply complet
 
 ### Ownership and enforcement
 
-Change font families and light/dark color values in `ui/packages/design-system/src/tokens.css`.
-Keep token values and theme overrides in `tokens.css`. Keep shared selectors, animations, and reduced-motion behavior in `interactions.css`.
+`ui/packages/design-system/src/tokens.css` owns shared default values, including the website's typography and palette.
+`ui/packages/design-system/src/app-tokens.css` owns the approved dashboard overrides: compact typography sizes, app colors, radii, and responsive reading sizes. Font families and imports belong in shared `tokens.css`. The app imports its overrides after the defaults; the website does not import them.
+Keep both files limited to values and font imports. Define every Tailwind utility mapping once, in `theme.css`; app overrides must not redeclare those mappings.
+Keep shared selectors, animations, and reduced-motion behavior in `interactions.css`.
 
 Forward token roles to utilities in `theme.css`; references to token variables are intentional and must not copy their values.
 Remove unused roles and duplicate selectors together with their forwards and class-merging entries.
@@ -626,7 +627,7 @@ Terminal demonstrations may reveal lines when their final content remains availa
 The website leads with an incident-investigation request composer and one inspectable example conversation.
 Explain a fleet once, after the job is clear. Keep docs, source, and sign-in accessible.
 Use the shared charcoal, warm off-white, and mint identity.
-`ui/packages/design-system/src/tokens.css` owns the palette across website and app.
+`ui/packages/design-system/src/tokens.css` owns the shared palette defaults. The dashboard's approved theme overrides live in `app-tokens.css`; website pages retain the shared defaults.
 
 The user authorized website motion and gradients on 2026-10-13, then extended the design freedom across the app on 2026-10-18.
 An original, low-contrast dithered signal field may use an SVG gradient mask and a
@@ -701,7 +702,7 @@ These boundaries follow the [model instructions](../rustd/crates/daemon/afd_auth
 ### Example playback
 
 Append messages in one bounded native scroll region. The branded signal loader names its current activity.
-A blinking cursor follows the typing text. Use Bricolage Grotesque for the entrance headline,
+A blinking cursor follows the typing text. Use Manrope for the entrance headline,
 the shared interface face for messages, and Commit Mono for commands and technical excerpts.
 
 Loop the example after a readable hold on the final report. Remove stage tabs and Replay.
@@ -761,7 +762,7 @@ Destructive actions retain their existing confirmation behavior.
 
 ## Implementation and verification
 
-1. Define values in `ui/packages/design-system/src/tokens.css`.
+1. Define shared default values in `ui/packages/design-system/src/tokens.css`. Put dashboard-only overrides in `app-tokens.css`.
 2. Forward named utilities in `ui/packages/design-system/src/theme.css`.
 3. Apply roles inside shared primitives.
 4. Migrate explicit consumer styles.
@@ -871,3 +872,11 @@ The shared progress renderer uses an Effect scope to stop the animation and clea
 
 JSON and redirected output contain no animation.
 Set `AGENTSFLEET_REDUCED_MOTION=1` for a static status; continuous integration, `TERM=dumb`, and terminals too narrow for the status also use static text.
+
+### Active chat status motion
+
+Active status text begins muted. A darker shade sweeps left to right across the text over 2.8 seconds, without changing its position, size or opacity. Both shades remain readable against the surface. Completed and failed messages stay static. Reduced-motion and forced-color preferences use a solid label. This replaces the earlier bright highlight for working-status text (Indy, November 11, 2026).
+
+### Error notices and inline retry
+
+Use a compact, dismissible error notice for immediate feedback, with a small error glyph and short description. Keep the failed operation visible in chat with a quiet underlined **Try again** action and optional diagnostic disclosure. A dismissed notice must not dismiss the failed operation or erase its draft. Keep retries scoped to the original operation and prevent duplicate submissions. Errors needing access, configuration or sign-in show that specific recovery instead of a retry loop. This follows Indy's November 11, 2026 error reference.

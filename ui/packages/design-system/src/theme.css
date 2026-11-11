@@ -1,7 +1,8 @@
 /*
  * @agentsfleet/design-system — semantic theme bridge (Layer 1 + Layer 2)
  *
- * Layer 0 (tokens.css) — palette + spacing + typography primitives.
+ * Layer 0 (tokens.css) — shared palette + spacing + typography defaults.
+ *                       app-tokens.css overrides dashboard values only.
  * Layer 1 (:root)      — semantic names mapping to Layer 0 (--background,
  *                        --primary, --card, …). One indirection so a
  *                        product surface change (re-pointing --primary)
@@ -58,6 +59,12 @@
 }
 
 @theme inline {
+  /* Compact interface sizes keep the website defaults and follow app overrides. */
+  --text-sm: var(--fs-ui-sm);
+  --text-sm--line-height: var(--lh-ui-sm);
+  --text-xs: var(--fs-ui-xs);
+  --text-xs--line-height: var(--lh-ui-xs);
+
   /* Color surface — the Tailwind utility names. */
   --color-background: var(--background);
   --color-overlay: var(--overlay);
@@ -123,6 +130,11 @@
   --color-text-muted: var(--text-muted);
   --color-text-subtle: var(--text-subtle);
   --color-text-dim: var(--text-dim);
+
+  --font-weight-title: var(--fw-title, 600);
+  --font-weight-control: var(--fw-control, 600);
+  --text-composer: var(--fs-composer, var(--fs-conversation));
+  --leading-composer: var(--lh-composer, var(--lh-conversation));
 
   /* Text scale — extras beyond Tailwind's defaults; consumers can write
    * `text-display-xl`, `text-eyebrow`, `text-mono`, etc. */
@@ -196,6 +208,7 @@
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
   --radius-lg: var(--r-lg);
+  --radius-control: var(--r-control, var(--r-md));
   --shadow-floating: var(--elevation-floating);
   --shadow-dialog: var(--elevation-dialog);
   --spacing-table-inline: var(--table-cell-inline);
@@ -203,8 +216,6 @@
 
   /* Fonts — forward Layer 0 --ff-* to Tailwind --font-* utilities. */
   --font-sans: var(--ff-sans);
-  --font-system: var(--ff-system);
-  --font-serif: var(--ff-serif);
   --font-display: var(--ff-display);
   --font-mono: var(--ff-mono);
 

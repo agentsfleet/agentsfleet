@@ -55,7 +55,7 @@ export function SidebarNavigation({ pathname, workspaceId, collapsed, onNavigate
   const activeHref = resolveActiveHref(PRIMARY_NAV.filter(entry => entry.path !== "fleets" || pathname === resolveHref(entry, workspaceId)).map((entry) => resolveHref(entry, workspaceId)), pathname);
   const shared = { activeHref, workspaceId, onNavigate, collapsed };
   return <Nav aria-label="Primary" className="flex h-full min-h-0 flex-col py-sm">
-    <NavSection items={PRIMARY_NAV} {...shared} />
+    <div className="min-h-0 shrink overflow-y-auto py-sm"><NavSection items={PRIMARY_NAV} {...shared} /></div>
     {!collapsed ? <div className="min-h-0 flex-1 overflow-y-auto">
       <Suspense><DraftSidebarHistory account={workspaces.find(item => item.id === workspaceId)?.account.tenant_id ?? null} workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
     </div> : <div className="flex-1" />}

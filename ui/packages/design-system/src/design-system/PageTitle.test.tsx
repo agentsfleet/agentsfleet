@@ -23,6 +23,6 @@ describe("PageTitle", () => {
     render(<PageTitle className={CUSTOM_SIZE}>T</PageTitle>);
     const cls = screen.getByRole(HEADING).className;
     expect(cls).toContain(CUSTOM_SIZE);
-    expect(cls).toContain("font-semibold");
+    expect(cls).toContain("font-title");
   });
 });

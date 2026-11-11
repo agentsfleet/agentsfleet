@@ -2,7 +2,7 @@ import { requireCredential } from "@/lib/auth/credential";
 import Link from "next/link";
 import { workspacePath } from "@/lib/workspace-routes";
 import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
-import { SlidersHorizontalIcon } from "lucide-react";
+import { SlidersHorizontalIcon } from "@phosphor-icons/react/ssr";
 
 export const dynamic = "force-dynamic";
 
