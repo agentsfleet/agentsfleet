@@ -36,7 +36,7 @@ it("does not refresh a resolved workspace or an account page", () => {
 it("offers explicit retry after the account-menu chunk fails to load", async () => {
   chunk.status = "error";
   render(<WorkspaceSwitcher workspaces={[]} />);
-  await userEvent.setup().click(screen.getByRole("button", {name: "Retry account menu"}));
+  await userEvent.setup().click(screen.getByRole("button", {name: /^Retry account menu(?::|$)/}));
   expect(chunk.retry).toHaveBeenCalledOnce();
-  expect(screen.getByRole("button", {name: "Retry account menu"}).getAttribute("aria-busy")).toBe("false");
+  expect(screen.getByRole("button", {name: /^Retry account menu(?::|$)/}).getAttribute("aria-busy")).toBe("false");
 });

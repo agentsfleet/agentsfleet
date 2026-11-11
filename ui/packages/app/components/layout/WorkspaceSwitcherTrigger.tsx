@@ -12,13 +12,14 @@ type WorkspaceSwitcherTriggerProps = Omit<ComponentProps<typeof Button>, "childr
   collapsed?: boolean;
 };
 
-export function WorkspaceSwitcherTrigger({ activeLabel, busy = false, failed = false, collapsed = false, "aria-label": menuLabel, ...props }: WorkspaceSwitcherTriggerProps) {
+export function WorkspaceSwitcherTrigger({ activeLabel, busy = false, failed = false, collapsed = false, "aria-label": menuLabel = "Workspace and account menu", ...props }: WorkspaceSwitcherTriggerProps) {
   const { displayName, emailAddress } = useCurrentUser();
   const name = displayName || emailAddress?.split("@")[0];
   const initials = name?.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
   const displayLabel = name || "Your workspace";
   const subtitle = failed ? "Retry account menu" : activeLabel;
-  return <Button type="button" variant="ghost" size="lg" title={activeLabel} aria-label={menuLabel}
+  const accessibleLabel = !collapsed ? `${menuLabel}: ${displayLabel} ${subtitle}` : menuLabel;
+  return <Button type="button" variant="ghost" size="lg" title={activeLabel} aria-label={accessibleLabel}
     className={cn("group h-11 min-h-11 w-full min-w-0 justify-center gap-2.5 px-0 py-sm md:h-12 md:min-h-12", !collapsed && "md:justify-start md:px-lg")}
     {...props}>
     <span className="flex size-7.5 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-colors duration-snap group-hover:bg-primary group-hover:text-primary-foreground">

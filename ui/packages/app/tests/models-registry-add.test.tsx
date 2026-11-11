@@ -1,10 +1,37 @@
 import { SOURCE_URL, VERIFIED_AT } from "@/tests/helpers/catalogue-fixtures";
-import { describe, expect, it } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { Secret } from "@/lib/api/secrets";
-import { createModelEntryActionMock, setProviderSelfManagedActionMock, replaceSecretActionMock, createSecretActionMock, ANTHROPIC_SECRET, ROTATED_API_KEY, renderDialog, fillKnownForm, catalogueState, FORM_MODEL } from "./helpers/models-registry-add-fixtures";
+import { createModelEntryActionMock, setProviderSelfManagedActionMock, replaceSecretActionMock, createSecretActionMock, ANTHROPIC_SECRET, ROTATED_API_KEY, renderDialog, fillKnownForm, catalogueState, FORM_MODEL, modelIdentity } from "./helpers/models-registry-add-fixtures";
 
 describe("AddModelEntryDialog — unified form shape", () => {
+  it("waits for the signed-in owner before opening or loading model credentials", async () => {
+    const { default: AddModelEntryDialog } = await import("@/app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog");
+    const props = {workspaceId: "ws_1", secrets: [], secretsLoad: "ready" as const,
+      onCreated: vi.fn(), onSecretsChanged: vi.fn(), onSecretsNeeded: vi.fn()};
+    const user = userEvent.setup();
+    Object.assign(modelIdentity, {isLoaded: false, isSignedIn: false, userId: null});
+    const view = render(<AddModelEntryDialog {...props} />);
+    let create = screen.getByRole("button", {name: "Create model"});
+    expect(create.hasAttribute("disabled")).toBe(true);
+    await user.click(create);
+    expect(props.onSecretsNeeded).not.toHaveBeenCalled();
+    Object.assign(modelIdentity, {isLoaded: true});
+    view.rerender(<AddModelEntryDialog {...props} />);
+    expect(create.hasAttribute("disabled")).toBe(true);
+    Object.assign(modelIdentity, {isSignedIn: true});
+    view.rerender(<AddModelEntryDialog {...props} />);
+    expect(create.hasAttribute("disabled")).toBe(true);
+    modelIdentity.userId = "model-owner";
+    view.rerender(<AddModelEntryDialog {...props} />);
+    create = screen.getByRole("button", {name: "Create model"});
+    expect(create.hasAttribute("disabled")).toBe(false);
+    await user.click(create);
+    expect(await screen.findByRole("dialog", {name: "Create model"})).toBeTruthy();
+    expect(props.onSecretsNeeded).toHaveBeenCalledOnce();
+  });
+
   it("keeps advanced model visibility beside Model in the tab-free form", async () => {
     await renderDialog();
     const dialog = screen.getByRole("dialog");

@@ -84,6 +84,13 @@ it.each(["workspace", "account", "sign-out"])("clears the key and closes the for
   if (scope !== "workspace") modelIdentity.userId = scope === "account" ? "another-person" : null;
   fixture.rerender(scope === "workspace" ? {workspaceId: "ws_2"} : {});
   expect(screen.queryByRole("dialog")).toBeNull();
+  if (scope === "sign-out") {
+    expect(screen.getByRole("button", {name: "Create model"}).hasAttribute("disabled")).toBe(true);
+    await fixture.user.click(screen.getByRole("button", {name: "Create model"}));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    Object.assign(modelIdentity, {isLoaded: true, isSignedIn: true, userId: "model-owner"});
+    fixture.rerender();
+  }
   await fixture.user.click(screen.getByRole("button", {name: "Create model"}));
   expect((screen.getByLabelText(/^api key$/i) as HTMLInputElement).value).toBe("");
   expect(createSecretActionMock).not.toHaveBeenCalled();
