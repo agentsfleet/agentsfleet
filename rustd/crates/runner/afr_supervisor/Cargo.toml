@@ -25,7 +25,6 @@ af_stream.workspace = true
 http.workspace = true
 parking_lot.workspace = true
 dashmap.workspace = true
-af_context = { workspace = true }
 # Proves a lease's sandbox size within the wire's declared bounds before the
 # engine builds it.
 garde.workspace = true

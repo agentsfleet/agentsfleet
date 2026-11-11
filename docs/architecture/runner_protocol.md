@@ -197,8 +197,8 @@ A lease carries `inputs_waiting`, which the claim sets when its conversation hol
 A run whose lease says false skips the fold ask before its first model call; an absent field reads as true.
 The ask after every answer is unconditional, so a message landing after the claim folds into the next model call.
 
-A run never loads a context checkpoint: it mints every branch it writes, so a load could only answer nothing.
-The runner has no context-load verb, and the daemon serves no context `GET`; the checkpoint `PUT` stays.
+A run keeps its compaction summary in its own state: it mints every branch it writes, so a load could only answer nothing, and nothing outside the run reads a summary.
+The runner sends no context checkpoint and the daemon serves no context route.
 
 ### Authoring operations on the native session
 

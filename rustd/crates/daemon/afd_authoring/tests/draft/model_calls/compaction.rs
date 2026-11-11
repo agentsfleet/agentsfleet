@@ -153,27 +153,20 @@ pub(in crate::draft) async fn history_for(
 }
 
 pub(super) async fn competing(f: &Fixture, attempt: &Attempt) -> Value {
-    use af_context::{
-        CheckpointStore as _,
-        repository::{Repository, Scope},
-    };
+    use af_context::{CheckpointStore as _, repository::Repository};
     let document = json!({"format_version":1,"identity":{
         "scope":format!("draft:{}",attempt.draft.id),"model":"competing-model","pinned":"competing-pinned"},
         "generation":1,"covered_through":1,"source_digest":"a".repeat(64),"summary":{
             "goal":"competing private notes","constraints":[],"decisions":[],"completed":[],
             "remaining":[],"references":[]}});
     let mut connection = f.connection().await;
-    Repository::new(
-        &mut connection,
-        Scope::Draft(attempt.draft.id.clone()),
-        mint(),
-    )
-    .commit(
-        0,
-        serde_json::from_value(document.clone()).expect("valid competing notes"),
-    )
-    .await
-    .expect("the competing writer commits");
+    Repository::new(&mut connection, attempt.draft.id.clone(), mint())
+        .commit(
+            0,
+            serde_json::from_value(document.clone()).expect("valid competing notes"),
+        )
+        .await
+        .expect("the competing writer commits");
     document
 }
 

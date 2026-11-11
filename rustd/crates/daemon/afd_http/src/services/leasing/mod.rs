@@ -15,20 +15,6 @@ use jiff::Timestamp;
 
 /// The fenced HTTP operations that remain outside the host session.
 pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
-    /// Publish private notes against the expected generation and assignment.
-    ///
-    /// # Errors
-    /// Refuses changed assignment, scope or generation, or unavailable storage.
-    fn context_commit(
-        &self,
-        runner: &Uuid7,
-        lease: &Uuid7,
-        branch: &Uuid7,
-        fence: u64,
-        expected: u64,
-        checkpoint: af_context::Checkpoint,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send;
-
     /// The memory window that seeds one run.
     ///
     /// # Errors

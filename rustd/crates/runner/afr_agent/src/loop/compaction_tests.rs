@@ -7,7 +7,7 @@ use super::Loop;
 use crate::{
     AgentEngine as _, AgentRun, Meter,
     fixture::{Canned, Frames, call, lease, say, spent, unbounded},
-    testing::{ContextMemory, Discard},
+    testing::Discard,
 };
 use af_providers::{Chunk, Connect, End, Message, Provider, Request};
 use af_wire::{
@@ -121,7 +121,7 @@ impl Provider for Model {
     }
 }
 
-async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMemory, Meter) {
+async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, Meter) {
     let seen = Arc::new(Seen::default());
     let engine = Loop::new(
         afr_tools::Catalog::new(vec![Canned::boxed(&UPDATE_PLAN, "completed step")]),
@@ -141,7 +141,6 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMe
         dialect: None,
         max_output_tokens: 2_048,
     });
-    let contexts = ContextMemory::default();
     let meter = Meter::default();
     let frames = Frames::default();
     let output = engine
@@ -156,7 +155,6 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMe
             mint: &af_egress::testing::CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
-            context_checkpoints: &contexts,
             inbox: &crate::testing::NoInbox,
             events: &frames.sink(),
             meter: &meter,
@@ -174,7 +172,7 @@ async fn run(failure: SummaryFailure) -> (crate::RunOutput, Arc<Seen>, ContextMe
         seen.summaries.load(Ordering::SeqCst),
         failure != SummaryFailure::None,
     );
-    (output, seen, contexts, meter)
+    (output, seen, meter)
 }
 
 fn assert_progress(frames: &[ActivityFrame<'_>], summaries: usize, reject: bool) {
@@ -211,7 +209,7 @@ fn assert_progress(frames: &[ActivityFrame<'_>], summaries: usize, reject: bool)
 
 #[tokio::test]
 async fn repeated_compaction_continues_past_turn_forty_two_and_keeps_tools_and_goal() {
-    let (output, seen, contexts, meter) = run(SummaryFailure::None).await;
+    let (output, seen, meter) = run(SummaryFailure::None).await;
     assert_eq!(output.result.content, "all steps finished");
     assert_eq!(output.records.len(), TURNS);
     assert_eq!(seen.normal.load(Ordering::SeqCst), TURNS + 1);
@@ -219,25 +217,15 @@ async fn repeated_compaction_continues_past_turn_forty_two_and_keeps_tools_and_g
     assert!(summaries > 1, "the test must cross repeated compactions");
     assert_eq!(meter.backlog(), TURNS + 1 + summaries);
     assert_eq!(meter.read().output, (TURNS + 1 + summaries * 5) as u64);
-    let checkpoint = contexts
-        .stored("01900000-0000-7000-8000-000000000001")
-        .unwrap();
-    assert_eq!(checkpoint.generation, summaries as u64);
-    assert_eq!(checkpoint.summary.goal, "finish all fifty-five steps");
     assert!(seen.messages.lock().unwrap().last().unwrap().iter().any(|message| matches!(message, Message::User(text) if text.contains("finish all fifty-five steps"))));
 }
 
 #[tokio::test]
-async fn unusable_summary_retains_known_charge_without_publishing_or_running_more_tools() {
+async fn unusable_summary_retains_known_charge_without_running_more_tools() {
     for failure in [SummaryFailure::Invalid, SummaryFailure::Truncated] {
-        let (output, seen, contexts, meter) = run(failure).await;
+        let (output, seen, meter) = run(failure).await;
         assert_ne!(output.result.content, "all steps finished");
         assert_eq!(seen.summaries.load(Ordering::SeqCst), 1);
-        assert!(
-            contexts
-                .stored("01900000-0000-7000-8000-000000000001")
-                .is_none()
-        );
         assert_eq!(meter.backlog(), seen.normal.load(Ordering::SeqCst) + 1);
         assert_eq!(
             meter.read().output,

@@ -345,7 +345,7 @@ that reads them (rule 7).
 |---|---|
 | `vault.secrets` | One encrypted secret per (workspace, key_name), with a plain projection |
 | `memory.entries` | A fleet's durable memory, behind role `memory_runtime` |
-| `memory.context_checkpoints` | Private working notes owned by a draft or a fleet lease and run branch; deleted with the owner |
+| `memory.context_checkpoints` | Private working notes owned by a setup draft; deleted with the draft |
 
 ## Settled while implementing
 
@@ -376,14 +376,6 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 - **`runner.leases.last_metered_at`: kept.** The file `20261108123200_runner_leases.sql` declares it as the lease's runtime cursor
   (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `renew_batch.sql` and `commit_report.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
   `bill_expired_slice.sql`).
-- **`billing.usage_lines.kind`: added by M245.** What the line bills: `model` (a call the runner reported, numbered by its
-  request), `runtime` (a slice the daemon measured, numbered by the milliseconds from its work's start to the slice's start)
-  or `decision` (a native decision call, numbered by its call). The unique key is `(work_type, work_id, kind, seq)`, so no
-  kind's numbers are carved out of another's; the `u32` bands `DAEMON_SEQ_BASE` and `DECISION_SEQ_BASE` that kept them
-  apart are gone. Spellings are `af_wire::usage::LineKind`.
-- **`vault.secrets.resource_version`: added by M245.** A `BEFORE UPDATE` trigger moves it on every update, whichever writer
-  runs. The lease claim and the platform key cache read it, so a same-KEK (key-encryption key) replace misses the cache.
-
   The review listed it as dropped. Per-request billing kept this one
   cursor and dropped the lease's token cursors and the slot's cursors instead.
 - **`runner.runners.selftest_all_ok`: dropped.** Derived from `selftest_checks` (the file `20261108123100_runner_runners.sql`), read
@@ -395,6 +387,16 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 - **`authoring.dispatches.output_allowance`: dropped.** The file `20261108124000_authoring_dispatches.sql` declares the table without it.
 - **`setup_context`: replaced** by `fleet.revisions.review_context` (the file `20261108122000_fleet_revisions.sql`), written by
   `afd_authoring`'s creation `revision.sql` and read by its `locked.sql`.
+
+Added by this milestone:
+
+- **`billing.usage_lines.kind`: added by M245.** What the line bills: `model` (a call the runner reported, numbered by its
+  request), `runtime` (a slice the daemon measured, numbered by the milliseconds from its work's start to the slice's start)
+  or `decision` (a native decision call, numbered by its call). The unique key is `(work_type, work_id, kind, seq)`, so no
+  kind's numbers are carved out of another's; the `u32` bands `DAEMON_SEQ_BASE` and `DECISION_SEQ_BASE` that kept them
+  apart are gone. Spellings are `af_wire::usage::LineKind`.
+- **`vault.secrets.resource_version`: added by M245.** A `BEFORE UPDATE` trigger moves it on every update, whichever writer
+  runs. The lease claim and the platform key cache read it, so a same-KEK (key-encryption key) replace misses the cache.
 
 ## Public interface changes
 

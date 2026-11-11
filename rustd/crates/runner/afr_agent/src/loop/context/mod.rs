@@ -44,11 +44,14 @@ impl Harness<'_, '_> {
             self.context.working.clone_from(&self.messages);
             return Ok(());
         }
-        let (branch, identity, window) = self.context_parameters()?;
+        let (identity, window) = self.context_parameters()?;
         self.context.index.refresh(&self.messages)?;
         let mut store = effects::Store {
-            port: self.shared.context_checkpoints,
-            branch: &branch,
+            generation: self
+                .context
+                .checkpoint
+                .as_ref()
+                .map_or(0, |checkpoint| checkpoint.generation),
         };
         loop {
             let source = source::Source::new(
@@ -97,7 +100,7 @@ impl Harness<'_, '_> {
             }
         }
     }
-    fn context_parameters(&mut self) -> af_context::Result<(String, Identity, Window)> {
+    fn context_parameters(&mut self) -> af_context::Result<(Identity, Window)> {
         if self.context.branch.is_none() {
             self.context.branch = Some(if self.depth == 0 {
                 self.shared.lease_id.to_owned()
@@ -136,6 +139,6 @@ impl Harness<'_, '_> {
         let window = Window::new(self.shared.model_context_tokens, self.shared.output_tokens)?
             .with_operating_tokens(self.shared.context.context_cap_tokens)
             .with_trigger_percent(percent);
-        Ok((branch.to_owned(), identity, window))
+        Ok((identity, window))
     }
 }

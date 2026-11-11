@@ -506,7 +506,6 @@ dependencies = [
 name = "afd_api_runner"
 version = "0.76.0"
 dependencies = [
- "af_context",
  "af_core",
  "af_validate",
  "af_wire",
@@ -522,7 +521,6 @@ dependencies = [
  "garde",
  "http",
  "serde",
- "serde_json",
  "tokio",
  "tracing",
  "utoipa",
@@ -1066,7 +1064,6 @@ dependencies = [
 name = "afd_http"
 version = "0.76.0"
 dependencies = [
- "af_context",
  "af_core",
  "af_crypto",
  "af_fleet_runtime",
@@ -1468,7 +1465,6 @@ dependencies = [
 name = "afr_supervisor"
 version = "0.76.0"
 dependencies = [
- "af_context",
  "af_core",
  "af_crypto",
  "af_egress",

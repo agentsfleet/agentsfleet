@@ -310,15 +310,6 @@ Final GET messages remains authoritative; previews never prove completion or usa
 
 ### Runner routes and wire
 
-Private run working notes use `/v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}`.
-Both methods require the assigned runner and current fencing token.
-The [shared context lifecycle](context_lifecycle.md) owns checkpoint format, retention and source validation.
-
-| Method | Request | Success | Refusals |
-|---|---|---|---|
-| GET | Query `fencing_token` | 200 `{checkpoint?:Checkpoint}`; absent when no notes exist | Malformed input 400; authentication 401/403; absent assignment 404; superseded assignment 409; capacity 429; dependency 500/503 |
-| PUT | `{fencing_token,expected_generation,checkpoint}` | 204; an identical retry acknowledges the saved document | GET refusals, oversized body 413; changed scope or generation 409 with `current_state:superseded` |
-
 Runner route identities live in `afd_http`; path constants and native message types live in `af_wire`.
 Each host opens one authenticated session through `POST /v1/runners/me/stream` on the private listener.
 The [runner guide](runner_protocol.md) owns connection setup, trust and recovery.

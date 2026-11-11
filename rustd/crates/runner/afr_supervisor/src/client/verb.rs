@@ -44,8 +44,6 @@ pub(crate) enum Verb {
     Open,
     /// Liveness, capability, assignment.
     Heartbeat,
-    /// Private run working notes, conditionally replaced.
-    ContextCommit,
     /// Scoped private model invocation; never automatically redispatched.
     AuthoringModel,
     /// Native proposal receipt for a private authoring attempt.
@@ -126,10 +124,9 @@ impl Verb {
     /// Every verb, so a suite walks the whole vocabulary rather than a
     /// hand-kept list that a new verb can miss.
     #[cfg(test)]
-    pub(crate) const ALL: [Self; 40] = [
+    pub(crate) const ALL: [Self; 39] = [
         Self::Open,
         Self::Heartbeat,
-        Self::ContextCommit,
         Self::AuthoringModel,
         Self::AuthoringActivity,
         Self::AuthoringRenew,
@@ -180,7 +177,7 @@ impl Verb {
             | Self::TaskEffects
             | Self::TaskEffect
             | Self::TaskCheckpointPage => Method::Get,
-            Self::ContextCommit | Self::TaskCheckpointPageWrite => Method::Put,
+            Self::TaskCheckpointPageWrite => Method::Put,
             Self::ScheduleUpdate
             | Self::TaskDecisionRecord
             | Self::TaskCheckpointCommit
@@ -219,7 +216,6 @@ impl Verb {
         match self {
             Self::Open => "stream_open",
             Self::Heartbeat => "heartbeat",
-            Self::ContextCommit => "context_commit",
             Self::AuthoringModel => "authoring_model",
             Self::AuthoringActivity => "authoring_activity",
             Self::AuthoringRenew => "authoring_renew",
@@ -264,8 +260,7 @@ impl Verb {
     pub(crate) const fn code(self) -> ErrorCode {
         match self {
             Self::Hydrate | Self::Capture | Self::Recall => error_code::MEM_UNAVAILABLE,
-            Self::ContextCommit
-            | Self::Open
+            Self::Open
             | Self::Heartbeat
             | Self::AuthoringModel
             | Self::AuthoringActivity

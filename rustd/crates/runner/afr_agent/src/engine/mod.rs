@@ -1,10 +1,8 @@
 //! The seam between the supervisor and whatever runs a turn.
 
-mod context;
 mod recovery;
 #[cfg(test)]
 mod recovery_tests;
-pub use context::ContextCheckpoints;
 pub use recovery::TaskRecovery;
 
 use std::fmt;
@@ -107,8 +105,6 @@ pub struct AgentRun<'run> {
     pub verbs: &'run dyn LeaseVerbs,
     /// Writes the run's memory back every `memory_checkpoint_every` calls.
     pub checkpoint: &'run dyn Checkpoint,
-    /// Persists private model-window working notes under this run's fence.
-    pub context_checkpoints: &'run dyn ContextCheckpoints,
     /// Where the root takes the messages a person sends while it works.
     pub inbox: &'run dyn Inbox,
     /// Where activity frames go.

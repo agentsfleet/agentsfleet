@@ -1,7 +1,6 @@
 //! Lease-scoped model-window checkpoints are private working state.
 use garde::Validate;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 /// Content-free state of one conversation summary.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -27,39 +26,4 @@ pub struct ContextProgress {
     /// Only confirmed publication may report resuming.
     #[garde(skip)]
     pub state: ContextState,
-}
-
-/// Private notes belong to one conversation branch under one execution lease.
-#[cfg_attr(feature = "openapi", derive(utoipa::IntoParams))]
-#[cfg_attr(feature = "openapi", into_params(parameter_in = Path))]
-#[derive(Debug, Deserialize)]
-pub struct ContextPath {
-    /// The run assignment whose current holder may access the notes.
-    pub lease_id: String,
-    /// The root conversation or child conversation within that assignment.
-    pub branch_id: String,
-}
-
-/// Replace a branch's complete notes against the generation read before sending.
-#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
-#[derive(Clone, Deserialize, Serialize, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct ContextPut {
-    /// The current assignment token.
-    #[garde(range(min = 1))]
-    pub fencing_token: u64,
-    /// Generation observed before the summary call, zero on first publication.
-    #[garde(range(max = i64::MAX.unsigned_abs()))]
-    pub expected_generation: u64,
-    /// Closed, bounded checkpoint document validated by the shared engine.
-    #[garde(skip)]
-    pub checkpoint: Value,
-}
-
-impl std::fmt::Debug for ContextPut {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ContextPut")
-            .field("expected_generation", &self.expected_generation)
-            .finish_non_exhaustive()
-    }
 }
