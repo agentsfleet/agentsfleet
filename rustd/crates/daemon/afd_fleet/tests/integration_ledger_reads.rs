@@ -83,7 +83,7 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
             output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at,
             updated_at)
          SELECT ('0199c900-0000-7000-8000-' || lpad(to_hex(g), 12, '0'))::uuid, $4,
-                ('0199c902-0000-7000-8000-' || lpad(to_hex(g), 12, '0'))::uuid, 0, 'model',
+                ('0199c902-0000-7000-8000-' || lpad(to_hex(g), 12, '0'))::uuid, 0, $8::text,
                 $1, $2,
                 CASE WHEN g <= $7 THEN $6
                      ELSE ('0199c901-0000-7000-8000-' || lpad(to_hex(g % $3), 12, '0'))::uuid END,
@@ -98,6 +98,7 @@ async fn the_fleet_spend_read_is_served_by_its_index() {
     .bind(DECOY_LINES)
     .bind(&held.fleet)
     .bind(HISTORY_DAYS)
+    .bind(af_wire::usage::LineKind::Model.as_str())
     .execute(&mut *connection)
     .await
     .expect("the decoy lines insert");

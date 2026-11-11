@@ -133,6 +133,8 @@ mod integration_report_owes_destination;
 mod integration_report_renewal_lock;
 #[path = "integration_report_statement.rs"]
 mod integration_report_statement;
+#[path = "integration_report_pricing.rs"]
+mod integration_report_pricing;
 #[path = "integration_runner_admin.rs"]
 mod integration_runner_admin;
 mod integration_runner_beat;

@@ -2,9 +2,10 @@
 //!
 //! The `lease` verb performs the pre-execution control-plane work and hands a
 //! self-contained `ExecutionPolicy` to the runner. Split by concern:
-//! [`affinity`] is the atomic claim and the fence it
-//! mints — the only place a [`affinity::Fence`] comes from — and the modules
-//! beside it add the gates and the row.
+//! [`affinity`] holds the fence and the slot's release verbs — a fence is
+//! minted by the slot upsert inside the claim head statement
+//! (`claim_admission_head.sql`) and read back into a [`affinity::Fence`] — and
+//! the modules beside it add the gates and the row.
 //!
 //! # Where the modules split
 //!
@@ -56,7 +57,9 @@ pub mod verdict;
 pub mod write_fence;
 
 pub use self::activity::Target;
-pub use self::affinity::{Claimed, Fence};
+#[cfg(any(test, feature = "test-util"))]
+pub use self::affinity::Claimed;
+pub use self::affinity::Fence;
 pub use self::commit::{Committed, TerminalReport};
 pub use self::envelope::{Acquired, Kind};
 pub use self::event::{Delivery, Ended, Received};
