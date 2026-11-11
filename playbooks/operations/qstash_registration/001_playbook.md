@@ -33,8 +33,9 @@ The environment's [admin bootstrap](../admin_bootstrap/001_playbook.md) is compl
 3. The agent syncs `qstash` with the [shared bag procedure](../admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag).
    Every deploy re-syncs it too (`deploy-dev-verify.yml`, `release.yml`).
    `agentsfleetd` reads the bag each time it registers a schedule or verifies a fire, so no restart is needed.
-   Nothing reads `QSTASH_*` environment settings.
-   `agentsfleetd` logs a missing or incomplete bag as `scheduler_bag_unusable` and names the field at fault.
+
+Nothing reads `QSTASH_*` environment settings.
+`agentsfleetd` logs a missing or incomplete bag as `scheduler_bag_unusable` and names the field at fault.
 
 Each delivery carries a JSON Web Token (JWT) that `agentsfleetd` checks against the current and next keys.
 See [QStash signing keys](https://upstash.com/docs/qstash/api-reference/signing-keys/get-signing-keys) and [QStash schedules](https://upstash.com/docs/qstash/features/schedules).
