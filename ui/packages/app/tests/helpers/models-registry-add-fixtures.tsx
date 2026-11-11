@@ -12,7 +12,8 @@ export const replaceSecretActionMock = vi.fn();
 export const createSecretActionMock = vi.fn();
 export const findRegisteredModelActionMock = vi.fn();
 export const readModelActivationActionMock = vi.fn();
-vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
+export const modelIdentity = {isLoaded: true, isSignedIn: true, userId: "model-owner" as string | null};
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => modelIdentity}));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   createModelEntryAction: createModelEntryActionMock,
@@ -60,13 +61,13 @@ export async function renderDialog(secrets: Secret[] = [], secretsLoad: SecretsL
   const onCreated = vi.fn();
   const onSecretsChanged = vi.fn();
   const onSecretsNeeded = vi.fn();
-  const rendered = render(
-    React.createElement(AddModelEntryDialog, { workspaceId: "ws_1", secrets, secretsLoad, onCreated, onSecretsChanged, onSecretsNeeded } as never),
-  );
+  const props = { workspaceId: "ws_1", secrets, secretsLoad, onCreated, onSecretsChanged, onSecretsNeeded };
+  const rendered = render(React.createElement(AddModelEntryDialog, props));
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: /create model/i }));
   await screen.findByRole("dialog");
-  return { onCreated, onSecretsChanged, onSecretsNeeded, user, unmount: rendered.unmount };
+  return { onCreated, onSecretsChanged, onSecretsNeeded, user, unmount: rendered.unmount,
+    rerender: (patch: Partial<typeof props> = {}) => rendered.rerender(React.createElement(AddModelEntryDialog, {...props, ...patch})) };
 }
 
 /** Fill the form with an exact custom identifier when the catalogue is empty. */
@@ -83,6 +84,7 @@ export async function fillKnownForm(
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.assign(modelIdentity, {isLoaded: true, isSignedIn: true, userId: "model-owner"});
   catalogueState.models = [];
   findRegisteredModelActionMock.mockResolvedValue({ok: true, data: null});
   readModelActivationActionMock.mockResolvedValue({ok: true, data: false});

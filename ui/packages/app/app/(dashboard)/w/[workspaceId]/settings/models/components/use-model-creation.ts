@@ -1,6 +1,6 @@
 "use client";
 
-import { startTransition, useActionState, useEffect, useRef } from "react";
+import { startTransition, useActionState, useEffect, useEffectEvent, useRef } from "react";
 import { createModel, retryModel, type CreationCallbacks } from "./model-creation-operations";
 import { EMPTY_CREATION, type ModelCreationRequest, type ModelCreationState } from "./model-creation";
 
@@ -12,15 +12,16 @@ type Input = {command: Command; signal: AbortSignal};
 export function useModelCreation(callbacks: CreationCallbacks, onPendingChange: (pending: boolean) => void) {
   const busy = useRef(false);
   const active = useRef<AbortController | null>(null);
+  const releasePending = useEffectEvent(() => onPendingChange(false));
   useEffect(() => () => {
     active.current?.abort();
-    onPendingChange(false);
-  }, [onPendingChange]);
+    releasePending();
+  }, []);
 
   const [state, dispatch, pending] = useActionState<ModelCreationState, Input>(async (previous, input) => {
     const operation = {signal: input.signal, callbacks};
     try {
-      if (input.signal.aborted || input.command.kind === "reset") return EMPTY_CREATION;
+      if (input.command.kind === "reset") return EMPTY_CREATION;
       if (input.command.kind === "retry") return await retryModel(previous, operation);
       if (previous.stage !== "editing") return previous;
       return await createModel(input.command.request, input.command.data, operation);

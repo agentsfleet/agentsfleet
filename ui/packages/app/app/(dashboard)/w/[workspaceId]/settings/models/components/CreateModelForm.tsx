@@ -47,7 +47,6 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
   }
 
   function submit() {
-    if (creation.pending) return;
     if (creation.state.stage === "storage_unconfirmed") {
       creation.reset();
       change({mode: available.length ? KEY_MODE.saved : KEY_MODE.new, savedRef: "", keyName: "", apiKey: ""});

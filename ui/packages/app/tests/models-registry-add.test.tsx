@@ -91,4 +91,29 @@ describe("AddModelEntryDialog — explicit credential choice", () => {
     expect(replaceSecretActionMock).not.toHaveBeenCalled();
     expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
   });
+
+  it("clears a selected saved key when switching back to adding a new credential", async () => {
+    const {user} = await renderDialog([ANTHROPIC_SECRET]);
+    const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByLabelText("Provider", {exact: true}), "anthropic");
+    await user.click(dialog.getByRole("button", {name: "Use saved key"}));
+    await user.click(dialog.getByLabelText("Saved key", {exact: true}));
+    await user.click(screen.getByRole("option", {name: ANTHROPIC_SECRET.name}));
+    await user.click(dialog.getByRole("button", {name: "Add new key"}));
+    expect((dialog.getByLabelText("API key", {exact: true}) as HTMLInputElement).value).toBe("");
+    await user.click(dialog.getByRole("button", {name: "Use saved key"}));
+    expect(dialog.getByLabelText("Saved key", {exact: true}).textContent).toBe("Select a saved key");
+    expect(createSecretActionMock).not.toHaveBeenCalled();
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
+  });
+
+  it("explains an empty compatible-key list and returns to adding a credential", async () => {
+    const {user} = await renderDialog(); const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByLabelText("Provider", {exact: true}), "anthropic");
+    await user.click(dialog.getByRole("button", {name: "Use saved key"}));
+    expect(dialog.getByText("No saved keys for this provider. Add a new key to continue.")).toBeTruthy();
+    expect(dialog.getByLabelText("Saved key", {exact: true}).hasAttribute("disabled")).toBe(true);
+    await user.click(dialog.getByRole("button", {name: "Add new key"}));
+    expect(dialog.getByLabelText("API key", {exact: true})).toBeTruthy();
+  });
 });

@@ -32,6 +32,22 @@ describe("model source reconciliation through server actions and HTTP clients", 
     expect(await findRegisteredModelAction(request)).toEqual({ok: true, data: null});
   });
 
+  it("does not confirm a different model or credential in the submitted workspace", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(page([
+      {...entry(STAGING, "other-model"), model_id: "another-model"},
+      {...entry(STAGING, "other-key"), secret_ref: "another-key"},
+    ], null)));
+    expect(await findRegisteredModelAction(request)).toEqual({ok: true, data: null});
+  });
+
+  it("stops a repeated cursor without claiming registration succeeded", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async () => page([], "repeated"));
+    vi.stubGlobal("fetch", fetch);
+    expect(await findRegisteredModelAction(request)).toEqual({ok: false, error: "We couldn’t confirm this request. Please try again."});
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.every(([, init]) => init?.method === "GET")).toBe(true);
+  });
+
   it.each([
     [MAIN, false], [STAGING, true], [undefined, false],
   ])("confirms activation only for the stored workspace (%s)", async (workspace, expected) => {

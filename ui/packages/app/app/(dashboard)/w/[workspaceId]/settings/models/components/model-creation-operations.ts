@@ -56,7 +56,6 @@ async function registerModel(request: ModelCreationRequest, operation: Operation
 }
 
 async function finishRegistration(request: ModelCreationRequest, operation: Operation): Promise<ModelCreationState> {
-  if (cancelled(operation)) return EMPTY_CREATION;
   operation.callbacks.onCreated();
   if (request.activate) return activateModel(request, operation);
   operation.callbacks.onComplete();
