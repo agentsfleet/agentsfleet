@@ -128,6 +128,9 @@ impl Leases {
                 Step::AlreadySettled => return Ok(Committed::AlreadySettled),
                 Step::Reprice(held) => {
                     release(transaction).await?;
+                    // Back to the pool before the book read takes one, so a
+                    // report never holds two of a small pool's connections.
+                    drop(connection);
                     repriced = Some(
                         Pricing::load(
                             self.pool(),
@@ -141,6 +144,7 @@ impl Leases {
                 }
                 Step::KnownRequestsOnly => {
                     release(transaction).await?;
+                    drop(connection);
                     let settlement = self
                         .record_known_requests(
                             report.runner_id,
@@ -242,7 +246,11 @@ impl Leases {
             )
             .await?;
             if let Some(notice) = notice {
-                apply_notice(&mut transaction, report, notice).await?;
+                let owed = (
+                    self.entropy().uuid7(report.now)?,
+                    self.entropy().uuid7(report.now)?,
+                );
+                apply_notice(&mut transaction, report, notice, &owed).await?;
             }
         }
         if settled.owed.is_none() {
@@ -314,11 +322,12 @@ async fn release(transaction: sqlx::Transaction<'_, sqlx::Postgres>) -> Result<(
 }
 
 /// Puts a task's notice where the run's answer was: the event, the session
-/// and an answer still owed.
+/// and the answer owed, which a run that answered nothing did not owe yet.
 async fn apply_notice(
     connection: &mut PgConnection,
     report: &TerminalReport<'_>,
     notice: &str,
+    (obligation_id, receipt): &(Uuid7, Uuid7),
 ) -> Result<()> {
     let checkpoint = crate::lease::finalize::checkpoint_document(report.last_event_id, notice);
     let _events: i64 = sqlx::query_scalar(crate::lease::sql::report_statement::APPLY_REPORT_NOTICE)
@@ -326,6 +335,14 @@ async fn apply_notice(
         .bind(&report.lease.event_id)
         .bind(notice)
         .bind(&checkpoint)
+        .bind(obligation_id)
+        .bind(receipt)
+        .bind(
+            afd_connector::Provider::ALL
+                .iter()
+                .map(|provider| provider.id())
+                .collect::<Vec<_>>(),
+        )
         .fetch_one(connection)
         .await
         .map_err(query(CONTEXT_COMMIT))?;
