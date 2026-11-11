@@ -53,8 +53,9 @@ export class SendMarks {
 /** The tab's one set: the send hook marks into it, the stream dispatch reads it. */
 export const sendMarks = new SendMarks();
 
-// A timing aid never breaks a send: a browser that refuses the mark (no User
-// Timing, or a detail it cannot clone) loses the mark, and the send goes on.
+// A timing aid never breaks what it times. `mark` runs in the send hook and
+// `frame` runs in the stream dispatch ahead of the chunk write, so a browser
+// that has no User Timing, or refuses a mark, loses the mark and nothing else.
 function leaveMark(name: string, operationId: string): void {
   try {
     performance.mark(name, {detail: {operationId}});

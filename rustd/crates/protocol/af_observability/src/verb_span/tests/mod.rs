@@ -19,6 +19,8 @@ use super::{
 };
 use crate::semconv;
 
+mod restart;
+
 /// A collector that keeps what it is handed.
 #[derive(Debug, Default, Clone)]
 struct Collected(Arc<Mutex<Vec<SpanData>>>);
@@ -154,7 +156,7 @@ fn test_verb_clock_writes_each_reached_stage_once() {
     assert_eq!(millis(load_only, semconv::ATTR_REPORT_LOAD_MS), Some(7));
 }
 
-/// A discarded clock, like an empty offer pass, records nothing.
+/// A discarded clock records nothing, however many stages it reached.
 #[test]
 fn test_a_discarded_clock_records_no_span() {
     let collected = Collected::default();
@@ -298,71 +300,4 @@ fn test_verb_stage_attributes_account_for_the_span() {
     .sum();
     let stages_ms = u64::try_from(stages_ms).expect("stages are not negative");
     assert_eq!((span_ms, stages_ms), (100, 96));
-}
-
-/// A restart records the span so far, then times a fresh one from zero with no
-/// identity; an untimed clock stays untimed and records neither.
-#[test]
-fn test_a_restart_records_the_first_span_and_starts_a_fresh_one() {
-    let collected = Collected::default();
-    let (_provider, tracer) = tracer(&collected);
-    let ticks = Moved::new();
-    let mut clock = VerbClock::<OfferStage, Moved>::start_on(ticks.clone());
-    clock.identify(EVENT_ID, FLEET_ID);
-    ticks.advance(Duration::from_millis(5));
-    clock.mark(OfferStage::Claim);
-    clock.restart_on(&tracer);
-    assert!(clock.stages.is_empty(), "the fresh span has no stages yet");
-    ticks.advance(Duration::from_millis(7));
-    clock.mark(OfferStage::Claim);
-    clock.record_on(&tracer);
-
-    let spans = collected.spans();
-    assert_eq!(spans.len(), 2, "{spans:?}");
-    let (first, second) = (
-        spans.first().expect("the first"),
-        spans.get(1).expect("the second"),
-    );
-    assert_eq!(millis(first, semconv::ATTR_OFFER_CLAIM_MS), Some(5));
-    assert_eq!(millis(second, semconv::ATTR_OFFER_CLAIM_MS), Some(7));
-    assert!(
-        second
-            .attributes
-            .iter()
-            .all(|pair| pair.key.as_str() != semconv::ATTR_EVENT_ID),
-        "the fresh span inherits no event: {second:?}"
-    );
-
-    let mut untimed = VerbClock::<OfferStage>::untimed();
-    untimed.mark(OfferStage::Claim);
-    untimed.restart();
-    untimed.mark(OfferStage::Claim);
-    drop(untimed);
-    assert_eq!(
-        collected.spans().len(),
-        2,
-        "an untimed clock records nothing"
-    );
-}
-
-/// `restart_if_staged` closes a staged clock's span and starts a fresh one with
-/// no identity; a clock that reached no stage keeps its start and identity.
-#[test]
-fn test_restart_if_staged_only_restarts_a_staged_clock() {
-    let ticks = Moved::new();
-    let mut unstaged = VerbClock::<OfferStage, Moved>::start_on(ticks.clone());
-    unstaged.identify(EVENT_ID, FLEET_ID);
-    unstaged.restart_if_staged();
-    assert_eq!(
-        unstaged.event_id.as_deref(),
-        Some(EVENT_ID),
-        "an unstaged clock keeps its identity"
-    );
-
-    let mut staged = VerbClock::<OfferStage, Moved>::start_on(ticks);
-    staged.identify(EVENT_ID, FLEET_ID);
-    staged.mark(OfferStage::Claim);
-    staged.restart_if_staged();
-    assert!(staged.stages.is_empty(), "the restart starts a fresh span");
-    assert_eq!(staged.event_id, None, "the fresh span inherits no identity");
 }
