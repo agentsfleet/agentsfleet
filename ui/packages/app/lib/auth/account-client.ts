@@ -2,8 +2,8 @@
 
 import type { AccountAccess, AccountSettingsClient, ProfileNames } from "./account-types";
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
-import { useClerk, useReverification, useSession, useUser } from "@clerk/nextjs";
-import { PROFILE_APPEARANCE } from "@/lib/profile-appearance";
+import { useReverification, useSession, useUser } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { listAccountSessionsAction, revokeAccountSessionAction } from "./account-actions";
 import { accountSessionPageSchema, profileNamesSchema } from "./account-types";
 
@@ -12,7 +12,7 @@ type Generation = {key: string};
 /** Provider resources and challenge hints stop here; screens consume app-owned data. */
 export function useAccountSettings(): AccountAccess {
   const identity = useUser();
-  const provider = useClerk();
+  const router = useRouter();
   const session = useSession();
   const subject = identity.user?.id ?? null;
   const contextKey = JSON.stringify([subject, session.session?.id ?? null]);
@@ -52,9 +52,9 @@ export function useAccountSettings(): AccountAccess {
         try {const result = await revoke(generation, subject, id); return current() ? result : changed();}
         catch {return {ok: false, error: "Session sign-out could not be confirmed. Refresh before trying again."};}
       },
-      manageSignIn() {if (current()) provider.openUserProfile({appearance: PROFILE_APPEARANCE});},
+      manageSignIn() {if (current()) router.push("/settings/account/sign-in");},
     };
-  }, [subject, generation, provider, revoke, update]);
+  }, [subject, generation, router, revoke, update]);
   if (!identity.isLoaded || !session.isLoaded) return {status: "loading"};
   if (!identity.user || !session.session) return {status: "signed-out"};
   return {status: "ready", contextKey, client, profile: {subject: identity.user.id, firstName: identity.user.firstName ?? "", lastName: identity.user.lastName ?? "",
