@@ -6,6 +6,8 @@ import { PENDING_SEND_STATE, type PendingSend, type PendingSendWriters } from ".
 import { DEFAULT_REQUEST_TIMEOUT_MS } from "@/lib/api/client";
 import { RETRY_DEFAULTS } from "@/lib/api/retry-config";
 import { ERROR_CODE } from "@/lib/errors";
+import { sendMarks } from "@/lib/streaming/send-marks";
+import { IN_ORDER, chunkOf, completionOf, markedSends } from "@/tests/helpers/send-marks-fixtures";
 
 const postSteer = vi.hoisted(() => vi.fn());
 const mint = vi.hoisted(() => ({ unavailable: false }));
@@ -106,6 +108,8 @@ function expectSentAgainAsNew(text: string): void {
 }
 
 afterEach(() => {
+  performance.clearMarks();
+  sendMarks.reset();
   cleanup();
   vi.clearAllMocks();
   vi.useRealTimers();
@@ -291,5 +295,54 @@ describe("a reused operation id", () => {
     await expect(hook.result.current.onNew(message(DEPLOY))).rejects.toBeInstanceOf(MessageNotSentError);
     expect(ctx.writers.dismiss).not.toHaveBeenCalled();
     expect(postSteer).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a send's performance marks", () => {
+  it("test_delivery_marks_send_accepted_first_frame_complete: one send leaves four marks under its id, in order", async () => {
+    postSteer.mockResolvedValue(ACCEPTED);
+    const { hook } = delivery();
+    await act(() => hook.result.current.onNew(message(DEPLOY)));
+    sendMarks.frame(chunkOf(EVENT_ID));
+    sendMarks.frame(chunkOf(EVENT_ID));
+    sendMarks.frame(completionOf(EVENT_ID));
+    expect(markedSends()).toEqual(IN_ORDER.map((name) => [name, sentId(1)]));
+  });
+
+  it("two overlapping sends leave eight marks, four per id, each id's in order", async () => {
+    const SECOND_EVENT_ID = "1790573387481-567";
+    let answerFirst: (result: typeof ACCEPTED) => void = () => undefined;
+    postSteer.mockImplementationOnce(() => new Promise((resolve) => { answerFirst = resolve; }));
+    postSteer.mockResolvedValueOnce({ ok: true, data: { status: "accepted", event_id: SECOND_EVENT_ID, replayed: false } });
+    const { hook } = delivery();
+    const first = hook.result.current.onNew(message(DEPLOY));
+    const second = hook.result.current.onNew(message(STOP));
+    // The first steer goes out on the queue's next turn; answer it once it has.
+    await vi.waitFor(() => expect(postSteer).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      answerFirst(ACCEPTED);
+      await Promise.all([first, second]);
+    });
+    for (const frame of [chunkOf(SECOND_EVENT_ID), chunkOf(EVENT_ID), completionOf(SECOND_EVENT_ID), completionOf(EVENT_ID)]) sendMarks.frame(frame);
+    const marks = markedSends();
+    expect(marks).toHaveLength(8);
+    for (const operationId of [sentId(1), sentId(2)]) {
+      expect(marks.filter(([, id]) => id === operationId).map(([name]) => name)).toEqual(IN_ORDER);
+    }
+  });
+
+  it("a send still settles when the browser refuses every mark", async () => {
+    const refuse = vi.spyOn(performance, "mark").mockImplementation(() => {
+      throw new TypeError("User Timing refused");
+    });
+    try {
+      postSteer.mockResolvedValue(ACCEPTED);
+      const { ctx, hook } = delivery();
+      await act(() => hook.result.current.onNew(message(DEPLOY)));
+      expect(ctx.writers.settle).toHaveBeenCalledTimes(1);
+      expect(ctx.reconcileOptimistic).toHaveBeenCalledTimes(1);
+    } finally {
+      refuse.mockRestore();
+    }
   });
 });

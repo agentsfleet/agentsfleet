@@ -8,13 +8,17 @@
 //! on telemetry, and the next lease asks again.
 
 use af_observability::semconv::{
-    ATTR_AGENT_ID, ATTR_EVENT_ID, ATTR_LEASE_ID, ATTR_RUNNER_HOST, ATTR_RUNNER_ID,
-    ATTR_SANDBOX_REUSED, RUNNER_SCOPE_NAME, SPAN_RUNNER_LEASE,
+    ATTR_AGENT_ID, ATTR_EVENT_ID, ATTR_LEASE_ID, ATTR_RUNNER_CHECKOUT_MS, ATTR_RUNNER_EGRESS_MS,
+    ATTR_RUNNER_FIRST_TOKEN_MS, ATTR_RUNNER_HOST, ATTR_RUNNER_ID, ATTR_RUNNER_MEMORY_MS,
+    ATTR_RUNNER_MODEL_MS, ATTR_RUNNER_PREPARE_MS, ATTR_RUNNER_REPORT_MS, ATTR_RUNNER_SANDBOX_MS,
+    ATTR_RUNNER_SANDBOX_WAIT_MS, ATTR_RUNNER_TOOLS_MS, ATTR_SANDBOX_REUSED, RUNNER_SCOPE_NAME,
+    SPAN_RUNNER_LEASE,
 };
 use af_wire::lease::LeasePayload;
 use af_wire::runner::SelfResponse;
 use tokio::sync::OnceCell;
 use tracing::Span;
+use tracing::field::Empty;
 
 use crate::client::ControlPlane;
 use crate::error::Result;
@@ -67,7 +71,9 @@ async fn read(plane: &ControlPlane) -> Result<Identity> {
 /// protocol, so the event identifier is what joins it to the daemon's
 /// `fleet.delivery` span for the same event. That span carries no lease
 /// identifier, so a redelivered event joins every lease that ran it; the
-/// lease identifier on this span tells those runs apart.
+/// lease identifier on this span tells those runs apart. The segment fields
+/// stay empty until the lease concludes, and a segment it never reached stays
+/// off the span.
 pub(crate) fn lease_span(identity: Option<&Identity>, lease: &LeasePayload<'_>) -> Span {
     let runner_id = identity.map(|known| &*known.runner_id);
     let host = identity.map(|known| &*known.host);
@@ -82,7 +88,17 @@ pub(crate) fn lease_span(identity: Option<&Identity>, lease: &LeasePayload<'_>) 
         { ATTR_LEASE_ID } = lease_id,
         { ATTR_EVENT_ID } = event_id,
         { ATTR_AGENT_ID } = fleet_id,
-        { ATTR_SANDBOX_REUSED } = tracing::field::Empty,
+        { ATTR_SANDBOX_REUSED } = Empty,
+        { ATTR_RUNNER_MEMORY_MS } = Empty,
+        { ATTR_RUNNER_SANDBOX_MS } = Empty,
+        { ATTR_RUNNER_EGRESS_MS } = Empty,
+        { ATTR_RUNNER_PREPARE_MS } = Empty,
+        { ATTR_RUNNER_CHECKOUT_MS } = Empty,
+        { ATTR_RUNNER_SANDBOX_WAIT_MS } = Empty,
+        { ATTR_RUNNER_MODEL_MS } = Empty,
+        { ATTR_RUNNER_TOOLS_MS } = Empty,
+        { ATTR_RUNNER_REPORT_MS } = Empty,
+        { ATTR_RUNNER_FIRST_TOKEN_MS } = Empty,
     )
 }
 

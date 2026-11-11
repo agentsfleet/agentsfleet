@@ -10,6 +10,7 @@
 use std::time::Instant;
 
 use af_core::id::Uuid7;
+use af_observability::verb_span::{OfferStage, VerbClock};
 use af_wire::lease::LeasePayload;
 use jiff::Timestamp;
 
@@ -28,12 +29,17 @@ struct Held {
 }
 
 impl LeaseService {
+    /// Runs a claimed pass, marking the admission, the issue and the offer's
+    /// encoding on `clock`. The issue ends where `emit` is called, or where the
+    /// delivery returns without calling it, so a refused claim shows `issue`
+    /// and no `encode`.
     pub(super) async fn run_claimed_with<T, F>(
         &self,
         acquired: Acquired,
         runner_id: &Uuid7,
         now: Timestamp,
         began: Instant,
+        clock: &mut VerbClock<OfferStage>,
         emit: &mut F,
     ) -> Result<Option<T>>
     where
@@ -45,14 +51,27 @@ impl LeaseService {
             fence: acquired.fence,
             event_id: acquired.event_id.clone(),
         };
-        let pass = match self
-            .admit_claimed(acquired, runner_id, now)
-            .await
-            .map(Step::proceed)
-        {
+        clock.identify(held.event_id.as_str(), held.fleet_id.as_str());
+        let admitted = self.admit_claimed(acquired, runner_id, now).await;
+        clock.mark(OfferStage::Admit);
+        let pass = match admitted.map(Step::proceed) {
             Ok(Ok(admitted)) => {
-                self.deliver_with(runner_id, admitted, now, began, emit)
-                    .await
+                let delivered = {
+                    let mut timed = |lease: LeasePayload<'_>, offered: Offered| {
+                        clock.mark(OfferStage::Issue);
+                        let encoded = emit(lease, offered);
+                        clock.mark(OfferStage::Encode);
+                        encoded
+                    };
+                    self.deliver_with(runner_id, admitted, now, began, &mut timed)
+                        .await
+                };
+                // The issue ends where `emit` is called. When it never is (a
+                // refusal or a fault), it ends here, so that attempt's time is
+                // not left unexplained; a stage already marked keeps its first
+                // reading.
+                clock.mark(OfferStage::Issue);
+                delivered
             }
             Ok(Err(ended)) => Ok(ended),
             Err(fault) => Err(fault),
@@ -115,6 +134,7 @@ mod tests {
                 &test_dead::id(9),
                 test_dead::AT,
                 std::time::Instant::now(),
+                &mut af_observability::verb_span::VerbClock::untimed(),
                 &mut |_lease, _metadata| (),
             )
             .await

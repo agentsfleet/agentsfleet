@@ -281,7 +281,12 @@ no telemetry knob, so hardening still sees a single thread.
   an event.
 
   Each lease is its own root trace carrying `agentsfleet.lease.id`
-  and `agentsfleet.event.id`. The tool span names its tool by the published catalog, or `_other` for anything else. A name the model made up therefore never leaves the host.
+  and `agentsfleet.event.id`. When the lease concludes, `runner.lease` gains
+  each segment it reached as `agentsfleet.runner.<segment>_ms`, the values its
+  `lease_completed` line logs. `RUNNER_SEGMENT_KEYS` in `semconv` declares
+  the ten keys, and an unreached segment stays off the span.
+
+  The tool span names its tool by the published catalog, or `_other` for anything else. A name the model made up therefore never leaves the host.
 
 - **A fixed span budget** (`afr_telemetry`'s `budget` module): at most
   `MAX_LEASE_SPANS` (256) spans per lease, its root included. The runner-wide cap is `RUNNER_SPANS_PER_SECOND` (128) per monotonic second. A
@@ -475,6 +480,16 @@ The segments do not partition the round trip; the sandbox wait runs beside the m
 
 Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complete`, `lease_to_report` and `report_to_complete`. They sit beside its first-chunk stages and are recorded at the publish.
 
+**Daemon verb spans name the stages a chat crosses.** A verb builds a stage clock from `af_observability`'s `verb_span` module at its entry. It marks each boundary it reaches and records one root span when it ends, on every exit. The span goes through the global tracer, asked for at record time, as `fleet.delivery` does.
+
+`fleet.steer` marks `admit` and `announce`; `fleet.offer` marks `claim`, `admit`, `issue`, `encode` and `send`. `fleet.report` marks `load`, `prepare`, `capture`, `commit`, `announce` and `ack`. The fallback `fleet.hydrate` and `fleet.capture` mark `fence`, then `memory_read` or `memory_write`.
+
+A verb that reaches no stage records nothing. The common case is an offer pass that finds no work: the recovery probe runs every 5 s per replica, and a span for each would flood `SPAN_QUEUE`. A claim the gates refused reached `claim`, so it keeps its span.
+
+Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent. `issue` ends where the offer frame is built, or where the delivery returns without building one, so a refused claim shows `claim`, `admit` and `issue` and no `encode` or `send`.
+
+The spans carry `agentsfleet.event.id` and `gen_ai.agent.id` and join `fleet.delivery` and `runner.lease` by attribute. `VERB_SPAN_KEYS` in `semconv` declares every key, and each verb's stages are a closed enum, so no free-form key compiles.
+
 **`fleet.delivery` is a custom control-plane span.** It has its own root
 (`af_observability`'s `delivery` module). `DELIVERY_SPAN_KEYS` in the crate's
 `semconv` module declares its attributes.
@@ -514,20 +529,19 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 
 | Step | Logs | Metrics | Trace |
 |---|---|---|---|
-| Steer admitted (`afd_api_tenant` steer handler, `afd_admission`) | `fleet_steer_failed` on refusal | `agentsfleet_admissions_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | request span only |
+| Steer admitted (`afd_api_tenant` steer handler, `afd_admission`) | `fleet_steer_failed` on refusal | `agentsfleet_admissions_total{outcome}`; `agentsfleet_steer_dispositions_total{outcome}` (`started`, `folded`, `queued`) | `fleet.steer` with `admit` and `announce` |
 | Wake ring (`afd_bus::wake`) | `admission_wake_ring_failed` | `agentsfleet_fleet_ready_wake_failures_total{kind}` | none |
-| Held heartbeat (`afd_api_runner` heartbeat, `wake.rs`) | `runner_wake_refused` | `agentsfleet_runner_wake_answers_total{reason}` | request span only |
-| Lease issued (`afd_fleet` lease delivery) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_lease}` | request span only |
+| Lease issued (`afd_fleet` lease delivery) | `runner_lease_issued` with `queue_wait_ms`; `lease_window_read_failed` | Gateway claim attempts and candidate counts; `delivery_stage{event_to_lease}` | `fleet.offer` with its stages; none for an empty pass |
 | Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_lease_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
-| Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease`, same condition |
-| Report settled (`afd_fleet` lease report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{lease_to_report, report_to_complete, event_to_complete}` | `fleet.delivery` with segment attributes |
+| Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease` with its segment attributes, same condition |
+| Report settled (`afd_fleet` lease report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{lease_to_report, report_to_complete, event_to_complete}` | `fleet.report` with its stages; `fleet.delivery` with segment attributes |
 | First chunk (`afd_fleet` lease activity) | none | `delivery_stage{lease_to_first_chunk, event_to_first_chunk, zombie_to_first_chunk}` | none |
 
-Gaps left by M238, each named in M233_001:
+Built in M233_002, closing the gaps M238 left:
 
-- The steer and lease handlers carry no stage attributes on their request spans (§1).
-- The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026 (§2).
-- The edge reports nothing of its own (§3).
+- Every daemon verb records its span with its stages: `fleet.steer`, `fleet.offer`, `fleet.report`, `fleet.hydrate` and `fleet.capture` (§1).
+- The runner's own families and spans reach a backend only where a runner collector is installed. Dev has one since Nov 04, 2026, and `runner.lease` carries its segments (§2).
+- The edge reports its own cost (§3). The steer route answers `Server-Timing: auth;dur=…, upstream;dur=…` after its answer is final, so a status or body never changes. The browser leaves `af:send`, `af:accepted`, `af:first-frame` and `af:complete` marks, each naming the send's operation id in `detail`.
 
 ## M243 runner stream instrumentation
 

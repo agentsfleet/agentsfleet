@@ -227,7 +227,12 @@ impl Chat {
         };
         self.fixtures
             .plane()
-            .report(runner, &request, now)
+            .report(
+                runner,
+                &request,
+                now,
+                &mut af_observability::verb_span::VerbClock::untimed(),
+            )
             .await
             .expect("the plane settles the report");
     }

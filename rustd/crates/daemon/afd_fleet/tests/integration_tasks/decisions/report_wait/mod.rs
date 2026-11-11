@@ -142,7 +142,12 @@ async fn settle(
     plane.task_reports = Some(Arc::new(tasks.clone()));
     let now = af_core::clock::after(case.held.now, crate::report_seed::SLICE);
     plane
-        .report(&case.held.runner, &report, now)
+        .report(
+            &case.held.runner,
+            &report,
+            now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("ordinary report settlement");
     let snapshot = tasks
@@ -154,7 +159,12 @@ async fn settle(
     support::assert_counts(after, expected);
     assert_eq!(checkpoint_row(case, &id(checkpoint)).await, *saved);
     plane
-        .report(&case.held.runner, &report, now)
+        .report(
+            &case.held.runner,
+            &report,
+            now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("duplicate report replay");
     assert_eq!(

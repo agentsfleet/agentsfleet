@@ -31,6 +31,7 @@ impl LeaseService {
                 runner_id,
                 now,
                 std::time::Instant::now(),
+                &mut af_observability::verb_span::VerbClock::untimed(),
                 &mut encode,
             )
             .await?

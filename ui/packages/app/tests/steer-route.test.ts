@@ -34,6 +34,33 @@ const PROBLEM_TYPE = "application/problem+json";
 const OPERATION_ID_MAX_BYTES = 200;
 // A control character: JSON's widest escape, six bytes on the wire for one.
 const WIDEST_ESCAPE = "\u0001";
+// What the stubbed mint and daemon take, in milliseconds.
+const AUTH_TAKES_MS = 12;
+const UPSTREAM_TAKES_MS = 40;
+// A timer may fire inside the millisecond it was due, so a measured duration
+// can read just under its delay.
+const TIMER_SLACK_MS = 1;
+const SERVER_TIMING_METRIC = /^(\w+);dur=(\d+(?:\.\d+)?)$/;
+
+function after<T>(ms: number, value: T): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value), ms));
+}
+
+function failsAfter(ms: number, error: unknown): Promise<never> {
+  return new Promise((_resolve, reject) => setTimeout(() => reject(error), ms));
+}
+
+// The `Server-Timing` metrics on `res`, by name, in milliseconds.
+function serverTiming(res: Response): Map<string, number> {
+  const header = res.headers.get("server-timing") ?? "";
+  const metrics = new Map<string, number>();
+  for (const metric of header.split(",").map((part) => part.trim()).filter(Boolean)) {
+    const match = SERVER_TIMING_METRIC.exec(metric);
+    expect(match, `a metric the route writes: ${metric}`).not.toBeNull();
+    if (match?.[1] && match[2]) metrics.set(match[1], Number(match[2]));
+  }
+  return metrics;
+}
 
 type Init = { headers?: Record<string, string>; body?: BodyInit | null };
 
@@ -176,5 +203,43 @@ describe("steer route — what it passes on", () => {
     const url = steerMessagesUrl(WS, FLEET);
     for (const rule of rules) expect(url.startsWith(String(rule.source).split("/:")[0] + "/")).toBe(false);
     expect(rules.length).toBeGreaterThan(0);
+  });
+});
+
+describe("steer route — what it says it spent", () => {
+  it("test_steer_route_answers_server_timing: names auth and upstream, each at least what it took", async () => {
+    getTokenFn.mockImplementationOnce(() => after(AUTH_TAKES_MS, TOKEN));
+    steerFleetMock.mockImplementationOnce(() => after(UPSTREAM_TAKES_MS, ACCEPTED));
+    const res = await post(steerRequest());
+    expect(res.status).toBe(HTTP.ACCEPTED);
+    const timing = serverTiming(res);
+    expect([...timing.keys()]).toEqual(["auth", "upstream"]);
+    expect(timing.get("auth")).toBeGreaterThanOrEqual(AUTH_TAKES_MS - TIMER_SLACK_MS);
+    expect(timing.get("upstream")).toBeGreaterThanOrEqual(UPSTREAM_TAKES_MS - TIMER_SLACK_MS);
+  });
+
+  it("test_server_timing_never_changes_the_answer: a refusal and an unreachable daemon keep their status and body, with auth timed", async () => {
+    const conflict = new ApiError("conflict", HTTP.CONFLICT, ERROR_CODE.AGENTSFLEET_OPERATION_CONFLICT, "req_1");
+    steerFleetMock.mockImplementationOnce(() => failsAfter(UPSTREAM_TAKES_MS, conflict));
+    const refused = await post(steerRequest());
+    expect(refused.status).toBe(HTTP.CONFLICT);
+    expect(refused.headers.get("content-type")).toBe(PROBLEM_TYPE);
+    expect(await refused.json()).toEqual({ detail: "conflict", error_code: ERROR_CODE.AGENTSFLEET_OPERATION_CONFLICT, request_id: "req_1" });
+    expect(serverTiming(refused).has("auth")).toBe(true);
+
+    steerFleetMock.mockRejectedValueOnce(new TypeError("fetch failed"));
+    const unreachable = await post(steerRequest());
+    expect(unreachable.status).toBe(HTTP.BAD_GATEWAY);
+    expect(await unreachable.json()).toEqual({ detail: "Upstream unreachable" });
+    expect(serverTiming(unreachable).has("auth")).toBe(true);
+  });
+
+  it("times the mint alone when nobody is signed in, and nothing before the mint", async () => {
+    getTokenFn.mockResolvedValueOnce(null);
+    const unsigned = await post(steerRequest());
+    expect(unsigned.status).toBe(HTTP.UNAUTHORIZED);
+    expect([...serverTiming(unsigned).keys()]).toEqual(["auth"]);
+    const foreign = steerRequest({ headers: { Origin: "https://evil.example" } });
+    expect((await post(foreign)).headers.get("server-timing")).toBeNull();
   });
 });

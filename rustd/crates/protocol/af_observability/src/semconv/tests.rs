@@ -18,7 +18,9 @@
 
 use std::collections::BTreeSet;
 
-use super::{CENSUS_LABEL_KEYS, DELIVERY_SPAN_KEYS, RUNNER_SPAN_KEYS};
+use super::{
+    CENSUS_LABEL_KEYS, DELIVERY_SPAN_KEYS, RUNNER_SEGMENT_KEYS, RUNNER_SPAN_KEYS, VERB_SPAN_KEYS,
+};
 use crate::metrics::registry::Registry;
 
 /// The namespaces a key this daemon emits may live under.
@@ -76,6 +78,7 @@ fn no_key_is_spelled_twice() {
         ("the census label keys", CENSUS_LABEL_KEYS),
         ("the delivery span keys", DELIVERY_SPAN_KEYS),
         ("the runner span keys", RUNNER_SPAN_KEYS),
+        ("the verb span keys", VERB_SPAN_KEYS),
     ] {
         let unique: BTreeSet<&&str> = keys.iter().collect();
         assert_eq!(
@@ -86,16 +89,32 @@ fn no_key_is_spelled_twice() {
     }
 }
 
-/// Every delivery-span key lives in a namespace this product owns.
+/// Every span key lives in a namespace this product owns.
 #[test]
-fn every_delivery_span_key_is_namespaced() {
-    for key in DELIVERY_SPAN_KEYS.iter().chain(RUNNER_SPAN_KEYS) {
+fn every_span_key_is_namespaced() {
+    for key in DELIVERY_SPAN_KEYS
+        .iter()
+        .chain(RUNNER_SPAN_KEYS)
+        .chain(VERB_SPAN_KEYS)
+    {
         assert!(
             OWNED_NAMESPACES
                 .iter()
                 .any(|namespace| key.starts_with(namespace)),
             "`{key}` is under no namespace this daemon owns, so it will collide \
              with whatever else claims the bare word"
+        );
+    }
+}
+
+/// Every segment key the lease span writes is one the runner's spans declare,
+/// so the segments never reach the exporter as keys nothing else names.
+#[test]
+fn every_runner_segment_key_is_a_runner_span_key() {
+    for key in RUNNER_SEGMENT_KEYS {
+        assert!(
+            RUNNER_SPAN_KEYS.contains(&key),
+            "`{key}` is a lease segment the runner span keys do not declare"
         );
     }
 }
