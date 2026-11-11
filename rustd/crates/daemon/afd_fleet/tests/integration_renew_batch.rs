@@ -305,6 +305,16 @@ async fn kept_frame(
     held: &Held,
     lease: &Uuid7,
 ) -> afd_fleet::Result<(Timestamp, afd_billing::Nanos)> {
+    kept_frame_with(plane, held, lease, RenewRequest::default()).await
+}
+
+/// [`kept_frame`], carrying `request`'s lines.
+async fn kept_frame_with(
+    plane: &afd_fleet::lease::LeaseService,
+    held: &Held,
+    lease: &Uuid7,
+    request: RenewRequest,
+) -> afd_fleet::Result<(Timestamp, afd_billing::Nanos)> {
     let facts = held
         .leases
         .load_for_report(lease, &held.runner)
@@ -314,7 +324,7 @@ async fn kept_frame(
     plane
         .renew_batch(Renewals {
             runner_id: &held.runner,
-            leases: vec![(lease.clone(), RenewRequest::default())],
+            leases: vec![(lease.clone(), request)],
             funds_due: false,
             now: held.now,
             kept: std::collections::HashMap::from([(lease.clone(), facts)]),
@@ -383,5 +393,184 @@ async fn kept_facts_skip_the_pre_read_until_a_version_moves() {
     assert_eq!(pre_reads(&steady), 0, "{:?}", steady.statements());
     assert_eq!(pre_reads(&relearning), 1, "a moved version is read again");
     owner.close().await;
+    held.fixtures.cleanup().await;
+}
+
+/// A fleet config whose daily ceiling is `nanos`.
+fn daily_ceiling(nanos: i64) -> String {
+    format!(
+        r#"{{"name":"ceiling","x-agentsfleet":{{"triggers":[],"tools":[],"budget":{{"daily_nanos":"{nanos}"}}}}}}"#
+    )
+}
+
+// Value: protects=a replica that cached a fleet's ceiling obeys a new head
+// revision another plane applied, with no signal between them;
+// fails_when=the kept frame judges the cached revision's ceiling;
+// why_new=M245 §9 renews from kept facts and the replica's last-read head;
+// seam=none; no_claim=a new lease, whose claim returns the head's document.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn config_cache_follows_new_head_revision() {
+    let held = held_in(Fixtures::create_isolated().await).await;
+    let lease = &held.issued.lease_id;
+    let workspace = held.acquired.workspace_id.clone();
+    held.fixtures
+        .native_config(&held.fleet, &daily_ceiling(10 * SEEDED_DAILY_NANOS))
+        .await;
+    let plane_a = held.fixtures.plane();
+    kept_frame(&plane_a, &held, lease)
+        .await
+        .expect("plane A renews under the ten-dollar revision");
+    spend(
+        &held,
+        &held.tenant,
+        &workspace,
+        &held.fleet,
+        5 * SEEDED_DAILY_NANOS,
+    )
+    .await;
+    held.run_a_slice().await;
+    kept_frame(&plane_a, &held, lease)
+        .await
+        .expect("five dollars spent is under ten");
+
+    // Plane B's Save: the fleet's head moves to a one-dollar revision.
+    held.fixtures
+        .native_config(&held.fleet, &daily_ceiling(SEEDED_DAILY_NANOS))
+        .await;
+    held.run_a_slice().await;
+    let judged = kept_frame(&plane_a, &held, lease).await;
+
+    assert_eq!(
+        judged.as_ref().err().map(afd_fleet::Error::code),
+        Some(RUN_BUDGET_EXCEEDED),
+        "{judged:?}"
+    );
+    held.fixtures.cleanup().await;
+}
+
+/// One request line of `output` output tokens, numbered `seq`.
+fn output_line(held: &Held, seq: u32, output: u32) -> RenewRequest {
+    RenewRequest {
+        requests: af_wire::usage::RequestLines(vec![af_wire::usage::RequestUsage {
+            seq,
+            at: held.now,
+            input_tokens: 0,
+            cached_input_tokens: 0,
+            cache_write_tokens: 0,
+            cache_write_5m_tokens: 0,
+            cache_write_1h_tokens: 0,
+            output_tokens: output,
+        }]),
+    }
+}
+
+/// The charge of the model line numbered `seq` on `lease`.
+async fn model_charge(held: &Held, lease: &Uuid7, seq: i64) -> i64 {
+    sqlx::query_scalar(
+        "SELECT charged_nanos FROM billing.usage_lines WHERE work_id = $1 AND kind = 'model' AND seq = $2",
+    )
+    .bind(lease)
+    .bind(seq)
+    .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
+    .await
+    .expect("the model line is logged")
+}
+
+// Value: protects=a catalogue edit reprices the next renewal on a replica
+// that cached the old book; fails_when=the kept frame prices from the cached
+// book and the guard lets it through; why_new=M245 §9 prices renewals from
+// the replica's last-read catalogue version; seam=none; no_claim=the per-lease
+// path's statement count, which the rerun pays once.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn catalogue_cache_reprices_after_bump() {
+    let held = held_in(Fixtures::create_isolated().await).await;
+    held.fixtures
+        .seed_model_rate(crate::seed::PROVIDER, crate::seed::MODEL)
+        .await;
+    let lease = &held.issued.lease_id;
+    let plane = held.fixtures.plane();
+    kept_frame_with(&plane, &held, lease, output_line(&held, 0, 1_000))
+        .await
+        .expect("tick 1 renews");
+    let before = model_charge(&held, lease, 0).await;
+
+    // An admin edit: the output rate doubles and the catalogue moves.
+    let mut owner = held.fixtures.database.acquire().await.expect("owner");
+    sqlx::query(
+        "UPDATE model.platform_model_prices SET output_nanos_per_mtok = output_nanos_per_mtok * 2",
+    )
+    .execute(&mut *owner)
+    .await
+    .expect("the rate doubles");
+    sqlx::query(
+        "UPDATE model.catalogue_version SET resource_version = resource_version + 1 WHERE id = 1",
+    )
+    .execute(&mut *owner)
+    .await
+    .expect("the catalogue moves");
+    drop(owner);
+    held.run_a_slice().await;
+    kept_frame_with(&plane, &held, lease, output_line(&held, 1, 1_000))
+        .await
+        .expect("tick 2 renews on the per-lease path");
+    let after = model_charge(&held, lease, 1).await;
+
+    assert!(before > 0, "tick 1 priced its line");
+    assert_eq!(after, 2 * before, "tick 2 charged the edited rate");
+    held.fixtures.cleanup().await;
+}
+
+// Value: protects=the batch prices its runtime line as the rater prices it;
+// fails_when=the statement's in-SQL runtime pricing drifts from `Rater`;
+// why_new=Dimension 6.6's batch half moved here with the meter (§7);
+// seam=none; no_claim=the expiry statement, which the billing sweep's tests
+// price.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn batch_lines_match_rater() {
+    let held = held().await;
+    held.fixtures
+        .seed_model_rate(crate::seed::PROVIDER, crate::seed::MODEL)
+        .await;
+    let lease = &held.issued.lease_id;
+    let answers = frame(&held, &[lease], false).await;
+    assert_eq!(codes(&answers), [None], "{answers:?}");
+
+    let (seq, runtime_ms, charged, price): (i64, i64, i64, Option<Uuid7>) = sqlx::query_as(
+        "SELECT seq, runtime_ms, charged_nanos, platform_model_price_id \
+         FROM billing.usage_lines WHERE work_id = $1 AND kind = 'runtime'",
+    )
+    .bind(lease)
+    .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
+    .await
+    .expect("one runtime line");
+    let book = afd_billing::price::PriceBook::load(
+        &mut *held.fixtures.database.acquire().await.expect("reader"),
+        crate::seed::PROVIDER,
+        crate::seed::MODEL,
+    )
+    .await
+    .expect("the book reads");
+    let line = af_wire::usage::UsageLine::runtime(
+        u32::try_from(seq).expect("a slice start"),
+        held.now,
+        u32::try_from(runtime_ms).expect("a slice's milliseconds"),
+    );
+    let rated = afd_billing::price::Rater::new(
+        &book,
+        afd_billing::rates::Posture::Platform,
+        afd_billing::price::Window {
+            from: held.now,
+            until: af_core::clock::now(),
+        },
+    )
+    .rate(&line)
+    .expect("the line rates");
+
+    assert!(price.is_some(), "the seeded model prices its runtime");
+    assert_eq!(charged, rated.charged.as_i64());
+    assert_eq!(price, rated.price);
     held.fixtures.cleanup().await;
 }

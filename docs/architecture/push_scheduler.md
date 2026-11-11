@@ -175,7 +175,7 @@ Every NATS subject is at most once. Each one names its Postgres backstop.
 | M242 | One-statement intake; folding with a disposition | One write statement per accepted message; a live run takes a person's mid-run message in its conversation |
 | M243 | One runner stream; the Bus seam | Activity path near 0 statements; no poll; reconnect and revocation tests |
 | M244 | Core NATS behind the Bus; durable jobs in Postgres | Tail p99 and a kill drill on both buses |
-| M245 | Revision-keyed caches, a one-statement report, batched renewal, an idle-gated checkout ping | At most 20 statements per chat, none on pricing after warm-up |
+| M245 | Revision-keyed caches, a one-statement report, batched renewal, an idle-gated checkout ping, lease facts kept by the stream session | About 21 statements per chat, none on pricing after warm-up (Indy set 21, Nov 11, 2026; the history read's fold into the claim follows) |
 | M246 | Tenant-owned runners, a hard ownership filter, the respawn setting | Cross-tenant placement refused; no platform key leaves the daemon |
 | M247 | Hold-aware capacity, auto-cordon, checkpoint respawn | A killed host's run restarts elsewhere, settled once |
 
@@ -310,3 +310,27 @@ A whole-bus outage costs the same on both buses: tails go quiet and send `catchi
 The NATS client retries about every 12 s while every node is down, so that wait can reach about 12 s.
 NATS differs when one node fails, because any surviving node carries every subject.
 The previous broker's self-hosted cluster had no failover of its own: its documentation leaves failover to a separate control plane, so a lost primary's channels waited for that primary to restart.
+
+### M245: twenty-one statements per chat
+
+Measured on Indy's laptop on Nov 11, 2026, with `make bench-lease PROFILE=rig`: `main` at `93d66f476` and this branch at `480802c84`, three runs each, interleaved, each on a reset rig. The median branch run by statements per chat is committed as `lease.rig.json`.
+
+| Path | `main`, median run | Branch, median run | Branch lowest | Branch highest |
+|---|---|---|---|---|
+| gates | 11.0 | 2.74 | 2.74 | 2.74 |
+| shared | 8.0 | 7.0 | 7.0 | 7.0 |
+| host | 9.0 | 2.035 | 2.035 | 2.035 |
+| issue | 7.0 | 3.12 | 3.115 | 3.125 |
+| meter | 6.0 | 2.0 | 2.0 | 2.0 |
+| report | 6.0 | 1.0 | 1.0 | 1.0 |
+| pricing | 7.0 | 0.035 | 0.035 | 0.035 |
+| claim | 6.065 | 2.085 | 2.065 | 2.095 |
+| task | 6.0 | 0.0 | 0.0 | 0.0 |
+| fold | — | 1.0 | 1.0 | 1.0 |
+| other | 8.11 | 0.0 | 0.0 | 0.0 |
+| total | 74.175 | 21.015 | 20.99 | 21.03 |
+
+`main`'s three totals were 74.17, 74.175 and 74.175; the branch's 21.03, 20.99 and 21.015. A chat costs 13.42 commits on the branch against 37.43 on `main`. Branch lease p95 was 37.2, 42.7 and 28.4 ms and report p95 11.9, 13.7 and 11.7 ms; `main`'s lease p95 was 126.5, 48.0 and 53.2 ms. Drain leases per second: branch 206.9, 197.6 and 211.6; `main` 75.2, 126.7 and 116.2.
+
+`main` has no `fold` path: its classifier had no fragment for `claim_inputs.sql`, so those statements sat in `other`. `shared` is the foreign-key and counter-trigger statements Postgres runs inside the writes, about 5 of its 7. The pricing path's 0.035 is the price book's first read per model as the cache warms.
+
