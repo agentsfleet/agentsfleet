@@ -1,4 +1,4 @@
-import type { MessageState } from "@assistant-ui/react";
+import type { AssistantState } from "@assistant-ui/react";
 import { ACTOR, baseActorOf, eventLinkFrom, eventReferenceFrom, parsePayload, senderLabelFor, SENDER, steerMessageFrom } from "@/lib/events/event-summary";
 import { FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
@@ -8,13 +8,16 @@ import { STATUS_AGENT_ERROR, STATUS_IN_FLIGHT, STATUS_OPTIMISTIC } from "./fleet
 import { GROUP_META, RENDER_KIND } from "./useFleetThreadEntries";
 import { CHAT_ELEMENT, type ActivityDetails, type ActivityElement, type FleetChatElement } from "./fleet-chat-elements";
 
+type MessageState = AssistantState["message"];
+
 /** One ordered event becomes presentation elements; this never performs work. */
 export function fleetChatElements(message: MessageState): readonly FleetChatElement[] {
+  if (message.submission) return [{kind: CHAT_ELEMENT.SUBMISSION, data: {text: message.submission.text, createdAt: message.createdAt}}];
   if (message.metadata.custom[GROUP_META.MEMBERS] !== undefined) {
     const records = readGroupMembers(message);
     if (!records) return [defaultElement(message, "Some activity details couldn’t be loaded.")];
-    const [first, ...rest] = records.map(recordedActivityElement);
-    return first ? [{kind: CHAT_ELEMENT.GROUP, data: {members: [first, ...rest]}}] : [];
+    const [first, ...rest] = records;
+    return [{kind: CHAT_ELEMENT.GROUP, data: {members: [recordedActivityElement(first), ...rest.map(recordedActivityElement)]}}];
   }
   const status = readCustomStatus(message);
   switch (message.role) {
@@ -25,7 +28,6 @@ export function fleetChatElements(message: MessageState): readonly FleetChatElem
     })];
     case "assistant": return [{kind: CHAT_ELEMENT.REPLY, data: {message, status}}];
     case "user": return operatorElements(message, status);
-    default: return [defaultElement(message, null)];
   }
 }
 

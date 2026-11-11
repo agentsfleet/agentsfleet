@@ -15,10 +15,11 @@ const PLAN_SPOKEN: Record<PlanStatus, string> = {
 const PLAN_TONE: Record<PlanStatus, string> = {
   [PLAN_STATUS.PENDING]: "", [PLAN_STATUS.IN_PROGRESS]: "text-foreground", [PLAN_STATUS.COMPLETED]: "line-through",
 };
+const NO_INPUT = () => null;
 const INPUT_RENDERERS: Readonly<InputRenderers> = Object.freeze({
   // Generic tools already show their recorded JSON input in ToolCallDetails.
-  [TOOL_BODY.OUTPUT]: () => null,
-  [TOOL_BODY.COMMAND]: () => null,
+  [TOOL_BODY.OUTPUT]: NO_INPUT,
+  [TOOL_BODY.COMMAND]: NO_INPUT,
   [TOOL_BODY.DIFF]: body => <DiffRows diff={body.diff} />,
   [TOOL_BODY.PLAN]: body => <PlanSteps explanation={body.explanation} steps={body.steps} />,
   [TOOL_BODY.CLIPPED_EDIT]: (_body, context) => <RailRow glyph={OUTPUT_RAIL}>{CLIPPED_EDIT_NOTE}<ShowAll onShowAll={context.onShowAll} /></RailRow>,

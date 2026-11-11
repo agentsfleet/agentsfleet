@@ -71,6 +71,12 @@ describe("registered fleet chat elements", () => {
       .toContain("opened · agentsfleet/release#42 — Review release");
   });
 
+  it("gives an empty malformed activity a readable default without exposing its metadata", () => {
+    mockMalformedGroup([], ""); renderThread();
+    expect(screen.getByText("Activity update")).toBeTruthy();
+    expect(screen.getByText("Some activity details couldn’t be loaded.")).toBeTruthy();
+  });
+
   it("keeps an approval without thread scope readable without offering a destination", () => {
     render(<ApprovalActivityElement data={APPROVAL} />);
     expect(screen.getByText(APPROVAL.headline)).toBeTruthy();
@@ -87,8 +93,8 @@ describe("registered fleet chat elements", () => {
   });
 });
 
-function mockMalformedGroup(members: unknown) {
-  const event = ev({id: "bad-group", role: "system", actor: "webhook:github", text: "Invalid grouped activity"});
+function mockMalformedGroup(members: unknown, text = "Invalid grouped activity") {
+  const event = ev({id: "bad-group", role: "system", actor: "webhook:github", text});
   useFleetEventStreamMock.mockReturnValue({
     events: [event], connectionStatus: CONNECTION_STATUS.LIVE, isRunning: false,
     appendOptimistic: vi.fn(), reconcileOptimistic: vi.fn(), discardOptimistic: vi.fn(), retryConnection: vi.fn(),

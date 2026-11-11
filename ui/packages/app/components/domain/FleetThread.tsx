@@ -18,7 +18,7 @@ import {
   useFleetEventStream,
 } from "./useFleetEventStream";
 import { useFleetThreadEntries } from "./useFleetThreadEntries";
-import { useFleetUploadPreviews, type FleetConversationEntry } from "./useFleetUploadPreviews";
+import { mergePreviewEntries, useFleetUploadPreviews, type FleetConversationEntry } from "./useFleetUploadPreviews";
 import type { EventRow } from "@/lib/api/events";
 import { SenderLabelProvider } from "./FleetMessageRow";
 import { SenderNamesProvider } from "./SenderNames";
@@ -138,7 +138,8 @@ function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, s
     discardOptimistic: stream.discardOptimistic,
     writers: ledger.writers,
   });
-  const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent);
+  const previews = useFleetUploadPreviews({workspaceId, fleetId, subject, events: stream.events, onNew: delivery.onNew});
+  const { entries, convertEntry } = useFleetThreadEntries(stream.events, stream.convertEvent, previews.groupBreaks);
   const setupEventId = useMemo(() => stream.events.findLast(event => {
     if (event.status !== FLEET_ACTIVITY.status) return false;
     const activity = readFleetActivity(event.custom?.requestJson ?? "");
@@ -148,8 +149,7 @@ function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, s
   })?.id, [stream.events, setupRevision]);
   // Queueing permits another send while this viewer's newest reply runs.
   const runtimeRef = useRef<AssistantRuntime | null>(null);
-  const previews = useFleetUploadPreviews({workspaceId, fleetId, subject, onNew: delivery.onNew});
-  const messages = useMemo(() => [...entries, ...previews.entries], [entries, previews.entries]);
+  const messages = useMemo(() => mergePreviewEntries(entries, previews.entries), [entries, previews.entries]);
   const convertMessage = useCallback((entry: FleetConversationEntry) => entry.kind === "upload-preview" ? entry.message : convertEntry(entry), [convertEntry]);
   const adapters = useMemo(() => ({attachments: previews.attachments}), [previews.attachments]);
   const queue = useFleetSteerQueue(previews.onNew, runtimeRef);

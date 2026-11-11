@@ -27,16 +27,16 @@ export function ComposerUploadAttachments() {
   </>;
 }
 
-export function MessageUploadAttachments() {
-  return <MessagePrimitive.Attachments>{() => <UploadAttachment />}</MessagePrimitive.Attachments>;
+export function MessageUploadAttachments({preparing}: {preparing?: boolean}) {
+  return <MessagePrimitive.Attachments>{() => <UploadAttachment preparing={preparing} />}</MessagePrimitive.Attachments>;
 }
 
-function UploadAttachment({removable = false}: {removable?: boolean}) {
+function UploadAttachment({removable, preparing}: {removable?: boolean; preparing?: boolean}) {
   const status = useAuiState(state => state.attachment.status);
   return <AttachmentPrimitive.Root className="flex min-w-0 items-center gap-sm rounded-md border border-border bg-muted px-md py-sm text-label">
     <FileIcon className="size-4 shrink-0" aria-hidden="true" />
     <span className="min-w-0 flex-1 break-words"><AttachmentPrimitive.Name /></span>
-    <span className="text-eyebrow text-muted-foreground">{status.type === "running" ? "Uploading…" : "Preview"}</span>
+    <span className="text-eyebrow text-muted-foreground">{status.type === "running" || (preparing && status.type !== "complete") ? "Uploading…" : "Preview"}</span>
     {status.type === "incomplete" ? <output className="text-destructive">{status.message || "Upload failed. Remove this file and try again."}</output> : null}
     {removable ? <AttachmentPrimitive.Remove asChild><Button variant="ghost" size="icon-sm" aria-label="Remove attachment"><XIcon aria-hidden="true" /></Button></AttachmentPrimitive.Remove> : null}
   </AttachmentPrimitive.Root>;

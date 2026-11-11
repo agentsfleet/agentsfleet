@@ -83,6 +83,29 @@ it("retains confirmed work during a failed read, then clears it on access loss",
   await screen.findByText("No unfinished tasks.");
 });
 
+it.each([[1, "1 approval waiting"], [2, "2 approvals waiting"]] as const)("keeps %s stream-confirmed approvals through task failures but clears them on access loss", async (count, label) => {
+  const network = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, {status: 503}));
+  vi.stubGlobal("fetch", network);
+  const approvals = {count, href: "/w/workspace/approvals?fleetId=fleet"};
+  const view = render(<TaskPanel {...SCOPE} approvals={approvals} />);
+  expect(screen.getByText(label)).toBeTruthy();
+  await screen.findByText("Current work is unavailable.");
+  expect(screen.getByRole("link", {name: "Review approvals"}).getAttribute("href")).toBe(approvals.href);
+  network.mockResolvedValue(new Response(null, {status: 403}));
+  view.rerender(<TaskPanel {...SCOPE} revision={1} approvals={approvals} />);
+  await waitFor(() => expect(screen.queryByText(label)).toBeNull());
+  const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
+  await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
+  expect(screen.queryByRole("link", {name: "Review approvals"})).toBeNull();
+  await act(async () => pending.resolve(new Response(null, {status: 503})));
+  expect(screen.queryByRole("link", {name: "Review approvals"})).toBeNull();
+  network.mockResolvedValue(page([]));
+  await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
+  expect(await screen.findByText(label)).toBeTruthy();
+  view.rerender(<TaskPanel {...SCOPE} subject={null} approvals={approvals} />);
+  expect(screen.queryByRole("link", {name: "Review approvals"})).toBeNull();
+});
+
 it("recovers failed details and preserves previous evidence until a missing response removes it", async () => {
   let response = new Response(null, {status: 503});
   vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([summary()]) : response.clone()));
