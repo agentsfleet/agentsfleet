@@ -11,6 +11,7 @@
 //! moves `fire_at` behind the row's `updated_at` (`CronLane::backdate_fire_at`)
 //! rather than waiting for a wall clock.
 
+#![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     clippy::panic,

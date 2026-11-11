@@ -19,9 +19,9 @@ use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::provider::Providers;
 use afd_credential::secrets::Registry;
-use afd_credential::vault::Vault;
 use afd_db::Db;
 use afd_gate::gate::Gates;
+use afd_vault::Vault;
 use jiff::Timestamp;
 
 use crate::lease::affinity::Fence;
@@ -63,7 +63,7 @@ pub(crate) fn plane() -> LeaseService {
         biller: Arc::new(biller()),
         memories: Memories::new(database(), Entropy::new()),
         providers: Providers::new(database(), Arc::clone(&kek), Entropy::new()),
-        vault: Vault::new(database(), kek),
+        vault: Vault::new(database(), kek, af_crypto::entropy::Entropy::new()),
         broker: Arc::new(Broker::new(
             Arc::new(Registry::default()),
             Arc::new(Vendors::new(Platform::empty(), reqwest::Client::new())),

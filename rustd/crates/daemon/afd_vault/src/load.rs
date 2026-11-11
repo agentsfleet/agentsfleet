@@ -50,10 +50,24 @@ impl Vault {
     /// `af_crypto::error` on why the two AEAD layers are indistinguishable.
     pub async fn load(&self, workspace: &Uuid7, name: &SecretName) -> Result<Option<SecretBytes>> {
         let mut connection = self.directory.database.acquire().await?;
+        self.load_on(connection.as_mut(), workspace, name).await
+    }
+
+    /// As [`Self::load`], on a connection the caller already holds, so the
+    /// read happens inside the caller's transaction and under its locks.
+    ///
+    /// # Errors
+    /// As [`Self::load`].
+    pub async fn load_on(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        workspace: &Uuid7,
+        name: &SecretName,
+    ) -> Result<Option<SecretBytes>> {
         let row = sqlx::query_as::<_, crate::StoredEnvelope>(sql::SELECT_SECRET_ENVELOPE)
             .bind(workspace)
             .bind(name.as_str())
-            .fetch_optional(connection.as_mut())
+            .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_LOAD))?;
 
@@ -80,6 +94,59 @@ impl Vault {
         Ok(Some(opened))
     }
 
+    /// As [`Self::load`] for a name that came from data rather than a constant.
+    ///
+    /// A name the vault would refuse — empty, or past its bound — holds no row,
+    /// so it answers `None` rather than raising: it came from a stored document
+    /// or a fleet's declaration, so it is a misconfiguration to fail closed on,
+    /// not an incident to wake an operator with.
+    ///
+    /// # Errors
+    /// As [`Self::load`].
+    pub async fn find(&self, workspace: &Uuid7, name: &str) -> Result<Option<SecretBytes>> {
+        let Ok(name) = SecretName::parse(name) else {
+            return Ok(None);
+        };
+        self.load(workspace, &name).await
+    }
+
+    /// As [`Self::find`], on a connection the caller already holds.
+    ///
+    /// # Errors
+    /// As [`Self::load`].
+    pub async fn find_on(
+        &self,
+        connection: &mut sqlx::PgConnection,
+        workspace: &Uuid7,
+        name: &str,
+    ) -> Result<Option<SecretBytes>> {
+        let Ok(name) = SecretName::parse(name) else {
+            return Ok(None);
+        };
+        self.load_on(connection, workspace, &name).await
+    }
+
+    /// Opens an envelope the caller read itself, under the workspace and name
+    /// it is bound to.
+    ///
+    /// For the one reader whose own statement takes the row lock first
+    /// (provider activation), so the key stays here and the caller never holds
+    /// it.
+    ///
+    /// # Errors
+    /// A row whose envelope columns are not the widths this build reads, and an
+    /// envelope that would not open.
+    pub fn open_stored(
+        &self,
+        stored: crate::StoredEnvelope,
+        workspace: &Uuid7,
+        name: &str,
+    ) -> Result<SecretBytes> {
+        Ok(stored
+            .into_envelope()?
+            .open(&self.kek, &Aad::new(workspace.as_str(), name))?)
+    }
+
     /// Opens the requested names in one workspace-scoped read.
     ///
     /// Callers pass validated internal names; unrelated secrets are not selected.
@@ -92,6 +159,9 @@ impl Vault {
         workspace: &Uuid7,
         names: &[SecretName],
     ) -> Result<std::collections::BTreeMap<String, SecretBytes>> {
+        if names.is_empty() {
+            return Ok(std::collections::BTreeMap::new());
+        }
         let selected: Vec<&str> = names.iter().map(SecretName::as_str).collect();
         let mut connection = self.directory.database.acquire().await?;
         let rows = sqlx::query_as::<_, NamedEnvelope>(sql::SELECT_NAMED_ENVELOPES)

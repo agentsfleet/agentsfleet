@@ -101,14 +101,8 @@ dev_load_environment() {
   export AGENTSFLEET_DEV_NAMESPACE="$DEV_ID"
   export API_URL
   API_URL="$(dev_api_origin)"
-  export QSTASH_URL="http://127.0.0.1:$AGENTSFLEET_QSTASH_HOST_PORT/v2"
-  export QSTASH_TOKEN
-  QSTASH_TOKEN="$(printf '{"UserID":"%s","Password":"%s"}' defaultUser defaultPassword | base64 | tr -d '\n')"
-  local keys
-  keys="$(curl --silent --show-error --fail --max-time 5 -H "Authorization: Bearer $QSTASH_TOKEN" "$QSTASH_URL/keys")"
-  export QSTASH_CURRENT_SIGNING_KEY QSTASH_NEXT_SIGNING_KEY
-  QSTASH_CURRENT_SIGNING_KEY="$(printf '%s' "$keys" | python3 -c 'import json,sys; print(json.load(sys.stdin)["current"])')"
-  QSTASH_NEXT_SIGNING_KEY="$(printf '%s' "$keys" | python3 -c 'import json,sys; print(json.load(sys.stdin)["next"])')"
+  # The scheduler's credentials are the admin workspace's `qstash` bag, which
+  # the acceptance bootstrap seeds from the local emulator; nothing goes by env.
 }
 
 dev_api_origin() {

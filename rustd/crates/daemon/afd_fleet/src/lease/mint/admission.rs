@@ -4,7 +4,6 @@ use af_core::error_code::{Coded as _, Logged};
 use afd_credential::credential::broker::Ask;
 use afd_credential::credential::outcome::{Minted, Outcome};
 use afd_credential::secrets::connector::{Connector, Exchange, Supply};
-use afd_credential::vault::KeyRef;
 use jiff::Timestamp;
 use serde_json::Value;
 
@@ -104,10 +103,7 @@ impl LeaseService {
     async fn handle(&self, scope: &MintScope, integration: &str) -> Result<Value> {
         let held = self
             .vault
-            .open(KeyRef {
-                workspace_id: &scope.workspace_id,
-                name: integration,
-            })
+            .find(&scope.workspace_id, integration)
             .await?
             .ok_or_else(integration_not_connected)?;
         serde_json::from_slice(held.expose()).map_err(|_shape| vault_data_invalid())
@@ -168,15 +164,15 @@ impl LeaseService {
             return;
         };
 
-        let key = KeyRef {
-            workspace_id: &scope.workspace_id,
-            name: integration,
-        };
         let workspace_id = scope.workspace_id.as_str();
-        match self
-            .vault
-            .rotate_refresh_token(key, posted, replacement)
-            .await
+        match afd_credential::secrets::rotate_refresh_token(
+            &self.vault,
+            &scope.workspace_id,
+            integration,
+            posted,
+            replacement,
+        )
+        .await
         {
             Ok(outcome) => tracing::debug!(
                 event = EVENT_REFRESH_ROTATED,

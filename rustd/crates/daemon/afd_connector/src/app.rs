@@ -25,10 +25,12 @@
 
 use std::collections::BTreeSet;
 
+use af_core::error_code;
 use af_core::id::Uuid7;
-use af_core::json::non_empty_str;
-use af_crypto::secret::SecretBytes;
-use afd_vault::{SecretName, Vault};
+use af_crypto::secret::{SecretBytes, SecretString};
+use afd_vault::Vault;
+use afd_vault::bag::{Bag, BagFault, filled, secret, usable};
+use serde::Deserialize;
 
 use crate::error::Result;
 use crate::exchange::AppCredentials;
@@ -81,22 +83,9 @@ impl PlatformApp {
         admin: &Uuid7,
         provider: Provider,
     ) -> Result<Option<AppCredentials>> {
-        let Some(bag) = self.bag(admin, provider).await? else {
-            return Ok(None);
-        };
-        let (Some(client_id), Some(client_secret)) = (
-            non_empty_str(&bag, FIELD_CLIENT_ID),
-            non_empty_str(&bag, FIELD_CLIENT_SECRET),
-        ) else {
-            return Ok(None);
-        };
-        Ok(Some(AppCredentials {
-            client_id: client_id.to_owned(),
-            // Re-wrapped rather than handed out as a slice of the parsed tree:
-            // `serde_json` owns that tree on the heap with no destructor that
-            // zeroes it, so the copy this carries is the one with the guarantee.
-            client_secret: SecretBytes::new(client_secret.as_bytes().to_vec()),
-        }))
+        let key = provider.app_key();
+        let read = self.vault.bag::<ConnectorApp>(Some(admin), &key).await?;
+        Ok(unusable(read, &key).map(|found| found.0))
     }
 
     /// What `provider` signs its deliveries to this deployment with.
@@ -108,11 +97,9 @@ impl PlatformApp {
         admin: &Uuid7,
         provider: Provider,
     ) -> Result<Option<SecretBytes>> {
-        let Some(bag) = self.bag(admin, provider).await? else {
-            return Ok(None);
-        };
-        Ok(non_empty_str(&bag, FIELD_SIGNING_SECRET)
-            .map(|secret| SecretBytes::new(secret.as_bytes().to_vec())))
+        let key = provider.app_key();
+        let read = self.vault.bag::<SigningSecret>(Some(admin), &key).await?;
+        Ok(unusable(read, &key).map(|found| found.0))
     }
 
     /// Which providers this deployment has configured an app for.
@@ -148,21 +135,61 @@ impl PlatformApp {
             .filter(|provider| stored.contains(&provider.app_key()))
             .collect())
     }
+}
 
-    /// The `<provider>-app` document, parsed, or nothing.
-    ///
-    /// A name the vault would refuse resolves to `None` rather than raising:
-    /// it is derived from a shipped provider id, so a refusal would be this
-    /// build's bug and not an incident to wake an operator with mid-connect.
-    async fn bag(&self, admin: &Uuid7, provider: Provider) -> Result<Option<serde_json::Value>> {
-        let Ok(name) = SecretName::parse(&provider.app_key()) else {
-            return Ok(None);
-        };
-        let Some(stored) = self.vault.load(admin, &name).await? else {
-            return Ok(None);
-        };
-        Ok(serde_json::from_slice(stored.expose()).ok())
+/// An app bag that exists and cannot be used leaves a line saying why; the
+/// connector it belongs to is then unconfigured.
+const EVENT_APP_UNUSABLE: &str = "connector_app_unusable";
+
+/// A bag read down to its value, with a line for one that exists and fails its
+/// schema.
+fn unusable<B>(read: core::result::Result<B, BagFault>, key: &str) -> Option<B> {
+    let error_code = error_code::CONNECTOR_NOT_CONFIGURED.as_str();
+    usable(read, key, EVENT_APP_UNUSABLE, error_code)
+}
+
+/// The OAuth half of a `<provider>-app` bag as stored. Each reader decodes only
+/// its own fields, so a malformed field of the other half cannot fail it.
+#[derive(Deserialize)]
+struct StoredOauth {
+    client_id: Option<String>,
+    client_secret: Option<SecretString>,
+}
+
+/// Slack's signing secret, the half of the bag the events ingress reads.
+#[derive(Deserialize)]
+struct StoredSigning {
+    signing_secret: Option<SecretString>,
+}
+
+/// The OAuth pair a `<provider>-app` bag holds.
+struct ConnectorApp(AppCredentials);
+
+impl Bag for ConnectorApp {
+    type Stored = StoredOauth;
+
+    fn from_stored(stored: StoredOauth) -> core::result::Result<Self, BagFault> {
+        Ok(Self(AppCredentials {
+            client_id: filled(stored.client_id, FIELD_CLIENT_ID)?,
+            client_secret: bytes(&secret(stored.client_secret, FIELD_CLIENT_SECRET)?),
+        }))
     }
+}
+
+/// What a provider signs its deliveries to this deployment with.
+struct SigningSecret(SecretBytes);
+
+impl Bag for SigningSecret {
+    type Stored = StoredSigning;
+
+    fn from_stored(stored: StoredSigning) -> core::result::Result<Self, BagFault> {
+        secret(stored.signing_secret, FIELD_SIGNING_SECRET).map(|found| Self(bytes(&found)))
+    }
+}
+
+/// A secret field as the zeroing bytes the exchange and the signature wall take.
+fn bytes(value: &SecretString) -> SecretBytes {
+    SecretBytes::new(value.expose().as_bytes().to_vec())
 }
 
 #[cfg(test)]
@@ -172,29 +199,37 @@ mod tests {
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
 
-    use super::{FIELD_CLIENT_ID, FIELD_CLIENT_SECRET, FIELD_SIGNING_SECRET, non_empty_str};
+    use af_crypto::secret::SecretBytes;
+    use afd_vault::bag::{BagFault, parse};
+
+    use super::{ConnectorApp, SigningSecret};
+
+    fn stored(json: &str) -> SecretBytes {
+        SecretBytes::new(json.as_bytes().to_vec())
+    }
 
     /// Every shape that names no usable value reads as absent.
     ///
-    /// The set `afd_ingress::secret` proves for its own field, and it matters
-    /// for the same reason: each of these reaching the caller as "not
-    /// configured" is what makes the refusal `UZ-CONN-001` rather than an
-    /// exchange attempted with an empty client secret.
+    /// Each of these reaching the caller as "not configured" is what makes the
+    /// refusal `UZ-CONN-001` rather than an exchange attempted with an empty
+    /// client secret.
     #[test]
     fn no_unusable_shape_yields_a_field() {
         let unusable = [
-            "{}",
-            r#"{"other":"x"}"#,
-            r#"{"client_id":42}"#,
-            r#"{"client_id":null}"#,
-            r#"{"client_id":""}"#,
-            r#"{"client_id":{"nested":"x"}}"#,
+            ("{}", BagFault::Missing("client_id")),
+            (r#"{"other":"x"}"#, BagFault::Missing("client_id")),
+            (r#"{"client_id":42}"#, BagFault::Malformed),
+            (r#"{"client_id":null}"#, BagFault::Missing("client_id")),
+            (r#"{"client_id":""}"#, BagFault::Missing("client_id")),
+            (r#"{"client_id":{"nested":"x"}}"#, BagFault::Malformed),
+            (r#"{"client_id":"cid"}"#, BagFault::Missing("client_secret")),
+            (r#"["cid","csec"]"#, BagFault::Malformed),
         ];
-        for stored in unusable {
-            let bag: serde_json::Value = serde_json::from_str(stored).expect("valid JSON fixture");
-            assert!(
-                non_empty_str(&bag, FIELD_CLIENT_ID).is_none(),
-                "`{stored}` names no usable client id",
+        for (body, fault) in unusable {
+            assert_eq!(
+                parse::<ConnectorApp>(&stored(body)).err(),
+                Some(fault),
+                "`{body}` names no usable app"
             );
         }
     }
@@ -202,17 +237,31 @@ mod tests {
     /// The three fields are read out of one document, each on its own.
     ///
     /// The property that makes this one module: a bag carrying all three is
-    /// read once, and no field bleeds into another's value.
+    /// read once per reader, and no field bleeds into another's value.
     #[test]
     fn the_three_fields_of_one_bag_are_read_apart() {
-        let bag: serde_json::Value = serde_json::from_str(
-            r#"{"client_id":"cid","client_secret":"csec","signing_secret":"ssec"}"#,
-        )
-        .expect("valid JSON fixture");
+        let body = stored(r#"{"client_id":"cid","client_secret":"csec","signing_secret":"ssec"}"#);
 
-        assert_eq!(non_empty_str(&bag, FIELD_CLIENT_ID), Some("cid"));
-        assert_eq!(non_empty_str(&bag, FIELD_CLIENT_SECRET), Some("csec"));
-        assert_eq!(non_empty_str(&bag, FIELD_SIGNING_SECRET), Some("ssec"));
+        let app = parse::<ConnectorApp>(&body)
+            .expect("a complete app parses")
+            .0;
+        assert_eq!(app.client_id, "cid");
+        assert_eq!(app.client_secret.expose(), b"csec");
+        let signing = parse::<SigningSecret>(&body).expect("the signing secret parses");
+        assert_eq!(signing.0.expose(), b"ssec");
+    }
+
+    /// A malformed field of one half does not fail the other half's read.
+    #[test]
+    fn a_malformed_oauth_field_does_not_break_the_signing_read() {
+        let body = stored(r#"{"client_id":42,"signing_secret":"ssec"}"#);
+
+        assert_eq!(
+            parse::<ConnectorApp>(&body).err(),
+            Some(BagFault::Malformed)
+        );
+        let signing = parse::<SigningSecret>(&body).expect("the signing half is well formed");
+        assert_eq!(signing.0.expose(), b"ssec");
     }
 
     /// A bag with the OAuth pair and no signing secret is still an OAuth app.
@@ -221,11 +270,12 @@ mod tests {
     /// reader that required all three would refuse every one of them.
     #[test]
     fn a_bag_without_a_signing_secret_still_carries_its_oauth_pair() {
-        let bag: serde_json::Value =
-            serde_json::from_str(r#"{"client_id":"cid","client_secret":"csec"}"#)
-                .expect("valid JSON fixture");
+        let body = stored(r#"{"client_id":"cid","client_secret":"csec"}"#);
 
-        assert!(non_empty_str(&bag, FIELD_CLIENT_ID).is_some());
-        assert!(non_empty_str(&bag, FIELD_SIGNING_SECRET).is_none());
+        assert_eq!(parse::<ConnectorApp>(&body).err(), None);
+        assert_eq!(
+            parse::<SigningSecret>(&body).err(),
+            Some(BagFault::Missing("signing_secret"))
+        );
     }
 }

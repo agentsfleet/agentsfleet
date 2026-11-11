@@ -98,6 +98,25 @@ fn a_memory_store_failure_keeps_the_memory_crates_classification() -> Result<(),
     Ok(())
 }
 
+/// A vault failure answers with the code and the sentence the vault decided,
+/// through the credential plane: one conversion, no restating.
+///
+/// The outage class is the credential family's, which the lease plane has never
+/// counted as a datastore outage (`classify/availability.rs`), so it is not
+/// compared here.
+#[test]
+fn a_vault_failure_keeps_the_vault_crates_code_and_sentence() {
+    for (kind, database) in afd_db::error::one_of_each_kind() {
+        let vault = afd_vault::Error::from(database);
+        let decided = (vault.code(), vault.detail());
+
+        let lifted = Error::from(vault);
+
+        assert_eq!((lifted.code(), lifted.detail()), decided, "{kind}");
+        assert!(lifted.source().is_some(), "{kind} keeps its cause");
+    }
+}
+
 /// A runner-host or setup-chat failure answers with the code, the sentence and
 /// the outage class its own crate decided, for every kind that crate has: the
 /// lease plane restates none of them.

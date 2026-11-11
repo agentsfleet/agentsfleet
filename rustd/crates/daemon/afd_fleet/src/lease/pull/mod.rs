@@ -16,8 +16,8 @@ use crate::lease::store::Leases;
 use af_core::event::label;
 use afd_billing::Accounts;
 use afd_credential::provider::{Providers, Resolved};
-use afd_credential::vault::Vault;
 use afd_gate::gate::{Check, Gates};
+use afd_vault::Vault;
 
 #[cfg(feature = "test-util")]
 mod claimed;

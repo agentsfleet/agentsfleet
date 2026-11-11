@@ -27,7 +27,7 @@ use af_core::id::Uuid7;
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
-use afd_credential::vault::Vault;
+use afd_vault::Vault;
 
 /// How long one vendor token exchange may take.
 ///
@@ -64,7 +64,7 @@ pub async fn resolve(
     let Some(workspace) = admin_workspace else {
         tracing::info!(
             event = "credential_broker_static_only",
-            "no platform admin workspace is set; no on-demand credentials will be minted"
+            "no platform admin workspace is set; no on-demand credentials will be minted and no platform bag, the scheduler's `qstash` among them, can be read"
         );
         return broker(Platform::empty(), client);
     };

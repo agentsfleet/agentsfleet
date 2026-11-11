@@ -31,7 +31,7 @@ pub(super) async fn configure(fixture: &mut Decisions<'_>, server: &Server) {
             credential_name: "preflight-checkpoint".into(),
         }),
         case.scope.workspace_id.clone(),
-        case.held.fixtures.plane().vault,
+        fixture.vault.clone(),
         Arc::new(Kek::from_hex(crate::report_seed::FIXTURE_KEK_HEX).expect("fixture key")),
         server.client.clone(),
     ));
