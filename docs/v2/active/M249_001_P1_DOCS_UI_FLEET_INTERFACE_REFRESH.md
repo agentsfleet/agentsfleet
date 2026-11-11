@@ -392,6 +392,21 @@
 | `ui/packages/app/tests/fleet-chat-elements.test.tsx` | CREATE | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
 | `ui/packages/app/tests/fleet-tool-rendering.test.tsx` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
 | `ui/packages/app/tests/fleet-thread/role-reply-parts.test.ts` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/tests/fleet-reply-elements.test.tsx` | CREATE | Exercise safe default reply content, code and specialized parts |
+| `ui/packages/app/tests/fleet-tool-elements.test.tsx` | CREATE | Verify typed tool input previews and recorded outcomes through the transcript |
+| `ui/packages/app/components/domain/FleetReplyBody.test.tsx` | EDIT | Keep reply-context imports at their canonical typed data module |
+| `ui/packages/app/tests/e2e/chat-elements.spec.ts` | CREATE | Review typed code, tool previews, links and fallback content in both themes and viewport sizes |
+| `ui/packages/app/components.json` | EDIT | Resolve official assistant-ui registry components for the existing Radix style and Phosphor icons |
+| `ui/packages/app/components/domain/FleetThread.tsx` | EDIT | Install native render-only assistant-ui tool registration |
+| `ui/packages/app/components/domain/FleetToolRegistry.tsx` | CREATE | Register existing backend tools with assistant-ui Tools and preserve generic rendering |
+| `ui/packages/app/components/domain/FleetReplyActions.tsx` | EDIT | Use ActionBarPrimitive for message-copy availability and state |
+| `ui/packages/app/components/domain/FleetMarkdown.tsx` | EDIT | Use the official Markdown code-header extension with shared appearance |
+| `ui/packages/app/components/assistant-ui/CodeHeader.tsx` | CREATE | Adapt the official Markdown code-header composition to shared buttons and icons |
+| `ui/packages/app/components/assistant-ui/TerminalBlock.tsx` | CREATE | Adopt the official terminal component with recorded outcome semantics |
+| `ui/packages/app/components/assistant-ui/terminal-ansi.ts` | CREATE | Keep the upstream terminal text parser separate from presentation |
+| `ui/packages/app/components/assistant-ui/CodeDiff.tsx` | CREATE | Adopt the official diff component with shared tokens and accessible side labels |
+| `ui/packages/app/components/assistant-ui/surfaces.ts` | CREATE | Map reused official element surfaces to approved app tokens |
+| `ui/packages/app/tests/fleet-tool-registry.test.tsx` | CREATE | Prove native tool registration and generic fallback without browser execution |
 
 The Files Changed table expands with each grounded implementation slice before editing its additional callers or tests.
 The owner's approval covers the described surfaces; it does not authorize unrelated changes.
@@ -490,13 +505,17 @@ Failed chat work stays beside its original item with a quiet underlined Try agai
 
 The row-layout split is complete. The explicit typed outcome layer remains unfinished until these paths are wired and verified. Do not describe the row split alone as completing the Appsmith-inspired approach.
 
-Use three small static registries aligned to existing owners: recorded message elements, assistant-ui reply parts, and typed tool-input elements. A pure adapter selects a discriminated model; each registry requires the matching payload and component for every declared kind. Adding a renderer must not add branches to `ChatMessageRow` or create another chat runtime.
+Use assistant-ui's native part pipeline and render-only backend tool registration. Keep a thin typed adapter for recorded fleet events; remove the overlapping reply registry. Reuse official Elements for terminal output, code diffs and code headers, restyled through the shared design tokens. GroupedParts owns adjacent reasoning/tool grouping, ActionBar owns message-copy state, and the existing ExternalStoreRuntime remains the runtime owner.
 
-Recorded elements cover operator turns, replies, integration activity, scheduled wake-ups, approval events, activity groups and unsupported content. Keep the existing event order, stable IDs, private actor naming, source links and durable outcomes. Group metadata must be validated rather than cast to an event array. Invalid groups render a neutral fallback without exposing their raw payload.
+Owner approval (Nov 11, 2026): "Can you build that then" / "as opposed to just hand rolling the gala" — implement the reviewed assistant-ui reuse proposal. Do not introduce client-side tool execution. The current API inventory has no general chat attachment upload endpoint; runner checkpoint uploads are unrelated. Attachment sending requires an actual supported transport and persistent representation. Structured form submission must use the current scoped backend behavior rather than invent an in-memory success.
+
+Recorded elements cover operator turns, replies, integration activity, scheduled wake-ups, approval events, activity groups and a generic activity default. Keep the existing event order, stable IDs, private actor naming, source links and durable outcomes. Group metadata must be validated rather than cast to an event array. Invalid groups retain the parent activity text and outcome with a quiet details-unavailable note; never expose the malformed metadata.
 
 Reply-part registration keeps assistant-ui's reasoning/tool grouping, clocks, streaming markdown, safe unknown-part fallback and existing request owners. Tool-input registration keeps separate command, diff, plan, clipped and generic presentations. Unknown tools stay readable and neutral. Recorded success, failure, interruption and unavailable output remain distinct; parsing input must never prove a side effect succeeded.
 
-A renderer presents data and existing scoped actions. It cannot run model-provided code, invent an approval ID, fetch credentials, or send a notification. Schedule details retain the current fleet scope; approval navigation uses the current fleet-filtered inbox and leaves decisions with its existing permission checks. Unsupported attachment or future part formats must remain explicit until their backend representation and a typed renderer exist.
+A renderer presents data and existing scoped actions. It cannot run model-provided code, invent an approval ID, fetch credentials, or send a notification. Schedule details retain the current fleet scope; approval navigation uses the current fleet-filtered inbox and leaves decisions with its existing permission checks. A part without a specialized view uses validated text or a safe resource label/link. If no readable fields exist, show a quiet details-unavailable note. Never serialize arbitrary part objects or execute embedded markup. This does not add attachment sending or a new tool capability.
+
+Owner review (Nov 11, 2026): "would there be a default?" and "how about command that run, edit of files, reading files, links" / "What about code" — implement readable defaults and demonstrate command, file, diff, code and link behavior through the actual assistant-ui transcript. Activity actions use the existing shadcn-style Button link variant and shared class merging. Appsmith's WidgetFactory and FormControlFactory supply the registration reference; its AI panel is not a ready-made typed outcome runtime.
 
 Required proofs: `mixed recorded chat elements use their registered renderers`, `malformed grouped metadata is safe and visible`, `unknown parts never execute markup`, and the existing `fleet-tool-rendering` regression showing text chunks do not recompute unchanged tool activity. Re-run real transcript browser checks before claiming the layer complete.
 
