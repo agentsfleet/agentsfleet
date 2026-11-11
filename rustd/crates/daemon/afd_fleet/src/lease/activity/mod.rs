@@ -299,7 +299,7 @@ fn record_first_chunk(target: &Target, frames: &[ActivityFrame<'_>]) {
         producers::fleet::delivery_stage(stage, af_core::clock::elapsed(since, received_at));
     }
     producers::fleet::delivery_stage(
-        DeliveryStage::ZombieToFirstChunk,
+        DeliveryStage::RunToFirstChunk,
         core::time::Duration::from_millis(first_ms),
     );
 }
