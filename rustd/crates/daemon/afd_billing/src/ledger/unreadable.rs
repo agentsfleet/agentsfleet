@@ -4,12 +4,14 @@
 //! each line's kind and its pricing posture. A group it cannot read is not an
 //! error: one unreadable row must not hold the relay's cursor, and with it
 //! every tenant's settlement behind it. It is not guessed at either, because a
-//! guessed posture settles the wrong money. The group stays unsettled, so the
-//! owed gauges keep counting it and the dashboard shows it, and the first
+//! guessed posture settles the wrong money. The group stays unsettled: the
+//! dashboard shows it and `unsettled_oldest_seconds` keeps rising, while the
+//! by-type `unsettled_nanos` figure totals only the two work types this build
+//! names, so a group of an unknown work type is missing from that one. The first
 //! sighting of each distinct spelling is logged, so an operator learns what is
 //! stuck once rather than on every two-second pass.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, PoisonError};
 
 /// A usage group the relay skipped.
@@ -44,26 +46,69 @@ impl Unreadable {
     }
 }
 
-/// One unreadable spelling: what it was read as, on which work type.
-type Sighting = (Unreadable, String, String);
+/// The longest spelling remembered or logged, in bytes: a hand-edited value
+/// cannot put an unbounded string into the set or the log.
+const SPELLING_MAX: usize = 64;
 
-/// Every spelling already logged this process.
-static NAMED: Mutex<BTreeSet<Sighting>> = Mutex::new(BTreeSet::new());
+/// Every spelling already logged this process: what it was read as, then the
+/// work type it was met on. Nested so a spelling already named is found by
+/// borrowed text, without building an owned key on every two-second pass.
+struct Named {
+    spellings: BTreeMap<Unreadable, BTreeMap<String, BTreeSet<String>>>,
+    count: usize,
+}
 
-/// Whether `sighting` is new, and room remains to remember it.
-fn remember(named: &mut BTreeSet<Sighting>, sighting: Sighting) -> bool {
-    named.len() < REMEMBERED_MAX && named.insert(sighting)
+impl Named {
+    const fn new() -> Self {
+        Self {
+            spellings: BTreeMap::new(),
+            count: 0,
+        }
+    }
+}
+
+static NAMED: Mutex<Named> = Mutex::new(Named::new());
+
+/// Whether this sighting is new, and room remains to remember it.
+fn remember(named: &mut Named, what: Unreadable, work_type: &str, spelling: &str) -> bool {
+    let known = named
+        .spellings
+        .get(&what)
+        .and_then(|by_work_type| by_work_type.get(work_type))
+        .is_some_and(|spellings| spellings.contains(spelling));
+    if known || named.count >= REMEMBERED_MAX {
+        return false;
+    }
+    named
+        .spellings
+        .entry(what)
+        .or_default()
+        .entry(work_type.to_owned())
+        .or_default()
+        .insert(spelling.to_owned());
+    named.count += 1;
+    true
+}
+
+/// `text` cut to at most [`SPELLING_MAX`] bytes, on a character boundary.
+fn bounded(text: &str) -> &str {
+    if text.len() <= SPELLING_MAX {
+        return text;
+    }
+    let mut end = SPELLING_MAX;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    text.get(..end).unwrap_or_default()
 }
 
 /// Logs `what`, spelled `spelling` on a line of `work_type`, the first time
 /// this process meets that spelling.
 pub fn skipped(what: Unreadable, work_type: &str, spelling: &str) {
+    let (work_type, spelling) = (bounded(work_type), bounded(spelling));
     let first = {
         let mut named = NAMED.lock().unwrap_or_else(PoisonError::into_inner);
-        remember(
-            &mut named,
-            (what, work_type.to_owned(), spelling.to_owned()),
-        )
+        remember(&mut named, what, work_type, spelling)
     };
     if first {
         // Bound first: the macro repeats its field expressions.
@@ -86,9 +131,9 @@ pub fn skipped(what: Unreadable, work_type: &str, spelling: &str) {
 mod tests {
     use af_core::test_util::trace::Capture;
 
-    use std::collections::BTreeSet;
-
-    use super::{EVENT_SKIPPED, REMEMBERED_MAX, Unreadable, remember, skipped};
+    use super::{
+        EVENT_SKIPPED, Named, REMEMBERED_MAX, SPELLING_MAX, Unreadable, remember, skipped,
+    };
 
     fn logged(capture: &Capture) -> usize {
         capture
@@ -126,34 +171,44 @@ mod tests {
     /// spelling is not remembered, and an old one is still recognised.
     #[test]
     fn the_set_stops_growing_at_its_cap() {
-        let mut named = BTreeSet::new();
+        let mut named = Named::new();
         for index in 0..REMEMBERED_MAX {
             assert!(remember(
                 &mut named,
-                (
-                    Unreadable::LineKind,
-                    "fleet_lease".to_owned(),
-                    index.to_string()
-                )
+                Unreadable::LineKind,
+                "fleet_lease",
+                &index.to_string()
             ));
         }
         assert!(!remember(
             &mut named,
-            (
-                Unreadable::LineKind,
-                "fleet_lease".to_owned(),
-                "one-more".to_owned()
-            )
+            Unreadable::LineKind,
+            "fleet_lease",
+            "one-more"
         ));
-        assert_eq!(named.len(), REMEMBERED_MAX);
+        assert_eq!(named.count, REMEMBERED_MAX);
         assert!(!remember(
             &mut named,
-            (
-                Unreadable::LineKind,
-                "fleet_lease".to_owned(),
-                "0".to_owned()
-            )
+            Unreadable::LineKind,
+            "fleet_lease",
+            "0"
         ));
+    }
+
+    /// A hand-edited value is cut before it is stored or logged, on a
+    /// character boundary.
+    #[test]
+    fn a_long_spelling_is_cut_before_it_is_logged() {
+        let capture = Capture::install();
+        skipped(Unreadable::LineKind, "fleet_lease", &"é".repeat(200));
+        let named = capture
+            .events()
+            .into_iter()
+            .find(|event| event.field("event") == Some(EVENT_SKIPPED))
+            .expect("the spelling was logged");
+        let spelling = named.field("spelling").expect("the spelling is a field");
+        assert!(spelling.len() <= SPELLING_MAX, "{}", spelling.len());
+        assert!(spelling.chars().all(|letter| letter == 'é'));
     }
 
     /// The same spelling meant differently, or on another work type, is a new

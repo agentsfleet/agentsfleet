@@ -48,7 +48,7 @@ describe("validated settled billing reads", () => {
     await expect(listBillingActivityCharges("fixture-token", "work", { limit: 25 })).rejects.toThrow();
   });
 
-  // pin test: the three spellings the daemon stores are the contract
+  // pin test: the three spellings the daemon stores are the ones accepted
   it.each(["model", "runtime", "decision"])("accepts a charge that billed a %s line", async kind => {
     respond({ items: [{ ...billingCharge(), kind }], total: null, next_cursor: null });
     const page = await listBillingActivityCharges("fixture-token", "work", { limit: 25 });

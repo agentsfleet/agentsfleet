@@ -15,8 +15,7 @@ import { providerLabel, runtimeSecondsLabel } from "../lib/report-format";
 
 type Props = { activity: BillingActivity; detail: BillingDetail; modelNames: Record<string, string> };
 const ROW_CLASS = "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-lg py-xs";
-// Each charge says what it billed, so the label reads it rather than inferring
-// it from which counts are non-zero.
+// Each charge says what it billed, and the label reads that.
 const CHARGE_KIND_LABEL = {
   [BILLING_CHARGE_KIND.model]: "Model call",
   [BILLING_CHARGE_KIND.runtime]: "Runtime",

@@ -146,12 +146,19 @@ async fn assert_coding_schedule(scenario: &Scenario) {
     )
     .await
     .expect("production coding price book");
+    assert!(
+        book.catalogue_version().is_some(),
+        "a book a read produced names the catalogue version it was read at"
+    );
+    // The book's version is not part of its tiers (it is skipped on the wire), so
+    // the tiers are compared in their rendered form.
     assert_eq!(
-        book,
-        PriceBook::from_tiers(vec![Tier {
+        serde_json::to_value(&book).expect("the read book renders"),
+        serde_json::to_value(PriceBook::from_tiers(vec![Tier {
             id: coding_id,
             price: price(7)
-        }]),
+        }]))
+        .expect("the expected book renders"),
         "decision schedules never join coding billing"
     );
 }

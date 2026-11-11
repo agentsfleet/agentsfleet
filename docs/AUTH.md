@@ -848,7 +848,7 @@ The runner receives a tenant's `secrets_map` inline in a lease only because `age
 
 **Secret delivery is placement, not a standing grant**. `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
 
-The same placement model carries the resolved **LLM provider key** (M80_009). `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_reference`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`. It is the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row.
+The same placement model carries the resolved **LLM provider key** (M80_009). `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_observed`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`. A tenant's own key is read every time. The shared platform key may be held decrypted in daemon memory, keyed by the catalogue version, the secret's id and a digest of the stored ciphertext and endpoint, so a replaced key misses at once. An entry also ends with the price window it matched, never lives past five minutes, and is zeroed when it drops. Eviction runs when the replica serves chats, so that bound holds while it does: an idle replica keeps an expired entry until its next chat. It is the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row.
 
 A runner receives the billed provider key only because work was placed on it. Inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/daemon/afd_credential/src/provider/resolved.rs`). The serialized lease body is outside that guarantee.
 
@@ -1218,7 +1218,7 @@ Slack reads `x-slack-request-timestamp`; Svix reads `svix-id` and `svix-timestam
 
 For example, a custom trigger declares `{"type":"webhook","source":"acme","credential_name":"acme-signing","verifier":{"scheme":"body-hex-sha256","header":"x-acme-signature"}}`. A Svix sender declares `{"type":"webhook","source":"clerk","credential_name":"clerk-signing","verifier":{"scheme":"svix-v1"}}`.
 
-Save advertises each source's own URL. The former `/v1/webhooks/svix/{fleet_id}` address returns 404.
+Save advertises each source's own URL. The former `/v1/webhooks/svix/{fleet_id}` address is not served: `svix` is refused as a malformed fleet id.
 
 These recipes verify incoming signed deliveries. They do not connect an account, create a vendor subscription, or grant outbound application actions. App-level ingress keeps its platform secret and provider-specific handler.
 

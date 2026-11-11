@@ -25,6 +25,7 @@ mod verdict;
 use std::collections::HashMap;
 
 use af_core::id::Uuid7;
+use af_core::timing::{LEASE_TTL, RENEWAL_TICK};
 use af_wire::report::RenewRequest;
 use futures_util::StreamExt as _;
 use jiff::Timestamp;
@@ -38,6 +39,13 @@ use crate::lease::pull::LeaseService;
 /// A two-tick chat then pays two thirds of a check instead of four statements,
 /// and a run overruns its payer's balance by at most this many slices.
 pub const FUNDS_CHECK_TICKS: u64 = 3;
+
+// A cadence of zero would check once per session and never again, and one as
+// long as a lease lives would let a run pass its balance unchecked.
+const _: () = assert!(
+    FUNDS_CHECK_TICKS >= 1 && FUNDS_CHECK_TICKS * RENEWAL_TICK.as_secs() < LEASE_TTL.as_secs(),
+    "funds are checked at least once, and well inside a lease's life"
+);
 
 /// Whether a session's renewal frame `tick`, counted from 0, checks funds.
 ///

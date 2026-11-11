@@ -29,15 +29,16 @@ WITH instant AS MATERIALIZED (
   -- lapsed slot or a claim whose deadline passed look live.
   SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM held) locked
 ), inserted AS (
+  -- The lease starts, and its metering cursor with it, at the clock read after the
+  -- slot lock: stamping the earlier instant would bill the lock wait as runtime.
   INSERT INTO runner.leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at,
    fencing_token, lease_expires_at, status, posted_message_count, decision_snapshot, created_at, updated_at)
   SELECT $1, $2, $3, $4, $5, e.event_id, $15,
-         $7, $8, $9, i.checked_at,
-         $10, h.lease_expires_at, $11, 0, $16, i.checked_at, i.checked_at
+         $7, $8, $9, a.checked_at,
+         $10, h.lease_expires_at, $11, 0, $16, a.checked_at, a.checked_at
   FROM held h
-  CROSS JOIN instant i
   CROSS JOIN after_lock a
   JOIN fleet.events e ON e.fleet_id = $3 AND e.event_id = $6
   -- The scope proof runner.leases holds no foreign key for: a workspace or

@@ -169,3 +169,28 @@ fn the_cache_is_told_each_entrys_own_span() {
         Some(span)
     );
 }
+
+/// An entry past its span leaves the cache on a sweep with no lookup, which is
+/// what frees a replaced key's plaintext on a replica that stopped asking for it.
+///
+/// Real time, because the cache's own expiry runs on its monotonic clock; the
+/// span is short and the wait is the cache's timer-wheel granularity.
+#[tokio::test]
+async fn a_sweep_frees_an_entry_past_its_span_without_a_lookup() {
+    let cache = PlatformKeys::default();
+    let span = Duration::from_millis(20);
+    cache
+        .insert(observed(Some(span)), cache.now(), resolved())
+        .await;
+    cache.entries.run_pending_tasks().await;
+    assert_eq!(cache.entries.entry_count(), 1, "the entry is held at first");
+
+    tokio::time::sleep(Duration::from_millis(1_600)).await;
+    cache.sweep().await;
+
+    assert_eq!(
+        cache.entries.entry_count(),
+        0,
+        "a sweep frees the entry once its span has passed, with no lookup"
+    );
+}

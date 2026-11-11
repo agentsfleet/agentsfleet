@@ -206,8 +206,8 @@ async fn a_provider_that_will_not_take_the_writeback_does_not_refuse_the_deliver
         let logged = logs.only("identity_metadata_writeback_failed");
         assert_eq!(
             logged.field("error_code"),
-            Some(af_core::error_code::AUTH_UNAVAILABLE.as_str()),
-            "{refusal:?}: the warning names its registry code: {logged:?}"
+            None,
+            "{refusal:?}: the provider answered, so it is not the unavailable code: {logged:?}"
         );
     }
 }
@@ -223,6 +223,7 @@ async fn a_provider_that_will_not_take_the_writeback_does_not_refuse_the_deliver
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn an_unreachable_provider_refuses_the_delivery_and_the_redelivery_writes_back() {
+    let logs = af_core::test_util::trace::Capture::install();
     let recovering = RecordingWriteback::refusing_first(MetadataUnwritten::Unreachable);
     let (fleet, _database) = live("user_identity_writeback_unreachable").await;
     let router = fleet.with_signup_writeback(recovering.clone()).router();
@@ -241,6 +242,12 @@ async fn an_unreachable_provider_refuses_the_delivery_and_the_redelivery_writes_
         refused.get("error_code").and_then(Value::as_str),
         Some(af_core::error_code::AUTH_UNAVAILABLE.as_str()),
         "{refused}"
+    );
+    let logged = logs.only("identity_metadata_writeback_failed");
+    assert_eq!(
+        logged.field("error_code"),
+        Some(af_core::error_code::AUTH_UNAVAILABLE.as_str()),
+        "an unreachable provider is the unavailable code: {logged:?}"
     );
 
     let again = deliver(&router, &body).await;

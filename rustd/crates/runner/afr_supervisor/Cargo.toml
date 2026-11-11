@@ -25,8 +25,7 @@ af_stream.workspace = true
 http.workspace = true
 parking_lot.workspace = true
 dashmap.workspace = true
-# Proves a lease's sandbox size within the wire's declared bounds before the
-# engine builds it.
+# Proves the bounds of recovered pages and paths before the runner acts on them.
 garde.workspace = true
 # The runner's own families: sandbox start, dropped frames, failed pushes.
 afr_telemetry.workspace = true

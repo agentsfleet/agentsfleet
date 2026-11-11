@@ -22,7 +22,7 @@ pub mod cost;
 pub mod database;
 pub mod fleet;
 pub mod http;
-pub mod lease_cache;
+mod lease_cache;
 pub mod library;
 pub mod models;
 pub mod outbound;

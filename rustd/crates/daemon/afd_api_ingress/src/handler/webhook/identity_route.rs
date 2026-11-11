@@ -282,10 +282,12 @@ async fn write_back<D: Services>(
     // workspace, so a call inside an event field compiles twice.
     let reason = unwritten.to_string();
     let redelivered = unwritten == MetadataUnwritten::Unreachable;
-    // Every kind leaves the account without its tenant claim, and the registry
-    // has no narrower code for the provider's refusals, so all three log under
-    // the code a redelivery answers.
-    let error_code = error_code::AUTH_UNAVAILABLE.as_str();
+    // Every kind leaves the account without its tenant claim, but the registry's
+    // code says the provider is unavailable, which is true of an unreachable
+    // provider alone. A refusal the provider answered is not an outage, and the
+    // registry has no narrower code for it, so that line carries its reason and
+    // no code rather than one that sends on-call to the provider's reachability.
+    let error_code = redelivered.then(|| error_code::AUTH_UNAVAILABLE.as_str());
     tracing::warn!(
         event = EVENT_WRITEBACK,
         error_code,
