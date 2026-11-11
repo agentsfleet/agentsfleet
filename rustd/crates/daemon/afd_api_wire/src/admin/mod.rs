@@ -67,7 +67,7 @@ pub struct RunnerTokenRotatedResponse<'a> {
     pub runner_token: Cow<'a, str>,
 }
 
-/// `PATCH /v1/fleets/runners/{id}` body.
+/// `PATCH /v1/admin/runners/{id}` body.
 ///
 /// Either an `action` alone, or an edit: `assigned_policy`, `labels`, or both,
 /// applied together or not at all. Anything else is a `400`.
@@ -90,7 +90,7 @@ pub struct RunnerAdminPatchRequest<'a> {
     pub labels: Option<Vec<Cow<'a, str>>>,
 }
 
-/// `PATCH /v1/fleets/runners/{id}` reply.
+/// `PATCH /v1/admin/runners/{id}` reply.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

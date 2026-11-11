@@ -54,9 +54,7 @@ const REMOTE_ENV_EXPECT_TIMEOUT_MS = 10_000;
 // preflight  — environment prerequisites + auth wire (_smoke). Everything else
 //              depends on it: a dead prerequisite stops the run in seconds.
 // journeys   — fixture-isolated user journeys; files run across all workers.
-// operator catalog → operator journey — platform-operator mutations (catalog
-//              publish/unpublish, operator installs) are serialized by
-//              project-dependency chaining, never interleaved.
+// operator journey — workspace administration exercised by an operator.
 // live-counter → pulse-wall — whole-wall count assertions in the shared
 //              regular workspace; they run after the journey group is done
 //              seeding and never concurrently with each other.
@@ -64,7 +62,6 @@ const REMOTE_ENV_EXPECT_TIMEOUT_MS = 10_000;
 //              they wait for both chains, so no other test shares the CPU.
 // fetch-audit — resets a global app-side fetch counter; runs strictly last.
 const PREFLIGHT_SPEC = "**/_smoke.spec.ts";
-const OPERATOR_CATALOG_SPEC = "**/platform-library-onboarding.spec.ts";
 const OPERATOR_JOURNEY_SPEC = "**/operator-journey.spec.ts";
 const LIVE_COUNTER_SPEC = "**/fleet-count.spec.ts";
 const PULSE_WALL_SPEC = "**/multi-fleet.spec.ts";
@@ -75,7 +72,6 @@ const SOAK_LOCAL_SPECS = ["**/soak-cli-smoke.spec.ts", "**/soak-hold.spec.ts"];
 
 const PROJECT_PREFLIGHT = "preflight";
 const PROJECT_JOURNEYS = "journeys";
-const PROJECT_OPERATOR_CATALOG = "operator-catalog";
 const PROJECT_OPERATOR_JOURNEY = "operator-journey";
 const PROJECT_LIVE_COUNTER = "live-counter";
 const PROJECT_PULSE_WALL = "pulse-wall";
@@ -129,7 +125,6 @@ export default defineConfig({
       name: PROJECT_JOURNEYS,
       testIgnore: [
         PREFLIGHT_SPEC,
-        OPERATOR_CATALOG_SPEC,
         OPERATOR_JOURNEY_SPEC,
         LIVE_COUNTER_SPEC,
         PULSE_WALL_SPEC,
@@ -142,15 +137,9 @@ export default defineConfig({
       use: CHROMIUM,
     },
     {
-      name: PROJECT_OPERATOR_CATALOG,
-      testMatch: OPERATOR_CATALOG_SPEC,
-      dependencies: [PROJECT_PREFLIGHT],
-      use: CHROMIUM,
-    },
-    {
       name: PROJECT_OPERATOR_JOURNEY,
       testMatch: OPERATOR_JOURNEY_SPEC,
-      dependencies: [PROJECT_OPERATOR_CATALOG],
+      dependencies: [PROJECT_PREFLIGHT],
       use: CHROMIUM,
     },
     {

@@ -4,7 +4,7 @@
 // the suites that read them are unchanged.
 
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
-import { loginEffect, type LoginFlags } from "../src/commands/login.ts";
+import { loginEffect, type LoginFlags } from "../src/commands/auth/login.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { Browser } from "../src/services/browser.service.ts";
 import { CliConfig } from "../src/services/config.ts";
@@ -60,10 +60,10 @@ export const inputAlwaysEmpty: Layer.Layer<Input> = Layer.succeed(Input, {
 // tests below exercise). The direct-token suite swaps in a piped variant.
 export const stdinTty: Layer.Layer<Stdin> = Layer.succeed(Stdin, {
   isTTY: true,
-  readToEnd: Effect.succeed(""),
+  readBounded: () => Effect.die("Unexpected bounded input"),
 });
 export const stdinPiped = (text: string): Layer.Layer<Stdin> =>
-  Layer.succeed(Stdin, { isTTY: false, readToEnd: Effect.succeed(text) });
+  Layer.succeed(Stdin, { isTTY: false, readBounded: () => Effect.succeed(text) });
 
 export const credentialsLayer = (
   initial: Option.Option<Redacted.Redacted<string>>,

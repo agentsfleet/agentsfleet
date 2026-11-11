@@ -7,7 +7,7 @@ import { DraftSession, DRAFT_SOURCE } from "../../src/commands/chat/session.ts";
 import { SetupSession } from "../../src/commands/chat/setup-session.ts";
 import { isPartial, renderApplied, renderFleet, renderMessage, renderReview, schedulesOwed } from "../../src/commands/chat/render.ts";
 import { AppliedSchema, decode, FleetSchema } from "../../src/commands/chat/protocol.ts";
-import { DRAFT, ACCEPTED, FAILED_SCHEDULE, FLEET, FLEET_ID, REVIEW, MESSAGE, MODEL, PRIVATE_TEXT, SCHEDULE_RETRY,
+import { DRAFT, CANDIDATE_ID, ACCEPTED, FAILED_SCHEDULE, FLEET, FLEET_ID, REVIEW, MESSAGE, MODEL, PRIVATE_TEXT, SCHEDULE_RETRY,
   SYNC_UNCONFIRMED_KIND, SYNCED_SCHEDULE, SYNCING_SCHEDULE, UNKNOWN_SYNC_SCHEDULE, withApi } from "./fixture.ts";
 
 function streams(format: typeof OUTPUT_FORMAT[keyof typeof OUTPUT_FORMAT] = OUTPUT_FORMAT.json) {
@@ -19,6 +19,17 @@ function streams(format: typeof OUTPUT_FORMAT[keyof typeof OUTPUT_FORMAT] = OUTP
 }
 
 describe("scriptable chat output", () => {
+  test.each([OUTPUT_FORMAT.text, OUTPUT_FORMAT.json])("review identifies the candidate you can stage in the platform library (%s)", async format => {
+    await withApi(() => Response.json(DRAFT), async transport => {
+      const {output, stdout} = streams(format);
+      const actions = new ChatActions(new DraftSession(transport, MODEL, {kind: DRAFT_SOURCE.blank}, DRAFT.id),
+        new SetupSession(transport), output, () => Effect.void);
+      await Effect.runPromise(actions.review());
+      if (format === OUTPUT_FORMAT.json) {
+        expect(JSON.parse(stdout.join(""))).toMatchObject({draft_candidate_id: CANDIDATE_ID, review_digest: REVIEW.review_digest});
+      } else expect(stdout.join("")).toContain(`Candidate: ${CANDIDATE_ID}`);
+    });
+  });
   test("messages, reviews and saved fleets each occupy one complete JSON line", async () => {
     const {output, stdout} = streams();
     const message = {...MESSAGE, text: "private\ntext with { braces } and quotes \""};

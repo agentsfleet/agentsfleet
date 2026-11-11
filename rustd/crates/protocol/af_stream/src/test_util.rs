@@ -8,6 +8,12 @@ use std::io::Write as _;
 #[cfg(unix)]
 use std::os::unix::fs::OpenOptionsExt as _;
 
+/// The datagram ceiling both QUIC endpoints send under.
+pub const MAX_DATAGRAM_BYTES: usize = crate::mtu::MAX_DATAGRAM_BYTES;
+
+/// Per-stream flow-control window.
+pub const STREAM_WINDOW: u32 = crate::STREAM_WINDOW;
+
 /// Local issuer and matching leaf files, kept alive until all native owners join.
 #[derive(Debug)]
 pub struct IdentityFixture {

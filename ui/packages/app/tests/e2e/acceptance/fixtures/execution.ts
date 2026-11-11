@@ -13,9 +13,9 @@
  * The classifier is a pure function over the row, so the unit lane proves each
  * branch red and green without a runner in reach; the journey only calls it.
  */
-import type { RunnerLeaseResponse, RunnerListResponse } from "@/lib/api/runners";
+import type { RunnerLeaseResponse, RunnerListResponse } from "@/tests/helpers/runner-control";
 import type { EventDetail, ThreadPage } from "@/lib/api/events";
-import { LEASE_OUTCOME } from "@/lib/api/runners-types";
+import { LeaseOutcome } from "@/tests/helpers/runner-control-types";
 import { clientFor, type ClientHandle } from "./api-client";
 import { FIXTURE_KEY } from "./constants";
 
@@ -114,7 +114,7 @@ const DETAIL_STILL_RUNNING =
 const DETAIL_UNKNOWN_CLASS = "an unrecognised failure class";
 const DETAIL_API_UNREACHABLE = "the API could not be reached";
 
-const FLEET_RUNNERS_PATH = "/v1/fleets/runners";
+const FLEET_RUNNERS_PATH = "/v1/admin/runners";
 const LEASE_PAGE_SIZE = 50;
 const LIVE_RUNNER_STATES: readonly string[] = ["online", "busy"];
 
@@ -260,7 +260,7 @@ export async function anyRunnerLive(): Promise<boolean> {
 
 /** Whether a lease outcome is one the runner has finished reporting. */
 export function leaseIsSettled(outcome: string): boolean {
-  return outcome !== LEASE_OUTCOME.running;
+  return outcome !== LeaseOutcome.Running;
 }
 
 /**

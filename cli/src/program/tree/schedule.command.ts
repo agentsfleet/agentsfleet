@@ -14,7 +14,7 @@ import {
   scheduleStatusEffectFromArgs,
   scheduleSyncEffectFromArgs,
   scheduleUpdateEffectFromArgs,
-} from "../../commands/fleet_schedule.ts";
+} from "../../commands/schedule/schedule.ts";
 import {
   cronFlag,
   cronOptionalFlag,

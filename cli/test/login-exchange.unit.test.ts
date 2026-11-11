@@ -16,7 +16,7 @@ import {
   ERR_CLI_CREDENTIAL_EXCHANGE_FAILED,
   exchangeForCredential,
   machineName,
-} from "../src/commands/login-exchange.ts";
+} from "../src/commands/auth/login-exchange.ts";
 import {
   CLI_CREDENTIAL_BODY_LEN,
   CLI_CREDENTIAL_PATTERN,

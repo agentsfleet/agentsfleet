@@ -1,12 +1,15 @@
 /** Exchange deployment protection headers before any browser requests exist. */
 import type { BrowserContext } from "playwright";
+import { acceptanceProxy } from "./proxy.ts";
 
 type StorageState = Awaited<ReturnType<BrowserContext["storageState"]>>;
 
 export async function vercelBypassState(origin: string, secret?: string): Promise<StorageState> {
   if (!secret) return { cookies: [], origins: [] };
   const { request } = await import("playwright");
+  const proxy = acceptanceProxy();
   const context = await request.newContext({
+    ...(proxy === undefined ? {} : {proxy}),
     extraHTTPHeaders: {
       "x-vercel-protection-bypass": secret,
       "x-vercel-set-bypass-cookie": "true",

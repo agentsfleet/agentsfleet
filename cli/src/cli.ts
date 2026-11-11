@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { Cause, Console, Effect, Exit, Layer } from "effect";
-import { CliOutput, Command } from "effect/cli";
+import { CliConfig, CliOutput, Command, GlobalFlag } from "effect/cli";
 import { BunServices } from "@effect/platform-bun";
 
 import { loadState } from "./lib/state-load.ts";
@@ -201,6 +201,7 @@ export async function runCli(
     // was told.
     Effect.provideService(Console.Console, consoleForStreams(libraryStdout, stderr)),
     Effect.provide(CliOutput.layer(helpFormatter())),
+    Effect.provide(CliConfig.layer({ builtIns: [GlobalFlag.Help, GlobalFlag.Version, GlobalFlag.LogLevel] })),
     Effect.provide(layer),
     Effect.provide(managedExitCode.layer),
     Effect.provide(guardLayer),

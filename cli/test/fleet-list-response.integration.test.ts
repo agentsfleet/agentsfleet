@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { runCli } from "../src/cli.ts";
 import { wsFleetsPath } from "../src/lib/api-paths.ts";
 import { AGENTSFLEET_STATUS } from "../src/constants/fleet-status.ts";
-import { FLEET_LIST_INVALID } from "../src/commands/fleet-read.ts";
+import { FLEET_LIST_INVALID } from "../src/commands/fleet/read.ts";
 import { bufferStream, cliEnv, withAuthedStateDir } from "./helpers-cli-state.ts";
 import { jsonResponse, withMockApi } from "./helpers-mock-api.ts";
 

@@ -1,4 +1,4 @@
-// Regression coverage for src/commands/fleet_steer.ts fallback behavior.
+// Regression coverage for src/commands/fleet/steer.ts fallback behavior.
 //
 // These tests pin down the reachable behavior that bypasses direct
 // Server-Sent Events (SSE) transport-error rendering:
@@ -16,8 +16,8 @@
 import { describe, expect, test, setSystemTime } from "bun:test";
 import { Effect, Exit } from "effect";
 
-import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
-import { KIND_EVENT_COMPLETE } from "../src/commands/fleet_steer_events.ts";
+import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
+import { KIND_EVENT_COMPLETE } from "../src/commands/fleet/steer-events.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import { ReplSignalEmitter } from "../src/lib/repl.ts";

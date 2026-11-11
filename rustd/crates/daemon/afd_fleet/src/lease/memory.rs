@@ -31,6 +31,7 @@
 //! proved inside the write's own transaction.
 
 use af_core::id::Uuid7;
+use af_observability::verb_span::{CaptureStage, HydrateStage, VerbClock};
 use af_wire::memory::{
     MemoryDelta, MemoryHydrateResponse, MemoryPushRequest, MemoryRecallRequest,
     MemoryRecallResponse,
@@ -69,17 +70,20 @@ impl LeaseService {
         runner_id: &Uuid7,
         fleet_id: &Uuid7,
     ) -> Result<MemoryHydrateResponse<'static>> {
-        let Some(fence) = self
-            .leases
-            .live_fence_for_fleet(runner_id, fleet_id)
-            .await?
-        else {
+        let mut clock = VerbClock::<HydrateStage>::start();
+        let fenced = self.leases.live_fence_for_fleet(runner_id, fleet_id).await;
+        clock.mark(HydrateStage::Fence);
+        let Some(fence) = fenced? else {
             return Err(lease_not_found());
         };
         if !fence.current() {
             return Err(superseded(fleet_id, None, fence));
         }
-        Ok(self.memories.hydrate(fleet_id).await?)
+        // Named only once the fence proves the lease is this runner's.
+        clock.agent(fleet_id.as_str());
+        let window = self.memories.hydrate(fleet_id).await;
+        clock.mark(HydrateStage::MemoryRead);
+        Ok(window?)
     }
 
     /// Persist what one run learned.
@@ -104,17 +108,20 @@ impl LeaseService {
             lease_id: &lease,
             fencing_token: request.fencing_token,
         };
-        self.capture_for(holder, &request.memory, now).await
+        let mut clock = VerbClock::<CaptureStage>::start();
+        self.capture_for(holder, &request.memory, now, &mut clock)
+            .await
     }
 
     /// [`LeaseService::capture`]'s fence and write, for a caller holding the parts
     /// rather than a push body: the report verb, whose body carries the run's
-    /// memory beside its result.
+    /// memory beside its result. Marks the fence and the write on `clock`.
     pub(crate) async fn capture_for(
         &self,
         holder: Holder<'_>,
         memory: &[MemoryDelta<'_>],
         now: Timestamp,
+        clock: &mut VerbClock<CaptureStage>,
     ) -> Result<Captured> {
         let Holder {
             runner_id,
@@ -122,9 +129,15 @@ impl LeaseService {
             lease_id,
             fencing_token,
         } = holder;
-        self.fenced(runner_id, fleet_id, lease_id, fencing_token)
-            .await?;
-        let counted = self.memories.capture(fleet_id, memory, now).await?;
+        let fenced = self
+            .fenced(runner_id, fleet_id, lease_id, fencing_token)
+            .await;
+        clock.mark(CaptureStage::Fence);
+        fenced?;
+        clock.agent(fleet_id.as_str());
+        let written = self.memories.capture(fleet_id, memory, now).await;
+        clock.mark(CaptureStage::MemoryWrite);
+        let counted = written?;
 
         // The CONTENT is never logged — only the tallies and the scope.
         let fleet = fleet_id.as_str();

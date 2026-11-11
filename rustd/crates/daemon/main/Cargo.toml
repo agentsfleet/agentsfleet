@@ -245,3 +245,9 @@ required-features = ["test-util"]
 name = "telemetry_boot"
 path = "tests/telemetry_boot.rs"
 required-features = ["test-util"]
+
+# Owns the global tracer: its verb spans leave through the installed exporter.
+[[test]]
+name = "verb_span_export"
+path = "tests/integration_verb_span_export.rs"
+required-features = ["test-util"]
