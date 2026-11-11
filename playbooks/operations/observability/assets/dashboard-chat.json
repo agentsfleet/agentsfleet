@@ -676,51 +676,6 @@
       "description": "Fleet-wide p95 delivery stages through the first intact runner chunk and through completion. The first chunk can contain reasoning or tool syntax. These measurements exclude browser rendering; missing series have no observed samples."
     },
     {
-      "id": 102,
-      "title": "Runner wake reasons",
-      "type": "timeseries",
-      "description": "Why held runner heartbeats answered, grouped by reason. Ring means fresh work; capped means the held-heartbeat limit was reached.",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "__PROMETHEUS_UID__"
-      },
-      "gridPos": {
-        "x": 12,
-        "y": 32,
-        "w": 12,
-        "h": 8
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "expr": "sum by (reason) (rate(agentsfleet_runner_wake_answers_total[$__rate_interval]))",
-          "legendFormat": "{{reason}}",
-          "range": true,
-          "datasource": {
-            "type": "prometheus",
-            "uid": "__PROMETHEUS_UID__"
-          }
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "unit": "ops",
-          "noValue": "No samples"
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      }
-    },
-    {
       "id": 103,
       "title": "Memory delivery errors",
       "type": "timeseries",

@@ -33,7 +33,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 
 This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 and §5 shipped in #786, and the §4 row and the runner collector shipped since. M243 moved the lease offer, renewal and report onto the runner stream (`afd_gateway`), so §1 times stream operations, not HTTP handlers.
 
-**Closed scope:** Dimensions 0.3, 2.3, 2.7, 3.4 and 4.3 are manual checks on dev that need this deployed first. Indy deferred them to a prompt that runs after the merge (Discovery, Nov 11, 2026). Dimension 1.3's steer half stays deferred (Discovery, Nov 10, 2026). Rubric row R6 fails on `main` since M243 removed a metric (Discovery, Nov 11, 2026).
+**Closed scope:** Dimensions 0.3, 2.3, 2.7, 3.4 and 4.3 are manual checks on dev that need this deployed first. Indy deferred them to a prompt that runs after the merge (Discovery, Nov 11, 2026). Dimension 1.3's steer half stays deferred (Discovery, Nov 10, 2026). Rubric row R6 failed on `main` since M243 removed a metric, and is fixed here (Discovery, Nov 11, 2026).
 
 **Goal (testable):** One dev chat yields `fleet.steer`, `fleet.offer`, `fleet.report` and `runner.lease` spans that share one `agentsfleet.event.id`, each carrying its reached stages, and the steer route answers `Server-Timing`.
 
@@ -77,7 +77,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 a
 | File | Action | Why |
 |------|--------|-----|
 | `docs/v2/pending/M233_002_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md`, `docs/v2/done/M233_002_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md` | EDIT, then MOVE to `active/` and `done/` | this spec |
-| `docs/architecture/observability.md`, `scaling.md` | EDIT | §1–§3: the verb spans, the runner segments, edge `Server-Timing`; §0: the dev daemon size |
+| `docs/architecture/observability.md`, `scaling.md` | EDIT | §1–§3: the verb spans, the runner segments, edge `Server-Timing`; §0: the dev daemon size; R6: the held-heartbeat row M243 left for a deleted metric |
 | `rustd/crates/protocol/af_observability/src/verb_span/mod.rs`, `verb_span/tests/mod.rs`, `verb_span/tests/restart.rs` | CREATE | §1: the stage clock and the synthesized verb span, with its in-memory exporter tests |
 | `rustd/crates/protocol/af_observability/src/lib.rs`, `src/semconv/mod.rs`, `src/semconv/tests.rs` | EDIT | §1, §2: export the module; span names, a `VERB_SPAN_KEYS` list beside `DELIVERY_SPAN_KEYS`, and the ten runner segment keys, each checked by the key tests |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs` | EDIT | §1: the steer clock and span |
@@ -96,6 +96,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 a
 | `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/messages/route.ts`, `ui/packages/app/tests/steer-route.test.ts` | EDIT | §3: time `credential()` and the upstream call; answer `Server-Timing` |
 | `ui/packages/app/components/domain/useFleetMessageDelivery.ts`, `useFleetMessageDelivery.test.tsx`, `ui/packages/app/lib/streaming/fleet-stream-reply-registry.ts` | EDIT | §3: the four `performance` marks for one send |
 | `playbooks/operations/observability/002_round_trip_percentiles.md` | EDIT | §1, §4: the verb spans' TraceQL beside the row's |
+| `playbooks/operations/observability/assets/dashboard-chat.json`, `playbooks/operations/observability/01_assets_check.sh` | EDIT | R6, on Indy's direction (Discovery, Nov 11, 2026): the "Runner wake reasons" panel 102 queried a metric M243 deleted, so the panel goes, and its ID leaves the check's reviewed panel list |
 
 ## Applicable Rules
 
@@ -262,8 +263,8 @@ No metric family and no PostHog event changes, so no analytics funnel playbook u
 | R3 | Only root-owned host processes reach the collector (§2) | `make check-runner-collector-admission` | exit 0 | P0 | ✅ shipped in #801 and not rerun: it needs Linux network namespaces, and this diff touches no `deploy/baremetal` path |
 | R4 | `runner.lease` carries its segments (§2) | `make test-unit-all` | exit 0; `lease_span_records_existing_segments` prints `ok` | P0 | ✅ `test_lease_span_records_existing_segments ... ok` (`orly gate pr`, `b674a2259`) |
 | R5 | The edge reports its cost (§3) | `make test-unit-all` | exit 0; the `steer-route` and `useFleetMessageDelivery` suites pass | P0 | ✅ `make test-unit-all` exit 0 (`orly gate pr`, `b674a2259`); both suites also pass in the pre-push `make test-unit-app` of each later push |
-| R6 | The dashboard asset is valid (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | ❌ `ERROR: Grafana asset references a metric no census row declares: agentsfleet_runner_wake_answers_total`, exit 1 (Nov 11, 2026); `main` has the same panel query and no census row (Discovery, Nov 11, 2026) |
-| R7 | The diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | every path is in the Files Changed table | P0 | ✅ 52 changed paths, each in Files Changed (Nov 11, 2026) |
+| R6 | The dashboard asset is valid (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | ✅ `PASS: Grafana assets are valid and reference source-owned metrics`, exit 0 (Nov 11, 2026), after the fix in Discovery; it exited 1 on `main` before |
+| R7 | The diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | every path is in the Files Changed table | P0 | ✅ 54 changed paths, each in Files Changed (Nov 11, 2026) |
 | S1 | Lint | `make lint-all` | exit 0 | P0 | ✅ `✓ [rustd] clippy -D warnings` (`orly gate pr`, `b674a2259`); the pre-push `lint-rustd` passed on each later push |
 | S2 | Unit | `make test-unit-all` | exit 0 | P0 | ✅ the R2 run |
 | S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | ✅ `integration suite (exclusive) — 2 passed`, after `integration suite — 1697 passed` (`orly gate pr`, `b674a2259`) |
@@ -331,7 +332,10 @@ N/A: nothing is deleted. The old default's span layer move and its `stage_clock`
   - The agent applied the same decision to Dimension 4.3, which is also a manual witness on deployed dev data (ten delivery spans and a rendered row). Indy did not name it, so it returns to scope if he says so.
   - Dimension 1.3's steer half keeps its own deferral, quoted under "Review decisions, Nov 10, 2026" ("Hydrate+capture now (Recommended)").
   - The post-merge run's values go to Indy. If he asks to keep them, a docs-only follow-up appends them here, the one follow-up Pull Request the budget allows.
-- **Rubric row R6 fails on `main`, Nov 11, 2026:** `bash playbooks/operations/observability/01_assets_check.sh` exits 1 with `ERROR: Grafana asset references a metric no census row declares: agentsfleet_runner_wake_answers_total`. `dashboard-chat.json` panel 102 ("Runner wake reasons") still queries it, and M243 removed the metric from the census in `d68ea48f8` (Nov 9, 2026), which `origin/main` contains. This diff touches no dashboard asset, check script or census. Fixing it removes panel 102 and its ID from the check's panel list in `01_assets_check.sh`, a gate file. The agent asked Indy (Nov 11, 2026) whether to fix it here or defer R6; no answer had come when this was pushed, so R6 is graded ❌ and nothing was edited.
+- **Rubric row R6 failed on `main` and is fixed here, Nov 11, 2026:** `bash playbooks/operations/observability/01_assets_check.sh` exited 1 with `ERROR: Grafana asset references a metric no census row declares: agentsfleet_runner_wake_answers_total`. `dashboard-chat.json` panel 102 ("Runner wake reasons") still queried it, and M243 removed the metric from the census in `d68ea48f8` (Nov 9, 2026), which `origin/main` contains. M243's own rubric row says `git grep -n -w -e RUNNER_WAKE_ANSWERS_TOTAL -e agentsfleet_runner_wake_answers_total -- ':!docs/v2'` prints nothing, and it printed two hits: the panel and a held-heartbeat row in `observability.md`, whose handler and metric M243 deleted.
+  > Indy (Nov 11, 2026 08:08 AM): "fix R6" — context: the agent had asked whether to remove panel 102 and its ID from the check's reviewed panel list in `01_assets_check.sh`, a gate file, or to defer R6. The panel list is edited on this direction and for this reason only.
+  - Removed: panel 102 from `dashboard-chat.json`, `102` from the check's list for that dashboard, and the held-heartbeat row from `observability.md`. The check then exits 0, and M243's grep prints nothing.
+  - The live Grafana dashboards keep panel 102 until `03_apply.sh` applies the asset, so `04_verify.sh`'s drift check reports it until then. That needs Indy's Grafana access.
 
 - **Changelog skipped, Nov 10, 2026:**
   > Indy (Nov 10, 2026): "skip" — context: the CHORE(close) changelog entry for this Pull Request.
