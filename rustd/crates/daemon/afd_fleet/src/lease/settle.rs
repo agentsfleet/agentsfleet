@@ -72,6 +72,9 @@ pub struct Reported {
     pub lease_created_at: Timestamp,
     /// When the event it runs was created, as the lease row copied it.
     pub event_created_at: Timestamp,
+    /// The catalogue version the report read beside the lease; `None` prices
+    /// from an uncached read.
+    pub catalogue_version: Option<i64>,
 }
 
 /// What the claim-and-settle statement decided.
@@ -261,6 +264,7 @@ struct LeaseForReport {
     created_at: Timestamp,
     #[sqlx(try_from = "jiff_sqlx::Timestamp")]
     event_created_at: Timestamp,
+    catalogue_version: Option<i64>,
 }
 
 impl LeaseForReport {
@@ -280,6 +284,7 @@ impl LeaseForReport {
             fence: Fence::from_i64(self.fencing_token),
             lease_created_at: self.created_at,
             event_created_at: self.event_created_at,
+            catalogue_version: self.catalogue_version,
         })
     }
 }

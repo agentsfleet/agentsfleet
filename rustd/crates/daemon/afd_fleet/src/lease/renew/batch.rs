@@ -485,6 +485,7 @@ impl LeaseService {
                 &row.provider,
                 &row.model,
                 Some(row.catalogue_version),
+                crate::lease::cache::LABEL_BATCH,
             )
             .await
     }

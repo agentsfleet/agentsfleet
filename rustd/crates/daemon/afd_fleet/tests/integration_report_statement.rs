@@ -420,3 +420,50 @@ async fn report_with_wrong_pricing_facts_writes_nothing() {
     assert_eq!(runtime_lines(&held).await.len(), 1, "settled once");
     held.fixtures.cleanup().await;
 }
+
+/// A fragment of the price book read, `afd_billing`'s `select_price_book.sql`.
+const PRICE_BOOK_READ: &str = "p.input_nanos_per_mtok";
+
+// Value: protects=a warm replica's report reads no price book; fails_when=the
+// report loads its book past the version-keyed cache; why_new=M245 §9 moved the
+// report's book into the cache; seam=none; no_claim=a catalogue edit between
+// the two, which the statement's version guard and its reprice answer.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn a_warm_replica_report_reads_no_price_book() {
+    let held = held_in(Fixtures::create_isolated().await).await;
+    held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
+    let owner = held.fixtures.open(DbRole::Migrator).await;
+    statements::install(&owner).await;
+    let plane = held.fixtures.plane();
+    let request = crate::integration_held_sandbox::report::processed(&held, None);
+
+    let cold = Counted::open(&owner).await;
+    plane
+        .report(&held.runner, &request, held.now)
+        .await
+        .expect("the report settles the lease");
+    let cold = cold.close().await;
+    let warm = Counted::open(&owner).await;
+    plane
+        .report(&held.runner, &request, held.now)
+        .await
+        .expect("the replay answers the stored outcome");
+    let warm = warm.close().await;
+
+    assert_eq!(
+        cold.calls_containing(PRICE_BOOK_READ),
+        1,
+        "{:?}",
+        cold.statements()
+    );
+    assert_eq!(
+        warm.calls_containing(PRICE_BOOK_READ),
+        0,
+        "{:?}",
+        warm.statements()
+    );
+    drop(plane);
+    owner.close().await;
+    held.fixtures.cleanup().await;
+}
