@@ -185,7 +185,7 @@ describe("FleetThread — tool cells", () => {
     expect(headerOf(ran!)).not.toContain("(failed)");
     expect(within(ran!).getByText("(exit 2)", { exact: false }).closest("[data-command-outcome]")?.className).toContain(DESTRUCTIVE);
     expect(ran!.textContent).toContain("echo two");
-    expect(ran!.textContent).toContain("└boom");
+    expect(within(ran!).getByText("boom")).toBeTruthy();
     expect(headerOf(shell!)).toMatch(/^Ran command ls Success · /);
     expect(headerOf(shell!)).not.toContain("exit");
   });
@@ -199,7 +199,7 @@ describe("FleetThread — tool cells", () => {
     expect(headerOf(edit!)).toMatch(/^Edited deploy.yaml Success · /);
     const rows = [...edit!.querySelectorAll("[data-diff]")];
     expect(rows.map((row) => [row.getAttribute("data-diff"), row.textContent])).toEqual([
-      ["context", " a"], ["removed", "-removed: b"], ["added", "+added: c"], ["added", "+added: d"],
+      ["context", "a"], ["removed", "-removed: b"], ["added", "+added: c"], ["added", "+added: d"],
     ]);
     expect(rows[1]!.className).toContain("bg-destructive/10");
     expect(rows[2]!.className).toContain("bg-success/10");

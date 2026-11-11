@@ -6,6 +6,7 @@ import { useAuiState } from "@assistant-ui/react";
 import Markdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { MessageExpansion } from "./MessageExpansion";
+import { CodeHeader } from "@/components/assistant-ui/CodeHeader";
 
 /**
  * A fleet's reply, as markdown.
@@ -80,7 +81,7 @@ const COMPONENTS = {
 // Match the approved conversation type in setup and saved fleet chat.
 const BODY_CLASS = "space-y-lg font-sans text-conversation leading-conversation text-foreground";
 
-const REPLY_COMPONENTS = memoizeMarkdownComponents(COMPONENTS);
+const REPLY_COMPONENTS = memoizeMarkdownComponents({...COMPONENTS, CodeHeader});
 
 /** Keep the library's text-part renderer mounted through streaming and completion. */
 export const FleetReplyMarkdown = memo(function FleetReplyMarkdown() {

@@ -1,5 +1,5 @@
-import { useMemo, useState, type ReactNode } from "react";
-import { AssistantRuntimeProvider, useExternalStoreRuntime, type ThreadMessageLike } from "@assistant-ui/react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { AssistantRuntimeProvider, useExternalStoreRuntime, type AppendMessage, type ThreadMessageLike } from "@assistant-ui/react";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
 import { Button, TooltipProvider } from "@agentsfleet/design-system";
 import { ShellFrame } from "@/components/layout/ShellFrame";
@@ -18,6 +18,8 @@ import { RENDER_KIND, RENDER_KIND_KEY } from "@/components/domain/useFleetThread
 import { ACTOR } from "@/lib/events/event-summary";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { FLEET_DETAIL, WORKSPACE, FLEET_ID } from "@/tests/helpers/draft-fixtures";
+import { useFleetUploadPreviews } from "@/components/domain/useFleetUploadPreviews";
+import { FLEET_CHAT_CONFIG } from "@/components/domain/FleetToolRegistry";
 
 const router = { bfcacheId: "visual-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {} };
 type Scenario = "running" | "completed" | "error";
@@ -27,10 +29,15 @@ export function RefreshVisualFixture() {
   const [started] = useState(Date.now);
   const [phase, setPhase] = useState<Scenario>("running");
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
-  const messages = useMemo(() => [...conversation(phase, started), ...sent], [phase, started, sent]);
+  const onNew = useCallback(async (message: AppendMessage) => {
+    if (phase === "error") setPhase("running");
+    setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: message.content}]);
+  }, [phase]);
+  const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", onNew});
+  const messages = useMemo(() => [...conversation(phase, started), ...sent, ...previews.entries.map(entry => entry.message)], [phase, started, sent, previews.entries]);
   const runtime = useExternalStoreRuntime({ messages, isRunning: phase === "running",
     convertMessage: (message: ThreadMessageLike) => message,
-    onNew: async message => { if (phase === "error") setPhase("running"); setSent(previous => [...previous, { id: `local-${previous.length}`, role: "user", content: message.content }]); },
+    onNew: previews.onNew, adapters: {attachments: previews.attachments},
     onCancel: async () => { setPhase("completed"); },
   });
   return <AppRouterContext value={router}><PathnameContext.Provider value={`/w/${WORKSPACE}/fleets/${FLEET_ID}`}><SearchParamsContext.Provider value={new URLSearchParams()}><TooltipProvider><ReviewChrome>
@@ -41,7 +48,7 @@ export function RefreshVisualFixture() {
         <Button size="sm" variant="ghost" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "light" ? "dark" : "light"; }}>Theme</Button>
       </div>
       <FleetHeader workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: "Release watch", status: "active" })} />
-      <AssistantRuntimeProvider runtime={runtime}><SenderLabelProvider senderLabel="Release watch"><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
+      <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><SenderLabelProvider senderLabel="Release watch"><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
         <FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={0} sources={{ repositories: ["agentsfleet/linkwarden"], access: "write", publication: "existing_pr" }}
           approvals={{count: 1, href: `/w/${WORKSPACE}/approvals?fleetId=${FLEET_ID}`}}
           schedules={[{schedule_id: "release-check", fleet_id: FLEET_ID, sync: "synced", status: "active", cron: "*/30 * * * *",
@@ -80,7 +87,12 @@ function conversation(phase: Scenario, started: number): ThreadMessageLike[] {
       { type: "text", text: "Both image builds passed for amd64 and arm64. I’m checking the final security scan before marking the release ready." },
       call("read", "http_request", { url: "https://api.github.com/repos/agentsfleet/linkwarden/actions/runs" }),
       call("scan", "exec_command", { cmd: "trivy image --severity CRITICAL release:latest" }, phase === "running"),
-      ...(phase === "completed" ? [{ type: "text" as const, text: "The security scan passed. Both image builds and the required checks are green. The release is ready for your review." }] : []),
+      ...(phase === "completed" ? [
+        call("file", "file_read", {path: "release.yaml"}),
+        call("edit", "file_edit", {path: "release.yaml", old_text: "ready: false", new_text: "ready: true"}),
+        call("report", "custom_release_report", {release: "current"}),
+        {type: "text" as const, text: "The security scan passed. Both image builds and the required checks are green. The release is ready for your review.\n\nReview `release.yaml` and [the build report](https://example.test/release).\n\n```yaml\nready: true\n```"},
+      ] : []),
     ], status: phase === "running" ? { type: "running" } : { type: "complete", reason: "stop" } },
   ];
 }
