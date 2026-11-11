@@ -159,7 +159,7 @@ impl Gates {
 
     /// What a poll makes of the gate this event already holds.
     /// [`Self::check`] over what the caller's read already found, reading
-    /// neither the reference nor its row again (M245 §5).
+    /// neither the reference nor its row again.
     ///
     /// An unreadable read is judged as [`Self::check`] judges an unreadable
     /// lookup: a first encounter in [`RefState::Unreadable`].

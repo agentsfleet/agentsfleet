@@ -39,7 +39,7 @@ impl HostLock {
         tokio::time::timeout(Duration::from_secs(3), async {
             loop {
                 // The issue's exclusive host lock, or a host's renewal
-                // statement, which reads the host row FOR SHARE (M245 §7).
+                // statement, which reads the host row FOR SHARE.
                 // `pg_stat_activity` keeps only the first kilobyte of a
                 // statement, so the renewal is matched by its opening line.
                 let waiting: Option<i32> = sqlx::query_scalar(

@@ -14,7 +14,7 @@
 //! harmlessly. Each kind numbers its own lines: a model line by the runner's
 //! request number, a runtime line by when its slice began, a decision line by
 //! its call. No kind's numbers can claim another's, and none is capped below
-//! the `u32` the wire carries (M245).
+//! the `u32` the wire carries.
 
 use std::time::Duration;
 

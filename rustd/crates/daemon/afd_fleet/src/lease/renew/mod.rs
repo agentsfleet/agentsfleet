@@ -36,7 +36,6 @@ use crate::lease::store::Leases;
 use crate::lease::usage::{self, Pricing};
 use afd_billing::Nanos;
 use afd_billing::biller::Settlement;
-use afd_billing::rates::Posture;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "renew lease load";
@@ -223,7 +222,7 @@ impl LeaseService {
         };
         let pricing = Pricing::load(
             self.leases.pool(),
-            posture_of(&lease),
+            Pricing::posture_of(&lease.posture)?,
             &lease.provider,
             &lease.model,
             lease_id.as_str(),
@@ -255,9 +254,4 @@ impl LeaseService {
             Renewed::MaxRuntime => Err(lease_max_runtime()),
         }
     }
-}
-
-/// The posture this lease was issued under; see the report's twin.
-pub(super) fn posture_of(lease: &Renewing) -> Posture {
-    Posture::parse(&lease.posture).unwrap_or(Posture::Platform)
 }

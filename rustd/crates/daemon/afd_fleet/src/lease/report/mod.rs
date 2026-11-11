@@ -44,7 +44,7 @@ use crate::lease::pull::LeaseService;
 use crate::lease::settle::Reported;
 use crate::lease::usage::Pricing;
 
-use assembly::{Subject, posture_of, stored_trace, terminal};
+use assembly::{Subject, stored_trace, terminal};
 pub use result::Reconciled;
 pub use tokens::RunTokens;
 mod assembly;
@@ -112,13 +112,14 @@ impl LeaseService {
         // The book cached at the version this report read beside the lease:
         // a warm replica reads no price, and the statement guards on the
         // version.
+        let posture = Pricing::posture_of(&lease.posture)?;
         let pricing = match lease.catalogue_version {
             Some(version) => {
                 self.leases
                     .prices()
                     .get_or_load(
                         self.leases.pool(),
-                        posture_of(&lease),
+                        posture,
                         &lease.provider,
                         &lease.model,
                         Some(version),
@@ -129,7 +130,7 @@ impl LeaseService {
             None => std::sync::Arc::new(
                 Pricing::load(
                     self.leases.pool(),
-                    posture_of(&lease),
+                    posture,
                     &lease.provider,
                     &lease.model,
                     lease_id.as_str(),

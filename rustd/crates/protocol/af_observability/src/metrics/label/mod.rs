@@ -22,12 +22,15 @@ pub mod cost;
 pub mod database;
 pub mod fleet;
 pub mod http;
+pub mod lease_cache;
 pub mod library;
 pub mod models;
 pub mod outbound;
 pub mod scheduler;
 pub mod task;
 
+#[cfg(test)]
+mod spelling_tests;
 #[cfg(test)]
 mod tests;
 

@@ -59,7 +59,7 @@ impl Tier {
 pub struct PriceBook {
     tiers: Vec<Tier>,
     /// The catalogue version the tiers were read at, which a statement priced
-    /// from this book guards on (M245 §3). `None` for a book no read produced,
+    /// from this book guards on. `None` for a book no read produced,
     /// and for a model the catalogue does not carry.
     #[serde(skip)]
     catalogue_version: Option<i64>,

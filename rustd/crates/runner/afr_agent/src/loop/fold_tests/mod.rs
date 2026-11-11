@@ -52,7 +52,7 @@ async fn answered(waiting: bool) -> crate::Result<Vec<i64>> {
 // Value: protects=a lease whose claim found nothing waiting skips the ask
 // before its first model call, and asks after the answer; fails_when=the skip
 // never happens, swallows the ask after the answer, or fires on a lease that
-// said true; why_new=M245 §8 moved that ask into the claim;
+// said true; why_new=that ask moved into the claim;
 // seam=none; no_claim=what the daemon computes, which its claim test proves.
 #[tokio::test]
 async fn first_model_call_skips_the_answered_fold_ask() -> crate::Result<()> {

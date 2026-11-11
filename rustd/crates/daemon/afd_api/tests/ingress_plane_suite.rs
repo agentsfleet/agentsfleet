@@ -15,6 +15,8 @@ mod connector_events_route;
 mod identity_signup_events;
 #[path = "identity_signup_live.rs"]
 mod identity_signup_live;
+#[path = "identity_signup_names.rs"]
+mod identity_signup_names;
 mod identity_signup_route;
 #[path = "ingress_plane_ownership.rs"]
 mod ingress_plane_ownership;

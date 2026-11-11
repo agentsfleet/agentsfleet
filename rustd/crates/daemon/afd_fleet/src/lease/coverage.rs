@@ -32,6 +32,7 @@ use jiff::Timestamp;
 use crate::error::{Result, budget_exhausted, renewal_no_credits};
 use crate::lease::pull::LeaseService;
 use crate::lease::renew::Renewing;
+use crate::lease::usage::Pricing;
 use afd_billing::budget::{self, Verdict};
 
 /// The tenant's pool cannot fund another slice.
@@ -84,7 +85,7 @@ impl LeaseService {
         lease_id: &str,
         now: Timestamp,
     ) -> Result<()> {
-        let posture = super::renew::posture_of(lease);
+        let posture = Pricing::posture_of(&lease.posture)?;
         let estimate = self
             .accounts
             .estimate(posture, &lease.provider, &lease.model, now)

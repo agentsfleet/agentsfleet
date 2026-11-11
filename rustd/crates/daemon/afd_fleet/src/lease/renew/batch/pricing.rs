@@ -58,7 +58,7 @@ impl LeaseService {
         row: &Found,
         now: Timestamp,
     ) -> Result<afd_billing::rates::Estimate, Arc<crate::Error>> {
-        let posture = crate::lease::renew::posture_of(renewing);
+        let posture = Pricing::posture_of(&renewing.posture).map_err(Arc::new)?;
         let pricing = self
             .leases
             .prices()

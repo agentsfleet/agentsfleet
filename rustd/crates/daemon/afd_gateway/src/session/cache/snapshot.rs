@@ -15,7 +15,7 @@ pub(super) struct LeaseRecord {
     pub(super) expires_at: Timestamp,
     pub(super) target: Option<Target>,
     pub(super) cancelled: bool,
-    /// What the lease's report reads, kept from the offer (M245 §9).
+    /// What the lease's report reads, kept from the offer.
     pub(super) reported: Option<Reported>,
 }
 

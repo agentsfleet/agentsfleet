@@ -306,19 +306,7 @@ impl TaskLifecycle for Tasks {
 
     #[cfg(any(test, feature = "test-util"))]
     fn bind<'a>(&'a self, lease: TaskLease<'a>, plan: &'a PreparedPlan) -> Reply<'a, TaskBindings> {
-        let span = tracing::info_span!("task_bind", lease_id = lease.lease_id.as_str());
-        observe::traced(
-            TaskOperation::Bind,
-            admit::bind(self, lease, plan),
-            |bindings| {
-                if bindings.replayed {
-                    TaskOutcome::Replayed
-                } else {
-                    TaskOutcome::Accepted
-                }
-            },
-            span,
-        )
+        admit::observed_bind(self, lease, plan)
     }
 
     fn read<'a>(&'a self, scope: &'a TaskScope, task_id: &'a Uuid7) -> Reply<'a, TaskSnapshot> {

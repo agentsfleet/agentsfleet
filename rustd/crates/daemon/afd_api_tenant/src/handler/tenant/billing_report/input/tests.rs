@@ -319,7 +319,7 @@ fn charge_cursor_cannot_cross_activities() {
     );
 }
 
-// M245: a charges page resumes after a line, by its `(requested_at, id)`.
+// A charges page resumes after a line, by its `(requested_at, id)`.
 #[test]
 fn a_charge_boundary_reads_its_instant_and_line() {
     let boundary = super::charge_boundary(NOW, ACTIVITY).expect("a valid position");

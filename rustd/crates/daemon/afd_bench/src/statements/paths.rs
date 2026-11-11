@@ -96,7 +96,7 @@ impl Path {
 /// shortest text that names one product statement. When a statement changes,
 /// its row lands in `other` until its fragment follows.
 const FRAGMENTS: &[(&str, Path)] = &[
-    // M245's one-statement paths come first: each embeds text a later,
+    // The one-statement paths come first: each embeds text a later,
     // older entry also matches (the issue insert stamps the host's lease
     // version; the report writes usage lines and sessions).
     (
@@ -127,7 +127,7 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     // Fold: `claim_inputs.sql`.
     ("head.sequence AS head_sequence", Path::Fold),
-    // Claim: the candidate scan, the slot-and-head claim (which since M245
+    // Claim: the candidate scan, the slot-and-head claim (which
     // opens the event and stamps delivery itself), the admission lock and
     // the counters read.
     ("eligible AS MATERIALIZED", Path::Claim),

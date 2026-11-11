@@ -122,7 +122,7 @@ struct Census {
 }
 
 /// The host row as [`lock_host`] holds it: what the claim checks before the
-/// guarded lease insert counts the host's census itself (M245 §5).
+/// guarded lease insert counts the host's census itself.
 #[derive(Debug, Clone, Copy)]
 pub struct Held {
     claims_allowed: bool,
@@ -172,7 +172,7 @@ pub async fn lock_host<'a>(
 
 /// What a guard binds: the host, and for a stream call the opening's
 /// credential digest and connection, which `lock_host.sql` and a host's
-/// renewal statement compare against the host row alike (M245 §7).
+/// renewal statement compare against the host row alike.
 #[must_use]
 pub fn proof<'g>(guard: impl Into<Guard<'g>>) -> (&'g Uuid7, Option<&'g str>, Option<&'g Uuid7>) {
     match guard.into() {
@@ -236,7 +236,7 @@ pub async fn lock<'a>(
 }
 
 /// The host states a renewal may run in: one list, read by the locked
-/// capacity check and by a host's renewal statement alike (M245 §7).
+/// capacity check and by a host's renewal statement alike.
 const RENEWABLE: [afd_api_wire::admin::AdminState; 3] = [
     afd_api_wire::admin::AdminState::Active,
     afd_api_wire::admin::AdminState::Cordoned,

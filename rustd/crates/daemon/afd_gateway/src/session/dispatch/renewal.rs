@@ -1,4 +1,4 @@
-//! A host's renewal frame is one batch (M245 §7): one pre-read and one
+//! A host's renewal frame is one batch: one pre-read and one
 //! statement for every live lease the frame names, each answered on its own.
 //! A lease id that does not parse, or a request that does not validate, keeps
 //! the gateway's refusal and never reaches the batch.
