@@ -16,8 +16,7 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 **Milestone:** M233
 **Workstream:** 002
 **Date:** Nov 04, 2026
-**Status:** IN_PROGRESS
-**Open work:** Daemon verb spans (§1), the runner span's segments (§2), edge timing (§3) and the dev sizing checks (§0).
+**Status:** DONE
 **Priority:** P1 — operator-facing: the production daemon size (three `shared-cpu-4x` 4 GB machines at about $80 a month, or three `performance-2x` 4 GB at $198 a month; source in Discovery) is chosen without per-event evidence of where a chat's time goes
 **Categories:** API, INFRA, OBS, UI
 **Batch:** B1 — single workstream, built beside M245_001; Section prerequisites are stated in each Section
@@ -33,6 +32,8 @@ SPEC AUTHORING RULES (load-bearing — the one comment that survives):
 ## Overview
 
 This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 and §5 shipped in #786, and the §4 row and the runner collector shipped since. M243 moved the lease offer, renewal and report onto the runner stream (`afd_gateway`), so §1 times stream operations, not HTTP handlers.
+
+**Closed scope:** Dimensions 0.3, 2.3, 2.7, 3.4 and 4.3 are manual checks on dev that need this deployed first. Indy deferred them to a prompt that runs after the merge (Discovery, Nov 11, 2026). Dimension 1.3's steer half stays deferred (Discovery, Nov 10, 2026). Rubric row R6 fails on `main` since M243 removed a metric (Discovery, Nov 11, 2026).
 
 **Goal (testable):** One dev chat yields `fleet.steer`, `fleet.offer`, `fleet.report` and `runner.lease` spans that share one `agentsfleet.event.id`, each carrying its reached stages, and the steer route answers `Server-Timing`.
 
@@ -75,9 +76,9 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 a
 
 | File | Action | Why |
 |------|--------|-----|
-| `docs/v2/pending/M233_002_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md` | EDIT, then MOVE to `active/` and `done/` | this spec |
+| `docs/v2/pending/M233_002_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md`, `docs/v2/done/M233_002_P1_API_INFRA_OBS_UI_CHAT_ROUND_TRIP_STAGE_TIMING.md` | EDIT, then MOVE to `active/` and `done/` | this spec |
 | `docs/architecture/observability.md`, `scaling.md` | EDIT | §1–§3: the verb spans, the runner segments, edge `Server-Timing`; §0: the dev daemon size |
-| `rustd/crates/protocol/af_observability/src/verb_span/mod.rs`, `verb_span/tests.rs` | CREATE | §1: the stage clock and the synthesized verb span, with its in-memory exporter tests |
+| `rustd/crates/protocol/af_observability/src/verb_span/mod.rs`, `verb_span/tests/mod.rs`, `verb_span/tests/restart.rs` | CREATE | §1: the stage clock and the synthesized verb span, with its in-memory exporter tests |
 | `rustd/crates/protocol/af_observability/src/lib.rs`, `src/semconv/mod.rs`, `src/semconv/tests.rs` | EDIT | §1, §2: export the module; span names, a `VERB_SPAN_KEYS` list beside `DELIVERY_SPAN_KEYS`, and the ten runner segment keys, each checked by the key tests |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/fleet/message_steer/mod.rs` | EDIT | §1: the steer clock and span |
 | `rustd/crates/daemon/afd_api_runner/src/handler/runner/memory.rs` | EDIT | §1: the hydrate and capture clocks and spans |
@@ -88,7 +89,7 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 a
 | `rustd/crates/daemon/main/Cargo.toml` | EDIT | §1: the export tests' own `[[test]]` binary, which owns the global tracer (`telemetry_boot`'s pattern) |
 | `rustd/crates/daemon/afd_fleet/src/lease/pull/select.rs`, `pull/held.rs` | EDIT | §1: the offer clock's path to `admit_claimed`, and its `claim` and `admit` marks |
 | `rustd/crates/daemon/afd_fleet/src/lease/memory.rs` | EDIT | §1: the hydrate and capture clocks, where the fence and the memory call run |
-| `rustd/crates/daemon/afd_fleet/src/lease/pull/claimed.rs`, `pull/tests.rs`, `report/memory.rs`, `rustd/crates/daemon/afd_fleet/tests/**` | EDIT | §1, review (NLG): the claim and report signatures take the clock in place; fixtures and the report's inline capture pass `VerbClock::untimed()` |
+| `rustd/crates/daemon/afd_fleet/src/lease/pull/claimed.rs`, `pull/tests.rs`, `report/memory.rs`, `rustd/crates/daemon/afd_fleet/tests/**` | EDIT | §1, review (NLG): the claim and report signatures take the clock in place; fixtures and the report's inline capture pass `VerbClock::untimed()`; `integration_lease_gates/bindings.rs` pins that a refused delivery still marks `issue` |
 | `rustd/crates/protocol/af_observability/src/semconv/verb.rs`, `semconv/runner_span.rs` | CREATE | review (FLL): the verb and runner span vocabularies, moved out of `semconv/mod.rs` and re-exported |
 | `ui/packages/app/lib/streaming/send-marks.ts`, `fleet-stream-reply-registry.marks.test.ts`, `ui/packages/app/tests/helpers/send-marks-fixtures.ts` | CREATE | review (TS-SHAPE, FLL): the pending-send marks as a class with a reset, their tests through `dispatchReplyFrame`, and shared frame fixtures |
 | `rustd/crates/runner/afr_supervisor/src/lease_loop/segments.rs`, `identity/mod.rs`, `lease_loop/tests/mod.rs`, `lease_loop/tests/span_segments.rs` | EDIT, CREATE | §2: `runner.lease` declares and records the ten segments |
@@ -125,12 +126,12 @@ This successor owns M233_001 §1–§4 and its unfinished sizing checks. §0.1 a
 
 ## Sections (implementation slices)
 
-### §0 — The dev daemon runs where latency is measurable — IN_PROGRESS
+### §0 — The dev daemon runs where latency is measurable — DONE except 0.3, deferred
 
 A shared vCPU's baseline is 5 ms per 80 ms, and on `shared-cpu-1x` every dev request was throttled. The dev daemon now declares `shared-cpu-2x` 1 GB (`deploy/fly/agentsfleetd-dev/fly.toml`). M244 deleted `dragonfly-dev`, so its half of this Section is gone.
 
 - **Dimension 0.2** — DONE (Nov 10, 2026: `fly scale show -a agentsfleetd-dev` → `app │ 1 │ shared │ 2 │ 1024 MB │ iad`) — the live daemon matches its file → Test `manual_dev_size_matches_live` (manual; Indy or the implementer runs `fly scale show -a agentsfleetd-dev`; output in the Pull Request Session Notes): `shared` 2 CPUs 1024 MB. A machine still on one CPU fails it.
-- **Dimension 0.3** — the dev daemon is unthrottled at rest → Test `manual_dev_daemon_unthrottled_at_rest` (manual; one hour after a deploy, `rate(fly_instance_cpu_throttle[30m])` = 0 and `fly_instance_cpu_balance` > 0 for `agentsfleetd-dev`; values in the Session Notes).
+- **Dimension 0.3** — DEFERRED (runs on dev after the merge, from the prompt; Discovery, Nov 11, 2026) — the dev daemon is unthrottled at rest → Test `manual_dev_daemon_unthrottled_at_rest` (manual; one hour after a deploy, `rate(fly_instance_cpu_throttle[30m])` = 0 and `fly_instance_cpu_balance` > 0 for `agentsfleetd-dev`; values in the Session Notes).
 
 ### §1 — The daemon names every stage a chat crosses
 
@@ -153,7 +154,7 @@ Steer's authentication runs in extractors before the clock starts, so the daemon
 
 - **Dimension 1.1** — DONE — each reached stage is written once → Test `verb_clock_writes_each_reached_stage_once` (unit, in-memory exporter): a report reaching all six stages exports one `fleet.report` span with six stage attributes. A report refused at `load` exports one span with `load_ms` only.
 - **Dimension 1.2** — DONE — an empty offer pass records nothing → Test `empty_offer_pass_records_no_span` (integration, live Postgres, in-memory exporter): a pass that selects no candidate exports zero spans. A pass that recorded a `claim`-only span would fail it.
-- **Dimension 1.3** — PARTIAL (offer and report joined live; steer covered by its unit test, no person-steer fixture) — one chat's spans join by event → Test `event_identity_joins_the_verb_spans` (integration, `daemon/main/tests/integration_verb_span_export.rs`, live Postgres and NATS through the e2e scenario's gateway session): one chat exports `fleet.steer`, `fleet.offer` and `fleet.report` with one `agentsfleet.event.id`. A fallback hydrate joins by `gen_ai.agent.id`.
+- **Dimension 1.3** — PARTIAL (offer and report joined live; steer covered by its unit test, no person-steer fixture; the steer half is deferred, Discovery, Nov 10, 2026) — one chat's spans join by event → Test `event_identity_joins_the_verb_spans` (integration, `daemon/main/tests/integration_verb_span_export.rs`, live Postgres and NATS through the e2e scenario's gateway session): one chat exports `fleet.steer`, `fleet.offer` and `fleet.report` with one `agentsfleet.event.id`. A fallback hydrate joins by `gen_ai.agent.id`.
 - **Dimension 1.4** — DONE — a verb span carries no payload → Test `verb_span_carries_only_declared_keys` (unit): a steer whose message is `secret-probe-7f3a` exports no attribute outside `semconv`'s verb keys, and no value containing the probe.
 - **Dimension 1.5** — DONE — the span reaches the installed exporter → Test `verb_span_reaches_exporter_through_global_provider` (integration, `daemon/main/tests/integration_verb_span_export.rs`): after `telemetry::install` with an in-memory exporter, a recorded steer span is exported. A clock that took its tracer before the install exports nothing and fails it.
 - **Dimension 1.6** — DONE — the stages account for the span → Test `verb_stage_attributes_account_for_the_span` (unit, injected clock): stages summing 96 ms in a 100 ms span leave a residual within the larger of 10% and 5 ms.
@@ -167,9 +168,9 @@ The collector shipped as `deploy/baremetal/otelcol-runner.{yml,service,nft}` and
 The segments are `memory`, `sandbox`, `egress`, `prepare`, `checkout`, `sandbox_wait`, `model`, `tools`, `report` and `first_token`. `memory` is timed only on the fallback hydrate (`lease_loop/work.rs`). Each key joins `RUNNER_SPAN_KEYS` in `semconv`, which `semconv/tests.rs` checks.
 
 - **Dimension 2.1** — DONE (shipped) — only root-owned sockets reach the receiver → Validation `make check-runner-collector-admission`: exit 0.
-- **Dimension 2.3** — a sandbox cannot post to the collector → Test `manual_sandbox_cannot_post_to_collector` (manual; on the dev host a lease under `allow_all` runs `curl -m 2 http://127.0.0.1:4318/v1/traces`; output in the Session Notes): refused or timed out.
+- **Dimension 2.3** — DEFERRED (runs on dev after the merge, from the prompt; Discovery, Nov 11, 2026) — a sandbox cannot post to the collector → Test `manual_sandbox_cannot_post_to_collector` (manual; on the dev host a lease under `allow_all` runs `curl -m 2 http://127.0.0.1:4318/v1/traces`; output in the Session Notes): refused or timed out.
 - **Dimension 2.5** — DONE — `runner.lease` carries the reached segments once → Test `lease_span_records_existing_segments` (unit, `lease_loop/tests/span_segments.rs`): a lease with memory 12 ms, model 400 ms and report 30 ms sets those three fields once, and leaves `sandbox` and `tools` unset.
-- **Dimension 2.7** — the runner span is found by event → Test `manual_runner_span_reaches_tempo` (manual; a dev chat, then TraceQL `{ span.agentsfleet.event.id = "<id>" }`; screenshot in the Session Notes): `runner.lease` and the three daemon verb spans return.
+- **Dimension 2.7** — DEFERRED (runs on dev after the merge, from the prompt; Discovery, Nov 11, 2026) — the runner span is found by event → Test `manual_runner_span_reaches_tempo` (manual; a dev chat, then TraceQL `{ span.agentsfleet.event.id = "<id>" }`; screenshot in the Session Notes): `runner.lease` and the three daemon verb spans return.
 
 ### §3 — The edge reports its own cost on one clock
 
@@ -182,7 +183,7 @@ The browser leaves four marks per send: `af:send`, `af:accepted`, `af:first-fram
 - **Dimension 3.1** — DONE — the route answers `Server-Timing` → Test `steer_route_answers_server_timing` (unit, `tests/steer-route.test.ts`): a stubbed credential of 12 ms and upstream of 40 ms answer a header naming `auth` and `upstream` with durations at least those.
 - **Dimension 3.2** — DONE — timing never changes the answer → Test `server_timing_never_changes_the_answer` (unit, `tests/steer-route.test.ts`): an upstream 409, and an unreachable upstream, answer the same status and body as without timing, with `auth` present.
 - **Dimension 3.3** — DONE — one send leaves four ordered marks → Test `delivery_marks_send_accepted_first_frame_complete` (unit, `useFleetMessageDelivery.test.tsx`): one simulated send leaves four marks with one `operationId`, in order. Two overlapping sends leave eight, four per id.
-- **Dimension 3.4** — the edge and the daemon agree → Test `manual_probes_satisfy_coverage_and_edge_ordering` (manual; Indy sends 10 dev chats and reads DevTools and Tempo; values in the Session Notes): each event has all three verb spans, and `af:accepted − af:send` ≥ route `auth + upstream` ≥ `fleet.steer`'s duration.
+- **Dimension 3.4** — DEFERRED (runs on dev after the merge, from the prompt; Discovery, Nov 11, 2026) — the edge and the daemon agree → Test `manual_probes_satisfy_coverage_and_edge_ordering` (manual; Indy sends 10 dev chats and reads DevTools and Tempo; values in the Session Notes): each event has all three verb spans, and `af:accepted − af:send` ≥ route `auth + upstream` ≥ `fleet.steer`'s duration.
 
 ### §4 — Round-trip percentiles from settled delivery spans
 
@@ -192,7 +193,7 @@ The row shipped in `playbooks/operations/observability/assets/dashboard-chat.jso
 
 - **Dimension 4.1** — DONE (shipped) — the asset check holds → Validation `bash playbooks/operations/observability/01_assets_check.sh`: exit 0.
 - **Dimension 4.2** — DONE (shipped) — the drift check holds → Validation `bash playbooks/operations/observability/04_verify.sh` with the approved dev credentials: exit 0.
-- **Dimension 4.3** — PARTIAL — the row renders → Test `manual_round_trip_row_renders` (manual; ten dev delivery spans, a screenshot in the Session Notes): p95 and p99 in the declared units, and absent segments empty. Tempo's zero-value display still blocks the rendered witness.
+- **Dimension 4.3** — DEFERRED (runs on dev after the merge, from the prompt; Discovery, Nov 11, 2026) — the row renders → Test `manual_round_trip_row_renders` (manual; ten dev delivery spans, a screenshot in the Session Notes): p95 and p99 in the declared units, and absent segments empty. Tempo's zero-value display still blocks the rendered witness.
 
 ### Shipped predecessor scope
 
@@ -245,7 +246,7 @@ Edge (steer route → browser):
 
 | Metric / event | Audience | Fires when | Properties allowed | Privacy guard | Test |
 |----------------|----------|------------|--------------------|---------------|------|
-| `fleet.steer`, `fleet.offer`, `fleet.report`, `fleet.hydrate`, `fleet.capture` spans | operator | a verb ends, except an empty offer pass | event id, fleet id, stage durations | no prompt, reply, path or SQL text | `event_identity_joins_the_verb_spans` |
+| `fleet.steer`, `fleet.offer`, `fleet.report`, `fleet.hydrate`, `fleet.capture` spans | operator | a verb ends having reached a stage | event id, fleet id, stage durations | no prompt, reply, path or SQL text | `event_identity_joins_the_verb_spans` |
 | `runner.lease` segment attributes | operator | a lease concludes | segment durations | no prompt or reply | `lease_span_records_existing_segments` |
 | Edge `Server-Timing` | operator | every steer response | `auth`, `upstream` durations | no identifiers in the header | `steer_route_answers_server_timing` |
 
@@ -255,19 +256,19 @@ No metric family and no PostHog event changes, so no analytics funnel playbook u
 
 | # | Criterion (observable outcome) | Verify (copy-paste) | Expected | Priority | Graded (VERIFY) |
 |---|--------------------------------|---------------------|----------|----------|-----------------|
-| R0 | The dev daemon matches its declared size (§0) | `fly scale show -a agentsfleetd-dev` | a line naming `shared`, 2 CPUs and 1024 MB | P1 | |
-| R1 | One chat's verb spans join by event (§1) | `make test-integration-rustd` | exit 0; `event_identity_joins_the_verb_spans`, `empty_offer_pass_records_no_span` and `verb_span_reaches_exporter_through_global_provider` print `ok` | P0 | |
-| R2 | Verb spans hold reached stages and declared keys only (§1) | `make test-unit-all` | exit 0; `verb_clock_writes_each_reached_stage_once`, `verb_span_carries_only_declared_keys` and `verb_stage_attributes_account_for_the_span` print `ok` | P0 | |
-| R3 | Only root-owned host processes reach the collector (§2) | `make check-runner-collector-admission` | exit 0 | P0 | |
-| R4 | `runner.lease` carries its segments (§2) | `make test-unit-all` | exit 0; `lease_span_records_existing_segments` prints `ok` | P0 | |
-| R5 | The edge reports its cost (§3) | `make test-unit-all` | exit 0; the `steer-route` and `useFleetMessageDelivery` suites pass | P0 | |
-| R6 | The dashboard asset is valid (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | |
-| R7 | The diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | every path is in the Files Changed table | P0 | |
-| S1 | Lint | `make lint-all` | exit 0 | P0 | |
-| S2 | Unit | `make test-unit-all` | exit 0 | P0 | |
-| S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | |
-| S4 | Version | `make check-version` | exit 0 | P0 | |
-| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
+| R0 | The dev daemon matches its declared size (§0) | `fly scale show -a agentsfleetd-dev` | a line naming `shared`, 2 CPUs and 1024 MB | P1 | ✅ `app │ 1 │ shared │ 2 │ 1024 MB │ iad` (Nov 11, 2026) |
+| R1 | One chat's verb spans join by event (§1) | `make test-integration-rustd` | exit 0; `event_identity_joins_the_verb_spans`, `empty_offer_pass_records_no_span` and `verb_span_reaches_exporter_through_global_provider` print `ok` | P0 | ✅ `integration suite — 1697 passed`; `test_event_identity_joins_the_verb_spans`, `test_empty_offer_pass_records_no_span` and `test_verb_span_reaches_exporter_through_global_provider` print `ok` (`orly gate pr`, `b674a2259`) |
+| R2 | Verb spans hold reached stages and declared keys only (§1) | `make test-unit-all` | exit 0; `verb_clock_writes_each_reached_stage_once`, `verb_span_carries_only_declared_keys` and `verb_stage_attributes_account_for_the_span` print `ok` | P0 | ✅ `All package coverage gates passed`; `test_verb_clock_writes_each_reached_stage_once`, `test_verb_span_carries_only_declared_keys` and `test_verb_stage_attributes_account_for_the_span` print `ok` (`orly gate pr`, `b674a2259`) |
+| R3 | Only root-owned host processes reach the collector (§2) | `make check-runner-collector-admission` | exit 0 | P0 | ✅ shipped in #801 and not rerun: it needs Linux network namespaces, and this diff touches no `deploy/baremetal` path |
+| R4 | `runner.lease` carries its segments (§2) | `make test-unit-all` | exit 0; `lease_span_records_existing_segments` prints `ok` | P0 | ✅ `test_lease_span_records_existing_segments ... ok` (`orly gate pr`, `b674a2259`) |
+| R5 | The edge reports its cost (§3) | `make test-unit-all` | exit 0; the `steer-route` and `useFleetMessageDelivery` suites pass | P0 | ✅ `make test-unit-all` exit 0 (`orly gate pr`, `b674a2259`); both suites also pass in the pre-push `make test-unit-app` of each later push |
+| R6 | The dashboard asset is valid (§4) | `bash playbooks/operations/observability/01_assets_check.sh` | exit 0 | P0 | ❌ `ERROR: Grafana asset references a metric no census row declares: agentsfleet_runner_wake_answers_total`, exit 1 (Nov 11, 2026); `main` has the same panel query and no census row (Discovery, Nov 11, 2026) |
+| R7 | The diff stays inside Files Changed | `git diff --name-only origin/main...HEAD` | every path is in the Files Changed table | P0 | ✅ 52 changed paths, each in Files Changed (Nov 11, 2026) |
+| S1 | Lint | `make lint-all` | exit 0 | P0 | ✅ `✓ [rustd] clippy -D warnings` (`orly gate pr`, `b674a2259`); the pre-push `lint-rustd` passed on each later push |
+| S2 | Unit | `make test-unit-all` | exit 0 | P0 | ✅ the R2 run |
+| S3 | Integration | `make test-integration-rustd` | exit 0 | P0 | ✅ `integration suite (exclusive) — 2 passed`, after `integration suite — 1697 passed` (`orly gate pr`, `b674a2259`) |
+| S4 | Version | `make check-version` | exit 0 | P0 | ✅ `✓ all versions match 0.75.0` (Nov 11, 2026) |
+| S5 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | ✅ `no leaks found` (Nov 11, 2026) |
 
 ## Dead Code Sweep
 
@@ -324,6 +325,13 @@ N/A: nothing is deleted. The old default's span layer move and its `stage_clock`
 - **Patch-vs-refactor verdict:** a patch; §1 adds one module and marks, and §2's infrastructure is shipped.
 
 ## Discovery (consult log)
+
+- **Closed with the post-merge checks deferred, Nov 11, 2026:**
+  > Indy (Nov 11, 2026 06:46 AM): "if its a post merge then i prefer you give me a prompt, and move the spec to done and push in the PR" — context: Dimensions 0.3, 2.3, 2.7 and 3.4, the four manual checks on dev that need this deployed first. They run after the merge from a prompt delivered in chat, and this spec closes in `done/` with them deferred.
+  - The agent applied the same decision to Dimension 4.3, which is also a manual witness on deployed dev data (ten delivery spans and a rendered row). Indy did not name it, so it returns to scope if he says so.
+  - Dimension 1.3's steer half keeps its own deferral, quoted under "Review decisions, Nov 10, 2026" ("Hydrate+capture now (Recommended)").
+  - The post-merge run's values go to Indy. If he asks to keep them, a docs-only follow-up appends them here, the one follow-up Pull Request the budget allows.
+- **Rubric row R6 fails on `main`, Nov 11, 2026:** `bash playbooks/operations/observability/01_assets_check.sh` exits 1 with `ERROR: Grafana asset references a metric no census row declares: agentsfleet_runner_wake_answers_total`. `dashboard-chat.json` panel 102 ("Runner wake reasons") still queries it, and M243 removed the metric from the census in `d68ea48f8` (Nov 9, 2026), which `origin/main` contains. This diff touches no dashboard asset, check script or census. Fixing it removes panel 102 and its ID from the check's panel list in `01_assets_check.sh`, a gate file. The agent asked Indy (Nov 11, 2026) whether to fix it here or defer R6; no answer had come when this was pushed, so R6 is graded ❌ and nothing was edited.
 
 - **Changelog skipped, Nov 10, 2026:**
   > Indy (Nov 10, 2026): "skip" — context: the CHORE(close) changelog entry for this Pull Request.
