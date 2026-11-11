@@ -51,9 +51,9 @@ pub enum Supply {
 ///
 /// Object-safe on purpose: a registry holds these as `dyn`, so a declared
 /// descriptor and a crate-backed implementation are interchangeable to every
-/// caller. Synchronous and pure for the reason [`crate::provider`]'s strategy
-/// trait is — nothing here opens a socket, so nothing here needs to be
-/// awaited, and the whole classification stays provable with no datastore.
+/// caller. Synchronous and pure on purpose — nothing here opens a socket, so
+/// nothing here needs to be awaited, and the whole classification stays
+/// provable with no datastore.
 pub trait Connector: Debug + Send + Sync {
     /// The `integration` value a stored handle names this connector by.
     ///

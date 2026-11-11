@@ -1,8 +1,8 @@
 WITH locked AS MATERIALIZED (
     SELECT p.provider, m.model_name AS model, m.id AS platform_model_id,
            m.context_cap_tokens AS context_window_tokens,
-           s.id AS secret_id, s.resource_version AS secret_version,
-           s.meta_base_url, sha256(s.secret_ciphertext) AS secret_digest,
+           s.id AS secret_id,
+           s.meta_base_url, sha256(s.secret_ciphertext) AS ciphertext_digest,
            r.resource_version, s.workspace_id AS workspace_id, s.key_name,
            m.inference
       FROM model.platform_defaults p
@@ -23,14 +23,20 @@ SELECT l.provider, l.model, l.context_window_tokens,
        p.output_nanos_per_mtok AS output_nanos_per_million,
        encode(sha256(convert_to(jsonb_build_array(
            l.provider, l.secret_id, l.provider, l.meta_base_url,
-           encode(l.secret_digest, 'hex'), l.model, l.context_window_tokens,
+           encode(l.ciphertext_digest, 'hex'), l.model, l.context_window_tokens,
            p.input_nanos_per_mtok, p.output_nanos_per_mtok,
            p.id, l.resource_version
        )::text, 'UTF8')), 'hex') AS resolution_version,
        l.workspace_id, l.key_name,
        l.meta_base_url AS base_url,
        l.inference,
-       l.resource_version AS catalogue_version, l.secret_id, l.secret_version
+       l.resource_version AS catalogue_version, l.secret_id,
+       encode(sha256(convert_to(jsonb_build_array(
+           l.meta_base_url, encode(l.ciphertext_digest, 'hex')
+       )::text, 'UTF8')), 'hex') AS secret_digest,
+       CASE WHEN p.effective_until IS NULL THEN NULL
+            ELSE floor(EXTRACT(EPOCH FROM p.effective_until - t.read_at) * $3::bigint)::bigint
+       END AS valid_for_ms
   FROM locked l
  CROSS JOIN observed t
   JOIN model.platform_model_prices p ON p.platform_model_id = l.platform_model_id

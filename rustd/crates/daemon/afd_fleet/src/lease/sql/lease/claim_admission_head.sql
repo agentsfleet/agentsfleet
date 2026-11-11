@@ -122,8 +122,14 @@ WITH fleet AS MATERIALIZED (
 ), catalogue AS MATERIALIZED (
   SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1
 ), platform AS MATERIALIZED (
-  -- The active default's secret, chosen as the platform resolution chooses it.
-  SELECT s.id AS platform_secret_id, s.resource_version AS platform_secret_version
+  -- The active default's secret, chosen as the platform resolution chooses it,
+  -- and the digest of what it holds: the same expression `platform.sql` computes
+  -- over the ciphertext and the endpoint beside it, so a key read once is found
+  -- again by the claim's witnesses.
+  SELECT s.id AS platform_secret_id,
+         encode(sha256(convert_to(jsonb_build_array(
+             s.meta_base_url, encode(sha256(s.secret_ciphertext), 'hex')
+         )::text, 'UTF8')), 'hex') AS platform_secret_digest
   FROM model.platform_defaults p
   JOIN vault.secrets s ON s.workspace_id = p.source_workspace_id AND s.key_name = p.provider
   WHERE p.active AND s.meta_has_key AND s.meta_provider = p.provider
@@ -149,7 +155,7 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        o.inserted, o.created_at AS opened_at, o.status AS event_status,
        k.event_count, k.budget_used_nanos,
        (SELECT resource_version FROM catalogue) AS catalogue_version,
-       pl.platform_secret_id, pl.platform_secret_version,
+       pl.platform_secret_id, pl.platform_secret_digest,
        -- Whether the head belongs to a durable task: only such an issue reads
        -- its task source (`task/sql/issue_source.sql`); a plain chat's lease
        -- insert carries the setup proof instead (M245 §9).

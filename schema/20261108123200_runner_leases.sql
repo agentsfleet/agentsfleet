@@ -14,9 +14,7 @@
 -- `posture`, `provider` and `model` are what the lease's usage lines are priced
 -- against. `last_metered_at` is the lease's runtime cursor: each renewal, the
 -- report and the expiry sweep log the run time since it, on the database's
--- clock, and advance it, never past `lease_expires_at` and never before
--- `created_at`: a runtime usage line is numbered by its slice's start, in
--- milliseconds from the lease's start (M245). `receipt` is the producer's receipt the runner
+-- clock, and advance it, never past `lease_expires_at`. `receipt` is the producer's receipt the runner
 -- echoes back; `posted_message_count` bounds the messages a lease may post.
 CREATE TABLE runner.leases (
     id                          UUID PRIMARY KEY,
@@ -55,8 +53,7 @@ CREATE TABLE runner.leases (
     task_stop_generation BIGINT CHECK (task_stop_generation >= 0),
     task_started_at TIMESTAMPTZ(3),
     task_runtime_accounted_at TIMESTAMPTZ(3),
-    task_execution_deadline_at TIMESTAMPTZ(3),
-    CONSTRAINT ck_leases_metered_after_created CHECK (last_metered_at >= created_at)
+    task_execution_deadline_at TIMESTAMPTZ(3)
 );
 
 CREATE INDEX idx_leases_event_id_fencing_token

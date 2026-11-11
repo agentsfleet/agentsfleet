@@ -328,7 +328,7 @@ Integration (CI) job runs the target.
 
 ## Runner capacity and authoring lock order
 
-All claims hold the runner row while counting live capacity and writing a lease. Runtime renewal takes no runner lock: one statement per host locks each lease row, reads the runner's status without a lock and samples database time once. Its funds check reads the wallet without a lock, once per payer every third tick. The setup chat renewal still holds the runner row before extending deadlines.
+All claims hold the runner row while counting live capacity and writing a lease. Runtime renewal holds the runner row only shared: one statement per host takes it `FOR SHARE` first, then each lease's slot and row in fleet order, and samples database time once after the locks. Renewals never wait on each other, a credential rotation fences every renewal behind it, and a lease issue, which holds the row exclusively, waits for an in-flight renewal statement and the reverse. The funds check reads the wallet without a lock, once per payer every third tick. The setup chat renewal still holds the runner row before extending deadlines.
 
 A setup chat renewal takes draft → attempt → runner instead (`afd_authoring`'s lease renew). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 

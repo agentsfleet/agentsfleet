@@ -285,8 +285,8 @@ impl Held {
     /// slice by moving the meter's start back rather than by naming an instant.
     pub(crate) async fn run_a_slice(&self) -> Timestamp {
         // The lease began a slice earlier too: its cursor never precedes its
-        // start (`ck_leases_metered_after_created`), and moving the start first
-        // keeps that true between the two writes.
+        // start, because a runtime line is numbered by the milliseconds between
+        // them.
         self.fixtures
             .age(Row::Lease(&self.issued.lease_id), "created_at", SLICE)
             .await;

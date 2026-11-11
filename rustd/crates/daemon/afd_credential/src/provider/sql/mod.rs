@@ -57,7 +57,7 @@ pub const SELECT_TENANT_SELECTION: &str = include_str!("select_tenant_selection.
 /// `$1` tenant · `$2` entry.
 pub const SELECT_SELECTION_HOLDS: &str = include_str!("select_selection_holds.sql");
 
-/// The active platform default: provider, key location, model, endpoint, cap.
+/// The active platform default: provider, model, cap.
 ///
 /// `PUT /v1/admin/platform-keys` enforces exactly one active row. The ORDER BY
 /// is a determinism guard rather than a selector — a parallel integration test

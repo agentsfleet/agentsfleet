@@ -10,7 +10,7 @@ use super::super::registered::{CONTEXT, read};
 use super::project;
 use crate::{
     error::{Result, provider_secret_missing, query, vault_open},
-    provider::cache::PlatformKeyKey,
+    provider::cache::{Observed, PlatformKeyKey},
     provider::{PLATFORM_MODEL_REF, Providers, Resolved, managed, vetted},
     vault::sql,
 };
@@ -27,13 +27,13 @@ impl Providers {
     }
 
     /// [`Self::resolve_reference`], answered from the platform key cache when
-    /// `observed` — the versions the caller's claim statement read — names a
+    /// `observed` — the witnesses the caller's claim statement read — names a
     /// held entry.
     ///
     /// Only the platform reference is cached; a tenant entry is read every
-    /// time (blocker 2). A miss resolves and holds the result under the
-    /// versions its own read returned, so a change between the claim and this
-    /// read is cached as the newer resolution, never the older.
+    /// time. A miss resolves and holds the result under the witnesses its own
+    /// read returned, so a change between the claim and this read is cached as
+    /// the newer resolution, never the older.
     ///
     /// # Errors
     /// As [`Self::resolve_reference`].
@@ -49,19 +49,38 @@ impl Providers {
         {
             return Ok(held);
         }
+        // Taken before the read: the price window's span is measured after it,
+        // so counting the span from here can only end the entry early.
+        let started = self.platform_keys().now();
         let (resolved, read) = self.resolve_read(owner, reference).await?;
         if cached && let Some(read) = read {
-            self.platform_keys().insert(read, resolved.clone()).await;
+            self.platform_keys()
+                .insert(read, started, resolved.clone())
+                .await;
         }
         Ok(resolved)
     }
 
-    /// The resolution, and the versions its platform read returned.
+    /// What a platform read observes now, for a test to compare with what the
+    /// lease claim read beside the slot.
+    ///
+    /// # Errors
+    /// As [`Self::resolve_reference`], for the statements before the credential
+    /// is opened.
+    #[cfg(any(test, feature = "test-util"))]
+    pub async fn observe_platform(&self, owner: &Uuid7) -> Result<Option<Observed>> {
+        let mut connection = self.pool().acquire().await?;
+        Ok(read(&mut connection, owner, PLATFORM_MODEL_REF)
+            .await?
+            .and_then(|registration| registration.observed))
+    }
+
+    /// The resolution, and what its platform read observed.
     async fn resolve_read(
         &self,
         owner: &Uuid7,
         reference: &str,
-    ) -> Result<(Resolved, Option<PlatformKeyKey>)> {
+    ) -> Result<(Resolved, Option<Observed>)> {
         let mut connection = self.pool().acquire().await?;
         let mut tx = connection.begin().await.map_err(query(CONTEXT))?;
         let registration = read(&mut tx, owner, reference)

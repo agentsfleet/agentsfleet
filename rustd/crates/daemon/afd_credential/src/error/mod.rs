@@ -54,12 +54,6 @@ pub(crate) enum ErrorKind {
         source: af_core::json::Unreadable,
     },
 
-    #[error("no active platform provider default is configured")]
-    ProviderPlatformKeyMissing,
-
-    #[error("the tenant has no workspace to resolve a credential in")]
-    ProviderNoWorkspace,
-
     #[error("a stored provider endpoint was refused: {reason}")]
     ProviderEndpoint { reason: &'static str },
 
@@ -115,8 +109,6 @@ impl Error {
             // same internal code.
             ErrorKind::ProviderMalformed { .. }
             | ErrorKind::ProviderSecretMissing
-            | ErrorKind::ProviderPlatformKeyMissing
-            | ErrorKind::ProviderNoWorkspace
             | ErrorKind::ProviderEndpoint { .. }
             | ErrorKind::DecisionCredentialMissing { .. }
             | ErrorKind::DecisionCredentialInvalid { .. }
@@ -175,8 +167,6 @@ impl Error {
             | ErrorKind::ProviderSecretMissing
             | ErrorKind::DecisionCredentialMissing { .. }
             | ErrorKind::DecisionCredentialInvalid { .. }
-            | ErrorKind::ProviderPlatformKeyMissing
-            | ErrorKind::ProviderNoWorkspace
             | ErrorKind::ProviderEndpoint { .. }
             | ErrorKind::Vault { .. }
             | ErrorKind::VaultDataInvalid
@@ -204,8 +194,6 @@ impl Error {
             self.kind(),
             ErrorKind::ProviderMalformed { .. }
                 | ErrorKind::ProviderSecretMissing
-                | ErrorKind::ProviderPlatformKeyMissing
-                | ErrorKind::ProviderNoWorkspace
                 | ErrorKind::ProviderEndpoint { .. }
                 | ErrorKind::VaultDataInvalid
                 | ErrorKind::CredentialMissing
@@ -250,16 +238,6 @@ pub(crate) fn provider_malformed(field: &'static str) -> Error {
 /// Reports a provider selection naming a vault row that is not held.
 pub(crate) fn provider_secret_missing() -> Error {
     ErrorKind::ProviderSecretMissing.into()
-}
-
-/// Reports that no operator has set an active platform default.
-pub(crate) fn provider_platform_key_missing() -> Error {
-    ErrorKind::ProviderPlatformKeyMissing.into()
-}
-
-/// Reports a tenant with no workspace to resolve a credential in.
-pub(crate) fn provider_no_workspace() -> Error {
-    ErrorKind::ProviderNoWorkspace.into()
 }
 
 /// Reports a stored endpoint the SSRF guard refused.

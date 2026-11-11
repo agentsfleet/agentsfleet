@@ -395,8 +395,6 @@ Added by this milestone:
   or `decision` (a native decision call, numbered by its call). The unique key is `(work_type, work_id, kind, seq)`, so no
   kind's numbers are carved out of another's; the `u32` bands `DAEMON_SEQ_BASE` and `DECISION_SEQ_BASE` that kept them
   apart are gone. Spellings are `af_wire::usage::LineKind`.
-- **`vault.secrets.resource_version`: added by M245.** A `BEFORE UPDATE` trigger moves it on every update, whichever writer
-  runs. The lease claim and the platform key cache read it, so a same-KEK (key-encryption key) replace misses the cache.
 
 ## Public interface changes
 

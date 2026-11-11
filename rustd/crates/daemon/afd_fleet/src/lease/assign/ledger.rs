@@ -67,7 +67,7 @@ struct OpenedRow {
     budget_used_nanos: i64,
     catalogue_version: i64,
     platform_secret_id: Option<Uuid7>,
-    platform_secret_version: Option<i64>,
+    platform_secret_digest: Option<String>,
     inputs_waiting: bool,
     tasked: bool,
 }
@@ -187,13 +187,13 @@ impl Admission {
             budget_used_nanos,
             catalogue_version,
             platform_secret_id,
-            platform_secret_version,
+            platform_secret_digest,
             inputs_waiting,
             tasked,
         } = self.opened;
         let platform_key = platform_secret_id
-            .zip(platform_secret_version)
-            .map(|(secret, version)| PlatformKeyKey::observed(catalogue_version, secret, version));
+            .zip(platform_secret_digest)
+            .map(|(secret, digest)| PlatformKeyKey::observed(catalogue_version, secret, digest));
         let delivery = if inserted {
             Delivery::First
         } else if event_status == af_core::event::status::RECEIVED {

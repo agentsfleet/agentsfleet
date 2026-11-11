@@ -1,10 +1,8 @@
 //! The two rows that say WHERE a provider key is, before anything is opened.
 //!
-//! Neither read touches the vault's ciphertext. That split is the reason
-//! resolution can say "this tenant has no workspace" or "no platform default
-//! is configured" without having decrypted anything — and it is why the
-//! strategy a tenant resolves through is a value that exists before the key
-//! does.
+//! Neither read touches the vault's ciphertext. That split is the reason a
+//! caller can say "this tenant has no workspace" or "no platform default is
+//! configured" without having decrypted anything.
 
 use af_core::id::Uuid7;
 
@@ -79,15 +77,10 @@ pub struct OwnModel {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlatformDefault {
     /// The provider, which is ALSO the vault key name its credential is held
-    /// under — `resolvePlatformDefault` passes `plk.provider` as the key.
+    /// under.
     pub provider: Box<str>,
-    /// The admin workspace holding that credential.
-    pub source_workspace_id: Uuid7,
     /// The priced catalogue model this default resolves to.
     pub model: Box<str>,
-    /// A custom endpoint for a non-named default; `None` for a named provider,
-    /// which dials a built-in host.
-    pub base_url: Option<Box<str>>,
     /// The context ceiling the engine is handed.
     pub context_cap_tokens: u32,
 }
@@ -135,9 +128,7 @@ impl SelectionRow {
 #[derive(Debug, sqlx::FromRow)]
 struct PlatformDefaultRow {
     provider: String,
-    source_workspace_id: Uuid7,
     model_name: Option<String>,
-    base_url: Option<String>,
     context_cap_tokens: Option<i32>,
 }
 
@@ -154,9 +145,7 @@ impl PlatformDefaultRow {
             .ok_or_else(|| provider_malformed(FIELD_PLATFORM_MODEL))?;
         Ok(PlatformDefault {
             provider: self.provider.into_boxed_str(),
-            source_workspace_id: self.source_workspace_id.clone(),
             model: model.into_boxed_str(),
-            base_url: self.base_url.map(String::into_boxed_str),
             context_cap_tokens: cap::stored(self.context_cap_tokens.unwrap_or_default()),
         })
     }
@@ -167,8 +156,7 @@ impl Providers {
     ///
     /// `Ok(None)` is not a failure and not a default — it is a tenant who has
     /// never configured a provider, and it resolves through the platform
-    /// default exactly as [`Selection::Platform`] does. The collapse is in
-    /// [`super::Providers::strategy`], where both readings meet one arm.
+    /// default exactly as [`Selection::Platform`] does.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, and a pointer naming no
