@@ -113,7 +113,7 @@ export const claims = cache(async (): Promise<Record<string, unknown> | null> =>
   }
 });
 
-export async function readAccountSessions(expectedSubject: string, offset = 0): Promise<ActionResult<AccountSessionPage>> {
+export async function readAccountSessions(expectedSubject: string, offset: number): Promise<ActionResult<AccountSessionPage>> {
   const identity = await accountSessionIdentity();
   if (!identity) return failure(401, "Sign in to view your sessions.");
   if (identity.impersonating) return failure(403, "Personal sessions are unavailable while impersonating another account.");
