@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry } from "@/lib/types";
 import ModelsRegistryTable from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable";
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
 const { list, created } = vi.hoisted(() => ({list: vi.fn(), created: {current: () => {}}}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({

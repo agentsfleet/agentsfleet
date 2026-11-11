@@ -34,13 +34,13 @@ describe("FleetThread — role rendering: row kinds and badges", () => {
     expect(screen.getByText("reviewed it")).toBeTruthy();
   });
 
-  it("keeps conversation rows free of sender and timestamp chrome", () => {
+  it("keeps conversation metadata compact and retains the recorded timestamp", () => {
     mockStream([
       ev({ role: "assistant", actor: "fleet", text: "reviewed it" }),
     ]);
     const { container } = renderThread();
     expect(container.querySelector("[data-chip]")).toBeNull();
-    expect(container.querySelector("time")).toBeNull();
+    expect(container.querySelector("time")?.hasAttribute("datetime")).toBe(true);
   });
 
   it("renders an assistant reply", () => {

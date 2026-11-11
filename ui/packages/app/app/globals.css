@@ -46,6 +46,12 @@ body {
   scrollbar-gutter: stable both-edges;
 }
 
+.app-dashboard-canvas:has(#fleet-chat-transcript) {
+  --app-canvas-gutter: 0px;
+  --app-canvas-block: 0px;
+  scrollbar-gutter: auto;
+}
+
 .app-dashboard-canvas:has(.billing-page) {
   --app-canvas-gutter: var(--sp-xl);
   --app-canvas-block: var(--sp-xl);
@@ -163,9 +169,9 @@ code, pre, kbd { font-family: var(--ff-mono); }
   .fleet-summary {
     order: 0;
     width: var(--summary-width);
-    max-height: calc(100% - 32px);
+    max-height: calc(100% - 48px);
     align-self: flex-start;
-    margin: var(--sp-xl) var(--sp-xl) var(--sp-xl) 0;
+    margin: var(--sp-2xl) var(--sp-2xl) var(--sp-2xl) 0;
   }
 }
 
@@ -182,27 +188,4 @@ code, pre, kbd { font-family: var(--ff-mono); }
 [data-fleet-workspace] nav[aria-label="Fleet sections"] {
   padding-inline: var(--chat-inset);
   margin: 0;
-}
-@media (min-width: 48rem) {
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) {
-    grid-template-rows: 60px minmax(0, 1fr);
-  }
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > header {
-    grid-column: 1;
-    grid-row: 1;
-    background: var(--card);
-  }
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > header::after,
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) .app-shell-trailing {
-    display: none;
-  }
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > .app-sidebar {
-    grid-column: 1;
-    grid-row: 2;
-  }
-  .app-shell:has([data-fleet-workspace], [data-fleet-authoring]) > main {
-    grid-column: 2;
-    grid-row: 1 / span 2;
-    border-left: 1px solid var(--border);
-  }
 }

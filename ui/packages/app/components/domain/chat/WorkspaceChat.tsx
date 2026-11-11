@@ -79,7 +79,7 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
   const router = useRouter();
   const openFleet = useCallback(() => router.refresh(), [router]);
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
-  useSavedSetupUrl(workspace, source, view, opening, fleetPage);
+  useCommittedFleetNavigation(workspace, source, view, opening, fleetPage);
   const [instructionsDirty, setInstructionsDirty] = useState(false);
   const handledSourceRevision = useRef(initialSourceRevision);
   const turnPending = chatRecovery(view).pending;
@@ -104,19 +104,32 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
   </div>;
 }
 
-function useSavedSetupUrl(workspace: string, source: Source | undefined, view: DraftView, opening: boolean, fleetPage?: boolean): void {
+function useCommittedFleetNavigation(workspace: string, source: Source | undefined, view: DraftView, opening: boolean, fleetPage?: boolean): void {
   const router = useRouter();
   const replaced = useRef<string | undefined>(undefined);
-  const revision = view.savedSetupRevision ?? view.preview?.setupRevision;
+  const baseline = useRef<{receipt: string | null} | null>(null);
+  const revision = view.savedSetupRevision;
   useEffect(() => {
-    if (fleetPage || opening || view.busy || view.inaccessible || view.error || source?.kind !== SOURCE_KIND.fleet || !revision
-      || view.fleet?.id !== source.fleet_id || BigInt(revision) <= BigInt(source.setup_revision)) return;
-    const query = new URLSearchParams({fleet: source.fleet_id, setup_revision: revision});
+    if (opening || view.busy || view.inaccessible) return;
+    const receipt = revision && view.fleet ? `${view.fleet.id}:${revision}` : null;
+    baseline.current ??= {receipt};
+    const committed = receipt && receipt !== baseline.current.receipt;
+    if (committed && view.fleet && revision) {
+      if (source?.kind === SOURCE_KIND.fleet && (view.fleet.id !== source.fleet_id || BigInt(revision) <= BigInt(source.setup_revision))) return;
+      if (replaced.current === receipt) return;
+      replaced.current = receipt;
+      if (fleetPage) router.refresh();
+      else router.replace(`/w/${workspace}/fleets/${view.fleet.id}`, {scroll: false});
+      return;
+    }
+    // A read can rebase an editor URL; it never proves a new save.
+    const currentRevision = view.preview?.setupRevision;
+    if (fleetPage || view.error || !currentRevision || source?.kind !== SOURCE_KIND.fleet
+      || view.fleet?.id !== source.fleet_id || BigInt(currentRevision) <= BigInt(source.setup_revision)) return;
+    const query = new URLSearchParams({fleet: source.fleet_id, setup_revision: currentRevision});
     const url = `/w/${workspace}/fleets/new?${query}`;
-    if (replaced.current === url) return;
-    replaced.current = url;
-    router.replace(url, {scroll: false});
-  }, [router, workspace, source, revision, opening, fleetPage, view.busy, view.inaccessible, view.error, view.fleet?.id]);
+    if (replaced.current !== url) {replaced.current = url; router.replace(url, {scroll: false});}
+  }, [router, workspace, source, revision, opening, fleetPage, view.busy, view.inaccessible, view.error, view.fleet, view.preview]);
 }
 
 function ChatError({client, view, source, workspace, reload, onStartOver}: {client: DraftClient; view: DraftView; source?: Source; workspace: string; reload: () => Promise<void>; onStartOver: () => void}) {

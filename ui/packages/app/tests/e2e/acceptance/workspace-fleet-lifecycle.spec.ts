@@ -27,7 +27,7 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
 import { ensureSecondWorkspace, getDefaultWorkspaceId } from "./fixtures/seed";
 import { saveFleetViaUI } from "./fixtures/install-ui";
-import { expectDetailKilled, expectRowState, killFleet } from "./fixtures/lifecycle";
+import { expectDetailArchived, expectRowState, archiveFleet } from "./fixtures/lifecycle";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY, SECOND_WORKSPACE_NAME } from "./fixtures/constants";
 import { gotoWorkspace, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
@@ -70,8 +70,8 @@ test.describe("multi-workspace + fleet lifecycle", () => {
     await expectRowState(page, fleetId, "live");
 
     await page.goto(workspaceHref(secondary.id, `fleets/${fleetId}`));
-    await killFleet(page);
-    await expectDetailKilled(page);
+    await archiveFleet(page);
+    await expectDetailArchived(page);
 
     // UI-delete intentionally skipped: api-dev currently 500s on DELETE
     // for killed rows (UZ-INTERNAL-002 ConnectionBusy). Once the backend

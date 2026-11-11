@@ -51,6 +51,7 @@ export function FleetReply({
   return (
     <FleetMessageRow
       sender={sender}
+      createdAt={message.createdAt}
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
       failed={errored}

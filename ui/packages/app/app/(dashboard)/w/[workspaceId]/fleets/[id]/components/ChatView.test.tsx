@@ -18,9 +18,10 @@ vi.mock("next/navigation", () => ({
 }));
 // The thread is a sibling view over the same stream and plays no part in the
 // strip; the strip's own subscription is what these tests drive.
-vi.mock("@/components/domain/FleetThreadDynamic", () => ({
-  default: () => null,
-}));
+vi.mock("@/components/domain/FleetThreadDynamic", async () => {
+  const {WorkApprovals} = await import("@/components/domain/chat/WorkContextSections");
+  return {default: ({approvals}: {approvals?: {count: number; href: string}}) => <WorkApprovals approvals={approvals} />};
+});
 
 import { ChatView } from "./ChatView";
 import { useFleetRunSummary } from "@/components/domain/useFleetRunSummary";
@@ -231,7 +232,7 @@ describe("useFleetRunSummary — facts from the shared stream", () => {
     // figures it rendered are newer than the frame's.
     rerender(view(summary({ status: "killed", latest: { ...summary().latest!, tokens: RERENDERED_TOKENS } })));
     await act(async () => {});
-    expect(screen.getByText("killed")).toBeTruthy();
+    expect(screen.getByText("Archived")).toBeTruthy();
     // No refresh: the server tree is what just rendered.
     expect(refreshMock).not.toHaveBeenCalled();
   });
@@ -277,7 +278,8 @@ it("keeps ordinary chat free of the metrics strip and reveals approvals when att
   render(view(summary(), [turn()], ChatView));
   expect(screen.queryByLabelText("Fleet summary")).toBeNull();
   emit(completion({pending_approvals: 2}));
-  expect(screen.getByRole("link", {name: /2 approvals/}).getAttribute("href")).toBe(APPROVALS_HREF);
+  expect(screen.getByText("2 approvals waiting")).toBeTruthy();
+  expect(screen.getByRole("link", {name: "Review approvals"}).getAttribute("href")).toBe(APPROVALS_HREF);
   emit(completion({pending_approvals: 0}));
   expect(screen.queryByRole("link", {name: /approvals/})).toBeNull();
   expect(fetchSpy).not.toHaveBeenCalled();

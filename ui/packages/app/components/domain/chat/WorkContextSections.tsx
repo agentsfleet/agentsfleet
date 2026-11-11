@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import type { FleetSources } from "@/lib/fleet-sources";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import type { TaskDetails } from "./use-task-details";
-import { Section } from "@agentsfleet/design-system";
+import Link from "next/link";
+import { Button, Section } from "@agentsfleet/design-system";
 import { FileTextIcon, GitBranchIcon, GitPullRequestIcon, ShieldCheckIcon } from "@phosphor-icons/react/ssr";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { TOOL_NAME } from "../tool-call-shape";
@@ -56,12 +57,19 @@ export function WorkChanges({events}: {events: readonly FleetEvent[]}) {
 }
 
 export function WorkSources({sources}: {sources?: FleetSources}) {
+  if (!sources?.repositories.length) return null;
   return <WorkSection title="Sources">
-    {sources?.repositories.length ? <>
       <ul className="space-y-sm">{sources.repositories.map(repository => <li key={repository} className="break-words text-label leading-label"><a href={`https://github.com/${repository}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-sm hover:underline"><GitBranchIcon size={16} className="shrink-0 text-evidence" aria-hidden="true" />{repository}</a></li>)}</ul>
       <details className="text-eyebrow text-muted-foreground"><summary className="cursor-pointer">Repository access</summary>
         <p className="mt-sm flex items-start gap-xs"><ShieldCheckIcon size={16} className="shrink-0 text-evidence" aria-hidden="true" /><span>Saved fleet policy{sources.access ? ` · ${sources.access} access` : " · access not specified"}{sources.publication ? ` · ${sources.publication === "existing_pr" ? "existing PRs" : "draft PRs"}` : ""}</span></p>
       </details>
-    </> : <p className="text-eyebrow text-muted-foreground">No saved repository scope.</p>}
+  </WorkSection>;
+}
+
+export function WorkApprovals({approvals}: {approvals?: {count: number; href: string}}) {
+  if (!approvals?.count) return null;
+  return <WorkSection title="Needs you">
+    <p className="text-label leading-label">{approvals.count === 1 ? "1 approval waiting" : `${approvals.count} approvals waiting`}</p>
+    <Button asChild variant="outline" size="sm" className="mt-sm"><Link href={approvals.href}>Review approvals</Link></Button>
   </WorkSection>;
 }

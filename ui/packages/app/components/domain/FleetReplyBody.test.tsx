@@ -47,12 +47,12 @@ function Transcriptless({ status, text = REPLY_TEXT }: { status: FleetEvent["sta
 afterEach(cleanup);
 
 describe("renderReplyPart", () => {
-  it("should render nothing for a part type the reply never carries", () => {
-    // The converter emits reasoning, tool-call and text only. Anything else
-    // the library could hand back renders nothing, never its fallback UI.
-    const image = { part: { type: "image", image: "https://example.test/x.png", status: { type: COMPLETE } }, children: null };
+  it("keeps an unsupported part visible without interpreting its payload", () => {
+    const image = { part: { type: "image", image: "javascript:alert(1)", status: { type: COMPLETE } }, children: null };
     const { container } = render(renderReplyPart(image as unknown as PartInfo, REPLY));
-    expect(container.childNodes).toHaveLength(0);
+    expect(screen.getByText("This content type is not supported yet.")).toBeTruthy();
+    expect(container.querySelector("img, a, script")).toBeNull();
+    expect(container.textContent).not.toContain("javascript:");
   });
 });
 

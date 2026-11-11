@@ -9,7 +9,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetPendingCh
 }));
 
 describe("fleets routes — detail lifecycle states", () => {
-  it("shows Delete instead of lifecycle controls after a fleet is killed", async () => {
+  it("shows archived history and keeps destructive controls in the action menu", async () => {
     mockFetchBilling(happyBilling, {fleet: {status: "killed"}});
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
@@ -19,7 +19,9 @@ describe("fleets routes — detail lifecycle states", () => {
       }),
     );
 
-    expect(markup).toContain("Delete fleet");
+    expect(markup).toContain('aria-label="Fleet status: archived"');
+    expect(markup).toContain('aria-label="Fleet actions"');
+    expect(markup).not.toContain('aria-label="Chat composer"');
     expect(markup).not.toContain(">Stop<");
     expect(markup).not.toContain(">Kill<");
   });

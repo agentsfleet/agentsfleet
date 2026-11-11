@@ -34,6 +34,7 @@
   --surface-2: #2b2e35;
   --surface-3: #2b2e35;
   --border: #3d424b;
+  --border-subtle: #30343c;
   --border-strong: #828e9e;
   --text: #f5f6f8;
   --text-chat: #f5f6f8;
@@ -53,10 +54,10 @@
   --r-md: 16px;
   --r-lg: 22px;
   --r-control: 10px;
-  --icon-rail: 20px;
-  --icon-control: 16px;
-  --icon-composer: 18px;
   --summary-width: 248px;
+  --max-w-chat: 740px;
+  --chat-input-height: 60px;
+  --chat-inset: 32px;
 }
 
 [data-theme="light"] {
@@ -67,6 +68,7 @@
   --surface-2: #e3e7ec;
   --surface-3: #e3e7ec;
   --border: #bdc5ce;
+  --border-subtle: #d7dce2;
   --border-strong: #697586;
   --text: #20242b;
   --text-chat: #20242b;

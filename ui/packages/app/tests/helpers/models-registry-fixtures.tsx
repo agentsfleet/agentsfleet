@@ -32,6 +32,9 @@ export const updateModelEntryActionMock = vi.fn();
 export const deleteModelEntryActionMock = vi.fn();
 export const replaceSecretActionMock = vi.fn();
 export const createSecretActionMock = vi.fn();
+export const findRegisteredModelActionMock = vi.fn();
+export const readModelActivationActionMock = vi.fn();
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
 vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   getModelLibraryAction: getModelLibraryActionMock,
@@ -43,6 +46,8 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
   updateModelEntryAction: updateModelEntryActionMock,
   deleteModelEntryAction: deleteModelEntryActionMock,
   replaceSecretAction: replaceSecretActionMock,
+  findRegisteredModelAction: findRegisteredModelActionMock,
+  readModelActivationAction: readModelActivationActionMock,
 }));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
   createSecretAction: createSecretActionMock,

@@ -6,7 +6,17 @@ import { DRAFT, FLEET_DETAIL, FLEET_ID, WORKSPACE, response } from "@/tests/help
 
 const navigation = vi.hoisted(() => ({path: "", replace: vi.fn(), refresh: vi.fn()}));
 vi.mock("next/navigation", () => ({useRouter: () => navigation, usePathname: () => navigation.path, useSearchParams: () => new URLSearchParams()}));
-vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({deleteFleetAction: vi.fn()}));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "owner", isLoaded: true, isSignedIn: true})}));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () => {
+  const {setupRequest, SetupUnavailable} = await import("@/lib/api/draft-request");
+  const {FleetSchema} = await import("@/lib/api/draft-types");
+  return {deleteFleetAction: vi.fn(), setFleetStatusAction: async (workspace: string, fleet: string, status: string, etag: string) => {
+    try {
+      return {ok: true, data: await setupRequest({path: `/live/v1/workspaces/${workspace}/fleets/${fleet}`, method: "PATCH",
+        body: {status}, headers: {"If-Match": etag}}, FleetSchema, new AbortController().signal)};
+    } catch (cause) {return {ok: false, error: cause instanceof Error ? cause.message : "Unavailable", status: cause instanceof SetupUnavailable ? cause.status : undefined};}
+  }};
+});
 const SECOND_ID = "0199a801-1000-7000-8000-000000000008";
 const EDIT_ID = "0199a801-1000-7000-8000-000000000009";
 const active = {...FLEET_DETAIL, description: "Reviews incoming pull requests", status: "active"};
@@ -52,7 +62,7 @@ it("shows saved fleets only without fetching private drafts or model choices", a
   expect(screen.queryByText("Saved setup must not duplicate fleet")).toBeNull();
   expect(screen.queryByRole("link", {name: "Unfinished fleet edit"})).toBeNull();
   expect(calls.some(call => call.path.includes("/drafts"))).toBe(false);
-  const trash = screen.getByRole("button", {name: `Delete fleet: ${active.name}`});
+  const trash = screen.getByRole("button", {name: `Permanently delete fleet: ${active.name}`});
   expect(trash.classList.contains("group-focus-within:opacity-100")).toBe(true);
   expect(trash.querySelector("svg")?.getAttribute("width")).toBe("14");
   fireEvent.click(fleet);
@@ -71,28 +81,28 @@ it("labels a stopped fleet so its quiet status does not look like an active flee
 
 async function openDelete(name = active.name) {
   render(<RecentFleetList workspace={WORKSPACE} onNavigate={() => {}} />);
-  fireEvent.click(await screen.findByRole("button", {name: `Delete fleet: ${name}`}));
+  fireEvent.click(await screen.findByRole("button", {name: `Permanently delete fleet: ${name}`}));
   return screen.findByRole("alertdialog");
 }
 
 it("stops with the freshly read version before deletion, removes the row and leaves the deleted page", async () => {
   const dialog = await openDelete();
-  fireEvent.click(within(dialog).getByRole("button", {name: "Stop and delete"}));
+  fireEvent.click(within(dialog).getByRole("button", {name: "Permanently delete"}));
   await waitFor(() => expect(screen.queryByRole("link", {name: active.name})).toBeNull());
   const patch = calls.find(call => call.init?.method === "PATCH");
   expect(new Headers(patch?.init?.headers).get("If-Match")).toBe('"fresh"');
   expect(typeof patch?.init?.body === "string" ? JSON.parse(patch.init.body) : null).toEqual({status: "killed"});
   expect(deleteFleetAction).toHaveBeenCalledExactlyOnceWith(WORKSPACE, FLEET_ID, '"stopped-fresh"');
   expect(navigation.replace).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/new`);
-  expect(navigation.refresh).toHaveBeenCalledOnce();
+  expect(navigation.refresh).not.toHaveBeenCalled();
   expect(screen.getByRole("link", {name: stopped.name})).toBeTruthy();
 });
 
 it("keeps the row and confirmation open on a stop conflict without issuing delete", async () => {
   patchStatus = 412;
   const dialog = await openDelete();
-  fireEvent.click(within(dialog).getByRole("button", {name: "Stop and delete"}));
-  await screen.findByText("Fleet changed before it could be stopped.");
+  fireEvent.click(within(dialog).getByRole("button", {name: "Permanently delete"}));
+  await screen.findByText(/Fleet changed before it could be stopped/);
   expect(deleteFleetAction).not.toHaveBeenCalled();
   expect(screen.getByRole("link", {name: active.name, hidden: true})).toBeTruthy();
   expect(navigation.replace).not.toHaveBeenCalled();
@@ -102,8 +112,8 @@ it("skips Stop for a freshly killed fleet and retains a delete failure", async (
   freshStatus = "killed";
   vi.mocked(deleteFleetAction).mockResolvedValue({ok: false, status: 409, error: "A newer version prevents deletion."});
   const dialog = await openDelete();
-  fireEvent.click(within(dialog).getByRole("button", {name: "Stop and delete"}));
-  await screen.findByText("A newer version prevents deletion.");
+  fireEvent.click(within(dialog).getByRole("button", {name: "Permanently delete"}));
+  await screen.findByText(/A newer version prevents deletion/);
   expect(calls.some(call => call.init?.method === "PATCH")).toBe(false);
   expect(deleteFleetAction).toHaveBeenCalledWith(WORKSPACE, FLEET_ID, '"fresh"');
   expect(screen.getByRole("link", {name: active.name, hidden: true})).toBeTruthy();
@@ -116,7 +126,7 @@ it("aborts an in-flight version read when its owner unmounts and never deletes a
   fetcher.mockImplementationOnce(base);
   const dialog = await openDelete();
   fetcher.mockImplementationOnce(async (_input, init) => {signal = init?.signal ?? undefined; return pending.promise;});
-  fireEvent.click(within(dialog).getByRole("button", {name: "Stop and delete"}));
+  fireEvent.click(within(dialog).getByRole("button", {name: "Permanently delete"}));
   await waitFor(() => expect(signal).toBeDefined());
   cleanup();
   expect(signal?.aborted).toBe(true);
@@ -150,9 +160,9 @@ it("cancels confirmation and deletes a stopped fleet without leaving another fle
   const dialog = await openDelete(stopped.name);
   fireEvent.click(within(dialog).getByRole("button", {name: "Cancel"}));
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-  fireEvent.click(screen.getByRole("button", {name: `Delete fleet: ${stopped.name}`}));
+  fireEvent.click(screen.getByRole("button", {name: `Permanently delete fleet: ${stopped.name}`}));
   freshStatus = "killed";
-  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Delete fleet"}));
+  fireEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", {name: "Permanently delete"}));
   await waitFor(() => expect(screen.queryByRole("link", {name: stopped.name})).toBeNull());
   expect(navigation.replace).not.toHaveBeenCalled();
 });
@@ -161,7 +171,7 @@ it("coalesces two confirmation events before React commits the pending button st
   const dialog = await openDelete();
   const pending = Promise.withResolvers<Response>();
   fetcher.mockImplementationOnce(async () => pending.promise);
-  const button = within(dialog).getByRole("button", {name: "Stop and delete"});
+  const button = within(dialog).getByRole("button", {name: "Permanently delete"});
   const before = fetcher.mock.calls.length;
   act(() => {fireEvent.click(button); fireEvent.click(button);});
   expect(fetcher.mock.calls.length - before).toBe(1);

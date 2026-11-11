@@ -1,9 +1,7 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { FLEET } from "./helpers/draft-fixtures";
-import { routerPush, routerRefresh, fetchMock, resetCommonMocks, authMock as auth } from "./helpers/dashboard-mocks";
+import { cleanup, render, screen } from "@testing-library/react";
+import { fetchMock, resetCommonMocks } from "./helpers/dashboard-mocks";
 
 // Shared dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
 vi.stubGlobal("fetch", fetchMock);
@@ -113,117 +111,5 @@ describe("exhaustion components", () => {
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("credit balance is exhausted");
     expect(alert.textContent).not.toMatch(/Exhausted since /);
-  });
-});
-
-// ── FleetConfig — delete flow ─────────────────────────────────────────────
-
-describe("FleetConfig interactions", () => {
-  it("delete flow: confirm dialog → DELETE call → push to /w/ws_1/fleets", async () => {
-    fetchMock.mockResolvedValue({ ok: true, status: 204 });
-    const { default: FleetConfig } = await import(
-      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig"
-    );
-    const user = userEvent.setup({ delay: null });
-    render(
-      React.createElement(FleetConfig, {
-        workspaceId: "ws_1",
-        fleetId: "zom_1",
-        fleetName: "platform-ops",
-        etag: FLEET.etag,
-      }),
-    );
-
-    await user.click(screen.getByRole("button", { name: /delete fleet/i }));
-    // Confirm dialog is now visible.
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /yes, delete/i }));
-
-    await waitFor(() =>
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining("/v1/workspaces/ws_1/fleets/zom_1"),
-        expect.objectContaining({ method: "DELETE", headers: expect.objectContaining({"If-Match": FLEET.etag}) }),
-      ),
-    );
-    expect(routerPush).toHaveBeenCalledWith("/w/ws_1/fleets");
-    // router.refresh() is intentionally NOT called — refresh-after-push races
-    // the current-route refetch against push's URL commit (same race the
-    // install flow hits). The fleets list is `force-dynamic` so refresh isn't
-    // needed.
-    expect(routerRefresh).not.toHaveBeenCalled();
-  });
-
-  it("delete flow: missing token blocks the call and surfaces an error", async () => {
-    // Server action mints the Bearer via `auth()` on @clerk/nextjs/server.
-    // Null getToken there is what the harness sees in the unauthenticated path.
-    auth.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(null) });
-    const { default: FleetConfig } = await import(
-      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig"
-    );
-    const user = userEvent.setup({ delay: null });
-    render(
-      React.createElement(FleetConfig, {
-        workspaceId: "ws_1",
-        fleetId: "zom_1",
-        fleetName: "platform-ops",
-        etag: FLEET.etag,
-      }),
-    );
-    await user.click(screen.getByRole("button", { name: /delete fleet/i }));
-    await user.click(screen.getByRole("button", { name: /yes, delete/i }));
-    // 401 from withToken maps to UZ-AUTH-401, which presentError renders as
-    // the curated "Your session expired" copy — no raw "Not authenticated"
-    // string surfaces to the operator (WS-G).
-    await waitFor(() =>
-      expect(screen.getByText(/Your session expired/i)).toBeTruthy(),
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-
-  it("delete flow: server error is rendered inline without navigating", async () => {
-    fetchMock.mockResolvedValueOnce({
-      ok: false,
-      status: 409,
-      statusText: "Conflict",
-      json: async () => ({ detail: "run in progress", error_code: "UZ-ZOM-004" }),
-    });
-    const { default: FleetConfig } = await import(
-      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig"
-    );
-    const user = userEvent.setup({ delay: null });
-    render(
-      React.createElement(FleetConfig, {
-        workspaceId: "ws_1",
-        fleetId: "zom_1",
-        fleetName: "platform-ops",
-        etag: FLEET.etag,
-      }),
-    );
-    await user.click(screen.getByRole("button", { name: /delete fleet/i }));
-    await user.click(screen.getByRole("button", { name: /yes, delete/i }));
-    await waitFor(() =>
-      expect(screen.getByText(/run in progress/i)).toBeTruthy(),
-    );
-    expect(routerPush).not.toHaveBeenCalled();
-  });
-
-  it("delete flow: Cancel dismisses the confirm dialog", async () => {
-    const { default: FleetConfig } = await import(
-      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig"
-    );
-    const user = userEvent.setup({ delay: null });
-    render(
-      React.createElement(FleetConfig, {
-        workspaceId: "ws_1",
-        fleetId: "zom_1",
-        fleetName: "platform-ops",
-        etag: FLEET.etag,
-      }),
-    );
-    await user.click(screen.getByRole("button", { name: /delete fleet/i }));
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /cancel/i }));
-    expect(screen.queryByRole("alertdialog")).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

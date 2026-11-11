@@ -144,16 +144,16 @@
 
 [data-tool-shimmer="true"] { animation: tool-shimmer 2.4s ease-in-out infinite; }
 @keyframes chat-status-sweep {
-  from { background-position: 100% 0; }
-  to { background-position: 0% 0; }
+  0%, 12% { background-position: 100% 0; }
+  88%, 100% { background-position: 0% 0; }
 }
 [data-chat-loading="true"] {
   color: var(--chat-loading-base, var(--text-subtle));
-  background-image: linear-gradient(110deg, var(--chat-loading-base, var(--text-subtle)) 35%, var(--chat-loading-sweep, var(--text-dim)) 50%, var(--chat-loading-base, var(--text-subtle)) 65%);
+  background-image: linear-gradient(100deg, var(--chat-loading-base, var(--text-subtle)) 30%, var(--chat-loading-sweep, var(--text-dim)) 50%, var(--chat-loading-base, var(--text-subtle)) 70%);
   background-size: 250% 100%;
   background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: chat-status-sweep 2.8s linear infinite;
+  animation: chat-status-sweep 2.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -14,6 +14,7 @@ vi.mock("@clerk/nextjs/server", () => ({
   auth: async () => ({ getToken: async () => "unit-test-bearer" }),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
 const WORKSPACE_ID = "ws-created-model";
 const SECRET_REF = "created-model-key";
@@ -27,7 +28,7 @@ const PATH = {
   secrets: `/v1/workspaces/${WORKSPACE_ID}/secrets`,
 } as const;
 const COPY = {
-  active: "Active", create: "Create model", saveActive: "Save & make active",
+  active: "Active", create: "Create model",
   activationRefused: "Activation refused", registrationRefused: "Registration refused",
 } as const;
 const SWITCH_LABEL = `Switch to ${MODEL_ID}`;
@@ -118,13 +119,14 @@ async function openAndSubmit(boundary: ModelBoundary) {
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: COPY.create }));
   const dialog = within(screen.getByRole("dialog"));
-  await user.type(dialog.getByLabelText(/^name$/i), SECRET_REF);
+  await user.type(dialog.getByLabelText("Key name"), SECRET_REF);
   await user.click(dialog.getByLabelText(/^provider$/i));
   await user.click(await screen.findByRole("option", { name: /fireworks/i }));
   await user.click(dialog.getByLabelText(/^model$/i));
   await user.click(await screen.findByRole("option", { name: new RegExp(MODEL_ID, "i") }));
   await user.type(dialog.getByLabelText(/^api key$/i), crypto.randomUUID());
-  await user.click(dialog.getByRole("button", { name: COPY.saveActive }));
+  await user.click(dialog.getByRole("switch", {name: "Make active"}));
+  await user.click(dialog.getByRole("button", { name: COPY.create }));
   return user;
 }
 
@@ -163,7 +165,7 @@ describe("created model activation through the registry and HTTP boundary", () =
     await act(async () => boundary.completeActivation(false));
 
     const dialog = await screen.findByRole("dialog");
-    await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Couldn't activate this model — ${COPY.activationRefused}.`));
+    await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Model created. Couldn't activate this model — ${COPY.activationRefused}.`));
     expect(within(rowFor(MODEL_ID)).queryByText(COPY.active)).toBeNull();
     expect(within(rowFor(MODEL_ID)).getByLabelText(SWITCH_LABEL)).toBeTruthy();
     expect(within(rowFor(PLATFORM_MODEL)).getByText(COPY.active)).toBeTruthy();
@@ -180,7 +182,7 @@ describe("created model activation through the registry and HTTP boundary", () =
     await openAndSubmit(boundary);
 
     const dialog = screen.getByRole("dialog");
-    await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Couldn't register the model entry — ${COPY.registrationRefused}.`));
+    await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Credential retained. Couldn't register the model entry — ${COPY.registrationRefused}.`));
     expect(within(screen.getByRole("table", { hidden: true })).queryByText(CATALOGUE_MODEL.display_name)).toBeNull();
     expect(within(rowFor(PLATFORM_MODEL)).getByText(COPY.active)).toBeTruthy();
     // Credential storage precedes registration and survives its refusal.

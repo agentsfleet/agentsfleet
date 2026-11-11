@@ -39,7 +39,7 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
   const returnFleet = fleetPage ? undefined : view.fleet?.id ?? returnToFleet;
   const canEdit = Boolean(draft?.candidate || view.preview || view.fleet?.definition);
   return <>
-    <div className="fleet-chat-heading flex w-full shrink-0 flex-wrap items-center gap-md border-b border-border px-xl pb-xl pt-5 sm:px-chat-inset">
+    <header className="fleet-chat-heading flex min-h-16 w-full shrink-0 flex-wrap items-center gap-md border-b border-border-subtle px-lg py-sm sm:px-2xl">
       {!fleetPage ? <Button asChild variant="ghost" size="icon" aria-label={returnFleet ? "Back to fleet conversation" : "Back to your fleets"}><Link href={returnFleet ? `/w/${workspace}/fleets/${returnFleet}` : `/w/${workspace}/fleets`}><ArrowLeftIcon size={16} aria-hidden="true" /></Link></Button> : null}
       <HeadingTitle client={client} view={view} state={state} label={label} locked={locked} primary={!fleetPage && Boolean(view.draft || view.preview || view.fleet)} />
       {view.fleet && fleetPage && view.fleet.status === AGENTSFLEET_STATUS.INSTALLING
@@ -47,7 +47,7 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
       {canEdit ? <Button variant="ghost" size="icon" aria-label="Edit instructions" title="Edit instructions" disabled={locked} onClick={() => {void state.prepare(false).catch(ignore);}}><PencilSimpleIcon size={16} aria-hidden="true" /></Button> : null}
       <DraftSaveButton client={client} view={view} dirty={state.dirty} />
       {canEdit || draft ? <HeadingMenu state={state} label={label} canEdit={canEdit} locked={locked} canRename={draft?.state === DRAFT_STATE.editing}>{menuItems}</HeadingMenu> : null}
-    </div>
+    </header>
     <InstructionsDialog client={client} view={view} state={state} />
     <Dialog open={state.publishing} onOpenChange={state.setPublishing}>
       <DialogContent className="ph-no-capture ph-no-record"><DialogHeader><DialogTitle>{PUBLISH}</DialogTitle><DialogDescription>Only the saved setup is published when you confirm.</DialogDescription></DialogHeader>

@@ -46,7 +46,7 @@
 | `ui/packages/design-system/src/utils.test.ts` | EDIT | Preserve font family, weight, size and foreground when utilities merge |
 | `ui/packages/design-system/src/utils.ts` | EDIT | Preserve font family, weight, size and foreground when utilities merge |
 | `ui/packages/app/tests/workspace-chat/setup-summary.test.tsx` | EDIT | Preserve navigation and private-history assertions in the inline layout |
-| `ui/packages/app/tests/workspace-chat/save-continuation.test.tsx` | EDIT | Preserve navigation and private-history assertions in the inline layout |
+| `ui/packages/app/tests/workspace-chat/save-continuation.test.tsx` | EDIT | Preserve private editor history and rebase reads while handing off confirmed writes |
 | `ui/packages/app/tests/app-components.test.ts` | EDIT | Preserve navigation and private-history assertions in the inline layout |
 | `docs/v2/active/M249_001_P1_DOCS_UI_FLEET_INTERFACE_REFRESH.md` | CREATE | Approved implementation specification; move to active and done with lifecycle |
 | `bun.lock` | EDIT | Apply the approved interface and preserve current request and scope ownership |
@@ -61,9 +61,9 @@
 | `ui/packages/app/app/(dashboard)/settings/members/components/TeamTable.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsList.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/approvals/components/ApprovalsTable.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig.tsx` | DELETE | Remove the separate killed-only deletion button after the shared action menu is wired |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetStatusLine.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/KillSwitch.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/KillSwitch.tsx` | DELETE | Replace the obsolete Kill presentation with FleetActions |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/MemoryMenu.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/MemoryPanel.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/components/NewFleetEntrance.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
@@ -88,7 +88,7 @@
 | `ui/packages/app/components/domain/ExhaustionBanner.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/components/domain/FleetFailedOutcome.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/components/domain/FleetLibraryEmptyState.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
-| `ui/packages/app/components/domain/FleetMessageRow.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
+| `ui/packages/app/components/domain/FleetMessageRow.tsx` | EDIT | Restore useful turn timestamps through the shared message layout |
 | `ui/packages/app/components/domain/MessageExpansion.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/components/domain/ModelCells.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/components/domain/RefreshButton.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
@@ -114,11 +114,11 @@
 | `ui/packages/app/components/domain/tool-call-presentation.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/components/layout/AccountMenuNavigation.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/components/layout/DraftSidebarItem.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
-| `ui/packages/app/components/layout/FleetDeleteDialog.tsx` | EDIT | Apply the approved interface and preserve current request and scope ownership |
+| `ui/packages/app/components/layout/FleetDeleteDialog.tsx` | DELETE | Replace the blind two-write flow with shared lifecycle recovery |
 | `ui/packages/app/components/layout/NoWorkspaceEmptyState.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/components/layout/RecentChats.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/components/layout/ShellControls.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
-| `ui/packages/app/components/layout/ShellFrame.tsx` | EDIT | Apply the approved interface and preserve current request and scope ownership |
+| `ui/packages/app/components/layout/ShellFrame.tsx` | EDIT | Match the approved persistent rail and rounded working surface without the old global header |
 | `ui/packages/app/components/layout/SidebarNavigation.tsx` | EDIT | Apply the approved interface and preserve current request and scope ownership |
 | `ui/packages/app/components/layout/SidebarNavigationSections.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/components/layout/WorkspaceSwitcherMenu.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
@@ -130,7 +130,7 @@
 | `ui/packages/app/tests/dashboard-killswitch.test.ts` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/tests/dashboard-placeholder.test.ts` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/tests/dashboard-workspace.test.ts` | EDIT | Use the shared Phosphor icon family without changing action semantics |
-| `ui/packages/app/tests/e2e/fixtures/chat-alignment-probe.tsx` | EDIT | Use the shared Phosphor icon family without changing action semantics |
+| `ui/packages/app/tests/e2e/fixtures/chat-alignment-probe.tsx` | EDIT | Review production shell alignment without a parallel fake navigation layout |
 | `ui/packages/app/tests/fleets-routes/harness.ts` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/tests/fleets.test.ts` | EDIT | Use the shared Phosphor icon family without changing action semantics |
 | `ui/packages/app/tests/integrations-connectors.test.ts` | EDIT | Use the shared Phosphor icon family without changing action semantics |
@@ -148,23 +148,85 @@
 | `ui/packages/design-system/src/theme.css` | EDIT | Apply the approved interface and preserve current request and scope ownership |
 | `ui/packages/design-system/src/tokens.css` | EDIT | Apply the approved interface and preserve current request and scope ownership |
 | `ui/packages/design-system/src/app-tokens.css` | CREATE | Share approved dashboard sizes, colors, icons and spacing while preserving website display sizes |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/actions.ts` | EDIT | Resolve and check the account primary vault for model credential operations and reconcile uncertain writes |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/lib/model-vault.ts` | CREATE | Resolve the authenticated account primary workspace from complete ordered workspace pages |
+| `ui/packages/app/components/layout/MobileNavigationDialog.tsx` | DELETE | Remove the unused drawer now that the compact rail stays visible on phones |
+| `ui/packages/app/components/domain/island-dynamic/intent-shell-controls.test.tsx` | EDIT | Replace obsolete drawer-loader checks with persistent-rail control behavior |
+| `ui/packages/app/components/layout/WorkspaceSwitcher.tsx` | EDIT | Render the account initials from the existing auth facade without waiting for menu activation |
+| `ui/packages/app/components/domain/FleetTimestamp.tsx` | EDIT | Use the approved metadata scale for relative conversation time |
+| `ui/packages/app/tests/e2e/fixtures/visual-auth-fixture.tsx` | CREATE | Supply explicit sample identity only inside browser component fixtures |
+| `ui/packages/app/tests/e2e/fixtures/chat-browser-build.ts` | EDIT | Bind fixture identity at the auth boundary while using the production shell |
+| `ui/packages/app/tests/fleet-tool-calls.test.tsx` | EDIT | Verify steady running glyphs and outcome colors |
+| `ui/packages/app/tests/e2e/fixtures/refresh-visual-probe.tsx` | CREATE | Render current production conversation and Summary with compact review chrome and sample activity states |
+| `ui/packages/app/tests/e2e/fixtures/chat-browser-probe.tsx` | EDIT | Expose the current visual review through the existing production-component fixture |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/actions.ts` | EDIT | Reconcile uncertain registration and activation through the existing APIs |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/model-creation.ts` | CREATE | Typed saved-step snapshots and credential compatibility |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/model-creation-operations.ts` | CREATE | Run confirmed-step creation and reconciliation through existing scoped APIs |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/CreateModelForm.tsx` | CREATE | Compose provider, credential, model and activation controls with one submit action |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/use-model-creation.ts` | CREATE | Preserve confirmed storage, registration and activation; reconcile uncertain results |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCredentialFields.tsx` | CREATE | Provider-filtered saved-key selection and explicit new-key fields |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/use-stored-secrets.ts` | EDIT | Return the resolved model vault, drop stale scope reads and preserve lazy loading |
-| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx` | EDIT | Pass the resolved vault to create and edit dialogs |
-| `ui/packages/app/tests/model-vault.test.ts` | CREATE | Own-account selection, ordered pagination, missing vault and scope mismatch |
-| `ui/packages/app/tests/model-creation-recovery.test.tsx` | CREATE | Saved-key reuse, scoped cancellation and each confirmed or uncertain recovery step |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/use-stored-secrets.ts` | EDIT | Drop stale workspace reads and preserve lazy secret loading |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable.tsx` | EDIT | Preserve the existing workspace parameter for model dialogs |
+| `ui/packages/app/tests/model-creation-recovery.test.tsx` | CREATE | Saved-key reuse, scoped cleanup and each confirmed or uncertain recovery step |
 | `ui/packages/app/tests/models-registry-add.test.tsx` | EDIT | Verify the new form and prevent implicit rotation |
 | `ui/packages/app/tests/models-registry-add-key.test.tsx` | EDIT | Verify explicit new-key creation |
 | `ui/packages/app/tests/models-registry-add-custom.test.tsx` | EDIT | Preserve compatible endpoints and optional credentials |
-| `ui/packages/app/tests/models-registry-created-activation.test.tsx` | EDIT | Exercise real action/API boundaries with primary-vault lookup and partial success |
-| `ui/packages/app/tests/models-registry-secrets.test.tsx` | EDIT | Exercise account-vault metadata and recovery |
-| `ui/packages/app/tests/use-stored-secrets.test.ts` | EDIT | Verify scoped loading, stale results and primary-vault identity |
+| `ui/packages/app/tests/models-registry-created-activation.test.tsx` | EDIT | Exercise real action/API boundaries and partial success |
+| `ui/packages/app/tests/models-registry-secrets.test.tsx` | EDIT | Exercise workspace secret metadata and recovery |
+| `ui/packages/app/tests/models-provider-loading.test.tsx` | EDIT | Preserve catalogue loading behavior through the authenticated form boundary |
+| `ui/packages/app/components/domain/chat/FleetTaskProvider.tsx` | EDIT | Share existing approval counts and saved schedules with the single Summary reader |
+| `ui/packages/app/components/domain/chat/WorkWakeups.tsx` | CREATE | Show recorded scheduler registration and next-run state without inventing success |
+| `ui/packages/app/components/domain/chat/WorkWakeups.test.tsx` | CREATE | Cover scheduled, unsynced, paused and unavailable wake-ups |
+| `ui/packages/app/components/domain/FleetThread.tsx` | EDIT | Pass the existing live approval count and saved schedules into Summary |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/ChatView.tsx` | EDIT | Keep Summary approval counts on the existing fleet stream |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/page.tsx` | EDIT | Forward schedules already present in the fleet detail |
+| `ui/packages/app/components/domain/FleetReplyParts.tsx` | EDIT | Keep an explicit safe fallback for unhandled content parts |
+| `ui/packages/app/components/domain/FleetReplyBody.tsx` | EDIT | Pass recorded timestamps through the shared reply layout |
+| `ui/packages/app/components/domain/chat/ChatComposerFrame.tsx` | EDIT | Share the approved composer spacing and left-model/right-send placement |
+| `ui/packages/app/components/domain/FleetReplyBody.test.tsx` | EDIT | Verify unsupported parts cannot disappear or inject content |
+| `ui/packages/app/components/domain/chat/TaskPanel.test.tsx` | EDIT | Preserve single-reader authorization and failed-read recovery with the smaller Summary |
+| `ui/packages/design-system/src/design-system/Time.tsx` | EDIT | Format recorded wake-ups in their named schedule timezone |
+| `ui/packages/design-system/src/design-system/time-utils.ts` | EDIT | Preserve shared formatting while supporting explicit timezones |
+| `ui/packages/design-system/src/design-system/Time.test.tsx` | EDIT | Verify timezone labels agree with canonical instants |
+| `ui/packages/app/lib/fleet-lifecycle.ts` | CREATE | Compose guarded archive and deletion with a confirmed-stop checkpoint |
+| `ui/packages/app/lib/fleet-lifecycle.test.ts` | CREATE | Cover lost stop/delete responses, permission loss and deletion-only retries |
+| `ui/packages/app/components/layout/FleetLifecycleDialog.tsx` | CREATE | Share direct Archive and Permanently Delete confirmation and durable recovery |
+| `ui/packages/app/components/layout/FleetNoticeProvider.tsx` | CREATE | Keep approved polite lifecycle notices across navigation with paused dismissal |
+| `ui/packages/app/components/layout/FleetNoticeProvider.test.tsx` | CREATE | Check dismissal timing, focus/hover pauses and account cleanup |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetActions.tsx` | CREATE | Offer Archive and independent permanent deletion beside Stop/Resume |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetConfig.test.tsx` | DELETE | Move deletion guarantees to shared lifecycle tests |
+| `ui/packages/app/components/domain/FleetThreadViewport.tsx` | EDIT | Keep archived history readable without an active composer |
+| `ui/packages/app/components/domain/FleetReplyFailure.tsx` | EDIT | Omit retry writes from archived history |
+| `ui/packages/app/tests/helpers/dashboard-app-mocks.tsx` | EDIT | Exercise guarded lifecycle actions through the existing scoped action boundary |
+| `ui/packages/app/components/layout/RecentChats.test.tsx` | EDIT | Preserve version reads, cancellation and another selected fleet during deletion |
+| `ui/packages/app/tests/fleet-lifecycle-boundary.test.tsx` | CREATE | Verify the dialog through actual server actions, authentication and HTTP preconditions |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/lifecycle.ts` | EDIT | Use the approved Archive and Permanently Delete labels |
+| `ui/packages/app/tests/e2e/acceptance/login-install-lifecycle.spec.ts` | EDIT | Exercise archive navigation and read-only history |
+| `ui/packages/app/tests/e2e/acceptance/signup-lifecycle.spec.ts` | EDIT | Exercise archive navigation and read-only history |
+| `ui/packages/app/tests/e2e/acceptance/operator-journey.spec.ts` | EDIT | Exercise archive navigation and read-only history |
+| `ui/packages/app/tests/e2e/acceptance/workspace-fleet-lifecycle.spec.ts` | EDIT | Exercise archive navigation and read-only history |
+| `ui/packages/app/tests/workspace-chat/save-handoff.test.tsx` | CREATE | Verify one confirmed save opens the same fleet without replaying authoring text |
+| `ui/packages/app/tests/workspace-chat/saving.test.tsx` | EDIT | Assert automatic conversation navigation after a confirmed save |
+| `ui/packages/app/tests/workspace-chat/fleet-editor.test.tsx` | EDIT | Keep revision saves on the confirmed fleet destination |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/ChatView.test.tsx` | EDIT | Verify live approvals flow into Summary without restoring the footer metrics strip |
+| `ui/packages/app/tests/models-registry-pagination.test.tsx` | EDIT | Supply the current auth boundary while preserving paging race checks |
+| `ui/packages/app/tests/models-registry-activation.test.tsx` | EDIT | Supply the current auth boundary while preserving activation checks |
+| `ui/packages/app/tests/workspace-switcher-recovery.test.tsx` | EDIT | Supply identity through the auth facade while preserving one-time refresh checks |
+| `ui/packages/app/tests/work-context-sections.test.tsx` | EDIT | Omit empty sources while retaining saved-policy provenance |
+| `ui/packages/app/tests/fleet-tool-progress.test.tsx` | EDIT | Verify steady activity glyphs without losing disclosure identity |
+| `ui/packages/app/tests/fleet-thread/role-senders.test.ts` | EDIT | Preserve named senders once for assistive readers in the new metadata position |
+| `ui/packages/app/tests/fleet-thread/role-turns.test.ts` | EDIT | Verify compact timestamps outside message bodies |
+| `ui/packages/app/tests/fleet-thread/role-links.test.ts` | EDIT | Preserve account-identifier redaction with visible sender labels |
+| `ui/packages/app/tests/fleet-thread/role-rows.test.ts` | EDIT | Verify compact sender metadata and canonical timestamps |
+| `ui/packages/app/tests/fleet-thread/malformed-metadata.test.ts` | EDIT | Keep malformed content fallback separate from timestamp metadata |
+| `ui/packages/app/components/domain/FleetMessageRow.test.tsx` | EDIT | Check the composed message body and shared bubble surface |
+| `ui/packages/app/tests/fleet-setup-recovery.test.tsx` | EDIT | Locate setup editing in the approved fleet menu |
+| `ui/packages/app/tests/app-shell-team.test.tsx` | EDIT | Verify billing reaches account navigation without restoring the removed header |
+| `ui/packages/app/tests/fleets-routes/detail-header.test.ts` | EDIT | Verify the simplified header and Summary approval link |
+| `ui/packages/app/tests/fleets-routes/detail-lifecycle.test.ts` | EDIT | Verify archived history without killed-only inline delete controls |
+| `ui/packages/app/tests/fleets-routes/detail-views.test.ts` | EDIT | Verify scoped chat data and menu ownership across failed server reads |
+| `ui/packages/app/tests/fleets-routes/page-parts.ts` | CREATE | Inspect server-to-client chat data without pretending lazy menu contents are server-rendered |
+| `ui/packages/app/tests/use-stored-secrets.test.ts` | EDIT | Verify workspace loading and stale results |
 | `ui/packages/app/tests/helpers/models-registry-add-fixtures.tsx` | EDIT | Supply scoped identity and model action boundaries |
-| `ui/packages/app/tests/helpers/models-registry-fixtures.tsx` | EDIT | Supply scoped identity and model vault metadata |
+| `ui/packages/app/tests/helpers/models-registry-fixtures.tsx` | EDIT | Supply workspace secret metadata and model action results |
 | `ui/packages/app/app/(dashboard)/settings/billing/page.tsx` | EDIT | Use the shared Manrope role instead of the local system font |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/BillingSpending.tsx` | EDIT | Use shared Manrope typography |
 | `ui/packages/app/app/(dashboard)/settings/billing/components/BillingActivityDetails.tsx` | EDIT | Use shared Manrope typography |
@@ -256,7 +318,7 @@ Default to the compact rail with a square-and-pencil New fleet action. Keep flee
 Place Plugins, Secrets and Connected apps in navigation; Models, Team, Usage and Security remain discoverable from the account menu.
 Team remains account-wide. Preserve Owner/Member roles, pending invitations and delivery recovery. Usage remains settled ledger data, with unknown values distinct from zero.
 Account Models keeps one form for new or saved provider credentials and optional Make active. Reuse a saved credential without replacing its bytes; preserve partial-success retries.
-Platform defaults stay under the existing `agentsfleet platform keys` commands. No Admin page is created.
+Platform defaults stay under the existing `agentsfleet platform keys` commands. No Admin page is created. The served credit balance remains available beside Usage in the account menu after removal of the global header; opening the menu must not fetch it again.
 
 - **Dimension 2.1** — New fleet is reachable from empty and active views → Test `new fleet remains discoverable` (browser): writing-pad action opens the setup route.
 - **Dimension 2.2** — Resource pages retain actual scope → Test `account and workspace navigation preserve scope` (unit/browser): account Team and workspace secrets use their existing routes.
@@ -264,32 +326,33 @@ Platform defaults stay under the existing `agentsfleet platform keys` commands. 
 
 #### Models implementation decisions
 
-The model vault belongs to the authenticated personal account. Resolve it on the server through the existing complete `listTenantWorkspaces` walk, using the response's authenticated `tenant_id` and the first workspace whose `account.tenant_id` matches. Backend workspace pages are ordered by `(created_at, id)` ascending, exactly as the provider resolver selects its primary workspace. Preserve that ordering rather than sorting timestamps through JavaScript's lower-precision `Date`. Reject a failed/incomplete walk, missing own-account workspace or changed tenant; never choose an older joined account or the route workspace as a fallback. React request-local caching may collapse reads within a server request; retain no token or vault result between requests.
+Use the existing API ownership and the explicit workspace ID already supplied to the form. Do not introduce a primary-vault product concept, enumerate workspaces to choose storage, copy keys between workspaces or add a vault-selection abstraction. The API remains authoritative for account model registration and workspace secret access.
 
-Keep an ordinary Models visit limited to the registry read. Opening Create model or editing credentials lazily reads the primary-vault metadata. The result carries its workspace ID with the key names. Every model credential mutation and creation/recovery action resolves the current primary vault again and refuses a mismatched expected workspace before writing. Reuse the existing backend scopes and APIs; this adds app server functions, not backend endpoints.
+Create model offers Provider, Model, Add new key / Use saved key, optional Make active, and one Create model action. Saved choices come from the selected workspace's existing secret API and are filtered by provider and classified kind. A saved custom endpoint retains its stored URL. Add new key uses POST with a free name. A held name offers saved reuse or another name; creation never rotates or replaces a secret. Rotation remains explicit in the existing editor/Secrets flow.
 
-Create model offers Provider, Model, Add new key / Use saved key, optional Make active, and one Create model action. Saved choices are filtered by provider and classified secret kind. A saved custom endpoint keeps its stored URL. Adding a key claims a free name with POST; a held name offers saved reuse or another name. Create never rotates or replaces a secret. Rotation remains explicit in the existing editor/Secrets flow.
+Use React 19 Actions (`useActionState`) for submission state and pending feedback. Keep the existing Effect-backed API transport for timeouts and retries. A synchronous guard excludes duplicate dispatches before pending paints. Keep an immutable submitted snapshot of workspace, credential reference, model and activation choice. Store no credential bytes in progress state or persistent caches. Clear the form's key after storage settles, and unmount scoped form state on workspace or identity loss.
 
-Keep an immutable submitted snapshot containing vault ID, key reference, model ID and activation choice, plus the confirmed step. Credential bytes remain only in the form until storage settles, then clear. Registration failure retains the confirmed key; activation failure retains the registered model and refreshes the registry immediately. Retry the remaining step. Once a step is confirmed, editing its submitted choices requires starting another form.
+Retain completed steps. Registration failure retries registration using the confirmed key. Activation failure keeps the registered model visible and retries activation only. Lost registration or activation responses offer Check status through the existing API. Registration reconciliation follows pages with repeated-cursor protection and matches the exact model/reference pair. Failed or incomplete reads stay unconfirmed. Unknown storage offers an explicit credential choice; matching metadata never proves that submitted secret bytes were saved.
 
-Use the shared `isDefiniteRefusal` classifier. A timed-out or lost storage response enters storage-unconfirmed: matching metadata cannot establish that the submitted bytes were saved. Offer explicit saved-key selection or a fresh name; never automatically replace, claim verification or repeat the whole sequence. A lost registration response offers Check status, walks every registry page with repeated-cursor protection and matches the exact `(model_id, secret_ref)` tuple. A found row satisfies registration; an absent complete read offers explicit registration retry. A failed or incomplete read stays unconfirmed. A lost activation response reads current provider metadata and confirms only an exact selected model/reference; otherwise offer activation retry. No unknown result receives success copy.
+Negative proofs belong to the model recovery and existing dialog/action-boundary tests: saved reuse performs no secret write; held names never rotate implicitly; optional keys on compatible endpoints remain supported; confirmed steps are not repeated; lost acknowledgements are reconciled before retry; duplicate clicks and late results after unmount do not create another operation.
 
-The mounted form is keyed by the current signed-in subject and resolved vault identity. Identity/vault changes unmount it and clear credential bytes, submitted snapshots and errors. A generation guard ignores late results and prevents the next mutation after unmount or scope change. A synchronous in-flight guard excludes repeated clicks. Close, Escape and outside dismissal are held while a write is pending; identity loss still clears the form. Preserve custom endpoint validation and optional-key behavior.
-
-Negative proofs belong to `model-vault.test.ts`, `model-creation-recovery.test.tsx` and the existing model dialog/action-boundary suites: earlier joined account, own vault on a later page, sub-millisecond ordering ties, repeated cursor, missing vault, changed expected vault, same-name collision, incompatible saved provider, keyless compatible endpoint, registration refusal, lost registration acknowledgement, activation refusal, lost activation acknowledgement, failed reconciliation, duplicate clicks and scope change with a response in flight.
+The backend ownership check remains a readiness blocker: `afd_api_tenant/src/handler/tenant/model_entry/write.rs` delegates registration with only tenant, model and secret name, and `afd_credential/src/provider/sql/lock_credential_for_reference.sql` resolves that name in the first account workspace. The form correctly writes to its explicit workspace. Repair requires binding the stored model credential to an explicit workspace at the API/storage boundary, with matching activation, resolution, reference-deletion checks, clients and documentation. Do not repair this by adding a frontend workspace selector, copying credentials, or guessing where storage lives. Same-named keys in two workspaces and cross-account references need real backend proofs before Models is ready.
 
 ### §3 — Inline Summary and continuous conversation
 
 Summary is always inline, 248px on desktop with a compact phone presentation. Show relevant approvals, changes, outputs, sources and next wake-up; omit Environment and empty groups.
+Approval counts come from the existing fleet stream and link to the fleet-filtered approval inbox; decisions retain that inbox's owner and authorization. Wake-ups use schedules already carried by the fleet detail. Neither surface creates another stream or poller. A transient task refresh failure retains confirmed Summary data. Access loss clears all Summary metadata. Scheduler registration failures stay explicit; a scheduled instant that has passed is not presented as a future run.
 Keep recorded command, edit, integration and schedule outcomes in their existing message stream. Distinguish running, succeeded, failed, interrupted and unconfirmed states.
 After confirmed fleet creation, replace the setup URL with the fleet URL without an extra Open fleet click. Do not replay authoring text as a runtime request.
 Keep setup and runtime drafts separate. Creator-private authoring history never becomes shared conversation history.
+Handoff reads `savedSetupRevision` and the returned fleet identity from the existing DraftClient. A preview or pending save is not sufficient. Once its owner finishes the save request, a confirmed new fleet or newer applied revision replaces the setup URL with that fleet’s conversation URL exactly once. A fleet page refreshes its current route instead. A later transient history or activation failure does not discard the created fleet; its existing recovery surface keeps the same identity. Authorization loss still blocks the handoff. No authoring message is submitted to runtime, and the runtime composer starts from its own buffer.
 
 - **Dimension 3.1** — Summary needs no toggle or drawer → Test `summary is inline at every viewport` (browser): relevant content is visible in the page flow.
 - **Dimension 3.2** — Saved identity drives navigation → Test `confirmed save opens the same fleet` (unit): partial activation failure keeps the created fleet and retry identity.
 - **Dimension 3.3** — State labels remain evidence-based → Test `failed and unconfirmed work stays explicit` (unit/browser): incomplete work never receives a succeeded label.
 
 Working-status text starts muted and a darker tone moves left to right across the glyphs. Use one paint-only sweep, no bounce, pulse in font size, or bright flash. Only active recorded status labels animate. Completed, failed, interrupted and unconfirmed labels are static. Reduced-motion and forced-color modes keep a readable solid label. Check both themes.
+The working icon remains steady while the text sweeps. Use a short still interval between sweeps and a smooth transit, keeping the text bounds unchanged. The visual review includes desktop/phone screenshots and a short motion capture before further resource-page work.
 
 - **Dimension 3.4** — Working text has a muted-to-darker sweep without layout shifts → Existing `chat-typography.spec.ts` (e2e): computed gradient and motion samples, stable bounds, no animation after completion, reduced-motion and forced-colors fallbacks.
 
@@ -303,11 +366,15 @@ If stop succeeds and deletion fails, retain the fleet and offer Retry deletion o
 On confirmed success, remove the active-list row and move an affected open fleet to New fleet. Keep another selected fleet in place.
 Use the approved compact notice: Fleet archived with View history, or Fleet permanently deleted. No Undo; history remains reachable after dismissal.
 
+Lifecycle recovery keeps a typed checkpoint: read current state, confirm terminal stop, delete, or reconcile an uncertain write. A confirmed stop is retained when deletion fails, and Retry deletion never repeats the stop. An uncertain stop first reads state; a nonterminal result requires an explicit retry. An uncertain DELETE succeeds only after a successful authenticated read confirms absence; 401, 403, timeout, malformed responses and server errors never count as deletion. The fleet GET handler extracts `WorkspaceContext` and `PersonIdentity` before reading the resource (`afd_api_tenant/src/handler/fleet/native/read.rs`); an unauthorized read cannot become a successful missing-resource result. Keep every mutation's observed ETag. Canceling the mounted owner discards late results and prevents the next write. Account changes clear notice state. Archived conversations expose history without a composer or Restore.
+
 - **Dimension 4.1** — Direct deletion uses one user confirmation → Test `active fleet deletion handles terminal stop internally` (unit/integration): stop then delete completes without another dialog.
 - **Dimension 4.2** — Partial deletion remains recoverable → Test `deletion failure retains archived fleet` (unit): stop success/delete failure shows durable recovery and retries only delete.
 - **Dimension 4.3** — Notices announce confirmed outcomes → Test `lifecycle notice survives navigation` (browser): polite announcement, no focus theft, pause dismissal on focus/hover, read-only history.
 
 ### §5 — Verification and visual finish
+
+Current implementation checkpoint, Nov 11, 2026: `make lint-app lint-design-system test-unit-app test-unit-design-system` passes. App: 445 files / 4,234 tests. Design system: 62 files / 491 tests. The desktop and phone `chat-alignment.spec.ts` and `chat-typography.spec.ts` run passes all 22 browser cases, covering approved Manrope sizes, actual shell alignment, inline Summary, activity outcomes, scrolling and motion fallbacks. The final authenticated journeys, complete resource-page visual review, repository-wide lanes and backend model-reference repair remain due. These local results do not mark the implementation ready.
 
 Run targeted tests for changed behavior, then repository work/verify checks. Run authenticated browser flows against real data before claiming production readiness.
 Review spacing, borders, fonts, icon scale, long names, empty states and failures at the approved widths, both themes and 200 percent zoom.
@@ -377,7 +444,7 @@ Preserve existing coarse product events and server outcome records. Add no crede
 ## Review requirements before later sections
 
 - Summary mounts exactly one task reader and one responsive tree; no hidden duplicate mobile reader. Existing task provider owns the stream.
-- Models must resolve the account primary vault by the backend's `(created_at, id)` ordering and authenticated account ID, excluding joined accounts. Keep explicit secret-write uncertainty, saved-key reference, registration reconciliation by exact model/reference, and activation-only retry. Matching secret metadata does not prove matching bytes.
+- Models follows existing API scopes and explicit workspace identity. Do not introduce client-side vault selection. Keep explicit secret-write uncertainty, saved-key reuse, exact registration reconciliation and activation-only retry.
 - Save handoff uses confirmed fleet identity independently of readiness failure. Setup history rehydrates through creator-filtered context; keep setup/runtime buffers separate and clear them on identity/access loss. Never copy a setup prompt into runtime messages.
 - Deletion retains confirmed-stop state, reads current authorized state after uncertain writes, and handles missing responses without claiming success. A denied or unavailable read cannot prove deletion. Preserve billed attribution and settled runner retention.
 - The separate vocabulary spec must map public Plugins names to immutable historical representations without rewriting frozen revisions, and translate only existing library write authority without widening narrowed identities. The separate auth spec must preserve current subject-based actor/cache identity during adapter changes.
@@ -451,9 +518,9 @@ The fresh review reported eight findings. Recording a requirement is not resolut
 |---|---|---|
 | 1: Summary owner | Partly resolved | Actual layout, setup caller, header and tests now listed; drawer/toggle removed and one responsive reader wired. Still pin approval/schedule readers and finish resize/scope browser proofs. |
 | 2: Verification | Partly resolved | Repository lanes and affected focused tests listed. Remaining sections need exact negative-test owners and completed lane evidence. |
-| 3: Model vault/recovery | Designed; implementation and verification due | §2 pins the ordered own-account resolver, primary-vault action guards, immutable confirmed-step state and explicit uncertainty/reconciliation. Named negative tests remain due. |
-| 4: Delete reconciliation | Open before lifecycle changes | Pin confirmed-stop checkpoint, lost DELETE response and permission-loss behavior. |
-| 5: Setup handoff | Open before handoff changes | Pin scoped buffer lifetime and creator-private history rehydration. |
+| 3: Model vault/recovery | Frontend recovery implemented; backend scope defect open | New/saved-key creation and reconciliation pass 40 focused tests. The real backend still resolves model credentials through the first account workspace; an explicit API reference is required before readiness. The rejected frontend resolver remains removed. |
+| 4: Delete reconciliation | Implemented; authenticated browser proof due | Typed stop/delete checkpoints, uncertain-response reads, access-loss handling and paused notices pass 34 focused tests. |
+| 5: Setup handoff | Implemented; authenticated browser proof due | The 204 setup tests pass, including save-key reuse, one confirmed handoff, transient failure and authorization loss. Existing authoring history stays private. |
 | 6: Stored vocabulary/authority | Open in coordinated CLI/API spec | Preserve immutable review records, existing platform pins and narrowed capabilities; no migration edits until specified. |
 | 7: Identity mapping | Open in separate auth spec | Preserve current subject-based chat identity; define neutral profile/session adapter shapes and ownership. |
 | 8: Reference/type consistency | Partly resolved | Active spec uses current checkout and phone typing 16px/24px. Older artifact source links still need reconciliation. |
@@ -462,6 +529,7 @@ Typography and icon work was explicitly cleared by the reviewer. The open findin
 
 ## Discovery (consult log)
 
+- **Appsmith reference (Nov 11, 2026)** — At Indy's request, cloned `https://github.com/appsmithorg/appsmith` to `/workspace/appsmith-reference` and inspected `app/client/src` at `65921d7294476c2f7af25c3c7d31c43da2eee215`. Useful sources: `WidgetProvider/factory/index.tsx`, `utils/formControl/FormControlFactory.tsx`, `pages/Editor/CustomWidgetBuilder/Editor/AIAssistant/index.tsx`, `sagas/AIAssistantRequestContext.ts` and `ce/reducers/aiAssistantReducer.ts`. Apply typed component registration, separated presentation/state, scoped context and explicit outcome handling through the existing assistant-ui runtime. The public AI-chat integrations control is a placeholder; do not claim it supplies an embeddable chat implementation. Do not copy their custom widget editor, Redux runtime or markdown-driven code application.
 - **Shared font correction (Nov 11, 2026)** — Indy extended Manrope to the website. Shared `tokens.css` now imports Manrope once for both interface and display; Commit Mono remains technical. Instrument Sans and Bricolage packages and Usage's system-font overrides were removed. Dashboard token overrides contain no font-family declarations or Tailwind mappings.
 - **Focused visual evidence (Nov 11, 2026)** — Eight rendered app/website token-profile combinations passed (dark/light, desktop/phone). The chat typography/alignment browser selection passed 22 checks. Website selected checks passed after correcting the keyboard journey to enter from the home page rather than assuming a direct fragment starts tab order at the document top: the first run passed 25 of 29; the affected keyboard, font ownership and zoom selection then passed all 10. These are focused checks, not the repository `dry` or final acceptance lanes. Logs and desktop/phone screenshots are under `/workspace/artifacts/fleet-refresh-v2` and `/workspace/scratch/refresh-*`.
 - **Code-review follow-up (Nov 11, 2026)** — Shared class-merging fixes and radius preservation passed `make test-unit-design-system` (62 files, 489 tests). Collapsed rail tooltips now expose labels on keyboard focus; the focused app navigation/workspace selection passed 39 tests. Final rendered rail review remains part of §5.
@@ -470,6 +538,7 @@ Typography and icon work was explicitly cleared by the reviewer. The open findin
 - **Open blockers** — None in approved product direction; implementation details and exact callers are checked before each slice.
 - **Deferrals and transfers** — Only user-excluded work below. Auth and public vocabulary are separately specified approved work, not dropped scope.
 
+> Owner (Indy, Nov 11, 2026): “there is no primary vault” and “and get to work” — remove the added frontend storage-selection abstraction and follow the existing API ownership.
 > Owner (Indy, Nov 11, 2026): “Yes i approve the changes you gave me.”
 > Owner (Indy, Nov 11, 2026): “i wanna use the same font across website too.”
 > Owner (Indy, Nov 11, 2026): “i set the admin platform default model via cli today, that is fine to me. I donot need a ui for it.”

@@ -213,7 +213,7 @@ describe("FleetThread — role rendering: links and guidance", () => {
     ]);
     const { container } = renderThread();
     expect(screen.getByText(/morning health check/)).toBeTruthy();
-    expect(screen.queryByText("Operator")).toBeNull();
+    expect(screen.getByText("Operator").getAttribute("aria-hidden")).toBe("true");
     expect(screen.queryByText("OP")).toBeNull();
     expect(container.textContent).not.toContain(accountId);
   });

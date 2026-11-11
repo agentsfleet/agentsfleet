@@ -33,6 +33,20 @@ describe("Time", () => {
     expect(container.querySelector("time")?.textContent).toBe(expected);
   });
 
+  it("formats a named schedule timezone while retaining the canonical instant", () => {
+    const {container} = renderTime(<Time value={ISO} timeZone="America/New_York" tooltip={false} />);
+    expect(container.querySelector("time")?.textContent).toContain("06:00 AM");
+    expect(container.querySelector("time")?.getAttribute("datetime")).toBe(ISO);
+    const server = renderToString(<Time value={ISO} timeZone="America/New_York" tooltip={false} />);
+    expect(server).toContain("06:00 AM");
+  });
+
+  it("keeps an invalid timezone from crashing the surrounding surface", () => {
+    const {container} = renderTime(<Time value={ISO} timeZone="unknown/timezone" tooltip={false} />);
+    expect(container.querySelector("time")?.textContent).toBe("—");
+    expect(container.querySelector("time")?.getAttribute("datetime")).toBe(ISO);
+  });
+
   it("relative format renders 'X ago' for a past value", () => {
     const past = new Date(Date.now() - 5 * 60_000).toISOString();
     const { container } = renderTime(

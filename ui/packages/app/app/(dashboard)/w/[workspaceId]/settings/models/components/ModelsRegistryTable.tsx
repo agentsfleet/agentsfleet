@@ -33,6 +33,7 @@ import {
 } from "./ModelsRegistryCells";
 import { ModelsRegistryView } from "./ModelsRegistryView";
 import { CONTEXT_HEADER, RATES_HEADER } from "@/lib/models/display";
+import { useCurrentUser } from "@/lib/auth/client";
 
 type Props = {
   workspaceId: string;
@@ -46,12 +47,13 @@ const SWITCH_PLATFORM_ACTION = "switch to platform defaults";
 const REMOVE_ACTION = "remove this model entry";
 
 export default function ModelsRegistryTable({ workspaceId, initialPage, initialError }: Props) {
+  const {userId} = useCurrentUser();
   const [pending, startTransition] = useTransition();
   const readGeneration = useRef(0);
   const [entries, setEntries] = useState<TenantModelEntry[]>(initialPage?.models ?? []);
   // The secret list is NOT preloaded — the Add dialog loads it on open and
   // fails closed until it lands; the hook's docstring carries the why.
-  const { secrets, secretsLoad, refreshSecrets } = useStoredSecrets(workspaceId);
+  const { secrets, secretsLoad, refreshSecrets } = useStoredSecrets(workspaceId, userId);
   const [platformDefaultAvailable, setPlatformDefaultAvailable] = useState(
     initialPage?.platform_default_available ?? false,
   );

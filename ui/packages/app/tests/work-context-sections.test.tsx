@@ -18,7 +18,7 @@ it("projects only explicitly saved repository policy and rejects malformed repos
 
 it("labels sources as saved policy without claiming fresh connected permissions", () => {
   const view = render(<WorkSources />);
-  expect(screen.getByText("No saved repository scope.")).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Sources"})).toBeNull();
   view.rerender(<WorkSources sources={fleetSources({repositories: ["a/b"]})} />);
   expect(screen.getByRole("link", {name: "a/b"}).getAttribute("href")).toBe("https://github.com/a/b");
   expect(screen.getByText("Saved fleet policy · access not specified")).toBeTruthy();

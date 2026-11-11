@@ -12,7 +12,13 @@ test("setup and fleet status text has a muted darker sweep with accessible motio
     await expect(label).toBeVisible();
     await expect(label).toHaveCSS("animation-name", "chat-status-sweep");
     await expect(label).toHaveCSS("animation-duration", "2.8s");
+    await expect(label).toHaveCSS("animation-timing-function", "cubic-bezier(0.4, 0, 0.2, 1)");
     await expect(label).toHaveCSS("opacity", "1");
+    if (route === "?activity=1") {
+      const activity = page.getByRole("button", {name: /^Tool activity:/}).filter({has: page.locator('[data-chat-loading="true"]')}).first();
+      await expect(activity.locator("[data-signal-spinner]")).toHaveCount(0);
+      await expect(activity.locator("svg").first()).toHaveCSS("animation-name", "none");
+    }
     for (const theme of ["light", "dark"]) {
       await page.locator("html").evaluate((node, value) => node.setAttribute("data-theme", value), theme);
       const gradient = await label.evaluate(node => getComputedStyle(node).backgroundImage);
@@ -229,7 +235,7 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     await page.setViewportSize(window);
     await expect(page.getByRole("link", {name: /^Pull request #123 ·/})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden/pull/123");
     const panel = page.getByRole("region", {name: "Current work"});
-    await expect(panel.getByRole("heading", {name: "Durable tasks"})).toBeVisible();
+    await expect(panel.getByRole("heading", {name: "Tasks"})).toBeVisible();
     for (const section of ["Outputs", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
     await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);
     await expectSourceHierarchy(panel);

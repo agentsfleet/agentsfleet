@@ -39,7 +39,7 @@ export function Timestamp({ createdAt }: { createdAt: Date }) {
         label={now ? formatTimeRelative(createdAt, now) : undefined}
         tooltip={false}
         title={absolute}
-        className="shrink-0 font-mono text-label leading-mono text-muted-foreground tabular-nums"
+        className="shrink-0 font-sans text-eyebrow leading-eyebrow text-muted-foreground tabular-nums"
       />
       <span className="sr-only">Occurred {absolute}</span>
     </>

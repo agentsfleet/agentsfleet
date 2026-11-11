@@ -34,7 +34,7 @@ function renderShared() {
 }
 
 describe("FleetThread — who sent each turn in a shared thread", () => {
-  it("shows a teammate's name above their message", () => {
+  it("shows a teammate's name beside their timestamp", () => {
     mockStream([ev({ id: "e1", role: PERSON, actor: BOB, text: TEAMMATE_SAYS })]);
     const { container } = renderShared();
     const row = container.querySelector(USER_ROW);
@@ -46,17 +46,17 @@ describe("FleetThread — who sent each turn in a shared thread", () => {
     expect(screen.getByText(TEAMMATE_SAYS)).toBeTruthy();
   });
 
-  it("keeps the viewer's own message free of a sender line", () => {
+  it("keeps the viewer's own message labelled as You", () => {
     mockStream([ev({ id: "e1", role: PERSON, actor: `${ACTOR.STEER_PREFIX}${VIEWER}`, text: "ship it" })]);
     const { container } = renderShared();
     const row = container.querySelector(USER_ROW);
-    expect(row?.querySelector(SENDER_LINE)).toBeNull();
+    expect(row?.querySelector(SENDER_LINE)?.textContent).toBe(OWN_SENDER);
     expect(row?.querySelector(".sr-only")?.textContent).toBe(`${OWN_SENDER}: `);
   });
 
   // The server says a turn waits for a runner with its status alone; no
   // client-side flag marks a teammate's turn as queued.
-  it("should name a teammate above their bubble and show the reply as queued when their turn waits for a runner", () => {
+  it("should name a teammate below their bubble and show the reply as queued when their turn waits for a runner", () => {
     mockStream([ev({ id: "e1", role: PERSON, actor: BOB, text: QUEUED_SAYS, status: AGENTSFLEET_EVENT_STATUS.QUEUED })]);
     const { container } = renderShared();
     const row = container.querySelector<HTMLElement>(USER_ROW);
@@ -64,7 +64,7 @@ describe("FleetThread — who sent each turn in a shared thread", () => {
     if (row === null || sender === null) throw new Error("no named teammate row rendered");
     const bubble = within(row).getByText(QUEUED_SAYS);
     expect(sender.textContent).toBe(BOB_NAME);
-    expect(sender.compareDocumentPosition(bubble) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(sender.compareDocumentPosition(bubble) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
     const reply = container.querySelector<HTMLElement>(REPLY_ROW);
     if (reply === null) throw new Error("no reply row rendered");
     expect(within(reply).getByRole("status", { name: "Queued" })).toBeTruthy();

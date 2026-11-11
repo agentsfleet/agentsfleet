@@ -38,7 +38,7 @@ describe("FleetThread — role rendering: turns and connection", () => {
     expect(replyRow?.getAttribute("data-role")).toBe("assistant");
   });
 
-  it("keeps conversational rows free of timestamp chrome", () => {
+  it("keeps each conversational timestamp outside its message body", () => {
     const sentAt = new Date(Date.UTC(2026, 9, 4, 9, 30, 0));
     mockStream([
       ev({ id: "evt_turn", role: "user", actor: "steer:user_abc", text: "Status?", reply: "All green.", createdAt: sentAt }),
@@ -46,9 +46,9 @@ describe("FleetThread — role rendering: turns and connection", () => {
     const { container } = renderThread();
     const operator = container.querySelector('[data-role="user"]');
     const reply = container.querySelector('[data-role="assistant"]');
-    // Timing remains in Activity; conversation rows match the approved chat.
-    expect(operator?.querySelector("time")).toBeNull();
-    expect(reply?.querySelector("time")).toBeNull();
+    // Metadata carries the original timestamp separately from message text.
+    expect(operator?.querySelector("time")?.getAttribute("datetime")).toBe(sentAt.toISOString());
+    expect(reply?.querySelector("time")?.getAttribute("datetime")).toBe(sentAt.toISOString());
   });
 
   it("announces an API steer with its real sender", () => {

@@ -109,9 +109,9 @@ describe("FleetThread — robustness against malformed metadata", () => {
     // The bubble holds the sender's name and nothing else; the turn's time
     // sits under it, outside the bubble.
     const bubble = row?.querySelector(".sr-only")?.parentElement;
-    expect(bubble?.textContent).toBe("Operator: ");
+    expect(bubble?.textContent).toBe("Operator: Content preview unavailable.");
     expect(bubble?.querySelector("time")).toBeNull();
-    expect(row?.querySelector("time")).toBeNull();
+    expect(row?.querySelector("time")?.hasAttribute("datetime")).toBe(true);
   });
 
   it("renders no operator bubble for a turn whose body the read never carried", () => {

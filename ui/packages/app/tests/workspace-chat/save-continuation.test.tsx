@@ -115,7 +115,7 @@ it.each([false, true])("reopens saved instructions and creator history (restored
   fireEvent.click(screen.getByRole("button", {name: "Save changes"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(fixture.fleet.setup_revision).toBe("2");
-  expect(chatRouter.replace).toHaveBeenLastCalledWith(`/w/${CHAT_PROPS.workspace}/fleets/new?fleet=${FLEET_ID}&setup_revision=2`, {scroll: false});
+  expect(chatRouter.replace).toHaveBeenLastCalledWith(`/w/${CHAT_PROPS.workspace}/fleets/${FLEET_ID}`, {scroll: false});
   const writes = [...fixture.mutations()];
   await chooseSetupAction("Instructions");
   await act(async () => {await Promise.resolve();});

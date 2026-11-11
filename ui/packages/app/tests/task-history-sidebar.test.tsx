@@ -60,7 +60,7 @@ it("hides all metadata until list authorization, including loading after access 
   const events = history(TASK_IDS[0]);
   const view = render(<TaskPanel {...SCOPE} events={events} sources={SOURCES} />);
   expect(screen.queryByRole("region", {name: "Sources"})).toBeNull();
-  expect(screen.queryByRole("region", {name: "Durable tasks"})).toBeNull();
+  expect(screen.queryByRole("region", {name: "Tasks"})).toBeNull();
   expect(network).toHaveBeenCalledTimes(1);
   first.resolve(Response.json({items: [], next_cursor: null}));
   await screen.findByRole("region", {name: "Sources"});
@@ -71,7 +71,7 @@ it("hides all metadata until list authorization, including loading after access 
   await screen.findByText("Current work is unavailable.");
   const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
   await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
-  for (const name of ["Sources", "Outputs", "Changes", "Durable tasks"]) expect(screen.queryByRole("region", {name})).toBeNull();
+  for (const name of ["Sources", "Outputs", "Changes", "Tasks"]) expect(screen.queryByRole("region", {name})).toBeNull();
   expect(network).toHaveBeenCalledTimes(4);
   pending.resolve(Response.json({items: [], next_cursor: null}));
   view.unmount();

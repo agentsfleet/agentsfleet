@@ -466,11 +466,21 @@ Clerk’s primary actions, input states, popup backdrop, and corner radii follow
 Generated avatar images use the local flat fallback; uploaded user photographs remain visible.
 Inspect third-party pseudo-elements for gradients after dependency upgrades.
 
-### Chat composers
+### Typed conversation components
+
+Keep assistant-ui's existing runtime as the conversation owner. Normalize recorded API events into typed message and tool parts before rendering. Keep the shared row responsible for layout, sender identity and metadata. Dedicated components render text, command output, file changes, approvals, schedules, sources, artifacts and durable failures.
+
+Register presentation by a known part/tool kind. Adding an outcome supplies its component, input/result schema and state handling. It must not add branches to the shared row, execute generated markup, infer success from prose or acquire permissions through presentation. Unknown tools retain a readable generic disclosure with their recorded name, input and outcome.
+
+Running, succeeded, failed, interrupted and unconfirmed are separate recorded states. A proposed change and an applied change remain distinct. Keep requests bound to their workspace, fleet and operation identity; cancellation or navigation must prevent a late result appearing in another conversation.
+
+Appsmith's [widget registration](https://github.com/appsmithorg/appsmith/blob/65921d7294476c2f7af25c3c7d31c43da2eee215/app/client/src/WidgetProvider/factory/index.tsx) and [AI request-context boundary](https://github.com/appsmithorg/appsmith/blob/65921d7294476c2f7af25c3c7d31c43da2eee215/app/client/src/sagas/AIAssistantRequestContext.ts) inform this composition. Their custom widget editor is not our chat runtime; use assistant-ui message parts and tool components with the existing backend events.
+
+### Shared composer controls
 
 Fleet chat and setup chat compose the same controls from `components/domain/chat/ChatComposerFrame.tsx` in the app package.
 `ChatComposerFrame` owns the input, boundary, spacing, height limits, and focus behavior.
-Place the model immediately before the circular Send action in both chat purposes.
+Place the model and contextual controls at the left of the footer, with the circular Send action at the right, matching the approved layout. Keep both chat purposes on the same frame and align the composer with the conversation's reading column.
 
 `ChatComposerModel` owns model display and selection. `ChatComposerHint` owns supporting copy below the input.
 

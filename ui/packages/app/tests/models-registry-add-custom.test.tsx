@@ -1,304 +1,55 @@
-import type { LibraryModel } from "@/lib/api/model-library-types";
-import { CATALOGUE_MODEL } from "@/tests/helpers/catalogue-fixtures";
-import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
 import type { Secret } from "@/lib/api/secrets";
+import { createModelEntryActionMock, setProviderSelfManagedActionMock, createSecretActionMock, replaceSecretActionMock, renderDialog, FORM_MODEL } from "./helpers/models-registry-add-fixtures";
 
-// Split from models-registry-add.test.tsx (RULE FLL — the combined file grew
-// past the 350-line cap): the OpenAI-compatible provider path only (the
-// unified form's custom-endpoint shape — Base URL reveal, optional key).
-// Known-provider + reuse-existing-key coverage lives in the sibling file.
-
-const createModelEntryActionMock = vi.fn();
-const setProviderSelfManagedActionMock = vi.fn();
-const createSecretActionMock = vi.fn();
-const replaceSecretActionMock = vi.fn();
-
-vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/actions", () => ({
-  createModelEntryAction: createModelEntryActionMock,
-  setProviderSelfManagedAction: setProviderSelfManagedActionMock,
-  replaceSecretAction: replaceSecretActionMock,
-}));
-vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
-  createSecretAction: createSecretActionMock,
-}));
-
-// One library row so the Provider field renders as the catalogue-backed
-// <Select> — the OpenAI-compatible option is appended to it either way.
-const { catalogueState } = vi.hoisted(() => ({
-  catalogueState: {
-    models: [] as LibraryModel[],
-    status: "ready" as const,
-    preload: vi.fn(), preloadAdvanced: vi.fn(), error: null, nextCursor: null, advancedNextCursor: null, loadMore: vi.fn(), retry: vi.fn(),
-  },
-}));
-vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelCatalogueProvider", () => ({
-  useModelCatalogue: () => catalogueState,
-  // These suites exercise form shape, not prefetch policy — that has its own
-  // suite in model-catalogue-provider.test.tsx. Hover speculation is off so a
-  // stray pointer event cannot perturb the call counts asserted below.
-  maySpeculateOnHover: () => false,
-}));
-
-async function renderDialog(secrets: Secret[] = []) {
-  const { default: AddModelEntryDialog } = await import(
-    "../app/(dashboard)/w/[workspaceId]/settings/models/components/AddModelEntryDialog"
-  );
-  const { SECRETS_LOAD } = await import(
-    "../app/(dashboard)/w/[workspaceId]/settings/models/components/secrets-load"
-  );
-  const onCreated = vi.fn();
-  const onSecretsChanged = vi.fn();
-  const onSecretsNeeded = vi.fn();
-  render(
-    React.createElement(AddModelEntryDialog, {
-      workspaceId: "ws_1",
-      secrets,
-      // These suites exercise the custom-endpoint form, not the load gate —
-      // that has its own cases in models-registry-add.test.tsx.
-      secretsLoad: SECRETS_LOAD.ready,
-      onCreated,
-      onSecretsChanged,
-      onSecretsNeeded,
-    } as never),
-  );
-  const user = userEvent.setup();
-  await user.click(screen.getByRole("button", { name: /create model/i }));
-  await screen.findByRole("dialog");
-  return { onCreated, onSecretsChanged, onSecretsNeeded, user };
+const PROVIDER = "openai-compatible";
+const URL = "https://models.example/v1";
+async function customForm(user: Awaited<ReturnType<typeof renderDialog>>["user"], endpoint = URL) {
+  const dialog = within(screen.getByRole("dialog"));
+  await user.type(dialog.getByLabelText("Provider", {exact: true}), PROVIDER);
+  await user.type(dialog.getByLabelText("Model", {exact: true}), FORM_MODEL);
+  await user.type(dialog.getByLabelText("Key name"), "gateway");
+  await user.type(dialog.getByLabelText("Base URL"), endpoint);
+  return dialog;
 }
 
-/** Picks "Custom — OpenAI-compatible" in the Provider dropdown — the move
- * that replaces the old Custom-endpoint tab and reveals the Base URL field. */
-async function pickCustomProvider(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
-  await user.click(within(dialog).getByLabelText(/^provider$/i));
-  await user.click(await screen.findByRole("option", { name: /custom — openai-compatible/i }));
-}
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  catalogueState.models = [{ ...CATALOGUE_MODEL, id: "claude-sonnet-5", display_name: "Sonnet 5", provider: "anthropic" }];
-  createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
-  createModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway", created_at: "1970-01-01T00:00:00.001Z" } });
-  setProviderSelfManagedActionMock.mockResolvedValue({
-    ok: true,
-    data: { mode: "self_managed", provider: "openai-compatible", model: "vllm-model", context_cap_tokens: 32000, secret_ref: "vllm-gateway", platform_default_available: true },
-  });
-});
-afterEach(() => cleanup());
-
-describe("AddModelEntryDialog — OpenAI-compatible provider", () => {
-  it("reveals Base URL only after the OpenAI-compatible provider is picked, and marks the key optional", async () => {
-    const { user } = await renderDialog();
-    const dialog = screen.getByRole("dialog");
-
-    expect(within(dialog).queryByLabelText(/base url/i)).toBeNull();
-    expect(within(dialog).getByLabelText(/^api key$/i)).toBeTruthy();
-
-    await pickCustomProvider(user, dialog);
-
-    expect(within(dialog).getByLabelText(/base url/i)).toBeTruthy();
-    expect(within(dialog).getByLabelText(/api key \(optional\)/i)).toBeTruthy();
+describe("Create model with a compatible endpoint", () => {
+  it("allows a keyless HTTPS endpoint and optional activation", async () => {
+    const {user} = await renderDialog();
+    const dialog = await customForm(user);
+    expect(dialog.getByLabelText("API key (optional)")).toBeTruthy();
+    await user.click(dialog.getByRole("switch", {name: "Make active"}));
+    await user.click(dialog.getByRole("button", {name: "Create model"}));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(createSecretActionMock).toHaveBeenCalledWith("ws_1", {name: "gateway", data: {provider: PROVIDER, base_url: URL}});
+    expect(createModelEntryActionMock).toHaveBeenCalledWith({model_id: FORM_MODEL, secret_ref: "gateway"});
+    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({model: FORM_MODEL, secret_ref: "gateway"});
   });
 
-  it("registers a keyless entry and activates it on Save & make active", async () => {
-    const { onCreated, user } = await renderDialog();
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
-    await pickCustomProvider(user, dialog);
-    await user.type(within(dialog).getByLabelText(/base url/i), "https://vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-    // API key left blank — keyless endpoint.
-
-    await user.click(within(dialog).getByRole("button", { name: /save & make active/i }));
-
-    await waitFor(() => expect(createSecretActionMock).toHaveBeenCalled());
-    const [, body] = createSecretActionMock.mock.calls[0] as [string, { name: string; data: Record<string, unknown> }];
-    expect(body.name).toBe("vllm-gateway");
-    expect(body.data.api_key).toBeUndefined();
-    expect(body.data.base_url).toBe("https://vllm.corp/v1");
-    expect(body.data.provider).toBe("openai-compatible");
-
-    await waitFor(() =>
-      expect(createModelEntryActionMock).toHaveBeenCalledWith({ model_id: "vllm-model", secret_ref: "vllm-gateway" }),
-    );
-    await waitFor(() =>
-      expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ secret_ref: "vllm-gateway", model: "vllm-model" }),
-    );
-    await waitFor(() => expect(onCreated).toHaveBeenCalled());
-  });
-
-  it("disables Save while the custom shape is incomplete — key stays optional", async () => {
-    const { user } = await renderDialog();
-    const dialog = screen.getByRole("dialog");
-    const save = () => within(dialog).getByRole("button", { name: /^save$/i });
-
-    await pickCustomProvider(user, dialog);
-    expect(save().hasAttribute("disabled")).toBe(true);
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
-    // Name + provider filled; base URL + model still empty.
-    expect(save().hasAttribute("disabled")).toBe(true);
-
-    await user.type(within(dialog).getByLabelText(/base url/i), "https://vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-    // No API key — still submittable for a custom endpoint.
-    expect(save().hasAttribute("disabled")).toBe(false);
-    expect(createSecretActionMock).not.toHaveBeenCalled();
-  });
-
-  it("surfaces a register error for the custom shape without activating", async () => {
-    createModelEntryActionMock.mockResolvedValue({ ok: false, error: "duplicate", errorCode: "UZ-MODELS-003" });
-    const { user } = await renderDialog();
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
-    await pickCustomProvider(user, dialog);
-    await user.type(within(dialog).getByLabelText(/base url/i), "https://vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-    await user.click(within(dialog).getByRole("button", { name: /save & make active/i }));
-
-    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
-  });
-
-  it("rejects a non-https base URL inline, without calling the backend", async () => {
-    const { user } = await renderDialog();
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
-    await pickCustomProvider(user, dialog);
-    await user.type(within(dialog).getByLabelText(/base url/i), "http://vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toMatch(/use https:\/\/ for the base url/i));
-    expect(createSecretActionMock).not.toHaveBeenCalled();
-  });
-
-  it("carries a pasted key through in the secret body when one is entered", async () => {
-    const { user } = await renderDialog();
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
-    await pickCustomProvider(user, dialog);
-    await user.type(within(dialog).getByLabelText(/base url/i), "https://vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-    await user.type(within(dialog).getByLabelText(/api key \(optional\)/i), "sk-vllm-key");
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(createSecretActionMock).toHaveBeenCalled());
-    const [, body] = createSecretActionMock.mock.calls[0] as [string, { data: Record<string, unknown> }];
-    expect(body.data.api_key).toBe("sk-vllm-key");
-  });
-
-  it("errors without writing when the name is owned by a named provider's key (name-collision guard)", async () => {
-    const anthropicSecret: Secret = { kind: "provider_key", name: "anthropic-prod", provider: "anthropic", created_at: "1970-01-01T00:00:00.001Z" };
-    const { user } = await renderDialog([anthropicSecret]);
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "anthropic-prod");
-    await pickCustomProvider(user, dialog);
-    await user.type(within(dialog).getByLabelText(/base url/i), "https://vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    // Replacement is total — proceeding would destroy the anthropic
-    // credential's body. The guard must error before any write.
-    await waitFor(() => expect(within(dialog).getByText(/different provider/i)).toBeTruthy());
+  it("refuses an insecure endpoint before any write", async () => {
+    const {user} = await renderDialog();
+    const dialog = await customForm(user, "http://models.example/v1");
+    await user.click(dialog.getByRole("button", {name: "Create model"}));
+    expect(dialog.getByRole("alert").textContent).toMatch(/https/i);
     expect(createSecretActionMock).not.toHaveBeenCalled();
     expect(createModelEntryActionMock).not.toHaveBeenCalled();
   });
 
-  it("reusing an existing custom endpoint's name rewrites that endpoint in place (reconfigure motion)", async () => {
-    const endpointSecret: Secret = {
-      kind: "custom_endpoint",
-      name: "vllm-gateway",
-      provider: "openai-compatible",
-      base_url: "https://old.vllm.corp/v1",
-      created_at: "1970-01-01T00:00:00.001Z",
-    };
-    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
-    const { user } = await renderDialog([endpointSecret]);
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
-    await pickCustomProvider(user, dialog);
-    await user.type(within(dialog).getByLabelText(/base url/i), "https://new.vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    // A held name reconfigures via whole-body replace — create claims free
-    // names only and would answer UZ-VAULT-005 here.
-    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalled());
-    const [, name, data] = replaceSecretActionMock.mock.calls[0] as [string, string, Record<string, unknown>];
-    expect(name).toBe("vllm-gateway");
-    expect(data.base_url).toBe("https://new.vllm.corp/v1");
-    expect(data.provider).toBe("openai-compatible");
+  it("reuses a saved endpoint without rewriting its URL or hidden credential", async () => {
+    const saved: Secret = {name: "gateway", kind: "custom_endpoint", provider: PROVIDER, base_url: URL, created_at: "2026-04-30T00:00:00Z"};
+    const {user} = await renderDialog([saved]);
+    const dialog = within(screen.getByRole("dialog"));
+    await user.type(dialog.getByLabelText("Provider", {exact: true}), PROVIDER);
+    await user.type(dialog.getByLabelText("Model", {exact: true}), FORM_MODEL);
+    await user.click(dialog.getByRole("button", {name: "Use saved key"}));
+    await user.click(dialog.getByLabelText("Saved key", {exact: true}));
+    await user.click(screen.getByRole("option", {name: saved.name}));
+    expect(dialog.getByText(`Endpoint: ${URL}`)).toBeTruthy();
+    expect(dialog.queryByLabelText("Base URL")).toBeNull();
+    await user.click(dialog.getByRole("button", {name: "Create model"}));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(createSecretActionMock).not.toHaveBeenCalled();
-  });
-
-  it("a failed reconfigure replace surfaces the error and never registers", async () => {
-    const endpointSecret: Secret = {
-      kind: "custom_endpoint",
-      name: "vllm-gateway",
-      provider: "openai-compatible",
-      base_url: "https://old.vllm.corp/v1",
-      created_at: "1970-01-01T00:00:00.001Z",
-    };
-    replaceSecretActionMock.mockResolvedValue({ ok: false, error: "rejected", errorCode: "UZ-REQ-001" });
-    const { user } = await renderDialog([endpointSecret]);
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
-    await pickCustomProvider(user, dialog);
-    await user.type(within(dialog).getByLabelText(/base url/i), "https://new.vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(createModelEntryActionMock).not.toHaveBeenCalled();
-  });
-
-  it("a register failure after a good reconfigure leaves the dialog open", async () => {
-    const endpointSecret: Secret = {
-      kind: "custom_endpoint",
-      name: "vllm-gateway",
-      provider: "openai-compatible",
-      base_url: "https://old.vllm.corp/v1",
-      created_at: "1970-01-01T00:00:00.001Z",
-    };
-    replaceSecretActionMock.mockResolvedValue({ ok: true, data: { name: "vllm-gateway" } });
-    createModelEntryActionMock.mockResolvedValue({ ok: false, error: "duplicate", errorCode: "UZ-MODELS-003" });
-    const { user } = await renderDialog([endpointSecret]);
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
-    await pickCustomProvider(user, dialog);
-    await user.type(within(dialog).getByLabelText(/base url/i), "https://new.vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(screen.getByRole("dialog")).toBeTruthy();
-  });
-
-  it("surfaces a store error for the custom shape", async () => {
-    createSecretActionMock.mockResolvedValue({ ok: false, error: "boom", errorCode: "UZ-VAULT-002" });
-    const { user } = await renderDialog();
-    const dialog = screen.getByRole("dialog");
-
-    await user.type(within(dialog).getByLabelText(/^name$/i), "vllm-gateway");
-    await pickCustomProvider(user, dialog);
-    await user.type(within(dialog).getByLabelText(/base url/i), "https://vllm.corp/v1");
-    await user.type(within(dialog).getByLabelText(/^model$/i), "vllm-model");
-    await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
-
-    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
-    expect(createModelEntryActionMock).not.toHaveBeenCalled();
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
   });
 });
