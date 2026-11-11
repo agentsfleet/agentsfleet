@@ -173,27 +173,13 @@ fn test_every_http_producer_runs_its_body() {
     producers::http::bus_reconnected();
 
     for signal in [Signal::Logs, Signal::Traces, Signal::Metrics] {
-        for reason in [
-            DiscardReason::RingFull,
-            DiscardReason::AggregateCap,
-            DiscardReason::SerializeFailed,
-            DiscardReason::PartialRejected,
-            DiscardReason::ExportRejected,
-            DiscardReason::ExportUncertain,
-        ] {
+        for &reason in DiscardReason::ALL {
             producers::http::export_discarded(signal, reason, 2);
         }
     }
 
-    for attribute in [
-        OmittedAttribute::ProviderName,
-        OmittedAttribute::RequestModel,
-    ] {
-        for reason in [
-            OmissionReason::UnmappedProvider,
-            OmissionReason::BudgetExhausted,
-            OmissionReason::ValueTooLong,
-        ] {
+    for &attribute in OmittedAttribute::ALL {
+        for &reason in OmissionReason::ALL {
             producers::http::attribute_omitted(attribute, reason);
         }
     }
@@ -226,37 +212,14 @@ fn test_every_memory_producer_runs_its_body() {
 fn test_every_library_producer_runs_its_body() {
     install();
 
-    // `Surface::ALL`, not a list repeated here: a surface added to the closed
-    // set raises the census ceiling for every family carrying this label, and a
-    // hand-kept copy silently stops driving the one that was added. This is
-    // where `workspace_entries` went undriven — the set grew, the literal did
-    // not.
+    // Each closed set's `ALL`, not a list repeated here: a member added to a
+    // set raises the census ceiling for every family carrying the label, and a
+    // hand-kept copy silently stops driving the one that was added.
     for &surface in Surface::ALL {
-        for stage in [
-            Stage::NextUpstream,
-            Stage::AuthVerify,
-            Stage::PoolWait,
-            Stage::Authorize,
-            Stage::Sql,
-            Stage::SecretProject,
-            Stage::Map,
-            Stage::Serialize,
-            Stage::CacheRevision,
-            Stage::CacheLookup,
-        ] {
+        for &stage in Stage::ALL {
             producers::library::stage_observed(surface, stage, Duration::from_millis(3));
         }
-        for outcome in [
-            ReadOutcome::Ok,
-            ReadOutcome::Invalid,
-            ReadOutcome::Unauthorized,
-            ReadOutcome::Forbidden,
-            ReadOutcome::NotFound,
-            ReadOutcome::Timeout,
-            ReadOutcome::Cancelled,
-            ReadOutcome::DependencyError,
-            ReadOutcome::InternalError,
-        ] {
+        for &outcome in ReadOutcome::ALL {
             producers::library::read_finished(surface, outcome);
         }
         producers::library::read_served(surface, 25);

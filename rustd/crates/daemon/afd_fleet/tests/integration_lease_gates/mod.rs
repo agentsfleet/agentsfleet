@@ -47,7 +47,6 @@ mod history;
 mod seed;
 mod slack;
 mod stops;
-mod tenant;
 mod window;
 mod witness;
 

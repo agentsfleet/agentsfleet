@@ -5,7 +5,7 @@
 //! The caller supplies `fresh`, which answers a new payer funded with exactly
 //! [`BALANCE`], so each check starts from a clean account.
 
-use af_wire::usage::UsageLine;
+use af_wire::usage::{LineKind, UsageLine};
 use jiff::Timestamp;
 
 use super::{Account, Ask, Attribution, Biller, Funds, Receipt, Settlement, WorkKey};
@@ -35,6 +35,7 @@ where
     an_ask_within_the_balance_is_covered(biller, fresh().await).await;
     an_ask_past_the_balance_is_short(biller, fresh().await).await;
     settling_twice_charges_once(biller, fresh().await).await;
+    lines_of_different_kinds_may_share_a_number(biller, fresh().await).await;
     a_short_settlement_leaves_a_debt(biller, fresh().await).await;
 }
 
@@ -51,9 +52,13 @@ fn ask(work: &WorkKey, payer: &Account, next: Nanos) -> Ask {
 }
 
 const fn line(seq: u32, charged: Nanos, runtime_ms: u32) -> RatedLine {
+    line_of(LineKind::Runtime, seq, charged, runtime_ms)
+}
+
+const fn line_of(kind: LineKind, seq: u32, charged: Nanos, runtime_ms: u32) -> RatedLine {
     RatedLine {
         usage: UsageLine {
-            kind: af_wire::usage::LineKind::Runtime,
+            kind,
             seq,
             at: Timestamp::UNIX_EPOCH,
             input_tokens: 0,
@@ -140,6 +145,31 @@ async fn settling_twice_charges_once(biller: &dyn Biller, payer: Account) {
         BALANCE.as_i64() - LINE.as_i64() * 2
     );
     assert_eq!(balance.unsettled, Nanos::ZERO, "nothing is left to charge");
+}
+
+/// A model line and a runtime line of one work may carry the same number: the
+/// usage log keys a line by its work, kind and number, so both are charged, and
+/// neither is mistaken for the other's repeat.
+#[expect(clippy::expect_used, reason = "a conformance check fails loudly")]
+async fn lines_of_different_kinds_may_share_a_number(biller: &dyn Biller, payer: Account) {
+    let work = work();
+    let lines = settlement(
+        &work,
+        &payer,
+        vec![
+            line_of(LineKind::Model, 0, LINE, 0),
+            line_of(LineKind::Runtime, 0, LINE, 1),
+        ],
+    );
+    let first = biller.settle(&lines).await.expect(SETTLES);
+    assert_eq!(
+        first.settled_lines, 2,
+        "a model line and a runtime line numbered alike are two lines"
+    );
+    assert_eq!(first.charged.as_i64(), LINE.as_i64() * 2);
+    let again = biller.settle(&lines).await.expect(SETTLES);
+    assert_eq!(again.settled_lines, 0, "a repeat settles neither");
+    assert_eq!(again.charged, Nanos::ZERO, "and charges nothing");
 }
 
 /// A settlement half again past the balance: the balance takes the whole

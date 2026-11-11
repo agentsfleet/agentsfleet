@@ -22,14 +22,6 @@ closed_set! {
     /// dropped-batch counters ride the same push they describe, so a dead pipe
     /// cannot report on itself. These say what was lost locally and why.
     DiscardReason {
-        /// The queue was full when the entry arrived.
-        RingFull => "ring_full",
-        /// The aggregation's series cap folded it away.
-        AggregateCap => "aggregate_cap",
-        /// The batch could not be encoded.
-        SerializeFailed => "serialize_failed",
-        /// The collector accepted the batch and rejected part of it.
-        PartialRejected => "partial_rejected",
         /// The collector refused the batch outright.
         ExportRejected => "export_rejected",
         /// The attempt neither succeeded nor failed definitely — a timeout, or
@@ -41,13 +33,11 @@ closed_set! {
 closed_set! {
     /// Which attribute this process declined to put on a data point.
     ///
-    /// Both are optional in the contract, so omitting one leaves a valid point
-    /// — which is what makes omission the honest answer rather than a defect.
+    /// It is optional in the contract, so omitting it leaves a valid point —
+    /// which is what makes omission the honest answer rather than a defect.
     OmittedAttribute {
         /// `gen_ai.provider.name`.
         ProviderName => semconv::ATTR_PROVIDER_NAME,
-        /// `gen_ai.request.model`.
-        RequestModel => semconv::ATTR_REQUEST_MODEL,
     }
 }
 
@@ -56,11 +46,6 @@ closed_set! {
     OmissionReason {
         /// The configured provider is outside the compiled public naming registry.
         UnmappedProvider => "unmapped_provider",
-        /// Attributing this pair would push the window past its series budget.
-        BudgetExhausted => "budget_exhausted",
-        /// The value is longer than the payload admits, and truncating it
-        /// would export a DIFFERENT model under a plausible-looking name.
-        ValueTooLong => "value_too_long",
     }
 }
 

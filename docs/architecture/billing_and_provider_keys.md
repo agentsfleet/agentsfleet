@@ -115,7 +115,7 @@ Model disable, wallet absence, membership removal, and policy-marker drift fail 
 
 A second guarded transaction checks the request digest and funding ceiling before recording dispatch intent.
 
-A biller call runs outside these transactions because the biller may take another connection or make a remote request. `Short` returns the wallet failure; `OutagePolicy::Open` admits an unanswered biller as `Unconfirmed`.
+A biller call runs outside these transactions because the biller may take another connection or make a remote request. `Short` returns the wallet failure; `FailOpen` admits an unanswered biller as `Unconfirmed`.
 
 **Report.** When the daemon knows the attempt's usage, the report's transaction logs its lines with `log_lines`. Each dispatch with known usage gets one line at its dispatch instant, and the runtime gets one line (`seq` 0). The `Rater` prices each line by its whole-request tier.
 
@@ -421,7 +421,7 @@ Properties:
 - **A balance crossing zero mid-run ends the run.** Each renewal checks that `Balance::left` covers one more floor. When it cannot, the biller answers `Short` and the renewal is refused with `UZ-RUN-012`.
 - **Concurrent events on a near-zero balance.** Nothing is set aside, so runs that start together all pass against the same balance. Each spends about one slice before its next renewal check sees their lines and refuses.
 - **That spend still settles**, so the balance can end below zero by about one slice per run. The debt refuses new work until a grant repays it (`parallel_runs_overdraw_by_at_most_a_slice_each_then_stop`).
-- **An outage admits.** Under `OutagePolicy::Open`, a funds check the biller cannot answer comes back `Unconfirmed` and the run continues. Its lines settle when the biller is back (§11).
+- **An outage admits.** A funds check the biller cannot answer comes back `Unconfirmed` and the run continues. Its lines settle when the biller is back (§11).
 
 ### 5.1 The per-fleet budget gate: a second, independent ceiling
 
@@ -724,9 +724,9 @@ A write the provider names no lifetime for bills at the tier's unspecified-lifet
 
 Each token category rounds **up** per line. The platform therefore never under-bills, and over-bills by at most one nano per category per request.
 
-**Outage policy.** `WithOutagePolicy<B>` wraps any biller.
+**Outage.** `FailOpen<B>` wraps any biller.
 
-Under `OutagePolicy::Open`, a `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` reads the policy; a failed `settle` leaves the lines for the relay's next pass.
+A `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` is changed; a failed `settle` leaves the lines for the relay's next pass.
 
 A biller with no answer (`Error::is_unanswered`) is either an outage or contention. An outage is a pool with no connection to hand out, or a connection lost mid-statement, as `afd_db::error::is_connection_lost` decides.
 
@@ -734,7 +734,7 @@ Contention is a statement that reached the API login role's bounds: 2 s for a lo
 
 No billing statement sets a bound of its own. The wait for a pool connection comes before the statement and is not bounded by the role.
 
-A constraint, syntax or decode failure is a defect and is refused under either policy. The policy is chosen once, where `agentsfleetd` builds the biller, and starts open (Indy, 2026-10-19).
+A constraint, syntax or decode failure is a defect and is refused. The wrapper is applied once, where `agentsfleetd` builds the biller; there is no closed alternative, because early adoption favours the optimistic path.
 
 **The built-in biller.** `LedgerBiller` answers `check` with one read and no lock: `Balance::left`, the balance less the payer's unsettled lines. Every gate and check compares that one number with what the work asks for. A payer in debt is short even of nothing.
 

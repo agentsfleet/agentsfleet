@@ -61,7 +61,7 @@ use sqlx::{Acquire as _, Transaction};
 
 use crate::error::{Result, entropy_drained, query, vault_open};
 use crate::provider::cap;
-use crate::provider::endpoint::{OPENAI_COMPATIBLE, Rejection};
+use crate::provider::endpoint::Rejection;
 use crate::provider::selection::OwnModel;
 use crate::provider::store::Providers;
 use crate::provider::vetted::{Refused, vet};
@@ -268,7 +268,6 @@ impl Providers {
             .bind(provider)
             .bind(model)
             .bind(secret_ref)
-            .bind(provider == OPENAI_COMPATIBLE)
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT_ACTIVATE))?;

@@ -41,7 +41,6 @@ pub struct RegisteredModel {
     /// Provider model identifier, never supplied separately by a runner.
     pub model: Box<str>,
     /// Optional endpoint restriction carried by the credential.
-    #[serde(default)]
     pub base_url: Option<Box<str>>,
     /// Persisted non-secret settings, pinned by the catalogue generation.
     pub inference: Option<ModelInference>,
@@ -161,7 +160,6 @@ pub(super) async fn read(
             .bind(entry),
         None => sqlx::query_as::<_, RegisteredRow>(statement)
             .bind(owner)
-            .bind(reference)
             .bind(afd_billing::nanos::MS_PER_SEC),
     }
     .fetch_optional(&mut *ordered)

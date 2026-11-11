@@ -1,6 +1,7 @@
-//! The billing relay: the only task that moves money. Renewals and reports log
-//! their usage lines and return; every 2 s this task settles those lines
-//! through the daemon's [`Biller`] (billing §11).
+//! The billing relay: the task that settles logged usage. Renewals and reports
+//! log their usage lines and return; every 2 s this task settles those lines
+//! through the daemon's [`Biller`] (billing §11). The expiry sweeper bills the
+//! last slice of a lease that ended unreported, and its lines settle here.
 
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -8,7 +9,7 @@ use std::time::Duration;
 use afd_billing::biller::Biller;
 use afd_billing::ledger::Resume;
 use afd_db::Db;
-use afd_fleet::lease::billing_sweep::BillingSwept;
+use afd_fleet::lease::billing_sweep::LinesSwept;
 use afd_fleet::task::{DecisionMaintenanceCursor, TaskLifecycle as _, Tasks};
 use tokio_util::sync::CancellationToken;
 
@@ -136,14 +137,14 @@ fn lap<T>(ticks: &mut u64, resume: &Mutex<Option<T>>) {
 /// A pass that read a whole batch runs again at once, resuming after it, so a
 /// backlog drains at the biller's pace and a batch the biller refused never
 /// holds newer lines. [`DRAIN_PASSES`] bounds the passes one tick makes.
-const fn drains(swept: &BillingSwept) -> bool {
-    swept.lines_full
+const fn drains(swept: &LinesSwept) -> bool {
+    swept.full
 }
 
 /// Logs a lease pass's end. Every pass is one iteration of a 2 s poll, so its
 /// counts log at `debug` (LOG-HOT); a pass the biller refused part of also
 /// warns once, with the first refusal's code, and the next pass retries.
-fn log_moved(swept: &BillingSwept) {
+fn log_moved(swept: &LinesSwept) {
     let refused = swept.settle_failures;
     if let (true, Some(code)) = (refused > 0, swept.refused) {
         let error_code = code.as_str();

@@ -590,36 +590,30 @@ The browser client sends a fresh `traceparent` root per request
 
 Label members live in the label registry below (`af_observability`'s
 `metrics::label::library`). Each family's series ceiling is its census
-`fixed:<n>` value, 124 in total.
+`fixed:<n>` value, 28 in total.
 `every_declared_ceiling_admits_its_label_product` fails when a new enum member
 makes a family's label product outgrow its ceiling.
 
 | Family | Labels | Series |
 |---|---|---|
-| `agentsfleet_library_stage_duration_seconds_total` | `surface`,`stage` | 40 |
-| `agentsfleet_library_stage_observations_total` | `surface`,`stage` | 40 |
-| `agentsfleet_library_read_outcome_total` | `surface`,`outcome` | 36 |
-| `agentsfleet_library_payload_bytes_total` | `surface` | 4 |
-| `agentsfleet_library_results_total` | `surface` | 4 |
+| `agentsfleet_library_stage_duration_seconds_total` | `surface`,`stage` | 4 |
+| `agentsfleet_library_stage_observations_total` | `surface`,`stage` | 4 |
+| `agentsfleet_library_read_outcome_total` | `surface`,`outcome` | 16 |
+| `agentsfleet_library_payload_bytes_total` | `surface` | 2 |
+| `agentsfleet_library_results_total` | `surface` | 2 |
 
 Design points, each load-bearing:
 
 - One read touches four dimensions (surface, stage, outcome, pool result); no
-  family carries all four. The cross-product is 1440 series, nearly all
+  family carries all four. The cross-product is 128 series, nearly all
   permanently zero.
 
 - The pool family carries no `surface` label: a starving pool is
   process-wide. No library family carries tenant or request identity.
 
 - Duration and observations are two counters rather than a summary.
-  `rate(duration)/rate(observations)` is the mean cost of a *span*, and `sql`
-  fires twice per registry read (both sides of `secret_project`). Dividing by
-  requests would halve its apparent cost.
-
-- `secret_project` survives the read-path decryption removal with a narrowed
-  meaning: it times the batch presence query and projection, and decrypts
-  nothing. A regression that reintroduces per-row decryption shows up as a
-  stage that suddenly costs more, never as one that silently reappears.
+  `rate(duration)/rate(observations)` is the mean cost of a *stage*; dividing
+  by requests would misstate a stage a read passes through more than once.
 
 - One outcome per request on every exit path. Each read handler calls
   `library::read_finished` once.
@@ -824,9 +818,9 @@ Labels are bounded at the source:
 | `agentsfleet.billing.charge.type` | `settle` (one class since every charge settles usage lines through the biller) | closed set; no overflow value |
 | `gen_ai.provider.name` | canonical standard names plus public provider identities from the compiled catalogue and SDK; aliases share one emitted value | private/unrecognized names omit the attribute and count the omission |
 | `gen_ai.request.model` | the saved runtime model's catalogue identity carried by the lease; catalogue updates can add identities, and the cost families set no series ceiling (`shared:cost` in the census) | none of ours; past the OpenTelemetry SDK's default of 2,000 series per stream, new model values fold into `otel.metric.overflow`, so their costs stop being told apart |
-| `surface` (library) | `tenant_models`, `global_models`, `fleet_summary`, `workspace_entries` | closed enum; no overflow value; a fifth surface is a code change rather than a label |
-| `stage` (library) | `next_upstream`, `auth_verify`, `pool_wait`, `authorize`, `sql`, `secret_project`, `map`, `serialize`, `cache_revision`, `cache_lookup` | closed enum; no overflow value |
-| `outcome` (library) | `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `cancelled`, `dependency_error`, `internal_error` | closed enum; no overflow value |
+| `surface` (library) | `tenant_models`, `global_models` | closed enum; no overflow value; a third surface is a code change rather than a label |
+| `stage` (library) | `sql`, `serialize` | closed enum; no overflow value |
+| `outcome` (library) | `ok`, `invalid`, `unauthorized`, `forbidden`, `not_found`, `timeout`, `dependency_error`, `internal_error` | closed enum; no overflow value |
 
 **Workspace and tenant identity never reach a metric.** A per-process
 distinct-value guard cannot cap series across replicas and restarts. Exact
@@ -860,8 +854,7 @@ provider and the exact MiniMax model identifier.
 
 No model-name or protocol heuristic chooses a provider. Historical `_other` or
 omitted attributes cannot be reconstructed; corrected attribution starts after
-deploying the new binaries. The `budget_exhausted` and `value_too_long`
-reasons are declared and have no producer yet.
+deploying the new binaries.
 
 All three OTLP signals share one resource (`service.name`,
 `service.namespace=agentsfleet`, `service.version`, `service.instance.id` only

@@ -1,4 +1,4 @@
-//! M245 §8: a checkout tests a connection only after it sat idle.
+//! A checkout tests a connection only after it sat idle.
 //!
 //! sqlx's default pings every checkout, one round trip per statement a chat
 //! sends. The pools ping only a connection idle for `PING_AFTER_IDLE` (1 s) or
@@ -16,10 +16,7 @@ use std::time::{Duration, Instant};
 
 use afd_db::Db;
 use afd_db::config::DbRole;
-use afd_db::test_util::TestDatabase;
-
-/// The window the pool skips its ping inside (`afd_db::pool::PING_AFTER_IDLE`).
-const PING_AFTER_IDLE: Duration = Duration::from_secs(1);
+use afd_db::test_util::{PING_AFTER_IDLE, TestDatabase};
 
 /// How long the pool is left alone before the idle checkout: past the window
 /// by a margin a loaded lane's scheduling cannot eat.
@@ -110,8 +107,11 @@ async fn backend_lost_inside_the_window_fails_one_statement() {
     let second = statement(&db).await;
 
     assert!(
-        first.is_err(),
-        "an untested checkout runs on the dead backend: {first:?}"
+        first
+            .as_ref()
+            .err()
+            .is_some_and(afd_db::error::is_connection_lost),
+        "an untested checkout runs on the dead backend and finds the connection lost: {first:?}"
     );
     let replaced = second.expect("the next checkout dials a new backend");
     assert_ne!(replaced, lost, "the dead connection was discarded");

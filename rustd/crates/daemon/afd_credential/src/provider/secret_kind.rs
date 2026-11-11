@@ -22,8 +22,6 @@
 //! of the meta columns on the vault row it has already locked, so the answer
 //! costs no extra statement.
 
-use crate::provider::endpoint::OPENAI_COMPATIBLE;
-
 /// What the vault holds under a name, as far as the metadata can say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SecretKind {
@@ -36,19 +34,16 @@ pub enum SecretKind {
 impl SecretKind {
     /// Reads the vault's two metadata columns into one answer.
     ///
-    /// A named provider must carry a key; `openai-compatible` need not, because
-    /// its endpoint may be unauthenticated and a tenant fronting their own
-    /// gateway has no bearer token to give. That asymmetry is the registry
-    /// hint's own wording, and it is why `has_key` alone does not decide this.
+    /// A provider key names a provider and carries a key. The compatible
+    /// provider is no exception: resolution reads the key and the catalogue
+    /// entry for every provider alike, so a credential without a key could be
+    /// activated and then fail every run it was chosen for.
     ///
     /// Reads a row that EXISTS; the store answers absence before calling it.
     #[must_use]
     pub fn of(provider: Option<&str>, has_key: Option<bool>) -> Self {
         match (provider, has_key) {
-            // One arm rather than two, because the two are the same answer: a
-            // compatible endpoint is dialable with or without a key, and every
-            // other named provider is dialable only with one.
-            (Some(OPENAI_COMPATIBLE), _) | (Some(_), Some(true)) => Self::ProviderKey,
+            (Some(_), Some(true)) => Self::ProviderKey,
             // A named provider with no key, and a row naming no provider at
             // all — an env var, a webhook secret — are one answer to a caller:
             // the row is there and it is not a provider key.
@@ -59,7 +54,10 @@ impl SecretKind {
 
 #[cfg(test)]
 mod tests {
-    use super::{OPENAI_COMPATIBLE, SecretKind};
+    use super::SecretKind;
+
+    /// The compatible provider, which resolution treats like any other.
+    const COMPATIBLE: &str = "openai-compatible";
 
     /// A provider whose credential is worthless without a bearer key.
     const NAMED: &str = "anthropic";
@@ -89,16 +87,20 @@ mod tests {
         );
     }
 
+    /// Resolution reads the key for every provider, so a compatible endpoint
+    /// without one cannot run a model and is not a provider key either.
     #[test]
-    fn a_compatible_credential_needs_no_key() {
-        // The one asymmetry, and the registry hint says so: a custom endpoint
-        // may be unauthenticated, so an absent key is not an absent credential.
+    fn a_compatible_credential_needs_a_key_like_any_other() {
         for has_key in [Some(false), None] {
             assert_eq!(
-                SecretKind::of(Some(OPENAI_COMPATIBLE), has_key),
-                SecretKind::ProviderKey
+                SecretKind::of(Some(COMPATIBLE), has_key),
+                SecretKind::NotAProviderKey
             );
         }
+        assert_eq!(
+            SecretKind::of(Some(COMPATIBLE), Some(true)),
+            SecretKind::ProviderKey
+        );
     }
 
     #[test]

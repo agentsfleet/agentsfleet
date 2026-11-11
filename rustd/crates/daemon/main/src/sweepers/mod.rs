@@ -77,8 +77,8 @@ pub fn spawn(
 
     authoring::spawn(supervisor, database, analytics);
 
-    // Usage logged without its settlement, and holds outlived by their lease:
-    // money the request path owes and could not finish.
+    // Usage logged without its settlement: money the request path owes and
+    // could not finish.
     tasks::spawn(supervisor, tasks.clone());
     checkpoints::spawn(supervisor, tasks.clone());
     billing::spawn(supervisor, database, tasks);

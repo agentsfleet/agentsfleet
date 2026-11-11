@@ -68,8 +68,8 @@ agentsfleet_sse_in_flight_streams	gauge	u64	{stream}	-	-	-	fixed:1	no	saturation
 agentsfleet_sse_dropped_frames_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	slow consumers losing frames
 agentsfleet_bus_reconnects_total	counter	u64	1	cumulative	-	-	fixed:1	no	health	NATS client reconnects; spikes mean broker instability
 agentsfleet_worker_running	gauge	u64	{worker}	-	-	-	fixed:1	yes	health	0 when the worker should be up
-agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:18	no	errors	telemetry loss counted at the source
-agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reason	-	fixed:6	no	health	model attribution gaps (never faked)
+agentsfleet_otlp_entries_discarded_total	counter	u64	1	cumulative	signal,reason	-	fixed:6	no	errors	telemetry loss counted at the source
+agentsfleet_otel_attribute_omitted_total	counter	u64	1	cumulative	attribute,reason	-	fixed:1	no	health	model attribution gaps (never faked)
 agentsfleet_signup_bootstrapped_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: fresh accounts
 agentsfleet_signup_replayed_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	signup funnel: idempotent replays
 agentsfleet_signup_failed_total	counter	u64	1	cumulative	reason	-	fixed:6	no	errors	rejected signups per cause
@@ -101,11 +101,11 @@ agentsfleet_runner_retention_sweep_failures_total	counter	u64	1	cumulative	-	-	f
 agentsfleet_admissions_total	counter	u64	1	cumulative	outcome	-	fixed:4	no	traffic	accepted, replayed, refused and over-budget admission attempts
 agentsfleet_admission_backlog	gauge	u64	{row}	-	-	-	fixed:1	no	saturation	unsettled admissions, counted by the fleet census; use max across replicas
 agentsfleet_admission_backlog_oldest_age_seconds	gauge	u64	s	-	-	-	fixed:1	no	saturation	age of the oldest unsettled admission; absent when the census cannot read Postgres
-agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:40	no	latency	÷ observations = mean stage cost
-agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:40	no	latency	the denominator above
-agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:36	no	errors	non-`ok` outcomes per surface
-agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixed:4	no	traffic	response bytes per surface
-agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:4	no	traffic	rows served per surface
+agentsfleet_library_stage_duration_seconds_total	counter	f64	s	cumulative	surface,stage	-	fixed:4	no	latency	÷ observations = mean stage cost
+agentsfleet_library_stage_observations_total	counter	u64	1	cumulative	surface,stage	-	fixed:4	no	latency	the denominator above
+agentsfleet_library_read_outcome_total	counter	u64	1	cumulative	surface,outcome	-	fixed:16	no	errors	non-`ok` outcomes per surface
+agentsfleet_library_payload_bytes_total	counter	u64	By	cumulative	surface	-	fixed:2	no	traffic	response bytes per surface
+agentsfleet_library_results_total	counter	u64	1	cumulative	surface	-	fixed:2	no	traffic	rows served per surface
 agentsfleet_memory_entries_captured_total	counter	u64	1	cumulative	-	-	fixed:1	no	traffic	durable-memory write volume
 agentsfleet_memory_push_failures_total	counter	u64	1	cumulative	-	-	fixed:1	no	errors	memory writes failing
 agentsfleet_memory_hydration_window_entries	gauge	u64	{entry}	-	-	-	fixed:1	no	saturation	hydration window fill

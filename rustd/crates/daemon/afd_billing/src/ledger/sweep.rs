@@ -16,10 +16,12 @@ use sqlx::PgExecutor;
 use af_observability::producers::billing as metrics;
 
 use crate::biller::{Account, Attribution, Biller, Settlement, WorkKey, observed};
-use crate::error::{query, row_malformed};
+use crate::error::query;
 use crate::price::RatedLine;
 use crate::rates::Posture;
 use crate::{Nanos, Result, sql};
+
+use super::unreadable::{Unreadable, skipped};
 
 const SELECT_UNSETTLED: &str = include_str!("sql/select_unsettled.sql");
 #[cfg(feature = "test-util")]
@@ -137,9 +139,6 @@ impl From<OwedRow> for metrics::Owed {
     }
 }
 
-/// The table a malformed identifier is reported against.
-const TABLE_LINES: &str = "billing.usage_lines";
-
 /// A work whose settlement the biller refused this pass; the next pass retries.
 const EVENT_REFUSED: &str = "billing_relay_refused";
 
@@ -149,8 +148,11 @@ const EVENT_REFUSED: &str = "billing_relay_refused";
 /// Answers where the next read resumes when this one filled its limit, and
 /// `None` when it reached the newest line, so the next read starts a new lap.
 ///
+/// A group whose work type, line kind or posture this build cannot name is left
+/// out and stays unsettled; see [`super::unreadable`].
+///
 /// # Errors
-/// The statement would not run, or a stored identifier is not one.
+/// The statement would not run.
 pub async fn unsettled<'e>(
     executor: impl PgExecutor<'e>,
     limit: i64,
@@ -171,7 +173,7 @@ pub async fn unsettled<'e>(
             logged_at: last.logged_at,
             line_id: last.line_id.clone(),
         });
-    Ok((grouped(rows)?, resume))
+    Ok((grouped(rows), resume))
 }
 
 /// `work`'s unsettled lines grouped by provider, model and pricing posture.
@@ -180,7 +182,7 @@ pub async fn unsettled<'e>(
 /// shared database never settles another test's usage.
 ///
 /// # Errors
-/// The statement would not run, or a stored identifier is not one.
+/// The statement would not run.
 #[cfg(feature = "test-util")]
 pub async fn unsettled_work<'e>(
     executor: impl PgExecutor<'e>,
@@ -192,10 +194,10 @@ pub async fn unsettled_work<'e>(
         .fetch_all(executor)
         .await
         .map_err(query(CONTEXT_UNSETTLED))?;
-    grouped(rows)
+    Ok(grouped(rows))
 }
 
-fn grouped(mut rows: Vec<UnsettledRow>) -> Result<Vec<Settlement>> {
+fn grouped(mut rows: Vec<UnsettledRow>) -> Vec<Settlement> {
     rows.sort_unstable_by(|left, right| {
         left.identity()
             .cmp(&right.identity())
@@ -209,21 +211,31 @@ fn grouped(mut rows: Vec<UnsettledRow>) -> Result<Vec<Settlement>> {
         while let Some(next) = rows.next_if(|next| next.identity() == row.identity()) {
             group.push(next);
         }
-        // Skip a work or a line kind this build cannot name without blocking
-        // the relay's cursor: the daemon that wrote it settles it.
+        // Skip what this build cannot read, without blocking the relay's cursor
+        // and without guessing: the group stays unsettled and is named once.
         let Some(work) = row.work() else {
+            skipped(Unreadable::WorkType, &row.work_type, &row.work_type);
             continue;
         };
-        let lines = std::iter::once(&row)
+        let Some(posture) = Posture::parse(&row.posture) else {
+            skipped(Unreadable::Posture, &row.work_type, &row.posture);
+            continue;
+        };
+        let Some(lines) = std::iter::once(&row)
             .chain(&group)
             .map(UnsettledRow::line)
-            .collect::<Result<Option<Vec<_>>>>()?;
-        let Some(lines) = lines else {
+            .collect::<Option<Vec<_>>>()
+        else {
+            let unnamed = std::iter::once(&row)
+                .chain(&group)
+                .find(|line| LineKind::parse(&line.kind).is_none())
+                .map_or(row.kind.as_str(), |line| line.kind.as_str());
+            skipped(Unreadable::LineKind, &row.work_type, unnamed);
             continue;
         };
-        settlements.push(row.settlement(work, lines)?);
+        settlements.push(row.settlement(work, posture, lines));
     }
-    Ok(settlements)
+    settlements
 }
 
 /// One unsettled line, by column name.
@@ -273,19 +285,9 @@ impl UnsettledRow {
 
     /// The row's line as the work priced it; `None` for a line kind this
     /// build cannot name.
-    fn line(&self) -> Result<Option<RatedLine>> {
-        let Some(kind) = LineKind::parse(&self.kind) else {
-            return Ok(None);
-        };
-        let price = self
-            .price_id
-            .as_ref()
-            .map(|id| {
-                Uuid7::parse(id.as_str())
-                    .map_err(row_malformed(TABLE_LINES, "platform_model_price_id"))
-            })
-            .transpose()?;
-        Ok(Some(RatedLine {
+    fn line(&self) -> Option<RatedLine> {
+        let kind = LineKind::parse(&self.kind)?;
+        Some(RatedLine {
             usage: UsageLine {
                 kind,
                 seq: count(self.seq),
@@ -298,10 +300,10 @@ impl UnsettledRow {
                 output_tokens: count(self.output_token_count),
                 runtime_ms: count(self.runtime_ms),
             },
-            price,
+            price: self.price_id.clone(),
             charged: Nanos::from_i64(self.charged_nanos),
             unpriced_tokens: u64::try_from(self.unpriced_token_count).unwrap_or(0),
-        }))
+        })
     }
 
     /// The work this row belongs to, by its stored kind.
@@ -313,31 +315,34 @@ impl UnsettledRow {
         }
     }
 
-    /// A settlement for this row's `work`, retaining its complete priced group.
-    fn settlement(self, work: fn(Uuid7) -> WorkKey, lines: Vec<RatedLine>) -> Result<Settlement> {
-        let id = |text: &str, column: &'static str| {
-            Uuid7::parse(text).map_err(row_malformed(TABLE_LINES, column))
-        };
-        let attribution = match (self.fleet_id.as_ref(), self.event_id) {
+    /// A settlement for this row's `work` under `posture`, retaining its
+    /// complete priced group.
+    fn settlement(
+        self,
+        work: fn(Uuid7) -> WorkKey,
+        posture: Posture,
+        lines: Vec<RatedLine>,
+    ) -> Settlement {
+        let attribution = match (self.fleet_id, self.event_id) {
             (Some(fleet), Some(event_id)) => Attribution::Fleet {
-                fleet: id(fleet.as_str(), "fleet_id")?,
+                fleet,
                 fleet_name: self.fleet_name.unwrap_or_default(),
                 event_id,
             },
             _ => Attribution::SetupChat,
         };
-        Ok(Settlement {
-            work: work(id(self.work_id.as_str(), "work_id")?),
+        Settlement {
+            work: work(self.work_id),
             payer: Account {
-                tenant: id(self.tenant_id.as_str(), "tenant_id")?,
-                workspace: id(self.workspace_id.as_str(), "workspace_id")?,
+                tenant: self.tenant_id,
+                workspace: self.workspace_id,
             },
             attribution,
             provider: self.provider,
             model: self.model,
-            posture: Posture::parse(&self.posture).unwrap_or(Posture::Platform),
+            posture,
             lines,
-        })
+        }
     }
 }
 
@@ -351,10 +356,6 @@ fn count(stored: i64) -> u32 {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::expect_used,
-    reason = "a test asserts by panicking; the daemon's restriction set is the manifest's"
-)]
 mod tests {
     use af_core::id::{ENTROPY_LEN, Uuid7};
     use af_wire::usage::LineKind;
@@ -400,15 +401,14 @@ mod tests {
         }
     }
 
-    // M245: a model line and a runtime line may share a number; their kinds
-    // keep them apart, and the settlement carries each as the kind it is.
+    /// A model line and a runtime line may share a number; their kinds keep
+    /// them apart, and the settlement carries each as the kind it is.
     #[test]
     fn a_work_settles_its_lines_by_kind_and_number() {
         let settlements = grouped(vec![
             row(1, work::AUTHORING_ATTEMPT, LineKind::Runtime.as_str(), 0),
             row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
-        ])
-        .expect("both lines read");
+        ]);
         let [settlement] = settlements.as_slice() else {
             unreachable!("one work, one settlement: {settlements:?}");
         };
@@ -427,8 +427,7 @@ mod tests {
             row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
             row(1, work::AUTHORING_ATTEMPT, "storage", 1),
             row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
-        ])
-        .expect("an unknown kind is skipped, not an error");
+        ]);
         let works: Vec<&WorkKey> = settlements
             .iter()
             .map(|settlement| &settlement.work)
@@ -436,18 +435,88 @@ mod tests {
         assert_eq!(
             works,
             [&WorkKey::AuthoringAttempt(id(4))],
-            "the work with an unnamed kind is left for the daemon that wrote it, \
-             whole: settling only its known lines would undercharge it"
+            "the work with an unnamed kind stays unsettled, whole: settling only \
+             its known lines would undercharge it"
         );
     }
 
     #[test]
-    fn a_work_type_this_build_cannot_name_is_left_for_its_writer() {
+    fn a_work_type_this_build_cannot_name_stays_unsettled() {
         let settlements = grouped(vec![
             row(1, "future_work", LineKind::Model.as_str(), 0),
             row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
-        ])
-        .expect("an unknown work type is skipped, not an error");
+        ]);
         assert_eq!(settlements.len(), 1, "{settlements:?}");
+    }
+
+    /// A posture this build cannot name is not priced as the platform's: a
+    /// guess would settle a tenant's own-key usage at the platform's rates.
+    #[test]
+    fn a_posture_this_build_cannot_name_stays_unsettled_rather_than_settling_as_platform() {
+        let mut unreadable = row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0);
+        "self-managed-by-another-name".clone_into(&mut unreadable.posture);
+        let settlements = grouped(vec![
+            unreadable,
+            row(4, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0),
+        ]);
+        let works: Vec<&WorkKey> = settlements
+            .iter()
+            .map(|settlement| &settlement.work)
+            .collect();
+        assert_eq!(works, [&WorkKey::AuthoringAttempt(id(4))]);
+    }
+
+    /// Skipping is never silent: each distinct unreadable spelling is named,
+    /// and a later pass over the same rows adds no second line.
+    #[cfg(feature = "test-util")]
+    #[test]
+    fn what_the_relay_skips_is_named_once() {
+        use af_core::test_util::trace::Capture;
+
+        let capture = Capture::install();
+        let rows = || {
+            let mut bad_posture = row(1, work::AUTHORING_ATTEMPT, LineKind::Model.as_str(), 0);
+            "posture-named-by-the-sweep-test".clone_into(&mut bad_posture.posture);
+            vec![
+                bad_posture,
+                row(
+                    3,
+                    work::AUTHORING_ATTEMPT,
+                    "kind-named-by-the-sweep-test",
+                    0,
+                ),
+                row(
+                    2,
+                    "work-type-named-by-the-sweep-test",
+                    LineKind::Model.as_str(),
+                    0,
+                ),
+            ]
+        };
+
+        for _pass in 0..3 {
+            assert_eq!(
+                grouped(rows()).len(),
+                0,
+                "an unreadable group settles nothing, pass after pass"
+            );
+        }
+
+        let mut spellings: Vec<String> = capture
+            .events()
+            .iter()
+            .filter(|event| event.field("event") == Some("billing_relay_skipped"))
+            .filter_map(|event| event.field("spelling").map(str::to_owned))
+            .collect();
+        spellings.sort();
+        assert_eq!(
+            spellings,
+            [
+                "kind-named-by-the-sweep-test",
+                "posture-named-by-the-sweep-test",
+                "work-type-named-by-the-sweep-test",
+            ],
+            "three spellings, each named once across three passes"
+        );
     }
 }
