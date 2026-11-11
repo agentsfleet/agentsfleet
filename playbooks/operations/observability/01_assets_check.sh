@@ -49,7 +49,7 @@ check_dashboard_shape() {
   for dashboard in "${DASHBOARDS[@]}"; do
     case "${dashboard##*/}" in
       dashboard.json) expected='[3,6,7,8,20,28,35,37,101,106]' ;;
-      dashboard-chat.json) expected='[38,40,41,42,43,44,45,46,47,102,103,104,105]' ;;
+      dashboard-chat.json) expected='[38,40,41,42,43,44,45,46,47,103,104,105]' ;;
       dashboard-api-db.json) expected='[1,2,110,111,112,113,114,115]' ;;
       dashboard-scheduler.json) expected='[120,121,122,123,124,126]' ;;
       dashboard-models.json) expected='[130,131,132,133,134,135,136,137,138,139,140,141]' ;;

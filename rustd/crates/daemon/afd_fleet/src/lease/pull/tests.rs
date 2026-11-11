@@ -21,6 +21,7 @@ async fn should_answer_a_degraded_runner_without_touching_a_datastore() {
                 now: test_dead::AT,
             },
             None,
+            &mut af_observability::verb_span::VerbClock::untimed(),
             |_lease, _metadata| {
                 issued += 1;
             },

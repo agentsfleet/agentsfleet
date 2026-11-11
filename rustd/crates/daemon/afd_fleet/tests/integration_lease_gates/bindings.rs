@@ -31,6 +31,8 @@ use super::seed::{seed_gate, seed_provider_resolution, seed_write_gate};
 use super::*;
 
 use af_core::event::label;
+use af_observability::verb_span::{OfferStage, VerbClock};
+use afd_fleet::lease::OfferRequest;
 use afd_gate::policy::repair;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -72,6 +74,55 @@ async fn test_a_write_binding_it_cannot_enforce_ends_the_event() {
         failure,
         label::BINDING_UNENFORCEABLE,
         "an unenforceable binding must not be recorded as some other refusal"
+    );
+
+    fixtures.cleanup().await;
+}
+
+/// A delivery that ends without an offer frame still marks `issue`: the stage
+/// runs to where the delivery returns, so a refusal's writes are not left
+/// unexplained, and `encode` and `send` stay unreached. The same unenforceable
+/// binding as above, entered through the offer's own claim so the clock is the
+/// one the gateway passes.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn test_a_refused_delivery_marks_the_issue_stage_and_none_after_it() {
+    crate::support::install_subscriber();
+    let fixtures = Fixtures::create().await;
+    let seeded = ready(&fixtures).await;
+    set_config(&fixtures, &seeded.fleet, MULTI_REPOSITORY_WRITE_CONFIG).await;
+    let _default = seed_provider_resolution(&fixtures, &seeded.fleet).await;
+    seed_gate(&fixtures, &seeded, STATUS_APPROVED).await;
+
+    let mut clock = VerbClock::<OfferStage>::start();
+    let mut offered = 0;
+    let answer = fixtures
+        .plane()
+        .claim_fleet_with(
+            OfferRequest {
+                runner: &seeded.runner,
+                held: std::slice::from_ref(&seeded.fleet),
+                degraded: false,
+                now: fixtures.enrolled_at(),
+            },
+            None,
+            &mut clock,
+            |_lease, _metadata| {
+                offered += 1;
+            },
+        )
+        .await
+        .expect("a refusal is a decision, not a fault");
+
+    assert!(
+        answer.is_none(),
+        "an unenforceable binding issued a lease: {answer:?}"
+    );
+    assert_eq!(offered, 0, "a refused delivery built an offer");
+    assert_eq!(
+        clock.reached(),
+        [OfferStage::Claim, OfferStage::Admit, OfferStage::Issue],
+        "a refusal ends the issue stage where the delivery returns"
     );
 
     fixtures.cleanup().await;

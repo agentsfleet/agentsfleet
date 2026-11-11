@@ -1,6 +1,7 @@
 //! Offer issue, encoding and delivery each have one ownership boundary.
 
 use af_core::timing::STREAM_ANSWER_TIMEOUT;
+use af_observability::verb_span::{OfferStage, VerbClock};
 use af_stream::Encoder;
 use af_wire::{lease::TaggedLease, protocol::StreamKind};
 use afd_fleet::lease::{OfferRequest, Offered};
@@ -23,15 +24,23 @@ impl SessionServices {
             deadline,
         )
         .await?;
-        let Some(offered) = self.issue_offer(&state, &mut encoder).await? else {
+        // After the reserve, so output backpressure is not read as claim time.
+        let mut clock = VerbClock::<OfferStage>::start();
+        // A pass that reaches no stage leaves no span (the clock's own rule):
+        // the 5 s probe's empty answer, and a claim that failed before
+        // selecting. A claim the gates refused reached a stage and keeps one.
+        let Some(offered) = self.issue_offer(&state, &mut encoder, &mut clock).await? else {
             return Ok(false);
         };
         let frame = encoder.finish()?;
         self.cache.insert(offered)?;
         self.handle.snapshot.lock().issued()?;
-        self.output
+        let sent = self
+            .output
             .send(StreamKind::Work, frame, &self.handle.stop, deadline)
-            .await?;
+            .await;
+        clock.mark(OfferStage::Send);
+        sent?;
         Ok(true)
     }
 
@@ -47,6 +56,7 @@ impl SessionServices {
         &self,
         state: &SchedulingState,
         encoder: &mut Encoder,
+        clock: &mut VerbClock<OfferStage>,
     ) -> Result<Option<Offered>> {
         let request = OfferRequest {
             runner: &self.handle.runner,
@@ -58,9 +68,13 @@ impl SessionServices {
             .operation(Operation::Offer, async {
                 Ok(self
                     .leases
-                    .claim_with(&self.drafts, request, self.accepted, |lease, metadata| {
-                        encode_offer(encoder, lease, metadata)
-                    })
+                    .claim_with(
+                        &self.drafts,
+                        request,
+                        self.accepted,
+                        clock,
+                        |lease, metadata| encode_offer(encoder, lease, metadata),
+                    )
                     .await?)
             })
             .await?;

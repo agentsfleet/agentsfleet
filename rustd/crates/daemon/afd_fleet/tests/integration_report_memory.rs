@@ -122,6 +122,7 @@ async fn test_report_memory_lands_before_the_settle() {
             &held.runner,
             &report(&held, held.fence.as_u64(), learned()),
             held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
         .expect("the holder's report settles");
@@ -160,6 +161,7 @@ async fn test_superseded_report_writes_no_memory() {
             &held.runner,
             &report(&held, held.fence.as_u64(), learned()),
             held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
         .map(|_settled| ())
@@ -199,6 +201,7 @@ async fn test_oversize_report_memory_is_cut_and_counted() {
             &held.runner,
             &report(&held, held.fence.as_u64(), oversize),
             held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
         .expect("an oversize memory does not refuse the report");
@@ -239,6 +242,7 @@ async fn test_failed_capture_still_settles() {
             &held.runner,
             &report(&held, held.fence.as_u64(), learned()),
             held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
         .expect("a failed capture does not refuse the report");
@@ -281,13 +285,23 @@ async fn test_a_repeated_report_skips_its_memory_capture() {
     let plane = held.fixtures.plane();
     let body = report(&held, held.fence.as_u64(), learned());
     plane
-        .report(&held.runner, &body, held.now)
+        .report(
+            &held.runner,
+            &body,
+            held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("the holder's report settles");
     let log = Capture::install();
 
     let repeated = plane
-        .report(&held.runner, &body, held.now)
+        .report(
+            &held.runner,
+            &body,
+            held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("a repeated report answers as the first did");
     let skipped = log.only("memory_capture_skipped");
