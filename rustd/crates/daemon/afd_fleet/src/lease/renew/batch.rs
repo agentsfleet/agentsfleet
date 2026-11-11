@@ -139,6 +139,7 @@ struct Judged {
     over_budget: Option<bool>,
     host_renews: Option<bool>,
     admitted: Option<bool>,
+    has_task: Option<bool>,
     extended_until: Option<jiff_sqlx::Timestamp>,
     slot_moved: bool,
     charged_nanos: i64,
@@ -152,9 +153,14 @@ enum Verdict {
     Cancelled,
     MaxRuntime,
     OverBudget,
-    /// Its prices or ceilings moved under the statement: priced again and run
-    /// once more, then the per-lease path.
+    /// Its prices or ceilings moved under the statement: it takes the
+    /// per-lease path, and the replica reads the fleet's versions again.
     Moved,
+    /// The lease runs a durable task, which the statement never renews: it
+    /// takes the per-lease path, which checks the task's authority. A plain
+    /// lease gains a task when the run binds one, after the session kept its
+    /// facts as a plain lease's.
+    Tasked,
 }
 
 impl Judged {
@@ -162,6 +168,9 @@ impl Judged {
     /// this runner's live holder is lost before anything else is asked of it.
     fn verdict(&self) -> Verdict {
         let held = |check: Option<bool>| check.unwrap_or(false);
+        if self.found && held(self.has_task) {
+            return Verdict::Tasked;
+        }
         if !self.found || !held(self.host_renews) || !held(self.admitted) {
             return Verdict::Lost;
         }
@@ -303,6 +312,10 @@ impl LeaseService {
                     moved.push(entry);
                     continue;
                 }
+                Verdict::Tasked => {
+                    answers.insert(lease_id, Answer::PerLease);
+                    continue;
+                }
                 refused => {
                     self.known_lines(runner_id, entry.found, entry.request, now)
                         .await;
@@ -339,7 +352,7 @@ fn refusal_of(verdict: &Verdict) -> crate::Error {
         Verdict::Cancelled => lease_cancelled(),
         Verdict::MaxRuntime => lease_max_runtime(),
         Verdict::OverBudget => budget_exhausted(),
-        Verdict::Lost | Verdict::Extended(..) | Verdict::Moved => lease_lost(),
+        Verdict::Lost | Verdict::Extended(..) | Verdict::Moved | Verdict::Tasked => lease_lost(),
     }
 }
 
@@ -788,6 +801,7 @@ mod tests {
             over_budget: Some(false),
             host_renews: Some(true),
             admitted: Some(true),
+            has_task: Some(false),
             extended_until: Some(jiff_sqlx::Timestamp::from(test_dead::AT)),
             slot_moved: true,
             charged_nanos: 7,
@@ -807,8 +821,9 @@ mod tests {
 
     #[test]
     fn each_failed_check_answers_as_the_per_lease_path_would() {
-        let cases: [Case; 11] = [
+        let cases: [Case; 12] = [
             (|row| row.found = false, Verdict::Lost),
+            (|row| row.has_task = Some(true), Verdict::Tasked),
             (|row| row.host_renews = Some(false), Verdict::Lost),
             (|row| row.admitted = None, Verdict::Lost),
             (|row| row.cancelled = Some(true), Verdict::Cancelled),

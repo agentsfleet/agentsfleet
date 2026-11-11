@@ -116,6 +116,8 @@ mod integration_renew_clamp;
 mod integration_renew_coverage;
 #[path = "integration_renew_gate_edges.rs"]
 mod integration_renew_gate_edges;
+#[path = "integration_renew_lock_order.rs"]
+mod integration_renew_lock_order;
 #[path = "integration_reply_destination.rs"]
 mod integration_reply_destination;
 #[path = "integration_report_commit.rs"]
