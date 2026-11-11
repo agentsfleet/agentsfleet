@@ -376,6 +376,7 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 - **`runner.leases.last_metered_at`: kept.** The file `20261108123200_runner_leases.sql` declares it as the lease's runtime cursor
   (rule 4 (d)). Renewal and report meter from it and advance it (`afd_fleet`'s `renew_batch.sql` and `commit_report.sql`). The expiry sweep bills the last slice from it (`select_unbilled_expired_leases.sql` and
   `bill_expired_slice.sql`).
+
   The review listed it as dropped. Per-request billing kept this one
   cursor and dropped the lease's token cursors and the slot's cursors instead.
 - **`runner.runners.selftest_all_ok`: dropped.** Derived from `selftest_checks` (the file `20261108123100_runner_runners.sql`), read
@@ -390,11 +391,14 @@ Settled by review on Oct 17, 2026, and checked against the rebuilt slots:
 
 Added by this milestone:
 
-- **`billing.usage_lines.kind`: added by M245.** What the line bills: `model` (a call the runner reported, numbered by its
-  request), `runtime` (a slice the daemon measured, numbered by the milliseconds from its work's start to the slice's start)
-  or `decision` (a native decision call, numbered by its call). The unique key is `(work_type, work_id, kind, seq)`, so no
-  kind's numbers are carved out of another's; the `u32` bands `DAEMON_SEQ_BASE` and `DECISION_SEQ_BASE` that kept them
-  apart are gone. Spellings are `af_wire::usage::LineKind`.
+- **`billing.usage_lines.kind`: added by M245.** What the line bills is one of three kinds. `model` is a call the runner reported, numbered by its
+  request. `runtime` is a slice the daemon measured, numbered by the milliseconds from its work's start to the slice's start.
+
+  `decision` is a native decision call, numbered by its call. The unique key is `(work_type, work_id, kind, seq)`, so no
+  kind's numbers are carved out of another's. The `u32` bands `DAEMON_SEQ_BASE` and `DECISION_SEQ_BASE` that kept them
+  apart are gone.
+
+  Spellings are `af_wire::usage::LineKind`.
 
 ## Public interface changes
 

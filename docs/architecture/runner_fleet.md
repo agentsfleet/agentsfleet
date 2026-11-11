@@ -68,7 +68,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - No secret enters a sandbox. Model keys and minted tokens stay in the supervisor, and bubblewrap starts every sandbox with a cleared environment (§Process-boundary hardening).
 
-- Config is cached only by its head revision id, which every claim reads, so the next run obeys an edit; warm mode reuses only the sandbox shell (§Config).
+- Config is cached only by its head revision id, which every claim reads, so the next run obeys an edit. Warm mode reuses only the sandbox shell (§Config).
 
 - No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle. The deferred name layer is eBPF/FQDN (§Egress model).
 
@@ -822,7 +822,9 @@ The claim reads it from that revision (`afd_fleet`'s installed-revision read). A
 
 Every claim reads the fleet's `head_revision_id` in its own statement. Each replica caches the parsed definition keyed by that id, and revisions are append-only, so an id never names two documents. A config change therefore takes effect on the **next command** (the next lease) on every replica, with no signal between them.
 
-A cache key is built only from a statement's row, so no lookup by bare fleet id compiles. There is no `fleet_config_changed` consumer to wait on; the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight. The next run picks it up.
+A cache key is built only from a statement's row, so no lookup by bare fleet id compiles. There is no `fleet_config_changed` consumer to wait on; the deleted worker's watcher-reload path is gone.
+
+A config change never alters a language-model turn already in flight. The next run picks it up.
 
 ## Money gates
 

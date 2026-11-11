@@ -339,11 +339,23 @@ deliveries can both pass it. The second trips `uq_users_oidc_subject`
 (`schema/20261108120400_identity_users.sql`), re-reads what the winner committed,
 and answers as a replay. An index holds under concurrency and a read never can.
 
-**A provider that could not be reached fails the delivery, and the redelivery repairs it.** The tenant row is already committed when the write runs. A timeout, a 5xx or a 429 answers `503 UZ-AUTH-004`, so Svix sends the event again at 5 s, 5 min, 30 min, 2 h, 5 h and 10 h twice. The redelivery takes the replay path, opens nothing new, and writes the tenant back (`an_unreachable_provider_refuses_the_delivery_and_the_redelivery_writes_back`).
+**A provider that could not be reached fails the delivery, and the redelivery repairs it.**
 
-A refused credential and an unknown subject are answered 200: a redelivery cannot change either answer. The first is the operator's `CLERK_SECRET_KEY` to fix, and the second is a person deleted since the event. Every failed writeback is logged with the tenant and the reason, with the subject kept out of the log line, and counted under `agentsfleet_signup_failed_total{reason="writeback_failed"}`. An account the writeback never reached is repaired by replaying its `user.created` delivery from the provider's webhook dashboard, which takes the same replay path.
+The tenant row is already committed when the write runs, and a timeout, a 5xx or a 429 answers `503 UZ-AUTH-004`. Svix sends the event again at 5 s, 5 min, 30 min, 2 h, 5 h and 10 h twice. The redelivery takes the replay path, opens nothing new, and writes the tenant back (`an_unreachable_provider_refuses_the_delivery_and_the_redelivery_writes_back`).
 
-**The dashboard waits for the writeback.** A browser that finished signing up can reach `/` with a token minted before the writeback landed, so the workspace list is refused with `403 UZ-AUTH-022`. When that refusal meets a token carrying no tenant, at the top level or under `metadata.tenant_id` (the two places the daemon reads it), the entry page renders a setup screen. The screen mints a fresh token through `user.reload()` every 2 s and re-runs the page, which redirects as soon as the token carries the tenant, and it gives up after 90 s (`ui/packages/app/app/(dashboard)/AccountSetup.tsx`). A token that carries a tenant and still lacks the scope gets the error screen, because no wait brings back a scope an operator removed.
+A refused credential and an unknown subject are answered 200, because a redelivery cannot change either answer. The first is the operator's `CLERK_SECRET_KEY` to fix, and the second is a person deleted since the event.
+
+Every failed writeback is logged with the tenant and the reason, with the subject kept out of the log line, and counted under `agentsfleet_signup_failed_total{reason="writeback_failed"}`. An account the writeback never reached is repaired by replaying its `user.created` delivery from the provider's webhook dashboard, which takes the same replay path.
+
+**The dashboard waits for the writeback.**
+
+A browser that finished signing up can reach `/` with a token minted before the writeback landed. The workspace list is then refused with `403 UZ-AUTH-022`.
+
+When that refusal meets a token with no tenant, the entry page renders a setup screen. The daemon reads the tenant at the top level or under `metadata.tenant_id`.
+
+The screen mints a fresh token through `user.reload()` every 2 s and re-runs the page. The page redirects once the token carries the tenant. The screen gives up after 90 s (`ui/packages/app/app/(dashboard)/AccountSetup.tsx`).
+
+A token that carries a tenant and still lacks the scope gets the error screen. No wait brings back a scope an operator removed.
 
 **Signup publishes nothing on the bus.** `afd_tenant`, which runs it, does not
 depend on `afd_bus` (`rustd/crates/daemon/afd_tenant/Cargo.toml`). The account
@@ -848,7 +860,15 @@ The runner receives a tenant's `secrets_map` inline in a lease only because `age
 
 **Secret delivery is placement, not a standing grant**. `Principal::Runner` carries no tenant at all, which is the signal that this credential holds no tenant authority.
 
-The same placement model carries the resolved **LLM provider key** (M80_009). `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_observed`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`. A tenant's own key is read every time. The shared platform key may be held decrypted in daemon memory, keyed by the catalogue version, the secret's id and a digest of the stored ciphertext and endpoint, so a replaced key misses at once. An entry also ends with the price window it matched, never lives past five minutes, and is zeroed when it drops. Eviction runs when the replica serves chats, so that bound holds while it does: an idle replica keeps an expired entry until its next chat. It is the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row.
+The same placement model carries the resolved **LLM provider key** (M80_009). `agentsfleetd` resolves the saved model reference per lease (`Providers::resolve_observed`, fresh + reclaim) and delivers it inline on `ExecutionPolicy.provider` + `ExecutionPolicy.api_key`. A tenant's own key is read every time.
+
+The shared platform key may be held decrypted in daemon memory. The cache keys it by the catalogue version, the secret's id and a digest of the stored ciphertext and endpoint. A replaced key therefore misses.
+
+An entry also ends with the price window it matched, never lives past five minutes, and is zeroed when it drops.
+
+Eviction runs when the replica serves chats, so that bound holds while it does. An idle replica keeps an expired entry until its next chat.
+
+The delivered key is the same envelope as `secrets_map`, never the `secrets_map` object itself, never the `runner.leases` row.
 
 A runner receives the billed provider key only because work was placed on it. Inside `agentsfleetd` the key is a `SecretString`, wiped on drop (`rustd/crates/daemon/afd_credential/src/provider/resolved.rs`). The serialized lease body is outside that guarantee.
 
