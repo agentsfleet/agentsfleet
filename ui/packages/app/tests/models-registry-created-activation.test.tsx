@@ -47,7 +47,7 @@ class ModelBoundary {
   entry(): TenantModelEntry {
     return {
       id: "created-model-entry", model_id: MODEL_ID, display_name: CATALOGUE_MODEL.display_name,
-      provider: CATALOGUE_MODEL.provider, secret_ref: SECRET_REF, kind: SECRET_KIND.provider_key,
+      provider: CATALOGUE_MODEL.provider, secret_ref: SECRET_REF, workspace_id: WORKSPACE_ID, kind: SECRET_KIND.provider_key,
       has_key: true, active: this.active, created_at: VERIFIED_AT,
     };
   }
@@ -76,14 +76,14 @@ class ModelBoundary {
       return Response.json({ name: SECRET_REF });
     }
     if (path === PATH.registry && method === POST) {
-      expect(requestBody(init)).toEqual({ model_id: MODEL_ID, secret_ref: SECRET_REF });
+      expect(requestBody(init)).toEqual({ workspace_id: WORKSPACE_ID, model_id: MODEL_ID, secret_ref: SECRET_REF });
       if (this.refuseRegistration) return Response.json({ error_code: "UZ-MODELS-003", detail: COPY.registrationRefused }, { status: STATUS_CONFLICT });
       this.registered = true;
       return Response.json(this.entry());
     }
     if (path === PATH.registry && method === HTTP_METHOD.GET) return Response.json(this.page());
     if (path === PATH.provider && method === HTTP_METHOD.PUT) {
-      expect(requestBody(init)).toEqual({ mode: PROVIDER_MODE.self_managed, model: MODEL_ID, secret_ref: SECRET_REF });
+      expect(requestBody(init)).toEqual({ mode: PROVIDER_MODE.self_managed, workspace_id: WORKSPACE_ID, model: MODEL_ID, secret_ref: SECRET_REF });
       return this.activation.promise;
     }
     this.unexpected.push(`${method} ${path}`);

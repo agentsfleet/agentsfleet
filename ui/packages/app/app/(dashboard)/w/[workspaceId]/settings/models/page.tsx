@@ -7,6 +7,7 @@ import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
 import ModelsRegistryTable from "./components/ModelsRegistryTable";
 import { MODELS_PAGE_DESCRIPTION, MODELS_PAGE_TITLE } from "./copy";
 import { libraryErrorFromCause, type LibraryError } from "@/lib/api/library-types";
+import { listTenantWorkspacesCached } from "@/lib/workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -63,10 +64,15 @@ export async function ModelsRegistryData({ workspaceId }: { workspaceId: string 
   } catch (cause) {
     error = libraryErrorFromCause(cause);
   }
+  // Reuse the shell's per-request read for display labels only. Every write
+  // uses the workspace persisted on the model, regardless of these labels.
+  const workspaces = await listTenantWorkspacesCached(token)
+    .then(({items}) => items.map(({id, name}) => ({id, name})))
+    .catch(() => []);
 
   return (
     <ModelCatalogueProvider>
-      <ModelsRegistryTable workspaceId={workspaceId} initialPage={page} initialError={error} />
+      <ModelsRegistryTable workspaceId={workspaceId} workspaces={workspaces} initialPage={page} initialError={error} />
     </ModelCatalogueProvider>
   );
 }

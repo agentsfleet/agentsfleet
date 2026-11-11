@@ -151,7 +151,7 @@ async fn test_a_self_managed_activation_reaches_its_transaction() {
         PROVIDER_WRITE,
         Method::PUT,
         Some(TENANT_KEY),
-        r#"{"mode":"self_managed","secret_ref":"my-key"}"#,
+        r#"{"mode":"self_managed","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","secret_ref":"my-key"}"#,
     )
     .await;
 
@@ -210,4 +210,22 @@ async fn test_the_write_scope_gates_the_activation() {
     )
     .await;
     assert_eq!(read_only.status(), StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn self_managed_activation_requires_an_explicit_valid_workspace() {
+    for (body, detail) in [
+        (
+            r#"{"mode":"self_managed","secret_ref":"key"}"#,
+            "workspace_id required when mode=self_managed",
+        ),
+        (
+            r#"{"mode":"self_managed","secret_ref":"key","workspace_id":"invalid"}"#,
+            "workspace_id must be a canonical UUIDv7",
+        ),
+    ] {
+        let refused = send_body(PROVIDER_WRITE, Method::PUT, Some(TENANT_KEY), body).await;
+        assert_eq!(refused.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(detail_of(refused).await, detail);
+    }
 }

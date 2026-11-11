@@ -275,6 +275,124 @@
 | `ui/packages/app/components/domain/chat/ChatMessageRow.tsx` | EDIT | Match approved working-status motion and compact glyph scale |
 | `ui/packages/design-system/src/design-system/DropdownMenu.tsx` | EDIT | Match approved working-status motion and compact glyph scale |
 
+| `schema/20261111230000_model_tenant_models_workspace.sql` | CREATE | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_db/tests/integration_migrate/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_db/tests/integration_migrate/model_workspace.rs` | CREATE | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/managed.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/selection/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/selection/tests.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/activate/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/entries/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/entries/page.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/entries/write.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/entries/sql/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/sql/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/sql/select_primary_workspace.sql` | DELETE | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/sql/select_workspace_exists.sql` | CREATE | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/sql/select_tenant_selection.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/sql/lock_credential_for_reference.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/sql/lock_credential_for_activation.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/sql/insert_tenant_model_if_absent.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/sql/activate_tenant_model.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/entries/sql/insert_entry.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/entries/sql/select_entry.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/entries/sql/select_first_page.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/entries/sql/select_page_after.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/entries/sql/update_entry_model.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/registered/sql/entry.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/src/provider/registered/sql/lock_entry_credential.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/main.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/activation.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/activation_ceiling.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/provider_resolution.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/registry.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/registry_page.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/registry_tenancy.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/selection_pointer.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/resolution_locks.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_credential/tests/integration_rotation/workspace_credentials.rs` | CREATE | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_vault/src/describe.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_vault/src/lib.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_vault/src/delete.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_vault/src/sql/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_vault/src/sql/select_scoped_secret_descriptors.sql` | CREATE | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_vault/src/sql/lock_entries.sql` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_vault/tests/support/lane.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api_wire/src/tenant_model_entry.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api_wire/src/tenant_provider.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api_wire/tests/tenant_provider_shapes.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/write.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/render.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/provider/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/provider/write.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/provider/tests.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api/tests/integration_tenant_provider.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api/tests/integration_tenant_models/mod.rs` | CREATE | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api/tests/harness/stubs_provider.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `ui/packages/app/lib/api/tenant_provider.ts` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `ui/packages/app/lib/api/tenant_provider.test.ts` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `ui/packages/app/lib/api/tenant_model_entries.ts` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `ui/packages/app/lib/api/tenant_model_entries.test.ts` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `ui/packages/app/lib/api/tenant-model-schemas.ts` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `ui/packages/app/lib/types.ts` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `cli/src/commands/tenant/tenant.ts` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `cli/src/program/tree/workspace.command.ts` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `cli/test/tenant-provider-read-write.unit.test.ts` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `public/openapi.json` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/EditModelEntryDialog.tsx` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `ui/packages/app/tests/models-registry-edit-remove.test.tsx` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `ui/packages/app/tests/helpers/models-registry-edit-fixtures.tsx` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `cli/test/helpers-tenant-effect.ts` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `ui/packages/app/tests/e2e/acceptance/models-pagination-race.spec.ts` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `ui/packages/app/tests/e2e/acceptance/fleet-model.spec.ts` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `ui/packages/app/tests/e2e/acceptance/provider-credential-reference.spec.ts` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `ui/packages/app/tests/e2e/acceptance/fixtures/preflight.ts` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `rustd/crates/daemon/afd_api/tests/authoring/seed.rs` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `rustd/crates/daemon/afd_authoring/tests/draft/seed.rs` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `rustd/crates/daemon/afd_api/tests/authoring/saving/revisions/model_changes.rs` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `rustd/crates/daemon/afd_api/tests/integration_connector_status/mod.rs` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `rustd/crates/daemon/afd_connector/tests/integration_connect_roundtrip/disconnect/mod.rs` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `rustd/crates/daemon/main/tests/integration_runner_stream/authoring/seed.rs` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+| `rustd/crates/daemon/afd_fleet/tests/lease_renewal/seat.rs` | EDIT | Preserve the exact credential namespace through model clients and integration fixtures |
+
+| `rustd/crates/daemon/afd_http/src/services/provider.rs` | EDIT | Pass an explicit typed workspace/name reference across the HTTP store seam |
+| `rustd/crates/daemon/afd_http/src/services/model_entry.rs` | EDIT | Pass an explicit typed workspace/name reference across the HTTP store seam |
+
+| `ui/packages/app/tests/models-source-reconciliation.test.ts` | CREATE | Verify explicit model credential namespaces through real client and HTTP boundaries |
+| `rustd/crates/daemon/afd_api/tests/integration_tenant_models.rs` | EDIT | Verify explicit model credential namespaces through real client and HTTP boundaries |
+| `rustd/crates/daemon/afd_api/tests/tenant_model_entry_input.rs` | EDIT | Verify explicit model credential namespaces through real client and HTTP boundaries |
+| `rustd/crates/daemon/afd_api/tests/tenant_model_entry_route.rs` | EDIT | Verify explicit model credential namespaces through real client and HTTP boundaries |
+| `rustd/crates/daemon/afd_api/tests/tenant_provider_route.rs` | EDIT | Verify explicit model credential namespaces through real client and HTTP boundaries |
+| `rustd/crates/daemon/main/tests/integration_tenant_registry.rs` | EDIT | Verify explicit model credential namespaces through real client and HTTP boundaries |
+
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/page.tsx` | EDIT | Reuse existing cached workspace names solely to label each saved model source |
+
+| `ui/packages/app/tests/models-registry-dialogs.test.tsx` | EDIT | Distinguish stored, unavailable and explicitly keyless model credentials |
+| `ui/packages/app/tests/model-details-dialog.test.tsx` | EDIT | Distinguish stored, unavailable and explicitly keyless model credentials |
+
+| `ui/packages/app/tests/models-registry-table.test.tsx` | EDIT | Verify explicit source-workspace forwarding at model action boundaries |
+
+| `ui/packages/app/tests/provider-actions.test.ts` | EDIT | Verify explicit source-workspace forwarding at model action boundaries |
+
+| `ui/packages/app/components/domain/fleet-chat-elements.ts` | CREATE | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/fleet-chat-adapters.ts` | CREATE | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/FleetChatElements.tsx` | CREATE | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/FleetActivityElements.tsx` | CREATE | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/fleetMessageReaders.ts` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/fleetMessageReaders.test.ts` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/fleetFailureCopy.tsx` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/fleet-reply-elements.ts` | CREATE | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/FleetToolInputElements.tsx` | CREATE | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/FleetToolCallBody.tsx` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/components/domain/FleetToolCallDetails.tsx` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/lib/events/event-grouping.ts` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/tests/fleet-chat-elements.test.tsx` | CREATE | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/tests/fleet-tool-rendering.test.tsx` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+| `ui/packages/app/tests/fleet-thread/role-reply-parts.test.ts` | EDIT | Normalize recorded chat manifestations into typed models and dispatch through static renderer registries |
+
 The Files Changed table expands with each grounded implementation slice before editing its additional callers or tests.
 The owner's approval covers the described surfaces; it does not authorize unrelated changes.
 
@@ -336,7 +454,17 @@ Retain completed steps. Registration failure retries registration using the conf
 
 Negative proofs belong to the model recovery and existing dialog/action-boundary tests: saved reuse performs no secret write; held names never rotate implicitly; optional keys on compatible endpoints remain supported; confirmed steps are not repeated; lost acknowledgements are reconciled before retry; duplicate clicks and late results after unmount do not create another operation.
 
-The backend ownership check remains a readiness blocker: `afd_api_tenant/src/handler/tenant/model_entry/write.rs` delegates registration with only tenant, model and secret name, and `afd_credential/src/provider/sql/lock_credential_for_reference.sql` resolves that name in the first account workspace. The form correctly writes to its explicit workspace. Repair requires binding the stored model credential to an explicit workspace at the API/storage boundary, with matching activation, resolution, reference-deletion checks, clients and documentation. Do not repair this by adding a frontend workspace selector, copying credentials, or guessing where storage lives. Same-named keys in two workspaces and cross-account references need real backend proofs before Models is ready.
+The backend ownership defect was confirmed and repaired at the API/storage boundary: `afd_api_tenant/src/handler/tenant/model_entry/write.rs` delegates registration with only tenant, model and secret name, and `afd_credential/src/provider/sql/lock_credential_for_reference.sql` resolves that name in the first account workspace. The form correctly writes to its explicit workspace. Repair this at the API/storage boundary as follows:
+
+- A configured model stores its credential's `workspace_id` beside `secret_ref`. Models and the active choice remain account-scoped. Switching the selected workspace does not relocate a configured model or its key.
+- Registration takes `workspace_id`, `model_id` and `secret_ref`. Self-managed activation takes `workspace_id`, `secret_ref` and the existing optional model. Platform reset needs no workspace. The server proves workspace/account ownership in the same statement that locks the credential. Another account's workspace is indistinguishable from a missing credential.
+- Registry and active-selection responses carry the stored workspace. Reconciliation matches workspace, model and secret name together. Activation of a listed row uses that row's source workspace, never the currently selected page's workspace.
+- Add a forward migration. Backfill existing entries once to the workspace the old implementation actually used, preserving entry IDs, selections, setup references and credential bytes. Rows with no recoverable workspace remain visible but unavailable; they never resolve by guessing a different workspace. A composite workspace/account foreign key prevents cross-account storage. Workspace removal clears only the source reference so existing model/setup history remains readable.
+- Replace the old unique key with `(tenant_id, workspace_id, model_name, secret_ref)`. Two workspaces may register the same model and same key name independently. Registry metadata batches explicit workspace/name pairs in one read, without per-row queries or decryption.
+- Runtime resolution, activation, registration and secret-deletion guards use the exact stored workspace/name pair. Preserve the credential-first lock order. Deleting an unused same-named key in another workspace must remain possible; deleting the referenced key must remain refused.
+- The coordinated model fix updates the dashboard, CLI, generated OpenAPI and companion documentation together. `workspace_id` becomes required for model registration and self-managed activation; older callers must supply the workspace that holds the key. This requirement is part of Indy's instruction to fix the incorrect storage boundary, and must be explicit in release notes.
+
+Do not add a frontend storage resolver, workspace enumeration, key copying or implicit rotation. Add live backend cases for two workspaces with same-named keys, activation and resolution after workspace switching, cross-account refusal, exact deletion guards, migration preservation and compatible keyless endpoints. Unit form fixtures alone cannot prove this repair.
 
 ### §3 — Inline Summary and continuous conversation
 
@@ -358,6 +486,20 @@ The working icon remains steady while the text sweeps. Use a short still interva
 
 Failed chat work stays beside its original item with a quiet underlined Try again control and optional details. A compact dismissible error notice is supplemental; it never removes the durable inline failure. Retain draft text and operation identity, gate duplicate retries, and use a sign-in/access/configuration action when repeating the operation cannot resolve the error. Existing `tests/chat-failure.test.tsx` verifies refusal, in-flight exclusion and disabled recovery; browser review checks the compact styling.
 
+#### Typed chat element implementation
+
+The row-layout split is complete. The explicit typed outcome layer remains unfinished until these paths are wired and verified. Do not describe the row split alone as completing the Appsmith-inspired approach.
+
+Use three small static registries aligned to existing owners: recorded message elements, assistant-ui reply parts, and typed tool-input elements. A pure adapter selects a discriminated model; each registry requires the matching payload and component for every declared kind. Adding a renderer must not add branches to `ChatMessageRow` or create another chat runtime.
+
+Recorded elements cover operator turns, replies, integration activity, scheduled wake-ups, approval events, activity groups and unsupported content. Keep the existing event order, stable IDs, private actor naming, source links and durable outcomes. Group metadata must be validated rather than cast to an event array. Invalid groups render a neutral fallback without exposing their raw payload.
+
+Reply-part registration keeps assistant-ui's reasoning/tool grouping, clocks, streaming markdown, safe unknown-part fallback and existing request owners. Tool-input registration keeps separate command, diff, plan, clipped and generic presentations. Unknown tools stay readable and neutral. Recorded success, failure, interruption and unavailable output remain distinct; parsing input must never prove a side effect succeeded.
+
+A renderer presents data and existing scoped actions. It cannot run model-provided code, invent an approval ID, fetch credentials, or send a notification. Schedule details retain the current fleet scope; approval navigation uses the current fleet-filtered inbox and leaves decisions with its existing permission checks. Unsupported attachment or future part formats must remain explicit until their backend representation and a typed renderer exist.
+
+Required proofs: `mixed recorded chat elements use their registered renderers`, `malformed grouped metadata is safe and visible`, `unknown parts never execute markup`, and the existing `fleet-tool-rendering` regression showing text chunks do not recompute unchanged tool activity. Re-run real transcript browser checks before claiming the layer complete.
+
 ### §4 — Archive, deletion and feedback
 
 Archive permanently stops the fleet, retains history, and offers no Restore. Permanently Delete is independent and available directly on active or archived fleets.
@@ -374,7 +516,7 @@ Lifecycle recovery keeps a typed checkpoint: read current state, confirm termina
 
 ### §5 — Verification and visual finish
 
-Current implementation checkpoint, Nov 11, 2026: `make lint-app lint-design-system test-unit-app test-unit-design-system` passes. App: 445 files / 4,234 tests. Design system: 62 files / 491 tests. The desktop and phone `chat-alignment.spec.ts` and `chat-typography.spec.ts` run passes all 22 browser cases, covering approved Manrope sizes, actual shell alignment, inline Summary, activity outcomes, scrolling and motion fallbacks. The final authenticated journeys, complete resource-page visual review, repository-wide lanes and backend model-reference repair remain due. These local results do not mark the implementation ready.
+Current implementation checkpoint, Nov 11, 2026: `make lint-app lint-design-system test-unit-app test-unit-design-system` passes. App: 445 files / 4,234 tests. Design system: 62 files / 491 tests. The desktop and phone `chat-alignment.spec.ts` and `chat-typography.spec.ts` run passes all 22 browser cases, covering approved Manrope sizes, actual shell alignment, inline Summary, activity outcomes, scrolling and motion fallbacks. The final authenticated journeys, complete resource-page visual review and remaining repository-wide lanes remain due. These local results do not mark the implementation ready.
 
 Run targeted tests for changed behavior, then repository work/verify checks. Run authenticated browser flows against real data before claiming production readiness.
 Review spacing, borders, fonts, icon scale, long names, empty states and failures at the approved widths, both themes and 200 percent zoom.
@@ -385,23 +527,18 @@ The prototype's passing checks do not substitute for implementation checks.
 
 ## Interfaces
 
-Keep existing fleet, draft, message, event, model registry, secret, membership and billing interfaces for this UI work.
+Keep existing fleet, draft, message, event, secret, membership and billing interfaces. The model-reference repair changes these fields without adding routes:
+
+| Surface | Change |
+|---|---|
+| `POST /v1/tenants/me/models` | Required `workspace_id` identifies the credential namespace alongside `model_id` and `secret_ref` |
+| `PUT /v1/tenants/me/provider` | Self-managed mode requires `workspace_id`; platform mode remains unchanged |
+| Model registry, stored-entry and provider responses | Add stable `workspace_id` metadata, omitted when the historical source is unavailable or platform-managed |
+| `tenant provider create` | Add `--workspace`; otherwise use the already selected workspace |
+
+All callers and companion documentation must move together. Existing credential bytes, model IDs, scope checks and setup/model decision records remain unchanged.
 The coordinated public Plugins and archived-status vocabulary changes have their own implementation specification.
 Custom profile and browser-session operations have a separate auth specification; UI components consume app-owned shapes.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ## Failure Modes
 
@@ -518,7 +655,7 @@ The fresh review reported eight findings. Recording a requirement is not resolut
 |---|---|---|
 | 1: Summary owner | Partly resolved | Actual layout, setup caller, header and tests now listed; drawer/toggle removed and one responsive reader wired. Still pin approval/schedule readers and finish resize/scope browser proofs. |
 | 2: Verification | Partly resolved | Repository lanes and affected focused tests listed. Remaining sections need exact negative-test owners and completed lane evidence. |
-| 3: Model vault/recovery | Frontend recovery implemented; backend scope defect open | New/saved-key creation and reconciliation pass 40 focused tests. The real backend still resolves model credentials through the first account workspace; an explicit API reference is required before readiness. The rejected frontend resolver remains removed. |
+| 3: Model credential scope/recovery | Implemented; authenticated browser proof due | Explicit workspace references now govern registration, activation, resolution and deletion guards. The three new live credential cases and forward-migration preservation case pass within `make test-integration-rustd` (1,706 regular + 2 exclusive tests). Focused app tests: 154; CLI tests: 14. No frontend storage resolver or key copying exists. |
 | 4: Delete reconciliation | Implemented; authenticated browser proof due | Typed stop/delete checkpoints, uncertain-response reads, access-loss handling and paused notices pass 34 focused tests. |
 | 5: Setup handoff | Implemented; authenticated browser proof due | The 204 setup tests pass, including save-key reuse, one confirmed handoff, transient failure and authorization loss. Existing authoring history stays private. |
 | 6: Stored vocabulary/authority | Open in coordinated CLI/API spec | Preserve immutable review records, existing platform pins and narrowed capabilities; no migration edits until specified. |
@@ -547,3 +684,8 @@ Typography and icon work was explicitly cleared by the reviewer. The open findin
 > Owner (Indy, Nov 11, 2026): “i think you need to allow me to either Archive or Permanently Delete, not on a step level like Archive -> then Permanently Delete”.
 > Owner (Indy, Nov 11, 2026): “Yes flow 1”.
 > Owner (Indy, Nov 11, 2026): “I dont want to build this, but note it down with the elephant context details somewhere in our usual spot” — Flow 2 deferred to M239's revisit note.
+
+> Owner correction (Nov 11, 2026): “But this is message refactor, you said type chat messages or manifestation like appsmith, where is that?” — complete the typed element adapters and registration; the row layout alone does not satisfy this request.
+
+- **Model checkpoint (Nov 11, 2026)** — `make test-integration-rustd` passes 1,706 regular and 2 exclusive cases. The new same-name/two-workspace resolution, exact deletion guard, cross-account refusal and migration-preservation cases pass. `make lint-app lint-cli` passes; the focused Models app selection passes 154 tests and the provider CLI selection passes 14. Generated OpenAPI includes the explicit workspace fields. Full unit/lint, authenticated UI and final visual checks remain due; this is a review checkpoint.
+- **Cloud test setup** — The declared integration lane needs `/workspace/scratch/refresh-rust-env.sh` for user-owned CMake/libclang and the compiler header path. `/workspace/scratch/refresh-compose-trust.yml` supplies the existing certificate bundle to QStash and keeps BusyBox's NATS loopback probe out of `http_proxy`. The gate, health commands, TLS verification and test selection were unchanged. Companion docs branch: `/workspace/docs`, `chore/m249-fleet-refresh-changelog`; no docs edits or publication yet.

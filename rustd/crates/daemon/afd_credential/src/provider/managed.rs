@@ -152,6 +152,7 @@ mod tests {
                 .expect("a canonical v7 identifier"),
             model: "claude-opus-5".into(),
             secret_ref: "my-anthropic-key".into(),
+            workspace_id: Some(workspace()),
             provider: Some("anthropic".into()),
             context_cap_tokens: 200_000,
         }

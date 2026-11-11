@@ -13,7 +13,7 @@
 //!
 //! # One projection, five spellings
 //!
-//! Four columns — `id`, `model_name`, `secret_ref`, `created_at` — and every
+//! Five columns — `id`, `model_name`, `secret_ref`, `workspace_id`, `created_at` — and every
 //! read and both `RETURNING` clauses name them identically, because the
 //! registry's row type decodes them BY NAME. `tenant_id` is the predicate
 //! rather than a column anyone reads back, and `updated_at` reaches no caller,

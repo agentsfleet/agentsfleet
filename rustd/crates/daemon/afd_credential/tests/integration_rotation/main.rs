@@ -33,6 +33,7 @@ mod registry_walk;
 mod resolution_locks;
 mod rotation;
 mod selection_pointer;
+mod workspace_credentials;
 
 const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 const KEY_NAME: &str = "provider-handle";

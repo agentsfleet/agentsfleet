@@ -81,6 +81,7 @@ export function entry(overrides: Partial<TenantModelEntry>): TenantModelEntry {
     model_id: "claude-sonnet-5",
     display_name: "Sonnet 5",
     secret_ref: "anthropic-prod",
+    workspace_id: "ws_1",
     provider: "anthropic",
     kind: "provider_key",
     has_key: true,

@@ -1,9 +1,9 @@
-//! The registry page: six reads, a fixed number of them, and no decrypt.
+//! The registry page: bounded batched reads and no decrypt.
 //!
 //! # The statement count does not follow the page size
 //!
-//! One selection read, one entry page, one workspace resolve, one descriptor
-//! batch, one platform default, one rate batch. Both batches are set-oriented,
+//! One selection read, one entry page, one descriptor batch, one platform
+//! default and one rate batch. Both batches are set-oriented,
 //! so the count is independent of `limit` — and that INDEPENDENCE is the
 //! property worth pinning, not the number. A per-row lookup is the unbounded
 //! shape this composition exists to avoid.
@@ -70,7 +70,7 @@ impl Providers {
     ) -> Result<RegistryPage> {
         let chosen = self.selection(tenant).await?;
         let (entries, next) = self.entry_page(tenant, limit, after).await?;
-        let credentials = self.describe_referenced(tenant, &entries).await?;
+        let credentials = self.describe_referenced(&entries).await?;
         let default = self.platform_default().await?;
 
         let rates = self
@@ -79,7 +79,7 @@ impl Providers {
         let rows = entries
             .into_iter()
             .map(|entry| {
-                let credential = credentials.get(&entry.secret_ref).cloned();
+                let credential = credentials.get(&entry.id).cloned();
                 let rate = rate_for(&rates, credential.as_ref(), &entry.model_name);
                 RegistryRow {
                     active: is_active(&entry, chosen.as_ref()),
@@ -150,36 +150,28 @@ impl Providers {
         Ok((entries, next))
     }
 
-    /// What the vault says about every credential this page references.
-    ///
-    /// One workspace resolve for the whole page, not one per row: a tenant's
-    /// entries all reference credentials in its primary workspace. A tenant
-    /// with no workspace has no credentials to describe, so the page renders
-    /// every row degraded rather than failing — the bootstrap invariant is
-    /// activation's to refuse on, not a read's.
-    async fn describe_referenced(
-        &self,
-        tenant: &Uuid7,
-        entries: &[Entry],
-    ) -> Result<HashMap<Box<str>, Descriptor>> {
-        let Some(workspace) = self.primary_workspace(tenant).await? else {
-            return Ok(HashMap::new());
-        };
-        // Deduplicated for the same reason the rate pairs are: one credential
-        // legitimately backs several model rows, and the array is a question
-        // asked once per distinct name rather than once per row that asks it.
-        let mut names: Vec<&str> = entries.iter().map(|entry| &*entry.secret_ref).collect();
-        names.sort_unstable();
-        names.dedup();
-
-        // Constructed here rather than held as a field: `Db` is a handle over an
-        // `Arc`-backed pool, so this is one refcount bump, and a `Directory` has
-        // no key to carry. What matters is WHICH type reads — one that cannot
-        // decrypt — not how long it lives.
-        Directory::new(self.pool().clone())
-            .describe(&workspace, &names)
-            .await
-            .map_err(Into::into)
+    /// Describes the page's exact workspace/name pairs in one metadata read.
+    /// Entries are tenant-filtered and their composite workspace foreign key
+    /// proves account ownership. An unavailable source leaves only that row
+    /// degraded; it never falls through to another workspace's credential.
+    async fn describe_referenced(&self, entries: &[Entry]) -> Result<HashMap<Uuid7, Descriptor>> {
+        let mut references: Vec<_> = entries
+            .iter()
+            .filter_map(|entry| Some((entry.workspace_id.clone()?, entry.secret_ref.clone())))
+            .collect();
+        references.sort_unstable();
+        references.dedup();
+        let described = Directory::new(self.pool().clone())
+            .describe_scoped(&references)
+            .await?;
+        Ok(entries
+            .iter()
+            .filter_map(|entry| {
+                let reference = (entry.workspace_id.clone()?, entry.secret_ref.clone());
+                let descriptor = described.get(&reference)?.clone();
+                Some((entry.id.clone(), descriptor))
+            })
+            .collect())
     }
 
     /// The catalogue's rates for every pair this page displays, in one read.
@@ -192,7 +184,7 @@ impl Providers {
     async fn priced(
         &self,
         entries: &[Entry],
-        credentials: &HashMap<Box<str>, Descriptor>,
+        credentials: &HashMap<Uuid7, Descriptor>,
         default: Option<&super::PlatformDefault>,
     ) -> Result<HashMap<(String, String), CatalogueRate>> {
         let pairs = wanted_pairs(entries, credentials, default);
@@ -223,11 +215,11 @@ impl Providers {
 /// matched back by index.
 fn wanted_pairs<'a>(
     entries: &'a [Entry],
-    credentials: &'a HashMap<Box<str>, Descriptor>,
+    credentials: &'a HashMap<Uuid7, Descriptor>,
     default: Option<&'a super::PlatformDefault>,
 ) -> Vec<(&'a str, &'a str)> {
     let from_entries = entries.iter().filter_map(|entry| {
-        let provider = credentials.get(&entry.secret_ref)?.provider()?;
+        let provider = credentials.get(&entry.id)?.provider()?;
         Some((provider, &*entry.model_name))
     });
     let from_default = default.map(|default| (&*default.provider, &*default.model));

@@ -71,7 +71,7 @@ describe("Models registry stored secrets", () => {
     await user.click(screen.getByRole("option", {name: SAVED.name}));
     await user.click(reopened.getByRole("button", {name: "Create model"}));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(createModelEntryActionMock).toHaveBeenCalledWith({model_id: MODEL_ID, secret_ref: SAVED.name});
+    expect(createModelEntryActionMock).toHaveBeenCalledWith({workspace_id: "ws_1", model_id: MODEL_ID, secret_ref: SAVED.name});
     expect(createSecretActionMock).not.toHaveBeenCalled();
     expect(replaceSecretActionMock).not.toHaveBeenCalled();
   });

@@ -22,14 +22,16 @@ import { libraryRateFor } from "./registry-view";
 import { CATALOGUE_STATUS } from "./catalogue-status";
 import { modelLabel } from "@/lib/models/display";
 import type { TenantModelEntry } from "@/lib/types";
+import { SECRET_KIND } from "@/lib/api/secrets-types";
 
 type Props = {
   target: TenantModelEntry | null;
+  workspaceLabel?: string;
   onOpenChange: (open: boolean) => void;
 };
 
 /** Rendered only while `target` is non-null (see the Dialog body below). */
-function Details({ target }: { target: TenantModelEntry }) {
+function Details({ target, workspaceLabel }: { target: TenantModelEntry; workspaceLabel?: string }) {
   return (
     <>
       <DialogHeader>
@@ -43,7 +45,7 @@ function Details({ target }: { target: TenantModelEntry }) {
           </DialogDescription>
           <Badge variant={target.has_key ? "green" : "default"}>
             <KeyIcon size={12} aria-hidden="true" />
-            {target.has_key ? "In vault" : "Keyless endpoint"}
+            {target.has_key ? "Key stored" : target.kind === SECRET_KIND.custom_endpoint ? "Keyless endpoint" : "Key unavailable"}
           </Badge>
         </div>
       </DialogHeader>
@@ -59,8 +61,12 @@ function Details({ target }: { target: TenantModelEntry }) {
         {/* `secret_ref` is the vault key reference, not a display name — labelling
             it "Name" made it read as a duplicate of Provider. */}
         <div>
-          <DescriptionTerm>Secret ref</DescriptionTerm>
+          <DescriptionTerm>Key name</DescriptionTerm>
           <DescriptionDetails mono>{target.secret_ref}</DescriptionDetails>
+        </div>
+        <div>
+          <DescriptionTerm>Workspace</DescriptionTerm>
+          <DescriptionDetails>{workspaceLabel ?? target.workspace_id ?? "Unavailable"}</DescriptionDetails>
         </div>
         {target.base_url ? (
           <div>
@@ -87,10 +93,10 @@ function CatalogueDetails({ target }: { target: TenantModelEntry }) {
 }
 
 /** Read-only detail view for one registry row — never the key material itself. */
-export default function ModelDetailsDialog({ target, onOpenChange }: Props) {
+export default function ModelDetailsDialog({ target, workspaceLabel, onOpenChange }: Props) {
   return (
     <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent>{target ? <Details target={target} /> : null}</DialogContent>
+      <DialogContent>{target ? <Details target={target} workspaceLabel={workspaceLabel} /> : null}</DialogContent>
     </Dialog>
   );
 }

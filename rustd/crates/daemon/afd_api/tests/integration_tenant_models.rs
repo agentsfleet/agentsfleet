@@ -83,8 +83,8 @@ async fn the_registry_lifecycle_walks_over_real_rows() {
         ENTRIES,
         Some(&fixture.token),
         &format!(
-            r#"{{"model_id":"{}","secret_ref":"{CREDENTIAL}"}}"#,
-            fixture.first_model
+            r#"{{"workspace_id":"{}","model_id":"{}","secret_ref":"{CREDENTIAL}"}}"#,
+            fixture.workspace, fixture.first_model
         ),
     )
     .await;
@@ -233,8 +233,8 @@ async fn a_tenant_with_no_workspace_is_refused_a_registration_naming_it() {
         ENTRIES,
         Some(&fixture.token),
         &format!(
-            r#"{{"model_id":"{}","secret_ref":"{CREDENTIAL}"}}"#,
-            fixture.first_model
+            r#"{{"workspace_id":"{}","model_id":"{}","secret_ref":"{CREDENTIAL}"}}"#,
+            fixture.workspace, fixture.first_model
         ),
     )
     .await;

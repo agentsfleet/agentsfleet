@@ -44,6 +44,7 @@ fn own(provider: Option<&str>) -> OwnModel {
             .expect("the fixture entry id is canonical"),
         model: "gpt-5.1".into(),
         secret_ref: "openai-prod".into(),
+        workspace_id: None,
         provider: provider.map(Into::into),
         context_cap_tokens: 400_000,
     }

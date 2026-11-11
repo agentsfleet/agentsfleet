@@ -99,10 +99,11 @@ const tenantProviderShowCommand = Command.make(SHOW).pipe(
 const tenantProviderCreateCommand = Command.make(CREATE, {
   secret: secretNameFlag,
   model: modelOverrideFlag,
+  workspace: workspaceFlag,
 }).pipe(
   Command.withDescription("Use a self-managed secret"),
-  guardedHandler(({ secret, model }) =>
-    tenantProviderAddEffectFromArgs(opt(secret), opt(model)),
+  guardedHandler(({ secret, model, workspace }) =>
+    tenantProviderAddEffectFromArgs(opt(secret), opt(model), opt(workspace)),
   ),
 );
 

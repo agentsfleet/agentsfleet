@@ -36,11 +36,18 @@ export function rowKey(row: RegistryRow): string {
 export function ModelCell({
   row,
   platformDefault,
+  workspaceLabel,
 }: {
   row: RegistryRow;
   platformDefault: TenantPlatformDefault | null;
+  workspaceLabel?: string;
 }) {
-  if (row.kind === "entry") return <ModelName modelId={row.entry.model_id} displayName={row.entry.display_name} copyable={false} />;
+  if (row.kind === "entry") return <div className="min-w-0 space-y-1">
+    <ModelName modelId={row.entry.model_id} displayName={row.entry.display_name} copyable={false} />
+    <p className="truncate text-eyebrow leading-eyebrow text-muted-foreground" title={row.entry.workspace_id}>
+      {row.entry.secret_ref} · {workspaceLabel ?? (row.entry.workspace_id ? `Workspace …${row.entry.workspace_id.slice(-6)}` : "Workspace unavailable")}
+    </p>
+  </div>;
   // The lock is the whole statement: this row is the platform default and a
   // tenant admin cannot edit it. With no default configured the lock stands
   // alone; the actions column says why.
@@ -228,7 +235,8 @@ export function ActionsCell({
           type="button"
           variant="secondary"
           size="sm"
-          disabled={pending}
+          disabled={pending || !entry.workspace_id}
+          title={!entry.workspace_id ? "The credential workspace is unavailable" : undefined}
           onClick={() => onSwitchEntry(entry)}
           aria-label={`Switch to ${entry.model_id}`}
         >

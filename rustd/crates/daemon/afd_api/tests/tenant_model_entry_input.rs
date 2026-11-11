@@ -106,7 +106,7 @@ async fn test_the_model_bound_holds_on_both_verbs_that_take_one() {
     // One body per verb, because the two shapes differ: the create carries a
     // `secret_ref` and the change does not, and since every wire type closed an
     // extra key is refused before any bound is read.
-    const BLANK_CREATE: &str = r#"{"model_id":"","secret_ref":"anthropic-prod"}"#;
+    const BLANK_CREATE: &str = r#"{"model_id":"","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","secret_ref":"anthropic-prod"}"#;
     const BLANK_CHANGE: &str = r#"{"model_id":""}"#;
     // Read from the type that DECLARES the bound rather than spelled again: a
     // local 257 would let the cap move on the request type while this case
@@ -118,7 +118,7 @@ async fn test_the_model_bound_holds_on_both_verbs_that_take_one() {
             Method::POST,
             ENTRIES,
             BLANK_CREATE,
-            r#","secret_ref":"anthropic-prod""#,
+            r#","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","secret_ref":"anthropic-prod""#,
         ),
         (Method::PATCH, ENTRY, BLANK_CHANGE, ""),
     ] {
@@ -166,7 +166,7 @@ async fn test_a_create_naming_no_credential_is_refused_before_the_store() {
         Method::POST,
         ENTRIES,
         Some(TENANT_KEY),
-        r#"{"model_id":"claude-opus-5","secret_ref":""}"#,
+        r#"{"model_id":"claude-opus-5","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","secret_ref":""}"#,
     )
     .await;
 
@@ -188,7 +188,7 @@ async fn test_the_change_verb_cannot_be_asked_to_move_a_credential() {
         Method::PATCH,
         ENTRY,
         Some(TENANT_KEY),
-        r#"{"model_id":"claude-opus-5","secret_ref":"somewhere-else"}"#,
+        r#"{"model_id":"claude-opus-5","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","secret_ref":"somewhere-else"}"#,
     )
     .await;
 

@@ -28,7 +28,7 @@ export async function getModelLibraryAction(advanced = false, startingAfter: str
 }
 
 export async function setProviderSelfManagedAction(
-  body: { secret_ref: string; model?: string },
+  body: { workspace_id: string; secret_ref: string; model?: string },
 ): Promise<ActionResult<TenantProvider>> {
   return withToken((t) => apiSetTenantProviderSelfManaged(body, t));
 }
@@ -50,7 +50,7 @@ export async function listModelEntriesAction(
 }
 
 export async function createModelEntryAction(
-  body: { model_id: string; secret_ref: string },
+  body: { workspace_id: string; model_id: string; secret_ref: string },
 ): Promise<ActionResult<TenantModelEntryWriteResult>> {
   return withToken((t) => apiCreateTenantModelEntry(body, t));
 }
@@ -67,14 +67,14 @@ export async function deleteModelEntryAction(id: string): Promise<ActionResult<v
 }
 
 export async function findRegisteredModelAction(
-  body: { model_id: string; secret_ref: string },
+  body: { workspace_id: string; model_id: string; secret_ref: string },
 ): Promise<ActionResult<TenantModelEntry | null>> {
   return withToken(async token => {
     const seen = new Set<string>();
     let cursor: string | null = null;
     do {
       const page = await apiListTenantModelEntries(token, cursor);
-      const entry = page.models.find(item => item.model_id === body.model_id && item.secret_ref === body.secret_ref);
+      const entry = page.models.find(item => item.workspace_id === body.workspace_id && item.model_id === body.model_id && item.secret_ref === body.secret_ref);
       if (entry) return entry;
       cursor = page.next_cursor;
       if (cursor !== null && seen.has(cursor)) throw new Error("Model registry repeated a cursor");
@@ -85,14 +85,14 @@ export async function findRegisteredModelAction(
 }
 
 const providerSelectionSchema = z.object({
-  mode: z.enum(PROVIDER_MODE), model: z.string().optional(), secret_ref: z.string().optional(),
+  mode: z.enum(PROVIDER_MODE), model: z.string().optional(), secret_ref: z.string().optional(), workspace_id: z.string().optional(),
 });
 export async function readModelActivationAction(
-  body: { model_id: string; secret_ref: string },
+  body: { workspace_id: string; model_id: string; secret_ref: string },
 ): Promise<ActionResult<boolean>> {
   return withToken(async token => {
     const selection = providerSelectionSchema.parse(await apiGetTenantProvider(token));
-    return selection.mode === PROVIDER_MODE.self_managed && selection.model === body.model_id && selection.secret_ref === body.secret_ref;
+    return selection.mode === PROVIDER_MODE.self_managed && selection.workspace_id === body.workspace_id && selection.model === body.model_id && selection.secret_ref === body.secret_ref;
   });
 }
 

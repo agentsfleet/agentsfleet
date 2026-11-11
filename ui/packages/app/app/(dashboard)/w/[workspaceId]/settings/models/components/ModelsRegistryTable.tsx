@@ -37,6 +37,7 @@ import { useCurrentUser } from "@/lib/auth/client";
 
 type Props = {
   workspaceId: string;
+  workspaces?: ReadonlyArray<{id: string; name: string | null}>;
   /** First registry page, or null when the read failed — see `initialError`. */
   initialPage: TenantModelEntryPageResult | null;
   /** Typed read failure. Distinct from an empty registry, and never both. */
@@ -46,8 +47,9 @@ const SWITCH_ACTION = "switch models";
 const SWITCH_PLATFORM_ACTION = "switch to platform defaults";
 const REMOVE_ACTION = "remove this model entry";
 
-export default function ModelsRegistryTable({ workspaceId, initialPage, initialError }: Props) {
+export default function ModelsRegistryTable({ workspaceId, workspaces, initialPage, initialError }: Props) {
   const {userId} = useCurrentUser();
+  const workspaceNames = useMemo(() => new Map(workspaces?.map(({id, name}) => [id, name ?? "Unnamed workspace"])), [workspaces]);
   const [pending, startTransition] = useTransition();
   const readGeneration = useRef(0);
   const [entries, setEntries] = useState<TenantModelEntry[]>(initialPage?.models ?? []);
@@ -175,8 +177,10 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
 
   function onSwitchEntry(entry: TenantModelEntry) {
     setError(null);
+    const sourceWorkspace = entry.workspace_id;
+    if (!sourceWorkspace) { setError("The credential workspace is unavailable. Create a model with an available key."); return; }
     startTransition(async () => {
-      const r = await setProviderSelfManagedAction({ secret_ref: entry.secret_ref, model: entry.model_id });
+      const r = await setProviderSelfManagedAction({ workspace_id: sourceWorkspace, secret_ref: entry.secret_ref, model: entry.model_id });
       if (!r.ok) {
         // Failure Modes: "Stale activation — Switch races a concurrent entry
         // delete; UI surfaces the existing friendly error and refreshes the list."
@@ -211,7 +215,8 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
 
   const columns: DataTableColumn<RegistryRow>[] = [
     { key: "provider", header: "Provider", sortable: true, cell: (row) => <ProviderCell row={row} platformDefault={platformDefault} /> },
-    { key: "model", primary: true, header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault} /> },
+    { key: "model", primary: true, header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault}
+      workspaceLabel={row.kind === "entry" ? workspaceNames.get(row.entry.workspace_id ?? "") : undefined} /> },
     {
       key: "context",
       header: CONTEXT_HEADER,
@@ -301,9 +306,10 @@ export default function ModelsRegistryTable({ workspaceId, initialPage, initialE
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
-        <ModelDetailsDialog target={detailsTarget} onOpenChange={() => setDetailsTarget(null)} />
+        <ModelDetailsDialog target={detailsTarget} workspaceLabel={workspaceNames.get(detailsTarget?.workspace_id ?? "")}
+          onOpenChange={() => setDetailsTarget(null)} />
         <EditModelEntryDialog
-          workspaceId={workspaceId}
+          workspaceId={editTarget?.workspace_id ?? ""}
           target={editTarget}
           onOpenChange={() => setEditTarget(null)}
           onSaved={() => {
