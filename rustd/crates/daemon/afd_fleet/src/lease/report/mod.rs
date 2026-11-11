@@ -38,6 +38,7 @@ use af_wire::report::ReportRequest;
 use jiff::Timestamp;
 
 use crate::error::{Result, lease_not_found};
+use crate::lease::Reported;
 use crate::lease::pull::LeaseService;
 use crate::lease::usage::Pricing;
 
@@ -74,9 +75,31 @@ impl LeaseService {
         request: &ReportRequest<'_>,
         now: Timestamp,
     ) -> Result<Reconciled> {
+        self.report_with(runner_id, request, now, None).await
+    }
+
+    /// [`Self::report`] over the lease's facts a stream session kept from the
+    /// offer, so the report reads no lease row (M245 §9, blocker 6). `None`
+    /// reads them, as a session rebuilt from the database must. The facts
+    /// never change after issue, and the report statement still checks the
+    /// fence.
+    ///
+    /// # Errors
+    /// As [`Self::report`].
+    pub async fn report_with(
+        &self,
+        runner_id: &Uuid7,
+        request: &ReportRequest<'_>,
+        now: Timestamp,
+        kept: Option<Reported>,
+    ) -> Result<Reconciled> {
         let lease_id = &crate::error::wire_lease(request.lease_id.as_ref())?;
-        let Some(lease) = self.leases.load_for_report(lease_id, runner_id).await? else {
-            return Err(lease_not_found());
+        let lease = match kept {
+            Some(lease) => lease,
+            None => match self.leases.load_for_report(lease_id, runner_id).await? {
+                Some(lease) => lease,
+                None => return Err(lease_not_found()),
+            },
         };
 
         let lease_key = lease_id.clone();

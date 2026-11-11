@@ -27,4 +27,8 @@ pub struct Offered {
     pub expires_at: Timestamp,
     /// Fleet activity target; authoring retains its private domain activity owner.
     pub target: Option<Target>,
+    /// What this lease's report reads, known at issue: a session that keeps it
+    /// reports without reading the lease again (M245 §9, blocker 6). `None`
+    /// for authoring, and after a rebuild from the database.
+    pub reported: Option<super::Reported>,
 }

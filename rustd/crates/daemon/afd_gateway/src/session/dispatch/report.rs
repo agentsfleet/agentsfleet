@@ -20,9 +20,10 @@ impl SessionServices {
                 request.requests.validate()?;
                 let id = Uuid7::parse(&request.lease_id)?;
                 let received = self.gateway.inner.dependencies.wall_clock.now();
+                let kept = self.cache.reported(&id);
                 let settled = self
                     .leases
-                    .report(&self.handle.runner, request, received)
+                    .report_with(&self.handle.runner, request, received, kept)
                     .await?;
                 if let Err(error) = afd_fleet::lease::report::observe(
                     &self.gateway.inner.dependencies.analytics,

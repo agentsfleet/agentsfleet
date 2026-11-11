@@ -60,6 +60,11 @@ async fn measure_cost(fixture: &Fixture, transport: Transport) -> Result<()> {
         0,
         "{transport:?}: all activity uses the native lease cache"
     );
+    assert_eq!(
+        after.report_reads - before.report_reads,
+        0,
+        "{transport:?}: the report uses the facts its session kept from the offer"
+    );
     Ok(())
 }
 
