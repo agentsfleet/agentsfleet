@@ -370,8 +370,10 @@ impl LeaseService {
             if !checked.insert(payer) {
                 continue;
             }
+            let renewing = row.renewing();
+            let estimate = self.cached_floor(&renewing, row, now).await;
             if self
-                .funds_cover(&row.renewing(), &row.id, row.id.as_str(), now)
+                .funds_cover_at(&renewing, &row.id, row.id.as_str(), estimate)
                 .await
                 .is_err()
             {
@@ -444,6 +446,33 @@ impl LeaseService {
             .fetch_all(&mut *self.leases.pool().acquire().await?)
             .await
             .map_err(query(CONTEXT_REVISIONS))
+    }
+
+    /// The funds check's floor, priced from the book cached at the row's
+    /// catalogue version: a warm replica reads no price (M245 §9).
+    async fn cached_floor(
+        &self,
+        renewing: &Renewing,
+        row: &Found,
+        now: Timestamp,
+    ) -> Result<afd_billing::rates::Estimate> {
+        let posture = crate::lease::renew::posture_of(renewing);
+        let pricing = self
+            .leases
+            .prices()
+            .try_get_or_load(
+                self.leases.pool(),
+                posture,
+                &row.provider,
+                &row.model,
+                Some(row.catalogue_version),
+            )
+            .await?;
+        Ok(afd_billing::Accounts::estimate_from(
+            pricing.book(),
+            posture,
+            now,
+        )?)
     }
 
     /// The lease's pricing, from the price books by catalogue version.
