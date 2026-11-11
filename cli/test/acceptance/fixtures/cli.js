@@ -27,6 +27,7 @@ const CLI_ROOT = path.resolve(HERE, "..", "..", "..");
 const WORKTREE_ENTRY = path.join(CLI_ROOT, "dist", "bin", "agentsfleet.js");
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const PROXY_ENV_NAMES = ["HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "no_proxy"];
 
 export class TimeoutError extends Error {
   constructor(message, opts) {
@@ -132,17 +133,16 @@ export function spawnFleetctl(args, opts) {
 }
 
 /**
- * Compose a child env from a known-allowlist of fixture-supplied vars.
- * Never reads `process.env` for fields the caller did not list — keeps
- * the parent's `AGENTSFLEET_API_KEY` (if any) out of every spawn unless the
- * caller asks for it explicitly.
+ * Inherit runtime paths, trust, and proxy settings; take credentials only
+ * from fixture-supplied fields. A developer's AGENTSFLEET_API_KEY must not
+ * authenticate a case that expects an unauthenticated CLI.
  */
-export function composeEnv(fields) {
+export function composeEnv(fields, parentEnv = process.env) {
   const env = {
-    PATH: process.env.PATH,
-    HOME: process.env.HOME,
+    PATH: parentEnv.PATH,
+    HOME: parentEnv.HOME,
     // The local HTTPS proxy's public trust certificate must reach child CLIs.
-    ...(process.env.NODE_EXTRA_CA_CERTS ? { NODE_EXTRA_CA_CERTS: process.env.NODE_EXTRA_CA_CERTS } : {}),
+    ...(parentEnv.NODE_EXTRA_CA_CERTS ? { NODE_EXTRA_CA_CERTS: parentEnv.NODE_EXTRA_CA_CERTS } : {}),
     // Acceptance specs spawn the real CLI, whose telemetry flush reaches
     // PostHog over the network and hangs ~5s when the runner is offline.
     // Default every spawn to telemetry-off so the suite is hermetic under
@@ -155,6 +155,9 @@ export function composeEnv(fields) {
     // the specs that need a shared one already pass their own here.
     AGENTSFLEET_STATE_DIR: mkdtempSync(path.join(os.tmpdir(), "agentsfleet-acceptance-")),
   };
+  for (const name of PROXY_ENV_NAMES) {
+    if (parentEnv[name] !== undefined) env[name] = parentEnv[name];
+  }
   for (const [key, value] of Object.entries(fields)) {
     if (value === undefined || value === null) continue;
     env[key] = String(value);

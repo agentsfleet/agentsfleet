@@ -44,7 +44,7 @@ async fn operator_edits_labels_through_the_runner_patch() {
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .router();
-    let path = format!("/v1/fleets/runners/{}", fixture.runner);
+    let path = format!("/v1/admin/runners/{}", fixture.runner);
 
     let enrolled = enrol_with_repeats(&router, &fixture.token).await;
     assert_labels_only_edit(&router, &fixture, &path).await;
@@ -65,7 +65,7 @@ async fn enrol_with_repeats(router: &axum::Router, token: &str) -> Uuid7 {
     let enrolled = send(
         router,
         Method::POST,
-        "/v1/runners",
+        "/v1/admin/runners",
         Some(token),
         &body.to_string(),
     )
@@ -74,7 +74,7 @@ async fn enrol_with_repeats(router: &axum::Router, token: &str) -> Uuid7 {
     let runner = Uuid7::parse(text(&json_body(enrolled).await, "runner_id"))
         .expect("enrolment answers a runner id");
     assert_eq!(
-        read_labels(router, token, &format!("/v1/fleets/runners/{runner}")).await,
+        read_labels(router, token, &format!("/v1/admin/runners/{runner}")).await,
         ["gpu", "linux"],
         "enrolment stores each label once, in the order first given"
     );
@@ -238,7 +238,7 @@ async fn assert_revoked_runner_refuses_the_whole_save(
 }
 
 async fn assert_unknown_runner_is_not_found(router: &axum::Router, token: &str) {
-    let path = format!("/v1/fleets/runners/{}", mint_id());
+    let path = format!("/v1/admin/runners/{}", mint_id());
     for body in [
         r#"{"labels":["gpu"]}"#.to_owned(),
         format!(r#"{{"assigned_policy":{POLICY},"labels":[]}}"#),

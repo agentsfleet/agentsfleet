@@ -71,7 +71,6 @@ const REQUIRED_ENV = [
 const DEFAULT_REGULAR_EMAIL = "regular-fixture@e2e.agentsfleet.net";
 const DEFAULT_ADMIN_EMAIL = "admin-fixture@e2e.agentsfleet.net";
 const DEFAULT_OPERATOR_EMAIL = "operator-fixture@e2e.agentsfleet.net";
-const DEFAULT_POLICY_EDITOR_EMAIL = "policy-editor-fixture@e2e.agentsfleet.net";
 
 // Random per-create password. The harness never logs in via password;
 // CLERK_SECRET_KEY admin API mints sessions directly. A stable password
@@ -97,11 +96,6 @@ function fixtureUsers(): FixtureUserSpec[] {
     {
       key: FIXTURE_KEY.operator,
       email: process.env.AUTH_E2E_OPERATOR_EMAIL ?? DEFAULT_OPERATOR_EMAIL,
-      password: freshPassword(),
-    },
-    {
-      key: FIXTURE_KEY.policyEditor,
-      email: process.env.AUTH_E2E_POLICY_EDITOR_EMAIL ?? DEFAULT_POLICY_EDITOR_EMAIL,
       password: freshPassword(),
     },
   ];

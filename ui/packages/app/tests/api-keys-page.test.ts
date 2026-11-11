@@ -46,38 +46,6 @@ function mockAuth(token: string | null = "tok") {
 
 beforeEach(() => vi.clearAllMocks());
 
-// ── /settings redirect ────────────────────────────────────────────────────
-
-describe("settings index redirect", () => {
-  it.each(["models", "runners", "fleet-libraries"])("explains denied %s access and keeps a route back to the workspace", async (area) => {
-    mockAuth();
-    const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    const html = renderToStaticMarkup(await SettingsPage({ searchParams: Promise.resolve({ notice: `${area}-platform-admin-only` }) }));
-    expect(html).toContain("Platform administrator access required");
-    expect(html).toContain("Back to workspace");
-    expect(html).toContain('href="/"');
-    expect(redirect).not.toHaveBeenCalled();
-  });
-
-  it("ignores unknown notice values instead of reflecting query text", async () => {
-    mockAuth();
-    const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    await expect(SettingsPage({ searchParams: Promise.resolve({ notice: "untrusted" }) })).rejects.toThrow("not-found");
-  });
-
-  it("returns not-found for bare /settings", async () => {
-    mockAuth();
-    const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    await expect(SettingsPage()).rejects.toThrow("not-found");
-  });
-
-  it("redirects /settings straight to /sign-in when there is no token (no double redirect)", async () => {
-    mockAuth(null);
-    const { default: SettingsPage } = await import("../app/(dashboard)/settings/page");
-    await expect(SettingsPage()).rejects.toThrow("redirect:/sign-in");
-  });
-});
-
 // ── /settings/api-keys page ───────────────────────────────────────────────
 
 describe("api-keys page", () => {

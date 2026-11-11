@@ -3,7 +3,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit } from "effect";
-import { tenantProviderShowEffect, tenantProviderAddEffectFromArgs } from "../src/commands/tenant.ts";
+import { tenantProviderShowEffect, tenantProviderAddEffectFromArgs } from "../src/commands/tenant/tenant.ts";
 import { OUTPUT_FORMAT } from "../src/services/output.ts";
 import { ServerError, ValidationError } from "../src/errors/index.ts";
 import { PROVIDER_MODE } from "../src/constants/billing.ts";

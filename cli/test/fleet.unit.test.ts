@@ -7,7 +7,7 @@
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
-import { deleteEffectFromId, stopEffectFromId } from "../src/commands/fleet.ts";
+import { deleteEffectFromId, stopEffectFromId } from "../src/commands/fleet/fleet.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";

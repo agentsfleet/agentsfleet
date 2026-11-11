@@ -10,7 +10,7 @@
 
 import { describe, expect, spyOn, test } from "bun:test";
 import { Effect } from "effect";
-import { withSigintAbort } from "../src/commands/login-helpers.ts";
+import { withSigintAbort } from "../src/commands/auth/login-helpers.ts";
 import { SIGINT } from "../src/constants/signals.ts";
 
 describe("withSigintAbort", () => {

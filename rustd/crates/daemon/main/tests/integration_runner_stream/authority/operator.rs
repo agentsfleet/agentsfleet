@@ -77,7 +77,7 @@ impl Operator {
     }
 
     pub(super) async fn runner(&self, run: &Scenario, action: &str) -> TestResult<Value> {
-        let path = format!("/v1/fleets/runners/{}", run.runner_id);
+        let path = format!("/v1/admin/runners/{}", run.runner_id);
         let response = self
             .http
             .patch(format!("{}{path}", run.base))

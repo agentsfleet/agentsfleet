@@ -50,7 +50,6 @@ jobs:
           AUTH_E2E_REGULAR_EMAIL: regular-ten-fleets+clerk_test@e2e.agentsfleet.net
           AUTH_E2E_ADMIN_EMAIL: admin-ten-fleets+clerk_test@e2e.agentsfleet.net
           AUTH_E2E_OPERATOR_EMAIL: operator-ten-fleets+clerk_test@e2e.agentsfleet.net
-          AUTH_E2E_POLICY_EDITOR_EMAIL: policy-editor-ten-fleets+clerk_test@e2e.agentsfleet.net
           CLERK_SECRET_KEY: ${{ env.CLERK_SECRET_KEY }}
           CLERK_PUBLISHABLE_KEY: ${{ env.CLERK_PUBLISHABLE_KEY }}
           CLERK_WEBHOOK_SECRET: ${{ env.CLERK_WEBHOOK_SECRET }}

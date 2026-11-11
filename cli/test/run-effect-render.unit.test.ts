@@ -11,7 +11,7 @@ import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
 
 import { renderAndCount } from "../src/lib/run-effect.ts";
-import { outputStdioLayer, Output, OUTPUT_FORMAT } from "../src/services/output.ts";
+import { outputFromStreamsLayer, Output, OUTPUT_FORMAT } from "../src/services/output.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { outputDouble } from "./helpers-output-double.ts";
 
@@ -62,7 +62,7 @@ describe("renderAndCount — a cause carrying no typed failure", () => {
   });
 });
 
-describe("outputStdioLayer", () => {
+describe("outputFromStreamsLayer with standard streams", () => {
   // The layer `main-layer.ts` picks when no streams were injected — the real
   // process path every ordinary invocation takes. Only the stream-injected
   // sibling was covered, so a break here would have surfaced first to a
@@ -72,7 +72,7 @@ describe("outputStdioLayer", () => {
       const out = await Effect.runPromise(
         Effect.gen(function* () {
           return yield* Output;
-        }).pipe(Effect.provide(outputStdioLayer), Effect.provide(configLayer(jsonMode))),
+        }).pipe(Effect.provide(outputFromStreamsLayer()), Effect.provide(configLayer(jsonMode))),
       );
       expect(out.format).toBe(jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text);
     }

@@ -9,7 +9,7 @@
 //!
 //! # Enrolment is on the OTHER plane
 //!
-//! [`enrolment`] answers `POST /v1/runners`, which is a tenant operator
+//! [`enrolment`] answers `POST /v1/admin/runners`, which is a tenant operator
 //! creating a runner — `Guard::Bearer` and `runner:enroll`, not a runner token.
 //! It lives here anyway because it writes the row every verb beside it reads,
 //! and splitting it away from the plane it creates would put the mint and the

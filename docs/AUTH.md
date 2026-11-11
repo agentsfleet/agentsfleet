@@ -117,7 +117,7 @@ Five principal surfaces, one wire shape (`Authorization: Bearer …`), and a pre
 | Human at a terminal (CLI) | `afc_<hex>` CLI credential | backend (`POST /v1/cli-credentials`, paid for with a Clerk api-template JWT) | SHA-256 hash lookup + revocation check; scopes resolved live from Clerk on `oidc_subject` | `Guard::Bearer` → stored credential |
 | Human in a browser (dashboard) | Clerk session token | Clerk | JWKS verify + `aud` | `Guard::Bearer` → session token |
 | Service / automation | `agt_t<hex>` tenant api key | backend | SHA-256 hash lookup; scopes resolved live from Clerk for the key's creator (`created_by`) | `Guard::Bearer` → stored credential |
-| Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/runners`) | SHA-256 hash lookup in `runner.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
+| Host runner (machine) | `agt_r<hex>` runner token | backend (`POST /v1/admin/runners`) | SHA-256 hash lookup in `runner.runners` | `Guard::RunnerBearer` on `/v1/runners/me/*` |
 | Inbound webhook (provider) | HMAC signature (no Bearer) | provider | per-provider HMAC | `Guard::WebhookSignature` / `WebhookHmac` / `Svix` / `PayloadSigned` → verified in the handler |
 
 The prefix decides the path before anything is looked up, so `agt_t` and `afc_` never reach the session-token verifier. Each group of routes is a `Plane` (`rustd/crates/daemon/afd_auth/src/plane.rs`): `Plane::Tenant` accepts the session token, `agt_t` and `afc_`; `Plane::Runner` accepts only `agt_r`. A class the plane does not accept is refused before any datastore read, so runner tokens cannot satisfy tenant routes and the reverse.
@@ -153,7 +153,7 @@ The `read < write < admin` ladder is stored as data. Holding a higher scope sati
 | `connector:read` / `connector:write` | read connector status and the catalogue / start, complete, or disconnect a connector — gates the generic `{provider}` connector routes (every registry provider: Slack OAuth, GitHub App install, …); see §"OAuth connectors: a separate surface (M106, generalized by the M108 registry)" |
 | `model:read` / `model:admin` | read the priced model catalogue / create+update+delete catalogue rows |
 | `platform-key:read` / `platform-key:admin` | read the platform default key/model / set+delete it |
-| `runner:read` / `runner:write` | list and read runners, their events and their leases (operator plane) / `PATCH /v1/fleets/runners/{runner_id}` (cordon, drain, revoke, rotate the credential, self-test, reassign policy, replace its placement labels) and `DELETE` (retire a revoked runner's record) |
+| `runner:read` / `runner:write` | list and read runners, their events and their leases (operator plane) / `PATCH /v1/admin/runners/{runner_id}` (cordon, drain, revoke, rotate the credential, self-test, reassign policy, replace its placement labels) and `DELETE` (retire a revoked runner's record) |
 
 **Discrete verbs** (no ladder, a distinct action):
 
@@ -217,7 +217,7 @@ The gate is scoped to the person. Keeping an automation out of the approval surf
 
 > **Status: live, revocation included (M160_002 §3 and §4, done).** `POST /v1/cli-credentials` and `DELETE /v1/cli-credentials/{id}` are routed (`rustd/crates/daemon/afd_http/src/route/tenant.rs`).
 
-> A mint revokes the same machine's live credential in the same transaction. A partial unique index on `(user_id, machine_name)` keeps one live credential per machine (`rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs`). `agentsfleet logout` revokes the credential server-side (`cli/src/commands/auth-logout.ts`).
+> A mint revokes the same machine's live credential in the same transaction. A partial unique index on `(user_id, machine_name)` keeps one live credential per machine (`rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs`). `agentsfleet logout` revokes the credential server-side (`cli/src/commands/auth/logout.ts`).
 
 > The command-line interface stores the API URL it logged into beside the credential. It refuses to guess a deployment for it (`guardCommand`, `cli/src/program/auth-guard.ts`). No Clerk JWT reaches disk.
 
@@ -271,7 +271,7 @@ The result is not cached. A deletion is permanent and needs no cache, while a tr
 
 **Known gap.** Flow 1's credential is durable and shareable (accepted, see the M160 spec), so a shared credential carries the *sharer's* current scopes. Narrowing the sharer narrows every terminal holding it, which is the intended direction, but there is no per-credential ceiling below the person's own grant. Adding one is a row column and an intersection at `parse_claim`, not a redesign.
 
-**Development setup**. To unlock the Runners page and Model rates page for a local/dev user, grant only the read scopes those views need. Set this onto that user's Clerk Public metadata:
+**Development setup**. To list runners and shared models with `agentsfleet platform`, grant the development user only the required read scopes. Set this Clerk public metadata:
 
 ```json
 { "tenant_id": "<their-tenant-uuid>", "scopes": "runner:read model:read" }
@@ -279,7 +279,9 @@ The result is not cached. A deletion is permanent and needs no cache, while a tr
 
 This requires the Clerk **session-token claims** to project `public_metadata.scopes` into the top-level `scopes` claim, and `public_metadata.tenant_id` into `metadata.tenant_id` (`playbooks/founding/03_priming_infra/001_playbook.md`, step "Configure Clerk claims"). Setting Public metadata alone does nothing if the claims do not map it.
 
-Grant the full platform-operator bundle only to a dev user who genuinely needs write and admin actions. The bundle is `runner:enroll runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any`, shown in the table above. It carries `platform-key:admin`, which can rotate the platform language-model key, and `workspace:any`, which reaches across tenants. Neither belongs in a "just let me see the page" default.
+Grant the full platform-operator bundle only to a development user who needs write and admin actions. The bundle is `runner:enroll runner:write stream:read model:admin platform-key:admin platform-library:write workspace:any`.
+
+It includes platform key rotation and access across tenants. Read-only inspection needs neither permission.
 
 ---
 
@@ -732,15 +734,16 @@ Flows 1–3 all act *on behalf of* a human or a tenant. The **runner token** is 
 
 ### Provisioning (register)
 
-A runner has no credential until an **agentsfleet platform operator** mints one from the dashboard's **Add runner** action. That is a session-authed server action; M84_001 retired the `register --token` command, so no identity credential ever reaches a shell.
+A platform operator enrolls a trusted host with `agentsfleet platform runners enroll --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
+The CLI authenticates with the operator's existing credential and saves the runner token in an owner-only file.
 
-Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/runners`) requires the `runner:enroll` scope.
+Enrollment is the trust decision. A runner that joins the shared fleet receives every tenant's inline `secrets_map` through the leases placed on it. So the endpoint that mints an `agt_r` (`POST /v1/admin/runners`) requires the `runner:enroll` scope.
 
 That scope is a discrete capability held only by platform operators, revocable independently of `runner:read` and `runner:write`. A caller without it, session token or `agt_t` key alike (a key holds exactly its creator's scopes), is refused `403 UZ-AUTH-022`. An empty scope set fails closed.
 
 There is no open enrollment token.
 
-The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/fleets/runners`, one runner `GET /v1/fleets/runners/{runner_id}`, and its `/events` and `/leases`; `runner:write` fronts `PATCH` and `DELETE /v1/fleets/runners/{runner_id}`.
+The operator plane has its own scopes (`rustd/crates/daemon/afd_http/src/route/runner_ops.rs`). `runner:read` fronts the list `GET /v1/admin/runners`, one runner `GET /v1/admin/runners/{runner_id}`, and its `/events` and `/leases`; `runner:write` fronts `PATCH` and `DELETE /v1/admin/runners/{runner_id}`.
 
 Sending `{"action":"rotate"}` atomically replaces the stored runner-token digest and returns the replacement `runner_token` once. The old token fails the next authentication read. The response and audit log never expose the old token, and the audit event records the operator subject.
 
@@ -749,9 +752,9 @@ The host **never self-registers** (Option B, the GitLab-16 "create runner → au
 No host ever holds an enrollment-grade credential.
 
 ```
-Platform operator — dashboard "Add runner" (session JWT, scopes ∋ runner:enroll)  agentsfleetd
-   │ server action → POST /v1/runners
-   │   Authorization: Bearer <session-JWT>
+Platform operator — agentsfleet platform runners enroll                    agentsfleetd
+   │ CLI request → POST /v1/admin/runners (runner:enroll)
+   │   Authorization: Bearer <operator-credential>
    │   { host_id, assigned_policy{…}, labels[] }
    ▼
    Guard::Bearer + require_scope gate the route (runner:enroll);
@@ -1135,16 +1138,9 @@ Operator setup for the Clerk configuration is in
 `playbooks/founding/03_priming_infra/001_playbook.md`, step "Configure Clerk claims". The `aud` value must
 match the environment's `OIDC_AUDIENCE` value.
 
-**The `scopes` claim gates the operator surfaces, and it fails closed.** The
-runners and admin-models pages check the top-level `scopes` claim through
-`hasScope` in `lib/auth/platform.ts`. Until the environment's session-token
-configuration projects `scopes` *and* the operator carries them on
-`public_metadata.scopes`, those pages stay hidden. The dashboard mirrors the
-backend's downward closure through `expandScopes` in `lib/auth/scopes.ts`, so an
-operator holding `runner:write` and `model:admin` sees the read-gated pages
-without needing the `:read` rungs spelled out. `require_scope`, fed
-by `afd_http`'s route table, is the authoritative gate; the dashboard check is
-defence in depth.
+**Platform administration uses the CLI.** The dashboard has no runner or platform model administration pages.
+The backend's `require_scope` checks each `agentsfleet platform` request against the scopes declared in `afd_http`'s route table.
+CLI credentials resolve the operator's current scopes from Clerk, as described above; signing in grants no additional permissions.
 
 **One api-template mint survives**, at
 `ui/packages/app/app/cli-auth/[session_id]/page.tsx`. The customized session
@@ -1185,7 +1181,7 @@ Each of these is a real concern, named here so future fleets and security-review
 | # | Concern | Owning future work |
 |---|---|---|
 | 1 | **Autonomous fleet identity** — persistent keypair, signed challenges, scoped credentials, server-side fleet inventory, revocation for non-human callers. | Fleet Identity spec, not yet authored (no milestone yet). |
-| 2 | **Browser-session revocation from a terminal** — `agentsfleet logout` revokes the terminal's `afc_` credential server-side and aborts pending login sessions (M160_002 §3, done; `cli/src/commands/auth-logout.ts`). It deliberately leaves Clerk browser sessions alone. Revoking those would need a Clerk admin-API call (not free, rate-limited). | Separate Clerk-revocation spec, not yet authored (no milestone yet). |
+| 2 | **Browser-session revocation from a terminal** — `agentsfleet logout` revokes the terminal's `afc_` credential server-side and aborts pending login sessions (M160_002 §3, done; `cli/src/commands/auth/logout.ts`). It deliberately leaves Clerk browser sessions alone. Revoking those would need a Clerk admin-API call (not free, rate-limited). | Separate Clerk-revocation spec, not yet authored (no milestone yet). |
 | 3 | **Active key-substitution man-in-the-middle (MITM)** on the device flow. Described with its planned closure in [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Threats this flow does NOT close* row 6. | **v2.1** (to be authored). |
 | 4 | **Verification-code entropy uplift** — 6 digits → 8 alphanumeric characters in a segmented format (e.g. `X4K9-TQ`). Hygiene, not correctness: the 5-attempt cap and 5-minute time-to-live already bound brute force ([`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Cryptographic primitives (pinned)*). | Future follow-up spec (no milestone yet). |
 | 5 | **Dashboard-JS-compromise hardening** — Sub-Resource Integrity (SRI) on the dashboard bundle, Content Security Policy (CSP) hardening, dependency-supply-chain pinning. Addresses [`AUTH_DEVICE_LOGIN.md`](./AUTH_DEVICE_LOGIN.md) *Threats this flow does NOT close* row 1. | Future spec (no milestone yet). |

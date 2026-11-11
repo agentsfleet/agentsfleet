@@ -7,7 +7,6 @@ import {FleetDetailSchema} from "@/lib/api/fleet-detail";
 
 vi.mock("next/navigation", () => ({useRouter: () => chatRouter, useSearchParams: () => new URLSearchParams()}));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "creator"})}));
-vi.mock("@/app/(dashboard)/admin/fleet-libraries/actions", () => ({stagePlatformLibraryAction: vi.fn()}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({
   listFleetMemoriesAction: vi.fn(), setMemoryAccessAction: vi.fn(), forgetFleetMemoryAction: vi.fn(),
 }));

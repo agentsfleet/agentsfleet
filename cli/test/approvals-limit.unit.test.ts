@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
-import { fetchGates } from "../src/commands/approvals.ts";
+import { fetchGates } from "../src/commands/approvals/approvals.ts";
 import { ValidationError } from "../src/errors/index.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 

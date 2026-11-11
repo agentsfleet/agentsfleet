@@ -8,7 +8,7 @@ import {
   workspaceListEffect,
   workspaceShowEffectFromArgs,
   workspaceUseEffectFromArgs,
-} from "../src/commands/workspace.ts";
+} from "../src/commands/workspace/workspace.ts";
 import { OUTPUT_FORMAT } from "../src/services/output.ts";
 import type { WorkspacesValue } from "../src/services/workspaces.ts";
 import { ConfigError, ValidationError } from "../src/errors/index.ts";

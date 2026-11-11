@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer, Option } from "effect";
-import { resumeEffectFromId, stopEffectFromId, killEffectFromId, deleteEffectFromId } from "../../src/commands/fleet.ts";
+import { resumeEffectFromId, stopEffectFromId, killEffectFromId, deleteEffectFromId } from "../../src/commands/fleet/fleet.ts";
 import { CliConfig } from "../../src/services/config.ts";
 import { Credentials } from "../../src/services/credentials.ts";
 import { httpClientLayer } from "../../src/services/http-client.ts";

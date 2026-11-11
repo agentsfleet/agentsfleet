@@ -9,8 +9,10 @@
 // is intentionally side-effect-only — the analytics correlation is
 // driven by the command code, not by this service.
 
-import { Effect, Layer, Context } from "effect";
+import { Effect, Layer, Context, type Scope } from "effect";
 import { CliConfig } from "./config.ts";
+import { startProgress } from "../output/progress.ts";
+import { isTty } from "../output/capability.ts";
 import {
   ui as defaultUi,
   printKeyValue as printKeyValueRaw,
@@ -22,7 +24,7 @@ import {
   type EntityTableSpec,
 } from "../output/index.ts";
 
-type Stream = NodeJS.WritableStream;
+type Stream = NodeJS.WritableStream & {readonly isTTY?: boolean};
 
 /**
  * The registers this CLI writes in.
@@ -75,6 +77,7 @@ export interface OutputShape {
   readonly stdoutIsTty: boolean;
   readonly intro: (msg: string) => Effect.Effect<void>;
   readonly info: (msg: string) => Effect.Effect<void>;
+  readonly progress: (label: string) => Effect.Effect<void, never, Scope.Scope>;
   /**
    * One result, in whichever register is active.
    *
@@ -116,6 +119,7 @@ interface StreamPair {
 /** Streams plus the register they are written in. */
 interface OutputConfig extends StreamPair {
   readonly format: OutputFormat;
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 const writeLine = (stream: Stream, line: string): void => {
@@ -124,11 +128,12 @@ const writeLine = (stream: Stream, line: string): void => {
 
 const JSON_INDENT = 2;
 
-export const makeStdioOutput = ({ stdout, stderr, format }: OutputConfig): OutputShape => ({
+export const makeStdioOutput = ({ stdout, stderr, format, env }: OutputConfig): OutputShape => ({
   stdoutIsTty: Boolean((stdout as { readonly isTTY?: boolean }).isTTY),
   format,
   intro: (msg) => Effect.sync(() => writeLine(stdout, `\n${msg}`)),
   info: (msg) => Effect.sync(() => writeLine(stdout, msg)),
+  progress: (label) => startProgress(stderr, label, format === OUTPUT_FORMAT.text && isTty(stdout), env),
   // The one call that answers both registers. In json the payload IS the
   // answer, so the human sentence is dropped rather than wrapped — a script
   // parsing this wants the record, not a record with a message in it.
@@ -170,30 +175,14 @@ export const makeStdioOutput = ({ stdout, stderr, format }: OutputConfig): Outpu
 const formatFor = (jsonMode: boolean): OutputFormat =>
   jsonMode ? OUTPUT_FORMAT.json : OUTPUT_FORMAT.text;
 
-// Both layers now read CliConfig, because the format is a property of the
-// invocation and the renderer is what needs it. `httpClientLayer` already
-// takes its base URL this way.
-export const outputStdioLayer: Layer.Layer<Output, never, CliConfig> = Layer.effect(
-  Output,
-  Effect.gen(function* () {
-    const config = yield* CliConfig;
-    return Output.of(
-      makeStdioOutput({
-        stdout: process.stdout,
-        stderr: process.stderr,
-        format: formatFor(config.jsonMode),
-      }),
-    );
-  }),
-);
-
 export const outputFromStreamsLayer = (
-  pair: StreamPair,
+  pair: StreamPair = {stdout: process.stdout, stderr: process.stderr},
+  env: NodeJS.ProcessEnv = process.env,
 ): Layer.Layer<Output, never, CliConfig> =>
   Layer.effect(
     Output,
     Effect.gen(function* () {
       const config = yield* CliConfig;
-      return Output.of(makeStdioOutput({ ...pair, format: formatFor(config.jsonMode) }));
+      return Output.of(makeStdioOutput({ ...pair, env, format: formatFor(config.jsonMode) }));
     }),
   );

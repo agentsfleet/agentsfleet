@@ -14,7 +14,7 @@ type MobileNavigationDialogProps = {
   open: boolean;
   pathname: string;
   workspaceId: string | null;
-  operatorScopes: string[];
+
   onOpenChange: (open: boolean) => void;
   restoreFocus: () => void;
 };
@@ -24,7 +24,6 @@ export default function MobileNavigationDialog({
   open,
   pathname,
   workspaceId,
-  operatorScopes,
   onOpenChange,
   restoreFocus,
 }: MobileNavigationDialogProps) {
@@ -42,7 +41,6 @@ export default function MobileNavigationDialog({
           workspaces={workspaces}
           pathname={pathname}
           workspaceId={workspaceId}
-          operatorScopes={operatorScopes}
           collapsed={false}
           onNavigate={() => onOpenChange(false)}
         />
