@@ -11,6 +11,7 @@ mod h2;
 mod h3;
 mod jobs;
 mod limits;
+mod mtu;
 mod proxy;
 pub mod server;
 mod telemetry;

@@ -30,6 +30,8 @@ pub struct Listener {
     tcp: TcpListener,
     udp: UdpSocket,
     identity: Identity,
+    /// The UDP payload size HTTP/3 sends.
+    datagram: usize,
 }
 
 impl fmt::Debug for Listener {
@@ -47,7 +49,20 @@ impl Listener {
         let _checked = identity.h2()?;
         let tcp = TcpListener::bind(address).await?;
         let udp = UdpSocket::bind(tcp.local_addr()?).await?;
-        Ok(Self { tcp, udp, identity })
+        Ok(Self {
+            tcp,
+            udp,
+            identity,
+            datagram: crate::mtu::MAX_DATAGRAM_BYTES,
+        })
+    }
+
+    /// Send HTTP/3 datagrams of at most `bytes`, to model a daemon with no ceiling of its own.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub const fn with_datagram_limit(mut self, bytes: usize) -> Self {
+        self.datagram = bytes;
+        self
     }
 
     /// Bound address shared by both transports.
@@ -85,7 +100,14 @@ impl Listener {
             accepting.clone(),
             abort.clone(),
         );
-        let h3 = crate::h3::serve(self.udp, self.identity, make, accepting, abort.clone());
+        let h3 = crate::h3::serve(
+            self.udp,
+            self.identity,
+            self.datagram,
+            make,
+            accepting,
+            abort.clone(),
+        );
         // A failed carrier stops its sibling, but both owners still finish their cleanup.
         let h2 = async {
             let result = h2.await;

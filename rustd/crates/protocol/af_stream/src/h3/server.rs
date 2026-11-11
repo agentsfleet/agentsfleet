@@ -22,6 +22,7 @@ type Accepted = tokio_quiche::InitialQuicConnection<UdpSocket, DefaultMetrics>;
 pub(crate) async fn serve<M, S>(
     socket: UdpSocket,
     identity: Identity,
+    datagram: usize,
     make: M,
     accepting: CancellationToken,
     abort: CancellationToken,
@@ -34,7 +35,7 @@ where
         + 'static,
     S::Future: Send + 'static,
 {
-    let mut incoming = listen(socket, &identity)?;
+    let mut incoming = listen(socket, &identity, datagram)?;
     let mut workers = JoinSet::new();
     let result = loop {
         tokio::select! {
@@ -65,6 +66,7 @@ where
 fn listen(
     socket: UdpSocket,
     identity: &Identity,
+    datagram: usize,
 ) -> Result<tokio_quiche::QuicConnectionStream<DefaultMetrics>> {
     let paths = TlsCertificatePaths {
         cert: identity.chain.to_str().ok_or(ErrorKind::IdentityPath)?,
@@ -72,7 +74,7 @@ fn listen(
         kind: CertificateKind::X509,
     };
     let params = tokio_quiche::ConnectionParams::new_server(
-        super::trust::server(),
+        super::trust::server(datagram),
         paths,
         tokio_quiche::settings::Hooks::default(),
     );

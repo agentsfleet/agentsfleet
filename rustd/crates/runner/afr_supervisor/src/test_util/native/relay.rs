@@ -12,7 +12,7 @@ type Failure = Box<dyn std::error::Error + Send + Sync>;
 
 pub(crate) struct TcpOnly {
     pub(crate) url: String,
-    _udp: UdpSocket,
+    udp: UdpSocket,
     stop: CancellationToken,
     owner: AbortOnDropHandle<std::io::Result<()>>,
 }
@@ -30,10 +30,21 @@ impl TcpOnly {
         let owner = AbortOnDropHandle::new(tokio::spawn(serve(listener, backend, stop.clone())));
         Ok(Self {
             url: format!("https://localhost:{}", address.port()),
-            _udp: udp,
+            udp,
             stop,
             owner,
         })
+    }
+
+    /// Datagrams that reached the unanswered UDP side since the last call.
+    #[cfg(test)]
+    pub(crate) fn udp_datagrams(&self) -> usize {
+        let mut buffer = [0_u8; 2_048];
+        let mut count = 0;
+        while self.udp.try_recv_from(&mut buffer).is_ok() {
+            count += 1;
+        }
+        count
     }
 
     pub(crate) async fn close(mut self) -> Result<(), Failure> {
