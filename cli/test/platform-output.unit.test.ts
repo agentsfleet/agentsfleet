@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { PlatformFixture, LIBRARY_ENTRY, MODEL, RUNNER, RUNNER_DETAIL, RUNNER_ID } from "./helpers-platform.ts";
+import { PlatformFixture, LIBRARY_ENTRY, MODEL, RUNNER, RUNNER_DETAIL, RUNNER_ID, INSTANT } from "./helpers-platform.ts";
 
 let fixture: PlatformFixture;
 beforeEach(() => {fixture = new PlatformFixture();});
@@ -49,4 +49,22 @@ test("cleans up the progress line before rendering a refused request", async () 
   expect(result.code).not.toBe(0);
   expect(result.stderr.indexOf("Contacting platform")).toBeLessThan(result.stderr.indexOf("UZ-AUTH-022"));
   expect(result.stdout).toBe("");
+});
+
+test.each([
+  {patch: {}, expected: "Not reported"},
+  {patch: {selftest_requested_at: INSTANT}, expected: "Pending"},
+  {patch: {selftest_completed_at: INSTANT}, expected: "Passed"},
+  {patch: {selftest_completed_at: INSTANT, selftest_requested_at: "2026-11-10T00:00:01Z"}, expected: "Pending"},
+  {patch: {selftest_completed_at: "2026-11-10T00:00:00.100000001Z", selftest_requested_at: "2026-11-10T00:00:00.100000002Z"}, expected: "Pending"},
+  {patch: {selftest_completed_at: "2026-11-10T00:00:00.1Z", selftest_requested_at: "2026-11-10T00:00:00.100Z"}, expected: "Passed"},
+  {patch: {selftest_completed_at: null}, expected: "Stale (previous assignment)"},
+  {patch: {selftest_completed_at: INSTANT, assigned_policy: {...RUNNER_DETAIL.assigned_policy, sandbox_tier: "container_nested"}}, expected: "Stale (previous assignment)"},
+  {patch: {selftest_completed_at: INSTANT, assigned_policy: {...RUNNER_DETAIL.assigned_policy, network_policy: "allow_all"}}, expected: "Stale (previous assignment)"},
+  {patch: {selftest_completed_at: INSTANT, selftest: {checks: [], all_ok: false, sandbox_tier: "landlock_full", network_policy: "deny_all_egress"}}, expected: "Failed"},
+])("labels the recorded self-test as $expected", async ({patch, expected}) => {
+  const report = {checks: [], all_ok: true, sandbox_tier: "landlock_full", network_policy: "deny_all_egress"};
+  fixture.respond = () => Response.json({...RUNNER_DETAIL, selftest: expected === "Not reported" || (expected === "Pending" && !("selftest_completed_at" in patch)) ? null : report, ...patch});
+  const result = await fixture.run(["runners", "show", RUNNER_ID], "", true);
+  expect(result.code).toBe(0); expect(result.stdout).toContain(expected);
 });

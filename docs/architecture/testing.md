@@ -162,7 +162,7 @@ Keep the shared guard until both the reader and writer have an isolated replacem
 
 ## The wire
 
-`af_wire` defines the `/v1/admin/runners` protocol. `agentsfleetd` serves it and publishes the shapes through `public/openapi.json`. `openapi_contract.rs`, `openapi_coverage.rs` and their siblings in `afd_api/tests/` grade that document against the routes.
+`af_wire` defines the `/v1/runners` protocol. `agentsfleetd` serves it and publishes the shapes through `public/openapi.json`. `openapi_contract.rs`, `openapi_coverage.rs` and their siblings in `afd_api/tests/` grade that document against the routes.
 
 `agentsfleet-runner` is a client of the same crate. It speaks `af_wire`'s types and nothing else, so a shape the two sides disagree on fails to compile ([`runner_execution.md`](./runner_execution.md#why-rust)).
 

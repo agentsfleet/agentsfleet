@@ -1,4 +1,4 @@
-//! The `/v1/admin/runners` protocol the daemon serves and the runner consumes.
+//! The `/v1/runners` protocol the daemon serves and the runner consumes.
 //!
 //! Only what both sides speak lives here. The daemon's own API types (admin,
 //! tenant, operator, ingress) live in `afd_api_wire`, which depends on this

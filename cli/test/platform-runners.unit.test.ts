@@ -109,3 +109,14 @@ test("rejects an unknown runner state instead of presenting a successful read", 
   const result = await fixture.run(["runners", "show", RUNNER_ID, "--json"]);
   expect(result.code).not.toBe(0); expect(result.stderr).toContain("supported API shape"); expect(result.stdout).toBe("");
 });
+
+test.each(["enroll", "rotate-token"])("never replays %s after a committed request loses its reply", async command => {
+  let commits = 0;
+  fixture.respond = () => {commits += 1; throw Object.assign(new TypeError("Connection reset after commit"), {code: "ECONNRESET"});};
+  const file = join(fixture.state, "lost-reply-token");
+  const args = command === "enroll" ? ["--host-id", "build-host", "--policy", "-"] : [RUNNER_ID];
+  const result = await fixture.run(["runners", command, ...args, "--token-out", file, "--json"], JSON.stringify(POLICY));
+  expect(result.code).toBe(2); expect(JSON.parse(result.stderr).error.code).toBe("NetworkError");
+  expect(commits).toBe(1); expect(fixture.calls).toHaveLength(1);
+  expect(existsSync(file)).toBe(false); expect(result.stdout).toBe("");
+});

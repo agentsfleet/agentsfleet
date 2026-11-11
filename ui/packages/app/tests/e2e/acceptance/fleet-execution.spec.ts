@@ -11,13 +11,6 @@ import { executionInstructions } from "./fixtures/definition";
  * carried the activity, over one workspace stream, and a control fleet's tile
  * did not.
  *
- * This is the inverse of `runner-detail.spec.ts`, which seeds empty
- * instructions so the lease fails closed before any model call. Here the body has
- * instructions, so the lease goes all the way: one real provider round trip per
- * run. Nothing model-free exists from the outside (the runner's only stub is a
- * compile-time flag), so the assertions are about the OUTCOME — a processed row
- * with a non-empty reply — and never about what the model said.
- *
  * What a failure prints is part of the contract. `fixtures/execution.ts`
  * classifies every terminal row and every API refusal, and the walk throws its
  * verdict as one line: `[environment] execute: …` for a provider or runner

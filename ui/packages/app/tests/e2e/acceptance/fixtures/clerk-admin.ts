@@ -91,13 +91,8 @@ async function getUser(userId: string): Promise<ClerkUser> {
 // identities out, and gives a future Clerk webhook handler a hook to refuse
 // unsafe operations against fixture users.
 //
-// Platform scopes belong only to the operator and policy-editor fixtures.
-// The session-token template projects them to the top-level `scopes` claim
-// that agentsfleetd's requireScope
-// and the dashboard's readSessionScopes both read; every other fixture is
-// deliberately scope-free, so a spec asserting an operator surface is hidden
-// stays meaningful. Built once and shared by the create and backfill paths so
-// the two can never drift.
+// Only the operator fixture carries runner-read scope for release diagnostics.
+// Build metadata once for creation and backfill so regular tenants stay scope-free.
 function fixtureMetadata(spec: FixtureUserSpec): Record<string, unknown> {
   const metadata: Record<string, unknown> = {
     is_test_fixture: true,
