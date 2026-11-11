@@ -39,9 +39,8 @@ export class PreviewAttachmentAdapter implements AttachmentAdapter {
       const body = await boundedBody(response, signal, PREVIEW_RECEIPT_LIMIT);
       if (body === null) throw new Error("The upload receipt exceeds its limit.");
       const receipt = uploadReceiptSchema.parse(JSON.parse(new TextDecoder().decode(body)));
-      if (receipt.filename !== attachment.name || receipt.bytes !== attachment.file.size) throw new Error("The receipt does not match this file.");
       signal.throwIfAborted();
-      return {id: attachment.id, type: "file", name: receipt.filename, contentType: attachment.contentType,
+      return {id: attachment.id, type: "file", name: attachment.name, contentType: attachment.contentType,
         status: {type: "complete"}, content: [{type: "text", text: receipt.reply}]};
     } finally {this.#pending.delete(attachment.id);}
   }

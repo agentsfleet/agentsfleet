@@ -37,9 +37,9 @@ test("native attachment preparation accepts a preview and shows its text receipt
   await page.route("**/live/v1/workspaces/*/fleets/*/uploads", async route => {
     requests.push(route.request().method());
     expect(route.request().postDataBuffer()?.toString()).toContain('filename="notes.txt"');
-    await route.fulfill({status: 201, contentType: "application/json", body: JSON.stringify({
-      id: "0197b580-7c00-7000-8000-000000000004", filename: "notes.txt", bytes: 4, preview: true, stored: false,
-      reply: "Received notes.txt (4 bytes) as a preview upload. The file was not stored or analyzed.",
+    await route.fulfill({status: 200, contentType: "application/json", body: JSON.stringify({
+      preview: true, stored: false,
+      reply: "Upload preview accepted. The file was not read, stored, or analyzed.",
     })});
   });
   await page.goto(`${chatProbe}?visual=1`);
@@ -57,6 +57,6 @@ test("native attachment preparation accepts a preview and shows its text receipt
   expect(requests).toEqual([]);
   await page.getByRole("button", {name: "Send", exact: true}).click();
   await expect(page.getByText(/Upload preview · Not saved to fleet history/)).toBeVisible();
-  await expect(page.getByText(/The file was not stored or analyzed/)).toBeVisible();
+  await expect(page.getByText(/The file was not read, stored, or analyzed/)).toBeVisible();
   expect(requests).toEqual(["POST"]);
 });
