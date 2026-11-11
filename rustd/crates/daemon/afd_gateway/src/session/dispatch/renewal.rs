@@ -83,6 +83,14 @@ impl SessionServices {
             .iter()
             .map(|entry| (entry.index, entry.lease_id.clone(), entry.recorded_through))
             .collect();
+        let kept = entries
+            .iter()
+            .filter_map(|entry| {
+                self.cache
+                    .reported(&entry.lease_id)
+                    .map(|facts| (entry.lease_id.clone(), facts))
+            })
+            .collect();
         let leases = entries
             .into_iter()
             .map(|entry| (entry.lease_id, entry.request))
@@ -95,6 +103,7 @@ impl SessionServices {
                     leases,
                     funds_due,
                     now: self.gateway.inner.dependencies.wall_clock.now(),
+                    kept,
                 })
                 .await)
         });

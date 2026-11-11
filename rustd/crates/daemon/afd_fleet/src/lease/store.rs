@@ -28,6 +28,8 @@ pub struct Leases {
     definitions: crate::lease::cache::Definitions,
     /// Price books by model and catalogue version, shared the same way.
     prices: crate::lease::cache::PriceBooks,
+    /// The newest versions this replica has read, shared the same way.
+    latest: crate::lease::cache::Latest,
 }
 
 impl Leases {
@@ -43,7 +45,13 @@ impl Leases {
             authority: None,
             definitions: crate::lease::cache::Definitions::default(),
             prices: crate::lease::cache::PriceBooks::default(),
+            latest: crate::lease::cache::Latest::default(),
         }
+    }
+
+    /// The newest catalogue version and head revisions this replica has read.
+    pub(crate) const fn latest(&self) -> &crate::lease::cache::Latest {
+        &self.latest
     }
 
     /// The price books this replica holds, by model and catalogue version.

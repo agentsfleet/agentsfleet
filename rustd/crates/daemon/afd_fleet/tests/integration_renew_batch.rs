@@ -64,6 +64,7 @@ async fn frame_on(
                 .collect(),
             funds_due,
             now: held.now,
+            kept: std::collections::HashMap::new(),
         })
         .await
 }
@@ -295,5 +296,92 @@ async fn host_batch_refuses_cancel_marked_lease() {
         before,
         "a cancelled lease keeps its deadline"
     );
+    held.fixtures.cleanup().await;
+}
+
+/// [`frame_on`], with the facts a session kept from each lease's offer.
+async fn kept_frame(
+    plane: &afd_fleet::lease::LeaseService,
+    held: &Held,
+    lease: &Uuid7,
+) -> afd_fleet::Result<(Timestamp, afd_billing::Nanos)> {
+    let facts = held
+        .leases
+        .load_for_report(lease, &held.runner)
+        .await
+        .expect("the lease reads")
+        .expect("the lease is the runner's");
+    plane
+        .renew_batch(Renewals {
+            runner_id: &held.runner,
+            leases: vec![(lease.clone(), RenewRequest::default())],
+            funds_due: false,
+            now: held.now,
+            kept: std::collections::HashMap::from([(lease.clone(), facts)]),
+        })
+        .await
+        .into_iter()
+        .next()
+        .expect("one answer per lease")
+}
+
+/// How many times the frame's pre-read ran in `ran`.
+fn pre_reads(ran: &statements::Ran) -> u64 {
+    ran.calls_containing("l.task_id, l.created_at, f.head_revision_id")
+}
+
+// Value: protects=a steady-state frame whose session kept its leases' facts
+// runs only the renewal statement, and a moved catalogue sends the lease to
+// the per-lease path once and the next frame back to the pre-read;
+// fails_when=the frame still pre-reads, or a stale version keeps every later
+// frame on the per-lease path; why_new=M245 §9 took the pre-read's facts from
+// the session and the replica; seam=none; no_claim=a durable task's lease,
+// which keeps no facts.
+#[tokio::test]
+#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
+async fn kept_facts_skip_the_pre_read_until_a_version_moves() {
+    let held = held_in(Fixtures::create_isolated().await).await;
+    // A priced model: a book with no prices guards no catalogue version.
+    held.fixtures
+        .seed_model_rate(crate::seed::PROVIDER, crate::seed::MODEL)
+        .await;
+    let lease = &held.issued.lease_id;
+    let plane = held.fixtures.plane();
+    let owner = held.fixtures.open(DbRole::Migrator).await;
+    statements::install(&owner).await;
+
+    let learning = Counted::open(&owner).await;
+    kept_frame(&plane, &held, lease)
+        .await
+        .expect("the first frame renews");
+    let learning = learning.close().await;
+    held.run_a_slice().await;
+    let steady = Counted::open(&owner).await;
+    kept_frame(&plane, &held, lease)
+        .await
+        .expect("a kept frame renews");
+    let steady = steady.close().await;
+
+    sqlx::query(
+        "UPDATE model.catalogue_version SET resource_version = resource_version + 1 WHERE id = 1",
+    )
+    .execute(&mut *owner.acquire().await.expect("owner"))
+    .await
+    .expect("the catalogue moves");
+    held.run_a_slice().await;
+    kept_frame(&plane, &held, lease)
+        .await
+        .expect("a moved frame renews on the per-lease path");
+    held.run_a_slice().await;
+    let relearning = Counted::open(&owner).await;
+    kept_frame(&plane, &held, lease)
+        .await
+        .expect("the next frame renews");
+    let relearning = relearning.close().await;
+
+    assert_eq!(pre_reads(&learning), 1, "an unknown version is read");
+    assert_eq!(pre_reads(&steady), 0, "{:?}", steady.statements());
+    assert_eq!(pre_reads(&relearning), 1, "a moved version is read again");
+    owner.close().await;
     held.fixtures.cleanup().await;
 }

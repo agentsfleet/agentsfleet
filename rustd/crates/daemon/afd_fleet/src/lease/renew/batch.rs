@@ -71,6 +71,10 @@ pub struct Renewals<'a> {
     pub funds_due: bool,
     /// The instant identifiers this pass mints are drawn at.
     pub now: Timestamp,
+    /// What the session kept from each plain lease's offer (M245 §9): when
+    /// every lease has its facts and the replica knows each fleet's versions,
+    /// the frame runs without its pre-read.
+    pub kept: HashMap<Uuid7, crate::lease::Reported>,
 }
 
 /// One lease as the pre-read found it.
@@ -200,11 +204,15 @@ impl LeaseService {
             leases,
             funds_due,
             now,
+            kept,
         } = renewals;
         // A frame the batch could not read or run leaves every lease to the
         // per-lease path: in an outage each one faults on its own and answers
         // retry, and the runner keeps them until their deadlines (7.5).
-        let mut answers = match self.renew_frame(runner_id, &leases, funds_due, now).await {
+        let mut answers = match self
+            .renew_frame(runner_id, &leases, &kept, funds_due, now)
+            .await
+        {
             Ok(answers) => answers,
             Err(fault) => {
                 tracing::warn!(
@@ -234,16 +242,14 @@ impl LeaseService {
         &self,
         runner_id: &Uuid7,
         leases: &[(Uuid7, RenewRequest)],
+        kept: &HashMap<Uuid7, crate::lease::Reported>,
         funds_due: bool,
         now: Timestamp,
     ) -> Result<HashMap<Uuid7, Answer>> {
-        let ids: Vec<&Uuid7> = leases.iter().map(|(id, _request)| id).collect();
-        let found: Vec<Found> = sqlx::query_as(sql::renew::SELECT_RENEWALS)
-            .bind(&ids)
-            .bind(runner_id)
-            .fetch_all(&mut *self.leases.pool().acquire().await?)
-            .await
-            .map_err(query(CONTEXT_READ))?;
+        let found = match self.kept_rows(leases, kept).await {
+            Some(found) => found,
+            None => self.read_renewals(runner_id, leases).await?,
+        };
         let found: HashMap<&Uuid7, &Found> = found.iter().map(|row| (&row.id, row)).collect();
 
         let mut answers = HashMap::new();
@@ -313,6 +319,7 @@ impl LeaseService {
                 "prices or ceilings moved under the renewal statement; the leases take the per-lease path"
             );
             for entry in moved {
+                self.leases.latest().forget(&entry.found.fleet_id).await;
                 answers.insert(entry.found.id.clone(), Answer::PerLease);
             }
         }
@@ -446,6 +453,65 @@ impl LeaseService {
             .fetch_all(&mut *self.leases.pool().acquire().await?)
             .await
             .map_err(query(CONTEXT_REVISIONS))
+    }
+
+    /// The frame's rows from what the session kept and the versions the
+    /// replica last read, or `None` when any lease or fleet lacks one: the
+    /// statement guards every fact taken here, and reads status and the cancel
+    /// mark itself under its locks (M245 §9).
+    async fn kept_rows(
+        &self,
+        leases: &[(Uuid7, RenewRequest)],
+        kept: &HashMap<Uuid7, crate::lease::Reported>,
+    ) -> Option<Vec<Found>> {
+        let mut rows = Vec::with_capacity(leases.len());
+        for (lease_id, _request) in leases {
+            let facts = kept.get(lease_id)?;
+            let (head, catalogue_version) = self.leases.latest().known(&facts.fleet_id).await?;
+            rows.push(Found {
+                id: lease_id.clone(),
+                status: sql::LEASE_STATUS_ACTIVE.to_owned(),
+                cancelled: false,
+                tenant_id: facts.tenant_id.clone(),
+                workspace_id: facts.workspace_id.clone(),
+                fleet_id: facts.fleet_id.clone(),
+                posture: facts.posture.clone(),
+                provider: facts.provider.clone(),
+                model: facts.model.clone(),
+                task_id: None,
+                created_at: facts.lease_created_at,
+                head_revision_id: Some(head),
+                catalogue_version,
+            });
+        }
+        Some(rows)
+    }
+
+    /// The frame's rows as the pre-read answers them, which also tells the
+    /// replica each fleet's versions.
+    async fn read_renewals(
+        &self,
+        runner_id: &Uuid7,
+        leases: &[(Uuid7, RenewRequest)],
+    ) -> Result<Vec<Found>> {
+        let ids: Vec<&Uuid7> = leases.iter().map(|(id, _request)| id).collect();
+        let found: Vec<Found> = sqlx::query_as(sql::renew::SELECT_RENEWALS)
+            .bind(&ids)
+            .bind(runner_id)
+            .fetch_all(&mut *self.leases.pool().acquire().await?)
+            .await
+            .map_err(query(CONTEXT_READ))?;
+        for row in &found {
+            self.leases
+                .latest()
+                .observe(
+                    &row.fleet_id,
+                    row.head_revision_id.as_ref(),
+                    row.catalogue_version,
+                )
+                .await;
+        }
+        Ok(found)
     }
 
     /// The funds check's floor, priced from the book cached at the row's
@@ -792,6 +858,7 @@ mod tests {
                 leases,
                 funds_due: true,
                 now: test_dead::AT,
+                kept: std::collections::HashMap::new(),
             })
             .await;
         assert_eq!(answers.len(), 2);

@@ -30,7 +30,8 @@ const FAIL_RELEASE: &str = "CREATE FUNCTION fleet.refuse_park() RETURNS trigger 
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_failed_park_stamp_releases_the_claim_and_retries_after_approval() {
-    assert_failed_park_recovers(FAIL_STAMP).await;
+    // Boxed: the whole delivery path rides in this future.
+    Box::pin(assert_failed_park_recovers(FAIL_STAMP)).await;
 }
 
 // Value: protects=partial park rollback; fails_when=slot-write failure retains claim;
@@ -38,7 +39,8 @@ async fn a_failed_park_stamp_releases_the_claim_and_retries_after_approval() {
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_failed_park_release_rolls_back_the_stamp_and_retries_after_approval() {
-    assert_failed_park_recovers(FAIL_RELEASE).await;
+    // Boxed: the whole delivery path rides in this future.
+    Box::pin(assert_failed_park_recovers(FAIL_RELEASE)).await;
 }
 
 async fn assert_failed_park_recovers(injection: &'static str) {
