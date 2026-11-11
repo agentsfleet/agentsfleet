@@ -1,5 +1,7 @@
 import { memo } from "react";
-import { CopyButton } from "@agentsfleet/design-system";
+import { ActionBarPrimitive } from "@assistant-ui/react";
+import { CheckIcon, CopyIcon } from "@phosphor-icons/react/ssr";
+import { Button } from "@agentsfleet/design-system";
 import { FleetReplyFigures } from "./FleetReplyFigures";
 import type { ReplyFigures } from "./fleetMessageReaders";
 
@@ -16,11 +18,15 @@ export const FleetReplyActions = memo(function FleetReplyActions({
   figures: ReplyFigures;
 }) {
   return (
-    <div className="-ml-sm flex h-11 items-center gap-xs">
+    <ActionBarPrimitive.Root autohide="never" className="-ml-sm flex h-11 items-center gap-xs">
       {settled ? <>
-        {answer.length > 0 ? <CopyButton value={answer} label={COPY_REPLY_LABEL} /> : null}
+        {answer.length > 0 ? <ActionBarPrimitive.Copy asChild><Button variant="ghost" size="icon-sm"
+          aria-label={COPY_REPLY_LABEL} title={COPY_REPLY_LABEL} className="group/copy">
+          <CopyIcon aria-hidden="true" className="group-data-[copied]/copy:hidden" />
+          <CheckIcon aria-hidden="true" className="hidden text-success group-data-[copied]/copy:block" />
+        </Button></ActionBarPrimitive.Copy> : null}
         <FleetReplyFigures figures={figures} />
       </> : null}
-    </div>
+    </ActionBarPrimitive.Root>
   );
 });

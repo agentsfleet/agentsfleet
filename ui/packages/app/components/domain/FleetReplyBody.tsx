@@ -60,7 +60,7 @@ export function FleetReply({
       <TaskActivityTimeline value={message.metadata.custom.taskActivity} running={running} />
       <FleetReplyParts errored={errored} running={running} queued={queued} eventId={eventId}
         reasoning={reasoningText(message)} span={span} content={message.content}
-        startedAtMs={message.createdAt.getTime()} contextProgress={context} />
+        startedAtMs={message.createdAt.getTime()} contextProgress={context} plainText={message.metadata.custom.previewUpload === true} />
       {running ? <ContextProgressStatus value={context} /> : null}
       <OmittedCalls count={readOmittedCallCount(message)} />
       {errored && !running && !recovering ? <FleetReplyFailure message={message} /> : null}

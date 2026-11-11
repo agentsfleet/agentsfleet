@@ -12,6 +12,7 @@ import { signInPath } from "@/lib/auth/sign-in-redirect";
 import { ChatComposerFrame, ChatComposerHint } from "./chat/ChatComposerFrame";
 import { EditSetupButton, useFleetSetup } from "./chat/FleetSetupWorkspace";
 import { FleetModelSelect } from "./chat/FleetModelSelect";
+import { AddUploadPreview, ComposerUploadAttachments } from "./chat/UploadAttachments";
 
 const PLACEHOLDER = "Message your fleet…";
 const SEND_LABEL = "Send";
@@ -64,11 +65,12 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
   return (
     <>
     <ChatComposerFrame id="fleet-steer-composer" label={COMPOSER_LABEL} placeholder={PLACEHOLDER} inputRef={draftRef} disabled={modelChanging}
-      toolbar={<FleetModelSelect label={modelLabel} />}
+      toolbar={<><AddUploadPreview /><FleetModelSelect label={modelLabel} /></>}
       actions={<SendButton draftBytes={draftBytes} draftRef={draftRef} />}>
         <PendingSendNotices entries={unresolved} onResend={onResend} onDismiss={onDismiss} draftRef={draftRef} />
         <DraftSize draftBytes={draftBytes} />
         <DraftReporter onDraft={onDraft} />
+        <ComposerUploadAttachments />
 
     </ChatComposerFrame>
     <ChatComposerHint>Change fleet defaults in <EditSetupButton inline />.</ChatComposerHint>

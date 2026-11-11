@@ -5,6 +5,7 @@ import { senderLabelFor } from "@/lib/events/event-summary";
 import { FleetMessageRow, FleetGroupRow, ROW_TONE, useSenderLabel } from "./FleetMessageRow";
 import { FleetMarkdown } from "./FleetMarkdown";
 import { FleetReply } from "./FleetReplyBody";
+import { MessageUploadAttachments } from "./chat/UploadAttachments";
 import { useNameSender } from "./SenderNames";
 import { IntegrationActivityElement, WakeupActivityElement, ApprovalActivityElement, DefaultActivityElement } from "./FleetActivityElements";
 import { CHAT_ELEMENT, type ChatElementKind, type FleetChatElement, type FleetChatElementData } from "./fleet-chat-elements";
@@ -33,10 +34,10 @@ function ReplyElement({data}: {data: FleetChatElementData["reply-turn"]}) {
 
 function OperatorElement({data}: {data: FleetChatElementData["operator-turn"]}) {
   const sender = useNameSender()(data.actor);
-  return <FleetMessageRow sender={sender.label} tone={ROW_TONE.OPERATOR} messageRole="user"
+  return <><FleetMessageRow sender={sender.label} tone={ROW_TONE.OPERATOR} messageRole="user"
     dimmed={data.optimistic} showSender={sender.shown} createdAt={data.createdAt}>
     {data.text.trim() ? <FleetMarkdown expandable>{data.text}</FleetMarkdown> : <p className="text-muted-foreground">Content preview unavailable.</p>}
-  </FleetMessageRow>;
+  </FleetMessageRow><MessageUploadAttachments /></>;
 }
 
 function ActivityGroupElement({data}: {data: FleetChatElementData["activity-group"]}) {

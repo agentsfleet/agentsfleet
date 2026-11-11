@@ -4,7 +4,8 @@ import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } fr
 
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
-import { renderReplyPart, type ReplyContext } from "./FleetReplyParts";
+import type { ReplyContext } from "./fleet-reply-content";
+import { renderReplyPart } from "./FleetReplyParts";
 import { SETTLED_REPLY_STATUS, SPOKEN_REPLY_MAX_CHARS, spokenSummary } from "./FleetReplyAnnouncements";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 import { toReplyMessage } from "./fleetReplyMessage";
@@ -47,10 +48,10 @@ function Transcriptless({ status, text = REPLY_TEXT }: { status: FleetEvent["sta
 afterEach(cleanup);
 
 describe("renderReplyPart", () => {
-  it("keeps an unsupported part visible without interpreting its payload", () => {
-    const image = { part: { type: "image", image: "javascript:alert(1)", status: { type: COMPLETE } }, children: null };
-    const { container } = render(renderReplyPart(image as unknown as PartInfo, REPLY));
-    expect(screen.getByText("This content type is not supported yet.")).toBeTruthy();
+  it("keeps an image without a preview readable without interpreting its payload", () => {
+    const image: PartInfo = { part: { type: "image", image: "javascript:alert(1)", status: { type: COMPLETE } }, children: null };
+    const { container } = render(renderReplyPart(image, REPLY));
+    expect(screen.getByText("Activity details · Preview unavailable.")).toBeTruthy();
     expect(container.querySelector("img, a, script")).toBeNull();
     expect(container.textContent).not.toContain("javascript:");
   });

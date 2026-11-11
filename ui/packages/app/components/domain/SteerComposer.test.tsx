@@ -27,9 +27,12 @@ vi.mock("@assistant-ui/react", () => ({
     Input: ({ children, placeholder, submitMode }: { children: React.ReactElement; placeholder?: string; submitMode?: string }) =>
       React.cloneElement(children, { placeholder, "data-submit-mode": submitMode } as Record<string, unknown>),
     Send: ({ children }: { children: React.ReactElement }) => children,
+    Attachments: () => null,
   },
   useAui: () => aui,
-  useAuiState: <T,>(selector: (s: { composer: typeof composer.state }) => T) => selector({ composer: composer.state }),
+  useAuiEvent: () => {},
+  useAuiState: <T,>(selector: (s: { composer: typeof composer.state; thread: {capabilities: {attachments: boolean}} }) => T) =>
+    selector({ composer: composer.state, thread: {capabilities: {attachments: false}} }),
 }));
 
 import {
