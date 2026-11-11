@@ -15,11 +15,16 @@ pub(super) fn client(trust: &Trust) -> Result<quiche::Config> {
     config.set_max_stream_window(u64::from(crate::STREAM_WINDOW));
     config.set_max_connection_window(u64::from(crate::CONNECTION_WINDOW));
     config.set_max_idle_timeout(30_000);
+    // The daemon sends no more than the smaller of its own limit and this one. quiche applies the
+    // peer's limit to the connection's first path only, so a new path starts at the daemon's own.
+    config.set_max_recv_udp_payload_size(trust.receive_limit());
     Ok(config)
 }
 
-pub(super) fn server() -> QuicSettings {
+/// `datagram` is the largest UDP payload the daemon sends.
+pub(super) fn server(datagram: usize) -> QuicSettings {
     let mut settings = QuicSettings::default();
+    settings.max_send_udp_payload_size = datagram;
     settings.enable_dgram = false;
     settings.enable_early_data = false;
     settings.initial_max_data = u64::from(crate::CONNECTION_WINDOW);
