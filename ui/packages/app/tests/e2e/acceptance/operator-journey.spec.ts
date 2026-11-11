@@ -72,7 +72,7 @@ async function createWorkspaceFromSwitcher(page: Page, name: string): Promise<vo
   await dialog.getByLabel("Name").fill(name);
   await dialog.getByTestId("workspace-create-submit").click();
   await expect(dialog).toBeHidden({ timeout: ACTION_TIMEOUT_MS });
-  await expect(switcher).toContainText(name, { timeout: ACTION_TIMEOUT_MS });
+  await expect(switcher).toHaveAttribute("title", name, {timeout: ACTION_TIMEOUT_MS});
   const workspaceId = await workspaceIdByName(name);
   await expect(page).toHaveURL(new RegExp(`/w/${workspaceId}/fleets/new(?:\\?|$)`), {
     timeout: ACTION_TIMEOUT_MS,
@@ -93,7 +93,7 @@ async function switchWorkspace(page: Page, name: string): Promise<void> {
       if (attempt === MENU_CLICK_ATTEMPTS) throw error;
     }
   }
-  await expect(switcher).toContainText(name, { timeout: ACTION_TIMEOUT_MS });
+  await expect(switcher).toHaveAttribute("title", name, {timeout: ACTION_TIMEOUT_MS});
 }
 
 function combinedOutput(result: { stdout: string; stderr: string }): string {

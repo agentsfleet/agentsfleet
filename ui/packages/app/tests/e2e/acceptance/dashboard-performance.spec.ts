@@ -134,19 +134,13 @@ test.describe("authenticated dashboard fluidity", () => {
       await createDialog.getByRole("button", { name: "Cancel" }).click();
 
       await page.setViewportSize({ width: 390, height: 844 });
-      const mobileTrigger = page.getByRole("button", {
-        name: "Open navigation",
-      });
-      await mobileTrigger.click();
-      const mobileNavigation = page.getByRole("dialog", {
-        name: "Navigation",
-      });
+      const mobileNavigation = page.getByRole("navigation", {name: "Primary", exact: true});
       await expect(mobileNavigation).toBeVisible();
       await mobileNavigation.getByRole("link", { name: "Your fleets", exact: true }).click();
       await expect(page).toHaveURL(workspaceUrlPattern("fleets"), {
         timeout: ROUTE_TIMEOUT_MS,
       });
-      await expect(mobileNavigation).toBeHidden();
+      await expect(mobileNavigation).toBeVisible();
       await expect(page.locator("main")).toBeVisible();
       expect(pageErrors).toEqual([]);
       expect(await blankFrameCount(page)).toBe(0);

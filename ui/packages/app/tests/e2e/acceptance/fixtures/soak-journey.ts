@@ -5,7 +5,7 @@ import { SoakSetup } from "./soak-setup";
 import { SoakRuntime } from "./soak-runtime";
 import { draftHistory, runtimeHistory } from "./soak-history";
 import { SOAK, SOAK_KIND, SOAK_STEPS, UNICODE_SAVED } from "./soak-scenario";
-import { CHAT_COPY, NEW_FLEET, draftHref, editSetupLink, openSavedFleet } from "./private-chat";
+import { CHAT_COPY, NEW_FLEET, draftHref, editSetupAction, openSavedFleet } from "./private-chat";
 import { writeFile } from "node:fs/promises";
 import { APPLICATION_FAILURE, outageLedger, trackRequests } from "./soak-outage";
 import { workspaceHref } from "./nav";
@@ -122,7 +122,7 @@ export class SoakJourney {
     await chat.converse(SOAK.authoredMessages, 1, this.name, from);
     this.definition = chat.definition;
     await this.page.getByRole("button", {name: CHAT_COPY.save, exact: true}).click();
-    this.fleetId = FleetSchema.shape.id.parse(await openSavedFleet(this.page));
+    this.fleetId = FleetSchema.shape.id.parse(await openSavedFleet(this.page, {handle: this.handle, workspaceId: this.workspace}));
     console.log(JSON.stringify({soakIdentifiers: this.identifiers()}));
     this.runtime = new SoakRuntime(this.page, this.client, this.workspace, this.fleetId);
     this.watch(this.runtime);
@@ -137,7 +137,7 @@ export class SoakJourney {
       await this.page.goto(draftHref(this.workspace, chat.draftId));
     } else {
       if (from > 0) await this.page.goto(workspaceHref(this.workspace, `fleets/${this.fleetId}`));
-      await editSetupLink(this.page).click();
+      await (await editSetupAction(this.page)).click();
       chat = new SoakSetup(this.page, this.client, this.workspace, this.page.locator("main"), this.definition);
       this.drafts.push(chat);
     }
@@ -146,7 +146,7 @@ export class SoakJourney {
     await chat.converse(SOAK.setupMessages, revision, this.name, from);
     this.definition = chat.definition;
     await this.page.getByRole("button", {name: CHAT_COPY.apply, exact: true}).click();
-    expect(await openSavedFleet(this.page, String(revision))).toBe(this.fleetId);
+    expect(await openSavedFleet(this.page, {handle: this.handle, workspaceId: this.workspace, revision: String(revision)})).toBe(this.fleetId);
     this.revision = revision;
     await this.assertSaved(revision);
   }

@@ -5,15 +5,15 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { fixtureDefinition } from "./fixtures/definition";
 import { publishFixtureLibrary } from "./fixtures/native-setup";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
-import { openSettingsDestination, workspaceHref } from "./fixtures/nav";
+import { workspaceHref } from "./fixtures/nav";
 
-test("a workspace publication is removed through its reachable Library page", async ({page}) => {
+test("a workspace publication is removed through its reachable Plugins page", async ({page}) => {
   const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
   const name = `library-walk-${crypto.randomUUID().slice(0, 8)}`;
   const entry = await publishFixtureLibrary(FIXTURE_KEY.regular, workspace, fixtureDefinition(name));
   await signInAs(page, FIXTURE_KEY.regular);
   await page.goto(workspaceHref(workspace, "fleets/new"));
-  await openSettingsDestination(page, "Fleet library");
+  await page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", {name: "Plugins", exact: true}).click();
   await page.getByRole("tab", {name: "Workspace", exact: true}).click();
   const row = page.getByRole("listitem").filter({hasText: name});
   await expect(row).toBeVisible();

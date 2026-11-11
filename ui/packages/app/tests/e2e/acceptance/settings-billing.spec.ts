@@ -67,9 +67,12 @@ test.describe("settings billing", () => {
         await page.setViewportSize(layout.viewport);
         if (layout.viewport.width >= VIEWPORT.intermediate.width) {
           const toggle = page.getByRole(ROLE.button, {
-            name: layout.navigation === NAVIGATION.expanded ? "Expand sidebar" : "Collapse sidebar", exact: true,
+            name: layout.navigation === NAVIGATION.expanded ? "Expand navigation" : "Collapse navigation", exact: true,
           });
           if (await toggle.isVisible()) await toggle.click();
+          const expanded = layout.navigation === NAVIGATION.expanded;
+          await expect(page.getByRole(ROLE.button, {name: expanded ? "Collapse navigation" : "Expand navigation", exact: true}))
+            .toHaveAttribute("aria-expanded", String(expanded));
         }
         await page.getByRole(ROLE.combobox, { name: FILTER_LABEL.fleet, exact: true }).scrollIntoViewIfNeeded();
         await expect(page.getByRole(ROLE.combobox, { name: FILTER_LABEL.fleet, exact: true })).toBeInViewport();

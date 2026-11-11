@@ -11,7 +11,8 @@ const SERVER_PAGE_SIZE = 100;
 const DISPLAY_PAGE_SIZE = 25;
 const TEST_TIMEOUT_MS = 180_000;
 const MODELS = "/v1/tenants/me/models";
-const ENTRY = z.object({id: z.uuid()});
+const ENTRY_ID = z.object({id: z.uuid()});
+const ENTRY = ENTRY_ID.extend({workspace_id: z.uuid()});
 const POST = "POST";
 
 // Own one credential and only the rows created by this invocation. No entry is
@@ -25,8 +26,9 @@ async function withModels(workspace: string, body: (prefix: string) => Promise<v
   await client.post(secrets, {name: prefix, data: {provider: "openai", api_key: crypto.randomUUID()}});
   try {
     for (let index = 0; index < MODEL_COUNT; index++) {
-      const entry = ENTRY.parse(await client.post<unknown>(MODELS, {model_id: `${prefix}-${index}`, secret_ref: prefix}));
-      ids.push(entry.id);
+      const entry = await client.post<unknown>(MODELS, {workspace_id: workspace, model_id: `${prefix}-${index}`, secret_ref: prefix});
+      ids.push(ENTRY_ID.parse(entry).id);
+      expect(ENTRY.parse(entry).workspace_id).toBe(workspace);
     }
     await body(prefix);
   } catch (error) {

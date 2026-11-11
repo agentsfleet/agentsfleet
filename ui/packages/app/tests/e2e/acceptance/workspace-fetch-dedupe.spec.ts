@@ -63,7 +63,8 @@ test.describe("workspace fetch dedupe", () => {
     const switcher = page.getByTestId("workspace-switcher");
     await switcher.click();
     await page.getByRole("menuitem", { name: secondary.name ?? secondary.id }).click();
-    await expect(switcher).toContainText(secondary.name ?? secondary.id, {
+    await expect(page).toHaveURL(new RegExp(`/w/${secondary.id}/events$`), {timeout: SWITCH_TIMEOUT_MS});
+    await expect(switcher).toHaveAttribute("title", secondary.name ?? "Unnamed workspace", {
       timeout: SWITCH_TIMEOUT_MS,
     });
     await expectWorkspaceFetchesWithinLimit(page, "workspace switch");

@@ -1,18 +1,6 @@
-/**
- * provider-credential-reference.spec.ts — a provider key entered in the UI
- * becomes a stored credential the tenant provider references, on the
- * many-model registry page.
- *
- * The unified Add-model dialog is one tab-free form: Name → Provider → Model
- * → API key. Type a Name, pick (or type) the provider, pick a model, paste the
- * key, then "Save & make active" stores `{provider, api_key}` (no `model` in
- * the body — entries own the model now), registers the entry, then points the
- * tenant provider at it. The credential name is the typed Name, so cleanup
- * resets the provider and deletes that credential by the same name.
- *
- * Choose a model from the fixture catalogue and require the stored reference
- * and active entry to match it. The inert key never calls the model provider.
- */
+/** A new provider key is stored in the selected workspace and registered as
+ * the active account model through one Create model form. The inert key never
+ * calls a provider. Cleanup removes only this workspace's exact fixture rows. */
 import type { LibraryModel } from "@/lib/api/model-library-types";
 import { expect, test, type Page } from "@playwright/test";
 import { signInAs } from "./fixtures/auth";
@@ -25,8 +13,7 @@ import { modelLibrarySchema, providerLabel } from "@/lib/api/model-library-types
 import { OPENAI_COMPATIBLE_PROVIDER } from "@/lib/types";
 
 const ACTION_TIMEOUT_MS = 15_000;
-// The typed credential Name — free-form in the unified form, and the identity
-// cleanup keys off. Named for the provider it holds, by convention.
+// The unique key name identifies only the credential and rows this journey owns.
 const CREDENTIAL_NAME = `e2e-provider-${crypto.randomUUID()}`;
 const INERT_PROVIDER_KEY = "e2e-inert-key-no-provider-access";
 const MODELS = "/v1/tenants/me/models";
@@ -47,11 +34,12 @@ async function deleteFixtureModels(): Promise<void> {
   const client = clientFor(FIXTURE_KEY.regular);
   let cursor: string | null = null;
   const ids: string[] = [];
+  const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
   for (let page = 0; page < MODEL_PAGE_MAX; page++) {
     const query = new URLSearchParams({limit: "100"});
     if (cursor) query.set("starting_after", cursor);
     const result = tenantModelPageSchema.parse(await client.get<unknown>(`${MODELS}?${query}`));
-    ids.push(...result.models.filter(model => model.secret_ref === CREDENTIAL_NAME).map(model => model.id));
+    ids.push(...result.models.filter(model => model.workspace_id === workspace && model.secret_ref === CREDENTIAL_NAME).map(model => model.id));
     if (!result.next_cursor || result.next_cursor === cursor) break;
     cursor = result.next_cursor;
   }
@@ -107,28 +95,34 @@ test.describe("provider credential reference guard", () => {
 
     const choice = await catalogueChoice();
     await signInAs(page, FIXTURE_KEY.regular);
-    await gotoWorkspace(page, FIXTURE_KEY.regular, "settings/models");
+    const workspace = await gotoWorkspace(page, FIXTURE_KEY.regular, "settings/models");
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
 
     // Open the unified create-model dialog — one form, no tabs.
     await page.getByRole("button", { name: "Create model" }).click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-
-    // Fill the form in order: Name → Provider → Model → API key.
-    await page.getByLabel("Name").fill(CREDENTIAL_NAME);
+    const dialog = page.getByRole("dialog", {name: "Create model", exact: true});
+    await expect(dialog).toBeVisible();
     await pickProvider(page, choice.provider);
     await pickModel(page, choice);
-    await page.getByLabel("API key", { exact: true }).fill(INERT_PROVIDER_KEY);
-
-    await page.getByRole("button", { name: "Save & make active" }).click();
+    const addKey = dialog.getByRole("button", {name: "Add new key", exact: true});
+    await addKey.click();
+    await expect(addKey).toHaveAttribute("aria-pressed", "true");
+    await dialog.getByLabel("Key name", {exact: true}).fill(CREDENTIAL_NAME);
+    await dialog.getByLabel("API key", {exact: true}).fill(INERT_PROVIDER_KEY);
+    const active = dialog.getByRole("switch", {name: "Make active", exact: true});
+    await active.check();
+    await expect(active).toBeChecked();
+    await page.screenshot({path: test.info().outputPath("live-create-model.png"), scale: "css", animations: "disabled"});
+    await dialog.getByRole("button", {name: "Create model", exact: true}).click();
 
     // Registration and activation do not call the model provider. The inert
     // key must produce our exact stored reference and active model entry.
-    await expect(page.getByRole("dialog")).not.toBeVisible({ timeout: ACTION_TIMEOUT_MS });
+    await expect(dialog).not.toBeVisible({ timeout: ACTION_TIMEOUT_MS });
     await expect.poll(async () => {
       const result = tenantModelPageSchema.parse(await clientFor(FIXTURE_KEY.regular).get(`${MODELS}?limit=100`));
-      return result.models.find((entry) => entry.secret_ref === CREDENTIAL_NAME);
+      return result.models.find((entry) => entry.workspace_id === workspace && entry.secret_ref === CREDENTIAL_NAME);
     }, { timeout: ACTION_TIMEOUT_MS }).toMatchObject({
+      workspace_id: workspace,
       provider: choice.provider,
       model_id: choice.id,
       secret_ref: CREDENTIAL_NAME,

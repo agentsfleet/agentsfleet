@@ -23,7 +23,7 @@ import { DraftSchema } from "@/lib/api/draft-types";
 import { workspaceHref } from "./fixtures/nav";
 import { uniqueTag } from "./fixtures/observation";
 import {
-  CHAT_COPY, NEW_FLEET, draftHref, editSetupLink, historyEntry, openDraft, openSavedFleet, saveSetupButton, setupAction, setupSummary,
+  CHAT_COPY, NEW_FLEET, draftHref, editSetupAction, expectEditSetupAvailable, historyEntry, openDraft, openSavedFleet, saveSetupButton, setupAction, setupSummary,
 } from "./fixtures/private-chat";
 import { getDefaultWorkspaceId } from "./fixtures/seed";
 import { inviteeEmail, inviteeHandle, joinAdminAccount, removeTeammate, signUpInvitee, type Invitee } from "./fixtures/teammate";
@@ -51,7 +51,7 @@ test.describe("a private fleet setup chat", () => {
       drafts.push(draft.id);
       await signInAs(page, FIXTURE_KEY.regular);
       await recoverFromHistoryAndReload(page, workspaceId, draft.id);
-      await saveFromTheKeyboard(page);
+      await saveFromTheKeyboard(page, workspaceId);
       const fleetId = await openTheSavedFleet(page, workspaceId, name);
       drafts.push(await improveTheSavedFleet(page, workspaceId, fleetId));
       await rereadAtPhoneWidth(browser, workspaceId, draft.id, fleetId);
@@ -75,30 +75,30 @@ async function recoverFromHistoryAndReload(page: Page, workspaceId: string, draf
 }
 
 // Save is reachable from the keyboard in the chat header.
-async function saveFromTheKeyboard(page: Page): Promise<void> {
+async function saveFromTheKeyboard(page: Page, workspaceId: string): Promise<void> {
   await expect(page.getByRole("dialog")).toHaveCount(0);
   const save = await saveSetupButton(page);
   await expect(save).toBeEnabled();
   await save.focus();
   await save.press("Enter");
-  await openSavedFleet(page);
+  await openSavedFleet(page, {handle: FIXTURE_KEY.regular, workspaceId});
 }
 
-// Explicitly opening the saved fleet and reloading preserves its durable identity.
+// The automatic handoff and a reload preserve the saved fleet identity.
 async function openTheSavedFleet(page: Page, workspaceId: string, name: string): Promise<string> {
   await expect(page).toHaveURL(FLEET_PAGE, { timeout: SETUP_TIMEOUT_MS });
   const fleetId = new URL(page.url()).pathname.split("/").pop();
   if (!fleetId) throw new Error("Open fleet led to no fleet");
   expect((await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId)).name).toBe(name);
   await page.reload();
-  await expect(editSetupLink(page)).toBeVisible();
+  await expectEditSetupAvailable(page);
   return fleetId;
 }
 
 // Edit setup starts from the fleet header; saving moves the fleet to its next setup revision.
 async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: string): Promise<string> {
   const before = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
-  await editSetupLink(page).click();
+  await (await editSetupAction(page)).click();
   await expect(page).toHaveURL(new RegExp(`/fleets/new\\?fleet=${fleetId}&setup_revision=${before.setup_revision}$`));
   await expect(page.getByLabel(CHAT_COPY.composer)).toBeVisible();
   await (await setupAction(page, CHAT_COPY.editSetup)).click();
@@ -113,7 +113,7 @@ async function improveTheSavedFleet(page: Page, workspaceId: string, fleetId: st
   const draftId = DraftSchema.shape.id.parse(location?.split("/").at(-1));
   expect(location).toBe(`/v1/workspaces/${workspaceId}/drafts/${draftId}`);
   await expect(panel).toBeHidden({timeout: SETUP_TIMEOUT_MS});
-  await openSavedFleet(page, String(BigInt(before.setup_revision) + 1n));
+  await openSavedFleet(page, {handle: FIXTURE_KEY.regular, workspaceId, revision: String(BigInt(before.setup_revision) + 1n)});
   const after = await readFixtureFleet(FIXTURE_KEY.regular, workspaceId, fleetId);
   expect(after.setup_revision).toBe(String(BigInt(before.setup_revision) + 1n));
   expect(after.definition?.instructions_md).toBe(IMPROVED_INSTRUCTIONS);
@@ -135,7 +135,7 @@ async function rereadAtPhoneWidth(browser: Browser, workspaceId: string, draftId
     await expectAccessible(page, "saved setup chat at phone width");
     await page.getByRole("link", {name: CHAT_COPY.openFleet, exact: true}).click();
     await expect(page).toHaveURL(new RegExp(`/fleets/${fleetId}$`));
-    await expect(editSetupLink(page)).toBeVisible();
+    await expectEditSetupAvailable(page);
     await expectNoPageOverflow(page);
     await expectAccessible(page, "saved private chat at phone width");
   } finally {
