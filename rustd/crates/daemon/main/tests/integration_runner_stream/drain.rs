@@ -27,7 +27,7 @@ async fn draining_sends_go_away_after_an_in_flight_native_renewal_answer() {
         native.ready().await;
         let offer = native.expect(StreamKind::Work, "offer").await;
         let (lease, _) = wire::claim(offer.pointer("/lease").expect("native response field"));
-        // The renewal takes no host lock (M245 §7); it waits on its fleet's slot.
+        // The renewal takes no host lock; it waits on its fleet's slot.
         let (host, blocker) = hold_slot(&run, &lease).await;
         native
             .send(

@@ -3,7 +3,7 @@
 //! logged line ([`settle_lines`]).
 //!
 //! A lease logs its usage inside its own transaction and returns; it never
-//! settles (billing §11). These passes are the only things that move
+//! settles. These passes are the only things that move
 //! that money, through the [`Biller`] they are given, so the biller can live in
 //! another process without the lease path changing. Settling is idempotent on
 //! `(work, kind, seq)`, so a repeated pass or a second daemon's relay charges

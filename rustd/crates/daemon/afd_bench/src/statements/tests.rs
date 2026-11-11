@@ -146,9 +146,9 @@ fn the_costliest_statements_come_first() {
     assert_eq!(top, vec!["b", "c"]);
 }
 
-/// One M245 statement, read from the product's own file, and the path it
+/// One chat-path statement, read from the product's own file, and the path it
 /// belongs to.
-const M245_STATEMENTS: &[(&str, &str, Path)] = &[
+const CHAT_PATH_STATEMENTS: &[(&str, &str, Path)] = &[
     (
         "claim_admission_head.sql",
         afd_fleet::lease::sql::queue::CLAIM_HEAD,
@@ -207,14 +207,14 @@ fn code_of(statement: &str) -> String {
         .join("\n")
 }
 
-// Value: protects=each statement M245 added or rewrote is counted in the path
+// Value: protects=each rewritten chat-path statement is counted in the path
 // the chat projection gives it; fails_when=one lands in `other`, or in an
-// older path whose fragment it also contains; why_new=§4-§8 replaced the
-// statements the table was read off; seam=none; no_claim=statements a drain
+// older path whose fragment it also contains; why_new=the one-statement paths
+// replaced the statements the table was read off; seam=none; no_claim=statements a drain
 // run shows that no file here names, which the run's `other` reports.
 #[test]
 fn new_statements_match_their_paths() {
-    for (file, statement, path) in M245_STATEMENTS {
+    for (file, statement, path) in CHAT_PATH_STATEMENTS {
         assert_eq!(
             super::paths::classify(statement),
             *path,
@@ -228,7 +228,8 @@ fn new_statements_match_their_paths() {
     }
 }
 
-/// The three reads the first M245 drain classified as `other`, as
+/// The three reads the first drain of the one-statement paths classified as
+/// `other`, as
 /// `pg_stat_statements` stores their text.
 const DELIVERY_READS: &[(&str, Path)] = &[
     ("SET LOCAL ROLE memory_runtime", Path::Issue),
@@ -244,7 +245,8 @@ const DELIVERY_READS: &[(&str, Path)] = &[
 
 // Value: protects=the drain's other path holds no statement a chat sends;
 // fails_when=a delivery read falls back to other and the bar on it trips;
-// why_new=M245 §9's first drain found these three there; seam=none;
+// why_new=the first drain of the one-statement paths found these three
+// there; seam=none;
 // no_claim=statements a later milestone adds.
 #[test]
 fn delivery_reads_land_in_their_paths() {

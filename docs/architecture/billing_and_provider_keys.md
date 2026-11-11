@@ -322,6 +322,8 @@ Delayed settlement reconstructs separate provider/model/posture groups under the
 The sweeper selects its oldest bounded batch before grouping; sequence numbers stay unique across the whole work, including different providers.
 Its recovery counters count settlement groups, so one lease can contribute several successful settlements.
 
+A group the relay cannot read is skipped, not failed. A work type, a line kind or a pricing posture this build does not name leaves the group unsettled and the pass carries on. The owed gauges keep counting it, so the dashboard shows it: a row of an unknown work type drops out of the by-type `agentsfleet_billing_unsettled_nanos` figure but still pins `agentsfleet_billing_unsettled_oldest_seconds`. The relay logs `billing_relay_skipped` once for each distinct spelling per process (it remembers at most 64), so an operator learns what is stuck without a line every two seconds. Nothing is guessed: an error would hold the cursor, and with it every tenant's settlement behind one row, and a guessed posture would settle the wrong money.
+
 `afd_billing::ledger::unsettled` sorts borrowed keys in place and moves owned headers into the resulting groups.
 This avoids cloned map keys; no measured latency or allocation result follows from that source change.
 The [decision design](goal_evaluation.md#native-billing-integration) describes native call reservations, frozen rates and receipt accounting.

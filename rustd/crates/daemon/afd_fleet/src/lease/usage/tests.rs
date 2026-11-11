@@ -91,6 +91,12 @@ async fn a_slice_past_the_longest_runtime_line_is_cut_there() {
 
 /// A stored posture this daemon writes reads back; one it does not is refused,
 /// never priced as the platform's.
+///
+/// The refused spellings are the near-misses an out-of-band edit actually
+/// produces: a case change, a hyphen for an underscore, a leading space, the
+/// empty string, and a spelling borrowed from another column. A parser that
+/// trimmed or lowercased would accept them, and a lease would then be priced
+/// at the wrong party's rates.
 #[test]
 fn a_stored_posture_that_is_none_this_daemon_writes_is_refused() {
     for posture in [Posture::Platform, Posture::SelfManaged] {
@@ -99,8 +105,21 @@ fn a_stored_posture_that_is_none_this_daemon_writes_is_refused() {
             posture
         );
     }
-    let fault = Pricing::posture_of("hand-edited").expect_err("an unreadable posture");
-    assert_eq!(fault.code(), af_core::error_code::INTERNAL_DB_QUERY);
+    for edited in [
+        "",
+        "Platform",
+        "self-managed",
+        "sandboxed",
+        " platform",
+        "hand-edited",
+    ] {
+        let fault = Pricing::posture_of(edited).expect_err("an unreadable posture");
+        assert_eq!(
+            fault.code(),
+            af_core::error_code::INTERNAL_DB_QUERY,
+            "{edited:?} is refused, not priced"
+        );
+    }
 }
 
 /// Each request is a model line under the runner's number, and the measured

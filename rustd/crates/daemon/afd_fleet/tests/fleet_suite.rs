@@ -20,6 +20,8 @@ mod lease_renewal;
 #[path = "support/fleet_setup.rs"]
 mod setup;
 
+#[path = "support/fleet_billing_lines.rs"]
+mod billing_lines;
 #[path = "support/fleet_faulty_biller.rs"]
 mod faulty_biller;
 #[path = "support/fleet_lease_reads.rs"]
@@ -120,6 +122,8 @@ mod integration_renew_coverage;
 mod integration_renew_gate_edges;
 #[path = "integration_renew_lock_order.rs"]
 mod integration_renew_lock_order;
+#[path = "integration_renew_refusals.rs"]
+mod integration_renew_refusals;
 #[path = "integration_reply_destination.rs"]
 mod integration_reply_destination;
 #[path = "integration_report_commit.rs"]
@@ -129,12 +133,12 @@ mod integration_report_fence;
 #[path = "integration_report_memory.rs"]
 mod integration_report_memory;
 mod integration_report_owes_destination;
+#[path = "integration_report_pricing.rs"]
+mod integration_report_pricing;
 #[path = "integration_report_renewal_lock.rs"]
 mod integration_report_renewal_lock;
 #[path = "integration_report_statement.rs"]
 mod integration_report_statement;
-#[path = "integration_report_pricing.rs"]
-mod integration_report_pricing;
 #[path = "integration_runner_admin.rs"]
 mod integration_runner_admin;
 mod integration_runner_beat;

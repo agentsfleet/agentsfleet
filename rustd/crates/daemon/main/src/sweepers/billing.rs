@@ -1,6 +1,6 @@
 //! The billing relay: the task that settles logged usage. Renewals and reports
 //! log their usage lines and return; every 2 s this task settles those lines
-//! through the daemon's [`Biller`] (billing §11). The expiry sweeper bills the
+//! through the daemon's [`Biller`]. The expiry sweeper bills the
 //! last slice of a lease that ended unreported, and its lines settle here.
 
 use std::sync::{Arc, Mutex};

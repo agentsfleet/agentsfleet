@@ -38,7 +38,7 @@ impl Drafts {
 
     /// Moves every live attempt past its deadline to accounting recovery:
     /// what `sweeper:expiry` runs every [`af_core::timing::EXPIRY_TICK`], beside
-    /// the lease expiry pass (M245 §7).
+    /// the lease expiry pass.
     ///
     /// # Errors
     /// Reports a datastore that would not answer.

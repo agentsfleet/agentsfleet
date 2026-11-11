@@ -92,7 +92,7 @@ fn a_batch_carries_none_to_the_most_requests() {
     }
 }
 
-// M245: no kind's numbers are carved out of another's, so the runner numbers
+// No kind's numbers are carved out of another's, so the runner numbers
 // its model calls across the whole `u32` the wire carries.
 #[test]
 fn a_runner_numbers_its_requests_across_the_whole_u32() {

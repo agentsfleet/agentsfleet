@@ -507,6 +507,45 @@ statement did, what it does, and why.
 - **`select_lease_target.sql` and `sql/activity.rs`:** the test-only read that resolved a lease's activity target. The gateway publishes through `activity_for_target`, which runs no statement for a plain frame and `lease/activity/task_history.sql` for a durable task's progress.
 - **Comment-only:** `apply_report_notice.sql`, `select_gates.sql`, `select_lease_for_report.sql` and `select_renewals.sql` lose milestone tokens from their comments; no statement text changed.
 
+## Review round 3 — the billing, credential and event pass
+
+These statements changed in the dead-code pass. Each row says what the
+statement did, what it does, and why.
+
+### `afd_credential/src/provider/registered/sql/platform.sql`
+
+| Item | Was | Is | Why |
+|---|---|---|---|
+| `AND $2::text IS NOT NULL` | A bound reference that no clause compared | Gone | The parameter existed so a call site's bind list matched the statement; nothing read it. |
+| the milliseconds multiplier | `$3::bigint` | `$2::bigint` | The only bind that moved. |
+
+### `afd_credential/src/provider/sql/activate_tenant_model.sql`
+
+| Item | Was | Is | Why |
+|---|---|---|---|
+| the catalogue test | `($5::boolean OR EXISTS (SELECT 1 FROM model.platform_models WHERE provider = $2 AND model_name = $3))` | `EXISTS (SELECT 1 FROM model.platform_models WHERE provider = $2 AND model_name = $3)` | A compatible endpoint skipped the catalogue test, was accepted at activation and then failed its first run with `provider_secret_missing`. Activation now refuses a model the catalogue lacks; the same change in Rust refuses a compatible endpoint with no key. `$5` is gone. |
+| `context_cap_tokens` | `AND ($5::boolean OR provider = $2)` | `AND provider = $2` | The cap is read from the model's own provider row only. |
+
+### `afd_credential/src/provider/sql/select_tenant_selection.sql`
+
+`AND (s.meta_provider = $2 OR p.provider = s.meta_provider)` becomes
+`AND p.provider = s.meta_provider`. The join to the catalogue row follows the
+secret's own provider; the `$2` alternative served the compatible-endpoint case
+the activation statement no longer admits.
+
+### `afd_events/src/sql/insert_fleet_event.sql` and `insert_leased_fleet_event.sql`
+
+| Statement | Was | Is | Why |
+|---|---|---|---|
+| `insert_fleet_event.sql` | `RETURNING (xmax = 0) AS inserted, event_id` | `RETURNING (xmax = 0) AS inserted` | No caller read `event_id`. |
+| `insert_leased_fleet_event.sql` | `RETURNING (xmax = 0) AS inserted, created_at` | `RETURNING (xmax = 0) AS inserted` | Its one remaining caller, the input receipt's answer, runs it as an execute and discards the row. |
+
+### Deleted
+
+- **`afd_billing/src/sql/select_tenant_for_workspace.sql`:** the read behind
+  `Accounts::payer` and `Accounts::wallet`, which only tests called. Production
+  reads the wallet through the biller.
+
 ## Identifiers
 
 No statement binds or casts an identifier between `text` and `uuid`. Every

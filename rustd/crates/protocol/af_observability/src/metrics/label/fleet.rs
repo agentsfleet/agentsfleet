@@ -2,6 +2,8 @@
 
 use crate::metrics::label::closed_set;
 
+pub use super::lease_cache::{CacheOutcome, LeaseCache};
+
 closed_set! {
     /// Packet counters are cumulative; observers export only the delta.
     StreamPacket {
@@ -221,30 +223,6 @@ closed_set! {
         /// Another runner, once the holder fell silent or could no longer
         /// lease: degraded, or no longer active.
         OtherAfterLapse => "other_after_lapse",
-    }
-}
-
-closed_set! {
-    /// Which of the lease path's in-process caches a lookup asked. Each is
-    /// keyed by a version a statement in the same pass read.
-    LeaseCache {
-        /// A parsed setup definition, keyed by its revision id.
-        Definition => "definition",
-        /// A model's price tiers, keyed by the catalogue version.
-        PriceBook => "price_book",
-        /// The platform default's resolution and key, keyed by the
-        /// catalogue version and the secret's id and version.
-        PlatformKey => "platform_key",
-    }
-}
-
-closed_set! {
-    /// Whether a cache lookup answered from memory.
-    CacheOutcome {
-        /// The entry for this exact version was held.
-        Hit => "hit",
-        /// No entry for this version; the caller read or parsed it.
-        Miss => "miss",
     }
 }
 

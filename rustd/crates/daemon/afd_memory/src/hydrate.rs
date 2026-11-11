@@ -37,7 +37,7 @@ impl Memories {
     ///
     /// The lease path's claim returns both memory flags beside the fleet's
     /// workspace, so the window follows a grant change on the next lease with
-    /// no read of its own and no cache to go stale (M245 §3).
+    /// no read of its own and no cache to go stale.
     ///
     /// # Errors
     /// Reports a store that would not answer.

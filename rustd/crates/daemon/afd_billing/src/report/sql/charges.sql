@@ -1,6 +1,6 @@
 -- One activity's charges in the order they happened: by `(requested_at, id)`,
 -- which is unique, so a page resumes exactly after its last row. `seq` is
--- unique only within a line's `kind` (M245), so it no longer orders a page.
+-- unique only within a line's `kind`, so it no longer orders a page.
 SELECT id, kind, seq AS sequence, model, posture, charged_nanos,
        input_token_count AS input_tokens, output_token_count AS output_tokens,
        runtime_ms, unpriced_token_count AS unpriced_tokens, requested_at, settled_at
