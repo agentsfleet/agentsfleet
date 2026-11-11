@@ -10,6 +10,8 @@ import { PROVIDER_MODE } from "../src/constants/billing.ts";
 import {
   TENANT_PROVIDER_PATH,
   makeRecorder,
+  MODEL_WORKSPACE,
+  modelWorkspaceLayer,
   outputLayer,
   credentialsLayer,
   httpClientLayer,
@@ -134,6 +136,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
   test("PUTs mode=self_managed with secret_ref and prints tip", async () => {
     const rec = makeRecorder();
     const program = tenantProviderAddEffectFromArgs("fw-key", undefined).pipe(
+      Effect.provide(modelWorkspaceLayer()),
       Effect.provide(configLayer()),
       Effect.provide(credentialsLayer()),
       Effect.provide(
@@ -160,6 +163,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
     expect(call.method).toBe("PUT");
     expect(call.body).toEqual({
       mode: PROVIDER_MODE.self_managed,
+      workspace_id: MODEL_WORKSPACE,
       secret_ref: "fw-key",
     });
     expect(
@@ -175,6 +179,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
       "fw-key",
       "accounts/fireworks/models/kimi-k2.6",
     ).pipe(
+      Effect.provide(modelWorkspaceLayer()),
       Effect.provide(configLayer()),
       Effect.provide(credentialsLayer()),
       Effect.provide(
@@ -196,6 +201,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
     if (!call) throw new Error("expected one http call");
     expect(call.body).toEqual({
       mode: PROVIDER_MODE.self_managed,
+      workspace_id: MODEL_WORKSPACE,
       secret_ref: "fw-key",
       model: "accounts/fireworks/models/kimi-k2.6",
     });
@@ -210,6 +216,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
       secret_ref: "fw-key",
     };
     const program = tenantProviderAddEffectFromArgs("fw-key", undefined).pipe(
+      Effect.provide(modelWorkspaceLayer()),
       Effect.provide(configLayer({ jsonMode: true })),
       Effect.provide(credentialsLayer()),
       Effect.provide(
@@ -232,6 +239,7 @@ describe("tenantProviderAddEffectFromArgs", () => {
   test("missing --secret fails ValidationError without making a request", async () => {
     const rec = makeRecorder();
     const program = tenantProviderAddEffectFromArgs(undefined, undefined).pipe(
+      Effect.provide(modelWorkspaceLayer()),
       Effect.provide(configLayer()),
       Effect.provide(credentialsLayer()),
       Effect.provide(

@@ -11,7 +11,7 @@ use super::{Fixture, NOW};
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_self_managed_selection_resolves_from_the_tenants_primary_workspace() {
+async fn a_self_managed_selection_resolves_from_its_stored_workspace() {
     let fixture = Fixture::create().await;
     let secret = "self-managed-provider";
     fixture
@@ -31,7 +31,7 @@ async fn a_self_managed_selection_resolves_from_the_tenants_primary_workspace() 
         Entropy::new(),
     );
     let Added::Stored(entry) = store
-        .add_entry(&fixture.tenant, &model, secret, NOW)
+        .add_entry(&fixture.tenant, &model, fixture.key(secret), NOW)
         .await
         .expect("an entry over a stored credential is an outcome")
     else {

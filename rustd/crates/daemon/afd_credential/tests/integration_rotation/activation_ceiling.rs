@@ -23,7 +23,12 @@ async fn a_catalogued_activation_stores_the_catalogues_ceiling() {
         .await;
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "tenant-key", Some(&model), NOW)
+        .activate(
+            &fixture.tenant,
+            fixture.key("tenant-key"),
+            Some(&model),
+            NOW,
+        )
         .await
         .expect("a catalogued activation applies");
 
@@ -90,7 +95,12 @@ async fn a_compatible_endpoint_activates_at_the_borrowed_ceiling() {
         .await;
 
     let outcome = providers(&fixture)
-        .activate(&fixture.tenant, "my-gateway", Some(&model), NOW)
+        .activate(
+            &fixture.tenant,
+            fixture.key("my-gateway"),
+            Some(&model),
+            NOW,
+        )
         .await
         .expect("a keyless compatible endpoint activates");
 

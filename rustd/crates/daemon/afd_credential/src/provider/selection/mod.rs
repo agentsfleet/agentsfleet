@@ -21,9 +21,6 @@ const CONTEXT_SELECTION: &str = "tenant model selection";
 /// Statement name, for the context a query failure carries.
 const CONTEXT_PLATFORM: &str = "active platform default";
 
-/// Statement name, for the context a query failure carries.
-const CONTEXT_WORKSPACE: &str = "tenant primary workspace";
-
 /// A selection pointing at a registry row that came back without its model.
 const FIELD_MODEL_NAME: &str = "model_name";
 
@@ -64,6 +61,8 @@ pub struct OwnModel {
     pub model: Box<str>,
     /// The vault key name holding the credential.
     pub secret_ref: Box<str>,
+    /// The stored credential namespace, absent when its workspace is unavailable.
+    pub workspace_id: Option<Uuid7>,
     /// The provider the credential's projection names.
     ///
     /// `None` when the credential was deleted out of band or names no
@@ -98,6 +97,7 @@ pub(crate) struct SelectionRow {
     tenant_model_id: Option<Uuid7>,
     model_name: Option<String>,
     secret_ref: Option<String>,
+    workspace_id: Option<Uuid7>,
     provider: Option<String>,
     context_cap_tokens: i32,
 }
@@ -125,6 +125,7 @@ impl SelectionRow {
             tenant_model_id,
             model: model.into_boxed_str(),
             secret_ref: secret_ref.into_boxed_str(),
+            workspace_id: self.workspace_id,
             provider: self.provider.map(String::into_boxed_str),
             context_cap_tokens: cap::stored(self.context_cap_tokens),
         }))
@@ -202,22 +203,6 @@ impl Providers {
             .map_err(query(CONTEXT_PLATFORM))?
             .map(PlatformDefaultRow::into_default)
             .transpose()
-    }
-
-    /// The workspace `tenant_id` holds its self-managed credentials in.
-    ///
-    /// `Ok(None)` is a tenant with no workspace at all — a violated bootstrap
-    /// invariant, since signup creates the primary workspace, and permanent.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer, and a row it cannot decode.
-    pub(crate) async fn primary_workspace(&self, tenant_id: &Uuid7) -> Result<Option<Uuid7>> {
-        let mut connection = self.pool().acquire().await?;
-        sqlx::query_scalar(sql::SELECT_PRIMARY_WORKSPACE)
-            .bind(tenant_id)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_WORKSPACE))
     }
 }
 

@@ -145,12 +145,13 @@ impl Fixture {
         let mut connection = self.database.acquire().await.expect("an API connection");
         sqlx::query(
             "INSERT INTO model.tenant_models \
-               (id, tenant_id, model_name, secret_ref, created_at, updated_at) \
-             VALUES ($1, $2, 'fixture-model', $3, now(), now())",
+               (id, tenant_id, model_name, secret_ref, workspace_id, created_at, updated_at) \
+             VALUES ($1, $2, 'fixture-model', $3, $4, now(), now())",
         )
         .bind(&id)
         .bind(&self.tenant)
         .bind(provider.grant_key())
+        .bind(&self.workspace)
         .execute(&mut *connection)
         .await
         .expect("the model entry inserts");

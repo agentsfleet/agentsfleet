@@ -23,8 +23,8 @@ describe("Create model with a compatible endpoint", () => {
     await user.click(dialog.getByRole("button", {name: "Create model"}));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(createSecretActionMock).toHaveBeenCalledWith("ws_1", {name: "gateway", data: {provider: PROVIDER, base_url: URL}});
-    expect(createModelEntryActionMock).toHaveBeenCalledWith({model_id: FORM_MODEL, secret_ref: "gateway"});
-    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({model: FORM_MODEL, secret_ref: "gateway"});
+    expect(createModelEntryActionMock).toHaveBeenCalledWith({workspace_id: "ws_1", model_id: FORM_MODEL, secret_ref: "gateway"});
+    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({workspace_id: "ws_1", model: FORM_MODEL, secret_ref: "gateway"});
   });
 
   it("refuses an insecure endpoint before any write", async () => {

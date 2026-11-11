@@ -17,7 +17,7 @@ export type CreationCallbacks = {
 type Failure = Extract<ActionResult<unknown>, {ok: false}>;
 type Operation = {signal: AbortSignal; callbacks: CreationCallbacks};
 const cancelled = (operation: Operation) => operation.signal.aborted;
-const reference = (request: ModelCreationRequest) => ({model_id: request.modelId, secret_ref: request.secretRef});
+const reference = (request: ModelCreationRequest) => ({workspace_id: request.workspaceId, model_id: request.modelId, secret_ref: request.secretRef});
 const failureText = (failure: Failure, action: string, prefix = "") => prefix + presentErrorString({errorCode: failure.errorCode, message: failure.error, action});
 
 // The action's own HTTP round trip can fail before withToken's result arrives.
@@ -65,7 +65,7 @@ async function finishRegistration(request: ModelCreationRequest, operation: Oper
 
 async function activateModel(request: ModelCreationRequest, operation: Operation): Promise<ModelCreationState> {
   if (cancelled(operation)) return EMPTY_CREATION;
-  const result = await attempt(() => setProviderSelfManagedAction({secret_ref: request.secretRef, model: request.modelId}));
+  const result = await attempt(() => setProviderSelfManagedAction({workspace_id: request.workspaceId, secret_ref: request.secretRef, model: request.modelId}));
   if (cancelled(operation)) return EMPTY_CREATION;
   if (!result.ok) return {
     stage: isDefiniteRefusal(result.status) ? "activation" : "activation_unconfirmed", request,

@@ -50,7 +50,7 @@ describe("Row actions — View details", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("shows provider, endpoint, secret ref, and the In vault badge for a full custom-endpoint entry", async () => {
+  it("shows provider, endpoint, secret ref, and the Key stored badge for a full custom-endpoint entry", async () => {
     const { default: ModelDetailsDialog } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog"
     );
@@ -68,12 +68,12 @@ describe("Row actions — View details", () => {
     expect(within(dialog).getByText("https://vllm.corp/v1")).toBeTruthy();
     expect(within(dialog).getByText("vllm-gateway")).toBeTruthy();
     // "Has key: Yes" became a header badge; "Kind" is gone entirely.
-    expect(within(dialog).getByText("In vault")).toBeTruthy();
+    expect(within(dialog).getByText("Key stored")).toBeTruthy();
     expect(within(dialog).queryByText("Yes")).toBeNull();
     expect(within(dialog).queryByText(/^kind$/i, { selector: "dt" })).toBeNull();
   });
 
-  it("shows Unknown provider and the Keyless endpoint badge for a minimal entry", async () => {
+  it("shows Unknown provider and the Key unavailable badge for a minimal entry", async () => {
     const { default: ModelDetailsDialog } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog"
     );
@@ -82,7 +82,7 @@ describe("Row actions — View details", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("Unknown")).toBeTruthy();
-    expect(within(dialog).getByText("Keyless endpoint")).toBeTruthy();
+    expect(within(dialog).getByText("Key unavailable")).toBeTruthy();
     expect(within(dialog).queryByText(/endpoint/i, { selector: "dt" })).toBeNull();
   });
 });

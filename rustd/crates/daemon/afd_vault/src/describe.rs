@@ -79,6 +79,40 @@ impl Descriptor {
 }
 
 impl Directory {
+    /// Describes explicit workspace/name pairs in one metadata-only read.
+    ///
+    /// The caller must already be authorized for every reference. Missing
+    /// pairs are absent; another workspace's same-named key is never returned.
+    ///
+    /// # Errors
+    /// Reports an unavailable datastore or an unreadable stored projection.
+    pub async fn describe_scoped(
+        &self,
+        references: &[(Uuid7, Box<str>)],
+    ) -> Result<HashMap<(Uuid7, Box<str>), Descriptor>> {
+        if references.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let (workspaces, names): (Vec<_>, Vec<_>) = references
+            .iter()
+            .map(|(workspace, name)| (workspace.clone(), name.as_ref()))
+            .unzip();
+        let mut connection = self.database.acquire().await?;
+        let rows = sqlx::query_as::<_, ScopedDescriptorRow>(sql::SELECT_SCOPED_SECRET_DESCRIPTORS)
+            .bind(&workspaces)
+            .bind(&names)
+            .fetch_all(connection.as_mut())
+            .await
+            .map_err(query(CONTEXT_DESCRIBE))?;
+        Ok(rows
+            .into_iter()
+            .map(|row| {
+                let (name, descriptor) = row.descriptor.into_entry();
+                ((row.workspace_id, name), descriptor)
+            })
+            .collect())
+    }
+
     /// Describes each of `names` this workspace holds, by name.
     ///
     /// A name with no row is simply ABSENT from the map. That is not an error
@@ -123,6 +157,13 @@ struct DescriptorRow {
     meta_provider: Option<String>,
     meta_base_url: Option<String>,
     meta_has_key: Option<bool>,
+}
+
+#[derive(Debug, sqlx::FromRow)]
+struct ScopedDescriptorRow {
+    workspace_id: Uuid7,
+    #[sqlx(flatten)]
+    descriptor: DescriptorRow,
 }
 
 impl DescriptorRow {

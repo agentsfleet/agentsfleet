@@ -31,6 +31,7 @@ use afd_credential::provider::{
     Activation, Added, Boundary, PlatformDefault, Providers, RegistryPage, Removed, Retargeted,
     Selection,
 };
+use afd_credential::vault::KeyRef;
 use jiff::Timestamp;
 
 /// Which provider store a suite is driving.
@@ -84,11 +85,11 @@ impl TenantProviders for HarnessProviders {
     async fn activate(
         &self,
         tenant: &Uuid7,
-        secret_ref: &str,
+        credential: KeyRef<'_>,
         model: Option<&str>,
         now: Timestamp,
     ) -> CredentialResult<Activation> {
-        self.store().activate(tenant, secret_ref, model, now).await
+        self.store().activate(tenant, credential, model, now).await
     }
 }
 
@@ -106,11 +107,11 @@ impl TenantModelEntries for HarnessProviders {
         &self,
         tenant: &Uuid7,
         model_id: &str,
-        secret_ref: &str,
+        credential: KeyRef<'_>,
         now: Timestamp,
     ) -> CredentialResult<Added> {
         self.store()
-            .add_entry(tenant, model_id, secret_ref, now)
+            .add_entry(tenant, model_id, credential, now)
             .await
     }
 

@@ -87,7 +87,7 @@ describe("provider server actions — thin forwarders", () => {
   it("setProviderSelfManagedAction forwards the body then token through withToken to the client", async () => {
     const provider = { mode: "self_managed", model: "claude-opus" };
     setTenantProviderSelfManagedMock.mockResolvedValueOnce(provider);
-    const body = { secret_ref: "vault://anthropic", model: "claude-opus" };
+    const body = { workspace_id: "ws_1", secret_ref: "vault://anthropic", model: "claude-opus" };
     const r = await setProviderSelfManagedAction(body);
     expect(r).toEqual({ ok: true, data: provider });
     expect(setTenantProviderSelfManagedMock).toHaveBeenCalledWith(body, "tok");
@@ -96,7 +96,7 @@ describe("provider server actions — thin forwarders", () => {
 
   it("setProviderSelfManagedAction forwards a body with only secret_ref (model omitted)", async () => {
     setTenantProviderSelfManagedMock.mockResolvedValueOnce({ mode: "self_managed" });
-    const body = { secret_ref: "vault://openai" };
+    const body = { workspace_id: "ws_1", secret_ref: "vault://openai" };
     const r = await setProviderSelfManagedAction(body);
     expect(r).toEqual({ ok: true, data: { mode: "self_managed" } });
     expect(setTenantProviderSelfManagedMock).toHaveBeenCalledWith(body, "tok");
@@ -133,7 +133,7 @@ describe("provider server actions — thin forwarders", () => {
   it("createModelEntryAction forwards the body then token through withToken to the client", async () => {
     const created = { id: "e1", model_id: "m1", secret_ref: "s1", created_at: "1970-01-01T00:00:00.001Z" };
     createTenantModelEntryMock.mockResolvedValueOnce(created);
-    const body = { model_id: "m1", secret_ref: "s1" };
+    const body = { workspace_id: "ws_1", model_id: "m1", secret_ref: "s1" };
     const r = await createModelEntryAction(body);
     expect(r).toEqual({ ok: true, data: created });
     expect(createTenantModelEntryMock).toHaveBeenCalledWith(body, "tok");

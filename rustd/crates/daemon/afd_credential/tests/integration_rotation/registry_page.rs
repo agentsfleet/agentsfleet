@@ -78,7 +78,7 @@ pub(super) async fn label_kind(fixture: &Fixture, name: &str, kind: &str) {
 /// Registers `model` on the fixture credential and answers the stored entry.
 pub(super) async fn add(store: &Providers, fixture: &Fixture, model: &str) -> Entry {
     let Added::Stored(entry) = store
-        .add_entry(&fixture.tenant, model, CREDENTIAL, NOW)
+        .add_entry(&fixture.tenant, model, fixture.key(CREDENTIAL), NOW)
         .await
         .expect("an entry over a stored credential is an outcome")
     else {
@@ -202,7 +202,7 @@ async fn an_entry_whose_credential_is_gone_lists_degraded_beside_an_intact_row()
     fixture.seed_catalogue(&provider, &kept_model, CAP).await;
     let kept = {
         let Added::Stored(entry) = store
-            .add_entry(&fixture.tenant, &kept_model, kept_name, NOW)
+            .add_entry(&fixture.tenant, &kept_model, fixture.key(kept_name), NOW)
             .await
             .expect("the second entry is an outcome")
         else {

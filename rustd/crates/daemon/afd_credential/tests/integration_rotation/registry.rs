@@ -59,7 +59,7 @@ async fn seeded(fixture: &Fixture) -> Providers {
 /// Registers `model` on [`CREDENTIAL`] and answers the stored entry.
 async fn stored(store: &Providers, fixture: &Fixture, model: &str) -> Entry {
     let Added::Stored(entry) = store
-        .add_entry(&fixture.tenant, model, CREDENTIAL, NOW)
+        .add_entry(&fixture.tenant, model, fixture.key(CREDENTIAL), NOW)
         .await
         .expect("an entry over a stored credential is an outcome")
     else {
@@ -81,7 +81,7 @@ async fn holds(store: &Providers, fixture: &Fixture, id: &Uuid7) -> bool {
 async fn activated(store: &Providers, fixture: &Fixture, model: &str) -> OwnModel {
     fixture.seed_catalogue(PROVIDER, model, 128_000).await;
     let Activation::Applied(chosen) = store
-        .activate(&fixture.tenant, CREDENTIAL, Some(model), NOW)
+        .activate(&fixture.tenant, fixture.key(CREDENTIAL), Some(model), NOW)
         .await
         .expect("a catalogued activation is an outcome")
     else {
@@ -151,7 +151,7 @@ async fn the_same_model_on_the_same_credential_is_refused_as_a_duplicate() {
 
     assert_eq!(
         store
-            .add_entry(&fixture.tenant, &first, CREDENTIAL, NOW)
+            .add_entry(&fixture.tenant, &first, fixture.key(CREDENTIAL), NOW)
             .await
             .expect("a repeat is an outcome, not a unique-violation error"),
         Added::Duplicate,
@@ -239,7 +239,7 @@ async fn an_entry_for_a_tenant_with_no_workspace_names_the_missing_workspace() {
     let orphan = fixture.seed_tenant_without_workspace().await;
 
     let outcome = store
-        .add_entry(&orphan, &unique_model(), CREDENTIAL, NOW)
+        .add_entry(&orphan, &unique_model(), fixture.key(CREDENTIAL), NOW)
         .await
         .expect("a missing workspace is an outcome, not a fault");
 

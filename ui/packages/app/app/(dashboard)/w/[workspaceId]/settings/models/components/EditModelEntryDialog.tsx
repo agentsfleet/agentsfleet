@@ -119,6 +119,10 @@ function EditForm({
       // them would strand the first write for a reason the caller could have
       // been given before anything was written.
       if (secretTouched) {
+        if (!workspaceId || workspaceId !== target.workspace_id) {
+          setError("The credential workspace is unavailable. Create a model with an available key.");
+          return;
+        }
         if (isCustom && !isHttpsUrl(baseUrl.trim())) {
           setError(BASE_URL_NOT_HTTPS);
           return;

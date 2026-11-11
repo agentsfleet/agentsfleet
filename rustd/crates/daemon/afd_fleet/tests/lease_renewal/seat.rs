@@ -28,8 +28,8 @@ const PERSON: &str = "\
 INSERT INTO identity.users(id,tenant_id,oidc_subject,email,created_at,updated_at)
 VALUES($1,$2,$1,$1,now(),now())";
 const ENTRY: &str = "\
-INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,created_at,updated_at)
-VALUES($1,$2,$3,$4,now(),now())";
+INSERT INTO model.tenant_models(id,tenant_id,model_name,secret_ref,workspace_id,created_at,updated_at)
+VALUES($1,$2,$3,$4,$5,now(),now())";
 const SECRET: &str = "\
 INSERT INTO vault.secrets(id,workspace_id,key_name,dek_ciphertext,dek_nonce,dek_tag,secret_nonce,
 secret_ciphertext,secret_tag,kek_version,meta_provider,meta_has_key,created_at,updated_at)
@@ -83,6 +83,7 @@ impl Seat {
             .bind(&self.tenant)
             .bind(&model)
             .bind(SECRET_REF)
+            .bind(&self.workspace)
             .execute(&mut *connection)
             .await
             .expect("the owner's registered model");

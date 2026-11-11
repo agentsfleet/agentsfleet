@@ -20,6 +20,7 @@ fn pointed() -> SelectionRow {
         tenant_model_id: Some(Uuid7::parse(POINTER).expect("a canonical pointer")),
         model_name: Some("claude-opus-5".to_owned()),
         secret_ref: Some("anthropic-prod".to_owned()),
+        workspace_id: Some(Uuid7::parse(WORKSPACE).expect("canonical workspace")),
         provider: Some("anthropic".to_owned()),
         context_cap_tokens: 200_000,
     }
@@ -44,6 +45,10 @@ fn a_pointer_reads_as_the_entry_it_names() {
     assert_eq!(own.tenant_model_id.as_str(), POINTER);
     assert_eq!(&*own.model, "claude-opus-5");
     assert_eq!(&*own.secret_ref, "anthropic-prod");
+    assert_eq!(
+        own.workspace_id.as_ref().map(Uuid7::as_str),
+        Some(WORKSPACE)
+    );
     assert_eq!(own.provider.as_deref(), Some("anthropic"));
     assert_eq!(own.context_cap_tokens, 200_000);
     assert_eq!(
@@ -79,6 +84,7 @@ fn a_pointer_naming_no_readable_entry_is_a_permanent_fault() {
         },
         SelectionRow {
             secret_ref: None,
+            workspace_id: None,
             ..pointed()
         },
     ] {

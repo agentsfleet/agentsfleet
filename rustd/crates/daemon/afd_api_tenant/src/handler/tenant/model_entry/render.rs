@@ -21,6 +21,7 @@ pub(super) fn stored(entry: &afd_credential::provider::Entry) -> StoredModelEntr
         id: entry.id.as_str(),
         model_id: &entry.model_name,
         secret_ref: &entry.secret_ref,
+        workspace_id: entry.workspace_id.as_ref().map(Uuid7::as_str),
         created_at: entry.created_at,
     }
 }
@@ -62,6 +63,7 @@ fn row(entry: &RegistryRow) -> ModelEntryRow<'_> {
         id: entry.entry.id.as_str(),
         model_id: &entry.entry.model_name,
         secret_ref: &entry.entry.secret_ref,
+        workspace_id: entry.entry.workspace_id.as_ref().map(Uuid7::as_str),
         provider: entry.credential.as_ref().and_then(Descriptor::provider),
         kind: entry
             .credential
@@ -126,6 +128,7 @@ mod tests {
             id: Uuid7::parse(id).expect("the fixture entry id is canonical"),
             model_name: model.into(),
             secret_ref: "openai-prod".into(),
+            workspace_id: None,
             created_at: STORED_AT,
         }
     }

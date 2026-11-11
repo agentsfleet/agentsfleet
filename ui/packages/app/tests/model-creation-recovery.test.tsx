@@ -24,7 +24,7 @@ it("reconciles a lost registration response without another secret or model writ
   const {user, dialog} = await start();
   await user.click(await dialog.findByRole("button", {name: "Check status"}));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-  expect(findRegisteredModelActionMock).toHaveBeenCalledWith({model_id: FORM_MODEL, secret_ref: CREDENTIAL.name});
+  expect(findRegisteredModelActionMock).toHaveBeenCalledWith({workspace_id: "ws_1", model_id: FORM_MODEL, secret_ref: CREDENTIAL.name});
   expect(createSecretActionMock).toHaveBeenCalledTimes(1);
   expect(createModelEntryActionMock).toHaveBeenCalledTimes(1);
 });

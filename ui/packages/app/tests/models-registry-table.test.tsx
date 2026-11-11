@@ -37,7 +37,7 @@ describe("Models registry actions", () => {
 
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
-    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ secret_ref: "anthropic-prod", model: "claude-sonnet-5" });
+    expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ workspace_id: "ws_1", secret_ref: "anthropic-prod", model: "claude-sonnet-5" });
     expect(screen.queryByLabelText(/api key/i)).toBeNull();
   });
 

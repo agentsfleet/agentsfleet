@@ -15,16 +15,10 @@
 //! (`vault.secrets.meta_provider`), and its context ceiling is the catalogue's,
 //! both read live rather than copied onto the selection.
 //!
-//! # The primary-workspace bridge
+//! # Explicit credential namespaces
 //!
-//! A tenant's self-managed credentials live in its earliest-named workspace,
-//! the same bridge `signup_bootstrap_store` uses for OIDC re-bootstrap. Four
-//! statements here and the two entry reads in `registered` and `runtime` spell
-//! it, each as a whole file, because a fragment `concat!`ed into several
-//! statements is a file the prepare check cannot run.
-//! [`SELECT_PRIMARY_WORKSPACE`] is the canonical spelling; the others repeat
-//! its predicate and ordering exactly, and every one is prepared against the
-//! schema.
+//! Model selections and credential writes use explicit workspace references.
+//! Workspace/account ownership is proved in the credential-lock statements.
 
 /// The tenant's selection, with what it points at, or nothing.
 ///
@@ -73,14 +67,8 @@ pub const SELECT_SELECTION_HOLDS: &str = include_str!("select_selection_holds.sq
 /// every platform-mode tenant, with no redeploy and no per-tenant write.
 pub const SELECT_ACTIVE_PLATFORM_DEFAULT: &str = include_str!("select_active_platform_default.sql");
 
-/// The workspace a tenant's self-managed credentials are held in.
-///
-/// A multi-workspace tenant points its credentials at the first signup-time
-/// workspace; pinning a different one would need a `vault_workspace_id`
-/// column that does not exist.
-///
-/// `$1` tenant.
-pub const SELECT_PRIMARY_WORKSPACE: &str = include_str!("select_primary_workspace.sql");
+/// Whether the account has any workspace; used only to classify a refusal.
+pub const SELECT_WORKSPACE_EXISTS: &str = include_str!("select_workspace_exists.sql");
 
 /// Points the tenant back at the platform default: a NULL pointer.
 ///
@@ -108,7 +96,7 @@ pub const RESET_TENANT_SELECTION: &str = include_str!("reset_tenant_selection.sq
 
 /// The credential's shape and envelope, locked, in one statement.
 ///
-/// Four jobs in one round trip: bridge the tenant to its primary workspace,
+/// Four jobs in one round trip: prove ownership of the explicit workspace,
 /// take the reference lock, read the metadata the write ladder's two
 /// credential rungs are decided from, and hand back the envelope columns to
 /// open.

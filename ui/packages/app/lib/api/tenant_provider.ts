@@ -13,7 +13,7 @@ export async function getTenantProvider(token: string): Promise<TenantProvider> 
 }
 
 export async function setTenantProviderSelfManaged(
-  body: { secret_ref: string; model?: string },
+  body: { workspace_id: string; secret_ref: string; model?: string },
   token: string,
 ): Promise<TenantProvider> {
   return request<TenantProvider>(
@@ -23,6 +23,7 @@ export async function setTenantProviderSelfManaged(
       body: JSON.stringify({
         mode: PROVIDER_MODE.self_managed,
         secret_ref: body.secret_ref,
+        workspace_id: body.workspace_id,
         model: body.model,
       }),
     },

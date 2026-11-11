@@ -179,13 +179,7 @@ impl Providers {
     async fn strategy(&self, tenant_id: &Uuid7) -> Result<Strategy> {
         match self.selection(tenant_id).await? {
             Some(Selection::SelfManaged(own)) => {
-                let workspace = self
-                    .primary_workspace(tenant_id)
-                    .await?
-                    // A tenant with no workspace at all is a violated bootstrap
-                    // invariant — signup creates the primary workspace — and it
-                    // is permanent, because nothing later creates one.
-                    .ok_or_else(provider_no_workspace)?;
+                let workspace = own.workspace_id.clone().ok_or_else(provider_no_workspace)?;
                 Ok(managed::SelfManaged::prepare(own, workspace))
             }
             Some(Selection::Platform) | None => {

@@ -24,6 +24,20 @@ describe("Row actions — Edit", () => {
     await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "anthropic-prod", { provider: "anthropic", api_key: "sk-ant-rotated" }));
   });
 
+  it("rotates the model's saved Staging key while the page is in Main", async () => {
+    const target = entry({id: "staged-entry", workspace_id: "ws-staging"});
+    replaceSecretActionMock.mockResolvedValue({ok: true, data: {name: target.secret_ref}});
+    await renderTable(registry([target]));
+    const user = userEvent.setup();
+    await clickRowAction(user, /edit claude-sonnet-5/i);
+    const dialog = await screen.findByRole("dialog");
+    await user.type(within(dialog).getByLabelText(/api key/i), "rotated-staging-key");
+    await user.click(within(dialog).getByRole("button", {name: /^save$/i}));
+    await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws-staging", target.secret_ref,
+      {provider: "anthropic", api_key: "rotated-staging-key"}));
+    expect(replaceSecretActionMock).toHaveBeenCalledOnce();
+  });
+
   it("changes only the model when no key is entered — replace is never called", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
     updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: EDIT_MODEL, secret_ref: "anthropic-prod", created_at: "1970-01-01T00:00:00.001Z" } });

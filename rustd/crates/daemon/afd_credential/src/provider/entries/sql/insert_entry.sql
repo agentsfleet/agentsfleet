@@ -1,4 +1,4 @@
-INSERT INTO model.tenant_models (id, tenant_id, model_name, secret_ref, created_at, updated_at)
-VALUES ($1, $2, $3, $4, now(), now())
-ON CONFLICT (tenant_id, model_name, secret_ref) DO NOTHING
-RETURNING id, model_name, secret_ref, created_at
+INSERT INTO model.tenant_models (id, tenant_id, model_name, secret_ref, workspace_id, created_at, updated_at)
+VALUES ($1, $2, $3, $4, $5, now(), now())
+ON CONFLICT (tenant_id, workspace_id, model_name, secret_ref) DO NOTHING
+RETURNING id, model_name, secret_ref, workspace_id, created_at

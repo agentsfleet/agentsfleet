@@ -48,7 +48,7 @@ const ENTRIES_READ: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretRead]);
 const ENTRIES_WRITE: ScopeSet = ScopeSet::from_scopes(&[Scope::SecretWrite]);
 
 /// A body that names both fields the create requires.
-const WELL_FORMED_CREATE: &str = r#"{"model_id":"claude-opus-5","secret_ref":"anthropic-prod"}"#;
+const WELL_FORMED_CREATE: &str = r#"{"model_id":"claude-opus-5","workspace_id":"0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b","secret_ref":"anthropic-prod"}"#;
 
 /// A body that names the one field the change requires.
 const WELL_FORMED_UPDATE: &str = r#"{"model_id":"claude-opus-5"}"#;

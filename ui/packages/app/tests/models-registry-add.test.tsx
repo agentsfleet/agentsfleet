@@ -86,7 +86,7 @@ describe("AddModelEntryDialog — explicit credential choice", () => {
     await user.click(screen.getByRole("option", {name: ANTHROPIC_SECRET.name}));
     expect(dialog.queryByLabelText("API key", {exact: true})).toBeNull();
     await user.click(dialog.getByRole("button", {name: "Create model"}));
-    await waitFor(() => expect(createModelEntryActionMock).toHaveBeenCalledWith({model_id: FORM_MODEL, secret_ref: ANTHROPIC_SECRET.name}));
+    await waitFor(() => expect(createModelEntryActionMock).toHaveBeenCalledWith({workspace_id: "ws_1", model_id: FORM_MODEL, secret_ref: ANTHROPIC_SECRET.name}));
     expect(createSecretActionMock).not.toHaveBeenCalled();
     expect(replaceSecretActionMock).not.toHaveBeenCalled();
     expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();

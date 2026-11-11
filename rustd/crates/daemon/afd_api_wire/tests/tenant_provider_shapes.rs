@@ -19,6 +19,7 @@ fn platform_mode_omits_the_credential_rather_than_nulling_it() {
         model: "claude-opus-5",
         context_cap_tokens: 200_000,
         secret_ref: None,
+        workspace_id: None,
         platform_default_available: true,
     })
     .expect("the response serializes");
@@ -38,6 +39,7 @@ fn self_managed_mode_names_the_credential_it_dials() {
         model: "gpt-5",
         context_cap_tokens: 128_000,
         secret_ref: Some(A_KEY),
+        workspace_id: None,
         platform_default_available: false,
     })
     .expect("the response serializes");
@@ -59,6 +61,7 @@ fn the_response_never_carries_a_field_shaped_like_a_key() {
         model: "gpt-5",
         context_cap_tokens: 128_000,
         secret_ref: Some(A_KEY),
+        workspace_id: None,
         platform_default_available: true,
     })
     .expect("the response serializes");
