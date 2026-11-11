@@ -2,11 +2,13 @@
 
 use super::{
     CheckpointMaintenance, CheckpointMaintenanceCursor, DecisionMaintenance,
-    DecisionMaintenanceCursor, EffectMaintenance, PreparedPlan, ReservedDecision, TaskAdoption,
-    TaskAfter, TaskBindings, TaskControl, TaskFuture as Reply, TaskLease, TaskLifecycle, TaskPage,
-    TaskScope, TaskSnapshot, Tasks, VerifiedCompletion, WaitMaintenance, admit, adoption, bindings,
-    checkpoint, control, decision, effects, input_receipt, inputs, list, observe, read, waits,
+    DecisionMaintenanceCursor, EffectMaintenance, ReservedDecision, TaskAdoption, TaskAfter,
+    TaskControl, TaskFuture as Reply, TaskLease, TaskLifecycle, TaskPage, TaskScope, TaskSnapshot,
+    Tasks, VerifiedCompletion, WaitMaintenance, adoption, bindings, checkpoint, control, decision,
+    effects, input_receipt, inputs, list, observe, read, waits,
 };
+#[cfg(any(test, feature = "test-util"))]
+use super::{PreparedPlan, TaskBindings, admit};
 use af_core::id::Uuid7;
 use af_observability::metrics::label::task::{TaskOperation, TaskOutcome};
 use af_wire::task as wire;
@@ -302,6 +304,7 @@ impl TaskLifecycle for Tasks {
         )
     }
 
+    #[cfg(any(test, feature = "test-util"))]
     fn bind<'a>(&'a self, lease: TaskLease<'a>, plan: &'a PreparedPlan) -> Reply<'a, TaskBindings> {
         let span = tracing::info_span!("task_bind", lease_id = lease.lease_id.as_str());
         observe::traced(

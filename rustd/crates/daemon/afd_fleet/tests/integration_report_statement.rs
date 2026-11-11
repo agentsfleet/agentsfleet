@@ -1,24 +1,21 @@
 //! The report is one statement: every write a terminal report makes
 //! commits together, under the lease's own row lock, fenced and replay-safe,
-//! and its runtime line is priced as the rater prices it.
+//! and its runtime line is priced as the rater prices it. The pricing half of
+//! these tests is in `integration_report_pricing.rs`.
 #![expect(
     clippy::expect_used,
     reason = "integration preconditions should fail the test loudly"
 )]
 
 use af_core::id::Uuid7;
-use af_wire::usage::{LineKind, RequestUsage, UsageLine};
-use afd_billing::price::{PriceBook, Rater, Window};
-use afd_billing::rates::Posture;
+use af_wire::usage::{LineKind, RequestUsage};
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Window as Counted};
-use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Committed, Reported, TerminalReport};
 
 use crate::report_commit::{RESPONSE_ACCEPTED, report};
 use crate::report_seed::{Held, held, held_in};
 use crate::rows::Row;
-use crate::seed::{MODEL, PROVIDER};
 use crate::support::Fixtures;
 
 /// The lease's runtime lines: their number, milliseconds, charge and tier.
@@ -26,12 +23,12 @@ const RUNTIME_LINES: &str = "SELECT seq, runtime_ms, charged_nanos, platform_mod
     FROM billing.usage_lines WHERE work_id = $1 AND kind = $2 ORDER BY seq";
 
 /// What [`RUNTIME_LINES`] answers.
-type RuntimeLine = (i64, i64, i64, Option<Uuid7>);
+pub(crate) type RuntimeLine = (i64, i64, i64, Option<Uuid7>);
 
 /// The address a fixture's answer is owed to.
 const THREAD: &str = "C0FIXTURE:1700000000.000100";
 
-async fn runtime_lines(held: &Held) -> Vec<RuntimeLine> {
+pub(crate) async fn runtime_lines(held: &Held) -> Vec<RuntimeLine> {
     sqlx::query_as(RUNTIME_LINES)
         .bind(&held.lease_key)
         .bind(LineKind::Runtime.as_str())
@@ -40,7 +37,7 @@ async fn runtime_lines(held: &Held) -> Vec<RuntimeLine> {
         .expect("runtime lines")
 }
 
-async fn reported(held: &Held) -> Reported {
+pub(crate) async fn reported(held: &Held) -> Reported {
     held.leases
         .load_for_report(&held.issued.lease_id, &held.runner)
         .await
@@ -261,210 +258,3 @@ async fn one_statement_report_replay_returns_stored_outcome() {
 // Value: protects=the closing row's cost and counters; fails_when=the statement
 // answers its snapshot, missing the lines it inserted; why_new=the close and
 // the lines are one statement; seam=none; no_claim=a concurrent insert.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn closing_cost_counts_the_reports_own_lines() {
-    const LOGGED: i64 = 500;
-    let held = held().await;
-    sqlx::query(
-        "INSERT INTO billing.usage_lines (id, work_type, work_id, seq, kind, tenant_id, workspace_id, \
-         fleet_id, fleet_name, event_id, provider, model, posture, requested_at, \
-         input_token_count, cached_input_token_count, cache_write_token_count, \
-         cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, \
-         unpriced_token_count, charged_nanos, created_at, updated_at) \
-         SELECT uuidv7(), $2, l.id, 7, 'model', l.tenant_id, l.workspace_id, l.fleet_id, 'Support triage', \
-                l.event_id, l.provider, l.model, l.posture, now(), 0, 0, 0, 0, 0, 0, 0, 0, $3, now(), now() \
-         FROM runner.leases l WHERE l.id = $1",
-    )
-    .bind(&held.issued.lease_id)
-    .bind(afd_billing::sql::work::FLEET_LEASE)
-    .bind(LOGGED)
-    .execute(&mut *held.fixtures.database.acquire().await.expect("biller"))
-    .await
-    .expect("an earlier line of the event");
-    let before = afd_events::fleet_counters(&held.fixtures.database, &held.fleet)
-        .await
-        .expect("counters");
-    let lease = reported(&held).await;
-    let at = af_core::clock::after(held.now, crate::report_seed::SLICE);
-
-    let Committed::Settled {
-        charged, closed, ..
-    } = held
-        .leases
-        .commit_report(report(
-            &held.issued.lease_id,
-            &held.runner,
-            &lease,
-            (&held.lease_key, &held.pricing),
-            RESPONSE_ACCEPTED,
-            at,
-        ))
-        .await
-        .expect("the report commits")
-    else {
-        unreachable!("the lease is the runner's and live");
-    };
-
-    let closed = closed.expect("the event closed");
-    assert!(charged.as_i64() > 0, "the report logged a runtime line");
-    assert_eq!(closed.row.cost_nanos, Some(LOGGED + charged.as_i64()));
-    assert_eq!(
-        closed.counters.budget_used_nanos,
-        before.budget_used_nanos + charged.as_i64(),
-        "the budget moved by the report's own lines"
-    );
-    held.fixtures.cleanup().await;
-}
-
-// Value: protects=statement pricing equals the rater; fails_when=the runtime
-// line's number, charge or tier drifts from what the rater writes;
-// why_new=the runtime line is priced inside the statement; seam=none;
-// no_claim=the batch and expiry statements, which their own suites price.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn statement_lines_match_rater() {
-    let held = held().await;
-    let lease = reported(&held).await;
-    let at = af_core::clock::after(held.now, crate::report_seed::SLICE);
-    held.leases
-        .commit_report(report(
-            &held.issued.lease_id,
-            &held.runner,
-            &lease,
-            (&held.lease_key, &held.pricing),
-            RESPONSE_ACCEPTED,
-            at,
-        ))
-        .await
-        .expect("the report commits");
-
-    let [(seq, runtime_ms, charged, price)] = runtime_lines(&held)
-        .await
-        .try_into()
-        .expect("one runtime line");
-    let book = PriceBook::load(
-        &mut *held.fixtures.database.acquire().await.expect("reader"),
-        PROVIDER,
-        MODEL,
-    )
-    .await
-    .expect("the book reads");
-    let line = UsageLine::runtime(
-        u32::try_from(seq).expect("a slice start"),
-        held.now,
-        u32::try_from(runtime_ms).expect("a slice's milliseconds"),
-    );
-    let rated = Rater::new(
-        &book,
-        Posture::Platform,
-        Window {
-            from: lease.lease_created_at,
-            until: af_core::clock::now(),
-        },
-    )
-    .rate(&line)
-    .expect("the line rates");
-    assert_eq!(seq, 0, "the lease's first slice starts with the lease");
-    assert_eq!(charged, rated.charged.as_i64());
-    assert_eq!(price, rated.price);
-    held.fixtures.cleanup().await;
-}
-
-// Value: protects=a wrong pricing guess writes nothing; fails_when=lines are
-// logged against another model; why_new=the statement guards on the facts it
-// was priced at; seam=none; no_claim=a guess that names the right model.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn report_with_wrong_pricing_facts_writes_nothing() {
-    let held = held().await;
-    let lease = reported(&held).await;
-    let wrong = Pricing::load(
-        &held.fixtures.database,
-        Posture::Platform,
-        PROVIDER,
-        "another-model",
-        held.issued.lease_id.as_str(),
-    )
-    .await;
-    let at = af_core::clock::after(held.now, crate::report_seed::SLICE);
-
-    let committed = held
-        .leases
-        .commit_report(report(
-            &held.issued.lease_id,
-            &held.runner,
-            &lease,
-            (&held.lease_key, &wrong),
-            RESPONSE_ACCEPTED,
-            at,
-        ))
-        .await
-        .expect("the report commits");
-
-    assert!(
-        matches!(committed, Committed::Settled { .. }),
-        "{committed:?}"
-    );
-    let models: Vec<String> =
-        sqlx::query_scalar("SELECT DISTINCT model FROM billing.usage_lines WHERE work_id = $1")
-            .bind(&held.lease_key)
-            .fetch_all(&mut *held.fixtures.database.acquire().await.expect("observer"))
-            .await
-            .expect("models");
-    assert_eq!(
-        models,
-        [MODEL],
-        "the retry priced under the lease's own model"
-    );
-    assert_eq!(runtime_lines(&held).await.len(), 1, "settled once");
-    held.fixtures.cleanup().await;
-}
-
-/// A fragment of the price book read, `afd_billing`'s `select_price_book.sql`.
-const PRICE_BOOK_READ: &str = "p.input_nanos_per_mtok";
-
-// Value: protects=a warm replica's report reads no price book; fails_when=the
-// report loads its book past the version-keyed cache; why_new=the report's
-// book moved into the cache; seam=none; no_claim=a catalogue edit between
-// the two, which the statement's version guard and its reprice answer.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn a_warm_replica_report_reads_no_price_book() {
-    let held = held_in(Fixtures::create_isolated().await).await;
-    held.fixtures.seed_model_rate(PROVIDER, MODEL).await;
-    let owner = held.fixtures.open(DbRole::Migrator).await;
-    statements::install(&owner).await;
-    let plane = held.fixtures.plane();
-    let request = crate::integration_held_sandbox::report::processed(&held, None);
-    let mut untimed = af_observability::verb_span::VerbClock::untimed();
-
-    let cold = Counted::open(&owner).await;
-    plane
-        .report_with(&held.runner, &request, held.now, None, &mut untimed)
-        .await
-        .expect("the report settles the lease");
-    let cold = cold.close().await;
-    let warm = Counted::open(&owner).await;
-    plane
-        .report_with(&held.runner, &request, held.now, None, &mut untimed)
-        .await
-        .expect("the replay answers the stored outcome");
-    let warm = warm.close().await;
-
-    assert_eq!(
-        cold.calls_containing(PRICE_BOOK_READ),
-        1,
-        "{:?}",
-        cold.statements()
-    );
-    assert_eq!(
-        warm.calls_containing(PRICE_BOOK_READ),
-        0,
-        "{:?}",
-        warm.statements()
-    );
-    drop(plane);
-    owner.close().await;
-    held.fixtures.cleanup().await;
-}

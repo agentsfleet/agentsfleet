@@ -24,6 +24,7 @@ use af_core::id::Uuid7;
 use af_core::timing::{RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use af_observability::metrics::label::fleet::HeldClaim;
 use af_observability::producers;
+#[cfg(any(test, feature = "test-util"))]
 use jiff::Timestamp;
 #[cfg(any(test, feature = "test-util"))]
 use sqlx::PgConnection;
@@ -47,9 +48,10 @@ pub(crate) const EVENT_CLAIM_RELEASE_FAILED: &str = "lease_claim_release_failed"
 
 /// The `fencing_token` column, which is the one number that orders lease holders.
 ///
-/// Monotonic per fleet and minted only by [`Leases::claim`]: every winning
-/// claim bumps it, so a holder superseded by a reclaim carries a strictly
-/// smaller value than the runner that displaced it. That is the whole basis of
+/// Monotonic per fleet and minted by the slot upsert inside the claim head
+/// (`claim_admission_head.sql`): every winning claim bumps it, so a holder
+/// superseded by a reclaim carries a strictly smaller value than the runner
+/// that displaced it. That is the whole basis of
 /// Invariant 2, and the reason a report verifies its token inside the same
 /// statement that flips the lease.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -88,6 +90,10 @@ impl Fence {
 
 /// A won claim: the new token, the instant the slot — and the lease issued
 /// against it — stays valid until, and whether the winner held the fleet.
+///
+/// What the test-only [`Leases::claim`] answers; production reads the same
+/// facts from the claim head's row.
+#[cfg(any(test, feature = "test-util"))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Claimed {
     /// The monotonic token this claim minted.
@@ -125,6 +131,10 @@ impl Leases {
     ///
     /// The claim PRECEDES the event read by design: a loser has consumed no
     /// event, so nothing is orphaned by losing.
+    ///
+    /// A test seam: production claims through the `slot` step of the claim head
+    /// (`claim_admission_head.sql`), which runs this same upsert beside the head
+    /// read, so this method is not compiled into a build without `test-util`.
     ///
     /// # Errors
     /// Reports a datastore that would not answer. A refused claim is

@@ -157,7 +157,7 @@ pool checkout ─► pings only a connection idle for 1 s or longer
 | `rustd/crates/daemon/afd_fleet/src/lease/commit.rs`, `settle.rs`, `finalize.rs`, `obligation.rs`, `report/mod.rs`, `report/steps.rs`, `report/tokens.rs`, `report/finalize.rs`, `report/assembly.rs`, `sql/report.rs` | EDIT | §6: one statement, its binder and its answer |
 | `rustd/crates/daemon/afd_fleet/src/lease/sql/select_run_tokens.sql`, `select_lease_disposition.sql`, `upsert_fleet_session.sql`, `afd_events/src/sql/select_fleet_event_status.sql`, `afd_fleet/src/task/report/transition.sql` | DELETE | §6: absorbed by the report statement or left with no caller |
 | `rustd/crates/daemon/afd_fleet/src/lease/sql/select_lease_for_report.sql`, `report/mod.rs`, `settle.rs`, `lease/offer.rs`, `deliver/issue.rs`, `afd_gateway/src/session/cache/**`, `session/dispatch/{report,renewal}.rs` | EDIT | §9: the offer carries the facts the report reads and the session keeps them; a session rebuilt from the database still reads the lease, and the read returns the catalogue version |
-| `rustd/crates/daemon/afd_fleet/src/lease/sql/renew_batch.sql`, `renew/batch.rs` | CREATE | §7: one statement per host per tick |
+| `rustd/crates/daemon/afd_fleet/src/lease/sql/renew_batch.sql`, `renew/batch/{mod,frame,rows,ceilings,pricing,verdict,columns,tests}.rs` | CREATE | §7: one statement per host per tick; the module splits by subject (frame, rows, ceilings, pricing, verdict, columns) so no file passes the length cap |
 | `rustd/crates/daemon/afd_fleet/src/lease/renew/mod.rs`, `renew/extend.rs`, `sql/renew.rs`, `sql/bill_expired_slice.sql`, `billing_sweep.rs` | EDIT | §7: the batch verb; the expiry statement advances the line count |
 | `rustd/crates/daemon/afd_fleet/src/lease/sql/meter_lease.sql`, `sql/meter.rs` | EDIT | §7: the report and the host batch carry their own measurement, so the meter statement loses its settle arm; the per-lease renewal keeps it for durable-task leases and leases whose versions moved (Discovery) |
 | `rustd/crates/daemon/afd_gateway/src/session/**` (the cache, the dispatch and `sql/select_runner_live_leases.sql`), `afd_http/src/services/leasing/**` | EDIT | §6, §7: the session's lease cache gains pricing facts and the funds tick, and the renewal dispatch calls the batch verb; §8: the leasing service loses the context load |
@@ -200,7 +200,7 @@ pool checkout ─► pings only a connection idle for 1 s or longer
 | The statement-prepare test (SQL-PREPARE) | yes, three new statements and five rewritten | each file joins the prepared list in the commit that adds it |
 | Metrics census and producer test | yes, two families added | census row, declaration and producer in one commit |
 | `gitleaks` | yes, cache tests seed platform keys | keys derived at runtime from the test entropy source; no new allow entry |
-| File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes, `commit.rs`, `renew/mod.rs`, `event.rs` | binders in `renew/batch.rs` and `commit.rs`; answer decoding beside each statement's row type |
+| File & Function Length (file ≤350 lines, function ≤50, method ≤70) | yes, `commit.rs`, `renew/mod.rs`, `event.rs` | binders in `renew/batch/` and `commit/`; answer decoding beside each statement's row type |
 | OpenAPI document | yes, the runner's context-checkpoint route goes | regenerate `public/openapi.json` from `rustd/` with `--no-banner` in the same commit |
 
 ## Prior-Art / Reference Implementations
@@ -439,7 +439,8 @@ Folded in on Indy's direction (Discovery, Nov 10, 2026). One `u32` of line numbe
 | `agentsfleet_lease_cache_lookups_total` | operator | each cache lookup | `cache`, `outcome` | no fleet, tenant or key value in labels | `cache_lookups_counted_by_outcome` |
 | `renew_batch_repriced` (log) | operator | a guard forced a rerun | `runner_id`, `leases`, `reason` | no prices, no key material | `catalogue_cache_reprices_after_bump` |
 | `expiry_sweep_completed`, `expiry_sweep_failed` (log) | operator | each expiry tick | counts, `error_code` | identifiers only | `a_tick_runs_both_passes_and_logs_a_store_it_cannot_reach` |
-| `renew_no_credits`, `renew_budget_breach` (log, unchanged spellings) | operator | a batch refuses a lease | `fleet_id`, `lease_id` | identifiers only | `funds_are_checked_on_the_first_tick_then_every_third`, `host_batch_refuses_over_budget_fleet_alone` |
+| `renew_no_credits`, `renew_budget_breach` (log, unchanged spellings) | operator | a batch refuses a lease for funds or for a fleet at its ceiling, as the per-lease path does | `fleet_id`, `lease_id` | identifiers only | `a_fleet_at_its_ceiling_is_logged_as_a_budget_breach`, `host_batch_refuses_over_budget_fleet_alone` |
+| `renew_batch_refused` (log, info) | operator | a batch answers a lease lost, cancelled or past its runtime ceiling | `fleet_id`, `lease_id`, `error_code`, `verdict` | identifiers, the code and the verdict name only | `a_lost_cancelled_or_capped_lease_is_named_with_its_verdict`, `host_batch_refuses_cancel_marked_lease` |
 | `agentsfleet_db_pool_checkout_pings_total` | operator | a checkout pings an idle connection | `role` | role names only | `idle_connection_is_pinged_and_replaced` |
 
 ## Acceptance Rubric (single scoring surface)
