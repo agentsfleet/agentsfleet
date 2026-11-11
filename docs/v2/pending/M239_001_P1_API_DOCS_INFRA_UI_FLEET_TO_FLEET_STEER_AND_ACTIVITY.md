@@ -322,3 +322,80 @@ N/A: no files deleted.
 > Owner (Indy, Nov 04, 2026, time not recorded): "my view is fleet to fleet" — context: the name and the go.
 > Owner (Indy, Nov 04, 2026, time not recorded): "Yes write it and push the PR so i can take a pull and ask Codex to review this. Once you write it review with egm for completeness in implementation" — context: authorises the docs-only Pull Request and the EGM review.
 > Owner (Indy, Nov 05, 2026, time not recorded): "Yes append and push the branch, if its just spec, i dont want you to run the governance, just commit, push the PR." — context: authorises this amendment Pull Request without `orly gate pr`.
+
+### Deferred Plugin capabilities: revisit with M239
+
+Recorded November 11, 2026 during the app refresh review. This note adds context for the next discussion; it adds no implementation work to this spec.
+
+> Owner: "Yes flow 1"
+>
+> Owner: "Flow 2: apply capabilities to an existing fleet. What is this exactly a plugin, and existing fleet how will this use this capability and when. Will the original fleet may be mention the plugin like `@deploy_status` to ...? is that the case? or what. I dont want to build this, but note it down with the elephant context details somewhere in our usual spot so we could revisit this when we pickup the spec docs/v2/pending/M239_001_P1_API_DOCS_INFRA_UI_FLEET_TO_FLEET_STEER_AND_ACTIVITY.md"
+
+**Current decision:** rename Fleet library to Plugins while retaining reuse of complete fleet setups, their immutable revisions, and current account access.
+Selecting a Plugin starts a new private setup. Saving creates an independent fleet; it does not attach a capability to an existing fleet.
+Do not add capability composition, plugin invocation, or plugin-to-fleet bindings during the refresh.
+
+**Deferred customer example:** an Operations fleet already handles incidents. Its owner wants reusable deployment checks and a release checklist inside that same fleet.
+Those capabilities would run as work of Operations, using its identity, history, budget, approved access, and saved setup version.
+The plugin would supply reviewed instructions and supported configuration, not another autonomous fleet or copied credentials.
+
+```text
+Possible future capability use, not approved for implementation
+
+Owner selects Deploy status v2 for Operations
+                 |
+                 v
+Preview instructions, settings, conflicts, and access requirements
+                 |
+          Save a reviewed setup
+                 |
+                 v
+Operations receives a message or its configured trigger fires
+                 |
+                 v
+Operations performs the deployment checks with its own allowed tools
+                 |
+                 v
+Result appears in Operations' conversation
+```
+
+**When it would run:** the fleet's normal message, schedule, or integration trigger admits work.
+Its reviewed instructions select the relevant procedure during that work. A plugin's presence must not create a hidden trigger or run.
+
+**What `@deploy_status` could mean:** optional syntax for explicitly requesting an already available capability for a particular turn.
+For example: “Use @deploy_status to check checkout-api in staging.” This would select a procedure inside Operations, not contact another fleet.
+Mention syntax alone must never install content, select an unreviewed latest version, grant access, or run code outside fleet policy.
+
+That mention design is unresolved. A future design must define stable identity, pinned version, missing-plugin errors, ambiguous names, and one-turn versus ongoing use.
+Natural-language requests and reviewed instructions could support the same use case without adding mention syntax.
+
+**How this differs from M239:** `fleet_steer` sends work to a separate fleet by ID. That target has its own setup, history, grants, and budget.
+`fleet_activity` reads the other fleet's recorded work. A plugin procedure would instead run inside the calling fleet.
+Do not equate a plugin mention with a fleet mention or treat M239's tool consent as approval to install plugins.
+
+```text
+Capability composition: Operations -> its own deployment-check procedure
+M239 delegation:        Operations -> fleet_steer(Deploy watcher ID, message)
+                                      -> Deploy watcher runs separately
+```
+
+**Preferred design if revisited:** combine selected capability versions when applying or updating them, then save an ordinary validated fleet definition.
+Reuse the existing runtime rather than loading plugins during every run. Record version bindings and the origin of contributed instructions and settings.
+Never resolve incompatible schedules, destinations, or approval rules by load order or instruction concatenation alone.
+
+The future scope would include capability content types, version bindings, composition, conflict review, update/removal behavior, and recovery from partial writes.
+Define how local edits survive plugin updates and removal. Existing runs retain their pinned setup; future work uses the newly accepted version.
+Credentials and standing grants remain outside plugin content. A new required permission needs the existing access-review path.
+
+**First question when M239 resumes:** does a distinct Deploy watcher fleet, reachable through `fleet_steer`, already meet the customer need?
+Only reopen capability composition if same-fleet reuse solves a concrete remaining need. Do not make M239 depend on this deferred feature.
+
+Source references checked during this discussion:
+
+- `ui/packages/app/lib/api/draft-library.ts`: Library revisions carry complete Definitions.
+- `rustd/crates/daemon/afd_authoring/src/library/publish/persist.rs`: publication saves the full definition and its digest.
+- `rustd/crates/daemon/afd_api_wire/src/authoring/input.rs`: a Library source pins one entry and revision.
+- `schema/1400_authoring_library_entries.sql`: ownership is account-based, with a separate platform visibility model.
+- `rustd/crates/protocol/af_fleet_runtime/src/definition/mod.rs`: Definitions carry no credentials, grants, or runtime authority.
+
+This decision is also saved in the project's context checkpoints under the title “Flow 1 approved; Flow 2 deferred to M239”.
