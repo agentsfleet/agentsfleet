@@ -334,6 +334,45 @@ that fails a check extends nothing and changes no other lease's answer.
 - **First fold ask.** `claim_inputs.sql` is unchanged. Its first run per lease is answered by the claim's `inputs_waiting` (above) and skipped when false.
 - **Context load.** The `GET` ran `standing/select_standing_shared.sql` and `af_context`'s checkpoint read in one transaction. Both files stay: the `PUT` runs the same scope read before it publishes. The run sends neither on its way to its first model call.
 
+## §9 — what the first bench run sent back
+
+The bench measured 28.7 statements a chat against a projection of about 20. Four statement files changed; none is new.
+
+### `afd_fleet/src/lease/sql/lease/claim_admission_head.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 82 `stamped` | returns `a.task_generation` | The final select needs both task columns to say whether the head is a durable task's. |
+| 153-156 | `tasked` added | `a.task_id IS NOT NULL OR a.task_generation IS NOT NULL`: the same pair the `head` filter tests at line 48. A plain head lets the issue skip `issue_source.sql`. The proof's task generation could not say this: a task before its first interpretation has none, and treating it as plain failed 15 durable-task tests. |
+
+### `afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 41-45 | comment | Why the insert now carries the task source's checks. |
+| 46 `r` | `JOIN runner.runners r ON r.id = $2` | The host's task capability, read under the host lock the issue already holds. |
+| 47 `setup` | `LEFT JOIN fleet.revisions` on the head | The head's definition, for whether it needs durable tasks. |
+| 50 | `$20` guard | `$20` is the head revision the claim assembled the setup from; NULL checks none (the public `issue` passes no proof). A head that moved writes no lease, which the caller rolls back. |
+| 51-54 | capability guard | A setup whose `$22` path names a decision policy needs a host with `durable_tasks_enabled` and the `$21` capability; `issue_source.sql`'s `requires_tasks && !capable` refusal, word for word. |
+
+Every lease pays both guards inside the statement it already ran, so a plain chat drops the task source read (1.0 a chat). A durable task's issue still runs `issue_source.sql`, which rechecks the same and attaches the task. The fleet is held by `task::lease::parents` and the host by the caller, so neither moves between the guard and the commit.
+
+### `afd_fleet/src/lease/sql/select_lease_for_report.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 3-7 | `catalogue_version` added | The report prices from the replica's book cache under this version; `commit_report.sql` guards on it, and a moved version reprices once. Before, the report read its book on every lease (1.0 a chat). |
+
+A streamed report no longer runs this statement at all: the offer carries what it reads, the session keeps it, and `report_with` takes it (1.0 a chat). A session rebuilt from the database never saw the offer and still reads it.
+
+### `afd_fleet/src/lease/sql/execution_deadline.sql` and `task/sql/issue_source.sql`
+
+Unchanged, and no longer run for a plain chat. `execution_deadline.sql` answers `LEAST(created_at + MAX_RUNTIME, task_execution_deadline_at)`, and only a task's attach sets the second column, so the issue computes `created_at + MAX_RUNTIME` from the `created_at` the insert returned (`deadline::untasked`).
+
+### `afd_fleet/src/lease/sql/select_renewals.sql`
+
+Unchanged, and run only when a frame lacks a fact. The session passes each plain lease's kept facts, and the replica keeps the newest catalogue version and head revision every issue and pre-read answered (`cache::Latest`). `renew_batch.sql` guards both (lines 99-103) and reads status and the cancel mark under its own locks, so the frame runs on the batch statement alone: the meter path went from 4.0 a chat to 2.0, two renewals at one statement each. A guard that finds a version moved sends the lease to the per-lease path and makes the next frame read again.
+
 ## Identifiers
 
 No statement binds or casts an identifier between `text` and `uuid`. Every
