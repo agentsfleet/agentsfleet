@@ -145,3 +145,85 @@ fn the_costliest_statements_come_first() {
 
     assert_eq!(top, vec!["b", "c"]);
 }
+
+/// One M245 statement, read from the product's own file, and the path it
+/// belongs to.
+const M245_STATEMENTS: &[(&str, &str, Path)] = &[
+    (
+        "claim_admission_head.sql",
+        afd_fleet::lease::sql::queue::CLAIM_HEAD,
+        Path::Claim,
+    ),
+    (
+        "select_gates.sql",
+        afd_fleet::lease::sql::gates::SELECT_GATES,
+        Path::Gates,
+    ),
+    (
+        "insert_lease_with_event.sql",
+        afd_fleet::lease::sql::lease::INSERT_LEASE_WITH_EVENT,
+        Path::Issue,
+    ),
+    (
+        "select_renewals.sql",
+        afd_fleet::lease::sql::renew::SELECT_RENEWALS,
+        Path::Meter,
+    ),
+    (
+        "select_revision_documents.sql",
+        afd_fleet::lease::sql::renew::SELECT_REVISION_DOCUMENTS,
+        Path::Meter,
+    ),
+    (
+        "renew_batch.sql",
+        afd_fleet::lease::sql::renew::RENEW_BATCH,
+        Path::Meter,
+    ),
+    (
+        "commit_report.sql",
+        afd_fleet::lease::sql::report_statement::COMMIT_REPORT,
+        Path::Report,
+    ),
+    (
+        "apply_report_notice.sql",
+        afd_fleet::lease::sql::report_statement::APPLY_REPORT_NOTICE,
+        Path::Report,
+    ),
+    (
+        "claim_inputs.sql",
+        afd_fleet::lease::sql::lease::CLAIM_INPUTS,
+        Path::Fold,
+    ),
+];
+
+/// `pg_stat_statements` keeps a statement's comments, so the fragments must
+/// classify it with them and without: a fragment that matched only a comment
+/// would break on a reworded one.
+fn code_of(statement: &str) -> String {
+    statement
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("--"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// Value: protects=each statement M245 added or rewrote is counted in the path
+// the chat projection gives it; fails_when=one lands in `other`, or in an
+// older path whose fragment it also contains; why_new=§4-§8 replaced the
+// statements the table was read off; seam=none; no_claim=statements a drain
+// run shows that no file here names, which the run's `other` reports.
+#[test]
+fn new_statements_match_their_paths() {
+    for (file, statement, path) in M245_STATEMENTS {
+        assert_eq!(
+            super::paths::classify(statement),
+            *path,
+            "{file} lands in its path"
+        );
+        assert_eq!(
+            super::paths::classify(&code_of(statement)),
+            *path,
+            "{file} lands in its path without its comments"
+        );
+    }
+}
