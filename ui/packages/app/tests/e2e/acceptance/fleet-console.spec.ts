@@ -18,7 +18,7 @@ import { FIXTURE_KEY } from "./fixtures/constants";
 import { getDefaultWorkspaceId, seedFleet, waitForFleetActive } from "./fixtures/seed";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
-import { editSetupLink } from "./fixtures/private-chat";
+import { expectEditSetupAvailable } from "./fixtures/private-chat";
 
 const RENDER_TIMEOUT_MS = 15_000;
 const SEND_TIMEOUT_MS = 10_000;
@@ -41,7 +41,6 @@ test.describe("fleet console", () => {
     await expect(page).toHaveURL(workspaceUrlPattern(`fleets/${fleet.id}`));
 
     await expect(page.getByRole("navigation", { name: "Fleet sections" })).toHaveCount(0);
-    await expect(editSetupLink(page)).toBeVisible();
 
     const thread = page.getByTestId("fleet-thread-root");
     await expect(thread).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
@@ -80,6 +79,8 @@ test.describe("fleet console", () => {
     await expect(textarea).toHaveValue("");
     await expect(textarea).toBeFocused();
     await page.keyboard.type(FOLLOW_UP);
+    await expect(textarea).toHaveValue(FOLLOW_UP);
+    await expectEditSetupAvailable(page);
     await expect(textarea).toHaveValue(FOLLOW_UP);
 
     await page.getByRole("button", {name: "Fleet actions", exact: true}).click();

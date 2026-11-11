@@ -12,7 +12,7 @@
  * attribute (canonical mapping in
  * app/(dashboard)/w/[workspaceId]/fleets/components/FleetTile.tsx:
  * active → live, paused/stopped → parked, killed/errored → failed).
- * Actions live in the detail header ("Fleet lifecycle actions"), visible
+ * Actions live in the detail header ("Fleet actions"), visible
  * from every rail view — the old Settings rail destination is gone.
  */
 import { expect, type Page } from "@playwright/test";

@@ -43,8 +43,9 @@ async function checkCreatedColumn(page: Page, name: string, trailingColumns: str
   await expect(row).toBeVisible();
   await row.getByRole("cell").last().scrollIntoViewIfNeeded();
   await expect(row.getByRole("button").last()).toBeInViewport();
-  const account = await page.getByRole("button", { name: "Workspace and account menu" })
-    .or(page.getByRole("button", {name: "Open navigation", exact: true})).filter({visible: true}).boundingBox();
+  const accountMenu = page.getByRole("button", {name: "Workspace and account menu", exact: true});
+  await expect(accountMenu).toBeVisible();
+  const account = await accountMenu.boundingBox();
   expect(account!.x + account!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 }
 

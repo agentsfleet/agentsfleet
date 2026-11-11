@@ -65,7 +65,7 @@ test.describe("workspace in the URL", () => {
     await expect(page).toHaveURL(new RegExp(`/w/${secondary.id}/fleets`), {
       timeout: SWITCH_TIMEOUT_MS,
     });
-    await expect(switcher).toContainText(secondary.name ?? secondary.id, {
+    await expect(switcher).toHaveAttribute("title", secondary.name ?? "Unnamed workspace", {
       timeout: SWITCH_TIMEOUT_MS,
     });
   });

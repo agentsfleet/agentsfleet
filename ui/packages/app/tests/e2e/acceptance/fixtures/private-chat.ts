@@ -8,11 +8,12 @@
  */
 import type { Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
-import { workspaceHref, workspaceUrlPattern } from "./nav";
+import { workspaceHref } from "./nav";
+import type { ClientHandle } from "./api-client";
+import { readFixtureFleet } from "./native-setup";
 
 export const NEW_FLEET = "fleets/new";
 const SAVE_TIMEOUT_MS = 60_000;
-const FLEET_LIFECYCLE_ACTIONS = "Fleet lifecycle actions";
 const FLEET_URL = /\/w\/[^/]+\/fleets\/(?!new)[a-z0-9-]+(\?|$)/;
 
 /** The words the shipped chat shows, held here so a spec pins what a person reads. */
@@ -45,24 +46,35 @@ export async function setupAction(page: Page, name: string): Promise<Locator> {
   return page.getByRole("menuitem", {name, exact: true});
 }
 
-/** The runtime header owns the entry link; the footer repeats the same action. */
-export function editSetupLink(page: Page): Locator {
-  return page.getByLabel(FLEET_LIFECYCLE_ACTIONS).getByRole("link", {name: CHAT_COPY.improve, exact: true});
+/** Exercise the runtime header menu rather than bypassing it through the footer. */
+export async function editSetupAction(page: Page): Promise<Locator> {
+  await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
+  return page.getByRole("menuitem", {name: CHAT_COPY.improve, exact: true});
+}
+
+export async function expectEditSetupAvailable(page: Page): Promise<void> {
+  await expect(await editSetupAction(page)).toBeVisible();
+  await page.keyboard.press("Escape");
+  const trigger = page.getByRole("button", {name: "Fleet actions", exact: true});
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(trigger).toBeFocused();
 }
 
 export async function saveSetupButton(page: Page): Promise<Locator> {
   return page.getByRole("button", {name: CHAT_COPY.save, exact: true});
 }
 
-/** Saving keeps authoring open; opening runtime is a separate, explicit action. */
-export async function openSavedFleet(page: Page, revision = "1"): Promise<string> {
-  await expect(page.getByRole("log").getByText(`Setup saved · v${revision}`, {exact: true})).toBeVisible({timeout: SAVE_TIMEOUT_MS});
-  await expect(page).toHaveURL(workspaceUrlPattern(NEW_FLEET));
-  await expect(page.getByLabel(CHAT_COPY.composer).getByRole("textbox")).toBeEnabled();
-  await page.getByRole("link", {name: CHAT_COPY.openFleet, exact: true}).click();
+/** A confirmed save navigates to the same workspace's durable fleet and revision. */
+export async function openSavedFleet(page: Page, {handle, workspaceId, revision = "1"}: {
+  handle: ClientHandle; workspaceId: string; revision?: string;
+}): Promise<string> {
   await expect(page).toHaveURL(FLEET_URL, {timeout: SAVE_TIMEOUT_MS});
   const id = new URL(page.url()).pathname.split("/").at(-1);
-  if (!id) throw new Error("Open fleet returned no fleet identity");
+  if (!id) throw new Error("Saving returned no fleet identity");
+  await expect(page).toHaveURL(workspaceHref(workspaceId, `fleets/${id}`));
+  await expect.poll(async () => (await readFixtureFleet(handle, workspaceId, id)).setup_revision,
+    {timeout: SAVE_TIMEOUT_MS}).toBe(revision);
+  await expect(page.getByRole("form", {name: "Chat composer", exact: true}).getByRole("textbox")).toBeEnabled();
   return id;
 }
 

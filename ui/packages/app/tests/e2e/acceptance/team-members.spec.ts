@@ -94,6 +94,7 @@ test.describe("teammates join an account", () => {
     await page.getByRole("button", { name: /^invite$/i }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel(/^email$/i).fill(invitee.email);
+    await page.screenshot({path: test.info().outputPath("live-invite.png"), scale: "css", animations: "disabled"});
     await dialog.getByRole("button", { name: /^send$/i }).click();
     const ready = page.getByTestId("invite-ready");
     const link = await ready.getByLabel(/^invite link$/i).inputValue();
@@ -110,6 +111,7 @@ test.describe("teammates join an account", () => {
     await page.reload();
     const member = rowFor(page, invitee.email);
     await expect(member).toHaveCount(1);
+    await page.screenshot({path: test.info().outputPath("live-team.png"), scale: "css", animations: "disabled"});
 
     // Remove them; the row leaves the page.
     await member.getByRole("button", { name: /^remove /i }).click();

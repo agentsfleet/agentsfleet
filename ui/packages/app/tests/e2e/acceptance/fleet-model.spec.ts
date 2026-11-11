@@ -9,7 +9,8 @@ import { withReplyPage } from "./fixtures/reply-page";
 
 const MODELS = "/v1/tenants/me/models";
 const PLATFORM_DEFAULT = "platform-default";
-const ENTRY = z.object({id: z.uuid()});
+const ENTRY_ID = z.object({id: z.uuid()});
+const ENTRY = ENTRY_ID.extend({workspace_id: z.uuid()});
 const MESSAGE = "Keep my unsent question after the model changes";
 const MODEL_LABEL = "Fleet model";
 
@@ -54,8 +55,9 @@ async function withRuntimeChoice(body: (choice: WorkspaceModel) => Promise<void>
   await client.post(secrets, {name: secret, data: {provider: platform.provider, api_key: crypto.randomUUID()}});
   let id: string | undefined;
   try {
-    const created = ENTRY.parse(await client.post<unknown>(MODELS, {model_id: platform.model, secret_ref: secret}));
-    id = created.id;
+    const created = await client.post<unknown>(MODELS, {workspace_id: workspace, model_id: platform.model, secret_ref: secret});
+    id = ENTRY_ID.parse(created).id;
+    expect(ENTRY.parse(created).workspace_id).toBe(workspace);
     const model = ModelsSchema.parse(await client.get<unknown>(modelPath)).items.find(item => item.ref === id);
     if (!model?.eligibility.runtime) throw new Error("Fixture model is not runtime eligible");
     await body(model);

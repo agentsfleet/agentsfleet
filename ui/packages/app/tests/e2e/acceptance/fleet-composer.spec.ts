@@ -1,14 +1,14 @@
 import type { Locator } from "@playwright/test";
 import { expect, test } from "@playwright/test";
 import { withReplyPage } from "./fixtures/reply-page";
-import { CHAT_COPY, editSetupLink, setupAction } from "./fixtures/private-chat";
+import { CHAT_COPY, editSetupAction, setupAction } from "./fixtures/private-chat";
 
 const PART = { model: '[data-composer-part="model"]', hint: '[data-composer-part="hint"]' } as const;
-const SIZES = { input: "14px", model: "12px", hint: "12px" } as const;
+const SIZES = {model: "12px", hint: "12px"} as const;
 const CASES = [
-  { name: "desktop dark", width: 1440, theme: "dark", reducedMotion: "no-preference" },
-  { name: "desktop light", width: 1440, theme: "light", reducedMotion: "reduce" },
-  { name: "mobile dark", width: 390, theme: "dark", reducedMotion: "no-preference" },
+  { name: "desktop dark", width: 1440, inputSize: "13px", inputLine: "20px", theme: "dark", reducedMotion: "no-preference" },
+  { name: "desktop light", width: 1440, inputSize: "13px", inputLine: "20px", theme: "light", reducedMotion: "reduce" },
+  { name: "mobile dark", width: 390, inputSize: "16px", inputLine: "24px", theme: "dark", reducedMotion: "no-preference" },
 ] as const;
 
 for (const scenario of CASES) {
@@ -22,14 +22,15 @@ for (const scenario of CASES) {
       const inputStyle = await typography(runtimeInput);
       const modelStyle = await typography(runtime.locator(PART.model));
       const hintStyle = await typography(runtime.locator("..").locator(PART.hint));
-      await editSetupLink(page).click();
+      await (await editSetupAction(page)).click();
       const setup = page.getByLabel(CHAT_COPY.composer, {exact: true});
       const setupInput = setup.getByRole("textbox");
       await expect(setupInput).toBeEnabled();
       expect(await typography(setupInput)).toEqual(inputStyle);
       expect(await typography(setup.locator(PART.model))).toEqual(modelStyle);
       expect(await typography(setup.locator("..").locator(PART.hint))).toEqual(hintStyle);
-      expect(inputStyle.fontSize).toBe(SIZES.input);
+      expect(inputStyle.fontSize).toBe(scenario.inputSize);
+      expect(inputStyle.lineHeight).toBe(scenario.inputLine);
       expect(modelStyle.fontSize).toBe(SIZES.model);
       expect(hintStyle.fontSize).toBe(SIZES.hint);
       expect(inputStyle.fontFamily).toContain("Manrope");
