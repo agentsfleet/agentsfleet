@@ -169,7 +169,6 @@ export function designSystemCore(actual: Record<string, unknown>) {
   };
 }
 
-// Tabs family + Textarea — used by the fleets test shards (FleetConfig).
 const TabsCtx = React.createContext<{ active: string; setActive: (v: string) => void }>({ active: "", setActive: () => {} });
 
 export function designSystemTabs() {
