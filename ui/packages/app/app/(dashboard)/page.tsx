@@ -5,7 +5,7 @@ import { firstTenantWorkspace } from "@/lib/api/workspaces";
 import { ERROR_CODE } from "@/lib/errors";
 import { DEFAULT_WORKSPACE_SUBPATH, workspacePath } from "@/lib/workspace-routes";
 import NoWorkspaceEmptyState from "@/components/layout/NoWorkspaceEmptyState";
-import AccountSetup from "./AccountSetup";
+import { AccountSetup } from "./AccountSetup";
 
 export const dynamic = "force-dynamic";
 
@@ -40,8 +40,8 @@ export default async function DashboardIndexPage() {
 }
 
 /**
- * Whether the list was refused because this account is still opening (M245
- * §10): the scope gate refused a token that carries no tenant. Both must hold.
+ * Whether the list was refused because this account is still opening: the
+ * scope gate refused the call and the token carries no tenant. Both must hold.
  * A token WITH a tenant that lacks the scope belongs to a person an operator
  * narrowed by hand, for whom no amount of waiting brings the scope.
  */

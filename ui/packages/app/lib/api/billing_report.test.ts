@@ -48,6 +48,26 @@ describe("validated settled billing reads", () => {
     await expect(listBillingActivityCharges("fixture-token", "work", { limit: 25 })).rejects.toThrow();
   });
 
+  // pin test: the three spellings the daemon stores are the contract
+  it.each(["model", "runtime", "decision"])("accepts a charge that billed a %s line", async kind => {
+    respond({ items: [{ ...billingCharge(), kind }], total: null, next_cursor: null });
+    const page = await listBillingActivityCharges("fixture-token", "work", { limit: 25 });
+    expect(page.items[0]?.kind).toBe(kind);
+  });
+
+  // Prototype names are the spellings a label lookup keyed by a plain object
+  // would answer for, so they must fail here rather than render as a label.
+  it.each(["constructor", "toString", "Model", "", null, 3])("rejects a charge whose kind is %j rather than guessing what it billed", async kind => {
+    respond({ items: [{ ...billingCharge(), kind }], total: null, next_cursor: null });
+    await expect(listBillingActivityCharges("fixture-token", "work", { limit: 25 })).rejects.toThrow(/kind/);
+  });
+
+  it("rejects a charge that names no kind", async () => {
+    // JSON drops an undefined member, so the served charge has no `kind` at all.
+    respond({ items: [{ ...billingCharge(), kind: undefined }], total: null, next_cursor: null });
+    await expect(listBillingActivityCharges("fixture-token", "work", { limit: 25 })).rejects.toThrow(/kind/);
+  });
+
   it("propagates a permission refusal without replacing it with an empty report", async () => {
     respond({ detail: "Forbidden", error_code: "UZ-AUTH-002" }, 403);
     await expect(getBillingReport("fixture-token", { limit: 25 })).rejects.toBeInstanceOf(ApiError);

@@ -15,6 +15,13 @@ import { providerLabel, runtimeSecondsLabel } from "../lib/report-format";
 
 type Props = { activity: BillingActivity; detail: BillingDetail; modelNames: Record<string, string> };
 const ROW_CLASS = "grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-lg py-xs";
+// Each charge says what it billed, so the label reads it rather than inferring
+// it from which counts are non-zero.
+const CHARGE_KIND_LABEL = {
+  [BILLING_CHARGE_KIND.model]: "Model call",
+  [BILLING_CHARGE_KIND.runtime]: "Runtime",
+  [BILLING_CHARGE_KIND.decision]: "Decision call",
+} as const satisfies Record<BillingChargeKind, string>;
 
 export function BillingActivityDetails({ activity, detail, modelNames }: Props) {
   const router = useRouter();
@@ -57,14 +64,6 @@ function DetailLine({ label, value, total = false }: { label: string; value: str
     <DescriptionDetails className="text-right tabular-nums">{value}</DescriptionDetails>
   </div>;
 }
-
-// Each charge says what it billed (M245), so the label reads it rather than
-// inferring it from which counts are non-zero.
-const CHARGE_KIND_LABEL = {
-  [BILLING_CHARGE_KIND.model]: "Model call",
-  [BILLING_CHARGE_KIND.runtime]: "Runtime",
-  [BILLING_CHARGE_KIND.decision]: "Decision call",
-} as const satisfies Record<BillingChargeKind, string>;
 
 function chargeLabel(charge: BillingCharge, model: string | null): string {
   const unit = charge.runtime_ms === MS_PER_SECOND ? "second" : "seconds";

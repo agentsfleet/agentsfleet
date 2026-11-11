@@ -6,7 +6,7 @@ import { Button, EmptyState, PageHeader, PageLayout, PageTitle } from "@agentsfl
 import { LoaderCircleIcon } from "lucide-react";
 import { useSessionRefresh } from "@/lib/auth/client";
 
-// A new account's first minutes (M245 §10). Signup opens the account from
+// A new account's first minutes. Signup opens the account from
 // Clerk's `user.created` webhook and then writes its tenant and scopes back to
 // Clerk, so a browser that finished signing up can reach the dashboard with a
 // token minted before either landed. Only a fresh token carries them, and the
@@ -23,14 +23,18 @@ export const ACCOUNT_SETUP_POLL_MS = 2_000;
  */
 export const ACCOUNT_SETUP_GIVE_UP_MS = 90_000;
 
+// The page heading names the screen and never changes; the heading under it
+// names what is happening now. The same words in both would have a screen
+// reader announce the screen's title again as the state.
 const TITLE = "Setting up your workspace";
-const DESCRIPTION_WAITING = "Your account is being created. This usually takes a few seconds.";
-const DESCRIPTION_STALLED =
-  "This is taking longer than usual. Try again, or come back in a few minutes.";
+const STATE_TITLE_WAITING = "Creating your account";
+const STATE_TITLE_STALLED = "This is taking longer than usual";
+const DESCRIPTION_WAITING = "This usually takes a few seconds.";
+const DESCRIPTION_STALLED = "Try again, or come back in a few minutes.";
 const RETRY_LABEL = "Try again";
 const SUPPORT_NOTE = "If this continues, contact support.";
 
-export default function AccountSetup() {
+export function AccountSetup() {
   const router = useRouter();
   // A ref, so the loop below depends only on what restarts it: a router whose
   // identity changed between renders must not reset the deadline.
@@ -73,9 +77,11 @@ export default function AccountSetup() {
       </PageHeader>
       <EmptyState
         icon={
-          stalled ? undefined : <LoaderCircleIcon size={32} className="animate-spin" aria-hidden />
+          stalled ? undefined : (
+            <LoaderCircleIcon size={32} className="motion-safe:animate-spin" aria-hidden />
+          )
         }
-        title={TITLE}
+        title={stalled ? STATE_TITLE_STALLED : STATE_TITLE_WAITING}
         description={stalled ? DESCRIPTION_STALLED : DESCRIPTION_WAITING}
         action={
           stalled ? (
