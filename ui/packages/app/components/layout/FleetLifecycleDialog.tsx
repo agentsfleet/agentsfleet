@@ -33,7 +33,7 @@ function LifecycleConfirmation({workspace, fleet, action, onRemoved, onClose}: P
       if (result.kind === "retry") {setCheckpoint(result.checkpoint); setError(result.message); return;}
       showNotice({outcome: result.outcome, historyHref: `/w/${workspace}/fleets/${fleet.id}`});
       onRemoved(fleet.id);
-    } finally {if (owner.current === current) owner.current = null;}
+    } finally {owner.current = null;}
   };
   const label = checkpoint.stage.startsWith("check_") ? "Check status" : checkpoint.stage === "delete" ? "Retry deletion"
     : error ? "Try again" : action === "archive" ? "Archive" : "Permanently delete";

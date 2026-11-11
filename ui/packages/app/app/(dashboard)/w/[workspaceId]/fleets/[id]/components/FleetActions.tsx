@@ -47,7 +47,7 @@ export function FleetActions({workspaceId, fleet, children}: Props) {
       } else setError(UNCONFIRMED_REQUEST_MESSAGE);
     } catch {
       if (!current.signal.aborted) setError(UNCONFIRMED_REQUEST_MESSAGE);
-    } finally {if (owner.current === current) owner.current = null;}
+    } finally {owner.current = null;}
   }
 
   return <>

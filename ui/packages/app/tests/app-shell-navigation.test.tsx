@@ -3,9 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const mocks = vi.hoisted(() => ({ pathname: vi.fn(), track: vi.fn() }));
+const mocks = vi.hoisted(() => ({ pathname: vi.fn(), track: vi.fn(),
+  identity: {userId: "person", displayName: undefined as string | undefined, emailAddress: undefined as string | undefined} }));
 vi.mock("@/lib/analytics/posthog", () => ({ trackNavigationClicked: mocks.track, setAnalyticsContext: vi.fn(), captureProductEvent: vi.fn() }));
-vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => ({ userId: "person" }), AuthSignOutButton: ({ children }: { children: React.ReactNode }) => children }));
+vi.mock("@/lib/auth/client", () => ({ useCurrentUser: () => mocks.identity, AuthSignOutButton: ({ children }: { children: React.ReactNode }) => children }));
 vi.mock("next/navigation", () => ({ usePathname: mocks.pathname, useSearchParams: () => new URLSearchParams(), useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 import { ShellFrame } from "@/components/layout/ShellFrame";
 import { OWN_ACCOUNT } from "@/tests/helpers/workspace-fixtures";
@@ -13,6 +14,7 @@ import { SidebarNavigation } from "@/components/layout/SidebarNavigation";
 import { NavSection } from "@/components/layout/SidebarNavigationSections";
 import { BOTTOM_NAV } from "@/components/layout/account-menu-data";
 import { navSource } from "@/components/layout/sidebar-navigation-data";
+import { WorkspaceSwitcherTrigger } from "@/components/layout/WorkspaceSwitcherTrigger";
 
 const WORKSPACE = { id: "ws_1", name: "My workspace", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT };
 
@@ -22,8 +24,8 @@ it("keeps explicit navigation analytics stable and derives a fallback for other 
 });
 const MENU = /Workspace and account menu/;
 function mount() { render(<ShellFrame workspaces={[WORKSPACE]}>Page content</ShellFrame>); }
-beforeEach(() => { mocks.pathname.mockReturnValue("/w/ws_1/fleets"); });
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+beforeEach(() => { mocks.pathname.mockReturnValue("/w/ws_1/fleets"); Object.assign(mocks.identity, {displayName: undefined, emailAddress: undefined}); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 async function openMenu() {
   await userEvent.setup().click(screen.getByRole("button", { name: MENU }));
@@ -142,4 +144,46 @@ it("keeps account menu icons decorative", async () => {
   for (const item of screen.getAllByRole("menuitem")) {
     expect(item.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   }
+});
+
+it("keeps history and credits reachable when navigation is expanded, and drops stale workspace history", async () => {
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({items: [], total: null, next_cursor: null}), {headers: {"Content-Type": "application/json"}})));
+  const onNavigate = vi.fn();
+  const view = render(<SidebarNavigation pathname="/w/ws_1/fleets" workspaceId="ws_1" collapsed={false}
+    onNavigate={onNavigate} workspaces={[WORKSPACE]} billing={{balance_nanos: "3680000000", is_exhausted: false, exhausted_at: null, updated_at: "2026-11-11T00:00:00Z"}} />);
+  expect(screen.getByRole("link", {name: /Credits \$3.68/}).getAttribute("href")).toBe("/settings/billing");
+  expect(screen.getByText("Fleets")).toBeTruthy();
+  await userEvent.setup().click(screen.getByRole("link", {name: "New fleet"}));
+  expect(onNavigate).toHaveBeenCalledOnce();
+  view.rerender(<SidebarNavigation pathname="/w/missing/fleets" workspaceId="missing" collapsed={false} onNavigate={onNavigate} workspaces={[WORKSPACE]} />);
+  expect(screen.queryByText("Fleets")).toBeNull();
+  expect(screen.queryByRole("link", {name: /Credits/})).toBeNull();
+});
+
+it("shows account initials, an email fallback and loading or retry status without oversized glyphs", () => {
+  mocks.identity.displayName = "Kishore Neelamegam";
+  const view = render(<WorkspaceSwitcherTrigger activeLabel="Main" />);
+  expect(screen.getByText("KN")).toBeTruthy();
+  expect(screen.getByText("Kishore Neelamegam")).toBeTruthy();
+  mocks.identity.displayName = undefined;
+  mocks.identity.emailAddress = "indy@example.test";
+  view.rerender(<WorkspaceSwitcherTrigger activeLabel="Main" failed />);
+  expect(screen.getByText("indy")).toBeTruthy();
+  expect(screen.getByText("Retry account menu")).toBeTruthy();
+  view.rerender(<WorkspaceSwitcherTrigger activeLabel="Main" busy aria-label="Workspace and account menu" />);
+  expect(screen.getByRole("status").textContent).toBe("Loading workspace menu");
+  mocks.identity.emailAddress = undefined;
+  view.rerender(<WorkspaceSwitcherTrigger activeLabel="No workspace" />);
+  expect(screen.getByText("Your workspace")).toBeTruthy();
+  expect(screen.getByRole("button").querySelector("svg")?.getAttribute("width")).toBe("18");
+});
+
+it("expands and collapses the actual desktop navigation without changing its destinations", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({items: [], next_cursor: null, total: null})));
+  mount(); const user = userEvent.setup();
+  await user.click(screen.getByRole("button", {name: "Expand navigation"}));
+  expect(screen.getByRole("button", {name: "Collapse navigation"})).toBeTruthy();
+  expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe("/w/ws_1/fleets/new");
+  await user.click(screen.getByRole("button", {name: "Collapse navigation"}));
+  expect(screen.getByRole("button", {name: "Expand navigation"})).toBeTruthy();
 });
