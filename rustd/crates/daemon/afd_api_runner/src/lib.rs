@@ -16,7 +16,7 @@ pub mod openapi;
 
 use std::sync::Arc;
 
-use axum::routing::{MethodRouter, get, patch, post, put};
+use axum::routing::{MethodRouter, get, patch, post};
 use route::RunnerRoute;
 use services::Services;
 
@@ -77,5 +77,5 @@ pub fn enrolment_handler<D: Services>() -> MethodRouter<Arc<D>> {
 }
 
 fn context_checkpoint_handler<D: Services>() -> MethodRouter<Arc<D>> {
-    put(handler::runner::context::put::<D>)
+    get(handler::runner::context::load_removed).put(handler::runner::context::put::<D>)
 }
