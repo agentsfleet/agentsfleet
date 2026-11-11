@@ -49,6 +49,18 @@ impl LeaseService {
         else {
             return Ok(claim_lost(runner, &admitted.acquired));
         };
+        self.leases
+            .latest()
+            .observe(
+                &admitted.acquired.fleet_id,
+                admitted
+                    .installed
+                    .issue_revision
+                    .as_ref()
+                    .map(|proof| &proof.current),
+                admitted.acquired.opened.catalogue_version,
+            )
+            .await;
         af_observability::producers::fleet::runner::lease_taken(runner.as_str());
         super::log_issued(
             runner,
@@ -113,8 +125,9 @@ fn metadata(issued: &Issued, admitted: &AdmittedFleetWork) -> Offered {
             fence: acquired.fence.as_i64(),
         }),
         // The columns `select_lease_for_report.sql` reads, as this issue
-        // wrote them.
-        reported: Some(crate::lease::Reported {
+        // wrote them. A durable task's lease keeps none: it renews on the
+        // per-lease path, which reads its task's authority.
+        reported: issued.task.is_none().then(|| crate::lease::Reported {
             fleet_id: acquired.fleet_id.clone(),
             workspace_id: acquired.workspace_id.clone(),
             tenant_id: admitted.billed.tenant_id.clone(),

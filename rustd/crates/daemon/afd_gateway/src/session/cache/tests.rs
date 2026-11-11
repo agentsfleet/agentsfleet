@@ -77,4 +77,3 @@ fn a_durable_cancel_still_applies_when_another_update_wins_the_refresh() -> Resu
     );
     Ok(())
 }
-

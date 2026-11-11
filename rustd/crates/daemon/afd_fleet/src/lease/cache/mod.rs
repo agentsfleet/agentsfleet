@@ -20,6 +20,7 @@
 //! recently used entry; an evicted entry is parsed again, never a fault.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use af_core::id::Uuid7;
 use af_fleet_runtime::Definition;
@@ -222,3 +223,72 @@ impl PriceBooks {
 /// What a price book read for a host's renewal names in its log line, which
 /// serves every lease of its model.
 pub(crate) const LABEL_BATCH: &str = "renew_batch";
+
+/// How many fleets' head revisions one replica remembers.
+pub const HEAD_CAPACITY: u64 = 16_384;
+
+/// A catalogue version no statement has answered yet.
+const UNKNOWN: i64 = i64::MIN;
+
+/// The newest catalogue version and each fleet's head revision this replica
+/// has read (M245 §9).
+///
+/// Every claim reads both, so a host's renewal frame can name them without
+/// its pre-read. The renewal statement guards on both, so a
+/// stale value writes nothing; the lease takes the per-lease path, and the
+/// fleet is forgotten until a read answers it again.
+///
+/// One pointer wide: every lease store carries it, and the store rides inside
+/// futures clippy bounds by size.
+#[derive(Debug, Clone)]
+pub struct Latest(Arc<Versions>);
+
+/// What [`Latest`] shares between its clones.
+#[derive(Debug)]
+struct Versions {
+    catalogue: AtomicI64,
+    heads: Cache<Uuid7, Uuid7>,
+}
+
+impl Default for Latest {
+    fn default() -> Self {
+        Self(Arc::new(Versions {
+            catalogue: AtomicI64::new(UNKNOWN),
+            heads: Cache::builder()
+                .max_capacity(HEAD_CAPACITY)
+                .eviction_policy(EvictionPolicy::lru())
+                .build(),
+        }))
+    }
+}
+
+impl Latest {
+    /// A statement answered `fleet`'s head as `head` and the catalogue as
+    /// `catalogue`. Versions only move forward, so the larger is kept.
+    pub(crate) async fn observe(&self, fleet: &Uuid7, head: Option<&Uuid7>, catalogue: i64) {
+        self.0.catalogue.fetch_max(catalogue, Ordering::Relaxed);
+        match head {
+            // Boxed: a cache future is large, and every lease path awaits this.
+            Some(head) => Box::pin(self.0.heads.insert(fleet.clone(), head.clone())).await,
+            None => Box::pin(self.0.heads.invalidate(fleet)).await,
+        }
+    }
+
+    /// `fleet`'s head revision and the catalogue version, when both are known.
+    pub(crate) async fn known(&self, fleet: &Uuid7) -> Option<(Uuid7, i64)> {
+        let catalogue = self.0.catalogue.load(Ordering::Relaxed);
+        if catalogue == UNKNOWN {
+            return None;
+        }
+        Box::pin(self.0.heads.get(fleet))
+            .await
+            .map(|head| (head, catalogue))
+    }
+
+    /// A guard found `fleet`'s facts moved: neither is named again until a
+    /// read answers it.
+    pub(crate) async fn forget(&self, fleet: &Uuid7) {
+        self.0.catalogue.store(UNKNOWN, Ordering::Relaxed);
+        Box::pin(self.0.heads.invalidate(fleet)).await;
+    }
+}
