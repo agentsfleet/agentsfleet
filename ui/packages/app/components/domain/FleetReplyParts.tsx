@@ -43,7 +43,7 @@ function DefaultReplyContent({data}: {data: DefaultContent}) {
 }
 
 /** Keep deferred Markdown parsing mounted through streaming and completion. */
-function ReplyText({streaming, plainText = false}: {streaming: boolean; plainText?: boolean}) {
+function ReplyText({streaming, plainText}: {streaming: boolean; plainText?: boolean}) {
   return <>{plainText ? <p className="whitespace-pre-wrap leading-conversation"><MessagePartPrimitive.Text /></p> : <FleetReplyMarkdown />}
     {streaming ? <span className="sr-only" aria-label="streaming">Receiving reply</span> : null}</>;
 }

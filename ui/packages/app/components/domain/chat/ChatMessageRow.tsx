@@ -17,7 +17,7 @@ export function ChatMessageRow({operator, messageRole, dimmed, failed, ...turn}:
   return (
     <div className="w-full motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-stream"
       data-role={messageRole} data-optimistic={dimmed || undefined} data-failed={failed || undefined}>
-      <div className={cn("flex w-full pb-2xl pt-lg", operator ? "justify-end" : "justify-start")}>
+      <div className={cn("flex w-full pb-lg pt-lg sm:pb-2xl", operator ? "justify-end" : "justify-start")}>
         {operator ? <OperatorTurn {...turn} /> : <AssistantTurn {...turn} />}
       </div>
     </div>

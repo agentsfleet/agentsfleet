@@ -9,7 +9,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, S
 import { DotOutlineIcon, ClockIcon, WarningIcon } from "@phosphor-icons/react/ssr";
 import { taskActivityLabel } from "@/lib/task-activity";
 import { TaskDetailView } from "./TaskDetail";
-import { confirmed } from "./use-task-read";
+import { accessLost, confirmed } from "./use-task-read";
 import { FleetTaskProvider, useFleetTaskView } from "./FleetTaskProvider";
 import { workActivity } from "./WorkActivity";
 import { WorkApprovals, WorkChanges, WorkOutputs, WorkSection, WorkSources } from "./WorkContextSections";
@@ -33,13 +33,13 @@ function CurrentWork() {
   const page = read ? confirmed(read.resource) : null;
   const tasks = page?.items ?? EMPTY_TASKS;
   return <Section asChild className="block gap-0"><section aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-lg">
-    {page ? <WorkApprovals approvals={approvals} /> : null}
+    {!read || !accessLost(read.resource) ? <WorkApprovals approvals={approvals} /> : null}
     {read ? <WorkReadStatus resource={read.resource} retry={read.retry} /> : <WorkLoading />}
-    {page ? <>
-    {read && tasks.length ? <WorkSection title="Tasks">
+    {read && page ? <>
+    {tasks.length ? <WorkSection title="Tasks">
       <TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={read.details} events={events} retry={read.retry} retryDetails={read.retryDetails} />
     </WorkSection> : null}
-    {read ? <WorkOutputs details={read.details} /> : null}
+    <WorkOutputs details={read.details} />
     <WorkChanges events={events} />
     <WorkSources sources={sources} />
     <WorkWakeups schedules={schedules} />

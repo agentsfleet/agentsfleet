@@ -3,6 +3,7 @@ import { afterEach, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { AssistantRuntimeProvider, ThreadPrimitive, useExternalStoreRuntime } from "@assistant-ui/react";
 import { renderFleetMessage } from "@/components/domain/fleetMessageRenderers";
+import {readDefaultReplyContent} from "@/components/domain/fleet-reply-content";
 
 afterEach(cleanup);
 
@@ -52,6 +53,26 @@ it("keeps an image label readable without fetching its body automatically", () =
   expect(screen.getByText("Run screenshot · Preview unavailable.")).toBeTruthy();
   expect(container.querySelector("img, script, a")).toBeNull();
   expect(container.textContent).not.toContain("https://example.test/screenshot.png");
+});
+
+it("renders an unlabelled code fence with a readable copy header", () => {
+  const {container} = render(<Reply content={[{type: "text", text: "```\nready: true\n```"}]} />);
+  expect(screen.getByText("Code")).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Copy code"})).toBeTruthy();
+  expect(container.querySelector("pre code")?.textContent).toContain("ready: true");
+});
+
+it("keeps a validated caption and source readable without decoding a file body", () => {
+  const part = {type: "file" as const, filename: "release.txt", mimeType: "text/plain", data: "private-encoded-body",
+    text: "A readable **release caption**.", url: "https://example.test/release"};
+  const {container} = render(<Reply content={[part]} />);
+  expect(screen.getByText("release caption").tagName).toBe("STRONG");
+  expect(screen.getByRole("link", {name: "release.txt"}).getAttribute("href")).toBe(part.url);
+  expect(container.textContent).not.toContain(part.data); expect(container.querySelector("iframe, img")).toBeNull();
+});
+
+it.each([null, 42, ["private"], {title: 42, filename: "  ", text: false}])("keeps invalid fallback fields unavailable (%s)", part => {
+  expect(readDefaultReplyContent(part)).toEqual({text: null, label: "Activity details", href: null});
 });
 
 function Reply({content}: {content: ThreadMessageLike["content"]}) {

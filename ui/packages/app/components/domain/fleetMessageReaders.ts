@@ -99,12 +99,12 @@ const recordedActivitySchema = z.object({
   custom: z.object({requestJson: z.string().nullable().optional()}).optional(),
 });
 export type RecordedActivity = z.infer<typeof recordedActivitySchema>;
-const groupedActivitySchema = z.array(recordedActivitySchema).nonempty()
+const groupedActivitySchema = z.tuple([recordedActivitySchema]).rest(recordedActivitySchema)
   .refine(members => new Set(members.map(member => member.id)).size === members.length);
 
 /** Malformed members cannot become rows or duplicate React identities.
  * The message root memoizes adaptation for each immutable message snapshot. */
-export function readGroupMembers(message: MessageState): RecordedActivity[] | null {
+export function readGroupMembers(message: MessageState): [RecordedActivity, ...RecordedActivity[]] | null {
   const raw = message.metadata.custom[GROUP_META.MEMBERS];
   if (!Array.isArray(raw)) return null;
   const parsed = groupedActivitySchema.safeParse(raw);

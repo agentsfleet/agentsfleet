@@ -51,15 +51,16 @@ export type FleetThreadEntries = {
 export function useFleetThreadEntries(
   events: FleetEvent[],
   convertEvent: (event: FleetEvent) => ThreadMessageLike,
+  breakBefore?: ReadonlySet<string>,
 ): FleetThreadEntries {
   // The previous result is fed back in so unchanged runs keep their identity
   // across a streaming frame — see `groupThreadEvents` on why that matters.
   const previous = useRef<ThreadEntry[]>([]);
   const groupedEntries = useMemo(() => {
-    const next = groupThreadEvents(events, previous.current);
+    const next = groupThreadEvents(events, previous.current, breakBefore);
     previous.current = next;
     return next;
-  }, [events]);
+  }, [events, breakBefore]);
   // The trigger each split turn rendered last, by key: a streamed reply
   // replaces its event, and the trigger keeps its object while `convertEvent`
   // renders it the same.

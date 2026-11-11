@@ -1,9 +1,11 @@
 "use client";
 
 import { useMemo, useState, type ReactNode } from "react";
-import { MessagePrimitive, type MessageState } from "@assistant-ui/react";
+import { MessagePrimitive, type AssistantState } from "@assistant-ui/react";
 import { fleetChatElements } from "./fleet-chat-adapters";
 import { FleetChatElementView } from "./FleetChatElements";
+
+type MessageState = AssistantState["message"];
 
 export function renderFleetMessage({message}: {message: MessageState}): ReactNode {
   return <FleetMessageRoot message={message} />;

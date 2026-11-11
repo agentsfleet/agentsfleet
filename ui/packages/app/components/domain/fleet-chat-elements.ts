@@ -2,6 +2,7 @@ import type { MessageState } from "@assistant-ui/react";
 
 export const CHAT_ELEMENT = {
   OPERATOR: "operator-turn",
+  SUBMISSION: "upload-submission",
   REPLY: "reply-turn",
   INTEGRATION: "integration-event",
   WAKEUP: "scheduled-wakeup",
@@ -30,6 +31,7 @@ export type ActivityElementData = {
 /** Payloads are selected by adapters; rows never interpret event metadata. */
 export type FleetChatElementData = {
   "operator-turn": {actor: string; text: string; createdAt: Date; optimistic: boolean};
+  "upload-submission": {text: string; createdAt: Date};
   "reply-turn": {message: MessageState; status: string};
   "integration-event": ActivityElementData;
   "scheduled-wakeup": ActivityElementData;

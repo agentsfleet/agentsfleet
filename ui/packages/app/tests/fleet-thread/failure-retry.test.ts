@@ -1,7 +1,9 @@
-import { clientUser, ev, mockStream, renderThread, postSteerMock, SUBJECT, WS, ZID } from "./harness";
+import { clientUser, ev, mockStream, renderThread, postSteerMock, SUBJECT, WS, ZID, FLEET_NAME } from "./harness";
+import {FleetThread} from "@/components/domain/FleetThread";
+import {createElement} from "react";
 import { ACCEPTED, OPERATION_ID } from "./steer-helpers";
 import { expect, it } from "vitest";
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { OUTCOME } from "@/lib/events/event-summary";
 import { MS_PER_SECOND } from "@/lib/utils";
 
@@ -75,5 +77,15 @@ it("does not offer retry before the signed-in owner is known", () => {
   clientUser.userId = null;
   failed();
   expect(screen.queryByRole("button", {name: RETRY})).toBeNull();
+  expect(postSteerMock).not.toHaveBeenCalled();
+});
+
+it("keeps archived failure history readable without offering replay or a composer", () => {
+  mockStream([ev({actor: ACTOR, role: "user", text: REQUEST, status: "fleet_error", outcome: OUTCOME.FAILED,
+    custom: {requestJson: JSON.stringify({message: REQUEST})}})]);
+  render(createElement(FleetThread, {workspaceId: WS, fleetId: ZID, senderLabel: FLEET_NAME, initial: [], archived: true, viewer: SUBJECT, senderNames: []}));
+  expect(screen.getByText("Couldn’t complete this request")).toBeTruthy();
+  expect(screen.queryByRole("button", {name: RETRY})).toBeNull();
+  expect(screen.queryByRole("textbox", {name: "Message your fleet…"})).toBeNull();
   expect(postSteerMock).not.toHaveBeenCalled();
 });

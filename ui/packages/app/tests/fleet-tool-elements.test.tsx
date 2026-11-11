@@ -1,8 +1,9 @@
-import type { FleetToolCall } from "@/lib/streaming/fleet-stream-row";
-import { expect, it } from "vitest";
+import type { FleetToolCall, FleetEventStatus } from "@/lib/streaming/fleet-stream-row";
+import { expect, it, vi, afterEach } from "vitest";
 import { fireEvent, screen, within } from "@testing-library/react";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 import { ev, mockStream, renderThread } from "./fleet-thread/harness";
+afterEach(() => vi.unstubAllGlobals());
 
 it("keeps commands, reads, edits and a new tool readable inside one reply", () => {
   const {container} = renderTools([
@@ -49,8 +50,27 @@ it("does not claim success when the runner returns no outcome status", () => {
   expect(cell?.querySelector('[data-diff="added"]')?.textContent).toContain("new");
 });
 
-function renderTools(tools: (Partial<FleetToolCall> & {name: string})[]) {
-  mockStream([ev({id: "outcomes", role: "user", actor: "operator", text: "Review release", reply: "Recorded results.",
+it("keeps an unfinished command unconfirmed while its output is still arriving", () => {
+  const {container} = renderTools([{name: "exec_command", args: {cmd: "run-checks"}, done: false, status: undefined, ms: undefined, outputHead: "Checking"}], "received");
+  const cell = container.querySelector('[data-tool="exec_command"]');
+  expect(cell?.getAttribute("data-state")).toBe("running");
+  expect(screen.getByLabelText("Command result").textContent).toContain("run-checks");
+  expect(cell?.textContent).not.toContain("Success");
+});
+
+it("offers the existing full-output view when a command's returned output is truncated", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () => Response.json({call_id: "call-0", arguments: {cmd: "run-checks"}, truncated_arguments: false,
+    output: "Full command output", output_line_count: 15, truncated: false})));
+  renderTools([{name: "exec_command", args: {cmd: "run-checks"}, outputHead: "one\ntwo\nthree", outputLineCount: 15}]);
+  const command = screen.getByLabelText("Command result");
+  expect(command.textContent).toContain("+12 lines");
+  fireEvent.click(within(command).getByRole("button", {name: "show all"}));
+  expect(await screen.findByRole("dialog")).toBeTruthy();
+  expect(await screen.findByText("Full command output")).toBeTruthy();
+});
+
+function renderTools(tools: (Partial<FleetToolCall> & {name: string})[], status: FleetEventStatus = "processed") {
+  mockStream([ev({id: "outcomes", role: "user", actor: "operator", text: "Review release", reply: "Recorded results.", status,
     tools: tools.map((tool, index) => ({startedAtMs: 1000, ms: 10, done: true, status: TOOL_CALL_STATUS.SUCCEEDED, callId: `call-${index}`, ...tool})),
   })]);
   const view = renderThread();
