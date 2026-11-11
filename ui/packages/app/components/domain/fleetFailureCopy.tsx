@@ -29,7 +29,7 @@ export function messageOutcome(message: MessageState): string {
   return formatFailureOutcome(failureLabel, rawOutcome, failureDetail);
 }
 
-export function eventOutcome(event: FleetEvent): string {
+export function eventOutcome(event: Pick<FleetEvent, "failureLabel" | "outcome" | "failureDetail">): string {
   if (!event.failureLabel) return event.outcome;
   return formatFailureOutcome(
     event.failureLabel,

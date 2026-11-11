@@ -29,7 +29,7 @@ describe("FleetThread — role rendering: links and guidance", () => {
     expect(link).toBeTruthy();
     expect(link?.getAttribute("rel")).toContain("noopener");
     expect(link?.className).toMatch(/\bmin-h-11\b/);
-    expect(link?.className).toMatch(/\bsm:min-h-6\b/);
+    expect(link?.className).toMatch(/\bsm:min-h-9\b/);
   });
 
   it("keeps an activity headline readable when its linked source reference is removed", () => {

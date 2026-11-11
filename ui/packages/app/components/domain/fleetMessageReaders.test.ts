@@ -12,10 +12,14 @@ function message(custom: Record<string, unknown>): MessageState {
 
 describe("readGroupMembers", () => {
   it("reads a non-empty member array, and null otherwise", () => {
-    const members = [{ id: "a" }, { id: "b" }];
+    const members = ["a", "b"].map(id => ({id, role: "system", actor: "cron", text: "Scheduled wake-up", status: "processed", createdAt: new Date()}));
     expect(readGroupMembers(message({ [GROUP_META.MEMBERS]: members }))).toHaveLength(2);
     expect(readGroupMembers(message({ [GROUP_META.MEMBERS]: [] }))).toBeNull();
     expect(readGroupMembers(message({}))).toBeNull();
+  });
+  it("refuses incomplete members and invalid instants without throwing", () => {
+    expect(readGroupMembers(message({[GROUP_META.MEMBERS]: [{id: "incomplete"}]}))).toBeNull();
+    expect(readGroupMembers(message({[GROUP_META.MEMBERS]: [{id: "a", role: "system", actor: "cron", text: "Wake-up", status: "processed", createdAt: new Date(NaN)}]}))).toBeNull();
   });
 });
 
