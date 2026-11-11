@@ -59,6 +59,16 @@ afterEach(() => {
 });
 
 describe("CLI fixture Clerk identity safety", () => {
+  it("refuses to add platform permissions to an owned fixture with another role", async () => {
+    installFetch(() => jsonResponse([{
+      id: EXISTING_USER_ID,
+      public_metadata: {[IS_TEST_FIXTURE_METADATA_KEY]: true, owner: "acceptance-e2e-suite", role: "regular"},
+    }]));
+    await expect(provisionUser(CLERK_SECRET, {email: FIXTURE_EMAIL, role: "cli-platform", scopes: ["runner:write"]}))
+      .rejects.toThrow("fixture role mismatch");
+    expect(requests).toHaveLength(1);
+  });
+
   it("refuses an existing identity without the suite ownership marker", async () => {
     installFetch(() => jsonResponse([{
       id: EXISTING_USER_ID,

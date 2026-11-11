@@ -3,7 +3,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit } from "effect";
-import { billingShowEffectFromArgs } from "../src/commands/billing.ts";
+import { billingShowEffectFromArgs } from "../src/commands/billing/billing.ts";
 import { ServerError, ValidationError } from "../src/errors/index.ts";
 import {
   BILLING_PATH,

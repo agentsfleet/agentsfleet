@@ -3,7 +3,7 @@ import type { RetryOptions } from "./retry";
 import type { SteerAccepted, SteerRequest } from "./fleets-types";
 import { FleetDetailSchema, FleetListSchema } from "./fleet-detail";
 import { matchesResourceEtag } from "./etag";
-import { QUERY_STARTING_AFTER } from "./runners";
+import { QUERY_STARTING_AFTER } from "./paging";
 import { fleetPath, fleetsPath } from "./fleet-paths";
 import type {
   Fleet,

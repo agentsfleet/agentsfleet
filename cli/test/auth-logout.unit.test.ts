@@ -11,7 +11,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
-import { logoutEffect } from "../src/commands/auth-logout.ts";
+import { logoutEffect } from "../src/commands/auth/logout.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";

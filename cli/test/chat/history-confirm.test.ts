@@ -17,7 +17,7 @@ test.each(["y", " YES ", "no", "", null])("interactive delete only removes the c
     const stdout = bufferStream(); const stderr = bufferStream();
     await Effect.runPromise(chatDeleteEffect(DRAFT_ID, {yes: false}).pipe(
       Effect.provideService(Input, {readLine: prompt => Effect.sync(() => {prompts.push(prompt); return answer;})}),
-      Effect.provideService(Stdin, {isTTY: true, readToEnd: Effect.die("Unexpected bulk input")}),
+      Effect.provideService(Stdin, {isTTY: true, readBounded: () => Effect.die("Unexpected bounded input")}),
       Effect.provide(mainLayerFor({config: {apiUrl: origin, telemetryPosthogKey: "", telemetryPosthogHost: origin},
         env: cliEnv(), streams: {stdout: stdout.stream, stderr: stderr.stream}})),
     ));

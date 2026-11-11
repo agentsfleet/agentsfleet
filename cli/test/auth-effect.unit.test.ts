@@ -8,7 +8,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Option, Redacted } from "effect";
-import { logoutEffect } from "../src/commands/auth-logout.ts";
+import { logoutEffect } from "../src/commands/auth/logout.ts";
 import { OUTPUT_FORMAT } from "../src/services/output.ts";
 import { ServerError } from "../src/errors/index.ts";
 import {

@@ -45,7 +45,7 @@ const TENANT_KEY: &str = "agt_t0123456789abcdef0123456789abcdef0123456789abcdef0
 /// The runner plane's own paths.
 const SELF_PATH: &str = "/v1/runners/me";
 const STREAM_PATH: &str = af_wire::paths::RUNNER_STREAM;
-const ENROL_PATH: &str = "/v1/runners";
+const ENROL_PATH: &str = "/v1/admin/runners";
 
 /// Stable identifiers for runner-route payload and path fixtures.
 const LEASE_ID: &str = "01924f4e-0000-7000-8000-00000000a11e";

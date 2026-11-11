@@ -31,7 +31,7 @@
 //       persisted id is used.
 //
 // `list` makes exactly one `http.request` (no client-side pagination loop —
-// src/commands/fleet_list.ts), so every test pins `calls` to length 1: the
+// src/commands/fleet/list.ts), so every test pins `calls` to length 1: the
 // side-effect ledger is asserted in full, not just `calls[0]`, so a stray
 // retry or duplicate request can't hide behind a first-element check.
 

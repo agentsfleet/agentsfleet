@@ -94,14 +94,14 @@ fn every_list_route() -> Vec<ListRoute> {
         ),
         ListRoute::new("/v1/tenants/me/workspaces".to_owned(), 100, INVALID_REQUEST),
         ListRoute::new("/v1/api-keys".to_owned(), 100, INVALID_REQUEST),
-        ListRoute::new("/v1/fleets/runners".to_owned(), 100, INVALID_REQUEST),
+        ListRoute::new("/v1/admin/runners".to_owned(), 100, INVALID_REQUEST),
         ListRoute::new(
-            format!("/v1/fleets/runners/{RUNNER}/events"),
+            format!("/v1/admin/runners/{RUNNER}/events"),
             100,
             INVALID_REQUEST,
         ),
         ListRoute::new(
-            format!("/v1/fleets/runners/{RUNNER}/leases"),
+            format!("/v1/admin/runners/{RUNNER}/leases"),
             100,
             INVALID_REQUEST,
         ),

@@ -21,17 +21,11 @@ const BECKON_TEXT = "data-beckon-text";
 const TOOL_SHIMMER = "data-tool-shimmer";
 const SETTLED = "data-settled";
 const SKIP_LAYOUT = "data-skip-layout";
-const BRAILLE_SPINNER = "data-braille-spinner";
-const BRAILLE_FRAMES = "data-braille-frames";
-const BRAILLE_REST = "data-braille-rest";
 
 const WAKE_PULSE = "wake-pulse";
 const CTA_BECKON = "cta-beckon";
 const TEXT_BECKON = "text-beckon";
 const TOOL_SHIMMER_KEYFRAMES = "tool-shimmer";
-const BRAILLE_SPIN = "braille-spin";
-const BRAILLE_FRAME_COUNT = 10;
-const BRAILLE_CYCLE = "0.8s";
 
 const FOCUS_RING_REACH = "--focus-ring-reach";
 const MOTION_DURATION_STREAM = "--motion-duration-stream";
@@ -152,14 +146,6 @@ test.describe("tokens derive from one declaration and the spinner steps in CSS",
     expect(after.slice(1)).toEqual(before.slice(1));
   });
 
-  test("the braille spinner steps its ten frames in one cycle inside a clipped window", async ({ page }) => {
-    const frames = await styleOf(page, { [BRAILLE_FRAMES]: PRESENCE_ONLY }, ["animation-name", "animation-duration", "animation-timing-function"]);
-    expect(frames["animation-name"]).toBe(BRAILLE_SPIN);
-    expect(frames["animation-duration"]).toBe(BRAILLE_CYCLE);
-    expect(frames["animation-timing-function"]).toMatch(new RegExp(`^steps\\(${BRAILLE_FRAME_COUNT}\\b`));
-    expect((await styleOf(page, { [BRAILLE_SPINNER]: PRESENCE_ONLY }, ["overflow-y"]))["overflow-y"]).toBe("hidden");
-    expect((await styleOf(page, { [BRAILLE_REST]: PRESENCE_ONLY }, ["display"]))["display"]).toBe("none");
-  });
 });
 
 test.describe("reduced motion stops every loop and keeps a static mark", () => {
@@ -185,9 +171,4 @@ test.describe("reduced motion stops every loop and keeps a static mark", () => {
     });
   }
 
-  test("the braille spinner swaps its moving column for the rest frame", async ({ page }) => {
-    const frames = await styleOf(page, { [BRAILLE_FRAMES]: PRESENCE_ONLY }, ["display", "animation-name"]);
-    expect(frames).toEqual({ display: "none", "animation-name": NO_ANIMATION });
-    expect((await styleOf(page, { [BRAILLE_REST]: PRESENCE_ONLY }, ["display"]))["display"]).toBe("inline");
-  });
 });

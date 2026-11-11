@@ -3,28 +3,26 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { ArrowLeftIcon, ChevronRightIcon, ShieldCheckIcon, LogOutIcon, SettingsIcon } from "lucide-react";
+import { ArrowLeftIcon, ChevronRightIcon, LogOutIcon, SettingsIcon } from "lucide-react";
 import { cn, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@agentsfleet/design-system";
 import { AuthSignOutButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { NAV_SURFACE, NAV_ICON_SIZE, NAV_ICON_STROKE_WIDTH, navSource, resolveActiveHref, resolveHref, type NavEntry } from "./sidebar-navigation-data";
-import { ACCOUNT_NAV, ACCOUNT_SHORTCUTS, SERVICE_SHORTCUTS, BOTTOM_NAV, PLATFORM_NAV, WORKSPACE_NAV } from "./account-menu-data";
+import { ACCOUNT_NAV, ACCOUNT_SHORTCUTS, SERVICE_SHORTCUTS, BOTTOM_NAV, WORKSPACE_NAV } from "./account-menu-data";
 
-export const MENU_VIEW = { home: "home", settings: "settings", platform: "platform" } as const;
+export const MENU_VIEW = { home: "home", settings: "settings" } as const;
 export type MenuView = typeof MENU_VIEW[keyof typeof MENU_VIEW];
-type Props = { view: MenuView; onView: (view: MenuView) => void; workspaceId: string | null; operatorScopes: string[] };
+type Props = { view: MenuView; onView: (view: MenuView) => void; workspaceId: string | null };
 
-export function AccountMenuNavigation({ view, onView, workspaceId, operatorScopes }: Props) {
+export function AccountMenuNavigation({ view, onView, workspaceId }: Props) {
   const backRef = useRef<HTMLDivElement>(null);
   useEffect(() => { backRef.current?.focus(); }, [view]);
-  const platform = PLATFORM_NAV.filter((entry) => !entry.scope || operatorScopes.includes(entry.scope));
   if (view === MENU_VIEW.home) return <>
     <DropdownMenuSeparator />
     <MenuDestination label="Settings" Icon={SettingsIcon} onSelect={() => onView(MENU_VIEW.settings)} />
     <MenuLinks items={ACCOUNT_SHORTCUTS} workspaceId={workspaceId} />
     <DropdownMenuSeparator />
     <MenuLinks items={SERVICE_SHORTCUTS} workspaceId={workspaceId} />
-    {platform.length > 0 ? <MenuDestination label="Platform" Icon={ShieldCheckIcon} onSelect={() => onView(MENU_VIEW.platform)} /> : null}
     <MenuLinks items={BOTTOM_NAV} workspaceId={workspaceId} />
     <DropdownMenuSeparator />
     <AuthSignOutButton redirectUrl="/sign-in"><DropdownMenuItem><LogOutIcon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" />Sign out</DropdownMenuItem></AuthSignOutButton>
@@ -34,13 +32,13 @@ export function AccountMenuNavigation({ view, onView, workspaceId, operatorScope
       <ArrowLeftIcon size={NAV_ICON_SIZE} strokeWidth={NAV_ICON_STROKE_WIDTH} className="shrink-0 text-muted-foreground" aria-hidden="true" />Back
     </DropdownMenuItem>
     <DropdownMenuSeparator />
-    {view === MENU_VIEW.settings ? <>
+    <>
       <DropdownMenuLabel>Workspace</DropdownMenuLabel>
       <MenuLinks items={WORKSPACE_NAV} workspaceId={workspaceId} />
       <DropdownMenuSeparator />
       <DropdownMenuLabel>Account</DropdownMenuLabel>
       <MenuLinks items={ACCOUNT_NAV} workspaceId={workspaceId} />
-    </> : <><DropdownMenuLabel>Platform</DropdownMenuLabel><MenuLinks items={platform} workspaceId={workspaceId} /></>}
+    </>
   </>;
 }
 

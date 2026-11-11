@@ -6,7 +6,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
-import { whoamiEffect } from "../src/commands/whoami.ts";
+import { whoamiEffect } from "../src/commands/auth/whoami.ts";
 import { USERS_ME_PATH } from "../src/lib/api-paths.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";

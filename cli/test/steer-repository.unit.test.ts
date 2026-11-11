@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import { renderRepository } from "../src/commands/fleet_tasks.ts";
+import { renderRepository } from "../src/commands/fleet/tasks.ts";
 import { Output } from "../src/services/output.ts";
-import type { TaskDetail } from "../src/commands/task-read.ts";
+import type { TaskDetail } from "../src/commands/fleet/task-read.ts";
 import { outputDouble } from "./helpers-output-double.ts";
 import { taskDetail, HEAD, COMMIT, TASK, INSTANT } from "./helpers-steered-work.ts";
 async function render(task: TaskDetail): Promise<string[]> {

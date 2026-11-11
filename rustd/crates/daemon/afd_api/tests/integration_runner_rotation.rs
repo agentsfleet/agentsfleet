@@ -52,7 +52,7 @@ async fn platform_operator_rotates_runner_token_once() {
     let rotated = send(
         &router,
         Method::PATCH,
-        &format!("/v1/fleets/runners/{runner_id}"),
+        &format!("/v1/admin/runners/{runner_id}"),
         Some(&fixtures.operator_token),
         r#"{"action":"rotate"}"#,
     )
@@ -86,7 +86,7 @@ async fn platform_operator_rotates_runner_token_once() {
     let refused = send(
         &router,
         Method::PATCH,
-        &format!("/v1/fleets/runners/{unknown}"),
+        &format!("/v1/admin/runners/{unknown}"),
         Some(&fixtures.operator_token),
         r#"{"action":"rotate"}"#,
     )

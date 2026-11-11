@@ -24,7 +24,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Renewal refused on empty wallet | `UZ-RUN-012` | each `/renew` meters the run's slice and refuses one the wallet cannot cover; reachable for any exhausted tenant | §Money gates |
 | Lost wake recovery | the next recovery probe, at most 5 s later | each replica asks PostgreSQL for pending work every `OFFER_FALLBACK_TICK` (5 s), with or without a wake ring | §Failure recovery model |
 | Runner datastore credentials | zero | no runner crate links `sqlx` or `async-nats`; the only platform surface is `/v1/runners` + `agt_r` | §The split |
-| Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Fleet** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
+| Control protocol | one enrolment route, the rest under `/v1/runners/me` | listed in the API reference's **Runner plane** group, enrolment in its **Platform** group (`public/openapi.json`); `me` resolves from the token | §The control protocol |
 | Enrollment gate | the `runner:enroll` scope | tenant `admin` JWT / `agt_t` key → `403`; `agt_r` revealed once, stored as sha256 | §Registering a runner |
 | Fresh-mint liveness | `last_seen_at = 0` sentinel | a never-connected runner reads `registered`, not a fake `online` | §Runner state |
 | Runner "status" | three separate categories | `status` enum + derived liveness + append-only `runner.events` | §Runner state |
@@ -235,9 +235,9 @@ The runner's supervisor, agent loop, tool catalog, outbound guard, in-sandbox se
 
 `agentsfleetd` translates the runner's calls into the Postgres writes and NATS publishes the worker once made directly. The runner never sees a datastore.
 
-The routes, their methods and their request and reply shapes are in the API reference's **Runner plane** group on docs.agentsfleet.net. That group is generated from `public/openapi.json`. The enrolment route sits in its **Fleet** group; this doc does not restate them.
+The routes, their methods and their request and reply shapes are in the API reference's **Runner plane** group on docs.agentsfleet.net. That group is generated from `public/openapi.json`. The enrolment route sits in its **Platform** group; this doc does not restate them.
 
-The shape that matters here has one enrolment route, `POST /v1/runners`, called by an operator (§Registering a runner). Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
+The shape that matters here has one enrolment route, `POST /v1/admin/runners`, called by an operator (§Registering a runner). Every other route sits under `/v1/runners/me` and is called by the runner with its `agt_r`.
 
 `me` resolves from the token. No `runner_id` appears in any path or body, so there is nothing to spoof or reconcile. `register` is the one verb authed by a *human operator* credential; everything else is authed by the machine credential it mints.
 
@@ -256,9 +256,11 @@ The [runner guide](runner_protocol.md) describes connection setup, cancellation 
 
 ## Registering a runner
 
-A runner needs a `agt_r` token before it can receive work. The **platform admin pre-mints it from the dashboard** and installs it on the host. The host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model).
+A runner needs a `agt_r` token before it can receive work. The **platform operator pre-mints it through the CLI** and installs it on the host. The host never self-registers (Option B, the GitLab-16 "create runner → authentication token" model).
 
-The admin opens **dashboard → Admin → Runners → "Add runner"**, and a session-authed server action calls `POST /v1/runners`. `agentsfleetd` mints the `agt_r` and reveals it **once** (copy-to-clipboard, then dropped from the browser). The admin drops it into the host's vault or its `AGENTSFLEET_RUNNER_TOKEN` env var.
+The operator runs `agentsfleet platform runners enroll --host-id <HOST> --policy <FILE> --token-out <NEW_FILE>`.
+The CLI calls `POST /v1/admin/runners` and saves the one-time runner token in an owner-only file.
+The operator installs that token on the host as `AGENTSFLEET_RUNNER_TOKEN`.
 
 No identity credential ever touches a shell (M84_001 retired the `register --token` CLI). On boot the runner validates the `agt_r` prefix and fails loud rather than looping on a silent 401.
 
@@ -268,8 +270,8 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
 
 ```text
  platform admin                                          agentsfleetd
- (dashboard session carrying runner:enroll)
-   | "Add runner" server action -> POST /v1/runners   GATE 1 - who may enroll:
+ (CLI credential carrying runner:enroll)
+   | CLI enrollment -> POST /v1/admin/runners   GATE 1 - who may enroll:
    |   Authorization: Bearer <session-JWT>           runner:enroll scope required
    |   { host_id, assigned_policy{sandbox_tier,     (tenant admin / agt_t -> 403)
    |     network_policy, registry_allowlist[],
@@ -288,7 +290,7 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
    |      eligibility: assigned tier + scope + secret_delivery   GATE 3 - blast radius
 ```
 
-`agentsfleetd` owns the Postgres pool, the NATS connection, and the Vault API. `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/fleets/runners/{id} {"action":"rotate"}`.
+`agentsfleetd` owns the Postgres pool, the NATS connection, and the Vault API. `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/admin/runners/{id} {"action":"rotate"}`.
 
 The write swaps `token_hash` and appends an actor-attributed event atomically. The write returns the replacement token once, and makes the old token fail the next auth read.
 
@@ -296,7 +298,7 @@ Revoking instead sets `status='revoked'` (M84_002) so every later call gets a 40
 
 ## Assigned policy and reconciliation (M148)
 
-Configuration flows **down**. Sandbox tier, network policy, registry allowlist and worker count are attributes the control plane ASSIGNS to the runner row. They are written at enrollment and changed through `PATCH /v1/fleets/runners/{id} {assigned_policy}`.
+Configuration flows **down**. Sandbox tier, network policy, registry allowlist and worker count are attributes the control plane ASSIGNS to the runner row. They are written at enrollment and changed through `PATCH /v1/admin/runners/{id} {assigned_policy}`.
 
 Each one rides the runner's identity on the enrollment read and on **every heartbeat reply**. A dashboard change so reaches the host within one beat, and nobody visits the host.
 
@@ -372,7 +374,7 @@ A Kubernetes-style `status` plus `conditions` JSONB split is adopted **only if**
 
 ### Operator plane + reassignment
 
-Operators read runners through `GET /v1/fleets/runners` and change them through `PATCH /v1/fleets/runners/{id}`. The read derives liveness and excludes token hashes. Lifecycle changes append actor-attributed runner events.
+Operators read runners through `GET /v1/admin/runners` and change them through `PATCH /v1/admin/runners/{id}`. The read derives liveness and excludes token hashes. Lifecycle changes append actor-attributed runner events.
 
 A runner can hold multiple active leases. Busy status derives from live leases; the server counts fleet and authoring occupancy under the runner-row lock before granting capacity. [Authoring leases](#authoring-leases) describes the shared limit.
 
@@ -456,7 +458,7 @@ Access to the runner-domain tables (`runner.runners`, `runner.leases`, `runner.f
 
 ```text
    caller (Clerk JWT, runner:enroll)                  runner (agt_r token, NO db creds)
-        |  GET/POST /v1/fleet, /v1/runners                  |  Native runner stream
+        |  GET/POST /v1/fleet, /v1/admin/runners                  |  Native runner stream
         v                                                   v
    +-------------------------------------------------------------------------+
    | agentsfleetd                                                            |

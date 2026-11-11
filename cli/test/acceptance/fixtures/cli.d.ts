@@ -43,4 +43,5 @@ export function spawnFleetctl(
 // and drops null/undefined entries — the implementation calls String(value).
 export function composeEnv(
   fields: Readonly<Record<string, string | number | boolean | null | undefined>>,
+  parentEnv?: NodeJS.ProcessEnv,
 ): Record<string, string>;

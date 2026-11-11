@@ -3,6 +3,8 @@
  * and refuses a stored credential against a deployment that never minted it.
  */
 
+import {PET_COMMAND} from "../constants/pet.ts";
+
 export interface AuthGuardCtx {
   token?: string | null;
   apiKey?: string | null;
@@ -61,8 +63,8 @@ export function unboundTarget(ctx: DeploymentGuardCtx): string | null {
   return UNBOUND_FAIL_MESSAGE;
 }
 
-// `login` mints a credential, so it cannot require one.
-const AUTH_EXEMPT: ReadonlySet<string> = new Set(["login"]);
+// Login mints a credential; the local pet preview makes no requests.
+const AUTH_EXEMPT: ReadonlySet<string> = new Set(["login", PET_COMMAND]);
 
 // Exempt from the deployment question only — both still require a credential.
 // `logout` must reach the deployment that minted the credential in order to

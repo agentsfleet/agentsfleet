@@ -9,7 +9,7 @@
 use af_wire::paths;
 use afd_auth::Scope;
 
-use super::path::fleet_runner_path;
+use super::path::admin_runner_path;
 use super::{Guard, RouteClass, RouteMeta, Scopes, Verb};
 
 const RUNNER_ENROLL: &[Scope] = &[Scope::RunnerEnroll];
@@ -72,17 +72,18 @@ impl RunnerOpsRoute {
     #[must_use]
     pub const fn meta(self) -> RouteMeta {
         let (template, scopes) = match self {
-            Self::Register => (paths::RUNNERS, Scopes::Always(RUNNER_ENROLL)),
-            Self::List => ("/v1/fleets/runners", Scopes::Always(RUNNER_READ)),
+            Self::Register | Self::List => {
+                (paths::ADMIN_RUNNERS, Scopes::rw(RUNNER_READ, RUNNER_ENROLL))
+            }
             // These identities share one axum path. Both carry the same
             // method-sensitive metadata so merging them cannot retain a
             // cheaper GET-only gate for PATCH.
             Self::Get | Self::Patch | Self::Delete => (
-                fleet_runner_path!(""),
+                admin_runner_path!(""),
                 Scopes::rw(RUNNER_READ, RUNNER_WRITE),
             ),
-            Self::Events => (fleet_runner_path!("/events"), Scopes::Always(RUNNER_READ)),
-            Self::Leases => (fleet_runner_path!("/leases"), Scopes::Always(RUNNER_READ)),
+            Self::Events => (admin_runner_path!("/events"), Scopes::Always(RUNNER_READ)),
+            Self::Leases => (admin_runner_path!("/leases"), Scopes::Always(RUNNER_READ)),
         };
         RouteMeta::new(Guard::Bearer, RouteClass::Api, template, scopes)
     }

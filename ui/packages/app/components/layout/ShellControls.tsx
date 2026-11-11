@@ -35,7 +35,7 @@ const mobileNavigationLoader = createIntentModuleLoader(
 
 type ShellControlsProps = {
   workspaces: TenantWorkspace[];
-  operatorScopes: string[];
+
   sidebarNavId: string;
 };
 
@@ -74,7 +74,7 @@ function useMobileNavigation(workspaces: TenantWorkspace[]) {
   return { pathname, mobileNavigation, mobileOpen, setMobileOpen, mobileTriggerRef, linkWorkspaceId, preloadMobileNavigation, openMobileNavigation };
 }
 
-export function ShellControls({ workspaces, operatorScopes, sidebarNavId }: ShellControlsProps) {
+export function ShellControls({ workspaces, sidebarNavId }: ShellControlsProps) {
   const navigation = useMobileNavigation(workspaces);
   const { mobileNavigation, mobileOpen, pathname, linkWorkspaceId, setMobileOpen, mobileTriggerRef } = navigation;
   const collapsed = useShellSidebarCollapsed();
@@ -86,7 +86,6 @@ export function ShellControls({ workspaces, operatorScopes, sidebarNavId }: Shel
           open={mobileOpen}
           pathname={pathname}
           workspaceId={linkWorkspaceId}
-          operatorScopes={operatorScopes}
           onOpenChange={setMobileOpen}
           restoreFocus={() => mobileTriggerRef.current?.focus()}
         />

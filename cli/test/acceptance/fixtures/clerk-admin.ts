@@ -22,7 +22,7 @@ import {
 } from "./constants.ts";
 import { ensureFixtureTenantBootstrapped } from "./bootstrap.ts";
 
-type ClerkMethod = "GET" | "POST";
+type ClerkMethod = "GET" | "POST" | "PATCH";
 
 interface ClerkUser {
   readonly id: string;
@@ -59,14 +59,14 @@ export interface AttachedJwt extends MintedTokens {
 export interface ProvisionUserOptions {
   readonly email: string;
   readonly role?: string | undefined;
+  readonly scopes?: ReadonlyArray<string> | undefined;
 }
 
 export interface MintTokensOptions {
   readonly ttlSeconds?: number | undefined;
 }
 
-export interface AttachJwtOptions {
-  readonly email: string;
+export interface AttachJwtOptions extends ProvisionUserOptions {
   readonly ttlSeconds?: number | undefined;
 }
 
@@ -167,6 +167,9 @@ export async function provisionUser(
       throw new Error(
         `fixture ownership mismatch for ${opts.email}: refusing to adopt an existing Clerk identity`,
       );
+    }
+    if (opts.scopes && existing.public_metadata?.[FIXTURE_ROLE_METADATA_KEY] !== opts.role) {
+      throw new Error("fixture role mismatch: refusing to change another fixture's platform permissions");
     }
     return existing;
   }
@@ -281,7 +284,16 @@ export async function ensureFixtureTenantReady(
 }
 
 export async function attachJwt(clerkSecret: string, opts: AttachJwtOptions): Promise<AttachedJwt> {
-  const user = await ensureFixtureTenantReady(clerkSecret, { email: opts.email });
+  const user = await ensureFixtureTenantReady(clerkSecret, opts);
+  if (opts.scopes) {
+    const current = await getUser(clerkSecret, user.id);
+    const raw = current.public_metadata?.scopes;
+    const scopes = typeof raw === "string" ? raw.split(/\s+/).filter(Boolean)
+      : Array.isArray(raw) ? raw.filter((value): value is string => typeof value === "string") : [];
+    await clerkRequest(clerkSecret, "PATCH", `/users/${user.id}/metadata`, {
+      public_metadata: {scopes: [...new Set([...scopes, ...opts.scopes])].join(" ")},
+    });
+  }
   const tokens = await mintTokens(clerkSecret, user.id, { ttlSeconds: opts.ttlSeconds });
   return { ...tokens, clerkUserId: user.id, email: opts.email };
 }

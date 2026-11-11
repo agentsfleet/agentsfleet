@@ -84,7 +84,7 @@ export class ChatActions {
         if (fleet.setup_revision !== review.effective.target_setup_revision) return yield* missingReview();
         self.#seen = {draft, review, setupTag: fleet.setup_etag};
       } else self.#seen = {draft, review};
-      yield* renderReview(self.#output, review);
+      yield* renderReview(self.#output, review, draft.candidate?.id);
       return review;
     });
   }

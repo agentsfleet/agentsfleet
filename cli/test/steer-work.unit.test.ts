@@ -2,7 +2,7 @@ import { taskDetail, HEAD, INSTANT } from "./helpers-steered-work.ts";
 import { ServerError } from "../src/errors/index.ts";
 import { expect, test } from "bun:test";
 import { Effect, Layer, Redacted } from "effect";
-import { readSteeredWork } from "../src/commands/steer-work.ts";
+import { readSteeredWork } from "../src/commands/fleet/steer-work.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";
 import { outputDouble } from "./helpers-output-double.ts";

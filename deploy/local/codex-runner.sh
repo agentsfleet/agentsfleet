@@ -3,9 +3,10 @@
 set -euo pipefail
 root=/sys/fs/cgroup
 mkdir -p "$root/agentsfleet/runner"
-while read -r pid; do
+mapfile -t runner_pids < "$root/cgroup.procs"
+for pid in "${runner_pids[@]}"; do
   printf '%s\n' "$pid" >"$root/agentsfleet/runner/cgroup.procs"
-done <"$root/cgroup.procs"
+done
 printf '+cpu +io +memory +pids\n' >"$root/cgroup.subtree_control"
 printf '+cpu +io +memory +pids\n' >"$root/agentsfleet/cgroup.subtree_control"
 if ! mountpoint -q /sys/kernel/security; then

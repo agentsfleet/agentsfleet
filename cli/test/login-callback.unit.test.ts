@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { LoginCallback } from "../src/commands/login-callback.ts";
-import { CALLBACK_DECISION, CALLBACK_STATUS, MAX_CALLBACK_BODY_BYTES } from "../src/commands/login-callback-protocol.ts";
+import { LoginCallback } from "../src/commands/auth/login-callback.ts";
+import { CALLBACK_DECISION, CALLBACK_STATUS, MAX_CALLBACK_BODY_BYTES } from "../src/commands/auth/login-callback-protocol.ts";
 import { HTTP_METHOD } from "../src/constants/http-method.ts";
 
 const DASHBOARD_ORIGIN = "https://dashboard.test";

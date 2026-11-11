@@ -14,6 +14,7 @@
 
 import { Cause, Effect, Exit, Option } from "effect";
 import { Output } from "../services/output.ts";
+import { renderCliError } from "./cli-error-render.ts";
 import {
   type MainLayerServices,
 } from "../runtime/main-layer.ts";
@@ -52,28 +53,6 @@ const formatExit = <A, E extends CliError>(
   return { code: EXIT_CODE.UnexpectedError ?? FALLBACK_EXIT_CODE, rendered: err };
 };
 
-// Server errors carry a server-side code (UZ-...) and a request_id that
-// support workflows grep on. Emit them alongside the detail message so
-// the Effect dispatcher produces the same stderr shape as the
-// pre-Effect renderApi (`error: <code> <message>\nrequest_id: <id>`).
-const renderError = (
-  err: CliError,
-): Effect.Effect<void, never, Output> =>
-  Effect.gen(function* () {
-    const output = yield* Output;
-    if (err._tag === "ServerError") {
-      const tail = err.requestId ? `\nrequest_id: ${err.requestId}` : "";
-      yield* output.error(`${err.code} ${err.detail}\n  Suggestion: ${err.suggestion}${tail}`);
-      return;
-    }
-    if (err._tag === "AuthError") {
-      const tail = err.requestId ? `\nrequest_id: ${err.requestId}` : "";
-      yield* output.error(`${err.code} ${err.detail}\n  Suggestion: ${err.suggestion}${tail}`);
-      return;
-    }
-    yield* output.error(err.message);
-  });
-
 /**
  * Renders a finished Exit and answers its process exit code.
  *
@@ -92,6 +71,6 @@ export const renderAndCount = <A, E extends CliError>(
     // Numeric success exit codes (doctor's ok ? 0 : 1) skip the error
     // render — the command already wrote its own report.
     if (Exit.isSuccess(exit)) return formatted.code;
-    yield* renderError(formatted.rendered);
+    yield* renderCliError(formatted.rendered);
     return formatted.code;
   });

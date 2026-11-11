@@ -1,10 +1,10 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
-import { loginEffect } from "../src/commands/login.ts";
-import { browserLogin, TerminalLoginControls } from "../src/commands/login-browser-flow.ts";
-import { LoginCallback } from "../src/commands/login-callback.ts";
-import { loginComparisonCode, trustedLoginUrl } from "../src/commands/login-callback-protocol.ts";
+import { loginEffect } from "../src/commands/auth/login.ts";
+import { browserLogin, TerminalLoginControls } from "../src/commands/auth/login-browser-flow.ts";
+import { LoginCallback } from "../src/commands/auth/login-callback.ts";
+import { loginComparisonCode, trustedLoginUrl } from "../src/commands/auth/login-callback-protocol.ts";
 import { deriveSharedKey, encryptJwtForTest, generateCliKeypair } from "../src/lib/cli-flow.ts";
 import { Browser } from "../src/services/browser.service.ts";
 import { Credentials } from "../src/services/credentials.ts";
