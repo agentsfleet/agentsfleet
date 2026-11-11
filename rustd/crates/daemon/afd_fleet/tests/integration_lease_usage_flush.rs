@@ -102,10 +102,11 @@ async fn lines_across_renewals_and_the_report_are_billed_once_each() {
         ..processed(&held, None)
     };
     plane
-        .report(
+        .report_with(
             &held.runner,
             &report,
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -152,10 +153,11 @@ async fn a_report_whose_lines_write_the_cache_counts_the_writes() {
     };
 
     let settled = plane
-        .report(
+        .report_with(
             &held.runner,
             &report,
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await

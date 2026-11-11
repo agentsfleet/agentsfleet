@@ -32,14 +32,14 @@ pub(super) fn no_work(runner: &Uuid7, reason: &str) {
 
 /// What a lease carries about the fleet beyond its event: the thread's earlier
 /// turns and the memory window, both read after the issue.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct Context<'a> {
     pub(super) history: Vec<Turn<'a>>,
     pub(super) memory: Option<MemoryHydrateResponse<'a>>,
     pub(super) decision: Option<Box<DecisionAssignment>>,
     pub(super) task: Option<af_wire::task::TaskContext<'static>>,
-    pub(super) expires_at: Option<jiff::Timestamp>,
-    pub(super) execution_deadline: Option<jiff::Timestamp>,
+    pub(super) expires_at: jiff::Timestamp,
+    pub(super) execution_deadline: jiff::Timestamp,
 }
 
 /// Assemble the issued payload while its policy still borrows the admitted work.
@@ -54,8 +54,8 @@ pub(super) fn payload<'a>(
     LeasePayload {
         lease_id: lease_id.as_str().into(),
         fencing_token: acquired.fence.as_u64(),
-        lease_expires_at: context.expires_at.unwrap_or(acquired.leased_until),
-        execution_deadline: context.execution_deadline,
+        lease_expires_at: context.expires_at,
+        execution_deadline: Some(context.execution_deadline),
         // The one delivery this port serves. `scoped` and `proxy` are wire
         // values with no implementation on either side.
         secret_delivery: SecretDelivery::Inline,

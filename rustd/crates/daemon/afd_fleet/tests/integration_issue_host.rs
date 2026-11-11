@@ -1,4 +1,4 @@
-//! The issue counts the host inside its own insert (M245 §5): the host lock
+//! The issue counts the host inside its own insert: the host lock
 //! stays its own statement, and the census, the worker limit and the placement
 //! choice ride the guarded lease insert, so a full host writes nothing.
 #![expect(

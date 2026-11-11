@@ -54,7 +54,6 @@ mod result;
 pub use observations::observe;
 
 impl LeaseService {
-    #[cfg(any(test, feature = "test-util"))]
     /// Record one runner's terminal result for a lease it holds.
     ///
     /// Answers what the final slice's usage line cost, so the caller can meter
@@ -64,6 +63,11 @@ impl LeaseService {
     /// something the load resolved. The caller needs both to report the run,
     /// and reading them again would be a second statement for a fact this one
     /// already had.
+    ///
+    /// `kept` is the lease's facts a stream session kept from the offer, so the
+    /// report reads no lease row. `None` reads them, as a session rebuilt from
+    /// the database must. The facts never change after issue, and the report
+    /// statement still checks the fence.
     ///
     /// # Errors
     /// Refuses a lease that is not this runner's with
@@ -75,24 +79,6 @@ impl LeaseService {
     ///
     /// Marks each stage it reaches on `clock`: the load, the preparation, the
     /// capture, the commit and the announce.
-    pub async fn report(
-        &self,
-        runner_id: &Uuid7,
-        request: &ReportRequest<'_>,
-        now: Timestamp,
-        clock: &mut VerbClock<ReportStage>,
-    ) -> Result<Reconciled> {
-        self.report_with(runner_id, request, now, None, clock).await
-    }
-
-    /// [`Self::report`] over the lease's facts a stream session kept from the
-    /// offer, so the report reads no lease row (M245 §9, blocker 6). `None`
-    /// reads them, as a session rebuilt from the database must. The facts
-    /// never change after issue, and the report statement still checks the
-    /// fence.
-    ///
-    /// # Errors
-    /// As [`Self::report`].
     pub async fn report_with(
         &self,
         runner_id: &Uuid7,
@@ -125,7 +111,7 @@ impl LeaseService {
         let tool_calls = stored_trace(&lease, request);
         // The book cached at the version this report read beside the lease:
         // a warm replica reads no price, and the statement guards on the
-        // version (M245 §9).
+        // version.
         let pricing = match lease.catalogue_version {
             Some(version) => {
                 self.leases

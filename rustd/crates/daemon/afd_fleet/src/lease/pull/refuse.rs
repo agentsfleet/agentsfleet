@@ -80,7 +80,7 @@ impl LeaseService {
         match declined {
             Declined::Await(waiting) => Ok(waited(runner_id, waiting)),
             Declined::Refuse(refusal) => self
-                .refused(acquired, refusal.label, runner_id, refusal.detail)
+                .refused(acquired, refusal.label, runner_id, "")
                 .await
                 .map(|()| Step::Stop),
             Declined::Retry(transient) => {
@@ -105,7 +105,7 @@ impl LeaseService {
     ) -> Result<()> {
         let ended = self
             .leases
-            .block(acquired, Refusal { label, detail: "" })
+            .block(acquired, Refusal::labelled(label))
             .await?;
         if let crate::lease::event::Ended::Now(closed) = ended {
             let publication = self.leases.publish_completion(&closed, None).await;

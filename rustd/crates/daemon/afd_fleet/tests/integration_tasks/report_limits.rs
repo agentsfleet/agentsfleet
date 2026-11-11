@@ -90,10 +90,11 @@ async fn settle(case: &Case, task: DecisionTaskVersion, reason: Option<&str>) {
         .await;
     } else {
         plane
-            .report(
+            .report_with(
                 &case.held.runner,
                 &report,
                 now,
+                None,
                 &mut af_observability::verb_span::VerbClock::untimed(),
             )
             .await
@@ -103,10 +104,11 @@ async fn settle(case: &Case, task: DecisionTaskVersion, reason: Option<&str>) {
     let retained = evidence(case, &id(&task.task_id), reason).await;
     assert_eq!(case.counts().await, (1, 1, 1));
     plane
-        .report(
+        .report_with(
             &case.held.runner,
             &report,
             now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -171,7 +173,7 @@ async fn report_after_preparation_deadline(
         .await
         .expect("commit barrier");
     // The report statement locks the fleet's slot before it measures the
-    // slice; holding the slot holds the report there (M245 §6).
+    // slice; holding the slot holds the report there.
     let mut held = connection.begin().await.expect("slot barrier");
     let pid: i32 = sqlx::query_scalar(
         "SELECT pg_backend_pid() FROM runner.fleet_slots WHERE fleet_id=$1 FOR UPDATE",
@@ -181,7 +183,7 @@ async fn report_after_preparation_deadline(
     .await
     .expect("hold the report's slot row");
     let mut untimed = af_observability::verb_span::VerbClock::untimed();
-    let reporting = plane.report(&case.held.runner, report, now, &mut untimed);
+    let reporting = plane.report_with(&case.held.runner, report, now, None, &mut untimed);
     let release = async {
         observe_report_commit(case, pid).await;
         // Preparation has finished and commit owns the original report. Advance
@@ -278,10 +280,11 @@ async fn a_notice_is_owed_when_the_run_answered_nothing() {
         let mut plane = case.held.fixtures.plane();
         plane.task_reports = Some(Arc::new(case.tasks.clone()));
         plane
-            .report(
+            .report_with(
                 &case.held.runner,
                 &report,
                 af_core::clock::after(case.held.now, crate::report_seed::SLICE),
+                None,
                 &mut af_observability::verb_span::VerbClock::untimed(),
             )
             .await

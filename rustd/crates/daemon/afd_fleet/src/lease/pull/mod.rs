@@ -258,13 +258,13 @@ impl LeaseService {
     }
 
     /// The credit gate's floor, priced from the book cached at the catalogue
-    /// version the claim read: a warm replica reads no price (M245 §9).
+    /// version the claim read: a warm replica reads no price.
     async fn estimate(
         &self,
         acquired: &Acquired,
         resolved: &Resolved,
         now: Timestamp,
-    ) -> core::result::Result<afd_billing::rates::Estimate, Arc<crate::Error>> {
+    ) -> Result<afd_billing::rates::Estimate, Arc<crate::Error>> {
         let pricing = self
             .leases
             .prices()

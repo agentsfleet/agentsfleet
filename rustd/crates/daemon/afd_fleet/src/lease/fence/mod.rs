@@ -27,10 +27,9 @@ const CONTEXT_FENCE: &str = "live fence lookup";
 /// The lease's own token and the fleet's live fencing sequence, if this runner
 /// holds a live lease on it.
 ///
-/// `COALESCE(a.fencing_token, l.fencing_token)` so a reclaim that bumped the
-/// sequence strands the old holder BELOW it — the affinity row is the live
-/// authority and the lease's own token is only the fallback for a fleet whose
-/// slot row is gone.
+/// The slot row's token is the live sequence, so a reclaim that bumped it
+/// strands the old holder BELOW it. A fleet with no slot row (only a fleet's
+/// deletion removes one) has no live sequence, and so no live fence.
 ///
 /// Where one runner briefly holds two live leases on the fleet — a superseded
 /// one and its successor — the highest token wins: tokens rise with every

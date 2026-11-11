@@ -59,6 +59,7 @@ impl Error {
             | ErrorKind::SetupUnavailable
             | ErrorKind::VaultDataInvalid
             | ErrorKind::SequenceCorrupt
+            | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
@@ -124,6 +125,7 @@ impl Error {
             | ErrorKind::SetupUnavailable
             | ErrorKind::VaultDataInvalid
             | ErrorKind::SequenceCorrupt
+            | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost
@@ -189,6 +191,7 @@ impl Error {
             | ErrorKind::SetupUnavailable
             | ErrorKind::VaultDataInvalid
             | ErrorKind::SequenceCorrupt
+            | ErrorKind::PostureCorrupt
             | ErrorKind::StaleFence
             | ErrorKind::LeaseNotFound
             | ErrorKind::LeaseLost

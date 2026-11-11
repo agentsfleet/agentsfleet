@@ -62,7 +62,8 @@ impl Error {
             // here: this crate calls only `obligation::owe` and
             // `obligation::receipt`, and neither touches the stream.
             | ErrorKind::Outbound { .. }
-            | ErrorKind::SequenceCorrupt => DETAIL_DATABASE_ERROR,
+            | ErrorKind::SequenceCorrupt
+            | ErrorKind::PostureCorrupt => DETAIL_DATABASE_ERROR,
             ErrorKind::Billing { ref source } => source.detail(),
             ErrorKind::Credential { ref source } => source.detail(),
             ErrorKind::Gate { ref source } => source.detail(),

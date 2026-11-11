@@ -38,7 +38,7 @@ use afd_billing::budget::{self, Verdict};
 const EVENT_NO_CREDITS: &str = "renew_no_credits";
 
 /// The fleet reached a ceiling its author declared.
-const EVENT_BUDGET_BREACH: &str = "renew_budget_breach";
+pub(in crate::lease) const EVENT_BUDGET_BREACH: &str = "renew_budget_breach";
 
 /// A gate could not be read, and the renewal was admitted anyway.
 const EVENT_GATE_UNREADABLE: &str = "renew_gate_unreadable_admitted";
@@ -95,7 +95,7 @@ impl LeaseService {
     }
 
     /// [`Self::funds_cover`] against a floor the caller already priced, as the
-    /// host batch does from its cached book (M245 §9). A floor that could not
+    /// host batch does from its cached book. A floor that could not
     /// be priced fails open, as an unreadable balance does.
     pub(crate) async fn funds_cover_at(
         &self,
@@ -159,7 +159,7 @@ impl LeaseService {
             // not a ceiling it may ignore — and unlike the outage below, it
             // will read the same on every subsequent tick.
             Err(fault) if fault.is_config_permanent() => {
-                return Err(refuse_unreadable_budget(lease, lease_id, &fault));
+                return Err(refuse_unreadable_budget(&lease.fleet_id, lease_id, &fault));
             }
             Err(fault) => {
                 admit_unreadable("budget", lease, lease_id, &fault);
@@ -199,12 +199,15 @@ impl LeaseService {
 }
 
 /// Refuse a renewal whose stored budget will never parse, and say so.
-fn refuse_unreadable_budget(
-    lease: &Renewing,
+///
+/// One place for the per-lease path and the host batch, so a fleet whose
+/// ceiling cannot be read is refused and logged the same way under either.
+pub(in crate::lease) fn refuse_unreadable_budget(
+    fleet_id: &Uuid7,
     lease_id: &str,
     fault: &crate::Error,
 ) -> crate::Error {
-    let fleet = lease.fleet_id.as_str();
+    let fleet = fleet_id.as_str();
     let Logged { error_code, reason } = fault.logged();
     tracing::warn!(
         error_code,

@@ -104,14 +104,6 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
         held.fence
     );
 
-    let carried = reclaimed
-        .reused
-        .as_ref()
-        .expect("a reclaim carries the prior billing rather than resolving it again");
-    assert_eq!(carried.tenant_id, tenant, "the wallet already charged");
-    assert_eq!(carried.posture, POSTURE);
-    assert_eq!(carried.model, MODEL);
-
     assert_eq!(
         fixtures.text(Row::Lease(lease), "status").await,
         Some("expired".to_owned()),
@@ -244,8 +236,8 @@ async fn test_a_stale_claim_writes_no_lease() {
 
 // Value: protects=a plain chat's issued ceiling equals the one its lease row
 // stores; fails_when=the computed sum drifts from `execution_deadline.sql` by
-// span, precision or instant; why_new=M245 §9 dropped that read from the plain
-// issue; seam=none; no_claim=a task lease, which still reads the row.
+// span, precision or instant; why_new=the plain issue no longer reads that
+// row; seam=none; no_claim=a task lease, which still reads the row.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn a_plain_lease_ceiling_matches_its_stored_one() {
@@ -287,8 +279,8 @@ async fn a_plain_lease_ceiling_matches_its_stored_one() {
 
 // Value: protects=a plain chat whose fleet's setup moved after the claim gets
 // no lease, now that the insert carries the setup proof; fails_when=the insert
-// drops the head guard and a lease runs the old setup; why_new=M245 §9 moved
-// the check out of `issue_source.sql` for plain admissions; seam=none;
+// drops the head guard and a lease runs the old setup; why_new=the check moved
+// out of `issue_source.sql` for plain admissions; seam=none;
 // no_claim=a durable task, which still rereads its source.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]

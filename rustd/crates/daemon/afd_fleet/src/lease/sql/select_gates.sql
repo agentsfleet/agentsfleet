@@ -1,4 +1,4 @@
--- Every fact the gates judge before an issue, in one read (M245 §5): the
+-- Every fact the gates judge before an issue, in one read: the
 -- fleet's day and month spend, windowed as `afd_billing`'s
 -- `select_fleet_spend.sql` windows it; the gate this event already holds,
 -- with its newest row's status and whether its deadline passed on the

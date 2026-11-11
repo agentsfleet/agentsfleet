@@ -7,10 +7,6 @@
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-#![allow(
-    dead_code,
-    reason = "test support: shared by several test binaries, each using a subset"
-)]
 
 use af_core::id::Uuid7;
 use af_fleet_runtime::definition::{POLICY_SEMANTICS, canonical_digest};
@@ -43,13 +39,6 @@ const WORKSPACE_EXISTS: &str = "SELECT EXISTS (SELECT 1 FROM identity.workspaces
 /// The database clock, rounded as a `TIMESTAMPTZ(3)` column rounds it, so a
 /// stamp the code under test stored compares against it exactly.
 const DATABASE_NOW: &str = "SELECT clock_timestamp()::timestamptz(3)";
-
-/// Stands a slot up with `runner` as its last holder, its claim long expired.
-const MAKE_STICKY: &str = "\
-INSERT INTO runner.fleet_slots
-  (fleet_id, last_runner_id, fencing_token, lease_expires_at, hold_expires_at,
-   created_at, updated_at)
-VALUES ($1, $2, 1, now() - interval '1 day', NULL, now(), now())";
 
 impl Fixtures {
     /// Expires one lease in place, as the liveness sweep would once its holder
@@ -136,32 +125,6 @@ impl Fixtures {
         .insert(&mut *connection)
         .await
         .expect("the fleet row must insert");
-    }
-
-    /// Makes `runner` the fleet's last holder, its claim long expired, so the
-    /// candidate scan sorts the fleet sticky for that runner and nothing holds
-    /// its slot.
-    pub(crate) async fn make_sticky(&self, fleet: &Uuid7, runner: &Uuid7) {
-        let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query(MAKE_STICKY)
-            .bind(fleet)
-            .bind(runner)
-            .execute(&mut *connection)
-            .await
-            .expect("the slot row must insert");
-    }
-
-    /// How many admission rows one fleet holds.
-    ///
-    /// Fleet-scoped on purpose: the ledger is deployment-wide and a total would
-    /// count whatever a sibling suite admitted in parallel (ISO-1).
-    pub(crate) async fn admissions_for(&self, fleet: &Uuid7) -> i64 {
-        let mut connection = self.database.acquire().await.expect("a pooled connection");
-        sqlx::query_scalar("SELECT count(*) FROM fleet.admissions WHERE fleet_id = $1")
-            .bind(fleet)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("the ledger answers")
     }
 
     /// The database's clock now.

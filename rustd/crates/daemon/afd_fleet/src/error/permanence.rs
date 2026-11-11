@@ -107,6 +107,7 @@ impl Error {
             | ErrorKind::MessageLimitReached
             | ErrorKind::Scrub { .. }
             | ErrorKind::SequenceCorrupt
+            | ErrorKind::PostureCorrupt
             | ErrorKind::IntegrationNotConnected
             | ErrorKind::MintUnconfigured
             | ErrorKind::GithubReconnectRequired

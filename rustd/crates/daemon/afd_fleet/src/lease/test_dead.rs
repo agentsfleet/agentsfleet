@@ -114,7 +114,6 @@ pub(crate) fn acquired() -> Acquired {
         request_json: "{}".to_owned(),
         workspace_id: id(2),
         event_created_at: AT,
-        reused: None,
         resume_hold: false,
         redelivered: false,
         opened: crate::lease::envelope::Opened::unread(id(2), id(3)),

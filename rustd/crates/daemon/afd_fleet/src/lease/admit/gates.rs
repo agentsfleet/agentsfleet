@@ -184,11 +184,10 @@ pub(super) async fn balance<F: af_core::error_code::Coded>(
 
 /// The fleet's own ceiling against what it has already drained.
 ///
-/// Runs AFTER the tenant's credit pool and BEFORE the receive debit: a refused
-/// event must never be charged, and the two ceilings are independent — passing
-/// one says nothing about the other.
-/// The fleet budget gate over a spend the caller read, or the fault its read
-/// met, which the gate absorbs under its declared posture.
+/// Runs AFTER the tenant's credit pool: a refused event must never be charged,
+/// and the two ceilings are independent — passing one says nothing about the
+/// other. Judges a spend the caller read, or the fault its read met, which the
+/// gate absorbs under its declared posture.
 pub(super) fn fleet_budget<E: af_core::error_code::Coded>(
     request: &Request<'_>,
     spend: core::result::Result<Spend, &E>,

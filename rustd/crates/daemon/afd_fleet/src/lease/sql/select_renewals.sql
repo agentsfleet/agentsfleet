@@ -1,4 +1,4 @@
--- What a host's renewal statement needs before it runs (M245 §7), for every
+-- What a host's renewal statement needs before it runs, for every
 -- lease the runner names at once: each one's pricing facts and payer, whether
 -- it runs a durable task, its cancel mark, when it began, the head revision
 -- its fleet's ceilings are read from, and the catalogue version prices are

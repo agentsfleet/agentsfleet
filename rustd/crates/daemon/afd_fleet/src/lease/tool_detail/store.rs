@@ -1,5 +1,5 @@
-//! The statements behind the tool-call record verb, and the settlement's
-//! dead-fence delete. Split from [`super`] at the length cap: that file
+//! The statements behind the tool-call record verb, and the dead-fence delete
+//! a post runs. Split from [`super`] at the length cap: that file
 //! decides what is kept, this one writes it.
 
 use std::collections::BTreeMap;

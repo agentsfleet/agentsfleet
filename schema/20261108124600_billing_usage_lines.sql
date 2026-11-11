@@ -12,7 +12,11 @@
 -- slice the daemon measured, or a native `decision` call. Each kind numbers its
 -- own lines, so `seq` is unique within its work and kind: a model line takes
 -- the runner's request number, a runtime line the milliseconds from its work's
--- start to its slice's start, a decision line its call's number. Exactly one of
+-- start to its slice's start, a decision line its call's number. `kind` is read
+-- by the charges page (`report/sql/charges.sql`), the billing relay
+-- (`ledger/sql/select_unsettled.sql`, `select_unsettled_work.sql` and
+-- `settle_lines.sql`) and the report's model-cost sum (`commit_report.sql`).
+-- Exactly one of
 -- `fleet_id` / `authoring_attempt_id` is set, by `work_type`; `event_id` is set
 -- for fleet work. `platform_model_price_id` is NULL when the catalogue had no
 -- price covering the request, and `unpriced_token_count` counts tokens in any

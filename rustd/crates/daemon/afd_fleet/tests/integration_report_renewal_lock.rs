@@ -126,7 +126,7 @@ async fn test_report_behind_a_held_renewal_bills_its_own_runtime_line() {
     let lines = runtime_lines(&held).await;
     // Each pass bills its own slice under its own number, and the report's
     // slice starts where the renewal's ended: a runtime line is numbered by
-    // its slice's start, so the two cannot share one (M245).
+    // its slice's start, so the two cannot share one.
     let [(first_seq, first_ms), (second_seq, _second_ms)] = lines
         .clone()
         .try_into()

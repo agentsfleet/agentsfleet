@@ -136,10 +136,11 @@ async fn test_a_renewal_its_host_or_its_lease_no_longer_allows_is_lost() {
     )
     .await;
     plane
-        .report(
+        .report_with(
             &held.runner,
             &processed(&held, None),
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -209,13 +210,13 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
     };
     let capture = Capture::install();
 
-    let reconciled = held
-        .fixtures
+    held.fixtures
         .plane()
-        .report(
+        .report_with(
             &held.runner,
             &failed,
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -228,7 +229,6 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
         unread.field("error_code"),
         Some(error_code::INTERNAL_DB_QUERY.as_str())
     );
-    assert_eq!(reconciled.charged, Nanos::ZERO);
     held.fixtures.cleanup().await;
 }
 

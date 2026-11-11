@@ -116,7 +116,7 @@ impl Fixtures {
 
     /// The same plane, over a bus that will not answer.
     ///
-    /// Live Postgres, dead bus. Every decision `LeaseService::activity` makes before
+    /// Live Postgres, dead bus. Every decision `LeaseService::activity_for_target` makes before
     /// the publish is a DATABASE read, so this is the composition that reaches
     /// the publish and fails only there — which is the whole claim the live
     /// tail makes about itself.

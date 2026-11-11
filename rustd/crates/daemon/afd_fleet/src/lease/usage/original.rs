@@ -35,7 +35,7 @@ impl Pricing {
 impl crate::lease::Leases {
     /// Financial acknowledgement for a renewal refused before extension admission.
     ///
-    /// Under the lease's own row lock and no host lock (M245 R8): the lines are
+    /// Under the lease's own row lock and no host lock: the lines are
     /// model lines numbered by the runner, so there is no number to race for.
     pub(crate) async fn record_known_requests(
         &self,

@@ -2,7 +2,6 @@
 
 use af_core::id::Uuid7;
 use af_wire::report::ReportRequest;
-use afd_billing::Nanos;
 use jiff::Timestamp;
 
 use super::{Reconciled, RunTokens, assembly::reconciled, steps, timing};
@@ -35,13 +34,7 @@ impl LeaseService {
             Committed::Fenced { .. } => Err(stale_fence()),
             Committed::AlreadySettled => {
                 Self::record_repeat(&lease, lease_id.as_str());
-                Ok(reconciled(
-                    lease,
-                    Nanos::ZERO,
-                    true,
-                    RunTokens::default(),
-                    None,
-                ))
+                Ok(reconciled(lease, true, RunTokens::default(), None))
             }
             Committed::Settled {
                 charged,
@@ -70,7 +63,7 @@ impl LeaseService {
                 }
                 self.announce_folds(&lease, lease_id.as_str(), folds, answer)
                     .await;
-                Ok(reconciled(lease, charged, false, tokens, completed_at))
+                Ok(reconciled(lease, false, tokens, completed_at))
             }
         }
     }

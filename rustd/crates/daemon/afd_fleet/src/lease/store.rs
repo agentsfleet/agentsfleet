@@ -98,7 +98,7 @@ impl Leases {
     }
 
     /// Lock the runner row and prove its owner, leaving the census to the
-    /// fleet issue's guarded insert (M245 §5).
+    /// fleet issue's guarded insert.
     pub(crate) async fn lock_host(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,

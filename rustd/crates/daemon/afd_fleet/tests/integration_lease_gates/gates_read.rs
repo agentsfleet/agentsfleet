@@ -1,4 +1,4 @@
-//! One gates read (M245 §5): the spend, the event's recorded gate with its
+//! One gates read: the spend, the event's recorded gate with its
 //! standing, and the approved integrations come back in one statement, and
 //! the money and approval gates judge those facts without reading again.
 //!
@@ -14,8 +14,8 @@ use afd_db::test_util::statements::{self, Ran, Window};
 /// A fleet whose chat events from the fixture actor need a human's approval.
 const GATED_CONFIG: &str = r#"{"name":"probe","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000"},"gates":{"timeout_ms":60000,"rules":[{"tool":"chat","action":"fixture:steer","behavior":"approve"}]}}}"#;
 
-/// The gate reads the gates read replaced, by their exact text: none holds a
-/// literal, so `pg_stat_statements` records each as written.
+/// The gate reads the gates read replaced, by their text as
+/// `pg_stat_statements` records it (see [`recorded`]).
 fn replaced() -> [&'static str; 3] {
     [
         afd_gate::gate::sql::SELECT_EVENT_GATE,
@@ -34,11 +34,30 @@ fn spend_reads(ran: &Ran) -> u64 {
         .sum()
 }
 
-/// Calls of the statement whose text is exactly `text`.
+/// The text `pg_stat_statements` records for `text`: it replaces each literal
+/// with the next parameter number, so `LIMIT 1` reads `LIMIT $3` after `$1` and
+/// `$2`. A match on the source text alone finds nothing, and so passes every
+/// check that expects none.
+fn recorded(text: &str) -> String {
+    let highest = text
+        .split('$')
+        .skip(1)
+        .filter_map(|rest| {
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            digits.parse::<u32>().ok()
+        })
+        .max()
+        .unwrap_or(0);
+    text.trim()
+        .replace("LIMIT 1", &format!("LIMIT ${}", highest + 1))
+}
+
+/// Calls of the statement whose recorded text is `text`'s.
 fn calls_of(ran: &Ran, text: &str) -> u64 {
+    let recorded = recorded(text);
     ran.statements()
         .iter()
-        .filter(|(query, _)| query.trim() == text.trim())
+        .filter(|(query, _)| query.trim() == recorded)
         .map(|(_, calls)| calls)
         .sum()
 }
@@ -91,6 +110,49 @@ async fn gates_read_admits_in_one_statement() {
     fixtures.cleanup().await;
 }
 
+// Value: protects=the zero-call checks beside it can fail; fails_when=the exact
+// text match never finds a replaced read that does run, so a text mismatch
+// passes for free; why_new=the replaced reads are checked by absence;
+// seam=none; no_claim=what the reads return.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn the_replaced_reads_are_found_by_their_text_when_they_run() {
+    let (fixtures, owner) = counted().await;
+    let (fleet, event, action) = (
+        afd_db::test_util::mint_id(),
+        afd_db::test_util::mint_id(),
+        afd_db::test_util::mint_id(),
+    );
+    let window = Window::open(&owner).await;
+    // Through the runtime role's pool, whose statements the window counts.
+    let mut connection = fixtures.database.acquire().await.expect("runtime");
+    sqlx::query(afd_gate::gate::sql::SELECT_EVENT_GATE)
+        .bind(&fleet)
+        .bind(&event)
+        .fetch_all(&mut *connection)
+        .await
+        .expect("the event gate read runs");
+    sqlx::query(afd_gate::gate::sql::SELECT_GATE_STATUS)
+        .bind(&action)
+        .fetch_all(&mut *connection)
+        .await
+        .expect("the gate status read runs");
+    sqlx::query(afd_gate::gate::grant_sql::SELECT_APPROVED_SERVICES)
+        .bind(&fleet)
+        .bind("")
+        .fetch_all(&mut *connection)
+        .await
+        .expect("the approved services read runs");
+    drop(connection);
+    let ran = window.close().await;
+
+    for read in replaced() {
+        assert_eq!(calls_of(&ran, read), 1, "{read}: {:?}", ran.statements());
+    }
+    owner.close().await;
+    fixtures.cleanup().await;
+}
+
 // Value: protects=each gate's fault posture; fails_when=a failed combined read
 // refuses a funded event or releases a gated one; why_new=one read now feeds
 // both gates; seam=a revoked grant; no_claim=a fault in the funds check.
@@ -125,13 +187,15 @@ async fn gates_read_fault_keeps_each_posture() {
         answer.is_none(),
         "an unreadable gate issued a lease: {answer:?}"
     );
-    assert!(
-        budget.contains_key("error_code"),
-        "the budget gate admitted"
+    assert_eq!(
+        budget.get("error_code").map(String::as_str),
+        Some(af_core::error_code::INTERNAL_DB_QUERY.as_str()),
+        "the budget gate admitted on a refused read"
     );
-    assert!(
-        lookup.contains_key("error_code"),
-        "the approval gate read nothing"
+    assert_eq!(
+        lookup.get("error_code").map(String::as_str),
+        Some(af_core::error_code::INTERNAL_DB_QUERY.as_str()),
+        "the approval gate read nothing on a refused read"
     );
     assert_eq!(
         terminal_of(&fixtures, &seeded.fleet, &seeded.event_id).await,

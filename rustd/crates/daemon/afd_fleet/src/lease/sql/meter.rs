@@ -11,7 +11,7 @@ use afd_db::statement::Bound;
 /// lock is what serialises a racing reclaim behind this statement. The run
 /// time is measured off the LEASE's own cursor, `last_metered_at`, on the
 /// database's clock, and never past the deadline the lease was granted: a
-/// report that lands after its lease lapsed bills no time beyond it, and a
+/// renewal that lands after its lease lapsed bills no time beyond it, and a
 /// reclaimed run bills only from its own start. Tokens are not measured here:
 /// the runner reports one line per provider request, and the caller logs them.
 ///
@@ -33,7 +33,7 @@ use afd_db::statement::Bound;
 /// `runtime_seq` numbers the runtime line by its slice's start, read from the
 /// lease row the statement locks: a statement that waits on `FOR UPDATE`
 /// re-reads that row, so it sees the cursor a racing renewal or report
-/// advanced, and the two lines take distinct numbers (M245). The billing sweep
+/// advanced, and the two lines take distinct numbers. The billing sweep
 /// bills only a lease past its deadline that has not reported, which a renewal
 /// cannot extend, and a report behind it re-reads the advanced cursor and
 /// measures no run time, so logs no runtime line.

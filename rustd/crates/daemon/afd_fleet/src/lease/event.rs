@@ -130,10 +130,9 @@ impl Leases {
             .bind(af_core::event::status::GATE_BLOCKED)
             .bind(refusal.label)
             .bind(af_core::event::status::RECEIVED)
-            // Empty stores as SQL NULL through the statement's `NULLIF`, which
-            // is what keeps the row shape identical for the refusals that
-            // carry no operator-readable instruction.
-            .bind(refusal.detail)
+            // A gate refusal carries no operator-readable instruction: empty
+            // stores as SQL NULL through the statement's `NULLIF`.
+            .bind("")
             .bind(afd_api_wire::approval::status::PENDING)
             .fetch_optional(&mut *transaction)
             .await

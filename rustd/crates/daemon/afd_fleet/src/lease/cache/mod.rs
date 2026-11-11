@@ -1,5 +1,5 @@
 //! Per-replica caches on the lease path, each keyed by a version a statement
-//! in the same pass read (M245 §3, Invariant 1).
+//! in the same pass read.
 //!
 //! # Why a version key, and never a time to live
 //!
@@ -132,7 +132,7 @@ impl Definitions {
 }
 
 /// The price books one replica holds: a host's renewal prices every lease of
-/// one model from one read, and the next tick reads none (M245 §3, §7).
+/// one model from one read, and the next tick reads none.
 pub const PRICE_BOOK_CAPACITY: u64 = 1_024;
 
 /// A model's price book, by the catalogue version it was read at: an edit
@@ -191,7 +191,7 @@ impl PriceBooks {
     /// The pricing for `posture`, `provider` and `model` at
     /// `catalogue_version`, or the fault that kept a missed book from being
     /// read, which is never kept: a caller with its own fault posture, the
-    /// credit gate's, answers it (M245 §9).
+    /// credit gate's, answers it.
     ///
     /// Concurrent misses on one key share one read: a replica's runners start
     /// together, and each would otherwise read the same book. The fault is
@@ -206,7 +206,7 @@ impl PriceBooks {
         provider: &str,
         model: &str,
         catalogue_version: Option<i64>,
-    ) -> core::result::Result<Arc<Pricing>, Arc<crate::Error>> {
+    ) -> Result<Arc<Pricing>, Arc<crate::Error>> {
         let key = PriceKey {
             posture: posture.as_str(),
             provider: provider.to_owned(),
@@ -242,7 +242,7 @@ pub const HEAD_CAPACITY: u64 = 16_384;
 const UNKNOWN: i64 = i64::MIN;
 
 /// The newest catalogue version and each fleet's head revision this replica
-/// has read (M245 §9).
+/// has read.
 ///
 /// Every claim reads both, so a host's renewal frame can name them without
 /// its pre-read. The renewal statement guards on both, so a

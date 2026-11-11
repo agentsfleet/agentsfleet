@@ -1,4 +1,4 @@
-//! The one report statement (M245 §6): its binder, in `$n` order beside the
+//! The one report statement: its binder, in `$n` order beside the
 //! text it orders, and the row it answers.
 
 use af_core::id::Uuid7;
@@ -55,7 +55,6 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) held_until: Option<Timestamp>,
     pub(crate) obligation_id: &'a Uuid7,
     pub(crate) obligation_receipt: &'a Uuid7,
-    pub(crate) answer: &'a str,
     pub(crate) audit_id: &'a Uuid7,
     pub(crate) audit_metadata: serde_json::Value,
 }
@@ -119,7 +118,6 @@ impl ReportStatement<'_> {
             .bind(af_core::timing::SANDBOX_HOLD_IDLE)
             .bind(self.obligation_id)
             .bind(self.obligation_receipt)
-            .bind(self.answer)
             .bind(
                 afd_connector::Provider::ALL
                     .iter()
@@ -131,8 +129,9 @@ impl ReportStatement<'_> {
             .bind(sqlx::types::Json(&self.audit_metadata))
             .bind(self.fleet_id)
             .bind(self.workspace_id)
-            .bind(i64::from(u32::MAX))
+            .bind(i64::from(af_wire::usage::RUNTIME_MS_MAX))
             .bind(af_wire::usage::LineKind::Runtime.as_str())
+            .bind(i64::MAX)
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;

@@ -146,8 +146,7 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        a.request_json, a.event_created_at, a.redelivered,
        slot.fencing_token, slot.lease_expires_at,
        COALESCE(slot.held, false) AS held, slot.holder,
-       b.tenant_id AS reused_tenant_id, b.posture AS reused_posture,
-       b.model AS reused_model,
+       b.id IS NOT NULL AS reclaimed,
        f.tenant_id, f.name, f.status, f.head_revision_id,
        f.memory_reads_workspace, f.memory_publishes_workspace,
        i.definition, i.runtime_model_ref, i.context_json, i.policy_semantics,
@@ -158,7 +157,7 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        pl.platform_secret_id, pl.platform_secret_digest,
        -- Whether the head belongs to a durable task: only such an issue reads
        -- its task source (`task/sql/issue_source.sql`); a plain chat's lease
-       -- insert carries the setup proof instead (M245 §9).
+       -- insert carries the setup proof instead.
        (a.task_id IS NOT NULL OR a.task_generation IS NOT NULL) AS tasked,
        -- Whether a later message waits in the head's conversation, foldable
        -- or not: the run's first fold ask finds nothing when this is false.

@@ -106,16 +106,11 @@ impl Extension<'_> {
             )
             .await?;
         self.commit(transaction, settlement.as_ref()).await?;
-        Ok(match (verdict, settlement) {
-            (Renewed::Cancelled, _) => Renewed::Cancelled,
-            // The ceiling is the answer whatever settled beside it: the
-            // runner stops for its runtime, not because it lost the lease.
-            (Renewed::MaxRuntime, _) => Renewed::MaxRuntime,
-            (_, Some(settlement)) => Renewed::Stopped {
-                settlement: Some(Box::new(settlement)),
-            },
-            (verdict, None) => verdict,
-        })
+        // Known usage settled in the commit above whatever the answer is. The
+        // verdict stands as it was reached: a Kill mark and the runtime ceiling
+        // are the answers a runner acts on, so neither is turned into a loss
+        // by the usage that settled beside it.
+        Ok(verdict)
     }
 
     async fn extend(
@@ -130,13 +125,15 @@ impl Extension<'_> {
         })?;
         let allowed = self.commit(transaction, settlement.as_ref()).await?;
         let settlement = settlement.map(Box::new);
+        // Task authority stopped during this measurement: the usage settled,
+        // and the lease is no longer the runner's to run.
         Ok(if allowed {
             Renewed::Extended {
                 expires_at,
                 settlement,
             }
         } else {
-            Renewed::Stopped { settlement }
+            Renewed::Lost
         })
     }
 

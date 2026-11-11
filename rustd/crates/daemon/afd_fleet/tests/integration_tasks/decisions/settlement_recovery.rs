@@ -157,10 +157,11 @@ async fn completed_lease(fixture: &Decisions<'_>) -> i64 {
     let saved = held
         .fixtures
         .plane()
-        .report(
+        .report_with(
             &held.runner,
             &report(held, held.fence.as_u64(), Vec::new()),
             clock::now(),
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -173,7 +174,17 @@ async fn completed_lease(fixture: &Decisions<'_>) -> i64 {
             .any(|event| event.field("event") == Some("lease_release_deferred"))
     );
     assert!(held.fixtures.admission_settled(&held.event_id).await);
-    saved.charged.as_i64()
+    // What the report charged: every line of the lease that is not a decision
+    // call's, which the receipts charged on their own.
+    sqlx::query_scalar(
+        "SELECT COALESCE(sum(charged_nanos), 0)::bigint FROM billing.usage_lines \
+         WHERE work_id = $1 AND kind <> $2",
+    )
+    .bind(&held.lease_key)
+    .bind(LineKind::Decision.as_str())
+    .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
+    .await
+    .expect("the report's charge reads")
 }
 
 async fn age_recovery(fixture: &Decisions<'_>, first: &Uuid7) {

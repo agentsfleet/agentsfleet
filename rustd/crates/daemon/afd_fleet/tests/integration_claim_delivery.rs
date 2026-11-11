@@ -1,4 +1,4 @@
-//! The claim opens the delivery (M245 §4): one statement claims the slot,
+//! The claim opens the delivery: one statement claims the slot,
 //! reads the fleet, opens the `fleet.events` row, stamps `delivered_at` and
 //! answers the fleet's counters, so the claim path costs the scan and the
 //! claim, and nothing after it reads the delivery again.

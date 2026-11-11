@@ -6,10 +6,6 @@
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-#![allow(
-    dead_code,
-    reason = "test support: shared by several test binaries, each using a subset"
-)]
 
 use std::sync::LazyLock;
 
@@ -179,8 +175,49 @@ pub(crate) struct Other {
 const HOST_WORKERS: i32 = 8;
 
 impl Held {
+    /// The target a gateway session holds for this lease, read from the lease
+    /// row as a test has aged it: whether the lease is still the live holder
+    /// decides whether the frames it forwards count toward delivery timing.
+    pub(crate) async fn activity_target(&self) -> afd_fleet::lease::activity::Target {
+        let (created_at, event_created_at, live): (
+            jiff_sqlx::Timestamp,
+            jiff_sqlx::Timestamp,
+            bool,
+        ) = sqlx::query_as(
+            "SELECT l.created_at, l.event_created_at,
+                    l.status = $3 AND l.lease_expires_at > statement_timestamp()
+                        AND EXISTS (SELECT 1 FROM runner.fleet_slots s
+                                    WHERE s.fleet_id = l.fleet_id
+                                      AND s.last_runner_id = l.runner_id
+                                      AND s.fencing_token = l.fencing_token
+                                      AND s.lease_expires_at > statement_timestamp())
+             FROM runner.leases l WHERE l.id = $1 AND l.runner_id = $2",
+        )
+        .bind(&self.issued.lease_id)
+        .bind(&self.runner)
+        .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
+        .fetch_one(
+            &mut *self
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("a pooled connection"),
+        )
+        .await
+        .expect("the held lease reads");
+        afd_fleet::lease::activity::Target {
+            fleet_id: self.fleet.clone(),
+            event_id: self.event_id.clone(),
+            lease_created_at: created_at.to_jiff(),
+            event_created_at: event_created_at.to_jiff(),
+            timing_eligible: live,
+            fence: self.fence.as_i64(),
+        }
+    }
+
     /// Another fleet's lease, claimed and issued by this runner, in the same
-    /// database: one host's renewal frame names every lease it holds (M245 §7).
+    /// database: one host's renewal frame names every lease it holds.
     pub(crate) async fn hold_another(&self) -> Other {
         sqlx::query("UPDATE runner.runners SET worker_count = $2 WHERE id = $1")
             .bind(&self.runner)

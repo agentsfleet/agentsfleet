@@ -1,28 +1,26 @@
-//! The writes a won report owes, and which side of the commit each falls on.
+//! What a report writes around its one statement: the session document it
+//! stores, the events it ends beside the money, and the cap those texts take.
 //!
-//! The terminal event row, the session checkpoint, and the audit row that
-//! closes the lease's history. Two of them commit with the money; the audit
-//! row runs after it, logged if it does not land.
+//! The report statement ([`Leases::commit_report`](crate::lease::commit)) ends
+//! the run's own event, stores the session checkpoint and writes the audit row
+//! in the same statement as the charge, so they commit with the money or not
+//! at all.
 //!
-//! # Two of these are the report, and one is about it
+//! # The result is part of the report
 //!
-//! [`Leases::mark_terminal`] and [`Leases::checkpoint`] take the connection
-//! their caller is already inside, because the RESULT of a run and the money
-//! charged for it are one fact: a settle that commits without its result
-//! leaves a tenant charged for a run whose answer is nowhere, and no retry
-//! recovers it — the lease is `reported`, so the retry is refused. They commit
-//! with the settle in [`Leases::commit_report`](crate::lease::commit) or
-//! neither does.
+//! [`Leases::mark_terminal`] and [`Leases::mark_terminal_each`] take the
+//! connection their caller is already inside, because the RESULT of a run and
+//! the money charged for it are one fact: a settle that commits without its
+//! result leaves a tenant charged for a run whose answer is nowhere, and no
+//! retry recovers it — the lease is `reported`, so the retry is refused. They
+//! commit with the settle or neither does.
 //!
-//! [`Leases::record_released`] stays outside it. The audit row is history, and
-//! a datastore blip writing it must not fail a report whose money has
-//! committed.
-//!
-//! The post-commit write is attempted, logged on failure, and never
-//! propagated: by then the lease is `reported` and the wallet is drawn down, so
-//! failing the response would tell the runner to retry a report whose money
-//! cannot be charged twice. What an operator gets is a warn line naming the
-//! write that did not land.
+//! What runs after the commit, the completion frame and the wake of an owed
+//! answer, is attempted, logged on failure, and never propagated: by then the
+//! lease is `reported` and the wallet is drawn down, so failing the response
+//! would tell the runner to retry a report whose money cannot be charged
+//! twice. What an operator gets is a warn line naming the write that did not
+//! land.
 //!
 //! # The cap lands on a character boundary
 //!

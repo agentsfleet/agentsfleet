@@ -6,14 +6,13 @@
 //! without it: reclaim looks for a still-`active` lease row, and only this
 //! writes one.
 //!
-//! # The meter reset rides the row
+//! # The metering cursor starts with the row
 //!
-//! A FRESH lease resets the per-fleet metering cursor in the statement that
+//! Every lease writes its own cursor, `last_metered_at`, in the statement that
 //! writes the row, so no lease can land over a cursor left from a previous
-//! run: the renewal CTE reads it for each slice's delta, and a stale one
-//! over-charges the first renewal. A RECLAIM must not reset — the re-leased
-//! run meters forward from where the dead holder stopped, which is the whole
-//! reason the cursor survives a claim.
+//! run: the renewal reads it for each slice's delta, and a stale one
+//! over-charges the first renewal. A reclaimed lease is a new row with its own
+//! cursor, so it bills only the time its own holder ran.
 
 use af_core::id::Uuid7;
 use af_observability::metrics::label::fleet::DeliveryStage;
@@ -33,10 +32,10 @@ const CONTEXT_ISSUE: &str = "lease issue";
 
 /// What the gates resolved, and what the row records about the money.
 ///
-/// Carried in rather than resolved here: a FRESH lease bills and then issues,
-/// so the key it billed is the key it delivers — one resolution, no rotation
-/// between the two. A RECLAIM never bills at all and carries the dead holder's
-/// values forward instead.
+/// Carried in rather than resolved here: the gates resolve what the lease bills
+/// and then it issues, so the key it billed is the key it delivers — one
+/// resolution, no rotation between the two. A reclaim passes the same gates
+/// again, so it carries its own resolution rather than the dead holder's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Billed<'a> {
     /// The tenant whose wallet answers for this run.
@@ -45,9 +44,8 @@ pub struct Billed<'a> {
     pub posture: &'a str,
     /// The provider resolved at billing.
     ///
-    /// Empty on a reclaim, which has no billing pass of its own. Stored beside
-    /// the model so the renew gate and the report settle can key the rate row
-    /// by `(provider, model)` without re-resolving.
+    /// Stored beside the model so the renew gate and the report settle can key
+    /// the rate row by `(provider, model)` without re-resolving.
     pub provider: &'a str,
     /// The model resolved at billing.
     pub model: &'a str,

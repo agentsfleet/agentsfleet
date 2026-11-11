@@ -86,11 +86,6 @@ pub enum Renewed {
     },
     /// Still the live holder, but the hard runtime ceiling is reached.
     MaxRuntime,
-    /// Accounting committed, but task authority stopped during this measurement.
-    Stopped {
-        /// Known usage still settles through the original biller.
-        settlement: Option<Box<Settlement>>,
-    },
     /// The lease is no longer this runner's, or only half the extend applied.
     Lost,
 }
@@ -256,7 +251,7 @@ impl LeaseService {
                 settlement,
             } => Ok((expires_at, usage::charged(settlement.as_deref()))),
             Renewed::Cancelled => Err(lease_cancelled()),
-            Renewed::Stopped { .. } | Renewed::Lost => Err(lease_lost()),
+            Renewed::Lost => Err(lease_lost()),
             Renewed::MaxRuntime => Err(lease_max_runtime()),
         }
     }

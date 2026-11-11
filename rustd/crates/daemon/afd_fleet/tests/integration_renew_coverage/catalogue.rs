@@ -75,10 +75,11 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     let log = Capture::install();
     held.fixtures
         .plane()
-        .report(
+        .report_with(
             &held.runner,
             &report,
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
