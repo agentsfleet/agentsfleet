@@ -116,9 +116,10 @@ impl RunnerRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            // A run's context branch is one it minted, so its read could only
-            // answer nothing: that route publishes, and its read answers 410.
-            Self::TaskCheckpointPage | Self::ContextCheckpoint => &[Verb::Get, Verb::Put],
+            Self::TaskCheckpointPage => &[Verb::Get, Verb::Put],
+            // A run's branch is one it minted, so a load could only answer
+            // nothing (M245 §8): the route publishes and never reads.
+            Self::ContextCheckpoint => &[Verb::Put],
             Self::Schedules
             | Self::ScheduleRuns
             | Self::TaskEffects

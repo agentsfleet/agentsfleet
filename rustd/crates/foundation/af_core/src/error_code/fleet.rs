@@ -132,10 +132,6 @@ pub const RUN_PROTOCOL_UNSUPPORTED: ErrorCode = ErrorCode::declare("UZ-RUN-023")
 /// The runner's stream ended or stopped answering; the runner reconnects on its own.
 pub const RUN_STREAM_DISCONNECTED: ErrorCode = ErrorCode::declare("UZ-RUN-024");
 
-/// A runner asked for its context checkpoint, which the daemon no longer
-/// serves: a run mints every branch it writes, so the load answered nothing.
-pub const RUN_CONTEXT_LOAD_REMOVED: ErrorCode = ErrorCode::declare("UZ-RUN-025");
-
 /// A fleet declared a credential the vault does not hold.
 ///
 /// `ERR_AGENTSFLEET_CREDENTIAL_MISSING`. Reached from the lease path, where it

@@ -164,13 +164,6 @@ pub(super) const FLEET: &[Problem] = &[
         user_message: None,
     },
     Problem {
-        code: error_code::RUN_CONTEXT_LOAD_REMOVED,
-        status: 410,
-        title: "Context load removed",
-        hint: "Upgrade the runner: it no longer reads a context checkpoint back before its first model call.",
-        user_message: None,
-    },
-    Problem {
         code: error_code::AGENTSFLEET_CREDENTIAL_MISSING,
         // 424: the fleet's own request is well-formed; what is missing is a
         // credential it depends on, which is the distinction this status
