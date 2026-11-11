@@ -389,7 +389,7 @@ Each gap names what would close it.
 6. **Kill and pause never reach a running lease**: renewal ignores the fleet's status but still enforces its stored budget ceiling. The heartbeat names no lease ([Runner Fleet](./runner_fleet.md) §"Steer, kill, pause"). A revocation on the heartbeat or a refused renewal closes it.
 7. **Browser tools are refused** under the bubblewrap engine ([`runner_execution.md`](./runner_execution.md) §"Sandbox engines"). A Firecracker engine closes it.
 8. **Warm slots are not wired into the supervisor.** Wiring `WarmSlots` around the host's engine closes it.
-9. **Limits are not per fleet.** The daemon sends `limits: null` (`afd_fleet`'s lease answer). A size on the fleet's config closes it.
+9. **Limits are not per fleet.** The lease carries no size, so every sandbox gets the runner host's own limits. A per-fleet size would be a new wire field.
 10. **Nothing checks memory or disk against the host.** 2 GiB × workers and 4 GiB × live and held leases go unchecked. A reserve the worker checks before it leases closes it.
 11. **An operator's extra binds are never bound**. The assigned policy carries them and no runner reads them ([Runner Fleet](./runner_fleet.md) §"The sandbox filesystem rules"). Binding them in the sandbox's layout, or dropping the field, closes it.
 12. **A rotating-CDN host can fail mid-lease under `allow_list_egress`.** The set is pinned at lease bind. The DNS-answer name layer in [Runner Fleet](./runner_fleet.md) §"Egress model" closes it.

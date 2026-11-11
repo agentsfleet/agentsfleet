@@ -31,7 +31,7 @@ Every row is extracted from the sections below; the owner column names the secti
 | Bus connection | One NATS connection per daemon process | Publishes and subscriptions share it; one native subscription per subject with local readers. Inbound queue and outbound claims use Postgres. | §Connection topology |
 | Postgres acquire failures | 2 distinct errors | `PoolTimeout` (capacity) vs `PoolUnavailable` (datastore); one connection per handler (RULE CNX) | §The Postgres pool |
 | Postgres statement bounds | the API login role's | 2 s lock wait (`55P03`) and 5 s statement (`57014`), declared in `afd_db::login` and set once by `ALTER ROLE`; no statement sets its own | §The Postgres pool |
-| Config freshness | read per lease | a `PATCH` takes effect on the next lease; no cache, no signal | §Config reload |
+| Config freshness | named by the claim | a `PATCH` takes effect on the next lease: the claim returns the head revision id and the parsed definition is held under that id; no signal | §Config reload |
 | Gate-blocked rows | terminal | never reopened; the resolved gate lands a NEW row via `actor=continuation:<original>` | §"C. EXECUTE" step 3 |
 | Activation guarantee | Checked activation and initial admission commit together | Run-now acceptance follows the committed admission; a lost wake cannot strand it. | §A. SAVE |
 | Server-Sent Events (SSE) sequence ids | not durable | per-connection counter, resets to 0; `Last-Event-ID` ignored; backfill via the events list | §D. WATCH |
@@ -357,7 +357,7 @@ No product statement sets its own override. A statement that hits either bound a
 
 ## Config reload: pull-per-lease, no signal
 
-Canonical: [`runner_fleet.md` §Config](./runner_fleet.md). Config resolves fresh from `fleet.fleets` on every `lease`; a `PATCH` takes effect on the next lease with no cache and no signal.
+Canonical: [`runner_fleet.md` §Config](./runner_fleet.md). The claim reads the head revision id from `fleet.fleets` on every `lease` and a replica holds the parsed definition under that id; a `PATCH` takes effect on the next lease with no signal.
 
 What is specific to this flow: status works the same way. The assignment scan filters `fleet.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
 

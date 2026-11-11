@@ -258,7 +258,7 @@ async fn platform_key_cache_misses_on_same_kek_rotation() {
 
 // Value: protects=tenant references stay uncached; fails_when=a tenant entry is
 // served from the platform cache; why_new=the cache sits on the resolution
-// path both kinds share; seam=none; no_claim=entry versioning (blocker 2).
+// path both kinds share; seam=none; no_claim=a tenant entry, which is never cached.
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
 async fn tenant_model_reference_reads_every_lease() {

@@ -242,6 +242,29 @@ fn admit_unreadable(gate: &'static str, lease: &Renewing, lease_id: &str, fault:
     );
 }
 
+/// Admit a fleet's leases whose gate could not be read, and say so.
+///
+/// The host batch reads each fleet's ceiling once for the whole frame, so it
+/// has a fleet and a fault but no single lease to name. It logs the same event
+/// the per-lease path does, once per fleet, so an operator greps one event for
+/// every instance of the fail-open posture.
+pub(in crate::lease) fn admit_unreadable_fleet(
+    gate: &'static str,
+    fleet_id: &Uuid7,
+    fault: &crate::Error,
+) {
+    let fleet = fleet_id.as_str();
+    let Logged { error_code, reason } = fault.logged();
+    tracing::warn!(
+        error_code,
+        fleet_id = fleet,
+        gate,
+        reason,
+        event = EVENT_GATE_UNREADABLE,
+        "a renewal gate could not be read; the fleet's leases are admitted for one more slice"
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use af_core::id::{ENTROPY_LEN, Uuid7};
@@ -302,6 +325,22 @@ mod tests {
             admit_unreadable("budget", &lease, "lease-fixture", &fault);
             admit_unreadable("spend", &lease, "lease-fixture", &fault);
         }
+        Ok(())
+    }
+
+    /// The batch has a fleet and no single lease, and says the same thing.
+    #[test]
+    fn an_unreadable_fleet_ceiling_is_admitted_and_logged_once() -> Result<(), &'static str> {
+        let log = af_core::test_util::trace::Capture::install();
+        let lease = renewing()?;
+        let fault = crate::error::query("revision read")(sqlx::Error::PoolTimedOut);
+
+        super::admit_unreadable_fleet("budget", &lease.fleet_id, &fault);
+
+        let line = log.only(super::EVENT_GATE_UNREADABLE);
+        assert_eq!(line.field("fleet_id"), Some(lease.fleet_id.as_str()));
+        assert_eq!(line.field("gate"), Some("budget"));
+        assert_eq!(line.field("error_code"), Some(fault.code().as_str()));
         Ok(())
     }
 

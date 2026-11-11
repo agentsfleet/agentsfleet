@@ -13,12 +13,12 @@
 //! reads it as the default it stores when the provider request names no model
 //! (`agentsfleet tenant provider create --secret X` without `--model`).
 //!
-//! # The key is optional, for exactly one provider
+//! # The key is required, for every provider
 //!
-//! A custom OpenAI-compatible gateway may be keyless — that is the spec's
-//! optional-key design, and a tenant fronting their own vLLM has no bearer
-//! token to give. Every NAMED provider must carry a non-empty key. The two
-//! rules are one expression here, so they cannot come apart.
+//! A custom OpenAI-compatible gateway included: activation refuses a
+//! credential without a key, and the registry read that precedes this one
+//! never returns it, so a run could not resolve a keyless body anyway. The rule
+//! is one expression here, so it cannot come apart from the activation check.
 
 use serde::Deserialize;
 
@@ -40,8 +40,7 @@ const FIELD_API_KEY: &str = "api_key";
 pub(super) struct Credential {
     /// Which provider this credential is for. Always required.
     pub(super) provider: Box<str>,
-    /// The bearer key. Optional in the JSON, and required by the rule below
-    /// for every provider but the compatible one.
+    /// The bearer key. Optional in the JSON, and required by the rule below.
     #[serde(default)]
     pub(super) api_key: Option<SecretString>,
     /// The credential's own model.
@@ -58,18 +57,14 @@ pub(super) struct Credential {
     pub(super) base_url: Option<Box<str>>,
 }
 
-/// The key this credential resolves with, given whether one is optional.
+/// The key this credential resolves with.
 ///
 /// A blank key and an absent key are the same fact, so they are one arm here
 /// rather than two.
-pub(super) fn bearer(
-    api_key: Option<SecretString>,
-    keyless_permitted: bool,
-) -> Result<SecretString> {
+pub(super) fn bearer(api_key: Option<SecretString>) -> Result<SecretString> {
     match api_key {
         Some(key) if !key.is_empty() => Ok(key),
-        _absent_or_blank if keyless_permitted => Ok(SecretString::new(String::new())),
-        _named_provider => Err(provider_malformed(FIELD_API_KEY)),
+        _absent_or_blank => Err(provider_malformed(FIELD_API_KEY)),
     }
 }
 
@@ -87,11 +82,7 @@ mod tests {
     /// What resolution does with a stored body: vet it, then apply the key rule.
     fn resolve(body: &[u8]) -> Result<(Vetted, SecretString)> {
         let mut vetted = vet(body)?;
-        // A resolved endpoint IS the compatible provider — `endpoint::resolve`
-        // has already refused every other pairing — so the optional-key rule
-        // reads off the outcome rather than re-comparing the provider string,
-        // which would be a second place for the two rules to come apart.
-        let key = bearer(vetted.api_key.take(), vetted.dialled.is_some())?;
+        let key = bearer(vetted.api_key.take())?;
         Ok((vetted, key))
     }
 
@@ -105,7 +96,6 @@ mod tests {
         assert_eq!(&*vetted.provider, "openai", "from the credential");
         assert_eq!(vetted.model, None, "the credential names no model");
         assert_eq!(key.expose(), "sk-tenant");
-        assert!(vetted.dialled.is_none());
     }
 
     #[test]
@@ -121,24 +111,23 @@ mod tests {
     }
 
     #[test]
-    fn a_compatible_gateway_may_be_keyless_and_a_named_provider_may_not() {
-        let (vetted, key) =
-            resolve(br#"{"provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#)
-                .expect("a keyless gateway is the optional-key design");
-        assert_eq!(key.expose(), "");
-        assert_eq!(
-            vetted.dialled.as_ref().map(|e| e.base_url.as_ref()),
-            Some("https://gw.example.com/v1")
-        );
+    fn every_provider_needs_a_key_a_compatible_gateway_included() {
+        let (_vetted, key) = resolve(
+            br#"{"provider":"openai-compatible","base_url":"https://gw.example.com/v1","api_key":"sk"}"#,
+        )
+        .expect("a gateway with a key resolves");
+        assert_eq!(key.expose(), "sk");
 
-        for keyless_named in [
+        for keyless in [
+            br#"{"provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#
+                .as_slice(),
+            br#"{"provider":"openai-compatible","base_url":"https://gw.example.com/v1","api_key":""}"#
+                .as_slice(),
             br#"{"provider":"openai"}"#.as_slice(),
             br#"{"provider":"openai","api_key":""}"#.as_slice(),
         ] {
-            let refused = resolve(keyless_named)
-                .err()
-                .expect("a named provider needs a key");
-            assert!(refused.is_config_permanent(), "{keyless_named:?}");
+            let refused = resolve(keyless).err().expect("every provider needs a key");
+            assert!(refused.is_config_permanent(), "{keyless:?}");
         }
     }
 

@@ -35,7 +35,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Sandbox tiers | 3 (`landlock_full` · `container_nested` · `dev_none`) | the daemon reconciles each against the host's report; tier is orthogonal to egress policy | §Sandbox tiers |
 | Egress policies | 3 (`allow_all` · `deny_all_egress` · `allow_list_egress`) | host-side default-deny nf_tables rules on a veth pair; port 53 dropped; IPv4 only | §Egress model |
 | Cancel latency | none: a running lease is never cancelled | the heartbeat answers `ok` and names no lease; kill and pause stop new leases only | §Steer, kill, pause |
-| Config freshness | resolved per lease | no cache, no reload signal; the next lease sees the change | §Config |
+| Config freshness | named by the claim | the claim returns the head revision id and a replica holds the parsed definition under that id, so the next lease sees the change; no reload signal | §Config |
 | Debit point | the run's usage, per renewal | the issued lease's hold is reserved; each `/renew` and the report log the slice as a usage line that the biller settles after commit | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
 | Admissions queue | `fleet.admissions` where `settled_at IS NULL` | oldest unsettled row per fleet; parked heads block later work | §Datastore topology |

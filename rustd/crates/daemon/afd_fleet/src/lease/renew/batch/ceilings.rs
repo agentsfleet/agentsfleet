@@ -9,11 +9,15 @@ use afd_billing::Nanos;
 use super::rows::Found;
 use crate::error::{Result, query};
 use crate::lease::cache::RevisionKey;
+use crate::lease::coverage::admit_unreadable_fleet;
 use crate::lease::pull::LeaseService;
 use crate::lease::sql;
 
 /// What query failures name the revision read as.
 const CONTEXT_REVISIONS: &str = "renewal batch revisions";
+
+/// The gate a fleet whose ceiling cannot be read is admitted past.
+const GATE: &str = "budget";
 
 /// A fleet's ceilings, as its head revision states them.
 #[derive(Debug, Clone, Copy)]
@@ -72,8 +76,14 @@ impl LeaseService {
         let revisions: Vec<&Uuid7> = missing.iter().map(|(_fleet, revision)| *revision).collect();
         let documents: Vec<(Uuid7, String)> = match self.revision_documents(&revisions).await {
             Ok(documents) => documents,
-            // Admitted, as an outage reading the ceiling is on the per-lease path.
-            Err(_outage) => return,
+            // Admitted, as an outage reading the ceiling is on the per-lease path,
+            // and said once per fleet through the same event.
+            Err(outage) => {
+                for (fleet, _revision) in missing {
+                    admit_unreadable_fleet(GATE, fleet, &outage);
+                }
+                return;
+            }
         };
         let documents: HashMap<&Uuid7, &str> = documents
             .iter()
@@ -92,7 +102,10 @@ impl LeaseService {
             let outcome = match parsed {
                 Ok(definition) => Read::Ceilings(ceilings_of(&definition)),
                 Err(fault) if fault.is_config_permanent() => Read::Unreadable(fault),
-                Err(_outage) => Read::Unread,
+                Err(outage) => {
+                    admit_unreadable_fleet(GATE, fleet, &outage);
+                    Read::Unread
+                }
             };
             read.insert((*fleet).clone(), outcome);
         }

@@ -89,6 +89,8 @@ mod integration_lease_gates;
 mod integration_lease_history;
 #[path = "integration_lease_issue.rs"]
 mod integration_lease_issue;
+#[path = "integration_lease_issue_lock_wait.rs"]
+mod integration_lease_issue_lock_wait;
 #[path = "integration_lease_issue_refusals.rs"]
 mod integration_lease_issue_refusals;
 #[path = "integration_lease_plan.rs"]

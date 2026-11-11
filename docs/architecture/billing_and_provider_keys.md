@@ -44,7 +44,7 @@ Every row is extracted from the numbered sections below; the owner column names 
 | `api_key` boundary | process-internal vs user-facing | never in responses, logs, fleet context, or saved rows; the runner lease is the machine-plane exception | §8.2 |
 | Credential list | metadata projection | `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`}; `api_key` structurally absent (no field to leak) | §8.3 |
 | Model registry | one row per `(model_name, secret_ref)` | `model.tenant_models`, `UNIQUE (tenant_id, model_name, secret_ref)`; entries reference keys, never own material | §8.4 |
-| Rate lookup | one fresh read per lease pass | `PriceBook::load` reads one model's dated tiers before the lease's transaction; there is no rate cache | §4.1, §10 |
+| Rate lookup | held per replica by catalogue version | `PriceBook::load` reads one model's dated tiers; the book is kept under (posture, provider, model, catalogue version), so an edit misses at once | §4.1, §10 |
 | Unknown model on platform | runtime charged, tokens unpriced | never a default token rate: the line counts its tokens in `unpriced_token_count`; the lease-estimate gate admits, because an estimate is not a charge | §2.3, §4.1 |
 | Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired: `404`, no alias | §10 |
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a branch in the charge functions | §2.4 |
@@ -92,7 +92,7 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 | Catalogue read moved behind auth | per-token margins are no longer world-readable | §10 |
 | Registry consistency via activation-time upsert, not read-time self-heal | a read handler must not mutate rows to paper over a write-path violation | §8.4; M121 |
 | `fleet:` vault-name prefix removed repo-wide | it discriminated nothing; dead convention | §8.4 |
-| No rate cache | one indexed read of one model's price book per lease pass, so a cache would save one read and add an eviction path | §4.1, §10 |
+| Rate cache keyed by catalogue version | a book is read once per version per replica; statements that price from it write nothing when the version moved, so no entry prices at a stale rate | §4.1, §10 |
 | Stripe purchase flow deferred | v2.1; schema anticipates it | §13 |
 
 ---
@@ -359,9 +359,9 @@ The issue-time floor (`Accounts::estimate`) prices `ESTIMATE_FLOOR_INPUT_TOKENS`
 
 A model with no price covering the instant is `Estimate::Unpriceable`. The gate admits against a floor of zero, because an estimate is not a charge.
 
-**There is no rate cache.** One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows.
+**A replica holds each price book under the catalogue version it was read at.** One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows, and the book carries the catalogue version of that read.
 
-The lease path reads it once per pass, before the transaction opens, so no catalogue read waits while the lease is locked. A cache would add a version check and an eviction path to save that one read.
+The cache key is the posture, provider, model and that version. Every statement that prices from a held book carries the version and writes nothing if the catalogue moved, so an admin edit costs one re-read and one rerun and an entry never answers for another version. A miss is a read, never a fault; concurrent misses share one load, and a failed read is never kept.
 
 **A catalogue that cannot be read** still logs every request line, with its tokens counted as unpriced and the run fee charged (`lease_tokens_unpriced`). Nothing is held for a later pass, because each request is priced on its own line.
 
@@ -584,7 +584,7 @@ model.tenant_models (id, tenant_id, model_name, secret_ref, created_at, updated_
 
 `GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time. That projection is the one §8.3's credential list already uses. `api_key` is structurally absent from the join, not filtered out.
 
-A keyless endpoint stores an empty `api_key` in the secret body. The activate/resolve chain in §9 therefore stays uniform whether or not a key exists. Runner auth behaviour is unchanged.
+An OpenAI-compatible endpoint must carry a key. Activation refuses a credential with no key, or whose model the catalogue lacks, because a run could never resolve it: the registry read requires the key's presence. Runner auth behaviour is unchanged.
 
 **Activation upserts the entry, so the registry is always representable by construction.** The tenant's *active* selection still lives on `model.tenant_selections`.
 

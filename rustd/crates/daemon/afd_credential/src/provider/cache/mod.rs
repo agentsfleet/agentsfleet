@@ -37,6 +37,11 @@
 //! drops, eviction included. The time limit is what makes that last clause
 //! prompt for a key an operator has replaced: nothing asks for the old entry
 //! again, so without it the plaintext would wait for the entry cap.
+//!
+//! `moka` frees an expired entry only inside its own calls, so every
+//! resolution that reads the database first sweeps the cache ([`PlatformKeys::sweep`]).
+//! The bound therefore holds while the replica resolves keys; an idle replica
+//! keeps an expired entry until its next resolution.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -63,7 +68,9 @@ pub const PLATFORM_KEY_ENTRIES: u64 = 1_024;
 /// It bounds how long a replaced or deactivated key stays decrypted in the
 /// daemon: nothing asks for such an entry again, so the entry cap alone would
 /// leave its plaintext in memory indefinitely. The cost of the bound is one
-/// resolution read per replica per interval.
+/// resolution read per replica per interval. It holds while the replica
+/// resolves keys, because the cache frees an expired entry only inside its own
+/// calls and [`PlatformKeys::sweep`] makes one before each read.
 pub const PLATFORM_KEY_TTL: Duration = Duration::from_mins(5);
 
 /// The catalogue version, the platform secret's id and the digest of what it
@@ -171,6 +178,15 @@ impl PlatformKeys {
     /// The instant now, by the clock the entries are judged against.
     pub(crate) fn now(&self) -> Timestamp {
         self.clock.now()
+    }
+
+    /// Frees every entry past its span now, zeroing the keys they held.
+    ///
+    /// `moka` frees an expired entry only inside its own calls, so a replica that
+    /// stops asking for a replaced or deactivated key would otherwise keep its
+    /// plaintext until the next lookup of any entry.
+    pub(crate) async fn sweep(&self) {
+        self.entries.run_pending_tasks().await;
     }
 
     /// The resolution `key` holds, counted as a hit or a miss.

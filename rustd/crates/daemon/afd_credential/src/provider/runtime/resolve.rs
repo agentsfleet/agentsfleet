@@ -49,6 +49,11 @@ impl Providers {
         {
             return Ok(held);
         }
+        // The cache frees an expired entry only inside its own calls, and a claim
+        // that names no witnesses (a deactivated default, a tenant's own key)
+        // never calls it: sweep before every read, so a replaced key's plaintext
+        // leaves memory while the replica resolves keys at all.
+        self.platform_keys().sweep().await;
         // Taken before the read: the price window's span is measured after it,
         // so counting the span from here can only end the entry early.
         let started = self.platform_keys().now();
@@ -101,7 +106,7 @@ impl Providers {
             .open(self.vault_key(), &Aad::new(workspace.as_str(), &name))
             .map_err(vault_open)?;
         let credential = vetted::vet(body.expose())?;
-        let api_key = managed::bearer(credential.api_key, credential.dialled.is_some())?;
+        let api_key = managed::bearer(credential.api_key)?;
         tx.commit().await.map_err(query(CONTEXT))?;
         let endpoint = Some(super::super::Dialled {
             base_url: model.inference.base_url.as_str().into(),
