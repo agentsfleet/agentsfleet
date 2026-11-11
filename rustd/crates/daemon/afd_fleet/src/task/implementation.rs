@@ -169,7 +169,13 @@ impl TaskLifecycle for Tasks {
         lease: TaskLease<'a>,
         input: &'a Valid<wire::TaskBindingsInput>,
     ) -> Reply<'a, wire::TaskBindingsResponse<'static>> {
-        Box::pin(bindings::accept(self, lease, input))
+        let span = tracing::info_span!("task_bind", lease_id = lease.lease_id.as_str());
+        observe::traced(
+            TaskOperation::Bind,
+            bindings::accept(self, lease, input),
+            |_bindings| TaskOutcome::Accepted,
+            span,
+        )
     }
     fn publish_effect<'a>(
         &'a self,

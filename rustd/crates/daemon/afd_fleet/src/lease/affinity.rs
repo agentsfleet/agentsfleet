@@ -20,11 +20,14 @@
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
+#[cfg(any(test, feature = "test-util"))]
 use af_core::timing::{RUNNER_OFFLINE_AFTER, SANDBOX_HOLD_IDLE};
 use af_observability::metrics::label::fleet::HeldClaim;
 use af_observability::producers;
 use jiff::Timestamp;
+#[cfg(any(test, feature = "test-util"))]
 use sqlx::PgConnection;
+#[cfg(any(test, feature = "test-util"))]
 use std::time::Duration;
 
 use crate::error::{Result, query};
@@ -32,6 +35,7 @@ use crate::lease::envelope::Acquired;
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
+#[cfg(any(test, feature = "test-util"))]
 /// Statement name, for the context a query failure carries.
 const CONTEXT_CLAIM: &str = "affinity claim";
 
@@ -95,6 +99,7 @@ pub struct Claimed {
     pub resume_hold: bool,
 }
 
+#[cfg(any(test, feature = "test-util"))]
 /// What [`sql::lease::CLAIM_FLEET_SLOT`] answers when the claim wins: the new
 /// fence, the slot's deadline on the database clock, and whether the slot's
 /// prior hold was still live and whose it was.
@@ -108,6 +113,7 @@ struct Won {
 }
 
 impl Leases {
+    #[cfg(any(test, feature = "test-util"))]
     /// Atomically claim `fleet_id`'s lease slot for `runner_id`, valid for
     /// `ttl_ms`.
     ///
@@ -202,6 +208,7 @@ impl Leases {
         }
     }
 
+    #[cfg(any(test, feature = "test-util"))]
     /// The release a finished run owes, on a connection the caller already
     /// holds. Keeps the sticky hint: this runner did lease the fleet. Records
     /// `hold_expires_at` too, the hold the run's sandbox is kept under, or clears
@@ -246,6 +253,7 @@ pub(crate) fn count_resumed(acquired: &Acquired) {
     }
 }
 
+#[cfg(any(test, feature = "test-util"))]
 /// Who won a claim on a fleet whose slot held a sandbox live at `now`, from
 /// the slot's prior `hold_expires_at` and `last_runner_id`, or `None` when it held
 /// none. A hold at or past its deadline binds nobody at the claim's own

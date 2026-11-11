@@ -54,6 +54,7 @@ mod result;
 pub use observations::observe;
 
 impl LeaseService {
+    #[cfg(any(test, feature = "test-util"))]
     /// Record one runner's terminal result for a lease it holds.
     ///
     /// Answers what the final slice's usage line cost, so the caller can meter

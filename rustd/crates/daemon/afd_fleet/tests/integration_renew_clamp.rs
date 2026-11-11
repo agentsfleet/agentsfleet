@@ -278,3 +278,49 @@ async fn assert_past_ceiling(held: &Held, ceiling: Timestamp) {
         "and the refused renewal advanced nothing"
     );
 }
+
+// Value: protects=a run at its runtime ceiling with request lines to settle
+// is told it reached the ceiling; fails_when=the settled lines turn the
+// verdict into a stop the runner reads as a lost lease; why_new=the refusal
+// arm settled known lines and replaced every verdict but a cancel; seam=none;
+// no_claim=what the settled lines charge.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_run_at_its_ceiling_with_lines_to_settle_reaches_the_ceiling() {
+    let held = held().await;
+    let lease = &held.issued.lease_id;
+    held.fixtures
+        .age(Row::Lease(lease), "created_at", MAX_RUNTIME + LEASE_TTL)
+        .await;
+    let requests = [af_wire::usage::RequestUsage {
+        seq: 0,
+        at: held.now,
+        input_tokens: 10,
+        cached_input_tokens: 0,
+        cache_write_tokens: 0,
+        cache_write_5m_tokens: 0,
+        cache_write_1h_tokens: 0,
+        output_tokens: 10,
+    }];
+
+    let renewed = held
+        .leases
+        .extend(
+            Metering {
+                lease_id: lease,
+                runner_id: &held.runner,
+                requests: &requests,
+            },
+            &held.lease_key,
+            &held.pricing,
+            held.now,
+        )
+        .await
+        .expect("the extend must reach the datastore");
+
+    assert!(
+        matches!(renewed, Renewed::MaxRuntime),
+        "the ceiling, not a lost lease: {renewed:?}"
+    );
+    held.fixtures.cleanup().await;
+}
