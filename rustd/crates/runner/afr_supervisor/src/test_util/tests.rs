@@ -9,7 +9,6 @@
 use std::borrow::Cow;
 
 use af_core::id::Uuid7;
-use af_wire::context::ContextPut;
 use af_wire::memory::{MemoryPushRequest, MemoryRecallRequest};
 use af_wire::report::RenewRequest;
 use af_wire::runner::{AssignedPolicy, HeartbeatRequest, NetworkPolicy, SandboxTier};
@@ -77,69 +76,6 @@ async fn test_each_route_answers_as_its_verb() {
     plane.folds(&lease, 1, 0).await.unwrap();
 
     assert_routes(&drain(&mut calls));
-}
-
-#[tokio::test]
-async fn context_routes_answer_through_the_native_client() {
-    let answers = healthy();
-    let (plane, mut calls) =
-        plane(move |call| json(&answers.reply(call.verb.method().http().as_str(), &call.path)));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    plane
-        .context_commit(
-            &lease,
-            LEASE_ID,
-            &ContextPut {
-                fencing_token: 1,
-                expected_generation: 0,
-                checkpoint: serde_json::json!({}),
-            },
-        )
-        .await
-        .unwrap();
-    let sent = drain(&mut calls);
-    assert_eq!(sent.len(), 1);
-    for call in sent {
-        assert_eq!(
-            healthy().reply(call.verb.method().http().as_str(), &call.path),
-            healthy().to(Some(call.verb))
-        );
-        assert_eq!(
-            healthy().reply("POST", &call.path),
-            serde_json::json!({"ok":true})
-        );
-    }
-}
-
-// Value: the runtime adapter binds writes to the lease fence and reads nothing back.
-#[tokio::test]
-async fn lease_context_commits_through_the_native_client() {
-    use afr_agent::ContextCheckpoints as _;
-    let checkpoint: af_context::Checkpoint = serde_json::from_value(serde_json::json!({
-        "format_version":1,
-        "identity":{"scope":"private-run","model":"selected-model","pinned":"revision"},
-        "generation":1,"covered_through":2,"source_digest":"a".repeat(64),
-        "summary":{"goal":"private goal","constraints":[],"decisions":[],
-            "completed":[],"remaining":[],"references":[]}
-    }))
-    .unwrap();
-    let document = serde_json::to_value(&checkpoint).unwrap();
-    let (plane, mut calls) =
-        plane(move |call| json(&healthy().reply(call.verb.method().http().as_str(), &call.path)));
-    let lease = Uuid7::parse(LEASE_ID).unwrap();
-    let context = crate::context::LeaseContext::new(&plane, &lease, super::FENCING);
-    context.commit(LEASE_ID, 0, checkpoint).await.unwrap();
-    let sent = drain(&mut calls);
-    assert_eq!(sent.len(), 1, "one write and no read: {sent:?}");
-    let write = sent.first().unwrap();
-    assert_eq!(write.verb, crate::client::Verb::ContextCommit);
-    let body: serde_json::Value = serde_json::from_slice(write.body.as_ref().unwrap()).unwrap();
-    assert_eq!(
-        body.get("fencing_token"),
-        Some(&serde_json::json!(super::FENCING))
-    );
-    assert_eq!(body.get("expected_generation"), Some(&serde_json::json!(0)));
-    assert_eq!(body.get("checkpoint"), Some(&document));
 }
 
 /// The shared test issuer authenticates the same hybrid-only native transports as the runner.

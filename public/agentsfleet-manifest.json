@@ -110,13 +110,6 @@
       "path": "/v1/tenants/me/billing/activities/{activity_id}/charges",
       "description": "Read a bounded page of settled charges for one activity within the caller tenant and selected filters.",
       "actionClass": "safe"
-    },
-    {
-      "operationId": "runner_put_context_checkpoint",
-      "method": "PUT",
-      "path": "/v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}",
-      "description": "Conditionally replace private working notes under the current assignment and expected generation. Identical retries acknowledge one write.",
-      "actionClass": "sensitive"
     }
   ],
   "authentication": {
@@ -144,8 +137,7 @@
       "create_fleet",
       "patch_fleet",
       "post_fleet_message",
-      "receive_source_webhook",
-      "runner_put_context_checkpoint"
+      "receive_source_webhook"
     ],
     "critical": [
       "delete_fleet"

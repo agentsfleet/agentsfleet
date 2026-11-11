@@ -4324,146 +4324,6 @@
         ]
       }
     },
-    "/v1/runners/me/leases/{lease_id}/context-checkpoints/{branch_id}": {
-      "put": {
-        "tags": [
-          "Runners"
-        ],
-        "summary": "Replace private run working notes",
-        "description": "Publishes a complete validated checkpoint under the current assignment and expected generation. Identical retries acknowledge one write; changed assignments or generations return 409 with superseded.",
-        "operationId": "runner_put_context_checkpoint",
-        "parameters": [
-          {
-            "name": "lease_id",
-            "in": "path",
-            "description": "The run assignment whose current holder may access the notes.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "branch_id",
-            "in": "path",
-            "description": "The root conversation or child conversation within that assignment.",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ContextPut"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "204": {
-            "description": "Checkpoint saved"
-          },
-          "400": {
-            "description": "The request is invalid",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Authentication is missing, invalid, or not accepted by this endpoint",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "403": {
-            "description": "You do not have permission for this action",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "The resource was not found or is not accessible to you",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "The request conflicts with the resource's current state",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "The request body exceeds this endpoint's size limit",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "429": {
-            "description": "A request or capacity limit has been reached",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "An internal server error occurred",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "A required service is unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemBody"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "RunnerBearerAuth": []
-          }
-        ]
-      }
-    },
     "/v1/runners/me/leases/{lease_id}/messages": {
       "post": {
         "tags": [
@@ -22439,33 +22299,6 @@
           }
         }
       },
-      "ContextPut": {
-        "type": "object",
-        "description": "Replace a branch's complete notes against the generation read before sending.",
-        "required": [
-          "fencing_token",
-          "expected_generation",
-          "checkpoint"
-        ],
-        "properties": {
-          "checkpoint": {
-            "description": "Closed, bounded checkpoint document validated by the shared engine."
-          },
-          "expected_generation": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Generation observed before the summary call, zero on first publication.",
-            "minimum": 0
-          },
-          "fencing_token": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The current assignment token.",
-            "minimum": 0
-          }
-        },
-        "additionalProperties": false
-      },
       "Conversation_Value_Value": {
         "type": "object",
         "description": "A current private draft and its recent durable message window.",
@@ -27210,7 +27043,8 @@
           "policy",
           "instructions",
           "history",
-          "resume_hold"
+          "resume_hold",
+          "inputs_waiting"
         ],
         "properties": {
           "decision": {
@@ -27255,7 +27089,7 @@
           },
           "inputs_waiting": {
             "type": "boolean",
-            "description": "Whether a later message waited in the run's conversation when the\ndaemon claimed it. False lets the run skip its first fold ask; a\nmessage that lands after the claim folds on the ask after the answer.\nAbsent on older daemons, and absent reads as true."
+            "description": "Whether a later message waited in the run's conversation when the\ndaemon claimed it. False lets the run skip its first fold ask; a\nmessage that lands after the claim folds on the ask after the answer."
           },
           "instructions": {
             "type": "string",

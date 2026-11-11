@@ -13,19 +13,6 @@ use afd_fleet::lease::LeaseService;
 /// direction: the HTTP layer states what it needs, and the service crate stays
 /// unaware that an HTTP layer exists.
 impl Leasing for LeaseService {
-    fn context_commit(
-        &self,
-        runner: &Uuid7,
-        lease: &Uuid7,
-        branch: &Uuid7,
-        fence: u64,
-        expected: u64,
-        checkpoint: af_context::Checkpoint,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
-        self.leases
-            .context_commit(runner, lease, branch, fence, expected, checkpoint)
-    }
-
     fn hydrate(
         &self,
         runner_id: &Uuid7,

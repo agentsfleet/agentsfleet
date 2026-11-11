@@ -23,7 +23,6 @@ use zeroize::Zeroizing;
 use crate::error::{self, Result};
 
 mod authoring;
-mod context;
 mod http;
 mod lease_verbs;
 pub(crate) mod stream;

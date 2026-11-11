@@ -235,7 +235,6 @@ pub(crate) fn daemon(
         Verb::Activity,
         Verb::Report,
         Verb::Folds,
-        Verb::ContextCommit,
     ]
     .into_iter()
     .map(|verb| {

@@ -21,7 +21,6 @@ pub mod bracket;
 pub mod cache;
 mod claim;
 pub mod commit;
-mod context;
 pub mod coverage;
 pub(crate) mod deadline;
 mod decision;

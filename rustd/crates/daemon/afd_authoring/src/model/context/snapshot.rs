@@ -1,8 +1,8 @@
 //! Revalidate funded inputs without rebuilding or remeasuring the provider body.
 use super::{ModelCallInput, continuation, source::Source};
 use crate::{Result, error::ErrorKind, lease::guard, replay};
-use af_context::repository::{Repository, Scope};
-use af_context::{Checkpoint, CheckpointStore as _, Group, HistorySource as _};
+use af_context::repository::Repository;
+use af_context::{Checkpoint, Group, HistorySource as _};
 use sqlx::PgConnection;
 
 #[derive(Default, PartialEq, Eq)]
@@ -49,13 +49,9 @@ impl Snapshot {
         request: &garde::Valid<ModelCallInput>,
     ) -> Result<()> {
         let attempt = &guarded.attempt;
-        let checkpoint = Repository::new(
-            connection,
-            Scope::Draft(attempt.draft_id.clone()),
-            attempt.id.clone(),
-        )
-        .load()
-        .await?;
+        let checkpoint = Repository::new(connection, attempt.draft_id.clone(), attempt.id.clone())
+            .load()
+            .await?;
         let continuations = continuation::read(connection, attempt, request, guarded.now).await?;
         if self.identity != identity(attempt, guarded.draft.head_candidate_id.is_some())?
             || self.checkpoint != replay::digest(&checkpoint)?

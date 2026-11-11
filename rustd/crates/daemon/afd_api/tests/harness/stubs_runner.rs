@@ -142,18 +142,6 @@ impl Leasing for NoWork {
         }))
     }
 
-    fn context_commit(
-        &self,
-        _runner: &Uuid7,
-        _lease: &Uuid7,
-        _branch: &Uuid7,
-        _fence: u64,
-        _expected: u64,
-        _checkpoint: af_context::Checkpoint,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
-        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
-    }
-
     /// Holds no lease, so every lease-addressed verb is refused as one this
     /// runner does not hold — the answer a plane with no rows gives.
     fn standing(

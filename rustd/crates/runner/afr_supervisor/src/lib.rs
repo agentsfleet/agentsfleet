@@ -35,7 +35,6 @@ pub mod workspace_clone;
 mod activity;
 mod authoring;
 mod client;
-mod context;
 mod credentials;
 mod downlink;
 mod egress;
