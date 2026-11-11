@@ -118,6 +118,53 @@ test("stores a piped provider credential before selecting its default", async ()
   expect(fixture.calls[0]?.body).toMatchObject({data: {api_key: secret}}); expect(result.stdout + result.stderr).not.toContain(secret);
 });
 
+test("replaces an existing provider secret without releasing its encoded name", async () => {
+  const secret = "unit-" + "replacement";
+  fixture.respond = () => Response.json({provider: "custom/provider", model: "reasoning-model", active: true});
+  const result = await fixture.run(["keys", "set", "--provider", "custom/provider", "--workspace", WORKSPACE_ID,
+    "--model", "reasoning-model", "--api-key-stdin", "--replace", "--json"], secret);
+  expect(result.code).toBe(0); expect(fixture.calls.map(call => call.method)).toEqual(["PUT", "PUT"]);
+  expect(fixture.calls[0]?.url.pathname).toBe(`/v1/workspaces/${WORKSPACE_ID}/secrets/custom%2Fprovider`);
+  expect(fixture.calls[0]?.body).toEqual({data: {provider: "custom/provider", api_key: secret, model: "reasoning-model"}});
+  expect(result.stdout + result.stderr).not.toContain(secret);
+});
+
+test("recovers after secret creation succeeds but selecting the default fails", async () => {
+  const secret = "unit-" + "recoverable";
+  let saved: unknown;
+  let selections = 0;
+  fixture.respond = call => {
+    if (call.url.pathname.includes("/secrets")) {
+      saved = call.body;
+      return new Response(null, {status: 204});
+    }
+    return ++selections === 1
+      ? Response.json({error_code: "UZ-PROVIDER-004", user_message: "Unknown model"}, {status: 400})
+      : Response.json({provider: "example", model: "reasoning-model", active: true});
+  };
+  const args = ["keys", "set", "--provider", "example", "--workspace", WORKSPACE_ID, "--api-key-stdin", "--json"];
+  const failed = await fixture.run([...args, "--model", "missing-model"], secret);
+  expect(failed.code).not.toBe(0); expect(JSON.parse(failed.stderr).error.code).toBe("UZ-PROVIDER-004");
+  expect(saved).toMatchObject({name: "example", data: {api_key: secret}});
+  const recovered = await fixture.run([...args, "--model", "reasoning-model", "--replace"], secret);
+  expect(recovered.code).toBe(0); expect(saved).toEqual({data: {provider: "example", api_key: secret, model: "reasoning-model"}});
+  expect(fixture.calls.map(call => call.method)).toEqual(["POST", "PUT", "PUT", "PUT"]);
+  expect(failed.stdout + failed.stderr + recovered.stdout + recovered.stderr).not.toContain(secret);
+});
+
+test("requires explicit replacement when a provider secret already exists", async () => {
+  fixture.respond = () => Response.json({error_code: "UZ-POLICY-001", user_message: "Secret already exists"}, {status: 409});
+  const result = await fixture.run(["keys", "set", "--provider", "example", "--workspace", WORKSPACE_ID,
+    "--model", "reasoning-model", "--api-key-stdin", "--json"], "unit-" + "credential");
+  expect(result.code).not.toBe(0); expect(fixture.calls).toHaveLength(1); expect(fixture.calls[0]?.method).toBe("POST");
+});
+
+test("refuses replacement without a piped key before making a request", async () => {
+  const result = await fixture.run(["keys", "set", "--provider", "example", "--workspace", WORKSPACE_ID,
+    "--model", "reasoning-model", "--replace", "--json"]);
+  expect(result.code).toBe(4); expect(result.stderr).toContain("--replace requires --api-key-stdin"); expect(fixture.calls).toEqual([]);
+});
+
 test.each(["", " ", "x".repeat(65537)])("refuses an empty or oversized piped provider credential", async secret => {
   const result = await fixture.run(["keys", "set", "--provider", "example", "--workspace", WORKSPACE_ID, "--model", "reasoning-model", "--api-key-stdin", "--json"], secret);
   expect(result.code).toBe(4); expect(JSON.parse(result.stderr).error.code).toBe("INVALID_ARGUMENT"); expect(fixture.calls).toEqual([]);

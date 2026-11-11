@@ -2,11 +2,11 @@ import { Effect, Schema } from "effect";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { Stdin } from "../../services/stdin.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
-import { wsSecretsPath } from "../../lib/api-paths.ts";
+import { wsSecretPath, wsSecretsPath } from "../../lib/api-paths.ts";
 import { instant } from "../../lib/instant.ts";
 import { ADMIN_KEYS_PATH, decodePlatform, invalidInput, platformPath, platformRequest, platformResult } from "./common.ts";
 
-type KeyOptions = {readonly provider: string; readonly workspace: string; readonly model: string; readonly baseUrl?: string | undefined; readonly apiKeyStdin: boolean};
+type KeyOptions = {readonly provider: string; readonly workspace: string; readonly model: string; readonly baseUrl?: string | undefined; readonly apiKeyStdin: boolean; readonly replace: boolean};
 const key = Schema.Struct({provider: Schema.String, source_workspace_id: Schema.String, model: Schema.NullOr(Schema.String), active: Schema.Boolean, updated_at: instant});
 const keys = Schema.Struct({keys: Schema.Array(key)});
 const selected = Schema.Struct({provider: Schema.String, model: Schema.String, active: Schema.Boolean});
@@ -24,13 +24,15 @@ export const platformKeysList = Effect.fn("platform.keys.list")(function* () {
 });
 
 export const platformKeysSet = Effect.fn("platform.keys.set")(function* (options: KeyOptions) {
+  if (options.replace && !options.apiKeyStdin) return yield* Effect.fail(invalidInput("--replace requires --api-key-stdin"));
   if (options.apiKeyStdin) {
     const stdin = yield* Stdin;
     if (stdin.isTTY) return yield* Effect.fail(invalidInput(STDIN_DETAIL));
     const apiKey = (yield* stdin.readBounded(KEY_MAX_BYTES)).trim();
     if (!apiKey) return yield* Effect.fail(invalidInput(STDIN_DETAIL));
-    yield* platformRequest({path: wsSecretsPath(options.workspace), method: HTTP_METHOD.post,
-      body: {name: options.provider, data: {provider: options.provider, api_key: apiKey, model: options.model,
+    yield* platformRequest({path: options.replace ? wsSecretPath(options.workspace, options.provider) : wsSecretsPath(options.workspace),
+      method: options.replace ? HTTP_METHOD.put : HTTP_METHOD.post,
+      body: {...options.replace ? {} : {name: options.provider}, data: {provider: options.provider, api_key: apiKey, model: options.model,
         ...options.baseUrl === undefined ? {} : {base_url: options.baseUrl}}},
     });
   }

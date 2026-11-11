@@ -12,8 +12,9 @@ const set = Command.make("set", {
   model: requiredTextFlag("model", "Catalogued provider model identifier"),
   baseUrl: baseUrlFlag,
   apiKeyStdin: Flag.Boolean("api-key-stdin").pipe(Flag.withDescription("Store a piped API key first (also requires secret:write and workspace ownership)"), Flag.withDefault(false)),
+  replace: Flag.Boolean("replace").pipe(Flag.withDescription("Replace the existing named secret atomically; requires --api-key-stdin"), Flag.withDefault(false)),
 }).pipe(Command.withDescription("Select the platform default (platform-key:admin)"),
-  guardedHandler(({provider, workspace, model, baseUrl, apiKeyStdin}) => platformKeysSet({provider, workspace, model, baseUrl: opt(baseUrl), apiKeyStdin})));
+  guardedHandler(({provider, workspace, model, baseUrl, apiKeyStdin, replace}) => platformKeysSet({provider, workspace, model, baseUrl: opt(baseUrl), apiKeyStdin, replace})));
 const remove = Command.make("delete", {provider: Argument.String("provider")}).pipe(Command.withDescription("Delete a platform provider default (platform-key:admin)"),
   guardedHandler(({provider}) => platformKeysDelete(provider)));
 
