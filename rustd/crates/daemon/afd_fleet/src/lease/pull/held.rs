@@ -30,7 +30,9 @@ struct Held {
 
 impl LeaseService {
     /// Runs a claimed pass, marking the admission, the issue and the offer's
-    /// encoding on `clock`: the issue ends where `emit` is called.
+    /// encoding on `clock`. The issue ends where `emit` is called, or where the
+    /// delivery returns without calling it, so a refused claim shows `issue`
+    /// and no `encode`.
     pub(super) async fn run_claimed_with<T, F>(
         &self,
         acquired: Acquired,
@@ -65,9 +67,9 @@ impl LeaseService {
                         .await
                 };
                 // The issue ends where `emit` is called. When it never is (a
-                // refusal, or a failed issue as in a datastore outage), it ends
-                // here, so that attempt's time is not left unexplained; a
-                // stage already marked keeps its first reading.
+                // refusal or a fault), it ends here, so that attempt's time is
+                // not left unexplained; a stage already marked keeps its first
+                // reading.
                 clock.mark(OfferStage::Issue);
                 delivered
             }

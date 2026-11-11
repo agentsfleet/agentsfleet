@@ -13,10 +13,12 @@
 //!
 //! The stage type is a closed enum per verb, so a free-form key cannot be
 //! written, and the only strings a span carries are the event and fleet
-//! identifiers. A verb that reaches no stage records nothing: an offer pass
-//! that found no work, or a request refused before its first boundary, has
-//! nothing to place, and its request span already says it ran. A verb can
-//! also give up a span it started with [`VerbClock::discard`].
+//! identifiers. A verb that reaches no stage records nothing. The gateway's
+//! recovery probe runs an offer pass every 5 s per replica and most find no
+//! work, so a span for each would flood the exporter's `SPAN_QUEUE`; and a
+//! span with no stage is an identity with no timing to place.
+//! [`VerbClock::untimed`] is a clock that records nothing at all, for a caller
+//! that times no verb.
 
 use std::fmt::Debug;
 use std::time::{Duration, Instant, SystemTime};
@@ -74,7 +76,8 @@ stages!(
         Claim => semconv::ATTR_OFFER_CLAIM_MS,
         /// Delivery, payer, provider and gates.
         Admit => semconv::ATTR_OFFER_ADMIT_MS,
-        /// The policy and the issue commit.
+        /// The policy and the issue commit, or the refusal or fault that ends
+        /// the attempt before an offer is built.
         Issue => semconv::ATTR_OFFER_ISSUE_MS,
         /// The offer frame.
         Encode => semconv::ATTR_OFFER_ENCODE_MS,
@@ -215,30 +218,34 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         self.agent_id = Some(agent_id.to_owned());
     }
 
-    /// Records the span so far and starts a fresh one in its place, timed or
-    /// untimed as this clock is: one pass that serves a second offer.
-    pub fn restart(&mut self) {
-        if self.discarded {
-            self.reset();
-        } else {
-            self.restart_on(&opentelemetry::global::tracer(semconv::SCOPE_NAME));
-        }
+    /// The stages marked so far, in the order they were reached: how far a
+    /// verb got, for a test with no collector to read it from.
+    #[cfg(feature = "test-util")]
+    #[must_use]
+    pub fn reached(&self) -> Vec<S> {
+        self.stages.iter().map(|(stage, _)| *stage).collect()
     }
 
-    /// [`Self::restart`] against a tracer the caller names, for a clock that
-    /// records: the span so far is closed, and the clock records again.
-    fn restart_on<T: Tracer>(&mut self, tracer: &T) {
-        self.record_on(tracer);
-        self.discarded = false;
-        self.reset();
-    }
-
-    /// [`Self::restart`], but only once a stage has been marked: a clock that
-    /// reached nothing has no span to close, so it keeps its start and identity.
+    /// Records the span so far and starts a fresh one in its place, as one pass
+    /// that serves a second offer needs. A clock that reached no stage has no
+    /// span to close, so it keeps its start and identity; an untimed clock
+    /// starts over without recording.
     pub fn restart_if_staged(&mut self) {
-        if !self.stages.is_empty() {
-            self.restart();
+        self.restart_if_staged_on(|| opentelemetry::global::tracer(semconv::SCOPE_NAME));
+    }
+
+    /// [`Self::restart_if_staged`] on the tracer `tracer` returns. It is asked
+    /// for only when a span is to be recorded, so an untimed clock never reads
+    /// the global provider.
+    fn restart_if_staged_on<T: Tracer>(&mut self, tracer: impl FnOnce() -> T) {
+        if self.stages.is_empty() {
+            return;
         }
+        if !self.discarded {
+            self.record_on(&tracer());
+            self.discarded = false;
+        }
+        self.reset();
     }
 
     /// Back to a fresh start, keeping whether this clock records.
@@ -252,8 +259,8 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         self.agent_id = None;
     }
 
-    /// This verb has nothing to describe; dropping records no span.
-    pub fn discard(&mut self) {
+    /// This clock records nothing more; dropping it writes no span.
+    fn discard(&mut self) {
         self.discarded = true;
     }
 
@@ -262,7 +269,8 @@ impl<S: Stage, C: Ticks> VerbClock<S, C> {
         if std::mem::replace(&mut self.discarded, true) {
             return;
         }
-        // No stage, no span: see the module note.
+        // A span with no stage is an identity with no timing, and the empty
+        // offer passes the recovery probe runs would flood the span queue.
         if self.stages.is_empty() {
             return;
         }

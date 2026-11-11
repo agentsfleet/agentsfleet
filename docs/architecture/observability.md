@@ -484,9 +484,9 @@ Fleet-wide, `agentsfleet_fleet_delivery_stage_seconds` carries `event_to_complet
 
 `fleet.steer` marks `admit` and `announce`; `fleet.offer` marks `claim`, `admit`, `issue`, `encode` and `send`. `fleet.report` marks `load`, `prepare`, `capture`, `commit`, `announce` and `ack`. The fallback `fleet.hydrate` and `fleet.capture` mark `fence`, then `memory_read` or `memory_write`.
 
-A verb that reaches no stage records nothing. The common case is an offer pass that finds no work, since the recovery probe runs every 5 s per replica. A claim the gates refused reached `claim`, so it keeps its span.
+A verb that reaches no stage records nothing. The common case is an offer pass that finds no work: the recovery probe runs every 5 s per replica, and a span for each would flood `SPAN_QUEUE`. A claim the gates refused reached `claim`, so it keeps its span.
 
-Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent.
+Each stage is `agentsfleet.<verb>.<stage>_ms`, the integer milliseconds since the previous mark. A stage never reached is absent. `issue` ends where the offer frame is built, or where the delivery returns without building one, so a refused claim shows `claim`, `admit` and `issue` and no `encode` or `send`.
 
 The spans carry `agentsfleet.event.id` and `gen_ai.agent.id` and join `fleet.delivery` and `runner.lease` by attribute. `VERB_SPAN_KEYS` in `semconv` declares every key, and each verb's stages are a closed enum, so no free-form key compiles.
 

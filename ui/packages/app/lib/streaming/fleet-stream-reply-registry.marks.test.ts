@@ -47,9 +47,27 @@ describe("a send's marks through the live stream", () => {
     const refuse = vi.spyOn(performance, "mark").mockImplementation(() => {
       throw new TypeError("User Timing refused");
     });
-    expect(() => sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, EVENT_ID)).not.toThrow();
-    refuse.mockRestore();
+    try {
+      expect(() => sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, EVENT_ID)).not.toThrow();
+    } finally {
+      refuse.mockRestore();
+    }
     sendMarks.frame(chunkOf(EVENT_ID));
     expect(markedSends()).toEqual([[SEND_MARK.FIRST_FRAME, OPERATION_ID]]);
+  });
+
+  it("test_a_refused_frame_mark_never_skips_the_chunk_write: the dispatch goes on to hear and write the chunk", () => {
+    sendMarks.mark(SEND_MARK.ACCEPTED, OPERATION_ID, EVENT_ID);
+    const entry = createEntry(WS, []);
+    const refuse = vi.spyOn(performance, "mark").mockImplementation(() => {
+      throw new TypeError("User Timing refused");
+    });
+    try {
+      expect(dispatchReplyFrame(entry, Z_A, chunkOf(EVENT_ID), vi.fn(), () => true)).toBe(true);
+    } finally {
+      refuse.mockRestore();
+    }
+    expect(entry.replyHeard.has(EVENT_ID)).toBe(true);
+    expect(entry.replyStreams.has(EVENT_ID)).toBe(true);
   });
 });
