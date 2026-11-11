@@ -16,7 +16,7 @@ SPEC AUTHORING RULES (the one comment that survives):
 
 **Date:** Nov 06, 2026
 
-**Status:** IN_PROGRESS
+**Status:** DONE
 
 **Implementation branch:** `feat/m245-chat-costs-twenty-statements`, worktree `~/Projects/agentsfleet-m245`, cut from `origin/main` `291777075` on Nov 10, 2026. M233_002 builds in parallel on `afd_fleet/src/lease/{claim.rs,pull/mod.rs,deliver/mod.rs,report/mod.rs}` and `afd_gateway/src/session/{offer.rs,dispatch/report.rs}`; whichever merges second rebases.
 
@@ -218,7 +218,7 @@ pool checkout ─► pings only a connection idle for 1 s or longer
 
 One doc-only commit lands before any code (ARCH-LAND). `runner_fleet.md` replaces "config is never cached" (`:71`, `:803`, `:823`) with the rule: config is cached by its head revision id, which the claim reads, so the next run still obeys an edit. `concurrency.md` §"Why neither plane has a central deadline scheduler" gains one daemon expiry clock and one runner host timer; per-call timeouts stay as they are. `push_scheduler.md`'s renewal sequence loses "one host lock", and its M245 table row names the two columns. `billing_and_provider_keys.md` states the funds cadence. `lease_flow.md` and `postgres_schemas.md` follow. `scaling.md` states the checkout ping, and `runner_protocol.md` the lease field and the removed verb.
 
-- **Dimension 1.1** — the pages read clean → Test `orly gate verify` (integration): 0 `docs.language` findings on the eight pages.
+- **Dimension 1.1** — DONE — the pages read clean → Test `orly gate verify` (integration): 0 `docs.language` findings on the eight pages.
 - **Dimension 1.2** — DONE — no page keeps the old rule → Test R7's `git grep` (manual): prints nothing outside `push_scheduler.md`'s retirement table.
 
 ### §2 — The key's witness, and the writers that skipped a bump
@@ -367,7 +367,7 @@ The entry page catches `403 UZ-AUTH-022` on a token with no tenant claim, and on
 - **Dimension 10.3** — DONE — the failure reasons are six → Test `af_observability` label census (unit): `SignupFailure` holds six, `docs/metrics.census.tsv` says `fixed:6`, and `producers_drive` fires `writeback_failed`.
 - **Dimension 10.4** — DONE — only an account still opening waits → Test `test_account_still_opening_waits` and its two siblings in `tests/workspace-routing.test.ts` (unit): a scope refusal on a token with no tenant renders the setup screen; one with a tenant, unreadable claims, or another refusal propagates.
 - **Dimension 10.5** — DONE — the setup screen mints, re-reads, gives up and retries → Test `tests/account-setup.test.tsx` (unit, fake timers): a token at once and every 2 s, a re-read only after it, nothing after 90 s until "Try again", nothing after unmount.
-- **Dimension 10.6** — the rendered page holds in a browser → Test `make dry-app` (Playwright, local): the dashboard specs pass with the entry page's new branch.
+- **Dimension 10.6** — DONE — the rendered page holds in a browser → Test `make dry-app` (Playwright, local): the dashboard specs pass with the entry page's new branch.
 
 ### §11 — Every usage line says what it billed
 

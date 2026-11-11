@@ -313,7 +313,7 @@ The previous broker's self-hosted cluster had no failover of its own: its docume
 
 ### M245: twenty-one statements per chat
 
-Measured on Indy's laptop on Nov 11, 2026, with `make bench-lease PROFILE=rig`: `main` at `93d66f476` and this branch at `480802c84`, three runs each, interleaved, each on a reset rig. The median branch run by statements per chat is committed as `lease.rig.json`.
+Measured on Indy's laptop on Nov 11, 2026, with `make bench-lease PROFILE=rig`. The runs were `main` at `93d66f476` and this branch at `480802c84`, three each, interleaved, each on a reset rig. The median branch run by statements per chat is committed as `lease.rig.json`.
 
 | Path | `main`, median run | Branch, median run | Branch lowest | Branch highest |
 |---|---|---|---|---|
@@ -330,7 +330,9 @@ Measured on Indy's laptop on Nov 11, 2026, with `make bench-lease PROFILE=rig`: 
 | other | 8.11 | 0.0 | 0.0 | 0.0 |
 | total | 74.175 | 21.015 | 20.99 | 21.03 |
 
-`main`'s three totals were 74.17, 74.175 and 74.175; the branch's 21.03, 20.99 and 21.015. A chat costs 13.42 commits on the branch against 37.43 on `main`. Branch lease p95 was 37.2, 42.7 and 28.4 ms and report p95 11.9, 13.7 and 11.7 ms; `main`'s lease p95 was 126.5, 48.0 and 53.2 ms. Drain leases per second: branch 206.9, 197.6 and 211.6; `main` 75.2, 126.7 and 116.2.
+`main`'s three totals were 74.17, 74.175 and 74.175; the branch's 21.03, 20.99 and 21.015. A chat costs 13.42 commits on the branch against 37.43 on `main`.
+
+Branch lease p95 was 37.2, 42.7 and 28.4 ms, and report p95 was 11.9, 13.7 and 11.7 ms. `main`'s lease p95 was 126.5, 48.0 and 53.2 ms. Drain leases per second: branch 206.9, 197.6 and 211.6; `main` 75.2, 126.7 and 116.2.
 
 `main` has no `fold` path: its classifier had no fragment for `claim_inputs.sql`, so those statements sat in `other`. `shared` is the foreign-key and counter-trigger statements Postgres runs inside the writes, about 5 of its 7. The pricing path's 0.035 is the price book's first read per model as the cache warms.
 

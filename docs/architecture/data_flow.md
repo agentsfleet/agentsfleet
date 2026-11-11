@@ -357,7 +357,7 @@ No product statement sets its own override. A statement that hits either bound a
 
 ## Config reload: pull-per-lease, no signal
 
-Canonical: [`runner_fleet.md` §Config](./runner_fleet.md). The claim reads the head revision id from `fleet.fleets` on every `lease` and a replica holds the parsed definition under that id; a `PATCH` takes effect on the next lease with no signal.
+Canonical: [`runner_fleet.md` §Config](./runner_fleet.md). The claim reads the head revision id from `fleet.fleets` on every `lease`, and a replica holds the parsed definition under that id. A `PATCH` takes effect on the next lease with no signal.
 
 What is specific to this flow: status works the same way. The assignment scan filters `fleet.fleets.status = 'active'`, so a paused Fleet drops out on the next scan and a resumed one re-enters.
 

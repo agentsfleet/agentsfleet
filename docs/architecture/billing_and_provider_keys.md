@@ -298,7 +298,9 @@ Run time is the daemon's to measure, not the runner's. `FOR UPDATE OF l, a` seri
 
 The lease path logs them with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A pass with no request and no run time logs nothing.
 
-Every line carries its `kind` (`af_wire::usage::LineKind`): `model` lines keep the runner's request number, `runtime` lines take the milliseconds from the lease's start to the slice's start, read from the locked lease row, and `decision` lines their call's number. The key includes the kind, so a model line and a runtime line may hold the same number, and two passes never bill one slice twice (`afd_fleet`'s lease billing races suite).
+Every line carries its `kind` (`af_wire::usage::LineKind`): `model` lines keep the runner's request number, and `decision` lines take their call's number. `runtime` lines take the milliseconds from the lease's start to the slice's start, read from the locked lease row.
+
+The key includes the kind, so a model line and a runtime line may hold the same number. Two passes never bill one slice twice (`afd_fleet`'s lease billing races suite).
 
 **Settling.** The lease path never settles. The relay, `sweeper:billing`, settles each committed line on its next pass, about 2 s later. After a restart, its first pass settles what the crash left.
 
@@ -322,7 +324,11 @@ Delayed settlement reconstructs separate provider/model/posture groups under the
 The sweeper selects its oldest bounded batch before grouping; sequence numbers stay unique across the whole work, including different providers.
 Its recovery counters count settlement groups, so one lease can contribute several successful settlements.
 
-A group the relay cannot read is skipped, not failed. A work type, a line kind or a pricing posture this build does not name leaves the group unsettled and the pass carries on. The owed gauges keep counting it, so the dashboard shows it: a row of an unknown work type drops out of the by-type `agentsfleet_billing_unsettled_nanos` figure but still pins `agentsfleet_billing_unsettled_oldest_seconds`. The relay logs `billing_relay_skipped` once for each distinct spelling per process (it remembers at most 64), so an operator learns what is stuck without a line every two seconds. Nothing is guessed: an error would hold the cursor, and with it every tenant's settlement behind one row, and a guessed posture would settle the wrong money.
+A group the relay cannot read is skipped, not failed. A work type, a line kind or a pricing posture this build does not name leaves the group unsettled, and the pass carries on. The owed gauges keep counting it, so the dashboard shows it.
+
+A row of an unknown work type drops out of the by-type `agentsfleet_billing_unsettled_nanos` figure but still pins `agentsfleet_billing_unsettled_oldest_seconds`. The relay logs `billing_relay_skipped` once for each distinct spelling per process and remembers at most 64. An operator learns what is stuck without a line every two seconds.
+
+Nothing is guessed. An error would hold the cursor, and with it every tenant's settlement behind one row. A guessed posture would settle the wrong money.
 
 `afd_billing::ledger::unsettled` sorts borrowed keys in place and moves owned headers into the resulting groups.
 This avoids cloned map keys; no measured latency or allocation result follows from that source change.
@@ -359,9 +365,13 @@ The issue-time floor (`Accounts::estimate`) prices `ESTIMATE_FLOOR_INPUT_TOKENS`
 
 A model with no price covering the instant is `Estimate::Unpriceable`. The gate admits against a floor of zero, because an estimate is not a charge.
 
-**A replica holds each price book under the catalogue version it was read at.** One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows, and the book carries the catalogue version of that read.
+**A replica holds each price book under the catalogue version it was read at.**
 
-The cache key is the posture, provider, model and that version. Every statement that prices from a held book carries the version and writes nothing if the catalogue moved, so an admin edit costs one re-read and one rerun and an entry never answers for another version. A miss is a read, never a fault; concurrent misses share one load, and a failed read is never kept.
+One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows, and the book carries the catalogue version of that read.
+
+The cache key is the posture, provider, model and that version. Every statement that prices from a held book carries the version and writes nothing if the catalogue moved. An admin edit therefore costs one re-read and one rerun, and an entry never answers for another version.
+
+A miss is a read, never a fault; concurrent misses share one load, and a failed read is never kept.
 
 **A catalogue that cannot be read** still logs every request line, with its tokens counted as unpriced and the run fee charged (`lease_tokens_unpriced`). Nothing is held for a later pass, because each request is priced on its own line.
 
@@ -584,7 +594,9 @@ model.tenant_models (id, tenant_id, model_name, secret_ref, created_at, updated_
 
 `GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time. That projection is the one §8.3's credential list already uses. `api_key` is structurally absent from the join, not filtered out.
 
-An OpenAI-compatible endpoint must carry a key. Activation refuses a credential with no key, or whose model the catalogue lacks, because a run could never resolve it: the registry read requires the key's presence. Runner auth behaviour is unchanged.
+An OpenAI-compatible endpoint must carry a key. Activation refuses a credential with no key, or whose model the catalogue lacks. A run could never resolve it, because the registry read requires the key's presence.
+
+Runner auth behaviour is unchanged.
 
 **Activation upserts the entry, so the registry is always representable by construction.** The tenant's *active* selection still lives on `model.tenant_selections`.
 

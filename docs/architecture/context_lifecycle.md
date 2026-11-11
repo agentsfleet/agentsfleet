@@ -131,7 +131,8 @@ Missing usage produces no fabricated zero; prompts, credentials, URLs and reques
 
 The additive `memory.context_checkpoints` table holds setup-chat working state, separate from semantic memory and immutable fleet revisions.
 A row belongs to its private draft.
-A run holds its compaction summary in the loop's own state: it stores no row, calls no route and holds no datastore credential for it.
+
+A run holds its compaction summary in the loop's own state. It stores no row, calls no route and holds no datastore credential for it.
 
 Checkpoint restoration checks model/inference identity, trusted pinned-state identity, source coverage, source digest and generation.
 
@@ -145,7 +146,7 @@ The daemon assembles authoring history; the bounded runner envelope carries curr
 Paging bounds each read without limiting conversation lifetime.
 Authoring records each compaction dispatch before provider access, then commits the result and checkpoint through its guarded receipt path.
 
-A setup request carries no compaction opt-in: when the prepared context needs a summary, the daemon funds and dispatches it, and the reply says `compacted`.
+A setup request carries no compaction opt-in. When the prepared context needs a summary, the daemon funds and dispatches it, and the reply says `compacted`.
 Ordinary replies omit `compacted` when false.
 
 ## Tenant boundaries and sensitive buffers
