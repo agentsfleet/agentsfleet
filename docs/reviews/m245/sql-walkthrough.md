@@ -24,10 +24,9 @@ task notice (durable tasks only) ► apply_report_notice.sql          §6
 
 | File | Change | Section |
 |---|---|---|
-| `schema/20261108121000_vault_secrets.sql` | edited in place | §2 |
 | `schema/20261108124600_billing_usage_lines.sql` | edited in place | §11 |
-| `afd_vault/src/sql/insert_secret_if_absent.sql` | edited | §2 |
 | `afd_credential/src/provider/registered/sql/platform.sql` | edited | §3 |
+| `schema/20261108131600_fleet_task_waits.sql`, `afd_fleet/src/task/waits/sql/{update,owner}.sql` | edited (schema in place) | dead column |
 | `afd_billing/src/sql/select_price_book.sql` | edited | §6 |
 | `afd_fleet/src/lease/sql/lease/claim_admission_head.sql` | edited | §4, §8 |
 | `afd_fleet/src/lease/sql/lease/stamp_delivery.sql` | deleted | §4 |
@@ -39,6 +38,10 @@ task notice (durable tasks only) ► apply_report_notice.sql          §6
 | `afd_fleet/src/lease/sql/bill_expired_slice.sql` | edited | §6 |
 | `afd_fleet/src/lease/sql/insert_runner_event.sql` | deleted | §6 |
 | `afd_fleet/src/lease/sql/select_run_tokens.sql` | deleted | §6 |
+| `afd_fleet/src/lease/sql/select_lease_disposition.sql`, `afd_events/src/sql/select_fleet_event_status.sql`, `afd_fleet/src/lease/sql/upsert_fleet_session.sql`, `afd_fleet/src/task/report/transition.sql` | deleted | review round |
+| `afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql`, `select_lease_for_report.sql` | edited | §9 |
+| `afd_fleet/src/task/checkpoint/sql/{history,pages_allocate,base_pages_allocate}.sql` | edited | review round |
+| `af_context/src/repository/{load,insert,update}.sql`, `schema/20261108124800_memory_context_checkpoints.sql` | edited (schema in place) | review round |
 | `afd_fleet/src/lease/sql/original_request_owner.sql` | edited | §11 |
 | `afd_billing/src/ledger/sql/insert_lines.sql` | edited | §11 |
 | `afd_billing/src/ledger/sql/settle_lines.sql` | edited | §11 |
@@ -53,25 +56,32 @@ task notice (durable tasks only) ► apply_report_notice.sql          §6
 Every statement file is prepared against the rebuilt schema by
 `afd_db`'s `test_every_sql_file_prepares`, which passed on the §6 commit.
 
-## Merge note: two schema files are edited in place
+## Merge note: three schema files are edited in place
 
 There is no production deploy yet, so a table change edits its own file
-(`.orly/LOCAL.md`, SQL): `vault_secrets.sql` and `billing_usage_lines.sql`.
-`runner_leases.sql` matches `main` again, since §11 removed the counter §6 had
-added. Dev has already applied both files, and sqlx refuses
-an applied file whose checksum changed (`afd_db/src/migration.rs:14-16`).
-Deploying this branch to dev therefore needs the dev database reset that Indy
-authorizes; issue #827 holds the merge order.
+(`.orly/LOCAL.md`, SQL): `billing_usage_lines.sql` (§11),
+`memory_context_checkpoints.sql` (a run keeps no checkpoint row, so the table
+is a setup draft's alone) and `fleet_task_waits.sql` (the never-read
+`observed_signal_at` column goes). `vault_secrets.sql` and `runner_leases.sql`
+match `main`: the key cache needs no column (§2 below), and the lease cursor is
+already clamped by every statement that writes it. Dev has already applied the
+three files, and sqlx refuses an applied file whose checksum changed
+(`afd_db/src/migration.rs:14-16`). Deploying this branch to dev therefore needs
+the dev database reset that Indy authorizes; issue #827 holds the merge order.
 
-## §2 — `schema/20261108121000_vault_secrets.sql`
+## §2 — the key cache's witness needs no column
 
-| Lines | Change | Why |
-|---|---|---|
-| comment above the table | added | States what the column is for and why it has no default. |
-| `resource_version BIGINT NOT NULL` | added | The daemon now caches the decrypted platform key (blocker 1, accepted Nov 10). A cache key must change on every edit of the row, and `id` and `kek_version` survive a same-key-encryption-key replace. |
-| no `DEFAULT` | deliberate | The repository keeps values out of schema defaults; the insert binds `afd_vault::SECRET_FIRST_VERSION` (1). |
-| `vault.secrets_bump_resource_version()` | added | `NEW.resource_version := OLD.resource_version + 1; RETURN NEW;` |
-| `trg_secrets_bump_resource_version`, `BEFORE UPDATE … FOR EACH ROW` | added | Fires on every update from every writer, so a writer added later cannot forget the bump and serve a stale key. |
+The platform key cache has to notice that the stored key changed. An earlier
+cut of this branch added `vault.secrets.resource_version`, an update trigger and
+an insert bind for it. Indy asked why the column was needed, and it was not:
+`platform.sql` already hashes `secret_ciphertext`, and every write to a secret
+(`update_secret.sql`, `update_secret_envelope.sql`) re-seals the whole envelope
+under a fresh nonce, so the ciphertext's digest moves on every write, whichever
+writer runs, and no writer can skip it. So the witness is a digest of the
+ciphertext and the endpoint stored beside it, computed in the two statements
+that need it (`claim_admission_head.sql` and `platform.sql`, below), and
+`vault_secrets.sql`, `insert_secret_if_absent.sql` and every test insert match
+`main`.
 
 ## §11 — `schema/20261108124600_billing_usage_lines.sql`
 
@@ -91,19 +101,31 @@ forward, so no two slices share a start, and two writers billing the same slice
 write one line. The longest run fits a `u32` of milliseconds by the existing
 compile-time assertion (`af_wire/src/usage/mod.rs`, `RUNTIME_MS_MAX`).
 
-## §2 — `afd_vault/src/sql/insert_secret_if_absent.sql`
-
-| Line | Change | Why |
-|---|---|---|
-| 1 | `resource_version` added to the column list | The column has no default, so the insert must name it. |
-| 2 | `$15` added | Bound to `SECRET_FIRST_VERSION`. |
-
 ## §3 — `afd_credential/src/provider/registered/sql/platform.sql`
 
 | Line | Change | Why |
 |---|---|---|
-| 4 | `s.resource_version AS secret_version` | Read inside `locked`, which takes `FOR SHARE OF p, s, m, r` (line 17), so the version returned is the version locked. |
-| 33 | `l.resource_version AS catalogue_version, l.secret_id, l.secret_version` | The three facts are the decrypted key cache's key (`PlatformKeyKey::observed`). The entry is stored under the versions this locked read saw. |
+| 4-5 | `s.id AS secret_id`, `sha256(s.secret_ciphertext) AS ciphertext_digest` | Read inside `locked`, which takes `FOR SHARE OF p, s, m, r` (line 17), so what is returned is what was locked. The digest was `secret_digest` before; the name moved so the final column can carry the cache's witness. |
+| 26 | `encode(l.ciphertext_digest, 'hex')` | The resolution version hashes the same bytes as before. |
+| 33 | `l.resource_version AS catalogue_version, l.secret_id` | Two of the cache key's three parts. The entry is stored under what this locked read saw. |
+| 34-36 | `secret_digest`: `sha256` of a JSON array of the endpoint and the ciphertext's hex digest | The third part. The same expression, character for character in meaning, as the claim's `platform_secret_digest` (`claim_admission_head.sql` lines 130-132), so a key one lease read is found again by the next claim. The endpoint is inside it because the cached resolution answers with it. |
+| 37-39 | `valid_for_ms` | How long the matched price window has left: `effective_until` less `read_at`, the clock reading line 19 takes after the locks, in whole milliseconds (`$3`, milliseconds per second, floored). `NULL` for a window with no end. The daemon adds it to the instant its read began, so a window that closes with no successor ends the cached resolution at that instant, though no version moved. |
+
+`$3` is bound only on this statement. `entry.sql` returns none of the three new
+columns, and its rows decode them as absent.
+
+## Dead column — `schema/20261108131600_fleet_task_waits.sql` and the wait statements
+
+Indy approved the cut by name. `observed_signal_at` was written by
+`update.sql` and read by nothing: `due.sql`, `owner.sql` and `Wait::signalled`
+decide from `observed_signal_sequence` against `signal_sequence`.
+
+| File | Change | Why |
+|---|---|---|
+| `fleet_task_waits.sql` | `observed_signal_at TIMESTAMPTZ(3)` removed | No statement, index, constraint or function reads it. |
+| `update.sql` line 1 | `observed_signal_at = $5::timestamptz,` removed | The assignment. |
+| `update.sql` lines 1-5 | `$6`, `$7`, `$8` become `$5`, `$6`, `$7` | The cooldown, the retry interval and the sequence, renumbered to close the gap. |
+| `owner.sql` line 4 | `w.signalled_at` removed from the select | Its only reader was the bind that wrote `observed_signal_at`. The column itself stays: `fanout_one.sql` still maintains it. |
 
 ## §6 — `afd_billing/src/sql/select_price_book.sql`
 
@@ -140,7 +162,7 @@ read the counters after commit and read the redelivery state
 | 106-110 `counters` | added | Stored `event_count`, plus 1 when this statement inserted: a CTE cannot see its own insert's trigger bump. |
 | 111-121 `installed` | added | The revision the run uses (the task's accepted revision, else the head, line 118), the session, and the head's definition for comparison. |
 | 122-123 `catalogue` | added | The catalogue version, for the price cache key. |
-| 124-130 `platform` | added | The platform key's cache key, chosen as `platform.sql` chooses it. No locks: a stale key only misses the cache, and `platform.sql`'s locked read decides. |
+| 124-136 `platform` | added | The platform key's cache key, chosen as `platform.sql` chooses it: the secret's id and `platform_secret_digest`, the digest of its endpoint and ciphertext (lines 130-132), the expression `platform.sql` lines 34-36 compute. No locks: a stale key only misses the cache, and `platform.sql`'s locked read decides. |
 | 131-138 `tally` | kept | |
 | 139-152 | final row | Returns `redelivered` and every fact above. |
 | 153-167 | `inputs_waiting` added (§8) | Whether a later unsettled message sits in the head's conversation, foldable or not. Two branches, as `claim_inputs.sql` has them: an addressed conversation by equality, the unaddressed one by `IS NULL`, so both walk `idx_admissions_pending_conversation` (`fleet_id, reply_provider, reply_address, sequence WHERE settled_at IS NULL`) and stop at the first row. `IS NOT DISTINCT FROM` would read the same rows but cannot use the index. A durable task's lease says false: its inbox is closed (`claim_inputs.sql` requires `task_id IS NULL`). The run skips its first fold ask on false; a message admitted after this snapshot folds on the ask after the answer. |
@@ -234,8 +256,8 @@ reads the runtime the report statement metered, so it runs after.
 | 1-4 | header | |
 | 5-8 | `event` | The event's answer becomes the notice. |
 | 9-11 | `session` | The checkpoint resumes from the notice. |
-| 12-14 | `owed` | An answer not yet delivered (`delivered_at IS NULL`) carries the notice. |
-| 16 | `SELECT count(*) FROM event` | One row for `fetch_one`. The other two data-modifying CTEs run regardless. |
+| 12-26 | `owed` | The notice is owed to the admission's reply destination (`$5` obligation id, `$6` receipt, `$7` the connector names that can receive one). A run that answered nothing owed nothing, so the report statement wrote no obligation; the insert owes the notice in its place. When one is already owed, `ON CONFLICT ... DO UPDATE ... WHERE o.delivered_at IS NULL` replaces its answer, and an answer already delivered is left as it was. |
+| 27 | `SELECT count(*) FROM event` | One row for `fetch_one`. The other two data-modifying CTEs run regardless. |
 
 ## §6, §11 — `afd_fleet/src/lease/sql/meter_lease.sql`
 
@@ -332,7 +354,7 @@ that fails a check extends nothing and changes no other lease's answer.
 
 - **Checkout ping.** No statement: sqlx's `test_before_acquire` sent a Sync on every checkout. The pools now ping in `before_acquire` only after `PING_AFTER_IDLE` (1 s) idle (`afd_db/src/pool/open.rs`), counted by `agentsfleet_db_pool_checkout_pings_total{role}`.
 - **First fold ask.** `claim_inputs.sql` is unchanged. Its first run per lease is answered by the claim's `inputs_waiting` (above) and skipped when false.
-- **Context load.** The `GET` ran `standing/select_standing_shared.sql` and `af_context`'s checkpoint read in one transaction. Both files stay: the `PUT` runs the same scope read before it publishes. The run sends neither on its way to its first model call.
+- **Context load.** The `GET` ran `standing/select_standing_shared.sql` and `af_context`'s checkpoint read in one transaction. The run sends neither on its way to its first model call. The review round below removes the `PUT` too, with the run-scope half of the checkpoint store; `select_standing_shared.sql` stays for `write_fence.rs`.
 
 ## §9 — what the first bench run sent back
 
@@ -372,6 +394,57 @@ Unchanged, and no longer run for a plain chat. `execution_deadline.sql` answers 
 ### `afd_fleet/src/lease/sql/select_renewals.sql`
 
 Unchanged, and run only when a frame lacks a fact. The session passes each plain lease's kept facts, and the replica keeps the newest catalogue version and head revision every issue and pre-read answered (`cache::Latest`). `renew_batch.sql` guards both (lines 99-103) and reads status and the cancel mark under its own locks, so the frame runs on the batch statement alone: the meter path went from 4.0 a chat to 2.0, two renewals at one statement each. A guard that finds a version moved sends the lease to the per-lease path and makes the next frame read again.
+
+## Review round — statements changed after the first draft
+
+The pre-landing review and the dead-code pass changed these. Line numbers are
+the files' current ones; the older tables above keep the §6/§7 numbers.
+
+### `afd_fleet/src/lease/sql/meter_lease.sql` — renewal only
+
+| Lines | Change | Why |
+|---|---|---|
+| `guard` 34-54 | the `CASE WHEN $5::boolean` branch becomes one `WHERE` | The statement settled a lease as well as renewing it. The report commits in one statement now (`commit_report.sql`), so no caller settles through this one. |
+| `moved` 55-61 | `status = CASE WHEN $5 ...` becomes `lease_expires_at = g.capped` | A renewal only extends; it never flips a lease to `reported`. |
+| `slot` 62-67 | the same `CASE` goes | The slot's deadline moves with the lease's. |
+| `settled`, `tally` | deleted | They settled the admission and counted the outcome; `commit_report.sql` does both. |
+| parameters | `$5` (settles), `$8` (reported status), `$9` (succeeded) go; the rest renumber to `$1-$7` | Nothing binds them. |
+
+### `afd_fleet/src/lease/sql/commit_report.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 54-58 `instant` | added | `clock_timestamp()` was read in a subquery that did not depend on `probe`, so the planner could run it before the lock wait and measure a slice that ended before the report owned the lease. It now reads from the locked rows, as `renew_batch.sql`'s `instant` does. |
+| 63 | `CROSS JOIN instant i` | `guard` takes that instant. |
+
+### `afd_fleet/src/lease/sql/renew_batch.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 50-58 `locked_slot` | `CROSS JOIN host h` and a comment | A CTE runs when first read, and `host` was read only in the final select list, after the slots and leases were locked. An issue holds the host row and then takes a slot, so the two could wait on each other. Joining `host` takes the host row `FOR SHARE` first. A host that may not renew locks nothing, and every lease answers lost. |
+| `judged` / final row | `has_task` is read | A lease that gained a task after its session kept its facts is refused by `j.task_id IS NULL` at the guard; the caller now sends it to the per-lease path instead of answering lost. |
+
+### Statements deleted
+
+- **`select_lease_disposition.sql`:** told a settle that matched nothing whether the runner had already settled the lease; `commit_report.sql` answers that itself.
+- **`select_fleet_event_status.sql`:** the redelivery check; the claim returns the event's status.
+- **`upsert_fleet_session.sql`:** no caller; `commit_report.sql` writes the session.
+- **`task/report/transition.sql`:** identical to `task/waits/sql/transition.sql` apart from column order; the report uses the waits file.
+
+### `afd_fleet/src/task/checkpoint/sql/{history,pages_allocate,base_pages_allocate}.sql`
+
+`unnest($N::text[])` with `::uuid` on the result becomes `unnest($N::uuid[])`. The Rust side binds `&[Uuid7]`, so the identifiers were being cast between `text` and `uuid`, which the repository forbids.
+
+### `af_context/src/repository/{load,insert,update}.sql` and `memory.context_checkpoints`
+
+The run-scope half of the store had no writer once the runner stopped publishing, and no reader since the `GET` went.
+
+| Statement | Change |
+|---|---|
+| `load.sql` | `WHERE draft_id = $1`; the `OR (lease_id = $2 AND fleet_id = $3 AND branch_id = $4)` arm goes. |
+| `insert.sql` | `(id, draft_id, resource_version, document, ...)`; five parameters instead of eight. |
+| `update.sql` | `WHERE draft_id = $1 AND resource_version = $4`; four parameters instead of seven. |
+| table | `lease_id`, `fleet_id`, `branch_id`, `ck_context_checkpoints_owner` and the `(lease_id, branch_id)` and `fleet_id` indexes go; `draft_id` is `NOT NULL` with a plain unique index. |
 
 ## Identifiers
 

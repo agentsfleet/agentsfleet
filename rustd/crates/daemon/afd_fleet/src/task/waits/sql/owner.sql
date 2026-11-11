@@ -1,7 +1,7 @@
 SELECT w.id, w.task_id, w.fleet_id, w.workspace_id,
        w.task_generation, w.stop_generation, w.installation_id, w.repository_id,
        w.pull_request_number, w.expected_head, w.checks, w.baseline_digest,
-       w.fallback_count, w.initial_read_at, w.signalled_at, w.signal_sequence, w.observed_signal_sequence,
+       w.fallback_count, w.initial_read_at, w.signal_sequence, w.observed_signal_sequence,
        w.claim_id, w.claim_expires_at > statement_timestamp() AS claim_valid, w.expires_at,
        t.status, t.generation AS live_generation, t.stop_generation AS live_stop_generation,
        t.accepted_revision_id, t.target, t.used_fallback_reads, t.max_fallback_reads,

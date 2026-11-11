@@ -56,7 +56,7 @@ Each milestone's spec fixes its own columns and slot numbers when it starts.
 | M242 | None. Intake holds the fleet row for one statement, and folding rides #803's input claims on `fleet.admissions`. |
 | M243 | The connection a runner holds, on `runner.runners`. A cancel mark on `runner.leases`. |
 | M244 | `identity.device_sessions`, `connector.oauth_nonces`, and claim columns on `fleet.obligations`. |
-| M245 | `kind` on `billing.usage_lines` (`model`, `runtime`, `decision`), so each line says what it billed and a runtime line is numbered by its slice's start. `resource_version` on `vault.secrets`, moved by trigger on every update, which keys the platform key cache. |
+| M245 | `kind` on `billing.usage_lines` (`model`, `runtime`, `decision`), so each line says what it billed and a runtime line is numbered by its slice's start. The platform key cache keys on a digest of the stored key and its endpoint, so the vault gains no column. |
 | M246 | An owner tenant on `runner.runners`, a token overlap pair, and per-tenant runner settings. |
 | M247 | Cordon reason and time on `runner.runners`, and a predecessor link on `runner.leases`. |
 
@@ -117,7 +117,7 @@ A second connection for the same runner supersedes the first. A revoked token cl
 ```
 runner                         agentsfleetd                         Postgres
   │ RenewBatch{lease ids, slices} ►│ one fenced statement for every     │
-  │                                │ lease, no host lock; funds checked │
+  │                                │ lease, host shared; funds checked  │
   │                                │ every third tick ─────────────────►│
   │◄─ Renewed{per lease: deadline or lost}                              │
 ```

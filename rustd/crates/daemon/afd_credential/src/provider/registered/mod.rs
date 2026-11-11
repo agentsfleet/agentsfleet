@@ -6,6 +6,8 @@
 mod key;
 mod sql;
 
+use std::time::Duration;
+
 use af_core::id::Uuid7;
 use af_wire::inference::ModelInference;
 use sqlx::types::Json;
@@ -24,9 +26,9 @@ pub(super) struct Registration {
     pub(super) workspace_id: Uuid7,
     pub(super) key_name: String,
     pub(super) inference_host: Box<str>,
-    /// The versions a platform read returned, which key its cache entry; a
-    /// tenant entry carries none and is never cached (blocker 2).
-    pub(super) observed: Option<super::cache::PlatformKeyKey>,
+    /// What a platform read returned, which keys its cache entry; a tenant
+    /// entry carries none and is never cached.
+    pub(super) observed: Option<super::cache::Observed>,
 }
 
 /// Non-secret facts selected by an explicit reference.
@@ -73,8 +75,13 @@ struct RegisteredRow {
     catalogue_version: Option<i64>,
     #[sqlx(default)]
     secret_id: Option<Uuid7>,
+    /// The digest of what the secret holds, and of the endpoint beside it.
     #[sqlx(default)]
-    secret_version: Option<i64>,
+    secret_digest: Option<String>,
+    /// What is left of the matched price window, in whole milliseconds on the
+    /// database's clock; absent when the window has no end.
+    #[sqlx(default)]
+    valid_for_ms: Option<i64>,
 }
 
 impl RegisteredRow {
@@ -154,7 +161,8 @@ pub(super) async fn read(
             .bind(entry),
         None => sqlx::query_as::<_, RegisteredRow>(statement)
             .bind(owner)
-            .bind(reference),
+            .bind(reference)
+            .bind(afd_billing::nanos::MS_PER_SEC),
     }
     .fetch_optional(&mut *ordered)
     .await
@@ -173,10 +181,11 @@ pub(super) async fn read(
         _ => return Ok(None),
     };
     let inference_host = route.into_host();
-    let observed = match (row.catalogue_version, row.secret_id, row.secret_version) {
-        (Some(catalogue), Some(secret), Some(version)) => Some(
-            super::cache::PlatformKeyKey::observed(catalogue, secret, version),
-        ),
+    let observed = match (row.catalogue_version, row.secret_id, row.secret_digest) {
+        (Some(catalogue), Some(secret), Some(digest)) => Some(super::cache::Observed {
+            key: super::cache::PlatformKeyKey::observed(catalogue, secret, digest),
+            window: row.valid_for_ms.map(window_left),
+        }),
         _ => None,
     };
     Ok(Some(Registration {
@@ -188,8 +197,29 @@ pub(super) async fn read(
     }))
 }
 
+/// The span the database measured, as a duration.
+///
+/// A negative reading cannot come from a window the statement found open, and
+/// reads as no time left: the entry it keys would be a miss at once, the safe
+/// side of a value that should not exist.
+fn window_left(millis: i64) -> Duration {
+    Duration::from_millis(u64::try_from(millis).unwrap_or_default())
+}
+
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
+    use super::window_left;
+
+    /// A reading the statement should never produce still ends the entry.
+    #[test]
+    fn a_negative_window_reading_leaves_no_time() {
+        assert_eq!(window_left(-1), Duration::ZERO);
+        assert_eq!(window_left(0), Duration::ZERO);
+        assert_eq!(window_left(1_500), Duration::from_millis(1_500));
+    }
+
     /// Fixture fleets seeded through `afd_db` run on this reference, so the
     /// two spellings are one.
     #[test]

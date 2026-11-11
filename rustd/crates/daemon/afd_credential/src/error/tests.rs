@@ -10,8 +10,6 @@ fn configured_kinds() -> Vec<(&'static str, Error)> {
     vec![
         ("provider field", super::provider_malformed("provider")),
         ("provider secret", super::provider_secret_missing()),
-        ("platform default", super::provider_platform_key_missing()),
-        ("workspace", super::provider_no_workspace()),
         ("endpoint", super::provider_endpoint("private address")),
         ("vault body", super::vault_data_invalid()),
         ("declared secret", super::credential_missing()),

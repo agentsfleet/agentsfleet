@@ -1,5 +1,6 @@
-//! The platform key cache answers only for the versions a claim read, and a
-//! tenant's own model reference is read every time (M245 §3).
+//! The platform key cache answers only for the witnesses a claim read, ends
+//! with the price window it matched and with its time limit, and a tenant's
+//! own model reference is read every time.
 //!
 //! A private database, counted with `pg_stat_statements`: platform defaults
 //! are deployment-wide, so a default another suite seeded on the shared lane
@@ -12,12 +13,15 @@
 )]
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use af_core::clock::FixedClock;
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
-use afd_credential::provider::cache::PlatformKeyKey;
+use afd_credential::provider::cache::{Observed, PLATFORM_KEY_TTL};
 use afd_credential::provider::{Added, PLATFORM_MODEL_REF, Providers};
+use afd_credential::vault::KeyRef;
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Ran, Window};
@@ -31,17 +35,12 @@ const NOW: Timestamp = Timestamp::constant(1_760_000_000, 0);
 const PROVIDER: &str = "anthropic";
 const MODEL: &str = "claude-cache-fixture";
 const CAP: i32 = 200_000;
-
-/// The versions the lease claim reads beside the slot it takes, by the same
-/// choice of active default (`claim_admission_head.sql`'s `platform`).
-const OBSERVE: &str = "SELECT c.resource_version, s.id, s.resource_version \
-    FROM model.catalogue_version c \
-    CROSS JOIN LATERAL ( \
-      SELECT s.id, s.resource_version FROM model.platform_defaults p \
-      JOIN vault.secrets s ON s.workspace_id = p.source_workspace_id AND s.key_name = p.provider \
-      WHERE p.active AND s.meta_has_key AND s.meta_provider = p.provider \
-      ORDER BY p.provider LIMIT 1) s \
-    WHERE c.id = 1";
+/// The base URL the seeded model's saved settings carry: the one endpoint a
+/// credential of this provider may be pinned to.
+const SAVED_BASE_URL: &str = "https://api.anthropic.com/v1";
+/// The refresh token the key's body holds before a re-seal rotates it.
+const REFRESH_OLD: &str = "refresh-old";
+const REFRESH_NEW: &str = "refresh-new";
 
 struct Lane {
     database: TestDatabase,
@@ -49,6 +48,9 @@ struct Lane {
     api: Db,
     providers: Providers,
     vault: afd_vault::Vault,
+    kek: Arc<Kek>,
+    /// The clock the cache tells time by, which a test moves.
+    clock: FixedClock,
     tenant: Uuid7,
     workspace: Uuid7,
 }
@@ -75,12 +77,16 @@ impl Lane {
             .expect("the catalogue row seeds");
         drop(connection);
         let kek = Arc::new(Kek::from_bytes([0x42; 32]));
+        let clock = FixedClock::at(NOW);
         Self {
-            providers: Providers::new(api.clone(), Arc::clone(&kek), Entropy::new()),
-            vault: afd_vault::Vault::new(api.clone(), kek, Entropy::new()),
+            providers: Providers::new(api.clone(), Arc::clone(&kek), Entropy::new())
+                .with_platform_clock(Arc::new(clock.clone())),
+            vault: afd_vault::Vault::new(api.clone(), Arc::clone(&kek), Entropy::new()),
             database,
             owner,
             api,
+            kek,
+            clock,
             tenant,
             workspace,
         }
@@ -90,7 +96,7 @@ impl Lane {
     async fn key(&self, api_key: &str, replace: bool) {
         let name = SecretName::parse(PROVIDER).expect("the provider names a secret");
         let raw = RawValue::from_string(format!(
-            r#"{{"provider":"{PROVIDER}","api_key":"{api_key}"}}"#
+            r#"{{"provider":"{PROVIDER}","api_key":"{api_key}","refresh_token":"{REFRESH_OLD}"}}"#
         ))
         .expect("the fixture body is JSON");
         let body = SecretBody::parse(&raw).expect("the fixture body is a non-empty object");
@@ -121,20 +127,77 @@ impl Lane {
         .expect("the platform default seeds");
     }
 
-    /// The versions a claim would read now.
-    async fn observed(&self) -> PlatformKeyKey {
-        let (catalogue, secret, version): (i64, Uuid7, i64) = sqlx::query_as(OBSERVE)
-            .fetch_one(&mut *self.api.acquire().await.expect("an API connection"))
+    /// What the platform read observes now: the witnesses a claim reads beside
+    /// the slot are the same expression (proved against the real claim in the
+    /// fleet crate's suite).
+    async fn observed(&self) -> Observed {
+        self.providers
+            .observe_platform(&self.tenant)
             .await
-            .expect("an active default is observed");
-        PlatformKeyKey::observed(catalogue, secret, version)
+            .expect("the platform read answers")
+            .expect("an active default is observed")
+    }
+
+    /// A write that changes neither the sealed bytes nor the endpoint.
+    async fn touch(&self) {
+        sqlx::query(
+            "UPDATE vault.secrets SET updated_at = now() WHERE workspace_id = $1 AND key_name = $2",
+        )
+        .bind(&self.workspace)
+        .bind(PROVIDER)
+        .execute(&mut *self.api.acquire().await.expect("an API connection"))
+        .await
+        .expect("the stored credential is touched");
+    }
+
+    /// Pins the stored credential to `url`, as a metadata-only write would.
+    async fn pin_endpoint(&self, url: &str) {
+        sqlx::query(
+            "UPDATE vault.secrets SET meta_base_url = $3 WHERE workspace_id = $1 AND key_name = $2",
+        )
+        .bind(&self.workspace)
+        .bind(PROVIDER)
+        .bind(url)
+        .execute(&mut *self.api.acquire().await.expect("an API connection"))
+        .await
+        .expect("the stored credential is pinned");
+    }
+
+    /// Re-seals the stored envelope under a rotated refresh token.
+    async fn reseal(&self) {
+        afd_credential::vault::Vault::new(self.api.clone(), Arc::clone(&self.kek))
+            .rotate_refresh_token(
+                KeyRef {
+                    workspace_id: &self.workspace,
+                    name: PROVIDER,
+                },
+                REFRESH_OLD,
+                REFRESH_NEW,
+            )
+            .await
+            .expect("the matching handle rotates");
+    }
+
+    /// Closes the default's price window `span` from the database's clock.
+    async fn close_price_window_in(&self, span: Duration) {
+        sqlx::query(
+            "UPDATE model.platform_model_prices SET effective_until = clock_timestamp() + $3 \
+              WHERE platform_model_id = (SELECT id FROM model.platform_models \
+                                          WHERE provider = $1 AND model_name = $2)",
+        )
+        .bind(PROVIDER)
+        .bind(MODEL)
+        .bind(span)
+        .execute(&mut *self.owner.acquire().await.expect("an owner connection"))
+        .await
+        .expect("the price window closes");
     }
 
     /// A lease's resolution of `reference`, as the claim path asks for it.
     async fn lease(&self, reference: &str) -> String {
         let observed = self.observed().await;
         self.providers
-            .resolve_observed(&self.tenant, reference, Some(&observed))
+            .resolve_observed(&self.tenant, reference, Some(&observed.key))
             .await
             .expect("the reference resolves")
             .api_key()
@@ -228,5 +291,134 @@ async fn tenant_model_reference_reads_every_lease() {
         .sum();
     assert_eq!(entry_reads, 2, "{:?}", ran.statements());
     assert_eq!(secret_reads(&ran), 2, "{:?}", ran.statements());
+    lane.cleanup().await;
+}
+
+// Value: protects=the witness moves with the stored bytes and the endpoint and
+// with nothing else; fails_when=the digest ignores the ciphertext or the
+// endpoint, or moves on a write that changed neither; why_new=the counter that
+// stood here is gone and the cache now trusts the bytes themselves;
+// seam=none; no_claim=a rotation between the claim and the read.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn secret_digest_follows_the_stored_bytes_and_endpoint() {
+    let lane = Lane::create().await;
+    lane.key("sk-key-a", false).await;
+    lane.activate_default().await;
+    let first = lane.observed().await.key;
+
+    lane.touch().await;
+    assert_eq!(
+        lane.observed().await.key,
+        first,
+        "a write that changed neither the bytes nor the endpoint is no rotation"
+    );
+
+    lane.key("sk-key-a", true).await;
+    let replaced = lane.observed().await.key;
+    assert_ne!(
+        replaced, first,
+        "the same plaintext sealed again is another envelope, and a replace under \
+         the same KEK keeps the row's id and kek_version"
+    );
+
+    lane.reseal().await;
+    let resealed = lane.observed().await.key;
+    assert_ne!(
+        resealed, replaced,
+        "a re-seal rewrites the whole envelope, so it moves the witness too: one \
+         extra read, never a stale key"
+    );
+
+    lane.pin_endpoint(SAVED_BASE_URL).await;
+    assert_ne!(
+        lane.observed().await.key,
+        resealed,
+        "the endpoint beside the ciphertext is part of what the key answers for"
+    );
+    lane.cleanup().await;
+}
+
+// Value: protects=a price window that closes with no successor ends the cached
+// resolution; fails_when=the window's remaining span is not read or not applied;
+// why_new=no write announces a window closing; seam=the cache's clock;
+// no_claim=a successor tier (its write moves the catalogue).
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn platform_key_cache_ends_with_its_price_window() {
+    /// Shorter than the time limit, so only the window can end the entry.
+    const WINDOW: Duration = Duration::from_secs(240);
+    let lane = Lane::create().await;
+    lane.key("sk-key-a", false).await;
+    lane.activate_default().await;
+
+    let open = lane.observed().await;
+    assert_eq!(
+        open.window, None,
+        "an open-ended window has no end to count"
+    );
+
+    lane.close_price_window_in(WINDOW).await;
+    let left = lane
+        .observed()
+        .await
+        .window
+        .expect("a closing window is observed");
+    assert!(
+        left > WINDOW / 2 && left <= WINDOW,
+        "the window has most of its span left, measured on the database's clock: {left:?}"
+    );
+
+    let window = Window::open(&lane.owner).await;
+    assert_eq!(lane.lease(PLATFORM_MODEL_REF).await, "sk-key-a");
+    lane.clock.advance(Duration::from_secs(60));
+    assert_eq!(
+        lane.lease(PLATFORM_MODEL_REF).await,
+        "sk-key-a",
+        "inside the window the held entry answers"
+    );
+    lane.clock.advance(Duration::from_secs(190));
+    assert_eq!(
+        lane.lease(PLATFORM_MODEL_REF).await,
+        "sk-key-a",
+        "past the window, though inside the time limit, the entry is read again"
+    );
+    let ran = window.close().await;
+
+    assert_eq!(
+        secret_reads(&ran),
+        2,
+        "read for lease one and again once the window had closed: {:?}",
+        ran.statements()
+    );
+    lane.cleanup().await;
+}
+
+// Value: protects=a replaced key does not stay decrypted past the time limit;
+// fails_when=an entry outlives PLATFORM_KEY_TTL; why_new=the entry cap alone
+// leaves a rotated key's plaintext in memory indefinitely; seam=the cache's
+// clock; no_claim=eviction timing inside moka.
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn platform_key_cache_ends_at_the_time_limit() {
+    let lane = Lane::create().await;
+    lane.key("sk-key-a", false).await;
+    lane.activate_default().await;
+
+    let window = Window::open(&lane.owner).await;
+    assert_eq!(lane.lease(PLATFORM_MODEL_REF).await, "sk-key-a");
+    lane.clock
+        .advance(PLATFORM_KEY_TTL.saturating_sub(Duration::from_millis(1)));
+    assert_eq!(lane.lease(PLATFORM_MODEL_REF).await, "sk-key-a");
+    lane.clock.advance(Duration::from_millis(1));
+    assert_eq!(lane.lease(PLATFORM_MODEL_REF).await, "sk-key-a");
+    let ran = window.close().await;
+
+    assert_eq!(
+        secret_reads(&ran),
+        2,
+        "read for lease one and again at the limit: {:?}",
+        ran.statements()
+    );
     lane.cleanup().await;
 }

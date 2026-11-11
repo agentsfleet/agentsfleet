@@ -49,6 +49,7 @@ mod slack;
 mod stops;
 mod tenant;
 mod window;
+mod witness;
 
 use af_core::id::Uuid7;
 use afd_fleet::lease::Acquired;
