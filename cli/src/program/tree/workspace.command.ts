@@ -13,13 +13,13 @@ import {
   workspaceSecretsEffect,
   workspaceShowEffectFromArgs,
   workspaceUseEffectFromArgs,
-} from "../../commands/workspace.ts";
+} from "../../commands/workspace/workspace.ts";
 import {
   tenantProviderAddEffectFromArgs,
   tenantProviderDeleteEffect,
   tenantProviderShowEffect,
-} from "../../commands/tenant.ts";
-import { billingShowEffectFromArgs } from "../../commands/billing.ts";
+} from "../../commands/tenant/tenant.ts";
+import { billingShowEffectFromArgs } from "../../commands/billing/billing.ts";
 import {
   billingLimitFlag,
   cursorFlag,

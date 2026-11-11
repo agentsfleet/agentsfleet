@@ -17,6 +17,11 @@
 //! coverage (RULE NDC).
 
 pub mod provider;
+mod runner_span;
+mod verb;
+
+pub use self::runner_span::*;
+pub use self::verb::*;
 
 #[cfg(test)]
 mod tests;
@@ -168,63 +173,6 @@ pub const DELIVERY_SPAN_KEYS: &[&str] = &[
     ATTR_DELIVERY_SANDBOX_WAIT_MS,
     ATTR_DELIVERY_SETTLE_MS,
     ATTR_DELIVERY_COMPLETE_MS,
-];
-
-// ---------------------------------------------------------------------------
-// The runner's vocabulary
-// ---------------------------------------------------------------------------
-
-/// The service, and the instrumentation scope, everything a runner emits
-/// names: a span under it was opened on a runner host, never by the daemon.
-pub const RUNNER_SCOPE_NAME: &str = "agentsfleet-runner";
-
-/// The span one lease's work runs under; every runner span sits inside one.
-pub const SPAN_RUNNER_LEASE: &str = "runner.lease";
-
-/// Which runner a signal came from: the daemon's id for the runner's row, so
-/// each runner in a farm is told apart and joins its daemon record.
-pub const ATTR_RUNNER_ID: &str = "agentsfleet.runner.id";
-
-/// The host a runner reported itself on.
-pub const ATTR_RUNNER_HOST: &str = "agentsfleet.runner.host";
-
-/// The lease a runner span belongs to.
-pub const ATTR_LEASE_ID: &str = "agentsfleet.lease.id";
-
-/// Whether a lease ran in the sandbox its fleet's previous lease left held,
-/// rather than a fresh one; absent from a lease that used no sandbox.
-pub const ATTR_SANDBOX_REUSED: &str = "agentsfleet.sandbox.reused";
-
-/// One model turn.
-pub const OPERATION_CHAT: &str = "chat";
-
-/// One tool call.
-pub const OPERATION_EXECUTE_TOOL: &str = "execute_tool";
-
-/// The tool a call ran.
-pub const ATTR_TOOL_NAME: &str = "gen_ai.tool.name";
-
-/// The call's id within its run.
-pub const ATTR_TOOL_CALL_ID: &str = "gen_ai.tool.call.id";
-
-/// Every key the runner's spans carry: the lease span's identity, then the
-/// `GenAI` spans under it.
-pub const RUNNER_SPAN_KEYS: &[&str] = &[
-    ATTR_RUNNER_ID,
-    ATTR_RUNNER_HOST,
-    ATTR_LEASE_ID,
-    ATTR_SANDBOX_REUSED,
-    ATTR_EVENT_ID,
-    ATTR_AGENT_ID,
-    ATTR_OPERATION_NAME,
-    ATTR_PROVIDER_NAME,
-    ATTR_REQUEST_MODEL,
-    ATTR_USAGE_INPUT_TOKENS,
-    ATTR_USAGE_OUTPUT_TOKENS,
-    ATTR_USAGE_CACHE_READ_TOKENS,
-    ATTR_USAGE_CACHE_CREATION_TOKENS,
-    ATTR_TOOL_NAME,
-    ATTR_TOOL_CALL_ID,
 ];
 
 // ---------------------------------------------------------------------------

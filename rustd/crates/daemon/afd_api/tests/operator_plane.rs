@@ -46,7 +46,7 @@ async fn assert_runner_reads_reach_store(runner_reader: &axum::Router) {
     let reached = send(
         runner_reader,
         Method::GET,
-        "/v1/fleets/runners",
+        "/v1/admin/runners",
         Some(TENANT_KEY),
         "",
     )
@@ -63,7 +63,7 @@ async fn assert_runner_reads_reach_store(runner_reader: &axum::Router) {
     let leases = send(
         runner_reader,
         Method::GET,
-        &format!("/v1/fleets/runners/{RUNNER}/leases"),
+        &format!("/v1/admin/runners/{RUNNER}/leases"),
         Some(TENANT_KEY),
         "",
     )
@@ -80,7 +80,7 @@ async fn assert_runner_reads_reach_store(runner_reader: &axum::Router) {
     let events = send(
         runner_reader,
         Method::GET,
-        &format!("/v1/fleets/runners/{RUNNER}/events"),
+        &format!("/v1/admin/runners/{RUNNER}/events"),
         Some(TENANT_KEY),
         "",
     )
@@ -108,7 +108,7 @@ async fn runner_events_reject_filter_shape_before_io() {
         let malformed = send(
             &runner_reader,
             Method::GET,
-            &format!("/v1/fleets/runners/{RUNNER}/events?{query}"),
+            &format!("/v1/admin/runners/{RUNNER}/events?{query}"),
             Some(TENANT_KEY),
             "",
         )
@@ -136,7 +136,7 @@ async fn runner_leases_require_runner_read_and_reject_query_shape_before_io() {
     let denied = send(
         &stream_reader,
         Method::GET,
-        &format!("/v1/fleets/runners/{RUNNER}/leases"),
+        &format!("/v1/admin/runners/{RUNNER}/leases"),
         Some(TENANT_KEY),
         "",
     )
@@ -160,7 +160,7 @@ async fn runner_leases_require_runner_read_and_reject_query_shape_before_io() {
         let malformed = send(
             &runner_reader,
             Method::GET,
-            &format!("/v1/fleets/runners/{RUNNER}/leases?{query}"),
+            &format!("/v1/admin/runners/{RUNNER}/leases?{query}"),
             Some(TENANT_KEY),
             "",
         )
@@ -188,7 +188,7 @@ async fn runner_patch_is_mounted_behind_runner_write_and_rejects_shape_before_io
     let denied = send(
         &reader,
         Method::PATCH,
-        &format!("/v1/fleets/runners/{RUNNER}"),
+        &format!("/v1/admin/runners/{RUNNER}"),
         Some(TENANT_KEY),
         r#"{"action":"rotate"}"#,
     )
@@ -220,7 +220,7 @@ async fn runner_delete_is_mounted_behind_runner_write_and_rejects_shape_before_i
     let denied = send(
         &reader,
         Method::DELETE,
-        &format!("/v1/fleets/runners/{RUNNER}"),
+        &format!("/v1/admin/runners/{RUNNER}"),
         Some(TENANT_KEY),
         "",
     )
@@ -237,7 +237,7 @@ async fn runner_delete_is_mounted_behind_runner_write_and_rejects_shape_before_i
     let malformed = send(
         &writer,
         Method::DELETE,
-        "/v1/fleets/runners/not-a-runner-id",
+        "/v1/admin/runners/not-a-runner-id",
         Some(TENANT_KEY),
         "",
     )
@@ -262,7 +262,7 @@ async fn assert_runner_patch_shapes(writer: &axum::Router) {
         let malformed = send(
             writer,
             Method::PATCH,
-            &format!("/v1/fleets/runners/{RUNNER}"),
+            &format!("/v1/admin/runners/{RUNNER}"),
             Some(TENANT_KEY),
             body,
         )
@@ -282,7 +282,7 @@ async fn assert_runner_patch_policy(writer: &axum::Router) {
     let unsafe_policy = send(
         writer,
         Method::PATCH,
-        &format!("/v1/fleets/runners/{RUNNER}"),
+        &format!("/v1/admin/runners/{RUNNER}"),
         Some(TENANT_KEY),
         r#"{"assigned_policy":{"sandbox_tier":"landlock_full","network_policy":"allow_list_egress","registry_allowlist":[],"worker_count":1,"extra_binds":[{"path":"/etc","mode":"read_write","note":"unsafe"}],"durable_tasks_enabled":true}}"#,
     )
@@ -299,7 +299,7 @@ async fn assert_runner_patch_policy(writer: &axum::Router) {
     let reached = send(
         writer,
         Method::PATCH,
-        &format!("/v1/fleets/runners/{RUNNER}"),
+        &format!("/v1/admin/runners/{RUNNER}"),
         Some(TENANT_KEY),
         r#"{"action":"cordon"}"#,
     )
@@ -325,7 +325,7 @@ async fn every_runner_route_refuses_a_malformed_runner_id_with_one_sentence() {
         (Method::PATCH, ""),
         (Method::DELETE, ""),
     ] {
-        let path = format!("/v1/fleets/runners/not-a-runner-id{tail}");
+        let path = format!("/v1/admin/runners/not-a-runner-id{tail}");
         let refused = send(&operator, method, &path, Some(TENANT_KEY), "").await;
         assert_eq!(refused.status(), StatusCode::BAD_REQUEST, "{path}");
         let body = json_body(refused).await;

@@ -227,7 +227,7 @@ check_env_file() {
   # check only enforces `agt_r*`, which a placeholder satisfies — that would
   # loop on 401s. Better to fail at deploy time with a clear cause.
   if grep -qE '^AGENTSFLEET_RUNNER_TOKEN=agt_rFAKE' "$env_file"; then
-    die "AGENTSFLEET_RUNNER_TOKEN in $env_file is the placeholder; mint a real agt_r via POST /v1/runners and update 1Password before re-running"
+    die "AGENTSFLEET_RUNNER_TOKEN in $env_file is the placeholder; mint a real agt_r via POST /v1/admin/runners and update 1Password before re-running"
   fi
 }
 

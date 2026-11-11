@@ -19,8 +19,7 @@ type Props = Omit<ComponentProps<"div">, "children"> & {
   copyable?: boolean;
   /**
    * Plain-text payload for the clipboard. Required when `copyable` is
-   * true and `children` is JSX (e.g. severity-coloured `<LogLine>`
-   * blocks). When `children` is a string and `copyText` is unset, the
+   * true and `children` is formatted JSX. When `children` is a string and `copyText` is unset, the
    * string itself is copied. When `copyable=true` but neither a string
    * child nor `copyText` is provided, the copy button is hidden — a
    * silent no-op affordance is worse than no affordance.
@@ -134,8 +133,7 @@ export default function Terminal({ label, green, copyable, copyText, onCopyClick
           // Copy button renders only when we have a non-empty string
           // to put on the clipboard — either the children themselves
           // (string mode) or the explicit `copyText` override
-          // (JSX-children mode, e.g. severity-coloured <LogLine>
-          // blocks). When neither is present, hide the affordance —
+          // (formatted JSX). When neither is present, hide the affordance —
           // a silent no-op button is worse than no button.
           <Button
             type="button"

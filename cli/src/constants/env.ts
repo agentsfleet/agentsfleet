@@ -39,3 +39,6 @@ export const TELEMETRY_POSTHOG_HOST_ENV = "AGENTSFLEET_TELEMETRY_POSTHOG_HOST" a
 
 // The industry convention (no-color.org): any value disables ANSI colour.
 export const NO_COLOR_ENV = "NO_COLOR" as const;
+
+// Terminals do not expose the operating system's Reduce Motion preference.
+export const REDUCED_MOTION_ENV = "AGENTSFLEET_REDUCED_MOTION" as const;

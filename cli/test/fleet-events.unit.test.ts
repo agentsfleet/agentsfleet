@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
-import { eventsEffectFromFlags } from "../src/commands/fleet_events.ts";
+import { eventsEffectFromFlags } from "../src/commands/fleet/events.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Output } from "../src/services/output.ts";

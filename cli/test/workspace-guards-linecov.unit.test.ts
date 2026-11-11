@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
-import { requireWorkspaceId, resolveWorkspaceId } from "../src/commands/workspace-guards.ts";
+import { requireWorkspaceId, resolveWorkspaceId } from "../src/commands/workspace/guards.ts";
 import {
   Workspaces,
   type WorkspacesValue,

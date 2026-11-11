@@ -100,6 +100,11 @@ if [ "${STUB_EXECUTE_WIREGUARD:-0}" = 1 ] && [[ "$command" == *"/etc/wireguard/.
 fi
 case "$command" in
   *"http://agentsfleetd-dev.internal:3000/readyz"*) exit 0 ;;
+  # What OpenSSL prints for each carrier: over QUIC the version reads QUICv1
+  # and no group line appears, which a TLS-shaped fake once hid from the tests.
+  *"openssl s_client -brief"*"-quic"*)
+    printf '%s\n' 'CONNECTION ESTABLISHED' 'Protocol version: QUICv1' 'Verification: OK'
+    ;;
   *"openssl s_client -brief"*)
     printf '%s\n' 'CONNECTION ESTABLISHED' 'Protocol version: TLSv1.3' 'Verification: OK' 'Negotiated TLS1.3 group: X25519MLKEM768'
     ;;

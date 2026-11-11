@@ -33,9 +33,9 @@ describe("workspaceIdFromPath", () => {
     expect(workspaceIdFromPath("/w/ws_1/fleets/abc")).toBe("ws_1");
   });
 
-  it("returns null for tenant/platform routes (no /w segment)", () => {
-    expect(workspaceIdFromPath("/settings/api-keys")).toBeNull();
-    expect(workspaceIdFromPath("/admin/models")).toBeNull();
+  it("returns null for tenant routes (no /w segment)", () => {
+    expect(workspaceIdFromPath("/settings/account")).toBeNull();
+    expect(workspaceIdFromPath("/settings/billing")).toBeNull();
     expect(workspaceIdFromPath("/")).toBeNull();
   });
 });
@@ -48,7 +48,7 @@ describe("workspaceSubpath", () => {
 
   it("returns empty string at the workspace root or off-segment", () => {
     expect(workspaceSubpath("/w/ws_1")).toBe("");
-    expect(workspaceSubpath("/settings/api-keys")).toBe("");
+    expect(workspaceSubpath("/settings/account")).toBe("");
   });
 
   it("round-trips with workspacePath to preserve the sub-page across a switch", () => {

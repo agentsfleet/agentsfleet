@@ -422,7 +422,7 @@ Existing caller/configuration endpoints are reused, with additive validated fiel
 | Existing endpoint | M236 addition |
 |---|---|
 | `POST F/messages` | Optional native task association for a selected UI row; ordinary fleet text and `operation_id` behavior stay supported. |
-| `PATCH /v1/fleets/runners/{runner_id}` | Optional `assigned_policy.decision_model_id`, restricted by existing operator authorization and catalogue/vault ownership. |
+| `PATCH /v1/admin/runners/{runner_id}` | Optional `assigned_policy.decision_model_id`, restricted by existing operator authorization and catalogue/vault ownership. |
 | Existing runner heartbeat, lease claim, renew and report URLs | Assignment delivery, frozen decision/task context, usage and task settlement; no competing task claim route. |
 
 The following proposed endpoints extend those existing resource families:

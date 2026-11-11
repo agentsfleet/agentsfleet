@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
-import { billingShowEffectFromArgs } from "../src/commands/billing.ts";
+import { billingShowEffectFromArgs } from "../src/commands/billing/billing.ts";
 import { OUTPUT_FORMAT } from "../src/services/output.ts";
 import {
   BILLING_PATH, configLayer, credentialsLayer, expectFailure, httpClientLayer,

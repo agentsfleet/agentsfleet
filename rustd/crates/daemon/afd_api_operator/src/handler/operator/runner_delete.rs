@@ -1,4 +1,4 @@
-//! `DELETE /v1/fleets/runners/{runner_id}` — retire a revoked runner's record.
+//! `DELETE /v1/admin/runners/{runner_id}` — retire a revoked runner's record.
 //!
 //! Mirrors the API key's revoke-then-delete lifecycle: only an already-revoked
 //! row is deletable, so the destructive step stays `PATCH {"action":"revoke"}`
@@ -25,8 +25,8 @@ const EVENT: &str = "runner_delete_failed";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     delete,
-    path = "/v1/fleets/runners/{runner_id}",
-    tag = afd_http::openapi::tag::FLEET,
+    path = "/v1/admin/runners/{runner_id}",
+    tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "delete_fleet_runner",
     summary = "Delete a revoked runner",
     description = concat!(

@@ -15,7 +15,7 @@ use af_wire::paths;
 #[test]
 fn test_route_templates_compose_from_their_segments() {
     let routes = [
-        ("enrol", paths::RUNNERS),
+        ("enrol", paths::ADMIN_RUNNERS),
         ("self", paths::RUNNER_SELF),
         ("stream", paths::RUNNER_STREAM),
         ("credentials_mint", paths::RUNNER_CREDENTIALS_MINT),
@@ -40,7 +40,7 @@ fn test_route_templates_compose_from_their_segments() {
             out
         });
     insta::assert_snapshot!(rendered, @r"
-    enrol            /v1/runners
+    enrol            /v1/admin/runners
     self             /v1/runners/me
     stream           /v1/runners/me/stream
     credentials_mint /v1/runners/me/credentials/mint

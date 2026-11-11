@@ -33,7 +33,7 @@ import type { ProviderSnapshot } from "./tenant-provider-ops.ts";
 // `UZ-` alternative — it matched any UZ-* code, including unrelated ones.
 const CONFLICT_RE = /HTTP_409|\b409\b|conflict|in[_ -]?use|referenced/i;
 // `tenant provider show` flags a dangling credential reference via this marker
-// (per cli/src/commands/tenant.ts).
+// (per cli/src/commands/tenant/tenant.ts).
 const CREDENTIAL_MISSING = "credential_missing" as const;
 // secret-delete JSON envelope key + the success status it carries.
 const KEY_DELETE_STATUS = "status" as const;

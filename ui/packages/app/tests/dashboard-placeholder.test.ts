@@ -66,12 +66,6 @@ afterEach(() => {
 });
 
 describe("placeholder pages", () => {
-  it("settings page redirects to /sign-in when no token", async () => {
-    mockAuth({ token: null, userId: null });
-    const { default: Page } = await import("../app/(dashboard)/settings/page");
-    await expect(Page()).rejects.toThrow("redirect:/sign-in");
-  });
-
   it("settings defaults page renders the masked placeholder when authenticated", async () => {
     mockAuth({ token: "tkn" });
     const { default: Page } =

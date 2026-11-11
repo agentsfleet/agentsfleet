@@ -1,21 +1,4 @@
-/*
- * Shared underline tab visual — the ONE tab style (pill retired).
- *
- * Both the in-page Radix `Tabs` (active marked via `data-state=active`) and the
- * route-style `TabNav` links (active marked via `data-active=true`) compose
- * these constants, so the underline visual is defined exactly once (RULE UFS —
- * imported verbatim by the components AND their tests). The active-state
- * SELECTOR is the only thing that differs between the two, so the trigger class
- * is a shared base + a per-primitive active suffix.
- *
- * Active indicator = a `--pulse` underline (a sanctioned "active" use of the
- * currency accent per docs/DESIGN_SYSTEM.md) over a thin `--border` rail. No
- * rounded pill tray, no `bg-background` active fill, no shadow. Visual source
- * of truth: docs/DESIGN_SYSTEM.md (Component principles → Tabs).
- */
-
-/** Underline rail: a thin bottom border the triggers sit on — replaces the
- *  retired pill tray (a muted-fill rounded container). */
+// The underline rail keeps the active trigger aligned with its neighbours.
 export const TAB_LIST_CLASS =
   "flex items-center justify-start gap-2xl border-b border-border text-muted-foreground";
 
@@ -30,6 +13,3 @@ const TAB_TRIGGER_BASE =
 
 /** Active underline for the Radix `Tabs` trigger (sets `data-state=active`). */
 export const TAB_TRIGGER_CLASS_RADIX = `${TAB_TRIGGER_BASE} data-[state=active]:text-foreground data-[state=active]:font-medium`;
-
-/** Active underline for the route-link `TabNav` item (sets `data-active=true`). */
-export const TAB_TRIGGER_CLASS_LINK = `${TAB_TRIGGER_BASE} data-[active=true]:text-foreground data-[active=true]:font-medium`;

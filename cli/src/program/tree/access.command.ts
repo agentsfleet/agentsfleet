@@ -13,23 +13,23 @@ import {
   apiKeyDeleteEffectFromId,
   apiKeyListEffectFromArgs,
   apiKeyRevokeEffectFromId,
-} from "../../commands/api_key.ts";
+} from "../../commands/api-key/api-key.ts";
 import {
   connectorListEffectFromArgs,
   connectorStatusEffectFromArgs,
-} from "../../commands/connector.ts";
+} from "../../commands/connector/connector.ts";
 import {
   approvalsListEffectFromArgs,
   approvalsShowEffectFromArgs,
-} from "../../commands/approvals.ts";
+} from "../../commands/approvals/approvals.ts";
 import {
   approvalsApproveEffectFromArgs,
   approvalsDenyEffectFromArgs,
-} from "../../commands/approvals_decide.ts";
+} from "../../commands/approvals/decide.ts";
 import {
   grantDeleteEffectFromArgs,
   grantListEffectFromArgs,
-} from "../../commands/grant.ts";
+} from "../../commands/grant/grant.ts";
 import {
   apiKeyIdArgument,
   descriptionFlag,

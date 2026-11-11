@@ -17,6 +17,7 @@ import type { Entry } from "./fleet-stream-entry";
 import { AGENTSFLEET_EVENT_STATUS } from "./fleet-stream-row";
 import { closedAnyAtSettle } from "./fleet-stream-tool-trace";
 import { ReplyStream } from "./reply-stream";
+import { sendMarks } from "./send-marks";
 import { STREAM_SILENCE_TIMEOUT_MS } from "./stream-recovery-window";
 
 type ChunkFrame = Extract<LiveFrame, { kind: typeof FRAME_KIND.CHUNK }>;
@@ -45,6 +46,7 @@ export function dispatchReplyFrame(
   apply: ApplyEvents,
   isCurrent: () => boolean,
 ): boolean {
+  sendMarks.frame(frame);
   markHeard(entry, frame);
   if (frame.kind === FRAME_KIND.CHUNK) {
     writeChunk(entry, frame, apply, isCurrent);

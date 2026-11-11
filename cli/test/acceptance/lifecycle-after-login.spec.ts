@@ -2,10 +2,10 @@
  * Real-handshake acceptance scenario — `agentsfleet login` end-to-end
  * against api-dev with a Playwright Chromium browser leg and a real pty.
  *
- *   - handshake: drive `login --no-open` inside a pseudo-terminal (the
+ *   - handshake: drive default login and `login --no-open` in a pseudo-terminal (the
  *     device flow refuses a non-TTY stdin), parse login_url, complete the
  *     dashboard's CLI-auth approve action via browser.ts, scrape the 6-digit
- *     code it displays, type it into the pty prompt, assert credentials.json
+ *     callback, or enter the manual code, then assert credentials.json
  *     mode 0600 + durable CLI credential shape (WS-E #C3).
  *   - immediate auth-status proof with no env API key
  *     (AGENTSFLEET_API_KEY), so credentials.json is the load-bearing source.
@@ -19,7 +19,7 @@
  * WS-E #C1 regression: assertNoSecretLeak fires after every spawn.
  */
 
-import { describe, it, beforeAll, afterAll } from "bun:test";
+import { describe, it, beforeAll, beforeEach, afterEach } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -43,6 +43,7 @@ const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
 const isLive = target.startsWith("https://");
 
 const CODE_PROMPT_RE = /verification code/i;
+const COMPARISON_CODE_RE = /Check code: ([A-F0-9]{4}-[A-F0-9]{4})/;
 const CREDENTIALS_MODE = 0o600;
 const HANDSHAKE_TIMEOUT_MS = 60_000;
 const AUTH_SOURCE_FILE = "file" as const;
@@ -94,11 +95,14 @@ if (!isLive) {
       const minted = await attachJwt(clerkSecret, { email: fixtureEmail });
       sessionJwt = minted.sessionJwt;
       clerkUserId = minted.clerkUserId;
+    });
 
+    beforeEach(async () => {
       stateDir = await fs.mkdtemp(path.join(os.tmpdir(), "agentsfleet-login-"));
       credentialsPath = path.join(stateDir, "credentials.json");
       baseEnv = composeEnv({
         AGENTSFLEET_API_URL: apiUrl,
+        AGENTSFLEET_DASHBOARD_URL: dashboardUrl,
         AGENTSFLEET_STATE_DIR: stateDir,
         NO_COLOR: "1",
         // No env API key (AGENTSFLEET_API_KEY) — every spawn proves
@@ -106,7 +110,7 @@ if (!isLive) {
       });
     });
 
-    afterAll(async () => {
+    afterEach(async () => {
       if (!stateDir) return;
       const credentialExists = await fs.stat(credentialsPath).then(() => true).catch(() => false);
       if (credentialExists) {
@@ -116,25 +120,38 @@ if (!isLive) {
       await fs.rm(stateDir, { recursive: true, force: true });
     });
 
-    // CLI login handshake — drive the device flow through a pty, complete
-    // the browser approve leg, and type the displayed code back into the CLI.
+    // The default path must finish without terminal input; --no-open keeps
+    // its explicit manual-code fallback. Both persist the same credential type.
     describe("handshake", () => {
-      it("login --no-open → approve via Chromium → credentials.json 0600", async () => {
+      it.each(["automatic", "manual"] as const)("%s browser authorization → credentials.json 0600", async mode => {
+        const manual = mode === "manual";
         // No --no-input: the pty makes stdin a terminal, so the device flow
         // runs the interactive verification prompt instead of fast-failing.
-        const cli = PtyProcess.spawnFleetctl(["login", "--no-open"], { env: baseEnv });
+        const cli = PtyProcess.spawnFleetctl(["login", ...(manual ? ["--no-open"] : [])], { env: baseEnv });
         try {
           const announced = await cli.waitForLine((line) => extractLoginUrl(line) !== null, HANDSHAKE_TIMEOUT_MS);
           const handoffUrl = rewriteHost(parseLoginUrl(announced), dashboardUrl);
+          const comparison = manual ? undefined : (await cli.waitForLine(line => COMPARISON_CODE_RE.test(line), HANDSHAKE_TIMEOUT_MS))
+            .match(COMPARISON_CODE_RE)?.[1];
+          if (!manual) assert.ok(comparison, "automatic login must display a comparison code");
+          const videoPath = manual ? undefined : process.env.AGENTSFLEET_ACCEPTANCE_VIDEO_PATH;
 
           const code = await completeCliAuthHandoff({
             loginUrl: handoffUrl,
             clerkUserId,
             timeoutMs: HANDSHAKE_TIMEOUT_MS,
+            ...(comparison === undefined ? {} : {comparisonCode: comparison}),
+            ...(videoPath === undefined ? {} : {videoPath}),
           });
 
-          await cli.waitForLine((line) => CODE_PROMPT_RE.test(line), HANDSHAKE_TIMEOUT_MS);
-          cli.writeLine(code);
+          if (manual) {
+            assert.ok(code !== null, "manual authorization must return a verification code");
+            await cli.waitForLine((line) => CODE_PROMPT_RE.test(line), HANDSHAKE_TIMEOUT_MS);
+            cli.writeLine(code);
+          } else {
+            assert.equal(code, null, "automatic authorization must finish through the local callback");
+            assert.doesNotMatch(cli.output, CODE_PROMPT_RE, "automatic login must never ask for a verification code");
+          }
 
           const exitCode = await cli.exited;
           assert.equal(exitCode, 0, `login exited ${exitCode}; output=${cli.output}`);
@@ -161,6 +178,7 @@ if (!isLive) {
 
         // WS-E #C1: the minted browser-leg JWT must never surface on the pty.
         assertNoSecretLeak({ stdout: cli.output, stderr: "" }, sessionJwt);
+        assertNoSecretLeak({ stdout: cli.output, stderr: "" }, creds.token);
       }, HANDSHAKE_TIMEOUT_MS * 2);
     });
   });

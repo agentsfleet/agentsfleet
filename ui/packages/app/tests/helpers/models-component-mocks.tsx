@@ -127,31 +127,6 @@ export async function designSystemStub() {
       React.createElement("span", { "data-badge": variant ?? "default" }, children),
     SectionLabel: ({ children }: React.PropsWithChildren) =>
       React.createElement("h2", { "data-section-label": "1" }, children),
-    DashboardRowGroup: ({ children, ...rest }: React.PropsWithChildren<Record<string, unknown>>) =>
-      React.createElement("div", { ...rest }, children),
-    DashboardRow: ({
-      icon,
-      title,
-      description,
-      meta,
-      action,
-      ...rest
-    }: {
-      icon?: React.ReactNode;
-      title: React.ReactNode;
-      description?: React.ReactNode;
-      meta?: React.ReactNode;
-      action?: React.ReactNode;
-    } & Record<string, unknown>) =>
-      React.createElement(
-        "div",
-        { "data-row": typeof title === "string" ? title : "row", ...rest },
-        icon,
-        React.createElement("span", { "data-row-title": "1" }, title),
-        React.createElement("span", { "data-row-desc": "1" }, description),
-        React.createElement("span", { "data-row-action": "1" }, action),
-        meta ? React.createElement("span", { "data-row-meta": "1" }, meta) : null,
-      ),
   };
 }
 

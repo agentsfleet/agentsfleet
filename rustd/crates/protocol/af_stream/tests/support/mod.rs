@@ -20,6 +20,9 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 pub(super) type Result<T = ()> = af_stream::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
+/// How many times a fixture tries to pair its TCP port with the same UDP number.
+const BIND_ATTEMPTS: usize = 8;
+
 pub(super) struct Fixture {
     _directory: tempfile::TempDir,
     pub(super) identity: Identity,
@@ -56,15 +59,41 @@ impl Fixture {
     }
 
     pub(super) async fn serve(&self) -> Result<Host> {
-        self.serve_mode(false).await
+        self.serve_mode(false, None).await
     }
 
     pub(super) async fn serve_without_headers(&self) -> Result<Host> {
-        self.serve_mode(true).await
+        self.serve_mode(true, None).await
     }
 
-    async fn serve_mode(&self, hold_headers: bool) -> Result<Host> {
-        let listener = Listener::bind("[::1]:0".parse()?, self.identity.clone()).await?;
+    /// The kernel picks the TCP port and the UDP socket must take the same number, which another
+    /// socket in this process may already hold: a fresh number settles it.
+    async fn bind(&self) -> Result<Listener> {
+        let address: std::net::SocketAddr = "[::1]:0".parse()?;
+        for _ in 1..BIND_ATTEMPTS {
+            match Listener::bind(address, self.identity.clone()).await {
+                Err(error) if error.io_kind() == Some(std::io::ErrorKind::AddrInUse) => {}
+                bound => return Ok(bound?),
+            }
+        }
+        Ok(Listener::bind(address, self.identity.clone()).await?)
+    }
+
+    /// `datagram` makes the HTTP/3 side send datagrams of that size, to model a daemon with no
+    /// ceiling of its own.
+    pub(super) async fn serve_mode(
+        &self,
+        hold_headers: bool,
+        datagram: Option<usize>,
+    ) -> Result<Host> {
+        let listener = self.bind().await?;
+        #[cfg(feature = "test-util")]
+        let listener = match datagram {
+            Some(bytes) => listener.with_datagram_limit(bytes),
+            None => listener,
+        };
+        #[cfg(not(feature = "test-util"))]
+        let _ = datagram;
         let endpoint = Endpoint::parse(&format!(
             "https://localhost:{}",
             listener.local_addr()?.port()

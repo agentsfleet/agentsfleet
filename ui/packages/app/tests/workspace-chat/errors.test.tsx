@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ChatFixture, CHAT_PROPS, chooseSetupAction } from "./fixture";
-import { DraftClient } from "@/lib/api/drafts";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { DraftSidebarProvider } from "@/components/layout/draft-sidebar-state";
 import { DRAFT, FLEET_DETAIL, FLEET_ID, MODEL, response, WORKSPACE } from "@/tests/helpers/draft-fixtures";
@@ -69,15 +68,6 @@ it("offers model settings when a successful list confirms there are no authoring
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByRole("link", {name: "Set up model"}).getAttribute("href")).toBe(`/w/${WORKSPACE}/settings/models`);
   expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
-});
-
-it("takes platform model administrators to the model library when no model is configured", async () => {
-  const base = fixture.fetch.getMockImplementation();
-  if (!base) throw new Error("Chat fetch fixture is not installed");
-  fixture.fetch.mockImplementation((input, init) => typeof input === "string" && input.includes("/models?")
-    ? Promise.resolve(response({items: [], next_cursor: null})) : base(input, init));
-  render(<WorkspaceChat {...CHAT_PROPS} canManagePlatformModels />);
-  expect((await screen.findByRole("link", {name: "Set up model"})).getAttribute("href")).toBe("/admin/models");
 });
 
 it("explains configured but ineligible models and prevents an empty model menu", async () => {

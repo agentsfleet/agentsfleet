@@ -161,6 +161,7 @@ async fn completed_lease(fixture: &Decisions<'_>) -> i64 {
             &held.runner,
             &report(held, held.fence.as_u64(), Vec::new()),
             clock::now(),
+            &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
         .expect("normal terminal report");

@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit, Option } from "effect";
-import { Output } from "../services/output.ts";
+import { Output, OUTPUT_FORMAT } from "../services/output.ts";
+import { REJECTION_CODE } from "../constants/rejection.ts";
 import {
   UnexpectedError,
   type CliError,
@@ -20,6 +21,13 @@ export const exitToCliError = (exit: Exit.Exit<void, CliError>): CliError => {
 export const renderCliError = (err: CliError): Effect.Effect<void, never, Output> =>
   Effect.gen(function* () {
     const output = yield* Output;
+    if (output.format === OUTPUT_FORMAT.json) {
+      const code = err._tag === "ServerError" || err._tag === "AuthError" ? err.code
+        : err._tag === "ValidationError" ? REJECTION_CODE.invalidArgument : err._tag;
+      yield* output.printJsonErr({error: {code, message: err.detail, suggestion: err.suggestion,
+        ...("requestId" in err && err.requestId ? {request_id: err.requestId} : {})}});
+      return;
+    }
     if (err._tag === "ServerError" || err._tag === "AuthError") {
       const requestId = err.requestId ? `\nrequest_id: ${err.requestId}` : "";
       yield* output.error(`${err.code} ${err.detail}\n  Suggestion: ${err.suggestion}${requestId}`);

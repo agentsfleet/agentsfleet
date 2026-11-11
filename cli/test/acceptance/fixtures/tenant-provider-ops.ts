@@ -15,7 +15,7 @@
  *                                   (PUT, mode=self_managed)
  *   tenant provider delete          (DELETE → platform default)
  *
- * JSON keys mirror `ProviderResponse` in `cli/src/commands/tenant.ts`:
+ * JSON keys mirror `ProviderResponse` in `cli/src/commands/tenant/tenant.ts`:
  *   mode, provider, model, context_cap_tokens, secret_ref,
  *   synthesised_default, error.
  */

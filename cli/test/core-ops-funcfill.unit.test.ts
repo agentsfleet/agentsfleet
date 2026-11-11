@@ -3,14 +3,14 @@
 // JSON report.
 //
 // Target: the runBindingCheck token-resolution-failure branch in
-// src/commands/core-ops.ts — a workspace IS selected (so the binding
+// src/commands/fleet/core-ops.ts — a workspace IS selected (so the binding
 // check runs) but resolveAuthToken fails inside it, so the check folds
 // to ok=false WITHOUT issuing the agents GET. That branch is otherwise
 // unexercised because every other doctor test supplies a token.
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
-import { doctorEffect } from "../src/commands/core-ops.ts";
+import { doctorEffect } from "../src/commands/fleet/core-ops.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";

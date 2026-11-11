@@ -19,8 +19,7 @@ const { INNER_ATTR, PROPS_ATTR, innerStub } = vi.hoisted(() => {
   return { INNER_ATTR, PROPS_ATTR, innerStub };
 });
 
-// Each stub keeps the real module's export shape: every inner is a default
-// export except EditPolicyDialog, which is named.
+// Each stub keeps the real module's default export.
 vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/EditSecretDialog", async () => ({
   default: innerStub("EditSecretDialog", (await import("react")).createElement),
 }));
@@ -36,13 +35,6 @@ vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", asy
 vi.mock("@/app/(dashboard)/settings/members/components/InviteDialog", async () => ({
   default: innerStub("InviteDialog", (await import("react")).createElement),
 }));
-vi.mock("@/app/(dashboard)/admin/runners/components/AddRunnerDialog", async () => ({
-  default: innerStub("AddRunnerDialog", (await import("react")).createElement),
-}));
-vi.mock("@/app/(dashboard)/admin/runners/components/EditPolicyDialog", async () => ({
-  EditPolicyDialog: innerStub("EditPolicyDialog", (await import("react")).createElement),
-}));
-
 // A deterministic stand-in for the Next.js loader: await the shim's own
 // factory and render whatever component it resolves to, with the props given.
 vi.mock("next/dynamic", () => {
@@ -66,8 +58,6 @@ import AddCredentialFormDynamic from "@/components/domain/island-dynamic/AddSecr
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import CreateApiKeyDialogDynamic from "@/components/domain/island-dynamic/CreateApiKeyDialogDynamic";
 import InviteDialogDynamic from "@/components/domain/island-dynamic/InviteDialogDynamic";
-import AddRunnerDialogDynamic from "@/components/domain/island-dynamic/AddRunnerDialogDynamic";
-import EditPolicyDialogDynamic from "@/components/domain/island-dynamic/EditPolicyDialogDynamic";
 
 afterEach(() => cleanup());
 
@@ -110,20 +100,6 @@ describe("dynamic island shims load their own inner component with the caller's 
       "InviteDialogDynamic",
       "InviteDialog",
       React.createElement(InviteDialogDynamic, { onSettled: noop }),
-    ],
-    [
-      "AddRunnerDialogDynamic",
-      "AddRunnerDialog",
-      React.createElement(AddRunnerDialogDynamic, { onCreated: noop }),
-    ],
-    [
-      "EditPolicyDialogDynamic",
-      "EditPolicyDialog",
-      React.createElement(EditPolicyDialogDynamic, {
-        runnerId: "run_1",
-        current: { durable_tasks_enabled: true,sandbox_tier: "landlock_full", network_policy: "allow_all", registry_allowlist: [], worker_count: 1, extra_binds: []},
-        onSaved: noop,
-      }),
     ],
   ];
 

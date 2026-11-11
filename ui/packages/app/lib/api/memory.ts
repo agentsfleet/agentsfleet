@@ -1,6 +1,6 @@
 import { request } from "./client";
 import { walkList } from "./list-walk";
-import { QUERY_STARTING_AFTER } from "./runners";
+import { QUERY_STARTING_AFTER } from "./paging";
 import type { MemoryAccess, MemoryEntry } from "../types";
 
 export type { MemoryAccess, MemoryEntry };

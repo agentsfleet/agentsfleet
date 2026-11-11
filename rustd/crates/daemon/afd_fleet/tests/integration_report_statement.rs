@@ -437,16 +437,17 @@ async fn a_warm_replica_report_reads_no_price_book() {
     statements::install(&owner).await;
     let plane = held.fixtures.plane();
     let request = crate::integration_held_sandbox::report::processed(&held, None);
+    let mut untimed = af_observability::verb_span::VerbClock::untimed();
 
     let cold = Counted::open(&owner).await;
     plane
-        .report(&held.runner, &request, held.now)
+        .report(&held.runner, &request, held.now, &mut untimed)
         .await
         .expect("the report settles the lease");
     let cold = cold.close().await;
     let warm = Counted::open(&owner).await;
     plane
-        .report(&held.runner, &request, held.now)
+        .report(&held.runner, &request, held.now, &mut untimed)
         .await
         .expect("the replay answers the stored outcome");
     let warm = warm.close().await;

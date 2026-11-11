@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Cause, Effect, Exit, Option } from "effect";
-import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
+import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import { InterruptedError, ServerError } from "../src/errors/index.ts";
 import { cliConfigFromValuesLayer } from "../src/services/config.ts";
 import { httpClientLayer } from "../src/services/http-client.ts";

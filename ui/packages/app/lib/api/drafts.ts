@@ -1,7 +1,6 @@
 import type { z } from "zod";
 import type { CachedDraft } from "./draft-cache";
-import { DraftPublication, type PlatformPublisher } from "./draft-publication";
-export type { PlatformPublisher } from "./draft-publication";
+import { DraftPublication } from "./draft-publication";
 import type { Draft, Fleet, Review, Source, Start } from "./draft-types";
 import { DraftLive } from "./draft-live";
 import { DraftOperation } from "./draft-operation";
@@ -40,12 +39,11 @@ export class DraftClient {
   readonly #watching = new DraftWatch();
   #continueSave: (() => Promise<void>) | undefined;
   #setupTarget: Fleet | undefined;
-  constructor(identity: DraftIdentity, platformPublisher?: PlatformPublisher) {
+  constructor(identity: DraftIdentity) {
     this.#base = `/live/v1/workspaces/${encodeURIComponent(identity.workspace)}`;
     this.#lists = new DraftLists(this.#base);
-    this.#publication = new DraftPublication(this.#base, identity.workspace, (request, parser) => this.#request(request, parser), platformPublisher);
+    this.#publication = new DraftPublication(this.#base, (request, parser) => this.#request(request, parser));
   }
-  get canStagePlatform(): boolean { return this.#publication.canStagePlatform; }
   readonly getSnapshot = (): DraftView => this.#snapshot;
   readonly subscribe = (listener: () => void): (() => void) => { this.#listeners.add(listener); return () => this.#listeners.delete(listener); };
   dispose(): void {
@@ -218,17 +216,6 @@ export class DraftClient {
         await this.#read(draft.id); await this.#refreshSummary(draft.id);
       });
     }, "publishing");
-  }
-  stagePlatform(label: string): Promise<void> {
-    return this.#requests.run(async () => {
-      this.#idle();
-      const {draft} = await this.#readySetup();
-      await this.#operation.run({platform: draft.candidate.id, label}, async key => {
-        const notice = await this.#publication.stage(draft, label, key);
-        this.#owner.signal.throwIfAborted(); this.#update({notice});
-        await this.#read(draft.id);
-      });
-    });
   }
   retry(): Promise<void> {
     return this.#requests.run(async () => {

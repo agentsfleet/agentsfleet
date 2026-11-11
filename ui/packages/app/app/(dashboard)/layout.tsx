@@ -2,7 +2,6 @@ import { TooltipProvider } from "@agentsfleet/design-system";
 import { ShellFrame } from "@/components/layout/ShellFrame";
 import { credential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
-import { readSessionScopes } from "@/lib/auth/platform";
 import { getTenantBillingCached } from "@/lib/api/tenant_billing";
 import type { WaitingInvite } from "@/lib/api/invites";
 import { listWaitingInvitesCached } from "@/lib/invites";
@@ -20,9 +19,6 @@ function readShell(token: string) {
       items: [],
       total: 0,
     })),
-    // Operator scopes gate the platform navigation. Empty set
-    // for an anonymous/no-token session.
-    readSessionScopes(),
     // The header's balance. Cached per request, so a page that reads
     // billing for itself shares this one round-trip. A failure resolves to
     // null and the header omits the figure — a shell that cannot render
@@ -41,9 +37,9 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const token = await credential();
-  const [listResult, scopes, billing, waitingInvites] = token
+  const [listResult, billing, waitingInvites] = token
     ? await readShell(token)
-    : [{ items: [], total: 0 }, new Set<string>(), null, NO_WAITING_INVITES];
+    : [{ items: [], total: 0 }, null, NO_WAITING_INVITES];
 
   // Shell controls derive the active workspace from `/w/<id>/…`; no
   // `activeWorkspaceId` prop or cookie owns navigation state. ShellFrame wraps
@@ -64,7 +60,7 @@ export default async function DashboardLayout({
     <TooltipProvider>
       <ShellFrame
         workspaces={listResult.items}
-        operatorScopes={[...scopes]}
+
         billing={billing}
         waitingInvites={waitingInvites}
       >

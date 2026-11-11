@@ -8,7 +8,7 @@ import { Input } from "../../services/input.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { Stdin } from "../../services/stdin.ts";
 import { EMPTY_CELL, ago } from "../../output/index.ts";
-import { requireValidId, resolveAuthToken, resolveWorkspaceId, WORKSPACE_FLAG } from "../workspace-guards.ts";
+import { requireValidId, resolveAuthToken, resolveWorkspaceId, WORKSPACE_FLAG } from "../workspace/guards.ts";
 import { createTransport, IF_MATCH } from "./transport.ts";
 import { CHAT_TEXT_KIND, CHAT_PAGE_MAX, chatStatus, chatText, chatVersions, decodeChatPage, decodeChatTitle } from "./history-schema.ts";
 

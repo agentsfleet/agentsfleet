@@ -138,7 +138,7 @@ await assert.rejects(enroll(async (method, path) => {
   return pages.length === 1 ? {items: [{host_id: 'another-host'}], next_cursor: 'older/page'}
     : {items: [{host_id: `local-acceptance-${namespace}`}], next_cursor: null};
 }, 'http://127.0.0.1', namespace, `${file}.orphan`), /already enrolled/);
-assert.deepEqual(pages, ['/v1/fleets/runners', '/v1/fleets/runners?starting_after=older%2Fpage']);
+assert.deepEqual(pages, ['/v1/admin/runners', '/v1/admin/runners?starting_after=older%2Fpage']);
 assert.equal(await Bun.file(`${file}.orphan`).exists(), false);
 ''', str(ROOT / 'deploy/local/bootstrap.ts'), str(self.root)], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect } from "effect";
-import { billingShowEffectFromArgs } from "../src/commands/billing.ts";
+import { billingShowEffectFromArgs } from "../src/commands/billing/billing.ts";
 import { OUTPUT_FORMAT } from "../src/services/output.ts";
 import { ServerError } from "../src/errors/index.ts";
 import {

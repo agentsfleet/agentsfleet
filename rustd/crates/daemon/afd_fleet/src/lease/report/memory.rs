@@ -58,7 +58,12 @@ impl LeaseService {
             lease_id: &lease_key,
             fencing_token: lease.fence.as_u64(),
         };
-        let Err(failure) = self.capture_for(holder, &request.memory, now).await else {
+        // Untimed: this capture is the report's own `capture` stage.
+        let mut untimed = af_observability::verb_span::VerbClock::untimed();
+        let Err(failure) = self
+            .capture_for(holder, &request.memory, now, &mut untimed)
+            .await
+        else {
             return;
         };
         if failure.is_fence_refusal() {

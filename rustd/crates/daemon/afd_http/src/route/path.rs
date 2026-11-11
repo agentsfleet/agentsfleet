@@ -29,13 +29,13 @@ macro_rules! fleet_path {
 }
 
 /// A path under one operator-visible runner.
-macro_rules! fleet_runner_path {
+macro_rules! admin_runner_path {
     ($suffix:literal) => {
-        concat!("/v1/fleets/runners/{runner_id}", $suffix)
+        concat!("/v1/admin/runners/{runner_id}", $suffix)
     };
 }
 
-pub(super) use {fleet_path, fleet_runner_path, workspace_path};
+pub(super) use {admin_runner_path, fleet_path, workspace_path};
 
 #[cfg(test)]
 mod tests {

@@ -31,7 +31,7 @@ The flag only added a second way to reach the same place, through a file the cal
 
 The check is `isPersistable` in `cli/src/services/credentials.ts`, which accepts a well-formed `afc_` credential or an `agt_t` key and nothing else. Seeding a Clerk session token therefore reported success and then read back as logged-out on the next command. The failure surfaced one command after the mistake.
 
-Unattended callers use `AGENTSFLEET_API_KEY`. Login still requires an interactive terminal and a person authorizing the browser request (`cli/src/commands/login.ts`).
+Unattended callers use `AGENTSFLEET_API_KEY`. Login still requires an interactive terminal and a person authorizing the browser request (`cli/src/commands/auth/login.ts`).
 
 A non-interactive shell fails before creating a session. The existing-credential overwrite check runs first, unless `--force` bypasses that check.
 
@@ -151,14 +151,14 @@ sequenceDiagram
 
 The diagram shows successful approval. Denial, cancellation and uncertain replies follow the rules below.
 
-Both modes share `completeLogin` in [`login.ts`](../cli/src/commands/login.ts).
+Both modes share `completeLogin` in [`login.ts`](../cli/src/commands/auth/login.ts).
 That function exchanges the session token, saves the credential, validates identity and loads workspaces.
 
 ## Local browser binding
 
 The CLI validates the API-provided login URL against its configured dashboard origin and exact session route before opening a listener.
 The URL must contain no query, fragment or user information at that boundary.
-[`login-callback-protocol.ts`](../cli/src/commands/login-callback-protocol.ts) owns those checks and the wire fields.
+[`login-callback-protocol.ts`](../cli/src/commands/auth/login-callback-protocol.ts) owns those checks and the wire fields.
 
 The outgoing URL adds the nonsecret marker `?flow=loopback`. Its fragment carries only these handoff fields:
 
@@ -214,7 +214,7 @@ The approval route sets `Referrer-Policy: origin` so HTTPS-to-HTTP form submissi
 The local listener rejects missing, null or unexpected Origin values.
 The local response uses `Referrer-Policy: no-referrer`, no-store caching and static content without credentials or external assets.
 
-[`login-callback.ts`](../cli/src/commands/login-callback.ts) binds only literal `127.0.0.1`, using an operating-system-assigned port.
+[`login-callback.ts`](../cli/src/commands/auth/login-callback.ts) binds only literal `127.0.0.1`, using an operating-system-assigned port.
 It accepts the fixed callback path and form content type, with the exact listener Host and configured dashboard Origin.
 Session and state must match; state comparison uses a constant-time primitive.
 
@@ -251,7 +251,7 @@ After that transaction commits, canceling a process or losing a response cannot 
 Identity-validation failure clears the newly saved local credential; cleanup does not restore the old server row or guarantee revocation of the new row.
 
 Stopping the process or losing a mint response can interrupt finalization. A failed local write can leave a server credential whose value the terminal no longer holds.
-See [`login-exchange.ts`](../cli/src/commands/login-exchange.ts), [`login-identity-rollback.ts`](../cli/src/commands/login-identity-rollback.ts) and the [backend mint](../rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs).
+See [`login-exchange.ts`](../cli/src/commands/auth/login-exchange.ts), [`login-identity-rollback.ts`](../cli/src/commands/auth/login-identity-rollback.ts) and the [backend mint](../rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs).
 
 ### Explicit manual mode
 
@@ -341,7 +341,7 @@ therefore abort it exactly once, and a correct code redeems it exactly once.
 | `PATCH /v1/auth/sessions/{id}/approve` | dashboard JS process | Clerk customized session token (the `api`-template JWT travels only inside the encrypted payload) · per-Clerk-user backstop deferred post-launch — Clerk-edge per-IP on sign-in / sign-up (L1) bounds upstream identity supply |
 | `POST /v1/auth/sessions/{id}/verify` | CLI with the verification code | the code IS the auth · ≤5 attempts per session (under the row lock, L3) |
 | `DELETE /v1/auth/sessions/{id}` | the person who approved it | Bearer, browser session token only (`DashboardIdentity`, `rustd/crates/daemon/afd_http/src/auth/person.rs`) · must match session's `clerk_user_id` |
-| `DELETE /v1/auth/sessions` | the signed-in person, for their own sessions only | Bearer: a browser session token or the person's own `afc_` credential (`HumanIdentity`); a tenant `agt_t` key is refused with 403. `agentsfleet logout` calls it (`cli/src/commands/auth-logout.ts`) to abort the logins its person approved and never redeemed |
+| `DELETE /v1/auth/sessions` | the signed-in person, for their own sessions only | Bearer: a browser session token or the person's own `afc_` credential (`HumanIdentity`); a tenant `agt_t` key is refused with 403. `agentsfleet logout` calls it (`cli/src/commands/auth/logout.ts`) to abort the logins its person approved and never redeemed |
 
 ## Security properties by layer
 
@@ -463,7 +463,7 @@ sequenceDiagram
 
 The credential does not expire, so a 401 here means the row was revoked (`UZ-AUTH-023`) or never existed. Capabilities are resolved per request rather than frozen at mint: [`AUTH.md`](./AUTH.md#cli-credential-resolved-not-granted) carries the model and its failure modes.
 
-`agentsfleet logout` revokes the credential server-side with `DELETE /v1/cli-credentials/{id}` and clears local state (`cli/src/commands/auth-logout.ts`). A new login from the same machine revokes that machine's previous credential in the mint transaction. So a machine holds one live credential (`rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs`).
+`agentsfleet logout` revokes the credential server-side with `DELETE /v1/cli-credentials/{id}` and clears local state (`cli/src/commands/auth/logout.ts`). A new login from the same machine revokes that machine's previous credential in the mint transaction. So a machine holds one live credential (`rustd/crates/daemon/afd_tenant/src/cli_credential/mod.rs`).
 
 ---
 

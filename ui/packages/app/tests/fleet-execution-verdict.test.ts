@@ -11,7 +11,7 @@ import { EXECUTION_REPLY_PREFIX, executionInstructions, fixtureDefinition, fixtu
  */
 import { describe, expect, it } from "vitest";
 import { NANOS_PER_USD } from "@/lib/types";
-import { LEASE_OUTCOME } from "@/lib/api/runners-types";
+import { LeaseOutcome } from "@/tests/helpers/runner-control-types";
 import {
   classifyApiFailure,
   classifyReportMissing,
@@ -92,13 +92,13 @@ describe("the terminal row is classified before it is trusted", () => {
     // The confusion RULE ECL exists to prevent: this state and "never leased"
     // are both "no terminal row", and only one of them is a defect. Reported as
     // product, a slow provider minute reads as a scheduler regression.
-    const running = classifyStillRunning(LEASE_OUTCOME.running);
+    const running = classifyStillRunning(LeaseOutcome.Running);
     expect(running).toMatchObject({
       kind: VERDICT_KIND.environment,
       leg: JOURNEY_LEG.execute,
     });
-    expect(running.detail).toContain(LEASE_OUTCOME.running);
-    expect(leaseIsSettled(LEASE_OUTCOME.running)).toBe(false);
+    expect(running.detail).toContain(LeaseOutcome.Running);
+    expect(leaseIsSettled(LeaseOutcome.Running)).toBe(false);
     // The verdict it must NOT share.
     expect(classifyUnleased(true)).toMatchObject({ kind: VERDICT_KIND.product });
     expect(running.kind).not.toBe(classifyUnleased(true).kind);
@@ -110,7 +110,7 @@ describe("the terminal row is classified before it is trusted", () => {
   });
 
   it("an API refusal is the environment on 5xx and transport loss, the product on 4xx", () => {
-    const unavailable = new Error("GET /v1/fleets/runners → 503: {}");
+    const unavailable = new Error("GET /v1/admin/runners → 503: {}");
     const refused = new Error("POST /v1/workspaces/ws/fleets → 409: {}");
     const dropped = new TypeError("fetch failed");
     expect(classifyApiFailure(unavailable, JOURNEY_LEG.lease).kind).toBe(VERDICT_KIND.environment);

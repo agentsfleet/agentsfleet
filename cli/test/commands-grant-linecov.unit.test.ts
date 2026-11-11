@@ -1,4 +1,4 @@
-// Line-coverage backfill for src/commands/grant.ts. The two exported
+// Line-coverage backfill for src/commands/grant/grant.ts. The two exported
 // Effect builders (grantListEffectFromArgs / grantDeleteEffectFromArgs)
 // are otherwise reached only through cli.ts in grant.integration.test.ts,
 // whose happy-path table-render run never enters three inner branches:
@@ -13,7 +13,7 @@ import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import {
   grantDeleteEffectFromArgs,
   grantListEffectFromArgs,
-} from "../src/commands/grant.ts";
+} from "../src/commands/grant/grant.ts";
 import { CliConfig, type CliConfigShape } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";
@@ -24,6 +24,7 @@ import {
   type OutputShape,
 } from "../src/services/output.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
+import { outputDouble } from "./helpers-output-double.ts";
 
 const WS_ID = "01900000-0000-7000-8000-00000067e210";
 const FLEET_ID = "01900000-0000-7000-8000-0000007670f7";
@@ -37,7 +38,7 @@ interface PrintCapture {
 
 // A no-op Output where the machine payload and the info lines append to a
 // capture bag, so a test can assert which register ran and with what payload.
-// Everything else is Effect.void.
+// Other output stays silent.
 //
 // `format` is the double's register now. The fork moved off CliConfig and onto
 // this service, so a test that wants the json arm says so HERE — setting
@@ -51,9 +52,7 @@ const captureOutputLayer = (
   Layer.succeed(
     Output,
     Output.of({
-      stdoutIsTty: false,
-      format,
-      intro: () => Effect.void,
+      ...outputDouble({format}),
       info: (msg) =>
         Effect.sync(() => {
           cap.info.push(msg);
@@ -62,18 +61,10 @@ const captureOutputLayer = (
         Effect.sync(() => {
           if (data !== undefined) cap.json.push(data);
         }),
-      warn: () => Effect.void,
-      error: () => Effect.void,
-      outro: () => Effect.void,
       printJson: (payload) =>
         Effect.sync(() => {
           cap.json.push(payload);
         }),
-      printJsonErr: () => Effect.void,
-      printKeyValue: () => Effect.void,
-      printSection: () => Effect.void,
-      printTable: () => Effect.void,
-      printEntityTable: () => Effect.void,
     } satisfies OutputShape),
   );
 

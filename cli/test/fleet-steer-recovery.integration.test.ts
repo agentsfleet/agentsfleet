@@ -1,8 +1,8 @@
 // Recovery polling and bounded timeout behavior for a submitted fleet event.
 import { describe, expect, test, setSystemTime } from "bun:test";
 import { Effect, Exit, Layer, Redacted } from "effect";
-import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
-import { pollEventTerminal, STATUS_TIMEOUT } from "../src/commands/fleet_steer_events.ts";
+import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
+import { pollEventTerminal, STATUS_TIMEOUT } from "../src/commands/fleet/steer-events.ts";
 import { Output } from "../src/services/output.ts";
 import { outputDouble } from "./helpers-output-double.ts";
 import { ServerError } from "../src/errors/index.ts";

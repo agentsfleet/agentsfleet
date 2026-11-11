@@ -9,7 +9,7 @@
 //! beside the runner's. The dashboard's stream registry switches on every
 //! `kind` spelling here (`ui/packages/app/lib/api/events.ts`); the CLI's steer
 //! tail reads `event_complete` and passes over the rest
-//! (`cli/src/commands/fleet_steer_events.ts`).
+//! (`cli/src/commands/fleet/steer-events.ts`).
 //!
 //! # Every frame is self-sufficient
 //!

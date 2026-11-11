@@ -102,7 +102,12 @@ async fn lines_across_renewals_and_the_report_are_billed_once_each() {
         ..processed(&held, None)
     };
     plane
-        .report(&held.runner, &report, held.now)
+        .report(
+            &held.runner,
+            &report,
+            held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("the report settles the lease");
     held.relay().await;
@@ -147,7 +152,12 @@ async fn a_report_whose_lines_write_the_cache_counts_the_writes() {
     };
 
     let settled = plane
-        .report(&held.runner, &report, held.now)
+        .report(
+            &held.runner,
+            &report,
+            held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("the report settles the lease");
 

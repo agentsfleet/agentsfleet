@@ -19,8 +19,8 @@ const EVENT_DETAIL: &str = "runner_detail_failed";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/fleets/runners",
-    tag = afd_http::openapi::tag::FLEET,
+    path = "/v1/admin/runners",
+    tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "list_fleet_runners",
     summary = "List runners",
     description = concat!(
@@ -68,8 +68,8 @@ pub(crate) async fn list<D: Services>(
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/fleets/runners/{runner_id}",
-    tag = afd_http::openapi::tag::FLEET,
+    path = "/v1/admin/runners/{runner_id}",
+    tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "get_fleet_runner",
     summary = "Read a runner",
     description = concat!(

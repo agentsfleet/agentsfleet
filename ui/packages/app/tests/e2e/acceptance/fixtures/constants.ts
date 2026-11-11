@@ -35,10 +35,8 @@ export type FleetStatus = (typeof AGENTSFLEET_STATUS)[keyof typeof AGENTSFLEET_S
 export const FIXTURE_KEY = {
   regular: "regular",
   admin: "admin",
-  // Platform operator — carries read-only runner visibility plus library writes.
-  // Kept separate from the tenant owner so hidden-platform assertions stay meaningful.
+  // Runner visibility for release preflight, separate from tenant fixtures.
   operator: "operator",
-  policyEditor: "policy-editor",
 } as const;
 
 export type FixtureKey = (typeof FIXTURE_KEY)[keyof typeof FIXTURE_KEY];
@@ -47,26 +45,12 @@ export const FIXTURE_KEYS: readonly FixtureKey[] = [
   FIXTURE_KEY.regular,
   FIXTURE_KEY.admin,
   FIXTURE_KEY.operator,
-  FIXTURE_KEY.policyEditor,
 ] as const;
 
-// Provisioned onto the operator fixture's Clerk `public_metadata.scopes`, which
-// the session-token template projects to the top-level `scopes` claim that both
-// the dashboard's `readSessionScopes` and agentsfleetd's `requireScope` read
-// (docs/AUTH.md §Manually-provisioned). Two scopes only: the platform
-// fleet-library scope the catalog specs exercise, and `runner:read` — the
-// read-only runner-plane scope AUTH.md recommends for runner visibility —
-// which the release preflight uses to prove a runner is online before the
-// expensive journeys start. No write/admin runner scope: the preflight must
-// stay incapable of mutating platform state by construction.
-export const OPERATOR_FIXTURE_SCOPES = ["platform-library:write", "runner:read"] as const;
-
-// Runner mutation journeys enroll isolated, never-started hosts and retire them
-// afterwards. The separate release-preflight operator stays read-only.
-export const POLICY_EDITOR_FIXTURE_SCOPES = ["runner:write", "runner:enroll"] as const;
+// Release preflight and execution diagnostics only read runner state.
+export const OPERATOR_FIXTURE_SCOPES = ["runner:read"] as const;
 export const PLATFORM_FIXTURE_SCOPES: Partial<Record<FixtureKey, readonly string[]>> = {
   [FIXTURE_KEY.operator]: OPERATOR_FIXTURE_SCOPES,
-  [FIXTURE_KEY.policyEditor]: POLICY_EDITOR_FIXTURE_SCOPES,
 };
 
 // Storage-state file global-setup primes with the short-lived Vercel bypass

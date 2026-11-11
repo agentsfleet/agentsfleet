@@ -38,8 +38,8 @@ enum OrdinaryMutation<'r, 'a> {
 /// Applies an action alone, or an edit of the policy, the labels, or both.
 #[cfg_attr(feature = "openapi", utoipa::path(
     patch,
-    path = "/v1/fleets/runners/{runner_id}",
-    tag = afd_http::openapi::tag::FLEET,
+    path = "/v1/admin/runners/{runner_id}",
+    tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "patch_fleet_runner",
     summary = "Manage a runner",
     description = concat!(

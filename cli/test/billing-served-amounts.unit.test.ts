@@ -7,7 +7,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect } from "effect";
-import { billingShowEffectFromArgs } from "../src/commands/billing.ts";
+import { billingShowEffectFromArgs } from "../src/commands/billing/billing.ts";
 import { ServerError } from "../src/errors/index.ts";
 import {
   BILLING_PATH,

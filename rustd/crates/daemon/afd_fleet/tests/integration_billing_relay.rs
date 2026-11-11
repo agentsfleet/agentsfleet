@@ -85,10 +85,18 @@ async fn report_returns_while_the_wallet_row_is_locked() {
         .await
         .expect("the wallet row locks");
 
-    tokio::time::timeout(REPORT_BOUND, plane.report(&held.runner, &report, held.now))
-        .await
-        .expect("the report returns while the wallet row is held")
-        .expect("the report settles the lease");
+    tokio::time::timeout(
+        REPORT_BOUND,
+        plane.report(
+            &held.runner,
+            &report,
+            held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        ),
+    )
+    .await
+    .expect("the report returns while the wallet row is held")
+    .expect("the report settles the lease");
     let (logged, unsettled, charged) = lines(&held).await;
     assert!(logged > 0, "the report logs its runtime line");
     assert_eq!(unsettled, logged, "the report charges nothing itself");
@@ -159,7 +167,12 @@ async fn one_pass_settles_a_reported_lease() {
     let database = &held.fixtures.database;
     let plane = held.fixtures.plane();
     plane
-        .report(&held.runner, &processed(&held, None), held.now)
+        .report(
+            &held.runner,
+            &processed(&held, None),
+            held.now,
+            &mut af_observability::verb_span::VerbClock::untimed(),
+        )
         .await
         .expect("the report settles the lease");
 

@@ -17,8 +17,8 @@ const EVENT: &str = "runner_events_failed";
 
 #[cfg_attr(feature = "openapi", utoipa::path(
     get,
-    path = "/v1/fleets/runners/{runner_id}/events",
-    tag = afd_http::openapi::tag::FLEET,
+    path = "/v1/admin/runners/{runner_id}/events",
+    tag = afd_http::openapi::tag::RUNNERS,
     operation_id = "list_fleet_runner_events",
     summary = "List runner activity",
     description = concat!(

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
-import { ActivityPrinter, activityText } from "../src/commands/task-activity.ts";
-import { ToolActivityPrinter } from "../src/commands/tool-activity.ts";
-import { fileActivity } from "../src/commands/file-activity.ts";
+import { ActivityPrinter, activityText } from "../src/commands/fleet/task-activity.ts";
+import { ToolActivityPrinter } from "../src/commands/fleet/tool-activity.ts";
+import { fileActivity } from "../src/commands/fleet/file-activity.ts";
 
 test("local edit previews distinguish requested changes from confirmed edits", () => {
   const args = {path: "src/app.ts", old_text: "before", new_text: "after"};

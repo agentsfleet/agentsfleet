@@ -4,10 +4,7 @@ import { v7 as uuidv7 } from "uuid";
 import { DraftSchema, FleetSchema, ModelsSchema, PublishedSchema, SETUP_HEADERS } from "@/lib/api/draft-types";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { clientFor } from "./api-client";
-import { FIXTURE_KEY } from "./constants";
-import { fixtureDefinition } from "./definition";
 
-const PLATFORM_LIBRARIES = "/v1/admin/fleet-libraries";
 const MODEL_PAGE_LIMIT = 100;
 const MODEL_PAGE_MAX = 100;
 const PLATFORM_DEFAULT_REF = "platform-default";
@@ -40,42 +37,6 @@ export async function saveFixtureFleet(handle: ClientHandle, workspace: string, 
     source: { kind: "draft", draft_candidate_id: draft.candidate.id }, name,
     review_digest: draft.review.review_digest, start: { kind: "none" },
   }, { [SETUP_HEADERS.key]: uuidv7() }));
-}
-
-export async function stageFixturePlatform(handle: ClientHandle, workspace: string, definition: Definition, slug: string) {
-  const draft = await createFixtureDraft(handle, workspace, definition);
-  if (!draft.candidate) throw new Error("Fixture draft has no candidate");
-  return PublishedSchema.parse(await clientFor(handle).post<unknown>(
-    "/v1/admin/fleet-libraries", { workspace_id: workspace, draft_candidate_id: draft.candidate.id,
-      label: slug }, { [SETUP_HEADERS.key]: uuidv7() }));
-}
-
-type PlatformRows = { entries: { card: { id: string; etag: string }; published: boolean }[] };
-
-/** Stage a platform entry from the operator's `workspace`, run `body`, then withdraw and delete whatever is left. */
-export async function withStagedPlatformEntry(workspace: string, slug: string,
-  body: (libraryId: string) => Promise<void>): Promise<void> {
-  const staged = await stageFixturePlatform(FIXTURE_KEY.operator, workspace, fixtureDefinition(slug), slug);
-  try {
-    await body(staged.library_id);
-  } finally {
-    await removePlatformEntry(staged.library_id);
-  }
-}
-
-async function removePlatformEntry(id: string): Promise<void> {
-  const client = clientFor(FIXTURE_KEY.operator);
-  const path = `${PLATFORM_LIBRARIES}/${encodeURIComponent(id)}`;
-  const find = async () => (await client.get<PlatformRows>(PLATFORM_LIBRARIES)).entries.find((item) => item.card.id === id);
-  let current = await find();
-  if (!current) return;
-  if (current.published) {
-    // A published entry refuses deletion; withdraw it first and delete under its fresh tag.
-    await client.patch(path, { published: false }, { [SETUP_HEADERS.match]: current.card.etag });
-    current = await find();
-    if (!current) throw new Error("Withdrawn platform entry disappeared before cleanup");
-  }
-  await client.delete(path, { [SETUP_HEADERS.match]: current.card.etag });
 }
 
 async function createDraft(handle: ClientHandle, workspace: string, source: Source): Promise<Draft> {

@@ -4,5 +4,7 @@ mod carrier_bounds;
 mod failures;
 mod framing;
 mod ip_identity;
+#[cfg(feature = "test-util")]
+mod mtu;
 mod native;
 mod support;

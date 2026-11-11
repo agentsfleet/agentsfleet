@@ -19,6 +19,7 @@ export interface IsTtyStream {
 }
 
 export interface WritableStreamLike extends IsTtyStream {
+  readonly columns?: number;
   write(chunk: string): unknown;
 }
 

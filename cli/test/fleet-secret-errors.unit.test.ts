@@ -13,8 +13,8 @@ import {
   secretAddEffectFromFlags,
   secretShowEffectFromName,
   secretDeleteEffectFromName,
-} from "../src/commands/fleet_secret.ts";
-import { secretListEffect } from "../src/commands/fleet_secret_list.ts";
+} from "../src/commands/secret/secret.ts";
+import { secretListEffect } from "../src/commands/secret/list.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient } from "../src/services/http-client.ts";

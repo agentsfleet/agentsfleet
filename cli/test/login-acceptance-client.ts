@@ -6,7 +6,7 @@
 // from the suite it belongs to.
 
 import { Effect, Layer, Option, Redacted } from "effect";
-import { loginEffect } from "../src/commands/login.ts";
+import { loginEffect } from "../src/commands/auth/login.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import { Browser } from "../src/services/browser.service.ts";
 import { CliConfig } from "../src/services/config.ts";
@@ -118,7 +118,7 @@ const makeConfig = (jsonMode: boolean): Layer.Layer<CliConfig> =>
 // flow runs — this suite is the full ECDH round trip, not the direct path.
 const stdinLayer: Layer.Layer<Stdin> = Layer.succeed(Stdin, {
   isTTY: true,
-  readToEnd: Effect.succeed(""),
+  readBounded: () => Effect.die("Unexpected bounded input"),
 });
 
 const telemetryLayer: Layer.Layer<TelemetryRuntime> = telemetryRuntimeFromValuesLayer({

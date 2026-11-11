@@ -21,14 +21,14 @@ import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
 import { NAV_ICON_SIZE, NAV_ICON_STROKE_WIDTH } from "./sidebar-navigation-data";
 
 type WorkspaceSwitcherMenuProps = {
-  operatorScopes?: string[];
+
   collapsed?: boolean;
   open: boolean;
   workspaces: TenantWorkspace[];
   onOpenChange: (open: boolean) => void;
 };
 
-export default function WorkspaceSwitcherMenu({ open, operatorScopes = [], collapsed = false, workspaces, onOpenChange }: WorkspaceSwitcherMenuProps) {
+export default function WorkspaceSwitcherMenu({ open, collapsed = false, workspaces, onOpenChange }: WorkspaceSwitcherMenuProps) {
   const [view, setView] = useState<MenuView>(MENU_VIEW.home);
   const menu = useWorkspaceMenu(workspaces);
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
@@ -56,7 +56,7 @@ export default function WorkspaceSwitcherMenu({ open, operatorScopes = [], colla
             firstItemRef.current?.focus();
           }}>
           {view === MENU_VIEW.home ? <WorkspaceChoices menu={menu} firstItemRef={firstItemRef} /> : null}
-          <AccountMenuNavigation view={view} onView={setView} workspaceId={menu.activeId} operatorScopes={operatorScopes} />
+          <AccountMenuNavigation view={view} onView={setView} workspaceId={menu.activeId} />
         </DropdownMenuContent>
       </DropdownMenu>
     </Nav>

@@ -3,7 +3,7 @@ import { outputDouble } from "./helpers-output-double.ts";
 import { expect, test } from "bun:test";
 import { Cause, Effect, Exit, Fiber, Layer, Option, Redacted } from "effect";
 import { TestClock } from "effect/testing";
-import { pollEventTerminal, STATUS_TIMEOUT } from "../src/commands/fleet_steer_events.ts";
+import { pollEventTerminal, STATUS_TIMEOUT } from "../src/commands/fleet/steer-events.ts";
 import { NetworkError, ServerError } from "../src/errors/index.ts";
 import { HttpClient, httpClientLayer } from "../src/services/http-client.ts";
 import { cliConfigFromValuesLayer } from "../src/services/config.ts";

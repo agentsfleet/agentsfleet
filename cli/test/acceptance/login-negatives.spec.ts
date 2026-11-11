@@ -324,6 +324,7 @@ if (!isLive) {
             clerkUserId,
             timeoutMs: HANDSHAKE_TIMEOUT_MS,
           });
+          assert.ok(realCode !== null, "manual authorization must return a verification code");
           assert.notEqual(realCode, WRONG_CODE, "fixture sanity: real code must differ from the wrong code");
 
           await cli.waitForLine((line) => CODE_PROMPT_RE.test(line), HANDSHAKE_TIMEOUT_MS);

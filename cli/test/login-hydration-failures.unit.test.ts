@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
-import { hydrateWorkspacesAfterLogin } from "../src/commands/login-helpers.ts";
+import { hydrateWorkspacesAfterLogin } from "../src/commands/auth/login-helpers.ts";
 import type { WorkspacesValue } from "../src/services/workspaces.ts";
 import { NetworkError, ServerError, UnexpectedError } from "../src/errors/index.ts";
 import { makeRec, outputLayer, httpLayer, workspacesLayer, tok } from "./helpers-login-hydration.ts";

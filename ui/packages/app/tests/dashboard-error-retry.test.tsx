@@ -15,7 +15,7 @@ vi.mock("next/navigation", () => ({
 }));
 
 const ROUTE_A = "/w/ws_1/fleets";
-const ROUTE_B = "/admin/runners";
+const ROUTE_B = "/settings/account";
 
 import DashboardError from "../app/(dashboard)/error";
 import {
