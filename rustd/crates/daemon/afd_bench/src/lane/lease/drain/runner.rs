@@ -66,6 +66,10 @@ pub(super) struct Tally {
     pub(super) claims: u64,
     /// Leases issued to this runner.
     pub(super) leased: u64,
+    /// Leases that arrived carrying their fleet's memory window. One that
+    /// did not means the hydrate failed inside the drain, and the run reads
+    /// memory itself, outside the count.
+    pub(super) memory_windows: u64,
     /// How long a successful pushed offer took.
     pub(super) lease_latency: Latency,
     /// How long the report after it took.
@@ -78,6 +82,7 @@ impl Tally {
         Ok(Self {
             claims: 0,
             leased: 0,
+            memory_windows: 0,
             lease_latency: Latency::new()?,
             report_latency: Latency::new()?,
         })
@@ -91,6 +96,7 @@ impl Tally {
     pub(super) fn absorb(&mut self, other: &Self) -> Result<()> {
         self.claims += other.claims;
         self.leased += other.leased;
+        self.memory_windows += other.memory_windows;
         self.lease_latency.merge(&other.lease_latency)?;
         self.report_latency.merge(&other.report_latency)
     }
@@ -139,6 +145,9 @@ async fn step(session: &mut Session, shared: &Shared, tally: &mut Tally) -> Resu
         return Err(ErrorKind::StreamAnswer.into());
     };
     tally.leased += 1;
+    if lease.memory.is_some() {
+        tally.memory_windows += 1;
+    }
     tally.lease_latency.record(started.elapsed())?;
     if let Some(pickups) = &shared.pickups {
         pickups.leased(&lease.event.event_id).await?;
@@ -190,8 +199,23 @@ async fn run_turn(
     }
     match turn.hold {
         Some(hold) => fold(session, lease, shared, hold).await,
-        None => Ok(None),
+        None => around_one_call(session, lease, shared).await,
     }
+}
+
+/// What a run sends around its one model call: the ask before it, unless
+/// the lease says nothing waits, and the ask after its answer.
+async fn around_one_call(
+    session: &mut Session,
+    lease: &LeasePayload<'_>,
+    shared: &Shared,
+) -> Result<Option<i64>> {
+    let mut through: i64 = 0;
+    if lease.inputs_waiting {
+        through = ask(session, lease, shared, through).await?;
+    }
+    through = ask(session, lease, shared, through).await?;
+    Ok((through > 0).then_some(through))
 }
 
 async fn renew(session: &mut Session, lease: &LeasePayload<'_>, renewals: u64) -> Result<()> {
@@ -232,34 +256,45 @@ async fn fold(
     let mut through: i64 = 0;
     let ends = Instant::now() + hold;
     while Instant::now() < ends {
-        let frame = session
-            .request(&Up::Folds {
-                request_id: NonZeroU64::MIN,
-                lease_id: Cow::Borrowed(&lease.lease_id),
-                request: FoldRequest {
-                    fencing_token: lease.fencing_token,
-                    after_sequence: through,
-                },
-            })
-            .await?;
-        let Down::Folded {
-            lease_id, answer, ..
-        } = native::decode(&frame)?
-        else {
-            return Err(ErrorKind::StreamAnswer.into());
-        };
-        if lease_id != lease.lease_id {
-            return Err(ErrorKind::StreamAnswer.into());
-        }
-        for input in native::accepted(answer)?.inputs {
-            through = through.max(input.sequence);
-            if let Some(pickups) = &shared.pickups {
-                pickups.folded(&input.event_id).await?;
-            }
-        }
+        through = ask(session, lease, shared, through).await?;
         tokio::time::sleep(MODEL_CALL.min(ends.saturating_duration_since(Instant::now()))).await;
     }
     Ok((through > 0).then_some(through))
+}
+
+/// One fold ask after `through`, answering the last sequence it read.
+async fn ask(
+    session: &mut Session,
+    lease: &LeasePayload<'_>,
+    shared: &Shared,
+    mut through: i64,
+) -> Result<i64> {
+    let frame = session
+        .request(&Up::Folds {
+            request_id: NonZeroU64::MIN,
+            lease_id: Cow::Borrowed(&lease.lease_id),
+            request: FoldRequest {
+                fencing_token: lease.fencing_token,
+                after_sequence: through,
+            },
+        })
+        .await?;
+    let Down::Folded {
+        lease_id, answer, ..
+    } = native::decode(&frame)?
+    else {
+        return Err(ErrorKind::StreamAnswer.into());
+    };
+    if lease_id != lease.lease_id {
+        return Err(ErrorKind::StreamAnswer.into());
+    }
+    for input in native::accepted(answer)?.inputs {
+        through = through.max(input.sequence);
+        if let Some(pickups) = &shared.pickups {
+            pickups.folded(&input.event_id).await?;
+        }
+    }
+    Ok(through)
 }
 
 /// How long a simulated model call takes: a held turn claims new messages

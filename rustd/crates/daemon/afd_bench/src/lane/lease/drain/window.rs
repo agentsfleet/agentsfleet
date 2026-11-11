@@ -12,8 +12,8 @@ use super::settled::Settled;
 use super::turn::Turn;
 use super::{
     CLAIMS, COMMITS_PER_LEASE, EVENT_ROWS, EVENTS, EVENTS_PROCESSED, FAILURES, IDLE_COMMITS,
-    IDLE_STATEMENTS, LEASE_P95_MS, LEASES, LEASES_PER_SECOND, LEDGER_ROWS_PER_EVENT, REPORT_P95_MS,
-    RUNNER_ROLE, STATEMENTS_PER_LEASE, UNSETTLED_ROWS,
+    IDLE_STATEMENTS, LEASE_P95_MS, LEASES, LEASES_PER_SECOND, LEDGER_ROWS_PER_EVENT,
+    MEMORY_WINDOWS_PER_LEASE, REPORT_P95_MS, RUNNER_ROLE, STATEMENTS_PER_LEASE, UNSETTLED_ROWS,
 };
 use crate::abort::Abort;
 use crate::datastores::Datastores;
@@ -159,12 +159,21 @@ impl Window {
                 report.measurement(&path_key(path), value);
             }
         }
+        self.record_windows(report);
         report.measurement(COMMITS_PER_LEASE, ratio(self.cost.commits, leased));
         report.measurement(EVENTS, count(events));
         report.measurement(EVENT_ROWS, count(settled.event_rows));
         report.measurement(EVENTS_PROCESSED, count(settled.processed));
         report.measurement(LEDGER_ROWS_PER_EVENT, ratio(settled.ledger_rows, events));
         report.measurement(UNSETTLED_ROWS, count(settled.unsettled_rows));
+    }
+
+    /// The share of leases that carried their memory window.
+    fn record_windows(&self, report: &mut Report) {
+        report.measurement(
+            MEMORY_WINDOWS_PER_LEASE,
+            ratio(self.tally.memory_windows, self.tally.leased),
+        );
     }
 
     /// Idle sessions report measured totals even when no offer pass ran.
@@ -184,7 +193,16 @@ impl Window {
     /// sees what each path's number is made of.
     pub(super) fn show_costliest(&self) {
         let leased = self.tally.leased.max(1);
-        for cost in paths::costliest(&self.queries, COSTLIEST_SHOWN) {
+        let unmatched = self
+            .queries
+            .iter()
+            .filter(|cost| paths::classify(&cost.query) == Path::Other);
+        // Every unmatched statement, not only the costliest: a fragment that
+        // stopped matching shows here as itself instead of as a rising total.
+        for cost in paths::costliest(&self.queries, COSTLIEST_SHOWN)
+            .into_iter()
+            .chain(unmatched)
+        {
             let per = crate::report::ratio(cost.calls, leased);
             let text: String = cost.query.split_whitespace().collect::<Vec<_>>().join(" ");
             // the bench has no subscriber; its stdout is the result summary, so the breakdown goes to stderr.
@@ -226,6 +244,33 @@ mod tests {
         assert_eq!(report.measurements.get(IDLE_STATEMENTS), Some(&0.0));
         assert_eq!(report.measurements.get(IDLE_COMMITS), Some(&0.0));
         assert_eq!(report.measurements.len(), 2);
+        Ok(())
+    }
+
+    // Value: protects=the drain says how many leases carried a memory window;
+    // fails_when=a lease whose hydrate failed counts as one that carried it;
+    // why_new=a failed hydrate undercounts `issue`; seam=none; no_claim=why
+    // the hydrate failed.
+    #[test]
+    fn drain_counts_leases_that_carry_a_window() -> Result<()> {
+        let mut tally = Tally::new()?;
+        tally.leased = 3;
+        tally.memory_windows = 2;
+        let window = Window {
+            tally,
+            sessions: Vec::new(),
+            length: Duration::from_secs(1),
+            cost: StatementCost::default(),
+            queries: Vec::new(),
+        };
+        let mut report = Report::new(Lane::Lease, Profile::Rig, Provenance::for_test());
+        window.record_windows(&mut report);
+        let share = report
+            .measurements
+            .get(MEMORY_WINDOWS_PER_LEASE)
+            .copied()
+            .unwrap_or_default();
+        assert!((share - 0.667).abs() < 0.001, "{share}");
         Ok(())
     }
 }
