@@ -176,15 +176,14 @@ impl PriceBooks {
         provider: &str,
         model: &str,
         catalogue_version: Option<i64>,
+        label: &str,
     ) -> Arc<Pricing> {
         match self
             .try_get_or_load(database, posture, provider, model, catalogue_version)
             .await
         {
             Ok(pricing) => pricing,
-            Err(_fault) => {
-                Arc::new(Pricing::load(database, posture, provider, model, LABEL_BATCH).await)
-            }
+            Err(_fault) => Arc::new(Pricing::load(database, posture, provider, model, label).await),
         }
     }
 
@@ -222,4 +221,4 @@ impl PriceBooks {
 
 /// What a price book read for a host's renewal names in its log line, which
 /// serves every lease of its model.
-const LABEL_BATCH: &str = "renew_batch";
+pub(crate) const LABEL_BATCH: &str = "renew_batch";

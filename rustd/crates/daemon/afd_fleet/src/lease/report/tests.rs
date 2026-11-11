@@ -33,6 +33,7 @@ fn reported(posture: &str) -> Result<Reported, &'static str> {
         fence: Fence::from_i64(1),
         lease_created_at: at,
         event_created_at: at,
+        catalogue_version: None,
     })
 }
 

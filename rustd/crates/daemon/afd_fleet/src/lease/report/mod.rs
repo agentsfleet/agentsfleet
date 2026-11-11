@@ -88,14 +88,34 @@ impl LeaseService {
             None => None,
         };
         let tool_calls = stored_trace(&lease, request);
-        let pricing = Pricing::load(
-            self.leases.pool(),
-            posture_of(&lease),
-            &lease.provider,
-            &lease.model,
-            lease_id.as_str(),
-        )
-        .await;
+        // The book cached at the version this report read beside the lease:
+        // a warm replica reads no price, and the statement guards on the
+        // version (M245 §9).
+        let pricing = match lease.catalogue_version {
+            Some(version) => {
+                self.leases
+                    .prices()
+                    .get_or_load(
+                        self.leases.pool(),
+                        posture_of(&lease),
+                        &lease.provider,
+                        &lease.model,
+                        Some(version),
+                        lease_id.as_str(),
+                    )
+                    .await
+            }
+            None => std::sync::Arc::new(
+                Pricing::load(
+                    self.leases.pool(),
+                    posture_of(&lease),
+                    &lease.provider,
+                    &lease.model,
+                    lease_id.as_str(),
+                )
+                .await,
+            ),
+        };
         let last_event = Uuid7::parse(request.checkpoint.last_event_id.as_ref())?;
         let mut report = terminal(
             Subject {
