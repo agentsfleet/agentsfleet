@@ -11,7 +11,7 @@ const EXPECTED_HOSTNAME = new URL(
 // Workspace-scoped routes now live under `/w/<id>/…`; a synthetic id suffices
 // here because these are unauthenticated probes — clerkMiddleware bounces to
 // /sign-in before the ownership guard runs. `/settings` stays at root.
-const DASHBOARD_ROUTES = ["/w/ws_probe/fleets", "/w/ws_probe/secrets", "/settings"];
+const DASHBOARD_ROUTES = ["/w/ws_probe/fleets", "/w/ws_probe/secrets", "/settings/account"];
 
 test.describe("dashboard routes — unauthenticated smoke", () => {
   for (const route of DASHBOARD_ROUTES) {

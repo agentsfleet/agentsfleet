@@ -52,7 +52,7 @@ describe("resolveActiveHref — single active winner", () => {
     expect(resolveActiveHref(["/w/1/fleets", "/w/1/events"], "/w/1/events")).toBe("/w/1/events");
     // Entry-redirect stubs never win, and an unmatched path lights nothing.
     expect(resolveActiveHref(["/", ""], "/")).toBe("");
-    expect(resolveActiveHref(["/w/1/fleets"], "/admin/runners")).toBe("");
+    expect(resolveActiveHref(["/w/1/fleets"], "/unmatched")).toBe("");
   });
 });
 

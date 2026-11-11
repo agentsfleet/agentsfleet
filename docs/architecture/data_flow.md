@@ -801,7 +801,7 @@ One PR through one lease: its records and timers in [lease_flow.md §1](./lease_
 - Never touches the user's laptop directly
 - Never reads the user's local filesystem (it sees only what the fleet's reviewed setup grants it)
 - Never escapes the sandbox: namespaces, Landlock, seccomp and cgroup v2 bound each lease's sandbox, and the agent loop runs outside it ([`runner_execution.md`](./runner_execution.md#sandbox-engines)). **Network egress** follows the runner's network policy (see [`runner_fleet.md` §Egress model](./runner_fleet.md)).
-- Never holds a datastore credential: the runner reaches the platform only over the `/v1/admin/runners` protocol
+- Never holds a datastore credential: the runner reaches the platform only over the `/v1/runners` protocol
 
 ## The install failure scenario, visually
 

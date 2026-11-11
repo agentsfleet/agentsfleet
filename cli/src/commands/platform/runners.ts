@@ -1,5 +1,6 @@
 import {RunnerAction, RunnerHistory} from "./runner-vocabulary.ts";
 import { Clock, Effect } from "effect";
+import {instantNanos} from "../../lib/instant.ts";
 import { eventTime } from "../../lib/event-time.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
@@ -34,7 +35,7 @@ export const platformRunnerShow = Effect.fn("platform.runners.show")(function* (
     Health: runner.degraded ? `Degraded: ${runner.degraded_reason ?? "unknown reason"}` : "Ready",
     "Active leases": String(runner.active_lease_count), "Active fleets": String(runner.active_fleet_count),
     "Leases succeeded": String(runner.leases_succeeded), "Leases failed": String(runner.leases_failed),
-    "Self-test": runner.selftest ? runner.selftest.all_ok ? "Passed" : "Failed" : "Not reported",
+    "Self-test": selftestStatus(runner),
   });
   if (runner.selftest) {
     const output = yield* Output;
@@ -95,7 +96,7 @@ export const platformRunnerDelete = Effect.fn("platform.runners.delete")(functio
 export const platformRunnerEnroll = Effect.fn("platform.runners.enroll")(function* (host: string, edit: RunnerEdit & {readonly policy: string}, tokenFile: string) {
   const body = {host_id: host, labels: [], ...yield* runnerEdit(edit)};
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
-    const enrolled = yield* decodePlatform(RunnerEnrolledSchema, yield* platformRequest({path: ADMIN_RUNNERS_PATH, method: HTTP_METHOD.post, body, retry: null}));
+    const enrolled = yield* decodePlatform(RunnerEnrolledSchema, yield* platformRequest({path: ADMIN_RUNNERS_PATH, method: HTTP_METHOD.post, body, retry: {maxAttempts: 1}}));
     yield* save(enrolled.runner_token);
     yield* platformResult({runner_id: enrolled.runner_id, assigned_policy: enrolled.assigned_policy, token_file: tokenFile}, "Runner enrolled", {ID: enrolled.runner_id, "Token file": tokenFile});
   }));
@@ -104,7 +105,7 @@ export const platformRunnerEnroll = Effect.fn("platform.runners.enroll")(functio
 export const platformRunnerRotate = Effect.fn("platform.runners.rotate")(function* (id: string, tokenFile: string) {
   return yield* withRunnerTokenFile(tokenFile, (save) => Effect.gen(function* () {
     const rotated = yield* decodePlatform(RunnerRotatedSchema, yield* platformRequest({
-      path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.patch, body: {action: RunnerAction.Rotate}, retry: null,
+      path: platformPath(ADMIN_RUNNERS_PATH, id), method: HTTP_METHOD.patch, body: {action: RunnerAction.Rotate}, retry: {maxAttempts: 1},
     }));
     yield* save(rotated.runner_token);
     yield* platformResult({id: rotated.id, token_file: tokenFile}, "Runner token rotated", {ID: rotated.id, "Token file": tokenFile});
@@ -117,3 +118,13 @@ const runnerEdit = Effect.fn("platform.runners.editInput")(function* (edit: Runn
     [...new Set(edit.labels.split(",").map((label) => label.trim()).filter(Boolean))]);
   return {...assigned_policy === undefined ? {} : {assigned_policy}, ...labels === undefined ? {} : {labels}};
 });
+
+function selftestStatus(runner: typeof RunnerDetailSchema.Type): string {
+  const completed = runner.selftest_completed_at;
+  const requested = runner.selftest_requested_at;
+  if (requested !== null && (completed === null || instantNanos(requested) > instantNanos(completed))) return "Pending";
+  if (!runner.selftest) return "Not reported";
+  if (completed === null || runner.selftest.sandbox_tier !== runner.assigned_policy.sandbox_tier
+    || runner.selftest.network_policy !== runner.assigned_policy.network_policy) return "Stale (previous assignment)";
+  return runner.selftest.all_ok ? "Passed" : "Failed";
+}
