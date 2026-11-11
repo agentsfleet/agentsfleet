@@ -10,8 +10,10 @@ for (const width of [320, 375, 768, 1440]) {
     // A direct fragment URL starts tab order at that fragment. Check the
     // homepage's skip link before entering the example through its real link.
     await page.goto("/");
+    const skip = page.getByRole("link", {name: "Skip to content", exact: true});
+    await expect(skip).toBeAttached();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
+    await expect(skip).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page.locator("main")).toBeFocused();
     const example = page.getByRole("link", { name: /Investigate an incident.*Explore example run/ });
