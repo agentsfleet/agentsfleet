@@ -26,6 +26,7 @@
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 use afd_billing::biller::{Account, Ask, Funds, WorkKey};
+use afd_billing::rates::Estimate;
 use jiff::Timestamp;
 
 use crate::error::{Result, budget_exhausted, renewal_no_credits};
@@ -84,22 +85,41 @@ impl LeaseService {
         now: Timestamp,
     ) -> Result<()> {
         let posture = super::renew::posture_of(lease);
-        let funds: core::result::Result<Funds, afd_billing::Error> = async {
-            let estimate = self
-                .accounts
-                .estimate(posture, &lease.provider, &lease.model, now)
-                .await?;
-            let ask = Ask {
-                work: WorkKey::FleetLease(lease_key.clone()),
-                payer: Account {
-                    tenant: lease.tenant_id.clone(),
-                    workspace: lease.workspace_id.clone(),
-                },
-                next: estimate.floor(),
-            };
-            self.biller.check(&ask).await
-        }
-        .await;
+        let estimate = self
+            .accounts
+            .estimate(posture, &lease.provider, &lease.model, now)
+            .await
+            .map_err(crate::Error::from);
+        self.funds_cover_at(lease, lease_key, lease_id, estimate)
+            .await
+    }
+
+    /// [`Self::funds_cover`] against a floor the caller already priced, as the
+    /// host batch does from its cached book (M245 §9). A floor that could not
+    /// be priced fails open, as an unreadable balance does.
+    pub(crate) async fn funds_cover_at(
+        &self,
+        lease: &Renewing,
+        lease_key: &Uuid7,
+        lease_id: &str,
+        estimate: Result<Estimate>,
+    ) -> Result<()> {
+        let estimate = match estimate {
+            Ok(estimate) => estimate,
+            Err(fault) => {
+                admit_unreadable("balance", lease, lease_id, &fault);
+                return Ok(());
+            }
+        };
+        let ask = Ask {
+            work: WorkKey::FleetLease(lease_key.clone()),
+            payer: Account {
+                tenant: lease.tenant_id.clone(),
+                workspace: lease.workspace_id.clone(),
+            },
+            next: estimate.floor(),
+        };
+        let funds = self.biller.check(&ask).await;
 
         match funds {
             Ok(Funds::Covered | Funds::Unconfirmed) => Ok(()),
