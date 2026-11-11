@@ -4,7 +4,7 @@
 //! the metered slice and its lines, the lease and admission settled, the
 //! event closed, the session checkpointed, the slot released, the obligation
 //! owed and the audit row, under the lease's own row lock and no host lock
-//! (M245 §6). A durable task's settlement and a run's folds stay statements
+//!. A durable task's settlement and a run's folds stay statements
 //! of their own in the same transaction, after it: the task's settlement reads
 //! the runtime the statement metered, and takes the task row after the lease
 //! row as a renewal does. Dropping the transaction on any error rolls every
@@ -92,7 +92,7 @@ pub enum Committed {
     /// This runner settled the lease before; nothing was written.
     AlreadySettled,
     /// The lease's fence moved; only the runner's known request lines were
-    /// logged (blocker 4).
+    /// logged.
     Fenced {
         /// Those request lines, logged and still to be settled.
         settlement: Option<Box<Settlement>>,
@@ -127,6 +127,7 @@ impl Leases {
                 }
                 Step::AlreadySettled => return Ok(Committed::AlreadySettled),
                 Step::Reprice(held) => {
+                    let posture = Pricing::posture_of(&held.posture)?;
                     release(transaction).await?;
                     // Back to the pool before the book read takes one, so a
                     // report never holds two of a small pool's connections.
@@ -134,7 +135,7 @@ impl Leases {
                     repriced = Some(
                         Pricing::load(
                             self.pool(),
-                            Pricing::posture_of(&held.posture),
+                            posture,
                             &held.provider,
                             &held.model,
                             report.lease_id.as_str(),
@@ -184,7 +185,6 @@ impl Leases {
             audit_id?,
         );
         let outcome = &report.outcome;
-        let answer = outcome.response_text;
         let checkpoint =
             crate::lease::finalize::checkpoint_document(report.last_event_id, report.last_response);
         let lease = report.lease;
@@ -203,7 +203,7 @@ impl Leases {
             runtime_price: pricing.runtime_price(now),
             runtime_line_id: &runtime_line_id,
             status: outcome.verdict.status(),
-            response_text: answer,
+            response_text: outcome.response_text,
             tokens: outcome.tokens,
             wall_ms: outcome.wall_ms,
             failure_reason: outcome.verdict.label(),
@@ -213,7 +213,6 @@ impl Leases {
             held_until: report.held_until,
             obligation_id: &obligation_id,
             obligation_receipt: &obligation_receipt,
-            answer,
             audit_id: &audit_id,
             audit_metadata: serde_json::json!({
                 afd_runner::sql::meta::LEASE_ID: report.lease_id.as_str(),
@@ -293,7 +292,7 @@ enum Step {
     /// under these and rerun, once.
     Reprice(HeldFacts),
     /// The fence moved, or the catalogue moved again under the rerun: only the
-    /// runner's known request lines are logged (blocker 4), and the lease is
+    /// runner's known request lines are logged, and the lease is
     /// left to its own renewal or expiry.
     KnownRequestsOnly,
 }

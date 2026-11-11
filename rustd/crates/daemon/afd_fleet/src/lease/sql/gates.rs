@@ -1,5 +1,5 @@
 //! The gates read: every fact the money and approval gates judge, in one
-//! statement (M245 §5).
+//! statement.
 
 /// Spend, the recorded gate and its standing, and the approved integrations.
 ///

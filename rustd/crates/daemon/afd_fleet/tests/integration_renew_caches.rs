@@ -1,4 +1,4 @@
-//! A replica's renewal caches (M245 §3, §9): the facts a session keeps, the
+//! A replica's renewal caches: the facts a session keeps, the
 //! versions the replica last read, and the books and ceilings cached by them,
 //! each obeying a moved head, catalogue or price as an uncached read would.
 //!
@@ -11,6 +11,7 @@
 use af_core::error_code::RUN_BUDGET_EXCEEDED;
 use af_core::id::Uuid7;
 use af_wire::report::RenewRequest;
+use af_wire::usage::LineKind;
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Window as Counted};
 use afd_fleet::lease::renew::Renewals;
@@ -25,7 +26,7 @@ async fn kept_frame(
     plane: &afd_fleet::lease::LeaseService,
     held: &Held,
     lease: &Uuid7,
-) -> afd_fleet::Result<(Timestamp, afd_billing::Nanos)> {
+) -> afd_fleet::Result<Timestamp> {
     kept_frame_with(plane, held, lease, RenewRequest::default()).await
 }
 
@@ -35,7 +36,7 @@ async fn kept_frame_with(
     held: &Held,
     lease: &Uuid7,
     request: RenewRequest,
-) -> afd_fleet::Result<(Timestamp, afd_billing::Nanos)> {
+) -> afd_fleet::Result<Timestamp> {
     let facts = held
         .leases
         .load_for_report(lease, &held.runner)
@@ -65,7 +66,7 @@ fn pre_reads(ran: &statements::Ran) -> u64 {
 // runs only the renewal statement, and a moved catalogue sends the lease to
 // the per-lease path once and the next frame back to the pre-read;
 // fails_when=the frame still pre-reads, or a stale version keeps every later
-// frame on the per-lease path; why_new=M245 §9 took the pre-read's facts from
+// frame on the per-lease path; why_new=the frame takes the pre-read's facts from
 // the session and the replica; seam=none; no_claim=a durable task's lease,
 // which keeps no facts.
 #[tokio::test]
@@ -127,7 +128,7 @@ fn daily_ceiling(nanos: i64) -> String {
 // Value: protects=a replica that cached a fleet's ceiling obeys a new head
 // revision another plane applied, with no signal between them;
 // fails_when=the kept frame judges the cached revision's ceiling;
-// why_new=M245 §9 renews from kept facts and the replica's last-read head;
+// why_new=a frame renews from kept facts and the replica's last-read head;
 // seam=none; no_claim=a new lease, whose claim returns the head's document.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -189,10 +190,11 @@ fn output_line(held: &Held, seq: u32, output: u32) -> RenewRequest {
 /// The charge of the model line numbered `seq` on `lease`.
 async fn model_charge(held: &Held, lease: &Uuid7, seq: i64) -> i64 {
     sqlx::query_scalar(
-        "SELECT charged_nanos FROM billing.usage_lines WHERE work_id = $1 AND kind = 'model' AND seq = $2",
+        "SELECT charged_nanos FROM billing.usage_lines WHERE work_id = $1 AND kind = $3 AND seq = $2",
     )
     .bind(lease)
     .bind(seq)
+    .bind(LineKind::Model.as_str())
     .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
     .await
     .expect("the model line is logged")
@@ -200,8 +202,8 @@ async fn model_charge(held: &Held, lease: &Uuid7, seq: i64) -> i64 {
 
 // Value: protects=a catalogue edit reprices the next renewal on a replica
 // that cached the old book; fails_when=the kept frame prices from the cached
-// book and the guard lets it through; why_new=M245 §9 prices renewals from
-// the replica's last-read catalogue version; seam=none; no_claim=the per-lease
+// book and the guard lets it through; why_new=renewals price from the
+// replica's last-read catalogue version; seam=none; no_claim=the per-lease
 // path's statement count, which the rerun pays once.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -245,7 +247,7 @@ async fn catalogue_cache_reprices_after_bump() {
 
 // Value: protects=the batch prices its runtime line as the rater prices it;
 // fails_when=the statement's in-SQL runtime pricing drifts from `Rater`;
-// why_new=Dimension 6.6's batch half moved here with the meter (§7);
+// why_new=the batch half of the runtime pricing proof lives here with the meter;
 // seam=none; no_claim=the expiry statement, which the billing sweep's tests
 // price.
 #[tokio::test]
@@ -261,9 +263,10 @@ async fn batch_lines_match_rater() {
 
     let (seq, runtime_ms, charged, price): (i64, i64, i64, Option<Uuid7>) = sqlx::query_as(
         "SELECT seq, runtime_ms, charged_nanos, platform_model_price_id \
-         FROM billing.usage_lines WHERE work_id = $1 AND kind = 'runtime'",
+         FROM billing.usage_lines WHERE work_id = $1 AND kind = $2",
     )
     .bind(lease)
+    .bind(LineKind::Runtime.as_str())
     .fetch_one(&mut *held.fixtures.database.acquire().await.expect("observer"))
     .await
     .expect("one runtime line");

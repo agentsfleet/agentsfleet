@@ -1,8 +1,10 @@
 //! A metering pass's lines priced, and the settlement they ride in.
 //!
 //! A renewal and a report each measure the lease's run time under its row lock
-//! ([`super::sql::meter::METER_LEASE`]) and carry the runner's lines, one per
-//! provider request since the last acknowledged renewal. This module prices
+//! (a renewal in [`super::sql::renew::RENEW_BATCH`], or in
+//! [`super::sql::meter::METER_LEASE`] on the per-lease path; a report inside its
+//! own statement) and carry the runner's lines, one per provider request since
+//! the last acknowledged renewal. This module prices
 //! every request line by its own whole-prompt tier and its own request time,
 //! adds one runtime-only line for the time the daemon measured, and wraps them
 //! as the [`Settlement`] the lease's transaction logs and the billing relay
@@ -12,7 +14,7 @@ mod original;
 
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
-use af_wire::usage::{RequestUsage, UsageLine};
+use af_wire::usage::{RUNTIME_MS_MAX, RequestUsage, UsageLine};
 use afd_billing::Nanos;
 use afd_billing::biller::{Account, Attribution, Settlement, WorkKey};
 use afd_billing::price::{PriceBook, Rater, Window};
@@ -20,14 +22,11 @@ use afd_billing::rates::Posture;
 use afd_db::Db;
 use jiff::Timestamp;
 
-use crate::error::{Result, row_malformed, sequence_corrupt};
+use crate::error::{Result, posture_corrupt, sequence_corrupt};
 
 /// Logged when a pass could not read its prices and logged its tokens
 /// unpriced.
 const EVENT_TOKENS_UNPRICED: &str = "lease_tokens_unpriced";
-
-/// The table a malformed slice identifier is reported against.
-const TABLE_LEASES: &str = "runner.leases";
 
 /// What one lease's lines are priced against.
 ///
@@ -114,10 +113,14 @@ impl Pricing {
         }
     }
 
-    /// The lease's posture as its row stores it, falling back to the
-    /// platform's as the report's own read does (`report::assembly`).
-    pub(crate) fn posture_of(stored: &str) -> Posture {
-        Posture::parse(stored).unwrap_or(Posture::Platform)
+    /// The lease's posture as its row stores it.
+    ///
+    /// # Errors
+    /// The stored spelling is none this daemon writes, so the row was edited out
+    /// of band. The lease is not priced: guessing the platform's posture would
+    /// bill a tenant's own key at the platform's rates.
+    pub(crate) fn posture_of(stored: &str) -> Result<Posture> {
+        Posture::parse(stored).ok_or_else(posture_corrupt)
     }
 
     /// This pricing as a cache keeps it, looked up at `catalogue_version`.
@@ -152,7 +155,7 @@ impl Pricing {
     /// A book with no price rows names no version of its own, and a statement
     /// with no version skips its guard: a price added later would never be
     /// charged on this replica. A cached book therefore names the version it
-    /// was looked up at (M245 §9).
+    /// was looked up at.
     pub(crate) const fn catalogue_version(&self) -> Option<i64> {
         match self.posture {
             Posture::Platform => match self.book.catalogue_version() {
@@ -221,7 +224,9 @@ impl Pricing {
         slice: Slice,
         requests: &[RequestUsage],
     ) -> Result<Option<Settlement>> {
-        let runtime_ms = count(slice.runtime_ms);
+        // The longest runtime one line may claim, which the renewal and report
+        // statements cap their own slices at, so the three charge alike.
+        let runtime_ms = count(slice.runtime_ms).min(RUNTIME_MS_MAX);
         let runtime = (runtime_ms > 0)
             .then(|| -> Result<UsageLine> {
                 let seq = u32::try_from(slice.runtime_seq).map_err(|_range| sequence_corrupt())?;
@@ -245,20 +250,17 @@ impl Pricing {
             .iter()
             .map(|line| rater.rate(line))
             .collect::<afd_billing::Result<Vec<_>>>()?;
-        let id = |text: &str, column: &'static str| {
-            Uuid7::parse(text).map_err(row_malformed(TABLE_LEASES, column))
-        };
         Ok(Some(Settlement {
             work: WorkKey::FleetLease(lease_id.clone()),
             payer: Account {
-                tenant: id(slice.tenant_id.as_str(), "tenant_id")?,
-                workspace: id(slice.workspace_id.as_str(), "workspace_id")?,
+                tenant: slice.tenant_id,
+                workspace: slice.workspace_id,
             },
             attribution: Attribution::Fleet {
-                fleet: id(slice.fleet_id.as_str(), "fleet_id")?,
                 fleet_name: slice
                     .fleet_name
                     .unwrap_or_else(|| slice.fleet_id.clone().into()),
+                fleet: slice.fleet_id,
                 event_id: slice.event_id,
             },
             provider: self.provider.clone(),

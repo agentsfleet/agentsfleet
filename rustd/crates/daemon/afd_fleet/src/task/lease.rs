@@ -45,7 +45,7 @@ pub(crate) async fn attach(
 ) -> Result<Option<(Option<TaskContext<'static>>, jiff::Timestamp)>> {
     // A plain admission under the claim's setup proof: the lease insert
     // rechecked the head revision and the host, so there is nothing to attach
-    // and nothing left to read (M245 §9). Without a proof the read below is
+    // and nothing left to read. Without a proof the read below is
     // the only setup check, so it stays.
     if revision.is_some() && acquired.opened.head == HeadKind::Plain {
         return Ok(Some((None, acquired.leased_until)));

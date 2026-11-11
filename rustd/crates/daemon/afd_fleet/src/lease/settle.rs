@@ -5,16 +5,13 @@
 use af_core::id::Uuid7;
 use jiff::Timestamp;
 
-use crate::error::{Result, query, row_malformed};
+use crate::error::{Result, query};
 use crate::lease::affinity::Fence;
 use crate::lease::sql;
 use crate::lease::store::Leases;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_LOAD: &str = "report lease load";
-
-/// The table a malformed identifier column is reported against.
-const TABLE_LEASES: &str = "runner.leases";
 
 /// The lease a report is about, as the row holds it.
 ///
@@ -60,8 +57,7 @@ impl Leases {
     /// deliberate. See [`sql::report::SELECT_LEASE_FOR_REPORT`].
     ///
     /// # Errors
-    /// Reports a datastore that would not answer, and a row whose identifier
-    /// columns are not identifiers.
+    /// Reports a datastore that would not answer.
     pub async fn load_for_report(
         &self,
         lease_id: &Uuid7,
@@ -74,11 +70,11 @@ impl Leases {
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_LOAD))?;
-        found.map(LeaseForReport::into_reported).transpose()
+        Ok(found.map(LeaseForReport::into_reported))
     }
 }
 
-/// [`sql::report::SELECT_LEASE_FOR_REPORT`]'s row, ids still as stored text.
+/// [`sql::report::SELECT_LEASE_FOR_REPORT`]'s row.
 #[derive(sqlx::FromRow)]
 struct LeaseForReport {
     fleet_id: Uuid7,
@@ -98,14 +94,11 @@ struct LeaseForReport {
 }
 
 impl LeaseForReport {
-    fn into_reported(self) -> Result<Reported> {
-        let id = |text: &str, column: &'static str| {
-            Uuid7::parse(text).map_err(row_malformed(TABLE_LEASES, column))
-        };
-        Ok(Reported {
-            fleet_id: id(self.fleet_id.as_str(), "fleet_id")?,
-            workspace_id: id(self.workspace_id.as_str(), "workspace_id")?,
-            tenant_id: id(self.tenant_id.as_str(), "tenant_id")?,
+    fn into_reported(self) -> Reported {
+        Reported {
+            fleet_id: self.fleet_id,
+            workspace_id: self.workspace_id,
+            tenant_id: self.tenant_id,
             event_id: self.event_id,
             actor: self.actor,
             posture: self.posture,
@@ -115,6 +108,6 @@ impl LeaseForReport {
             lease_created_at: self.created_at,
             event_created_at: self.event_created_at,
             catalogue_version: self.catalogue_version,
-        })
+        }
     }
 }

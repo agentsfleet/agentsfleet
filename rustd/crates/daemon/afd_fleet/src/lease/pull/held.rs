@@ -144,9 +144,9 @@ mod tests {
             .await
             .expect_err("a read after the claim with no datastore is a fault, not a decision");
 
-        // The first read after the claim is the credential plane's since §4
-        // moved the setup into the claim; whichever read it is, its fault is
-        // the caller's, and the release below carries the same code.
+        // The first read after the claim is the credential plane's, because the
+        // claim carries the setup; whichever read it is, its fault is the
+        // caller's, and the release below carries the same code.
         let line = log.only(EVENT_CLAIM_RELEASE_FAILED).fields;
         assert_eq!(
             line.get("fleet_id").map(String::as_str),

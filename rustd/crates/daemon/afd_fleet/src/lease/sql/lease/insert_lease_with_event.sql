@@ -1,7 +1,7 @@
 -- The caller holds the host row (`lock_host.sql`) through this transaction, so
 -- this statement's snapshot, taken after that lock, sees every earlier
--- claimant's commit: the census below counts them (M245 §5). A full host, a
--- moved slot fence, a moved placement choice or a moved setup writes nothing.
+-- claimant's commit: the census below counts them. A full host, a moved slot
+-- fence, a moved placement choice or a moved setup writes nothing.
 WITH instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at
 ), host AS MATERIALIZED (
@@ -24,6 +24,10 @@ WITH instant AS MATERIALIZED (
     AND $19 > (SELECT checked_at FROM instant)
     AND EXISTS (SELECT 1 FROM host)
   RETURNING fleet_id, lease_expires_at
+), after_lock AS MATERIALIZED (
+  -- Read once `held` has the slot lock, so a wait on that lock cannot make a
+  -- lapsed slot or a claim whose deadline passed look live.
+  SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM held) locked
 ), inserted AS (
   INSERT INTO runner.leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
@@ -34,6 +38,7 @@ WITH instant AS MATERIALIZED (
          $10, h.lease_expires_at, $11, 0, $16, i.checked_at, i.checked_at
   FROM held h
   CROSS JOIN instant i
+  CROSS JOIN after_lock a
   JOIN fleet.events e ON e.fleet_id = $3 AND e.event_id = $6
   -- The scope proof runner.leases holds no foreign key for: a workspace or
   -- tenant that is not the fleet's writes no lease, so the caller issues none.
@@ -41,12 +46,14 @@ WITH instant AS MATERIALIZED (
   -- The setup the claim assembled is still the head, and a setup that needs
   -- durable tasks still has a host that runs them: what `issue_source.sql`
   -- rechecked for every lease, now in the insert so a plain chat reads nothing
-  -- more (M245 §9). The issue holds the fleet (`task::lease::parents`) and the
-  -- host, so neither moves before commit.
+  -- more. The issue holds the fleet (`task::lease::parents`) and the host, so
+  -- neither moves before commit.
   JOIN runner.runners r ON r.id = $2
   LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
-  -- Recheck after held acquired the slot lock and after profile lookup.
-  WHERE h.lease_expires_at > clock_timestamp()
+  -- Recheck after held acquired the slot lock: the slot's own deadline, and the
+  -- one the claim answered, which a pass that outlived it misses.
+  WHERE h.lease_expires_at > a.checked_at
+    AND $19 > a.checked_at
     AND ($20::uuid IS NULL OR f.head_revision_id = $20::uuid)
     AND ((r.durable_tasks_enabled
           AND COALESCE(r.capability_report @> jsonb_build_object($21::text, true), false))

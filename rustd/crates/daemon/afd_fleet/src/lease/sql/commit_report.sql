@@ -1,4 +1,4 @@
--- A terminal report in one statement (M245 §6): every write the report's
+-- A terminal report in one statement: every write the report's
 -- transaction made, under the lease's own row lock and no host lock.
 --
 -- Lock order is the report's and the renewal's: the fleet's scope, then the
@@ -22,19 +22,21 @@
 -- $15-$26 the runner's request lines, in parallel arrays: id, seq, requested
 -- at, input, cached input, cache write, 5-minute write, 1-hour write, output,
 -- price, unpriced tokens, charged · $27 the runtime line's id ·
--- $28 the event's status · $29 response · $30 tokens · $31 wall time ·
+-- $28 the event's status · $29 response, which is also the answer owed ·
+-- $30 tokens · $31 wall time ·
 -- $32 failure label · $33 failure detail · $34 tool calls · $35 the status an
 -- open event holds · $36 the pending gate status · $37 the session document ·
 -- $38 the hold the runner asked for · $39 the hold's idle cap ·
--- $40 the obligation's id · $41 its receipt · $42 the answer owed ·
--- $43 the connectors an answer can be owed to · $44 the audit row's id ·
--- $45 its event type · $46 its metadata · $47 the fleet · $48 its workspace ·
--- $49 the most milliseconds one line carries · $50 the runtime line kind
+-- $40 the obligation's id · $41 its receipt ·
+-- $42 the connectors an answer can be owed to · $43 the audit row's id ·
+-- $44 its event type · $45 its metadata · $46 the fleet · $47 its workspace ·
+-- $48 the longest runtime one line may claim · $49 the runtime line kind ·
+-- $50 the largest count a bigint holds
 WITH scope AS MATERIALIZED (
   SELECT f.id
   FROM fleet.fleets f
-  JOIN identity.lock_workspace($48) w ON w.id = f.workspace_id
-  WHERE f.id = $47
+  JOIN identity.lock_workspace($47) w ON w.id = f.workspace_id
+  WHERE f.id = $46
   FOR KEY SHARE OF f
 ), locked_slot AS MATERIALIZED (
   SELECT s.fleet_id, s.fencing_token
@@ -69,10 +71,11 @@ WITH scope AS MATERIALIZED (
         WHERE a.id = p.event_id AND a.fleet_id = p.fleet_id
           AND a.lease_fence = p.fencing_token AND a.settled_at IS NULL)
 ), measured AS MATERIALIZED (
-  -- Capped as the rater caps a line's milliseconds ($49).
+  -- Capped at the longest runtime one line may claim ($48), which is where the
+  -- rater caps it too, so the charge here is the one the per-lease path makes.
   SELECT g.*,
          LEAST((EXTRACT(EPOCH FROM g.metered_until - g.last_metered_at) * $3::bigint)::bigint,
-               $49::bigint) AS d_ms
+               $48::bigint) AS d_ms
   FROM guard g
 ), runtime AS MATERIALIZED (
   -- Charged as the rater charges run time: whole nanos, rounded up, in integers.
@@ -107,7 +110,7 @@ WITH scope AS MATERIALIZED (
           AS requested(id, seq, requested_at, input, cached, write, write_5m, write_1h,
                        output, price_id, unpriced, charged)
       UNION ALL
-      SELECT $27::uuid, $50::text, r.seq, r.requested_at, 0, 0, 0, 0, 0, 0, r.runtime_ms, $10::uuid, 0,
+      SELECT $27::uuid, $49::text, r.seq, r.requested_at, 0, 0, 0, 0, 0, 0, r.runtime_ms, $10::uuid, 0,
              r.charged
       FROM runtime r
   ) line
@@ -177,22 +180,20 @@ WITH scope AS MATERIALIZED (
                              THEN LEAST($38::timestamptz, clock_timestamp() + $39::interval) END
   FROM moved m
   WHERE s.fleet_id = m.fleet_id AND s.fencing_token = m.fencing_token
-  RETURNING s.hold_expires_at
 ), owed AS (
   INSERT INTO fleet.obligations
     (id, fleet_id, workspace_id, provider, destination, event_id, answer,
      receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at)
   SELECT $40, m.fleet_id, m.workspace_id, d.reply_provider, d.reply_address, m.event_id,
-         $42::text, $41, clock_timestamp(), NULL, 0, now(), now()
+         $29::text, $41, clock_timestamp(), NULL, 0, now(), now()
   FROM moved m
   CROSS JOIN settled d
-  WHERE d.reply_provider = ANY($43::text[]) AND $42::text <> ''
+  WHERE d.reply_provider = ANY($42::text[]) AND $29::text <> ''
   ON CONFLICT ON CONSTRAINT uq_obligations_fleet_id_event_id DO NOTHING
   RETURNING id
 ), audit AS (
   INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
-  SELECT $44, $2, $45::text, $46::jsonb, NULL, now() FROM moved
-  RETURNING id
+  SELECT $43, $2, $44::text, $45::jsonb, NULL, now() FROM moved
 )
 SELECT
     (SELECT count(*) FROM moved)::bigint AS claimed,
@@ -206,18 +207,16 @@ SELECT
     p.task_id IS NOT NULL AS has_task,
     (SELECT reply_provider FROM settled) AS reply_provider,
     (SELECT id FROM owed) AS owed_id,
-    (SELECT id FROM audit) AS audit_id,
-    (SELECT hold_expires_at FROM released) AS hold_expires_at,
     -- The run's token sums, this statement's lines included. Summed as
     -- numeric: a sum past a bigint answers NULL, and the caller records no
     -- tokens rather than failing a report whose money already settled.
-    CASE WHEN tk.input_tokens <= 9223372036854775807 THEN tk.input_tokens::bigint END
+    CASE WHEN tk.input_tokens <= $50::bigint THEN tk.input_tokens::bigint END
         AS input_tokens,
-    CASE WHEN tk.cached_input_tokens <= 9223372036854775807 THEN tk.cached_input_tokens::bigint END
+    CASE WHEN tk.cached_input_tokens <= $50::bigint THEN tk.cached_input_tokens::bigint END
         AS cached_input_tokens,
-    CASE WHEN tk.cache_write_tokens <= 9223372036854775807 THEN tk.cache_write_tokens::bigint END
+    CASE WHEN tk.cache_write_tokens <= $50::bigint THEN tk.cache_write_tokens::bigint END
         AS cache_write_tokens,
-    CASE WHEN tk.output_tokens <= 9223372036854775807 THEN tk.output_tokens::bigint END
+    CASE WHEN tk.output_tokens <= $50::bigint THEN tk.output_tokens::bigint END
         AS output_tokens,
     ad.nanos AS charged_nanos, ad.model_nanos,
     -- The closing row, as `update_fleet_event_result.sql` answered it.

@@ -48,14 +48,7 @@ pub(super) async fn attached(
         fleet_id: current.fleet_id.clone(),
         workspace_id: current.workspace_id.clone(),
     };
-    let id = guard::id(
-        current
-            .task_id
-            .as_ref()
-            .ok_or(TaskRefusal::NotFound)?
-            .as_str(),
-        "task_id",
-    )?;
+    let id = current.task_id.clone().ok_or(TaskRefusal::NotFound)?;
     let _held: (String,) = sqlx::query_as(sql::LOCK_TASK)
         .bind(&id)
         .bind(&current.fleet_id)

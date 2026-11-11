@@ -109,9 +109,9 @@ impl LeaseService {
 
     /// Ask for the grant this delivery needs, and say what the poll answers.
     ///
-    /// The backstop, not the design: a fleet installed after M194 leaves
-    /// install with this card already raised, and reaching here means the fleet
-    /// predates that or the install-time request could not be written. Asking
+    /// The backstop, not the design: a fleet installed with its grant requested
+    /// leaves install with this card already raised, and reaching here means the
+    /// install-time request could not be written or never ran. Asking
     /// again is what makes the invariant unconditional — a park is a question,
     /// never a silent loop — and the request is idempotent, so the one-second
     /// redelivery cadence raises one card rather than sixty a minute.

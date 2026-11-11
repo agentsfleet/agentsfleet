@@ -12,7 +12,7 @@
 /// own token.
 ///
 /// The lock is what makes the check hold until the write commits. A settle
-/// (`METER_LEASE` takes `FOR UPDATE OF l`) and a reclaim both change this
+/// (the report statement locks the lease) and a reclaim both change this
 /// row, so neither can supersede the lease between this check and the upsert —
 /// and a stale holder cannot write records after the settle that would have
 /// deleted them. It also serialises two posts of one lease, so they cannot both
@@ -53,12 +53,12 @@ pub const UPSERT_RECORDS: &str = include_str!("upsert_tool_calls.sql");
 
 /// Deletes the records every other lease of an event kept.
 ///
-/// Run in two places, each holding a lease that is the fleet's current one.
-/// The settling transaction runs it, because a reclaimed lease re-ran the
-/// event and numbered its calls from 1 again, so only the settling fence's
-/// records describe the run whose answer stands. A post runs it too, so an
+/// A post runs it, holding a lease that is the fleet's current one, so an
 /// event reclaimed many times before it settles keeps one lease's records
-/// rather than a budget's worth per reclaim.
+/// rather than a budget's worth per reclaim. The report statement deletes the
+/// same records inline when it settles, because a reclaimed lease re-ran the
+/// event and numbered its calls from 1 again, so only the settling fence's
+/// records describe the run whose answer stands.
 ///
 /// `$1` fleet, `$2` event, `$3` the current fence.
 pub const DELETE_OTHER_FENCES: &str = include_str!("delete_other_fences.sql");

@@ -105,16 +105,8 @@ impl Leases {
     /// runner polls a rotation and refusing the RUNNER would refuse every
     /// fleet. See `super::pull::refuse::refuse_unreadable_config`.
     pub async fn installed(&self, fleet_id: &Uuid7) -> Result<Option<Installed>> {
-        self.installed_for_admission(fleet_id, None).await
-    }
-
-    pub(crate) async fn installed_for_admission(
-        &self,
-        fleet_id: &Uuid7,
-        event: Option<&Uuid7>,
-    ) -> Result<Option<Installed>> {
         let mut connection = self.pool().acquire().await?;
-        Self::installed_on(self.definitions(), &mut connection, fleet_id, event).await
+        Self::installed_on(self.definitions(), &mut connection, fleet_id, None).await
     }
 
     pub(crate) async fn installed_on(

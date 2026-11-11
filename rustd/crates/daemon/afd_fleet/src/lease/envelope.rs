@@ -1,18 +1,18 @@
 //! Work read from the admissions ledger under the fleet's current fence.
 
+use crate::lease::affinity::Fence;
 use crate::lease::event::Received;
 use crate::lease::installed::FleetWithSession;
-use crate::lease::{affinity::Fence, reclaim::Reused};
 use af_core::id::Uuid7;
 use jiff::Timestamp;
 
 /// Whether the work was pulled fresh or taken back from a dead holder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
-    /// A previously unissued admission. The caller bills it.
+    /// A previously unissued admission.
     Fresh,
-    /// A dead holder's event, re-leased. Its billing is carried, never
-    /// re-charged.
+    /// A dead holder's event, re-leased. The delivery gates it again, and the
+    /// new lease bills what it runs.
     Reclaim,
 }
 
@@ -59,9 +59,6 @@ pub struct Acquired {
     /// An instant rather than a bare `i64`, because the lease row binds four
     /// other integers beside it and two transposed compile clean.
     pub event_created_at: Timestamp,
-    /// The billing a reclaim carries forward. `None` on a fresh pull, which the
-    /// caller bills itself.
-    pub reused: Option<Reused>,
     /// Whether the runner runs this event in the sandbox it holds for the
     /// fleet. Only a fresh event whose claim found this runner's hold live: a
     /// reclaimed event's first attempt may have run in that sandbox, so it
@@ -73,7 +70,7 @@ pub struct Acquired {
     pub opened: Opened,
 }
 
-/// Whether a claimed head belongs to a durable task (M245 §9).
+/// Whether a claimed head belongs to a durable task.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HeadKind {
     /// A chat message: the lease insert proves the setup, and the issue reads
@@ -87,7 +84,7 @@ pub enum HeadKind {
 /// The fleet the claim statement read, and the event row it opened.
 ///
 /// One statement claims the slot, reads the fleet and its setup, opens the
-/// `fleet.events` row and stamps delivery (M245 §4), so nothing after the
+/// `fleet.events` row and stamps delivery, so nothing after the
 /// claim reads any of these again.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Opened {

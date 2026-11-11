@@ -100,7 +100,7 @@ impl BillingSwept {
 ///
 /// Both halves of a tick in one pass, as a test drives one: the daemon runs
 /// [`bill_expired_leases`] on `sweeper:expiry`'s clock and [`settle_lines`] on
-/// the billing relay's (M245 §7).
+/// the billing relay's.
 #[cfg(feature = "test-util")]
 pub async fn sweep(
     database: &Db,

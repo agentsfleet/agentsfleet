@@ -1,4 +1,4 @@
--- One host's renewals in one statement (M245 §7): every live lease the runner
+-- One host's renewals in one statement: every live lease the runner
 -- names, extended and metered together, each under its own fence. A lease that
 -- fails a check extends nothing and changes no other lease's answer.
 --
@@ -36,26 +36,32 @@ WITH asked AS (
     AS a(lease_id, posture, provider, model, catalogue_version, runtime_price,
          runtime_line_id, daily_ceiling, monthly_ceiling, head_revision)
 ), host AS MATERIALIZED (
-  SELECT r.id
+  SELECT r.id, r.worker_count
   FROM runner.runners r
   WHERE r.id = $1 AND r.degraded_reason IS NULL AND r.status = ANY($35::text[])
     AND ((r.token_hash = $36::text AND r.connection_id IS NOT DISTINCT FROM $37::uuid)
          OR $36::text IS NULL)
-    AND (SELECT count(*) FROM runner.leases l
-          WHERE l.runner_id = $1 AND l.status = $25 AND l.lease_expires_at > now())
-      + (SELECT count(*) FROM authoring.attempts a
-          WHERE a.runner_id = $1 AND a.status = $25 AND a.lease_expires_at > now())
-      <= r.worker_count
   FOR SHARE OF r
+), census AS MATERIALIZED (
+  -- Live leases are counted against a clock read once the host row is held, so
+  -- a wait on a credential rotation cannot count a lapsed lease as live.
+  SELECT h.id
+  FROM host h
+  CROSS JOIN (SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM host) held) i
+  WHERE (SELECT count(*) FROM runner.leases l
+          WHERE l.runner_id = $1 AND l.status = $25 AND l.lease_expires_at > i.checked_at)
+      + (SELECT count(*) FROM authoring.attempts a
+          WHERE a.runner_id = $1 AND a.status = $25 AND a.lease_expires_at > i.checked_at)
+      <= h.worker_count
 ), locked_slot AS MATERIALIZED (
-  -- Joined to `host`, so the host row is held FOR SHARE before any slot: a
+  -- Joined to `census`, so the host row is held FOR SHARE before any slot: a
   -- CTE runs when first read, and an issue holds the host row and then a slot.
   -- A host that may not renew locks nothing, and every lease answers lost.
   SELECT s.fleet_id, s.fencing_token, s.lease_expires_at
   FROM runner.fleet_slots s
   JOIN runner.leases l ON l.fleet_id = s.fleet_id
   JOIN asked a ON a.lease_id = l.id
-  CROSS JOIN host h
+  CROSS JOIN census h
   WHERE l.runner_id = $1 AND l.status = $25
   ORDER BY s.fleet_id
   FOR UPDATE OF s
@@ -112,7 +118,7 @@ WITH asked AS (
                   OR (a.monthly_ceiling IS NOT NULL
                       AND COALESCE(sp.month_nanos, 0) >= a.monthly_ceiling))
              AS over_budget,
-         EXISTS (SELECT 1 FROM host) AS host_renews,
+         EXISTS (SELECT 1 FROM census) AS host_renews,
          EXISTS (SELECT 1 FROM fleet.admissions ad
                  WHERE ad.id = p.event_id AND ad.fleet_id = p.fleet_id
                    AND ad.lease_fence = p.fencing_token AND ad.settled_at IS NULL)
@@ -123,7 +129,8 @@ WITH asked AS (
   JOIN fleet.fleets f ON f.id = p.fleet_id
   LEFT JOIN spend sp ON sp.fleet_id = p.fleet_id
 ), guard AS MATERIALIZED (
-  -- Capped as the rater caps a line's milliseconds ($33).
+  -- Capped at the longest runtime one line may claim ($33), which is where the
+  -- rater caps it too, so the charge here is the one the per-lease path makes.
   SELECT j.*,
          LEAST((EXTRACT(EPOCH FROM j.metered_until - j.last_metered_at) * $26::bigint)::bigint,
                $33::bigint) AS d_ms
@@ -181,7 +188,6 @@ WITH asked AS (
   JOIN guard g ON g.id = line.lease_id
   JOIN fleet.fleets f ON f.id = g.fleet_id
   ON CONFLICT (work_type, work_id, kind, seq) DO NOTHING
-  RETURNING work_id, charged_nanos
 )
 -- One row per lease asked about, in any order; a lease the probe never found
 -- answers with every check NULL.
@@ -191,9 +197,7 @@ SELECT a.lease_id,
        j.over_budget, j.host_renews, j.admitted,
        j.task_id IS NOT NULL AS has_task,
        m.lease_expires_at AS extended_until,
-       (SELECT s.fleet_id FROM slot s WHERE s.fleet_id = j.fleet_id) IS NOT NULL AS slot_moved,
-       COALESCE((SELECT sum(ln.charged_nanos) FROM lines ln WHERE ln.work_id = a.lease_id), 0)::bigint
-           AS charged_nanos
+       (SELECT s.fleet_id FROM slot s WHERE s.fleet_id = j.fleet_id) IS NOT NULL AS slot_moved
 FROM asked a
 LEFT JOIN judged j ON j.id = a.lease_id
 LEFT JOIN moved m ON m.id = a.lease_id

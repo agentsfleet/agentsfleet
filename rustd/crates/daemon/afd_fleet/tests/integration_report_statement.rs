@@ -1,4 +1,4 @@
-//! The report is one statement (M245 §6): every write a terminal report makes
+//! The report is one statement: every write a terminal report makes
 //! commits together, under the lease's own row lock, fenced and replay-safe,
 //! and its runtime line is priced as the rater prices it.
 #![expect(
@@ -168,7 +168,7 @@ async fn one_statement_report_commits_every_write() {
 // request lines; fails_when=the fence leaves the statement's guard, or the
 // refused statement's locks outlive it and the known lines wait on them;
 // why_new=the guard moved into the one statement; seam=none; no_claim=what the
-// known lines charge (blocker 4's own tests).
+// known lines charge.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn one_statement_report_refuses_stale_fence() {
@@ -320,7 +320,7 @@ async fn closing_cost_counts_the_reports_own_lines() {
 // Value: protects=statement pricing equals the rater; fails_when=the runtime
 // line's number, charge or tier drifts from what the rater writes;
 // why_new=the runtime line is priced inside the statement; seam=none;
-// no_claim=the batch and expiry statements, which §7 rewrites.
+// no_claim=the batch and expiry statements, which their own suites price.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn statement_lines_match_rater() {
@@ -425,8 +425,8 @@ async fn report_with_wrong_pricing_facts_writes_nothing() {
 const PRICE_BOOK_READ: &str = "p.input_nanos_per_mtok";
 
 // Value: protects=a warm replica's report reads no price book; fails_when=the
-// report loads its book past the version-keyed cache; why_new=M245 §9 moved the
-// report's book into the cache; seam=none; no_claim=a catalogue edit between
+// report loads its book past the version-keyed cache; why_new=the report's
+// book moved into the cache; seam=none; no_claim=a catalogue edit between
 // the two, which the statement's version guard and its reprice answer.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
@@ -441,13 +441,13 @@ async fn a_warm_replica_report_reads_no_price_book() {
 
     let cold = Counted::open(&owner).await;
     plane
-        .report(&held.runner, &request, held.now, &mut untimed)
+        .report_with(&held.runner, &request, held.now, None, &mut untimed)
         .await
         .expect("the report settles the lease");
     let cold = cold.close().await;
     let warm = Counted::open(&owner).await;
     plane
-        .report(&held.runner, &request, held.now, &mut untimed)
+        .report_with(&held.runner, &request, held.now, None, &mut untimed)
         .await
         .expect("the replay answers the stored outcome");
     let warm = warm.close().await;

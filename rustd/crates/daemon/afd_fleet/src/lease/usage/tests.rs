@@ -75,6 +75,34 @@ async fn an_unreadable_catalogue_logs_the_tokens_unpriced() {
     assert_eq!(event.field("lease_id"), Some("lease-fixture"));
 }
 
+/// A slice longer than the longest runtime one line may claim is cut there, as
+/// the renewal and report statements cut theirs, so the three charge alike.
+#[tokio::test]
+async fn a_slice_past_the_longest_runtime_line_is_cut_there() {
+    let pricing = pricing(Posture::SelfManaged).await;
+    let past = i64::from(af_wire::usage::RUNTIME_MS_MAX) + ONE_SECOND_MS;
+    let settlement = pricing
+        .settlement(&test_dead::id(4), slice(past, 0), &[])
+        .expect("prices")
+        .expect("a runtime line");
+    let line = settlement.lines.first().expect("one line");
+    assert_eq!(line.usage.runtime_ms, af_wire::usage::RUNTIME_MS_MAX);
+}
+
+/// A stored posture this daemon writes reads back; one it does not is refused,
+/// never priced as the platform's.
+#[test]
+fn a_stored_posture_that_is_none_this_daemon_writes_is_refused() {
+    for posture in [Posture::Platform, Posture::SelfManaged] {
+        assert_eq!(
+            Pricing::posture_of(posture.as_str()).expect("a written posture reads back"),
+            posture
+        );
+    }
+    let fault = Pricing::posture_of("hand-edited").expect_err("an unreadable posture");
+    assert_eq!(fault.code(), af_core::error_code::INTERNAL_DB_QUERY);
+}
+
 /// Each request is a model line under the runner's number, and the measured
 /// time is one runtime line numbered by its slice's start; a self-managed run
 /// pays the run fee only.

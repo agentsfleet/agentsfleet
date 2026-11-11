@@ -1,5 +1,5 @@
 //! The claim says whether a later message waits in the head's conversation
-//! (M245 §8), so a run whose lease says none skips the ask before its first
+//!, so a run whose lease says none skips the ask before its first
 //! model call; a message that lands after the claim folds on the ask after
 //! the answer.
 

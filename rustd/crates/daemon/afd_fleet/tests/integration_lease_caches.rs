@@ -1,5 +1,5 @@
 //! The lease path's per-replica state follows every change that matters to a
-//! run (M245 §3): what is cached is keyed by a version a statement in the same
+//! run: what is cached is keyed by a version a statement in the same
 //! pass read, and what is not cached rides the claim.
 #![expect(
     clippy::expect_used,

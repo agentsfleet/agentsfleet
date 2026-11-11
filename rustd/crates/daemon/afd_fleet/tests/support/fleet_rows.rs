@@ -7,10 +7,6 @@
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-#![allow(
-    dead_code,
-    reason = "test support: shared by two test binaries, each using a subset"
-)]
 
 use af_core::id::Uuid7;
 use jiff::Timestamp;
@@ -32,8 +28,6 @@ pub(crate) enum Row<'a> {
     Lease(&'a Uuid7),
     /// A fleet's `runner.fleet_slots` row, by fleet id.
     Slot(&'a Uuid7),
-    /// A runner's `runner.lifetime_counters` row, by runner id.
-    Counters(&'a Uuid7),
     /// A fleet's `fleet.sessions` row, by fleet id.
     Session(&'a Uuid7),
     /// A `fleet.admissions` row, by its id, which is the logical event id.
@@ -67,7 +61,6 @@ impl<'a> Row<'a> {
             Self::Runner(id) => ("runner.runners", "id = $1", id, None),
             Self::Lease(id) => ("runner.leases", "id = $1", id, None),
             Self::Slot(fleet) => ("runner.fleet_slots", "fleet_id = $1", fleet, None),
-            Self::Counters(runner) => ("runner.lifetime_counters", "runner_id = $1", runner, None),
             Self::Session(fleet) => ("fleet.sessions", "fleet_id = $1", fleet, None),
             Self::Admission(id) => ("fleet.admissions", "id = $1", id, None),
             Self::Attempt(id) => ("authoring.attempts", "id = $1", id, None),
@@ -78,7 +71,7 @@ impl<'a> Row<'a> {
                 Some(Second::Id(event)),
             ),
             // The kinds are `af_wire::usage::LineKind`'s spellings; a line
-            // number is unique only within its kind (M245).
+            // number is unique only within its kind.
             Self::ModelLine(event, seq) => (
                 "billing.usage_lines",
                 "event_id = $1 AND kind = 'model' AND seq = $2::bigint",

@@ -19,7 +19,7 @@ pub(crate) async fn read(
 }
 
 /// The ceiling of a lease with no durable task, from the `created_at` its
-/// insert returned (M245 §9).
+/// insert returned.
 ///
 /// `execution_deadline.sql` answers `LEAST(created_at + MAX_RUNTIME,
 /// task_execution_deadline_at)`, and only a task's attach sets the second, so

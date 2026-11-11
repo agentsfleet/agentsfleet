@@ -2,7 +2,7 @@
 //! budget locks.
 //!
 //! One statement claims the slot, opens the `fleet.events` row and stamps
-//! `delivered_at` (M245 §4), so a fault in any of them leaves none behind.
+//! `delivered_at`, so a fault in any of them leaves none behind.
 
 use af_core::id::Uuid7;
 use af_wire::event::EventType;

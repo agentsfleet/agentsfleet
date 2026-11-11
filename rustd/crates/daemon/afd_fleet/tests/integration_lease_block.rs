@@ -32,9 +32,6 @@ const FIRST_LABEL: &str = "balance_exhausted";
 /// A different label, so a reopened row is distinguishable from a held one.
 const SECOND_LABEL: &str = "approval_denied";
 
-/// An operator-readable instruction, to prove it lands beside the label.
-const DETAIL: &str = "top up the workspace balance";
-
 /// Two columns of one `fleet.events` row, as text.
 async fn failure_of(fixtures: &Fixtures, fleet: &Uuid7, event: &Uuid7) -> (String, Option<String>) {
     let mut connection = fixtures
@@ -84,13 +81,7 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
 
     let ended = fixtures
         .leases()
-        .block(
-            &acquired,
-            Refusal {
-                label: FIRST_LABEL,
-                detail: DETAIL,
-            },
-        )
+        .block(&acquired, Refusal::labelled(FIRST_LABEL))
         .await
         .expect("the refusal must write");
 
@@ -114,7 +105,7 @@ async fn test_a_refusal_ends_the_event_and_names_what_refused_it() {
     }
     let (label, detail) = failure_of(&fixtures, fleet, event).await;
     assert_eq!(label, FIRST_LABEL);
-    assert_eq!(detail.as_deref(), Some(DETAIL));
+    assert_eq!(detail, None, "a gate refusal stores no instruction");
 }
 
 #[tokio::test]
@@ -131,13 +122,7 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     let leases = fixtures.leases();
 
     let first = leases
-        .block(
-            &acquired,
-            Refusal {
-                label: FIRST_LABEL,
-                detail: DETAIL,
-            },
-        )
+        .block(&acquired, Refusal::labelled(FIRST_LABEL))
         .await
         .expect("the first refusal must write");
     let second = leases
@@ -150,7 +135,7 @@ async fn test_a_terminal_row_is_never_reopened_by_a_second_refusal() {
     assert_eq!(second.code(), af_core::error_code::RUN_STALE_FENCING_TOKEN);
     let (label, detail) = failure_of(&fixtures, fleet, event).await;
     assert_eq!(label, FIRST_LABEL, "the first refusal must stand");
-    assert_eq!(detail.as_deref(), Some(DETAIL));
+    assert_eq!(detail, None, "a gate refusal stores no instruction");
 }
 
 #[tokio::test]

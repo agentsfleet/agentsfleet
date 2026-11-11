@@ -102,19 +102,13 @@ pub struct Billed {
 pub struct Refusal {
     /// The `fleet.events.failure_label` value.
     pub label: &'static str,
-    /// An operator-readable recovery instruction, or empty.
-    ///
-    /// Empty renders as SQL `NULL` through the statement's `NULLIF`, which
-    /// preserves the established row shape for refusals carrying no
-    /// instruction.
-    pub detail: &'static str,
 }
 
 impl Refusal {
-    /// A refusal with no recovery instruction.
+    /// A refusal ending an event under `label`.
     #[must_use]
     pub const fn labelled(label: &'static str) -> Self {
-        Self { label, detail: "" }
+        Self { label }
     }
 }
 
@@ -216,8 +210,8 @@ pub async fn money_gates(
 }
 
 /// [`money_gates`] over a spend the caller already read — the lease path's
-/// one gates read (M245 §5) — and an estimate it priced from its cached book
-/// (M245 §9), or the fault either met.
+/// one gates read — and an estimate it priced from its cached book
+///, or the fault either met.
 ///
 /// # Errors
 /// As [`money_gates`].

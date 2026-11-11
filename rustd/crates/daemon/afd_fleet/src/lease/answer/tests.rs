@@ -94,7 +94,14 @@ fn rendered(resume_hold: bool) -> Value {
         EventType::Chat,
         &installed,
         policy(),
-        Context::default(),
+        Context {
+            history: Vec::new(),
+            memory: None,
+            decision: None,
+            task: None,
+            expires_at: acquired.leased_until,
+            execution_deadline: acquired.leased_until,
+        },
     );
     serde_json::to_value(af_wire::protocol::Down::<serde_json::Value>::Offer {
         lease: af_wire::lease::TaggedLease::<serde_json::Value>::Fleet(Box::new(lease)),

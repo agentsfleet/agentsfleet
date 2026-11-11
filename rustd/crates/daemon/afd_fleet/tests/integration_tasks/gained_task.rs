@@ -15,7 +15,7 @@ use super::fixture::{Case, exercise};
 async fn kept_frame(
     case: &Case,
     plane: &afd_fleet::lease::LeaseService,
-) -> afd_fleet::Result<(jiff::Timestamp, afd_billing::Nanos)> {
+) -> afd_fleet::Result<jiff::Timestamp> {
     let held = &case.held;
     let lease = &held.issued.lease_id;
     let facts = held

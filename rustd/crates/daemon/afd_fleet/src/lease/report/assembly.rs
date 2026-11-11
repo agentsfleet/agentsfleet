@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use af_wire::report::ReportRequest;
-use afd_billing::{Nanos, rates::Posture};
+use afd_billing::rates::Posture;
 use jiff::Timestamp;
 
 use super::{Reconciled, RunTokens};
@@ -28,7 +28,7 @@ pub(super) struct Subject<'a> {
 
 /// Everything the report's transaction needs, assembled from the wire request.
 ///
-/// Separate from [`LeaseService::report`] so the verb reads as its four steps. The
+/// Separate from [`LeaseService::report_with`] so the verb reads as its four steps. The
 /// two `try_from` saturations are the request's own numbers: a runner reports
 /// its counts and nothing upstream bounds them, so a value past `i64` is
 /// clamped rather than refused — the run happened either way, and refusing it
@@ -84,14 +84,12 @@ pub(super) fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Opt
 /// through this and not before it.
 pub(super) fn reconciled(
     lease: Reported,
-    charged: Nanos,
     repeated: bool,
     tokens: RunTokens,
     completed_at: Option<Timestamp>,
 ) -> Reconciled {
     Reconciled {
         tokens,
-        charged,
         fleet_id: lease.fleet_id,
         workspace_id: lease.workspace_id,
         tenant_id: lease.tenant_id,

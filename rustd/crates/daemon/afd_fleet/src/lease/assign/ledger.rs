@@ -13,7 +13,6 @@ use crate::lease::affinity::{self, Fence};
 use crate::lease::envelope::{Acquired, HeadKind, Kind, Opened};
 use crate::lease::event::{Delivery, Received};
 use crate::lease::installed::FleetWithSession;
-use crate::lease::reclaim::Reused;
 use crate::lease::sql::{self, queue};
 use crate::lease::store::Leases;
 use afd_credential::provider::cache::PlatformKeyKey;
@@ -37,9 +36,7 @@ struct Admission {
     lease_expires_at: Timestamp,
     held: bool,
     holder: Option<Uuid7>,
-    reused_tenant_id: Option<Uuid7>,
-    reused_posture: Option<String>,
-    reused_model: Option<String>,
+    reclaimed: bool,
     tenant_id: Uuid7,
     #[sqlx(flatten)]
     memory: MemoryScope,
@@ -161,18 +158,9 @@ impl Leases {
 impl Admission {
     /// Build the same downstream envelope from the committed ledger payload.
     fn acquired(self, fleet: &Uuid7, runner: &Uuid7) -> Acquired {
-        // All three are non-null on a matched prior lease; the outer join
-        // makes all three absent when the admission has never been issued.
-        let reused = self
-            .reused_tenant_id
-            .zip(self.reused_posture)
-            .zip(self.reused_model)
-            .map(|((tenant_id, posture), model)| Reused {
-                tenant_id,
-                posture,
-                model,
-            });
-        let kind = if reused.is_some() {
+        // The outer join finds a prior lease only when the admission has been
+        // issued before.
+        let kind = if self.reclaimed {
             Kind::Reclaim
         } else {
             Kind::Fresh
@@ -236,7 +224,6 @@ impl Admission {
             request_json: self.request_json,
             workspace_id: self.workspace_id.clone(),
             event_created_at: self.event_created_at,
-            reused,
             resume_hold: self.held && self.holder.as_ref() == Some(runner) && kind == Kind::Fresh,
             redelivered: self.redelivered,
             opened,

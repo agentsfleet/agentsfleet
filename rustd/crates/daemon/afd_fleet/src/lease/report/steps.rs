@@ -1,7 +1,6 @@
 //! Best-effort announcements after a report and its admission settle in Postgres.
 //!
-//! Tail frames, outbound appends, and lease audit events cannot undo acceptance
-//! of the report. The committed outbound obligation repairs a missed append.
+//! Tail frames and outbound wakes cannot undo acceptance of the report. The committed outbound obligation repairs a missed append.
 
 use af_core::id::Uuid7;
 use af_observability::producers;
@@ -34,7 +33,7 @@ impl LeaseService {
     /// Announce a report that committed, and clear what it leaves behind.
     ///
     /// The money and queue transitions already committed. Completion frames
-    /// and the lease audit event are best effort after that boundary.
+    /// and the wake of an owed answer are best effort after that boundary.
     pub(super) async fn announce(
         &self,
         runner_id: &Uuid7,
@@ -63,11 +62,10 @@ impl LeaseService {
         // `Leases::select` records when the lease was granted.
         producers::fleet::runner::lease_released(runner_id.as_str());
 
-        // The completion publish is pinned here: after the two biller calls the
-        // verb makes before this, because the follow-up a fleet owner sends on
-        // seeing it is gated on the payer's balance through the biller, and
-        // before the audit row, the owed answer and the token read below, which
-        // nothing the owner sees depends on.
+        // The completion publish is pinned here: after the report's commit,
+        // because the follow-up a fleet owner sends on seeing it is gated on the
+        // payer's balance, and before the owed answer's wake and the token read
+        // below, which nothing the owner sees depends on.
         // Timed only when the frame landed: a dropped announcement is logged
         // by the tail and leaves no completion instant to measure from.
         match closed {

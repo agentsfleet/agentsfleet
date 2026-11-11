@@ -1,4 +1,4 @@
-//! One host's renewals in one statement (M245 §7): each lease answered on
+//! One host's renewals in one statement: each lease answered on
 //! its own, every write under its own fence, and the frame's statements
 //! counted.
 //!
@@ -13,7 +13,9 @@ use af_core::error_code::{
     RUN_LEASE_LOST, RUN_LEASE_NOT_FOUND, RUN_LEASE_RENEWAL_NO_CREDITS,
 };
 use af_core::id::Uuid7;
+use af_core::test_util::trace::Capture;
 use af_wire::report::RenewRequest;
+use af_wire::usage::LineKind;
 use afd_db::config::DbRole;
 use afd_db::test_util::statements::{self, Window as Counted};
 use afd_fleet::lease::renew::Renewals;
@@ -28,7 +30,7 @@ pub(crate) const SEEDED_DAILY_NANOS: i64 = 1_000_000_000;
 
 /// The lease's runtime lines, as `(seq, runtime_ms)`.
 const RUNTIME_LINES: &str = "SELECT seq, runtime_ms FROM billing.usage_lines \
-     WHERE work_id = $1 AND kind = 'runtime' ORDER BY seq";
+     WHERE work_id = $1 AND kind = $2 ORDER BY seq";
 
 /// One spend line on `fleet`, charged `nanos` now: what the fleet's budget reads.
 const SPEND: &str = "INSERT INTO billing.usage_lines \
@@ -36,7 +38,7 @@ const SPEND: &str = "INSERT INTO billing.usage_lines \
       provider, model, posture, requested_at, input_token_count, cached_input_token_count, \
       cache_write_token_count, cache_write_5m_token_count, cache_write_1h_token_count, \
       output_token_count, runtime_ms, unpriced_token_count, charged_nanos, created_at, updated_at) \
-     VALUES (uuidv7(), 'fleet_lease', uuidv7(), 'model', 0, $1, $2, $3, 'spend', uuidv7(), \
+     VALUES (uuidv7(), 'fleet_lease', uuidv7(), $5, 0, $1, $2, $3, 'spend', uuidv7(), \
              'fixture', 'fixture', 'platform', now(), 0, 0, 0, 0, 0, 0, 0, 0, $4, now(), now())";
 
 /// Renews `leases` on `held`'s host in one frame, on a fresh lease service.
@@ -44,7 +46,7 @@ pub(crate) async fn frame(
     held: &Held,
     leases: &[&Uuid7],
     funds_due: bool,
-) -> Vec<afd_fleet::Result<(Timestamp, afd_billing::Nanos)>> {
+) -> Vec<afd_fleet::Result<Timestamp>> {
     frame_on(&held.fixtures.plane(), held, leases, funds_due).await
 }
 
@@ -54,7 +56,7 @@ async fn frame_on(
     held: &Held,
     leases: &[&Uuid7],
     funds_due: bool,
-) -> Vec<afd_fleet::Result<(Timestamp, afd_billing::Nanos)>> {
+) -> Vec<afd_fleet::Result<Timestamp>> {
     plane
         .renew_batch(Renewals {
             runner_id: &held.runner,
@@ -70,9 +72,7 @@ async fn frame_on(
 }
 
 /// Each answer's refusal code, or `None` where it extended.
-pub(crate) fn codes(
-    answers: &[afd_fleet::Result<(Timestamp, afd_billing::Nanos)>],
-) -> Vec<Option<ErrorCode>> {
+pub(crate) fn codes(answers: &[afd_fleet::Result<Timestamp>]) -> Vec<Option<ErrorCode>> {
     answers
         .iter()
         .map(|answer| answer.as_ref().err().map(afd_fleet::Error::code))
@@ -82,6 +82,7 @@ pub(crate) fn codes(
 async fn runtime_lines(held: &Held, lease: &Uuid7) -> Vec<(i64, i64)> {
     sqlx::query_as(RUNTIME_LINES)
         .bind(lease)
+        .bind(LineKind::Runtime.as_str())
         .fetch_all(&mut *held.fixtures.database.acquire().await.expect("observer"))
         .await
         .expect("runtime lines")
@@ -99,6 +100,7 @@ pub(crate) async fn spend(
         .bind(workspace)
         .bind(fleet)
         .bind(nanos)
+        .bind(LineKind::Model.as_str())
         .execute(&mut *held.fixtures.database.acquire().await.expect("writer"))
         .await
         .expect("the spend line writes");
@@ -139,8 +141,21 @@ async fn host_batch_extends_live_refuses_fenced() {
     let owner = held.fixtures.open(DbRole::Migrator).await;
     statements::install(&owner).await;
     let window = Counted::open(&owner).await;
+    let log = Capture::install();
     let answers = frame_on(&plane, &held, &leases, false).await;
     let ran = window.close().await;
+    let refusals: Vec<_> = log
+        .events()
+        .into_iter()
+        .filter(|line| line.field("event") == Some("renew_batch_refused"))
+        .map(|line| {
+            (
+                line.field("lease_id").map(str::to_owned),
+                line.field("verdict").map(str::to_owned),
+            )
+        })
+        .collect();
+    drop(log);
 
     assert_eq!(
         codes(&answers),
@@ -150,6 +165,20 @@ async fn host_batch_extends_live_refuses_fenced() {
             Some(RUN_LEASE_EXCEEDED_MAX_RUNTIME)
         ],
         "{answers:?}"
+    );
+    assert_eq!(
+        refusals,
+        [
+            (
+                Some(reclaimed.lease.as_str().to_owned()),
+                Some("lost".to_owned())
+            ),
+            (
+                Some(capped.lease.as_str().to_owned()),
+                Some("max_runtime".to_owned())
+            ),
+        ],
+        "each refusal the per-lease path answers silently is named once"
     );
     let heads: Vec<String> = ran
         .statements()
@@ -233,12 +262,20 @@ async fn host_batch_refuses_over_budget_fleet_alone() {
     )
     .await;
 
+    let log = Capture::install();
     let answers = frame(&held, &[&held.issued.lease_id, &under.lease], false).await;
+    let breach = log.only("renew_budget_breach");
+    drop(log);
 
     assert_eq!(
         codes(&answers),
         [Some(RUN_BUDGET_EXCEEDED), None],
         "{answers:?}"
+    );
+    assert_eq!(breach.field("fleet_id"), Some(held.fleet.as_str()));
+    assert_eq!(
+        breach.field("lease_id"),
+        Some(held.issued.lease_id.as_str())
     );
     held.fixtures.cleanup().await;
 }
@@ -256,7 +293,10 @@ async fn a_short_payer_stops_on_a_checking_tick_alone() {
     let leases = [&held.issued.lease_id, &funded.lease];
 
     let between = frame(&held, &leases, false).await;
+    let log = Capture::install();
     let checking = frame(&held, &leases, true).await;
+    let short = log.only("renew_no_credits");
+    drop(log);
 
     assert_eq!(
         codes(&between),
@@ -268,13 +308,15 @@ async fn a_short_payer_stops_on_a_checking_tick_alone() {
         [Some(RUN_LEASE_RENEWAL_NO_CREDITS), None],
         "{checking:?}"
     );
+    assert_eq!(short.field("fleet_id"), Some(held.fleet.as_str()));
+    assert_eq!(short.field("lease_id"), Some(held.issued.lease_id.as_str()));
     held.fixtures.cleanup().await;
 }
 
 // Value: protects=a Kill mark stops its lease alone and keeps its deadline;
 // fails_when=the cancel check leaves the statement, or extends the lease
 // anyway; why_new=the mark is read in the batch; seam=none; no_claim=the
-// mark's delivery, which M243's suites prove.
+// mark's delivery, which its own suites prove.
 #[tokio::test]
 #[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
 async fn host_batch_refuses_cancel_marked_lease() {
@@ -290,13 +332,22 @@ async fn host_batch_refuses_cancel_marked_lease() {
         .instant(Row::Lease(&held.issued.lease_id), "lease_expires_at")
         .await;
 
+    let log = Capture::install();
     let answers = frame(&held, &[&held.issued.lease_id, &sibling.lease], false).await;
+    let refused = log.only("renew_batch_refused");
+    drop(log);
 
     assert_eq!(
         codes(&answers),
         [Some(RUN_LEASE_CANCELLED), None],
         "{answers:?}"
     );
+    assert_eq!(refused.field("verdict"), Some("cancelled"));
+    assert_eq!(
+        refused.field("lease_id"),
+        Some(held.issued.lease_id.as_str())
+    );
+    assert_eq!(refused.field("fleet_id"), Some(held.fleet.as_str()));
     assert_eq!(
         held.fixtures
             .instant(Row::Lease(&held.issued.lease_id), "lease_expires_at")

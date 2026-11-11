@@ -113,7 +113,7 @@ impl SessionServices {
                     positions.into_iter().zip(answers)
                 {
                     let outcome: Result<RenewResponse> = outcome
-                        .map(|(lease_expires_at, _charged)| RenewResponse {
+                        .map(|lease_expires_at| RenewResponse {
                             lease_expires_at,
                             recorded_through,
                         })
