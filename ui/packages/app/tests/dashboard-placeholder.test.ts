@@ -85,14 +85,11 @@ describe("placeholder pages", () => {
     ).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("settings security page renders the masked placeholder when authenticated", async () => {
+  it("the old workspace security page redirects to account Security when authenticated", async () => {
     mockAuth({ token: "tkn" });
     const { default: Page } =
       await import("../app/(dashboard)/w/[workspaceId]/settings/security/page");
-    const m = renderToStaticMarkup(
-      await Page({ params: Promise.resolve({ workspaceId: "ws_1" }) }),
-    );
-    expect(m).toContain("Security");
+    await expect(Page({ params: Promise.resolve({ workspaceId: "ws_1" }) })).rejects.toThrow("redirect:/settings/security");
   });
 
   it("settings security page redirects to /sign-in when no token", async () => {

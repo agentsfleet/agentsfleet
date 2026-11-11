@@ -41,6 +41,15 @@
 
 | File | Action | Why |
 |---|---|---|
+| `ui/packages/app/lib/auth/account-config.ts` | CREATE | Read optional provider configuration once without exposing the server key |
+| `ui/packages/app/components/assistant-ui/terminal-ansi.test.ts` | CREATE | Check escape-sequence removal, truncation and safe text presentation |
+| `ui/packages/app/components/assistant-ui/range.test.ts` | CREATE | Check invalid numeric output bounds without exposing extra lines |
+| `ui/packages/app/tests/account-session-recovery.test.tsx` | CREATE | Verify paging, duplicate exclusion, rejected transport promises and stale sign-out responses |
+| `ui/packages/app/tests/e2e/fixtures/resource-settings-probe.tsx` | CREATE | Render actual Models and Team components in the visual review shell |
+| `ui/packages/app/tests/e2e/fixtures/resource-settings-actions.ts` | CREATE | Isolate sample reads and refuse every write in resource visuals |
+| `ui/packages/app/tests/e2e/resource-settings.spec.ts` | CREATE | Check model-key choices, invitations and resource layouts in both appearances |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ProviderModelSelect.tsx` | EDIT | Collapse optional model evidence in Create model so phone actions remain visible |
+| `ui/packages/app/tests/provider-model-select.test.tsx` | EDIT | Retain model evidence behind the optional compact disclosure |
 | `ui/packages/design-system/src/design-system/Input.test.tsx` | EDIT | Check semantic control shape |
 | `ui/packages/design-system/src/design-system/Input.tsx` | EDIT | Use semantic control radius while preserving website defaults |
 | `ui/packages/design-system/src/utils.test.ts` | EDIT | Preserve font family, weight, size and foreground when utilities merge |
@@ -424,6 +433,32 @@
 | `ui/packages/app/components/assistant-ui/TerminalBlock.test.tsx` | CREATE | Verify recorded terminal outcomes and plain output rendering |
 | `ui/packages/app/components/domain/SteerComposer.test.tsx` | EDIT | Include native attachment capabilities in the composer unit fixture |
 | `ui/packages/app/tests/fleet-tool-calls.test.tsx` | EDIT | Verify command output and diff text through the adopted official elements |
+| `ui/packages/app/lib/auth/account-types.ts` | CREATE | Provider-neutral profile, browser-session and paging shapes |
+| `ui/packages/app/lib/auth/account-provider.ts` | CREATE | Bounded, cancellable provider HTTP reads/writes with runtime validation and no automatic mutation replay |
+| `ui/packages/app/lib/auth/account-actions.ts` | CREATE | App-owned server action boundary for current-person browser sessions |
+| `ui/packages/app/lib/auth/account-client.ts` | CREATE | Isolate provider hooks, profile editing and verification from settings components |
+| `ui/packages/app/lib/auth/credential.ts` | EDIT | Expose a minimal verified current-person/session identity without changing bearer or actor identity |
+| `ui/packages/app/lib/auth/client.ts` | EDIT | Remove the unused embedded profile export after replacing its caller |
+| `ui/packages/app/components/account/ProfileSettings.tsx` | CREATE | Custom profile form with React Actions and retained secure account controls |
+| `ui/packages/app/components/account/SessionSettings.tsx` | CREATE | Custom browser-session list, paging, confirmed sign-out and durable errors |
+| `ui/packages/app/components/account/use-account-sessions.ts` | CREATE | Own session reads and mutations per signed-in identity; discard stale completions |
+| `ui/packages/app/components/account/AccountAccess.tsx` | CREATE | Loading and signed-out settings presentation shared by account screens |
+| `ui/packages/app/app/(dashboard)/settings/account/[[...account]]/page.tsx` | EDIT | Replace the embedded profile page and preserve the security deep link |
+| `ui/packages/app/app/(dashboard)/settings/security/page.tsx` | CREATE | Account-scoped browser-session Security route |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/security/page.tsx` | EDIT | Redirect the old placeholder to account Security |
+| `ui/packages/app/components/layout/account-menu-data.ts` | EDIT | Make account Security discoverable while keeping API keys separate |
+| `ui/packages/app/tests/account-session-actions.test.ts` | CREATE | Verify fresh reads, paging, own-session checks, recent verification and provider refusals |
+| `ui/packages/app/tests/account-settings.test.tsx` | CREATE | Verify profile submission, session recovery, confirmation and account isolation |
+| `ui/packages/app/tests/account-client.test.tsx` | CREATE | Verify the provider adapter returns neutral data and rejects stale identity operations |
+| `ui/packages/app/tests/dashboard-placeholder.test.ts` | EDIT | Replace obsolete workspace Security placeholder assertions with authenticated account-Security routing |
+| `ui/packages/app/tests/e2e/fixtures/account-settings-probe.tsx` | CREATE | Render production account views with explicit sample identity for visual review |
+| `ui/packages/app/tests/e2e/fixtures/chat-browser-build.ts` | EDIT | Bind the account auth boundary to explicit sample data without bundling server credentials |
+| `ui/packages/app/tests/e2e/fixtures/visual-auth-fixture.tsx` | EDIT | Keep provider-owned account access out of component visual fixtures |
+| `ui/packages/app/tests/e2e/fixtures/chat-browser-probe.tsx` | EDIT | Mount account settings component fixtures alongside existing production visual fixtures |
+| `ui/packages/app/tests/e2e/account-settings.spec.ts` | CREATE | Check settings typography, scope, errors, layout and focus at desktop/phone widths |
+| `docs/AUTH.md` | EDIT | Document current-person profile/session adapters and retained verification behavior |
+| `ui/packages/app/components/domain/chat/use-task-read.ts` | EDIT | Retain confirmed access loss through retry/loading until an authorized read succeeds |
+| `ui/packages/app/tests/app-pages.test.ts` | EDIT | Replace obsolete embedded-profile expectations with the preserved account Security deep link |
 
 The Files Changed table expands with each grounded implementation slice before editing its additional callers or tests.
 The owner's approval covers the described surfaces; it does not authorize unrelated changes.
@@ -580,7 +615,17 @@ Keep existing fleet, draft, message, event, secret, membership and billing inter
 
 All callers and companion documentation must move together. Existing credential bytes, model IDs, scope checks and setup/model decision records remain unchanged.
 The coordinated public Plugins and archived-status vocabulary changes have their own implementation specification.
-Custom profile and browser-session operations have a separate auth specification; UI components consume app-owned shapes.
+Custom profile and browser-session operations are specified below; UI components consume app-owned shapes.
+
+### Profile and browser-session adapter
+
+Continue the explicitly approved custom account screens. Preserve the existing subject strings used by chat, pending sends and caches. No person/tenant mapping or token format changes. Profile forms consume neutral names/email data and update through the existing browser SDK. Keep email verification, passwords, passkeys, multi-factor setup and account deletion reachable through the provider's secure account controls behind the adapter; do not replace those flows with privileged unchecked backend writes.
+
+Read browser sessions fresh through an app-owned server action, since the provider browser SDK caches `user.getSessions()` for the lifetime of its resource. Resolve the current subject/session only inside `credential.ts`; accept an expected subject as a stale-tab guard, never as authority. List only that subject's active sessions, in bounded pages, mapping device/browser/location/last-active/current-device into app-owned data. Unknown times remain unknown. API keys and CLI device credentials remain separate resources.
+
+Session revocation first requires a signed-in matching subject, refuses the current session, requires strict recent verification using the provider's documented reverification hint, then reads the target session and proves its user matches before revoking. Preserve provider-native verification through the client adapter. Never log session metadata, credentials, challenges or personal data. Use the existing Clerk keys; introduce no new credentials. Failed or lost mutation responses stay unconfirmed and offer a fresh read; a successful revoke is retained even if the following refresh fails. Scope state by subject and discard late results after navigation/account changes. Session settings are account-scoped; the old workspace placeholder redirects to the account page.
+
+Owner (Nov 11, 2026): "keep going" and "ensure the PR is sent, CI jobs are green, greptile is resolved. produce a report of the chagnes and final visual to eyeball." — finish the approved implementation, publish the feature branch/PR, and follow checks and review feedback. This explicit publishing instruction supersedes the cloud workflow's default stop-before-push guidance; it does not authorize merging.
 
 ## Failure Modes
 
@@ -701,7 +746,7 @@ The fresh review reported eight findings. Recording a requirement is not resolut
 | 4: Delete reconciliation | Implemented; authenticated browser proof due | Typed stop/delete checkpoints, uncertain-response reads, access-loss handling and paused notices pass 34 focused tests. |
 | 5: Setup handoff | Implemented; authenticated browser proof due | The 204 setup tests pass, including save-key reuse, one confirmed handoff, transient failure and authorization loss. Existing authoring history stays private. |
 | 6: Stored vocabulary/authority | Open in coordinated CLI/API spec | Preserve immutable review records, existing platform pins and narrowed capabilities; no migration edits until specified. |
-| 7: Identity mapping | Open in separate auth spec | Preserve current subject-based chat identity; define neutral profile/session adapter shapes and ownership. |
+| 7: Identity mapping | Implemented; authenticated browser proof due | Profile and session views consume app-owned data and operations. The provider adapter preserves the existing subject and session identity, recent verification, exact ownership and late-result exclusion. No identity-record migration was introduced. |
 | 8: Reference/type consistency | Partly resolved | Active spec uses current checkout and phone typing 16px/24px. Older artifact source links still need reconciliation. |
 
 Typography and icon work was explicitly cleared by the reviewer. The open findings above do not authorize skipping the corresponding design or verification.
@@ -715,6 +760,9 @@ Typography and icon work was explicitly cleared by the reviewer. The open findin
 - **Consults** — Fresh `origin/main` at `bfcfe5bac`; the merged platform CLI change removed operator pages. `orly doctor` passed both installation and rule checks.
 - **Model reviews** — Native EGM implementation-readiness review completed against `bfcfe5bac`: 1 blocker for the separate vocabulary migration, 6 majors, 1 nit. No blocker to shared visual work. Report: `/workspace/artifacts/fleet-refresh-v2/implementation-readiness-current-main.md`. Missing Summary owners and focused test paths are now included. The remaining model, handoff, deletion, vocabulary and identity findings must be resolved in their corresponding sections/specifications before those edits.
 - **Open blockers** — None in approved product direction; implementation details and exact callers are checked before each slice.
+- **Rollout review blocker (Nov 11, 2026)** — The forward model migration removes uniqueness still required by old writers, while old readers can resolve a newly registered model's credential from the wrong workspace during a rolling replacement. Both chat P2 findings are fixed. The model P1 is open: Indy has been asked to choose guarded maintenance cutover or two-release compatibility. No unanswered choice is treated as approval, and no deployment configuration was changed.
+- **Settings checkpoint (Nov 11, 2026)** — Custom Profile and Security now use the existing Clerk configuration through app-owned adapters. Names retain failed edits; session lists use current-person reads, recent verification and exact target ownership. A committed sign-out with a lost response is reconciled without a second POST. The focused account/terminal run passes 70 tests with 100 percent statements, branches, functions and lines across its twelve included production files. This is a focused measurement, not the global coverage gate. Six desktop/phone browser cases pass for Profile, Security, Models, Team and invitations in both appearances. Model evidence is collapsed in Create model so phone save controls remain visible; the model selection/recovery selection passes 33 tests. These visuals use production components with isolated sample data and no live resource writes. `make lint-app` passes source rules, Oxlint and TypeScript. Global coverage and final repository checks remain due.
+- **Measured merge-base baseline (Nov 11, 2026)** — The exact base `bfcfe5bac18c873d3275a125e742b06fb3c33c4d` has no executed unit/coverage lane in its CI runs; warm-cache only compiles Rust tests. An isolated detached checkout at that revision ran `make test-coverage-all`: app 440 files / 4,232 tests, website 20 / 133, CLI 2,217 passed / 17 skipped / 0 failed, design system 62 / 488. Every package meets its declared 100 percent coverage floor. Evidence: `/workspace/scratch/refresh-baseline-coverage.log`. Base CI metadata: `https://github.com/agentsfleet/agentsfleet/actions/runs/42953803333` (compile-only warm-cache), plus deployed verification `https://github.com/agentsfleet/agentsfleet/actions/runs/42953802879`; neither is claimed as the measured unit run.
 - **Deferrals and transfers** — Only user-excluded work below. Auth and public vocabulary are separately specified approved work, not dropped scope.
 
 > Owner (Indy, Nov 11, 2026): “there is no primary vault” and “and get to work” — remove the added frontend storage-selection abstraction and follow the existing API ownership.

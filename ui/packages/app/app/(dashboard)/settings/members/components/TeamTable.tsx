@@ -78,7 +78,7 @@ export function TeamTable({ members, invites, pending, onRemove, onRevoke, onRes
 function PersonCell({ row }: { row: TeamRow }) {
   return (
     <div className="min-w-0">
-      {row.invite ? <div className="truncate text-sm">{row.invite.email}</div> : <MemberName member={row.member} />}
+      {row.invite ? <div className="truncate text-label leading-label">{row.invite.email}</div> : <MemberName member={row.member} />}
       {/* The timestamp column leaves the row on a phone, so its dates and an
           invite's email status read here instead, as the API Keys table does. */}
       <div className="mt-xs flex flex-col items-start gap-xs sm:hidden">
@@ -91,7 +91,7 @@ function PersonCell({ row }: { row: TeamRow }) {
 function MemberName({ member }: { member: MemberSummary }) {
   return (
     <>
-      <div className="truncate text-sm">{memberName(member)}</div>
+      <div className="truncate text-label leading-label">{memberName(member)}</div>
       {member.display_name ? <div className="truncate text-label text-muted-foreground">{member.email}</div> : null}
     </>
   );
@@ -148,7 +148,7 @@ function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers &
           onClick={() => onResend(invite)}
           label={`Send the invite email to ${invite.email} again`}
         >
-          <PaperPlaneTiltIcon size={14} />
+          <PaperPlaneTiltIcon size={16} />
         </IconAction>
       )}
       <CopyButton value={invite.link} label={`Copy invite link for ${invite.email}`} />
@@ -159,7 +159,7 @@ function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers &
         onClick={() => onRevoke(invite)}
         label={`Revoke invite for ${invite.email}`}
       >
-        <ProhibitIcon size={14} />
+        <ProhibitIcon size={16} />
       </IconAction>
     </div>
   );
@@ -190,7 +190,7 @@ function columns(
             onClick={() => onRemove(member)}
             label={`Remove ${memberName(member)}`}
           >
-            <UserMinusIcon size={14} />
+            <UserMinusIcon size={16} />
           </IconAction>
         );
       },
