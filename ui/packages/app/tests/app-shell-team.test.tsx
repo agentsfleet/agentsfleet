@@ -44,7 +44,7 @@ describe("shell for teams", () => {
       balance_nanos: "3680000000", updated_at: "2026-10-19T00:00:00Z",
       is_exhausted: false, exhausted_at: null,
     }}><p>Current work</p></ShellFrame>);
-    await userEvent.setup().click(screen.getByRole("button", {name: "Workspace and account menu"}));
+    await userEvent.setup().click(screen.getByRole("button", {name: /^Workspace and account menu(?::|$)/}));
     const usage = await screen.findByRole("menuitem", {name: /Usage/});
     expect(usage.getAttribute("href")).toBe("/settings/billing");
     expect(usage.textContent).toContain("$3.68");

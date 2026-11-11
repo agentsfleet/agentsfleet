@@ -27,6 +27,7 @@ const PROTECTED_ROUTES = [
   "/w/ws_probe/events",
   "/settings/billing",
   "/settings/account",
+  "/settings/account/sign-in",
   "/settings/account/security",
   "/settings/security",
 ] as const;

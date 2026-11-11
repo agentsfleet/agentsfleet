@@ -48,7 +48,7 @@ function uniqueName(prefix: string): string {
 async function clickSidebarLink(page: Page, href: string, destination: RegExp): Promise<void> {
   let link = page.locator(`a[href="${href}"]:visible`);
   if (!await link.isVisible()) {
-    await page.getByRole("button", { name: "Workspace and account menu" }).click();
+    await page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ }).click();
     link = page.locator(`[role="menuitem"][href="${href}"]`);
   }
   await expect(link).toBeVisible();

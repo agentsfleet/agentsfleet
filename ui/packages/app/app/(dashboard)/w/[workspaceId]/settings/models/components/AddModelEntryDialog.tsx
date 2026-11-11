@@ -21,6 +21,7 @@ export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, 
   const pending = useRef(false);
   const catalogue = useModelCatalogue();
   const identity = useCurrentUser();
+  const ownerReady = identity.isLoaded && identity.isSignedIn && identity.userId !== null;
   const scope = `${workspaceId}:${identity.userId ?? ""}`;
   const previousScope = useRef(scope);
   useEffect(() => {
@@ -41,7 +42,7 @@ export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
-        <TooltipButton type="button" size="sm" tooltip="Choose a model and connect its provider" onFocus={catalogue.preload}
+        <TooltipButton type="button" size="sm" disabled={!ownerReady} tooltip="Choose a model and connect its provider" onFocus={catalogue.preload}
           onPointerEnter={() => { if (catalogue.status !== CATALOGUE_STATUS.error && maySpeculateOnHover()) catalogue.preload(); }}>
           <PlusIcon size={16} aria-hidden="true" />Create model
         </TooltipButton>

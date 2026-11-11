@@ -15,7 +15,7 @@ for (const width of WIDTHS) {
     await signInAs(page, "regular");
     await page.goto(`/w/${workspaceId}/fleets`);
     await expect(page.getByRole("heading", { level: 1, name: "What should your fleet do?" })).toBeVisible();
-    const opener = page.getByRole("button", { name: "Workspace and account menu" });
+    const opener = page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ });
     await expect(opener).toBeVisible();
     await opener.focus();
     await page.keyboard.press("Enter");

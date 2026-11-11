@@ -12,10 +12,6 @@ import { Button } from "./Button";
  * ref-as-prop. Animation utilities (animate-in / fade-in-0 / zoom-in-95)
  * come from tw-animate-css — consumers must `@import "tw-animate-css";`
  * in their root stylesheet (both the app and website do).
- *
- * The close-button X icon is inlined as an SVG so the design-system
- * package doesn't take on `lucide-react` (or any icon library) as a
- * transitive dependency.
  */
 
 export const Dialog = DialogPrimitive.Root;

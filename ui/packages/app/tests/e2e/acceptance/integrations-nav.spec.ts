@@ -21,7 +21,7 @@ test.describe("settings navigation — Models + Integrations", () => {
     await page.goto("/");
 
     // Integrations — nav click lands on /w/<id>/integrations and renders connectors.
-    await page.getByRole("button", { name: "Workspace and account menu" }).click();
+    await page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ }).click();
     await page.getByRole("menuitem", { name: "Connect apps", exact: true }).click();
     await expect(page).toHaveURL(workspaceUrlPattern("integrations"));
     await expect(page.getByRole("heading", { name: /^connect apps$/i })).toBeVisible();
