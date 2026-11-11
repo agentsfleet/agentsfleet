@@ -314,6 +314,10 @@ Preserve model, platform credential, and vault access checks when renaming or re
 Security lists personal browser sessions. API keys remain a separate account page; provider credentials belong under Models and Secrets.
 Keep profile information available through the account identity and custom profile controls backed by the auth adapter.
 
+Sign-in methods opens `/settings/account/sign-in`, with a persistent page title and a labelled secure-controls region.
+The auth facade embeds the supported provider widget; native password, email and verification flows remain provider-owned.
+
+Changing the subject or session clears the widget. Keep its draft intact during ordinary resource refreshes.
 Sign out remains in the avatar menu.
 
 The app owns profile and session data shapes; Clerk supplies the current implementation through a dedicated adapter.

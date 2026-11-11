@@ -663,7 +663,7 @@ Custom profile and browser-session operations are specified below; UI components
 
 ### Profile and browser-session adapter
 
-Continue the explicitly approved custom account screens. Preserve the existing subject strings used by chat, pending sends and caches. No person/tenant mapping or token format changes. Profile forms consume neutral names/email data and update through the existing browser SDK. Keep email verification, passwords, passkeys, multi-factor setup and account deletion reachable through the provider's secure account controls behind the adapter; do not replace those flows with privileged unchecked backend writes.
+Continue the explicitly approved custom account screens. Preserve the existing subject strings used by chat, pending sends and caches. No person/tenant mapping or token format changes. Profile forms consume neutral names/email data and update through the existing browser SDK. Keep email verification, passwords, passkeys and multi-factor setup in the provider's secure controls, under its existing instance policies. Do not replace those flows with privileged unchecked backend writes.
 
 Read browser sessions fresh through an app-owned server action, since the provider browser SDK caches `user.getSessions()` for the lifetime of its resource. Resolve the current subject/session only inside `credential.ts`; accept an expected subject as a stale-tab guard, never as authority. List only that subject's active sessions, in bounded pages, mapping device/browser/location/last-active/current-device into app-owned data. Unknown times remain unknown. API keys and CLI device credentials remain separate resources.
 
@@ -849,3 +849,29 @@ Typography and icon work was explicitly cleared by the reviewer. The open findin
 - **Final non-test repository gate** — `orly gate verify` passed: repository configuration, documentation language, the complete `make lint-all` invocation and `make check-version` are green. All versions match 0.76.0. Evidence: `/workspace/scratch/refresh-final-verify-gate-current.log`. This is the local verification gate, not `orly gate pr`, remote CI or Greptile clearance.
 - **Final orphan and secret audit** — A whole-repository case-insensitive sweep of the seven removed paths found only dated review inventories and the separate Rust `FleetConfig` type; no current import points at a removed component or SQL file. A stale test-helper comment naming the removed UI component was deleted; its existing callers still use the helper. `gitleaks detect` scanned all 16 branch commits, approximately 722 KB, and reported no leaks. Evidence: `/workspace/scratch/refresh-final-orphan-sweep.log` and `refresh-final-branch-secret-scan.log`.
 - **Local TLS setup repair** — The focused authenticated setup built both Rust binaries, CLI and production Next successfully, then Caddy health failed because BusyBox sent its loopback GET through the inherited HTTP proxy. The exact GET succeeds with only that container process’s `http_proxy` empty. A task-only Compose runtime overlay applies that environment setting. Docker configuration, registry credentials, committed harness, health URL, TLS validation and readiness checks are unchanged. This failed setup executed no authenticated browser test.
+
+### Authenticated follow-up repair scope
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/lib/auth/account-controls.tsx` | CREATE | Embed the supported native account widget behind the auth facade |
+| `ui/packages/app/tests/account-controls.test.tsx` | CREATE | Verify the accessible owner and secure native handoff without exposing provider state |
+| `ui/packages/app/lib/auth/account-types.ts` | EDIT | Keep any native-control ownership shape behind the existing account adapter |
+| `ui/packages/app/lib/auth/client.ts` | EDIT | Keep the native account component behind the existing provider facade if needed |
+| `ui/packages/app/lib/profile-appearance.ts` | EDIT | Fit native controls within the accessible app surface |
+
+- **Authenticated findings (Nov 12, 2026, Asia/Calcutta)** — The real local backend plus existing development Clerk fixtures ran the 15 selected account, navigation, model and billing checks: nine passed and six failed. Password editing removes the native modal’s accessible name at all three widths; expanded account navigation fails the visible-label/name match in both themes; the new-model dialog closes before provider selection. The original assertions remain enabled. Repair these actual findings and rerun the affected journeys; sample-component visuals alone did not expose them. The focused run explicitly excludes runner-dependent release preflight; it is not full acceptance or CI.
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/components/account/AccountMethodsSettings.tsx` | CREATE | Host native verified controls on a named app page and clear its widget when account/session changes |
+
+- **Supported native-control repair** — The installed `UserProfileModalProps` exposes profile options and portal container, with no accessible-name override. Use the supported embedded `UserProfile` with hash routing on `/settings/account/sign-in`, reached through the existing guarded neutral client method. Keep a persistent app page title/region and key the live native widget by the existing subject/session context. This preserves native verification portals without adding a second modal focus trap or DOM patch. The account reviewer cleared this direction read-only; fresh tests remain due.
+
+| `ui/packages/app/tests/e2e/acceptance/integrations-nav.spec.ts` | EDIT | Retain purpose-based menu selection while the native accessible name includes its visible account/workspace labels |
+
+| `ui/packages/app/tests/e2e/acceptance/settings-api-keys.spec.ts` | EDIT | Retain purpose-based menu selection while the native accessible name includes its visible account/workspace labels |
+
+| `ui/packages/app/tests/e2e/acceptance/fixtures/nav.ts` | EDIT | Retain purpose-based menu selection while the native accessible name includes its visible account/workspace labels |
+- **Authenticated repair checkpoint** — The supported embedded account route, visible-name switcher fix and loaded-owner model trigger passed the focused seven-file selection: 55 tests. Account/security static re-review found no new concrete issue. `make lint-app test-unit-app` passed lint and TypeScript, then 4,459 tests; its sole failure expected Create model to reopen while signed out. That recovery test now explicitly proves the disabled signed-out state, restores sign-in, and retains its empty-key assertion after reopening. The original browser accessibility assertions remain enabled; package coverage and the real authenticated rerun remain due.
+- **Authenticated-repair package gate** — The actual `make test-coverage-all` passed: app 463 files / 4,460 tests, website 20 / 133, CLI 2,217 passed / 17 skipped / zero failures, and design system 62 / 491. All four packages retain 100 percent statements, branches, functions and lines. App totals are 12,652 statements, 9,249 branches, 3,315 functions and 10,249 lines, all covered. Evidence: `/workspace/scratch/refresh-auth-repairs-coverage-all.log`. The supported native-page repair and original browser assertions now require a real production rebuild and authenticated rerun.
