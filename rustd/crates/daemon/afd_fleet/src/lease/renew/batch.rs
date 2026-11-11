@@ -521,7 +521,7 @@ impl LeaseService {
         renewing: &Renewing,
         row: &Found,
         now: Timestamp,
-    ) -> Result<afd_billing::rates::Estimate> {
+    ) -> core::result::Result<afd_billing::rates::Estimate, Arc<crate::Error>> {
         let posture = crate::lease::renew::posture_of(renewing);
         let pricing = self
             .leases
@@ -534,11 +534,8 @@ impl LeaseService {
                 Some(row.catalogue_version),
             )
             .await?;
-        Ok(afd_billing::Accounts::estimate_from(
-            pricing.book(),
-            posture,
-            now,
-        )?)
+        afd_billing::Accounts::estimate_from(pricing.book(), posture, now)
+            .map_err(|fault| Arc::new(crate::Error::from(fault)))
     }
 
     /// The lease's pricing, from the price books by catalogue version.

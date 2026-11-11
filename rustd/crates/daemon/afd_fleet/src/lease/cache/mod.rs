@@ -193,6 +193,10 @@ impl PriceBooks {
     /// read, which is never kept: a caller with its own fault posture, the
     /// credit gate's, answers it (M245 §9).
     ///
+    /// Concurrent misses on one key share one read: a replica's runners start
+    /// together, and each would otherwise read the same book. The fault is
+    /// shared the same way, so it comes back behind an `Arc`.
+    ///
     /// # Errors
     /// A datastore that would not answer, or a catalogue row it cannot read.
     pub(crate) async fn try_get_or_load(
@@ -202,21 +206,27 @@ impl PriceBooks {
         provider: &str,
         model: &str,
         catalogue_version: Option<i64>,
-    ) -> Result<Arc<Pricing>> {
+    ) -> core::result::Result<Arc<Pricing>, Arc<crate::Error>> {
         let key = PriceKey {
             posture: posture.as_str(),
             provider: provider.to_owned(),
             model: model.to_owned(),
             catalogue_version: catalogue_version.filter(|_| posture == Posture::Platform),
         };
-        if let Some(pricing) = self.entries.get(&key).await {
-            looked_up(LeaseCache::PriceBook, CacheOutcome::Hit);
-            return Ok(pricing);
-        }
-        looked_up(LeaseCache::PriceBook, CacheOutcome::Miss);
-        let pricing = Arc::new(Pricing::try_load(database, posture, provider, model).await?);
-        self.entries.insert(key, Arc::clone(&pricing)).await;
-        Ok(pricing)
+        // Boxed: a cache future is large, and every lease path awaits this.
+        let entry = Box::pin(self.entries.entry(key).or_try_insert_with(async {
+            Pricing::try_load(database, posture, provider, model)
+                .await
+                .map(Arc::new)
+        }))
+        .await?;
+        let outcome = if entry.is_fresh() {
+            CacheOutcome::Miss
+        } else {
+            CacheOutcome::Hit
+        };
+        looked_up(LeaseCache::PriceBook, outcome);
+        Ok(entry.into_value())
     }
 }
 

@@ -3,6 +3,8 @@
 //! Gates run before issue; an empty selection carries no polling response or retry hint.
 //! The native session owns delivery and decides when another placement pass is useful.
 
+use std::sync::Arc;
+
 use af_core::id::Uuid7;
 use af_wire::event::EventType;
 use jiff::Timestamp;
@@ -243,7 +245,7 @@ impl LeaseService {
             Ok(Some(tenant)),
             request,
             facts.spend(),
-            estimate.as_ref().copied(),
+            estimate.as_ref().copied().map_err(|fault| &**fault),
         )
         .await?;
         if !matches!(money, Admission::Admit(_)) {
@@ -262,7 +264,7 @@ impl LeaseService {
         acquired: &Acquired,
         resolved: &Resolved,
         now: Timestamp,
-    ) -> Result<afd_billing::rates::Estimate> {
+    ) -> core::result::Result<afd_billing::rates::Estimate, Arc<crate::Error>> {
         let pricing = self
             .leases
             .prices()
@@ -274,11 +276,8 @@ impl LeaseService {
                 Some(acquired.opened.catalogue_version),
             )
             .await?;
-        Ok(Accounts::estimate_from(
-            pricing.book(),
-            resolved.posture,
-            now,
-        )?)
+        Accounts::estimate_from(pricing.book(), resolved.posture, now)
+            .map_err(|fault| Arc::new(crate::Error::from(fault)))
     }
 
     /// The approval gate, as an admission answer.
