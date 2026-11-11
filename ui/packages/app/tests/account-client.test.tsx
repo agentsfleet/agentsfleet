@@ -7,14 +7,13 @@ import { useAccountSettings } from "@/lib/auth/account-client";
 const mocks = vi.hoisted(() => ({
   user: {current: null as null | {id: string; firstName: string | null; lastName: string | null; primaryEmailAddress: {emailAddress: string} | null; hasImage: boolean; imageUrl: string; update: ReturnType<typeof vi.fn>}},
   session: {id: "session-one"}, loaded: true, gate: null as null | ReturnType<typeof Promise.withResolvers<void>>,
-  provider: {openUserProfile: vi.fn()}, list: vi.fn(), revoke: vi.fn(), update: vi.fn(),
+  router: {push: vi.fn()}, list: vi.fn(), revoke: vi.fn(), update: vi.fn(),
 }));
 
 // Provider hooks/challenge completion and client Server Action proxies are external boundaries.
 vi.mock("@clerk/nextjs", () => ({
   useUser: () => ({isLoaded: mocks.loaded, isSignedIn: !!mocks.user.current, user: mocks.user.current}),
   useSession: () => ({isLoaded: mocks.loaded, session: mocks.user.current ? mocks.session : null}),
-  useClerk: () => mocks.provider,
   useReverification: (callback: (...args: unknown[]) => Promise<unknown>) => {
     const latest = useRef(callback);
     latest.current = callback;
@@ -25,6 +24,7 @@ vi.mock("@clerk/nextjs", () => ({
     }, []);
   },
 }));
+vi.mock("next/navigation", () => ({useRouter: () => mocks.router}));
 vi.mock("@/lib/auth/account-actions", () => ({listAccountSessionsAction: mocks.list, revokeAccountSessionAction: mocks.revoke}));
 
 beforeEach(() => {
@@ -34,7 +34,7 @@ beforeEach(() => {
   mocks.update.mockReset().mockResolvedValue(undefined);
   mocks.list.mockReset().mockResolvedValue({ok: true, data: {sessions: [], nextOffset: null}});
   mocks.revoke.mockReset().mockResolvedValue({ok: true, data: {id: "other"}});
-  mocks.provider.openUserProfile.mockReset();
+  mocks.router.push.mockReset();
   mocks.user.current = {id: "owner", firstName: "Kishore", lastName: "", primaryEmailAddress: {emailAddress: "you@example.test"}, hasImage: false, imageUrl: "unused", update: mocks.update};
 });
 afterEach(cleanup);
@@ -59,7 +59,7 @@ it("trims bounded profile fields, keeps provider resources private and retains s
   expect(await access.client.updateProfile({firstName: "a".repeat(257), lastName: ""})).toMatchObject({ok: false});
   expect(mocks.update).toHaveBeenCalledTimes(1);
   access.client.manageSignIn();
-  expect(mocks.provider.openUserProfile).toHaveBeenCalledOnce();
+  expect(mocks.router.push).toHaveBeenCalledExactlyOnceWith("/settings/account/sign-in");
 });
 
 it("preserves client identity during ordinary same-owner resource reloads", () => {
@@ -125,7 +125,7 @@ it("drops late session reads after the account changes and blocks stale clients"
   expect(await before.listSessions()).toMatchObject({ok: false, status: 409});
   expect(await before.updateProfile({firstName: "Stale", lastName: ""})).toMatchObject({ok: false});
   before.manageSignIn();
-  expect(mocks.provider.openUserProfile).not.toHaveBeenCalled();
+  expect(mocks.router.push).not.toHaveBeenCalled();
   expect(mocks.revoke).not.toHaveBeenCalled();
 });
 

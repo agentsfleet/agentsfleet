@@ -37,7 +37,7 @@ for (const width of WIDTHS) {
     await signInAsUser(page, accountUserId);
     await page.goto("/");
     await expect(page.getByRole("heading", {name: "What should your fleet do?", exact: true})).toBeVisible();
-    const opener = page.getByRole("button", { name: "Workspace and account menu" });
+    const opener = page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ });
     await expect(opener).toBeVisible();
     await opener.focus();
     await page.keyboard.press("Enter");
@@ -70,7 +70,8 @@ for (const width of WIDTHS) {
 
     await page.screenshot({path: test.info().outputPath(`live-security-${width}.png`), scale: "css", animations: "disabled"});
     await page.getByRole("button", {name: "Sign-in methods", exact: true}).click();
-    const nativeAccount = page.getByRole("dialog");
+    await expect(page).toHaveURL(/\/settings\/account\/sign-in/);
+    const nativeAccount = page.getByRole("region", {name: "Secure account controls", exact: true});
     await expect(nativeAccount).toBeVisible();
     const security = nativeAccount.getByRole("button", {name: "Security", exact: true});
     if (width < 768) await nativeAccount.getByRole("button", {name: "Account", exact: true}).click();
@@ -80,10 +81,11 @@ for (const width of WIDTHS) {
     await expect(password).toBeVisible();
     await expect(password).toBeEnabled();
     await expectAccessible(page, "Password editing");
+    await page.screenshot({path: test.info().outputPath(`live-password-editor-${width}.png`), scale: "css", animations: "disabled"});
     await nativeAccount.getByRole("button", {name: CANCEL_LABEL, exact: true}).click();
     await expect(password).toBeHidden();
     await expect(nativeAccount.getByRole("button", {name: "Update password", exact: true})).toBeVisible();
-    await nativeAccount.getByRole("button", {name: "Close modal", exact: true}).click();
+    await page.getByRole("link", {name: "Back to Security", exact: true}).click();
     await expect(nativeAccount).toBeHidden();
     await expect(sessions.getByText("This device", {exact: true})).toBeVisible();
     await page.reload();
