@@ -214,10 +214,11 @@ impl PriceBooks {
             catalogue_version: catalogue_version.filter(|_| posture == Posture::Platform),
         };
         // Boxed: a cache future is large, and every lease path awaits this.
+        let looked_up_at = key.catalogue_version;
         let entry = Box::pin(self.entries.entry(key).or_try_insert_with(async {
             Pricing::try_load(database, posture, provider, model)
                 .await
-                .map(Arc::new)
+                .map(|pricing| Arc::new(pricing.looked_up_at(looked_up_at)))
         }))
         .await?;
         let outcome = if entry.is_fresh() {

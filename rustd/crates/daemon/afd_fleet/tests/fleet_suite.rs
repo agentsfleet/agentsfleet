@@ -110,6 +110,8 @@ mod integration_money_gates;
 mod integration_money_gates_debt;
 #[path = "integration_renew_batch.rs"]
 mod integration_renew_batch;
+#[path = "integration_renew_caches.rs"]
+mod integration_renew_caches;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage/mod.rs"]

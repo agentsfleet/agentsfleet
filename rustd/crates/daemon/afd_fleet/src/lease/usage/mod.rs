@@ -39,6 +39,9 @@ pub struct Pricing {
     posture: Posture,
     provider: String,
     model: String,
+    /// The catalogue version a cache looked this book up at, which a book
+    /// with no price rows cannot name itself.
+    looked_up_at: Option<i64>,
 }
 
 impl Pricing {
@@ -107,6 +110,7 @@ impl Pricing {
             posture,
             provider: provider.to_owned(),
             model: model.to_owned(),
+            looked_up_at: None,
         }
     }
 
@@ -114,6 +118,12 @@ impl Pricing {
     /// platform's as the report's own read does (`report::assembly`).
     pub(crate) fn posture_of(stored: &str) -> Posture {
         Posture::parse(stored).unwrap_or(Posture::Platform)
+    }
+
+    /// This pricing as a cache keeps it, looked up at `catalogue_version`.
+    pub(crate) const fn looked_up_at(mut self, catalogue_version: Option<i64>) -> Self {
+        self.looked_up_at = catalogue_version;
+        self
     }
 
     /// The book these lines are priced from.
@@ -138,9 +148,17 @@ impl Pricing {
 
     /// The catalogue version a statement priced from this book guards on:
     /// only a platform run's tokens are priced from the catalogue.
+    ///
+    /// A book with no price rows names no version of its own, and a statement
+    /// with no version skips its guard: a price added later would never be
+    /// charged on this replica. A cached book therefore names the version it
+    /// was looked up at (M245 §9).
     pub(crate) const fn catalogue_version(&self) -> Option<i64> {
         match self.posture {
-            Posture::Platform => self.book.catalogue_version(),
+            Posture::Platform => match self.book.catalogue_version() {
+                Some(version) => Some(version),
+                None => self.looked_up_at,
+            },
             Posture::SelfManaged => None,
         }
     }
@@ -183,6 +201,7 @@ impl Pricing {
             posture,
             provider,
             model,
+            looked_up_at: None,
         }
     }
 
