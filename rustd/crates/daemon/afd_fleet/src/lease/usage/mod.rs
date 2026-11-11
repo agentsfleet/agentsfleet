@@ -116,6 +116,11 @@ impl Pricing {
         Posture::parse(stored).unwrap_or(Posture::Platform)
     }
 
+    /// The book these lines are priced from.
+    pub(crate) const fn book(&self) -> &PriceBook {
+        &self.book
+    }
+
     /// The posture these lines are priced under.
     pub(crate) const fn posture(&self) -> Posture {
         self.posture

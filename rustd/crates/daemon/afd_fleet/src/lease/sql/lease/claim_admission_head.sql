@@ -79,7 +79,7 @@ WITH fleet AS MATERIALIZED (
         AND g.expires_at > (SELECT checked_at FROM instant) LIMIT 1)))
   RETURNING WITH (OLD AS prior)
             a.id, a.workspace_id, a.actor, a.event_type, a.request_json,
-            a.event_created_at, a.producer, a.created_at, a.task_id,
+            a.event_created_at, a.producer, a.created_at, a.task_id, a.task_generation,
             a.sequence, a.reply_provider, a.reply_address,
             prior.delivered_at IS NOT NULL AS redelivered
 ), prior_lease AS MATERIALIZED (
@@ -150,6 +150,10 @@ SELECT a.id AS event_id, a.workspace_id, a.actor, a.event_type,
        k.event_count, k.budget_used_nanos,
        (SELECT resource_version FROM catalogue) AS catalogue_version,
        pl.platform_secret_id, pl.platform_secret_version,
+       -- Whether the head belongs to a durable task: only such an issue reads
+       -- its task source (`task/sql/issue_source.sql`); a plain chat's lease
+       -- insert carries the setup proof instead (M245 §9).
+       (a.task_id IS NOT NULL OR a.task_generation IS NOT NULL) AS tasked,
        -- Whether a later message waits in the head's conversation, foldable
        -- or not: the run's first fold ask finds nothing when this is false.
        -- claim_inputs.sql's two branches, through the same index. A durable

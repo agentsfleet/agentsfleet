@@ -145,6 +145,20 @@ impl Accounts {
     }
 }
 
+impl Accounts {
+    /// [`Self::estimate`] against a book the caller already holds, as the
+    /// lease path's version-keyed cache does (M245 §3): no statement.
+    ///
+    /// # Errors
+    /// Preserves the rater's arithmetic failures.
+    pub fn estimate_from(book: &PriceBook, posture: Posture, now: Timestamp) -> Result<Estimate> {
+        if posture == Posture::SelfManaged {
+            return Ok(Estimate::Priced(Nanos::ZERO));
+        }
+        floor(book, now)
+    }
+}
+
 /// The issue-time floor priced against `book` at `now`.
 fn floor(book: &PriceBook, now: Timestamp) -> Result<Estimate> {
     let line = UsageLine {

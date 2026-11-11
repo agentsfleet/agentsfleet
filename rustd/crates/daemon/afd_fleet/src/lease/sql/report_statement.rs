@@ -14,6 +14,9 @@ use crate::lease::report::RunTokens;
 /// Every write a terminal report makes, in one statement.
 pub const COMMIT_REPORT: &str = include_str!("commit_report.sql");
 
+/// The notice a durable task's settlement puts in the run's answer's place.
+pub const APPLY_REPORT_NOTICE: &str = include_str!("apply_report_notice.sql");
+
 /// What a query failure names the statement as.
 const CONTEXT: &str = "one-statement report";
 

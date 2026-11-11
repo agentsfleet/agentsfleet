@@ -203,36 +203,38 @@ pub async fn money_gates(
     now: Timestamp,
 ) -> Result<Admission> {
     let spend = accounts.spend(request.workspace_id, request.fleet_id).await;
+    let estimate = accounts
+        .estimate(request.posture, request.provider, request.model, now)
+        .await;
     money_gates_with(
-        accounts,
         biller,
         payer,
         request,
         spend.as_ref().copied(),
-        now,
+        estimate.as_ref().copied(),
     )
     .await
 }
 
 /// [`money_gates`] over a spend the caller already read — the lease path's
-/// one gates read (M245 §5) — or the fault that read met.
+/// one gates read (M245 §5) — and an estimate it priced from its cached book
+/// (M245 §9), or the fault either met.
 ///
 /// # Errors
 /// As [`money_gates`].
-pub async fn money_gates_with<E: af_core::error_code::Coded>(
-    accounts: &Accounts,
+pub async fn money_gates_with<E: af_core::error_code::Coded, F: af_core::error_code::Coded>(
     biller: &dyn Biller,
     payer: Payer,
     request: Request<'_>,
     spend: core::result::Result<afd_billing::budget::Spend, &E>,
-    now: Timestamp,
+    estimate: core::result::Result<afd_billing::rates::Estimate, &F>,
 ) -> Result<Admission> {
     let tenant_id = match payer_gate(payer, request.workspace_id)? {
         Ok(found) => found,
         Err(stop) => return Ok(stop.into()),
     };
 
-    if let Some(stop) = gates::balance(accounts, biller, &request, &tenant_id, now).await {
+    if let Some(stop) = gates::balance(estimate, biller, &request, &tenant_id).await {
         return Ok(stop.into());
     }
     if let Some(stop) = gates::fleet_budget(&request, spend) {

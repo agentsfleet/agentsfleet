@@ -1,7 +1,11 @@
 //! Task ownership joins ordinary lease issuance; it never claims another slot.
 
 use super::{TaskScope, read};
-use crate::{Result, error::query, lease::envelope::Acquired};
+use crate::{
+    Result,
+    error::query,
+    lease::envelope::{Acquired, HeadKind},
+};
 use af_core::id::Uuid7;
 use af_wire::task::{TaskContext, TaskState};
 use sqlx::PgConnection;
@@ -39,6 +43,13 @@ pub(crate) async fn attach(
     lease: &Uuid7,
     revision: Option<&crate::lease::installed::IssueRevision>,
 ) -> Result<Option<(Option<TaskContext<'static>>, jiff::Timestamp)>> {
+    // A plain admission under the claim's setup proof: the lease insert
+    // rechecked the head revision and the host, so there is nothing to attach
+    // and nothing left to read (M245 §9). Without a proof the read below is
+    // the only setup check, so it stays.
+    if revision.is_some() && acquired.opened.head == HeadKind::Plain {
+        return Ok(Some((None, acquired.leased_until)));
+    }
     let selected: Option<Selected> = sqlx::query_as(include_str!("sql/issue_source.sql"))
         .bind(&acquired.event_id)
         .bind(&acquired.fleet_id)

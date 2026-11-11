@@ -10,7 +10,7 @@ use sqlx::Connection as _;
 use super::{MAX_CANDIDATES_PER_POLL, PollCost, started};
 use crate::error::{Result, query};
 use crate::lease::affinity::{self, Fence};
-use crate::lease::envelope::{Acquired, Kind, Opened};
+use crate::lease::envelope::{Acquired, HeadKind, Kind, Opened};
 use crate::lease::event::{Delivery, Received};
 use crate::lease::installed::FleetWithSession;
 use crate::lease::reclaim::Reused;
@@ -69,6 +69,7 @@ struct OpenedRow {
     platform_secret_id: Option<Uuid7>,
     platform_secret_version: Option<i64>,
     inputs_waiting: bool,
+    tasked: bool,
 }
 
 impl Leases {
@@ -188,6 +189,7 @@ impl Admission {
             platform_secret_id,
             platform_secret_version,
             inputs_waiting,
+            tasked,
         } = self.opened;
         let platform_key = platform_secret_id
             .zip(platform_secret_version)
@@ -216,6 +218,11 @@ impl Admission {
             memory_reads_workspace: self.memory.memory_reads_workspace,
             memory_publishes_workspace: self.memory.memory_publishes_workspace,
             inputs_waiting,
+            head: if tasked {
+                HeadKind::Task
+            } else {
+                HeadKind::Plain
+            },
             setup: self.setup,
         };
         Acquired {

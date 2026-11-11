@@ -32,9 +32,6 @@ use crate::lease::verdict::Terminal;
 /// What a query failure names this transaction as.
 const CONTEXT_COMMIT: &str = "report commit";
 
-/// The notice a durable task's settlement puts in the run's answer's place.
-const APPLY_REPORT_NOTICE: &str = include_str!("sql/apply_report_notice.sql");
-
 /// Logged when a stored reply connector names no connector this build knows.
 const EVENT_REPLY_PROVIDER_UNKNOWN: &str = "report_reply_provider_unknown";
 
@@ -324,7 +321,7 @@ async fn apply_notice(
     notice: &str,
 ) -> Result<()> {
     let checkpoint = crate::lease::finalize::checkpoint_document(report.last_event_id, notice);
-    let _events: i64 = sqlx::query_scalar(APPLY_REPORT_NOTICE)
+    let _events: i64 = sqlx::query_scalar(crate::lease::sql::report_statement::APPLY_REPORT_NOTICE)
         .bind(&report.lease.fleet_id)
         .bind(&report.lease.event_id)
         .bind(notice)

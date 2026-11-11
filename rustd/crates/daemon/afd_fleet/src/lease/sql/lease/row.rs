@@ -94,6 +94,9 @@ pub struct LeaseRow<'a> {
     /// When the claim lapses, as the claim answered it: a pass that outlived
     /// it writes no lease.
     pub leased_until: Timestamp,
+    /// The head revision the claim assembled the setup from; a lease whose
+    /// fleet's head moved since writes nothing. `None` checks no revision.
+    pub setup_revision: Option<&'a Uuid7>,
 }
 
 impl LeaseRow<'_> {
@@ -131,6 +134,9 @@ impl LeaseRow<'_> {
             .bind(self.lease_version)
             .bind(self.lease_kind)
             .bind(self.leased_until.to_sqlx())
+            .bind(self.setup_revision)
+            .bind(af_wire::task::CAPABILITY)
+            .bind(crate::task::DECISION_POLICY_PATH)
             .fetch_optional(connection)
             .await
             .map_err(query(

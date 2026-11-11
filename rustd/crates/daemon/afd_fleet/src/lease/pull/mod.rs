@@ -237,13 +237,13 @@ impl LeaseService {
             provider: resolved.provider.as_ref(),
             model: resolved.model.as_ref(),
         };
+        let estimate = self.estimate(acquired, resolved, now).await;
         let money = money_gates_with(
-            &self.accounts,
             self.biller.as_ref(),
             Ok(Some(tenant)),
             request,
             facts.spend(),
-            now,
+            estimate.as_ref().copied(),
         )
         .await?;
         if !matches!(money, Admission::Admit(_)) {
@@ -253,6 +253,32 @@ impl LeaseService {
             .judged(acquired, installed, facts, now)
             .await
             .unwrap_or(money))
+    }
+
+    /// The credit gate's floor, priced from the book cached at the catalogue
+    /// version the claim read: a warm replica reads no price (M245 §9).
+    async fn estimate(
+        &self,
+        acquired: &Acquired,
+        resolved: &Resolved,
+        now: Timestamp,
+    ) -> Result<afd_billing::rates::Estimate> {
+        let pricing = self
+            .leases
+            .prices()
+            .try_get_or_load(
+                self.leases.pool(),
+                resolved.posture,
+                resolved.provider.as_ref(),
+                resolved.model.as_ref(),
+                Some(acquired.opened.catalogue_version),
+            )
+            .await?;
+        Ok(Accounts::estimate_from(
+            pricing.book(),
+            resolved.posture,
+            now,
+        )?)
     }
 
     /// The approval gate, as an admission answer.

@@ -177,6 +177,32 @@ impl PriceBooks {
         model: &str,
         catalogue_version: Option<i64>,
     ) -> Arc<Pricing> {
+        match self
+            .try_get_or_load(database, posture, provider, model, catalogue_version)
+            .await
+        {
+            Ok(pricing) => pricing,
+            Err(_fault) => {
+                Arc::new(Pricing::load(database, posture, provider, model, LABEL_BATCH).await)
+            }
+        }
+    }
+
+    /// The pricing for `posture`, `provider` and `model` at
+    /// `catalogue_version`, or the fault that kept a missed book from being
+    /// read, which is never kept: a caller with its own fault posture, the
+    /// credit gate's, answers it (M245 §9).
+    ///
+    /// # Errors
+    /// A datastore that would not answer, or a catalogue row it cannot read.
+    pub(crate) async fn try_get_or_load(
+        &self,
+        database: &afd_db::Db,
+        posture: Posture,
+        provider: &str,
+        model: &str,
+        catalogue_version: Option<i64>,
+    ) -> Result<Arc<Pricing>> {
         let key = PriceKey {
             posture: posture.as_str(),
             provider: provider.to_owned(),
@@ -185,19 +211,12 @@ impl PriceBooks {
         };
         if let Some(pricing) = self.entries.get(&key).await {
             looked_up(LeaseCache::PriceBook, CacheOutcome::Hit);
-            return pricing;
+            return Ok(pricing);
         }
         looked_up(LeaseCache::PriceBook, CacheOutcome::Miss);
-        match Pricing::try_load(database, posture, provider, model).await {
-            Ok(pricing) => {
-                let pricing = Arc::new(pricing);
-                self.entries.insert(key, Arc::clone(&pricing)).await;
-                pricing
-            }
-            Err(_fault) => {
-                Arc::new(Pricing::load(database, posture, provider, model, LABEL_BATCH).await)
-            }
-        }
+        let pricing = Arc::new(Pricing::try_load(database, posture, provider, model).await?);
+        self.entries.insert(key, Arc::clone(&pricing)).await;
+        Ok(pricing)
     }
 }
 

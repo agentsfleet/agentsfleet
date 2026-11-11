@@ -1,7 +1,7 @@
 -- The caller holds the host row (`lock_host.sql`) through this transaction, so
 -- this statement's snapshot, taken after that lock, sees every earlier
 -- claimant's commit: the census below counts them (M245 §5). A full host, a
--- moved slot fence or a moved placement choice writes nothing.
+-- moved slot fence, a moved placement choice or a moved setup writes nothing.
 WITH instant AS MATERIALIZED (
   SELECT clock_timestamp() AS checked_at
 ), host AS MATERIALIZED (
@@ -38,8 +38,20 @@ WITH instant AS MATERIALIZED (
   -- The scope proof runner.leases holds no foreign key for: a workspace or
   -- tenant that is not the fleet's writes no lease, so the caller issues none.
   JOIN fleet.fleets f ON f.id = $3 AND f.workspace_id = $4 AND f.tenant_id = $5
+  -- The setup the claim assembled is still the head, and a setup that needs
+  -- durable tasks still has a host that runs them: what `issue_source.sql`
+  -- rechecked for every lease, now in the insert so a plain chat reads nothing
+  -- more (M245 §9). The issue holds the fleet (`task::lease::parents`) and the
+  -- host, so neither moves before commit.
+  JOIN runner.runners r ON r.id = $2
+  LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
   -- Recheck after held acquired the slot lock and after profile lookup.
   WHERE h.lease_expires_at > clock_timestamp()
+    AND ($20::uuid IS NULL OR f.head_revision_id = $20::uuid)
+    AND ((r.durable_tasks_enabled
+          AND COALESCE(r.capability_report @> jsonb_build_object($21::text, true), false))
+         OR setup.definition #> $22::text[] IS NULL
+         OR setup.definition #> $22::text[] = 'null'::jsonb)
   RETURNING id, runner_id, fleet_id, event_id, created_at
 ), chosen AS (
   -- The placement choice the host lock read: the next offer prefers the other kind.
