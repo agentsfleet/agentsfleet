@@ -19,10 +19,10 @@ const CONTEXT_LOG: &str = "log usage lines";
 ///
 /// Called inside the WORK's transaction, so a run and what it cost commit or
 /// roll back together; a biller settles them after commit. A line already
-/// logged under its `(work, seq)` is left as it is, so a retried report and the
-/// built-in biller's own call both land each line once.
+/// logged under its `(work, kind, seq)` is left as it is, so a retried report
+/// and the built-in biller's own call both land each line once.
 /// Returns only newly inserted coding-request cost, excluding runtime and
-/// decision sequence ranges. Task accounting can consume this exact delta
+/// decision lines. Task accounting can consume this exact delta
 /// without rescanning history or assuming requests finish in sequence order.
 ///
 /// # Errors

@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgExecutor;
 
 use crate::error::query;
+use crate::nanos::TOKENS_PER_MTOK;
 use crate::{Result, sql};
 
 mod rate;
@@ -155,7 +156,7 @@ impl PriceBook {
                 ]
                 .into_iter()
                 .max()?;
-                let million = 1_000_000_i128;
+                let million = i128::from(TOKENS_PER_MTOK);
                 let input =
                     (i128::from(input) * i128::from(input_rate) + million - 1) / million + 2;
                 let output =

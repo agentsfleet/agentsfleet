@@ -41,8 +41,7 @@ pub(super) const ENTRY: &str = include_str!("entry.sql");
 /// the claim's witnesses is a hit on this read's), and the milliseconds the
 /// matched price window has left, from the statement's own clock reading.
 ///
-/// `$1` owner, `$2` the reference, which only has to be present, `$3`
-/// milliseconds per second.
+/// `$1` owner, `$2` milliseconds per second.
 pub(super) const PLATFORM: &str = include_str!("platform.sql");
 
 /// The catalogue version, share-locked before anything else the read locks,

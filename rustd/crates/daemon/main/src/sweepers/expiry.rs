@@ -1,4 +1,4 @@
-//! One clock for every deadline pass (M245 §7): every
+//! One clock for every deadline pass: every
 //! [`af_core::timing::EXPIRY_TICK`] this task bills the last slice of each
 //! fleet lease that expired unreported, and moves each setup attempt past its
 //! deadline to accounting recovery. Both were riders on other clocks: the
@@ -67,9 +67,9 @@ impl Passes {
         .await;
         let billed = match leases {
             Ok(swept) => {
-                if let (true, Some(code)) = (swept.expired_settle_failures > 0, swept.refused) {
+                if let (true, Some(code)) = (swept.settle_failures > 0, swept.refused) {
                     let error_code = code.as_str();
-                    let refused = swept.expired_settle_failures;
+                    let refused = swept.settle_failures;
                     tracing::warn!(
                         event = REFUSED,
                         error_code,
@@ -77,7 +77,7 @@ impl Passes {
                         "the biller refused an expired lease's last slice; the next tick retries"
                     );
                 }
-                Some(swept.expired_billed)
+                Some(swept.billed)
             }
             Err(fault) => {
                 let error_code = fault.code().as_str();
@@ -124,15 +124,16 @@ struct Ticked {
 
 #[cfg(test)]
 mod tests {
+    use af_core::error_code;
     use af_core::test_util::trace::Capture;
     use af_crypto::entropy::Entropy;
     use afd_db::test_util::unreachable_db;
 
     use super::{FAILED, Passes, Ticked};
 
-    // 7.7 and 7.8: one tick runs both deadline passes, and a store neither can
-    // reach is logged under its code and waits for the next tick, the task
-    // still running.
+    // One tick runs both deadline passes, and a store neither can reach is
+    // logged under its code and waits for the next tick, the task still
+    // running.
     #[tokio::test]
     async fn a_tick_runs_both_passes_and_logs_a_store_it_cannot_reach() {
         let log = Capture::install();
@@ -166,10 +167,9 @@ mod tests {
             .collect();
         assert_eq!(passes_logged, ["leases", "attempts"]);
         assert!(
-            failed
-                .iter()
-                .all(|event| event.field("error_code").is_some()),
-            "each failure names its code"
+            failed.iter().all(|event| event.field("error_code")
+                == Some(error_code::INTERNAL_DB_UNAVAILABLE.as_str())),
+            "each failure names the unreachable store's code"
         );
         // A second tick runs again: a failure is never the task's end.
         assert_eq!(

@@ -201,21 +201,18 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     ("INSERT INTO billing.usage_lines", Path::Meter),
     (
-        "posture, provider, model, status FROM runner.leases WHERE id",
+        "posture, provider, model, status, cancel_requested_at IS NOT NULL AS cancelled FROM runner.leases WHERE id",
         Path::Meter,
     ),
-    // Activity: authorizing one live-tail post.
-    (
-        "SELECT l.fleet_id AS fleet_id, e.event_id, l.created_at, l.event_created_at",
-        Path::Activity,
-    ),
+    // Activity has no fragment: a session authorizes its lease once, when it
+    // opens, so a live-tail post of a plain chat sends no statement and the
+    // path reads zero. A durable task's progress frame runs
+    // `lease/activity/task_history.sql`, whose text the claim fragments above
+    // already match; the chat drain sends none. A statement a post starts
+    // sending lands in `other`, which every drain reports.
     // Report.
     (
         "UPDATE runner.fleet_slots SET lease_expires_at = clock_timestamp() - interval",
-        Path::Report,
-    ),
-    (
-        "DELETE FROM fleet.tool_calls t USING fleet.events",
         Path::Report,
     ),
     (
@@ -223,14 +220,10 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Report,
     ),
     (
-        "l.tenant_id::text AS tenant_id, e.event_id, e.actor",
+        "l.tenant_id, l.event_id, e.actor, l.posture, l.provider",
         Path::Report,
     ),
     ("WITH closed AS ( UPDATE fleet.events", Path::Report),
-    (
-        "SELECT fleet_id AS fleet_id, event_id, workspace_id AS workspace_id, actor, event_type",
-        Path::Issue,
-    ),
     (
         "SELECT reply_provider, reply_address FROM fleet.admissions",
         Path::Report,
@@ -247,7 +240,9 @@ const FRAGMENTS: &[(&str, Path)] = &[
         "task_execution_deadline_at) AS execution_deadline",
         Path::Task,
     ),
-    // Shared.
+    // Shared. `set_config(` is the bench's own session-naming statement
+    // (`saturation/sql/name_writer.sql`), classified here so the bench's
+    // bookkeeping does not read as the product's `other`.
     ("SELECT set_config(", Path::Shared),
     ("FOR KEY SHARE OF", Path::Shared),
     ("INSERT INTO fleet.activity_counters", Path::Shared),

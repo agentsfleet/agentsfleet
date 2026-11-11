@@ -82,7 +82,7 @@ async fn complete_history(
         .map_err(query("lock original accepted reply source"))?
         .ok_or(TaskRefusal::NotFound)?;
     // Same event owner and received/terminal writers as an ordinary lease report.
-    let _received: (bool,) = sqlx::query_as(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
+    sqlx::query(afd_events::sql::INSERT_LEASED_FLEET_EVENT)
         .bind(&current.fleet_id)
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
         .bind(&current.workspace_id)
@@ -93,7 +93,7 @@ async fn complete_history(
         .bind(af_core::event::status::RECEIVED)
         .bind(crate::task::guard::wire(&input.source_admission_id)?)
         .bind(afd_admission::Producer::Steer.as_str())
-        .fetch_one(&mut *connection)
+        .execute(&mut *connection)
         .await
         .map_err(query("open accepted input history before completing it"))?;
     tasks

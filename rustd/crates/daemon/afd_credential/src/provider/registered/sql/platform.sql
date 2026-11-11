@@ -12,7 +12,6 @@ WITH locked AS MATERIALIZED (
      WHERE p.active AND s.meta_has_key
        AND s.meta_provider = p.provider
        AND EXISTS (SELECT 1 FROM identity.tenants WHERE id = $1)
-       AND $2::text IS NOT NULL
      ORDER BY p.provider LIMIT 1
        FOR SHARE OF p, s, m, r
 ), observed AS MATERIALIZED (
@@ -35,7 +34,7 @@ SELECT l.provider, l.model, l.context_window_tokens,
            l.meta_base_url, encode(l.ciphertext_digest, 'hex')
        )::text, 'UTF8')), 'hex') AS secret_digest,
        CASE WHEN p.effective_until IS NULL THEN NULL
-            ELSE floor(EXTRACT(EPOCH FROM p.effective_until - t.read_at) * $3::bigint)::bigint
+            ELSE floor(EXTRACT(EPOCH FROM p.effective_until - t.read_at) * $2::bigint)::bigint
        END AS valid_for_ms
   FROM locked l
  CROSS JOIN observed t

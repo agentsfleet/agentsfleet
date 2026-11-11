@@ -4,7 +4,7 @@ use af_core::error_code;
 use af_core::test_util::trace::Capture;
 use afd_db::test_util::unreachable_db;
 
-use afd_fleet::lease::billing_sweep::BillingSwept;
+use afd_fleet::lease::billing_sweep::LinesSwept;
 
 use std::cell::Cell;
 
@@ -108,10 +108,10 @@ async fn cancellation_during_a_pass_starts_no_following_pass() {
 #[test]
 fn a_refused_pass_warns_with_its_code() {
     let capture = Capture::install();
-    log_moved(&BillingSwept {
+    log_moved(&LinesSwept {
         settle_failures: 2,
         refused: Some(error_code::INTERNAL_DB_UNAVAILABLE),
-        ..BillingSwept::default()
+        ..LinesSwept::default()
     });
     assert_eq!(
         capture.only(REFUSED).field("error_code"),
@@ -124,15 +124,15 @@ fn a_refused_pass_warns_with_its_code() {
 #[test]
 fn a_full_pass_drains_again_whether_or_not_it_settled() {
     for swept in [
-        BillingSwept {
+        LinesSwept {
             resettled: 3,
-            lines_full: true,
-            ..BillingSwept::default()
+            full: true,
+            ..LinesSwept::default()
         },
-        BillingSwept {
+        LinesSwept {
             settle_failures: 500,
-            lines_full: true,
-            ..BillingSwept::default()
+            full: true,
+            ..LinesSwept::default()
         },
     ] {
         assert!(drains(&swept), "{swept:?}");
@@ -142,9 +142,9 @@ fn a_full_pass_drains_again_whether_or_not_it_settled() {
 /// A pass that read less than a batch left nothing waiting: the tick ends.
 #[test]
 fn a_partial_pass_waits_for_the_tick() {
-    let partial = BillingSwept {
+    let partial = LinesSwept {
         resettled: 3,
-        ..BillingSwept::default()
+        ..LinesSwept::default()
     };
     assert!(!drains(&partial));
 }

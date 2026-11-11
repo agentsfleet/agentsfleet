@@ -4,17 +4,17 @@
 //! outside this crate can run a billing statement that is not in
 //! [`crate::sql`] (Invariant 5). Money itself moves only through a
 //! [`Biller`](crate::biller::Biller); `Accounts` answers the questions a gate
-//! asks before any money moves: who pays, what a run's floor costs, and what a
-//! fleet has spent.
+//! asks before any money moves: what a run's floor costs, and what a fleet has
+//! spent.
 //!
-//! # Why there is no rate cache
+//! # Rates and the cache
 //!
 //! [`crate::price::PriceBook::load`] is one indexed lookup on the model's
-//! `(provider, model_name)` and its price rows. Reading it every time costs ONE
-//! round trip, and there is then no version to compare, no entry to evict, and
-//! no window in which a resident rate can be older than the catalogue. A cache
-//! for latency would be an optimisation over a correct read, added with a
-//! measurement.
+//! `(provider, model_name)` and its price rows. `Accounts` reads it every time.
+//! The lease path holds the book instead, in a cache keyed by the catalogue
+//! version, so an edit to a rate moves the key and the next lookup loads the new
+//! book; [`Accounts::estimate_from`] prices against a book the caller already
+//! holds.
 
 use afd_db::Db;
 

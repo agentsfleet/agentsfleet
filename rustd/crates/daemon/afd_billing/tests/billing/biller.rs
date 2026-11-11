@@ -12,8 +12,7 @@ use af_crypto::entropy::Entropy;
 use af_wire::usage::UsageLine;
 use afd_billing::biller::conformance::{self, BALANCE};
 use afd_billing::biller::{
-    Account, Ask, Attribution, Biller, Funds, OutagePolicy, RecordingBiller, Settlement,
-    WithOutagePolicy, WorkKey,
+    Account, Ask, Attribution, Biller, FailOpen, Funds, RecordingBiller, Settlement, WorkKey,
 };
 use afd_billing::ledger::{LedgerBiller, log_lines, resettle};
 use afd_billing::limits::fleet_spend;
@@ -158,19 +157,10 @@ async fn test_billing_outage_fails_open() {
         next: LINE,
     };
     let unreachable = || LedgerBiller::new(unreachable_db(), Entropy::new(), Arc::new(SystemClock));
-    let open = WithOutagePolicy::new(unreachable(), OutagePolicy::Open);
+    let open = FailOpen::new(unreachable());
     assert_eq!(
-        open.check(&ask).await.expect("an open policy answers"),
+        open.check(&ask).await.expect("an open check answers"),
         Funds::Unconfirmed
-    );
-    let closed = WithOutagePolicy::new(unreachable(), OutagePolicy::Closed);
-    let refused = closed
-        .check(&ask)
-        .await
-        .expect_err("a closed policy refuses");
-    assert!(
-        refused.is_datastore_unavailable(),
-        "the refusal names the outage"
     );
 }
 

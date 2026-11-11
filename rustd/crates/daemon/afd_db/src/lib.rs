@@ -56,7 +56,7 @@ pub use crate::config::{DbRole, PoolConfig};
 pub use crate::error::{Error, Result};
 pub use crate::migrate::{Applied, Migrator};
 pub use crate::migration::{MIGRATIONS, Migration};
-pub use crate::pool::{Db, Pools};
+pub use crate::pool::Db;
 pub use crate::precondition::Precondition;
 
 /// The knob that decides whether `serve` migrates before it listens.

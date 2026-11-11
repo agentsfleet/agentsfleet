@@ -1,12 +1,14 @@
-//! The billing relay's pass over fleet leases: bill the last slice of a lease
-//! that ended unreported, and settle every logged line.
+//! The billing relay's two passes over fleet leases: bill the last slice of a
+//! lease that ended unreported ([`bill_expired_leases`]), and settle every
+//! logged line ([`settle_lines`]).
 //!
 //! A lease logs its usage inside its own transaction and returns; it never
-//! settles (billing §11). This pass is the only thing that moves
-//! that money, through the [`Biller`] it is given, so the biller can live in
+//! settles (billing §11). These passes are the only things that move
+//! that money, through the [`Biller`] they are given, so the biller can live in
 //! another process without the lease path changing. Settling is idempotent on
-//! `(work, seq)`, so a repeated pass or a second daemon's relay charges nothing
-//! twice.
+//! `(work, kind, seq)`, so a repeated pass or a second daemon's relay charges
+//! nothing twice. Each pass answers its own record, because each fills a
+//! different half of what a tick can report.
 
 use std::time::Duration;
 
@@ -15,6 +17,7 @@ use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_billing::biller::Biller;
 use afd_billing::ledger::Resume;
+use afd_billing::ledger::unreadable::{Unreadable, skipped};
 use afd_billing::rates::Posture;
 use afd_db::Db;
 use jiff::Timestamp;
@@ -47,20 +50,27 @@ pub const GRACE: Duration = Duration::from_secs(120);
 /// Expired leases one pass reads; bounds the pass's work.
 const BATCH_LIMIT: i64 = 500;
 
-/// What one pass did.
+/// What one expiry pass did.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub struct BillingSwept {
+pub struct ExpirySwept {
+    /// Expired leases whose last slice this pass logged and settled.
+    pub billed: u64,
+    /// Expired leases whose logged last slice did not settle; the line pass
+    /// settles it on a later tick.
+    pub settle_failures: u64,
+    /// The code of the first refusal, for the pass's one aggregate record.
+    pub refused: Option<ErrorCode>,
+}
+
+/// What one line-settling pass did.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct LinesSwept {
     /// Work/provider/model/posture groups this pass settled.
     pub resettled: u64,
     /// Settlement groups it could not settle; they wait for the next pass.
     pub settle_failures: u64,
-    /// Expired leases whose last slice this pass logged and settled.
-    pub expired_billed: u64,
-    /// Expired leases whose logged last slice did not settle; the line sweep
-    /// settles it on a later pass.
-    pub expired_settle_failures: u64,
-    /// Whether the line sweep read a whole batch, so more lines may wait.
-    pub lines_full: bool,
+    /// Whether the pass read a whole batch, so more lines may wait.
+    pub full: bool,
     /// The code of the first refusal, for the pass's one aggregate record.
     pub refused: Option<ErrorCode>,
     /// Where the next pass's line read resumes.
@@ -70,7 +80,7 @@ pub struct BillingSwept {
 /// A work whose settlement the biller refused this pass.
 const EVENT_REFUSED: &str = "billing_relay_refused";
 
-impl BillingSwept {
+impl ExpirySwept {
     /// Notes that the biller refused `work_id`: one `debug` record per work
     /// (LOG-HOT), and the first code kept for the pass's aggregate.
     fn refused(&mut self, work_id: &str, fault: &afd_billing::Error) {
@@ -86,7 +96,29 @@ impl BillingSwept {
     }
 }
 
-/// One relay pass over fleet leases.
+/// Both passes of a tick in one record, as a test drives them.
+#[cfg(feature = "test-util")]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct BillingSwept {
+    /// Work/provider/model/posture groups the line pass settled.
+    pub resettled: u64,
+    /// Settlement groups the line pass could not settle.
+    pub settle_failures: u64,
+    /// Expired leases whose last slice the expiry pass logged and settled.
+    pub expired_billed: u64,
+    /// Expired leases whose logged last slice did not settle.
+    pub expired_settle_failures: u64,
+    /// Whether the line pass read a whole batch, so more lines may wait.
+    pub lines_full: bool,
+    /// The code of the first refusal in either pass.
+    pub refused: Option<ErrorCode>,
+    /// Where the next line pass resumes.
+    pub resume: Option<Resume>,
+}
+
+/// Both halves of a tick in one pass, as a test drives one: the daemon runs
+/// [`bill_expired_leases`] on `sweeper:expiry`'s clock and [`settle_lines`] on
+/// the billing relay's.
 ///
 /// Bills the last slice of every lease expired past [`GRACE`], then settles one
 /// batch of unsettled lines after `after` through
@@ -97,10 +129,6 @@ impl BillingSwept {
 /// Reports a datastore that would not answer a read. A biller that refuses one
 /// settlement is counted, not raised: the rest of the batch still runs, and
 /// the next pass retries what failed.
-///
-/// Both halves of a tick in one pass, as a test drives one: the daemon runs
-/// [`bill_expired_leases`] on `sweeper:expiry`'s clock and [`settle_lines`] on
-/// the billing relay's.
 #[cfg(feature = "test-util")]
 pub async fn sweep(
     database: &Db,
@@ -110,12 +138,15 @@ pub async fn sweep(
     after: Option<&Resume>,
 ) -> Result<BillingSwept> {
     let expired = bill_expired_leases(database, biller, entropy, now).await?;
-    let settled = settle_lines(database, biller, after).await?;
+    let lines = settle_lines(database, biller, after).await?;
     Ok(BillingSwept {
-        expired_billed: expired.expired_billed,
-        expired_settle_failures: expired.expired_settle_failures,
-        refused: expired.refused.or(settled.refused),
-        ..settled
+        resettled: lines.resettled,
+        settle_failures: lines.settle_failures,
+        expired_billed: expired.billed,
+        expired_settle_failures: expired.settle_failures,
+        lines_full: lines.full,
+        refused: expired.refused.or(lines.refused),
+        resume: lines.resume,
     })
 }
 
@@ -129,8 +160,8 @@ pub async fn bill_expired_leases(
     biller: &dyn Biller,
     entropy: &Entropy,
     now: Timestamp,
-) -> Result<BillingSwept> {
-    let mut swept = BillingSwept::default();
+) -> Result<ExpirySwept> {
+    let mut swept = ExpirySwept::default();
     bill_expired(database, biller, entropy, now, &mut swept).await?;
     Ok(swept)
 }
@@ -144,15 +175,14 @@ pub async fn settle_lines(
     database: &Db,
     biller: &dyn Biller,
     after: Option<&Resume>,
-) -> Result<BillingSwept> {
+) -> Result<LinesSwept> {
     let lines = afd_billing::ledger::resettle(database, biller, after).await?;
-    Ok(BillingSwept {
+    Ok(LinesSwept {
         resettled: lines.settled,
         settle_failures: lines.failed,
-        lines_full: lines.full,
+        full: lines.full,
         refused: lines.refused,
         resume: lines.resume,
-        ..BillingSwept::default()
     })
 }
 
@@ -169,7 +199,7 @@ async fn bill_expired(
     biller: &dyn Biller,
     entropy: &Entropy,
     now: Timestamp,
-    swept: &mut BillingSwept,
+    swept: &mut ExpirySwept,
 ) -> Result<()> {
     let candidates: Vec<Uuid7> = {
         let mut connection = database.acquire().await?;
@@ -186,9 +216,9 @@ async fn bill_expired(
             continue;
         };
         match biller.settle(&settlement).await {
-            Ok(_receipt) => swept.expired_billed += 1,
+            Ok(_receipt) => swept.billed += 1,
             Err(fault) => {
-                swept.expired_settle_failures += 1;
+                swept.settle_failures += 1;
                 swept.refused(lease.as_str(), &fault);
             }
         }
@@ -218,11 +248,19 @@ async fn log_last_slice(
     };
     let billed = ExpiredLease::from_row(&row).map_err(query(CONTEXT_EXPIRED))?;
     let slice = SliceColumns::from_row(&row).map_err(query(CONTEXT_EXPIRED))?;
-    let pricing = Pricing::runtime_only(
-        Posture::parse(&billed.posture).unwrap_or(Posture::Platform),
-        billed.provider,
-        billed.model,
-    );
+    // A posture this build cannot name is not guessed at: pricing the slice as
+    // the platform's would bill a tenant's own key at the platform's rates. The
+    // lease is left as it was (the transaction drops unwritten, so its cursor
+    // does not move), named once, and the pass moves on to the next lease.
+    let Some(posture) = Posture::parse(&billed.posture) else {
+        skipped(
+            Unreadable::Posture,
+            afd_billing::sql::work::FLEET_LEASE,
+            &billed.posture,
+        );
+        return Ok(None);
+    };
+    let pricing = Pricing::runtime_only(posture, billed.provider, billed.model);
     // A matched row is the probe row, and the slice is read off it, so it is
     // always present here.
     let settlement = slice

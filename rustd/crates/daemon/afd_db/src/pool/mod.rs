@@ -35,9 +35,6 @@ mod acquire;
 mod observed;
 pub use observed::PoolSnapshot;
 mod open;
-mod roles;
-
-pub use self::roles::Pools;
 
 /// How long a connection may sit idle before the reaper closes it.
 ///
@@ -63,7 +60,7 @@ const IDLE_TIMEOUT: Duration = Duration::from_mins(10);
 /// statement, sqlx discards the connection, and the next checkout dials. A
 /// failover idles a pool for longer than this, so a pool coming back from one
 /// tests every connection it hands out.
-const PING_AFTER_IDLE: Duration = Duration::from_secs(1);
+pub(crate) const PING_AFTER_IDLE: Duration = Duration::from_secs(1);
 
 const _: () = assert!(
     PING_AFTER_IDLE.as_millis() < IDLE_TIMEOUT.as_millis(),
@@ -263,26 +260,10 @@ impl Db {
         self.pool.size()
     }
 
-    /// The floor [`Self::warm`] targets.
-    ///
-    /// Exposed for the same reason as [`Self::size`]: a caller that warms can
-    /// then say whether the floor was REACHED, and the two numbers are the
-    /// whole of that claim.
-    #[must_use]
-    pub const fn min_connections(&self) -> u32 {
-        self.min_connections
-    }
-
     /// The role this pool serves.
     #[must_use]
     pub const fn role(&self) -> DbRole {
         self.role
-    }
-
-    /// How long an acquire waits before reporting capacity exhaustion.
-    #[must_use]
-    pub const fn acquire_timeout(&self) -> Duration {
-        self.acquire_timeout
     }
 
     /// Closes the pool and waits for its connections to drain.

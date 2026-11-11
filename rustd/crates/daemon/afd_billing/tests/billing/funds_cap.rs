@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use afd_billing::biller::{Account, Ask, Biller, Funds, OutagePolicy, WithOutagePolicy, WorkKey};
+use afd_billing::biller::{Account, Ask, Biller, FailOpen, Funds, WorkKey};
 use afd_db::test_util::mint_id;
 use jiff::Timestamp;
 use sqlx::Connection as _;
@@ -101,11 +101,11 @@ async fn a_funds_read_past_its_cap_gives_up_unanswered() {
         Some(LOCK_NOT_AVAILABLE),
         "{unread}"
     );
-    let open = WithOutagePolicy::new(ledger(&lane), OutagePolicy::Open);
+    let open = FailOpen::new(ledger(&lane));
     let answered = tokio::time::timeout(BOUND, open.check(&ask))
         .await
-        .expect("the open policy answers on its own")
-        .expect("an open policy answers");
+        .expect("the open check answers on its own")
+        .expect("an open check answers");
     assert_eq!(answered, Funds::Unconfirmed);
 
     lock.rollback().await.expect("the usage log unlocks");

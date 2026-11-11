@@ -8,7 +8,6 @@ use af_core::id::Uuid7;
 
 use crate::error::{Result, provider_malformed, query};
 use crate::provider::cap;
-use crate::provider::endpoint::OPENAI_COMPATIBLE;
 use crate::provider::sql;
 use crate::provider::store::Providers;
 use afd_billing::Posture;
@@ -166,7 +165,6 @@ impl Providers {
         let mut connection = self.pool().acquire().await?;
         sqlx::query_as::<_, SelectionRow>(sql::SELECT_TENANT_SELECTION)
             .bind(tenant_id)
-            .bind(OPENAI_COMPATIBLE)
             .fetch_optional(&mut *connection)
             .await
             .map_err(query(CONTEXT_SELECTION))?

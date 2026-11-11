@@ -47,10 +47,10 @@ pub(super) fn options(config: &PoolConfig) -> PgPoolOptions {
     let role = config.role();
     let builder = PgPoolOptions::new()
         .max_connections(config.max_connections())
-        // The floor sqlx maintains in the background. Without it the pool
-        // opens its first connection inside the first request, and an
-        // establishment measured at 147-337 ms lands inside an acquire
-        // budget that was sized for a wait, not a handshake.
+        // The warm floor. A lazy pool gets no background bootstrap from sqlx
+        // (see `Db::connect`), so `Db::warm` fills it before traffic, and
+        // without that the first request would open a connection inside an
+        // acquire budget sized for a wait, not a handshake.
         .min_connections(config.min_connections())
         .acquire_timeout(config.acquire_timeout())
         // Pinned, not defaulted: see the constants for what turns on them.

@@ -128,7 +128,7 @@ async fn a_workspace_naming_no_tenant_ends_the_event() {
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&workspace).await,
+        Ok(None),
         request(&workspace, &fleet, &event, &config),
         fixtures.enrolled_at(),
     )
@@ -166,7 +166,7 @@ async fn a_fleet_past_its_daily_ceiling_is_refused() {
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&workspace).await,
+        Ok(Some(tenant.clone())),
         request(&workspace, &fleet, &event, &config),
         fixtures.enrolled_at(),
     )
@@ -203,7 +203,7 @@ async fn a_fleet_inside_its_ceiling_is_admitted_and_billed() {
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&workspace).await,
+        Ok(Some(tenant.clone())),
         request(&workspace, &fleet, &event, &config),
         fixtures.enrolled_at(),
     )
@@ -240,7 +240,7 @@ async fn an_admitted_run_is_charged_nothing_at_admission() {
     let decided = money_gates(
         &accounts,
         &biller,
-        accounts.payer(&workspace).await,
+        Ok(Some(tenant.clone())),
         request(&workspace, &fleet, &event, &config),
         fixtures.enrolled_at(),
     )

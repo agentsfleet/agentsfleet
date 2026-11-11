@@ -2,8 +2,9 @@
 //!
 //! # Why this module cannot move money
 //!
-//! Runtime renewals and reports, plus setup settlement, debit the wallet.
-//! Signup bootstrap adds the starter grant. This module holds none of those
+//! Only settlement debits the wallet: the billing relay settles the usage that
+//! renewals and reports log, and a setup chat settles its own. Signup bootstrap
+//! adds the starter grant. This module holds none of those
 //! writes; it is the read side those movements are
 //! audited through, and a compromise of the tenant plane's HTTP surface
 //! therefore cannot mint credit. That is a property of what is ABSENT here, so

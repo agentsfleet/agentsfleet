@@ -18,6 +18,6 @@ SELECT t.tenant_model_id AS tenant_model_id,
         SELECT MIN(p.context_cap_tokens) AS cap
           FROM model.platform_models p
          WHERE p.model_name = m.model_name
-           AND (s.meta_provider = $2 OR p.provider = s.meta_provider)
+           AND p.provider = s.meta_provider
        ) c ON true
  WHERE t.tenant_id = $1
