@@ -18,10 +18,9 @@ export function WorkspaceSwitcherTrigger({ activeLabel, busy = false, failed = f
   const initials = name?.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
   const displayLabel = name || "Your workspace";
   const subtitle = failed ? "Retry account menu" : activeLabel;
-  return <Button type="button" variant="ghost" size="lg" title={activeLabel}
+  return <Button type="button" variant="ghost" size="lg" title={activeLabel} aria-label={menuLabel}
     className={cn("group h-11 min-h-11 w-full min-w-0 justify-center gap-2.5 px-0 py-sm md:h-12 md:min-h-12", !collapsed && "md:justify-start md:px-lg")}
     {...props}>
-    {menuLabel ? <span className="sr-only">{menuLabel}</span> : null}
     <span className="flex size-7.5 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-colors duration-snap group-hover:bg-primary group-hover:text-primary-foreground">
       {busy ? <Spinner size="sm" srLabel="Loading workspace menu" /> : initials
         ? <span aria-hidden="true" className="text-eyebrow font-normal">{initials}</span> : <UserCircleIcon size={18} aria-hidden="true" />}

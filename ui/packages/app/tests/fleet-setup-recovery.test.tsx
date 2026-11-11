@@ -75,10 +75,11 @@ it("shows recovery only for unfinished setup or first-run admission", async () =
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it("keeps Edit setup inside Fleet actions in the existing fleet workspace", async () => {
+it.each([false, true])("keeps Edit setup in Fleet actions with its workspace provider present (%s)", async shared => {
   const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, status: "active"});
-  render(<FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision} viewer="creator"
-    header={<FleetHeader fleet={fleet} workspaceId={WORKSPACE} />}><p>Runtime conversation</p></FleetSetupWorkspace>);
+  const header = <FleetHeader fleet={fleet} workspaceId={WORKSPACE} />;
+  render(shared ? <FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision} viewer="creator"
+    header={header}><p>Runtime conversation</p></FleetSetupWorkspace> : header);
   const actions = screen.getByRole("button", {name: "Fleet actions"});
   fireEvent.keyDown(actions, {key: "Enter"});
   const edit = await screen.findByRole("menuitem", {name: "Edit setup"});

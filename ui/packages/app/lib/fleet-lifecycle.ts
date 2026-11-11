@@ -43,16 +43,14 @@ export async function advanceFleetLifecycle(request: Request, checkpoint: FleetL
 }
 
 async function afterStop(request: Request, fleet: Pick<Fleet, "etag">): Promise<FleetLifecycleResult> {
-  if (cancelled(request)) return {kind: "cancelled"};
   return request.action === "archive" ? {kind: "completed", outcome: "archived"} : remove(request, fleet.etag);
 }
 
 async function remove(request: Request, etag: string): Promise<FleetLifecycleResult> {
-  if (cancelled(request)) return {kind: "cancelled"};
   const result = await attempt(() => deleteFleetAction(request.workspace, request.fleetId, etag));
   if (cancelled(request)) return {kind: "cancelled"};
   if (result.ok) return {kind: "completed", outcome: "deleted"};
-  const canRetry = isDefiniteRefusal(result.status) && ![401, 403, 404, 409, 412, 428].includes(result.status ?? 0);
+  const canRetry = isDefiniteRefusal(result.status) && ![401, 403, 404, 409, 412, 428].some(status => status === result.status);
   return retry(canRetry ? {stage: "delete", etag} : {stage: "check_delete"}, result, "permanently delete this fleet", "Fleet archived. History is retained until deletion is confirmed. ");
 }
 

@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FleetActions } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetActions";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
@@ -84,7 +84,7 @@ it("discards a late response after unmount and excludes duplicate stop submissio
   const pending = Promise.withResolvers<unknown>(); setStatus.mockReturnValueOnce(pending.promise);
   const user = await menu(); const dialog = await choose(user, "Stop");
   const button = dialog.getByRole("button", {name: "Stop"});
-  fireEvent.click(button); fireEvent.click(button);
+  act(() => {fireEvent.click(button); fireEvent.click(button);});
   expect(setStatus).toHaveBeenCalledOnce();
   cleanup(); pending.resolve({ok: true, data: {...FLEET, status: "stopped"}});
   await pending.promise;
@@ -97,4 +97,55 @@ it("keeps cancellation free of lifecycle writes", async () => {
   await user.click(dialog.getByRole("button", {name: "Cancel"}));
   expect(screen.queryByRole("alertdialog")).toBeNull();
   expect(network).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
+});
+
+it.each([409, 412])("refreshes stale fleet state after a %s refusal while retaining the error", async status => {
+  setStatus.mockResolvedValueOnce({ok: false, status, error: "Fleet changed"});
+  const user = await menu();
+  const dialog = await choose(user, "Stop");
+  await user.click(dialog.getByRole("button", {name: "Stop"}));
+  expect((await screen.findByRole("alert")).textContent).toContain("Fleet changed");
+  expect(navigation.refresh).toHaveBeenCalledOnce();
+  expect(navigation.replace).not.toHaveBeenCalled();
+});
+
+it.each(["contradictory", "thrown"])("keeps a %s stop response unconfirmed", async mode => {
+  if (mode === "thrown") setStatus.mockRejectedValueOnce(new Error("Lost response"));
+  else setStatus.mockResolvedValueOnce({ok: true, data: FLEET});
+  const user = await menu();
+  const dialog = await choose(user, "Stop");
+  await user.click(dialog.getByRole("button", {name: "Stop"}));
+  expect((await screen.findByRole("alert")).textContent).toContain("We couldn’t confirm this request.");
+  expect(navigation.refresh).not.toHaveBeenCalled();
+  expect(screen.getByRole("alertdialog")).toBeTruthy();
+});
+
+it("ignores a transport rejection after its action owner has unmounted", async () => {
+  const pending = Promise.withResolvers<never>();
+  setStatus.mockReturnValueOnce(pending.promise);
+  const user = await menu();
+  const dialog = await choose(user, "Stop");
+  await user.click(dialog.getByRole("button", {name: "Stop"}));
+  cleanup();
+  await act(async () => {pending.reject(new Error("Disconnected"));});
+  expect(navigation.refresh).not.toHaveBeenCalled();
+  expect(navigation.replace).not.toHaveBeenCalled();
+});
+
+it.each(["Archive", "Stop"])("cancels %s without sending a lifecycle write", async label => {
+  const user = await menu();
+  const dialog = await choose(user, label);
+  if (label === "Archive") expect(dialog.getByText(/cannot be restored/)).toBeTruthy();
+  await user.click(dialog.getByRole("button", {name: "Cancel"}));
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(setStatus).not.toHaveBeenCalled();
+  expect(remove).not.toHaveBeenCalled();
+});
+
+it("moves an archived open fleet to New fleet after its permanent stop is confirmed", async () => {
+  const user = await menu(); const dialog = await choose(user, "Archive");
+  await user.click(dialog.getByRole("button", {name: "Archive"}));
+  await waitFor(() => expect(navigation.replace).toHaveBeenCalledExactlyOnceWith("/w/release/fleets/new"));
+  expect(setStatus).toHaveBeenCalledExactlyOnceWith("release", FLEET.id, "killed", FLEET.etag);
+  expect(remove).not.toHaveBeenCalled();
 });
