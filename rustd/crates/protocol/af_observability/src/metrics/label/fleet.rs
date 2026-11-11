@@ -295,7 +295,7 @@ closed_set! {
         /// Producer event timestamp to first stream frame received by the daemon.
         EventToFirstChunk => "event_to_first_chunk",
         /// Execution invocation to its first safe stream chunk, as the runner measured it.
-        ZombieToFirstChunk => "zombie_to_first_chunk",
+        RunToFirstChunk => "run_to_first_chunk",
         /// Producer event timestamp to the `event_complete` publish: the whole round trip.
         EventToComplete => "event_to_complete",
         /// Lease issue to the report's arrival at the daemon.

@@ -32,8 +32,8 @@ pub const SSE_DROPPED_FRAMES_TOTAL: Declared<CounterKind> =
     Declared::new("agentsfleet_sse_dropped_frames_total");
 
 /// NATS client reconnects; spikes mean broker instability.
-pub const SSE_HUB_RECONNECTS_TOTAL: Declared<CounterKind> =
-    Declared::new("agentsfleet_sse_hub_reconnects_total");
+pub const BUS_RECONNECTS_TOTAL: Declared<CounterKind> =
+    Declared::new("agentsfleet_bus_reconnects_total");
 
 /// 0 when the worker should be up.
 pub const WORKER_RUNNING: Declared<GaugeKind> = Declared::new("agentsfleet_worker_running");

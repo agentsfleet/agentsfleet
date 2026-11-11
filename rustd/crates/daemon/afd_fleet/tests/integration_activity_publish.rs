@@ -70,7 +70,7 @@ async fn test_first_chunk_records_active_lease_stages() {
     let stages = [
         "lease_to_first_chunk",
         "event_to_first_chunk",
-        "zombie_to_first_chunk",
+        "run_to_first_chunk",
     ];
     let before: Vec<_> = stages
         .iter()

@@ -170,7 +170,7 @@ fn test_every_http_producer_runs_its_body() {
     producers::http::request_shed();
     producers::http::stream_shed();
     producers::http::frame_dropped();
-    producers::http::hub_reconnected();
+    producers::http::bus_reconnected();
 
     for signal in [Signal::Logs, Signal::Traces, Signal::Metrics] {
         for reason in [

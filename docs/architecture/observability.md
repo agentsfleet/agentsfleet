@@ -535,7 +535,7 @@ What each step a chat crosses emits, as built. A row's gap means the signal does
 | Fold claimed (`afd_api_runner` folds handler, `afd_fleet`) | `folds_claimed`, `folds_settled`; `runner_folds_failed` | `agentsfleet_lease_folds_total{outcome}` (`claimed` at the claim, `settled` at the report) | request span only |
 | Run (runner `lease_loop`) | `lease_completed` / `lease_failed` with every segment | runner families, exported only where the runner collector is configured | `runner.lease` with its segment attributes, same condition |
 | Report settled (`afd_fleet` lease report) | `report_settled`, `completion_published`, `memory_capture_failed` | `delivery_stage{lease_to_report, report_to_complete, event_to_complete}` | `fleet.report` with its stages; `fleet.delivery` with segment attributes |
-| First chunk (`afd_fleet` lease activity) | none | `delivery_stage{lease_to_first_chunk, event_to_first_chunk, zombie_to_first_chunk}` | none |
+| First chunk (`afd_fleet` lease activity) | none | `delivery_stage{lease_to_first_chunk, event_to_first_chunk, run_to_first_chunk}` | none |
 
 Built in M233_002, closing the gaps M238 left:
 
