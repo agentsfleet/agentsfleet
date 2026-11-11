@@ -175,7 +175,7 @@ export function ActionsCell({
   isDefaultLive: boolean;
   platformDefaultAvailable: boolean;
   onSwitchDefault: () => void;
-  onSwitchEntry: (e: TenantModelEntry) => void;
+  onSwitchEntry: (entry: TenantModelEntry, workspaceId: string) => void;
   onView: (e: TenantModelEntry) => void;
   onEdit: (e: TenantModelEntry) => void;
   /** Fired when the Edit control takes focus — a deliberate, ungated signal. */
@@ -203,6 +203,7 @@ export function ActionsCell({
     );
   }
   const { entry } = row;
+  const workspaceId = entry.workspace_id;
   return (
     <div className="flex items-center justify-end gap-1">
       <IconAction
@@ -235,9 +236,9 @@ export function ActionsCell({
           type="button"
           variant="secondary"
           size="sm"
-          disabled={pending || !entry.workspace_id}
-          title={!entry.workspace_id ? "The credential workspace is unavailable" : undefined}
-          onClick={() => onSwitchEntry(entry)}
+          disabled={pending || !workspaceId}
+          title={!workspaceId ? "The credential workspace is unavailable" : undefined}
+          onClick={workspaceId ? () => onSwitchEntry(entry, workspaceId) : undefined}
           aria-label={`Switch to ${entry.model_id}`}
         >
           <ArrowsLeftRightIcon size={14} aria-hidden="true" />Use model

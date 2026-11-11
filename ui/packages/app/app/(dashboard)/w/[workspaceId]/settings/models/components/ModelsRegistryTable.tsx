@@ -175,10 +175,8 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
     });
   }
 
-  function onSwitchEntry(entry: TenantModelEntry) {
+  function onSwitchEntry(entry: TenantModelEntry, sourceWorkspace: string) {
     setError(null);
-    const sourceWorkspace = entry.workspace_id;
-    if (!sourceWorkspace) { setError("The credential workspace is unavailable. Create a model with an available key."); return; }
     startTransition(async () => {
       const r = await setProviderSelfManagedAction({ workspace_id: sourceWorkspace, secret_ref: entry.secret_ref, model: entry.model_id });
       if (!r.ok) {

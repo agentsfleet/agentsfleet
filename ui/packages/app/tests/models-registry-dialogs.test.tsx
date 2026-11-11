@@ -2,7 +2,7 @@ import React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { withTooltipProvider, listModelEntriesActionMock, updateModelEntryActionMock, deleteModelEntryActionMock, entry, registry, renderTable } from "./helpers/models-registry-fixtures";
+import { withTooltipProvider, listModelEntriesActionMock, updateModelEntryActionMock, deleteModelEntryActionMock, setProviderSelfManagedActionMock, entry, registry, renderTable } from "./helpers/models-registry-fixtures";
 import { clickRowAction } from "./helpers/models-registry-edit-fixtures";
 
 describe("Row actions — dialog dismissal wiring (via the full table)", () => {
@@ -40,6 +40,30 @@ describe("Row actions — dialog dismissal wiring (via the full table)", () => {
 });
 
 describe("Row actions — View details", () => {
+  it("distinguishes a configured keyless endpoint from a missing credential", async () => {
+    await renderTable(registry([entry({kind: "custom_endpoint", provider: "openai-compatible", has_key: false, base_url: "https://gateway.example/v1"})]));
+    await clickRowAction(userEvent.setup(), /view details for claude-sonnet-5/i);
+    expect(within(await screen.findByRole("dialog")).getByText("Keyless endpoint")).toBeTruthy();
+  });
+  it.each(["Staging", null])("shows the saved credential workspace label (%s) while viewing another workspace", async name => {
+    await renderTable(registry([entry({workspace_id: "ws-staging"})]), [{id: "ws-staging", name}]);
+    const user = userEvent.setup();
+    await clickRowAction(user, /view details for claude-sonnet-5/i);
+    expect(within(await screen.findByRole("dialog")).getByText(name ?? "Unnamed workspace")).toBeTruthy();
+  });
+
+  it("keeps a model with an unavailable credential workspace visible but refuses activation", async () => {
+    await renderTable(registry([entry({workspace_id: undefined})]));
+    const user = userEvent.setup();
+    const activate = screen.getByRole("button", {name: "Switch to claude-sonnet-5"});
+    expect(activate.hasAttribute("disabled")).toBe(true);
+    expect(activate.getAttribute("title")).toBe("The credential workspace is unavailable");
+    await user.click(activate);
+    expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
+    await clickRowAction(user, /view details for claude-sonnet-5/i);
+    expect(within(await screen.findByRole("dialog")).getByText("Unavailable")).toBeTruthy();
+  });
+
   it("renders nothing when no row is selected", async () => {
     const { default: ModelDetailsDialog } = await import(
       "../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetailsDialog"

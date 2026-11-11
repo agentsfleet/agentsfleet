@@ -116,11 +116,11 @@ export const LIBRARY: ModelLibrary = {
   ],
 };
 
-export async function renderTable(initial: TenantModelEntryList) {
+export async function renderTable(initial: TenantModelEntryList, workspaces?: ReadonlyArray<{id: string; name: string | null}>) {
   const { default: ModelsRegistryTable } = await import(
     "../../app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryTable"
   );
-  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", initialPage: { ...initial, next_cursor: null, total: null }, initialError: null } as never)));
+  render(withTooltipProvider(React.createElement(ModelsRegistryTable, { workspaceId: "ws_1", workspaces, initialPage: { ...initial, next_cursor: null, total: null }, initialError: null })));
 }
 
 /** Render with explicit paging fields (cursor/total) or a typed read failure. */

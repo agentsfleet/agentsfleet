@@ -38,6 +38,17 @@ describe("Row actions — Edit", () => {
     expect(replaceSecretActionMock).toHaveBeenCalledOnce();
   });
 
+  it.each([undefined, "ws-staging"])("refuses credential rotation when the saved workspace does not match the form (%s)", async workspace_id => {
+    const target = entry({workspace_id});
+    const {dialog, user, onSaved, onCommitted} = await renderEditDialog(target);
+    await user.type(within(dialog).getByLabelText(/api key/i), "sample-replacement-key");
+    await user.click(within(dialog).getByRole("button", {name: /^save$/i}));
+    expect((await within(dialog).findByRole("alert")).textContent).toContain("credential workspace is unavailable");
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
+    expect(updateModelEntryActionMock).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled(); expect(onCommitted).not.toHaveBeenCalled();
+  });
+
   it("changes only the model when no key is entered — replace is never called", async () => {
     const target = entry({ id: "e1", model_id: "claude-sonnet-5" });
     updateModelEntryActionMock.mockResolvedValue({ ok: true, data: { id: "e1", model_id: EDIT_MODEL, secret_ref: "anthropic-prod", created_at: "1970-01-01T00:00:00.001Z" } });

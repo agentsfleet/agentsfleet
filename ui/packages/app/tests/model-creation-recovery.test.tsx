@@ -1,9 +1,10 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { expect, it } from "vitest";
 import {
   createSecretActionMock, createModelEntryActionMock, setProviderSelfManagedActionMock,
-  findRegisteredModelActionMock, readModelActivationActionMock, fillKnownForm, renderDialog, FORM_MODEL,
+  findRegisteredModelActionMock, readModelActivationActionMock, fillKnownForm, renderDialog, FORM_MODEL, modelIdentity, ANTHROPIC_SECRET,
 } from "./helpers/models-registry-add-fixtures";
+import { SECRETS_LOAD } from "@/app/(dashboard)/w/[workspaceId]/settings/models/components/secrets-load";
 
 const CREDENTIAL = {name: "anthropic", key: "sample-provider-key"};
 async function start(activate = false) {
@@ -75,4 +76,75 @@ it("excludes duplicate clicks and stops the sequence when the form unmounts", as
   await act(async () => { complete({ok: true, data: {name: CREDENTIAL.name}}); });
   expect(createModelEntryActionMock).not.toHaveBeenCalled();
   expect(setProviderSelfManagedActionMock).not.toHaveBeenCalled();
+});
+
+it.each(["workspace", "account", "sign-out"])("clears the key and closes the form after a %s change", async scope => {
+  const fixture = await renderDialog();
+  await fillKnownForm(fixture.user, screen.getByRole("dialog"), CREDENTIAL);
+  if (scope !== "workspace") modelIdentity.userId = scope === "account" ? "another-person" : null;
+  fixture.rerender(scope === "workspace" ? {workspaceId: "ws_2"} : {});
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await fixture.user.click(screen.getByRole("button", {name: "Create model"}));
+  expect((screen.getByLabelText(/^api key$/i) as HTMLInputElement).value).toBe("");
+  expect(createSecretActionMock).not.toHaveBeenCalled();
+});
+
+it("keeps an in-flight write open but abandons its continuation when the workspace changes", async () => {
+  const pending = Promise.withResolvers<{ok: true; data: {name: string}}>();
+  createSecretActionMock.mockReturnValueOnce(pending.promise);
+  const fixture = await renderDialog();
+  await fillKnownForm(fixture.user, screen.getByRole("dialog"), CREDENTIAL);
+  await fixture.user.click(within(screen.getByRole("dialog")).getByRole("button", {name: "Create model"}));
+  await fixture.user.keyboard("{Escape}");
+  await fixture.user.click(screen.getByRole("button", {name: "Close"}));
+  const overlay = document.querySelector(".bg-overlay");
+  if (!overlay) throw new Error("The model dialog must have its native overlay");
+  await fixture.user.click(overlay);
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  fixture.rerender({workspaceId: "ws_2"});
+  expect(screen.queryByRole("dialog")).toBeNull();
+  await act(async () => {pending.resolve({ok: true, data: {name: CREDENTIAL.name}});});
+  expect(createModelEntryActionMock).not.toHaveBeenCalled();
+  expect(fixture.onCreated).not.toHaveBeenCalled();
+});
+
+it("dismisses an editing model form with Escape and refuses an empty native form submission", async () => {
+  const fixture = await renderDialog();
+  const form = screen.getByRole("dialog").querySelector("form");
+  if (!form) throw new Error("The model dialog must render its native form");
+  await act(async () => {fireEvent.submit(form);});
+  expect(createSecretActionMock).not.toHaveBeenCalled(); expect(createModelEntryActionMock).not.toHaveBeenCalled();
+  await fixture.user.keyboard("{Escape}");
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("requires both identity and saved-key readiness before rendering credential inputs", async () => {
+  const fixture = await renderDialog([], SECRETS_LOAD.loading);
+  expect(screen.getByText("Loading model credentials…")).toBeTruthy();
+  expect(screen.queryByLabelText(/^api key$/i)).toBeNull();
+  fixture.rerender({secretsLoad: SECRETS_LOAD.error});
+  await fixture.user.click(screen.getByRole("button", {name: "Try again"}));
+  expect(fixture.onSecretsNeeded).toHaveBeenCalledTimes(2);
+  modelIdentity.isLoaded = false;
+  fixture.rerender({secretsLoad: SECRETS_LOAD.ready});
+  expect(screen.getByText("Loading model credentials…")).toBeTruthy();
+  modelIdentity.isLoaded = true;
+  fixture.rerender({secretsLoad: SECRETS_LOAD.ready});
+  expect(screen.getByLabelText(/^api key$/i)).toBeTruthy();
+  await fixture.user.click(screen.getByRole("button", {name: "Cancel"}));
+  expect(screen.queryByRole("dialog")).toBeNull();
+});
+
+it("offers saved-key selection after an uncertain storage response without replaying storage", async () => {
+  createSecretActionMock.mockResolvedValueOnce({ok: false, error: "Response lost"});
+  const fixture = await renderDialog([ANTHROPIC_SECRET]); const dialog = within(screen.getByRole("dialog"));
+  await fillKnownForm(fixture.user, screen.getByRole("dialog"), {name: "new-provider-key", key: CREDENTIAL.key});
+  await fixture.user.click(dialog.getByRole("button", {name: "Create model"}));
+  await fixture.user.click(await dialog.findByRole("button", {name: "Choose credential"}));
+  expect(dialog.getByLabelText("Saved key", {exact: true})).toBeTruthy();
+  const overlay = document.querySelector(".bg-overlay");
+  if (!overlay) throw new Error("The model dialog must have its native overlay");
+  await fixture.user.click(overlay);
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(createSecretActionMock).toHaveBeenCalledOnce(); expect(createModelEntryActionMock).not.toHaveBeenCalled();
 });
