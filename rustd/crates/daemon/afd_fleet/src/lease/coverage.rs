@@ -89,7 +89,7 @@ impl LeaseService {
             .accounts
             .estimate(posture, &lease.provider, &lease.model, now)
             .await
-            .map_err(crate::Error::from);
+            .map_err(|fault| std::sync::Arc::new(crate::Error::from(fault)));
         self.funds_cover_at(lease, lease_key, lease_id, estimate)
             .await
     }
@@ -102,7 +102,7 @@ impl LeaseService {
         lease: &Renewing,
         lease_key: &Uuid7,
         lease_id: &str,
-        estimate: Result<Estimate>,
+        estimate: core::result::Result<Estimate, std::sync::Arc<crate::Error>>,
     ) -> Result<()> {
         let estimate = match estimate {
             Ok(estimate) => estimate,

@@ -175,6 +175,13 @@ const FRAGMENTS: &[(&str, Path)] = &[
     ),
     ("FROM memory.entries WHERE fleet_id", Path::Issue),
     ("SELECT dek_ciphertext, dek_nonce", Path::Issue),
+    // The memory window's role, and the thread's earlier turns a chat lease
+    // carries (`select_thread_finished_before.sql`): both ride the delivery.
+    ("SET LOCAL ROLE memory_runtime", Path::Issue),
+    (
+        "SELECT fleet_id, event_id, workspace_id, actor, event_type, status, token_count, wall_ms, failure_reason",
+        Path::Issue,
+    ),
     // Host: the capacity lock, its census and the lease-type record.
     ("SELECT worker_count, status, degraded_reason", Path::Host),
     (
@@ -182,6 +189,11 @@ const FRAGMENTS: &[(&str, Path)] = &[
         Path::Host,
     ),
     ("UPDATE runner.runners SET lease_version", Path::Host),
+    // The placement choice an offer reads before it claims (`choice.sql`).
+    (
+        "SELECT lease_version, last_lease_type FROM runner.runners",
+        Path::Host,
+    ),
     // Meter.
     (
         "s.fencing_token, s.lease_expires_at FROM runner.fleet_slots s JOIN runner.leases",

@@ -227,3 +227,28 @@ fn new_statements_match_their_paths() {
         );
     }
 }
+
+/// The three reads the first M245 drain classified as `other`, as
+/// `pg_stat_statements` stores their text.
+const DELIVERY_READS: &[(&str, Path)] = &[
+    ("SET LOCAL ROLE memory_runtime", Path::Issue),
+    (
+        "SELECT fleet_id, event_id, workspace_id, actor, event_type, status, token_count, wall_ms, failure_reason, failure_detail, resumes_event_id, created_at, updated_at FROM fleet.events",
+        Path::Issue,
+    ),
+    (
+        "SELECT lease_version, last_lease_type FROM runner.runners WHERE id = $1",
+        Path::Host,
+    ),
+];
+
+// Value: protects=the drain's other path holds no statement a chat sends;
+// fails_when=a delivery read falls back to other and the bar on it trips;
+// why_new=M245 §9's first drain found these three there; seam=none;
+// no_claim=statements a later milestone adds.
+#[test]
+fn delivery_reads_land_in_their_paths() {
+    for (statement, path) in DELIVERY_READS {
+        assert_eq!(super::paths::classify(statement), *path, "{statement}");
+    }
+}
