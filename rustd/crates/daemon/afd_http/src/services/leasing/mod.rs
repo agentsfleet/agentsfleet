@@ -52,11 +52,10 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
 
     /// Mint one short-lived credential for a running child.
     ///
-    /// Like [`Leasing::renew`] and unlike [`Leasing::lease`], every refusal is
-    /// an ERROR carrying its own registry code: a child is blocked on this
-    /// answer and each refusal has a different remedy — reconnect the
-    /// integration, wait for a human, re-raise a card, retry shortly — where a
-    /// polling runner's only move is to wait.
+    /// Every refusal is an ERROR carrying its own registry code: a child is
+    /// blocked on this answer and each refusal has a different remedy —
+    /// reconnect the integration, wait for a human, re-raise a card, retry
+    /// shortly.
     ///
     /// # Errors
     /// Refuses a lease that is not this runner's or is no longer live, a fleet

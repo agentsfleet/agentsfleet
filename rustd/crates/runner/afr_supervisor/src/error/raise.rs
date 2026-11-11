@@ -21,7 +21,7 @@ af_core::error_lifts!(Error, ErrorKind:
     af_core::error::Error => Identifier,
     tokio::task::JoinError => Task,
     url::ParseError => Address,
-    garde::Report => LeaseSize,
+    garde::Report => Invalid,
 );
 
 /// The one field of a problem body the runner reads.

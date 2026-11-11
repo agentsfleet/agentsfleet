@@ -55,7 +55,8 @@ use crate::services::{
 use afd_api_wire::ingress::IdentityAnswer;
 
 use super::identity_event::IdentityEvent;
-use super::verify::{header, wall};
+use super::text;
+use super::verify::wall;
 use super::{Ignored, within_cap};
 
 /// The scoped event a failed bootstrap is logged under.
@@ -151,9 +152,9 @@ pub(crate) async fn receive<D: Services>(
     // Absent headers resolve to empty rather than short-circuiting, because the
     // vendored verifier already refuses an empty field as `Signature`.
     let presented = SvixHeaders {
-        id: header(&headers, svix::ID_HEADER).unwrap_or_default(),
-        timestamp: header(&headers, svix::TIMESTAMP_HEADER).unwrap_or_default(),
-        signature: header(&headers, svix::SIGNATURE_HEADER).unwrap_or_default(),
+        id: text(&headers, svix::ID_HEADER).unwrap_or_default(),
+        timestamp: text(&headers, svix::TIMESTAMP_HEADER).unwrap_or_default(),
+        signature: text(&headers, svix::SIGNATURE_HEADER).unwrap_or_default(),
     };
 
     match svix::verify_at(&secret, presented, &body, services.now().as_second()) {
@@ -281,8 +282,13 @@ async fn write_back<D: Services>(
     // workspace, so a call inside an event field compiles twice.
     let reason = unwritten.to_string();
     let redelivered = unwritten == MetadataUnwritten::Unreachable;
+    // Every kind leaves the account without its tenant claim, and the registry
+    // has no narrower code for the provider's refusals, so all three log under
+    // the code a redelivery answers.
+    let error_code = error_code::AUTH_UNAVAILABLE.as_str();
     tracing::warn!(
         event = EVENT_WRITEBACK,
+        error_code,
         tenant_id,
         reason,
         redelivered,

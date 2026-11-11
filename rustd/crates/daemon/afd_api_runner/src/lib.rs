@@ -1,12 +1,14 @@
 //! Runner-control HTTP adapters.
 //!
-//! Enrollment, heartbeat, lease, credential, memory, activity, and report
-//! handlers live here so host protocol changes compile independently.
+//! The stream, enrolment, self-record, credential, memory, message, schedule,
+//! tool-call, decision and task handlers live here so host protocol changes
+//! compile independently. Heartbeats, leases, renewals, activity and reports
+//! travel on the stream.
 
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-pub use afd_http::{admission, auth, envelope, etag, request_id, route, services};
+pub use afd_http::{auth, envelope, request_id, route, services};
 
 pub(crate) mod handler;
 

@@ -27038,7 +27038,6 @@
           "lease_id",
           "fencing_token",
           "lease_expires_at",
-          "secret_delivery",
           "event",
           "policy",
           "instructions",
@@ -27051,7 +27050,7 @@
             "oneOf": [
               {
                 "$ref": "#/components/schemas/DecisionAssignment",
-                "description": "Reviewed runner decision selection frozen at issue; no provider key.\nAbsent on older leases or hosts without an enabled reviewed selection."
+                "description": "Reviewed runner decision selection frozen at issue; no provider key.\nAbsent on hosts without an enabled reviewed selection."
               },
               {
                 "type": "null"
@@ -27065,14 +27064,6 @@
           "event": {
             "$ref": "#/components/schemas/EventEnvelope",
             "description": "The event to run."
-          },
-          "execution_deadline": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Immutable native runtime ceiling, including a bound task's shorter slice.\nAbsent on older daemons; task work must not guess this deadline."
           },
           "fencing_token": {
             "type": "integer",
@@ -27104,17 +27095,6 @@
             "type": "string",
             "description": "Identifier for this lease."
           },
-          "limits": {
-            "oneOf": [
-              {
-                "$ref": "#/components/schemas/SandboxLimits",
-                "description": "The sandbox to run in; null uses this runner's configured defaults."
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "memory": {
             "oneOf": [
               {
@@ -27135,10 +27115,6 @@
           "resume_hold": {
             "type": "boolean",
             "description": "True when the runner can reuse its latest held sandbox for a new event. Reassigned\nevents and expired or outdated sandboxes require a fresh sandbox."
-          },
-          "secret_delivery": {
-            "$ref": "#/components/schemas/SecretDelivery",
-            "description": "How secrets reached this run."
           },
           "task": {
             "oneOf": [
@@ -30051,38 +30027,6 @@
         },
         "additionalProperties": false
       },
-      "SandboxLimits": {
-        "type": "object",
-        "description": "Required sandbox resources. The runner refuses values outside the published limits.\nWhether the host has enough capacity is checked separately.",
-        "required": [
-          "cpu_millis",
-          "memory_bytes",
-          "disk_bytes"
-        ],
-        "properties": {
-          "cpu_millis": {
-            "type": "integer",
-            "format": "int32",
-            "description": "Processor share, in thousandths of one core.",
-            "maximum": 32000,
-            "minimum": 250
-          },
-          "disk_bytes": {
-            "type": "integer",
-            "format": "int64",
-            "description": "The workspace disk's size, in bytes.",
-            "maximum": 274877906944,
-            "minimum": 1073741824
-          },
-          "memory_bytes": {
-            "type": "integer",
-            "format": "int64",
-            "description": "Memory, in bytes.",
-            "maximum": 68719476736,
-            "minimum": 268435456
-          }
-        }
-      },
       "SandboxTier": {
         "type": "string",
         "description": "The isolation strength assigned to a runner.",
@@ -30376,15 +30320,6 @@
             "description": "The zone that expression is read in. Absent means UTC."
           }
         }
-      },
-      "SecretDelivery": {
-        "type": "string",
-        "description": "How tenant secrets reach the runner.",
-        "enum": [
-          "inline",
-          "scoped",
-          "proxy"
-        ]
       },
       "SecretSummary": {
         "type": "object",

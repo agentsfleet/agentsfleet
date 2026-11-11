@@ -104,7 +104,6 @@ impl LeaseService {
                 decision: issued.decision,
                 task: issued.task,
                 expires_at: issued.expires_at,
-                execution_deadline: issued.execution_deadline,
             },
         );
         Ok(Step::Go(Leased(emit(body, metadata))))

@@ -161,7 +161,7 @@ impl<'a> Renewal<'a> {
 /// A renewal that fails after its retries, or records nothing, stops the
 /// flush. The report then carries the oldest lines left, and the lines past
 /// them are logged unbilled. A line sent twice is still billed once, since the
-/// daemon keys lines on `(work, seq)`.
+/// daemon keys lines on `(work, kind, seq)`.
 pub(crate) async fn flush(plane: &ControlPlane, lease_id: &Uuid7, meter: &Meter) {
     loop {
         let backlog = meter.backlog();

@@ -292,9 +292,9 @@ Fleets on shared hosts run their own programs: build scripts, test suites, packa
 
   Its image file is `0600`, formatted ext4 with no journal, and its root is owned by the sandbox user (`afr_sandbox/src/workspace_disk/mod.rs`, `afr_sandbox/src/host/mod.rs`).
 
-- A lease's size. `LeasePayload.limits` names its processor share, memory and disk within declared bounds (`af_wire::lease::SandboxLimits`). A lease naming none gets the runner's defaults, and a size past a bound refuses the lease before any sandbox exists.
+- A lease's size. The wire carries none: every lease builds its sandbox with the runner host's own processor share, memory, disk and process limits.
 
-  The process cap stays the host's. Nothing yet reserves host disk. No check holds live sandboxes' disk limits against the state disk, so leases can fill it.
+  Nothing yet reserves host disk. No check holds live sandboxes' disk limits against the state disk, so leases can fill it.
 
 - A supervisor whose capability set is only what sandbox setup needs (mounts, cgroups, namespaces). Tenant code never holds a capability.
 

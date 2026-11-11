@@ -13,7 +13,7 @@
 
 #![deny(clippy::self_named_module_files)]
 
-pub use afd_http::{admission, auth, client, envelope, etag, request_id, route, services};
+pub use afd_http::{route, services};
 
 pub(crate) mod handler;
 

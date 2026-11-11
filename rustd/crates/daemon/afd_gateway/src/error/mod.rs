@@ -20,12 +20,10 @@ pub(crate) use kind::ErrorKind;
 af_core::error_lifts!(Error, ErrorKind:
     std::num::TryFromIntError => Conversion,
     tokio::sync::oneshot::error::RecvError => Completion,
-    http::header::ToStrError => Header,
     af_core::error::Error => Identifier,
     garde::Report => Bounds,
     serde_json::Error => Json,
     af_stream::Error => Transport,
-    std::io::Error => Io,
     afd_db::Error => Database,
     afd_bus::Error => Bus,
     sqlx::Error => Query,

@@ -108,7 +108,9 @@ pub(crate) async fn charges<D: Services>(
         Some(&activity),
         services.now(),
     )?;
-    let id = input::identifier(&activity)?;
+    let Some(id) = input.activity.clone() else {
+        return Err(Refusal::malformed(input::DETAIL_QUERY));
+    };
     let work = match input.request.filter.work_type {
         Some(work::FLEET_LEASE) => WorkKey::FleetLease(id),
         Some(work::AUTHORING_ATTEMPT) => WorkKey::AuthoringAttempt(id),

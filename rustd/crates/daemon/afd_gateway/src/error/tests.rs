@@ -17,7 +17,6 @@ fn assert_class(error: &Error, code: ErrorCode, detail: &str, retryable: bool, r
 
 #[test]
 fn refused_bindings_and_malformed_messages_never_ask_for_a_retry() -> Proof {
-    let header = http::HeaderValue::from_bytes(b"\xff")?.to_str().map(drop);
     let identifier = af_core::id::Uuid7::parse("not-an-identifier").map(drop);
     let json = serde_json::from_str::<u8>("not json").map(drop);
     let cases = [
@@ -34,12 +33,6 @@ fn refused_bindings_and_malformed_messages_never_ask_for_a_retry() -> Proof {
             error_code::INVALID_REQUEST,
             "The work kind is already attached. Open each kind once.",
             "binding",
-        ),
-        (
-            Error::from(header.err().ok_or("a non-text header byte decoded")?),
-            error_code::INVALID_REQUEST,
-            "A runner stream header is not valid text.",
-            "metadata",
         ),
         (
             Error::from(identifier.err().ok_or("a malformed identifier parsed")?),
@@ -77,13 +70,13 @@ async fn transient_failures_keep_the_lease_deadline_and_ask_for_a_retry() -> Pro
         true,
         "timeout",
     );
-    let io = Error::from(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+    let closed = Error::from(ErrorKind::Closed);
     assert_class(
-        &io,
+        &closed,
         error_code::INTERNAL_OPERATION_FAILED,
         "The connection ended. Reconnect before the last confirmed lease deadline.",
         true,
-        "network",
+        "closed",
     );
     let query = Error::from(sqlx::Error::PoolTimedOut);
     assert_class(

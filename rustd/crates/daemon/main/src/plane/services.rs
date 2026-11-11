@@ -49,9 +49,6 @@ impl Services for ServingPlane {
     fn creations(&self) -> &afd_authoring::Creations {
         &self.authoring.creations
     }
-    fn authoring_models(&self) -> &afd_authoring::ModelCalls {
-        &self.authoring.models
-    }
     type Auth = Authenticator;
     type SignupMetadata = SignupWriteback;
     type Leases = LeaseService;
