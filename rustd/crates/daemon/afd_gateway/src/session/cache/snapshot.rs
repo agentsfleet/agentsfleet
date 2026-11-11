@@ -4,7 +4,7 @@ use crate::{Result, error::ErrorKind};
 use af_core::id::Uuid7;
 use af_wire::protocol::LEASES_MAX;
 use afd_db::Db;
-use afd_fleet::lease::{Offered, Target};
+use afd_fleet::lease::{Offered, Reported, Target};
 use jiff::Timestamp;
 use std::collections::HashMap;
 
@@ -15,6 +15,8 @@ pub(super) struct LeaseRecord {
     pub(super) expires_at: Timestamp,
     pub(super) target: Option<Target>,
     pub(super) cancelled: bool,
+    /// What the lease's report reads, kept from the offer (M245 §9).
+    pub(super) reported: Option<Reported>,
 }
 
 impl From<Offered> for LeaseRecord {
@@ -24,6 +26,7 @@ impl From<Offered> for LeaseRecord {
             expires_at: offered.expires_at,
             target: offered.target,
             cancelled: false,
+            reported: offered.reported,
         }
     }
 }
@@ -61,6 +64,7 @@ impl TryFrom<&LiveLeaseRow> for LeaseRecord {
             expires_at: row.expires_at.to_jiff(),
             target,
             cancelled: row.cancelled,
+            reported: None,
         })
     }
 }

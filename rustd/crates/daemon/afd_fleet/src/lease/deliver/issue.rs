@@ -12,7 +12,6 @@ use crate::{
     lease::{
         Billed, Issued, Offered, Target,
         answer::{Context, payload},
-        envelope::Acquired,
         history,
         pull::{AdmittedFleetWork, LeaseService, Leased, Step, claim_lost},
     },
@@ -80,7 +79,7 @@ impl LeaseService {
             self.window_for(&admitted.acquired),
         )
         .await;
-        let metadata = metadata(&issued, &admitted.acquired);
+        let metadata = metadata(&issued, admitted);
         let body = payload(
             &issued.lease_id,
             &admitted.acquired,
@@ -100,7 +99,8 @@ impl LeaseService {
     }
 }
 
-fn metadata(issued: &Issued, acquired: &Acquired) -> Offered {
+fn metadata(issued: &Issued, admitted: &AdmittedFleetWork) -> Offered {
+    let acquired = &admitted.acquired;
     Offered {
         lease_id: issued.lease_id.clone(),
         expires_at: issued.expires_at,
@@ -111,6 +111,22 @@ fn metadata(issued: &Issued, acquired: &Acquired) -> Offered {
             event_created_at: acquired.event_created_at,
             timing_eligible: true,
             fence: acquired.fence.as_i64(),
+        }),
+        // The columns `select_lease_for_report.sql` reads, as this issue
+        // wrote them.
+        reported: Some(crate::lease::Reported {
+            fleet_id: acquired.fleet_id.clone(),
+            workspace_id: acquired.workspace_id.clone(),
+            tenant_id: admitted.billed.tenant_id.clone(),
+            event_id: acquired.event_id.clone(),
+            actor: acquired.actor.clone(),
+            posture: admitted.billed.posture.as_str().to_owned(),
+            provider: admitted.billed.provider.to_string(),
+            model: admitted.billed.model.to_string(),
+            fence: acquired.fence,
+            lease_created_at: issued.created_at,
+            event_created_at: acquired.event_created_at,
+            catalogue_version: Some(acquired.opened.catalogue_version),
         }),
     }
 }

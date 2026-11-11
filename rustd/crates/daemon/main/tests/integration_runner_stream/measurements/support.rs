@@ -74,25 +74,35 @@ const TOKEN: &str = "%SELECT id AS runner, status, degraded_reason IS NOT NULL A
 const TARGET: &str = "%SELECT l.fleet_id, l.event_id, l.created_at, l.event_created_at,%FROM runner.leases l%JOIN fleet.events e ON e.event_id = l.event_id%WHERE l.id =%";
 // afd_runner/src/capacity/sql/lock_host.sql; Ready must reach this durable guard.
 const HOST: &str = "%SELECT worker_count, status, degraded_reason IS NOT NULL AS degraded, lease_version,%FROM runner.runners%WHERE id =%FOR UPDATE%";
+// afd_fleet/src/lease/sql/select_lease_for_report.sql; a session that kept
+// the offer's facts reports without it (M245 §9).
+const REPORTED: &str = "%SELECT l.fleet_id, l.workspace_id,%l.tenant_id, l.event_id, e.actor, l.posture%FROM runner.leases l%WHERE l.id = $1 AND l.runner_id = $2%";
 const COUNTS: &str = "SELECT \
     COALESCE(sum(calls) FILTER (WHERE query LIKE $1), 0)::bigint, \
-    COALESCE(sum(calls) FILTER (WHERE query LIKE $2), 0)::bigint \
+    COALESCE(sum(calls) FILTER (WHERE query LIKE $2), 0)::bigint, \
+    COALESCE(sum(calls) FILTER (WHERE query LIKE $3), 0)::bigint \
     FROM pg_stat_statements \
     WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())";
 
 pub(super) struct Counts {
     pub(super) tokens: i64,
     pub(super) targets: i64,
+    pub(super) report_reads: i64,
 }
 
 impl Counts {
     pub(super) async fn read(owner: &Db) -> Result<Self> {
-        let (tokens, targets) = sqlx::query_as(COUNTS)
+        let (tokens, targets, report_reads) = sqlx::query_as(COUNTS)
             .bind(TOKEN)
             .bind(TARGET)
+            .bind(REPORTED)
             .fetch_one(&mut *owner.acquire().await?)
             .await?;
-        Ok(Self { tokens, targets })
+        Ok(Self {
+            tokens,
+            targets,
+            report_reads,
+        })
     }
 }
 

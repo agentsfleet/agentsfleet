@@ -40,6 +40,7 @@ impl LeaseService {
                             lease_id: Uuid7::parse(&lease.lease_id)?,
                             expires_at: lease.expires_at,
                             target: None,
+                            reported: None,
                         };
                         return Ok(Some(emit(
                             TaggedLease::Authoring(Box::new(lease)),

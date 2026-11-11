@@ -5,7 +5,7 @@ mod snapshot;
 use af_core::{error_code, id::Uuid7};
 use af_wire::protocol::LEASES_MAX;
 use afd_db::Db;
-use afd_fleet::lease::{Offered, Target};
+use afd_fleet::lease::{Offered, Reported, Target};
 use jiff::Timestamp;
 use parking_lot::RwLock;
 
@@ -64,7 +64,18 @@ impl LeaseCache {
     fn apply(&self, snapshot: LeaseSnapshot, revision: u64, cancelled: &[Uuid7]) {
         let mut current = self.0.write();
         if current.revision == revision {
-            current.records = snapshot.into_records();
+            let mut records = snapshot.into_records();
+            // A lease's report facts never change after its offer; the
+            // database row a rebuild reads does not carry them.
+            for (id, record) in &mut records {
+                if record.reported.is_none() {
+                    record.reported = current
+                        .records
+                        .get(id)
+                        .and_then(|kept| kept.reported.clone());
+                }
+            }
+            current.records = records;
         } else {
             for id in cancelled {
                 if let Some(record) = current.records.get_mut(id) {
@@ -88,6 +99,15 @@ impl LeaseCache {
             .get(lease)
             .filter(|record| !record.cancelled && record.expires_at > now)
             .and_then(|record| record.target.clone())
+    }
+
+    /// What `lease`'s report reads, when the offer left it here.
+    pub(super) fn reported(&self, lease: &Uuid7) -> Option<Reported> {
+        self.0
+            .read()
+            .records
+            .get(lease)
+            .and_then(|record| record.reported.clone())
     }
 
     /// Late acknowledgements cannot shorten a newer confirmed deadline.
