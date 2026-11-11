@@ -48,10 +48,14 @@ WITH asked AS (
       <= r.worker_count
   FOR SHARE OF r
 ), locked_slot AS MATERIALIZED (
+  -- Joined to `host`, so the host row is held FOR SHARE before any slot: a
+  -- CTE runs when first read, and an issue holds the host row and then a slot.
+  -- A host that may not renew locks nothing, and every lease answers lost.
   SELECT s.fleet_id, s.fencing_token, s.lease_expires_at
   FROM runner.fleet_slots s
   JOIN runner.leases l ON l.fleet_id = s.fleet_id
   JOIN asked a ON a.lease_id = l.id
+  CROSS JOIN host h
   WHERE l.runner_id = $1 AND l.status = $25
   ORDER BY s.fleet_id
   FOR UPDATE OF s
