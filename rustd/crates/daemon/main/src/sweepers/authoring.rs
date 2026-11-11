@@ -39,7 +39,6 @@ async fn maintain(drafts: &afd_authoring::Drafts) {
         Ok(counts) if counts != afd_authoring::Maintenance::default() => {
             tracing::info!(
                 event = COMPLETED,
-                interrupted = counts.interrupted,
                 purged_drafts = counts.purged_drafts,
                 expired_results = counts.expired_results,
                 expired_receipts = counts.expired_receipts,

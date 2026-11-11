@@ -15,7 +15,7 @@
 
 use af_core::id::Uuid7;
 use afd_fleet::lease::sql::meter::Metering;
-use afd_fleet::lease::{Renewed, Settled};
+use afd_fleet::lease::{Committed, Renewed};
 
 use crate::report_seed::held;
 
@@ -73,17 +73,19 @@ async fn two_reports_of_one_lease_log_one_final_line() {
         let requests = [request(&held, 0)];
         let report = || {
             held.fixtures
-                .settle_alone(&held.leases, lease, &held.runner, &requests, true, held.now)
+                .commit_alone(&held.leases, lease, &held.runner, &requests, held.now)
         };
         let (first, second) = tokio::join!(report(), report());
 
         let claimed = [&first, &second]
             .into_iter()
-            .filter(|settled| matches!(settled, Settled::Claimed(_)))
+            .filter(|settled| matches!(settled, Committed::Settled { .. }))
             .count();
         assert_eq!(claimed, 1, "one report wins: {first:?} / {second:?}");
         assert!(
-            [&first, &second].contains(&&Settled::AlreadySettled),
+            [&first, &second]
+                .iter()
+                .any(|settled| matches!(settled, Committed::AlreadySettled)),
             "the other is told this runner already settled it"
         );
         let lines = line_numbers(&held.fixtures, lease).await;
@@ -123,19 +125,14 @@ async fn a_renewal_racing_the_report_numbers_its_line_apart() {
             &held.pricing,
             held.now,
         );
-        let report = held.fixtures.settle_alone(
-            &held.leases,
-            lease,
-            &held.runner,
-            &requests,
-            true,
-            held.now,
-        );
+        let report =
+            held.fixtures
+                .commit_alone(&held.leases, lease, &held.runner, &requests, held.now);
         let (renewed, settled) = tokio::join!(renew, report);
         let renewed = renewed.expect("the renewal is a verdict");
 
         assert!(
-            matches!(settled, Settled::Claimed(_)),
+            matches!(settled, Committed::Settled { .. }),
             "the report wins its own lease whatever order: {settled:?}"
         );
         let lines = line_numbers(&held.fixtures, lease).await;

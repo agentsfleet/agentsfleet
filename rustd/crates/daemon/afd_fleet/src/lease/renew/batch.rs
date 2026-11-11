@@ -275,7 +275,7 @@ impl LeaseService {
             batch.push((*row, request));
         }
 
-        let refused = self.refusals(runner_id, &batch, funds_due, now).await;
+        let refused = self.refusals(&batch, funds_due, now).await;
         let ceilings = self.ceilings(&batch).await;
         let mut bound = Vec::new();
         for (row, request) in batch {
@@ -375,7 +375,6 @@ impl LeaseService {
     /// gateway session's, so a reconnect checks on its first tick.
     async fn refusals<'a>(
         &self,
-        _runner_id: &Uuid7,
         batch: &[(&'a Found, &RenewRequest)],
         funds_due: bool,
         now: Timestamp,

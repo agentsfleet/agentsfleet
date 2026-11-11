@@ -9,7 +9,7 @@ use afd_credential::{
     secrets::Registry,
     vault::Vault,
 };
-use afd_fleet::lease::{LeaseService, Leases, Settled, sql::meter::Metering, usage::Pricing};
+use afd_fleet::lease::{LeaseService, Leases, usage::Pricing};
 use afd_memory::Memories;
 use jiff::Timestamp;
 use std::sync::Arc;
@@ -35,40 +35,34 @@ pub(crate) const FIXTURE_KEK_HEX: &str =
     "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 impl Fixtures {
-    /// Runs the claim-and-settle statement by itself, on its own connection.
-    ///
-    /// The verb takes the connection its caller's transaction owns, because
-    /// the money commits with the run's result, its checkpoint and the freed
-    /// slot — `Leases::commit_report` is the boundary. A suite whose subject
-    /// is the STATEMENT wants it alone and autocommitted, which is what this
-    /// is: one pooled connection, one statement, nothing around it to confuse
-    /// what the assertions are measuring.
-    pub(crate) async fn settle_alone(
+    /// Commits a terminal report of `lease_id` by itself, through the one
+    /// report statement production runs, carrying `requests`.
+    pub(crate) async fn commit_alone(
         &self,
         leases: &Leases,
         lease_id: &Uuid7,
         runner: &Uuid7,
         requests: &[af_wire::usage::RequestUsage],
-        succeeded: bool,
         at: Timestamp,
-    ) -> Settled {
-        let pricing = self.pricing(lease_id).await;
-        let mut connection = self.database.acquire().await.expect("a pooled connection");
-        leases
-            .claim_and_settle(
-                &mut connection,
-                Metering {
-                    lease_id,
-                    runner_id: runner,
-                    requests,
-                },
-                lease_id,
-                &pricing,
-                succeeded,
-                at,
-            )
+    ) -> afd_fleet::lease::Committed {
+        let lease = leases
+            .load_for_report(lease_id, runner)
             .await
-            .expect("the settle must reach the datastore")
+            .expect("the lease reads")
+            .expect("the lease is the runner's");
+        let pricing = self.pricing(lease_id).await;
+        let report = crate::report_commit::report(
+            lease_id,
+            runner,
+            &lease,
+            (lease_id, &pricing),
+            crate::report_commit::RESPONSE_ACCEPTED,
+            at,
+        );
+        leases
+            .commit_report(afd_fleet::lease::TerminalReport { requests, ..report })
+            .await
+            .expect("the report must reach the datastore")
     }
 
     /// What the seeded fleet's lease is priced against: its posture, provider

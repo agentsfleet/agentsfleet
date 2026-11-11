@@ -19,6 +19,9 @@ const FAILED: &str = "expiry_sweep_failed";
 /// A pass moved something.
 const COMPLETED: &str = "expiry_sweep_completed";
 
+/// The biller refused an expired lease's last slice; the next tick retries.
+const REFUSED: &str = "expiry_sweep_refused";
+
 pub(super) fn spawn(supervisor: &mut Supervisor, database: &Db, analytics: &Analytics) {
     let passes = Passes {
         database: database.clone(),
@@ -63,7 +66,19 @@ impl Passes {
         )
         .await;
         let billed = match leases {
-            Ok(swept) => Some(swept.expired_billed),
+            Ok(swept) => {
+                if let (true, Some(code)) = (swept.expired_settle_failures > 0, swept.refused) {
+                    let error_code = code.as_str();
+                    let refused = swept.expired_settle_failures;
+                    tracing::warn!(
+                        event = REFUSED,
+                        error_code,
+                        refused,
+                        "the biller refused an expired lease's last slice; the next tick retries"
+                    );
+                }
+                Some(swept.expired_billed)
+            }
             Err(fault) => {
                 let error_code = fault.code().as_str();
                 tracing::warn!(

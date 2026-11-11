@@ -233,12 +233,11 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
 
     let entropy = Entropy::new();
     let swept = sweep(database, &biller, &entropy, held.now, None);
-    let reported = held.fixtures.settle_alone(
+    let reported = held.fixtures.commit_alone(
         &held.leases,
         &held.issued.lease_id,
         &held.runner,
         &[],
-        true,
         held.now,
     );
     let (swept, _reported) = tokio::join!(swept, reported);

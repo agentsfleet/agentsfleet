@@ -144,7 +144,7 @@ const fn drains(swept: &BillingSwept) -> bool {
 /// counts log at `debug` (LOG-HOT); a pass the biller refused part of also
 /// warns once, with the first refusal's code, and the next pass retries.
 fn log_moved(swept: &BillingSwept) {
-    let refused = swept.settle_failures + swept.expired_settle_failures;
+    let refused = swept.settle_failures;
     if let (true, Some(code)) = (refused > 0, swept.refused) {
         let error_code = code.as_str();
         tracing::warn!(
@@ -159,8 +159,6 @@ fn log_moved(swept: &BillingSwept) {
         pass = "leases",
         resettled = swept.resettled,
         settle_failures = swept.settle_failures,
-        expired_billed = swept.expired_billed,
-        expired_settle_failures = swept.expired_settle_failures,
         "billing relay pass finished"
     );
 }

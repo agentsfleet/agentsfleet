@@ -32,25 +32,21 @@ WITH locked_slot AS MATERIALIZED (
            GREATEST(p.last_metered_at, LEAST(i.checked_at, p.lease_expires_at)) AS metered_until
     FROM probe p CROSS JOIN instant i LEFT JOIN held_task t ON t.id = p.task_id
 ), guard AS (
-    -- `$5` chooses the ending. A renewal must still be the live holder before
-    -- either deadline and below the hard cap; a settle needs only that no
-    -- reclaim has superseded it, because a report may land after its lease lapsed.
-    SELECT *, LEAST(checked_at + $6::interval, created_at + $7::interval, task_execution_deadline_at,
+    -- A renewal must still be the live holder, before either deadline and
+    -- below the hard cap.
+    SELECT *, LEAST(checked_at + $5::interval, created_at + $6::interval, task_execution_deadline_at,
                     task_expires_at, task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000)) AS capped,
            (EXTRACT(EPOCH FROM metered_until - last_metered_at) * $3::bigint)::bigint AS d_ms
     FROM metered
-    WHERE CASE WHEN $5::boolean
-               THEN fencing_token >= live_fence
-               ELSE fencing_token = live_fence
-                    AND LEAST(checked_at + $6::interval, created_at + $7::interval) > checked_at
-                    AND lease_expires_at > checked_at AND slot_expires_at > checked_at
-                    AND (task_id IS NULL OR (
-                        task_status = $10 AND task_generation = live_task_generation
-                        AND task_stop_generation = live_stop_generation AND task_expires_at > checked_at
-                        AND used_model_nanos < max_model_nanos - reserved_model_nanos
-                        AND task_execution_deadline_at > checked_at
-                        AND task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000) > checked_at))
-          END
+    WHERE fencing_token = live_fence
+      AND LEAST(checked_at + $5::interval, created_at + $6::interval) > checked_at
+      AND lease_expires_at > checked_at AND slot_expires_at > checked_at
+      AND (task_id IS NULL OR (
+          task_status = $7 AND task_generation = live_task_generation
+          AND task_stop_generation = live_stop_generation AND task_expires_at > checked_at
+          AND used_model_nanos < max_model_nanos - reserved_model_nanos
+          AND task_execution_deadline_at > checked_at
+          AND task_runtime_accounted_at + make_interval(secs => remaining_running_nanos::double precision / 1000000000) > checked_at))
       AND EXISTS (
           SELECT 1 FROM fleet.admissions a
           WHERE a.id = metered.event_id AND a.fleet_id = metered.fleet_id
@@ -58,45 +54,23 @@ WITH locked_slot AS MATERIALIZED (
       )
 ), moved AS (
     UPDATE runner.leases l
-    SET status           = CASE WHEN $5::boolean THEN $8 ELSE l.status END,
-        lease_expires_at = CASE WHEN $5::boolean THEN l.lease_expires_at ELSE g.capped END,
+    SET lease_expires_at = g.capped,
         last_metered_at  = g.metered_until,
         updated_at = now()
     FROM guard g WHERE l.id = g.id
     RETURNING l.lease_expires_at AS capped
 ), slot AS (
     UPDATE runner.fleet_slots a
-    SET lease_expires_at = CASE WHEN $5::boolean THEN a.lease_expires_at ELSE g.capped END,
+    SET lease_expires_at = g.capped,
         updated_at = now()
     FROM guard g WHERE a.fleet_id = g.fleet_id
     RETURNING a.fleet_id
-), settled AS (
-    UPDATE fleet.admissions a
-    SET settled_at = clock_timestamp(), parked_at = NULL, updated_at = now()
-    FROM guard g
-    WHERE $5::boolean AND a.id = g.event_id AND a.fleet_id = g.fleet_id
-      AND a.lease_fence = g.fencing_token AND a.settled_at IS NULL
-      AND EXISTS (SELECT 1 FROM moved)
-), tally AS (
-    INSERT INTO runner.lifetime_counters AS c
-      (runner_id, acquired_count, succeeded_count, failed_count, expired_count,
-       created_at, updated_at)
-    SELECT $2, 0,
-           CASE WHEN $9::boolean THEN 1 ELSE 0 END,
-           CASE WHEN $9::boolean THEN 0 ELSE 1 END,
-           0, now(), now()
-    FROM moved
-    WHERE $5::boolean
-    ON CONFLICT (runner_id) DO UPDATE
-       SET succeeded_count = c.succeeded_count + EXCLUDED.succeeded_count,
-           failed_count    = c.failed_count + EXCLUDED.failed_count,
-           updated_at      = now()
 )
 SELECT
     (SELECT count(*) FROM probe)::bigint          AS probe_found,
     (SELECT count(*) FROM moved)::bigint          AS claimed,
     (SELECT capped FROM moved)                    AS new_until,
-    (SELECT LEAST(created_at + $7::interval, task_execution_deadline_at) FROM probe) AS hard_cap,
+    (SELECT LEAST(created_at + $6::interval, task_execution_deadline_at) FROM probe) AS hard_cap,
     g.metered_until AS checked_at, g.created_at AS started_at, g.d_ms,
     g.tenant_id AS tenant_id, g.workspace_id AS workspace_id,
     g.fleet_id AS fleet_id, g.event_id AS event_id,

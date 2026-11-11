@@ -140,17 +140,6 @@ pub const CLOSE_FOLDED_EVENTS: &str = include_str!("close_folded_events.sql");
 /// `$1` fleet.
 pub const SELECT_FLEET_COUNTERS: &str = include_str!("select_fleet_counters.sql");
 
-/// One event's current status.
-///
-/// Read on ONE path only: a redelivery whose insert hit the conflict arm. The
-/// question it answers is whether that redelivery is a legitimate re-poll (the
-/// row is still `received`) or an already settled event whose acknowledgement
-/// was lost. Re-running the second would double-fire side effects and re-meter
-/// tokens, so the two must not be guessed between.
-///
-/// `$1` fleet, `$2` event.
-pub const SELECT_FLEET_EVENT_STATUS: &str = include_str!("select_fleet_event_status.sql");
-
 /// The byte ceiling on a stored failure cause.
 ///
 /// Applied at the WRITE rather than at the read, so a runaway child cannot
