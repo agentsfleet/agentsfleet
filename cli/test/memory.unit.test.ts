@@ -9,7 +9,7 @@ import { Effect, Exit, Layer } from "effect";
 import {
   memoryListEffectFromFlags,
   memorySearchEffectFromArgs,
-} from "../src/commands/memory.ts";
+} from "../src/commands/memory/memory.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import {
   ConfigError,

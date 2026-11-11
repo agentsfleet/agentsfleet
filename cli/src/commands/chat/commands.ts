@@ -8,7 +8,7 @@ import { HttpClient } from "../../services/http-client.ts";
 import { Input } from "../../services/input.ts";
 import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
 import { Stdin } from "../../services/stdin.ts";
-import { requireWorkspaceId, resolveAuthToken, requireValidId } from "../workspace-guards.ts";
+import { requireWorkspaceId, resolveAuthToken, requireValidId } from "../workspace/guards.ts";
 import { ChatActions } from "./actions.ts";
 import { waitNotice } from "./notifications.ts";
 import { runChatRepl } from "./repl.ts";

@@ -11,9 +11,9 @@
  * client `Shell` nav — unlike `platform.ts`, which reads the live session.
  */
 export const SCOPE = {
-  /** View the runner fleet — `GET /v1/fleets/runners`, runner activity. */
+  /** View the runner fleet — `GET /v1/admin/runners`, runner activity. */
   RUNNER_READ: "runner:read",
-  /** Enroll a runner — `POST /v1/runners`. */
+  /** Enroll a runner — `POST /v1/admin/runners`. */
   RUNNER_ENROLL: "runner:enroll",
   /** Cordon/patch a runner's admin state — `PATCH …/runners/{id}`. */
   RUNNER_WRITE: "runner:write",

@@ -4,7 +4,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit } from "effect";
-import { tenantProviderDeleteEffect } from "../src/commands/tenant.ts";
+import { tenantProviderDeleteEffect } from "../src/commands/tenant/tenant.ts";
 import { OUTPUT_FORMAT } from "../src/services/output.ts";
 import { ServerError } from "../src/errors/index.ts";
 import { PROVIDER_MODE } from "../src/constants/billing.ts";

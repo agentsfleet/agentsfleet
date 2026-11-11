@@ -178,7 +178,7 @@ pub enum HeartbeatStatus {
     Stop,
 }
 
-/// `POST /v1/runners` request. Authorized by an existing operator credential,
+/// `POST /v1/admin/runners` request. Authorized by an existing operator credential,
 /// not an enrollment token. The operator ASSIGNS the policy; the host never
 /// declares one.
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]

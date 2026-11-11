@@ -7,7 +7,7 @@
 import { describe, test, expect } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { logsEffectFromFlags } from "../src/commands/fleet_logs.ts";
+import { logsEffectFromFlags } from "../src/commands/fleet/logs.ts";
 import { instantCell } from "../src/output/index.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient } from "../src/services/http-client.ts";

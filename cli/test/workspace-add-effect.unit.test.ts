@@ -3,7 +3,7 @@
 
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Option, Redacted } from "effect";
-import { workspaceAddEffect } from "../src/commands/workspace.ts";
+import { workspaceAddEffect } from "../src/commands/workspace/workspace.ts";
 import type { HttpRequestInput } from "../src/services/http-client.ts";
 import { OUTPUT_FORMAT } from "../src/services/output.ts";
 import type { WorkspacesValue } from "../src/services/workspaces.ts";

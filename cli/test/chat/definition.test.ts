@@ -12,7 +12,7 @@ import { HTTP_METHOD } from "../../src/constants/http-method.ts";
 import { isRecord } from "../../src/lib/guards.ts";
 import { bufferStream, cliEnv, withAuthedStateDir } from "../helpers-cli-state.ts";
 import { outputDouble } from "../helpers-output-double.ts";
-import { ACCEPTED, DRAFT, DRAFT_ID, FLEET_ID, LIBRARY_ID, MESSAGE, MODEL, PRIVATE_TEXT, REVIEW, REVISION_ID,
+import { ACCEPTED, CANDIDATE_ID, DRAFT, DRAFT_ID, FLEET_ID, LIBRARY_ID, MESSAGE, MODEL, PRIVATE_TEXT, REVIEW, REVISION_ID,
   WORKSPACE, withApi, problem } from "./fixture.ts";
 
 const DEFINITION = REVIEW.effective.definition;
@@ -68,7 +68,7 @@ test("a Definition file opens its draft without a first message and reviews it a
     expect(calls[0]?.body).toEqual({source: SOURCE, authoring_model_ref: MODEL, operation_id: operationOf(calls[0]?.body)});
     const printed = result.out.trim().split("\n").map((line): unknown => JSON.parse(line));
     // pin test: literal is the contract
-    expect(printed).toEqual([{kind: "chat_created", draft_id: DRAFT_ID}, REVIEW]);
+    expect(printed).toEqual([{kind: "chat_created", draft_id: DRAFT_ID}, {...REVIEW, draft_candidate_id: CANDIDATE_ID}]);
   });
 });
 

@@ -16,9 +16,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { apiKeyCreateEffectFromArgs } from "../src/commands/api_key.ts";
-import { secretAddEffectFromFlags } from "../src/commands/fleet_secret.ts";
-import { createSession } from "../src/commands/login-device-flow.ts";
+import { apiKeyCreateEffectFromArgs } from "../src/commands/api-key/api-key.ts";
+import { secretAddEffectFromFlags } from "../src/commands/secret/secret.ts";
+import { createSession } from "../src/commands/auth/login-device-flow.ts";
 import { NetworkError } from "../src/errors/index.ts";
 import { DEFAULT_MAX_ATTEMPTS } from "../src/lib/http-retry.ts";
 import { CliConfig, DEFAULT_POSTHOG_HOST } from "../src/services/config.ts";

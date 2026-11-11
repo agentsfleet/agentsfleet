@@ -9,7 +9,7 @@ import {
   scheduleSyncEffectFromArgs,
   scheduleStatusEffectFromArgs,
   scheduleUpdateEffectFromArgs,
-} from "../src/commands/fleet_schedule.ts";
+} from "../src/commands/schedule/schedule.ts";
 import { CliConfig, type CliConfigShape } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";

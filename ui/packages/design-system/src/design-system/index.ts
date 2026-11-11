@@ -30,12 +30,6 @@ export {
   dashboardPanelVariants,
   type DashboardPanelProps,
 } from "./DashboardPanel";
-export {
-  DashboardRow,
-  DashboardRowGroup,
-  type DashboardRowProps,
-  type DashboardRowGroupProps,
-} from "./DashboardRow";
 export { MetaGrid, type MetaGridItem, type MetaGridProps } from "./MetaGrid";
 export {
   StatusPill,
@@ -44,26 +38,17 @@ export {
 } from "./StatusPill";
 export { TerminalPanel, type TerminalPanelProps } from "./TerminalPanel";
 export { default as Terminal } from "./Terminal";
-export {
-  LogLine,
-  LogToken,
-  type LogLineProps,
-  type LogTokenProps,
-  type LogSeverity,
-} from "./LogLine";
 export { default as Grid } from "./Grid";
 export { default as Section } from "./Section";
 export { default as InstallBlock } from "./InstallBlock";
 export { WakePulse, type WakePulseProps } from "./WakePulse";
 export { BrandMark, SignalSpinner } from "./BrandMark";
-export { BrailleSpinner, type BrailleSpinnerProps } from "./BrailleSpinner";
 export {
   Badge,
   badgeVariants,
   type BadgeProps,
   type BadgeVariant,
 } from "./Badge";
-export { Refpill, type RefpillProps } from "./Refpill";
 export { Input, type InputProps } from "./Input";
 export { Textarea, type TextareaProps } from "./Textarea";
 export { Label, type LabelProps } from "./Label";
@@ -86,12 +71,6 @@ export {
   type TabsTriggerProps,
   type TabsContentProps,
 } from "./Tabs";
-export {
-  RadioGroup,
-  RadioGroupItem,
-  type RadioGroupProps,
-  type RadioGroupItemProps,
-} from "./RadioGroup";
 export { Switch, SwitchIndicator, type SwitchProps } from "./Switch";
 export {
   Accordion,
@@ -144,7 +123,6 @@ export {
 export { EmptyState, EMPTY_STATE_SURFACE, type EmptyStateProps, type EmptyStateSurface } from "./EmptyState";
 export { UnavailableState, type UnavailableStateProps } from "./UnavailableState";
 export { CopyButton, COPY_RESET_MS, type CopyButtonProps } from "./CopyButton";
-export { TabNav, type TabNavItem, type TabNavProps } from "./TabNav";
 export {
   StatusCard,
   type StatusCardProps,
@@ -189,7 +167,6 @@ export {
   type DataTableProps,
 } from "./DataTable";
 export { UsageBar, type UsageBarProps } from "./UsageBar";
-export { OptionCard, type OptionCardProps } from "./OptionCard";
 export {
   Alert,
   AlertTitle,

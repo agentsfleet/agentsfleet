@@ -17,7 +17,7 @@ const SIDEBAR_NAV_ID = "app-sidebar-nav";
 type ShellFrameProps = {
   children: React.ReactNode;
   workspaces?: TenantWorkspace[];
-  operatorScopes?: string[];
+
   /** Null when the read failed or there is no session: the header says nothing. */
   billing?: TenantBilling | null;
   /** Invites waiting for the signed-in person; empty hides the notice. */
@@ -27,7 +27,7 @@ type ShellFrameProps = {
 export function ShellFrame({
   children,
   workspaces = [],
-  operatorScopes = [],
+
   billing = null,
   waitingInvites = [],
 }: ShellFrameProps) {
@@ -42,7 +42,6 @@ export function ShellFrame({
         <DashboardShellHeader className="px-0 md:px-0">
           <ShellControls
             workspaces={workspaces}
-            operatorScopes={operatorScopes}
             sidebarNavId={SIDEBAR_NAV_ID}
           />
           <div className="app-shell-trailing ml-auto flex min-w-0 items-center gap-md md:gap-xl">
@@ -59,7 +58,6 @@ export function ShellFrame({
         >
           <DesktopSidebarNavigation
             workspaces={workspaces}
-            operatorScopes={operatorScopes}
           />
         </aside>
 

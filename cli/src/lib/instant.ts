@@ -21,3 +21,9 @@ export const instantMs = (value: unknown): number | null => (isInstant(value) ? 
 
 /** Orders two instants by the moment each names. */
 export const byInstant = (a: string, b: string): number => Date.parse(a) - Date.parse(b);
+
+/** Nanosecond precision for UTC instants already decoded by the runtime schema. */
+export function instantNanos(value: string): bigint {
+  const fraction = value.match(/\.(\d+)/u)?.[1] ?? "";
+  return BigInt(Date.parse(value.replace(/\.\d+/u, ""))) * 1_000_000n + BigInt(fraction.padEnd(9, "0"));
+}

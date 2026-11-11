@@ -89,6 +89,18 @@ describe("private setup editing and recovery boundaries", () => {
     expect(mutations()).toEqual([]);
   });
 
+  it.each(["candidate", "review"] as const)("refuses Save before the displayed %s is ready without reading or writing", async (missing) => {
+    fixture.current = {...DRAFT, [missing]: undefined};
+    const instance = await ready(true);
+    const count = calls.length;
+    const saving = instance.save();
+    await expect(saving).rejects.toBeInstanceOf(SetupUnavailable);
+    await expect(saving).rejects.toMatchObject({status: 409, message: "Continue chatting until a complete setup is ready."});
+    expect(calls).toHaveLength(count);
+    expect(mutations()).toEqual([]);
+    expect(instance.getSnapshot()).toMatchObject({busy: false, pending: false});
+  });
+
   it("publishes a new entry and clears a deleted conversation", async () => {
     const instance = await ready(true); await instance.refreshSetup(); await instance.publish("recipe", false);
     expect(instance.getSnapshot().notice).toBe("Setup published.");
@@ -276,42 +288,6 @@ describe("private browser chat", () => {
     fixture.override = ({path}) => path.endsWith("/cancellations") ? response({cancelled_through: MESSAGE.sequence, stopped: [{sequence: MESSAGE.sequence, state: MESSAGE_STATE.cancelled}]}) : undefined;
     await instance.stop(); expect(mutations()[0]?.body).toEqual({through_sequence: MESSAGE.sequence});
   });
-  it("stages a reviewed private candidate with one retained platform operation after a lost answer", async () => {
-    const published: {body: unknown; key: string}[] = [];
-    let lost = true;
-    const instance = await ready(true, async (body, key) => {
-      published.push({body, key});
-      if (lost) { lost = false; throw new SetupUnavailable("Answer lost", 503); }
-      return {...PUBLICATION, library_id: "native-staged"};
-    });
-    await instance.refreshSetup();
-    await expect(instance.stagePlatform("Reviewed recipe")).rejects.toMatchObject({status: 503});
-    expect(instance.getSnapshot().pending).toBe(true);
-    await expect(instance.publish("Changed input", false)).rejects.toMatchObject({status: 409});
-    await instance.retry();
-    expect(published).toHaveLength(2); expect(published[1]).toEqual(published[0]);
-    expect(published[0]?.body).toEqual({workspace_id: WORKSPACE, draft_candidate_id: DRAFT.candidate?.id, label: "Reviewed recipe"});
-    expect(instance.getSnapshot().notice).toContain("Publish it explicitly");
-    expect(instance.getSnapshot().pending).toBe(false); expect(mutations()).toEqual([]);
-  });
-  it.each(["candidate", "review"] as const)("refuses staging when the current setup lacks its %s", async (missing) => {
-    const publisher = vi.fn();
-    const instance = await ready(true, publisher);
-    fixture.current = {...fixture.current, [missing]: undefined};
-    await expect(instance.stagePlatform("Recipe")).rejects.toMatchObject({status: 409});
-    const reads = calls.length;
-    await expect(instance.stagePlatform("Recipe")).rejects.toMatchObject({status: 409, message: "Continue chatting until a complete setup is ready."});
-    expect(calls).toHaveLength(reads);
-    expect(publisher).not.toHaveBeenCalled(); expect(instance.getSnapshot().pending).toBe(false);
-  });
-  it("hides staging without operator capability and clears private data on a scoped refusal", async () => {
-    const instance = await ready(true);
-    expect(instance.canStagePlatform).toBe(false);
-    await instance.refreshSetup();
-    await expect(instance.stagePlatform("Recipe")).rejects.toMatchObject({status: 403});
-    expect(instance.getSnapshot()).toMatchObject({draft: null, messages: [], inaccessible: true});
-  });
-
   it.each([false, true])("closes a deleted draft stream without restoring data (disposed: %s)", async (disposed) => {
     fixture.override = ({path}) => path.endsWith("/messages")
       ? response({items: [{...MESSAGE, state: MESSAGE_STATE.running}], next_cursor: null}) : undefined;

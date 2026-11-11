@@ -2,12 +2,12 @@
 import { describe, expect, test, setSystemTime } from "bun:test";
 import { Cause, Effect, Exit, Option, Redacted } from "effect";
 
-import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
+import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import {
   KIND_EVENT_COMPLETE,
   STATUS_SSE_DISCONNECTED,
   openEventTail,
-} from "../src/commands/fleet_steer_events.ts";
+} from "../src/commands/fleet/steer-events.ts";
 import { UnexpectedError } from "../src/errors/index.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { type HttpRequestInput } from "../src/services/http-client.ts";

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { runCli } from "../../src/cli.ts";
-import { LIBRARY_PAGE_LIMIT, LIBRARY_VISIBILITY } from "../../src/commands/fleet-library-read.ts";
+import { LIBRARY_PAGE_LIMIT, LIBRARY_VISIBILITY } from "../../src/commands/library/read.ts";
 import { bufferStream, cliEnv, withAuthedStateDir } from "../helpers-cli-state.ts";
 import { LIBRARY_ID, REVISION_ID, WORKSPACE, withApi, problem } from "./fixture.ts";
 
