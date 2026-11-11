@@ -9,18 +9,20 @@ import { AuthSignOutButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { NAV_SURFACE, NAV_ICON_SIZE, navSource, resolveActiveHref, resolveHref, type NavEntry } from "./sidebar-navigation-data";
 import { ACCOUNT_NAV, ACCOUNT_SHORTCUTS, SERVICE_SHORTCUTS, BOTTOM_NAV, WORKSPACE_NAV } from "./account-menu-data";
+import type { TenantBilling } from "@/lib/types";
+import { formatHeaderBalance } from "./BalanceLink";
 
 export const MENU_VIEW = { home: "home", settings: "settings" } as const;
 export type MenuView = typeof MENU_VIEW[keyof typeof MENU_VIEW];
-type Props = { view: MenuView; onView: (view: MenuView) => void; workspaceId: string | null };
+type Props = { view: MenuView; onView: (view: MenuView) => void; workspaceId: string | null; billing?: TenantBilling | null };
 
-export function AccountMenuNavigation({ view, onView, workspaceId }: Props) {
+export function AccountMenuNavigation({ view, onView, workspaceId, billing }: Props) {
   const backRef = useRef<HTMLDivElement>(null);
   useEffect(() => { backRef.current?.focus(); }, [view]);
   if (view === MENU_VIEW.home) return <>
     <DropdownMenuSeparator />
     <MenuDestination label="Settings" Icon={GearIcon} onSelect={() => onView(MENU_VIEW.settings)} />
-    <MenuLinks items={ACCOUNT_SHORTCUTS} workspaceId={workspaceId} />
+    <MenuLinks items={ACCOUNT_SHORTCUTS} workspaceId={workspaceId} billing={billing} />
     <DropdownMenuSeparator />
     <MenuLinks items={SERVICE_SHORTCUTS} workspaceId={workspaceId} />
     <MenuLinks items={BOTTOM_NAV} workspaceId={workspaceId} />
@@ -48,7 +50,7 @@ function MenuDestination({ label, Icon, onSelect }: { label: string; Icon: typeo
   </DropdownMenuItem>;
 }
 
-function MenuLinks({ items, workspaceId }: { items: NavEntry[]; workspaceId: string | null }) {
+function MenuLinks({ items, workspaceId, billing }: { items: NavEntry[]; workspaceId: string | null; billing?: TenantBilling | null }) {
   const pathname = usePathname();
   const activeHref = resolveActiveHref(items.map((entry) => resolveHref(entry, workspaceId)), pathname);
   return items.map((entry) => {
@@ -58,6 +60,7 @@ function MenuLinks({ items, workspaceId }: { items: NavEntry[]; workspaceId: str
         className={cn(href === activeHref && "bg-accent text-primary")}
         {...(entry.external ? { target: "_blank", rel: "noopener noreferrer" } : {})}>
         <entry.icon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">{entry.label}</span>
+        {entry.path === "/settings/billing" && billing ? <span aria-label="Credit balance" className="text-eyebrow tabular-nums text-muted-foreground">{formatHeaderBalance(billing.balance_nanos)}</span> : null}
       </Link>
     </DropdownMenuItem>;
   });

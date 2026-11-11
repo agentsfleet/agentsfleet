@@ -90,6 +90,7 @@ async function loadChatView(
     <ChatView
       workspaceId={workspaceId}
       fleetId={fleet.id}
+      schedules={fleet.schedules}
       sources={fleetSources(fleet.definition.config["x-agentsfleet"])}
       senderLabel={fleet.name}
       setupRevision={fleet.setup_revision}

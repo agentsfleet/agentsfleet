@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import { fetchMock } from "../helpers/dashboard-mocks";
 import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspace";
-import { agentDisplayName } from "@/lib/fleets/agent-label";
+import { chatProps } from "./page-parts";
 
 const FLEET_TITLE_MARKUP = ">platform-ops</h1>";
 
@@ -27,7 +27,7 @@ describe("fleets routes — detail header and summary", () => {
     })}));
   });
 
-  it("shows the fleet card's agent name beneath the fleet name when paused", async () => {
+  it("shows one fleet title with the paused state", async () => {
     const { definition } = detailBody();
     mockFetchBilling(happyBilling, {fleet: {status: "paused", definition: {
       ...definition, config: {...definition.config, name: "support-triage"},
@@ -44,13 +44,13 @@ describe("fleets routes — detail header and summary", () => {
       ),
     );
     expect(markup).toContain(FLEET_TITLE_MARKUP);
-    expect(markup).toContain(`>${agentDisplayName(FLEET_ID)}</p>`);
+    expect(markup).not.toContain(`>agt-${FLEET_ID}</p>`);
     expect(markup).not.toContain(">support-triage</p>");
     expect(markup).not.toContain(">paused</p>");
     expect(markup).not.toContain("data-live");
   });
 
-  it.each([undefined, "", 42])("keeps the agent identity independent of the definition name (%s)", async (name) => {
+  it.each([undefined, "", 42])("keeps the fleet title independent of the definition name (%s)", async (name) => {
     const { definition } = detailBody();
     mockFetchBilling(happyBilling, {fleet: {definition: {
       ...definition, config: {...definition.config, name},
@@ -60,7 +60,7 @@ describe("fleets routes — detail header and summary", () => {
       params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
     })));
     expect(markup).toContain(FLEET_TITLE_MARKUP);
-    expect(markup).toContain(`>${agentDisplayName(FLEET_ID)}</p>`);
+    expect(markup).not.toContain(`>agt-${FLEET_ID}</p>`);
   });
 
   // The transcript is the one surface that wants the bodies, and the list read
@@ -113,17 +113,9 @@ describe("fleets routes — detail header and summary", () => {
     });
     const { default: Page } =
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
-    const markup = renderToStaticMarkup(
-      createElement(
-        TooltipProvider,
-        null,
-        await Page({
-          params: Promise.resolve({ workspaceId: "ws_1", id: FLEET_ID }),
-        }),
-      ),
-    );
-    expect(markup).toContain("1 approval waiting");
-    expect(markup).toContain(`href="/w/ws_1/approvals?fleetId=${FLEET_ID}"`);
+    const props = chatProps(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
+    expect(props.initialSummary.pendingApprovals).toBe(1);
+    expect(props.approvalsHref).toBe(`/w/ws_1/approvals?fleetId=${FLEET_ID}`);
   });
 
   it("redirects an obsolete Settings query to the canonical Chat URL", async () => {

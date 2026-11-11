@@ -134,8 +134,9 @@ describe("FleetThread — tool cells", () => {
     // An older runner's call settled without saying how: no colour claims success.
     expect(bulletOf(unsaid!).getAttribute("class")).not.toContain(SUCCESS);
     expect(bulletOf(unsaid!).getAttribute("class")).toContain("text-text-dim");
-    expect(bulletOf(live!).getAttribute("data-tool-shimmer")).toBe("true");
-    expect(bulletOf(ok!).getAttribute("data-tool-shimmer")).toBe("false");
+    expect(bulletOf(live!).getAttribute("data-tool-shimmer")).toBeNull();
+    expect(bulletOf(live!).getAttribute("class")).toContain("text-muted-foreground");
+    expect(bulletOf(ok!).getAttribute("data-tool-shimmer")).toBeNull();
   });
 
   it("test_tool_cell_previews_three_rows", () => {

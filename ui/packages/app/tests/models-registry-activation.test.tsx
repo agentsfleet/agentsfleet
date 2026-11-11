@@ -4,6 +4,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
 import type { TenantModelEntry, TenantModelEntryList } from "@/lib/types";
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
 const WORKSPACE_ID = "ws_1";
 const MODEL_ID = "claude-sonnet-5";

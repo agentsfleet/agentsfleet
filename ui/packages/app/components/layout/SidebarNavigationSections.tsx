@@ -48,7 +48,7 @@ function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed }: Nav
 
 function NavGroup({ children }: { children: ReactNode }) {
   return (
-    <TooltipProvider><div className="flex flex-col gap-md px-lg">
+    <TooltipProvider><div className="flex flex-col items-center gap-md px-sm md:items-stretch md:px-lg">
       {children}
     </div></TooltipProvider>
   );
@@ -74,12 +74,12 @@ function NavItem({
   const content = (
     <>
       <Icon size={20} className="shrink-0" aria-hidden="true" />
-      {collapsed ? null : label}
+      {collapsed ? null : <span className="hidden md:inline">{label}</span>}
     </>
   );
   const common = {
-    "aria-label": collapsed ? label : undefined,
-    className: cn("min-h-12 gap-lg", collapsed ? "justify-center px-0" : "px-lg", label === "New fleet" && "bg-cta text-cta-foreground hover:bg-cta-hover hover:text-cta-foreground data-[active=true]:bg-cta data-[active=true]:text-cta-foreground"),
+    "aria-label": label,
+    className: cn("h-11 min-h-11 w-11 gap-lg justify-center px-0 md:h-12 md:min-h-12 md:w-full", !collapsed && "md:justify-start md:px-lg", label === "New fleet" && "mb-md bg-cta text-cta-foreground hover:bg-cta-hover hover:text-cta-foreground data-[active=true]:bg-cta data-[active=true]:text-cta-foreground"),
     onClick,
   };
   const item = external

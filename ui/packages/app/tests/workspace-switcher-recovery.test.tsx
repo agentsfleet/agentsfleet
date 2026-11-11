@@ -12,6 +12,7 @@ vi.mock("@/components/domain/island-dynamic/intent-module-loader", () => ({
   useIntentModule: () => ({ status: "idle" }), maySpeculateOnHover: () => false,
 }));
 import WorkspaceSwitcher from "@/components/layout/WorkspaceSwitcher";
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "model-owner"})}));
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); route.path = "/w/new/fleets/new"; });
 it("refreshes stale shell workspace data once per missing workspace without a refresh loop", () => {

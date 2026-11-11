@@ -1,6 +1,8 @@
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
+import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 // What the shell adds for teams: the Members entry and the invite notice. Only
 // the identity provider's widgets, analytics, and Next's routing are stood in
@@ -33,18 +35,19 @@ function shell(props: Omit<React.ComponentProps<typeof ShellFrame>, "children"> 
   return renderToStaticMarkup(<ShellFrame {...props}><div /></ShellFrame>);
 }
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {cleanup(); vi.clearAllMocks();});
 
 describe("shell for teams", () => {
-  it("shows the served credit balance in the header and links to billing", () => {
+  it("keeps the served credit balance beside Usage in the account menu", async () => {
     usePathname.mockReturnValue("/w/ws_1/fleets");
-    const markup = shell({ billing: {
+    render(<ShellFrame billing={{
       balance_nanos: "3680000000", updated_at: "2026-10-19T00:00:00Z",
       is_exhausted: false, exhausted_at: null,
-    } });
-    expect(markup).toContain('aria-label="Credits $3.68: Credit balance"');
-    expect(markup).toContain('href="/settings/billing"');
-    expect(markup).toContain("$3.68");
+    }}><p>Current work</p></ShellFrame>);
+    await userEvent.setup().click(screen.getByRole("button", {name: "Workspace and account menu"}));
+    const usage = await screen.findByRole("menuitem", {name: /Usage/});
+    expect(usage.getAttribute("href")).toBe("/settings/billing");
+    expect(usage.textContent).toContain("$3.68");
   });
 
   it("should show the invite notice above the page only while an invite waits", () => {

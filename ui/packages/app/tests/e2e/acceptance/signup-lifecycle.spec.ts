@@ -22,9 +22,9 @@ import { expect, test } from "@playwright/test";
 import { deleteUser, findUserIdByEmail } from "./fixtures/clerk-admin";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
-  expectDetailKilled,
+  expectDetailArchived,
   expectRowState,
-  killFleet,
+  archiveFleet,
   resumeFleet,
   stopFleet,
 } from "./fixtures/lifecycle";
@@ -131,8 +131,8 @@ test.describe("signup → install → lifecycle", () => {
     await expectRowState(page, fleetId, "live");
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
-    await killFleet(page);
-    await expectDetailKilled(page);
+    await archiveFleet(page);
+    await expectDetailArchived(page);
     await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "failed");
   });

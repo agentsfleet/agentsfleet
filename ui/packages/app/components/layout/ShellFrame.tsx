@@ -1,16 +1,14 @@
-import { DashboardShellHeader } from "@agentsfleet/design-system";
 import type { WaitingInvite } from "@/lib/api/invites";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
 import type { TenantBilling } from "@/lib/types";
 import { RouteLoading } from "./RouteLoading";
-import { BalanceLink } from "./BalanceLink";
 import { InviteNotice } from "./InviteNotice";
 import {
   DesktopSidebarNavigation,
 } from "./SidebarNavigation";
-import { ShellControls } from "./ShellControls";
 import { WorkspaceCreationProvider } from "./WorkspaceCreationProvider";
 import { DraftSidebarProvider } from "./draft-sidebar-state";
+import { FleetNoticeProvider } from "./FleetNoticeProvider";
 
 const SIDEBAR_NAV_ID = "app-sidebar-nav";
 
@@ -34,34 +32,21 @@ export function ShellFrame({
   const knownWorkspaceIds = workspaces.map((workspace) => workspace.id);
   return (
     <WorkspaceCreationProvider knownWorkspaceIds={knownWorkspaceIds}>
-      <DraftSidebarProvider><div
-        className="app-surface app-shell fixed inset-0 grid h-dvh grid-cols-1 grid-rows-[56px_1fr] md:grid-cols-[auto_1fr]"
+      <DraftSidebarProvider><FleetNoticeProvider><div
+        className="app-surface app-shell fixed inset-0 grid h-dvh grid-cols-[auto_minmax(0,1fr)] bg-surface-deep py-md pr-md"
         data-surface="dashboard"
       >
-        {/* Each header cluster supplies its own padding to align with the sidebar. */}
-        <DashboardShellHeader className="px-0 md:px-0">
-          <ShellControls
-            workspaces={workspaces}
-            sidebarNavId={SIDEBAR_NAV_ID}
-          />
-          <div className="app-shell-trailing ml-auto flex min-w-0 items-center gap-md md:gap-xl">
-            {/* A failed billing read hides the balance. */}
-            {billing ? (
-              <BalanceLink balanceNanos={billing.balance_nanos} isExhausted={billing.is_exhausted} />
-            ) : null}
-          </div>
-        </DashboardShellHeader>
-
         <aside
           id={SIDEBAR_NAV_ID}
-          className="app-sidebar hidden min-h-0 flex-col bg-card md:flex"
+          className="app-sidebar flex min-h-0 flex-col"
         >
           <DesktopSidebarNavigation
             workspaces={workspaces}
+            billing={billing}
           />
         </aside>
 
-        <main className="app-dashboard-canvas min-h-0 overflow-y-auto has-[#fleet-chat-transcript]:[--app-canvas-block:var(--spacing-md)] has-[#fleet-chat-transcript]:overflow-hidden md:has-[[data-page-layout]]:overflow-hidden">
+        <main className="app-dashboard-canvas min-h-0 min-w-0 overflow-y-auto rounded-lg border border-border-subtle bg-background has-[#fleet-chat-transcript]:[--app-canvas-block:0px] has-[#fleet-chat-transcript]:overflow-hidden md:has-[[data-page-layout]]:overflow-hidden">
           <div className="flex min-h-full w-full flex-col has-[#fleet-chat-transcript]:h-full has-[#fleet-chat-transcript]:min-h-0 md:has-[[data-page-layout]]:h-full md:has-[[data-page-layout]]:min-h-0">
             <InviteNotice waiting={waitingInvites} />
             {children}
@@ -72,7 +57,7 @@ export function ShellFrame({
             </div>
           </div>
         </main>
-      </div></DraftSidebarProvider>
+      </div></FleetNoticeProvider></DraftSidebarProvider>
     </WorkspaceCreationProvider>
   );
 }

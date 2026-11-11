@@ -15,6 +15,7 @@ const EMPTY_HINT = "Message this fleet or wait for its next trigger. Activity an
 const BACKFILL_LABEL = "Loading recent activity";
 
 type FleetThreadViewportProps = SteerComposerProps & {
+  archived?: boolean;
   setup?: ReactNode;
   setupEventId?: string;
   eventsCount: number;
@@ -26,11 +27,12 @@ type FleetThreadViewportProps = SteerComposerProps & {
 // Memoised: the thread re-renders on every streamed flush, and nothing this
 // shell draws moves with one. The messages below subscribe on their own.
 export const FleetThreadViewport = memo(function FleetThreadViewport({
-  eventsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft, modelLabel, setup, setupEventId,
+  eventsCount, connectionStatus, onRetry, pending, onResend, onDismiss, onRestored, onDraft, modelLabel, setup, setupEventId, archived = false,
 }: FleetThreadViewportProps) {
   return <ChatThread testId="fleet-thread-root" label="Fleet chat" footer={<>
     <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
-    <SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} />
+    {archived ? <p className="py-xl text-center text-label text-muted-foreground">Archived · This fleet is permanently stopped. Its history is available to read.</p>
+      : <SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} />}
   </>}>
     <SettledReplyStatus><ChatHistory setup={setup} setupEventId={setupEventId} eventsCount={eventsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
   </ChatThread>;

@@ -18,9 +18,9 @@ import { signInAs } from "./fixtures/auth";
 import { FIXTURE_KEY } from "./fixtures/constants";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
-  expectDetailKilled,
+  expectDetailArchived,
   expectRowState,
-  killFleet,
+  archiveFleet,
   resumeFleet,
   stopFleet,
 } from "./fixtures/lifecycle";
@@ -83,8 +83,8 @@ test.describe("login → install → lifecycle", () => {
     await expectRowState(page, fleetId, "live");
 
     await page.goto(workspaceHref(workspaceId, `fleets/${fleetId}`));
-    await killFleet(page);
-    await expectDetailKilled(page);
+    await archiveFleet(page);
+    await expectDetailArchived(page);
     await page.goto(workspaceHref(workspaceId, "fleets"));
     await expectRowState(page, fleetId, "failed");
   });

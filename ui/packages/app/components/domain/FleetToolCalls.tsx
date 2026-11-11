@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import type { ToolActivity } from "./tool-call-activity";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, List, SignalSpinner, cn } from "@agentsfleet/design-system";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, List, cn } from "@agentsfleet/design-system";
 import { CELL_STATE } from "./tool-call-copy";
 import { ACTIVITY_ICONS, CELL_COPY, TRIGGER_CLASS } from "./tool-call-presentation";
 
@@ -17,7 +17,7 @@ export function ToolCallList({children, activity}: {children: ReactNode; activit
   return <Accordion type="single" collapsible className="mb-md">
     <AccordionItem value={COMMANDS} className="border-0">
       <AccordionTrigger className={TRIGGER_CLASS} aria-label={`${TOOL_CALLS_LABEL}: ${label}`} title={label}>
-        <span aria-hidden="true" className={cn("inline-flex size-4 shrink-0 items-center justify-center", CELL_COPY[activity.state].tone)}>{running ? <SignalSpinner className="size-4 text-current" /> : <Icon className="size-4 shrink-0" />}</span>
+        <span aria-hidden="true" className={cn("inline-flex size-4 shrink-0 items-center justify-center", running ? "text-muted-foreground" : CELL_COPY[activity.state].tone)}><Icon className="size-4 shrink-0" /></span>
         <span className="min-w-0 flex-1 text-left sm:truncate" role={running ? "status" : undefined}>
           <span className="block sm:inline" data-chat-loading={running}>{activity.label}</span>{activity.target ? <> <span className="block truncate text-label text-text-dim sm:inline sm:text-inherit">{activity.target}</span></> : null}
         </span>

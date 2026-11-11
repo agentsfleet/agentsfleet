@@ -56,7 +56,7 @@ describe("private chat Save", () => {
     expect(fixture.saveAttempts).toBe(0);
     await waitFor(() => expect(screen.getByRole("button", {name: "Save fleet"})).toHaveProperty("disabled", false));
   });
-  it("sends ordinary text and saves from the header, and stays in setup chat", async () => {
+  it("sends ordinary text and opens the confirmed fleet after saving from the header", async () => {
     await converse();
     const message = fixture.writes()[0];
     expect(message?.body).toMatchObject({message: "Investigate failures", source: {kind: "blank"}});
@@ -66,6 +66,7 @@ describe("private chat Save", () => {
     await screen.findByRole("heading", {name: "Setup saved · v1"});
     expect(fixture.saveAttempts).toBe(1);
     expect(chatRouter.push).not.toHaveBeenCalled();
+    await waitFor(() => expect(chatRouter.replace).toHaveBeenCalledExactlyOnceWith(`/w/${WORKSPACE}/fleets/${FLEET_ID}`, {scroll: false}));
     expect((await screen.findByRole("link", {name: "Open fleet"})).getAttribute("href")).toBe(`/w/${WORKSPACE}/fleets/${FLEET_ID}`);
     expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(0);
     const save = fixture.writes().find((call) => call.path.endsWith("/fleets"));

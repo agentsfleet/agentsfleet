@@ -1,13 +1,12 @@
 import { test } from "./fixtures/chat-probe";
 import { expect } from "@playwright/test";
 
-test("fleet Summary is always inline and model stays beside Send", async ({page, chatProbe}, info) => {
+test("fleet Summary is inline and the composer keeps the approved horizontal alignment", async ({page, chatProbe}, info) => {
   await page.goto(`${chatProbe}?alignment=1`);
   await expect(page.getByRole("link", {name: "Back to your fleets", exact: true})).toHaveCount(0);
   if (info.project.name !== "mobile-chromium") {
     await expect(page.getByRole("navigation", {name: "Primary"})).toBeVisible();
     await expect(page.getByRole("link", {name: "Your fleets", exact: true})).toBeVisible();
-    await expect(page.getByRole("link", {name: "ci-repairer", exact: true})).toHaveAttribute("aria-current", "page");
   }
   const input = page.getByRole("textbox");
   await input.fill("Keep my exact unsent instruction");
@@ -18,15 +17,16 @@ test("fleet Summary is always inline and model stays beside Send", async ({page,
   const sendBox = await send.boundingBox();
   expect(modelBox).not.toBeNull(); expect(sendBox).not.toBeNull();
   expect(Math.abs(modelBox!.y + modelBox!.height / 2 - sendBox!.y - sendBox!.height / 2)).toBeLessThan(8);
-  expect(sendBox!.x - modelBox!.x - modelBox!.width).toBeLessThan(24);
-  const edit = page.getByRole("link", {name: "Edit setup", exact: true});
+  expect(sendBox!.x - modelBox!.x - modelBox!.width).toBeGreaterThan(16);
+  await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
+  const edit = page.getByRole("menuitem", {name: "Edit setup", exact: true});
   await expect(edit.locator("svg")).toBeVisible();
-  await expect(edit).toHaveText("");
   await expect(edit).toHaveAttribute("href", /fleets\/new\?fleet=/);
+  await page.keyboard.press("Escape");
   await page.screenshot({path: info.outputPath("fleet-conversation.png")});
   await expect(page.getByRole("button", {name: /Validate the Linkwarden repair/})).toBeVisible();
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
-  await expect(page.getByRole("heading", {name: "Durable tasks"})).toBeVisible();
+  await expect(page.getByRole("heading", {name: "Tasks"})).toBeVisible();
   await expect(page.getByRole("complementary", {name: "Summary"})).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.screenshot({path: info.outputPath("fleet-summary.png")});

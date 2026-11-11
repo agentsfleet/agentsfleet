@@ -23,6 +23,7 @@
   --surface-3: #303631;
 
   --border: #3d4640;
+  --border-subtle: #303b33;
   --border-strong: #7c8980;
 
   --text: #f2f0e9;
@@ -163,6 +164,7 @@
   --surface-2: #f0f0e9;
   --surface-3: #e5e9e0;
   --border: #c5d3cd;
+  --border-subtle: #dce3de;
   --border-strong: #738a80;
   --text: #14251f;
   /* Light's counterpart: warmed the same direction, off pure ink. */

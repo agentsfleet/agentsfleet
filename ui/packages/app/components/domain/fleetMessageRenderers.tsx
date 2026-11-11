@@ -105,7 +105,7 @@ function FleetMessage({ message }: { message: MessageState }) {
           showSender={sender.shown}
           createdAt={message.createdAt}
         >
-          <FleetMarkdown expandable>{trigger}</FleetMarkdown>
+          {trigger.trim() ? <FleetMarkdown expandable>{trigger}</FleetMarkdown> : <p className="text-muted-foreground">Content preview unavailable.</p>}
         </FleetMessageRow>
       )}
       {isSplitTrigger ? null : (

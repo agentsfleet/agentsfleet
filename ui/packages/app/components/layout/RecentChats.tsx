@@ -8,7 +8,7 @@ import { NavItem, IconAction, Button } from "@agentsfleet/design-system";
 import { TrashIcon } from "@phosphor-icons/react/ssr";
 import { FleetListSchema, type NativeFleetSummary } from "@/lib/api/fleet-detail";
 import { RecentCollection } from "@/lib/api/recent-collection";
-import { FleetDeleteDialog } from "./FleetDeleteDialog";
+import { FleetLifecycleDialog } from "./FleetLifecycleDialog";
 
 function useRecentPage<T extends {id: string}>(path: string, schema: z.ZodType<{items: T[]; next_cursor: string | null}>) {
   const [collection, setCollection] = useState<RecentCollection<T> | null>(null);
@@ -35,7 +35,7 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
   const removed = (id: string): void => {
     collection.remove(id); setSelected(null);
     if (pathname.includes(`/fleets/${id}`)) router.replace(`/w/${workspace}/fleets/new`);
-    router.refresh();
+    else router.refresh();
   };
   return <>
     {page.items.map(fleet => <div key={fleet.id} className="group relative mb-xs">
@@ -46,7 +46,7 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
           {fleet.status === "stopped" ? <span className="text-eyebrow text-muted-foreground">Stopped</span> : null}
         </Link>
       </NavItem>
-      <IconAction variant="ghost" label={`Delete fleet: ${fleet.name}`} disabled={selected !== null}
+      <IconAction variant="ghost" label={`Permanently delete fleet: ${fleet.name}`} disabled={selected !== null}
         className="absolute right-xs top-1/2 -translate-y-1/2 text-muted-foreground opacity-0 transition-opacity duration-snap group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
         onClick={() => setSelected(fleet)}><TrashIcon size={14} aria-hidden="true" /></IconAction>
     </div>)}
@@ -54,6 +54,6 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
     {!page.loading && !page.error && !page.items.length ? <p className="px-md text-label text-muted-foreground">Saved fleets will appear here.</p> : null}
     {page.error ? <output className="px-md py-sm text-label text-muted-foreground">{page.error} <Button variant="link" size="sm" disabled={page.loading} onClick={() => {void collection.load();}}>Refresh</Button></output> : null}
     {page.more ? <Button variant="ghost" size="sm" disabled={page.loading} onClick={() => {void collection.load(true);}}>Load more fleets</Button> : null}
-    {selected ? <FleetDeleteDialog fleet={selected} workspace={workspace} onRemoved={removed} onClose={() => setSelected(null)} /> : null}
+    {selected ? <FleetLifecycleDialog action="delete" fleet={selected} workspace={workspace} onRemoved={removed} onClose={() => setSelected(null)} /> : null}
   </>;
 }

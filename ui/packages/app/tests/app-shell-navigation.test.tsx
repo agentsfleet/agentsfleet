@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mocks = vi.hoisted(() => ({ pathname: vi.fn(), track: vi.fn() }));
@@ -46,7 +46,10 @@ describe("conversation-first app navigation", () => {
     expect(action.classList.contains("justify-center")).toBe(true);
     expect(action.querySelector("svg")?.getAttribute("width")).toBe("20");
     expect(action.getAttribute("href")).toBe("/w/ws_1/fleets/new");
-    await userEvent.setup().tab();
+    const user = userEvent.setup();
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("link", {name: "agentsfleet home"}));
+    await user.tab();
     expect(document.activeElement).toBe(action);
     expect(await screen.findByRole("tooltip", {name: "New fleet"})).toBeTruthy();
   });
@@ -121,16 +124,14 @@ describe("conversation-first app navigation", () => {
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("menu")).toBeNull();
   });
-  it("keeps collapsed controls named and opens full navigation on mobile", async () => {
-    mount(); const user = userEvent.setup();
-    expect(screen.getByRole("button", {name: "Expand sidebar"})).toBeTruthy();
+  it("keeps collapsed destinations and the account menu reachable without a drawer", () => {
+    mount();
+    expect(screen.getByRole("button", {name: "Expand navigation"})).toBeTruthy();
     expect(screen.queryByText("Your fleets")).toBeNull();
     expect(screen.getByRole("link", { name: "Your fleets" })).toBeTruthy();
     expect(screen.getByRole("button", { name: MENU })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Open navigation" }));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("Your fleets")).toBeTruthy();
-    await user.click(within(dialog).getByRole("link", { name: "Your fleets" }));
+    expect(screen.getByRole("link", {name: "Plugins"})).toBeTruthy();
+    expect(screen.queryByRole("button", {name: "Open navigation"})).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

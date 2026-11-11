@@ -1,282 +1,100 @@
 import React from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { routerRefresh } from "./helpers/dashboard-mocks";
-import { resetDashboardMocks, stopFleetMock, setFleetStatusActionMock } from "./helpers/dashboard-app-mocks";
+import { FleetActions } from "@/app/(dashboard)/w/[workspaceId]/fleets/[id]/components/FleetActions";
+import { FleetDetailSchema } from "@/lib/api/fleet-detail";
+import { FLEET_DETAIL, response } from "./helpers/draft-fixtures";
 
-const KILL_FAILURE_PATTERN = /Couldn't kill this fleet/i;
-
-// Common dashboard mock harness — see tests/helpers/dashboard-mocks.tsx.
-vi.mock("next/navigation", async () => (await import("./helpers/dashboard-mocks")).nextNavigationMock());
-vi.mock("next/link", async () => (await import("./helpers/dashboard-mocks")).nextLinkMock());
-vi.mock("@clerk/nextjs", async () => (await import("./helpers/dashboard-mocks")).clerkMock());
-vi.mock("@clerk/nextjs/server", async () => (await import("./helpers/dashboard-mocks")).clerkServerMock());
-vi.mock("@/lib/workspace", async () => (await import("./helpers/dashboard-mocks")).workspaceMock());
-vi.mock("@phosphor-icons/react/ssr", async () => (await import("./helpers/dashboard-mocks")).phosphorMock());
-vi.mock("@agentsfleet/design-system", async (orig) => {
-  const h = await import("./helpers/dashboard-mocks");
-  return h.designSystemCore(await orig<Record<string, unknown>>());
-});
-
-// App-specific dashboard mocks — see tests/helpers/dashboard-app-mocks.tsx.
-vi.mock("@/lib/api/fleets", async () => (await import("./helpers/dashboard-app-mocks")).fleetsApiMock());
-vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", async () => (await import("./helpers/dashboard-app-mocks")).fleetActionsMock());
-vi.mock("@/lib/api/tenant_billing", async () => (await import("./helpers/dashboard-app-mocks")).tenantBillingMock());
-vi.mock("@/lib/api/tenant_provider", async () => (await import("./helpers/dashboard-app-mocks")).tenantProviderMock());
-vi.mock("@/lib/api/events", async () => (await import("./helpers/dashboard-app-mocks")).eventsMock());
-vi.mock("@/lib/api/secrets", async () => (await import("./helpers/dashboard-app-mocks")).secretsApiMock());
-vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", async () => (await import("./helpers/dashboard-app-mocks")).addSecretFormMock());
-vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList", async () => (await import("./helpers/dashboard-app-mocks")).secretsListMock());
-vi.mock("@/app/(dashboard)/actions", async () => (await import("./helpers/dashboard-app-mocks")).dashboardActionsMock());
+const {setStatus, remove, navigation} = vi.hoisted(() => ({setStatus: vi.fn(), remove: vi.fn(), navigation: {replace: vi.fn(), refresh: vi.fn()}}));
+vi.mock("@/app/(dashboard)/w/[workspaceId]/fleets/actions", () => ({setFleetStatusAction: setStatus, deleteFleetAction: remove}));
+vi.mock("next/navigation", () => ({useRouter: () => navigation}));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "owner", isLoaded: true, isSignedIn: true})}));
+const FLEET = FleetDetailSchema.parse({...FLEET_DETAIL, status: "active"});
+const network = vi.fn<typeof fetch>();
 
 beforeEach(() => {
-  vi.clearAllMocks();
-  resetDashboardMocks();
+  vi.resetAllMocks(); vi.stubGlobal("fetch", network);
+  network.mockResolvedValue(response(FLEET_DETAIL));
+  setStatus.mockImplementation(async (_workspace, _id, status) => ({ok: true, data: {...FLEET, status}}));
+  remove.mockResolvedValue({ok: true, data: undefined});
 });
-afterEach(() => {
-  cleanup();
+afterEach(() => {cleanup(); vi.unstubAllGlobals();});
+
+async function menu(status = "active") {
+  render(React.createElement(FleetActions, {workspaceId: "release", fleet: {...FLEET, status}}));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", {name: "Fleet actions"}));
+  return user;
+}
+async function choose(user: ReturnType<typeof userEvent.setup>, label: string) {
+  await user.click(screen.getByRole("menuitem", {name: label}));
+  return within(screen.getByRole("alertdialog"));
+}
+
+it("offers independent Archive and Permanently delete actions on an active fleet", async () => {
+  await menu();
+  expect(screen.getByRole("menuitem", {name: "Archive"})).toBeTruthy();
+  expect(screen.getByRole("menuitem", {name: "Permanently delete"})).toBeTruthy();
+  expect(screen.getByRole("menuitem", {name: "Stop"})).toBeTruthy();
+  expect(screen.queryByRole("menuitem", {name: "Kill"})).toBeNull();
+  expect(setStatus).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
 });
 
-describe("KillSwitch component", () => {
-  async function renderSwitch(status: string = "active") {
-    const { default: KillSwitch } = await import(
-      "../app/(dashboard)/w/[workspaceId]/fleets/[id]/components/KillSwitch"
-    );
-    render(
-      React.createElement(KillSwitch, {
-        workspaceId: "ws_1",
-        fleet: { id: "zom_1", status, etag: '"displayed-fleet"' },
-      }),
-    );
-  }
+it("keeps permanent deletion available in archived history without Restore", async () => {
+  await menu("killed");
+  expect(screen.getByRole("menuitem", {name: "Permanently delete"})).toBeTruthy();
+  for (const name of ["Archive", "Restore", "Resume", "Stop"]) expect(screen.queryByRole("menuitem", {name})).toBeNull();
+});
 
-  it("keeps the menu available without lifecycle actions when the fleet is terminal", async () => {
-    await renderSwitch("killed");
-    await userEvent.click(screen.getByRole("button", {name: "Fleet actions"}));
-    expect(screen.queryByRole("menuitem")).toBeNull();
-    expect(setFleetStatusActionMock).not.toHaveBeenCalled();
-  });
+it("keeps an unfamiliar lifecycle state free of guessed destructive actions", async () => {
+  await menu("draining");
+  expect(screen.queryByRole("menuitem")).toBeNull();
+  expect(setStatus).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
+});
 
-  it("offers Resume + Kill when fleet is stopped", async () => {
-    await renderSwitch("stopped");
-    expect(screen.queryByRole("button", { name: /^resume$/i })).toBeNull();
-    await userEvent.click(screen.getByRole("button", {name: "Fleet actions"}));
-    expect(screen.getByRole("menuitem", {name: /^resume$/i})).toBeTruthy();
-    expect(screen.getByRole("menuitem", {name: /^kill$/i})).toBeTruthy();
-  });
+it.each(["stopped", "paused"])("preserves Resume for a temporarily %s fleet", async status => {
+  const user = await menu(status);
+  const dialog = await choose(user, "Resume");
+  await user.click(dialog.getByRole("button", {name: "Resume"}));
+  await waitFor(() => expect(navigation.refresh).toHaveBeenCalledOnce());
+  expect(setStatus).toHaveBeenCalledExactlyOnceWith("release", FLEET.id, "active", FLEET.etag);
+});
 
-  it("offers Resume + Kill when fleet is paused (auto-halt)", async () => {
-    await renderSwitch("paused");
-    expect(screen.queryByRole("button", { name: /^resume$/i })).toBeNull();
-    await userEvent.click(screen.getByRole("button", {name: "Fleet actions"}));
-    expect(screen.getByRole("menuitem", {name: /^resume$/i})).toBeTruthy();
-    expect(screen.getByRole("menuitem", {name: /^kill$/i})).toBeTruthy();
-  });
+it("requires confirmation before a temporary stop and sends the observed ETag", async () => {
+  const user = await menu();
+  const dialog = await choose(user, "Stop");
+  expect(setStatus).not.toHaveBeenCalled();
+  await user.click(dialog.getByRole("button", {name: "Stop"}));
+  await waitFor(() => expect(navigation.refresh).toHaveBeenCalledOnce());
+  expect(setStatus).toHaveBeenCalledExactlyOnceWith("release", FLEET.id, "stopped", FLEET.etag);
+});
 
-  it("keeps the terminal action in an accessible menu and retains its confirmation", async () => {
-    await renderSwitch("active");
-    expect(screen.queryByRole("button", {name: /^kill$/i})).toBeNull();
-    expect(screen.queryByRole("button", {name: /^stop$/i})).toBeNull();
-    const trigger = screen.getByRole("button", {name: "Fleet actions"});
-    expect(trigger.querySelector("[data-icon]")?.getAttribute("aria-hidden")).toBe("true");
-    await userEvent.click(trigger);
-    expect(screen.getByRole("menuitem", {name: /^kill$/i})).toBeTruthy();
-    expect(setFleetStatusActionMock).not.toHaveBeenCalled();
-  });
+it("shows a refusal without navigating away or claiming a status change", async () => {
+  setStatus.mockResolvedValue({ok: false, status: 403, error: "Access denied"});
+  const user = await menu();
+  const dialog = await choose(user, "Stop");
+  await user.click(dialog.getByRole("button", {name: "Stop"}));
+  expect((await screen.findByRole("alert")).textContent).toContain("Access denied");
+  expect(navigation.replace).not.toHaveBeenCalled(); expect(navigation.refresh).not.toHaveBeenCalled();
+  expect(screen.getByRole("alertdialog")).toBeTruthy();
+});
 
-  // Scope confirmation to the dialog so a menu action can never bypass it.
-  async function clickConfirmInDialog(user: ReturnType<typeof userEvent.setup>, name: RegExp) {
-    const dialog = await screen.findByRole("alertdialog");
-    const { within } = await import("@testing-library/react");
-    await user.click(within(dialog).getByRole("button", { name }));
-  }
+it("discards a late response after unmount and excludes duplicate stop submissions", async () => {
+  const pending = Promise.withResolvers<unknown>(); setStatus.mockReturnValueOnce(pending.promise);
+  const user = await menu(); const dialog = await choose(user, "Stop");
+  const button = dialog.getByRole("button", {name: "Stop"});
+  fireEvent.click(button); fireEvent.click(button);
+  expect(setStatus).toHaveBeenCalledOnce();
+  cleanup(); pending.resolve({ok: true, data: {...FLEET, status: "stopped"}});
+  await pending.promise;
+  expect(navigation.refresh).not.toHaveBeenCalled();
+});
 
-  it("active → Stop happy path: click → confirm → setFleetStatusAction(stopped) → refresh", async () => {
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
-    await clickConfirmInDialog(user, /^stop$/i);
-    await waitFor(() =>
-      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "stopped", '"displayed-fleet"'),
-    );
-    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
-  });
-
-  it("stopped → Resume sends status='active'", async () => {
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("stopped");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^resume$/i}));
-    await clickConfirmInDialog(user, /^resume$/i);
-    await waitFor(() =>
-      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "active", '"displayed-fleet"'),
-    );
-  });
-
-  it("active → Kill sends status='killed'", async () => {
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
-    await clickConfirmInDialog(user, /^kill$/i);
-    await waitFor(() =>
-      expect(setFleetStatusActionMock).toHaveBeenCalledWith("ws_1", "zom_1", "killed", '"displayed-fleet"'),
-    );
-  });
-
-  it("keeps confirmation pending and blocks duplicate terminal requests", async () => {
-    let resolveRequest!: (value: { ok: true; data: unknown }) => void;
-    setFleetStatusActionMock.mockReturnValueOnce(new Promise((resolve) => {
-      resolveRequest = resolve;
-    }));
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
-    const dialog = await screen.findByRole("alertdialog");
-    const confirm = within(dialog).getByRole("button", { name: /^kill$/i });
-
-    fireEvent.click(confirm);
-    await waitFor(() => expect(
-      (within(dialog).getByRole("button", { name: /working/i }) as HTMLButtonElement).disabled,
-    ).toBe(true));
-    fireEvent.click(within(dialog).getByRole("button", { name: /working/i }));
-    expect(setFleetStatusActionMock).toHaveBeenCalledTimes(1);
-
-    resolveRequest({ ok: true, data: undefined });
-    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
-  });
-
-  it("reports a rejected terminal request and restores the dialog", async () => {
-    setFleetStatusActionMock.mockRejectedValueOnce(new Error("network down"));
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
-    await clickConfirmInDialog(user, /^kill$/i);
-
-    await waitFor(() => expect(screen.getByRole("alert").textContent).toMatch(/network down/i));
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
-    expect(
-      (within(screen.getByRole("alertdialog")).getByRole("button", { name: /^kill$/i }) as HTMLButtonElement).disabled,
-    ).toBe(false);
-  });
-
-  it("uses the action fallback when a terminal request rejects without an Error", async () => {
-    setFleetStatusActionMock.mockRejectedValueOnce(null);
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
-    await clickConfirmInDialog(user, /^kill$/i);
-
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(KILL_FAILURE_PATTERN),
-    );
-    expect(screen.getByRole("alertdialog")).toBeTruthy();
-  });
-
-  it("409 conflict closes the dialog and refreshes (status changed elsewhere)", async () => {
-    const { ApiError } = await import("../lib/api/errors");
-    stopFleetMock.mockRejectedValue(new ApiError("transition not allowed", 409, "UZ-AGT-010", "req_x"));
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
-    await clickConfirmInDialog(user, /^stop$/i);
-    await waitFor(() => expect(routerRefresh).toHaveBeenCalled());
-  });
-
-  it("non-409 error keeps dialog open (status rolled back)", async () => {
-    stopFleetMock.mockRejectedValue(new Error("network down"));
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
-    await clickConfirmInDialog(user, /^stop$/i);
-    await waitFor(() => expect(stopFleetMock).toHaveBeenCalled());
-    expect(screen.queryByRole("alertdialog")).toBeTruthy();
-  });
-
-  it("server action reporting unauth surfaces the error and rolls back the optimistic flip", async () => {
-    setFleetStatusActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: "Not authenticated",
-      status: 401,
-    });
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
-    await clickConfirmInDialog(user, /^stop$/i);
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
-    );
-    expect(stopFleetMock).not.toHaveBeenCalled();
-  });
-
-  it("server action returning empty error string falls back to 'Failed to stop fleet' default", async () => {
-    setFleetStatusActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: "",
-      status: 500,
-    });
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
-    await clickConfirmInDialog(user, /^stop$/i);
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't stop this fleet/i),
-    );
-  });
-
-  it("resume action error path renders 'Couldn't resume this fleet'", async () => {
-    setFleetStatusActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: "",
-      status: 500,
-    });
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("stopped");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^resume$/i}));
-    await clickConfirmInDialog(user, /^resume$/i);
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(/Couldn't resume this fleet/i),
-    );
-  });
-
-  it("kill action error path renders the action-specific fallback", async () => {
-    setFleetStatusActionMock.mockResolvedValueOnce({
-      ok: false,
-      error: "",
-      status: 500,
-    });
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^kill$/i}));
-    await clickConfirmInDialog(user, /^kill$/i);
-    await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toMatch(KILL_FAILURE_PATTERN),
-    );
-  });
-
-  // Pins the dialog-dismiss path: clicking Cancel drives onOpenChange(false)
-  // which clears pendingAction. Without this, the close-handler line stays
-  // uncovered by patch coverage even though every other interaction works.
-  it("Cancel dismisses the confirm dialog and clears pendingAction", async () => {
-    const user = userEvent.setup({ delay: null });
-    await renderSwitch("active");
-    await user.click(screen.getByRole("button", {name: "Fleet actions"}));
-    await user.click(screen.getByRole("menuitem", {name: /^stop$/i}));
-    const dialog = await screen.findByRole("alertdialog");
-    const { within } = await import("@testing-library/react");
-    await user.click(within(dialog).getByRole("button", { name: /cancel/i }));
-    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect(setFleetStatusActionMock).not.toHaveBeenCalled();
-  });
+it("keeps cancellation free of lifecycle writes", async () => {
+  const user = await menu(); const dialog = await choose(user, "Permanently delete");
+  expect(dialog.getByText(/chat, activity and fleet memory/)).toBeTruthy();
+  await user.click(dialog.getByRole("button", {name: "Cancel"}));
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  expect(network).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
 });

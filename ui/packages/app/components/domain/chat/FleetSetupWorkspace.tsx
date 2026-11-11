@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { createContext, useContext, useMemo } from "react";
 import Link from "next/link";
 import { PencilSimpleIcon } from "@phosphor-icons/react/ssr";
-import { Button } from "@agentsfleet/design-system";
+import { Button, DropdownMenuItem } from "@agentsfleet/design-system";
 import { useCurrentUser } from "@/lib/auth/client";
 import { FleetStreamProvider } from "../FleetStreamProvider";
 import { useFleetModel, type FleetModelOwner } from "./useFleetModel";
@@ -34,10 +34,21 @@ export function EditSetupButton(props: SetupLocation | {inline: true}) {
   const inline = "inline" in props;
   const location = inline ? setup?.location : props;
   if (!location) return <>Edit setup</>;
-  const query = new URLSearchParams({fleet: location.fleet, setup_revision: location.revision});
   if (setup?.modelChanging) return <Button variant={inline ? "link" : "outline"} size={inline ? "sm" : "icon"} aria-label="Edit setup" disabled>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Button>;
   return <Button variant={inline ? "link" : "outline"} size={inline ? "eyebrow" : "icon"} aria-label="Edit setup" title="Edit setup" asChild
     className={inline ? "h-auto px-0 align-baseline text-eyebrow" : undefined}>
-    <Link href={`/w/${location.workspace}/fleets/new?${query}`}>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Link>
+    <Link href={editSetupHref(location)}>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Link>
   </Button>;
+}
+
+export function EditSetupMenuItem(location: SetupLocation) {
+  const disabled = useFleetSetup()?.modelChanging ?? false;
+  return <DropdownMenuItem asChild disabled={disabled}><Link href={editSetupHref(location)}>
+    <PencilSimpleIcon size={16} aria-hidden="true" />Edit setup
+  </Link></DropdownMenuItem>;
+}
+
+function editSetupHref(location: SetupLocation): string {
+  const query = new URLSearchParams({fleet: location.fleet, setup_revision: location.revision});
+  return `/w/${location.workspace}/fleets/new?${query}`;
 }

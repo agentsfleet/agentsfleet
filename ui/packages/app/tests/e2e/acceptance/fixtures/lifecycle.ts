@@ -1,7 +1,7 @@
 /**
- * Shared selectors + action helpers for KillSwitch lifecycle transitions.
+ * Shared selectors + action helpers for fleet lifecycle transitions.
  *
- * The Stop / Resume / Kill flow is the same Radix AlertDialog wiring across
+ * The Stop / Resume / Archive flow is the same Radix AlertDialog wiring across
  * every spec that drives it: lifecycle, kill, and the two full-lifecycle
  * scenarios. Each action is a menu item in Fleet actions + a confirm
  * button inside an alertdialog role. Without a shared helper the four specs
@@ -21,13 +21,12 @@ const ROW_STATE_TIMEOUT_MS = 15_000;
 
 type RowState = "live" | "parked" | "failed";
 
-async function confirmAction(page: Page, label: "Stop" | "Resume" | "Kill"): Promise<void> {
+async function confirmAction(page: Page, label: "Stop" | "Resume" | "Archive"): Promise<void> {
   await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
   await page.getByRole("menuitem", {name: label, exact: true}).click();
   const dialog = page.getByRole("alertdialog");
   await expect(dialog).toBeVisible();
-  // The dialog and status flip optimistically the moment confirm is clicked;
-  // only the Server Action's response proves the transition reached the API.
+  // Wait for the confirmed Server Action before leaving the current route.
   // Without this wait a spec that navigates right after aborts the in-flight
   // action POST and the fleet never actually changes state.
   const actionSettled = page.waitForResponse(
@@ -49,8 +48,10 @@ export async function resumeFleet(page: Page): Promise<void> {
   await confirmAction(page, "Resume");
 }
 
-export async function killFleet(page: Page): Promise<void> {
-  await confirmAction(page, "Kill");
+export async function archiveFleet(page: Page): Promise<void> {
+  await confirmAction(page, "Archive");
+  await expect(page.getByTestId("fleet-notice")).toContainText("Fleet archived");
+  await page.getByRole("link", {name: "View history", exact: true}).click();
 }
 
 export async function expectRowState(
@@ -80,11 +81,12 @@ export async function expectRowState(
   });
 }
 
-// A killed fleet exposes only its terminal cleanup action in the detail header.
-export async function expectDetailKilled(page: Page): Promise<void> {
-  await expect(page.getByRole("button", { name: "Delete fleet", exact: true })).toBeVisible({
-    timeout: ROW_STATE_TIMEOUT_MS,
-  });
-  await expect(page.getByRole("button", { name: "Stop" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Kill" })).toHaveCount(0);
+// Archived history permits permanent deletion without restoring execution.
+export async function expectDetailArchived(page: Page): Promise<void> {
+  await expect(page.getByLabel("Fleet status: archived")).toBeVisible({timeout: ROW_STATE_TIMEOUT_MS});
+  await expect(page.getByRole("textbox")).toHaveCount(0);
+  await page.getByRole("button", {name: "Fleet actions", exact: true}).click();
+  await expect(page.getByRole("menuitem", {name: "Permanently delete", exact: true})).toBeVisible();
+  for (const name of ["Stop", "Resume", "Restore", "Archive"]) await expect(page.getByRole("menuitem", {name, exact: true})).toHaveCount(0);
+  await page.keyboard.press("Escape");
 }

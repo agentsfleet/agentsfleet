@@ -12,7 +12,8 @@ import { TaskDetailView } from "./TaskDetail";
 import { confirmed } from "./use-task-read";
 import { FleetTaskProvider, useFleetTaskView } from "./FleetTaskProvider";
 import { workActivity } from "./WorkActivity";
-import { WorkChanges, WorkOutputs, WorkSection, WorkSources } from "./WorkContextSections";
+import { WorkApprovals, WorkChanges, WorkOutputs, WorkSection, WorkSources } from "./WorkContextSections";
+import { WorkWakeups } from "./WorkWakeups";
 
 type RowsProps = {workspaceId: string; fleetId: string; tasks: readonly TaskSummary[]; details: TaskDetails; events: readonly FleetEvent[]; retry: () => void; retryDetails: () => void};
 
@@ -28,16 +29,21 @@ export function TaskPanel(props: FleetTaskProps) {
 function CurrentWork() {
   const view = useFleetTaskView();
   if (!view?.subject) return null;
-  const {workspaceId, fleetId, sources, events = EMPTY_EVENTS, read} = view;
-  if (!read) return <Section asChild className="block gap-0"><section aria-label="Current work"><WorkLoading /></section></Section>;
-  const {resource, details, retry, retryDetails} = read;
-  const page = confirmed(resource);
+  const {workspaceId, fleetId, sources, events = EMPTY_EVENTS, read, approvals, schedules} = view;
+  const page = read ? confirmed(read.resource) : null;
   const tasks = page?.items ?? EMPTY_TASKS;
   return <Section asChild className="block gap-0"><section aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-lg">
-    <WorkReadStatus resource={resource} retry={retry} />
-    {page ? <><WorkSection title="Durable tasks">
-      {!tasks.length ? <p className="text-eyebrow text-muted-foreground">No unfinished tasks.</p> : <TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={details} events={events} retry={retry} retryDetails={retryDetails} />}
-    </WorkSection><WorkOutputs details={details} /><WorkChanges events={events} /><WorkSources sources={sources} /></> : null}
+    {page ? <WorkApprovals approvals={approvals} /> : null}
+    {read ? <WorkReadStatus resource={read.resource} retry={read.retry} /> : <WorkLoading />}
+    {page ? <>
+    {read && tasks.length ? <WorkSection title="Tasks">
+      <TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={read.details} events={events} retry={read.retry} retryDetails={read.retryDetails} />
+    </WorkSection> : null}
+    {read ? <WorkOutputs details={read.details} /> : null}
+    <WorkChanges events={events} />
+    <WorkSources sources={sources} />
+    <WorkWakeups schedules={schedules} />
+    {!tasks.length ? <p className="text-eyebrow text-muted-foreground">No unfinished tasks.</p> : null}</> : null}
   </section></Section>;
 }
 

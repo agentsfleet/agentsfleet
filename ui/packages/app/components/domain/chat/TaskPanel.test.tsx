@@ -45,7 +45,7 @@ it("keeps work keyboard-expandable and rereads the shared evidence on native cha
   vi.stubGlobal("fetch", network);
   render(<LiveWork />, {wrapper: streamWrapper});
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
-  expect(screen.getByRole("heading", {name: "Durable tasks"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Tasks"})).toBeTruthy();
   expect(screen.queryByText("What counts as done?")).toBeNull();
   const waiting = screen.getByRole("button", {name: /PR #123 repair/});
   waiting.focus(); await userEvent.keyboard("{Enter}");

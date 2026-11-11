@@ -13,10 +13,10 @@ export function ChatThread({children, footer, label, testId, autoScroll = true}:
   return <ThreadPrimitive.Root asChild data-testid={testId}>
     <Section aria-label={label} className="relative flex min-h-0 flex-1 flex-col overflow-clip bg-background">
     <ThreadPrimitive.Viewport turnAnchor="top" autoScroll={autoScroll && !composing} scrollToBottomOnInitialize={autoScroll} scrollToBottomOnThreadSwitch={autoScroll} role="presentation"
-      className="flex min-h-0 flex-1 flex-col overflow-y-auto px-xl sm:px-chat-inset">
+      className="flex min-h-0 flex-1 flex-col overflow-y-auto px-xl pt-xl sm:px-chat-inset sm:pt-2xl">
       {children}
       <ThreadPrimitive.ViewportFooter data-testid="fleet-chat-footer"
-        className="sticky bottom-0 mx-auto flex max-h-[calc(100%_-_3rem_-_var(--sp-sm))] w-full max-w-chat flex-col bg-background pb-xl pt-lg">
+        className="sticky bottom-0 mx-auto flex max-h-[calc(100%_-_3rem_-_var(--sp-sm))] w-full max-w-chat flex-col bg-background pb-5 pt-lg">
         {autoScroll ? <ThreadPrimitive.ScrollToBottom asChild>
           <Button variant="secondary" size="icon" aria-label="Jump to latest"
             className="absolute bottom-full left-1/2 z-20 mb-sm -translate-x-1/2 rounded-full disabled:pointer-events-none disabled:invisible">

@@ -9,9 +9,9 @@ import { cleanWorkspaceFleets, purgeFixtureFleet } from "./fixtures/teardown";
 import { gotoWorkspace, openSettingsDestination, workspaceHref, workspaceUrlPattern } from "./fixtures/nav";
 import { saveFleetViaUI } from "./fixtures/install-ui";
 import {
-  expectDetailKilled,
+  expectDetailArchived,
   expectRowState,
-  killFleet,
+  archiveFleet,
   resumeFleet,
   stopFleet,
 } from "./fixtures/lifecycle";
@@ -264,8 +264,8 @@ test.describe("operator journey", () => {
     await expectRowState(page, fleetId, "live");
 
     await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
-    await killFleet(page);
-    await expectDetailKilled(page);
+    await archiveFleet(page);
+    await expectDetailArchived(page);
     await page.goto(workspaceHref(wsId, "fleets"));
     await expectRowState(page, fleetId, "failed");
     await deleteFleetWithApiKey(apiUrl, rawApiKey, wsId, fleetId);

@@ -75,9 +75,9 @@ export function renderReplyPart(
       return reply.contextProgress || reply.content.some(item => item.type === "tool-call" && item.result === undefined)
         ? <></> : <Waiting queued={reply.queued} startedAtMs={reply.startedAtMs} />;
     default:
-      // A leaf that returns null gets the library's fallback UI; an empty
-      // fragment keeps parts this reply never carries invisible.
-      return <></>;
+      // New part types must remain visible until a typed renderer supports them.
+      // Never print their raw payload or interpret it as markup.
+      return <p className="text-label text-muted-foreground">This content type is not supported yet.</p>;
   }
 }
 

@@ -136,4 +136,37 @@ describe("useStoredSecrets", () => {
     await waitFor(() => expect(result.current.secretsLoad).toBe(SECRETS_LOAD.error));
     expect(result.current.secrets).toEqual([]);
   });
+
+  it.each(["workspace", "account"])("drops retained keys and late responses when the %s changes", async change => {
+    listSecretsActionMock.mockResolvedValueOnce({ok: true, data: {secrets: [secret("main-key")]}});
+    const late = deferred<unknown>();
+    const {result, rerender} = renderHook(({workspace, subject}) => useStoredSecrets(workspace, subject), {
+      initialProps: {workspace: "main", subject: "owner"},
+    });
+    await act(async () => result.current.refreshSecrets());
+    await waitFor(() => expect(result.current.secretsLoad).toBe(SECRETS_LOAD.ready));
+    listSecretsActionMock.mockReturnValueOnce(late.promise);
+    await act(async () => result.current.refreshSecrets());
+    rerender(change === "workspace" ? {workspace: "staging", subject: "owner"} : {workspace: "main", subject: "teammate"});
+    expect(result.current.secrets).toEqual([]);
+    expect(result.current.secretsLoad).toBe(SECRETS_LOAD.idle);
+    await act(async () => late.resolve({ok: true, data: {secrets: [secret("late-key")]}}));
+    expect(result.current.secrets).toEqual([]);
+    expect(result.current.secretsLoad).toBe(SECRETS_LOAD.idle);
+    listSecretsActionMock.mockResolvedValueOnce({ok: true, data: {secrets: [secret("current-key")]}});
+    await act(async () => result.current.refreshSecrets());
+    await waitFor(() => expect(result.current.secrets.map(key => key.name)).toEqual(["current-key"]));
+    expect(listSecretsActionMock).toHaveBeenLastCalledWith(change === "workspace" ? "staging" : "main");
+  });
+
+  it.each([401, 403])("clears previously readable key metadata after a %s response", async status => {
+    listSecretsActionMock.mockResolvedValueOnce({ok: true, data: {secrets: [secret("previously-authorized")]}});
+    const {result} = renderHook(() => useStoredSecrets("main", "owner"));
+    await act(async () => result.current.refreshSecrets());
+    await waitFor(() => expect(result.current.secretsLoad).toBe(SECRETS_LOAD.ready));
+    listSecretsActionMock.mockResolvedValueOnce({ok: false, error: "Access denied", status});
+    await act(async () => result.current.refreshSecrets());
+    await waitFor(() => expect(result.current.secretsLoad).toBe(SECRETS_LOAD.error));
+    expect(result.current.secrets).toEqual([]);
+  });
 });

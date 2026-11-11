@@ -75,15 +75,16 @@ it("shows recovery only for unfinished setup or first-run admission", async () =
   expect(screen.queryByRole("link")).toBeNull();
 });
 
-it("keeps Edit setup before Fleet actions in the existing fleet workspace", () => {
+it("keeps Edit setup inside Fleet actions in the existing fleet workspace", async () => {
   const fleet = FleetDetailSchema.parse({...FLEET_DETAIL, status: "active"});
   render(<FleetSetupWorkspace account="account" workspace={WORKSPACE} fleet={fleet.id} revision={fleet.setup_revision} viewer="creator"
     header={<FleetHeader fleet={fleet} workspaceId={WORKSPACE} />}><p>Runtime conversation</p></FleetSetupWorkspace>);
-  const edit = screen.getByRole("link", {name: "Edit setup"});
   const actions = screen.getByRole("button", {name: "Fleet actions"});
+  fireEvent.keyDown(actions, {key: "Enter"});
+  const edit = await screen.findByRole("menuitem", {name: "Edit setup"});
   expect(screen.queryByLabelText("Fleet status: active")).toBeNull();
   expect(edit.getAttribute("href")).toContain("/fleets/new?fleet=");
-  expect(edit.compareDocumentPosition(actions) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByRole("menu").contains(edit)).toBe(true);
   expect(screen.queryByRole("button", {name: "Stop"})).toBeNull();
   expect(screen.queryByRole("region", {name: "Saved instructions"})).toBeNull();
   expect(screen.queryByText("Access needs attention before resuming")).toBeNull();

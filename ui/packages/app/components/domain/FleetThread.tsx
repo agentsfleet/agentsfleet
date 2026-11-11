@@ -1,6 +1,7 @@
 "use client";
 
 import type { FleetSources } from "@/lib/fleet-sources";
+import type { Schedule } from "@/lib/api/draft-types";
 
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/events/fleet-activity";
@@ -35,6 +36,9 @@ import { FleetTaskProvider } from "./chat/FleetTaskProvider";
 import { TaskPanel } from "./chat/TaskPanel";
 
 export type FleetThreadProps = {
+  archived?: boolean;
+  schedules?: readonly Schedule[];
+  approvals?: {count: number; href: string};
   sources?: FleetSources;
   modelLabel?: string;
   setupRevision?: string;
@@ -92,8 +96,9 @@ export function FleetThread(props: FleetThreadProps) {
                 className="pointer-events-none absolute right-lg top-sm z-20 rounded-md border border-border bg-background px-sm py-xs shadow-sm">
                 <FleetConnectionIndicator status={stream.connectionStatus} arrived={arrived} />
               </div>}
-              <FleetTaskProvider workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} events={stream.events} sources={props.sources}>
+              <FleetTaskProvider workspaceId={props.workspaceId} fleetId={props.fleetId} subject={taskSubject} revision={stream.tasksSeq} events={stream.events} sources={props.sources} schedules={props.schedules} approvals={props.approvals}>
               <FleetConversationLayout work={work}><FleetThreadViewport modelLabel={props.modelLabel} setup={props.setup} setupEventId={setupEventId}
+                archived={props.archived}
                 eventsCount={stream.events.length} connectionStatus={stream.connectionStatus}
                 onRetry={stream.retryConnection} pending={ledger.pending} onResend={delivery.resend}
                 onDismiss={ledger.writers.dismiss} onRestored={delivery.noteRestored} onDraft={delivery.noteDraft} /></FleetConversationLayout>
@@ -106,13 +111,13 @@ export function FleetThread(props: FleetThreadProps) {
   );
 }
 
-function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, setupRevision}: FleetThreadProps) {
+function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, setupRevision, archived = false}: FleetThreadProps) {
   const stream = useFleetEventStream(workspaceId, fleetId, initial);
   // Connection chrome disappears after its arrival cue settles.
   const arrived = useArrivalCue(stream.connectionStatus);
   // The signed-in identity scopes the durable pending-send ledger.
-  const { userId } = useCurrentUser();
-  const subject = userId ?? viewer;
+  const identity = useCurrentUser();
+  const subject = identity.isLoaded ? identity.userId : identity.userId ?? viewer;
   const names = useMemo(() => senderNamesFrom(subject, senderNames), [subject, senderNames]);
   const ledger = useFleetPendingSends({ subject, workspaceId, fleetId });
   // Stable registry methods keep delivery independent of streamed frames.
@@ -138,8 +143,8 @@ function useThreadRuntime({workspaceId, fleetId, initial, viewer, senderNames, s
   const queue = useFleetSteerQueue(delivery.onNew, runtimeRef);
   const isRunning = useMemo(() => reportsOwnRun(stream.events, subject), [stream.events, subject]);
   const adapter = useMemo(
-    () => ({ isRunning, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew, queue }),
-    [isRunning, entries, convertEntry, delivery.onNew, queue],
+    () => ({ isDisabled: archived, isRunning, messages: entries, convertMessage: convertEntry, onNew: delivery.onNew, queue }),
+    [archived, isRunning, entries, convertEntry, delivery.onNew, queue],
   );
   const runtime = useExternalStoreRuntime<FleetThreadEntry>(adapter);
   useEffect(() => {

@@ -63,9 +63,14 @@ export function toIso(d: Date): string {
 export function formatTimeAbsolute(
   value: string | Date,
   locale: string = DEFAULT_LOCALE,
+  timeZone?: string,
 ): string {
   const d = coerceDate(value);
   if (Number.isNaN(d.getTime())) return TIME_INVALID_FALLBACK;
+  if (timeZone) {
+    try { return new Intl.DateTimeFormat(locale, {...ABSOLUTE_OPTIONS, timeZone}).format(d); }
+    catch { return TIME_INVALID_FALLBACK; }
+  }
   return formatterFor(locale, ABSOLUTE_FORMAT, ABSOLUTE_OPTIONS).format(d);
 }
 

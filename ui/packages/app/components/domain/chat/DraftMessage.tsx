@@ -12,6 +12,7 @@ import { FleetMarkdown, FleetReplyMarkdown } from "../FleetMarkdown";
 import { ChatMessageRow } from "./ChatMessageRow";
 import { ChatFailure } from "./ChatFailure";
 import { ContextProgressStatus } from "../ContextProgressStatus";
+import { Timestamp } from "../FleetTimestamp";
 
 const PART_COMPONENTS = {Text: FleetReplyMarkdown};
 const RetryContext = createContext<{disabled: boolean; retry: (text: string) => Promise<void>} | null>(null);
@@ -41,7 +42,7 @@ export const DraftMessage = memo(function DraftMessage({message}: {message: Mess
     <p className="my-md inline-flex items-center gap-xs py-xs text-body font-medium text-foreground"><CheckCircleIcon className="size-4 text-success" aria-hidden="true" />{text}</p>
   </MessagePrimitive.Root>;
   return <MessagePrimitive.Root>
-    <ChatMessageRow sender={user ? "You" : "Fleet setup"} operator={user} messageRole={message.role}>
+    <ChatMessageRow sender={user ? "You" : "Fleet setup"} operator={user} messageRole={message.role} timestamp={<Timestamp createdAt={message.createdAt} />}>
       {saving ? null : text ? user ? <FleetMarkdown expandable>{text}</FleetMarkdown> : <MessagePrimitive.Parts components={PART_COMPONENTS} /> : null}
       {saving ? null : running && context ? <ContextProgressStatus value={context} /> :
         queued && !text ? <output aria-label="Queued" aria-live="off" className="inline-flex items-center gap-sm text-body-sm text-muted-foreground"><ClockIcon className="size-4 text-warning" aria-hidden="true" />Queued…</output>

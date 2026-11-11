@@ -13,6 +13,7 @@ import {
   Nav,
 } from "@agentsfleet/design-system";
 import type { TenantWorkspace } from "@/lib/api/workspaces";
+import type { TenantBilling } from "@/lib/types";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import { useWorkspaceMenu } from "./workspace-menu-state";
 import { type SwitcherSection, WORKSPACE_LABEL } from "./workspace-groups";
@@ -25,10 +26,11 @@ type WorkspaceSwitcherMenuProps = {
   collapsed?: boolean;
   open: boolean;
   workspaces: TenantWorkspace[];
+  billing?: TenantBilling | null;
   onOpenChange: (open: boolean) => void;
 };
 
-export default function WorkspaceSwitcherMenu({ open, collapsed = false, workspaces, onOpenChange }: WorkspaceSwitcherMenuProps) {
+export default function WorkspaceSwitcherMenu({ open, collapsed = false, workspaces, onOpenChange, billing }: WorkspaceSwitcherMenuProps) {
   const [view, setView] = useState<MenuView>(MENU_VIEW.home);
   const menu = useWorkspaceMenu(workspaces);
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
@@ -56,7 +58,7 @@ export default function WorkspaceSwitcherMenu({ open, collapsed = false, workspa
             firstItemRef.current?.focus();
           }}>
           {view === MENU_VIEW.home ? <WorkspaceChoices menu={menu} firstItemRef={firstItemRef} /> : null}
-          <AccountMenuNavigation view={view} onView={setView} workspaceId={menu.activeId} />
+          <AccountMenuNavigation view={view} onView={setView} workspaceId={menu.activeId} billing={billing} />
         </DropdownMenuContent>
       </DropdownMenu>
     </Nav>

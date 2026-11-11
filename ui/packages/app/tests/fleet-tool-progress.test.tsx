@@ -64,7 +64,8 @@ it("keeps open details and row identity stable while another call streams and se
   const [finished, streaming] = rows();
   expect(streaming!.getAttribute("data-state")).toBe("running");
   expect(command(streaming!).textContent).toContain("Making request");
-  expect(document.querySelectorAll('[data-tool-shimmer="true"]')).toHaveLength(1);
+  expect(document.querySelectorAll('[data-tool-shimmer="true"]')).toHaveLength(0);
+  expect(streaming?.querySelector('[data-chat-loading="true"]')).toBeTruthy();
   await userEvent.setup().click(command(finished!));
   show([first, {...second, done: true, status: SUCCEEDED, ms: 200}, call({callId: "third"})]);
   view.rerender(threadElement());
