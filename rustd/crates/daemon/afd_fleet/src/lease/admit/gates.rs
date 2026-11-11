@@ -10,12 +10,12 @@ use af_core::error_code;
 use af_core::id::Uuid7;
 
 use afd_billing::biller::{Account, Biller};
-use jiff::Timestamp;
 
 use crate::lease::admit::fault::{BALANCE, BUDGET};
 use crate::lease::admit::{Declined, Refusal, Request};
+use afd_billing::Nanos;
 use afd_billing::budget::{self, Spend, Verdict};
-use afd_billing::{Accounts, Nanos};
+use afd_billing::rates::Estimate;
 use afd_gate::gate::Recorded;
 use afd_gate::policy::grants::Grants;
 
@@ -141,19 +141,15 @@ const EVENT_BUDGET_BREACH: &str = "lease_budget_breach";
 ///
 /// A tenant with no wallet row is ADMITTED — see [`afd_billing::wallet`] for
 /// why an unprovisioned tenant is an operator gap rather than a refusal.
-pub(super) async fn balance(
-    accounts: &Accounts,
+pub(super) async fn balance<F: af_core::error_code::Coded>(
+    estimate: core::result::Result<Estimate, &F>,
     biller: &dyn Biller,
     request: &Request<'_>,
     tenant_id: &Uuid7,
-    now: Timestamp,
 ) -> Option<Declined> {
-    let estimate = match accounts
-        .estimate(request.posture, request.provider, request.model, now)
-        .await
-    {
+    let estimate = match estimate {
         Ok(estimate) => estimate,
-        Err(fault) => return BALANCE.absorb(&fault),
+        Err(fault) => return BALANCE.absorb(fault),
     };
     let floor = estimate.floor();
     let payer = Account {

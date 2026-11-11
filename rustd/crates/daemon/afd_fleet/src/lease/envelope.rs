@@ -73,6 +73,17 @@ pub struct Acquired {
     pub opened: Opened,
 }
 
+/// Whether a claimed head belongs to a durable task (M245 §9).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeadKind {
+    /// A chat message: the lease insert proves the setup, and the issue reads
+    /// no task source.
+    Plain,
+    /// A durable task's admission: the issue reads its task source and
+    /// attaches it.
+    Task,
+}
+
 /// The fleet the claim statement read, and the event row it opened.
 ///
 /// One statement claims the slot, reads the fleet and its setup, opens the
@@ -98,6 +109,8 @@ pub struct Opened {
     /// Whether a later message waited in the head's conversation when the
     /// claim read it. False lets the run skip its first fold ask.
     pub inputs_waiting: bool,
+    /// Whether the head admission belongs to a durable task.
+    pub head: HeadKind,
     /// The installed setup, parsed through the definition cache.
     pub(crate) setup: FleetWithSession,
 }
@@ -119,6 +132,7 @@ impl Opened {
             memory_reads_workspace: false,
             memory_publishes_workspace: false,
             inputs_waiting: true,
+            head: HeadKind::Task,
             setup: FleetWithSession::unread(workspace_id),
         }
     }

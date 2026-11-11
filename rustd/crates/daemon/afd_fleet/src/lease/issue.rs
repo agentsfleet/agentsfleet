@@ -97,7 +97,13 @@ impl Leases {
             .await
     }
 
-    pub(crate) async fn issue_for_revision(
+    /// [`Self::issue`] under the claim's setup proof, as delivery issues: a
+    /// fleet whose head moved since the claim gets no lease, and a plain
+    /// admission reads no task source.
+    ///
+    /// # Errors
+    /// As [`Self::issue`].
+    pub async fn issue_for_revision(
         &self,
         runner_id: &Uuid7,
         acquired: &Acquired,
@@ -138,6 +144,7 @@ impl Leases {
             lease_version: host.lease_version(),
             lease_kind: LeaseKind::Fleet.as_str(),
             leased_until: acquired.leased_until,
+            setup_revision: revision.map(|proof| &proof.current),
         })
         .insert(&mut transaction)
         .await?
@@ -152,7 +159,10 @@ impl Leases {
         else {
             return Ok(None);
         };
-        let execution_deadline = super::deadline::read(&mut transaction, &lease_id).await?;
+        let execution_deadline = match &task {
+            Some(_) => super::deadline::read(&mut transaction, &lease_id).await?,
+            None => super::deadline::untasked(created_at),
+        };
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
 
         record_issued(&lease_id, runner_id, acquired, decision.as_deref());
