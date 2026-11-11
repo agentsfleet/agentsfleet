@@ -410,15 +410,15 @@
 | `ui/packages/app/components/assistant-ui/range.ts` | CREATE | Reuse bounded range helpers required by the official terminal element |
 | `ui/packages/app/components/domain/FleetCommandResult.tsx` | CREATE | Adapt recorded command outcomes to the official terminal element without inferred exit codes |
 | `ui/packages/app/components/assistant-ui/UPSTREAM.md` | CREATE | Record official component provenance, upstream license and local adaptations |
-| `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/uploads/route.ts` | CREATE | Authenticated bounded no-op upload with a text receipt and no storage |
-| `ui/packages/app/lib/api/upload-preview.ts` | CREATE | Shared preview-only receipt schema, limits and route addressing |
+| `ui/packages/app/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/uploads/route.ts` | CREATE | Authenticated acknowledgement stub; no body parsing, storage or analysis |
+| `ui/packages/app/lib/api/upload-preview.ts` | CREATE | Shared acknowledgement schema, composer file limits and route addressing |
 | `ui/packages/app/lib/api/preview-attachment-adapter.ts` | CREATE | Native assistant-ui attachment adapter with scoped cancellation |
 | `ui/packages/app/components/domain/useFleetUploadPreviews.ts` | CREATE | Display temporary upload receipts within the existing external-store runtime |
 | `ui/packages/app/components/domain/chat/UploadAttachments.tsx` | CREATE | Native composer and message attachment display and removal |
 | `ui/packages/app/components/domain/SteerComposer.tsx` | EDIT | Expose native attachment selection and preparation status |
 | `ui/packages/app/components/domain/FleetReplyBody.tsx` | EDIT | Show preview receipts as plain text with an explicit temporary label |
 | `ui/packages/app/lib/api/setup-proxy/body.ts` | EDIT | Parameterize the existing bounded-body reader for a preview upload |
-| `ui/packages/app/tests/upload-preview-route.test.ts` | CREATE | Verify authentication, scope, body limits and no-op acknowledgement |
+| `ui/packages/app/tests/upload-preview-route.test.ts` | CREATE | Verify authentication, scope and acknowledgement without reading request bytes |
 | `ui/packages/app/tests/preview-attachment-adapter.test.ts` | CREATE | Verify native attachment preparation, cancellation and refusal |
 | `ui/packages/app/tests/fleet-upload-previews.test.tsx` | CREATE | Verify user attachments and text receipts without a model call or cross-owner state |
 | `ui/packages/app/components/assistant-ui/TerminalBlock.test.tsx` | CREATE | Verify recorded terminal outcomes and plain output rendering |
@@ -527,6 +527,10 @@ Use assistant-ui's native part pipeline and render-only backend tool registratio
 Owner approval (Nov 11, 2026): "Can you build that then" / "as opposed to just hand rolling the gala" — implement the reviewed assistant-ui reuse proposal. Do not introduce client-side tool execution. The current API inventory has no general chat attachment upload endpoint; runner checkpoint uploads are unrelated. Attachment sending requires an actual supported transport and persistent representation. Structured form submission must use the current scoped backend behavior rather than invent an in-memory success.
 
 Owner clarification: "you can create an upload noop endpoint and accept it" / "in the chat and reply the text" — a bounded authenticated preview-upload endpoint and an explicitly temporary chat receipt are authorized. Return a text acknowledgement; do not claim file storage, extraction or model analysis. Keep preview uploads distinct from durable fleet events and clear them with their conversation/account owner.
+
+Owner simplification (Nov 11, 2026): "can you make this smaller, since this will be a pass thru to a rust or i havent figured out yet" / "other than that you are good to go" — keep the temporary route to origin, session and fleet-access checks plus a fixed acknowledgement. Do not read or parse its request body, inspect file metadata, mint receipt identifiers or invent a future upload API. The composer retains its file limits; no server upload-processing limit is claimed while the stub does not consume the body. Once the backend API is selected, replace this acknowledgement with forwarding and let that backend own upload validation/storage. Keep the current chat presentation and attachment adapter boundary.
+
+Simplification checkpoint: the route is 34 lines, down from 55, without adding another handler layer. `make lint-app test-unit-app` passes lint, TypeScript and 454 files / 4,298 tests. The focused `chat-elements.spec.ts` Playwright run passes all 4 desktop/phone checks. The route tests prove the stub never consumes its request stream and preserves authentication, fleet access, archive and unavailable-backend refusals. Previous file-parsing/receipt-metadata tests were replaced with these stub-boundary checks. Logs: `/workspace/scratch/refresh-upload-stub-checks.log` and `/workspace/scratch/refresh-upload-stub-browser.log`.
 
 Recorded elements cover operator turns, replies, integration activity, scheduled wake-ups, approval events, activity groups and a generic activity default. Keep the existing event order, stable IDs, private actor naming, source links and durable outcomes. Group metadata must be validated rather than cast to an event array. Invalid groups retain the parent activity text and outcome with a quiet details-unavailable note; never expose the malformed metadata.
 

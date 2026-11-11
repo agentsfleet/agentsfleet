@@ -5,7 +5,7 @@ import { act, render, screen } from "@testing-library/react";
 import { appendMessage, capturedOnNew, clientUser, mockStream, postSteerMock, renderThread, threadElement } from "./fleet-thread/harness";
 
 const attachment: CompleteAttachment = {id: "upload-preview", type: "file", name: "notes.txt", status: {type: "complete"},
-  content: [{type: "text", text: "Received notes.txt (4 bytes) as a preview upload. The file was not stored or analyzed."}]};
+  content: [{type: "text", text: "Upload preview accepted. The file was not read, stored, or analyzed."}]};
 
 it("shows a file and a plain-text acknowledgement through the real conversation without a model call", async () => {
   mockStream([]);
@@ -15,7 +15,7 @@ it("shows a file and a plain-text acknowledgement through the real conversation 
   await act(() => onNew({...appendMessage("Please check this file"), attachments: [attachment]}));
   expect(screen.getByText("notes.txt")).toBeTruthy();
   expect(screen.getByText(/Upload preview · Not saved to fleet history/)).toBeTruthy();
-  expect(container.textContent).toContain("The file was not stored or analyzed.");
+  expect(container.textContent).toContain("The file was not read, stored, or analyzed.");
   expect(screen.queryByText(/Message this fleet or wait/)).toBeNull();
   expect(postSteerMock).not.toHaveBeenCalled();
 });

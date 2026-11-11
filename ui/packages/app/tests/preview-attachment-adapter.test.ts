@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { ZodError } from "zod";
 import { PreviewAttachmentAdapter } from "@/lib/api/preview-attachment-adapter";
 import { PREVIEW_FILE_LIMIT, PREVIEW_RECEIPT_LIMIT } from "@/lib/api/upload-preview";
 
 const fetchMock = vi.fn();
-const ID = "0197b580-7c00-7000-8000-000000000004";
 beforeEach(() => {fetchMock.mockReset(); vi.stubGlobal("fetch", fetchMock);});
 afterEach(() => vi.unstubAllGlobals());
 
@@ -14,7 +14,7 @@ it("uses the native pending and complete attachment states and uploads only on s
   expect(fetchMock).not.toHaveBeenCalled();
   fetchMock.mockResolvedValue(receipt());
   const complete = await adapter.send(pending);
-  expect(complete).toMatchObject({id: pending.id, name: "notes.txt", status: {type: "complete"}, content: [{type: "text", text: "Received notes.txt as a preview."}]});
+  expect(complete).toMatchObject({id: pending.id, name: "notes.txt", status: {type: "complete"}, content: [{type: "text", text: "Upload preview accepted. The file was not read, stored, or analyzed."}]});
   expect(complete.file).toBeUndefined();
   const [url, init] = fetchMock.mock.calls[0] ?? [];
   expect(url).toBe("/live/v1/workspaces/workspace/fleets/fleet/uploads");
@@ -36,11 +36,11 @@ it("requires a signed-in owner before accepting a file", async () => {
   adapter.dispose();
 });
 
-it("does not accept another file's receipt", async () => {
+it("rejects an acknowledgement that claims the preview was stored", async () => {
   const adapter = new PreviewAttachmentAdapter("workspace", "fleet", "owner");
   const pending = await adapter.add({file: new File(["demo"], "notes.txt")});
-  fetchMock.mockResolvedValue(Response.json({id: ID, filename: "foreign.txt", bytes: 4, preview: true, stored: false, reply: "Foreign"}));
-  await expect(adapter.send(pending)).rejects.toThrow("does not match");
+  fetchMock.mockResolvedValue(Response.json({preview: true, stored: true, reply: "Stored"}));
+  await expect(adapter.send(pending)).rejects.toThrow(ZodError);
   adapter.dispose();
 });
 
@@ -74,4 +74,4 @@ it("returns an authentication refusal without completing the attachment", async 
   adapter.dispose();
 });
 
-function receipt() {return Response.json({id: ID, filename: "notes.txt", bytes: 4, preview: true, stored: false, reply: "Received notes.txt as a preview."});}
+function receipt() {return Response.json({preview: true, stored: false, reply: "Upload preview accepted. The file was not read, stored, or analyzed."});}

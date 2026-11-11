@@ -1,7 +1,6 @@
 // @vitest-environment node
 import { beforeEach, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/errors";
-import { PREVIEW_FILE_LIMIT } from "@/lib/api/upload-preview";
 import { POST } from "@/app/live/v1/workspaces/[workspaceId]/fleets/[fleetId]/uploads/route";
 
 const mocks = vi.hoisted(() => ({credential: vi.fn(), getFleet: vi.fn()}));
@@ -13,15 +12,16 @@ const PARAMS = {params: Promise.resolve({workspaceId: WORKSPACE, fleetId: FLEET}
 
 beforeEach(() => {mocks.credential.mockReset().mockResolvedValue("session"); mocks.getFleet.mockReset().mockResolvedValue({fleet: {status: "active"}});});
 
-it("accepts and discards a file after fleet authorization, returning a text preview receipt", async () => {
-  const response = await POST(upload(new File(["demo"], "notes 東京.txt")), PARAMS);
+it("acknowledges the preview after fleet authorization without reading file content", async () => {
+  const request = upload(new File(["demo"], "notes 東京.txt"));
+  const response = await POST(request, PARAMS);
   const body = await response.json();
-  expect(response.status).toBe(201);
-  expect(body).toMatchObject({filename: "notes 東京.txt", bytes: 4, preview: true, stored: false,
-    reply: "Received notes 東京.txt (4 bytes) as a preview upload. The file was not stored or analyzed."});
+  expect(response.status).toBe(200);
+  expect(body).toEqual({preview: true, stored: false,
+    reply: "Upload preview accepted. The file was not read, stored, or analyzed."});
   expect(response.headers.get("cache-control")).toBe("no-store");
   expect(mocks.getFleet).toHaveBeenCalledWith(WORKSPACE, FLEET, "session");
-  expect(JSON.stringify(body)).not.toContain("demo");
+  expect(request.bodyUsed).toBe(false);
 });
 
 it("does not read file bytes without authentication", async () => {
@@ -56,25 +56,26 @@ it("refuses a foreign origin before resolving a credential", async () => {
   expect(mocks.credential).not.toHaveBeenCalled();
 });
 
-it("bounds the streamed body when content-length is absent", async () => {
-  const body = new ReadableStream<Uint8Array>({start(controller) {
-    controller.enqueue(new Uint8Array(PREVIEW_FILE_LIMIT));
-    controller.enqueue(new Uint8Array(128 * 1024));
-    controller.close();
-  }});
+it("does not consume or parse a request stream while upload processing is a stub", async () => {
+  const pull = vi.fn();
+  const body = new ReadableStream<Uint8Array>({pull}, {highWaterMark: 0});
   const init: RequestInit & {duplex: "half"} = {method: "POST", body, duplex: "half",
-    headers: {origin: "http://localhost", "content-type": "multipart/form-data; boundary=preview"}};
+    headers: {origin: "http://localhost", "content-type": "application/octet-stream"}};
   const request = new Request("http://localhost/upload", init);
   const response = await POST(request, PARAMS);
-  expect(response.status).toBe(413);
-  expect(await response.json()).toEqual({error: "Upload previews support files up to 5 MiB."});
+  expect(response.status).toBe(200);
+  expect(request.bodyUsed).toBe(false);
+  expect(pull).not.toHaveBeenCalled();
+  await body.cancel();
 });
 
-it("refuses a string field posing as a file", async () => {
-  const form = new FormData(); form.set("file", "not a file");
-  const response = await POST(new Request("http://localhost/upload", {method: "POST", headers: {origin: "http://localhost"}, body: form}), PARAMS);
-  expect(response.status).toBe(400);
-  expect(await response.json()).toEqual({error: "Choose one named file per upload."});
+it("does not acknowledge success when fleet access cannot be checked", async () => {
+  mocks.getFleet.mockRejectedValue(new Error("Unreachable"));
+  const request = upload();
+  const response = await POST(request, PARAMS);
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({error: "This fleet could not be authorized for an upload preview."});
+  expect(request.bodyUsed).toBe(false);
 });
 
 it("refuses path normalization input before authorization", async () => {
