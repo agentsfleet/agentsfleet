@@ -205,13 +205,14 @@ async fn another_accounts_workspace_cannot_supply_a_model_credential() {
             .expect("activation answers"),
         Activation::CredentialMissing
     );
-    assert!(
+    assert_eq!(
         store
             .registry_page(&other.tenant, 20, None)
             .await
             .expect("registry reads")
             .rows
-            .is_empty()
+            .len(),
+        0
     );
     assert!(
         store
