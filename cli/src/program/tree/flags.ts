@@ -17,6 +17,7 @@ import {
 } from "../../constants/custom-endpoint.ts";
 import { API_KEY_SORTS } from "../../constants/api-key.ts";
 import { MAX_RECALL_LIMIT } from "../../constants/memory-limits.ts";
+import { eventTime } from "../../lib/event-time.ts";
 
 const NOT_A_UUIDV7 = `expected uuidv7 format (e.g. ${EXAMPLE_UUIDV7})` as const;
 
@@ -84,7 +85,7 @@ export const METAVAR = {
 const INTEGER_PATTERN = /^-?\d+$/;
 const NOT_AN_INTEGER = "must be an integer" as const;
 
-const boundedInt = (name: string, min: number, max: number) =>
+export const boundedInt = (name: string, min: number, max: number) =>
   // Taken as text and converted here, rather than as `Flag.Int`, because the
   // library's own refusal for a non-numeric value reads "Expected a string
   // representing a finite number" — a sentence about parsing. The three
@@ -105,20 +106,20 @@ const boundedInt = (name: string, min: number, max: number) =>
  * uppercase alias is the same row in Postgres and a different subject on
  * the bus, so accepting one here would only move the refusal later.
  */
-const idFlag = (name: string, description: string) =>
-  Flag.String(name).pipe(
-    Flag.withDescription(description),
+export const requiredIdFlag = (name: string, description: string) =>
+  requiredTextFlag(name, description, METAVAR.id).pipe(
     Flag.filter((value: string) => isValidId(value), () => NOT_A_UUIDV7),
-    Flag.withMetavar(METAVAR.id),
-    Flag.optional,
   );
 
-const textFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
+export const requiredTextFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
   Flag.String(name).pipe(
     Flag.withDescription(description),
     Flag.withMetavar(metavar),
-    Flag.optional,
   );
+
+const idFlag = (name: string, description: string) => requiredIdFlag(name, description).pipe(Flag.optional);
+const textFlag = (name: string, description: string, metavar: string = METAVAR.text) =>
+  requiredTextFlag(name, description, metavar).pipe(Flag.optional);
 
 export const workspaceFlag = idFlag("workspace", WORKSPACE_ID_DESC);
 export const fleetFlag = idFlag("fleet", FLEET_ID_DESC);
@@ -169,6 +170,7 @@ export const baseUrlFlag = Flag.String("base-url").pipe(
   Flag.withDescription(
     "Custom endpoint base URL (https; required for a custom-endpoint provider)",
   ),
+  Flag.withMetavar(METAVAR.url),
   Flag.filter(
     (raw: string) => {
       const trimmed = raw.trim();
@@ -198,7 +200,13 @@ export const dataReplacementFlag = textFlag(
 
 export const categoryFlag = textFlag("category", "Filter by category", METAVAR.name);
 export const actorFlag = textFlag("actor", "Filter by actor glob", METAVAR.glob);
-export const sinceFlag = textFlag("since", "RFC 3339 or duration (e.g. 2h)", METAVAR.when);
+export const eventTimeFlag = (name: string, relative: boolean) =>
+  requiredTextFlag(name, relative ? "RFC 3339 or duration (e.g. 2h)" : "RFC 3339 timestamp", METAVAR.when).pipe(
+    Flag.filter((value) => eventTime(value, Date.now(), relative) !== undefined,
+      () => relative ? "expected an RFC 3339 timestamp or duration (e.g. 2h)" : "expected an RFC 3339 timestamp"),
+    Flag.optional,
+  );
+export const sinceFlag = eventTimeFlag("since", true);
 
 export const cronFlag = Flag.String(FLAG.cron).pipe(
   Flag.withDescription(DESC_CRON),
@@ -247,7 +255,7 @@ export const logoutAllFlag = Flag.Boolean("all").pipe(
 
 // ── Positional arguments ────────────────────────────────────────────
 
-const idArgument = (name: string, description: string) =>
+export const idArgument = (name: string, description: string) =>
   Argument.String(name).pipe(
     Argument.withDescription(description),
     Argument.filter((value: string) => isValidId(value), () => NOT_A_UUIDV7),

@@ -1,0 +1,48 @@
+import { Effect, Schema } from "effect";
+import { HTTP_METHOD } from "../../constants/http-method.ts";
+import { Stdin } from "../../services/stdin.ts";
+import { Output, OUTPUT_FORMAT } from "../../services/output.ts";
+import { wsSecretPath, wsSecretsPath } from "../../lib/api-paths.ts";
+import { instant } from "../../lib/instant.ts";
+import { ADMIN_KEYS_PATH, decodePlatform, invalidInput, platformPath, platformRequest, platformResult } from "./common.ts";
+
+type KeyOptions = {readonly provider: string; readonly workspace: string; readonly model: string; readonly baseUrl?: string | undefined; readonly apiKeyStdin: boolean; readonly replace: boolean};
+const key = Schema.Struct({provider: Schema.String, source_workspace_id: Schema.String, model: Schema.NullOr(Schema.String), active: Schema.Boolean, updated_at: instant});
+const keys = Schema.Struct({keys: Schema.Array(key)});
+const selected = Schema.Struct({provider: Schema.String, model: Schema.String, active: Schema.Boolean});
+const STDIN_DETAIL = "Pipe the provider API key into stdin when using --api-key-stdin";
+const KEY_MAX_BYTES = 64 * 1024;
+
+export const platformKeysList = Effect.fn("platform.keys.list")(function* () {
+  const response = yield* decodePlatform(keys, yield* platformRequest({path: ADMIN_KEYS_PATH}));
+  const output = yield* Output;
+  if (output.format === OUTPUT_FORMAT.json || !output.stdoutIsTty) return yield* output.printJson(response);
+  yield* output.printEntityTable({name: {key: "provider", label: "PROVIDER"}, domain: [
+    {key: "model", label: "MODEL"}, {key: "source_workspace_id", label: "WORKSPACE"},
+    {key: "active", label: "ACTIVE"},
+  ], ageKey: null}, response.keys.map(row => ({...row, active: row.active ? "Yes" : "No"})));
+});
+
+export const platformKeysSet = Effect.fn("platform.keys.set")(function* (options: KeyOptions) {
+  if (options.replace && !options.apiKeyStdin) return yield* Effect.fail(invalidInput("--replace requires --api-key-stdin"));
+  if (options.apiKeyStdin) {
+    const stdin = yield* Stdin;
+    if (stdin.isTTY) return yield* Effect.fail(invalidInput(STDIN_DETAIL));
+    const apiKey = (yield* stdin.readBounded(KEY_MAX_BYTES)).trim();
+    if (!apiKey) return yield* Effect.fail(invalidInput(STDIN_DETAIL));
+    yield* platformRequest({path: options.replace ? wsSecretPath(options.workspace, options.provider) : wsSecretsPath(options.workspace),
+      method: options.replace ? HTTP_METHOD.put : HTTP_METHOD.post,
+      body: {...options.replace ? {} : {name: options.provider}, data: {provider: options.provider, api_key: apiKey, model: options.model,
+        ...options.baseUrl === undefined ? {} : {base_url: options.baseUrl}}},
+    });
+  }
+  const body = {provider: options.provider, source_workspace_id: options.workspace, model: options.model,
+    ...options.baseUrl === undefined ? {} : {base_url: options.baseUrl}};
+  const result = yield* decodePlatform(selected, yield* platformRequest({path: ADMIN_KEYS_PATH, method: HTTP_METHOD.put, body}));
+  yield* platformResult(result, "Platform default selected", {Provider: result.provider, Model: result.model, Active: result.active ? "Yes" : "No"});
+});
+
+export const platformKeysDelete = Effect.fn("platform.keys.delete")(function* (provider: string) {
+  yield* platformRequest({path: platformPath(ADMIN_KEYS_PATH, provider), method: HTTP_METHOD.delete});
+  yield* platformResult({provider, deleted: true}, "Platform default deleted", {Provider: provider});
+});

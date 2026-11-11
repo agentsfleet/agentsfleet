@@ -18,17 +18,16 @@ type SidebarNavigationProps = {
   workspaces?: TenantWorkspace[];
   pathname: string;
   workspaceId: string | null;
-  operatorScopes: string[];
+
   collapsed: boolean;
   onNavigate: () => void;
 };
 
 export function DesktopSidebarNavigation({
   workspaces,
-  operatorScopes,
 }: {
   workspaces: TenantWorkspace[];
-  operatorScopes: string[];
+
 }) {
   const pathname = usePathname();
   const collapsed = useShellSidebarCollapsed();
@@ -45,7 +44,6 @@ export function DesktopSidebarNavigation({
         workspaces={workspaces}
         pathname={pathname}
         workspaceId={workspaceId}
-        operatorScopes={operatorScopes}
         collapsed={collapsed}
         onNavigate={() => {}}
       />
@@ -53,7 +51,7 @@ export function DesktopSidebarNavigation({
   );
 }
 
-export function SidebarNavigation({ pathname, workspaceId, operatorScopes, collapsed, onNavigate, workspaces = [] }: SidebarNavigationProps) {
+export function SidebarNavigation({ pathname, workspaceId, collapsed, onNavigate, workspaces = [] }: SidebarNavigationProps) {
   const activeHref = resolveActiveHref(PRIMARY_NAV.filter(entry => entry.path !== "fleets" || pathname === resolveHref(entry, workspaceId)).map((entry) => resolveHref(entry, workspaceId)), pathname);
   const shared = { activeHref, workspaceId, onNavigate, collapsed };
   return <Nav aria-label="Primary" className="flex h-full min-h-0 flex-col py-sm">
@@ -62,7 +60,7 @@ export function SidebarNavigation({ pathname, workspaceId, operatorScopes, colla
       <Suspense><DraftSidebarHistory account={workspaces.find(item => item.id === workspaceId)?.account.tenant_id ?? null} workspace={workspaceId} onNavigate={onNavigate} /></Suspense>
     </div> : <div className="flex-1" />}
     <div className="mt-auto shrink-0 border-t border-border px-md pb-sm pt-lg">
-      <WorkspaceSwitcher workspaces={workspaces} operatorScopes={operatorScopes} collapsed={collapsed} />
+      <WorkspaceSwitcher workspaces={workspaces} collapsed={collapsed} />
     </div>
   </Nav>;
 }

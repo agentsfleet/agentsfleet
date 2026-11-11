@@ -11,16 +11,16 @@ import {
   apiKeyListEffectFromArgs,
   apiKeyRevokeEffectFromId,
   apiKeyDeleteEffectFromId,
-} from "../src/commands/api_key.ts";
+} from "../src/commands/api-key/api-key.ts";
 import {
   connectorListEffectFromArgs,
   connectorStatusEffectFromArgs,
-} from "../src/commands/connector.ts";
+} from "../src/commands/connector/connector.ts";
 import {
   scheduleAddEffectFromArgs,
   scheduleListEffectFromArgs,
   scheduleUpdateEffectFromArgs,
-} from "../src/commands/fleet_schedule.ts";
+} from "../src/commands/schedule/schedule.ts";
 import { HttpClient } from "../src/services/http-client.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
 import { ValidationError, ConfigError } from "../src/errors/index.ts";
@@ -53,7 +53,7 @@ const emptyWorkspacesLayer = (): Layer.Layer<Workspaces> =>
     save: () => Effect.void,
   });
 
-// ── src/commands/api_key.ts ─────────────────────────────────────────────────
+// ── src/commands/api-key/api-key.ts ─────────────────────────────────────────────────
 
 describe("api_key floor arms", () => {
   test("revoke rejects a malformed id before any request", async () => {
@@ -112,7 +112,7 @@ describe("api_key floor arms", () => {
   });
 });
 
-// ── src/commands/connector.ts ───────────────────────────────────────────────
+// ── src/commands/connector/connector.ts ───────────────────────────────────────────────
 
 describe("connector floor arms", () => {
   const ENTRY = {
@@ -183,7 +183,7 @@ describe("connector floor arms", () => {
   });
 });
 
-// ── src/commands/fleet_schedule.ts ──────────────────────────────────────────
+// ── src/commands/schedule/schedule.ts ──────────────────────────────────────────
 
 describe("fleet_schedule floor arms", () => {
   test("a missing fleet id is refused before any request", async () => {

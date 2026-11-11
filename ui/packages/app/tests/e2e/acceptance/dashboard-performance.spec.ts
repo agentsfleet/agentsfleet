@@ -9,8 +9,6 @@ import {
 } from "./fixtures/nav";
 import { cleanWorkspaceFleets } from "./fixtures/teardown";
 import { FIXTURE_KEY } from "./fixtures/constants";
-import { withStagedPlatformEntry } from "./fixtures/native-setup";
-import { ADMIN_FLEET_LIBRARIES_PATH, EDIT, EDIT_TITLE } from "@/app/(dashboard)/admin/fleet-libraries/library-copy";
 import {
   installPaintBoundaryAudit,
   readBlankFrameEvidence,
@@ -20,8 +18,6 @@ import {
 const ROUTE_TIMEOUT_MS = 10_000;
 const CHAT_ENTRANCE = "What should your fleet do?";
 const LOADING_LABEL = "Loading…";
-// The staged platform entry whose Edit dialog loads on intent.
-const INTENT_ENTRY = "e2e-intent-loading";
 const STREAM_PREFIX = `dashboard-fluidity-${crypto.randomBytes(4).toString("hex")}`;
 
 // The shell's `data-surface` lands with the layout, before the Fleets route's
@@ -189,55 +185,6 @@ test.describe("authenticated dashboard fluidity", () => {
       });
       await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
       expect(await blankFrameCount(page)).toBe(0);
-    },
-  );
-
-  test(
-    "test_intent_loading_respects_client_capabilities",
-    async ({ page, baseURL }) => {
-      await page.addInitScript(() => {
-        Object.defineProperty(navigator, "connection", {
-          configurable: true,
-          value: { saveData: true },
-        });
-      });
-      const scriptRequests: string[] = [];
-      let applicationOrigin = "";
-      page.on("request", (request) => {
-        if (
-          request.resourceType() === "script" &&
-          new URL(request.url()).origin === applicationOrigin
-        ) {
-          scriptRequests.push(request.url());
-        }
-      });
-
-      const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.operator);
-      await withStagedPlatformEntry(workspace, INTENT_ENTRY, async () => {
-        await signInAs(page, FIXTURE_KEY.operator);
-        applicationOrigin = new URL(ADMIN_FLEET_LIBRARIES_PATH, baseURL).origin;
-        const sidebarReady = page.waitForResponse((response) => {
-          const url = new URL(response.url());
-          return response.request().method() === "GET" && url.origin === applicationOrigin &&
-            url.pathname === `/live/v1/workspaces/${encodeURIComponent(workspace)}/fleets`;
-        });
-        await page.goto(ADMIN_FLEET_LIBRARIES_PATH);
-        // RecentFleetList's first read proves its lazy module has executed.
-        expect((await sidebarReady).ok()).toBe(true);
-        // The staged row proves route content has replaced the loader.
-        const trigger = page.getByRole("row").filter({ hasText: INTENT_ENTRY })
-          .getByRole("button", { name: EDIT, exact: true });
-        await expect(trigger).toBeVisible();
-        scriptRequests.length = 0;
-
-        // Save-Data turns hover speculation off, so pointing at Edit loads nothing.
-        await trigger.hover();
-        expect(scriptRequests).toHaveLength(0);
-
-        await trigger.click();
-        await expect(page.getByRole("dialog", { name: EDIT_TITLE })).toBeVisible();
-        expect(scriptRequests.length).toBeGreaterThan(0);
-      });
     },
   );
 

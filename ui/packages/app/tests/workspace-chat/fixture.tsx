@@ -13,7 +13,6 @@ const navigation = vi.hoisted(() => ({push: vi.fn(), replace: vi.fn(), refresh: 
 export const chatRouter = navigation;
 vi.mock("next/navigation", () => ({useRouter: () => navigation, useSearchParams: () => new URLSearchParams(navigation.search)}));
 vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => auth}));
-vi.mock("@/app/(dashboard)/admin/fleet-libraries/actions", () => ({stagePlatformLibraryAction: vi.fn()}));
 
 export class ChatFixture {
   readonly auth = auth;

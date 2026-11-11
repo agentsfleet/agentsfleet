@@ -3,8 +3,8 @@
  *
  * Establishes a real Clerk session from a one-time sign-in ticket (the same
  * mechanism the dashboard acceptance suite's `signInAs` uses), then drives
- * the `/cli-auth/{session_id}` approve action and returns the 6-digit
- * verification code the page displays.
+ * the `/cli-auth/{session_id}` approve action. Automatic login completes
+ * through the local callback and returns null; manual login returns its code.
  *
  * Why a ticket and not a manual cookie-mount: a Backend-API-minted
  * `__session` token lacks the `azp` claim `clerkMiddleware` now requires, so
@@ -16,8 +16,8 @@
  * bot-protection on the sign-in form.
  *
  * Selector: authorize button by accessible role (`button` named /Authorize/i).
- * Code: scraped from the `<output aria-label="Verification code">` the page
- * renders on success — the CLI's /verify call is the authoritative ack.
+ * Automatic approval waits for the callback's terminal-authorized page.
+ * Manual approval reads the six-digit verification code for terminal entry.
  */
 
 import {
@@ -27,7 +27,9 @@ import {
 } from "./clerk-admin.ts";
 import { CLERK_SECRET_KEY_ENV } from "./constants.ts";
 import { vercelBypassState } from "./vercel-bypass.ts";
-import type { Page } from "playwright";
+import { acceptanceProxy } from "./proxy.ts";
+import { dirname } from "node:path";
+import type { BrowserContext, Page, Video } from "playwright";
 
 const APPROVE_BUTTON_NAME = /Authorize/i;
 const VERIFICATION_CODE_LABEL = "Verification code";
@@ -39,6 +41,8 @@ export interface CliAuthHandoffOptions {
   readonly loginUrl: string;
   readonly clerkUserId: string;
   readonly timeoutMs?: number;
+  readonly comparisonCode?: string;
+  readonly videoPath?: string;
 }
 
 interface BrowserClerk {
@@ -85,7 +89,7 @@ async function signInFixture(
   );
 }
 
-async function approveLogin(page: Page, opts: CliAuthHandoffOptions, sessionId: string): Promise<string> {
+async function approveLogin(page: Page, opts: CliAuthHandoffOptions, sessionId: string): Promise<string | null> {
   await page.evaluate(async (id) => {
     const clerk = (globalThis as unknown as { Clerk?: BrowserClerk }).Clerk;
     if (!clerk) throw new Error("Clerk client unavailable during fixture activation");
@@ -98,9 +102,18 @@ async function approveLogin(page: Page, opts: CliAuthHandoffOptions, sessionId: 
   await page.goto(opts.loginUrl, { waitUntil: "load", timeout: timeoutMs });
   const approve = page.getByRole("button", { name: APPROVE_BUTTON_NAME });
   await approve.waitFor({ state: "visible", timeout: timeoutMs });
+  if (opts.comparisonCode !== undefined) {
+    const comparison = page.getByLabel(VERIFICATION_CODE_LABEL);
+    await comparison.waitFor({ state: "visible", timeout: timeoutMs });
+    if (((await comparison.textContent()) ?? "").trim() !== opts.comparisonCode) {
+      throw new Error("The browser comparison code does not match the initiating terminal");
+    }
+  }
   await approve.click();
-  const codeOutput = page.getByLabel(VERIFICATION_CODE_LABEL);
-  await codeOutput.waitFor({ state: "visible", timeout: timeoutMs });
+  const completed = page.getByRole("heading", {name: "Terminal authorized", exact: true});
+  const codeOutput = page.getByLabel(VERIFICATION_CODE_LABEL).filter({hasText: VERIFICATION_CODE_RE});
+  await completed.or(codeOutput).first().waitFor({ state: "visible", timeout: timeoutMs });
+  if (await completed.isVisible()) return null;
   const code = ((await codeOutput.textContent()) ?? "").trim();
   if (!VERIFICATION_CODE_RE.test(code)) {
     throw new Error("completeCliAuthHandoff: expected a 6-digit verification code");
@@ -108,7 +121,7 @@ async function approveLogin(page: Page, opts: CliAuthHandoffOptions, sessionId: 
   return code;
 }
 
-export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promise<string> {
+export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promise<string | null> {
   if (!opts?.loginUrl) throw new Error("completeCliAuthHandoff: loginUrl required");
   if (!opts?.clerkUserId) throw new Error("completeCliAuthHandoff: clerkUserId required");
   const clerkSecret = process.env[CLERK_SECRET_KEY_ENV];
@@ -118,15 +131,27 @@ export async function completeCliAuthHandoff(opts: CliAuthHandoffOptions): Promi
   await clerkSetup();
   const origin = new URL(opts.loginUrl).origin;
   const storageState = await vercelBypassState(origin, process.env.VERCEL_BYPASS_SECRET);
-  const browser = await chromium.launch({ headless: true });
+  const proxy = acceptanceProxy();
+  const browser = await chromium.launch({ headless: true, ...(proxy === undefined ? {} : {proxy}) });
+  let context: BrowserContext | undefined;
+  let video: Video | null = null;
   try {
-    const context = await browser.newContext({ storageState });
+    context = await browser.newContext({ storageState,
+      ...(opts.videoPath === undefined ? {} : {recordVideo: {dir: dirname(opts.videoPath), size: {width: 1280, height: 720}}}),
+    });
     const page = await context.newPage();
+    video = page.video();
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     page.setDefaultTimeout(timeoutMs);
     const sessionId = await signInFixture(page, origin, clerkSecret, opts.clerkUserId, timeoutMs);
     return await withSessionRevocation(clerkSecret, sessionId, () => approveLogin(page, opts, sessionId));
   } finally {
-    await browser.close().catch(() => {});
+    try {
+      await context?.close();
+      if (video && opts.videoPath) {
+        await video.saveAs(opts.videoPath);
+        await video.delete();
+      }
+    } finally { await browser.close().catch(() => {}); }
   }
 }

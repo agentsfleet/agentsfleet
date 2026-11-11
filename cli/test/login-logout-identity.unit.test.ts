@@ -1,5 +1,5 @@
 // Distinct-id wiring for login/logout. captureLoginCompleted (from
-// login-helpers.ts) and logoutEffect (from commands/auth-logout.ts) both
+// login-helpers.ts) and logoutEffect (from commands/auth/logout.ts) both
 // touch the telemetry.json file in AGENTSFLEET_STATE_DIR and emit
 // analytics alias/identify/capture calls. These tests run the two
 // effects against in-memory layers and assert on the recorded
@@ -10,8 +10,8 @@ import { Effect, Exit, Layer, Option, Redacted } from "effect";
 import fs from "node:fs";
 import path from "node:path";
 
-import { captureLoginCompleted } from "../src/commands/login-helpers.ts";
-import { logoutEffect } from "../src/commands/auth-logout.ts";
+import { captureLoginCompleted } from "../src/commands/auth/login-helpers.ts";
+import { logoutEffect } from "../src/commands/auth/logout.ts";
 import { Analytics } from "../src/services/telemetry/analytics.service.ts";
 import {
   TelemetryRuntime,

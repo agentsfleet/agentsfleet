@@ -10,7 +10,7 @@
 import { describe, test, expect } from "bun:test";
 
 import { runCli } from "../src/cli.ts";
-import { LIBRARY_VISIBILITY } from "../src/commands/fleet-library-read.ts";
+import { LIBRARY_VISIBILITY } from "../src/commands/library/read.ts";
 import { bufferStream, withAuthedStateDir, cliEnv } from "./helpers-cli-state.ts";
 import { withMockApi, jsonResponse, type MockRoutes } from "./helpers-mock-api.ts";
 
@@ -24,7 +24,7 @@ const CREATED_AT = "2023-11-14T22:13:20Z";
 // payload, the text renderer has leaked into the machine register.
 const AGE_SHAPED = /"\d+[smhdy]"/;
 
-// The Library read decodes the full card (src/commands/fleet-library-read.ts),
+// The Library read decodes the full card (src/commands/library/read.ts),
 // so a partial row would be refused before the JSON register is reached.
 const LIBRARY_CARD = {
   id: ENTRY_ID, name: "reviewer", description: "Reviews pull requests", visibility: LIBRARY_VISIBILITY.tenant,

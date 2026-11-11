@@ -9,7 +9,7 @@ import { guardedHandler } from "./guarded-handler.ts";
 import {
   memoryListEffectFromFlags,
   memorySearchEffectFromArgs,
-} from "../../commands/memory.ts";
+} from "../../commands/memory/memory.ts";
 import {
   DEFAULT_LIST_LIMIT,
   DEFAULT_RECALL_LIMIT,

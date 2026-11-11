@@ -119,7 +119,7 @@ describe("failure modes — runtime / observability surface", () => {
         );
         expect(logsCode).toBe(0);
         // `logs` prefers response_text over the bare `fleet_error` status
-        // (src/commands/fleet_logs.ts), so the runner's own sentence is the
+        // (src/commands/fleet/logs.ts), so the runner's own sentence is the
         // visible signal. Without it the failure would read as silence.
         const logsText = logsOut.read();
         expect(logsText).toContain("Runner fleet run failed");

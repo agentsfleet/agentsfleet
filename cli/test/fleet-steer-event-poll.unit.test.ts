@@ -1,11 +1,11 @@
-import { ActivityPrinter } from "../src/commands/task-activity.ts";
-import { ToolActivityPrinter } from "../src/commands/tool-activity.ts";
+import { ActivityPrinter } from "../src/commands/fleet/task-activity.ts";
+import { ToolActivityPrinter } from "../src/commands/fleet/tool-activity.ts";
 import { Output } from "../src/services/output.ts";
 import { outputDouble } from "./helpers-output-double.ts";
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Redacted } from "effect";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
-import { pollEventTerminal, STATUS_COMPLETE, STATUS_TIMEOUT } from "../src/commands/fleet_steer_events.ts";
+import { pollEventTerminal, STATUS_COMPLETE, STATUS_TIMEOUT } from "../src/commands/fleet/steer-events.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
 import { ServerError } from "../src/errors/index.ts";
 

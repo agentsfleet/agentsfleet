@@ -215,6 +215,7 @@ function renderRow(
 function renderHorizontal(
   columns: ReadonlyArray<TableColumn>,
   rows: ReadonlyArray<TableRow>,
+  widths: ReadonlyArray<number>,
   opts: FormatOpts | undefined,
 ): string {
   const alignments: Array<typeof ALIGN_LEFT | typeof ALIGN_RIGHT> = columns.map(
@@ -225,18 +226,14 @@ function renderHorizontal(
         : ALIGN_LEFT;
     },
   );
-  const widths = columns.map((c) =>
-    Math.max(c.label.length, ...rows.map((r) => safeCell(r[c.key]).length)),
-  );
   const lines = [renderHeader(columns, widths, opts), renderRule(widths, opts)];
   for (const row of rows)
     lines.push(renderRow(columns, widths, row, alignments));
   return `${lines.join(LITERAL)}\n`;
 }
 
-// Below NARROW_THRESHOLD columns, fall back to a vertical key:value
-// layout — one block per record, blank line between blocks. Wider
-// terminals get the tabular form.
+// Narrow terminals and tables that exceed the available width use one
+// label/value block per record, with a blank line between records.
 function renderVertical(
   columns: ReadonlyArray<TableColumn>,
   rows: ReadonlyArray<TableRow>,
@@ -260,9 +257,15 @@ export function formatTable(
   opts?: FormatOpts,
 ): string {
   if (rows.length === 0) return `${palette.subtle("(none)", opts)}\n`;
-  return resolveWidth(opts) < NARROW_THRESHOLD
+  const widths = columns.map((column) =>
+    Math.max(column.label.length, ...rows.map((row) => safeCell(row[column.key]).length)),
+  );
+  const width = resolveWidth(opts);
+  const tableWidth = widths.reduce((total, columnWidth) => total + columnWidth, 0)
+    + Math.max(0, columns.length - 1) * COLUMN_GAP.length;
+  return width < NARROW_THRESHOLD || tableWidth > width
     ? renderVertical(columns, rows, opts)
-    : renderHorizontal(columns, rows, opts);
+    : renderHorizontal(columns, rows, widths, opts);
 }
 export function entityColumns(spec: EntityTableSpec): ReadonlyArray<TableColumn> {
   for (const column of spec.domain)

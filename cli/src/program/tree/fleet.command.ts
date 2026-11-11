@@ -11,22 +11,22 @@ import {
   statusEffect,
   fleetShowEffectFromId,
   stopEffectFromId,
-} from "../../commands/fleet.ts";
-import { listEffectFromFlags } from "../../commands/fleet_list.ts";
-import { libraryEffectFromOptions } from "../../commands/fleet_library.ts";
-import { libraryListEffectFromOptions } from "../../commands/fleet_library_list.ts";
-import { libraryDeleteEffectFromArgs } from "../../commands/fleet_library_delete.ts";
-import { modelsEffectFromFlags } from "../../commands/models.ts";
-import { logsEffectFromFlags } from "../../commands/fleet_logs.ts";
-import { eventsEffectFromFlags } from "../../commands/fleet_events.ts";
-import { steerEffectFromArgs } from "../../commands/fleet_steer.ts";
+} from "../../commands/fleet/fleet.ts";
+import { listEffectFromFlags } from "../../commands/fleet/list.ts";
+import { libraryEffectFromOptions } from "../../commands/library/library.ts";
+import { libraryListEffectFromOptions } from "../../commands/library/list.ts";
+import { libraryDeleteEffectFromArgs } from "../../commands/library/delete.ts";
+import { modelsEffectFromFlags } from "../../commands/models/models.ts";
+import { logsEffectFromFlags } from "../../commands/fleet/logs.ts";
+import { eventsEffectFromFlags } from "../../commands/fleet/events.ts";
+import { steerEffectFromArgs } from "../../commands/fleet/steer.ts";
 import {
   secretAddEffectFromFlags,
   secretDeleteEffectFromName,
   secretShowEffectFromName,
   secretUpdateEffectFromFlags,
-} from "../../commands/fleet_secret.ts";
-import { secretListEffect } from "../../commands/fleet_secret_list.ts";
+} from "../../commands/secret/secret.ts";
+import { secretListEffect } from "../../commands/secret/list.ts";
 import {
   actorFlag,
   apiKeyFlag,

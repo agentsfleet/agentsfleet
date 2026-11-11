@@ -9,8 +9,6 @@ import Link from "next/link";
 import nextDynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Skeleton } from "@agentsfleet/design-system";
-import { stagePlatformLibraryAction } from "@/app/(dashboard)/admin/fleet-libraries/actions";
-import { SetupUnavailable } from "@/lib/api/draft-request";
 import { DraftClient } from "@/lib/api/drafts";
 import { DraftCache } from "@/lib/api/draft-cache";
 import { chatRecovery } from "@/lib/api/draft-recovery";
@@ -23,7 +21,7 @@ import { ChatAvailability } from "./ChatAvailability";
 import { FleetSetup } from "./FleetSetup";
 import { DraftChatHeading } from "./DraftChatHeading";
 
-type Props = {account: string; workspace: string; draft?: string; source?: Source; fleetPage?: boolean; menuItems?: ReactNode; canPublishPlatform?: boolean; canManagePlatformModels?: boolean};
+type Props = {account: string; workspace: string; draft?: string; source?: Source; fleetPage?: boolean; menuItems?: ReactNode};
 type OwnedSession = {readonly kind: "starting"} | {readonly kind: "loading" | "ready"; readonly client: DraftClient; readonly reload: () => Promise<void>};
 const ignore = (): void => undefined;
 const LOADING_ROLE = "status";
@@ -49,16 +47,12 @@ function ChatSession(props: Props & {identity: DraftIdentity}) {
   return <OwnedChat key={JSON.stringify([props.draft, sourceKey])} {...props} cache={cache} />;
 }
 
-function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatformModels, fleetPage, menuItems, cache}: Props & {identity: DraftIdentity; cache: DraftCache}) {
+function OwnedChat({identity, draft, source, fleetPage, menuItems, cache}: Props & {identity: DraftIdentity; cache: DraftCache}) {
   const [session, setSession] = useState<OwnedSession>({kind: "starting"});
-  const [selection] = useState(() => ({identity, draft, source, canPublishPlatform}));
+  const [selection] = useState(() => ({identity, draft, source}));
   useEffect(() => {
-    const {identity: {account, workspace, subject}, draft, source, canPublishPlatform} = selection;
-    const current = new DraftClient({account, workspace, subject}, canPublishPlatform ? async (body, operation) => {
-      const result = await stagePlatformLibraryAction(body, operation);
-      if (!result.ok) throw new SetupUnavailable(result.error, result.status ?? 502, {code: result.errorCode});
-      return result.data;
-    } : undefined);
+    const {identity: {account, workspace, subject}, draft, source} = selection;
+    const current = new DraftClient({account, workspace, subject});
     const unsubscribe = current.subscribe(() => {if (current.getSnapshot().inaccessible) cache.clear();});
     if (source) current.fresh(source);
     let disposed = false;
@@ -79,10 +73,10 @@ function OwnedChat({identity, draft, source, canPublishPlatform, canManagePlatfo
   }, [selection, cache]);
   const initialSourceRevision = selection.source?.kind === SOURCE_KIND.fleet ? selection.source.setup_revision : undefined;
   return session.kind === "starting" ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} />
-    : <ChatSurface initialSourceRevision={initialSourceRevision} source={source} fleetPage={fleetPage} menuItems={menuItems} canManagePlatformModels={canManagePlatformModels} client={session.client} workspace={identity.workspace} subject={identity.subject} opening={session.kind === "loading"} selected={Boolean(selection.draft || selection.source)} reload={session.reload} />;
+    : <ChatSurface initialSourceRevision={initialSourceRevision} source={source} fleetPage={fleetPage} menuItems={menuItems} client={session.client} workspace={identity.workspace} subject={identity.subject} opening={session.kind === "loading"} selected={Boolean(selection.draft || selection.source)} reload={session.reload} />;
 }
 
-function ChatSurface({client, source, initialSourceRevision, workspace, subject, opening, selected, reload, canManagePlatformModels, fleetPage, menuItems}: {source?: Source; initialSourceRevision?: string; fleetPage?: boolean; menuItems?: ReactNode; canManagePlatformModels?: boolean; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
+function ChatSurface({client, source, initialSourceRevision, workspace, subject, opening, selected, reload, fleetPage, menuItems}: {source?: Source; initialSourceRevision?: string; fleetPage?: boolean; menuItems?: ReactNode; client: DraftClient; workspace: string; subject: string; opening: boolean; selected: boolean; reload: () => Promise<void>}) {
   const router = useRouter();
   const openFleet = useCallback(() => router.refresh(), [router]);
   const view = useSyncExternalStore(client.subscribe, client.getSnapshot, client.getSnapshot);
@@ -104,7 +98,7 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
     {view.notice && view.notice !== appliedNotice([]) && view.notice !== PUBLISHED_NOTICE ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} returnToFleet={source?.kind === SOURCE_KIND.fleet ? source.fleet_id : undefined} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
-    <DraftConversation client={client} view={view} workspace={workspace} modelsHref={canManagePlatformModels ? "/admin/models" : `/w/${workspace}/settings/models`} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
+    <DraftConversation client={client} view={view} workspace={workspace} modelsHref={`/w/${workspace}/settings/models`} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
       <FleetSetup client={client} view={view} workspace={workspace} />
     </DraftConversation>
     </>}

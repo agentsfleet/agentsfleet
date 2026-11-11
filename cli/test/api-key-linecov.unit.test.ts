@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
 
-import { apiKeyListEffectFromArgs } from "../src/commands/api_key.ts";
+import { apiKeyListEffectFromArgs } from "../src/commands/api-key/api-key.ts";
 import type { CliError } from "../src/errors/index.ts";
 import { UnexpectedError } from "../src/errors/index.ts";
 import { CliConfig } from "../src/services/config.ts";

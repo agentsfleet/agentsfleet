@@ -147,7 +147,7 @@ pub const AUTH_CLI_CREDENTIAL_NOT_FOUND: ErrorCode = ErrorCode::declare("UZ-AUTH
 /// The browser session could not be exchanged for a durable CLI credential.
 ///
 /// Declared here because it is published (`api-reference/error-codes.mdx`) and
-/// because the CLI emits it: `cli/src/commands/login-exchange.ts` answers with
+/// because the CLI emits it: `cli/src/commands/auth/login-exchange.ts` answers with
 /// this code when the exchange fails with no server code to relay — a transport
 /// failure, an expired session. This daemon does not send it on any route
 /// today; the registry of record still has to know every code a client can

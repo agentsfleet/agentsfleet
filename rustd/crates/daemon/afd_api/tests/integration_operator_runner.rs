@@ -38,7 +38,7 @@ async fn operator_reads_and_mutates_a_real_runner() {
         ScopeSet::from_scopes(&Scope::ALL),
     )
     .router();
-    let runner_path = format!("/v1/fleets/runners/{}", fixture.runner);
+    let runner_path = format!("/v1/admin/runners/{}", fixture.runner);
 
     let enrolled_runner = enrol(&router, &fixture.token).await;
     assert_runner_reads(&router, &fixture, &runner_path).await;
@@ -51,7 +51,7 @@ async fn operator_reads_and_mutates_a_real_runner() {
 
 async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_path: &str) {
     // Two reads, because they prove different things and one page cannot prove
-    // both. `/v1/fleets/runners` is the PLATFORM list — unlike a fleet's
+    // both. `/v1/admin/runners` is the PLATFORM list — unlike a fleet's
     // memories or the caller's own workspaces, nothing about the path scopes it
     // to this fixture. A `limit=1` page therefore holds whichever runner sorts
     // first among every runner every concurrent test has seeded, which is not
@@ -72,7 +72,7 @@ async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_pa
     let page = send(
         router,
         Method::GET,
-        "/v1/fleets/runners?limit=1",
+        "/v1/admin/runners?limit=1",
         Some(&fixture.token),
         "",
     )
@@ -88,7 +88,7 @@ async fn assert_runner_reads(router: &axum::Router, fixture: &Fixture, runner_pa
     let listed = send(
         router,
         Method::GET,
-        "/v1/fleets/runners",
+        "/v1/admin/runners",
         Some(&fixture.token),
         "",
     )
@@ -182,7 +182,7 @@ async fn assert_terminal_and_missing(router: &axum::Router, fixture: &Fixture, r
     let missing = send(
         router,
         Method::GET,
-        &format!("/v1/fleets/runners/{}", mint_id()),
+        &format!("/v1/admin/runners/{}", mint_id()),
         Some(&fixture.token),
         "",
     )
@@ -194,7 +194,7 @@ async fn enrol(router: &axum::Router, token: &str) -> Uuid7 {
     let enrolled = send(
         router,
         Method::POST,
-        "/v1/runners",
+        "/v1/admin/runners",
         Some(token),
         r#"{
   "host_id": "operator-live-enrolment",
@@ -254,7 +254,7 @@ async fn assert_runner_events(router: &axum::Router, token: &str, runner_path: &
     );
 
     for path in [
-        "/v1/fleets/runners/not-a-runner/events".to_owned(),
+        "/v1/admin/runners/not-a-runner/events".to_owned(),
         format!("{runner_path}/events?limit=0"),
     ] {
         let malformed = send(router, Method::GET, &path, Some(token), "").await;

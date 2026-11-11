@@ -155,7 +155,6 @@ describe("shell intent controls", () => {
     const view = render(
       <ShellControls
         workspaces={[]}
-        operatorScopes={["runner:read"]}
         sidebarNavId="test-sidebar"
       />,
     );
@@ -181,7 +180,6 @@ describe("shell intent controls", () => {
     view.rerender(
       <ShellControls
         workspaces={[]}
-        operatorScopes={["runner:read"]}
         sidebarNavId="test-sidebar"
       />,
     );
@@ -191,7 +189,6 @@ describe("shell intent controls", () => {
     view.rerender(
       <ShellControls
         workspaces={[]}
-        operatorScopes={["runner:read"]}
         sidebarNavId="test-sidebar"
       />,
     );
@@ -205,14 +202,12 @@ describe("shell intent controls", () => {
     view.rerender(
       <ShellControls
         workspaces={[{ id: "ws_fallback", name: "Fallback", created_at: "1970-01-01T00:00:00.001Z", ...OWN_ACCOUNT }]}
-        operatorScopes={["runner:read"]}
         sidebarNavId="test-sidebar"
       />,
     );
     await waitFor(() =>
       expect(state.renderedProps).toMatchObject({
         open: false,
-        operatorScopes: ["runner:read"],
         pathname: "/w/ws_active/events",
         workspaceId: "ws_active",
       }),

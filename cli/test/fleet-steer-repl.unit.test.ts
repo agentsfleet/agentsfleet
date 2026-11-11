@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Layer, Option, Redacted } from "effect";
 import { Readable, Writable } from "node:stream";
-import { steerEffectFromArgs } from "../src/commands/fleet_steer.ts";
+import { steerEffectFromArgs } from "../src/commands/fleet/steer.ts";
 import { EVENT_STATUS } from "../src/constants/event-status.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { Credentials } from "../src/services/credentials.ts";

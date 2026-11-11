@@ -22,8 +22,9 @@ export function renderMessage(output: Output, message: Message): Effect.Effect<v
     ? output.info(`Message ${message.sequence}: ${message.state}`) : Effect.void;
 }
 
-export function renderReview(output: Output, review: Review): Effect.Effect<void> {
-  if (output.format === OUTPUT_FORMAT.json) return output.info(JSON.stringify(review));
+export function renderReview(output: Output, review: Review, candidateId?: string): Effect.Effect<void> {
+  if (output.format === OUTPUT_FORMAT.json) return output.info(JSON.stringify({...review,
+    ...(candidateId === undefined ? {} : {draft_candidate_id: candidateId})}));
   return Effect.gen(function* () {
     yield* output.info(`Instance: ${review.effective.instance_name}`);
     yield* output.info(`Runtime model: ${review.effective.runtime_model_ref ?? "selection required"}`);
@@ -39,6 +40,7 @@ export function renderReview(output: Output, review: Review): Effect.Effect<void
     for (const check of review.readiness) {
       yield* output.info(`${check.kind} ${check.subject}: ${check.state}${check.next_action?.href ? ` → ${check.next_action.href}` : ""}`);
     }
+    if (candidateId !== undefined) yield* output.info(`Candidate: ${candidateId}`);
     yield* output.info(`Review digest: ${review.review_digest}`);
   });
 }

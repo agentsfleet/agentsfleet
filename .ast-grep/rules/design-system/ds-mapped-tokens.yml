@@ -9,7 +9,6 @@ language: Tsx
 severity: error
 message: an arbitrary-value utility or a hex colour; use a mapped token
 files:
-  - ui/packages/design-system/src/design-system/OptionCard.tsx
   - ui/packages/design-system/src/design-system/UsageBar.tsx
 rule:
   all:

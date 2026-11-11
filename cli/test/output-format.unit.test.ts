@@ -157,6 +157,16 @@ describe("formatTable — narrow terminal collapses to vertical layout", () => {
   ];
   const ROWS = [{ name: "platform-ops", status: "LIVE", events: "142" }];
 
+  test.each([119, 120])("fits the full table to a %i-column terminal", width => {
+    const value = "n".repeat(110);
+    const out = formatTable([{key: "name", label: "NAME"}, {key: "state", label: "STATE"}],
+      [{name: value, state: "CORDONED"}], {...PLAIN, widthHint: width});
+    expect(out).toContain(value);
+    expect(out).toContain("CORDONED");
+    expect(out.includes("─")).toBe(width === 120);
+    expect(out.split("\n").every(line => line.length <= width)).toBe(true);
+  });
+
   test("widthHint=40 switches to vertical key:value layout", () => {
     const out = formatTable(COLUMNS, ROWS, { ...PLAIN, widthHint: 40 });
     // Each column rendered as a "  LABEL    value" line; no horizontal rule.

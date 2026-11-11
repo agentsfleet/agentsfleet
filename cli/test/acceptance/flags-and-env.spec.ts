@@ -7,28 +7,26 @@
  *   - a spawned (non-TTY) `agentsfleet login` with no token fast-fails:
  *     no browser, no partial credentials.json (token-only contract)
  *
- * Live-API precedence tests (--api / AGENTSFLEET_API_URL, env-var auth
- * permutations) only register when `AGENTSFLEET_ACCEPTANCE_TARGET` is an
- * https:// URL — they run against real api-dev / api in CI, not local.
+ * API URL precedence uses a local HTTP server and an isolated credential
+ * store, so both cases run without a live target or Clerk credentials.
  */
 
-import { describe, it, beforeAll, afterAll } from "bun:test";
+import { describe, it, beforeAll, beforeEach, afterAll } from "bun:test";
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
+import http from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import { VERSION } from "../../src/cli.ts";
 import { helpTail } from "../../src/program/entry/help-formatter.ts";
 
 import { runFleetctl, spawnFleetctl, composeEnv } from "./fixtures/cli.js";
-import type { RunResult } from "./fixtures/cli.js";
 import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
 import {
   makeStubbedStateDir,
   STUB_TOKEN,
   type StubbedStateDir,
 } from "./fixtures/state-dir.ts";
-import { resolveClerkSecret, resolveFixtureEmail } from "./global-setup.ts";
-import { attachJwt } from "./fixtures/clerk-admin.ts";
 
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 
@@ -175,53 +173,48 @@ describe("non-TTY login fast-fails", () => {
   });
 });
 
-// --api / AGENTSFLEET_API_URL precedence (live api only). Registered only
-// when `AGENTSFLEET_ACCEPTANCE_TARGET` is an https:// URL; conditional registration
-// keeps both `node --test` and `bun test` honest about the skip.
-{
-  const target = process.env.AGENTSFLEET_ACCEPTANCE_TARGET ?? "";
-  const isLive = target.startsWith("https://");
+describe("--api / AGENTSFLEET_API_URL precedence", () => {
+  // Synthetic identity served only by the local HTTP fixture; no live account is used.
+  const identity = {user_id: "0193c5e1-0000-7000-8000-00000000abcd",
+    tenant_id: "0193c5e0-0000-7000-8000-000000001234", email: "routing@example.test",
+    display_name: null, tenant_name: "Routing probe", credential: "cli_credential", scopes: []};
+  const requests: Array<{url: string; authorization: string}> = [];
+  const server = http.createServer((request, response) => {
+    requests.push({url: request.url ?? "", authorization: request.headers.authorization ?? ""});
+    response.writeHead(200, {"content-type": "application/json"});
+    response.end(JSON.stringify(identity));
+  });
+  let state: StubbedStateDir;
+  let target = "";
 
-  if (isLive) {
-    describe("--api / AGENTSFLEET_API_URL precedence", () => {
-      // process.env.AGENTSFLEET_API_KEY is NOT injected by the CI workflow
-      // step (only CLERK_SECRET_KEY + fixture emails land). Mint a real
-      // session JWT once per describe and pass it via the env credential slot
-      // (a non-`agt_t` JWT routes to the server's OIDC verifier) so the
-      // auth-guard passes and the tests actually exercise URL precedence
-      // instead of exiting on "not authenticated".
-      let sessionJwt: string = "";
-      beforeAll(async () => {
-        const minted = await attachJwt(resolveClerkSecret(), {
-          email: resolveFixtureEmail("regular"),
-        });
-        sessionJwt = minted.sessionJwt;
-      });
+  beforeAll(async () => {
+    state = await makeStubbedStateDir();
+    await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+    target = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  });
 
-      it("--api overrides AGENTSFLEET_API_URL", async () => {
-        const env = composeEnv({
-          AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
-          AGENTSFLEET_API_KEY: sessionJwt,
-          NO_COLOR: "1",
-        });
-        const result: RunResult = await runFleetctl(
-          ["--api", target, "workspace", "list", "--json"],
-          { env },
-        );
-        assert.equal(result.code, 0, `expected exit 0; stderr=${result.stderr}`);
-        assert.doesNotThrow(() => JSON.parse(result.stdout.trim()));
-      });
+  afterAll(async () => {
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    await state.cleanup();
+  });
 
-      it("AGENTSFLEET_API_URL honored when --api absent", async () => {
-        const env = composeEnv({
-          AGENTSFLEET_API_URL: target,
-          AGENTSFLEET_API_KEY: sessionJwt,
-          NO_COLOR: "1",
-        });
-        const result: RunResult = await runFleetctl(["workspace", "list", "--json"], { env });
-        assert.equal(result.code, 0, `expected exit 0; stderr=${result.stderr}`);
-        assert.doesNotThrow(() => JSON.parse(result.stdout.trim()));
-      });
-    });
-  }
-}
+  beforeEach(() => { requests.length = 0; });
+
+  it("--api overrides AGENTSFLEET_API_URL", async () => {
+    const env = composeEnv({AGENTSFLEET_API_URL: UNROUTABLE_API_URL,
+      AGENTSFLEET_STATE_DIR: state.dir, NO_PROXY: "localhost,127.0.0.1", NO_COLOR: "1"});
+    const result = await runFleetctl(["--api", target, "whoami", "--json"], {env});
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {...identity, authenticated: true, source: "file", api_url: target});
+    assert.deepEqual(requests.splice(0), [{url: "/v1/users/me", authorization: `Bearer ${STUB_TOKEN}`}]);
+  });
+
+  it("AGENTSFLEET_API_URL honored when --api absent", async () => {
+    const env = composeEnv({AGENTSFLEET_API_URL: target,
+      AGENTSFLEET_STATE_DIR: state.dir, NO_PROXY: "localhost,127.0.0.1", NO_COLOR: "1"});
+    const result = await runFleetctl(["whoami", "--json"], {env});
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {...identity, authenticated: true, source: "file", api_url: target});
+    assert.deepEqual(requests.splice(0), [{url: "/v1/users/me", authorization: `Bearer ${STUB_TOKEN}`}]);
+  });
+});

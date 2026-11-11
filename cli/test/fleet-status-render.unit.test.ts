@@ -6,7 +6,7 @@
 import { describe, test, expect } from "bun:test";
 import { Effect, Exit, Layer, Option, Redacted } from "effect";
 
-import { statusEffect, stopEffectFromId } from "../src/commands/fleet.ts";
+import { statusEffect, stopEffectFromId } from "../src/commands/fleet/fleet.ts";
 import { FLEET, FLEET_ID } from "./chat/fixture.ts";
 import { CliConfig } from "../src/services/config.ts";
 import { HttpClient, type HttpRequestInput } from "../src/services/http-client.ts";
