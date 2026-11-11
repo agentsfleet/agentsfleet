@@ -20,6 +20,7 @@ import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { FLEET_DETAIL, WORKSPACE, FLEET_ID } from "@/tests/helpers/draft-fixtures";
 import { useFleetUploadPreviews } from "@/components/domain/useFleetUploadPreviews";
 import { FLEET_CHAT_CONFIG } from "@/components/domain/FleetToolRegistry";
+import { useFleetNotice } from "@/components/layout/FleetNoticeProvider";
 
 const router = { bfcacheId: "visual-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {} };
 type Scenario = "running" | "completed" | "error";
@@ -33,7 +34,7 @@ export function RefreshVisualFixture() {
     if (phase === "error") setPhase("running");
     setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: message.content}]);
   }, [phase]);
-  const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", onNew});
+  const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", events: [], onNew});
   const messages = useMemo(() => [...conversation(phase, started), ...sent, ...previews.entries.map(entry => entry.message)], [phase, started, sent, previews.entries]);
   const runtime = useExternalStoreRuntime({ messages, isRunning: phase === "running",
     convertMessage: (message: ThreadMessageLike) => message,
@@ -42,10 +43,11 @@ export function RefreshVisualFixture() {
   });
   return <AppRouterContext value={router}><PathnameContext.Provider value={`/w/${WORKSPACE}/fleets/${FLEET_ID}`}><SearchParamsContext.Provider value={new URLSearchParams()}><TooltipProvider><ReviewChrome>
     <div className="flex min-h-0 flex-1 flex-col">
-      <div data-visual-controls="" className="fixed inset-x-0 top-0 z-50 flex h-11 items-center gap-sm overflow-x-auto whitespace-nowrap bg-surface-deep px-lg">
-        <span className="mr-auto text-eyebrow text-muted-foreground">Work in progress · sample activity</span>
+      <div data-visual-controls="" className="fixed inset-x-0 top-0 z-50 flex h-11 items-center gap-sm overflow-x-auto whitespace-nowrap bg-surface-deep px-lg [&>button]:shrink-0 [&>span]:shrink-0">
+        <span className="mr-auto text-eyebrow text-muted-foreground">Implementation review · sample activity</span>
         {(["running", "completed", "error"] as const).map(value => <Button key={value} size="sm" variant={phase === value ? "secondary" : "ghost"} aria-pressed={phase === value} onClick={() => setPhase(value)}>{value === "running" ? "Working" : value === "completed" ? "Completed" : "Error"}</Button>)}
         <Button size="sm" variant="ghost" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "light" ? "dark" : "light"; }}>Theme</Button>
+        <NoticeExamples />
       </div>
       <FleetHeader workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: "Release watch", status: "active" })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><SenderLabelProvider senderLabel="Release watch"><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
@@ -61,6 +63,12 @@ export function RefreshVisualFixture() {
       </SenderNamesProvider></SenderLabelProvider></AssistantRuntimeProvider>
     </div>
   </ReviewChrome></TooltipProvider></SearchParamsContext.Provider></PathnameContext.Provider></AppRouterContext>;
+}
+
+function NoticeExamples() {
+  const show = useFleetNotice();
+  return <>{(["archived", "deleted"] as const).map(outcome => <Button key={outcome} size="sm" variant="ghost"
+    onClick={() => show({outcome, historyHref: `/w/${WORKSPACE}/fleets/${FLEET_ID}`})}>Sample {outcome} notice</Button>)}</>;
 }
 
 function ReviewChrome({ children }: { children: ReactNode }) {

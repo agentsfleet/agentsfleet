@@ -102,7 +102,7 @@ test("conversation and composer use the approved Manrope scale", async ({page, c
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   expect(errors).toEqual([]);
   const screenshot = info.outputPath("chat-manrope-fixture.png");
-  await page.screenshot({path: screenshot});
+  await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
   await info.attach("chat-manrope-fixture", {path: screenshot, contentType: "image/png"});
 });
 
@@ -150,7 +150,7 @@ test("the pull request starter remains editable and readable before any setup re
   if (!composer) throw new Error("The starter must leave its editable composer visible");
   expect(composer.y + composer.height).toBeLessThanOrEqual((page.viewportSize()?.height ?? 0) + 1);
   const screenshot = info.outputPath("editable-pull-request-starter.png");
-  await page.screenshot({path: screenshot});
+  await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
   await info.attach("editable-pull-request-starter", {path: screenshot, contentType: "image/png"});
 });
 
@@ -178,7 +178,7 @@ test("setup checks use enclosed icons and incoming messages have readable detail
   await page.keyboard.press("Enter");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const screenshot = info.outputPath("setup-message-clarity.png");
-  await page.screenshot({path: screenshot});
+  await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
   await info.attach("setup-message-clarity", {path: screenshot, contentType: "image/png"});
 });
 
@@ -205,7 +205,7 @@ test("recorded actions stay visible and distinguish every terminal outcome", asy
     await expect(icon).toHaveCSS("color", "rgb(147, 197, 253)");
   }
   const screenshot = info.outputPath("chat-tool-activity-fixture.png");
-  await page.screenshot({path: screenshot});
+  await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
   await info.attach("chat-tool-activity-fixture", {path: screenshot, contentType: "image/png"});
   for (const [state, wording, color] of [["succeeded", "Opened pull request", "rgb(182, 228, 200)"], ["failed", "Failed: opening pull request", "rgb(255, 179, 182)"],
     ["interrupted", "Interrupted: opening pull request", "rgb(243, 203, 135)"], ["unconfirmed", "Outcome unavailable: opening pull request", "rgb(163, 171, 183)"]] as const) {
@@ -239,7 +239,7 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     for (const section of ["Outputs", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
     await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);
     await expectSourceHierarchy(panel);
-    if (window.height === 800) await page.screenshot({path: info.outputPath("context-sidebar-desktop.png")});
+    if (window.height === 800) await page.screenshot({path: info.outputPath("context-sidebar-desktop.png"), scale: "css", animations: "disabled"});
     const repair = panel.getByRole("button", {name: /PR #123 repair/});
     if (await repair.getAttribute("aria-expanded") !== "true") {await repair.focus(); await page.keyboard.press("Enter");}
     const selectedDetail = panel.getByLabel("PR #123 repair details", {exact: true});
@@ -256,7 +256,7 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
   const screenshot = info.outputPath("fleet-sidebar-mobile.png");
-  await page.screenshot({path: screenshot});
+  await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
   await info.attach("fleet-sidebar-mobile", {path: screenshot, contentType: "image/png"});
 });
 

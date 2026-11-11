@@ -23,13 +23,13 @@ test("fleet Summary is inline and the composer keeps the approved horizontal ali
   await expect(edit.locator("svg")).toBeVisible();
   await expect(edit).toHaveAttribute("href", /fleets\/new\?fleet=/);
   await page.keyboard.press("Escape");
-  await page.screenshot({path: info.outputPath("fleet-conversation.png")});
+  await page.screenshot({path: info.outputPath("fleet-conversation.png"), scale: "css", animations: "disabled"});
   await expect(page.getByRole("button", {name: /Validate the Linkwarden repair/})).toBeVisible();
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
   await expect(page.getByRole("heading", {name: "Tasks"})).toBeVisible();
   await expect(page.getByRole("complementary", {name: "Summary"})).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await page.screenshot({path: info.outputPath("fleet-summary.png")});
+  await page.screenshot({path: info.outputPath("fleet-summary.png"), scale: "css", animations: "disabled"});
   await expect(input).toHaveValue("Keep my exact unsent instruction");
 });
 
@@ -42,7 +42,7 @@ test("saved setup has the same composer placement, pencil, summary and return ro
   await expect(page.getByRole("button", {name: "Edit instructions"}).locator("svg")).toBeVisible();
   const input = page.getByRole("textbox");
   await input.fill("Preserve the existing regression assertions");
-  await page.screenshot({path: info.outputPath("fleet-setup.png")});
+  await page.screenshot({path: info.outputPath("fleet-setup.png"), scale: "css", animations: "disabled"});
   await expect(page.getByRole("region", {name: "Fleet purpose"})).toBeVisible();
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
   await expect(input).toHaveValue("Preserve the existing regression assertions");
