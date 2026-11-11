@@ -61,6 +61,8 @@ pub(super) struct Input {
     pub scope: Scope,
     pub request: Request,
     pub position: Option<Position>,
+    /// The billed activity a detail read names, proved once here.
+    pub activity: Option<Uuid7>,
 }
 
 pub(super) fn read(
@@ -85,9 +87,7 @@ pub(super) fn read(
     }
     let position = cursor.map(|token| token.position);
     let after = activity_boundary(position.as_ref(), activity.is_some())?;
-    if let Some(id) = activity {
-        identifier(id)?;
-    }
+    let activity = activity.map(identifier).transpose()?;
     Ok(Input {
         request: Request {
             window,
@@ -101,6 +101,7 @@ pub(super) fn read(
         },
         scope,
         position,
+        activity,
     })
 }
 

@@ -59,7 +59,7 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
     let filter = Filter::default();
 
     let whole = history
-        .page_for_fleet(workspace, fleet, &filter, None, 10)
+        .page_for_workspace(workspace, Some(fleet), &filter, None, 10)
         .await
         .expect("a page reads");
     let listed: Vec<_> = whole.iter().map(|row| row.event_id.clone()).collect();
@@ -70,7 +70,7 @@ async fn two_admissions_in_one_millisecond_list_once_newest_first() {
     let mut cursor = None;
     loop {
         let page = history
-            .page_for_fleet(workspace, fleet, &filter, cursor.as_ref(), 1)
+            .page_for_workspace(workspace, Some(fleet), &filter, cursor.as_ref(), 1)
             .await
             .expect("a page reads");
         walked.extend(page.iter().map(|row| row.event_id.clone()));

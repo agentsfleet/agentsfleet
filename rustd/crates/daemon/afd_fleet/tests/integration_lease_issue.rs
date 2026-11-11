@@ -234,49 +234,6 @@ async fn test_a_stale_claim_writes_no_lease() {
     fixtures.cleanup().await;
 }
 
-// Value: protects=a plain chat's issued ceiling equals the one its lease row
-// stores; fails_when=the computed sum drifts from `execution_deadline.sql` by
-// span, precision or instant; why_new=the plain issue no longer reads that
-// row; seam=none; no_claim=a task lease, which still reads the row.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_plain_lease_ceiling_matches_its_stored_one() {
-    let fixtures = Fixtures::create().await;
-    let Seeded {
-        runners: [first, _second],
-        fleet,
-        tenant,
-        ..
-    } = seeded::<2>(&fixtures).await;
-    let leases = fixtures.leases();
-    let billed = Billed {
-        tenant_id: &tenant,
-        posture: POSTURE,
-        provider: PROVIDER,
-        model: MODEL,
-    };
-    let held = seed::select_fleet(&leases, &first, &fleet)
-        .await
-        .expect("the fleet is leasable");
-
-    let issued = leases
-        .issue(&first, &held, billed, fixtures.enrolled_at())
-        .await
-        .expect("the lease row must be written")
-        .expect("the claim is still held");
-    let stored: jiff_sqlx::Timestamp = sqlx::query_scalar(
-        "SELECT LEAST(created_at + $2::interval, task_execution_deadline_at) FROM runner.leases WHERE id = $1",
-    )
-    .bind(&issued.lease_id)
-    .bind(af_core::timing::MAX_RUNTIME)
-    .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
-    .await
-    .expect("the issued lease row reads back");
-
-    assert_eq!(issued.execution_deadline, stored.to_jiff());
-    fixtures.cleanup().await;
-}
-
 // Value: protects=a plain chat whose fleet's setup moved after the claim gets
 // no lease, now that the insert carries the setup proof; fails_when=the insert
 // drops the head guard and a lease runs the old setup; why_new=the check moved

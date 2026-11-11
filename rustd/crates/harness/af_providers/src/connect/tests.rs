@@ -17,7 +17,6 @@ const AT: &str = "1970-01-01T00:00:00.001Z";
 fn lease(provider: &str) -> LeasePayload<'static> {
     let document = serde_json::json!({
         "lease_id": "lease-1", "fencing_token": 1, "lease_expires_at": AT,
-        "secret_delivery": "inline",
         "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": "{}", "created_at": AT},
         "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
@@ -25,7 +24,7 @@ fn lease(provider: &str) -> LeasePayload<'static> {
             "api_key": KEY, "inference_host": "", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "m", "context_cap_tokens": 200_000}},
-        "instructions": "", "limits": null, "history": [], "resume_hold": false, "inputs_waiting": true
+        "instructions": "", "history": [], "resume_hold": false, "inputs_waiting": true
     });
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());
     serde_json::from_str(text).unwrap()

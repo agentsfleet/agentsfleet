@@ -134,7 +134,6 @@ async fn production_plane_maps_every_surface_to_its_owned_store() {
     assert!(same(plane.authoring(), &plane.authoring.drafts));
     assert!(same(plane.authoring_setup(), &plane.authoring.setup));
     assert!(same(plane.creations(), &plane.authoring.creations));
-    assert!(same(plane.authoring_models(), &plane.authoring.models));
     assert!(same(plane.ingress(), &plane.activity.ingress));
     assert!(same(plane.schedules(), &plane.outbound.schedules));
     assert!(same(plane.connectors(), &plane.outbound.connectors));

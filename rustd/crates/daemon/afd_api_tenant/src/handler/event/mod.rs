@@ -174,9 +174,9 @@ pub(crate) async fn fleet_list<D: Services>(
     let asked = Listing::parse(&query.unwrap_or_default())?;
     let page = services
         .events()
-        .page_for_fleet(
+        .page_for_workspace(
             &owned.workspace,
-            &fleet,
+            Some(&fleet),
             &asked.filter,
             asked.cursor.as_ref(),
             asked.limit,

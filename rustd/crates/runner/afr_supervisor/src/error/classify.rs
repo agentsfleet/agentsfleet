@@ -50,7 +50,7 @@ impl Error {
             | ErrorKind::Encode { .. }
             | ErrorKind::Task { .. }
             | ErrorKind::Git { .. }
-            | ErrorKind::LeaseSize { .. }
+            | ErrorKind::Invalid { .. }
             | ErrorKind::Identifier { .. }
             | ErrorKind::EgressUnresolved { .. }
             | ErrorKind::EgressNoIpv4 { .. }
@@ -85,7 +85,7 @@ impl Error {
             | ErrorKind::Encode { .. }
             | ErrorKind::Task { .. }
             | ErrorKind::Git { .. }
-            | ErrorKind::LeaseSize { .. }
+            | ErrorKind::Invalid { .. }
             | ErrorKind::Identifier { .. }
             | ErrorKind::EgressUnresolved { .. }
             | ErrorKind::EgressNoIpv4 { .. }
@@ -137,7 +137,7 @@ impl Error {
             | ErrorKind::Encode { .. }
             | ErrorKind::Task { .. }
             | ErrorKind::Git { .. }
-            | ErrorKind::LeaseSize { .. }
+            | ErrorKind::Invalid { .. }
             | ErrorKind::Identifier { .. }
             | ErrorKind::EgressUnresolved { .. }
             | ErrorKind::EgressNoIpv4 { .. }
@@ -191,7 +191,7 @@ impl Error {
             | ErrorKind::Encode { .. }
             | ErrorKind::Task { .. }
             | ErrorKind::Git { .. }
-            | ErrorKind::LeaseSize { .. }
+            | ErrorKind::Invalid { .. }
             | ErrorKind::Identifier { .. }
             | ErrorKind::EgressUnresolved { .. }
             | ErrorKind::EgressNoIpv4 { .. }

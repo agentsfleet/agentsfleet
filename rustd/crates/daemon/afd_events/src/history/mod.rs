@@ -91,39 +91,15 @@ impl History {
         Self { database }
     }
 
-    /// One fleet's history, newest first.
+    /// A whole workspace's history, newest first, optionally one fleet of it.
+    ///
+    /// `fleet` narrows the read to one fleet: the console's Live Wall drill-down
+    /// and a fleet's own list are the same read.
     ///
     /// # Errors
     /// Reports a datastore that would not answer, or a row this build cannot
     /// read. The cursor and the window were already resolved by the caller, so
     /// nothing here is the caller's fault.
-    pub async fn page_for_fleet(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
-        filter: &Filter,
-        cursor: Option<&Cursor>,
-        limit: i64,
-    ) -> Result<Vec<EventRow>> {
-        self.page(
-            workspace,
-            Some(fleet),
-            filter,
-            cursor,
-            limit,
-            CONTEXT_FLEET_PAGE,
-        )
-        .await
-    }
-
-    /// A whole workspace's history, newest first, optionally one fleet of it.
-    ///
-    /// `fleet` is the drill-down the console's Live Wall uses. It binds the
-    /// same argument the per-fleet entry point binds, so the two cannot answer
-    /// differently for one fleet.
-    ///
-    /// # Errors
-    /// As [`Self::page_for_fleet`].
     pub async fn page_for_workspace(
         &self,
         workspace: &Uuid7,
@@ -132,15 +108,13 @@ impl History {
         cursor: Option<&Cursor>,
         limit: i64,
     ) -> Result<Vec<EventRow>> {
-        self.page(
-            workspace,
-            fleet,
-            filter,
-            cursor,
-            limit,
-            CONTEXT_WORKSPACE_PAGE,
-        )
-        .await
+        let context = if fleet.is_some() {
+            CONTEXT_FLEET_PAGE
+        } else {
+            CONTEXT_WORKSPACE_PAGE
+        };
+        self.page(workspace, fleet, filter, cursor, limit, context)
+            .await
     }
 
     /// One event, bodies included, or nothing.

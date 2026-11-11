@@ -1,4 +1,4 @@
-//! Lease-scoped model-window checkpoints are private working state.
+//! Content-free progress of a conversation summary.
 use garde::Validate;
 use serde::{Deserialize, Serialize};
 

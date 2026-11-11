@@ -100,7 +100,6 @@ fn rendered(resume_hold: bool) -> Value {
             decision: None,
             task: None,
             expires_at: acquired.leased_until,
-            execution_deadline: acquired.leased_until,
         },
     );
     serde_json::to_value(af_wire::protocol::Down::<serde_json::Value>::Offer {

@@ -55,11 +55,6 @@ pub(crate) enum ErrorKind {
     },
     #[error("The runner stream no longer has permission to serve this host.")]
     Authority { refusal: Refusal },
-    #[error("The runner stream could not read an HTTP header.")]
-    Header {
-        #[source]
-        source: http::header::ToStrError,
-    },
     #[error("The runner stream contains an invalid identifier.")]
     Identifier {
         #[source]
@@ -85,11 +80,6 @@ pub(crate) enum ErrorKind {
         operation: Operation,
         #[source]
         source: tokio::time::error::Elapsed,
-    },
-    #[error("The runner stream could not read or write its body.")]
-    Io {
-        #[source]
-        source: std::io::Error,
     },
     #[error("The runner stream could not read its durable state.")]
     Database {

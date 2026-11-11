@@ -110,8 +110,6 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     fn authoring_setup(&self) -> &afd_authoring::Setup;
     /// Retained native Save, checked activation and initial-run recovery.
     fn creations(&self) -> &afd_authoring::Creations;
-    /// Daemon-owned model invocation for scoped private setup leases.
-    fn authoring_models(&self) -> &afd_authoring::ModelCalls;
 
     /// What the workspace secret surface acts through.
     ///

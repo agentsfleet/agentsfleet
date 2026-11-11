@@ -24,7 +24,8 @@ use afd_connector::Provider;
 use axum::body::Bytes;
 use http::HeaderMap;
 
-use super::verify::{ProvenApp, header, wall};
+use super::text;
+use super::verify::{ProvenApp, wall};
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _, WorkspaceConnectors as _};
 
@@ -106,8 +107,8 @@ fn checked<D: Services>(
     headers: &HeaderMap,
     body: Bytes,
 ) -> Result<ProvenApp, Refusal> {
-    let presented = header(headers, signature_header);
-    let timestamp = timestamp_header.and_then(|name| header(headers, name));
+    let presented = text(headers, signature_header);
+    let timestamp = timestamp_header.and_then(|name| text(headers, name));
 
     match scheme.verify_at(
         secret,

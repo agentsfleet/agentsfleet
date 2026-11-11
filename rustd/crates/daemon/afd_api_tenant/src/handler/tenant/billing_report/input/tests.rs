@@ -240,6 +240,11 @@ fn detail_filters_validate_the_identifier_and_retain_the_selected_work_type() {
         input.request.filter.work_type,
         Some(work::AUTHORING_ATTEMPT)
     );
+    assert_eq!(
+        input.activity.as_ref().map(af_core::id::Uuid7::as_str),
+        Some(ACTIVITY),
+        "the proved identifier travels with the input"
+    );
 }
 
 #[test]

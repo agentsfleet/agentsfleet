@@ -43,8 +43,8 @@
 //! anyway — `method_routing.rs` tries the `head` route and then FALLS THROUGH
 //! to `get`, so every `get()` handler answers HEAD unless something stops it.
 //!
-//! Stopping it per route would mean remembering `.head(refuse)` eighty-one
-//! times. It is one fact about the daemon, so it is one layer.
+//! Stopping it per route would mean remembering `.head(refuse)` once for every
+//! route. It is one fact about the daemon, so it is one layer.
 
 mod mount;
 pub(crate) mod probes;

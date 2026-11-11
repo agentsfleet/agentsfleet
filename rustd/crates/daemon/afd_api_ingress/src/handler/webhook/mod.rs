@@ -100,8 +100,10 @@ pub(crate) const DETAIL_EVENT_HEADER: &str =
 /// One header's value, when it is one this daemon can read as text.
 ///
 /// A header carrying bytes that are not visible ASCII resolves to `None`, which
-/// every caller then treats as absent — see [`verify`]'s own copy of this note
-/// for why the two are not told apart on the signature path.
+/// every caller treats as absent. On the signature path that is `Refusal::Signature`,
+/// the same answer an absent header earns, which is correct: neither is a proof,
+/// and telling them apart narrows a forger's search for no honest sender's
+/// benefit.
 pub(crate) fn text<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
     let value = headers.get(name)?;
     value.to_str().ok()
@@ -118,8 +120,7 @@ pub(crate) use afd_api_wire::ingress::{Accepted, Ignored};
 ///
 /// A webhook to a paused fleet answers 200
 /// `{"ignored":"fleet_paused"}`, because a sender's retry queue adds no value
-/// for a fleet somebody paused on purpose. `UZ-WH-003` was retired to make room
-/// for exactly this answer.
+/// for a fleet somebody paused on purpose.
 pub(crate) const REASON_FLEET_PAUSED: &str = "fleet_paused";
 
 /// The reason a delivery of a kind this daemon serves no rule for is dropped.

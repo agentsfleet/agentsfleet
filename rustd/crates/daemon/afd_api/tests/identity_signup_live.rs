@@ -227,6 +227,7 @@ async fn a_provider_that_will_not_take_the_writeback_does_not_refuse_the_deliver
         MetadataUnwritten::Unauthorized,
         MetadataUnwritten::UnknownSubject,
     ] {
+        let logs = af_core::test_util::trace::Capture::install();
         let refusing = RecordingWriteback::refusing(refusal);
         let (fleet, _database) = live("user_identity_writeback_refused").await;
         let router = fleet.with_signup_writeback(refusing.clone()).router();
@@ -253,15 +254,21 @@ async fn a_provider_that_will_not_take_the_writeback_does_not_refuse_the_deliver
             "{refusal:?}: the write was attempted and refused — a handler that \
              never asked would be a skipped write wearing a swallowed one's clothes"
         );
+        let logged = logs.only("identity_metadata_writeback_failed");
+        assert_eq!(
+            logged.field("error_code"),
+            Some(af_core::error_code::AUTH_UNAVAILABLE.as_str()),
+            "{refusal:?}: the warning names its registry code: {logged:?}"
+        );
     }
 }
 
 /// A provider that could not be reached refuses the delivery, and the
-/// redelivery finishes the account (M245 §10).
+/// redelivery finishes the account.
 ///
-/// Before, the handler answered 200 here, so the provider never sent the event
-/// again and the person's tokens carried no tenant until an operator repaired
-/// the metadata by hand. Now the first delivery answers 503 with the account
+/// Answering 200 here would stop the provider sending the event again, and the
+/// person's tokens would carry no tenant until an operator repaired the
+/// metadata by hand. So the first delivery answers 503 with the account
 /// committed, and the redelivery takes the replay path: it opens nothing new
 /// and writes the same tenant back.
 #[tokio::test]

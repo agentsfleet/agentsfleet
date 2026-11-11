@@ -287,7 +287,7 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
    | steady loop - Authorization: Bearer agt_r         GATE 2 - per-call auth:
    |      <-- heartbeat . lease . report . activity --| sha256(Bearer) == token_hash (timing-safe)
    |      heartbeat ^ capability report . v assigned policy + degraded verdict
-   |      eligibility: assigned tier + scope + secret_delivery   GATE 3 - blast radius
+   |      eligibility: assigned tier + scope                     GATE 3 - blast radius
 ```
 
 `agentsfleetd` owns the Postgres pool, the NATS connection, and the Vault API. `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/admin/runners/{id} {"action":"rotate"}`.

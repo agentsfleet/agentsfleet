@@ -38,19 +38,6 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
         limit: i64,
     ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
 
-    /// One page of a single fleet's history, newest first.
-    ///
-    /// # Errors
-    /// As [`Self::page_for_workspace`].
-    fn page_for_fleet(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
-        filter: &Filter,
-        cursor: Option<&Cursor>,
-        limit: i64,
-    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send;
-
     /// One page of `actor`'s events in a single fleet, newest first, matched
     /// exactly: a schedule's runs, under `cron:<schedule_id>`.
     ///
@@ -72,7 +59,7 @@ pub trait WorkspaceEvents: Send + Sync + std::fmt::Debug + 'static {
     /// not a guess.
     ///
     /// # Errors
-    /// As [`Self::page_for_fleet`].
+    /// As [`Self::page_for_workspace`].
     fn thread_for_fleet(
         &self,
         workspace: &Uuid7,
@@ -125,17 +112,6 @@ impl WorkspaceEvents for History {
         limit: i64,
     ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send {
         Self::page_for_workspace(self, workspace, fleet, filter, cursor, limit)
-    }
-
-    fn page_for_fleet(
-        &self,
-        workspace: &Uuid7,
-        fleet: &Uuid7,
-        filter: &Filter,
-        cursor: Option<&Cursor>,
-        limit: i64,
-    ) -> impl Future<Output = EventResult<Vec<EventRow>>> + Send {
-        Self::page_for_fleet(self, workspace, fleet, filter, cursor, limit)
     }
 
     fn page_of_actor(

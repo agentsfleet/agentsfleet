@@ -145,9 +145,8 @@ The daemon assembles authoring history; the bounded runner envelope carries curr
 Paging bounds each read without limiting conversation lifetime.
 Authoring records each compaction dispatch before provider access, then commits the result and checkpoint through its guarded receipt path.
 
-Setup runners opt into summary replies with `supports_compaction: true`.
-Ordinary replies omit `compacted` when false so older runners can read them during deployment.
-An older runner whose input needs a summary receives `AUTHORING_TOKEN` before summary funding or provider access.
+A setup request carries no compaction opt-in: when the prepared context needs a summary, the daemon funds and dispatches it, and the reply says `compacted`.
+Ordinary replies omit `compacted` when false.
 
 ## Tenant boundaries and sensitive buffers
 
