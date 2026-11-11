@@ -1,10 +1,14 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-11-07
+**Direction:** Clear Signal · **Updated:** 2026-11-11
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
 The website gallery demonstrates the components.
+
+Indy approved the refreshed app layout and Manrope scale on November 11, 2026, with compact icons required.
+The refreshed rules below describe the approved implementation target. Production tokens and components have not yet been migrated.
+The app approval does not change website display sizing or approve new public API behavior.
 
 ## Intent
 
@@ -22,8 +26,8 @@ The app prioritizes the current task and the next useful action.
 ### Evolving the direction
 
 This document records current design choices. Update it when a better interaction or an explicit owner decision changes those choices.
-The 2026-10-18 direction preserves the branding, fonts, and colors approved in Pull Request (PR) #752 and the M227 workstreams.
-Modernization changes hierarchy, composition, surface treatment, and motion within that identity.
+The October direction established the branding in Pull Request (PR) #752 and M227.
+The November app approval replaces its interface font, type scale, navigation, and panel treatment with the rules below.
 
 Gradients and animation are permitted design tools. Generic review preferences must not veto a deliberate, reviewed use.
 Derive decorative light from existing color tokens. Keep reading surfaces readable, and retain usable boundaries without decoration.
@@ -42,64 +46,87 @@ Prefer one coherent visual treatment across a route family over isolated effects
 | Role | Family | Use |
 |---|---|---|
 | Display | Bricolage Grotesque | Website hero and large section headings |
-| Interface and reading | Instrument Sans | App titles, navigation, buttons, forms, tables, and prose |
+| Interface and reading | Manrope | App titles, navigation, controls, tables, and conversation |
 | Technical | Commit Mono | Code, logs, identifiers, exact timestamps, and technical values |
 
-Fonts are bundled through Fontsource. Runtime font downloads from third-party domains are unnecessary.
-Use `font-display`, `font-sans`, and `font-mono` through the shared theme.
-Do not redefine a font family in a consumer stylesheet.
+Bundle fonts locally and load them through the shared theme. Keep `font-display`, `font-sans`, and `font-mono` as shared roles.
+Remove consumer font overrides during migration, including Usage's local system-font treatment.
+Keep website display sizes separate from the app scale.
 
-Billing's approved compact surface uses the shared `font-system` utility for the platform system font.
-Its activity cells use 12px normal text, names and totals use medium weight, and spending rows use 13px normal text.
-Align disclosed labels left and values right through DescriptionList on the shared card surface.
+### Approved app scale
 
-| Token | Size | Role |
+Sizes below assume a 16px browser root. Define rem equivalents in shared tokens and preserve browser zoom.
+Indy's inspected Amp references establish the compact scale; Manrope remains the approved family.
+
+| Role | Desktop size / line height | Weight | Phone |
+|---|---|---|---|
+| Conversation and composer | 13px / 20px | 400 | Reading 16px / 26px; typing 16px / 24px |
+| Navigation, controls, field labels | 13px / 20px | 500 | Same; typing fields 16px / 24px |
+| Summary decisions, output names, descriptions | 13px / 20px | 400; emphasis 500 | Same |
+| Table cells and supporting descriptions | 13px / 20px | 400; identity 500 | Same |
+| Metadata, timestamps, counts | 12px / 16px | 400 | Same |
+| Fleet header and section labels | 13px / 20px | 600 | Same |
+| App page title | 20px / 26px | 650 | Same |
+| Dialog title | 18px / 24px | 650 | Same |
+| Technical content | 13px / 20px | 400 | Same, with bounded scrolling |
+
+Use zero added letter spacing for interface text. Use sentence case for navigation, actions, and table headings.
+Keep ordinary reading at weight 400; use stronger weight for headings and emphasis.
+The earlier 14px, 15px, and 16px desktop chat proposals are superseded.
+
+Keep essential decisions and error recovery above the metadata scale. Use 12px for supporting facts, never an entire approval description.
+Use tabular numerals for changing values and numeric columns. Reserve monospace for technical values whose character alignment helps comparison.
+
+Use a shared phone breakpoint for the 16px reading scale. Coarse-pointer typing fields retain 16px even in wider layouts.
+Verify computed family, size, weight, and line height after the font loads. Compare both themes at matching viewport sizes and 100% zoom.
+Check 200% zoom separately for wrapping, reachable actions, and retained focus.
+
+### Website display scale
+
+Retain the website's 72px maximum hero, 40px section headings, 18px introduction, and 15px body roles.
+Carry the shared interface family through website controls when shared tokens migrate. The app approval does not authorize a new website layout.
+
+## Icons
+
+Use Phosphor for general interface icons. Remove Lucide imports as the corresponding shared components migrate; the finished app uses one family.
+Keep the product brand mark separate from the icon library.
+
+| Role | Glyph size | Interactive target |
 |---|---|---|
-| display-xl | 72px maximum | Responsive website hero |
-| display-lg | 40px maximum | Website sections |
-| display-md | 28px | App titles and major values |
-| heading | 20px | Working sections and card headings |
-| body-lg | 18px | Website introductions |
-| chat-title | 19px | Fleet and setup header titles |
-| conversation | 14px | Fleet and setup transcript and composer, with 1.75 line height |
-| body | 15px | Default reading and controls |
-| body-sm | 14px | Supporting copy, table cells, and navigation |
-| label | 13px | Metadata, table headings, and compact status badges |
-| eyebrow | 12px | Short section labels |
-| mono | 13px | Technical content and aligned identifiers |
+| Main rail, including New fleet | 20px | 48px desktop; at least 44px on phones |
+| Inline actions, menus, table controls, status | 16px | 32–36px fine pointer; at least 44px coarse pointer |
+| Composer attach and send controls | 18px | 36px fine pointer; at least 44px coarse pointer |
+| Small chevrons | 12–14px | The whole labeled row is interactive |
+| Rail brand mark | 24px | At least 44px |
 
-Use sentence case for controls and navigation.
-Form labels use 13px semibold sans; normal button labels use 14px semibold sans.
-Keep descriptions at normal weight so labels and actions carry a clear hierarchy.
-Uppercase is reserved for short eyebrows, compact status labels, and shared agent display names. Table headings use sentence case.
-Keep long labels in sentence case so they remain easy to scan.
-Use tabular numerals for changing values and aligned numeric columns.
-Do not use mono for an entire table when its rows contain names and descriptions.
+Use regular weight by default. Selected navigation may use bold weight without changing glyph dimensions or moving surrounding content.
+New fleet uses Phosphor `note-pencil`, the square writing pad with a pencil. Plain pencils identify editing an existing item.
+Success uses `check-circle`; selection ticks keep their separate meaning.
 
-The 13px step serves compact sans labels, table headings, and technical mono values.
-Use 14px for supporting descriptions, operational status lines, and relative times.
-Reserve monospace for exact values whose character alignment helps comparison.
-
-App page titles use the shared 28px semibold `PageTitle`; do not restyle individual page headings.
-Both fleet entrances use this title style.
-Fleet workspace headers use the compact `chat-title` role above the conversation.
+Icon-only buttons require accessible names and tooltips available on hover and keyboard focus.
+Hide decorative icons from assistive technology. Keep status text beside its icon, and keep disclosure chevrons visible before hover.
+Do not enlarge glyphs to fill their click targets.
 
 ## Color
 
 Dark is the primary brand presentation. Use charcoal surfaces, warm off-white text, and restrained mint. Light has equal usability requirements.
-The token file owns exact values; the following roles explain their use.
+The token file owns shipped values. Migrate the app to the approved values below through shared roles, without page-local colors.
 
-| Role | Dark | Light |
+| App role | Dark target | Light target |
 |---|---|---|
-| Page | Charcoal | Warm off-white |
-| Card | Lifted charcoal | White |
-| Input / secondary surface | Distinct charcoal layer | Pale green-gray |
-| Hover / selected surface | Brighter charcoal | Muted green-gray |
-| Primary text | Warm off-white | Deep green-black |
-| Secondary text | Clear gray-green | Dark gray-green |
-| Brand action | Bright mint with dark text | Solid ink with white text |
-| Secondary action | Mint tint, mint text and border | Teal tint, deep teal text and border |
-| Link / live signal | Bright mint | Deep teal |
+| Canvas | `#101114` | `#E9EBEE` |
+| Working surface | `#181A1E` | `#FAFBFC` |
+| Panel / input | `#202328` | `#F0F2F5` |
+| Raised / selected surface | `#2B2E35` | `#E3E7EC` |
+| Primary text | `#F5F6F8` | `#20242B` |
+| Secondary text | `#C2C7D0` | `#495361` |
+| Metadata | `#A3ABB7` | `#5E6876` |
+| Control border | `#3D424B` | `#BDC5CE` |
+| Quiet divider | `#30343C` | `#D7DCE2` |
+| Primary action / text | `#C1F0D6` / `#153D29` | `#24593D` / `#FFFFFF` |
+| Success | `#B6E4C8` | `#286644` |
+| Warning | `#F3CB87` | `#765017` |
+| Error / background | `#FFB3B6` / `#302126` | `#A42938` / `#FFF0F1` |
 
 Use semantic foreground tokens on their intended backgrounds.
 Check primary, muted, subtle, mint, and status text against every surface where they appear.
@@ -122,7 +149,7 @@ Status always includes text or an icon; color alone carries no required informat
 Success uses a distinct green, while mint remains the action and live-signal accent.
 Use information blue for informative state, evidence amber for sourced material, and amber for attention.
 Give compact badges a visible tinted surface and boundary. Keep neutral metadata quiet; do not color every label.
-Secondary actions and hovered controls use a mint tint instead of another indistinguishable gray layer.
+App secondary actions use a neutral panel and visible border. Selected navigation and primary actions carry the mint emphasis.
 
 The shared `BrandMark` is a static eight-ray signal with a central dot, paired with
 the wordmark. It identifies the product without implying live execution. Use
@@ -134,8 +161,9 @@ the wordmark. It identifies the product without implying live execution. Use
 - Keep reading surfaces solid. Decorative light may frame a hero or working surface without reducing text contrast.
 - Chat composers show focus through the typing caret and a stronger neutral outer border. Avoid a second outline or mint glow.
 - Use borders, surface contrast, and shared elevation roles to establish depth. Floating surfaces remain clearly above the page.
-- Use 6px, 8px, and 12px radii for small details, controls, and panels.
-- Circular shapes are reserved for avatars and status dots.
+- Use 10px radii for app fields and small controls, 16px for cards, and 22px for the main surface, composer, and Summary.
+- Keep the website's existing radius roles until its components migrate.
+- Use circles for avatars, status dots, and the compact Send action.
 - Use the shared 4px spacing scale.
 - Keep related controls close and separate different tasks with clear section gaps.
 - Avoid cards nested inside cards when a divider communicates the same grouping.
@@ -146,19 +174,119 @@ PageHeader separates the route introduction from its working area with a fine di
 SectionHeader places an action beside the working area it affects.
 Descriptions sit below titles and wrap naturally.
 Page headers and their actions wrap on narrow screens.
-Keep the full wordmark visible at 320px without competing with account controls.
-Below 360px, the workspace picker becomes a labeled 44px icon button; its menu still exposes workspace names.
+The collapsed app rail uses the brand mark. Its expanded form may show the wordmark.
+Keep workspace names available in the workspace picker and preserve at least 44px touch targets.
 
 Website layouts use an editorial grid within the shared content width.
 Pair a concise explanation with a concrete product example.
 Vary section composition according to its content.
 Keep narrow-screen reading order meaningful without relying on visual placement.
 
+### Fleet shell and Summary
+
+Start with a collapsed rail: 72px desktop and 56px on phones. Keep New fleet visible through the square-and-pencil action.
+The empty conversation also offers New fleet and a composer. Do not require opening a menu to begin.
+
+Keep the fleet title, current state, and Fleet actions together in the top bar. Place cost and New fleet at the opposite edge.
+Put Rename, scheduling, Archive, and Permanently Delete in the overflow menu.
+Archive permanently stops the fleet and retains setup and history. Indy explicitly chose no Restore; use Stop and Resume for temporary interruption.
+Offer Permanently Delete directly on active or archived fleets, with its own confirmation. The app handles any required terminal stop internally.
+If stopping succeeds but deletion fails, retain the fleet and offer Retry deletion. Preserve the existing backend authorization and version checks.
+
+After confirmed success, show a compact notification near the top center of the page.
+Use **Fleet archived** with **View history** and a dismiss control, or **Fleet permanently deleted** with a dismiss control.
+Archive has no Undo or Restore. Deleted fleets have no View action.
+Use 13px / 20px text, a 16px icon, a 10px rounded border, and 44px touch targets on phones.
+Announce the outcome and fleet name through a polite live region without moving focus into the notification.
+Dismiss success after eight seconds; pause dismissal while hovered or focused. Keep history reachable from the Archived list after dismissal.
+
+Remove the fleet from the active list after success. If it was open, show the New fleet screen and focus its main content.
+Keep another open fleet in place when acting on a different fleet from the list.
+Archived history is read-only. Pending operations, failures, and uncertain outcomes remain visible beside the action until resolved.
+Never show a success notification while a request is pending or when only the stop portion of deletion succeeded.
+
+
+Summary occupies a 248px column on wide desktops. It can narrow to 216–228px at intermediate widths.
+Use a 16px inner inset and a 16–32px gap from the conversation. Align its top with the conversation's working area.
+
+Summary remains inline and visible without clicking. Show the current decision, relevant changes, outputs, and next scheduled wake-up.
+Omit the Environment section and empty groups. Detailed evidence opens from the relevant item; the Summary itself never becomes a drawer.
+
+On phones, place a compact Summary in the page flow. Keep the current state and urgent decision visible without filling the first viewport.
+Move secondary details lower in the flow when necessary. Preserve readable decision text and reachable actions; do not solve crowding with smaller type.
+
+Use the 4px spacing scale: 8px within related controls, 12–16px within groups, and 24–32px between working sections.
+Conversation, output cards, and composer share horizontal edges. Align labels and values consistently within Summary and resource rows.
+
+### Conversation outcomes and errors
+
+Keep replies, tool activity, incoming messages, and wake-ups in one chronological conversation. Show the recorded outcome for each activity.
+The compact strip above the composer summarizes current changes or a scheduled wake-up; it does not replace the conversation's history.
+
+| Outcome | Visible summary | Inspectable detail |
+|---|---|---|
+| Command | Action, running or final status, recorded duration | Command, output, exit information |
+| File edit | File name and recorded change counts | Diff and resulting file, when supplied |
+| Incoming Slack message | Source and message-received state | Recorded message and available source link |
+| Outgoing notification | Sending, sent, failed, or unconfirmed | Recipient and delivery result when supplied |
+| Scheduled wake-up | Next time and schedule state | Time zone, edit, pause, and cancel actions supported by the API |
+| Helper activity | Recorded start, progress, and completion | Result or failure; no invented helper lifecycle |
+| Approval | Requested action and consequence | Decision controls, saved decision, and supporting evidence |
+| Failure | What failed and the next useful action | Diagnostic detail without credential values |
+
+Keep failures visible beside the failed message or action. A disappearing toast or composer strip must not be the only failure record.
+Retain partial results and unsent text. Retry only the failed step when previous writes succeeded.
+Keep unconfirmed external writes distinct from confirmed failures; reconnecting must not resend them blindly.
+
+Keep assistant-ui's existing event-backed runtime. Add renderers for recorded message parts before adding another chat framework.
+Attachments, mentions, editing, and branching need their own supported request and storage behavior before their controls become available.
+Display concise progress facts and outcomes; do not present hidden model reasoning as an activity feed.
+
+### Models, Security, and Team
+
+Models offers one Create model dialog with Provider, Model, credential choice, and optional Make active.
+The credential choice offers Add new key or Use saved key. Filter saved keys by provider and show their names without stored values.
+Use Key name for a new credential. Reusing a key must not rotate or replace it.
+
+Keep Base URL and optional credentials for supported custom endpoints. Explain saved-key scope beside the picker when it affects selection.
+Model registration and active-model selection are account-scoped. The current API resolves model credentials from the account's primary workspace vault.
+Use that workspace for saved-key choices and new-key storage. A different selected workspace must not imply its keys can activate account models.
+
+Show completed steps when key storage, model registration, and activation succeed separately. Keep a registered model visible if activation fails.
+Retry activation alone after an activation failure. Storage success does not establish that a provider key works.
+
+Platform administrators manage the shared default under **Admin → Models**.
+Each catalogue row offers **Set platform default**; the selected row shows **Platform default**.
+Keep this action distinct from an account's **Make active** choice. Workspace membership alone never grants platform administration.
+The confirmation names the provider, model, and shared impact. Keep credential entry or authorized reuse within that form.
+Retain existing catalogue pricing and inference requirements. Show **Platform default updated** only after the server confirms the change.
+Preserve the existing vault and platform authorization checks; do not broaden access when renaming APIs.
+
+Security combines account API keys and browser sessions. Keep provider credentials under Models and Secrets.
+Keep profile information available through the account identity and custom profile controls backed by the auth adapter.
+Sign out remains in the avatar menu.
+
+The app owns profile and session data shapes; Clerk supplies the current implementation through a dedicated adapter.
+Keep Clerk-specific objects and errors out of product components. A component re-export alone does not make the provider replaceable.
+Use Last active for activity timestamps and Signed in only for recorded session creation. Mark the current session and preserve real revoke behavior.
+
+Keep **Avatar → Team**. Current membership gives access to every workspace in the account; do not label this workspace-only access.
+Preserve Owner and Member roles, owner protection, pending invitations, and member removal.
+The current invite flow accepts one email and creates a recipient-specific invitation.
+
+If email delivery fails after invitation creation, keep the invitation visible with resend and copy-link recovery.
+Keep delivery status separate from invitation status. Never show an empty membership list when its read failed.
+
+Call the resource **Plugins**. Flow 1 is approved: each Plugin contains a complete fleet setup with immutable revisions and existing account access.
+Use Plugin starts a new private setup; it never attaches capabilities to an existing fleet. Save as Plugin remains separate from Save fleet.
+Defer capability composition and plugin mentions to the revisit note in M239; they are outside this refresh.
+Keep existing Secrets. A separate readable environment-variable feature is outside this delivery.
+
 ## Components
 
 | Component | Rules |
 |---|---|
-| Button | Compact semibold sans label; solid primary fill, tinted secondary fill, visible focus, stable disabled state |
+| Button | Compact medium-weight sans label; solid primary fill, tinted secondary fill, visible focus, stable disabled state |
 | Input and textarea | Compact sans fields with strong resting boundary; explicit mono only for code or technical data |
 | Navigation | Readable sans labels, clear selected state, consistent icon size |
 | Tabs | Shared underline style for both route and local tabs |
@@ -184,9 +312,10 @@ The fleet header offers **Edit setup** and **Fleet actions**. **Edit setup** ope
 Fleet messages, setup receipts, and integration activity share one chronological conversation.
 
 **Save fleet** sits beside the authoring chat title. Authoring a saved fleet shows **Save changes** in that position.
-**Stop** and permanent **Kill** live in **Fleet actions**, with confirmation dialogs.
+**Stop**, **Archive**, and **Permanently Delete** live in **Fleet actions**. Archive and deletion use separate confirmations.
 
-Setup and saved chat share a 728px reading column and a composer pinned to its bottom edge.
+Setup and saved chat share an aligned conversation and composer. Bound desktop content to the reviewed 740px maximum and keep the composer at the bottom.
+Review prose line length at 13px; narrow text blocks when lines become difficult to follow, while allowing commands and diffs more width.
 User messages use a quiet bubble; assistant replies use plain prose and the fleet's name.
 **Saved memories** opens from **Fleet actions**. The dialog has one title; its description fits on one line on desktop and wraps on narrow screens.
 
@@ -202,7 +331,7 @@ Stored values are never loaded into the editor. Secret names display Copy only; 
 
 Default buttons, text inputs, and select triggers are 36px tall on fine pointers. Small buttons are 32px; large actions are 44px. Icon buttons share the same compact rhythm.
 Coarse pointers retain a minimum 44px interactive target. Visible density must not make touch, keyboard focus, or long labels harder to use.
-Use 13px form labels and badges, 14px control labels and supporting text, and the existing 15px body scale. Smaller components do not mean tiny type.
+Use the approved app type roles above. Smaller glyphs retain their click targets, and compact controls retain readable labels.
 Place related controls in one wrapping row where practical. Keep dialogs focused on the current decision and disclose advanced configuration through the shared Accordion.
 Use shared Button, Input, Select, Label, Badge, and StatusPill variants for these decisions. Pages must not recreate their appearance with local class overrides.
 Use `Card interactive` only when the surface opens a destination. Static information panels keep their resting treatment.
@@ -217,7 +346,7 @@ Inside the dashboard it fills the content area while the header and sidebar rema
 
 ### Tables and record dates
 
-DataTable uses 13px sentence-case headings and 14px sans body cells. Mark the identity column with `primary` to strengthen its hierarchy.
+App DataTable uses 13px sentence-case headings and 13px sans body cells. Mark the identity column with `primary` to strengthen its hierarchy.
 Shared cell tokens provide 16px horizontal and 12px vertical padding. Pages must not override row density individually.
 The table palette defines its header, alternating surfaces, dividers, and mint hover or focus treatment in `tokens.css`.
 Clickable rows expose an Open column and chevron. Nested buttons, links, and inputs retain their own pointer and keyboard actions.
@@ -255,7 +384,7 @@ Row actions run Edit first, then view or publish, then fetch or switch, then Del
 
 Use IconAction for icon-only row controls so their square size, tooltip, and accessible name stay consistent.
 
-Use Lucide `CircleCheckIcon` for confirmed actions and successful checks, including approval, invitation, setup, refresh and copy feedback.
+Use Phosphor `check-circle` for confirmed actions, including approval, invitation, setup, refresh, and copy feedback.
 
 Keep existing sizes and semantic colors. Checkbox and menu ticks continue to indicate selection.
 
@@ -292,12 +421,13 @@ Use Search for text matching. Label structured filters by their fields and state
 Runner detail bounds its table height on desktop and scrolls the page on mobile.
 Wrapped headers must never shrink the table viewport until all rows disappear.
 Align the table and status line to the same edges. Use the shared extra-large spacing token between working sections.
-Status lines use 14px sans-serif text, tabular digits, and keyboard-accessible horizontal scrolling.
+App status lines use 13px sans-serif text, tabular digits, and keyboard-accessible horizontal scrolling.
 
 Runner cards show host identity, status, last seen, and an Open action. Create runner belongs in the page header.
 Runner detail places actions beside the title and status beneath it. Leases and Activity tabs sit directly above their content.
 A checks badge reports the result; a separate View checks button makes inspection discoverable.
-Activity and Approvals belong in workspace navigation. Keep Approvals available when its inbox is empty. Hide Platform navigation when the person has no operator destinations.
+Fleet activity belongs in its conversation. Pending fleet decisions appear in Summary.
+Retain access to the workspace approval inbox, including its empty state. Show operator destinations only to authorized people.
 
 ### Forms and popups
 
@@ -330,7 +460,7 @@ Read failures use UnavailableState, which composes the warning Alert with a titl
 Never substitute an empty result for an unsuccessful read. Reserve destructive alerts for failed changes or destructive decisions.
 Workspace and Platform library reads share recovery wording; a missing selected recipe has its own explanation.
 
-Clerk sign-in, sign-up, account menus, and profile forms use `lib/clerkAppearance.ts`.
+Existing Clerk forms use `lib/clerkAppearance.ts` until custom account surfaces replace them.
 This adapter maps shared tokens through Clerk’s typed Core 3 appearance API, including `theme`, `options`, and `variables`.
 Do not create separate authentication colors or font families.
 Clerk’s primary actions, input states, popup backdrop, and corner radii follow the same component roles.
@@ -364,12 +494,27 @@ Reuse the reviewed draft's save action, including validation, pending state, and
 Explain when changes affect the fleet in plain language. Show confirmed saved versions in the compact status above the composer.
 Keep full revision and access details in setup inspection.
 
-Use a labelled pencil action for editing and a neighboring summary toggle.
-`ChatSummaryProvider` owns only disclosure state; existing task providers retain request ownership.
-The summary starts closed and opens directly as a desktop sidebar or mobile drawer.
-Keep durable tasks visible; omit empty Outputs and Changes sections.
-The saved setup editor returns to its fleet conversation. Use workspace navigation to switch fleets.
-Keep workspace navigation visible beside fleet setup and conversation on desktop.
+Use a labeled pencil action for editing an existing setup. Keep Summary visible without a toggle or drawer.
+Existing task providers retain request ownership; Summary reads their state without starting duplicate requests.
+Keep durable tasks visible and omit empty Outputs and Changes sections.
+The saved setup editor returns to its fleet conversation. Use the rail's fleet picker to switch fleets.
+
+### Setup-to-conversation transition
+
+Keep one visual shell through setup, confirmed save, and the fleet conversation. Preserve the title, reading width, composer position, and inline Summary.
+Label the authoring state Setup and its action Save fleet. Show goal, model, access, and trigger requirements beside the conversation.
+
+After the server confirms the fleet identity, open its conversation without an extra Open fleet action. Replace the draft URL with the saved fleet URL.
+Show confirmed readiness separately from saving. If setup needs attention after creation, retain the created fleet and expose recovery without repeating creation.
+
+Use Message fleet after the transition. Edit setup explicitly returns to authoring within the same shell; normal runtime messages never silently rewrite setup.
+Save changes returns to the conversation after confirmed revision acceptance. Preserve version checks and conflict recovery.
+
+Retain unsent text and scroll position, with separate buffers for setup and runtime. Never submit a setup draft to the runtime endpoint during navigation.
+Keep the creator's setup transcript private. Other members see only setup facts and activity already authorized for them.
+
+Saving does not replay the setup prompt as a first run. Run now requires an explicit instruction; configured triggers retain their existing behavior.
+Save as Plugin publishes a reusable complete setup through a separate action.
 
 ### Chat state and activity
 
@@ -395,7 +540,8 @@ The compact setup status shows actual reading, sending, saving and publishing pr
 Show a success tick only for a confirmed saved version or publication.
 A new authoring request replaces the previous confirmation and its fleet action.
 
-Saving offers Open fleet. Publishing offers New fleet pinned to the published Library revision.
+Confirmed saving opens the fleet conversation. Publishing a Plugin separately offers New fleet pinned to the published revision.
+Flow 1 is approved: Plugins preserve full-fleet reuse. Attachable capabilities are deferred to the M239 discussion.
 Keep those navigation actions separate from the Save changes control.
 
 Completed replies keep the same markdown renderer and text nodes used while streaming.
@@ -496,17 +642,17 @@ Use native setup records throughout. Do not offer file imports, bundle exports, 
 
 ### Workspace authoring and publication
 
-The sidebar's **Fleets** section lists saved, authorized fleets. Each row shows the fleet name, a status dot, and a delete control.
+The **Fleets** picker lists saved, authorized fleets with names and status. Put Delete in Fleet actions, away from the main navigation target.
 
 Private drafts appear under **Unfinished setups** on **New fleet**. Each row offers **Resume** and a delete control.
 
 Keep private setup status available to screen readers and in the tooltip. Active fleet dots use the shared mint token.
 
-Chat titles use the same 14px Instrument Sans as navigation, with ellipsis and the full title on hover or keyboard focus.
-Tool activity uses a 14px icon rail, including running indicators, with text for every outcome.
+App chat titles use Manrope 13px / 20px, with ellipsis and the full title available on hover or keyboard focus.
+Tool activity uses 16px icons with text for every outcome.
 
 Keep at least a 44px disclosure target on mobile and put long targets below the action.
-Desktop activity disclosures have a 36px minimum height and 14px action text; secondary targets retain the 13px metadata scale.
+Desktop activity disclosures have a 36px minimum height and 13px action text; supporting metadata uses 12px / 16px.
 
 Keep 8px inner padding around activity controls; keyboard focus uses one solid inset outline.
 
@@ -540,7 +686,8 @@ Saving changes updates the version from the server response. New runs use the sa
 **Save fleet** requests no first run. Configured automatic triggers can start work once setup is ready.
 
 Keep unfinished setup and first-run recovery, schedule registration warnings, and retry actions visible. Successful setup does not add an expandable report to the conversation.
-The saved result shares the conversation's scroll area so **Open fleet** remains reachable on narrow screens and short windows.
+Show the saved acknowledgement and recovery actions within the conversation on narrow screens and short windows.
+Open the confirmed fleet conversation after saving; do not require another navigation action.
 
 Review dialogs use the shared viewport height limit and scroll within it.
 Setup and runtime compact older conversation near 90 percent of the selected model window, or earlier when operating limits or output headroom require it.
@@ -555,7 +702,7 @@ These boundaries follow the [model instructions](../rustd/crates/daemon/afd_auth
 
 Append messages in one bounded native scroll region. The branded signal loader names its current activity.
 A blinking cursor follows the typing text. Use Bricolage Grotesque for the entrance headline,
-Instrument Sans for messages, and CommitMono for commands and technical excerpts.
+the shared interface face for messages, and Commit Mono for commands and technical excerpts.
 
 Loop the example after a readable hold on the final report. Remove stage tabs and Replay.
 Keep Pause and Read full conversation available; the primary example action is Create fleet.
@@ -620,6 +767,23 @@ Destructive actions retain their existing confirmation behavior.
 4. Migrate explicit consumer styles.
 5. Inspect app and website in dark, light, narrow, keyboard, and reduced-motion states.
 
+Finish the converted app with a rendered visual review, after real data and fonts load.
+Review conversation, activity, errors, wake-ups, empty state, Models, Create model, Plugins, Secrets, Usage, Security, Team, and invitations.
+
+| Check | Required observation |
+|---|---|
+| Viewports | 390px phone, 768px tablet, and 1480px desktop; both themes |
+| Type and icons | Computed approved sizes; stable glyph dimensions across selected and default states |
+| Spacing | Shared left edges, consistent row insets, balanced section gaps, and aligned dialog actions |
+| Summary | Visible inline; phone content does not push the entire conversation below the first screen |
+| Long content | Names wrap or expose their full value; commands scroll within their own surface |
+| Controls | Visible focus, one search focus ring, reachable footer actions, and correct pointer target sizes |
+| States | Loading, empty, failed, partial success, disabled, and selected states retain their structure |
+| Zoom and motion | 200% zoom preserves access; reduced motion preserves all state information |
+
+Inspect screenshots directly and exercise the interactions. Automated accessibility checks supplement visual judgment.
+Record remaining visual defects and their affected screens. Prototype checks do not prove the converted app matches the approved design.
+
 Use the development-only `/_design-system` gallery as the visual reference. Production builds omit its route and gallery bundle.
 Keep token mappings, accessible contrast, and meaningful component behavior covered.
 Complete the owned implementation before running focused behavioral checks.
@@ -672,16 +836,18 @@ Historical decisions below record prior directions; the current sections above s
 | 2026-10-18 | Fluid, visually rich app surfaces within the approved identity | Indy authorized modernizing this guidance, deliberate gradients and motion, and an app-wide browser review. Branding, font families, and the PR #752 / M227 palette stay unchanged. Shared components own visual behavior; app widgets own product composition. |
 | 2026-11-01 | Animate ongoing work and keep chat state ownership explicit | Indy confirmed normal animation with the OS Reduce Motion preference respected. Chat uses assistant-ui, native API operations, scoped caches and local interaction state; progress icons reflect actual work. |
 | 2026-11-07 | Group runner configuration in a right panel | Execution, network access, durable work, and advanced settings share readable field groups. Editing keeps Save visible while fields scroll. |
+| 2026-11-11 | Approved app refresh and compact icons | Manrope 13px / 20px desktop reading, 12px / 16px metadata, 16px phone reading; Phosphor 20px rail and 16px actions. Summary stays inline. Rounded panels, Team, Models, Usage, and Security follow the reviewed layouts. Production conversion and final rendered spacing review remain due. |
 
 ### Recoverable chat failures and tool summaries
 
-A recoverable chat failure is a compact, politely announced inline status with a 14px enclosed warning icon and expandable diagnostics.
+A recoverable chat failure is a compact, politely announced inline status with a 16px enclosed warning icon and expandable diagnostics.
 Keep the submitted request and partial response; reconnecting a browser stream does not authorize replaying an uncertain tool write.
 Use recorded action verbs in collapsed tool groups, retain failures explicitly and keep complete command evidence behind the disclosure.
 
 ## Proposed Durable Task work panel
 
-M236 adds a Work panel beside fleet conversation; [Durable Tasks](architecture/durable_tasks.md#work-panel-and-notifications) owns its behavior.
+M236 supplies work details; [Durable Tasks](architecture/durable_tasks.md#work-panel-and-notifications) owns their behavior.
+Present that content through the approved inline Summary and its detail views, without adding a competing sidebar.
 Rows show title, current state, next dependency and confirmed result links.
 Details expand to local versus published files, checks, attempts, helpers and evidence.
 
