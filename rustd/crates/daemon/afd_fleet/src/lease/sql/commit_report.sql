@@ -51,12 +51,16 @@ WITH scope AS MATERIALIZED (
   JOIN locked_slot a ON a.fleet_id = l.fleet_id
   WHERE l.id = $1 AND l.runner_id = $2 AND l.status = $4
   FOR UPDATE OF l
+), instant AS MATERIALIZED (
+  -- Read once the slot and lease locks are held, so the slice is measured to
+  -- the moment the report owns the lease, never before a lock wait.
+  SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM probe) locked
 ), catalogue AS MATERIALIZED (
   SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1
 ), guard AS MATERIALIZED (
   SELECT p.*, GREATEST(p.last_metered_at, LEAST(i.checked_at, p.lease_expires_at)) AS metered_until
   FROM probe p
-  CROSS JOIN (SELECT clock_timestamp() AS checked_at) i
+  CROSS JOIN instant i
   WHERE p.fencing_token >= p.live_fence
     AND p.posture = $11 AND p.provider = $12 AND p.model = $13
     AND ($14::bigint IS NULL OR (SELECT resource_version FROM catalogue) = $14::bigint)
