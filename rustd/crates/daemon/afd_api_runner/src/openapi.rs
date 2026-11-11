@@ -43,6 +43,7 @@ afd_http::plane_collector! {
         crate::handler::runner::task_effects::list,
         crate::handler::runner::decisions::reserve,
         crate::handler::runner::decisions::record,
+        crate::handler::runner::context::load_removed,
         crate::handler::runner::context::put,
         crate::handler::runner::enrolment::handle,
         crate::handler::runner::memory::capture,

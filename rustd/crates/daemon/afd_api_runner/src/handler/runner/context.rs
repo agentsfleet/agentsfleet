@@ -18,6 +18,27 @@ const EVENT: &str = "runner_context_checkpoint_failed";
 const MALFORMED: &str = "Malformed context checkpoint";
 const SUPERSEDED: &str = "superseded";
 
+/// The removed checkpoint read. A run mints every branch it writes, so the read
+/// could only answer nothing; it answers `410` with its code, so a runner of
+/// an earlier release learns to upgrade rather than retry a route.
+#[cfg_attr(feature = "openapi", utoipa::path(
+    get, path = af_wire::paths::LEASE_CONTEXT, tag = afd_http::openapi::tag::RUNNERS,
+    operation_id = "runner_load_context_checkpoint", summary = "Removed: read private run working notes",
+    description = "Removed. A run publishes its working notes and never reads them back, so this answers 410 with UZ-RUN-025.",
+    params(ContextPath),
+    responses((status = 401, description = afd_http::openapi::UNAUTHORIZED),
+        (status = 403, description = afd_http::openapi::FORBIDDEN),
+        (status = 410, description = afd_http::openapi::GONE),
+        (status = 429, description = afd_http::openapi::TOO_MANY_REQUESTS),
+        (status = 500, description = afd_http::openapi::INTERNAL),
+        (status = 503, description = afd_http::openapi::UNAVAILABLE))
+))]
+pub(crate) async fn load_removed(Path(_path): Path<ContextPath>) -> Refusal {
+    Refusal::coded(af_core::error_code::RUN_CONTEXT_LOAD_REMOVED, LOAD_REMOVED)
+}
+
+const LOAD_REMOVED: &str = "The context checkpoint read was removed; upgrade the runner";
+
 /// Replace private notes conditionally; identical retries have one durable effect.
 #[cfg_attr(feature = "openapi", utoipa::path(
     put, path = af_wire::paths::LEASE_CONTEXT, tag = afd_http::openapi::tag::RUNNERS,

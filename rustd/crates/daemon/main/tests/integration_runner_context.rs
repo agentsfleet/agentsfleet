@@ -51,11 +51,16 @@ async fn first_checkpoint_commits_on_a_branch_never_loaded() {
         .call(Method::PUT, &path, Some(&put(&held, 0, &first)))
         .await;
     let read = format!("{path}?fencing_token={}", held.fence);
-    let (refused, _) = held.call(Method::GET, &read, None).await;
+    let (refused, problem) = held.call(Method::GET, &read, None).await;
 
     assert_eq!(published, 204, "the first publication needs no load");
     assert_eq!(stored(&held).await, first);
-    assert_eq!(refused, 405, "the route publishes and never reads");
+    assert_eq!(refused, 410, "the removed read is gone, not misrouted");
+    assert_eq!(
+        problem.get("error_code").and_then(Value::as_str),
+        Some(af_core::error_code::RUN_CONTEXT_LOAD_REMOVED.as_str()),
+        "{problem}"
+    );
     held.finish(supervisor).await;
 }
 
