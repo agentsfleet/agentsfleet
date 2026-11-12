@@ -117,6 +117,10 @@ export const ERROR_CODE = {
    * frame carries. Mirrors `AUTH_FORBIDDEN` in
    * `rustd/crates/foundation/af_core/src/error_code/auth.rs`. */
   AUTH_FORBIDDEN: "UZ-AUTH-001",
+  /** A credential the daemon refused at authentication, including a session
+   * token that carries no tenant yet. Mirrors `AUTH_UNAUTHORIZED` in
+   * `rustd/crates/foundation/af_core/src/error_code/auth.rs`. */
+  AUTH_UNAUTHORIZED: "UZ-AUTH-002",
   /** A steer's operation id already names another message. Mirrors
    * `AGENTSFLEET_OPERATION_CONFLICT` in `rustd/crates/foundation/af_core/src/error_code/fleet.rs`. */
   AGENTSFLEET_OPERATION_CONFLICT: "UZ-AGT-016",

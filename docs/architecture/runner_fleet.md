@@ -850,7 +850,7 @@ Each replica's 5 s recovery probe reads PostgreSQL, so missing notifications can
 
 ## Sandbox tiers
 
-The control plane ASSIGNS a tier to each runner row (Add Runner or the fleet PATCH). It delivers the tier with the runner's identity on enrollment and every heartbeat.
+The control plane ASSIGNS a tier to each runner row (`agentsfleet platform runners enroll` or the fleet PATCH). It delivers the tier with the runner's identity on enrollment and every heartbeat.
 
 The host probes what its kernel can enforce and reports that upward. A host whose report cannot satisfy its assignment is marked degraded and issued no work (§Assigned policy and reconciliation).
 
