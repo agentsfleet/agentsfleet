@@ -55,7 +55,7 @@ describe("failure modes — login surface", () => {
         const text = err.read();
         expect(text).toContain("UZ-AUTH-004");
         expect(text).toContain("Authentication service unavailable");
-        expect(text).toMatch(/request_id/);
+        expect(text).toMatch(/^ {2}request {2,}\S/m);
       });
     });
   });
