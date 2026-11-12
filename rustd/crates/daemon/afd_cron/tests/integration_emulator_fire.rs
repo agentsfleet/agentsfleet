@@ -36,8 +36,14 @@ struct Delivery {
     body: Vec<u8>,
 }
 
+/// What the listener reports: the delivery, or why the request was cut short.
+type Arrival = Result<Delivery, String>;
+
 /// Accepts one request, answers 200, and reports what arrived.
-fn listen() -> (u16, mpsc::Receiver<Delivery>) {
+///
+/// A connection that closes before the head or the body is complete is
+/// reported as such, rather than left to read as a delivery that never came.
+fn listen() -> (u16, mpsc::Receiver<Arrival>) {
     let listener = TcpListener::bind("0.0.0.0:0").expect("bind a port on this host");
     let port = listener.local_addr().expect("the bound address").port();
     let (sent, received) = mpsc::channel();
@@ -47,6 +53,14 @@ fn listen() -> (u16, mpsc::Receiver<Delivery>) {
         let mut chunk = [0_u8; 4096];
         let (head_end, length) = loop {
             let read = stream.read(&mut chunk).expect("read the request");
+            if read == 0 {
+                let cut = format!(
+                    "the connection closed after {} bytes, before the head",
+                    raw.len()
+                );
+                sent.send(Err(cut)).expect("report the cut request");
+                return;
+            }
             raw.extend_from_slice(chunk.get(..read).expect("a read within its buffer"));
             if let Some(end) = raw.windows(4).position(|window| window == b"\r\n\r\n") {
                 let head =
@@ -61,6 +75,14 @@ fn listen() -> (u16, mpsc::Receiver<Delivery>) {
         };
         while raw.len() < head_end + length {
             let read = stream.read(&mut chunk).expect("read the body");
+            if read == 0 {
+                let cut = format!(
+                    "the connection closed after {} of {length} body bytes",
+                    raw.len() - head_end
+                );
+                sent.send(Err(cut)).expect("report the cut request");
+                return;
+            }
             raw.extend_from_slice(chunk.get(..read).expect("a read within its buffer"));
         }
         let head = String::from_utf8_lossy(raw.get(..head_end).expect("the head")).into_owned();
@@ -79,7 +101,7 @@ fn listen() -> (u16, mpsc::Receiver<Delivery>) {
         stream
             .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\nconnection: close\r\n\r\n")
             .expect("answer the emulator");
-        sent.send(Delivery { signature, body })
+        sent.send(Ok(Delivery { signature, body }))
             .expect("report the delivery");
     });
     (port, received)
@@ -152,7 +174,8 @@ async fn a_delivery_the_emulator_signs_is_believed_under_the_keys_it_publishes()
         tokio::task::spawn_blocking(move || received.recv_timeout(Duration::from_secs(30)))
             .await
             .expect("the listener thread ends")
-            .expect("the emulator delivered within 30 seconds");
+            .expect("the emulator delivered within 30 seconds")
+            .unwrap_or_else(|cut| panic!("the emulator's request was cut short: {cut}"));
     let key = |name: &str| {
         SecretString::new(
             keys.get(name)
