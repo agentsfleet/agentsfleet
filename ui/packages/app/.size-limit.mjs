@@ -42,7 +42,9 @@ const BUDGETS = {
   // provider context rather than degrading. Headroom here is ~4.8 KiB, the same
   // margin the 250 KiB budget carried; treat a further rise as a real decision,
   // not a formality.
-  dashboardShared: "270 KiB",
+  // Indy approved 288 KiB on Nov 13, 2026 after the refresh measured
+  // 292.30 kB gzip. Route budgets stay unchanged; keep reducing eager imports.
+  dashboardShared: "288 KiB",
   routeIncremental: "100 KiB",
 };
 const ROUTE_CLASS = {
