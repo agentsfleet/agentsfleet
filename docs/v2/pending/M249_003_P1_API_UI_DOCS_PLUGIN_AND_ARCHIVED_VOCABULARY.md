@@ -18,7 +18,7 @@
 
 **Problem:** The API still says `fleet-libraries`, `library_id`, `library:write` and `killed`, while the approved interface says Plugins and Archive. A platform-wide library catalogue (`/v1/admin/fleet-libraries`, `platform-library:write`, `authoring.library_entries.platform_slug`) exists that Flow 1 does not use.
 
-**Solution summary:** Rename the routes, wire types, permission and terminal status in one coordinated change. Remove the platform catalogue and the redundant `/owned` collection. Edit the fresh-development schema files in place and regenerate OpenAPI. Point the CLI and the refreshed UI's adapters at the new contract. Indy permits resetting the development database; there is no alias, backfill, dual read or guarded cutover.
+**Solution summary:** Rename the routes, wire types, permission and terminal status in one coordinated change. Remove the platform catalogue and the redundant `/owned` collection. Edit the fresh-development schema files in place and regenerate OpenAPI. Point the CLI and the refreshed UI's adapters at the renamed routes. Indy permits resetting the development database; there is no alias, backfill, dual read or guarded cutover.
 
 ## PR Intent & comprehension handshake
 
@@ -103,11 +103,11 @@ The public terminal status `killed` becomes `archived` in wire types, filters, C
 
 - **Dimension 3.1** — PENDING — Archive is terminal → Test `archived_fleet_has_history_without_restore` (integration): PATCH `{"status":"archived"}` then resume returns the existing state refusal; events remain readable; `{"status":"killed"}` is a validation error.
 
-### §4 — Coordinated contracts
+### §4 — Coordinated callers
 
 Regenerate OpenAPI. Update CLI paths, the refreshed UI's adapters and types, docs and the public reference together. Rerun setup, Plugin publication and lifecycle journeys on the refreshed UI.
 
-- **Dimension 4.1** — PENDING — Every caller uses the current contract → Test `plugin_contract_matches_cli_ui_and_openapi` (integration + browser): create, revise, reuse and delete succeed through the CLI and the UI against the new paths, and OpenAPI lists no `fleet-libraries` path.
+- **Dimension 4.1** — PENDING — Every caller uses the renamed surface → Test `plugin_surfaces_match_cli_ui_and_openapi` (integration + browser): create, revise, reuse and delete succeed through the CLI and the UI against the new paths, and OpenAPI lists no `fleet-libraries` path.
 - **Dimension 4.2** — PENDING — One vocabulary → Test `removed_public_spellings_have_only_historical_references` (source scan): `fleet-libraries`, `library_id`, `library:write`, `platform-library` and the `killed` status appear only in changelog history and `docs/v2/done`.
 
 ## Interfaces
@@ -121,7 +121,7 @@ Regenerate OpenAPI. Update CLI paths, the refreshed UI's adapters and types, doc
 | Scope rename broadens access | Security | Same ladder position; explicit negatives | `plugin_permission_preserves_narrowed_authority` |
 | Plugin write conflicts or access is lost | Security | ETags and scoped refusal kept; installed copies untouched | `plugin_revision_and_installed_copy_do_not_follow_updates` |
 | An old route still serves | Failure | Route and inventory removal; 404 negative | `platform_catalogue_routes_and_commands_are_removed` |
-| A caller misses the rename | Failure | Cross-surface contract test | `plugin_contract_matches_cli_ui_and_openapi` |
+| A caller misses the rename | Failure | Cross-surface caller test | `plugin_surfaces_match_cli_ui_and_openapi` |
 
 ## Invariants
 
@@ -163,7 +163,7 @@ Remove the admin catalogue handlers, `publish/platform.rs`, the platform CLI fam
 2. **Preserved user behaviour** — Authority, immutable revisions, private history and recovery.
 3. **Optimal-way check** — A rename on existing resources; no new resource model.
 4. **Rebuild-vs-iterate** — Iterate.
-5. **What we build** — Renamed contract, catalogue removal, regenerated OpenAPI and callers.
+5. **What we build** — Renamed routes and payloads, catalogue removal, regenerated OpenAPI and callers.
 6. **What we do NOT build** — Aliases, migrations, capability systems.
 7. **Fit with existing features** — Flow 1 drafts, publication ETags, lifecycle PATCH/DELETE.
 8. **Surface order** — API and schema, then CLI and UI callers, then docs.
