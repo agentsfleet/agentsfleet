@@ -17,7 +17,6 @@ import { PUBLISHED_NOTICE } from "@/lib/api/draft-publication";
 import { useCurrentUser } from "@/lib/auth/client";
 import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bridge";
 import { ChatAvailability } from "./ChatAvailability";
-import { FleetSetup } from "./FleetSetup";
 import { DraftChatHeading } from "./DraftChatHeading";
 import { AuthoringIntentContext, type AuthoringIntent } from "./AuthoringIntent";
 
@@ -26,6 +25,7 @@ type OwnedSession = {readonly kind: "starting"} | {readonly kind: "loading" | "r
 const ignore = (): void => undefined;
 const LOADING_ROLE = "status";
 const LOADING_SETUP_CHAT = "Loading setup chat";
+const FleetSetup = nextDynamic(() => import("./FleetSetup").then(module => module.FleetSetup), {ssr: false});
 const UnfinishedSetups = nextDynamic(() => import("./UnfinishedSetups").then(module => module.UnfinishedSetups), {ssr: false});
 const DraftConversation = nextDynamic(() => import("./DraftConversation").then((module) => module.DraftConversation), {
   ssr: false,
@@ -101,7 +101,7 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} returnToFleet={source?.kind === SOURCE_KIND.fleet ? source.fleet_id : undefined} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
     <DraftConversation client={client} view={view} workspace={workspace} subject={subject} modelsHref={`/w/${workspace}/settings/models`} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
-      <FleetSetup client={client} view={view} workspace={workspace} />
+      {view.fleet || view.draft?.candidate || view.preview ? <FleetSetup client={client} view={view} workspace={workspace} /> : null}
     </DraftConversation>
     </>}
   </div>;

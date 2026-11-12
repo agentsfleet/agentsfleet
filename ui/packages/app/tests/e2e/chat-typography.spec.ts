@@ -21,7 +21,7 @@ test("setup and fleet status text has a muted darker sweep with accessible motio
     for (const theme of ["light", "dark"]) {
       await page.locator("html").evaluate((node, value) => node.setAttribute("data-theme", value), theme);
       const gradient = await label.evaluate(node => getComputedStyle(node).backgroundImage);
-      expect(gradient).toContain(theme === "dark" ? "rgb(163, 171, 183)" : "rgb(94, 104, 118)");
+      expect(gradient).toContain(theme === "dark" ? "rgb(194, 199, 208)" : "rgb(94, 104, 118)");
       expect(gradient).toContain(theme === "dark" ? "rgb(143, 152, 166)" : "rgb(48, 58, 72)");
     }
     const before = await label.boundingBox();

@@ -4,9 +4,9 @@ import type { ReactNode } from "react";
 import type { FleetStatusSettable } from "@/lib/api/fleets";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import nextDynamic from "next/dynamic";
 import { ArchiveIcon, DotsThreeIcon, StopCircleIcon, PlayIcon, TrashIcon } from "@phosphor-icons/react/ssr";
 import { Button, ConfirmDialog, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@agentsfleet/design-system";
-import { FleetLifecycleDialog } from "@/components/layout/FleetLifecycleDialog";
 import { AGENTSFLEET_STATUS } from "@/lib/api/fleets-types";
 import { presentErrorString, UNCONFIRMED_REQUEST_MESSAGE } from "@/lib/errors";
 import { setFleetStatusAction } from "../../actions";
@@ -21,6 +21,7 @@ type Control = {
 };
 const STOP: Control = {target: "stopped", label: "Stop", description: "Temporarily stop execution. You can resume this fleet later.", errorVerb: "stop this fleet"};
 const RESUME: Control = {target: "active", label: "Resume", description: "Return this fleet to active execution.", errorVerb: "resume this fleet"};
+const FleetLifecycleDialog = nextDynamic(() => import("@/components/layout/FleetLifecycleDialog").then(module => module.FleetLifecycleDialog), {ssr: false});
 
 export function FleetActions({workspaceId, fleet, children}: Props) {
   const router = useRouter();
