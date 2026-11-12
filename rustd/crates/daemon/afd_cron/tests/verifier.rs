@@ -148,15 +148,16 @@ fn a_string_that_is_not_three_dotted_segments_is_malformed() {
     }
 }
 
-/// The shape check is not a signature check: a token shaped right and signed
-/// by nobody this deployment trusts is still a forgery, not a malformed token.
+/// The shape check is not a decode: three base64url segments that are not a
+/// token pass the shape and are then refused as undecodable, a different word
+/// from a malformed one.
 #[test]
-fn a_token_shaped_right_but_signed_by_nobody_is_a_forgery_not_malformed() {
+fn a_token_shaped_right_that_does_not_decode_is_undecodable_not_malformed() {
     assert_eq!(
         verify_at(&keys(), DESTINATION, "aaa.bbb.ccc", BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid"
+        "token_undecodable"
     );
 }
 
@@ -185,7 +186,7 @@ fn a_token_minted_for_another_daemon_is_refused() {
         verify_at(&keys(), DESTINATION, &token, BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid",
+        "token_subject_mismatch",
         "a genuine token for the wrong destination must not fire this deployment"
     );
 }
@@ -199,7 +200,7 @@ fn a_token_from_an_issuer_that_is_not_the_scheduler_is_refused() {
         verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid"
+        "token_issuer_mismatch"
     );
 }
 
@@ -213,7 +214,7 @@ fn an_expired_token_is_refused_with_no_leeway() {
         verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid",
+        "token_expired",
         "leeway is zero on purpose: a tolerance is a window a replayed token \
          lives inside"
     );
@@ -229,7 +230,63 @@ fn a_token_whose_window_has_not_opened_is_refused() {
         verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid"
+        "token_not_yet_valid"
+    );
+}
+
+/// Every refusal answers the sender alike; only the operator's log word differs.
+/// A wrong key fails the signature first, so the word comes from the key that
+/// verified: a token signed by the NEXT key and expired reads as expired.
+#[test]
+fn the_word_comes_from_the_key_that_verified_not_the_one_that_did_not() {
+    let mut claims = FireClaims::good();
+    claims.exp = now() - 1;
+    claims.nbf = now() - 600;
+
+    assert_eq!(
+        verify_at(&keys(), DESTINATION, &mint(&claims, NEXT_KEY), BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "token_expired"
+    );
+}
+
+#[test]
+fn a_token_missing_a_claim_the_daemon_reads_is_undecodable() {
+    let claims = serde_json::json!({
+        "iss": "Upstash", "sub": DESTINATION, "jti": "msg_fixture_0001",
+        "exp": now() + 300, "nbf": now() - 10,
+    });
+    let token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes()),
+    )
+    .expect("the claims serialise");
+
+    assert_eq!(
+        verify_at(&keys(), DESTINATION, &token, BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "token_undecodable",
+        "no `body` claim means the signature would cover nothing this daemon checked"
+    );
+}
+
+#[test]
+fn a_token_signed_under_another_algorithm_is_refused_by_name() {
+    let token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS384),
+        &FireClaims::good(),
+        &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes()),
+    )
+    .expect("the claims serialise");
+
+    assert_eq!(
+        verify_at(&keys(), DESTINATION, &token, BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "token_algorithm_mismatch"
     );
 }
 

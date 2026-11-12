@@ -32,7 +32,7 @@ use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
 
-use crate::error::{self, Result};
+use crate::error::{self, Rejected, Result};
 
 /// The one algorithm this daemon will read a fire token under.
 ///
@@ -159,26 +159,32 @@ pub fn verify_at(
     // and a tolerance here is a window a replayed token lives inside.
     validation.leeway = 0;
 
-    let decoded = [keys.current.expose(), keys.next.expose()]
+    let mut cause = Rejected::Signature;
+    let mut decoded = None;
+    for key in [keys.current.expose(), keys.next.expose()]
         .into_iter()
         .filter(|key| !key.is_empty())
-        .find_map(|key| {
-            jsonwebtoken::decode::<Claims>(
-                token.0,
-                &DecodingKey::from_secret(key.as_bytes()),
-                &validation,
-            )
-            .ok()
-        });
+    {
+        let attempt = jsonwebtoken::decode::<Claims>(
+            token.0,
+            &DecodingKey::from_secret(key.as_bytes()),
+            &validation,
+        );
+        match attempt {
+            Ok(found) => {
+                decoded = Some(found);
+                break;
+            }
+            // A wrong key fails the signature before any claim is read, so the
+            // first failure that is anything else is what the right key tripped
+            // on. Kept for the operator's log; the sender gets one answer.
+            Err(failure) if cause == Rejected::Signature => cause = rejected(failure.kind()),
+            Err(_failure) => {}
+        }
+    }
 
     let Some(decoded) = decoded else {
-        // One answer for a wrong key, a wrong issuer, a wrong subject and an
-        // expired token would be wrong — but the crate collapses them into one
-        // `ErrorKind` set that would have to be re-classified here to tell them
-        // apart per key. What matters operationally is which SIDE failed, and
-        // a second pass with the checks relaxed would be a second decode of an
-        // untrusted token. Reported as a signature failure.
-        return Err(error::signature_invalid());
+        return Err(error::signature_invalid(cause));
     };
 
     if !body_matches(&decoded.claims.body, body) {
@@ -209,4 +215,22 @@ fn body_matches(claimed: &str, body: &[u8]) -> bool {
 fn base64_url_no_pad(bytes: &[u8]) -> String {
     use base64::Engine as _;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// The check a failed decode names, as the operator's log words it.
+fn rejected(kind: &jsonwebtoken::errors::ErrorKind) -> Rejected {
+    use jsonwebtoken::errors::ErrorKind;
+    match kind {
+        ErrorKind::ExpiredSignature => Rejected::Expired,
+        ErrorKind::ImmatureSignature => Rejected::NotYetValid,
+        ErrorKind::InvalidIssuer => Rejected::Issuer,
+        ErrorKind::InvalidSubject => Rejected::Subject,
+        ErrorKind::MissingRequiredClaim(_) => Rejected::Claims,
+        ErrorKind::InvalidAlgorithm | ErrorKind::MissingAlgorithm => Rejected::Algorithm,
+        ErrorKind::InvalidToken
+        | ErrorKind::Base64(_)
+        | ErrorKind::Json(_)
+        | ErrorKind::Utf8(_) => Rejected::Undecodable,
+        _other => Rejected::Signature,
+    }
 }
