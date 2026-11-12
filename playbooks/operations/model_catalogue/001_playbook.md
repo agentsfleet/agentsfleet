@@ -83,11 +83,11 @@ Change the snapshot in `scripts/model-library-allowlist.json` and rerun the diff
 For a one-off administrator override, read the row, edit the JSON and write it back:
 
 ```bash
-agentsfleet platform models show <MODEL_ROW_ID> --json > model.json
+agentsfleet platform models show <MODEL_ROW_ID> --json | jq 'del(.id, .provider, .model_id)' > model.json
 agentsfleet platform models update <MODEL_ROW_ID> --file model.json
 ```
 
-Provider and model identity stay locked. An update that omits `inference` keeps the existing connection, and it adds no credential.
+Provider and model identity stay locked, so `update` refuses a file that still names `id`, `provider` or `model_id`. An update that omits `inference` keeps the existing connection, and it adds no credential.
 
 ## Verify it works
 

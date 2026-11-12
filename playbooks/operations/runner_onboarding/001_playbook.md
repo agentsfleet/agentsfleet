@@ -60,7 +60,7 @@ Indy creates external state, the agent prepares the host, and the deployment pip
    Use `--labels prod` for production.
 3. The agent stores the token in the item's `runner-token` field only, through a template file, then deletes both files.
    Use `op item get --format json`, set that one field, `op item edit --template <file>`, and confirm every other field is unchanged.
-   If the token is lost, run `agentsfleet platform runners rotate-token`.
+   If the token is lost, run `agentsfleet platform runners rotate-token <RUNNER_ID> --token-out runner-token`, then store the new file the same way.
 4. For production, the agent adds `{"vault_key": "<PRODUCTION_RUNNER_ITEM>"}` to `PROD_RUNNER_HOSTS`.
 5. The agent starts the routine deployment: [development](../../deploy/dev/001_playbook.md) or [production](../../deploy/prod/001_playbook.md).
    The pipeline downloads its checked binary, installs the tracked systemd unit, starts the service and runs the host gate; a workstation never deploys it.
