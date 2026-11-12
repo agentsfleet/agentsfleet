@@ -53,7 +53,8 @@
 | `rustd/crates/daemon/afd_api/tests/**`, `afd_authoring/tests/**` | EDIT | New paths, names, status; removed-route negatives |
 | `public/openapi.json` | GENERATE | `--no-banner`, never by hand |
 | `cli/src/lib/api-paths.ts`, `cli/src/commands/library/*` → `cli/src/commands/plugins/*`, `cli/src/commands/platform/**`, `cli/src/program/tree/{plugins,chat,fleet,platform*}.command.ts`, `cli/src/commands/fleet/fleet.ts`, `cli/src/commands/chat/*`, `cli/src/errors/index.ts` | EDIT/MOVE/DELETE | Plugin and archive vocabulary, readers, delete composition, `platform fleet-library` removed |
-| `cli/src/program/entry/discovery.ts`, `cli/test/scoped-discovery.unit.test.ts`, `cli/test/completions.unit.test.ts` | EDIT | Drop the `platform-library:write` row |
+| `cli/src/program/tree/platform-library.command.ts` | DELETE | With its `platform-library:write` leaves |
+| `cli/test/scoped-discovery.unit.test.ts`, `cli/test/completions.unit.test.ts` | EDIT | Drop the `platform-library:write` cases |
 | `cli/test/**`, `cli/test/acceptance/**` | EDIT | New spellings; §2b and §2c proofs |
 | `ui/packages/app/lib/api/draft-library.ts` and affected adapters, types and `lib/auth/scopes.ts` | EDIT | After the M249_001 merge; layouts untouched |
 | Affected docs, playbooks and changelog | EDIT | Current spellings |
@@ -104,7 +105,7 @@ Delete `/v1/admin/fleet-libraries*`, the operator handlers, `publish/platform.rs
 `library` becomes `plugins` with `list [--starting-after] [--limit]` (the ordinary collection, which after §1 lists only account-owned entries), `show <plugin_id>`, `revisions <plugin_id> [--starting-after] [--limit]`, `revisions <plugin_id> <revision_id>` and `delete <plugin_id>`. `chat --library` becomes `--plugin`, `--library-etag` becomes `--plugin-etag`; `--revision`, `--publish` and `--publish-to` stay. `plugin_id` accepts a UUIDv7; `revision_id` must be one. `show` prints `name`, `id`, `head_revision_id` and `etag`; a revision prints `revision`, `canonical_digest` and `review.review_digest`; JSON passes bodies through. `api-paths.ts` gains the revision path helpers. Discovery's `platform-library:write` row and the `platform fleet-library` family are deleted with §2.
 
 - **Dimension 2b.1** — PENDING — CLI Plugin reuse pins a revision → Test `chat_plugin_flags_pin_the_selected_revision` (unit): `chat --plugin P --revision R --no-input` sends `P` and `R` unchanged in the draft-creation body; `chat --library P` exits 4 with `UNKNOWN_OPTION`.
-- **Dimension 2b.2** — PENDING — Plugin readers hit the renamed routes → Test `plugins_show_and_revisions_read_renamed_routes` (unit): `show`, `revisions` and `revisions <r>` request `/plugins/P`, `/plugins/P/revisions` and `/plugins/P/revisions/R`, print the stubbed `etag` and digests, and a 404 renders the block with its `UZ-` code and exit 1.
+- **Dimension 2b.2** — PENDING — Plugin readers hit the renamed routes → Test `plugins_show_and_revisions_read_renamed_routes` (unit): `show`, `revisions` and `revisions <r>` request `/plugins/P`, `/plugins/P/revisions` and `/plugins/P/revisions/R`, print the stubbed `etag` and digests, and a 404 renders the block with its `UZ-` code and exit 3.
 
 ### §2c — Fleet archive and direct deletion
 
