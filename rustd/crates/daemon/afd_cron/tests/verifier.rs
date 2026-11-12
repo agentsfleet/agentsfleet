@@ -24,6 +24,7 @@ mod fire_token;
 
 use afd_cron::SigningKeys;
 use afd_cron::verifier::{MAX_TOKEN_BYTES, verify_at};
+use sha2::Digest as _;
 
 use self::fire_token::{BODY, DESTINATION, FireClaims, mint, now};
 
@@ -148,15 +149,16 @@ fn a_string_that_is_not_three_dotted_segments_is_malformed() {
     }
 }
 
-/// The shape check is not a signature check: a token shaped right and signed
-/// by nobody this deployment trusts is still a forgery, not a malformed token.
+/// The shape check is not a decode: three base64url segments that are not a
+/// token pass the shape and are then refused as undecodable, a different word
+/// from a malformed one.
 #[test]
-fn a_token_shaped_right_but_signed_by_nobody_is_a_forgery_not_malformed() {
+fn a_token_shaped_right_that_does_not_decode_is_undecodable_not_malformed() {
     assert_eq!(
         verify_at(&keys(), DESTINATION, "aaa.bbb.ccc", BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid"
+        "token_undecodable"
     );
 }
 
@@ -185,7 +187,7 @@ fn a_token_minted_for_another_daemon_is_refused() {
         verify_at(&keys(), DESTINATION, &token, BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid",
+        "token_subject_mismatch",
         "a genuine token for the wrong destination must not fire this deployment"
     );
 }
@@ -199,7 +201,7 @@ fn a_token_from_an_issuer_that_is_not_the_scheduler_is_refused() {
         verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid"
+        "token_issuer_mismatch"
     );
 }
 
@@ -213,23 +215,132 @@ fn an_expired_token_is_refused_with_no_leeway() {
         verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid",
+        "token_expired",
         "leeway is zero on purpose: a tolerance is a window a replayed token \
          lives inside"
     );
 }
 
+/// The claims Upstash's own server writes, as the emulator emitted them: an
+/// empty `aud`, the Go zero time (-62135596800) for `nbf`, an `iat`, and a body
+/// digest that keeps its base64 padding.
+fn scheduler_claims(body: &[u8]) -> serde_json::Value {
+    use base64::Engine as _;
+    serde_json::json!({
+        "aud": "",
+        "body": base64::engine::general_purpose::URL_SAFE.encode(sha2::Sha256::digest(body)),
+        "exp": now() + 300,
+        "iat": now(),
+        "iss": "Upstash",
+        "jti": "jwt_fixture0001",
+        "nbf": -62_135_596_800_i64,
+        "sub": DESTINATION,
+    })
+}
+
+fn sign(claims: &serde_json::Value, key: &str) -> String {
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        claims,
+        &jsonwebtoken::EncodingKey::from_secret(key.as_bytes()),
+    )
+    .expect("the claims serialise")
+}
+
+/// The regression behind a hosted schedule that never fired: the token was
+/// genuine and the verifier refused it, because `nbf` was the Go zero time and
+/// the body digest was padded.
 #[test]
-fn a_token_whose_window_has_not_opened_is_refused() {
-    let mut claims = FireClaims::good();
-    claims.nbf = now() + 600;
-    claims.exp = now() + 1200;
+fn a_token_in_the_shape_the_scheduler_really_signs_is_believed() {
+    let token = sign(&scheduler_claims(BODY), CURRENT_KEY);
+
+    let fire = verify_at(&keys(), DESTINATION, &token, BODY)
+        .expect("the scheduler's own claims are what a fire carries");
+
+    assert_eq!(fire.message_id, "jwt_fixture0001");
+}
+
+/// Reading the digest without its padding must not make it a weaker compare: a
+/// padded digest of other bytes is still somebody else's body.
+#[test]
+fn a_padded_digest_of_other_bytes_is_still_a_body_mismatch() {
+    let token = sign(&scheduler_claims(b"something else"), CURRENT_KEY);
 
     assert_eq!(
-        verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
+        verify_at(&keys(), DESTINATION, &token, BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "signature_invalid"
+        "body_mismatch"
+    );
+}
+
+/// `nbf` is not checked, because the scheduler does not set it; `exp`, the
+/// subject, the issuer and the body digest still bind the token.
+#[test]
+fn a_start_time_in_the_future_does_not_decide_a_signed_token() {
+    let mut claims = scheduler_claims(BODY);
+    claims
+        .as_object_mut()
+        .expect("the claims are an object")
+        .insert("nbf".to_owned(), serde_json::json!(now() + 600));
+
+    verify_at(&keys(), DESTINATION, &sign(&claims, CURRENT_KEY), BODY)
+        .expect("a token the scheduler signed is not refused for a start time it never set");
+}
+
+/// Every refusal answers the sender alike; only the operator's log word differs.
+/// A wrong key fails the signature first, so the word comes from the key that
+/// verified: a token signed by the NEXT key and expired reads as expired.
+#[test]
+fn the_word_comes_from_the_key_that_verified_not_the_one_that_did_not() {
+    let mut claims = FireClaims::good();
+    claims.exp = now() - 1;
+    claims.nbf = now() - 600;
+
+    assert_eq!(
+        verify_at(&keys(), DESTINATION, &mint(&claims, NEXT_KEY), BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "token_expired"
+    );
+}
+
+#[test]
+fn a_token_missing_a_claim_the_daemon_reads_is_undecodable() {
+    let claims = serde_json::json!({
+        "iss": "Upstash", "sub": DESTINATION, "jti": "msg_fixture_0001",
+        "exp": now() + 300, "nbf": now() - 10,
+    });
+    let token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        &claims,
+        &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes()),
+    )
+    .expect("the claims serialise");
+
+    assert_eq!(
+        verify_at(&keys(), DESTINATION, &token, BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "token_undecodable",
+        "no `body` claim means the signature would cover nothing this daemon checked"
+    );
+}
+
+#[test]
+fn a_token_signed_under_another_algorithm_is_refused_by_name() {
+    let token = jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS384),
+        &FireClaims::good(),
+        &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes()),
+    )
+    .expect("the claims serialise");
+
+    assert_eq!(
+        verify_at(&keys(), DESTINATION, &token, BODY)
+            .expect_err("this token must not be believed")
+            .refusal_word(),
+        "token_algorithm_mismatch"
     );
 }
 
@@ -328,4 +439,317 @@ fn every_refusal_answers_the_sender_one_code_and_one_sentence() {
         af_core::error_code::WEBHOOK_SIGNATURE_INVALID
     );
     assert_eq!(refused.detail(), afd_cron::error::detail::FIRE_UNVERIFIED);
+}
+
+// ---------------------------------------------------------------------------
+// Every way a token can be wrong, and every way a genuine one may differ.
+//
+// Tokens are built from the claims the scheduler really writes (see
+// `scheduler_claims`), changing one claim at a time, so each case names the one
+// thing it refuses or tolerates.
+// ---------------------------------------------------------------------------
+
+/// The scheduler's claims with `claim` set to `value`, or removed when `value`
+/// is `None`.
+fn changed(claim: &str, value: Option<serde_json::Value>) -> serde_json::Value {
+    let mut claims = scheduler_claims(BODY);
+    let object = claims.as_object_mut().expect("the claims are an object");
+    match value {
+        Some(value) => object.insert(claim.to_owned(), value),
+        None => object.remove(claim),
+    };
+    claims
+}
+
+/// What `verify_at` says about `claims` signed by the current key.
+fn outcome(claims: &serde_json::Value) -> Result<String, &'static str> {
+    verify_at(&keys(), DESTINATION, &sign(claims, CURRENT_KEY), BODY)
+        .map(|fire| fire.message_id)
+        .map_err(|refused| refused.refusal_word())
+}
+
+#[test]
+fn a_claim_the_scheduler_never_sets_or_sets_oddly_does_not_refuse_its_token() {
+    for (claim, value) in [
+        ("nbf", None),
+        ("nbf", Some(serde_json::json!(0))),
+        ("nbf", Some(serde_json::json!(-1))),
+        ("nbf", Some(serde_json::json!(-62_135_596_800_i64))),
+        ("nbf", Some(serde_json::json!(now() + 86_400))),
+        ("nbf", Some(serde_json::json!("not a number"))),
+        ("nbf", Some(serde_json::json!(1.5))),
+        ("nbf", Some(serde_json::json!(null))),
+        ("aud", None),
+        ("aud", Some(serde_json::json!(""))),
+        ("aud", Some(serde_json::json!("somebody"))),
+        ("aud", Some(serde_json::json!(["a", "b"]))),
+        ("iat", None),
+        ("iat", Some(serde_json::json!(now() + 86_400))),
+        ("iat", Some(serde_json::json!("yesterday"))),
+        ("note", Some(serde_json::json!({"anything": [1, 2, 3]}))),
+    ] {
+        let claims = changed(claim, value.clone());
+        assert_eq!(
+            outcome(&claims),
+            Ok("jwt_fixture0001".to_owned()),
+            "{claim} = {value:?}"
+        );
+    }
+}
+
+#[test]
+fn an_expiry_that_is_absent_past_or_not_a_whole_number_refuses_the_token() {
+    for (value, words) in [
+        (None, &["token_claims_missing"][..]),
+        (Some(serde_json::json!(0)), &["token_expired"][..]),
+        (Some(serde_json::json!(now() - 1)), &["token_expired"][..]),
+        // A value the decoder cannot read as an unsigned whole number is either
+        // reported as missing or as malformed; both refuse.
+        (
+            Some(serde_json::json!(-1)),
+            &["token_claims_missing", "token_claim_malformed"][..],
+        ),
+        (
+            Some(serde_json::json!("soon")),
+            &["token_claims_missing", "token_claim_malformed"][..],
+        ),
+        (
+            Some(serde_json::json!(1.5)),
+            &[
+                "token_claims_missing",
+                "token_claim_malformed",
+                "token_expired",
+            ][..],
+        ),
+        (
+            Some(serde_json::json!(null)),
+            &["token_claims_missing", "token_claim_malformed"][..],
+        ),
+    ] {
+        let refused = outcome(&changed("exp", value.clone())).expect_err("exp is enforced");
+        assert!(
+            words.contains(&refused),
+            "exp = {value:?} read as {refused}"
+        );
+    }
+}
+
+#[test]
+fn an_issuer_that_is_absent_or_not_exactly_the_scheduler_refuses_the_token() {
+    for (value, word) in [
+        (None, "token_claims_missing"),
+        (Some(serde_json::json!("")), "token_issuer_mismatch"),
+        (Some(serde_json::json!("upstash")), "token_issuer_mismatch"),
+        (Some(serde_json::json!("Upstash ")), "token_issuer_mismatch"),
+    ] {
+        assert_eq!(
+            outcome(&changed("iss", value.clone())),
+            Err(word),
+            "iss = {value:?}"
+        );
+    }
+}
+
+#[test]
+fn a_subject_that_is_absent_or_not_exactly_this_destination_refuses_the_token() {
+    for value in [
+        None,
+        Some(serde_json::json!("")),
+        Some(serde_json::json!(format!("{DESTINATION}/"))),
+        Some(serde_json::json!(format!("{DESTINATION}?x=1"))),
+        Some(serde_json::json!(
+            DESTINATION.replace("https://", "http://")
+        )),
+        Some(serde_json::json!(DESTINATION.to_uppercase())),
+        Some(serde_json::json!(DESTINATION.replace("fixture", "other"))),
+    ] {
+        let refused = outcome(&changed("sub", value.clone()))
+            .err()
+            .unwrap_or("believed");
+        assert!(
+            ["token_claims_missing", "token_subject_mismatch"].contains(&refused),
+            "sub = {value:?} read as {refused}"
+        );
+    }
+}
+
+#[test]
+fn a_message_id_that_is_absent_empty_or_not_text_refuses_the_token() {
+    for (value, word) in [
+        (None, "token_undecodable"),
+        (Some(serde_json::json!("")), "token_claims_missing"),
+        (Some(serde_json::json!(7)), "token_undecodable"),
+        (Some(serde_json::json!(null)), "token_undecodable"),
+    ] {
+        assert_eq!(
+            outcome(&changed("jti", value.clone())),
+            Err(word),
+            "jti = {value:?}"
+        );
+    }
+}
+
+#[test]
+fn a_body_digest_that_is_absent_not_text_or_not_this_body_refuses_the_token() {
+    let digest = fire_token::digest_of(BODY);
+    for (value, word) in [
+        (None, "token_undecodable"),
+        (Some(serde_json::json!(7)), "token_undecodable"),
+        (Some(serde_json::json!("")), "body_mismatch"),
+        (Some(serde_json::json!("=")), "body_mismatch"),
+        (
+            Some(serde_json::json!(format!("{digest}=="))),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(format!("{digest}==="))),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(format!("{digest} "))),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(format!(" {digest}"))),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(digest.to_uppercase())),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(&digest[..digest.len() - 1])),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(format!("{digest}A"))),
+            "body_mismatch",
+        ),
+    ] {
+        assert_eq!(
+            outcome(&changed("body", value.clone())),
+            Err(word),
+            "body = {value:?}"
+        );
+    }
+}
+
+#[test]
+fn the_digest_is_believed_unpadded_and_with_the_one_padding_character() {
+    let digest = fire_token::digest_of(BODY);
+    for value in [digest.clone(), format!("{digest}=")] {
+        assert!(
+            outcome(&changed("body", Some(serde_json::json!(value.clone())))).is_ok(),
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn an_algorithm_other_than_the_pinned_one_refuses_the_token() {
+    for algorithm in [
+        jsonwebtoken::Algorithm::HS384,
+        jsonwebtoken::Algorithm::HS512,
+    ] {
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(algorithm),
+            &scheduler_claims(BODY),
+            &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes()),
+        )
+        .expect("the claims serialise");
+
+        assert_eq!(
+            verify_at(&keys(), DESTINATION, &token, BODY)
+                .expect_err("the algorithm is pinned")
+                .refusal_word(),
+            "token_algorithm_mismatch",
+            "{algorithm:?}"
+        );
+    }
+}
+
+#[test]
+fn a_token_with_no_signature_or_a_changed_part_refuses_the_token() {
+    let token = sign(&scheduler_claims(BODY), CURRENT_KEY);
+    let mut parts = token.split('.');
+    let (header, payload, signature) = (
+        parts.next().expect("a header"),
+        parts.next().expect("a payload"),
+        parts.next().expect("a signature"),
+    );
+    let flipped = |part: &str| {
+        let mut chars: Vec<char> = part.chars().collect();
+        if let Some(last) = chars.last_mut() {
+            *last = if *last == 'A' { 'B' } else { 'A' };
+        }
+        chars.into_iter().collect::<String>()
+    };
+
+    for (label, tampered) in [
+        (
+            "signature changed",
+            format!("{header}.{payload}.{}", flipped(signature)),
+        ),
+        (
+            "payload changed",
+            format!("{header}.{}.{signature}", flipped(payload)),
+        ),
+        (
+            "header changed",
+            format!("{}.{payload}.{signature}", flipped(header)),
+        ),
+        ("signature dropped", format!("{header}.{payload}.")),
+        (
+            "alg none, unsigned",
+            format!("{}.{payload}.", "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"),
+        ),
+    ] {
+        let refused = verify_at(&keys(), DESTINATION, &tampered, BODY)
+            .expect_err("a token that was altered must not be believed")
+            .refusal_word();
+        assert!(
+            [
+                "signature_invalid",
+                "token_malformed",
+                "token_undecodable",
+                "token_algorithm_mismatch"
+            ]
+            .contains(&refused),
+            "{label} read as {refused}"
+        );
+    }
+}
+
+#[test]
+fn either_key_verifies_and_a_blank_one_is_skipped() {
+    let claims = scheduler_claims(BODY);
+    let blank = || af_crypto::secret::SecretString::new(String::new());
+    let secret = |text: &str| af_crypto::secret::SecretString::new(text.to_owned());
+
+    for (label, held, signed_with, believed) in [
+        ("current", keys(), CURRENT_KEY, true),
+        ("next", keys(), NEXT_KEY, true),
+        ("neither", keys(), "a-key-nobody-holds", false),
+        (
+            "only next held",
+            SigningKeys {
+                current: blank(),
+                next: secret(NEXT_KEY),
+            },
+            NEXT_KEY,
+            true,
+        ),
+        (
+            "only current held",
+            SigningKeys {
+                current: secret(CURRENT_KEY),
+                next: blank(),
+            },
+            NEXT_KEY,
+            false,
+        ),
+    ] {
+        let verdict = verify_at(&held, DESTINATION, &sign(&claims, signed_with), BODY);
+        assert_eq!(verdict.is_ok(), believed, "{label}");
+    }
 }

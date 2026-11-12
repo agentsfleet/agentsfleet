@@ -37,6 +37,12 @@ The environment's [admin bootstrap](../admin_bootstrap/001_playbook.md) is compl
 Nothing reads `QSTASH_*` environment settings.
 `agentsfleetd` logs a missing or incomplete bag as `scheduler_bag_unusable` and names the field at fault.
 
+`agentsfleetd` logs a refused fire as `schedule_fire_dropped` with a `reason`.
+`signature_invalid` means neither stored key signed the token.
+
+The other reasons name the check the right key failed: `token_expired`, `token_issuer_mismatch`, `token_subject_mismatch`, `token_claims_missing`, `token_claim_malformed`, `token_undecodable` and `token_algorithm_mismatch`.
+The sender always receives the same 401.
+
 Each delivery carries a JSON Web Token (JWT) that `agentsfleetd` checks against the current and next keys.
 See [QStash signing keys](https://upstash.com/docs/qstash/api-reference/signing-keys/get-signing-keys) and [QStash schedules](https://upstash.com/docs/qstash/features/schedules).
 

@@ -78,8 +78,8 @@ pub(crate) fn token_malformed() -> Error {
 }
 
 /// Refuses a fire token neither signing key verifies.
-pub(crate) fn signature_invalid() -> Error {
-    ErrorKind::SignatureInvalid.into()
+pub(crate) fn signature_invalid(cause: super::Rejected) -> Error {
+    ErrorKind::SignatureInvalid { cause }.into()
 }
 
 /// Refuses a genuine fire token over bytes it was not minted over.
@@ -232,7 +232,10 @@ fn raised_kinds() -> Vec<(&'static str, Error)> {
         ("retire held", retire_held()),
         ("keys missing", keys_missing()),
         ("token malformed", token_malformed()),
-        ("signature invalid", signature_invalid()),
+        (
+            "signature invalid",
+            signature_invalid(super::Rejected::Signature),
+        ),
         ("body mismatch", body_mismatch()),
         (
             "bag unusable",
