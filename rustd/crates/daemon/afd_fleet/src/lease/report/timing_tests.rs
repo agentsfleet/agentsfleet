@@ -42,6 +42,7 @@ fn lease() -> Result<Reported, &'static str> {
         fence: Fence::from_i64(1),
         lease_created_at: after(40),
         event_created_at: created(),
+        catalogue_version: None,
     })
 }
 

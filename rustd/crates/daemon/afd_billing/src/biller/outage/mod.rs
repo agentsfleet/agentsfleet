@@ -3,39 +3,31 @@
 use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement};
 use crate::Result;
 
-/// Whether work runs while its biller cannot answer a funds check.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum OutagePolicy {
-    /// Admit the work; its lines are logged and settle when the biller is back.
-    Open,
-    /// Refuse the work until the biller answers.
-    Closed,
-}
-
-/// Any [`Biller`], with an [`OutagePolicy`] applied to its funds checks.
+/// Any [`Biller`], admitting work whose funds check it cannot answer.
 ///
-/// Only `check` gates work, so only `check` reads the policy: a failed
-/// `settle` leaves the lines logged and unsettled, and the relay retries them
-/// under either policy.
+/// The work runs and its lines are logged and settle when the biller is back:
+/// early adoption favours the optimistic path, so an outage does not stop a
+/// fleet that is otherwise healthy. Only `check` gates work, so only `check` is
+/// changed: a failed `settle` leaves the lines logged and unsettled, and the
+/// relay retries them.
 #[derive(Debug)]
-pub struct WithOutagePolicy<B> {
+pub struct FailOpen<B> {
     inner: B,
-    policy: OutagePolicy,
 }
 
-impl<B> WithOutagePolicy<B> {
-    /// `inner`, answering `policy` when it cannot reach its datastore.
+impl<B> FailOpen<B> {
+    /// `inner`, admitting work when it cannot reach its datastore.
     #[must_use]
-    pub const fn new(inner: B, policy: OutagePolicy) -> Self {
-        Self { inner, policy }
+    pub const fn new(inner: B) -> Self {
+        Self { inner }
     }
 }
 
 #[async_trait::async_trait]
-impl<B: Biller> Biller for WithOutagePolicy<B> {
+impl<B: Biller> Biller for FailOpen<B> {
     async fn check(&self, ask: &Ask) -> Result<Funds> {
-        match (self.inner.check(ask).await, self.policy) {
-            (Err(fault), OutagePolicy::Open) if fault.is_unanswered() => {
+        match self.inner.check(ask).await {
+            Err(fault) if fault.is_unanswered() => {
                 // Bound first: the macro repeats its field expressions.
                 let (error_code, work_type, work_id) = (
                     fault.code().as_str(),
@@ -52,7 +44,7 @@ impl<B: Biller> Biller for WithOutagePolicy<B> {
                 );
                 Ok(Funds::Unconfirmed)
             }
-            (answer, _) => answer,
+            answer => answer,
         }
     }
 

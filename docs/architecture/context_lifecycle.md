@@ -95,8 +95,8 @@ Count failure stops that attempt; it cannot become a zero count or an automatic 
 After publication, preparation inserts the summary as explicitly untrusted conversation data before the retained suffix and current request.
 Current installed instructions and authoritative state remain separate.
 
-Setup chat loads its draft checkpoint during preparation; runtime loads only its own lease and branch checkpoint.
-A new runtime lease does not inherit another lease's conversation checkpoint.
+Setup chat loads its draft checkpoint during preparation.
+A run keeps its compaction summary in its own state and stores none, so a new runtime lease never inherits another lease's conversation checkpoint.
 
 ## User-visible progress
 
@@ -129,32 +129,28 @@ Missing usage produces no fabricated zero; prompts, credentials, URLs and reques
 
 ## Checkpoint ownership and storage
 
-The additive `memory.context_checkpoints` table holds conversation working state, separate from semantic memory and immutable fleet revisions.
-A draft row belongs to its private draft.
-A runtime row belongs to a live fleet lease and one branch of that run.
+The additive `memory.context_checkpoints` table holds setup-chat working state, separate from semantic memory and immutable fleet revisions.
+A row belongs to its private draft.
+
+A run holds its compaction summary in the loop's own state. It stores no row, calls no route and holds no datastore credential for it.
 
 Checkpoint restoration checks model/inference identity, trusted pinned-state identity, source coverage, source digest and generation.
-A runtime checkpoint never imports a private draft summary or another lease's notes.
 
-Foreign keys remove private checkpoints with their draft, fleet, workspace or tenant.
-Runtime reads and conditional writes use authenticated runner routes; the runner receives no datastore credentials.
+A foreign key removes a draft's checkpoint with the draft, and so with its workspace or tenant.
 
-Both hosts check live authority in the checkpoint write's transaction after the model responds.
-A stale lease, changed source or changed generation cannot replace current state.
+The setup host checks live authority in the checkpoint write's transaction after the model responds.
+A stale attempt, changed source or changed generation cannot replace current state.
 An incurred charge survives a rejected publication.
 
 The daemon assembles authoring history; the bounded runner envelope carries current-turn work.
 Paging bounds each read without limiting conversation lifetime.
 Authoring records each compaction dispatch before provider access, then commits the result and checkpoint through its guarded receipt path.
 
-Setup runners opt into summary replies with `supports_compaction: true`.
-Ordinary replies omit `compacted` when false so older runners can read them during deployment.
-An older runner whose input needs a summary receives `AUTHORING_TOKEN` before summary funding or provider access.
+A setup request carries no compaction opt-in. When the prepared context needs a summary, the daemon funds and dispatches it, and the reply says `compacted`.
+Ordinary replies omit `compacted` when false.
 
 ## Tenant boundaries and sensitive buffers
 
-Runtime routes authenticate the runner; the daemon checks its active lease and fencing token before reading or writing notes.
-The daemon derives the fleet from that lease, then scopes storage by fleet, lease and branch.
 Setup preparation checks the draft creator, current workspace membership and tenant before loading the draft checkpoint.
 
 The checkpoint table uses the shared daemon database role; these application checks enforce tenant access.
@@ -178,7 +174,7 @@ Authoring admission and accounting live in `afd_authoring` (lease claim, model b
 The runner protocol lives in `af_wire` (authoring model, meter and lease payloads, shared context payloads and runner route declarations) and the generated `public/openapi.json`.
 
 Runtime use lives in `afr_agent` (context and loop modules, provider request estimation) and `afd_gate`'s context policy.
-Trusted transport lives in `afd_http`'s leasing services and `afd_api_runner`'s context handlers. It also lives in `afd_fleet`'s fenced context methods and `afr_supervisor`'s authoring turn and context adapters.
+Trusted transport lives in `afr_supervisor`'s authoring turn adapter.
 
 Status and traces reach the browser through tenant private-stream forwarding and shared activity payloads.
 The app's draft and fleet stream reducers, projections and accessible status components render them.

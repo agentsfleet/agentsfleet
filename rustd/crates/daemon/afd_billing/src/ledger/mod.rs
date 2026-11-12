@@ -24,6 +24,7 @@ use crate::{Nanos, Result};
 mod lines;
 mod settle;
 mod sweep;
+pub mod unreadable;
 
 pub use self::lines::log_lines;
 #[cfg(feature = "test-util")]

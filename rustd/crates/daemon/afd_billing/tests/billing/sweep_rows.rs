@@ -19,7 +19,7 @@ use afd_db::test_util::{TestDatabase, mint_id};
 const USAGE_LOG: &str = "CREATE SCHEMA billing; \
     CREATE TABLE billing.usage_lines ( \
       id uuid PRIMARY KEY, work_type text NOT NULL, work_id uuid NOT NULL, \
-      seq bigint NOT NULL, tenant_id uuid NOT NULL, workspace_id uuid NOT NULL, \
+      kind text NOT NULL, seq bigint NOT NULL, tenant_id uuid NOT NULL, workspace_id uuid NOT NULL, \
       fleet_id uuid, fleet_name text, event_id uuid, provider text NOT NULL, \
       model text NOT NULL, posture text NOT NULL, requested_at timestamptz NOT NULL, \
       input_token_count bigint NOT NULL, cached_input_token_count bigint NOT NULL, \
@@ -33,11 +33,11 @@ const USAGE_LOG: &str = "CREATE SCHEMA billing; \
 /// reference is Postgres's `gen_random_uuid()`, a version-4 UUID the column
 /// takes and no identifier this daemon mints can be.
 const SEED_LINE: &str = "INSERT INTO billing.usage_lines \
-    (id, work_type, work_id, seq, tenant_id, workspace_id, provider, model, posture, \
+    (id, work_type, work_id, seq, kind, tenant_id, workspace_id, provider, model, posture, \
      requested_at, input_token_count, cached_input_token_count, cache_write_token_count, \
      cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, \
      platform_model_price_id, unpriced_token_count, charged_nanos, created_at) \
-    VALUES ($6, $1, $2, 0, $3, $4, 'sweep', 'sweep', 'platform', \
+    VALUES ($6, $1, $2, 0, 'model', $3, $4, 'sweep', 'sweep', 'platform', \
             'epoch', 0, 0, 0, 0, 0, 0, 0, CASE WHEN $5 THEN gen_random_uuid() END, \
             0, 0, 'epoch')";
 

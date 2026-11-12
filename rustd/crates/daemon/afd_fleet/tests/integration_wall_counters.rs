@@ -26,9 +26,9 @@ use af_core::id::Uuid7;
 use afd_api_wire::tail::FleetCounters;
 use afd_bus::{Received, Subject, Subscription};
 use afd_fleet::lease::Delivery;
-use afd_fleet::lease::envelope::Acquired;
 use sqlx::Row as _;
 
+use crate::rows::{LAPSE, Row};
 use crate::seed::{Seeded, seeded};
 use crate::support::Fixtures;
 
@@ -48,7 +48,7 @@ const EVENT_COMPLETE: &str = "event_complete";
 struct Parked {
     fixtures: Fixtures,
     fleet: Uuid7,
-    held: Acquired,
+    runner: Uuid7,
     tail: Subscription,
     counters: FleetCounters,
 }
@@ -77,14 +77,11 @@ async fn parked() -> Parked {
     let held = crate::seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
-    let received = leases
-        .record_received(&held)
-        .await
-        .expect("the narrative log must open");
+    let received = held.opened.received;
     assert_eq!(received.delivery, Delivery::First);
     let counters = received
         .counters
-        .expect("a first delivery reads its counters on the connection the insert held");
+        .expect("a first delivery carries the counters its claim moved");
     assert_eq!(
         afd_events::fleet_counters(&fixtures.database, &fleet)
             .await
@@ -97,7 +94,7 @@ async fn parked() -> Parked {
     Parked {
         fixtures,
         fleet,
-        held,
+        runner,
         tail,
         counters,
     }
@@ -209,14 +206,18 @@ async fn a_redelivery_answers_no_counters_and_the_tail_stays_quiet() {
     let mut run = parked().await;
     let _opening = next_frame(&mut run.tail).await;
 
-    let again = run
-        .fixtures
-        .leases()
-        .record_received(&run.held)
+    // The holder stops renewing; its slot lapses and the admission is claimed
+    // again, over the row the first claim opened.
+    run.fixtures
+        .age(Row::Slot(&run.fleet), "lease_expires_at", LAPSE)
+        .await;
+    let again = crate::seed::select_fleet(&run.fixtures.leases(), &run.runner, &run.fleet)
         .await
-        .expect("the redelivery must not fault");
+        .expect("the lapsed admission is claimed again")
+        .opened
+        .received;
     assert_eq!(again.delivery, Delivery::Repeat);
-    assert_eq!(again.counters, None, "a redelivery reads nothing");
+    assert_eq!(again.counters, None, "a redelivery carries no counters");
     // The pull publishes the opening only on a first delivery, so nothing
     // more reaches the tail.
     let silence = tokio::time::timeout(SILENCE_BUDGET, run.tail.recv()).await;

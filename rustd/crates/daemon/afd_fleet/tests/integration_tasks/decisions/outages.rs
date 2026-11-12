@@ -7,10 +7,7 @@ use af_wire::task::{
     DecisionAssessment, DecisionCallState, DecisionReceipt, DecisionReceiptInput,
     DecisionRecordDisposition, DecisionReservationInput, DecisionUnavailableCause,
 };
-use afd_billing::{
-    biller::{OutagePolicy, WithOutagePolicy},
-    ledger::LedgerBiller,
-};
+use afd_billing::{biller::FailOpen, ledger::LedgerBiller};
 use afd_db::test_util::unreachable_db;
 use afd_fleet::task::{TaskLifecycle as _, Tasks};
 use afd_vault::{SecretBody, SecretName};
@@ -176,10 +173,9 @@ fn funding_events(capture: &Capture, case: &Case) {
 async fn unconfirmed(fixture: &Decisions<'_>, input: &garde::Valid<DecisionReservationInput>) {
     let case = fixture.case;
     let mut dependencies = fixture.dependencies.clone();
-    dependencies.biller = Arc::new(WithOutagePolicy::new(
-        LedgerBiller::on_system_clock(unreachable_db()),
-        OutagePolicy::Open,
-    ));
+    dependencies.biller = Arc::new(FailOpen::new(LedgerBiller::on_system_clock(
+        unreachable_db(),
+    )));
     let unconfirmed = Tasks::new(
         case.held.leases.clone(),
         case.admissions.clone(),

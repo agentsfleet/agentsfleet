@@ -49,9 +49,9 @@ fn predecessor() -> Uuid7 {
 
 /// Runs the shared narrative insert and answers whether it inserted a row.
 ///
-/// The binds mirror the two production callers exactly — `afd_fleet`'s
-/// `record_received` and `afd_approval`'s `continue_from` — because a fixture
-/// that bound its own column order would prove something about itself.
+/// The binds mirror the production caller exactly — `afd_approval`'s
+/// `continue_from` — because a fixture that bound its own column order would
+/// prove something about itself.
 async fn insert(lane: &EventsLane, event_id: &Uuid7, resumes: Option<&Uuid7>) -> bool {
     let mut connection = lane.connection().await;
     sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
@@ -212,8 +212,8 @@ async fn only_a_fresh_insert_reports_inserted() {
     lane.cleanup().await;
 }
 
-/// The event id is the row's key: the insert answers the id it was given on
-/// the fresh arm and the SAME id on the conflict arm, so a caller pointing a
+/// The event id is the row's key: the insert stores the id it was given on the
+/// fresh arm and keeps the SAME row on the conflict arm, so a caller pointing a
 /// tool call or a lease at the row gets one identity however many times the
 /// event arrives.
 #[tokio::test(flavor = "multi_thread")]
@@ -232,7 +232,7 @@ async fn the_event_id_is_the_row_key_and_stable_across_arms() {
     lane.cleanup().await;
 }
 
-/// Runs the shared insert and answers the event id it reports.
+/// Runs the shared insert, then reads back the id of the row it wrote.
 async fn inserted_id(lane: &EventsLane, event_id: &Uuid7) -> Uuid7 {
     let mut connection = lane.connection().await;
     sqlx::query(afd_events::sql::INSERT_FLEET_EVENT)
@@ -244,9 +244,18 @@ async fn inserted_id(lane: &EventsLane, event_id: &Uuid7) -> Uuid7 {
         .bind(sqlx::types::Json(serde_json::json!({})))
         .bind(None::<&Uuid7>)
         .bind(af_core::event::status::RECEIVED)
-        .fetch_one(&mut *connection)
+        .execute(&mut *connection)
         .await
-        .expect("the narrative insert must run")
-        .try_get("event_id")
-        .expect("the statement returns the event id")
+        .expect("the narrative insert must run");
+    sqlx::query(
+        "SELECT event_id FROM fleet.events
+         WHERE fleet_id = $1 AND event_id = $2",
+    )
+    .bind(&lane.fleet)
+    .bind(event_id)
+    .fetch_one(&mut *connection)
+    .await
+    .expect("the row the insert wrote must read back")
+    .try_get("event_id")
+    .expect("the row carries its event id")
 }

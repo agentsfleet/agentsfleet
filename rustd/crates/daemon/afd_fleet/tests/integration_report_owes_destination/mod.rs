@@ -18,7 +18,6 @@
 
 use afd_admission::{Producer, Reply};
 use afd_connector::Provider;
-use afd_db::test_util::mint_id;
 use afd_fleet::lease::Committed;
 
 use crate::report_commit::{RESPONSE_ACCEPTED, RESPONSE_POSTGRES_REFUSES};
@@ -205,37 +204,6 @@ async fn an_unknown_recorded_connector_owes_nothing() {
         None,
         "a destination no poster can take is owed nothing"
     );
-    assert_eq!(obligations(&stage.fixtures, &stage.fleet).await, Vec::new());
-
-    stage.fixtures.cleanup().await;
-}
-
-/// A lease over an event id the ledger never minted owes nothing, and still
-/// settles: the run happened and is charged for.
-#[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_event_the_ledger_never_minted_owes_nothing() {
-    let stage = stage().await;
-    stage
-        .admit(
-            Producer::Webhook,
-            "asked-before-the-ledger",
-            Reply::To {
-                connector: Provider::Slack.id(),
-                address: THREAD,
-            },
-        )
-        .await;
-    let now = stage.fixtures.enrolled_at();
-    let (lease_id, mut lease) = stage.lease_next(now).await;
-    // An event id the admission ledger never minted.
-    lease.event_id = mint_id();
-
-    let committed = stage
-        .report(&lease_id, &lease, RESPONSE_ACCEPTED, now)
-        .await
-        .expect("the report must reach the datastore");
-    assert_eq!(owed_by(committed), None, "no ledger row, no destination");
     assert_eq!(obligations(&stage.fixtures, &stage.fleet).await, Vec::new());
 
     stage.fixtures.cleanup().await;

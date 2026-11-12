@@ -23,6 +23,7 @@ use crate::supervisor::Supervisor;
 mod authoring;
 mod billing;
 mod checkpoints;
+mod expiry;
 mod tasks;
 
 // Public for the same reason [`crate::serve::ACCEPT_LOOP`] is: the boot test
@@ -44,6 +45,9 @@ pub const AUTHORING: &str = "sweeper:authoring";
 
 /// The supervised name of the billing sweeper.
 pub const BILLING: &str = "sweeper:billing";
+/// The supervised name of the deadline sweeper: expired leases' last slices
+/// and lapsed setup attempts, on one clock.
+pub const EXPIRY: &str = "sweeper:expiry";
 /// Native task waits, effect readback and storage cleanup; never a second work queue.
 pub const TASKS: &str = "sweeper:tasks";
 /// Bounded private checkpoint collection and acknowledged remote deletion.
@@ -73,9 +77,10 @@ pub fn spawn(
 
     authoring::spawn(supervisor, database, analytics);
 
-    // Usage logged without its settlement, and holds outlived by their lease:
-    // money the request path owes and could not finish.
+    // Usage logged without its settlement: money the request path owes and
+    // could not finish.
     tasks::spawn(supervisor, tasks.clone());
     checkpoints::spawn(supervisor, tasks.clone());
     billing::spawn(supervisor, database, tasks);
+    expiry::spawn(supervisor, database, analytics);
 }

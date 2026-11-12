@@ -20,6 +20,8 @@ mod lease_renewal;
 #[path = "support/fleet_setup.rs"]
 mod setup;
 
+#[path = "support/fleet_billing_lines.rs"]
+mod billing_lines;
 #[path = "support/fleet_faulty_biller.rs"]
 mod faulty_biller;
 #[path = "support/fleet_lease_reads.rs"]
@@ -53,12 +55,16 @@ mod integration_billing_relay;
 mod integration_billing_sweep;
 #[path = "integration_billing_sweep_faults.rs"]
 mod integration_billing_sweep_faults;
+#[path = "integration_claim_delivery.rs"]
+mod integration_claim_delivery;
 mod integration_credential_mint;
 #[path = "integration_delivery_lookup.rs"]
 mod integration_delivery_lookup;
 #[path = "integration_gate_grants.rs"]
 mod integration_gate_grants;
 mod integration_held_sandbox;
+#[path = "integration_issue_host.rs"]
+mod integration_issue_host;
 #[path = "integration_lease_affinity.rs"]
 mod integration_lease_affinity;
 #[path = "integration_lease_assign.rs"]
@@ -67,6 +73,8 @@ mod integration_lease_assign;
 mod integration_lease_billing_races;
 #[path = "integration_lease_block.rs"]
 mod integration_lease_block;
+#[path = "integration_lease_caches.rs"]
+mod integration_lease_caches;
 #[path = "integration_lease_claim_race.rs"]
 mod integration_lease_claim_race;
 #[path = "integration_lease_edges.rs"]
@@ -81,6 +89,8 @@ mod integration_lease_gates;
 mod integration_lease_history;
 #[path = "integration_lease_issue.rs"]
 mod integration_lease_issue;
+#[path = "integration_lease_issue_lock_wait.rs"]
+mod integration_lease_issue_lock_wait;
 #[path = "integration_lease_issue_refusals.rs"]
 mod integration_lease_issue_refusals;
 #[path = "integration_lease_plan.rs"]
@@ -102,12 +112,20 @@ mod integration_memory_hydrate_order;
 mod integration_money_gates;
 #[path = "integration_money_gates_debt.rs"]
 mod integration_money_gates_debt;
+#[path = "integration_renew_batch.rs"]
+mod integration_renew_batch;
+#[path = "integration_renew_caches.rs"]
+mod integration_renew_caches;
 #[path = "integration_renew_clamp.rs"]
 mod integration_renew_clamp;
 #[path = "integration_renew_coverage/mod.rs"]
 mod integration_renew_coverage;
 #[path = "integration_renew_gate_edges.rs"]
 mod integration_renew_gate_edges;
+#[path = "integration_renew_lock_order.rs"]
+mod integration_renew_lock_order;
+#[path = "integration_renew_refusals.rs"]
+mod integration_renew_refusals;
 #[path = "integration_reply_destination.rs"]
 mod integration_reply_destination;
 #[path = "integration_report_commit.rs"]
@@ -117,10 +135,12 @@ mod integration_report_fence;
 #[path = "integration_report_memory.rs"]
 mod integration_report_memory;
 mod integration_report_owes_destination;
+#[path = "integration_report_pricing.rs"]
+mod integration_report_pricing;
 #[path = "integration_report_renewal_lock.rs"]
 mod integration_report_renewal_lock;
-#[path = "integration_report_settle.rs"]
-mod integration_report_settle;
+#[path = "integration_report_statement.rs"]
+mod integration_report_statement;
 #[path = "integration_runner_admin.rs"]
 mod integration_runner_admin;
 mod integration_runner_beat;

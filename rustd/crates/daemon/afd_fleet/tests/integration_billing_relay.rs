@@ -87,10 +87,11 @@ async fn report_returns_while_the_wallet_row_is_locked() {
 
     tokio::time::timeout(
         REPORT_BOUND,
-        plane.report(
+        plane.report_with(
             &held.runner,
             &report,
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         ),
     )
@@ -167,10 +168,11 @@ async fn one_pass_settles_a_reported_lease() {
     let database = &held.fixtures.database;
     let plane = held.fixtures.plane();
     plane
-        .report(
+        .report_with(
             &held.runner,
             &processed(&held, None),
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await

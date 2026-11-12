@@ -6,7 +6,7 @@ use sqlx::postgres::{PgArguments, PgRow};
 use sqlx::query::QueryAs;
 use sqlx::{FromRow, Postgres, SqlSafeStr};
 
-use super::{Request, dimension};
+use super::{ChargeBoundary, Request, dimension};
 use crate::biller::WorkKey;
 
 /// Full-period aggregates and filter choices, with the production bindings.
@@ -59,13 +59,13 @@ where
         .bind(i64::from(request.limit) + 1)
 }
 
-/// One activity's individual charges, using the existing work/sequence key.
+/// One activity's individual charges, in the order they happened.
 pub(super) fn charges<'q, O, S>(
     wrap: impl FnOnce(&'static str) -> S,
     tenant: &'q Uuid7,
     work: &'q WorkKey,
     request: &'q Request,
-    after: Option<i64>,
+    after: Option<&'q ChargeBoundary>,
 ) -> QueryAs<'q, Postgres, O, PgArguments>
 where
     O: for<'r> FromRow<'r, PgRow>,
@@ -78,8 +78,9 @@ where
         .bind(request.window.from.to_sqlx())
         .bind(request.window.through.to_sqlx())
         .bind(request.filter.model.as_deref())
-        .bind(after)
+        .bind(after.map(|after| after.requested_at.to_sqlx()))
         .bind(i64::from(request.limit) + 1)
         .bind(request.filter.fleet.as_ref())
         .bind(request.filter.work_type)
+        .bind(after.map(|after| &after.line_id))
 }

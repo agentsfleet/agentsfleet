@@ -24,6 +24,12 @@ pub struct Leases {
     wake: Wake,
     ticket: Option<afd_runner::capacity::choice::Ticket>,
     authority: Option<afd_runner::capacity::authority::Authority>,
+    /// Parsed definitions by revision id, shared by every clone of this store.
+    definitions: crate::lease::cache::Definitions,
+    /// Price books by model and catalogue version, shared the same way.
+    prices: crate::lease::cache::PriceBooks,
+    /// The newest versions this replica has read, shared the same way.
+    latest: crate::lease::cache::Latest,
 }
 
 impl Leases {
@@ -37,7 +43,25 @@ impl Leases {
             wake: Wake::default(),
             ticket: None,
             authority: None,
+            definitions: crate::lease::cache::Definitions::default(),
+            prices: crate::lease::cache::PriceBooks::default(),
+            latest: crate::lease::cache::Latest::default(),
         }
+    }
+
+    /// The newest catalogue version and head revisions this replica has read.
+    pub(crate) const fn latest(&self) -> &crate::lease::cache::Latest {
+        &self.latest
+    }
+
+    /// The price books this replica holds, by model and catalogue version.
+    pub(crate) const fn prices(&self) -> &crate::lease::cache::PriceBooks {
+        &self.prices
+    }
+
+    /// The parsed definitions this replica holds, by revision id.
+    pub(crate) const fn definitions(&self) -> &crate::lease::cache::Definitions {
+        &self.definitions
     }
 
     /// Bind streamed lease operations to the credential and owner acquired at opening.
@@ -57,6 +81,32 @@ impl Leases {
         Ok(match &self.authority {
             Some(authority) => afd_runner::capacity::lock(tx, (runner, authority)).await?,
             None => afd_runner::capacity::lock(tx, runner).await?,
+        })
+    }
+
+    /// The connection's proof for `runner`: its credential digest and
+    /// connection, or none for a trusted domain call.
+    pub(crate) fn host_proof<'a>(
+        &'a self,
+        runner: &'a af_core::id::Uuid7,
+    ) -> (Option<&'a str>, Option<&'a af_core::id::Uuid7>) {
+        let (_runner, digest, connection) = match &self.authority {
+            Some(authority) => afd_runner::capacity::proof((runner, authority)),
+            None => afd_runner::capacity::proof(runner),
+        };
+        (digest, connection)
+    }
+
+    /// Lock the runner row and prove its owner, leaving the census to the
+    /// fleet issue's guarded insert.
+    pub(crate) async fn lock_host(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        runner: &af_core::id::Uuid7,
+    ) -> crate::Result<Option<afd_runner::capacity::Held>> {
+        Ok(match &self.authority {
+            Some(authority) => afd_runner::capacity::lock_host(tx, (runner, authority)).await?,
+            None => afd_runner::capacity::lock_host(tx, runner).await?,
         })
     }
 

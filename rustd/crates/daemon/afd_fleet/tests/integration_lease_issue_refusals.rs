@@ -44,10 +44,6 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_lease() {
     let held = seed::select_fleet(&leases, &runner, &fleet)
         .await
         .expect("the fleet is leasable");
-    leases
-        .record_received(&held)
-        .await
-        .expect("the narrative log must open");
     let degrade = |reason: Option<&'static str>| {
         let fixtures = &fixtures;
         let runner = runner.clone();
@@ -79,40 +75,5 @@ async fn test_a_host_that_may_not_take_work_is_issued_no_lease() {
     assert!(unknown.is_none(), "a host with no row takes no work");
     assert!(degraded.is_none(), "a degraded host takes no work");
     assert!(cleared.is_some(), "the claim survived both refusals");
-    fixtures.cleanup().await;
-}
-
-/// A claim without its durable queue row cannot create narrative history.
-#[tokio::test]
-#[ignore = "needs live Postgres and NATS: make test-integration-rustd"]
-async fn an_event_absent_from_the_ledger_cannot_open_history() {
-    let fixtures = Fixtures::create().await;
-    let Seeded {
-        runners: [runner],
-        fleet,
-        ..
-    } = seeded::<1>(&fixtures).await;
-    let leases = fixtures.leases_with_dead_bus();
-    let minted = seed::select_fleet(&leases, &runner, &fleet)
-        .await
-        .expect("claim");
-    let absent = afd_fleet::lease::Acquired {
-        event_id: afd_db::test_util::mint_id(),
-        ..minted
-    };
-    let error = leases
-        .record_received(&absent)
-        .await
-        .expect_err("absent admission");
-    assert_eq!(
-        error.to_string(),
-        afd_fleet::Error::stale_fence().to_string()
-    );
-    let count: i64 = sqlx::query_scalar("SELECT count(*) FROM fleet.events WHERE fleet_id=$1")
-        .bind(&fleet)
-        .fetch_one(&mut *fixtures.database.acquire().await.expect("database"))
-        .await
-        .expect("history count");
-    assert_eq!(count, 0);
     fixtures.cleanup().await;
 }

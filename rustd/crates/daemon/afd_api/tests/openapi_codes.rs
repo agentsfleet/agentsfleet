@@ -84,11 +84,7 @@ const fn scheme_of(guard: Guard) -> Option<&'static str> {
     match guard {
         Guard::Bearer => Some(BEARER_SCHEME),
         Guard::RunnerBearer => Some(RUNNER_SCHEME),
-        Guard::Open
-        | Guard::WebhookHmac
-        | Guard::WebhookSignature
-        | Guard::Svix
-        | Guard::PayloadSigned => None,
+        Guard::Open | Guard::WebhookHmac | Guard::WebhookSignature | Guard::PayloadSigned => None,
     }
 }
 

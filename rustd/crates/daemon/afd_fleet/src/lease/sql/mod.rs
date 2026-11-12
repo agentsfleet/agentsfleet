@@ -5,12 +5,13 @@
 //! shared module was the last thing tying four planes to one compilation unit.
 //! `vault`, `provider`, `memory` and `gate` each took their own the same way.
 
-pub mod activity;
 pub mod fleet;
+pub mod gates;
 pub mod lease;
 pub mod meter;
 pub mod renew;
 pub mod report;
+pub mod report_statement;
 pub mod session;
 pub mod standing;
 pub mod tool_detail;

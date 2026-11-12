@@ -1,5 +1,5 @@
-//! The statements behind the tool-call record verb, and the settlement's
-//! dead-fence delete. Split from [`super`] at the length cap: that file
+//! The statements behind the tool-call record verb, and the dead-fence delete
+//! a post runs. Split from [`super`] at the length cap: that file
 //! decides what is kept, this one writes it.
 
 use std::collections::BTreeMap;
@@ -11,7 +11,6 @@ use sqlx::{Acquire as _, PgConnection};
 
 use super::{Admissible, Kept, within_budget};
 use crate::error::{Result, query};
-use crate::lease::settle::Reported;
 use crate::lease::sql;
 use crate::lease::sql::tool_detail as statement;
 use crate::lease::standing::LiveLease;
@@ -112,26 +111,6 @@ impl Leases {
             .await
             .map_err(query(CONTEXT_KEEP))?;
         Ok(())
-    }
-
-    /// Delete every other lease's records of the event `lease` settles.
-    ///
-    /// Runs on the settling transaction's connection, beside the answer.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer.
-    pub(crate) async fn drop_other_fences(
-        &self,
-        connection: &mut PgConnection,
-        lease: &Reported,
-    ) -> Result<()> {
-        drop_others(
-            connection,
-            &lease.fleet_id,
-            &lease.event_id,
-            lease.fence.as_i64(),
-        )
-        .await
     }
 }
 

@@ -3,7 +3,7 @@ use super::{ModelCallInput, continuation, prepare::Prepared, provider};
 use crate::{Result, error::ErrorKind, lease::guard::Attempt, replay};
 use af_context::{
     CheckpointStore as _, Identity, Plan, Window,
-    repository::{Repository, Scope},
+    repository::{Repository, identity as draft_identity},
 };
 use sqlx::PgConnection;
 
@@ -26,13 +26,12 @@ pub(super) async fn prepare(
     let settings = model.inference.as_ref().ok_or(ErrorKind::Model)?;
     let context =
         u32::try_from(model.context_window_tokens).map_err(|_invalid| ErrorKind::Model)?;
-    let scope = Scope::Draft(attempt.draft_id.clone());
     let identity = Identity {
-        scope: scope.identity(),
+        scope: draft_identity(&attempt.draft_id),
         model: replay::digest(model)?,
         pinned: replay::digest(&(editing, save))?,
     };
-    let checkpoint = Repository::new(connection, scope, attempt.id.clone())
+    let checkpoint = Repository::new(connection, attempt.draft_id.clone(), attempt.id.clone())
         .load()
         .await?;
     let mut snapshot = Snapshot::new(attempt, editing, checkpoint.as_ref(), &continuations)?;
@@ -48,9 +47,6 @@ pub(super) async fn prepare(
         |_| {},
     )
     .await?;
-    if matches!(&plan, Plan::Compact(_)) && !request.request.supports_compaction {
-        return Err(ErrorKind::Token.into());
-    }
     snapshot.source = source.fingerprint;
     Ok((prepared(plan, &estimator, settings, context)?, snapshot))
 }
@@ -150,11 +146,7 @@ pub(super) async fn publish(
     if digest != expected_digest {
         return Err(ErrorKind::Fence.into());
     }
-    let mut store = Repository::new(
-        connection,
-        Scope::Draft(attempt.draft_id.clone()),
-        attempt.id.clone(),
-    );
+    let mut store = Repository::new(connection, attempt.draft_id.clone(), attempt.id.clone());
     if let Err(error) = task
         .finish_with(summary, async move |generation, checkpoint| {
             store.commit(generation, checkpoint).await

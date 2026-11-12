@@ -5,7 +5,7 @@
 //!
 //! The runner numbers a run's tool calls from 1 and repeats the number on every
 //! frame of one call. A reclaimed lease re-runs the SAME event
-//! (`lease/reclaim.rs`) and the runner's counter starts over, so the dead run's
+//! and the runner's counter starts over, so the dead run's
 //! call 1 and the new run's call 1 would carry one id, and a reader pairing
 //! calls on that id alone would merge two calls. Prefixing the lease's fence,
 //! which is distinct per claim, gives every lease of an event its own ids. The

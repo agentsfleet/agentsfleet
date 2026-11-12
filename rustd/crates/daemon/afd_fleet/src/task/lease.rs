@@ -1,7 +1,11 @@
 //! Task ownership joins ordinary lease issuance; it never claims another slot.
 
 use super::{TaskScope, read};
-use crate::{Result, error::query, lease::envelope::Acquired};
+use crate::{
+    Result,
+    error::query,
+    lease::envelope::{Acquired, HeadKind},
+};
 use af_core::id::Uuid7;
 use af_wire::task::{TaskContext, TaskState};
 use sqlx::PgConnection;
@@ -17,20 +21,6 @@ pub(crate) async fn parents(connection: &mut PgConnection, acquired: &Acquired) 
         .await
         .map_err(query("hold surviving issue parents before host and slot"))?;
     Ok(parent.is_some())
-}
-
-pub(crate) async fn report_parents(
-    connection: &mut PgConnection,
-    fleet: &Uuid7,
-    workspace: &Uuid7,
-) -> Result<()> {
-    let _parent: Option<Uuid7> = sqlx::query_scalar(super::sql::LOCK_SCOPE)
-        .bind(fleet)
-        .bind(workspace)
-        .fetch_optional(connection)
-        .await
-        .map_err(query("hold surviving report parents before host and slot"))?;
-    Ok(())
 }
 
 #[derive(sqlx::FromRow)]
@@ -53,6 +43,13 @@ pub(crate) async fn attach(
     lease: &Uuid7,
     revision: Option<&crate::lease::installed::IssueRevision>,
 ) -> Result<Option<(Option<TaskContext<'static>>, jiff::Timestamp)>> {
+    // A plain admission under the claim's setup proof: the lease insert
+    // rechecked the head revision and the host, so there is nothing to attach
+    // and nothing left to read. Without a proof the read below is
+    // the only setup check, so it stays.
+    if revision.is_some() && acquired.opened.head == HeadKind::Plain {
+        return Ok(Some((None, acquired.leased_until)));
+    }
     let selected: Option<Selected> = sqlx::query_as(include_str!("sql/issue_source.sql"))
         .bind(&acquired.event_id)
         .bind(&acquired.fleet_id)
@@ -140,12 +137,9 @@ const NANOS_PER_SECOND: i64 = 1_000_000_000;
 impl crate::lease::Leases {
     /// A changed live setup blocks the old task instead of stranding a Ready owner.
     pub(crate) async fn block_changed_task_setup(&self, acquired: &Acquired) -> Result<()> {
-        use sqlx::Connection as _;
-        let mut connection = self.pool().acquire().await?;
-        let mut tx = connection
-            .begin()
-            .await
-            .map_err(query("begin changed task authority refusal"))?;
+        // Cancellation closes the socket, so a blocked statement holds no lock.
+        let mut connection = super::transaction::acquire(self.pool()).await?;
+        let mut tx = super::transaction::begin(&mut connection).await?;
         if !parents(&mut tx, acquired).await? {
             return Ok(());
         }
@@ -154,7 +148,14 @@ impl crate::lease::Leases {
             .fetch_optional(&mut *tx)
             .await
             .map_err(query("hold claimed slot before authority refusal"))?;
-        match Self::installed_on(&mut tx, &acquired.fleet_id, Some(&acquired.event_id)).await {
+        match Self::installed_on(
+            self.definitions(),
+            &mut tx,
+            &acquired.fleet_id,
+            Some(&acquired.event_id),
+        )
+        .await
+        {
             Err(fault) if fault.code() == af_core::error_code::TASK_INVALID_TARGET => (),
             Err(fault) => return Err(fault),
             Ok(_) => return Ok(()),
@@ -178,6 +179,7 @@ impl crate::lease::Leases {
         tx.commit()
             .await
             .map_err(query("commit task setup authority refusal"))?;
+        super::transaction::recycle(connection);
         if let Some((task, version)) = changed {
             let frame = afd_api_wire::tail::TailFrame::TaskChanged {
                 task_id: std::borrow::Cow::Borrowed(task.as_str()),

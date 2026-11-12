@@ -9,6 +9,7 @@ mod decisions;
 mod exhaustion;
 mod fixture;
 mod fold_barrier;
+mod gained_task;
 mod input_answers;
 mod input_receipts;
 mod qualification;

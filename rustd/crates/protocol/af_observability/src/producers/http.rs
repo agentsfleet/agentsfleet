@@ -26,7 +26,7 @@ pub struct Handles {
     api_shed: Counter<u64>,
     stream_shed: Counter<u64>,
     frames_dropped: Counter<u64>,
-    hub_reconnects: Counter<u64>,
+    bus_reconnects: Counter<u64>,
     entries_discarded: Counter<u64>,
     attributes_omitted: Counter<u64>,
 }
@@ -43,7 +43,7 @@ impl Handles {
             api_shed: instruments.counter_u64(&declared::API_BACKPRESSURE_REJECTIONS_TOTAL)?,
             stream_shed: instruments.counter_u64(&declared::SSE_BACKPRESSURE_REJECTIONS_TOTAL)?,
             frames_dropped: instruments.counter_u64(&declared::SSE_DROPPED_FRAMES_TOTAL)?,
-            hub_reconnects: instruments.counter_u64(&declared::SSE_HUB_RECONNECTS_TOTAL)?,
+            bus_reconnects: instruments.counter_u64(&declared::BUS_RECONNECTS_TOTAL)?,
             entries_discarded: instruments.counter_u64(&declared::OTLP_ENTRIES_DISCARDED_TOTAL)?,
             attributes_omitted: instruments.counter_u64(&declared::OTEL_ATTRIBUTE_OMITTED_TOTAL)?,
         };
@@ -88,9 +88,9 @@ pub fn frame_dropped() {
 }
 
 /// Records the NATS client having reconnected after a disconnect.
-pub fn hub_reconnected() {
+pub fn bus_reconnected() {
     if let Some(producers) = installed() {
-        producers.http.hub_reconnects.add(1, &[]);
+        producers.http.bus_reconnects.add(1, &[]);
     }
 }
 

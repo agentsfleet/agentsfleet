@@ -506,7 +506,6 @@ dependencies = [
 name = "afd_api_runner"
 version = "0.76.0"
 dependencies = [
- "af_context",
  "af_core",
  "af_validate",
  "af_wire",
@@ -522,7 +521,6 @@ dependencies = [
  "garde",
  "http",
  "serde",
- "serde_json",
  "tokio",
  "tracing",
  "utoipa",
@@ -797,6 +795,7 @@ dependencies = [
  "af_crypto",
  "af_fleet_runtime",
  "af_inference",
+ "af_observability",
  "af_webhook",
  "af_wire",
  "afd_admin",
@@ -892,7 +891,6 @@ dependencies = [
  "afd_state",
  "base64 0.23.1",
  "futures-util",
- "garde",
  "jiff",
  "jiff-sqlx",
  "serde",
@@ -947,6 +945,7 @@ dependencies = [
  "jiff",
  "jiff-sqlx",
  "jsonwebtoken",
+ "moka",
  "object_store",
  "quick-xml",
  "rcgen",
@@ -1065,7 +1064,6 @@ dependencies = [
 name = "afd_http"
 version = "0.76.0"
 dependencies = [
- "af_context",
  "af_core",
  "af_crypto",
  "af_fleet_runtime",
@@ -1471,7 +1469,6 @@ dependencies = [
 name = "afr_supervisor"
 version = "0.76.0"
 dependencies = [
- "af_context",
  "af_core",
  "af_crypto",
  "af_egress",

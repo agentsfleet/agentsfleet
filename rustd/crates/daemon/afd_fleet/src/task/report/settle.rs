@@ -254,7 +254,7 @@ async fn transition(
     reason: Option<&str>,
 ) -> Result<()> {
     waits::cancel(connection, &current.task_id).await?;
-    sqlx::query(include_str!("transition.sql"))
+    sqlx::query(include_str!("../waits/sql/transition.sql"))
         .bind(&current.task_id)
         .bind(state.as_str())
         .bind(reason)

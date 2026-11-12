@@ -52,9 +52,6 @@ impl Services for Fleet {
     fn creations(&self) -> &afd_authoring::Creations {
         &self.creations
     }
-    fn authoring_models(&self) -> &afd_authoring::ModelCalls {
-        &self.authoring_models
-    }
     type Auth = Planes<Directory, MockCapabilities, MockVerifier>;
     type SignupMetadata = RecordingWriteback;
     type Leases = NoWork;

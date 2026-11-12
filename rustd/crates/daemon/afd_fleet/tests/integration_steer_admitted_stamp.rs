@@ -6,7 +6,7 @@
 //! steer cut off one page and leased before the next jumped above the cursor
 //! that page handed out: the resumed history read skipped it as too new and
 //! the resumed waiting read skipped it as delivered. These drive the real
-//! lease path, `Leases::record_received`, between two page reads.
+//! lease path, the claim statement, between two page reads.
 //!
 //! Marked `#[ignore]`; `make test-integration-rustd` runs it.
 #![cfg(feature = "test-util")]
@@ -90,10 +90,7 @@ async fn test_steer_leased_between_pages_stays_on_the_resumed_page() {
         acquired.event_id, oldest_id,
         "the queue hands out its oldest first"
     );
-    let received = leases
-        .record_received(&acquired)
-        .await
-        .expect("the narrative log opens");
+    let received = acquired.opened.received;
     assert_eq!(received.delivery, Delivery::First);
     assert_eq!(
         Some(received.opened_at),
@@ -132,13 +129,13 @@ async fn test_webhook_row_keeps_the_lease_instant() {
         .expect("a live queue admits the webhook");
 
     let leases = fixtures.leases();
-    let acquired = select_fleet(&leases, &runner, &fleet)
-        .await
-        .expect("the fleet holding the webhook is leasable");
-    let (received, lease_window) = fixtures
-        .clock_around(leases.record_received(&acquired))
+    let (acquired, lease_window) = fixtures
+        .clock_around(select_fleet(&leases, &runner, &fleet))
         .await;
-    let received = received.expect("the narrative log opens");
+    let received = acquired
+        .expect("the fleet holding the webhook is leasable")
+        .opened
+        .received;
     assert_eq!(received.delivery, Delivery::First);
     assert!(
         lease_window.contains(&received.opened_at),

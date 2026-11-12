@@ -35,7 +35,13 @@ pub(super) const ENTRY: &str = include_str!("entry.sql");
 /// The platform default, priced. The platform choice is explicit; an absent
 /// owner entry never selects it.
 ///
-/// `$1` owner, `$2` the reference, which only has to be present.
+/// Beside the resolution it answers what the key cache needs: the catalogue
+/// version, the secret's id, a digest of the ciphertext and the endpoint
+/// stored with it (the same expression the lease claim computes, so a hit on
+/// the claim's witnesses is a hit on this read's), and the milliseconds the
+/// matched price window has left, from the statement's own clock reading.
+///
+/// `$1` owner, `$2` milliseconds per second.
 pub(super) const PLATFORM: &str = include_str!("platform.sql");
 
 /// The catalogue version, share-locked before anything else the read locks,

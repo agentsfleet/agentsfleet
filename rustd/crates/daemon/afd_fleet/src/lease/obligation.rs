@@ -25,7 +25,6 @@ use jiff::Timestamp;
 use sqlx::PgConnection;
 
 use crate::error::{Result, query};
-use crate::lease::settle::Reported;
 use crate::lease::store::Leases;
 
 /// Statement name, for the context a destination read failure carries.
@@ -48,25 +47,6 @@ pub struct ReplyDestination {
     pub provider: Provider,
     /// The address only that poster reads.
     pub address: String,
-}
-
-impl ReplyDestination {
-    /// The answer `lease` owes here, in the shape the ledger's verbs take.
-    ///
-    /// The row is the only record of where the answer goes: the wake that
-    /// follows the commit carries the row's identifier and nothing else, so
-    /// a worker reads the destination from what was committed.
-    #[must_use]
-    pub(crate) fn delivery<'a>(&'a self, lease: &'a Reported, answer: &'a str) -> Delivery<'a> {
-        Delivery {
-            fleet_id: &lease.fleet_id,
-            workspace_id: &lease.workspace_id,
-            provider: self.provider,
-            destination: &self.address,
-            event_id: &lease.event_id,
-            answer,
-        }
-    }
 }
 
 /// An answer this report newly owed.

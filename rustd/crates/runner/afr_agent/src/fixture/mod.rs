@@ -36,7 +36,6 @@ pub(crate) const GITHUB_TOKEN: &str = "ghp_fixture_token_abcdef";
 pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'static> {
     let mut document = serde_json::json!({
         "lease_id": "lease-1", "fencing_token": 7, "lease_expires_at": AT,
-        "secret_delivery": "inline",
         "event": {"event_id": "event-1", "fleet_id": "fleet-1", "workspace_id": "ws-1",
             "actor": "operator-1", "event_type": "chat",
             "request_json": "{\"message\":\"triage the failed run\"}", "created_at": AT},
@@ -46,7 +45,7 @@ pub(crate) fn lease(tools: &[&str], budget: serde_json::Value) -> LeasePayload<'
             "mintable": [], "provider": "anthropic", "api_key": API_KEY,
             "inference_host": "h", "base_url": null, "repository_binding": null,
             "http_origin_policies": [], "context": null},
-        "instructions": "Read the run.", "limits": null, "history": [], "resume_hold": false
+        "instructions": "Read the run.", "history": [], "resume_hold": false, "inputs_waiting": true
     });
     *document.pointer_mut(CONTEXT_POINTER).unwrap() = budget;
     // Leaked so the borrowed payload lives as long as the test that reads it.

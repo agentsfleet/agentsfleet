@@ -9,7 +9,7 @@ mod progress;
 pub(super) async fn compact(
     shared: &Shared<'_>,
     stop: &tokio_util::sync::CancellationToken,
-    store: &mut Store<'_>,
+    store: &mut Store,
     task: Compaction,
     visible: bool,
 ) -> af_context::Result<Checkpoint> {
@@ -70,18 +70,22 @@ impl Summarizer for Model<'_, '_> {
     }
 }
 
-pub(super) struct Store<'a> {
-    pub(super) port: &'a dyn crate::ContextCheckpoints,
-    pub(super) branch: &'a str,
+/// The run's own checkpoint generation. A compaction's summary lives in the
+/// loop's state, where the next model call reads it; nothing outside the run
+/// reads it, so nothing is published.
+pub(super) struct Store {
+    pub(super) generation: u64,
 }
-impl CheckpointStore for Store<'_> {
-    fn load(&mut self) -> PortFuture<'_, Option<Checkpoint>> {
-        Box::pin(self.port.load(self.branch))
-    }
+impl CheckpointStore for Store {
     fn commit(&mut self, expected_generation: u64, checkpoint: Checkpoint) -> PortFuture<'_, ()> {
-        Box::pin(
-            self.port
-                .commit(self.branch, expected_generation, checkpoint),
-        )
+        let current = self.generation == expected_generation;
+        if current {
+            self.generation = checkpoint.generation;
+        }
+        Box::pin(std::future::ready(if current {
+            Ok(())
+        } else {
+            Err(af_context::Error::stale())
+        }))
     }
 }

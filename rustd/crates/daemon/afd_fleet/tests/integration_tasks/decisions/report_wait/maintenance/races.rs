@@ -29,7 +29,7 @@ async fn completed_read_cannot_bypass_pause_revocation_or_spent_allowance_after_
             assert_eq!(counts(case, &waiting.task_id).await, (0, 0, 0, 2, 1));
             assert_eq!(waiting.fixture.counts().await, (1, 1, 1));
             assert_stopped(&waiting, change).await;
-            waiting.finish().await;
+            Box::pin(waiting.finish()).await;
         })
         .await;
     }

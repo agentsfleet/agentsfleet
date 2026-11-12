@@ -1,41 +1,21 @@
 //! Every statement this crate runs: `billing.*`, and the `identity` and `model`
 //! tables a money decision reads.
 //!
-//! The wallet and the workspace→tenant hop, the apportioning drain, the charge
-//! insert, the rate read and the tenant's charges pages. The rest of the money
-//! path sits beside its callers: the lease renewal and settle statements in
-//! `afd_fleet/src/lease/sql/{renew,report}.rs` drain the balance and write the
-//! `stage` charge rows, and `INSERT_WALLET` in `afd_tenant/src/sql/signup.rs`
-//! opens a wallet with its starter grant.
+//! The wallet read, the rate reads and the tenant's charges pages. The rest of
+//! the money path sits beside its callers: the lease renewal and report
+//! statements in `afd_fleet/src/lease/sql/` log the usage lines, the ledger's
+//! own statements in `ledger/sql/` settle them, and `INSERT_WALLET` in
+//! `afd_tenant` opens a wallet with its starter grant.
 //!
 //! Each is a `.sql` file beside this module, schema-qualified (RULE NSQ), and
 //! checked against the rebuilt schema by `afd_db`'s
 //! `test_every_sql_file_prepares`.
 
-/// The tenant a workspace belongs to.
+/// The tenant's credit pool, for the billing page
+/// ([`crate::tenant::Billing::snapshot`]).
 ///
-/// One hop, and it is the first thing the money path does: every ledger row,
-/// wallet read and rate decision is keyed by tenant, and a lease carries only a
-/// workspace. A miss is PERMANENT — a workspace with no tenant row is a broken
-/// foreign key, not a transient fault — which is what
-/// `resolveTenantFromWorkspace`'s `error.WorkspaceNotFound` distinguishes and
-/// what the gate's refusal class turns on.
-///
-/// `$1` workspace.
-pub const SELECT_TENANT_FOR_WORKSPACE: &str = include_str!("select_tenant_for_workspace.sql");
-
-/// The tenant's credit pool.
-///
-/// `exhausted_at` is selected but unread by the lease gate: the gate compares
-/// the balance against an estimate and does not care when the pool ran dry. It
-/// stays in the projection because the statement is shared with the billing
-/// endpoint ([`crate::tenant::Billing::snapshot`]), and narrowing it here would
-/// fork one statement into two.
-///
-/// A tenant with NO wallet row is not a refusal — `getBilling` answers null and
-/// `balanceCoversEstimate` admits. A tenant that has never been provisioned is
-/// an operator fault, and refusing every one of its events would turn that into
-/// an outage for a fleet that is otherwise healthy.
+/// A tenant with no wallet row has no row to return, and the caller refuses it
+/// as the bootstrap-invariant violation it is.
 ///
 /// `$1` tenant.
 pub const SELECT_WALLET: &str = include_str!("select_wallet.sql");
@@ -59,8 +39,8 @@ pub mod work {
     pub const AUTHORING_ATTEMPT: &str = "authoring_attempt";
 }
 
-/// The charges page's spellings for a fleet run's usage. Never stored: a
-/// usage line names its work, and the page names the charge it reads as.
+/// The charges page's spelling for a fleet run's usage. Never stored: a usage
+/// line names its work, and the page names the charge it reads as.
 pub mod charge {
     /// A fleet run's usage, one row per usage line.
     pub const STAGE: &str = "stage";
@@ -81,8 +61,8 @@ pub mod posture {
     pub const SELF_MANAGED: &str = "self_managed";
 }
 
-/// The charges page's spelling for a setup chat's settlement, beside the two
-/// [`charge`] types a fleet run writes. Never stored: it names the source.
+/// The charges page's spelling for a setup chat's settlement, beside the
+/// [`charge`] type a fleet run writes. Never stored: it names the source.
 pub const CHARGE_TYPE_AUTHORING: &str = "authoring";
 
 /// The tenant's first charges page: newest first, no boundary.

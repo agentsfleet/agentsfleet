@@ -10,10 +10,12 @@ use sqlx::Connection as _;
 use super::{MAX_CANDIDATES_PER_POLL, PollCost, started};
 use crate::error::{Result, query};
 use crate::lease::affinity::{self, Fence};
-use crate::lease::envelope::{Acquired, Kind};
-use crate::lease::reclaim::Reused;
+use crate::lease::envelope::{Acquired, HeadKind, Kind, Opened};
+use crate::lease::event::{Delivery, Received};
+use crate::lease::installed::FleetWithSession;
 use crate::lease::sql::{self, queue};
 use crate::lease::store::Leases;
+use afd_credential::provider::cache::PlatformKeyKey;
 
 /// Query context shared by the claim's transaction operations.
 const CONTEXT: &str = "admissions ledger claim";
@@ -34,9 +36,37 @@ struct Admission {
     lease_expires_at: Timestamp,
     held: bool,
     holder: Option<Uuid7>,
-    reused_tenant_id: Option<Uuid7>,
-    reused_posture: Option<String>,
-    reused_model: Option<String>,
+    reclaimed: bool,
+    tenant_id: Uuid7,
+    #[sqlx(flatten)]
+    memory: MemoryScope,
+    #[sqlx(flatten)]
+    setup: FleetWithSession,
+    #[sqlx(flatten)]
+    opened: OpenedRow,
+}
+
+/// The fleet's memory flags, as the claim read them.
+#[derive(Debug, sqlx::FromRow)]
+struct MemoryScope {
+    memory_reads_workspace: bool,
+    memory_publishes_workspace: bool,
+}
+
+/// The event row the claim's insert opened or met, and the fleet's counters.
+#[derive(Debug, sqlx::FromRow)]
+struct OpenedRow {
+    inserted: bool,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    opened_at: Timestamp,
+    event_status: String,
+    event_count: i64,
+    budget_used_nanos: i64,
+    catalogue_version: i64,
+    platform_secret_id: Option<Uuid7>,
+    platform_secret_digest: Option<String>,
+    inputs_waiting: bool,
+    tasked: bool,
 }
 
 impl Leases {
@@ -105,6 +135,9 @@ impl Leases {
             .bind(af_wire::task::TaskState::Ready.as_str())
             .bind(af_wire::task::TaskState::Running.as_str())
             .bind(crate::task::DECISION_POLICY_PATH)
+            .bind(sql::FLEET_STATUS_ACTIVE)
+            .bind(af_core::event::status::RECEIVED)
+            .bind(afd_admission::Producer::Steer.as_str())
             .fetch_optional(&mut *transaction)
             .await
             .map_err(query(CONTEXT))?;
@@ -125,21 +158,60 @@ impl Leases {
 impl Admission {
     /// Build the same downstream envelope from the committed ledger payload.
     fn acquired(self, fleet: &Uuid7, runner: &Uuid7) -> Acquired {
-        // All three are non-null on a matched prior lease; the outer join
-        // makes all three absent when the admission has never been issued.
-        let reused = self
-            .reused_tenant_id
-            .zip(self.reused_posture)
-            .zip(self.reused_model)
-            .map(|((tenant_id, posture), model)| Reused {
-                tenant_id,
-                posture,
-                model,
-            });
-        let kind = if reused.is_some() {
+        // The outer join finds a prior lease only when the admission has been
+        // issued before.
+        let kind = if self.reclaimed {
             Kind::Reclaim
         } else {
             Kind::Fresh
+        };
+        // A false `inserted` is the insert's conflict arm: the row was already
+        // there, and its stored status says whether it is still running.
+        let OpenedRow {
+            inserted,
+            opened_at,
+            event_status,
+            event_count,
+            budget_used_nanos,
+            catalogue_version,
+            platform_secret_id,
+            platform_secret_digest,
+            inputs_waiting,
+            tasked,
+        } = self.opened;
+        let platform_key = platform_secret_id
+            .zip(platform_secret_digest)
+            .map(|(secret, digest)| PlatformKeyKey::observed(catalogue_version, secret, digest));
+        let delivery = if inserted {
+            Delivery::First
+        } else if event_status == af_core::event::status::RECEIVED {
+            Delivery::Repeat
+        } else {
+            Delivery::Terminal
+        };
+        let opened = Opened {
+            received: Received {
+                delivery,
+                // The snapshot plus this statement's own insert, which the
+                // counting trigger's write cannot show to its own statement.
+                counters: inserted.then_some(afd_api_wire::tail::FleetCounters {
+                    events_processed: event_count,
+                    budget_used_nanos,
+                }),
+                opened_at,
+            },
+            tenant_id: self.tenant_id,
+            catalogue_version,
+            platform_key,
+            memory_reads_workspace: self.memory.memory_reads_workspace,
+            memory_publishes_workspace: self.memory.memory_publishes_workspace,
+            inputs_waiting,
+            head: if tasked {
+                HeadKind::Task
+            } else {
+                HeadKind::Plain
+            },
+            setup: self.setup,
         };
         Acquired {
             fleet_id: fleet.clone(),
@@ -152,9 +224,9 @@ impl Admission {
             request_json: self.request_json,
             workspace_id: self.workspace_id.clone(),
             event_created_at: self.event_created_at,
-            reused,
             resume_hold: self.held && self.holder.as_ref() == Some(runner) && kind == Kind::Fresh,
             redelivered: self.redelivered,
+            opened,
         }
     }
 }

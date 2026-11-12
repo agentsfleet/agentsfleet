@@ -171,10 +171,9 @@ async fn update(
         .bind(&probe.claim)
         .bind(Json(checks))
         .bind(digest)
-        // Consume only the signal visible when this claim started. A racing signal remains due.
-        .bind(probe.owner.signalled_at)
         .bind(cooldown.unwrap_or_else(clock::now).to_sqlx())
         .bind(Duration::from_secs(delay))
+        // Consume only the signal visible when this claim started. A racing signal remains due.
         .bind(probe.owner.signal_sequence)
         .execute(connection)
         .await

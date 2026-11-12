@@ -1,9 +1,8 @@
-//! The lease gate's reads, against the rebuilt schema.
+//! The money reads, against the rebuilt schema.
 //!
-//! Each statement is graded on both halves its absence can mean: a workspace
-//! with no tenant, a tenant with no wallet, a model the catalogue does not
-//! carry. Those are values, never errors, and a reader that turned one into
-//! the other would invert a gate.
+//! Each is graded on both halves its absence can mean: a model the catalogue
+//! does not carry is a value, never an error, and a tenant with no wallet is a
+//! refusal, never a zero balance.
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -12,8 +11,6 @@
 use afd_billing::rates::Estimate;
 use afd_billing::{ESTIMATE_FLOOR_INPUT_TOKENS, ESTIMATE_FLOOR_OUTPUT_TOKENS, Nanos, Posture};
 use jiff::Timestamp;
-
-use afd_db::test_util::mint_id;
 
 use crate::lane::{Lane, PROVIDER};
 
@@ -30,41 +27,6 @@ const OUTPUT_PRICE: i64 = 15_000_000_000;
 
 /// The wallet balance the snapshot tests open with.
 const BALANCE: i64 = 42_000_000_000;
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_resolve_the_payer_and_answer_none_for_an_unknown_workspace() {
-    let lane = Lane::create().await;
-
-    let payer = lane.accounts.payer(&lane.workspace).await.expect("answers");
-    assert_eq!(payer, Some(lane.tenant.clone()));
-
-    let stranger = lane.accounts.payer(&mint_id()).await.expect("answers");
-    assert_eq!(stranger, None, "a workspace with no row has no payer");
-}
-
-#[tokio::test]
-#[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn should_read_the_wallet_and_tell_absent_from_empty() {
-    let lane = Lane::create().await;
-    assert_eq!(
-        lane.accounts.wallet(&lane.tenant).await.expect("answers"),
-        None,
-        "no wallet row is absent, which the gate admits"
-    );
-
-    let exhausted = Timestamp::constant(1_783_000_000, 0);
-    lane.wallet(0, Some(exhausted), NOW).await;
-    let wallet = lane
-        .accounts
-        .wallet(&lane.tenant)
-        .await
-        .expect("answers")
-        .expect("the wallet row is there");
-    assert_eq!(wallet.balance.as_i64(), 0);
-    assert_eq!(wallet.exhausted_at, Some(exhausted));
-    assert_eq!(wallet.updated_at, NOW);
-}
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
@@ -120,5 +82,18 @@ async fn should_snapshot_the_wallet_and_refuse_a_tenant_without_one() {
     let wallet = lane.billing.snapshot(&lane.tenant).await.expect("answers");
     assert_eq!(wallet.balance.as_i64(), BALANCE);
     assert_eq!(wallet.exhausted_at, None);
+    assert_eq!(wallet.updated_at, NOW);
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn should_snapshot_the_instant_a_wallet_last_ran_dry() {
+    let lane = Lane::create().await;
+    let exhausted = Timestamp::constant(1_783_000_000, 0);
+    lane.wallet(0, Some(exhausted), NOW).await;
+
+    let wallet = lane.billing.snapshot(&lane.tenant).await.expect("answers");
+    assert_eq!(wallet.balance.as_i64(), 0);
+    assert_eq!(wallet.exhausted_at, Some(exhausted));
     assert_eq!(wallet.updated_at, NOW);
 }

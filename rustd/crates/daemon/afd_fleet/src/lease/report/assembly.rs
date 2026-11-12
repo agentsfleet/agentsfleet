@@ -2,7 +2,6 @@
 
 use af_core::id::Uuid7;
 use af_wire::report::ReportRequest;
-use afd_billing::{Nanos, rates::Posture};
 use jiff::Timestamp;
 
 use super::{Reconciled, RunTokens};
@@ -28,7 +27,7 @@ pub(super) struct Subject<'a> {
 
 /// Everything the report's transaction needs, assembled from the wire request.
 ///
-/// Separate from [`LeaseService::report`] so the verb reads as its four steps. The
+/// Separate from [`LeaseService::report_with`] so the verb reads as its four steps. The
 /// two `try_from` saturations are the request's own numbers: a runner reports
 /// its counts and nothing upstream bounds them, so a value past `i64` is
 /// clamped rather than refused — the run happened either way, and refusing it
@@ -84,14 +83,12 @@ pub(super) fn stored_trace(lease: &Reported, request: &ReportRequest<'_>) -> Opt
 /// through this and not before it.
 pub(super) fn reconciled(
     lease: Reported,
-    charged: Nanos,
     repeated: bool,
     tokens: RunTokens,
     completed_at: Option<Timestamp>,
 ) -> Reconciled {
     Reconciled {
         tokens,
-        charged,
         fleet_id: lease.fleet_id,
         workspace_id: lease.workspace_id,
         tenant_id: lease.tenant_id,
@@ -104,28 +101,6 @@ pub(super) fn reconciled(
         lease_created_at: lease.lease_created_at,
         completed_at,
     }
-}
-
-/// The posture this lease was issued under.
-///
-/// An unrecognised stored spelling meters as `Platform`, which is what
-/// `parsePosture` does and is deliberately NOT corrected here. The column is
-/// written only by the issue path, from a `Posture`'s own `as_str`, so a value
-/// that will not parse means the row was edited out of band — and what billing
-/// should charge for such a row is a product decision, not a parse decision.
-/// It is logged rather than absorbed silently.
-pub(super) fn posture_of(lease: &Reported) -> Posture {
-    Posture::parse(&lease.posture).unwrap_or_else(|| {
-        let fleet = lease.fleet_id.as_str();
-        let stored = lease.posture.as_str();
-        tracing::warn!(
-            fleet_id = fleet,
-            posture = stored,
-            event = "report_posture_unparseable",
-            "the stored posture does not parse; metering falls back to platform"
-        );
-        Posture::Platform
-    })
 }
 
 impl LeaseService {

@@ -15,32 +15,6 @@ use jiff::Timestamp;
 
 /// The fenced HTTP operations that remain outside the host session.
 pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
-    /// Read private model-window notes under the live assignment.
-    ///
-    /// # Errors
-    /// Refuses an absent or superseded assignment, or unavailable storage.
-    fn context_load(
-        &self,
-        runner: &Uuid7,
-        lease: &Uuid7,
-        branch: &Uuid7,
-        fence: u64,
-    ) -> impl Future<Output = afd_fleet::Result<Option<af_context::Checkpoint>>> + Send;
-
-    /// Publish private notes against the expected generation and assignment.
-    ///
-    /// # Errors
-    /// Refuses changed assignment, scope or generation, or unavailable storage.
-    fn context_commit(
-        &self,
-        runner: &Uuid7,
-        lease: &Uuid7,
-        branch: &Uuid7,
-        fence: u64,
-        expected: u64,
-        checkpoint: af_context::Checkpoint,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send;
-
     /// The memory window that seeds one run.
     ///
     /// # Errors
@@ -78,11 +52,10 @@ pub trait Leasing: Send + Sync + std::fmt::Debug + 'static {
 
     /// Mint one short-lived credential for a running child.
     ///
-    /// Like [`Leasing::renew`] and unlike [`Leasing::lease`], every refusal is
-    /// an ERROR carrying its own registry code: a child is blocked on this
-    /// answer and each refusal has a different remedy — reconnect the
-    /// integration, wait for a human, re-raise a card, retry shortly — where a
-    /// polling runner's only move is to wait.
+    /// Every refusal is an ERROR carrying its own registry code: a child is
+    /// blocked on this answer and each refusal has a different remedy —
+    /// reconnect the integration, wait for a human, re-raise a card, retry
+    /// shortly.
     ///
     /// # Errors
     /// Refuses a lease that is not this runner's or is no longer live, a fleet

@@ -4,18 +4,6 @@
 //! run's metrics and delivery span only; the charge is computed per line and
 //! never reads them.
 
-use af_core::error_code::{Coded as _, Logged};
-use af_core::id::Uuid7;
-
-use crate::lease::store::Leases;
-
-/// The run-token sum's statement.
-const SELECT_RUN_TOKENS: &str = include_str!("../sql/select_run_tokens.sql");
-
-/// Logged when a settled run's token sum could not be read; its metrics
-/// record zero tokens.
-const EVENT_RUN_TOKENS_UNREAD: &str = "report_run_tokens_unread";
-
 /// A run's tokens, each class counted once.
 ///
 /// The runner reports a request's prompt in three disjoint classes — uncached
@@ -43,37 +31,5 @@ impl RunTokens {
         self.input_tokens
             .saturating_add(self.cached_input_tokens)
             .saturating_add(self.cache_write_tokens)
-    }
-}
-
-impl Leases {
-    /// The tokens `lease`'s usage lines record.
-    ///
-    /// Read after the report committed, so every renewal's lines and the
-    /// report's are in. Metrics only: a read that fails is logged and answers
-    /// zero rather than failing a report that already settled.
-    pub(super) async fn run_tokens(&self, lease: &Uuid7) -> RunTokens {
-        let read = async {
-            let mut connection = self.pool().acquire().await?;
-            sqlx::query_as::<_, RunTokens>(SELECT_RUN_TOKENS)
-                .bind(afd_billing::sql::work::FLEET_LEASE)
-                .bind(lease)
-                .fetch_one(&mut *connection)
-                .await
-                .map_err(crate::error::query(EVENT_RUN_TOKENS_UNREAD))
-        }
-        .await;
-        read.unwrap_or_else(|fault: crate::Error| {
-            let Logged { error_code, reason } = fault.logged();
-            let lease_id = lease.as_str();
-            tracing::warn!(
-                error_code,
-                lease_id,
-                reason,
-                event = EVENT_RUN_TOKENS_UNREAD,
-                "a settled run's tokens could not be read; its metrics record none"
-            );
-            RunTokens::default()
-        })
     }
 }

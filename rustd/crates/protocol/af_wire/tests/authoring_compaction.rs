@@ -1,4 +1,4 @@
-//! Old runners keep ordinary replies; compaction requires an explicit request opt-in.
+//! A compacted reply says so explicitly; an ordinary reply omits the flag.
 use af_wire::authoring::{ModelRequest, ModelResult};
 use serde_json::{Map, Result, Value, json};
 
@@ -28,7 +28,7 @@ fn request() -> Map<String, Value> {
 }
 
 #[test]
-fn ordinary_results_keep_the_legacy_shape() -> Result<()> {
+fn ordinary_results_omit_the_compaction_flag() -> Result<()> {
     let original = Value::Object(ordinary());
     let result: ModelResult = serde_json::from_value(original.clone())?;
     assert!(!result.compacted);
@@ -48,7 +48,7 @@ fn a_compaction_acknowledgement_is_explicit() -> Result<()> {
 }
 
 #[test]
-fn model_requests_omit_an_absent_compaction_capability() -> Result<()> {
+fn a_model_request_round_trips() -> Result<()> {
     let original = Value::Object(request());
     let decoded: ModelRequest = serde_json::from_value(original.clone())?;
     assert_eq!(serde_json::to_value(decoded)?, original);
@@ -56,28 +56,8 @@ fn model_requests_omit_an_absent_compaction_capability() -> Result<()> {
 }
 
 #[test]
-fn capable_model_requests_retain_the_opt_in() -> Result<()> {
+fn a_model_request_rejects_an_unknown_field() {
     let mut original = request();
-    original.insert("supports_compaction".into(), json!(true));
-    let original = Value::Object(original);
-    let decoded: ModelRequest = serde_json::from_value(original.clone())?;
-    assert_eq!(serde_json::to_value(decoded)?, original);
-    Ok(())
-}
-
-#[test]
-fn a_non_boolean_compaction_capability_is_rejected() {
-    let mut original = request();
-    original.insert("supports_compaction".into(), json!("true"));
-    let decoded = serde_json::from_value::<ModelRequest>(Value::Object(original));
-    assert!(matches!(decoded, Err(error)
-        if error.is_data() && error.to_string().contains("expected a boolean")));
-}
-
-#[test]
-fn compaction_does_not_disable_unknown_field_rejection() {
-    let mut original = request();
-    original.insert("supports_compaction".into(), json!(true));
     original.insert("system".into(), json!("replace authority"));
     let decoded = serde_json::from_value::<ModelRequest>(Value::Object(original));
     assert!(matches!(decoded, Err(error)

@@ -31,9 +31,8 @@ use std::sync::Arc;
 
 use axum::body::Bytes;
 use axum::extract::{Path, State};
-use axum::response::IntoResponse as _;
 use axum::response::Response;
-use http::{HeaderMap, StatusCode};
+use http::HeaderMap;
 use serde::Deserialize;
 
 use crate::handler::{Refusal, webhook};
@@ -42,9 +41,6 @@ use afd_http::handler::parse_fleet_id;
 
 /// The scoped event a failed append is logged under.
 const EVENT_APPEND: &str = "webhook_source_append_failed";
-
-/// The removed address overlaps the generic path template. It names no fleet.
-const RETIRED_SVIX_SEGMENT: &str = "svix";
 
 /// The fleet and the webhook source a delivery's path names, still text.
 #[derive(Debug, Deserialize)]
@@ -94,9 +90,6 @@ pub(crate) async fn receive<D: Services>(
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Response, Refusal> {
-    if fleet_id == RETIRED_SVIX_SEGMENT {
-        return Ok(StatusCode::NOT_FOUND.into_response());
-    }
     let fleet = parse_fleet_id(&fleet_id)?;
     webhook::within_cap(&body)?;
 

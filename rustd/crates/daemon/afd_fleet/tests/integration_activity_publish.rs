@@ -27,7 +27,6 @@
 use crate::report_seed;
 use std::borrow::Cow;
 
-use af_core::error_code;
 use af_core::event::label;
 use af_core::id::Uuid7;
 use af_observability::test_util::Capture;
@@ -70,7 +69,7 @@ async fn test_first_chunk_records_active_lease_stages() {
     let stages = [
         "lease_to_first_chunk",
         "event_to_first_chunk",
-        "zombie_to_first_chunk",
+        "run_to_first_chunk",
     ];
     let before: Vec<_> = stages
         .iter()
@@ -78,7 +77,12 @@ async fn test_first_chunk_records_active_lease_stages() {
         .collect();
     run.fixtures
         .plane()
-        .activity(&run.runner, run.issued.lease_id.as_str(), &[chunk()])
+        .activity_for_target(
+            &run.runner,
+            &run.issued.lease_id,
+            &run.activity_target().await,
+            &[chunk()],
+        )
         .await
         .expect("active holder's frame is accepted");
     for (stage, baseline) in stages.into_iter().zip(before.iter()) {
@@ -107,7 +111,12 @@ async fn test_activity_publish_bus_down() {
     let plane = run.fixtures.plane_with_dead_bus();
 
     let forwarded = plane
-        .activity(&run.runner, run.issued.lease_id.as_str(), &[chunk()])
+        .activity_for_target(
+            &run.runner,
+            &run.issued.lease_id,
+            &run.activity_target().await,
+            &[chunk()],
+        )
         .await;
 
     assert!(
@@ -115,32 +124,6 @@ async fn test_activity_publish_bus_down() {
         "a bus that would not take the frame is NOT an error: the runner \
          counts consecutive rejections toward self-termination, so a telemetry \
          outage answered as a refusal walks healthy hosts to shutdown"
-    );
-}
-
-/// With an unreachable bus, the ownership check still runs first.
-///
-/// The half a "never fails" claim could quietly break. If an unreachable bus
-/// short-circuited the verb, a runner naming a lease it does not hold would get
-/// the same `Ok` as the holder — and the check that stops one fleet writing
-/// into another's tail would be gone precisely when nobody could see the tail
-/// to notice. The authorization is a DATABASE read, and Postgres is live here,
-/// so it must still refuse.
-#[tokio::test]
-#[ignore = "needs live datastores: make test-integration-rustd"]
-async fn test_activity_with_a_dead_bus_still_refuses_a_lease_the_runner_does_not_hold() {
-    let run = held().await;
-    let plane = run.fixtures.plane_with_dead_bus();
-
-    let refusal = plane
-        .activity(&run.spare, run.issued.lease_id.as_str(), &[chunk()])
-        .await
-        .expect_err("a runner cannot forward frames for a lease it does not hold");
-    assert_eq!(
-        refusal.code(),
-        error_code::RUN_LEASE_NOT_FOUND,
-        "the outage changes what happens to the FRAMES, never who is allowed \
-         to send them"
     );
 }
 
@@ -278,12 +261,7 @@ async fn assert_expired_not_timed(
             LAPSE,
         )
         .await;
-    let target = expired
-        .leases
-        .load_activity_target(&expired.issued.lease_id, &expired.runner)
-        .await
-        .expect("the target lookup succeeds")
-        .expect("the held lease exists");
+    let target = expired.activity_target().await;
     assert!(
         !target.timing_eligible,
         "the lapsed lease is not eligible for timing"
@@ -291,9 +269,10 @@ async fn assert_expired_not_timed(
     expired
         .fixtures
         .plane()
-        .activity(
+        .activity_for_target(
             &expired.runner,
-            expired.issued.lease_id.as_str(),
+            &expired.issued.lease_id,
+            &target,
             &[chunk()],
         )
         .await

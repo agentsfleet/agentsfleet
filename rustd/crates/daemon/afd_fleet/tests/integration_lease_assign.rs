@@ -57,10 +57,6 @@ async fn test_select_assigns_a_ready_fleets_event() {
     assert_eq!(acquired.event_type, EVENT_TYPE);
     assert_eq!(acquired.request_json, REQUEST_JSON);
     assert_eq!(acquired.event_created_at, fixtures.enrolled_at());
-    assert!(
-        acquired.reused.is_none(),
-        "a fresh pull carries no prior billing; the caller bills it"
-    );
     assert_eq!(
         acquired.fence.as_i64(),
         1,

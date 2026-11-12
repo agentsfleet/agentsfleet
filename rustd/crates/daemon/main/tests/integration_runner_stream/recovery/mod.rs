@@ -5,12 +5,13 @@ pub(super) mod proxy;
 mod reads;
 mod runner;
 
-use af_core::timing::{RECONNECT_JITTER_MAX, STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET};
+use af_core::timing::{STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET};
 use af_stream::Transport;
 use agentsfleetd::supervisor::Supervisor;
 use std::time::Duration;
 use tokio::time::Instant;
 
+use super::RECOVERY_SLACK;
 use crate::e2e::scenario;
 use proxy::FaultProxy;
 use runner::Runner;
@@ -43,7 +44,7 @@ async fn renewed_before_expiry(carrier: Transport) {
     tokio::time::sleep(CUT).await;
     assert!(proxy.dropped_bytes() > dropped);
     proxy.restore_new_connections();
-    let budget = STREAM_ANSWER_TIMEOUT + RECONNECT_JITTER_MAX + STREAM_RECOVERY_BUDGET;
+    let budget = STREAM_ANSWER_TIMEOUT + RECOVERY_SLACK + STREAM_RECOVERY_BUDGET;
     let renewed = reads::wait_renewed_before(&run, &before, budget).await;
     assert!(interrupted.elapsed() < CUT + budget);
     assert_ne!(renewed.owner, before.owner);
@@ -90,7 +91,7 @@ async fn bounded(carrier: Transport) {
         "a report cannot settle through the blackhole"
     );
     proxy.restore_new_connections();
-    let budget = STREAM_ANSWER_TIMEOUT + RECONNECT_JITTER_MAX + STREAM_RECOVERY_BUDGET;
+    let budget = STREAM_ANSWER_TIMEOUT + RECOVERY_SLACK + STREAM_RECOVERY_BUDGET;
     reads::wait_reported(&run, &before.lease, budget).await;
     assert!(interrupted.elapsed() < CUT + budget);
     let recovered = reads::snapshot(&run).await;

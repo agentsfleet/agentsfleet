@@ -35,9 +35,6 @@ mod acquire;
 mod observed;
 pub use observed::PoolSnapshot;
 mod open;
-mod roles;
-
-pub use self::roles::Pools;
 
 /// How long a connection may sit idle before the reaper closes it.
 ///
@@ -51,8 +48,24 @@ pub use self::roles::Pools;
 ///
 /// Behind `PgBouncer` the pool's sockets face its `client_idle_timeout`, which
 /// defaults to zero (never closed), so nothing on the pooler side reaps under
-/// this reaper; `test_before_acquire` covers a backend that went away anyway.
+/// this reaper; the checkout ping ([`PING_AFTER_IDLE`]) covers a backend that
+/// went away anyway.
 const IDLE_TIMEOUT: Duration = Duration::from_mins(10);
+
+/// How long a connection sits idle before a checkout tests it.
+///
+/// sqlx's default pings on every checkout: one Sync and its answer, up to 37
+/// times a chat whose statements are milliseconds apart. A connection used
+/// inside this second goes out untested. A backend lost inside it fails one
+/// statement, sqlx discards the connection, and the next checkout dials. A
+/// failover idles a pool for longer than this, so a pool coming back from one
+/// tests every connection it hands out.
+pub(crate) const PING_AFTER_IDLE: Duration = Duration::from_secs(1);
+
+const _: () = assert!(
+    PING_AFTER_IDLE.as_millis() < IDLE_TIMEOUT.as_millis(),
+    "a connection the reaper would close is never one a checkout skips testing"
+);
 
 /// How long a connection may live before the reaper retires it, idle or not.
 ///
@@ -247,26 +260,10 @@ impl Db {
         self.pool.size()
     }
 
-    /// The floor [`Self::warm`] targets.
-    ///
-    /// Exposed for the same reason as [`Self::size`]: a caller that warms can
-    /// then say whether the floor was REACHED, and the two numbers are the
-    /// whole of that claim.
-    #[must_use]
-    pub const fn min_connections(&self) -> u32 {
-        self.min_connections
-    }
-
     /// The role this pool serves.
     #[must_use]
     pub const fn role(&self) -> DbRole {
         self.role
-    }
-
-    /// How long an acquire waits before reporting capacity exhaustion.
-    #[must_use]
-    pub const fn acquire_timeout(&self) -> Duration {
-        self.acquire_timeout
     }
 
     /// Closes the pool and waits for its connections to drain.
