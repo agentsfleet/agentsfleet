@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Time, formatTimeCompactUtc } from "@agentsfleet/design-system";
+import { Button, Time, formatTimeClockUtc, formatTimeCompactUtc } from "@agentsfleet/design-system";
 import { ClockIcon } from "@phosphor-icons/react/ssr";
 import type { Schedule } from "@/lib/api/draft-types";
 import { SCHEDULE_RUN_STATE, SCHEDULE_SYNC } from "@/lib/api/draft-vocabulary";
@@ -10,6 +10,7 @@ import { scheduleStateText } from "@/lib/api/schedule-status";
 import { WorkSection } from "./WorkContextSections";
 
 const MAX_TIMER_MS = 2_147_483_647;
+const DAY_MS = 86_400_000;
 
 export function WorkWakeups({schedules, compact = false}: {schedules?: readonly Schedule[]; compact?: boolean}) {
   const visible = schedules?.filter(schedule => schedule.status !== "removed" && schedule.status !== "expired");
@@ -49,18 +50,23 @@ export function WakeupState({schedule, compact}: {schedule: Schedule; compact?: 
 
 function NextWakeup({instant, timezone, compact}: {instant: string; timezone: string; compact?: boolean}) {
   const router = useRouter();
-  const [elapsed, setElapsed] = useState(false);
+  const [clock, setClock] = useState<number | null>(null);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     const check = () => {
-      const remaining = Date.parse(instant) - Date.now();
-      setElapsed(remaining <= 0);
-      if (remaining > 0) timer = setTimeout(check, Math.min(remaining, MAX_TIMER_MS));
+      const now = Date.now();
+      const remaining = Date.parse(instant) - now;
+      setClock(now);
+      const midnight = (Math.floor(now / DAY_MS) + 1) * DAY_MS;
+      if (remaining > 0) timer = setTimeout(check, Math.min(remaining, midnight - now, MAX_TIMER_MS));
     };
     check();
     return () => clearTimeout(timer);
   }, [instant]);
+  const elapsed = clock !== null && Date.parse(instant) <= clock;
+  const today = clock !== null && new Date(instant).toISOString().slice(0, 10) === new Date(clock).toISOString().slice(0, 10);
+  const compactLabel = `${today ? formatTimeClockUtc(instant) : formatTimeCompactUtc(instant)} UTC`;
   return elapsed ? <div className="text-eyebrow text-muted-foreground">
     <p>Next wake-up needs an update.</p><Button variant="link" size="eyebrow" onClick={() => router.refresh()}>Refresh schedule</Button>
-  </div> : <p className="text-eyebrow leading-eyebrow text-muted-foreground">Next <Time value={instant} timeZone={timezone} label={compact ? `${formatTimeCompactUtc(instant)} UTC` : undefined} tooltip={compact} />{compact ? null : <span> ({timezone})</span>}</p>;
+  </div> : <p className={`text-eyebrow leading-eyebrow ${compact ? "truncate whitespace-nowrap text-inherit" : "text-muted-foreground"}`}><span className={compact ? "sr-only sm:not-sr-only" : undefined}>Next wake-up · </span><Time value={instant} timeZone={timezone} label={compact ? compactLabel : undefined} tooltip={compact} />{compact ? null : <span> ({timezone})</span>}</p>;
 }

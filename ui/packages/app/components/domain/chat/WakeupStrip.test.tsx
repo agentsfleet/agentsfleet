@@ -36,14 +36,46 @@ it("keeps a stale form visible and reloads its saved version before retrying", a
 });
 
 it("requires deletion confirmation and retains pending deregistration visibly", async () => {
-  const fetcher = vi.fn().mockResolvedValue(Response.json({...current, status: "deleting", sync: "syncing"}));
+  const pending = Promise.withResolvers<Response>();
+  const fetcher = vi.fn().mockReturnValue(pending.promise);
   vi.stubGlobal("fetch", fetcher); mount();
   fireEvent.click(screen.getByRole("button", {name: "Delete wake-up"}));
   expect(fetcher).not.toHaveBeenCalled();
   fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", {name: "Delete wake-up"}));
+  await waitFor(() => expect(within(screen.getByRole("alertdialog")).getByRole("button", {name: "Cancel"})).toHaveProperty("disabled", true));
+  fireEvent.keyDown(screen.getByRole("alertdialog"), {key: "Escape"});
+  expect(screen.getByRole("alertdialog")).toBeTruthy();
+  await act(async () => pending.resolve(Response.json({...current, status: "deleting", sync: "syncing"})));
   await screen.findByText("Removal pending.");
   expect(screen.getByRole("button", {name: "Edit wake-up"})).toHaveProperty("disabled", true);
   expect(screen.queryByRole("alertdialog")).toBeNull();
+});
+
+it("dismisses an unsubmitted wake-up editor with Escape without writing", async () => {
+  const fetcher = vi.fn().mockResolvedValue(Response.json(current));
+  vi.stubGlobal("fetch", fetcher); mount();
+  fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
+  await screen.findByLabelText("Schedule");
+  fireEvent.keyDown(screen.getByRole("dialog"), {key: "Escape"});
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(fetcher).toHaveBeenCalledOnce();
+});
+
+it("keeps a pending edit open and excludes a second programmatic submission", async () => {
+  const pending = Promise.withResolvers<Response>();
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json(current)).mockReturnValueOnce(pending.promise);
+  vi.stubGlobal("fetch", fetcher); mount();
+  fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
+  const input = await screen.findByLabelText("Schedule");
+  fireEvent.click(screen.getByRole("button", {name: "Save"}));
+  await waitFor(() => expect(input).toHaveProperty("disabled", true));
+  fireEvent.keyDown(screen.getByRole("dialog"), {key: "Escape"});
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  fireEvent.submit(input.closest("form")!);
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await act(async () => pending.resolve(Response.json(current)));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(mocks.refresh).toHaveBeenCalledOnce();
 });
 
 it("discards a late editor read when its owning fleet unmounts", async () => {
@@ -77,4 +109,57 @@ it("keeps the next schedule visible and reveals the rest through the native disc
   expect(screen.getAllByRole("button", {name: "Edit wake-up"})).toHaveLength(1);
   fireEvent.click(screen.getByRole("button", {name: "1 more wake-ups"}));
   expect(screen.getAllByRole("button", {name: "Edit wake-up"})).toHaveLength(2);
+});
+
+it("pauses and resumes against the latest saved version, then reconciles a server update", async () => {
+  const paused = {...current, status: "paused", run_state: "paused", next_run_at: null};
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json(current)).mockResolvedValueOnce(Response.json(paused))
+    .mockResolvedValueOnce(Response.json({...paused, etag: '"two"'})).mockResolvedValueOnce(Response.json(current));
+  vi.stubGlobal("fetch", fetcher); const view = mount();
+  fireEvent.click(screen.getByRole("button", {name: "Pause wake-up"}));
+  fireEvent.click(await screen.findByRole("button", {name: "Resume wake-up"}));
+  await screen.findByRole("button", {name: "Pause wake-up"});
+  expect(JSON.parse(fetcher.mock.calls[1]?.[1].body)).toEqual({override: {status: "paused"}});
+  expect(JSON.parse(fetcher.mock.calls[3]?.[1].body)).toEqual({override: {status: "active"}});
+  expect(fetcher.mock.calls[3]?.[1].headers["If-Match"]).toBe('"two"');
+  mocks.view.schedules = [paused]; view.rerender(<WakeupStrip />);
+  expect(screen.getByRole("button", {name: "Resume wake-up"})).toBeTruthy();
+});
+
+it("retries a refused read, discards an abandoned edit and confirms a completed removal", async () => {
+  const fetcher = vi.fn().mockResolvedValueOnce(Response.json({user_message: "Read unavailable"}, {status: 503}))
+    .mockResolvedValueOnce(Response.json(current)).mockResolvedValueOnce(new Response(null, {status: 204}));
+  vi.stubGlobal("fetch", fetcher); mount();
+  fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
+  await screen.findByText("Read unavailable");
+  fireEvent.click(screen.getByRole("button", {name: "Refresh schedule"}));
+  expect(screen.queryByRole("alert")).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
+  await screen.findByLabelText("Schedule");
+  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+  expect(screen.queryByRole("dialog")).toBeNull();
+  fireEvent.click(screen.getByRole("button", {name: "Delete wake-up"}));
+  fireEvent.click(screen.getByRole("button", {name: "Cancel"}));
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole("button", {name: "Delete wake-up"}));
+  fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", {name: "Delete wake-up"}));
+  await waitFor(() => expect(screen.queryByRole("group")).toBeNull());
+});
+
+it("prioritizes unconfirmed schedules, hides expired entries and labels unnamed wake-ups", () => {
+  mocks.view.schedules = [current, {...current, schedule_id: "expired", status: "expired"},
+    {...current, schedule_id: "removed", status: "removed"},
+    {...current, schedule_id: "pending", description: "", sync: "syncing", next_run_at: null},
+    {...current, schedule_id: "paused", status: "paused", next_run_at: null}];
+  mount();
+  expect(screen.getByRole("group", {name: "Scheduled wake-up"})).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", {name: "2 more wake-ups"}));
+  expect(screen.getAllByRole("group")).toHaveLength(3);
+});
+
+it("ignores a read rejection after the fleet has unmounted", async () => {
+  const pending = Promise.withResolvers<Response>(); vi.stubGlobal("fetch", vi.fn(() => pending.promise));
+  const view = mount(); fireEvent.click(screen.getByRole("button", {name: "Edit wake-up"}));
+  view.unmount(); await act(async () => pending.reject(new Error("Connection closed")));
+  expect(screen.queryByRole("alert")).toBeNull(); expect(mocks.refresh).not.toHaveBeenCalled();
 });

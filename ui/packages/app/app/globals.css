@@ -111,7 +111,7 @@ code, pre, kbd { font-family: var(--ff-mono); }
 
 /* Prevent mobile browser zoom without enlarging desktop form text. */
 @media (max-width: 42.5rem), (pointer: coarse) {
-  input:not([type="checkbox"]):not([type="radio"]), textarea, select {
+  input:not([type="checkbox"]):not([type="radio"]), textarea, select, [role="combobox"]:not([data-composer-part]) {
     font-size: 1rem;
     line-height: 1.5rem;
   }
@@ -191,7 +191,7 @@ code, pre, kbd { font-family: var(--ff-mono); }
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable both-edges;
+  scrollbar-gutter: auto;
   padding: var(--sp-2xl) var(--app-canvas-gutter);
 }
 @media (min-width: 48rem) {

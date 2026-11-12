@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, TooltipButton } from "@agentsfleet/design-system";
+import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@agentsfleet/design-system";
 import { ArrowUpRightIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import type { Secret } from "@/lib/api/secrets";
 import { useCurrentUser } from "@/lib/auth/client";
@@ -43,10 +43,10 @@ export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
-        <TooltipButton variant={secondary ? "outline" : "default"} type="button" size="sm" disabled={!ownerReady} tooltip="Choose a model and connect its provider" onFocus={catalogue.preload}
+        <Button variant={secondary ? "outline" : "default"} type="button" size="sm" disabled={!ownerReady} onFocus={catalogue.preload}
           onPointerEnter={() => { if (catalogue.status !== CATALOGUE_STATUS.error && maySpeculateOnHover()) catalogue.preload(); }}>
           {secondary ? null : <PlusIcon size={16} aria-hidden="true" />}{triggerLabel}{secondary ? <ArrowUpRightIcon size={16} aria-hidden="true" /> : null}
-        </TooltipButton>
+        </Button>
       </DialogTrigger>
       <DialogContent className="max-w-model-dialog" onEscapeKeyDown={event => { if (pending.current) event.preventDefault(); }} onInteractOutside={event => { if (pending.current) event.preventDefault(); }}>
         <DialogHeader>

@@ -157,10 +157,9 @@ export function OAuthConnectorRow({
         <DialogHeader><DialogTitle>{entry.display_name}</DialogTitle><DialogDescription>{description}</DialogDescription></DialogHeader>
         {Object.hasOwn(PROVIDER_CAPABILITIES, entry.id) ? <p className="text-label text-muted-foreground">{PROVIDER_CAPABILITIES[entry.id]}</p> : null}
         {error ? <Alert variant="destructive">{error}</Alert> : null}
-        <DialogFooter><Button variant="outline" disabled={pending} onClick={() => setManaging(false)}>Done</Button>
-          <Button variant="outline" disabled={pending} aria-busy={disconnecting || undefined} aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`} onClick={() => void disconnect()}>
+        <DialogFooter><Button variant="outline" disabled={pending} aria-busy={disconnecting || undefined} aria-label={disconnecting ? DISCONNECTING_LABEL : `${DISCONNECT_LABEL} ${entry.display_name}`} onClick={() => void disconnect()}>
             {disconnecting ? <Spinner size="sm" /> : null}{disconnecting ? DISCONNECTING_LABEL : DISCONNECT_LABEL}
-          </Button></DialogFooter>
+          </Button><Button disabled={pending} onClick={() => setManaging(false)}>Done</Button></DialogFooter>
       </DialogContent>
     </Dialog>
   </div>;

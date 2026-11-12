@@ -73,7 +73,8 @@ Indy's inspected Amp references establish the compact scale; Manrope remains the
 | Metadata, timestamps, counts | 12px / 16px | 400 | Same |
 | Fleet header and section labels | 13px / 20px | 600 | Same |
 | App page title | 20px / 26px | 650 | Same |
-| Conversation heading | 20px / 24px | 650 | Same |
+| Conversation heading | 19px / 24.7px | 650 | Same |
+| Model explanation and prompt strip | 14px / 20px | 400 | Same |
 | Dialog title | 18px / 24px | 650 | Same |
 | Technical content | 13px / 20px | 400 | Same, with bounded scrolling |
 
@@ -150,7 +151,7 @@ Normal text must reach 4.5:1 contrast; focus and control boundaries must remain 
 Never reduce a readable text token through opacity to create secondary copy.
 
 Test both themes with axe-core in the rendered browser and the shared token contrast tests.
-Include badges with tinted backgrounds; a foreground passing on the page can still fail inside a badge.
+Include filled live, warning, error and evidence badges; a foreground passing on the page can still fail inside a badge.
 Inspect incomplete browser results manually when overlays or pseudo-elements prevent a background measurement.
 
 Contrast ratios measure readability, not perceived brightness on every display.
@@ -166,7 +167,8 @@ Status always includes text or an icon; color alone carries no required informat
 Success uses a distinct green, while mint remains the action and live-signal accent.
 Use information blue for informative state, evidence amber for sourced material, and amber for attention.
 
-Give compact badges a visible tinted surface and boundary. Keep neutral metadata quiet; do not color every label.
+Label chips use unfilled surfaces, a line border and 12px/16px regular text. Keep neutral metadata quiet.
+Reserve filled badges for live, warning, error and evidence signals with explicit semantic text or icons.
 App secondary actions use a neutral panel and visible border.
 
 Selected navigation and primary actions carry the mint emphasis.
@@ -352,13 +354,13 @@ A separate readable environment-variable feature is outside this delivery.
 
 | Component | Rules |
 |---|---|
-| Button | Compact medium-weight sans label; solid primary fill, tinted secondary fill, visible focus, stable disabled state |
-| Input and textarea | Compact sans fields with strong resting boundary; explicit mono only for code or technical data |
+| Button | Compact medium-weight sans label; solid primary fill, neutral panel secondary fill with line border, visible focus, stable disabled state |
+| Input and textarea | Compact sans fields with line borders; explicit mono only for code or technical data |
 | Navigation | Readable sans labels, clear selected state, consistent icon size |
 | Tabs | Shared underline style for both route and local tabs |
 | Card | Solid surface, fine border, one clear heading; interactive cards lift and reveal a mint boundary on hover or focus |
 | Table | Sans names and descriptions; mono identifiers; aligned numeric values |
-| Badge | Short semibold label, compact line height, visible semantic tint and border |
+| Badge | Label chips use regular 12px/16px text, line borders and no fill; live, warning, error and evidence signals may use their semantic fills |
 | Dialog | Clear title, focused first action, keyboard dismissal when safe |
 | Empty state | Explain the missing item and provide the next action |
 | Error state | Explain what failed and retain the recovery action |
@@ -410,7 +412,7 @@ Stored values are never loaded into the editor. Secret names display Copy only; 
 
 ### Compact density
 
-Default buttons, text inputs, and select triggers are 36px tall on fine pointers. Small buttons are 32px; large actions are 44px. Icon buttons share the same compact rhythm.
+Default and small text buttons have a 40px minimum height on fine pointers; large actions are 44px. Form inputs and select triggers are at least 44px, with 40px select triggers in the Usage toolbar. Icon buttons are 40px, compact icon actions are 32px, and composer icon actions are 36px.
 
 Coarse pointers retain a minimum 44px interactive target. Visible density must not make touch, keyboard focus, or long labels harder to use.
 Use the approved app type roles above.
@@ -1049,6 +1051,6 @@ Summary reads the actual pending approval before showing its action and blast ra
 Brand identity tiles retain a dark #151716 surface and mint #b8f0ce rays in both themes. Their radius is 18.75% of their size, matching the approved asset. Rail home, expand, mobile navigation, account and destination controls use neutral hover fill; New fleet retains mint emphasis.
 
 
-The Usage metric value uses the shared 32px role with an explicit 27px line box, preserving the approved 133px desktop strip. The chart section keeps its 206px minimum height and 32px gap before the fleet table section; its heading-to-table gap is 16px. Missing daily buckets render an unavailable state within that section.
+The Usage metric value uses the shared 32px role with an explicit 27px line box, weight 750 and normal tracking, preserving the approved 133px desktop strip. Compact metric rows use 28px values on phones and 26px at intermediate widths. The chart section keeps its 206px minimum height and 32px gap before the fleet table section; its heading-to-table gap is 16px. Missing daily buckets render an unavailable state within that section.
 
 Saved Fleet composers stay docked to the assistant-ui viewport at phone and desktop widths. Empty setup content remains scrollable in normal flow. Phone Summary stays in the conversation flow; the desktop Summary retains a 24px top inset while scrolling. Comparison captures label top-of-thread and latest positions separately.

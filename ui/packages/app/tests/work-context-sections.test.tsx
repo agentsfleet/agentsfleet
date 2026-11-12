@@ -4,7 +4,7 @@ import { afterEach, expect, it } from "vitest";
 import { fleetSources } from "@/lib/fleet-sources";
 import { WorkChanges, WorkOutputs, WorkSources, recordedChanges } from "@/components/domain/chat/WorkContextSections";
 import { evt } from "./helpers/fleet-stream-fixtures";
-import { detail } from "./helpers/task-reads";
+import { detail, TASK_IDS } from "./helpers/task-reads";
 afterEach(cleanup);
 
 it("projects only explicitly saved repository policy and rejects malformed repository links", () => {
@@ -38,7 +38,7 @@ it("changes contain recorded writes, exclude reads and failed or unconfirmed mut
   const events = [evt({tools: [tool({}), tool({name: "file_edit", args: {path: "src/test.ts"}, done: false, status: undefined}), tool({})]})];
   expect(recordedChanges(events)).toEqual([{path: "src/repair.ts", running: false}, {path: "src/test.ts", running: true}]);
   const view = render(<WorkChanges events={[]} />);
-  expect(screen.getByText("No changes yet.")).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Changes"})).toBeNull();
   view.rerender(<WorkChanges events={events} />);
   fireEvent.click(screen.getByText("2 files"));
   expect(screen.getByText("Write in progress")).toBeTruthy();
@@ -48,20 +48,36 @@ it("changes contain recorded writes, exclude reads and failed or unconfirmed mut
   expect(screen.getByText("1 file")).toBeTruthy();
 });
 
-it("outputs use saved native target links, never objective prose or local edits as publication proof", () => {
+it("related pull requests use saved target links without claiming they were published outputs", () => {
   const value = detail();
   const view = render(<WorkOutputs details={new Map([["task", {kind: "ready", value}]])} />);
   expect(screen.getByText("No outputs yet.")).toBeTruthy();
   const target = {kind: "existing_pr" as const, repository: "a/b", number: 123, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/123", workflows: []};
   const saved = {...value, context: {...value.context, target}};
   view.rerender(<WorkOutputs details={new Map([["task", {kind: "ready", value: saved}], ["same-pr", {kind: "ready", value: saved}]])} />);
-  expect(within(screen.getByRole("region", {name: "Outputs"})).getByRole("link").getAttribute("href")).toBe(target.url);
+  expect(within(screen.getByRole("region", {name: "Pull requests"})).getByRole("link").getAttribute("href")).toBe(target.url);
+  expect(screen.queryByRole("region", {name: "Outputs"})).toBeNull();
   expect(screen.getAllByRole("link")).toHaveLength(1);
   expect(screen.queryByText(/last confirmed/)).toBeNull();
   view.rerender(<WorkOutputs details={new Map([["task", {kind: "failed", reason: "unreachable", previous: saved}]])} />);
   expect(screen.getByText("a/b · last confirmed")).toBeTruthy();
   view.rerender(<WorkOutputs details={new Map([["task", {kind: "failed", reason: "access", previous: null}]])} />);
   expect(screen.queryByRole("link")).toBeNull();
+});
+
+it("lists a confirmed publication only as an output while retaining other related pull requests", () => {
+  const task = detail();
+  const target = {kind: "existing_pr" as const, repository: "a/b", number: 123, branch: "repair", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/a/b/pull/123", workflows: []};
+  const related = {...task, context: {...task.context, target}};
+  const published = {...related, publication: {effect_id: TASK_IDS[0], ordinal: 1, state: "confirmed" as const,
+    expected_head: target.head, tested_tree: target.tree, commit: "c".repeat(40), pull_request_url: target.url}};
+  const other = {...related, context: {...related.context, target: {...target, number: 124, url: "https://github.com/a/b/pull/124"}}};
+  render(<WorkOutputs details={new Map([
+    ["published", {kind: "ready", value: published}], ["earlier", {kind: "ready", value: related}], ["other", {kind: "ready", value: other}],
+  ])} />);
+  expect(within(screen.getByRole("region", {name: "Outputs"})).getByRole("link", {name: "Pull request #123"})).toBeTruthy();
+  expect(within(screen.getByRole("region", {name: "Pull requests"})).getByRole("link", {name: "Pull request #124"})).toBeTruthy();
+  expect(screen.getAllByRole("link")).toHaveLength(2);
 });
 
 

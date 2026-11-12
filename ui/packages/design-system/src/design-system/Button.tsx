@@ -18,7 +18,7 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "border-cta bg-cta text-cta-foreground enabled:hover:brightness-[var(--control-hover)] [&_a]:text-cta-foreground [&_a]:no-underline [&_a:hover]:text-cta-foreground",
+          "border-0 bg-cta text-cta-foreground disabled:ring-1 disabled:ring-inset disabled:ring-border-subtle enabled:hover:brightness-[var(--control-hover)] [&_a]:text-cta-foreground [&_a]:no-underline [&_a:hover]:text-cta-foreground",
         destructive:
           "border-transparent bg-destructive text-on-pulse hover:opacity-90 [&_a]:text-on-pulse [&_a]:no-underline",
         outline:

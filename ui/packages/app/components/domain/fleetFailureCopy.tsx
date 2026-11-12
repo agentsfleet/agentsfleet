@@ -66,5 +66,6 @@ function formatFailureOutcome(
   // Only prose is shown after the sentence: an internal identifier appended
   // after an em-dash reads as diagnostic detail while telling the user nothing.
   const shown = cause !== null && !isInternalIdentifier(cause) ? cause : null;
+  if (tag === "transport_loss" && shown) return shown;
   return shown ? `${sentence} — ${shown}` : sentence;
 }

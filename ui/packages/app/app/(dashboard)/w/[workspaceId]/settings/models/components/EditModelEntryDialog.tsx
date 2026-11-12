@@ -169,7 +169,7 @@ function EditForm({
   return (
     <>
       <DialogHeader>
-        <DialogTitle>{`Edit "${target.model_id}"`}</DialogTitle>
+        <DialogTitle>{`Edit “${target.model_id}”`}</DialogTitle>
         <DialogDescription>
           Change the model, or replace the shared credential. Replacing resends the whole secret.
         </DialogDescription>
@@ -212,7 +212,7 @@ function EditForm({
       </div>
       {error ? <Alert variant="destructive" className="text-xs">{error}</Alert> : null}
       <DialogFooter>
-        <Button type="button" variant="ghost" disabled={pending} onClick={() => onOpenChange(false)}>
+        <Button type="button" variant="outline" disabled={pending} onClick={() => onOpenChange(false)}>
           Cancel
         </Button>
         <Button type="button" disabled={pending || !canSubmit} onClick={() => void save()}>

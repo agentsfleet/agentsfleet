@@ -6,7 +6,7 @@ test("Security combines keys and sessions with compact type in both appearances"
   page.on("pageerror", error => errors.push(error.message));
   await page.goto(`${chatProbe}?accountSettings=1`);
   await expect(page.getByText("Chrome on macOS")).toBeVisible();
-  await expect(page.getByText("This device")).toBeVisible();
+  await expect(page.getByText("This device", {exact: true})).toBeVisible();
   await expect(page.getByText("Last active unavailable")).toBeVisible();
   for (const theme of ["dark", "light"]) {
     await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
@@ -32,11 +32,11 @@ test("remote session sign-out requires confirmation and unavailable sessions can
   await page.getByRole("button", {name: "Cancel", exact: true}).click();
   await expect(page.getByText("Safari on iPhone")).toBeVisible();
   await page.getByRole("button", {name: "Errors", exact: true}).click();
-  await expect(page.getByText("Sessions could not be refreshed. Previously loaded devices are retained.")).toBeVisible();
+  await expect(page.getByText("Sessions could not be loaded. Try again.")).toBeVisible();
   await page.getByRole("button", {name: "Errors", exact: true}).click();
   await expect(signOut).toBeVisible();
   await signOut.click();
   await page.getByRole("alertdialog").getByRole("button", {name: "Sign out session", exact: true}).click();
   await expect(page.getByText("Safari on iPhone")).toBeHidden();
-  await expect(page.getByText("This device")).toBeVisible();
+  await expect(page.getByText("This device", {exact: true})).toBeVisible();
 });

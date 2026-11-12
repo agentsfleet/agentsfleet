@@ -105,7 +105,7 @@ export const FleetMarkdown = memo(function FleetMarkdown({ children, expandable 
 
 // One compact heading scale keeps answers scannable within the conversation.
 function Heading({ children }: { children: ReactNode }) {
-  return <h2 className="text-conversation-heading font-title leading-heading text-foreground">{children}</h2>;
+  return <h2 className="mb-md text-conversation-heading font-title leading-conversation-heading text-foreground">{children}</h2>;
 }
 
 function Code({ children }: { children: ReactNode }) {

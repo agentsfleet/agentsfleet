@@ -21,7 +21,7 @@ export function FleetHeaderStatus({workspaceId, fleetId, initial, schedules = []
   const serverSnapshot = useCallback(() => labelFor(initial, latestRun, schedules), [initial, latestRun, schedules]);
   const label = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
   if (!label) return null;
-  return <span className={cn("inline-flex shrink-0 items-center gap-md text-eyebrow leading-eyebrow", label === "Scheduled" ? "text-muted-foreground" : "text-warning")}>
+  return <span className={cn("hidden shrink-0 items-center gap-md text-eyebrow leading-eyebrow summary:inline-flex", label === "Scheduled" ? "text-muted-foreground" : "text-warning")}>
     <span className="size-1.5 rounded-full bg-current" aria-hidden="true" /><span className="sr-only summary:not-sr-only">{label}</span>
   </span>;
 }

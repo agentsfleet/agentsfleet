@@ -43,7 +43,7 @@ export function ChatComposerFrame({id, label, placeholder, inputRef, disabled, f
             className="field-sizing-content min-h-chat-input max-h-[min(12rem,30dvh)] flex-1 resize-none overflow-y-auto px-sm py-0 pointer-coarse:py-md" />
         </ComposerPrimitive.Input>
       </div>
-      <div className="mt-md flex min-w-0 flex-wrap items-center justify-between gap-lg"><div className="flex min-w-0 flex-1 basis-36 items-center gap-sm">{toolbar}</div><div className="flex shrink-0 items-center gap-sm">{actions}</div></div>
+      <div className="mt-md flex min-w-0 flex-wrap items-center justify-between gap-lg"><div className="flex min-w-0 flex-1 basis-36 items-center gap-sm">{toolbar}</div><div className="ml-auto flex shrink-0 items-center gap-sm">{actions}</div></div>
     </ComposerPrimitive.Root>
   </DashboardPanel>;
 }

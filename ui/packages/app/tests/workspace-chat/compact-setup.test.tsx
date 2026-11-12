@@ -24,6 +24,16 @@ function before(first: Node, second: Node): boolean {
   return Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
 }
 
+it("keeps the composer in edit mode for an existing setup preview before its fleet is loaded", () => {
+  const snapshot = client.getSnapshot();
+  const view: DraftView = {...snapshot, fleet: null, draft: null, preview: {
+    definition: REVIEW.effective.definition, instanceName: REVIEW.effective.instance_name, revision: "preview-one", setupRevision: "2",
+  }};
+  render(conversation(view));
+  expect(screen.getByPlaceholderText("Ask a question or change the setup…")).toBeTruthy();
+  expect(screen.getByText("Save changes when you’re ready.")).toBeTruthy();
+});
+
 it.each(["running", "failed", "completed"] as const)("keeps an existing setup above a later %s turn", (state) => {
   const view: DraftView = {...client.getSnapshot(), messages: [MESSAGE,
     {...MESSAGE, role: "assistant", text: "Original proposal", candidate_id: DRAFT.candidate?.id},

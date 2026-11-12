@@ -22,5 +22,5 @@ export function FleetRunCost({workspaceId, fleetId, initial = null}: {workspaceI
   const run = useSyncExternalStore(subscribe, snapshot, serverSnapshot);
   const cost = readNanos(run?.cost_nanos);
   if (cost === null) return null;
-  return <span className="hidden text-eyebrow leading-eyebrow text-muted-foreground summary:inline" title="Reported cost of the latest run">{formatBalance(cost)} latest run</span>;
+  return <span className="hidden text-eyebrow leading-eyebrow text-muted-foreground summary-medium:inline" title="Reported cost of the latest run">{formatBalance(cost)} latest run</span>;
 }

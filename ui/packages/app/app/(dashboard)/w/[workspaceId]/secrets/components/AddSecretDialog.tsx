@@ -8,11 +8,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  TooltipButton,
+  Button,
 } from "@agentsfleet/design-system";
 import { PlusIcon } from "@phosphor-icons/react/ssr";
 import AddSecretFormDynamic from "@/components/domain/island-dynamic/AddSecretFormDynamic";
-import { CREATE_SECRET_TOOLTIP } from "../copy";
 import { SecretValueNotice } from "./SecretValueNotice";
 
 const ADD_SECRET_TRIGGER_LABEL = "Add secret";
@@ -23,10 +22,10 @@ export default function AddSecretDialog({ workspaceId }: { workspaceId: string }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <TooltipButton type="button" size="sm" tooltip={CREATE_SECRET_TOOLTIP}>
+        <Button type="button" size="sm">
           <PlusIcon size={16} />
           {ADD_SECRET_TRIGGER_LABEL}
-        </TooltipButton>
+        </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -37,6 +36,7 @@ export default function AddSecretDialog({ workspaceId }: { workspaceId: string }
         </DialogHeader>
         <AddSecretFormDynamic
           workspaceId={workspaceId}
+          showValueNotice={false}
           onDone={() => setOpen(false)}
           onCancel={() => setOpen(false)}
         />

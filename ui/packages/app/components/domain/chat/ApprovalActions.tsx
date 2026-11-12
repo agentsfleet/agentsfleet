@@ -8,6 +8,7 @@ import { APPROVAL_DECISION } from "@/lib/api/approvals-types";
 import { useApprovalDecision } from "../approvals/use-approval-decision";
 import { FleetPayloadDisclosure } from "../FleetPayloadDisclosure";
 import { PersonLabel } from "../PersonLabel";
+import { CaretDownIcon } from "@phosphor-icons/react/ssr";
 
 type Props = {gate: SummaryApproval; onStart: () => void; onNext: () => void; onResolved: (fleetId: string) => void};
 
@@ -22,7 +23,7 @@ export function ApprovalActions({gate, onStart, onNext, onResolved}: Props) {
     <p className="break-words text-label font-medium leading-label">{title}</p>
     {gate.blast_radius ? <p className="break-words text-label leading-label text-muted-foreground">{gate.blast_radius}</p> : null}
     <details className="group">
-      <summary className="min-h-11 cursor-pointer rounded-sm py-md text-label text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9">Action details</summary>
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-sm rounded-sm py-md text-label text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring summary:min-h-9 [&::-webkit-details-marker]:hidden">Action details<CaretDownIcon size={14} className="transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" /></summary>
       <div className="space-y-md pb-md text-label">
         <p className="break-words">{gate.tool_name} · {gate.action_name}</p>
         {gate.detail ? <p className="break-words">{gate.detail}</p> : null}

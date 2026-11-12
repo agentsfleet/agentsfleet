@@ -5,14 +5,45 @@ import { LibraryWorkspace } from "@/components/domain/chat/LibraryWorkspace";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
 import { FLEET_ID, LIBRARY, LIBRARY_CARD, WORKSPACE, response } from "@/tests/helpers/draft-fixtures";
 
-const { removeEntry, push } = vi.hoisted(() => ({ removeEntry: vi.fn(), push: vi.fn() }));
-vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({isLoaded: true, isSignedIn: true, userId: "plugin-owner"})}));
+const { removeEntry, push, identity } = vi.hoisted(() => ({ removeEntry: vi.fn(), push: vi.fn(),
+  identity: {isLoaded: true, isSignedIn: true, userId: "plugin-owner"} }));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => identity}));
 vi.mock("next/navigation", () => ({useRouter: () => ({push})}));
 vi.mock("@/app/(dashboard)/w/[workspaceId]/library/actions", () => ({ removeLibraryEntryAction: removeEntry }));
 
 const PROPS = {workspace: WORKSPACE, onSelect: vi.fn()};
 const EMPTY_HISTORY = {items: [], next_cursor: null};
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); Object.assign(identity, {isLoaded: true, isSignedIn: true, userId: "plugin-owner"}); });
+
+it("waits for the signed-in account before reading its plugins", async () => {
+  identity.isLoaded = false;
+  const fetcher = vi.fn(async () => response({items: [], next_cursor: null}));
+  vi.stubGlobal("fetch", fetcher);
+  const view = render(<LibraryBrowser {...PROPS} />);
+  expect(screen.getByText("Loading account")).toBeTruthy();
+  expect(fetcher).not.toHaveBeenCalled();
+  identity.isLoaded = true; identity.isSignedIn = false;
+  view.rerender(<LibraryBrowser {...PROPS} />);
+  expect(screen.queryByText("Loading account")).toBeNull();
+  expect(fetcher).not.toHaveBeenCalled();
+  identity.isSignedIn = true;
+  view.rerender(<LibraryBrowser {...PROPS} />);
+  await screen.findByText(/No published setups are available yet/);
+  expect(fetcher).toHaveBeenCalledOnce();
+});
+
+it("edits an owned plugin at its inspected revision without creating a fleet", async () => {
+  const card = {...LIBRARY_CARD, visibility: "tenant" as const};
+  vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+    const path = new URL(input, "https://app.test").pathname;
+    return response(path.endsWith("/owned") ? {items: [card], next_cursor: null}
+      : path.endsWith("/revisions") ? EMPTY_HISTORY : {...LIBRARY, card});
+  }));
+  render(<LibraryWorkspace workspace={WORKSPACE} />);
+  fireEvent.click(await screen.findByRole("button", {name: `Manage ${card.name}`}));
+  fireEvent.click(await screen.findByRole("button", {name: "Edit setup"}));
+  expect(push).toHaveBeenCalledWith(`/w/${WORKSPACE}/fleets/new?library=${card.id}&revision=${LIBRARY.head.id}&intent=edit`);
+});
 
 it("pages the owned plugin list and returns to its first page", async () => {
   const fetcher = vi.fn(async (input: string) => {

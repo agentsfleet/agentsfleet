@@ -27,7 +27,7 @@ export function BillingFilters({ report, modelNames }: Props) {
     startTransition(() => router.push(`${pathname}?${next}`, { scroll: false }));
   };
   const periodLabel = params.has(BILLING_QUERY.through) ? <Time value={report.from_at} format="month" /> : "Month to date";
-  return <div className="relative flex flex-wrap items-center gap-xl" aria-busy={pending}>
+  return <div className="relative flex flex-wrap items-center gap-xl [&>div:has([role=combobox])]:w-full sm:[&>div:has([role=combobox])]:w-auto" aria-busy={pending}>
     <Filter label="Period" value={report.period} disabled={pending}
       choices={[{ value: BILLING_PERIOD_MONTH, label: periodLabel }, { value: BILLING_PERIOD_TODAY, label: "Today" }]}
       onChange={value => change(BILLING_QUERY.period, value)} />
@@ -57,7 +57,7 @@ function Filter({ label, value, choices, onChange, disabled }: {
   return <div className="flex min-w-0 items-center gap-md">
     <Label className="mb-0 block font-sans text-eyebrow font-normal leading-eyebrow">{label}</Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger aria-label={label} className="h-10 min-h-10 w-40 font-sans text-label font-normal [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
+      <SelectTrigger aria-label={label} className="ml-auto h-10 min-h-10 w-52 max-w-[75%] font-sans text-label font-normal sm:ml-0 sm:w-40 sm:max-w-none [&>span:first-child]:min-w-0 [&>span:first-child]:truncate [&>span:first-child]:text-left"><SelectValue /></SelectTrigger>
       <SelectContent className="font-sans">{choices.map(choice => <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>)}</SelectContent>
     </Select>
   </div>;

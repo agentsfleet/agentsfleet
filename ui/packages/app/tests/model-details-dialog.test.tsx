@@ -48,6 +48,12 @@ function termTexts(): string[] {
 afterEach(() => cleanup());
 
 describe("ModelDetailsDialog", () => {
+  it("does not present catalogue rates as charges for a self-hosted Ollama model", () => {
+    renderDialog(makeEntry({provider: "ollama"}));
+    const label = screen.getByText("Input / cached input / output ($/1M)");
+    expect(label.parentElement?.textContent).toContain("Unknown");
+    expect(screen.getByText("Ollama")).toBeTruthy();
+  });
   it("test_details_row_order_no_kind", () => {
     renderDialog(makeEntry());
 

@@ -39,7 +39,7 @@ export default async function SecretsPage({
   );
 
   return (
-    <PageLayout>
+    <PageLayout className="gap-2xl">
       <PageHeader description={<SecretsDescription />} actions={<AddSecretDialog workspaceId={workspaceId} />}>
         <PageTitle>{SECRETS_PAGE_TITLE}</PageTitle>
       </PageHeader>

@@ -10,7 +10,7 @@ export default async function IntegrationsPage({ params }: {
   params: Promise<{ workspaceId: string }>;
 }) {
   const { workspaceId } = await params;
-  return <PageLayout>
+  return <PageLayout className="gap-2xl">
     <PageHeader description={CONNECT_APPS_COPY.description}>
       <PageTitle>{CONNECT_APPS_COPY.title}</PageTitle>
     </PageHeader>

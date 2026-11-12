@@ -14,6 +14,15 @@ const SCHEDULE: Schedule = {
 beforeEach(() => {vi.useFakeTimers(); vi.setSystemTime(new Date("2026-11-11T12:00:00Z")); refresh.mockClear();});
 afterEach(() => {cleanup(); vi.useRealTimers();});
 
+it("keeps a future UTC date until midnight, then shows only its time", async () => {
+  vi.setSystemTime(new Date("2026-11-11T23:59:00Z"));
+  render(<WorkWakeups schedules={[{...SCHEDULE, next_run_at: "2026-11-12T00:10:00Z"}]} compact />, {wrapper: TooltipProvider});
+  expect(document.querySelector("time")?.textContent).toContain("Nov 12");
+  await act(async () => vi.advanceTimersByTime(60_000));
+  expect(document.querySelector("time")?.textContent).toBe("00:10 UTC");
+  expect(document.querySelector("time")).toHaveProperty("dateTime", "2026-11-12T00:10:00.000Z");
+});
+
 it("shows the actual schedule timezone and stops promising a future run after its instant passes", async () => {
   render(<WorkWakeups schedules={[SCHEDULE]} />);
   expect(screen.getByRole("region", {name: "Wake-ups"}).textContent).toContain("07:30 AM");
@@ -38,6 +47,9 @@ it("shows paused and unavailable states without inventing a scheduled time", () 
   expect(document.querySelector("time")).toBeNull();
   view.rerender(<WorkWakeups schedules={[{...SCHEDULE, next_run_at: null, run_state: "next_run_unavailable"}]} />);
   expect(screen.getByText("Next wake-up unavailable.")).toBeTruthy();
+  view.rerender(<WorkWakeups schedules={[{...SCHEDULE, next_run_at: null}]} />);
+  expect(screen.getByText("Next wake-up unavailable.")).toBeTruthy();
+  expect(document.querySelector("time")).toBeNull();
 });
 
 it("omits an empty schedule group", () => {
@@ -45,6 +57,12 @@ it("omits an empty schedule group", () => {
   expect(screen.queryByRole("region")).toBeNull();
   view.rerender(<WorkWakeups schedules={[{...SCHEDULE, status: "removed"}]} />);
   expect(screen.queryByRole("region")).toBeNull();
+});
+
+it("shows an unknown lifecycle state without promising another wake-up", () => {
+  render(<WorkWakeups schedules={[{...SCHEDULE, status: "unknown"}]} />);
+  expect(screen.getByText("Status unavailable")).toBeTruthy();
+  expect(document.querySelector("time")).toBeNull();
 });
 
 it("shows attention before the nearest wake-up and retains additional schedule details", () => {

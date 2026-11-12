@@ -16,7 +16,7 @@ import { SetupStatusFlap } from "./SetupStatusFlap";
 // DraftClient records this failure in view.error before rejecting the request.
 const errorAlreadyVisible = (): void => undefined;
 
-export function ChatComposer({ client, view, workspace, canStop, blocked, dirty, onOpenFleet, modelsHref, empty = false }: { empty?: boolean; client: DraftClient; view: DraftView; workspace: string; canStop: boolean; blocked: boolean; dirty: boolean; onOpenFleet?: () => void; modelsHref?: string }) {
+export function ChatComposer({ client, view, workspace, canStop, blocked, dirty, onOpenFleet, modelsHref, empty }: { empty: boolean; client: DraftClient; view: DraftView; workspace: string; canStop: boolean; blocked: boolean; dirty: boolean; onOpenFleet?: () => void; modelsHref?: string }) {
   const stopDisabled = view.busy || view.pending || view.inaccessible || Boolean(view.draft && view.draft.state !== DRAFT_STATE.editing && !savedDraft(view));
   const disabled = stopDisabled || !view.model || blocked;
   const input = useRef<HTMLTextAreaElement>(null);

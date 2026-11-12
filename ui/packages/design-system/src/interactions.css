@@ -158,7 +158,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   [data-tool-shimmer="true"] { animation: none; color: var(--tool-active-color, var(--pulse)); opacity: 1; }
-  [data-chat-loading="true"] { animation: none; background: none; -webkit-text-fill-color: currentColor; color: var(--muted-foreground); }
+  [data-chat-loading="true"] { animation: none; background: none; -webkit-text-fill-color: currentColor; color: var(--text-muted); }
 }
 @media (forced-colors: active) {
   [data-chat-loading="true"] { animation: none; background: none; -webkit-text-fill-color: currentColor; color: CanvasText; }

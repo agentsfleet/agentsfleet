@@ -17,7 +17,7 @@ import {
   Spinner,
   TooltipButton,
 } from "@agentsfleet/design-system";
-import { XIcon } from "@phosphor-icons/react/ssr";
+import { XIcon, CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { createSecretAction, replaceSecretAction } from "../actions";
 import { presentErrorString } from "@/lib/errors";
 import { SECRET_NAME_MAX } from "../lib/secret-data";
@@ -26,6 +26,7 @@ import { captureProductEvent } from "@/lib/analytics/posthog";
 import { CREATE_SECRET_TOOLTIP } from "../copy";
 
 type Props = {
+  showValueNotice?: boolean;
   workspaceId: string;
   initialName?: string;
   initialFields?: readonly string[];
@@ -114,7 +115,7 @@ export default function AddSecretForm(props: Props) {
   const state = useSecretForm(props);
   const {form, pending, apiError, onSubmit} = state;
   const [namedFields, setNamedFields] = useState(props.mode === SECRET_FORM_MODE.REPLACE || Boolean(props.initialFields?.length));
-  const submitLabel = props.mode === SECRET_FORM_MODE.REPLACE ? "Save changes" : ADD_SECRET_LABEL;
+  const submitLabel = props.mode === SECRET_FORM_MODE.REPLACE ? "Replace value" : ADD_SECRET_LABEL;
   return <Form {...form}>
     <form onSubmit={event => {void form.handleSubmit(onSubmit)(event);}} className="space-y-xl">
       <SecretNameField form={form} readOnly={props.mode === SECRET_FORM_MODE.REPLACE} />
@@ -123,9 +124,9 @@ export default function AddSecretForm(props: Props) {
         <FormField control={form.control} name="fields.0.value" render={({field}) => <FormItem>
           <FormLabel>Value</FormLabel><FormControl><Input type="password" autoComplete="off" spellCheck={false} {...field} /></FormControl><FormMessage />
         </FormItem>} />
-        <Button type="button" variant="ghost" className="px-0 text-muted-foreground" onClick={() => {form.setValue("fields.0.key", ""); setNamedFields(true);}}>Use named fields</Button>
+        <Button type="button" variant="ghost" className="px-0 text-muted-foreground" onClick={() => {form.setValue("fields.0.key", ""); setNamedFields(true);}}>Use named fields<CaretDownIcon size={16} aria-hidden="true" /></Button>
       </>}
-      <p className="text-eyebrow text-text-dim">Secret values are hidden after saving.</p>
+      {props.showValueNotice !== false ? <p className="text-eyebrow text-text-dim">Secret values are hidden after saving.</p> : null}
       <div className="flex justify-end gap-2">
         {props.onCancel ? <Button type="button" variant="outline" disabled={pending} onClick={props.onCancel}>Cancel</Button> : null}
         <TooltipButton type="submit" disabled={pending} aria-busy={pending || undefined} aria-label={submitLabel}
@@ -212,7 +213,7 @@ function SecretFieldRow({form, index, canRemove, onRemove}: {form: SecretForm; i
       <FormControl><Input aria-label={`Field ${index + 1} name`} placeholder="api_key" className="font-mono" spellCheck={false} autoComplete="off" {...field} /></FormControl>
       <FormMessage />
     </FormItem>} />
-    <FormField control={form.control} name={`fields.${index}.value`} render={({field}) => <FormItem className="col-start-1 row-start-2 min-w-0 sm:col-start-2 sm:row-start-1">
+    <FormField control={form.control} name={`fields.${index}.value`} render={({field}) => <FormItem className="col-span-full col-start-1 row-start-2 min-w-0 sm:col-span-1 sm:col-start-2 sm:row-start-1">
       <FormControl><Input aria-label={`Field ${index + 1} value`} type="password" placeholder="value (write-only)" className="font-mono" spellCheck={false} autoComplete="off" {...field} /></FormControl>
       <FormMessage />
     </FormItem>} />

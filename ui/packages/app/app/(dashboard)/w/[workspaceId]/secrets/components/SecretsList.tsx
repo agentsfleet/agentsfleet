@@ -46,7 +46,7 @@ function buildColumns({
     {key: "type", header: "Type", cell: secret => secretType(secret)},
     {key: "value", header: "Value", cell: () => <span className="text-text-dim">Hidden</span>},
     {key: "scope", header: "Available to", cell: () => <span className="text-text-dim">Access details unavailable</span>},
-    {key: "actions", header: "", numeric: true, cell: secret => <SecretActions secret={secret} pending={pending}
+    {key: "actions", header: <span className="sr-only">Actions</span>, numeric: true, cell: secret => <SecretActions secret={secret} pending={pending}
       protectedFromDelete={protectedSecretName === secret.name} onEdit={onEdit} onDelete={onDelete} />},
   ];
 }
@@ -81,7 +81,7 @@ function SecretDialogs({
       <ConfirmDialog
         open={target !== null}
         onOpenChange={onDeleteClose}
-        title={`Delete secret "${target ?? ""}"?`}
+        title={`Delete secret “${target ?? ""}”?`}
         description={connection ? deleteConnectionDescription(connection) : DELETE_SECRET_DESCRIPTION}
         confirmLabel={connection ? DELETE_CONNECTION_CONFIRM : DELETE_SECRET_CONFIRM}
         intent="destructive"

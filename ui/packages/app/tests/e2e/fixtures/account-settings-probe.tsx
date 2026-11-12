@@ -46,7 +46,7 @@ class AccountFixtureClient implements AccountSettingsClient {
   #records = [...SESSIONS];
   setUnavailable(value: boolean) {this.#unavailable = value;}
   async listSessions(): Promise<ActionResult<AccountSessionPage>> {
-    return this.#unavailable ? {ok: false, error: "Sessions could not be refreshed. Previously loaded devices are retained."}
+    return this.#unavailable ? {ok: false, error: "Sessions could not be loaded. Try again."}
       : {ok: true, data: {sessions: this.#records, nextOffset: null}};
   }
   async revokeSession(id: string): Promise<ActionResult<{id: string}>> {

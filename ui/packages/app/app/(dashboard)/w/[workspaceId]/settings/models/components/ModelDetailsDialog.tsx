@@ -4,6 +4,7 @@ import { useState } from "react";
 import { KeyIcon } from "@phosphor-icons/react/ssr";
 import {
   Badge,
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -16,7 +17,7 @@ import {
 } from "@agentsfleet/design-system";
 import { OLLAMA_PROVIDER, providerLabel } from "@/lib/api/model-library-types";
 import { CatalogueEvidence, ModelPriceSchedule } from "@/components/domain/ModelPriceSchedule";
-import { CatalogueBrowseControls } from "./CatalogueBrowseControls";
+import { CatalogueReadControls } from "./CatalogueBrowseControls";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
 import { libraryRateFor, rowRateFor } from "./registry-view";
 import { CATALOGUE_STATUS } from "./catalogue-status";
@@ -80,11 +81,11 @@ function Details({ target, workspaceLabel }: { target: TenantModelEntry; workspa
 }
 
 function CatalogueDetails({ target }: { target: TenantModelEntry }) {
-  const { models, status } = useModelCatalogue();
-  const [advanced, setAdvanced] = useState(false);
+  const { models, status, preloadAdvanced } = useModelCatalogue();
+  const [advancedRead, setAdvancedRead] = useState(false);
   const catalogue = libraryRateFor(models, target.provider, target.model_id);
   const rates = target.provider === OLLAMA_PROVIDER ? null : rowRateFor(target) ?? catalogue;
-  return <div className="space-y-sm">
+  return <div className="space-y-sm pt-lg">
     {catalogue?.advanced ? <Badge>Advanced model</Badge> : null}
     <DescriptionList>
       <div><DescriptionTerm>Context cap (tokens)</DescriptionTerm><DescriptionDetails mono>{formatContextTokens(target.context_cap_tokens ?? catalogue?.context_cap_tokens)}</DescriptionDetails></div>
@@ -96,7 +97,9 @@ function CatalogueDetails({ target }: { target: TenantModelEntry }) {
     </> : <DialogDescription>
       {status === CATALOGUE_STATUS.loading ? "Loading catalogue details…" : "Catalogue evidence and price schedule are unavailable for this model."}
     </DialogDescription>}
-    <CatalogueBrowseControls id={`details-${target.id}-advanced`} advanced={advanced} onAdvancedChange={setAdvanced} />
+    {!catalogue && !advancedRead ? <Button variant="outline" disabled={status === CATALOGUE_STATUS.loading}
+      onClick={() => {setAdvancedRead(true); preloadAdvanced();}}>Load model evidence</Button> : null}
+    <CatalogueReadControls includeAdvanced={advancedRead} label="Load more catalogue evidence" />
   </div>;
 }
 

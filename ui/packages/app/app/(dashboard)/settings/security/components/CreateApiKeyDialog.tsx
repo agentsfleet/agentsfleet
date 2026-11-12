@@ -47,13 +47,14 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
   const [created, setCreated] = useState<CreatedApiKey | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const creating = pending && created === null;
   const form = useForm<FormValues>({ resolver: zodResolver(schema), defaultValues: { key_name: "" } });
 
   // Single dismissal path. Outside-click / Escape are locked during reveal
   // (see DialogContent), so this fires only from the X or the explicit button.
   // Discarding `created` drops the raw key from React state → out of the DOM.
   function handleOpenChange(next: boolean) {
-    if (pending) return;
+    if (creating) return;
     if (next) {
       setOpen(true);
       return;
@@ -92,7 +93,7 @@ export default function CreateApiKeyDialog({ onCreated }: { onCreated: () => voi
         </TooltipButton>
       </DialogTrigger>
       <DialogContent
-        closeDisabled={pending}
+        closeDisabled={creating}
         onInteractOutside={(e) => { if (created || pending) e.preventDefault(); }}
         onEscapeKeyDown={(e) => { if (created || pending) e.preventDefault(); }}
       >
