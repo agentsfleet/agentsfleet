@@ -64,7 +64,11 @@ describe("stream lifetime over real HTTP", () => {
         const reader = lifetime.wrap(upstream.body)!.getReader();
         expect(new TextDecoder().decode((await reader.read()).value)).toBe(FIRST);
         disconnect();
-        await expect(reader.read()).rejects.toThrow("terminated");
+        // How the destroyed socket closes depends on machine load: a clean
+        // close reads as "terminated", a reset as "ECONNRESET". Either is the
+        // broken producer this test needs; the reader and signal checks below
+        // prove the stream released it.
+        await expect(reader.read()).rejects.toThrow(/terminated|ECONNRESET/);
         await Promise.resolve();
         expect(lifetime.signal.aborted).toBe(true);
         expect(upstream.body!.locked).toBe(false);

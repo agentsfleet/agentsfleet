@@ -71,32 +71,22 @@ Setup is complete when step 09 and its operational gates pass.
 
 ## Prime a clean database
 
-Run this order in each environment after migrations finish.
-Set `VAULT_DEV` and `VAULT_PROD` from the deployment environment.
-Single-vault sync scripts also need `VAULT` set to the selected environment's vault.
+Run these in order after migrations finish, with `ENV`, `VAULT` and `AGENTSFLEET_API_URL` set for the environment.
+Every value comes from 1Password at runtime; nothing is pasted.
 
-Every credential resolves from an `op://` reference at runtime.
+| # | Do | Proof |
+|---|---|---|
+| 1 | [Deploy](./founding/04_deploy_dev/001_playbook.md) with the runner disabled | `/readyz` succeeds |
+| 2 | [Bootstrap the administrator](./operations/admin_bootstrap/001_playbook.md): account, platform scopes, `agentsfleet login`, workspace pointer, API key | `agentsfleet whoami` lists the platform scopes |
+| 3 | Sync every bag in the [bag table](./operations/admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag) | Each sync prints `✓ <bag> created` |
+| 4 | [Seed the model catalogue](./operations/model_catalogue/001_playbook.md), then set the default with `agentsfleet platform keys set` | `agentsfleet platform keys list` shows one active default |
+| 5 | [Enroll the runner](./operations/runner_onboarding/001_playbook.md) and redeploy; the restart also loads the startup-read bags | `agentsfleet platform runners list` shows it online |
+| 6 | [Configure observability](./operations/observability/001_playbook.md) | Runtime series arrive |
+| 7 | Run [development](./founding/06_verify_dev/001_playbook.md) or [production](./founding/09_verify_prod/001_playbook.md) acceptance | Named lanes pass |
 
-| Order | Step | Database result | Verify |
-|---|---|---|---|
-| 1 | [Deploy the API](./founding/04_deploy_dev/001_playbook.md) with runner rollout disabled | Schema and `audit._sqlx_migrations`; application tables empty | Migration succeeds; `/healthz` and `/readyz` succeed |
-| 2 | [Bootstrap the administrator](./operations/admin_bootstrap/001_playbook.md) through its credential step | Tenant, user, workspace, membership, wallet, API key; Clerk owner metadata | Signed `user.created` succeeds; workspace ID recorded; refreshed session opens platform pages |
-| 3 | [Seed and configure models](./operations/model_catalogue/001_playbook.md), then select the platform default | `model.platform_models`, dated `model.platform_model_prices`, `model.platform_defaults`, encrypted provider credential | Unchanged seed reports no diff; chosen model has inference settings and a credentialed active default |
-| 4 | Sync `approval-signing` (command below) | Admin `vault.secrets` bag with `webhook_secret` | Sync succeeds; acceptance later proves a signed approval reply |
-| 5 | Register [GitHub](./operations/github_app_registration/001_playbook.md), [Slack](./operations/slack_app_registration/001_playbook.md), [Linear](./operations/linear_app_registration/001_playbook.md), [Jira](./operations/jira_app_registration/001_playbook.md), [Zoho](./operations/zoho_app_registration/001_playbook.md) | Provider bags in admin `vault.secrets`; a workspace connect later creates `connector.installs` | Each guarded bag sync succeeds; each workspace connect and refresh passes |
-| 6 | [Register QStash](./operations/qstash_registration/001_playbook.md) | Admin `qstash` bag; authored schedules later create `fleet.schedules` | One signed scheduled delivery accepted; its replay deduplicated |
-| 7 | [Register SMTP](./operations/smtp_relay_registration/001_playbook.md) | Admin `smtp-relay` bag; a test invite creates `identity.invites` | Test invite reports sent, arrives, accepts |
-| 8 | Restart the control plane through the environment's deployment workflow | None; startup reads the provider bags | Readiness succeeds; provider connections work |
-| 9 | [Enroll and deploy runners](./operations/runner_onboarding/001_playbook.md) | `runner.runners` identity and assigned policy | Token saved once; Pipeline host gate passes; runner online |
-| 10 | [Configure observability](./operations/observability/001_playbook.md) | None; dashboard and alert rules live in Grafana | Read-only drift check succeeds; runtime series arrive |
-| 11 | Run [development](./founding/06_verify_dev/001_playbook.md) or [production](./founding/09_verify_prod/001_playbook.md) acceptance | Disposable test fleets and their run history | Named acceptance lanes and Human visual checks pass |
-
-For step 4, the Human creates `approval-signing-secret/credential` in the selected vault.
-The Agent then syncs it with the [shared bag procedure](./operations/admin_bootstrap/001_playbook.md#sync-a-provider-secret-bag).
-
+After a database wipe, an existing Clerk user needs its signed `user.created` event resent; signing in creates no rows.
 A green health check proves neither credentials nor inference.
-Finish every provider registration before acceptance.
-After a database wipe, existing Clerk users need a signed signup-event replay; signing in creates no rows.
+A provider registered earlier keeps its 1Password item, so a wipe needs only step 3; a new provider starts at its registration page.
 
 ### Recovery routes
 

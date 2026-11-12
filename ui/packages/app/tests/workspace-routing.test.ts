@@ -198,6 +198,27 @@ describe("dashboard entry page", () => {
     expect(markup).not.toContain("no-workspace-empty-state");
   });
 
+  // The first request of a new account: the daemon refuses a session token with
+  // no tenant claim at authentication, before the scope gate.
+  const tenantlessRefusal = () =>
+    new ApiError("invalid or missing token", 401, ERROR_CODE.AUTH_UNAUTHORIZED);
+
+  it("test_account_still_opening_waits_on_authentication: a tenantless token refused at authentication renders the setup screen", async () => {
+    signedInWith({ sub: "user_new" });
+    firstTenantWorkspace.mockRejectedValue(tenantlessRefusal());
+    const Page = await importEntry();
+    const markup = renderToStaticMarkup((await Page()) as React.ReactElement);
+    expect(markup).toContain(SETUP_TITLE);
+    expect(markup).not.toContain("no-workspace-empty-state");
+  });
+
+  it("an authentication refusal of a token that carries a tenant propagates: the credential is bad, not early", async () => {
+    signedInWith({ sub: "user_old", metadata: { tenant_id: "tenant_1" } });
+    firstTenantWorkspace.mockRejectedValue(tenantlessRefusal());
+    const Page = await importEntry();
+    await expect(Page()).rejects.toThrow("invalid or missing token");
+  });
+
   it("a scope refusal on a token that carries a tenant propagates: waiting never brings a scope an operator removed", async () => {
     for (const sessionClaims of [
       { sub: "user_narrowed", metadata: { tenant_id: "tenant_1" } },
@@ -238,6 +259,48 @@ describe("dashboard entry page", () => {
     const Page = await importEntry();
     const markup = renderToStaticMarkup((await Page()) as React.ReactElement);
     expect(markup).toContain(SETUP_TITLE);
+  });
+
+  // The first-signup race, every way a new account's token can look before the
+  // writeback lands, against both refusals the daemon can answer it with.
+  it.each([
+    ["no tenant at all", { sub: "user_new" }],
+    ["owner scopes not yet written", { sub: "user_new", scopes: "" }],
+    ["empty tenant", { sub: "user_new", tenant_id: "" }],
+    ["metadata without a tenant", { sub: "user_new", metadata: {} }],
+    ["metadata tenant empty", { sub: "user_new", metadata: { tenant_id: "" } }],
+    ["metadata not an object", { sub: "user_new", metadata: "tenant_1" }],
+  ])("a new account (%s) waits on either refusal instead of crashing", async (_case, sessionClaims) => {
+    for (const refusal of [tenantlessRefusal(), scopeRefusal()]) {
+      signedInWith(sessionClaims);
+      firstTenantWorkspace.mockRejectedValue(refusal);
+      const Page = await importEntry();
+      const markup = renderToStaticMarkup((await Page()) as React.ReactElement);
+      expect(markup).toContain(SETUP_TITLE);
+    }
+  });
+
+  it("once the writeback lands, the next read redirects to the new workspace", async () => {
+    signedInWith({ sub: "user_new" });
+    firstTenantWorkspace.mockRejectedValueOnce(tenantlessRefusal());
+    const Page = await importEntry();
+    expect(renderToStaticMarkup((await Page()) as React.ReactElement)).toContain(SETUP_TITLE);
+
+    signedInWith({ sub: "user_new", metadata: { tenant_id: "tenant_new" } });
+    firstTenantWorkspace.mockResolvedValueOnce({ id: "ws_new", role: "owner" });
+    await expect(Page()).rejects.toThrow(/^redirect:\/w\/ws_new\//);
+  });
+
+  it("an expired or unavailable refusal of a tenantless token propagates: waiting cannot mint around it", async () => {
+    for (const refusal of [
+      new ApiError("token expired", 401, "UZ-AUTH-003"),
+      new ApiError("provider unavailable", 503, "UZ-AUTH-004"),
+    ]) {
+      signedInWith({ sub: "user_new" });
+      firstTenantWorkspace.mockRejectedValue(refusal);
+      const Page = await importEntry();
+      await expect(Page()).rejects.toThrow(refusal.message);
+    }
   });
 
   it("reads the top-level tenant before the nested one, as the daemon does", async () => {

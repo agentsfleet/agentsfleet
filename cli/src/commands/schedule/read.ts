@@ -13,6 +13,19 @@ const ScheduleSchema = Schema.Struct({
 });
 const SchedulePageSchema = Schema.Struct({schedules: Schema.Array(ScheduleSchema)});
 type Schedule = typeof ScheduleSchema.Type;
+// The closed sets `afd_api_wire::schedule` writes: who made a row, and what it should be doing.
+export const SCHEDULE_SOURCE = {api: "api", trigger: "trigger", fleet: "fleet"} as const;
+export const SCHEDULE_STATUS = {active: "active", paused: "paused"} as const;
+// What an edit reads back first: the tag the daemon makes every PATCH match, the
+// source that says whether the row inherits the fleet's recipe, and the overlay
+// an `override` replaces whole.
+const OverlaySchema = Schema.Struct({
+  cron: Schema.optionalKey(text), timezone: Schema.optionalKey(text), message: Schema.optionalKey(text),
+  status: Schema.optionalKey(Schema.Literals(Object.values(SCHEDULE_STATUS))),
+});
+const EditBaseSchema = Schema.Struct({
+  etag: text, source: Schema.Literals(Object.values(SCHEDULE_SOURCE)), override: Schema.optionalKey(OverlaySchema),
+});
 const RUN_STATE = {scheduled: "scheduled", paused: "paused", pending: "activation_pending", unavailable: "next_run_unavailable"} as const;
 const UNKNOWN_TIME = "—";
 const RUN_UNAVAILABLE = "Next run unavailable";
@@ -29,6 +42,7 @@ function decode<T>(schema: Schema.Codec<T, unknown>, value: unknown): Effect.Eff
 
 export const decodeSchedule = (value: unknown) => decode(ScheduleSchema, value);
 export const decodeSchedules = (value: unknown) => decode(SchedulePageSchema, value);
+export const decodeEditBase = (value: unknown) => decode(EditBaseSchema, value);
 
 function scheduleState(row: Schedule): string {
   switch (row.run_state) {
