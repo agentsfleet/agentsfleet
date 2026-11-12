@@ -96,9 +96,18 @@ The replay rewrites scopes, so do step 2 after it.
 
 ### 3. Record the workspace identifier
 
-1. Select the administrator's workspace in the dashboard.
-2. Copy `<WORKSPACE_ID>` from the `/w/<WORKSPACE_ID>/fleets` URL.
-3. Save it in the 1Password app at `op://<VAULT>/agentsfleet-admin/platform_admin_workspace_id`.
+1. Sign the command-line interface (CLI) in to the environment from an interactive terminal.
+   `agentsfleet login` refuses a shell with no terminal.
+
+   ```bash
+   export AGENTSFLEET_API_URL="$API_BASE"
+   agentsfleet login --force
+   agentsfleet whoami
+   agentsfleet workspace list
+   ```
+
+   `whoami` lists the platform scopes from step 2; `workspace list` shows the administrator's one workspace.
+2. Save that workspace's ID at `op://<VAULT>/agentsfleet-admin/platform_admin_workspace_id`.
    Never use the Clerk `tenant_id` or `user.id`; a UUID shape alone does not prove ownership.
 4. After approval, set the runtime pointer and wait for readiness.
 
@@ -120,16 +129,31 @@ The replay rewrites scopes, so do step 2 after it.
 
 ### 4. Create the sync credential
 
-1. Open `$APP_URL/settings/api-keys` and create `platform-priming`.
-2. Copy the once-revealed `agt_t` value into the concealed `api-key` field of `agentsfleet-admin`.
+1. Create the key with the CLI: `agentsfleet api-key create --name platform-priming --json`.
+   The answer reveals the `agt_t` value once.
+2. Store it in the concealed `api-key` field of `agentsfleet-admin` through a template file, as `op item edit --help` advises for sensitive values.
+   Read the item with `op item get --format json`, set the field's value, run `op item edit --template <file>`, then delete the file.
+   Never pass the key as a command argument or print it.
 
 The key carries its creator's current Clerk scopes, platform scopes included, so use it only through the guarded sync script.
 
 ### 5. Set a usable platform model
 
-1. Seed the catalogue with [model catalogue priming](../model_catalogue/001_playbook.md).
-2. Open `$APP_URL/admin/models`, choose the model, and select **Make default**.
-3. Enter the provider credential in the dialog and confirm the active-default indicator.
+1. Seed the catalogue with [model catalogue priming](../model_catalogue/001_playbook.md); never create single models by hand.
+2. Pipe the provider key from 1Password into the CLI, which stores it and selects the default:
+
+   ```bash
+   workspace_id="$(op read "op://$VAULT/agentsfleet-admin/platform_admin_workspace_id")"
+   op read "op://$VAULT/<PROVIDER_KEY_ITEM>/credential" \
+     | agentsfleet platform keys set --provider <PROVIDER> --model <MODEL_ID> \
+         --workspace "$workspace_id" --api-key-stdin
+   unset workspace_id
+   agentsfleet platform keys list
+   ```
+
+   ```text
+   provider <PROVIDER> · model <MODEL_ID> · active
+   ```
 
 A priced row without inference settings and a credential cannot run setup chat.
 
