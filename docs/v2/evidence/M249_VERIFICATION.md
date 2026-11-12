@@ -195,13 +195,16 @@ Final required checks must report their actual results, including failures, befo
 
 | Check | Measured result | Disposition |
 |---|---|---|
-| App shared dashboard | 292.30 kB / 276.48 kB | Owner approval pending; cap unchanged |
+| App shared dashboard | 292.30 kB / 294.91 kB | Pass; only this cap increased with owner approval |
 | New fleet incremental | 87.38 kB / 102.40 kB | Pass |
 | Saved fleet incremental | 98.86 kB / 102.40 kB | Pass |
 | Other app routes | Existing limits | Pass |
 | Website JavaScript | 109.71 kB / 128 kB | Pass |
 | Website CSS | 19.17 kB / 20 kB | Pass |
 
-App evidence: `refresh-app-bundle-size-v107.log`; website evidence: `refresh-website-bundle-size-v104.log`.
-The pending request changes only the shared dashboard cap from 270 KiB to 288 KiB.
-The current source retains the existing limit until Indy answers.
+App evidence: `refresh-app-bundle-size-v113.log`; website evidence: `refresh-website-bundle-size-v104.log`.
+Indy approved only the shared dashboard cap from 270 KiB to 288 KiB:
+"Approve shared cap of 288 KiB". He also requested further reductions where possible.
+Every route and website limit remains unchanged. The size check must pass against the approved cap.
+
+The additional bounded source review found no concrete defect in the conditional native setup/lifecycle boundaries and no further clear low-risk eager-shell reduction. Existing menu/history/analytics boundaries are already deferred. The reverted mobile-dialog experiment shifted bytes into the constrained saved-fleet route; it is not part of the delivered source. The approved cap passed in `refresh-app-bundle-size-v113.log`.
