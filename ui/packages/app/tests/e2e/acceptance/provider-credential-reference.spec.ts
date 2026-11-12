@@ -104,6 +104,22 @@ test.describe("provider credential reference guard", () => {
     await expect(dialog).toBeVisible();
     await pickProvider(page, choice.provider);
     await pickModel(page, choice);
+    const modelControl = dialog.getByRole("combobox", {name: "Model", exact: true});
+    const selected = modelControl.getByTitle(choice.id, {exact: true});
+    await expect(selected).toContainText(choice.id);
+    const geometry = await modelControl.evaluate(node => {
+      const control = node.getBoundingClientRect();
+      const value = node.querySelector<HTMLElement>("[title]");
+      const chevron = node.querySelector("svg")?.getBoundingClientRect();
+      const box = value?.getBoundingClientRect();
+      return {left: control.left, right: control.right, valueLeft: box?.left, valueRight: box?.right,
+        chevronLeft: chevron?.left, chevronRight: chevron?.right,
+        singleLine: value !== null && value.scrollHeight <= value.clientHeight + 1};
+    });
+    expect(geometry.singleLine).toBe(true);
+    expect(geometry.valueLeft).toBeGreaterThanOrEqual(geometry.left - 1);
+    expect(geometry.valueRight).toBeLessThanOrEqual(geometry.chevronLeft ?? 0);
+    expect(geometry.chevronRight).toBeLessThanOrEqual(geometry.right + 1);
     const addKey = dialog.getByRole("button", {name: "Add new key", exact: true});
     await addKey.click();
     await expect(addKey).toHaveAttribute("aria-pressed", "true");

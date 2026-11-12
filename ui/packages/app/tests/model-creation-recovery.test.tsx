@@ -148,7 +148,7 @@ it("offers saved-key selection after an uncertain storage response without repla
   await fillKnownForm(fixture.user, screen.getByRole("dialog"), {name: "new-provider-key", key: CREDENTIAL.key});
   await fixture.user.click(dialog.getByRole("button", {name: "Create model"}));
   await fixture.user.click(await dialog.findByRole("button", {name: "Choose credential"}));
-  expect(dialog.getByLabelText("Saved key", {exact: true})).toBeTruthy();
+  expect(await dialog.findByLabelText("Saved key", {exact: true})).toBeTruthy();
   const overlay = document.querySelector(".bg-overlay");
   if (!overlay) throw new Error("The model dialog must have its native overlay");
   await fixture.user.click(overlay);
