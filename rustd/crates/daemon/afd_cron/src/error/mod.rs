@@ -169,8 +169,14 @@ pub(crate) enum ErrorKind {
 
     /// Neither the current nor the next key produced the token's signature,
     /// or its issuer, subject or window did not hold.
+    ///
+    /// `cause` is for the operator's log only: every cause answers the sender
+    /// the same refusal.
     #[error("the schedule fire token did not verify under either signing key")]
-    SignatureInvalid,
+    SignatureInvalid {
+        /// The first check, other than the signature itself, that failed.
+        cause: Rejected,
+    },
 
     /// The token is genuine and the body is not the one it was minted over:
     /// the refusal that means somebody is replaying a captured token.
@@ -217,12 +223,67 @@ const REASON_KEYS_MISSING: &str = "signing_keys_absent";
 const REASON_TOKEN_MALFORMED: &str = "token_malformed";
 /// [`Error::refusal_word`] for a token neither key verifies.
 const REASON_SIGNATURE_INVALID: &str = "signature_invalid";
+/// [`Error::refusal_word`] for a token past its `exp`.
+const REASON_TOKEN_EXPIRED: &str = "token_expired";
+/// [`Error::refusal_word`] for a token before its `nbf`.
+const REASON_TOKEN_NOT_YET_VALID: &str = "token_not_yet_valid";
+/// [`Error::refusal_word`] for a token from another issuer.
+const REASON_TOKEN_ISSUER: &str = "token_issuer_mismatch";
+/// [`Error::refusal_word`] for a token minted for another destination.
+const REASON_TOKEN_SUBJECT: &str = "token_subject_mismatch";
+/// [`Error::refusal_word`] for a token missing a claim this daemon needs.
+const REASON_TOKEN_CLAIMS: &str = "token_claims_missing";
+/// [`Error::refusal_word`] for a token whose header or claims do not decode.
+const REASON_TOKEN_UNDECODABLE: &str = "token_undecodable";
+/// [`Error::refusal_word`] for a token signed under another algorithm.
+const REASON_TOKEN_ALGORITHM: &str = "token_algorithm_mismatch";
 /// [`Error::refusal_word`] for a genuine token over different bytes.
 const REASON_BODY_MISMATCH: &str = "body_mismatch";
 /// [`Error::refusal_word`] for a deployment whose `qstash` bag is unusable.
 const REASON_BAG_UNUSABLE: &str = "scheduler_bag_unusable";
 /// [`Error::refusal_word`] for every kind that is not a refused fire.
 const REASON_OPERATIONAL: &str = "operational_fault";
+
+/// Why a fire token that decoded under neither key was refused.
+///
+/// The decoder reports one failure per key. A wrong key fails the signature
+/// first, so the first failure that is anything else names the check the right
+/// key tripped on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Rejected {
+    /// No key produced the signature.
+    Signature,
+    /// The `exp` claim is in the past.
+    Expired,
+    /// The `nbf` claim is in the future.
+    NotYetValid,
+    /// The `iss` claim is not the scheduler's.
+    Issuer,
+    /// The `sub` claim is not this deployment's destination.
+    Subject,
+    /// A claim this daemon requires is absent.
+    Claims,
+    /// The header or the claims did not decode.
+    Undecodable,
+    /// The header names an algorithm this daemon does not accept.
+    Algorithm,
+}
+
+impl Rejected {
+    /// The stable word an operator greps for.
+    const fn word(self) -> &'static str {
+        match self {
+            Self::Signature => REASON_SIGNATURE_INVALID,
+            Self::Expired => REASON_TOKEN_EXPIRED,
+            Self::NotYetValid => REASON_TOKEN_NOT_YET_VALID,
+            Self::Issuer => REASON_TOKEN_ISSUER,
+            Self::Subject => REASON_TOKEN_SUBJECT,
+            Self::Claims => REASON_TOKEN_CLAIMS,
+            Self::Undecodable => REASON_TOKEN_UNDECODABLE,
+            Self::Algorithm => REASON_TOKEN_ALGORITHM,
+        }
+    }
+}
 
 /// See [`COLUMN_FLEET`].
 pub(crate) const COLUMN_DESIRED_STATUS: &str = "desired_status";
@@ -263,7 +324,7 @@ impl Error {
         match self.kind() {
             ErrorKind::KeysMissing => REASON_KEYS_MISSING,
             ErrorKind::TokenMalformed => REASON_TOKEN_MALFORMED,
-            ErrorKind::SignatureInvalid => REASON_SIGNATURE_INVALID,
+            ErrorKind::SignatureInvalid { cause } => cause.word(),
             ErrorKind::BodyMismatch => REASON_BODY_MISMATCH,
             ErrorKind::BagUnusable { .. } => REASON_BAG_UNUSABLE,
             ErrorKind::Patch
