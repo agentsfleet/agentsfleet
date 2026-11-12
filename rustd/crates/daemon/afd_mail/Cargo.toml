@@ -17,7 +17,7 @@ categories.workspace = true
 # and `test_util::FakeRelay`, the scripted loopback SMTP relay this crate's
 # suite and `afd_api`'s both drive lettre's real transport against. The relay
 # listens and answers on tokio's sockets, hence `net`, `io-util` and `rt`.
-test-util = ["tokio/rt", "tokio/net", "tokio/io-util"]
+test-util = ["tokio/rt", "tokio/net", "tokio/io-util", "dep:serde_json"]
 
 [dependencies]
 # The registry codes a failure is reported under, and the admin workspace id.
@@ -33,13 +33,16 @@ askama.workspace = true
 lettre.workspace = true
 # The `smtp-relay` bag, read by derive rather than walked field by field.
 serde.workspace = true
-serde_json.workspace = true
+# The complete-bag fixture `test_util` builds; nothing else here decodes JSON.
+serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 # The send deadline.
 tokio = { workspace = true, features = ["time"] }
 tracing.workspace = true
 
 [dev-dependencies]
+# `test_util`, compiled for this crate's own unit tests too.
+serde_json.workspace = true
 # `test_util::trace::Capture`, which the log-privacy tests read events through.
 af_core = { workspace = true, features = ["test-util"] }
 # `test_util::unreachable_db`, the vault the mailer suite reads the relay

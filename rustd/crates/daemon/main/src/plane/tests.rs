@@ -11,15 +11,14 @@
 
 use std::sync::Arc;
 
-use af_core::env::MapEnv;
-use af_crypto::secret::{Kek, SecretBytes, SecretString};
+use af_core::test_util::trace::Capture;
+use af_crypto::secret::{Kek, SecretBytes};
 use af_observability::Analytics;
 use afd_api::{Services as _, TenantSurface as _};
 use afd_auth::{NoCapabilitySource, NoVerifier};
 use afd_credential::credential::platform::Platform;
 use afd_credential::credential::{Broker, Vendors};
 use afd_credential::secrets::Registry;
-use afd_db::config::{DbRole, PoolConfig};
 use afd_sse::{Live, StreamLimit};
 
 use super::{Capabilities, LoginConfig, PlaneParts, ServingPlane, Sessions, SignupWriteback};
@@ -30,20 +29,20 @@ const DASHBOARD: &str = "https://app.fixture.test";
 /// Where API calls and machine callbacks go.
 const DEPLOYMENT: &str = "https://api.fixture.test";
 
-/// Where the external scheduler delivers a fire.
-const SCHEDULE_DESTINATION: &str = "https://api.fixture.test/v1/schedules/fire";
+/// A fire token's shape, signed by nobody: it passes the shape check and so
+/// reaches the read of the keys, which is what these cases are about.
+const FIRE: &str = "aaa.bbb.ccc";
 
 fn same<T: ?Sized>(left: &T, right: &T) -> bool {
     std::ptr::eq(left, right)
 }
 
 fn plane() -> ServingPlane {
-    let database_config = PoolConfig::resolve(
-        &MapEnv::from_pairs([("DATABASE_URL_API", "postgres://127.0.0.1:1/fixture")]),
-        DbRole::Api,
-    )
-    .expect("the unreachable database URL is valid");
-    let database = afd_db::Db::unreachable(&database_config);
+    plane_with(None)
+}
+
+fn plane_with(admin: Option<af_core::id::Uuid7>) -> ServingPlane {
+    let database = afd_db::test_util::unreachable_db();
     let vendors = Vendors::new(Platform::empty(), reqwest::Client::new());
     ServingPlane::new(PlaneParts {
         authoring_transport: afd_authoring::Network::new()
@@ -61,10 +60,10 @@ fn plane() -> ServingPlane {
         runner_wake: afd_bus::wake::Wake::default(),
         frame_memory: af_stream::MemoryLimits::default(),
         live: Live::detached(StreamLimit::new(4)),
-        // No admin workspace and no scheduler credentials: the fail-closed
-        // deployment state, which is what this fixture is for — the plane must
-        // map every service to its own store whether or not either is present.
-        platform_admin_workspace: None,
+        // No admin workspace by default: the fail-closed deployment state,
+        // which is what this fixture is for — the plane must map every service
+        // to its own store whether or not one is present.
+        platform_admin_workspace: admin,
         checkpoint_storage: None,
         identity_webhook_secret: None,
         schedule: schedule(),
@@ -83,10 +82,7 @@ fn plane() -> ServingPlane {
 fn schedule() -> crate::plane::ScheduleConfig {
     crate::plane::ScheduleConfig {
         client: reqwest::Client::new(),
-        token: SecretString::new(String::new()),
-        destination: SCHEDULE_DESTINATION.to_owned(),
-        api_base: String::new(),
-        keys: None,
+        api_url: DEPLOYMENT.into(),
     }
 }
 
@@ -145,20 +141,72 @@ async fn production_plane_maps_every_surface_to_its_owned_store() {
 }
 
 /// Each deployment fact reaches the route that needs it as it was booted: the
-/// dashboard a person is sent to is not the API, the scheduler's destination
-/// is the configured one, and a deployment with no admin workspace, no
-/// identity secret and no signing keys answers `None` for each, which is what
-/// the routes behind them fail closed on.
+/// dashboard a person is sent to is not the API, and a deployment with no admin
+/// workspace, no identity secret and so no `qstash` bag answers `None` or
+/// `Absent` for each, which is what the routes behind them fail closed on.
 #[tokio::test]
 async fn production_plane_hands_each_route_its_deployment_facts() {
     let plane = plane();
 
     assert_eq!(plane.dashboard().as_str(), format!("{DASHBOARD}/"));
     assert_ne!(plane.dashboard().as_str(), plane.deployment());
-    assert_eq!(plane.schedule_destination(), SCHEDULE_DESTINATION);
-    assert!(plane.schedule_signing_keys().is_none());
+    let fire = plane.scheduler().verify(FIRE, b"{}").await;
+    assert_eq!(
+        fire.as_ref().err().and_then(afd_cron::Error::bag_fault),
+        Some(afd_vault::bag::BagFault::Absent),
+        "no admin workspace means no `qstash` bag, refused before the vault is read"
+    );
     assert!(plane.identity_webhook_secret().is_none());
     assert!(plane.platform_admin_workspace().is_none());
+}
+
+/// With an admin workspace the scheduler reads its bag from the vault, so a
+/// vault that will not answer is a retryable outage and not an absent bag.
+#[tokio::test]
+async fn an_admin_workspace_makes_the_scheduler_read_its_bag_from_the_vault() {
+    let admin = af_core::id::Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011")
+        .expect("a fixture identifier");
+    let plane = plane_with(Some(admin));
+
+    let refused = plane
+        .scheduler()
+        .verify(FIRE, b"{}")
+        .await
+        .expect_err("the fixture's database is unreachable");
+
+    assert_eq!(
+        refused.bag_fault(),
+        None,
+        "the vault was asked, so no field was read"
+    );
+    assert!(
+        refused.is_retryable(),
+        "an outage heals; an absent bag does not"
+    );
+}
+
+/// Preflight refuses an API URL that cannot form a callback, so this arm is the
+/// belt to its braces: should one arrive, the scheduler is built to match no
+/// fire and the log says why, rather than registering a truncated callback.
+#[tokio::test]
+async fn an_api_url_that_cannot_form_a_callback_leaves_a_line_saying_so() {
+    let capture = Capture::install();
+
+    let _scheduler = super::platform::qstash(
+        &afd_db::test_util::unreachable_db(),
+        &Arc::new(Kek::from_bytes([0x2a; 32])),
+        None,
+        crate::plane::ScheduleConfig {
+            client: reqwest::Client::new(),
+            api_url: "not a url".into(),
+        },
+    );
+
+    let logged = capture.only("scheduler_callback_unusable");
+    assert_eq!(
+        logged.field("error_code"),
+        Some(af_core::error_code::INTERNAL_OPERATION_FAILED.as_str())
+    );
 }
 
 /// The wake listener `ServingPlane::new` builds hears the NATS wake ring: a

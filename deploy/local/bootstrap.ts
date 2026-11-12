@@ -18,6 +18,12 @@ const PLATFORM_KEYS = "/v1/admin/platform-keys";
 const GITHUB_FIELDS = ["app_id", "app_slug", "client_id", "client_secret", "private_key_pem", "webhook_secret"];
 const SIGNING_SECRET = "approval-signing";
 const SIGNING_BYTES = 32;
+const SCHEDULER_BAG = "qstash";
+/** The local QStash emulator's fixed login, as `@upstash/qstash-cli dev` ships it. */
+const EMULATOR_LOGIN = {UserID: "defaultUser", Password: "defaultPassword"};
+const emulatorKeysSchema = z.object({current: z.string().min(1), next: z.string().min(1)});
+const portSchema = z.string().regex(/^[0-9]+$/);
+const EMULATOR_SILENT = "the local QStash emulator did not answer its signing keys; start the shared infrastructure first";
 const registrationSchema = z.object({ runner_id: z.uuidv7(), runner_token: z.string().startsWith("agt_r") });
 const runnerPageSchema = z.object({items: z.array(z.object({host_id: z.string()})), next_cursor: z.string().min(1).nullable()});
 type Request = <T>(method: string, path: string, body?: unknown) => Promise<T>;
@@ -132,6 +138,23 @@ export async function configureSigning(request: Request, workspaceId: string, co
   await saveSecret(request, workspaceId, SIGNING_SECRET, {webhook_secret: randomBytes(SIGNING_BYTES).toString("hex")});
 }
 
+/** The fixture's scheduler credentials, read from the local QStash emulator on `port`; retries keep the first bag. */
+export async function configureScheduler(request: Request, workspaceId: string, port: string, configuredWorkspace?: string): Promise<void> {
+  if (configuredWorkspace && configuredWorkspace !== workspaceId) return;
+  const url = `http://127.0.0.1:${portSchema.parse(port)}/v2`;
+  const token = Buffer.from(JSON.stringify(EMULATOR_LOGIN)).toString("base64");
+  let answer: Response;
+  try {
+    answer = await fetch(`${url}/keys`, {headers: {Authorization: `Bearer ${token}`}, signal: AbortSignal.timeout(TIMEOUT_MS)});
+  } catch (error) {
+    throw new LocalBootstrapError(EMULATOR_SILENT, {cause: error});
+  }
+  if (!answer.ok) throw new LocalBootstrapError(EMULATOR_SILENT);
+  const keys = emulatorKeysSchema.parse(await answer.json());
+  await saveSecret(request, workspaceId, SCHEDULER_BAG,
+    {token, url, current_signing_key: keys.current, next_signing_key: keys.next});
+}
+
 async function requireFreshHost(request: Request, host: string): Promise<void> {
   const seen = new Set<string>();
   let cursor: string | null = null;
@@ -194,6 +217,7 @@ export async function bootstrap(): Promise<void> {
     const workspaceId = await workspace(request);
     await configureModel(request, workspaceId);
     await configureSigning(request, workspaceId, process.env.PLATFORM_ADMIN_WORKSPACE_ID);
+    await configureScheduler(request, workspaceId, process.env.AGENTSFLEET_QSTASH_HOST_PORT ?? "", process.env.PLATFORM_ADMIN_WORKSPACE_ID);
     if (process.env.PLATFORM_ADMIN_WORKSPACE_ID) {
       const entries = await request<{ configured: boolean }[]>(HTTP_METHOD.get, `/v1/workspaces/${workspaceId}/connectors`);
       if (!entries.some(entry => entry.configured))
@@ -203,7 +227,7 @@ export async function bootstrap(): Promise<void> {
       await persistWorkspace(envFile, workspaceId);
     }
     await enroll(request, base, namespace, record);
-    console.log("Local platform model, connector and runner configuration ready.");
+    console.log("Local platform model, connector, scheduler and runner configuration ready.");
   } finally {
     await revokeSession(session.sessionId);
   }

@@ -13,8 +13,8 @@ use std::sync::Arc;
 use af_core::test_util::trace::{Capture, CapturedEvent};
 use afd_credential::credential::{Ask, Broker, Exchanger, Minted, Outcome};
 use afd_credential::secrets::connector::{Connector, Registry};
-use afd_credential::vault::KeyRef;
 use afd_db::Db;
+use afd_vault::SecretName;
 use serde_json::Value;
 use tracing::Level;
 use zeroize::Zeroizing;
@@ -117,10 +117,10 @@ async fn stored(fixtures: &Fixtures, owner: &Bound) -> Value {
     let held = fixtures
         .plane()
         .vault
-        .open(KeyRef {
-            workspace_id: &owner.workspace,
-            name: CONNECTOR_ZOHO,
-        })
+        .load(
+            &owner.workspace,
+            &SecretName::parse(CONNECTOR_ZOHO).expect("a valid connector name"),
+        )
         .await
         .expect("the vault answers")
         .expect("the handle is still stored");

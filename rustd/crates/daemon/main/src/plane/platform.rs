@@ -1,6 +1,7 @@
 //! The stores that open this deployment's own platform credentials in the
-//! admin workspace: the connect flow, which also seals a tenant's handle, and
-//! the invite mailer, which reads the `smtp-relay` bag.
+//! admin workspace: the connect flow, which also seals a tenant's handle, the
+//! invite mailer, which reads the `smtp-relay` bag, and the scheduler client,
+//! which reads the `qstash` bag.
 
 use std::sync::Arc;
 
@@ -58,6 +59,34 @@ pub(super) fn invite_mailer(database: &Db, kek: &Arc<Kek>) -> InviteMailer {
         database.clone(),
         Arc::clone(kek),
         Entropy::new(),
+    ))
+}
+
+/// The scheduler this deployment ships, behind the [`afd_cron::Scheduler`]
+/// seam, over its own reader of the admin workspace's vault.
+///
+/// Its own `Vault` value for the reason the invite mailer's is one: it opens
+/// this deployment's `qstash` bag and nothing a tenant stored.
+pub(super) fn qstash(
+    database: &Db,
+    kek: &Arc<Kek>,
+    admin: Option<af_core::id::Uuid7>,
+    schedule: super::ScheduleConfig,
+) -> Arc<dyn afd_cron::Scheduler> {
+    // Preflight refuses an api url that cannot form a callback, so this holds.
+    // Should it ever not, the empty string matches no token's subject and every
+    // fire is refused, rather than registering a truncated callback.
+    let destination =
+        afd_cron::qstash::destination_url(&schedule.api_url).unwrap_or_else(|refused| {
+            let error_code = refused.code().as_str();
+            tracing::error!(event = "scheduler_callback_unusable", error_code);
+            String::new()
+        });
+    Arc::new(afd_cron::QStash::new(
+        schedule.client,
+        SecretVault::new(database.clone(), Arc::clone(kek), Entropy::new()),
+        admin,
+        destination,
     ))
 }
 

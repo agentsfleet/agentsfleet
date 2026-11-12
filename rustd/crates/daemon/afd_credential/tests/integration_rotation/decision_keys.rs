@@ -2,11 +2,12 @@
 
 use std::{error::Error as _, sync::Arc};
 
-use af_core::{error_code, json::Unreadable};
+use af_core::error_code;
 use af_crypto::entropy::Entropy;
 use af_wire::decision::DecisionApi;
 use afd_credential::provider::Providers;
 use afd_db::{config::DbRole, test_util::TestDatabase};
+use afd_vault::bag::BagFault;
 use afd_vault::{Deleted, SecretBody, SecretName, Vault};
 use serde_json::{Value, json, value::RawValue};
 
@@ -143,8 +144,8 @@ async fn decision_apis_resolve_distinct_fixed_bags_and_refuse_unusable_bodies() 
             .expect_err("unusable credential");
         assert_eq!(refused.code(), error_code::INTERNAL_OPERATION_FAILED);
         assert!(refused.is_config_permanent());
-        let cause = refused.source().expect("redacted parsing cause");
-        assert!(cause.downcast_ref::<Unreadable>().is_some());
+        let cause = refused.source().expect("a typed, value-free cause");
+        assert_eq!(cause.downcast_ref::<BagFault>(), Some(&BagFault::Malformed));
         assert!(!format!("{refused:?} {cause}").contains("must-not-appear"));
     }
     writer

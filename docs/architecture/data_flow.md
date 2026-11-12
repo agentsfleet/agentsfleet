@@ -552,8 +552,9 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
                customer-data-plane only.
 
    CRON      QStash calls POST /v1/ingress/qstash/schedules
-               → agentsfleetd verifies the signature with its boot-loaded
-                 current or next signing key
+               → agentsfleetd verifies the signature with the current or
+                 next signing key it reads from the admin workspace's
+                 `qstash` bag
                → resolves the schedule header and checks current schedule/Fleet state
                → INSERT fleet.admissions with the scheduler replay key
                       actor=cron:<schedule_id>  type=cron

@@ -28,13 +28,18 @@
 //! asks. That is why [`Mintable`] has two fields and no third.
 
 pub mod connector;
+mod inspect;
+mod rotate;
+
+pub use self::inspect::{CredentialInspection, inspect_on};
+pub use self::rotate::{Rotated, rotate_refresh_token};
 
 use af_core::error_code;
 use af_core::id::Uuid7;
 use serde_json::{Map, Value};
 
 use crate::error::{Result, credential_missing, vault_data_invalid};
-use crate::vault::{Held, Vault};
+use afd_vault::{SecretName, Vault};
 
 pub use self::connector::{Connector, Connectors, Descriptor, Exchange, Registry, Supply};
 
@@ -111,39 +116,43 @@ impl core::fmt::Debug for Declared {
     }
 }
 
-impl Vault {
-    /// Resolve `names` in `workspace_id` and route each to its channel.
-    ///
-    /// ONE vault read for the whole set. A per-name loop would cost a round
-    /// trip per declared credential, which for a fleet declaring six is six
-    /// times the latency for a set the statement can fetch at once.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer, a declared name the vault
-    /// does not hold, and a stored body that is not a JSON object. All three
-    /// end the event: a fleet must never run with a credential it declared and
-    /// cannot read, because the tool that needs it will fail mid-run instead —
-    /// after the work has been billed.
-    pub async fn declared(
-        &self,
-        workspace_id: &Uuid7,
-        names: &[&str],
-        connectors: &dyn Connectors,
-    ) -> Result<Declared> {
-        let held = self.open_many(workspace_id, names).await?;
-        names
-            .iter()
-            .try_fold(Declared::default(), |mut declared, name| {
-                let body = find(&held, name)
-                    .ok_or_else(|| missing(workspace_id, name))?
-                    .plaintext
-                    .expose();
-                let stored: Value =
-                    serde_json::from_slice(body).map_err(|_shape| vault_data_invalid())?;
-                declared.route((*name).to_owned(), stored, connectors)?;
-                Ok(declared)
-            })
-    }
+/// Resolve `names` in `workspace_id` and route each to its channel.
+///
+/// ONE vault read for the whole set. A per-name loop would cost a round
+/// trip per declared credential, which for a fleet declaring six is six
+/// times the latency for a set the statement can fetch at once.
+///
+/// # Errors
+/// Reports a datastore that would not answer, a declared name the vault
+/// does not hold, and a stored body that is not a JSON object. All three
+/// end the event: a fleet must never run with a credential it declared and
+/// cannot read, because the tool that needs it will fail mid-run instead —
+/// after the work has been billed.
+pub async fn declared(
+    vault: &Vault,
+    workspace_id: &Uuid7,
+    names: &[&str],
+    connectors: &dyn Connectors,
+) -> Result<Declared> {
+    // A name the vault would refuse is one it cannot hold: dropped here, it is
+    // reported below as missing, which fails the event closed.
+    let valid: Vec<SecretName> = names
+        .iter()
+        .filter_map(|name| SecretName::parse(name).ok())
+        .collect();
+    let held = vault.load_many(workspace_id, &valid).await?;
+    names
+        .iter()
+        .try_fold(Declared::default(), |mut declared, name| {
+            let body = held
+                .get(*name)
+                .ok_or_else(|| missing(workspace_id, name))?
+                .expose();
+            let stored: Value =
+                serde_json::from_slice(body).map_err(|_shape| vault_data_invalid())?;
+            declared.route((*name).to_owned(), stored, connectors)?;
+            Ok(declared)
+        })
 }
 
 impl Declared {
@@ -201,15 +210,6 @@ impl Declared {
     }
 }
 
-/// The credential stored under `name`, if the batch read returned one.
-///
-/// Linear, deliberately: the declared set is bounded by what a fleet author
-/// wrote in one file, and comparing a handful of names is cheaper than building
-/// a map to look them up in.
-fn find<'a>(held: &'a [Held], name: &str) -> Option<&'a Held> {
-    held.iter().find(|entry| &*entry.name == name)
-}
-
 /// Reports a declared credential the vault does not hold.
 fn missing(workspace_id: &Uuid7, name: &str) -> crate::Error {
     let code = error_code::AGENTSFLEET_CREDENTIAL_MISSING.as_str();
@@ -230,8 +230,61 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{Declared, Registry};
+    use super::{Declared, Registry, Rotated, declared, rotate_refresh_token};
+    use af_core::error_code;
+    use af_core::id::Uuid7;
     use serde_json::json;
+
+    /// A vault over a pool that never connects: a case that reaches it fails.
+    fn unreachable_vault() -> afd_vault::Vault {
+        afd_vault::Vault::new(
+            afd_db::test_util::unreachable_db(),
+            std::sync::Arc::new(af_crypto::secret::Kek::from_bytes([0x2a; 32])),
+            af_crypto::entropy::Entropy::new(),
+        )
+    }
+
+    fn workspace() -> Uuid7 {
+        Uuid7::parse("0195b4ba-8d3a-7f13-8abc-2b3e1e0c1011").expect("a fixture identifier")
+    }
+
+    /// Most fleets declare no credential, and a delivery for one must not take
+    /// a pooled connection to learn that.
+    #[tokio::test]
+    async fn a_fleet_declaring_no_credential_reads_nothing_from_the_vault() {
+        let none = declared(&unreachable_vault(), &workspace(), &[], &Registry)
+            .await
+            .expect("an empty declaration needs no datastore");
+
+        assert!(none.secrets_map().is_empty());
+        let mintable = none.mintable();
+        assert!(mintable.is_empty(), "{mintable:?}");
+    }
+
+    /// A name the vault refuses cannot be held, so it is a missing credential
+    /// that ends the event, found without a read.
+    #[tokio::test]
+    async fn a_declared_name_the_vault_refuses_is_a_missing_credential() {
+        let refused = declared(&unreachable_vault(), &workspace(), &[""], &Registry)
+            .await
+            .expect_err("a refused name holds no credential");
+
+        assert_eq!(refused.code(), error_code::AGENTSFLEET_CREDENTIAL_MISSING);
+    }
+
+    /// A refused name holds no row to write a rotated token into, and says so
+    /// before it asks the datastore anything.
+    #[tokio::test]
+    async fn a_rotation_into_a_name_the_vault_refuses_is_skipped_without_a_read() {
+        for name in ["", &"n".repeat(65)] {
+            let rotated =
+                rotate_refresh_token(&unreachable_vault(), &workspace(), name, "posted", "next")
+                    .await
+                    .expect("a refused name is skipped, not failed");
+
+            assert_eq!(rotated, Rotated::SkippedStale, "{name:?}");
+        }
+    }
 
     /// Routes `stored` under `name`, which is the whole of what the batch read
     /// hands the split — so the split is provable with no vault.

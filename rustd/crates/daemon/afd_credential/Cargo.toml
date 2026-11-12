@@ -1,6 +1,6 @@
 [package]
 name = "afd_credential"
-description = "What a run may use and how it reaches it: the declared secrets, the vault that opens them, the provider they dial, and the short-lived credential a broker mints."
+description = "What a run may use and how it reaches it: the declared secrets, the provider they dial, and the short-lived credential a broker mints."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -25,12 +25,14 @@ afd_billing.workspace = true
 afd_admin.workspace = true
 af_core = { workspace = true, features = ["sqlx"] }
 af_inference.workspace = true
-# Opening a sealed handle.
+# The secret types a handle is edited through, and the key and entropy source
+# the provider store builds its vault from.
 af_crypto.workspace = true
-# The key-less half of the secret store. The registry page renders provider,
-# kind, endpoint and key PRESENCE for a page of entries, and reads them through
-# `Directory` — a type with no key field — so "a registry page decrypts nothing"
-# is a property of the reader rather than of the path.
+# The secret store: by-name and locked reads, share-locked inspection, the
+# refresh-token rewrite and the typed bag reader. The registry page renders
+# provider, kind, endpoint and key PRESENCE for a page of entries through its
+# `Directory` — a type with no key field — so "a registry page decrypts
+# nothing" is a property of the reader rather than of the path.
 afd_vault.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
@@ -87,4 +89,3 @@ axum.workspace = true
 # committed.
 rcgen.workspace = true
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
-tracing-subscriber.workspace = true

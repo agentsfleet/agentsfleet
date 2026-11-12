@@ -311,9 +311,7 @@ jobs:
           RUNNER_STREAM_CERTIFICATE_CHAIN: op://${{ vars.VAULT_PROD }}/agentsfleet-runner-stream/certificate-chain
           RUNNER_STREAM_PRIVATE_KEY: op://${{ vars.VAULT_PROD }}/agentsfleet-runner-stream/private-key
           AUTH_SESSION_CODE_PEPPER: op://${{ vars.VAULT_PROD }}/auth-session-code-pepper/credential
-          APPROVAL_SIGNING_SECRET: op://${{ vars.VAULT_PROD }}/approval-signing-secret/credential
           POSTHOG_API_KEY: op://${{ vars.VAULT_PROD }}/posthog-prod/credential
-          CLERK_PUBLISHABLE_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/publishable-key
           CLERK_SECRET_KEY: op://${{ vars.VAULT_PROD }}/clerk-prod/secret-key
           CLERK_WEBHOOK_SECRET: op://${{ vars.VAULT_PROD }}/clerk-prod/webhook-secret
           GRAFANA_OTLP_ENDPOINT: op://${{ vars.VAULT_PROD }}/grafana-prod/otlp-endpoint
@@ -385,13 +383,10 @@ jobs:
             RUNNER_STREAM_TLS_CERT_BASE64="$stream_chain" \
             RUNNER_STREAM_TLS_KEY_BASE64="$stream_key" \
             AUTH_SESSION_CODE_PEPPER="$AUTH_SESSION_CODE_PEPPER" \
-            APPROVAL_SIGNING_SECRET="$APPROVAL_SIGNING_SECRET" \
             POSTHOG_API_KEY="$POSTHOG_API_KEY" \
-            CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE_KEY" \
             CLERK_SECRET_KEY="$CLERK_SECRET_KEY" \
             CLERK_WEBHOOK_SECRET="$CLERK_WEBHOOK_SECRET" \
             OIDC_ISSUER="$OIDC_ISSUER" \
-            OIDC_PROVIDER="clerk" \
             OIDC_AUDIENCE="https://api.agentsfleet.net" \
             OTEL_EXPORTER_OTLP_ENDPOINT="$OTLP_COLLECTOR_ENDPOINT" \
             OTEL_EXPORTER_OTLP_HEADERS="Authorization=Basic $otlp_ingest" \
@@ -504,14 +499,15 @@ jobs:
       # Placed earlier, its fail-fast curl would abort the release for exactly
       # the condition the tunnel step above exists to repair.
       #
-      # `approval-signing` is the deployment-level HMAC key. The retired daemon
-      # read it from APPROVAL_SIGNING_SECRET in the environment; `agentsfleetd`
-      # reads it as an admin-workspace vault row. The Fly secret staged above is
-      # still set for anything reading the environment, but it is NOT what the
-      # connector flow resolves — without this row every provider answers 503
-      # UZ-CONN-001 on a deployment whose Fly secret is set and correct.
+      # `approval-signing` is the deployment-level HMAC key. `agentsfleetd` reads
+      # it as an admin-workspace vault row, never from the environment; without
+      # it every provider answers 503 UZ-CONN-001. `qstash` is the scheduler's
+      # token and signing keys, read the same way; without it no schedule
+      # registers and every fire is refused.
       - name: Seed platform vault secrets
-        run: ENV=prod ./playbooks/lib/platform_secret_sync.sh approval-signing
+        run: |
+          ENV=prod ./playbooks/lib/platform_secret_sync.sh approval-signing
+          ENV=prod ./playbooks/lib/platform_secret_sync.sh qstash
         env:
           OP_SERVICE_ACCOUNT_TOKEN: ${{ secrets.OP_SERVICE_ACCOUNT_TOKEN }}
           VAULT: ${{ vars.VAULT_PROD }}

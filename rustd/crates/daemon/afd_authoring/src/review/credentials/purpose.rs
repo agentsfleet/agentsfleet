@@ -1,7 +1,7 @@
 //! A shared vault name must satisfy every runtime use the candidate declares.
 
 use af_fleet_runtime::config::Trigger;
-use afd_credential::{secrets::connector::SLACK_INTEGRATION, vault::CredentialInspection};
+use afd_credential::secrets::{CredentialInspection, connector::SLACK_INTEGRATION};
 use std::collections::BTreeMap;
 
 use crate::types::{Candidate, Requirements};

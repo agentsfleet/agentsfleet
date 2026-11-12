@@ -111,10 +111,7 @@ impl Github {
         let handle = self
             .plane
             .vault
-            .open(afd_credential::vault::KeyRef {
-                workspace_id: &scope.workspace_id,
-                name: "github",
-            })
+            .find(&scope.workspace_id, "github")
             .await?
             .ok_or(super::TaskRefusal::InvalidTarget)?;
         let handle: serde_json::Value =

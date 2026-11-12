@@ -7,7 +7,6 @@ use afd_credential::{
     credential::{Broker, Vendors, platform::Platform},
     provider::Providers,
     secrets::Registry,
-    vault::Vault,
 };
 use afd_fleet::lease::{LeaseService, Leases, Settled, sql::meter::Metering, usage::Pricing};
 use afd_memory::Memories;
@@ -103,7 +102,11 @@ impl Fixtures {
             )),
             memories: Memories::new(self.database.clone(), Entropy::new()),
             providers: Providers::new(self.database.clone(), Arc::clone(&kek), Entropy::new()),
-            vault: Vault::new(self.database.clone(), kek),
+            vault: afd_vault::Vault::new(
+                self.database.clone(),
+                kek,
+                af_crypto::entropy::Entropy::new(),
+            ),
             // `Registry::default()`, not a literal: the type is `#[non_exhaustive]`
             // so only the crate that owns it may name its fields — which is the
             // point of the attribute, and the reason the daemon builds one the

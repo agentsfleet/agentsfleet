@@ -27,7 +27,6 @@ use afd_api::router::{Dependencies, ReadyInputs};
 use afd_approval::IntegrationGrants;
 use afd_billing::Accounts;
 use afd_credential::provider::Providers;
-use afd_credential::vault::Vault;
 use afd_events::History;
 use afd_fleet::lease::{LeaseService, Leases};
 use afd_gate::gate::Gates;
@@ -35,6 +34,7 @@ use afd_memory::Memories;
 use afd_runner::Runners;
 use afd_sse::Live;
 use afd_state::Credentials;
+use afd_vault::Vault;
 
 use crate::identity::{Capabilities, Sessions, SignupWriteback};
 use crate::probes::LiveDependencies;
@@ -154,6 +154,7 @@ impl ServingPlane {
             &kek,
             surfaces::OutboundParts {
                 schedule: parts.schedule,
+                admin: parts.platform_admin_workspace.clone(),
                 admissions: common.admissions,
                 vendor_client: parts.vendor_client,
                 slack_api_base: parts.slack_api_base,
@@ -248,7 +249,7 @@ fn lease_plane(
         // The thread a chat lease reads its earlier turns from: the rows the
         // dashboard thread shows, through the same reader.
         thread: Arc::new(History::new(database.clone())),
-        vault: Vault::new(database, kek),
+        vault: Vault::new(database, kek, Entropy::new()),
         broker,
     }
 }

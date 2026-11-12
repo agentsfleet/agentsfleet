@@ -18,13 +18,15 @@
 
 use std::collections::BTreeMap;
 
-use af_core::error_code::{Coded as _, Logged};
+use af_core::error_code::{self, Coded as _, Logged};
 use af_core::id::Uuid7;
 use serde::Deserialize;
 use zeroize::Zeroizing;
 
 use crate::secrets::connector::{Connector as _, Exchange, Registry};
-use crate::vault::{KeyRef, Vault};
+use af_crypto::secret::SecretString;
+use afd_vault::Vault;
+use afd_vault::bag::{Bag, BagFault, filled, parsed, secret, usable};
 
 /// This deployment's GitHub App.
 ///
@@ -136,24 +138,23 @@ const APP_KEY_STEM: &str = "-app";
 /// A GitHub App as its vault row states it.
 ///
 /// The id is read as a STRING because that is what the connect callback wrote,
-/// and parsed here — a row holding `"7"` and a row holding `7` are the same App
-/// to an operator, and refusing one of them would be refusing a row this
-/// product itself produced.
-#[derive(Debug, Deserialize)]
+/// and parsed here. A JSON number is refused: no path of this product writes
+/// one, and accepting it would hide a row someone typed by hand.
+#[derive(Deserialize)]
 struct StoredGithubApp {
-    /// The numeric App id, however the row spells it.
-    app_id: String,
+    /// The numeric App id, spelled as text.
+    app_id: Option<String>,
     /// The App's RSA private key.
-    private_key_pem: String,
+    private_key_pem: Option<SecretString>,
 }
 
 /// An OAuth client as its vault row states it.
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 struct StoredOauthApp {
     /// The public half.
-    client_id: String,
+    client_id: Option<String>,
     /// The half that authenticates the refresh grant.
-    client_secret: String,
+    client_secret: Option<SecretString>,
 }
 
 impl Platform {
@@ -174,22 +175,15 @@ impl Platform {
         for declared in Registry.declared() {
             let name = declared.name();
             let key = format!("{name}{APP_KEY_STEM}");
-            let Some(row) = read(vault, admin_workspace, &key).await else {
-                continue;
-            };
             match declared.exchange() {
                 Exchange::GithubApp => {
-                    if let Some(app) = github_app(&row) {
+                    if let Some(GithubRow(app)) = read(vault, admin_workspace, &key).await {
                         platform = platform.with_github(app);
-                    } else {
-                        unusable(&key);
                     }
                 }
                 Exchange::OAuthRefresh { .. } => {
-                    if let Some(app) = oauth_app(&row) {
+                    if let Some(OauthRow(app)) = read(vault, admin_workspace, &key).await {
                         platform = platform.with_oauth(name, app);
-                    } else {
-                        unusable(&key);
                     }
                 }
                 // Nothing to exchange, so nothing for this deployment to hold.
@@ -200,15 +194,47 @@ impl Platform {
     }
 }
 
-/// One platform credential's stored bytes, or nothing readable.
-async fn read(vault: &Vault, admin_workspace: &Uuid7, key: &str) -> Option<Vec<u8>> {
-    let held = vault
-        .open(KeyRef {
-            workspace_id: admin_workspace,
-            name: key,
-        })
-        .await
-        .inspect_err(|error| {
+/// A GitHub App row, as the `afd_vault::bag` standard reads it.
+struct GithubRow(GithubApp);
+
+impl Bag for GithubRow {
+    type Stored = StoredGithubApp;
+
+    fn from_stored(stored: StoredGithubApp) -> Result<Self, BagFault> {
+        Ok(Self(GithubApp {
+            app_id: parsed(stored.app_id, "app_id")?,
+            private_key_pem: zeroizing(&secret(stored.private_key_pem, "private_key_pem")?),
+        }))
+    }
+}
+
+/// An OAuth client row, as the `afd_vault::bag` standard reads it.
+struct OauthRow(OauthApp);
+
+impl Bag for OauthRow {
+    type Stored = StoredOauthApp;
+
+    fn from_stored(stored: StoredOauthApp) -> Result<Self, BagFault> {
+        Ok(Self(OauthApp {
+            client_id: filled(stored.client_id, "client_id")?,
+            client_secret: zeroizing(&secret(stored.client_secret, "client_secret")?),
+        }))
+    }
+}
+
+/// A secret field as the `Zeroizing<String>` the mint holds.
+fn zeroizing(value: &SecretString) -> Zeroizing<String> {
+    Zeroizing::new(value.expose().to_owned())
+}
+
+/// One platform credential, parsed, or nothing usable.
+///
+/// An absent row is an unconfigured connector and says nothing; a row that
+/// will not open, or opens and fails its schema, leaves a line saying why.
+async fn read<B: Bag>(vault: &Vault, admin_workspace: &Uuid7, key: &str) -> Option<B> {
+    match vault.bag::<B>(Some(admin_workspace), key).await {
+        Ok(read) => usable_row(read, key),
+        Err(error) => {
             let Logged { error_code, reason } = error.logged();
             tracing::warn!(
                 key,
@@ -217,41 +243,23 @@ async fn read(vault: &Vault, admin_workspace: &Uuid7, key: &str) -> Option<Vec<u
                 event = "platform_credential_unreadable",
                 "a platform credential row would not open; that connector will not mint"
             );
-        })
-        .ok()??;
-    Some(held.expose().to_vec())
+            None
+        }
+    }
 }
 
-/// The App a row describes, if it describes one completely.
-fn github_app(row: &[u8]) -> Option<GithubApp> {
-    let stored: StoredGithubApp = serde_json::from_slice(row).ok()?;
-    Some(GithubApp {
-        app_id: stored.app_id.parse().ok()?,
-        private_key_pem: Zeroizing::new(stored.private_key_pem),
-    })
+/// A row read down to its value. One that exists and cannot be used leaves a
+/// line naming the field at fault, where an absent one says nothing: an operator
+/// who stored a credential and mistyped a field has no other way to find out,
+/// and the mint that fails later says only that this deployment is not set up.
+fn usable_row<B>(read: Result<B, BagFault>, key: &str) -> Option<B> {
+    let error_code = error_code::CRED_BROKER_NOT_CONFIGURED.as_str();
+    usable(read, key, EVENT_INCOMPLETE, error_code)
 }
 
-/// The OAuth client a row describes, if it describes one completely.
-fn oauth_app(row: &[u8]) -> Option<OauthApp> {
-    let stored: StoredOauthApp = serde_json::from_slice(row).ok()?;
-    Some(OauthApp {
-        client_id: stored.client_id,
-        client_secret: Zeroizing::new(stored.client_secret),
-    })
-}
-
-/// Reports a row that exists and cannot be used.
-///
-/// Worth a line where an absent row is not: an operator who stored a credential
-/// and mistyped a field has no other way to find out, and the mint that fails
-/// later says only that this deployment is not set up.
-fn unusable(key: &str) {
-    tracing::warn!(
-        key,
-        event = "platform_credential_incomplete",
-        "a platform credential row is missing a field; that connector will not mint"
-    );
-}
+/// A platform credential row exists and cannot be used; that connector will not
+/// mint.
+const EVENT_INCOMPLETE: &str = "platform_credential_incomplete";
 
 #[cfg(test)]
 mod tests;
