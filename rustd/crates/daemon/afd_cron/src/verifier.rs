@@ -148,6 +148,9 @@ pub fn verify_at(
 
     let mut validation = Validation::new(EXPECTED_ALGORITHM);
     validation.set_issuer(&[EXPECTED_ISSUER]);
+    // Checked only when present unless required: a signed token with no issuer or
+    // no subject would otherwise skip both checks. A fire carries all three.
+    validation.set_required_spec_claims(&["exp", "iss", "sub"]);
     validation.sub = Some(destination.to_owned());
     // The crate's 10.x default REJECTS a token carrying any `aud` — see the
     // module note. This surface has no audience to check, so the check is
@@ -191,6 +194,12 @@ pub fn verify_at(
         return Err(error::signature_invalid(cause));
     };
 
+    // `jti` is the at-most-once claim key: an empty one would let every fire share
+    // a single key, so it counts as absent.
+    if decoded.claims.jti.is_empty() {
+        return Err(error::signature_invalid(Rejected::Claims));
+    }
+
     if !body_matches(&decoded.claims.body, body) {
         return Err(error::body_mismatch());
     }
@@ -213,10 +222,13 @@ pub fn verify_at(
 /// and what must not leak is how many characters of it matched.
 fn body_matches(claimed: &str, body: &[u8]) -> bool {
     let expected = base64_url_no_pad(&Sha256::digest(body));
-    // QStash pads the digest and its own SDKs strip the padding before they
-    // compare, so the claim is read the same way.
-    let claimed = claimed.trim_end_matches('=');
-    expected.as_bytes().ct_eq(claimed.as_bytes()).unwrap_u8() == 1
+    // The scheduler pads the digest it signs, and its own SDKs strip the padding
+    // before they compare. Accept exactly the digest, or the digest with the one
+    // `=` a 32-byte hash pads to; any other tail is not the scheduler's.
+    let padded = format!("{expected}=");
+    let same =
+        expected.as_bytes().ct_eq(claimed.as_bytes()) | padded.as_bytes().ct_eq(claimed.as_bytes());
+    same.unwrap_u8() == 1
 }
 
 /// The base64url, unpadded rendering the scheduler uses.
