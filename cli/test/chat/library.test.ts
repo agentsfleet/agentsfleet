@@ -97,7 +97,12 @@ for (const status of [401, 403, 404, 409, 410]) {
 
 test("removed bundle commands refuse before any server mutation", async () => {
   const seen: string[] = [];
-  await withApi((request) => { seen.push(request.method); return problem(500); }, async (_, origin) => {
+  // A root typo reads the caller's scopes for its suggestions; that read is
+  // not a mutation, so it is the one request this test lets through.
+  await withApi((request) => {
+    if (new URL(request.url).pathname !== "/v1/users/me") seen.push(request.method);
+    return problem(500);
+  }, async (_, origin) => {
     for (const argv of [["install", "--library", "argo"], ["library", "create", "--github", "acme/argo"],
       ["fleet", "update", LIBRARY_ID, "--from", "/tmp/argo"]]) {
       expect((await invoke(origin, argv)).code).not.toBe(0);

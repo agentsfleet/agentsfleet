@@ -5,6 +5,7 @@
  * Responds to:
  *   POST /v1/auth/sessions             → { session_id, login_url, status: "pending" }
  *   GET  /v1/auth/sessions/{id}        → { status: "pending" } (forever — caller decides when to interrupt)
+ *   GET  /v1/users/me                  → { scopes } when the policy sets `scopes` (counted)
  *
  * Everything else returns 404. No persistence, no auth, no concurrency
  * concerns — each test gets its own server bound to an ephemeral port.
@@ -17,17 +18,27 @@ export interface LocalStubPolicy {
   readonly sessionId?: string;
   readonly loginUrl?: string;
   readonly pollStatus?: string;
+  // When set, the identity read answers with these scopes; scoped help reads them.
+  readonly scopes?: ReadonlyArray<string>;
 }
 
 export interface LocalStubHandle {
   readonly baseUrl: string;
+  // How many identity reads the server has answered.
+  identityReads(): number;
   close(): Promise<void>;
 }
 
 export async function startLocalStubServer(opts?: LocalStubPolicy): Promise<LocalStubHandle> {
   const policy: LocalStubPolicy = opts ?? {};
+  let identityReads = 0;
   const server = http.createServer((req, res) => {
     const reqUrl = req.url ?? "";
+    if (req.method === "GET" && reqUrl === "/v1/users/me" && policy.scopes !== undefined) {
+      identityReads += 1;
+      respondJson(res, 200, { scopes: policy.scopes });
+      return;
+    }
     if (req.method === "POST" && reqUrl === "/v1/auth/sessions") {
       respondJson(res, 200, {
         session_id: policy.sessionId ?? "sess_stub_local",
@@ -53,6 +64,7 @@ export async function startLocalStubServer(opts?: LocalStubPolicy): Promise<Loca
 
   return {
     baseUrl,
+    identityReads: () => identityReads,
     close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }

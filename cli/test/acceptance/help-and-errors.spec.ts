@@ -17,6 +17,7 @@ import { UNROUTABLE_API_URL } from "./fixtures/constants.ts";
 import { runFleetctl, composeEnv } from "./fixtures/cli.js";
 import { makeStubbedStateDir, type StubbedStateDir } from "./fixtures/state-dir.ts";
 import { expectInvalidSubcommand, assertNoConnectionError } from "./fixtures/negatives.ts";
+import { startLocalStubServer } from "./fixtures/local-stub-server.ts";
 import {
   TELEMETRY_NOT_DISABLED,
   TELEMETRY_EXIT_BUDGET_MS,
@@ -274,3 +275,26 @@ describe("help DX surfaces (real binary)", () => {
     assert.ok(out.includes("agentsfleet chat --fleet <fleet_id>"), "fleet --help should name the improvement route");
   });
 });
+
+// The built binary, an environment key and a configured target: the path a
+// person's own terminal takes. The key is eligible because the target comes
+// from the environment, not from `--api` on the line.
+describe("built_binary_help_hides_platform_without_scope", () => {
+  const platformRow = /^ {2}platform\s/m;
+  for (const [scopes, shown] of [[[], false], [["model:read"], true]] as const) {
+    it(`${scopes.length === 0 ? "no scopes" : scopes.join(", ")} → platform ${shown ? "listed" : "absent"}`, async () => {
+      const stub = await startLocalStubServer({ scopes });
+      try {
+        const result = await runFleetctl(["--help"], {
+          env: emptyEnv({ AGENTSFLEET_API_URL: stub.baseUrl, AGENTSFLEET_API_KEY: "agt_t_acceptance_stub" }),
+        });
+        assert.equal(result.code, 0);
+        assert.equal(platformRow.test(result.stdout), shown);
+        assert.equal(stub.identityReads(), 1);
+      } finally {
+        await stub.close();
+      }
+    });
+  }
+});
+

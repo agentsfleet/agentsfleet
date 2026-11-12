@@ -13,6 +13,7 @@
 // Each scan stops at `--`, so a value after the end-of-flags marker is an
 // argument and never mistaken for the flag it is spelled like.
 
+import type { LogLevel } from "effect/LogLevel";
 import type { WritableStreamLike } from "../../output/capability.ts";
 import { printJson } from "../io.ts";
 import { printVersion } from "../banner.ts";
@@ -139,3 +140,30 @@ export function helpArgv(argv: readonly string[]): string[] {
   if (argv[at] !== HELP_COMMAND) return [...argv];
   return [...argv.slice(0, at), ...argv.slice(at + 1), HELP_FLAG];
 }
+
+const FLAG_LOG_LEVEL = "--log-level" as const;
+const FLAG_LOG_LEVEL_INLINE = "--log-level=" as const;
+// The parser's spellings, mapped to Effect's levels; `warning` is the parser's
+// alias for `warn`.
+const LOG_LEVELS: Readonly<Record<string, LogLevel>> = {
+  all: "All", trace: "Trace", debug: "Debug", info: "Info", warn: "Warn",
+  warning: "Warn", error: "Error", fatal: "Fatal", none: "None",
+};
+
+/**
+ * The `--log-level` argv names, for work that runs before the parser does.
+ *
+ * Identity discovery happens ahead of `Command.runWith`, which is where the
+ * parsed level is applied; without this, a debug record discovery made would
+ * be filtered at the default level and a test asserting its absence could not
+ * fail. An unknown value is left to the parser to refuse.
+ */
+export const scanLogLevel = (argv: ReadonlyArray<string>): LogLevel | undefined => {
+  for (const [index, token] of argv.entries()) {
+    if (token === END_OF_FLAGS) return undefined;
+    const value = token === FLAG_LOG_LEVEL ? argv[index + 1]
+      : token.startsWith(FLAG_LOG_LEVEL_INLINE) ? token.slice(FLAG_LOG_LEVEL_INLINE.length) : undefined;
+    if (value !== undefined) return LOG_LEVELS[value];
+  }
+  return undefined;
+};

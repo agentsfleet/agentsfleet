@@ -2,7 +2,8 @@ import { Option } from "effect";
 import { Command } from "effect/cli";
 import { platformModelDelete, platformModelShow, platformModelsList, platformModelWrite } from "../../commands/platform/models.ts";
 import { guardedHandler } from "./guarded-handler.ts";
-import { platformFileFlag, platformPagingFlags } from "./platform-flags.ts";
+import { grants, listedWhen, type Visibility } from "./visibility.ts";
+import { PLATFORM_SCOPE, platformFileFlag, platformPagingFlags } from "./platform-flags.ts";
 import { idArgument } from "./flags.ts";
 
 const opt = Option.getOrUndefined;
@@ -18,6 +19,17 @@ const update = Command.make("update", {...modelId, file: platformFileFlag}).pipe
 const remove = Command.make("delete", modelId).pipe(Command.withDescription("Delete a catalogue model (model:admin)"),
   guardedHandler(({id}) => platformModelDelete(id)));
 
-export const platformModelsCommand = () => Command.make("models").pipe(
-  Command.withDescription("Manage the shared model catalogue"), Command.withSubcommands([list, show, create, update, remove]),
-);
+export const platformModelsCommand = (visibility: Visibility) => {
+  const read = grants(visibility, PLATFORM_SCOPE.modelRead);
+  const admin = grants(visibility, PLATFORM_SCOPE.modelAdmin);
+  return {
+    listed: read || admin,
+    command: Command.make("models").pipe(
+      Command.withDescription("Manage the shared model catalogue"),
+      Command.withSubcommands([
+        listedWhen(read)(list), listedWhen(read)(show),
+        listedWhen(admin)(create), listedWhen(admin)(update), listedWhen(admin)(remove),
+      ]),
+    ),
+  };
+};
