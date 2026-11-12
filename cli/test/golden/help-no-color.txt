@@ -13,6 +13,10 @@ GLOBAL FLAGS
       Show help information
   --version, -v
       Show version information
+  --completions <bash|zsh|fish|powershell|sh|pwsh>
+      Print a static completion script; write it to a file and regenerate after
+      login, a target change or a permission change (choices: bash, zsh, fish,
+      powershell, sh, pwsh)
   --log-level <all|trace|debug|info|warn|warning|error|fatal|none>
       Sets the minimum log level (choices: all, trace, debug, info, warn,
       warning, error, fatal, none)
@@ -32,6 +36,4 @@ SUBCOMMANDS
   connections    Inspect workspace connectors
   api-keys       Manage tenant API keys
   usage          Balance and recent spend for this tenant
-  platform       Administer platform resources with your existing operator
-                 scopes
 Environment variables: https://docs.agentsfleet.net/cli/configuration

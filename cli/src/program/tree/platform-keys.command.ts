@@ -2,6 +2,8 @@ import { Option } from "effect";
 import { Argument, Command, Flag } from "effect/cli";
 import { platformKeysDelete, platformKeysList, platformKeysSet } from "../../commands/platform/keys.ts";
 import { guardedHandler } from "./guarded-handler.ts";
+import { PLATFORM_SCOPE } from "./platform-flags.ts";
+import { grants, listedWhen, type Visibility } from "./visibility.ts";
 import { baseUrlFlag, requiredIdFlag, requiredTextFlag } from "./flags.ts";
 
 const opt = Option.getOrUndefined;
@@ -18,6 +20,14 @@ const set = Command.make("set", {
 const remove = Command.make("delete", {provider: Argument.String("provider")}).pipe(Command.withDescription("Delete a platform provider default (platform-key:admin)"),
   guardedHandler(({provider}) => platformKeysDelete(provider)));
 
-export const platformKeysCommand = () => Command.make("keys").pipe(
-  Command.withDescription("Manage vault-backed platform defaults; keys are never revealed"), Command.withSubcommands([list, set, remove]),
-);
+export const platformKeysCommand = (visibility: Visibility) => {
+  const read = grants(visibility, PLATFORM_SCOPE.keyRead);
+  const admin = grants(visibility, PLATFORM_SCOPE.keyAdmin);
+  return {
+    listed: read || admin,
+    command: Command.make("keys").pipe(
+      Command.withDescription("Manage vault-backed platform defaults; keys are never revealed"),
+      Command.withSubcommands([listedWhen(read)(list), listedWhen(admin)(set), listedWhen(admin)(remove)]),
+    ),
+  };
+};

@@ -39,7 +39,10 @@ import { mainLayerFor } from "./runtime/main-layer.ts";
 import { makeCommandExitCode } from "./runtime/exit-code.service.ts";
 import { CommandGuard, GuardRefused } from "./runtime/guard.service.ts";
 import { withCommandInstrumentation } from "./services/telemetry/command-instrumentation.ts";
-import { detectJsonMode, helpArgv, maybePrintVersion, resolveGlobalApiUrl } from "./program/entry/argv-scan.ts";
+import { detectJsonMode, helpArgv, maybePrintVersion, resolveGlobalApiUrl, scanLogLevel } from "./program/entry/argv-scan.ts";
+import { DISCOVERY_TIMEOUT_MS, discoverVisibility } from "./program/entry/discovery.ts";
+import { completionsFlag } from "./program/tree/global-flags.ts";
+import { UNKNOWN_VISIBILITY } from "./program/tree/visibility.ts";
 import { consoleForStreams } from "./program/entry/console-bridge.ts";
 import { deferredHelp, type DeferredHelp } from "./program/entry/deferred-help.ts";
 import { helpFormatter } from "./program/entry/help-formatter.ts";
@@ -68,6 +71,8 @@ export interface RunCliIo {
   stdin?: NodeJS.ReadableStream;
   env?: NodeJS.ProcessEnv;
   fetchImpl?: typeof fetch;
+  // Bounds the identity read behind scoped help; tests shorten it.
+  discoveryTimeoutMs?: number;
 }
 
 export async function runCli(
@@ -103,11 +108,10 @@ export async function runCli(
   // Walked off the tree, not parsed: the layer carries the command path and
   // has to exist before the parser does. An invalid invocation yields the
   // deepest command that did resolve, which is the one whose help is coming.
-  // One tree per invocation: path resolution, the house rejection and the
-  // parser all read this value, so they cannot disagree about what exists.
-  const rootCommand = buildCommandTree();
-  const tree = rootCommand as unknown as CommandNode;
-  const commandPath = resolveCommandPath(tree, argv);
+  // The path is resolved on the fail-closed tree. Visibility only flips
+  // `unlisted`, never a name, so the path is the same in every tree.
+  const unknownTree = buildCommandTree(UNKNOWN_VISIBILITY);
+  const commandPath = resolveCommandPath(unknownTree as unknown as CommandNode, argv);
 
   // The refusal is DECIDED here, where the credential and target were
   // resolved, and ASKED by the tree after the parser has run — a mistyped flag
@@ -133,21 +137,40 @@ export async function runCli(
     }),
   });
 
-  const layer = mainLayerFor(
-    layerInputFor({
-      apiUrl,
-      dashboardUrl: resolveDashboardUrl(apiUrl, env[DASHBOARD_URL_ENV]),
-      apiKey,
-      jsonMode,
-      noOpen: false,
-      commandPath,
-      env,
-      stdout,
-      stderr,
-      stdin: io.stdin,
-      fetchImpl: io.fetchImpl as FetchImpl | undefined,
-    }),
-  );
+  const layerInput = layerInputFor({
+    apiUrl,
+    dashboardUrl: resolveDashboardUrl(apiUrl, env[DASHBOARD_URL_ENV]),
+    apiKey,
+    jsonMode,
+    noOpen: false,
+    commandPath,
+    env,
+    stdout,
+    stderr,
+    stdin: io.stdin,
+    fetchImpl: io.fetchImpl as FetchImpl | undefined,
+  });
+  const layer = mainLayerFor(layerInput);
+
+  // Help, typos at the root or under `platform`, and `--completions` read the
+  // caller's scopes once; every other invocation keeps the fail-closed tree
+  // and makes no extra request. One tree then feeds path-based rejection and
+  // the parser, so they cannot disagree about what exists.
+  const visibility = await Effect.runPromise(discoverVisibility({
+    argv,
+    tree: unknownTree as unknown as CommandNode,
+    apiUrl,
+    targetIsExplicit: Boolean(explicitApi),
+    apiKey,
+    config: layerInput.config ?? {},
+    env,
+    stdout,
+    stderr,
+    logLevel: scanLogLevel(argv),
+    timeoutMs: io.discoveryTimeoutMs ?? DISCOVERY_TIMEOUT_MS,
+  }));
+  const rootCommand = visibility._tag === "Unknown" ? unknownTree : buildCommandTree(visibility);
+  const tree = rootCommand as unknown as CommandNode;
 
   // One holder per invocation: two runs in one process must not read each
   // other's verdict, and every test file is two runs in one process.
@@ -202,7 +225,7 @@ export async function runCli(
     // was told.
     Effect.provideService(Console.Console, consoleForStreams(libraryStdout, stderr)),
     Effect.provide(CliOutput.layer(helpFormatter())),
-    Effect.provide(CliConfig.layer({ builtIns: [GlobalFlag.Help, GlobalFlag.Version, GlobalFlag.LogLevel] })),
+    Effect.provide(CliConfig.layer({ builtIns: [GlobalFlag.Help, GlobalFlag.Version, completionsFlag, GlobalFlag.LogLevel] })),
     Effect.provide(layer),
     Effect.provide(managedExitCode.layer),
     Effect.provide(guardLayer),

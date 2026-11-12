@@ -86,7 +86,8 @@ describe("removed_root_verbs_are_rejected", () => {
     const json = await record(["--json", verb]);
     expect(json.code).toBe(EXIT_USAGE);
     expect(JSON.parse(json.err).error.code).toBe("UNKNOWN_COMMAND");
-    expect(json.calls).toEqual([]);
+    // A root typo reads the caller's scopes for its suggestions, and nothing else.
+    expect(json.calls).toEqual([`GET /v1/users/me`]);
 
     const text = await record([verb]);
     expect(text.code).toBe(EXIT_USAGE);

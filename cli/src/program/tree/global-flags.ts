@@ -12,7 +12,7 @@
 // reads it. Declaring a flag on both a parent and a child is refused outright:
 // the parent would always claim it, and the child's copy would never fire.
 
-import { Flag } from "effect/cli";
+import { Flag, GlobalFlag } from "effect/cli";
 
 export const globalFlags = {
   api: Flag.String("api").pipe(
@@ -25,3 +25,16 @@ export const globalFlags = {
     Flag.withDefault(false),
   ),
 } as const;
+
+// The library's `--completions`, with a description that says what the script
+// is: a snapshot of what this credential could see when it was generated.
+// Sourcing `$(agentsfleet --completions zsh)` from an rc file would make an
+// identity read at every shell start, so the script belongs in a file.
+export const completionsFlag = GlobalFlag.Action({
+  flag: GlobalFlag.Completions.flag.pipe(
+    Flag.withDescription(
+      "Print a static completion script; write it to a file and regenerate after login, a target change or a permission change",
+    ),
+  ),
+  run: GlobalFlag.Completions.run,
+});
