@@ -79,7 +79,7 @@ describe("FleetThreadViewport offline notice", () => {
     const view = render(<View connectionStatus={CONNECTION_STATUS.OFFLINE} />);
     const notice = view.getByTestId("fleet-connection-notice");
     const footer = view.getByTestId("fleet-chat-footer");
-    expect(notice.parentElement).toBe(footer);
+    expect(notice.closest('[data-testid="fleet-chat-footer"]')).toBe(footer);
     expect(notice.closest(".absolute")).toBeNull();
     const composer = view.getByRole("form", { name: "Chat composer" });
     expect(notice.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

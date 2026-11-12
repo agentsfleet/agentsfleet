@@ -113,7 +113,19 @@ test("a native upload submission stays visible and a refusal returns its draft",
   } finally {respond.resolve();}
   await expect(page.getByText(/The file preview was not accepted/)).toBeVisible();
   await expect(composer).toHaveValue("Review this preview");
+  const filename = page.getByRole("form", {name: "Chat composer"}).getByText("notes.txt", {exact: true});
+  const filenameBox = await filename.boundingBox();
+  expect(filenameBox).not.toBeNull();
+  expect(filenameBox!.height).toBeLessThanOrEqual(24);
+  expect(filenameBox!.width).toBeGreaterThanOrEqual(48);
   await expect(page.getByText(/Upload preview · Not saved to fleet history/)).toHaveCount(0);
+  if (info.project.name === "chromium") {
+    const heading = await page.getByRole("heading", {name: "Summary", exact: true}).boundingBox();
+    const viewport = await page.getByTestId("fleet-thread-root").locator('[role="presentation"]').boundingBox();
+    expect(heading).not.toBeNull(); expect(viewport).not.toBeNull();
+    expect(heading!.y).toBeGreaterThanOrEqual(viewport!.y);
+    expect(heading!.y + heading!.height).toBeLessThanOrEqual(viewport!.y + viewport!.height);
+  }
   const screenshot = info.outputPath("upload-refused.png");
   await page.screenshot({path: screenshot, scale: "css", animations: "disabled"});
   await info.attach("upload-refused", {path: screenshot, contentType: "image/png"});

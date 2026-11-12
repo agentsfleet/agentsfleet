@@ -4,8 +4,8 @@ const built = await Bun.build({
   entrypoints: ["tests/e2e/fixtures/chat-browser-probe.tsx"], target: "browser", format: "esm", minify: true,
   define: {"process.env": "{}", "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_API_URL": '"https://api-test.agentsfleet.net"'},
   plugins: [{name: "server-action-http-boundary", setup(build) {
-    build.onResolve({filter: /^\.\.\/actions$|^@\/app\/\(dashboard\)\/w\/\[workspaceId\]\/secrets\/actions$/}, args => {
-      if (/settings\/(members|models)\/components\//.test(args.importer)) return {path: path.join(import.meta.dirname, "resource-settings-actions.ts")};
+    build.onResolve({filter: /^\.\.\/(actions|connector-actions)$|^@\/app\/\(dashboard\)\/w\/\[workspaceId\]\/secrets\/actions$/}, args => {
+      if (/settings\/(members|models|api-keys)\/components\/|\/(secrets|integrations)\/components\//.test(args.importer)) return {path: path.join(import.meta.dirname, "resource-settings-actions.ts")};
     });
     build.onResolve({filter: /^@\/lib\/auth\/(client|account-client)$/},
       () => ({path: path.join(import.meta.dirname, "visual-auth-fixture.tsx")}));
