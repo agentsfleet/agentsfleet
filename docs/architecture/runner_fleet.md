@@ -138,6 +138,7 @@ A runner's work becomes eligible when its slot expires. The next offer pass push
 | Failure | Recovery | Durable guard |
 |---|---|---|
 | Runner dies mid-lease | A later offer pass claims the same unsettled admission after its 35-second slot expires. | The slot and admission receive a higher fence; the old holder cannot write. |
+| Every lease of one event lapses | After three lapsed leases, the next claim ends the event as `fleet_error` with `lease_expired`. | The same transaction settles the admission, so the fleet's next event can run. |
 | Wake notification lost | The next 5 s recovery probe reads PostgreSQL without a hint. | Acceptance is already committed in `fleet.admissions`. |
 | Claim decoding fails | The transaction rolls back its slot and admission changes. | Both fences remain unchanged. |
 | Failure after claim commit | Release the claim where possible; otherwise wait for its deadline. | Every write verifies the current slot and admission fences. |
