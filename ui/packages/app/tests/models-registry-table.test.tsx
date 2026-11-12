@@ -4,10 +4,12 @@ import userEvent from "@testing-library/user-event";
 import { MODEL_REGISTRY_HEADER_ORDER, listModelEntriesActionMock, setProviderSelfManagedActionMock, resetProviderActionMock, entry, registry, renderTable, PLATFORM_LOCK } from "./helpers/models-registry-fixtures";
 
 describe("Models registry actions", () => {
-  it("renders Provider before Model in the registry table", async () => {
+  it("keeps the supported sort controls alongside the model cards", async () => {
     await renderTable(registry([entry({})]));
-    const headers = screen.getAllByRole("columnheader").map((h) => h.textContent);
-    expect(headers).toEqual([...MODEL_REGISTRY_HEADER_ORDER]);
+    await userEvent.setup().click(screen.getByRole("button", {name: "Sort models"}));
+    const controls = screen.getAllByRole("menuitem").map(item => item.textContent);
+    expect(controls).toEqual(MODEL_REGISTRY_HEADER_ORDER.slice(0, 4));
+    expect(screen.getAllByRole("article", {hidden: true})).toHaveLength(2);
   });
 
   it("renders N entries plus the pinned Default row first; sorting never unpins Default", async () => {
@@ -16,15 +18,16 @@ describe("Models registry actions", () => {
     );
     await renderTable(registry(entries));
 
-    const rows = screen.getAllByRole("row");
-    // 1 header row + 1 Default row + 9 entry rows.
-    expect(rows).toHaveLength(11);
-    expect(within(rows[1]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
+    const rows = screen.getAllByRole("article");
+    // One platform card and nine configured model cards.
+    expect(rows).toHaveLength(10);
+    expect(within(rows[0]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /^model$/i }));
-    const afterSort = screen.getAllByRole("row");
-    expect(within(afterSort[1]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
+    await user.click(screen.getByRole("button", {name: "Sort models"}));
+    await user.click(screen.getByRole("menuitem", { name: /^model(?:\s|$)/i }));
+    const afterSort = screen.getAllByRole("article");
+    expect(within(afterSort[0]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
   });
 
   it("Switch on an inactive row activates it with (secret_ref, model_id); no key input renders", async () => {
@@ -64,16 +67,16 @@ describe("Models registry actions", () => {
     // that did not exist — and the badge suppressed the warning. That tenant's
     // first fleet run fails PlatformKeyMissing.
     await renderTable(registry([], false));
-    const rows = screen.getAllByRole("row");
-    const defaultRow = within(rows[1]!);
+    const rows = screen.getAllByRole("article");
+    const defaultRow = within(rows[0]!);
     expect(defaultRow.queryByText("Active")).toBeNull();
     expect(screen.getByText("No default is configured.")).toBeTruthy();
   });
 
   it("shows Active on the Default row and no action button when nothing else is active", async () => {
     await renderTable(registry([]));
-    const rows = screen.getAllByRole("row");
-    const defaultRow = within(rows[1]!);
+    const rows = screen.getAllByRole("article");
+    const defaultRow = within(rows[0]!);
     expect(defaultRow.getByText("Active")).toBeTruthy();
     expect(defaultRow.queryByRole("button", { name: /use default/i })).toBeNull();
   });
@@ -88,15 +91,17 @@ describe("Models registry actions", () => {
     await renderTable(registry(entries));
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: /^provider$/i }));
-    let rows = screen.getAllByRole("row");
-    expect(within(rows[1]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
+    await user.click(screen.getByRole("button", {name: "Sort models"}));
+    await user.click(screen.getByRole("menuitem", { name: /^provider(?:\s|$)/i }));
+    let rows = screen.getAllByRole("article");
+    expect(within(rows[0]!).getByLabelText(PLATFORM_LOCK)).toBeTruthy();
     // Ascending: "" (no provider) sorts before named providers.
-    expect(within(within(rows[2]!).getAllByRole("cell")[0]!).getByText("Unknown")).toBeTruthy();
+    expect(within(rows[1]!.querySelector<HTMLElement>('[data-slot="model-provider"]')!).getByText("Unknown")).toBeTruthy();
 
-    await user.click(screen.getByRole("button", { name: /^provider$/i }));
-    rows = screen.getAllByRole("row");
-    expect(within(rows[2]!).getByText("OpenAI")).toBeTruthy();
+    await user.click(screen.getByRole("button", {name: "Sort models"}));
+    await user.click(screen.getByRole("menuitem", { name: /^provider(?:\s|$)/i }));
+    rows = screen.getAllByRole("article");
+    expect(within(rows[1]!).getByText("OpenAI")).toBeTruthy();
   });
 
   it("Switch surfaces a friendly error and still refreshes (Failure Modes: stale activation)", async () => {

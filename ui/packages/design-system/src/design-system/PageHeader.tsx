@@ -18,7 +18,7 @@ export function PageHeader({
   ...props
 }: PageHeaderProps) {
   return (
-    <div ref={ref} className={cn("flex flex-col items-start justify-between gap-4 border-b border-border pb-2xl sm:flex-row sm:gap-6", className)} {...props}>
+    <div ref={ref} data-slot="page-header" className={cn("flex flex-col items-start justify-between gap-4 border-b border-border pb-2xl sm:flex-row sm:gap-6", className)} {...props}>
       <div className="min-w-0 max-w-full">
         {children}
         {description != null ? <PageDescription>{description}</PageDescription> : null}

@@ -129,7 +129,7 @@ describe("conversation-first app navigation", () => {
   it("keeps collapsed destinations and the account menu reachable without a drawer", () => {
     mount();
     expect(screen.getByRole("button", {name: "Expand navigation"})).toBeTruthy();
-    expect(screen.queryByText("Your fleets")).toBeNull();
+    expect(screen.getByRole("link", {name: "Your fleets"}).textContent).toBe("");
     expect(screen.getByRole("link", { name: "Your fleets" })).toBeTruthy();
     expect(screen.getByRole("button", { name: MENU })).toBeTruthy();
     expect(screen.getByRole("link", {name: "Plugins"})).toBeTruthy();

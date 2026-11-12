@@ -31,6 +31,7 @@ test.describe("settings navigation — Models + Integrations", () => {
     await openSettingsDestination(page, "Models");
     await expect(page).toHaveURL(workspaceUrlPattern("settings/models"));
     await expect(page.getByRole("heading", { name: /^models$/i })).toBeVisible();
-    await expect(page.getByRole("table", { name: "Models" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Models", exact: true })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Models", exact: true }).getByRole("searchbox", { name: "Search models" })).toBeVisible();
   });
 });

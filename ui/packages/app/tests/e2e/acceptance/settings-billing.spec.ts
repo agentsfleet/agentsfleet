@@ -36,7 +36,7 @@ test.describe("settings billing", () => {
     await page.goto(BILLING_PATH);
     await expect(page).toHaveURL(/\/settings\/billing(\?|$)/);
 
-    await expect(page.getByRole(ROLE.heading, { name: "Usage & billing", exact: true })).toBeVisible();
+    await expect(page.getByRole(ROLE.heading, { name: "Usage", exact: true })).toBeVisible();
     await expect(page.getByText(PERIOD_CHARGE, { exact: true })).toBeVisible();
     const summary = page.locator('dl[aria-label="Period totals"]');
     await expect(summary).toContainText(/\$\d/);

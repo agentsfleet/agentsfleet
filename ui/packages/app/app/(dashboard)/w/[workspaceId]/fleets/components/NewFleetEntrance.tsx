@@ -8,7 +8,7 @@ export function NewFleetEntrance({ workspaceId }: { workspaceId: string }) {
   return <div className="content-entrance flex flex-col items-center gap-xl py-2xl text-center sm:py-4xl">
     <BrandMark className="size-10 text-pulse" aria-hidden="true" />
     <div className="space-y-md">
-      <PageTitle>What should your fleet do?</PageTitle>
+      <PageTitle className="text-3xl leading-tight sm:text-4xl">What should your fleet do?</PageTitle>
       <p className="mx-auto max-w-prose text-body-lg text-muted-foreground">Give it a job. Shape the plan together. Put it to work.</p>
     </div>
     <Button asChild size="lg"><Link href={href}><PlusIcon size={18} />New fleet<ArrowUpRightIcon size={16} /></Link></Button>

@@ -91,7 +91,8 @@ test("API Keys keeps Created aligned before Actions at desktop and mobile widths
     for (const width of VIEWPORTS) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/settings/api-keys");
-      await checkCreatedColumn(page, name, ["Status"]);
+      await checkCreatedColumn(page, name, width < 640 ? [] : ["Status"]);
+      if (width < 640) await expect(page.getByRole("row").filter({hasText: name}).getByRole("cell").first().getByText("Active key", {exact: true})).toBeVisible();
       await expectAccessible(page, "Populated API keys table");
     }
   } finally {

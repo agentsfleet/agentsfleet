@@ -1,11 +1,11 @@
 "use client";
 
-import { TIME_LABEL } from "@/lib/time-labels";
 import {
-  Badge,
+  Card,
+  CardHeader,
+  CardContent,
+  CardFooter,
   CopyButton,
-  DataTable,
-  type DataTableColumn,
   IconAction,
   Time,
   TooltipButton,
@@ -60,25 +60,35 @@ type InviteHandlers = Pick<Props, "pending" | "onRevoke" | "onResend">;
 // the account's one owner cannot, which the backend also refuses with 409
 // `UZ-INV-004`.
 export function TeamTable({ members, invites, pending, onRemove, onRevoke, onResend }: Props) {
-  const rows: TeamRow[] = [
-    ...members.map((member) => ({ key: `member:${member.user_id}`, member })),
-    ...invites.map((invite) => ({ key: `invite:${invite.id}`, invite })),
+  const groups = [
+    {label: "Members", rows: members.map(member => ({key: `member:${member.user_id}`, member}))},
+    {label: "Pending invitations", rows: invites.map(invite => ({key: `invite:${invite.id}`, invite}))},
   ];
-  return (
-    <DataTable
-      columns={columns(pending, onRemove, { pending, onRevoke, onResend })}
-      rows={rows}
-      rowKey={(row) => row.key}
-      caption={TEAM_CAPTION}
-      isLoading={pending}
-    />
-  );
+  return <div className="space-y-2xl" aria-busy={pending}>
+    {groups.filter(group => group.rows.length > 0).map(group => <section key={group.label} aria-label={group.label} className="space-y-lg">
+      <h2 className="flex items-center gap-md text-label font-medium">{group.label}<span className="rounded-sm border border-border px-sm py-xs text-eyebrow text-muted-foreground">{group.rows.length}</span></h2>
+      <Card asChild className="overflow-hidden rounded-md p-0"><ul className="divide-y divide-border">
+        {group.rows.map(row => <TeamPersonRow key={row.key} row={row} pending={pending} onRemove={onRemove} onRevoke={onRevoke} onResend={onResend} />)}
+      </ul></Card>
+    </section>)}
+  </div>;
+}
+
+function TeamPersonRow({row, ...actions}: {row: TeamRow} & Omit<Props, "members" | "invites">) {
+  const label = row.invite ? row.invite.email : memberName(row.member);
+  return <li aria-label={label} className="min-w-0 p-xl sm:px-2xl sm:py-xl">
+    <div className="flex flex-wrap items-center gap-xl">
+      <CardHeader className="min-w-0 basis-full pb-0 sm:basis-auto sm:flex-1"><PersonCell row={row} /><RoleCell row={row} /></CardHeader>
+      <CardContent data-slot="team-times" className="hidden min-w-0 sm:block"><TimeCell row={row} /></CardContent>
+      <CardFooter data-slot="team-actions" className="max-w-full justify-end pt-0 empty:hidden"><PersonActions row={row} {...actions} /></CardFooter>
+    </div>
+  </li>;
 }
 
 function PersonCell({ row }: { row: TeamRow }) {
   return (
-    <div className="min-w-0">
-      {row.invite ? <div className="truncate text-label leading-label">{row.invite.email}</div> : <MemberName member={row.member} />}
+    <div className="min-w-0" data-slot="team-person">
+      {row.invite ? <div className="break-words text-label leading-label">{row.invite.email}</div> : <MemberName member={row.member} />}
       {/* The timestamp column leaves the row on a phone, so its dates and an
           invite's email status read here instead, as the API Keys table does. */}
       <div className="mt-xs flex flex-col items-start gap-xs sm:hidden">
@@ -91,8 +101,8 @@ function PersonCell({ row }: { row: TeamRow }) {
 function MemberName({ member }: { member: MemberSummary }) {
   return (
     <>
-      <div className="truncate text-label leading-label">{memberName(member)}</div>
-      {member.display_name ? <div className="truncate text-label text-muted-foreground">{member.email}</div> : null}
+      <div className="break-words text-label leading-label">{memberName(member)}</div>
+      {member.display_name ? <div className="break-all text-label text-muted-foreground">{member.email}</div> : null}
     </>
   );
 }
@@ -128,8 +138,7 @@ function TimeCell({ row }: { row: TeamRow }) {
 }
 
 function RoleCell({ row }: { row: TeamRow }) {
-  if (row.invite) return <Badge variant="amber">{INVITED}</Badge>;
-  return <Badge variant={row.member.role === ACCOUNT_ROLE.owner ? "cyan" : "default"}>{row.member.role}</Badge>;
+  return <span className="capitalize">{row.invite ? INVITED : row.member.role}</span>;
 }
 
 // Send again (a sent email may still never arrive), copy the link the invitee
@@ -154,7 +163,7 @@ function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers &
       <CopyButton value={invite.link} label={`Copy invite link for ${invite.email}`} />
       <IconAction
         type="button"
-        variant="destructive"
+        variant="ghost" className="text-destructive hover:text-destructive"
         disabled={pending}
         onClick={() => onRevoke(invite)}
         label={`Revoke invite for ${invite.email}`}
@@ -165,35 +174,11 @@ function InviteActions({ invite, pending, onRevoke, onResend }: InviteHandlers &
   );
 }
 
-function columns(
-  pending: boolean,
-  onRemove: (member: MemberSummary) => void,
-  invites: InviteHandlers,
-): DataTableColumn<TeamRow>[] {
-  return [
-    { key: "person", primary: true, header: "Person", cell: (row) => <PersonCell row={row} /> },
-    { key: "role", header: "Role", cell: (row) => <RoleCell row={row} /> },
-    { key: "time", header: TIME_LABEL.joinedOrInvited, hideOnMobile: true, cell: (row) => <TimeCell row={row} /> },
-    {
-      key: "actions",
-      header: "Actions",
-      numeric: true,
-      cell: (row) => {
-        if (row.invite) return <InviteActions invite={row.invite} {...invites} />;
-        const { member } = row;
-        if (member.role !== ACCOUNT_ROLE.member) return null;
-        return (
-          <IconAction
-            type="button"
-            variant="destructive"
-            disabled={pending}
-            onClick={() => onRemove(member)}
-            label={`Remove ${memberName(member)}`}
-          >
-            <UserMinusIcon size={16} />
-          </IconAction>
-        );
-      },
-    },
-  ];
+function PersonActions({row, pending, onRemove, onRevoke, onResend}: {row: TeamRow} & Omit<Props, "members" | "invites">) {
+  if (row.invite) return <InviteActions invite={row.invite} pending={pending} onRevoke={onRevoke} onResend={onResend} />;
+  const {member} = row;
+  if (member.role !== ACCOUNT_ROLE.member) return null;
+  return <IconAction type="button" variant="ghost" className="text-destructive hover:text-destructive" disabled={pending} onClick={() => onRemove(member)} label={`Remove ${memberName(member)}`}>
+    <UserMinusIcon size={16} />
+  </IconAction>;
 }

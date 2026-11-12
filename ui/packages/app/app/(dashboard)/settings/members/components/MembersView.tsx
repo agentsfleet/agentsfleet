@@ -1,14 +1,16 @@
 "use client";
 
-import { type TransitionStartFunction, useEffect, useRef, useState, useTransition } from "react";
-import { Alert, PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
+import { type TransitionStartFunction, useDeferredValue, useEffect, useRef, useState, useTransition } from "react";
+import { Alert, EmptyState, PageHeader, PageLayout, PageTitle, Section } from "@agentsfleet/design-system";
+import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
+import { UsersIcon } from "@phosphor-icons/react/ssr";
 import type { InviteSummary } from "@/lib/api/invites";
 import type { MemberSummary } from "@/lib/api/tenant-members";
 import { presentErrorString } from "@/lib/errors";
 import InviteDialogDynamic from "@/components/domain/island-dynamic/InviteDialogDynamic";
 import { loadTeamAction, removeMemberAction, revokeInviteAction, sendInviteEmailAction } from "../actions";
 import { MEMBERS_DESCRIPTION, MEMBERS_TITLE } from "../copy";
-import { CONFIRM_KIND, TeamConfirm, type ConfirmTarget, type ConfirmTargetActive } from "./TeamConfirm";
+import { CONFIRM_KIND, TeamConfirm, memberName, type ConfirmTarget, type ConfirmTargetActive } from "./TeamConfirm";
 import { TEAM_CAPTION, TeamTable } from "./TeamTable";
 
 type Props = {
@@ -118,20 +120,27 @@ function useFocusAfterRemoval() {
 export function MembersView(props: Props) {
   const { regionRef, onRemoved } = useFocusAfterRemoval();
   const team = useTeam(props, onRemoved);
+  const [search, setSearch] = useState("");
+  const query = useDeferredValue(search.trim().toLowerCase());
+  const members = team.members.filter(member => `${memberName(member)} ${member.email}`.toLowerCase().includes(query));
+  const invites = team.invites.filter(invite => invite.email.toLowerCase().includes(query));
   return (
     <PageLayout>
-      <PageHeader description={MEMBERS_DESCRIPTION}>
+      <PageHeader description={MEMBERS_DESCRIPTION} actions={<InviteDialogDynamic onSettled={team.refresh} />}>
         <PageTitle>{MEMBERS_TITLE}</PageTitle>
       </PageHeader>
       {/* Reachable by script only, for the focus a removal hands back. A screen
           reader announces it by its label; no outline marks it for a mouse. */}
       <Section ref={regionRef} tabIndex={-1} aria-label={TEAM_CAPTION} className="focus:outline-none">
-        <SectionHeader as="p" actions={<InviteDialogDynamic onSettled={team.refresh} />}>
-          {TEAM_CAPTION}
-        </SectionHeader>
+        <div className="flex items-start gap-lg border-b border-border py-xl">
+          <UsersIcon size={22} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" />
+          <div className="space-y-sm"><p className="text-label font-medium">Your account</p><p className="text-label text-muted-foreground">Members can open every workspace in this account.</p></div>
+        </div>
+        <CollectionToolbar label="Search name or email" value={search} onChange={setSearch} summary="Account-wide access" />
+        {members.length === 0 && invites.length === 0 ? <EmptyState title="No matching people" description="Try another name or email, or clear your search." /> : null}
         <TeamTable
-          members={team.members}
-          invites={team.invites}
+          members={members}
+          invites={invites}
           pending={team.pending}
           onRemove={(member) => team.setTarget({ kind: CONFIRM_KIND.remove, member })}
           onRevoke={(invite) => team.setTarget({ kind: CONFIRM_KIND.revoke, invite })}

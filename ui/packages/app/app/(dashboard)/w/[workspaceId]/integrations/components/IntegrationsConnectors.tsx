@@ -58,7 +58,7 @@ export default function IntegrationsConnectors({
           action={<Button variant="secondary" disabled={refreshing} onClick={() => startRefresh(() => router.refresh())}>{refreshing ? "Retrying…" : "Retry"}</Button>}
         />
       ) : (
-        <Grid columns="three" className="grid-cols-1 sm:grid-cols-2 xl:grid-cols-3">
+        <Grid columns="two" className="grid-cols-1">
           {matches.map((entry) => (
             <OAuthConnectorRow
               key={entry.id}

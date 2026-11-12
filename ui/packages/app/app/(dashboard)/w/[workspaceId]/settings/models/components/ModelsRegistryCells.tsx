@@ -150,9 +150,9 @@ export function RatesCell({
 }
 
 export function StatusCell({ row, isDefaultLive }: { row: RegistryRow; isDefaultLive: boolean }) {
-  if (row.kind === "default") return isDefaultLive ? <Badge variant="green"><CheckCircleIcon size={12} aria-hidden="true" />Active</Badge> : null;
+  if (row.kind === "default") return isDefaultLive ? <Badge variant="green" className="normal-case"><CheckCircleIcon size={12} aria-hidden="true" />Active</Badge> : null;
   const { entry } = row;
-  if (entry.active) return <Badge variant="green"><CheckCircleIcon size={12} aria-hidden="true" />Active</Badge>;
+  if (entry.active) return <Badge variant="green" className="normal-case"><CheckCircleIcon size={12} aria-hidden="true" />Active</Badge>;
   if (!entry.has_key) return <Badge variant="default"><KeyIcon size={12} aria-hidden="true" />no key · local</Badge>;
   return null;
 }
@@ -246,7 +246,7 @@ export function ActionsCell({
       ) : null}
       <IconAction
         type="button"
-        variant="destructive"
+        variant="ghost" className="text-destructive hover:text-destructive"
         disabled={pending || entry.active}
         onClick={() => onRemove(entry)}
         label={entry.active ? `Cannot remove ${entry.model_id} while it is active` : `Remove ${entry.model_id}`}

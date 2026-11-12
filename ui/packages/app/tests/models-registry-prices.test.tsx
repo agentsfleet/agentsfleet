@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { capturedOnSortChange, entry, registry, renderTable, renderTableWithLibrary, PLATFORM_LOCK } from "./helpers/models-registry-fixtures";
 
 describe("Models registry names and rates", () => {
@@ -8,8 +9,8 @@ describe("Models registry names and rates", () => {
       registry([], true, { provider: "anthropic", model: "claude-sonnet-5", display_name: "Sonnet 5", context_cap_tokens: 200000 }),
     );
 
-    const rows = screen.getAllByRole("row");
-    const defaultRow = within(rows[1]!);
+    const rows = screen.getAllByRole("article");
+    const defaultRow = within(rows[0]!);
     expect(defaultRow.getByLabelText(PLATFORM_LOCK)).toBeTruthy();
     expect(defaultRow.getByTitle("claude-sonnet-5")).toBeTruthy();
     expect(defaultRow.getByText("Anthropic")).toBeTruthy();
@@ -29,8 +30,8 @@ describe("Models registry names and rates", () => {
       }),
     );
 
-    const rows = screen.getAllByRole("row");
-    const defaultRow = within(rows[1]!);
+    const rows = screen.getAllByRole("article");
+    const defaultRow = within(rows[0]!);
     expect(defaultRow.getByText("200,000")).toBeTruthy();
     expect(defaultRow.getByText("3.00 / 0.30 / 15.00")).toBeTruthy();
   });
@@ -39,8 +40,8 @@ describe("Models registry names and rates", () => {
     // No active entry, so the platform row still renders (it is what would run)
     // — but with no identity to show it must degrade rather than invent one.
     await renderTable(registry([], false));
-    const rows = screen.getAllByRole("row");
-    const defaultRow = within(rows[1]!);
+    const rows = screen.getAllByRole("article");
+    const defaultRow = within(rows[0]!);
     // Context and price are separate columns now, so an absent identity
     // degrades in both rather than in one shared cell.
     expect(defaultRow.getAllByText("—")).toHaveLength(2);
@@ -56,9 +57,9 @@ describe("Models registry names and rates", () => {
     );
 
     await waitFor(() => expect(screen.getByText("3.00 / 0.30 / 15.00")).toBeTruthy());
-    const rows = screen.getAllByRole("row");
-    // Row order: header, Default, sonnet (priced), local (unpriced).
-    const localRow = within(rows[3]!);
+    const rows = screen.getAllByRole("article");
+    // Card order: platform default, priced Sonnet, unpriced local model.
+    const localRow = within(rows[2]!);
     expect(localRow.getByText("32,000")).toBeTruthy();
     expect(localRow.getByText("Unknown")).toBeTruthy();
     expect(localRow.queryByText("0.00 / 0.00 / 0.00")).toBeNull();
@@ -93,18 +94,20 @@ describe("Models registry names and rates", () => {
 
   it("shows Unknown in the Provider cell when the entry has no provider", async () => {
     await renderTable(registry([entry({ provider: undefined })]));
-    const cells = within(screen.getAllByRole("row")[2]!).getAllByRole("cell");
-    expect(within(cells[0]!).getByText("Unknown")).toBeTruthy();
+    const provider = screen.getAllByRole("article")[1]!.querySelector<HTMLElement>('[data-slot="model-provider"]')!;
+    expect(within(provider).getByText("Unknown")).toBeTruthy();
   });
 
   it("ignores an onSortChange call for a key outside the sortable column set", async () => {
     await renderTable(registry([entry({})]));
-    const rowsBefore = screen.getAllByRole("row").length;
+    const rowsBefore = screen.getAllByRole("article").length;
 
     capturedOnSortChange?.("status");
 
-    expect(screen.getAllByRole("row").length).toBe(rowsBefore);
-    expect(screen.getByRole("columnheader", { name: "Model" }).getAttribute("aria-sort")).toBe("none");
+    expect(screen.getAllByRole("article").length).toBe(rowsBefore);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", {name: "Sort models"}));
+    expect(screen.getByRole("menuitem", { name: "Model" })).toBeTruthy();
   });
 
   it("compareEntries orders models as the library does and providers by name, a missing one first", async () => {
@@ -183,8 +186,8 @@ describe("Models registry names and rates", () => {
 
   it("renders a dash for absent context and marks unknown rates", async () => {
     await renderTable(registry([entry({ id: "e1", model_id: "m1", context_cap_tokens: undefined })]));
-    const rows = screen.getAllByRole("row");
-    const contextCell = within(rows[2]!);
+    const rows = screen.getAllByRole("article");
+    const contextCell = within(rows[1]!);
     expect(contextCell.getByText("—")).toBeTruthy();
     expect(contextCell.getByText("Unknown")).toBeTruthy();
   });

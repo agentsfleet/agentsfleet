@@ -73,7 +73,7 @@ function NavItem({
 }) {
   const content = (
     <>
-      <Icon size={20} className="shrink-0" aria-hidden="true" />
+      <Icon size={20} weight={active ? "duotone" : "regular"} className="shrink-0" aria-hidden="true" />
       {collapsed ? null : <span className="hidden md:inline">{label}</span>}
     </>
   );

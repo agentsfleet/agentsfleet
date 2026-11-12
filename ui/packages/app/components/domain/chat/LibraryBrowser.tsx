@@ -4,7 +4,7 @@ import type { Source } from "@/lib/api/draft-types";
 import type { Library, LibraryCard } from "@/lib/api/draft-library";
 import { useCallback, useEffect, useState } from "react";
 import { workspacePath } from "@/lib/workspace-routes";
-import { Button, List, ListItem, Spinner, Tabs, TabsList, TabsTrigger, UnavailableState } from "@agentsfleet/design-system";
+import { Button, Card, CardHeader, CardTitle, CardDescription, CardFooter, List, ListItem, Spinner, Tabs, TabsList, TabsTrigger, UnavailableState } from "@agentsfleet/design-system";
 import { FleetLibraryEmptyState } from "@/components/domain/FleetLibraryEmptyState";
 import { inspectLibrary, libraryHistory, libraryPage } from "@/lib/api/draft-library";
 import { losesAccess } from "@/lib/api/draft-request";
@@ -88,10 +88,14 @@ function LibraryEmpty({workspace, paged, owned}: {workspace: string; paged: bool
 }
 
 function LibraryChoices({page, workspace, owned, onRemoved, onInspect}: {page: Page | null; workspace: string; owned: boolean; onRemoved: () => void; onInspect: (card: LibraryCard) => void}) {
-  return <List variant="plain" divided>{page?.items.map((card) => <ListItem key={card.id}>
-    <div className="flex items-start justify-between gap-md"><div><p className="font-medium">{card.name}</p><p className="text-sm text-muted-foreground">{card.description}</p></div>
-      <div className="flex items-center gap-sm"><Button variant="outline" onClick={() => onInspect(card)}>Inspect</Button>
-        {owned && card.visibility === "tenant" ? <LibraryRemoval workspace={workspace} card={card} onRemoved={onRemoved} /> : null}</div></div>
+  return <List variant="plain" className="grid gap-xl md:grid-cols-2">{page?.items.map(card => <ListItem key={card.id} className="p-0">
+    <Card className="flex h-full flex-col rounded-md">
+      <CardHeader><CardTitle className="text-label leading-label">{card.name}</CardTitle><CardDescription className="text-label">{card.description}</CardDescription></CardHeader>
+      <CardFooter className="mt-auto flex-wrap gap-md">
+        <Button variant="outline" onClick={() => onInspect(card)}>Inspect</Button>
+        {owned && card.visibility === "tenant" ? <LibraryRemoval workspace={workspace} card={card} onRemoved={onRemoved} /> : null}
+      </CardFooter>
+    </Card>
   </ListItem>)}</List>;
 }
 

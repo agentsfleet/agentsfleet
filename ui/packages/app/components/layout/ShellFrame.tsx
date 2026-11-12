@@ -8,6 +8,7 @@ import {
 } from "./SidebarNavigation";
 import { WorkspaceCreationProvider } from "./WorkspaceCreationProvider";
 import { DraftSidebarProvider } from "./draft-sidebar-state";
+import { ResourceHeader } from "./ResourceHeader";
 import { FleetNoticeProvider } from "./FleetNoticeProvider";
 
 const SIDEBAR_NAV_ID = "app-sidebar-nav";
@@ -47,6 +48,7 @@ export function ShellFrame({
         </aside>
 
         <main className="app-dashboard-canvas min-h-0 min-w-0 overflow-y-auto rounded-lg border border-border-subtle bg-background has-[#fleet-chat-transcript]:[--app-canvas-block:0px] has-[#fleet-chat-transcript]:overflow-hidden md:has-[[data-page-layout]]:overflow-hidden">
+          <ResourceHeader />
           <div className="flex min-h-full w-full flex-col has-[#fleet-chat-transcript]:h-full has-[#fleet-chat-transcript]:min-h-0 md:has-[[data-page-layout]]:h-full md:has-[[data-page-layout]]:min-h-0">
             <InviteNotice waiting={waitingInvites} />
             {children}
