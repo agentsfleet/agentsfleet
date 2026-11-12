@@ -32,7 +32,7 @@ use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use subtle::ConstantTimeEq as _;
 
-use crate::error::{self, Result};
+use crate::error::{self, Rejected, Result};
 
 /// The one algorithm this daemon will read a fire token under.
 ///
@@ -148,38 +148,57 @@ pub fn verify_at(
 
     let mut validation = Validation::new(EXPECTED_ALGORITHM);
     validation.set_issuer(&[EXPECTED_ISSUER]);
+    // Checked only when present unless required: a signed token with no issuer or
+    // no subject would otherwise skip both checks. A fire carries all three.
+    validation.set_required_spec_claims(&["exp", "iss", "sub"]);
     validation.sub = Some(destination.to_owned());
     // The crate's 10.x default REJECTS a token carrying any `aud` — see the
     // module note. This surface has no audience to check, so the check is
     // turned off by name rather than left to a default that changed once.
     validation.validate_aud = false;
     validation.validate_exp = true;
-    validation.validate_nbf = true;
+    // QStash never sets `nbf`: its Go server writes the zero time, which is
+    // -62135596800 seconds, a value no unsigned claim parser accepts. The token
+    // is still bound by its signature, `exp`, `sub` and the digest of the body,
+    // so a start-of-validity check adds nothing the others do not already give.
+    validation.validate_nbf = false;
     // No leeway. The scheduler and this daemon both run on synchronised clocks,
     // and a tolerance here is a window a replayed token lives inside.
     validation.leeway = 0;
 
-    let decoded = [keys.current.expose(), keys.next.expose()]
+    let mut cause = Rejected::Signature;
+    let mut decoded = None;
+    for key in [keys.current.expose(), keys.next.expose()]
         .into_iter()
         .filter(|key| !key.is_empty())
-        .find_map(|key| {
-            jsonwebtoken::decode::<Claims>(
-                token.0,
-                &DecodingKey::from_secret(key.as_bytes()),
-                &validation,
-            )
-            .ok()
-        });
+    {
+        let attempt = jsonwebtoken::decode::<Claims>(
+            token.0,
+            &DecodingKey::from_secret(key.as_bytes()),
+            &validation,
+        );
+        match attempt {
+            Ok(found) => {
+                decoded = Some(found);
+                break;
+            }
+            // A wrong key fails the signature before any claim is read, so the
+            // first failure that is anything else is what the right key tripped
+            // on. Kept for the operator's log; the sender gets one answer.
+            Err(failure) if cause == Rejected::Signature => cause = rejected(failure.kind()),
+            Err(_failure) => {}
+        }
+    }
 
     let Some(decoded) = decoded else {
-        // One answer for a wrong key, a wrong issuer, a wrong subject and an
-        // expired token would be wrong — but the crate collapses them into one
-        // `ErrorKind` set that would have to be re-classified here to tell them
-        // apart per key. What matters operationally is which SIDE failed, and
-        // a second pass with the checks relaxed would be a second decode of an
-        // untrusted token. Reported as a signature failure.
-        return Err(error::signature_invalid());
+        return Err(error::signature_invalid(cause));
     };
+
+    // `jti` is the at-most-once claim key: an empty one would let every fire share
+    // a single key, so it counts as absent.
+    if decoded.claims.jti.is_empty() {
+        return Err(error::signature_invalid(Rejected::Claims));
+    }
 
     if !body_matches(&decoded.claims.body, body) {
         return Err(error::body_mismatch());
@@ -192,7 +211,8 @@ pub fn verify_at(
 
 /// Whether the `body` claim is the digest of the bytes that arrived.
 ///
-/// Base64url without padding, as the scheduler emits it. Compared as text
+/// Base64url, read without its padding: the scheduler pads the digest it signs and
+/// this daemon computes it unpadded. Compared as text
 /// rather than decoded first: both sides are a fixed-length digest of the same
 /// alphabet, so a decode would add a failure mode without adding a check.
 ///
@@ -202,11 +222,35 @@ pub fn verify_at(
 /// and what must not leak is how many characters of it matched.
 fn body_matches(claimed: &str, body: &[u8]) -> bool {
     let expected = base64_url_no_pad(&Sha256::digest(body));
-    expected.as_bytes().ct_eq(claimed.as_bytes()).unwrap_u8() == 1
+    // The scheduler pads the digest it signs, and its own SDKs strip the padding
+    // before they compare. Accept exactly the digest, or the digest with the one
+    // `=` a 32-byte hash pads to; any other tail is not the scheduler's.
+    let padded = format!("{expected}=");
+    let same =
+        expected.as_bytes().ct_eq(claimed.as_bytes()) | padded.as_bytes().ct_eq(claimed.as_bytes());
+    same.unwrap_u8() == 1
 }
 
 /// The base64url, unpadded rendering the scheduler uses.
 fn base64_url_no_pad(bytes: &[u8]) -> String {
     use base64::Engine as _;
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
+}
+
+/// The check a failed decode names, as the operator's log words it.
+fn rejected(kind: &jsonwebtoken::errors::ErrorKind) -> Rejected {
+    use jsonwebtoken::errors::ErrorKind;
+    match kind {
+        ErrorKind::ExpiredSignature => Rejected::Expired,
+        ErrorKind::InvalidIssuer => Rejected::Issuer,
+        ErrorKind::InvalidSubject => Rejected::Subject,
+        ErrorKind::MissingRequiredClaim(_) => Rejected::Claims,
+        ErrorKind::InvalidClaimFormat(_) => Rejected::ClaimFormat,
+        ErrorKind::InvalidAlgorithm | ErrorKind::MissingAlgorithm => Rejected::Algorithm,
+        ErrorKind::InvalidToken
+        | ErrorKind::Base64(_)
+        | ErrorKind::Json(_)
+        | ErrorKind::Utf8(_) => Rejected::Undecodable,
+        _other => Rejected::Signature,
+    }
 }
