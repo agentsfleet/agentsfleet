@@ -29,7 +29,7 @@ async function menu(status = "active") {
 }
 async function choose(user: ReturnType<typeof userEvent.setup>, label: string) {
   await user.click(screen.getByRole("menuitem", {name: label}));
-  return within(screen.getByRole("alertdialog"));
+  return within(await screen.findByRole("alertdialog"));
 }
 
 it("offers independent Archive and Permanently delete actions on an active fleet", async () => {
