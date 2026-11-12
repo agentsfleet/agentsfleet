@@ -29,15 +29,13 @@ const FIELD_SEPARATOR: char = '|';
 
 /// The boundary a page resumes strictly after, newest-first.
 ///
-/// The identifier's bound is declared here and proved by [`Cursor::decode`],
-/// so a cursor a client sent back has always passed it.
-#[derive(Debug, Clone, PartialEq, Eq, garde::Validate)]
+/// [`Cursor::decode`] parses both fields, so a cursor a client sent back has
+/// always been a well-formed instant and identifier.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Cursor {
     /// The `created_at` of the last row on the previous page.
-    #[garde(skip)]
     pub created_at: Timestamp,
     /// The `event_id` of that row, breaking ties within one millisecond.
-    #[garde(skip)]
     pub event_id: Uuid7,
 }
 
@@ -80,10 +78,7 @@ impl Cursor {
             .ok_or_else(cursor_malformed)?;
         let created_at: Timestamp = head.parse().map_err(|_instant| cursor_malformed())?;
         let event_id = Uuid7::parse(id).map_err(|_id| cursor_malformed())?;
-        garde::Unvalidated::new(Self::after(created_at, &event_id))
-            .validate()
-            .map(garde::Valid::into_inner)
-            .map_err(|_out_of_bounds| cursor_malformed())
+        Ok(Self::after(created_at, &event_id))
     }
 }
 

@@ -50,6 +50,10 @@ use sqlx::AssertSqlSafe;
 use crate::config::{DbRole, PoolConfig};
 use crate::pool::Db;
 
+/// How long a pooled connection sits idle before a checkout tests it: the
+/// pool's own window, for a suite that has to leave the pool alone past it.
+pub const PING_AFTER_IDLE: std::time::Duration = crate::pool::PING_AFTER_IDLE;
+
 mod billing;
 mod connector;
 mod fleet;
@@ -62,6 +66,8 @@ mod platform_model;
 pub mod refusal;
 mod rows;
 mod runner;
+// Statements a test's window sent, from `pg_stat_statements`.
+pub mod statements;
 mod unreachable;
 
 pub use self::billing::WalletSeed;

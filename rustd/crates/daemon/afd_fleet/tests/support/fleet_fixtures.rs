@@ -7,13 +7,6 @@
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-// Two test binaries include this module by `#[path]`, so each compiles its own
-// copy and uses a subset of it — what the row suite never calls is not dead
-// code, it is the beat suite's half.
-#![allow(
-    dead_code,
-    reason = "test support: shared by two test binaries, each using a subset"
-)]
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;

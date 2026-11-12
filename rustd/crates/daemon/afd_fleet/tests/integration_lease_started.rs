@@ -92,10 +92,6 @@ async fn test_reclaim_counts_as_reclaimed() {
     let held = seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
-    leases
-        .record_received(&held)
-        .await
-        .expect("the narrative log must open");
     let tenant_id = tenant.clone();
     leases
         .issue(

@@ -37,8 +37,8 @@ CREATE TABLE runner.decision_calls (
     -- Non-secret policy/task generations and input/effect cursors assessed by
     -- this call. The recorder compares semantic identity without usage counters.
     context_snapshot JSONB NOT NULL,
-    -- Canonical range: afd_wire::usage::DECISION_SEQ_BASE through u32::MAX.
-    -- The native allocator proves the decision range before insertion.
+    -- Decision lines number from 0 under the usage kind `decision`; the native
+    -- allocator takes a lease's next number before insertion.
     usage_sequence BIGINT NOT NULL CHECK (usage_sequence >= 0),
     reserved_nanos BIGINT NOT NULL CHECK (reserved_nanos >= 0),
     -- NULL until native dispatch issuance commits; it never becomes NULL again.

@@ -2,10 +2,6 @@
 //!
 //! Shared-database tests scope rows by fleet. Tests asserting deployment-wide
 //! candidate or backlog counts use a private database.
-#![allow(
-    dead_code,
-    reason = "test support: shared by several test binaries, each using a subset"
-)]
 #![expect(
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"

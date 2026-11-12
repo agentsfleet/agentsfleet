@@ -90,6 +90,7 @@ fn tier(id: &str, price: Price) -> Tier {
 
 fn line(at_text: &str, input: u32, output: u32) -> UsageLine {
     UsageLine {
+        kind: af_wire::usage::LineKind::Model,
         seq: 0,
         at: at(at_text),
         input_tokens: input,

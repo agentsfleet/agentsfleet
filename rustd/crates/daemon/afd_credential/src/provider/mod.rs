@@ -1,57 +1,39 @@
-//! Whose key this run dials with, resolved fresh for every lease.
+//! Whose key this run dials with, resolved from the saved setup for every lease.
 //!
-//! # Two strategies, one interface
-//!
-//! A tenant's provider comes from one of two places: the platform default reads
-//! the active platform row and loads a key out of the ADMIN workspace, and a
-//! self-managed selection reads the tenant's row and loads a key out of the
-//! TENANT's workspace. Both then do the same three things — open a vault row,
-//! read its JSON, own the result.
-//!
-//! The difference is a [`Resolution`]: a value that knows WHICH row
-//! carries its key and what that row's body means. The part they share — open
-//! the row — is `afd_vault::Vault::find`, and runs between the two halves of
-//! the trait:
+//! A saved reference names either the platform default or one of the tenant's
+//! own registry entries. Resolving it ([`Providers::resolve_reference`], and
+//! [`Providers::resolve_observed`] for the lease path) takes three steps, and
+//! only the middle one touches the vault:
 //!
 //! ```text
-//!   strategy = platform | self-managed        ← the fork, decided once
-//!   body     = Vault::find(strategy.key())    ← shared, one statement
-//!   resolved = strategy.interpret(body)       ← the fork again, pure
+//!   row      = read(reference)     ← the priced model, the credential's name,
+//!                                    the saved settings; no ciphertext
+//!   body     = open(row.credential)  ← the vault, one statement
+//!   resolved = vet(body) + key rule  ← pure: the provider, the key, the endpoint
 //! ```
 //!
-//! # Why the trait is object-safe, synchronous and pure
-//!
-//! Because it can be. Neither half of a strategy touches a datastore: `key`
-//! reports what it already holds, and `interpret` is a function from bytes to a
-//! value. Putting the I/O in the trait instead — one `async fn resolve(&self,
-//! …)` per strategy — would need boxed futures to stay object-safe and would
-//! give up the property that matters more than either: EVERY branching decision
-//! in this module is provable with no Postgres, no vault and no key. The two
-//! strategy files are seventeen unit tests between them and not one of them
-//! opens a connection.
-//!
-//! That is the same split [`afd_billing`] draws between its pure arithmetic
-//! and its reads, and the same one [`crate::lease::admit::posture`] draws
-//! between a verdict and a fault.
+//! The platform default is the one reference a replica may answer from memory:
+//! when the lease claim's witnesses name a held entry ([`cache`]) the vault is
+//! not read at all. A tenant's own entry is read every time.
 //!
 //! # Where this crate keeps it, and where it may have to move
 //!
 //! A read of shared tenant state like this one would normally sit in `afd_state`.
-//! It is in this crate instead because its only caller this milestone is the
-//! lease verb, and because the rich refusal classification it produces
-//! ([`crate::Error::is_config_permanent`]) is this crate's error type. M178's
+//! It is in this crate instead because its only caller today is the lease
+//! verb, and because the rich refusal classification it produces
+//! ([`crate::Error::is_config_permanent`]) is this crate's error type. The
 //! tenant plane resolves the same credentials for `PUT /v1/tenants/me/provider`
-//! and must NOT reach them by depending on the runner-plane crate — when that
+//! and must NOT reach them by depending on the runner-plane crate: when that
 //! lands, this module moves down to `afd_state` and both callers import it.
 //! Recorded here rather than pre-built: a seam with one caller is a guess.
 
 mod activate;
+pub mod cache;
 mod cap;
 mod decision;
 mod endpoint;
 pub mod entries;
 mod managed;
-mod platform;
 mod registered;
 mod reset;
 mod resolved;
@@ -64,12 +46,9 @@ mod store;
 mod vetted;
 mod wire;
 
-use std::fmt::Debug;
-
-use af_core::id::Uuid7;
 use serde::de::DeserializeOwned;
 
-use crate::error::{Result, provider_malformed, provider_no_workspace, provider_secret_missing};
+use crate::error::{Result, provider_malformed};
 
 pub use self::activate::Activation;
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
@@ -98,48 +77,6 @@ pub fn validate_endpoint_pair(provider: &str, base_url: Option<&str>) -> Result<
     endpoint::resolve(provider, base_url).map(|_endpoint| ())
 }
 
-/// Where a strategy's key sits: a workspace, and a row's name within it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct KeyRef<'a> {
-    /// The workspace holding the row.
-    pub workspace_id: &'a Uuid7,
-    /// The row's name within it.
-    pub name: &'a str,
-}
-
-/// A prepared way of resolving one tenant's provider.
-///
-/// Boxed rather than an enum, and that is the one place this design spends
-/// something. An enum would dispatch statically and cost no allocation; what it
-/// would also do is put both strategies' data in one type, so every match arm
-/// in this file would carry the other strategy's fields. The trait keeps each
-/// strategy's inputs inside the strategy — [`platform::Platform`] holds a
-/// platform row and nothing else — and the allocation is one `Box` per lease,
-/// beside four Postgres round trips and an AES-GCM open.
-pub type Strategy = Box<dyn Resolution>;
-
-/// What a strategy knows: where its key is, and what its body means.
-///
-/// `Debug` because the workspace denies `missing_debug_implementations` and a
-/// strategy ends up inside values that derive it; `Send + Sync` because a
-/// [`Strategy`] is held across an `await` on the vault read between the two
-/// method calls.
-pub trait Resolution: Debug + Send + Sync {
-    /// The vault row carrying this strategy's key.
-    fn key(&self) -> KeyRef<'_>;
-
-    /// What that row's body resolves to.
-    ///
-    /// Pure: the same bytes always answer the same way, which is what lets
-    /// every credential shape in this module be proven with no datastore.
-    ///
-    /// # Errors
-    /// Reports a body that is not a credential this strategy can read — a
-    /// missing or blank required field, a field of the wrong type, or an
-    /// endpoint the guard refused.
-    fn interpret(&self, body: &[u8]) -> Result<Resolved>;
-}
-
 /// One credential body, typed — refusing anything that is not a JSON OBJECT.
 ///
 /// The gate lives in [`af_core::json`], which carries the reasoning: a derived
@@ -151,57 +88,10 @@ pub trait Resolution: Debug + Send + Sync {
 /// unreadable answers `field`, because a caller is told none of them.
 ///
 /// # Errors
-/// Reports a body that is not an object, and one the strategy's own shape
+/// Reports a body that is not an object, and one the credential's own shape
 /// cannot read.
 fn credential<T: DeserializeOwned>(body: &[u8], field: &'static str) -> Result<T> {
     af_core::json::object_from_slice(body).map_err(|_shape| provider_malformed(field))
-}
-
-impl Providers {
-    /// The provider `tenant_id`'s next run dials with.
-    ///
-    /// Resolved fresh, with no cache: a platform default is meant to change
-    /// under a running fleet, and a cache is precisely what would stop the next
-    /// lease from seeing it.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer, and every way a stored
-    /// configuration can fail to name a usable provider. The caller separates
-    /// the two with [`crate::Error::is_config_permanent`] rather than by
-    /// matching kinds.
-    pub async fn resolve(&self, tenant_id: &Uuid7) -> Result<Resolved> {
-        let strategy = self.strategy(tenant_id).await?;
-        // Split across two statements, not folded into one expression: `key`
-        // borrows from `strategy`, so the borrow has to outlive the `await`
-        // that uses it and end before `interpret` is called on the same value.
-        let key = strategy.key();
-        let body = self.vault().find(key.workspace_id, key.name).await?;
-        strategy.interpret(body.ok_or_else(provider_secret_missing)?.expose())
-    }
-
-    /// Which of the two ways `tenant_id` resolves.
-    ///
-    /// A tenant with NO selection row and a tenant whose row points at nothing
-    /// take the same arm. The explicit row exists so the dashboard can tell
-    /// "never configured" from "explicitly reset", which is a display
-    /// distinction and not a resolution one.
-    async fn strategy(&self, tenant_id: &Uuid7) -> Result<Strategy> {
-        match self.selection(tenant_id).await? {
-            Some(Selection::SelfManaged(own)) => {
-                let workspace = self
-                    .primary_workspace(tenant_id)
-                    .await?
-                    // A tenant with no workspace at all is a violated bootstrap
-                    // invariant — signup creates the primary workspace — and it
-                    // is permanent, because nothing later creates one.
-                    .ok_or_else(provider_no_workspace)?;
-                Ok(managed::SelfManaged::prepare(own, workspace))
-            }
-            Some(Selection::Platform) | None => {
-                platform::Platform::prepare(self.platform_default().await?)
-            }
-        }
-    }
 }
 
 #[cfg(test)]
@@ -210,9 +100,7 @@ mod tests {
         clippy::expect_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::{
-        OPENAI_COMPATIBLE, Providers, Rejection, Resolution, credential, validate_endpoint_pair,
-    };
+    use super::{OPENAI_COMPATIBLE, Rejection, credential, validate_endpoint_pair};
     use serde::Deserialize;
 
     /// A two-field credential, which is what makes the positional reading
@@ -278,18 +166,5 @@ mod tests {
             validate_endpoint_pair(OPENAI_COMPATIBLE, None),
             Err(Rejection::Required)
         );
-    }
-
-    /// A strategy is held across the vault `await` between `key` and
-    /// `interpret`, so it has to cross a thread boundary in a multi-threaded
-    /// runtime. Stated as a compile-time assertion rather than discovered as a
-    /// `!Send` future three call sites up.
-    const fn assert_shareable<T: Send + Sync + ?Sized>() {}
-
-    #[test]
-    fn a_strategy_survives_the_await_between_its_two_halves() {
-        assert_shareable::<dyn Resolution>();
-        // And the store itself, which every request-path handle clones.
-        assert_shareable::<Providers>();
     }
 }

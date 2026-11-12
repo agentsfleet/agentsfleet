@@ -30,7 +30,6 @@ fn settled(tokens: RunTokens) -> Result<Reconciled, &'static str> {
     let id = Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")
         .map_err(|_malformed| "a fixture identifier is well formed")?;
     Ok(Reconciled {
-        charged: afd_billing::Nanos::ZERO,
         fleet_id: id.clone(),
         workspace_id: id.clone(),
         tenant_id: id.clone(),
@@ -153,8 +152,8 @@ fn test_span_joins_daemon_and_runner_segments()
     Ok(())
 }
 
-/// A runner from before the segments rode the report leaves only what the
-/// daemon measured itself.
+/// A report that carries no runner segments leaves only what the daemon
+/// measured itself.
 #[test]
 fn test_span_without_runner_segments_keeps_the_daemons()
 -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

@@ -1,0 +1,541 @@
+# M245 SQL walkthrough
+
+Every SQL file M245 adds, edits or deletes against `main`, line by line, with
+the reason for each change. Line numbers are the file's lines on
+`feat/m245-chat-costs-twenty-statements`.
+
+A CTE is a common table expression,
+one `WITH name AS (…)` block. Lines a file kept from `main` are named once and
+not re-explained.
+
+Every change serves one aim: a 10 s chat costs at most 20 Postgres statements. No cache serves a stale config, price or key
+(`docs/v2/active/M245_001_P1_DOCS_INFRA_OBS_CHAT_COSTS_TWENTY_STATEMENTS.md`).
+
+```
+one chat                         the SQL that now does the step
+claim ──────────────────────────► lease/claim_admission_head.sql   §4  one statement
+gates ──────────────────────────► select_gates.sql                 §5  one read
+issue ──────────────────────────► lease/insert_lease_with_event.sql §5 one statement
+renew (every 5 s) ──────────────► select_renewals.sql + renew_batch.sql   §7  two per host per tick
+                                  (meter_lease.sql: durable-task leases and the fallback only)
+expiry ─────────────────────────► bill_expired_slice.sql           §6 numbering
+report ─────────────────────────► commit_report.sql                §6  one statement
+task notice (durable tasks only) ► apply_report_notice.sql          §6
+```
+
+| File | Change | Section |
+|---|---|---|
+| `schema/20261108124600_billing_usage_lines.sql` | edited in place | §11 |
+| `afd_credential/src/provider/registered/sql/platform.sql` | edited | §3 |
+| `schema/20261108131600_fleet_task_waits.sql`, `afd_fleet/src/task/waits/sql/{update,owner}.sql` | edited (schema in place) | dead column |
+| `afd_billing/src/sql/select_price_book.sql` | edited | §6 |
+| `afd_fleet/src/lease/sql/lease/claim_admission_head.sql` | edited | §4, §8 |
+| `afd_fleet/src/lease/sql/lease/stamp_delivery.sql` | deleted | §4 |
+| `afd_fleet/src/lease/sql/select_gates.sql` | added | §5 |
+| `afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql` | edited | §5 |
+| `afd_fleet/src/lease/sql/commit_report.sql` | added | §6 |
+| `afd_fleet/src/lease/sql/apply_report_notice.sql` | added | §6 |
+| `afd_fleet/src/lease/sql/meter_lease.sql` | edited | §6 |
+| `afd_fleet/src/lease/sql/bill_expired_slice.sql` | edited | §6 |
+| `afd_fleet/src/lease/sql/insert_runner_event.sql` | deleted | §6 |
+| `afd_fleet/src/lease/sql/select_run_tokens.sql` | deleted | §6 |
+| `afd_fleet/src/lease/sql/select_lease_disposition.sql`, `afd_events/src/sql/select_fleet_event_status.sql`, `afd_fleet/src/lease/sql/upsert_fleet_session.sql`, `afd_fleet/src/task/report/transition.sql` | deleted | review round |
+| `afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql`, `select_lease_for_report.sql` | edited | §9 |
+| `afd_fleet/src/task/checkpoint/sql/{history,pages_allocate,base_pages_allocate}.sql` | edited | review round |
+| `af_context/src/repository/{load,insert,update}.sql`, `schema/20261108124800_memory_context_checkpoints.sql` | edited (schema in place) | review round |
+| `afd_fleet/src/lease/sql/original_request_owner.sql` | edited | §11 |
+| `afd_billing/src/ledger/sql/insert_lines.sql` | edited | §11 |
+| `afd_billing/src/ledger/sql/settle_lines.sql` | edited | §11 |
+| `afd_billing/src/ledger/sql/select_unsettled.sql`, `select_unsettled_work.sql` | edited | §11 |
+| `afd_billing/src/report/sql/charges.sql` | edited | §11 |
+| `afd_fleet/src/task/decision/sql/sequence.sql` | edited | §11 |
+| `afd_fleet/src/task/sql/bind_lease.sql` | edited | §11 |
+| `afd_fleet/src/lease/sql/select_renewals.sql` | added | §7 |
+| `afd_fleet/src/lease/sql/select_revision_documents.sql` | added | §7 |
+| `afd_fleet/src/lease/sql/renew_batch.sql` | added | §7 |
+
+Every statement file is prepared against the rebuilt schema by
+`afd_db`'s `test_every_sql_file_prepares`, which passed on the §6 commit.
+
+## Merge note: three schema files are edited in place
+
+There is no production deploy yet, so a table change edits its own file (`.orly/LOCAL.md`, SQL). The edited files are `billing_usage_lines.sql` (§11), `memory_context_checkpoints.sql` and `fleet_task_waits.sql`. The first holds the new `kind` column.
+
+The second is a setup draft's alone, because a run keeps no checkpoint row. The third drops the never-read `observed_signal_at` column. `vault_secrets.sql` and `runner_leases.sql` match `main`.
+
+The key cache needs no column (§2 below), and every statement that writes the lease cursor already clamps it. Dev has already applied the three edited files, and sqlx refuses an applied file whose checksum changed (`afd_db/src/migration.rs:14-16`). Deploying this branch to dev therefore needs the dev database reset that Indy authorizes; issue #827 holds the merge order.
+
+## §2: the key cache's witness needs no column
+
+The platform key cache has to notice that the stored key changed. An earlier cut of this branch added `vault.secrets.resource_version`, an update trigger and an insert bind for it. Indy asked why the column was needed, and it was not.
+
+`platform.sql` already hashes `secret_ciphertext`. Every write to a secret (`update_secret.sql`, `update_secret_envelope.sql`) re-seals the whole envelope under a fresh nonce. So the ciphertext's digest moves on every write, whichever writer runs, and no writer can skip it.
+
+The witness is a digest of the ciphertext and the endpoint stored beside it. Two statements compute it (`claim_admission_head.sql` and `platform.sql`, below). `vault_secrets.sql`, `insert_secret_if_absent.sql` and every test insert match `main`.
+
+## §11: `schema/20261108124600_billing_usage_lines.sql`
+
+Indy's change on Nov 10: every usage line says what it billed, instead of
+the number range it falls in saying it.
+
+| Lines | Change | Why |
+|---|---|---|
+| 9-15 | comment | Names the three kinds, their constant (`af_wire::usage::LineKind`) and how each numbers its lines. |
+| 26 | `kind TEXT NOT NULL` | `model`, `runtime` or `decision`. No `CHECK` list and no default: the spellings are application constants (RULE STS), and every writer names its kind. |
+| 51 | `UNIQUE (work_type, work_id, kind, seq)` | Each kind numbers its own lines. Before, one `u32` was split into three bands: the runner below `2^31`, runtime lines from `2^31` (`DAEMON_SEQ_BASE`), decisions from `3·2^30` (`DECISION_SEQ_BASE`). Each band was a hidden ceiling, and a row's meaning was read from which band its number sat in. |
+
+The counter §6 added to `runner.leases` (`daemon_line_count`) is gone with it.
+A runtime line is numbered by its slice's start, in milliseconds from the
+lease's start, read from the lease row the writer locks. The cursor only moves
+forward, so no two slices share a start, and two writers billing the same slice
+write one line.
+
+The longest run fits a `u32` of milliseconds by the existing
+compile-time assertion (`af_wire/src/usage/mod.rs`, `RUNTIME_MS_MAX`).
+
+## §3: `afd_credential/src/provider/registered/sql/platform.sql`
+
+| Line | Change | Why |
+|---|---|---|
+| 4-5 | `s.id AS secret_id`, `sha256(s.secret_ciphertext) AS ciphertext_digest` | Read inside `locked`, which takes `FOR SHARE OF p, s, m, r` (line 17), so what is returned is what was locked. The digest was `secret_digest` before; the name moved so the final column can carry the cache's witness. |
+| 26 | `encode(l.ciphertext_digest, 'hex')` | The resolution version hashes the same bytes as before. |
+| 33 | `l.resource_version AS catalogue_version, l.secret_id` | Two of the cache key's three parts. The entry is stored under what this locked read saw. |
+| 34-36 | `secret_digest`: `sha256` of a JSON array of the endpoint and the ciphertext's hex digest | The third part. The same expression, character for character in meaning, as the claim's `platform_secret_digest` (`claim_admission_head.sql` lines 130-132), so a key one lease read is found again by the next claim. The endpoint is inside it because the cached resolution answers with it. |
+| 37-39 | `valid_for_ms` | How long the matched price window has left: `effective_until` less `read_at`, the clock reading line 19 takes after the locks, in whole milliseconds (`$3`, milliseconds per second, floored). `NULL` for a window with no end. The daemon adds it to the instant its read began, so a window that closes with no successor ends the cached resolution at that instant, though no version moved. |
+
+`$3` is bound only on this statement. `entry.sql` returns none of the three new
+columns, and its rows decode them as absent.
+
+## Dead column: `schema/20261108131600_fleet_task_waits.sql` and the wait statements
+
+Indy approved the cut by name. `observed_signal_at` was written by
+`update.sql` and read by nothing: `due.sql`, `owner.sql` and `Wait::signalled`
+decide from `observed_signal_sequence` against `signal_sequence`.
+
+| File | Change | Why |
+|---|---|---|
+| `fleet_task_waits.sql` | `observed_signal_at TIMESTAMPTZ(3)` removed | No statement, index, constraint or function reads it. |
+| `update.sql` line 1 | `observed_signal_at = $5::timestamptz,` removed | The assignment. |
+| `update.sql` lines 1-5 | `$6`, `$7`, `$8` become `$5`, `$6`, `$7` | The cooldown, the retry interval and the sequence, renumbered to close the gap. |
+| `owner.sql` line 4 | `w.signalled_at` removed from the select | Its only reader was the bind that wrote `observed_signal_at`. The column itself stays: `fanout_one.sql` still maintains it. |
+
+## §6: `afd_billing/src/sql/select_price_book.sql`
+
+| Line | Change | Why |
+|---|---|---|
+| 5 | comma, then `(SELECT c.resource_version FROM model.catalogue_version c WHERE c.id = 1) AS catalogue_version` | The price book carries the catalogue version it was read at (`PriceBook.catalogue_version`). The report statement refuses lines priced under a catalogue that has since moved (`commit_report.sql:62`). `c.id = 1` is the singleton's documented identity exception (`schema/20261108121300_model_catalogue_version.sql:1-3`). |
+
+## §4, §8: `afd_fleet/src/lease/sql/lease/claim_admission_head.sql`
+
+On `main`, the claim was followed by a second transaction, `record_received`. It locked the admission, inserted the event (`afd_events`' `insert_leased_fleet_event.sql`) and stamped the delivery (`stamp_delivery.sql`). It then read the counters after commit and read the redelivery state (`lease/event.rs:118-175` on `main`).
+
+The claim now does all of it.
+
+| Lines | Change | Why |
+|---|---|---|
+| 1-5 `fleet` | added | The fleet row, read once, only while its status is active (`$12`). Later blocks joined `fleet.fleets` on their own. |
+| 6-11 `locked_slot`, `instant` | kept | `FOR UPDATE … SKIP LOCKED`: a competing claimant skips the slot rather than waiting. |
+| 18 | `WHERE EXISTS (SELECT 1 FROM fleet)` added | No slot is created or advanced for a fleet that is not active. |
+| 19-20 | parenthesised | The old `locked_slot` condition now sits under the fleet check. |
+| 21-39 `slot` upsert | kept | The fence arithmetic. |
+| 42 | `JOIN fleet f` | Reuses the one fleet read instead of `fleet.fleets`. |
+| 66-68 `stamped` | `delivered_at = COALESCE(a.delivered_at, clock_timestamp())` | The body of the deleted `stamp_delivery.sql`, on the row this statement already locks and fences. |
+| 80 | `RETURNING WITH (OLD AS prior)` | Postgres 18: returns the row as it was before this update. |
+| 82 | also returns `producer`, `created_at`, `task_id` | `opened` and `installed` need them. |
+| 83 | also returns `sequence`, `reply_provider`, `reply_address` (§8) | The head's place and conversation, for `inputs_waiting` at lines 153-167. |
+| 84 | `prior.delivered_at IS NOT NULL AS redelivered` | The stamp now happens before the event insert, so the updated row always has `delivered_at`. Only the pre-update row says whether this is a redelivery. |
+| 85-94 `prior_lease`, `bumped` | kept | |
+| 95-105 `opened` | added | The event insert from `insert_leased_fleet_event.sql:1-10`. |
+| 99 | `CASE WHEN a.producer = $14 AND NOT a.redelivered THEN a.created_at ELSE now() END` | The old `COALESCE((SELECT a.created_at … AND a.delivered_at IS NULL), now())`, rewritten on `redelivered`: the old subquery would now see the stamped row. |
+| 103-104 | `ON CONFLICT (event_id) DO UPDATE SET resumes_event_id = COALESCE(…)` | Same arm as the old insert: a re-leased event keeps its row. |
+| 105 | returns `(e.xmax = 0) AS inserted, e.created_at, e.status` | `status` is new; it replaces the `redelivery_of` read. |
+| 106-110 `counters` | added | Stored `event_count`, plus 1 when this statement inserted: a CTE cannot see its own insert's trigger bump. |
+| 111-121 `installed` | added | The revision the run uses (the task's accepted revision, else the head, line 118), the session, and the head's definition for comparison. |
+| 122-123 `catalogue` | added | The catalogue version, for the price cache key. |
+| 124-136 `platform` | added | The platform key's cache key, chosen as `platform.sql` chooses it: the secret's id and `platform_secret_digest`, the digest of its endpoint and ciphertext (lines 130-132), the expression `platform.sql` lines 34-36 compute. No locks: a stale key only misses the cache, and `platform.sql`'s locked read decides. |
+| 131-138 `tally` | kept | |
+| 139-152 | final row | Returns `redelivered` and every fact above. |
+| 153-167 | `inputs_waiting` added (§8) | Whether a later unsettled message sits in the head's conversation, foldable or not. Two branches, as `claim_inputs.sql` has them: an addressed conversation by equality, the unaddressed one by `IS NULL`, so both walk `idx_admissions_pending_conversation` (`fleet_id, reply_provider, reply_address, sequence WHERE settled_at IS NULL`) and stop at the first row. `IS NOT DISTINCT FROM` would read the same rows but cannot use the index. A durable task's lease says false: its inbox is closed (`claim_inputs.sql` requires `task_id IS NULL`). The run skips its first fold ask on false; a message admitted after this snapshot folds on the ask after the answer. |
+| 168-174 | joins | `CROSS JOIN fleet`: no active fleet, no row. `LEFT JOIN platform`: a deployment may have no platform default. |
+
+Changed afterwards: the three `reused_*` columns became one `reclaimed` flag; see
+"Review round 2" below.
+
+## §4: `afd_fleet/src/lease/sql/lease/stamp_delivery.sql` (deleted)
+
+Two lines: `UPDATE fleet.admissions SET delivered_at = COALESCE(delivered_at,
+clock_timestamp()) … WHERE … lease_fence = $3 AND settled_at IS NULL`. The
+claim's `stamped` block does the same update and sets the fence itself, and its
+caller `record_received` is gone.
+
+## §5: `afd_fleet/src/lease/sql/select_gates.sql` (added)
+
+The four facts the gates judge before an issue, in one read. They were four
+reads: the spend, the event's recorded gate, its standing, and the approved
+integrations, which delivery read after the issue.
+
+| Lines | Block | What and why |
+|---|---|---|
+| 1-7 | header | What the read returns, and why floors are cut to milliseconds. |
+| 8-10 | `floors` | Day floor `now() - $3`, cut to the millisecond the `TIMESTAMPTZ(3)` columns hold, so a line stamped exactly at the floor counts. Month floor in UTC. |
+| 11-18 | `spend` | Day and month sums in one scan, bounded below by the earlier floor (line 18). The same windows as `afd_billing`'s `select_fleet_spend.sql`. |
+| 19-24 | `recorded` | The newest gate this event holds. |
+| 25-31 | `standing` | That action's newest row: its status and whether its deadline passed, on the database clock. |
+| 32-39 | final row | Both sums, the gate, its standing, and the services the fleet holds a standing grant for, sorted so the answer is deterministic. |
+
+## §5: `afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 1-4 | header | The caller holds the host row; this snapshot is taken after that lock, so the census sees every earlier claimant's commit. |
+| 5-7 `instant` | added | One `clock_timestamp()` for every comparison and stamp. It replaces the Rust-bound `$11`, so every later parameter shifted down by one. |
+| 8-17 `host` | added | The capacity census inside the insert: the runner's live leases plus live authoring attempts, below `worker_count`. It was its own statement under the same host lock. |
+| 21-25 `held` | rewritten guard | The slot's fence is `$10`; its deadline has not passed on the database clock; `$19`, the deadline the claim answered, has not passed (a pass that outlived its claim writes no lease); and the host has room. |
+| 32-35 `inserted` | `$15`, `i.checked_at` | The lease is stamped with the same instant its checks used. |
+| 44-49 `chosen` | added | Compare-and-swap on `runner.runners.lease_version = $17`, the value read under the host lock, recording the placement choice `$18` only if a lease was inserted. |
+| 50-65 `audit`, `tallied` | renumbered | |
+| 66-69 | final row | No row unless `chosen` and `tallied` wrote; the caller then rolls the lease back with it. |
+
+## §6: `afd_fleet/src/lease/sql/commit_report.sql` (added)
+
+On `main` the report's transaction ran about a dozen statements under the host lock (`lease/commit.rs` on `main`). They metered, settled, closed the event, dropped other fences' tool calls and checkpointed. They released the slot, read the destination, owed the answer, read the run's tokens and wrote the audit row.
+
+This statement does all of it under the lease's own row lock. It takes locks in the scope, slot, lease order a renewal takes, with no host lock.
+
+| Lines | Block | What and why |
+|---|---|---|
+| 1-32 | header | Lock order; why a CTE cannot see its own writes or the triggers'; the guard; the `$1-$50` map. |
+| 33-38 | `scope` | `identity.lock_workspace` (`FOR KEY SHARE` on the workspace, `schema/20261108120300_identity_workspaces.sql:44`), then `FOR KEY SHARE` on the fleet. The first lock every writer of the fleet's scope takes, so lock order matches the claim and the renewal. |
+| 39-45 | `locked_slot` | `FOR UPDATE` on the slot, only for an active lease of this runner. |
+| 46-53 | `probe` | `FOR UPDATE` on the lease, reading its `created_at` and cursor. Under READ COMMITTED a waiter re-reads the latest row, so the cursor is current. |
+| 54-55 | `catalogue` | The current catalogue version. |
+| 56-66 | `guard` | Returns a row only when: the cursor never moves backwards or past the deadline (57); the lease was not reclaimed (60); posture, provider and model match the priced lines (61); the catalogue matches, with `$14` `NULL` for a self-managed lease priced from no catalogue (62, `usage/mod.rs:108-115`); an unsettled admission carries this fence (63-66). No row means no write below. |
+| 67-72 | `measured` | Whole milliseconds since the cursor, capped at `$48`, the longest runtime one line may claim, which the batch and the rater cap at too. |
+| 73-81 | `runtime` | The runtime line, only for positive milliseconds. `seq` is the slice's start, milliseconds from the lease's start (76). The charge is the ceiling of `d_ms × nanos-per-second ÷ 1000` in integers (79); `numeric` casts rounded instead. |
+| 82-114 | `lines` | One insert of the runner's priced request lines (`unnest` of `$15-$26`, kind `$8`, `model`) and the runtime line (kind `$49`, `runtime`). `ON CONFLICT (work_type, work_id, kind, seq) DO NOTHING` (110): a line already logged under the same kind and number is not doubled. |
+| 115-123 | `added` | Counts, nanos and token sums of what this statement inserted. `model_nanos` takes only `kind = $8`, the model lines, for a durable task's model spend (118). |
+| 124-131 | `moved` | The lease becomes reported and the cursor moves. |
+| 132-138 | `settled` | The admission settles and returns its reply destination. |
+| 139-149 | `tally` | The runner's lifetime counters. |
+| 150-158 | `closed` | Closes the event, only while it is open (`$35`). This replaces `update_fleet_event_result.sql` on this path; that file stays for fold settlement and the durable-task input receipt. |
+| 159-163 | `dropped` | Deletes tool-call records another fence wrote: a reclaimed lease's records describe a run whose answer does not stand. |
+| 164-168 | `checkpointed` | The session the fleet's next run resumes from. |
+| 169-176 | `released` | Expires the slot now and keeps the sandbox hold the runner asked for, capped at `$39`. |
+| 177-187 | `owed` | The delivery obligation, for a known connector and a non-empty answer, once per event. The destination comes from `settled`, so the separate destination read is gone. |
+| 188-192 | `audit` | The `lease_released` row; this was `insert_runner_event.sql`. |
+| 193-201 | final row, part 1 | `claimed`; the lease's status read `FOR SHARE` (a replay that waited behind the winner sees it settled, not its own snapshot); the lease's own pricing facts and `fence_holds`, so the caller tells settled-before, repriced and fenced apart. |
+| 202-206 | | Whether a durable task follows, the reply connector, and the ids written. |
+| 207-217 | | Token sums as `numeric`; a sum past `bigint` returns `NULL`, and the report settles and logs `report_run_tokens_unread` instead of failing. |
+| 218-238 | | Charge, the closed event row, `cost_nanos` (stored lines plus this statement's, `NULL` only for an event with no line), fleet status, pending approvals, counters plus this statement's nanos. |
+| 239-254 | joins | `added`; a `LATERAL` token sum over the lease's stored lines (`select_run_tokens.sql`'s work); `LEFT JOIN`s so exactly one row returns even when nothing was claimed. |
+
+The caller's next step is a pure function of this row (`commit.rs` `next_step`), with a unit test per arm. The arms are settle and already settled. A first reprice reruns once under the lease's own facts.
+
+A second reprice or a moved fence logs only the runner's known request lines. A statement that wrote nothing is rolled back before the known lines take a second connection. A dropped transaction would hold its slot and lease locks through that wait.
+
+## §6: `afd_fleet/src/lease/sql/apply_report_notice.sql` (added)
+
+A durable task's settlement can replace the run's answer with a notice. It
+reads the runtime the report statement metered, so it runs after.
+
+| Lines | Block | Why |
+|---|---|---|
+| 1-4 | header | |
+| 5-8 | `event` | The event's answer becomes the notice. |
+| 9-11 | `session` | The checkpoint resumes from the notice. |
+| 12-26 | `owed` | The notice is owed to the admission's reply destination (`$5` obligation id, `$6` receipt, `$7` the connector names that can receive one). A run that answered nothing owed nothing, so the report statement wrote no obligation; the insert owes the notice in its place. When one is already owed, `ON CONFLICT ... DO UPDATE ... WHERE o.delivered_at IS NULL` replaces its answer, and an answer already delivered is left as it was. |
+| 27 | `SELECT count(*) FROM event` | One row for `fetch_one`. The other two data-modifying CTEs run regardless. |
+
+## §6, §11: `afd_fleet/src/lease/sql/meter_lease.sql`
+
+| Line | Change | Why |
+|---|---|---|
+| 48 | `$13` → `$10` | §6 dropped the work-type and seq-range binds of the old count subquery; later parameters renumbered. |
+| 104-107 | `runtime_seq` | The runtime line's number: milliseconds from `g.created_at` to `g.last_metered_at`, the slice's start, read through the `FOR UPDATE` probe (15). It replaces a `count(*)` over the lease's daemon-band lines, whose snapshot did not see a racing writer's line; a renewal and a report therefore took the host lock to count correctly (`sql/meter.rs` comment, before). |
+
+## §6, §11: `afd_fleet/src/lease/sql/bill_expired_slice.sql`
+
+| Line | Change | Why |
+|---|---|---|
+| 4 | `d_ms` computed once in `probe` | The slice's milliseconds were written out twice, once to bill and once to number; now once. |
+| 5-6 | `runtime_seq` | Numbered as the meter numbers it: the slice's start. |
+| 22-23 | `p.d_ms`, `p.runtime_seq` | The count subquery and its parameters `$4-$6` went. |
+
+## §11: `afd_fleet/src/lease/sql/original_request_owner.sql`
+
+| Line | Change | Why |
+|---|---|---|
+| 1 | `0::bigint AS runtime_seq` | The known-request path measures no runtime; the column renamed with the slice it describes. |
+
+## §11: the ledger: `afd_billing/src/ledger/sql/*.sql`
+
+| File, lines | Change | Why |
+|---|---|---|
+| `insert_lines.sql` 3, 8, 13-15 | `kind` column, value and a `$25::text[]` array | Every line the shared ledger writes names its kind. |
+| `insert_lines.sql` 16 | `ON CONFLICT (work_type, work_id, kind, seq)` | The new key. |
+| `insert_lines.sql` 19-20 | `FILTER (WHERE kind = $26)` | A durable task's model spend is its model lines; it was `seq < DAEMON_SEQ_BASE`. |
+| `settle_lines.sql` 4 | `(kind, seq) IN (SELECT * FROM unnest($3::text[], $4::bigint[]))` | Settles exactly the lines named, by kind and number. |
+| `select_unsettled.sql` 1, `select_unsettled_work.sql` 1, 9 | `kind` read; `ORDER BY kind, seq` | The relay rebuilds each line with its kind. A line of a kind this build cannot name skips its whole group, as an unknown work type already does (`sweep.rs`). |
+
+## §11: `afd_billing/src/report/sql/charges.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 1-3 | comment | Why the order changed. |
+| 4 | `kind` returned | The charges API and the dashboard show what each charge billed: "Model call", "Runtime" or "Decision call", read from the row, not guessed from which counts are non-zero. |
+| 11 | `(requested_at, id) > ($7, $11)` | The page cursor. `seq` is unique only within a kind now, so it cannot resume a page; `(requested_at, id)` is unique and chronological. The cursor stays an opaque string to clients. |
+| 14 | `ORDER BY requested_at, id` | A work's charges in the order they happened. |
+
+## §11: decisions and task spend
+
+| File, line | Change | Why |
+|---|---|---|
+| `afd_fleet/src/task/decision/sql/sequence.sql` 3 | `COALESCE(MAX(usage_sequence) + 1, 0)` | A lease's decision calls count from 0 under their own kind; they started at `DECISION_SEQ_BASE`. Setup chat's decision calls (`afd_authoring`) bind their call index the same way. |
+| `afd_fleet/src/task/sql/bind_lease.sql` 22 | `u.kind = $5` | A task's model spend is its model lines; it was `u.seq < $5` with the daemon base. |
+
+## §6: deleted
+
+- **`insert_runner_event.sql`:** one `INSERT` of the release audit row; now `commit_report.sql`'s `audit` block.
+- **`select_run_tokens.sql`:** the token sums over a lease's lines; now the `LATERAL` at `commit_report.sql:241-251`, plus this statement's own lines.
+
+## §7: `afd_fleet/src/lease/sql/select_renewals.sql` (added)
+
+The pre-read a host's renewal frame needs before its statement, for every lease
+it names at once.
+
+| Lines | What and why |
+|---|---|
+| 1-7 | header: why each fact is read, and that `renew_batch.sql` guards every fact it acts on. |
+| 8-10 | Each lease's status, cancel mark, payer, fleet, posture, provider, model and task, and when it began: the daemon prices request lines in Rust and routes a task lease to the per-lease path. |
+| 10-12 | The fleet's head revision (whose definition holds the ceilings) and the catalogue version, which key the definitions and price-book caches. |
+| 13-15 | Only the leases named, and only this runner's: another runner's lease answers not found. |
+
+## §7: `afd_fleet/src/lease/sql/select_revision_documents.sql` (added)
+
+| Lines | What and why |
+|---|---|
+| 1-7 | The setup documents of the revisions the definitions cache missed, in one read for all of them. A warm cache never runs it. |
+
+## §7: `afd_fleet/src/lease/sql/renew_batch.sql` (added)
+
+One host's renewals in one statement. Each lease is judged on its own; a lease
+that fails a check extends nothing and changes no other lease's answer.
+
+| Lines | Block | What and why |
+|---|---|---|
+| 1-31 | header | Lock order (host shared, slot, lease), why the host row is shared and never exclusive, why a task lease is refused here, the guards, the `$1-$37` map. |
+| 32-37 | `asked` | The per-lease arrays as rows: priced-at facts, runtime price and line id, ceilings and the revision they came from. |
+| 38-49 | `host` | The host row `FOR SHARE` (49): renewable state, not degraded, the opening's credential and connection (42-43, `lock_host.sql`'s `authorized`), occupancy within `worker_count`. Shared so renewals never wait on each other; a credential rotation updating the row fences every renewal behind it, which then re-reads the new credential and refuses the old connection. The states come from `afd_runner::capacity::renewable_states()`, the list the locked check reads too. |
+| 50-57 | `locked_slot` | `FOR UPDATE` on each lease's slot, in fleet order (56), so two statements never wait on each other in a cycle. |
+| 58-68 | `probe` | `FOR UPDATE` on each lease, in the same order (67), reading its fence, deadlines, cursor, cancel mark and task. |
+| 69-71 | `instant` | The instant every deadline is judged at, read once the locks are held. |
+| 72-91 | `catalogue`, `floors`, `spend` | The current catalogue version, and each budgeted fleet's day and month spend, windowed and floored as `select_fleet_spend.sql` does. |
+| 92-120 | `judged` | Every check as its own column, so the caller tells each refusal apart: the fence and deadlines; below the hard cap; priced as held, with `$6` `NULL` for a lease priced from no catalogue; ceilings current against the head revision (103); spend at or above a ceiling (107, reached as `budget::covers` reads it); the host (111); an unsettled admission. |
+| 121-129 | `guard` | The leases every check passed, with the slice's milliseconds capped as the rater caps them. |
+| 130-138 | `runtime` | Each passing lease's runtime line, numbered by its slice's start (134) and charged in integers, rounded up. |
+| 139-150 | `moved`, `slot` | Both deadlines move to the same capped instant, under the lease's fence. |
+| 151-181 | `lines` | The request lines (`unnest`, kind `$31`, `model`) and the runtime lines (kind `$32`) of passing leases, keyed `(work_type, work_id, kind, seq)` (179). |
+| 182-195 | final rows | One row per lease asked about: each check, the new deadline, whether the slot moved too (190: a lease whose slot did not move is lost, never extended past a reclaim), and what its lines charged. |
+
+Changed afterwards: `host` no longer counts leases. A new `census` block does, on a clock read after the host lock. `charged_nanos` is gone from the lines and the final row; see "Review round 2" below.
+
+## §8: round trips with no new SQL
+
+- **Checkout ping.** No statement: sqlx's `test_before_acquire` sent a Sync on every checkout. The pools now ping in `before_acquire` only after `PING_AFTER_IDLE` (1 s) idle (`afd_db/src/pool/open.rs`), counted by `agentsfleet_db_pool_checkout_pings_total{role}`.
+- **First fold ask.** `claim_inputs.sql` is unchanged. Its first run per lease is answered by the claim's `inputs_waiting` (above) and skipped when false.
+- **Context load.** The `GET` ran `standing/select_standing_shared.sql` and `af_context`'s checkpoint read in one transaction. The run sends neither on its way to its first model call. The review round below removes the `PUT` too, with the run-scope half of the checkpoint store; `select_standing_shared.sql` stays for `write_fence.rs`.
+
+## §9: what the first bench run sent back
+
+The bench measured 28.7 statements a chat against a projection of about 20. Four statement files changed; none is new.
+
+### `afd_fleet/src/lease/sql/lease/claim_admission_head.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 82 `stamped` | returns `a.task_generation` | The final select needs both task columns to say whether the head is a durable task's. |
+| 153-156 | `tasked` added | `a.task_id IS NOT NULL OR a.task_generation IS NOT NULL`: the same pair the `head` filter tests at line 48. A plain head lets the issue skip `issue_source.sql`. The proof's task generation could not say this: a task before its first interpretation has none, and treating it as plain failed 15 durable-task tests. |
+
+### `afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 41-45 | comment | Why the insert now carries the task source's checks. |
+| 46 `r` | `JOIN runner.runners r ON r.id = $2` | The host's task capability, read under the host lock the issue already holds. |
+| 47 `setup` | `LEFT JOIN fleet.revisions` on the head | The head's definition, for whether it needs durable tasks. |
+| 50 | `$20` guard | `$20` is the head revision the claim assembled the setup from; NULL checks none (the public `issue` passes no proof). A head that moved writes no lease, which the caller rolls back. |
+| 51-54 | capability guard | A setup whose `$22` path names a decision policy needs a host with `durable_tasks_enabled` and the `$21` capability; `issue_source.sql`'s `requires_tasks && !capable` refusal, word for word. |
+
+Every lease pays both guards inside the statement it already ran, so a plain chat drops the task source read (1.0 a chat). A durable task's issue still runs `issue_source.sql`, which rechecks the same and attaches the task. The fleet is held by `task::lease::parents` and the host by the caller, so neither moves between the guard and the commit.
+
+### `afd_fleet/src/lease/sql/select_lease_for_report.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 3-7 | `catalogue_version` added | The report prices from the replica's book cache under this version; `commit_report.sql` guards on it, and a moved version reprices once. Before, the report read its book on every lease (1.0 a chat). |
+
+A streamed report no longer runs this statement at all. The offer carries what it reads, the session keeps it, and `report_with` takes it (1.0 a chat). A session rebuilt from the database never saw the offer and still reads it.
+
+### `afd_fleet/src/lease/sql/execution_deadline.sql` and `task/sql/issue_source.sql`
+
+Unchanged, and run only when a task binds. The lease payload no longer carries a run-time ceiling (no runner read it), so a chat's issue neither reads nor computes one. `execution_deadline.sql` answers `LEAST(created_at + MAX_RUNTIME, task_execution_deadline_at)`: the immutable ceiling a task binding receipt carries (`deadline::read`).
+
+### `afd_fleet/src/lease/sql/select_renewals.sql`
+
+Unchanged, and run only when a frame lacks a fact. The session passes each plain lease's kept facts. The replica keeps the newest catalogue version and head revision that every issue and pre-read answered, in `cache::Latest`.
+
+`renew_batch.sql` guards both (lines 99-103) and reads status and the cancel mark under its own locks.
+
+The frame therefore runs on the batch statement alone. The meter path went from 4.0 a chat to 2.0, two renewals at one statement each. A guard that finds a version moved sends the lease to the per-lease path and makes the next frame read again.
+
+## Review round: statements changed after the first draft
+
+The pre-landing review and the dead-code pass changed these. Line numbers are
+the files' current ones; the older tables above keep the §6/§7 numbers.
+
+### `afd_fleet/src/lease/sql/meter_lease.sql`: renewal only
+
+| Lines | Change | Why |
+|---|---|---|
+| `guard` 34-54 | the `CASE WHEN $5::boolean` branch becomes one `WHERE` | The statement settled a lease as well as renewing it. The report commits in one statement now (`commit_report.sql`), so no caller settles through this one. |
+| `moved` 55-61 | `status = CASE WHEN $5 ...` becomes `lease_expires_at = g.capped` | A renewal only extends; it never flips a lease to `reported`. |
+| `slot` 62-67 | the same `CASE` goes | The slot's deadline moves with the lease's. |
+| `settled`, `tally` | deleted | They settled the admission and counted the outcome; `commit_report.sql` does both. |
+| parameters | `$5` (settles), `$8` (reported status), `$9` (succeeded) go; the rest renumber to `$1-$7` | Nothing binds them. |
+
+### `afd_fleet/src/lease/sql/commit_report.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 54-58 `instant` | added | `clock_timestamp()` was read in a subquery that did not depend on `probe`, so the planner could run it before the lock wait and measure a slice that ended before the report owned the lease. It now reads from the locked rows, as `renew_batch.sql`'s `instant` does. |
+| 63 | `CROSS JOIN instant i` | `guard` takes that instant. |
+
+### `afd_fleet/src/lease/sql/renew_batch.sql`
+
+| Lines | Change | Why |
+|---|---|---|
+| 50-58 `locked_slot` | `CROSS JOIN host h` and a comment | A CTE runs when first read, and `host` was read only in the final select list, after the slots and leases were locked. An issue holds the host row and then takes a slot, so the two could wait on each other. Joining `host` takes the host row `FOR SHARE` first. A host that may not renew locks nothing, and every lease answers lost. |
+| `judged` / final row | `has_task` is read | A lease that gained a task after its session kept its facts is refused by `j.task_id IS NULL` at the guard; the caller now sends it to the per-lease path instead of answering lost. |
+
+### Statements deleted
+
+- **`select_lease_disposition.sql`:** told a settle that matched nothing whether the runner had already settled the lease; `commit_report.sql` answers that itself.
+- **`select_fleet_event_status.sql`:** the redelivery check; the claim returns the event's status.
+- **`upsert_fleet_session.sql`:** no caller; `commit_report.sql` writes the session.
+- **`task/report/transition.sql`:** identical to `task/waits/sql/transition.sql` apart from column order; the report uses the waits file.
+
+### `afd_fleet/src/task/checkpoint/sql/{history,pages_allocate,base_pages_allocate}.sql`
+
+`unnest($N::text[])` with `::uuid` on the result becomes `unnest($N::uuid[])`. The Rust side binds `&[Uuid7]`, so the identifiers were being cast between `text` and `uuid`, which the repository forbids.
+
+### `af_context/src/repository/{load,insert,update}.sql` and `memory.context_checkpoints`
+
+The run-scope half of the store had no writer once the runner stopped publishing, and no reader since the `GET` went.
+
+| Statement | Change |
+|---|---|
+| `load.sql` | `WHERE draft_id = $1`; the `OR (lease_id = $2 AND fleet_id = $3 AND branch_id = $4)` arm goes. |
+| `insert.sql` | `(id, draft_id, resource_version, document, ...)`; five parameters instead of eight. |
+| `update.sql` | `WHERE draft_id = $1 AND resource_version = $4`; four parameters instead of seven. |
+| table | `lease_id`, `fleet_id`, `branch_id`, `ck_context_checkpoints_owner` and the `(lease_id, branch_id)` and `fleet_id` indexes go; `draft_id` is `NOT NULL` with a plain unique index. |
+
+## Review round 2: the fleet pass
+
+These statements changed after the first review round. Each row says what the
+statement did, what it does, and why.
+
+### `afd_fleet/src/lease/sql/renew_batch.sql`
+
+| Block | Was | Is | Why |
+|---|---|---|---|
+| `host` | Held the host row `FOR SHARE` and counted the runner's live leases and live authoring attempts against `now()` in its own `WHERE` | Holds the row and returns `id, worker_count` only | `now()` is fixed at the start of the transaction, so a wait on a credential rotation (which holds the row exclusively) could count a lease that lapsed during the wait as live and refuse the whole host. |
+| `census` (new) | | Reads `clock_timestamp()` once, in a step that depends on `host` (`SELECT count(*) FROM host`), then runs the same two counts against that clock and keeps the row only while they stay within `worker_count` | The clock is read after the lock, never before it (SQL-LOCKCLOCK), and a deadline is judged by `clock_timestamp()`, never `now()` (SQL-DEADLINE). |
+| `locked_slot`, `host_renews` | Read `host` | Read `census` | The host row is still held shared before any slot, and a host over its worker count still renews nothing. |
+| `guard` comment | "Capped as the rater caps a line's milliseconds" | Names the longest runtime one line may claim (`$33`), the one constant the batch, the report and the rater share | The batch capped a slice at one hour while the report and the rater capped it at `u32::MAX`; all three now bind the one constant. |
+| `lines`, final row | `RETURNING work_id, charged_nanos` and a `charged_nanos` column summed per lease | Both gone | The gateway threw the charge away (`_charged`); the statement stopped computing what nobody read. |
+
+### `afd_fleet/src/lease/sql/lease/insert_lease_with_event.sql`
+
+| Block | Was | Is | Why |
+|---|---|---|---|
+| `after_lock` (new) | | `clock_timestamp()` read once `held` holds the slot lock | `instant` is read before the slot lock, so a wait on that lock could make a lapsed slot, or a claim whose deadline had passed, look live. |
+| final `WHERE` | `h.lease_expires_at > clock_timestamp()` | `h.lease_expires_at > a.checked_at AND $19 > a.checked_at` | The slot's own deadline and the deadline the claim answered (`$19`) are both judged on the clock read after the lock. Before, `$19` was checked against the early `instant` only. |
+
+### `afd_fleet/src/lease/sql/original_request_owner.sql`
+
+| Block | Was | Is | Why |
+|---|---|---|---|
+| `owned` (new) | One select that read `clock_timestamp()` in its select list with `FOR UPDATE OF l` | The same joins and `FOR UPDATE OF l`, selecting the row's own columns | The planner may evaluate a select-list clock before the lock wait; the pattern is the standard's example of a clock read that can run first. |
+| `instant` (new) | | `clock_timestamp()` read once `owned` exists | The slice ends at the later of the lock and the clock, not before the report owns the lease. |
+| final select | `LEAST(clock_timestamp(), l.lease_expires_at) AS checked_at` | `LEAST(i.checked_at, o.lease_expires_at)`, joined to the fleet name as before | Same value, read in the right order. |
+
+### `afd_fleet/src/lease/sql/commit_report.sql`
+
+| Item | Was | Is | Why |
+|---|---|---|---|
+| Duplicate answer bind | `$42` repeated `$29` (the response) as the answer owed | `$29` serves both | The same text bound twice. Every later bind shifts down by one: connectors `$42`, audit id `$43`, event type `$44`, metadata `$45`, fleet `$46`, workspace `$47`, longest runtime `$48`, runtime line kind `$49`. |
+| `$50` (new) | The literal 9223372036854775807 written four times in the token-sum guards | The largest count a `bigint` holds, bound once | No magic number in a statement; the four guards read one bind. |
+| `released`, `audit` | `RETURNING s.hold_expires_at` and `RETURNING id` | No `RETURNING` | The final row's `audit_id` and `hold_expires_at` columns went with them: no caller read either. |
+| runtime cap | `$49`, commented as the rater's cap | `$48`, the shared longest-runtime constant | One cap for the batch, the report and the rater. |
+
+### `afd_fleet/src/lease/sql/lease/claim_admission_head.sql`
+
+| Item | Was | Is | Why |
+|---|---|---|---|
+| `reused_tenant_id`, `reused_posture`, `reused_model` | Three columns copied from the prior lease | `b.id IS NOT NULL AS reclaimed` | Nothing read the three values; the delivery only needs to know that a prior lease existed. Delivery re-gates a reclaim, so the old docs that said a reclaim never bills were wrong and are corrected. |
+
+### `afd_fleet/src/lease/fence/select_live_fence_by_{fleet,lease}.sql`
+
+`LEFT JOIN runner.fleet_slots … COALESCE(a.fencing_token, l.fencing_token)` becomes an inner `JOIN` and `a.fencing_token AS live_seq`. A lease row is only inserted while its slot row is held (`held` in `insert_lease_with_event.sql`). A lease without a slot row is not a state the system writes.
+
+The `COALESCE` answered it with the lease's own token and hid the fault.
+
+### Deleted and comment-only
+
+- **`select_lease_target.sql` and `sql/activity.rs`:** the test-only read that resolved a lease's activity target. The gateway publishes through `activity_for_target`, which runs no statement for a plain frame and `lease/activity/task_history.sql` for a durable task's progress.
+- **Comment-only:** `apply_report_notice.sql`, `select_gates.sql`, `select_lease_for_report.sql` and `select_renewals.sql` lose milestone tokens from their comments; no statement text changed.
+
+## Review round 3: the billing, credential and event pass
+
+These statements changed in the dead-code pass. Each row says what the
+statement did, what it does, and why.
+
+### `afd_credential/src/provider/registered/sql/platform.sql`
+
+| Item | Was | Is | Why |
+|---|---|---|---|
+| `AND $2::text IS NOT NULL` | A bound reference that no clause compared | Gone | The parameter existed so a call site's bind list matched the statement; nothing read it. |
+| the milliseconds multiplier | `$3::bigint` | `$2::bigint` | The only bind that moved. |
+
+### `afd_credential/src/provider/sql/activate_tenant_model.sql`
+
+| Item | Was | Is | Why |
+|---|---|---|---|
+| the catalogue test | `($5::boolean OR EXISTS (SELECT 1 FROM model.platform_models WHERE provider = $2 AND model_name = $3))` | `EXISTS (SELECT 1 FROM model.platform_models WHERE provider = $2 AND model_name = $3)` | A compatible endpoint skipped the catalogue test, was accepted at activation and then failed its first run with `provider_secret_missing`. Activation now refuses a model the catalogue lacks; the same change in Rust refuses a compatible endpoint with no key. `$5` is gone. |
+| `context_cap_tokens` | `AND ($5::boolean OR provider = $2)` | `AND provider = $2` | The cap is read from the model's own provider row only. |
+
+### `afd_credential/src/provider/sql/select_tenant_selection.sql`
+
+`AND (s.meta_provider = $2 OR p.provider = s.meta_provider)` becomes
+`AND p.provider = s.meta_provider`. The join to the catalogue row follows the
+secret's own provider; the `$2` alternative served the compatible-endpoint case
+the activation statement no longer admits.
+
+### `afd_events/src/sql/insert_fleet_event.sql` and `insert_leased_fleet_event.sql`
+
+| Statement | Was | Is | Why |
+|---|---|---|---|
+| `insert_fleet_event.sql` | `RETURNING (xmax = 0) AS inserted, event_id` | `RETURNING (xmax = 0) AS inserted` | No caller read `event_id`. |
+| `insert_leased_fleet_event.sql` | `RETURNING (xmax = 0) AS inserted, created_at` | `RETURNING (xmax = 0) AS inserted` | Its one remaining caller, the input receipt's answer, runs it as an execute and discards the row. |
+
+### Deleted
+
+- **`afd_billing/src/sql/select_tenant_for_workspace.sql`:** the read behind
+  `Accounts::payer` and `Accounts::wallet`, which only tests called. Production
+  reads the wallet through the biller.
+
+## Identifiers
+
+No statement binds or casts an identifier between `text` and `uuid`. Every `uuid` cast is uuid to uuid on a `Uuid7` bind. Every `bigint` cast is a count, a duration, nanos or a version.
+
+Every `text` cast is an answer, an event type or a connector name.

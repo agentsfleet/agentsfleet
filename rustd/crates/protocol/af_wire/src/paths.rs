@@ -94,9 +94,6 @@ pub const LEASE_SCHEDULE_RUNS: &str = concatcp!(LEASE_SCHEDULE, "/", SCHEDULE_RU
 /// `POST` — a line said to the leased event's thread.
 pub const LEASE_MESSAGES: &str = concatcp!(LEASE, LEASE_MESSAGES_SUFFIX);
 
-/// Private working notes for one branch of a live lease.
-pub const LEASE_CONTEXT: &str = concatcp!(LEASE, "context-checkpoints/{branch_id}");
-
 /// Physical decision reservations owned by the existing fenced lease.
 pub const LEASE_TASK_DECISIONS: &str = concatcp!(LEASE, "tasks/decisions");
 

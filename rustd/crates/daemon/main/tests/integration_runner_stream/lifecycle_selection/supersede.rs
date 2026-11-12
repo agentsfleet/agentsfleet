@@ -1,11 +1,9 @@
 //! A coded ownership loss terminates the production downlink without a physical reconnect.
 
 use super::{heartbeat, owner, relay::Relay, session};
+use crate::integration_runner_stream::RECOVERY_SLACK;
 use crate::integration_runner_stream::raw::Native;
-use af_core::{
-    error_code::RUN_STREAM_SUPERSEDED,
-    timing::{RECONNECT_JITTER_MAX, STREAM_RECOVERY_BUDGET},
-};
+use af_core::{error_code::RUN_STREAM_SUPERSEDED, timing::STREAM_RECOVERY_BUDGET};
 use af_stream::Transport;
 use agentsfleetd::supervisor::Supervisor;
 
@@ -36,7 +34,7 @@ async fn superseded(transport: Transport) {
     replacement.heartbeat().await;
     let current = owner(&run).await;
     assert_eq!(current.as_str(), replacement.owner);
-    tokio::time::sleep(RECONNECT_JITTER_MAX + STREAM_RECOVERY_BUDGET).await;
+    tokio::time::sleep(RECOVERY_SLACK + STREAM_RECOVERY_BUDGET).await;
     assert_eq!(
         relay.connections(),
         initial,

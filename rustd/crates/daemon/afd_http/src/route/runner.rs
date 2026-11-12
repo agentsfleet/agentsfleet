@@ -24,8 +24,6 @@ pub enum RunnerRoute {
     SelfRecord,
     /// Native runner control, work, report and activity lanes.
     Stream,
-    /// Private context checkpoint for a branch of a live lease.
-    ContextCheckpoint,
     /// Reserve a physical decision with accepted native questions and credit.
     TaskDecisions,
     /// Read complete pending human messages without consuming them.
@@ -80,7 +78,6 @@ impl RunnerRoute {
     pub const ALL: &'static [Self] = &[
         Self::SelfRecord,
         Self::Stream,
-        Self::ContextCheckpoint,
         Self::TaskDecisions,
         Self::TaskInputs,
         Self::TaskBindings,
@@ -116,7 +113,7 @@ impl RunnerRoute {
     #[must_use]
     pub const fn verbs(self) -> &'static [Verb] {
         match self {
-            Self::ContextCheckpoint | Self::TaskCheckpointPage => &[Verb::Get, Verb::Put],
+            Self::TaskCheckpointPage => &[Verb::Get, Verb::Put],
             Self::Schedules
             | Self::ScheduleRuns
             | Self::TaskEffects
@@ -150,7 +147,6 @@ impl RunnerRoute {
         let template = match self {
             Self::SelfRecord => paths::RUNNER_SELF,
             Self::Stream => paths::RUNNER_STREAM,
-            Self::ContextCheckpoint => paths::LEASE_CONTEXT,
             Self::TaskDecisions => paths::LEASE_TASK_DECISIONS,
             Self::TaskInputs => paths::LEASE_TASK_INPUTS,
             Self::TaskBindings => paths::LEASE_TASK_BINDINGS,

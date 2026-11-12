@@ -22,6 +22,7 @@
 )]
 
 use af_core::env::{EnvSource as _, MapEnv, ProcessEnv};
+use afd_db::config::PoolConfig;
 use agentsfleetd::serve::boot;
 use agentsfleetd::supervisor::Supervisor;
 
@@ -122,11 +123,13 @@ async fn test_boot_to_ready_on_compose() {
     // connection, and on a cold lazy pool that acquire opens one — so checking
     // after it would pass on a daemon that never warmed at all. Boot is the
     // only thing that can have filled the pool at this point.
+    let floor = PoolConfig::resolve(&lane_environment(), booted.database.role())
+        .expect("the lane's environment resolves the pool's role")
+        .min_connections();
     assert!(
-        booted.database.size() >= booted.database.min_connections(),
-        "boot warms the pool to its floor: {} open against a floor of {}",
+        booted.database.size() >= floor,
+        "boot warms the pool to its floor: {} open against a floor of {floor}",
         booted.database.size(),
-        booted.database.min_connections()
     );
 
     assert_eq!(
@@ -157,6 +160,7 @@ fn assert_supervises_every_task(supervisor: &Supervisor) {
             agentsfleetd::sweepers::TASKS,
             agentsfleetd::sweepers::TASK_STORAGE,
             agentsfleetd::sweepers::BILLING,
+            agentsfleetd::sweepers::EXPIRY,
             agentsfleetd::inventory::BUS_SHUTDOWN,
             agentsfleetd::inventory::OUTBOUND_WORKER,
             "runner_stream_scheduler",

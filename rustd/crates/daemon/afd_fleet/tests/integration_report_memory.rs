@@ -118,10 +118,11 @@ async fn test_report_memory_lands_before_the_settle() {
     let settled = held
         .fixtures
         .plane()
-        .report(
+        .report_with(
             &held.runner,
             &report(&held, held.fence.as_u64(), learned()),
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -157,10 +158,11 @@ async fn test_superseded_report_writes_no_memory() {
     let refused = held
         .fixtures
         .plane()
-        .report(
+        .report_with(
             &held.runner,
             &report(&held, held.fence.as_u64(), learned()),
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -197,10 +199,11 @@ async fn test_oversize_report_memory_is_cut_and_counted() {
 
     held.fixtures
         .plane()
-        .report(
+        .report_with(
             &held.runner,
             &report(&held, held.fence.as_u64(), oversize),
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -238,10 +241,11 @@ async fn test_failed_capture_still_settles() {
     let log = Capture::install();
 
     forgetful
-        .report(
+        .report_with(
             &held.runner,
             &report(&held, held.fence.as_u64(), learned()),
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -285,10 +289,11 @@ async fn test_a_repeated_report_skips_its_memory_capture() {
     let plane = held.fixtures.plane();
     let body = report(&held, held.fence.as_u64(), learned());
     plane
-        .report(
+        .report_with(
             &held.runner,
             &body,
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -296,10 +301,11 @@ async fn test_a_repeated_report_skips_its_memory_capture() {
     let log = Capture::install();
 
     let repeated = plane
-        .report(
+        .report_with(
             &held.runner,
             &body,
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await

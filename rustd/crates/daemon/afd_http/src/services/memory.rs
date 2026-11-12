@@ -11,11 +11,10 @@
 //! workspace here rather than resolving it in the handler is what makes the
 //! check impossible to forget.
 //!
-//! # There is no store verb, and there never was one to port
+//! # There is no store verb
 //!
-//! The tenant POST was retired with the runner-push cutover — a fleet remembers
-//! what it LEARNED, never what a caller asserted — so the mutations here are the
-//! operator's forget and the admin's grants.
+//! A fleet remembers what it LEARNED, never what a caller asserted, so the
+//! mutations here are the operator's forget and the admin's grants.
 
 use af_core::id::Uuid7;
 use afd_api_wire::fleet::{MemoryAccess, MemoryAccessRequest};

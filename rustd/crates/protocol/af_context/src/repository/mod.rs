@@ -9,66 +9,25 @@ const LOAD: &str = include_str!("load.sql");
 const INSERT: &str = include_str!("insert.sql");
 const UPDATE: &str = include_str!("update.sql");
 
-/// The erasable owner; account-wide or cross-host scopes cannot be constructed.
-#[derive(Debug, Clone)]
-pub enum Scope {
-    /// One creator-private setup conversation.
-    Draft(Uuid7),
-    /// One branch of a fleet run under its live lease.
-    Run {
-        /// The live execution lease.
-        lease: Uuid7,
-        /// The erasable owning fleet.
-        fleet: Uuid7,
-        /// One root or child conversation branch.
-        branch: Uuid7,
-    },
-}
-
-impl Scope {
-    /// Canonical identity assigned by the authorized host adapter.
-    #[must_use]
-    pub fn identity(&self) -> String {
-        match self {
-            Self::Draft(draft) => format!("draft:{draft}"),
-            Self::Run {
-                lease,
-                fleet,
-                branch,
-            } => format!("run:{fleet}:{lease}:{branch}"),
-        }
-    }
-
-    const fn keys(
-        &self,
-    ) -> (
-        Option<&Uuid7>,
-        Option<&Uuid7>,
-        Option<&Uuid7>,
-        Option<&Uuid7>,
-    ) {
-        match self {
-            Self::Draft(draft) => (Some(draft), None, None, None),
-            Self::Run {
-                lease,
-                fleet,
-                branch,
-            } => (None, Some(lease), Some(fleet), Some(branch)),
-        }
-    }
+/// The identity a setup conversation's checkpoint carries, assigned by the
+/// authorized host adapter: one erasable owner, the draft, so no account-wide
+/// or cross-host scope can be constructed.
+#[must_use]
+pub fn identity(draft: &Uuid7) -> String {
+    format!("draft:{draft}")
 }
 
 /// Borrow the caller's connection; no pool acquisition or authority check is hidden.
 pub struct Repository<'a> {
     connection: &'a mut PgConnection,
-    scope: Scope,
+    draft: Uuid7,
     id: Uuid7,
 }
 
 impl std::fmt::Debug for Repository<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Repository")
-            .field("scope", &self.scope)
+            .field("draft", &self.draft)
             .finish_non_exhaustive()
     }
 }
@@ -76,21 +35,23 @@ impl std::fmt::Debug for Repository<'_> {
 impl<'a> Repository<'a> {
     /// `id` is a newly minted checkpoint row identity, used only on first insert.
     #[must_use]
-    pub const fn new(connection: &'a mut PgConnection, scope: Scope, id: Uuid7) -> Self {
+    pub const fn new(connection: &'a mut PgConnection, draft: Uuid7, id: Uuid7) -> Self {
         Self {
             connection,
-            scope,
+            draft,
             id,
         }
     }
 
-    async fn read(&mut self) -> Result<Option<Checkpoint>> {
-        let (draft, lease, fleet, branch) = self.scope.keys();
+    /// The one checkpoint the draft owns, validated, or none before the first
+    /// publication.
+    ///
+    /// # Errors
+    /// The store would not answer, or the stored document is not a valid
+    /// checkpoint.
+    pub async fn load(&mut self) -> Result<Option<Checkpoint>> {
         let found: Option<sqlx::types::Json<Checkpoint>> = sqlx::query_scalar(LOAD)
-            .bind(draft)
-            .bind(lease)
-            .bind(fleet)
-            .bind(branch)
+            .bind(&self.draft)
             .fetch_optional(&mut *self.connection)
             .await
             .map_err(Error::boundary)?;
@@ -103,7 +64,7 @@ impl<'a> Repository<'a> {
 
     async fn publish(&mut self, expected: u64, checkpoint: Checkpoint) -> Result<()> {
         checkpoint.validate_document()?;
-        if checkpoint.identity.scope != self.scope.identity()
+        if checkpoint.identity.scope != identity(&self.draft)
             || expected.checked_add(1) != Some(checkpoint.generation)
         {
             return Err(Error::stale());
@@ -111,25 +72,21 @@ impl<'a> Repository<'a> {
         let generation =
             i64::try_from(checkpoint.generation).map_err(|_overflow| Error::stale())?;
         let expected = i64::try_from(expected).map_err(|_overflow| Error::stale())?;
-        let (draft, lease, fleet, branch) = self.scope.keys();
-        // The insert names the new row's id; the update finds the row by scope.
+        // The insert names the new row's id; the update finds the row by draft.
         let statement = if expected == 0 {
             sqlx::query(INSERT).bind(&self.id)
         } else {
             sqlx::query(UPDATE)
         };
         let changed = statement
-            .bind(draft)
-            .bind(lease)
-            .bind(fleet)
-            .bind(branch)
+            .bind(&self.draft)
             .bind(generation)
             .bind(sqlx::types::Json(&checkpoint))
             .bind(expected)
             .execute(&mut *self.connection)
             .await
             .map_err(Error::boundary)?;
-        if changed.rows_affected() == 1 || self.read().await?.as_ref() == Some(&checkpoint) {
+        if changed.rows_affected() == 1 || self.load().await?.as_ref() == Some(&checkpoint) {
             Ok(())
         } else {
             Err(Error::stale())
@@ -138,9 +95,6 @@ impl<'a> Repository<'a> {
 }
 
 impl CheckpointStore for Repository<'_> {
-    fn load(&mut self) -> PortFuture<'_, Option<Checkpoint>> {
-        Box::pin(self.read())
-    }
     fn commit(&mut self, expected_generation: u64, checkpoint: Checkpoint) -> PortFuture<'_, ()> {
         Box::pin(self.publish(expected_generation, checkpoint))
     }

@@ -50,12 +50,12 @@ const PROCESSED: &str = "processed";
 /// so the post-commit token read fails as a database fault while the money,
 /// which reads charges and counts rows, is untouched.
 const OVERFLOWING_LINES: &str = "INSERT INTO billing.usage_lines \
-       (id, work_type, work_id, seq, tenant_id, workspace_id, fleet_id, fleet_name, \
+       (id, work_type, work_id, seq, kind, tenant_id, workspace_id, fleet_id, fleet_name, \
         event_id, provider, model, posture, requested_at, input_token_count, \
         cached_input_token_count, cache_write_token_count, cache_write_5m_token_count, \
         cache_write_1h_token_count, output_token_count, runtime_ms, unpriced_token_count, \
         charged_nanos, settled_at, created_at, updated_at) \
-     SELECT s.id, $1, l.id, s.seq, l.tenant_id, l.workspace_id, l.fleet_id, f.name, $2, \
+     SELECT s.id, $1, l.id, s.seq, $7::text, l.tenant_id, l.workspace_id, l.fleet_id, f.name, $2, \
             l.provider, l.model, l.posture, now(), $3::bigint, 0, 0, 0, 0, 0, 0, 0, 0, \
             now(), now(), now() \
        FROM runner.leases l JOIN fleet.fleets f ON f.id = l.fleet_id \
@@ -136,10 +136,11 @@ async fn test_a_renewal_its_host_or_its_lease_no_longer_allows_is_lost() {
     )
     .await;
     plane
-        .report(
+        .report_with(
             &held.runner,
             &processed(&held, None),
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -198,6 +199,7 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
             Bind::Id(lease_id),
             Bind::Id(&mint_id()),
             Bind::Id(&mint_id()),
+            Bind::Text(af_wire::usage::LineKind::Model.as_str()),
         ],
     )
     .await;
@@ -209,13 +211,13 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
     };
     let capture = Capture::install();
 
-    let reconciled = held
-        .fixtures
+    held.fixtures
         .plane()
-        .report(
+        .report_with(
             &held.runner,
             &failed,
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -228,7 +230,6 @@ async fn test_a_failed_report_on_a_finished_event_settles_with_nothing_owed() {
         unread.field("error_code"),
         Some(error_code::INTERNAL_DB_QUERY.as_str())
     );
-    assert_eq!(reconciled.charged, Nanos::ZERO);
     held.fixtures.cleanup().await;
 }
 

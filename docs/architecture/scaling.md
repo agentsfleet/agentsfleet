@@ -96,6 +96,8 @@ Postgres is **PlanetScale**, and two of its properties bind the same way:
 
    The request path is therefore meant to run through PlanetScale's PgBouncer (port `6432`, transaction pooling). It multiplexes replicas' connections onto one bounded server pool. The deployment preflight refuses an `api-connection-string` on any other port, and the migrator stays on `5432` for its session advisory lock.
 
+   A checkout pings only a connection idle for `PING_AFTER_IDLE` (1 s) or longer; sqlx's default pings every checkout, a round trip per commit. A backend lost inside that second fails one statement, and sqlx discards the connection. `agentsfleet_db_pool_checkout_pings_total` counts the pings.
+
    PgBouncer's own `default_pool_size` (20) counts against that same ceiling once, beside PlanetScale's admin and exporter backends and the migrator at release. Set it low enough in the console that all four fit.
 2. **Region**: production's database sits in `us-east` beside Fly `iad`. Development's sits in `aws-us-east-2` (Ohio), a round trip away on every handshake and every query. A region cannot be changed in place; `playbooks/operations/database_region_move/` moves it.
 

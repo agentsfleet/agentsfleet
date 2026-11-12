@@ -54,11 +54,6 @@ async fn configured_edit_after_claim_is_rechecked_before_issuing_a_source_lease(
         let fixture = Decisions::create(case).await;
         expire(case).await;
         let acquired = selected(case).await.expect("enabled source claimed");
-        case.held
-            .leases
-            .record_received(&acquired)
-            .await
-            .expect("source history");
         refuse_after_edit(case, &acquired).await;
         set(case, true).await;
         assert!(

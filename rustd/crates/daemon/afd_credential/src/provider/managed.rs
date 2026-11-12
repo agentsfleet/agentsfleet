@@ -1,38 +1,29 @@
-//! The self-managed strategy: the tenant's key, in the tenant's own workspace.
+//! The self-managed credential's shape, and the rule for its key.
 //!
 //! # Which half of the answer comes from where
 //!
 //! The CREDENTIAL supplies the provider, the key and the endpoint. The
-//! SELECTION row supplies the model and the context ceiling. That split is not
-//! arbitrary and it is not symmetric with [`super::platform`]: the model lives
-//! on the tenant's registry entry (M121), so a known-provider credential is
-//! just `{provider, api_key}` with no `model` field at all, and reading the
-//! model off the credential would resolve whatever a stale secret happened to
-//! carry instead of what the tenant activated.
+//! registry ENTRY supplies the model and the context ceiling: a known-provider
+//! credential is just `{provider, api_key}` with no `model` field at all, and
+//! reading the model off the credential would resolve whatever a stale secret
+//! happened to carry instead of what the tenant activated.
 //!
 //! The credential's own `model` is therefore parsed — a non-string is still
-//! malformed — and then deliberately unread on this path. Activation reads it
-//! as the default it stores when the provider request names no model
+//! malformed — and then deliberately unread on the resolution path. Activation
+//! reads it as the default it stores when the provider request names no model
 //! (`agentsfleet tenant provider create --secret X` without `--model`).
 //!
-//! # The key is optional, for exactly one provider
+//! # The key is required, for every provider
 //!
-//! A custom OpenAI-compatible gateway may be keyless — that is the spec's
-//! optional-key design, and a tenant fronting their own vLLM has no bearer
-//! token to give. Every NAMED provider must carry a non-empty key. The two
-//! rules are one expression here, so they cannot come apart.
+//! A custom OpenAI-compatible gateway included: activation refuses a
+//! credential without a key, and the registry read that precedes this one
+//! never returns it, so a run could not resolve a keyless body anyway. The rule
+//! is one expression here, so it cannot come apart from the activation check.
 
 use serde::Deserialize;
 
-use super::KeyRef;
 use crate::error::{Result, provider_malformed};
-use crate::provider::resolved::Resolved;
-use crate::provider::selection::OwnModel;
-use crate::provider::vetted::vet;
-use crate::provider::{Resolution, Strategy};
-use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
-use afd_billing::Posture;
 
 /// The credential field a self-managed resolution cannot proceed without.
 pub(super) const FIELD_PROVIDER: &str = "provider";
@@ -49,8 +40,7 @@ const FIELD_API_KEY: &str = "api_key";
 pub(super) struct Credential {
     /// Which provider this credential is for. Always required.
     pub(super) provider: Box<str>,
-    /// The bearer key. Optional in the JSON, and required by the rule below
-    /// for every provider but the compatible one.
+    /// The bearer key. Optional in the JSON, and required by the rule below.
     #[serde(default)]
     pub(super) api_key: Option<SecretString>,
     /// The credential's own model.
@@ -67,66 +57,14 @@ pub(super) struct Credential {
     pub(super) base_url: Option<Box<str>>,
 }
 
-/// Resolution through a tenant's own stored credential.
-#[derive(Debug)]
-pub(super) struct SelfManaged {
-    /// What the tenant activated: the model, the ceiling and the key's name.
-    own: OwnModel,
-    /// The workspace holding it.
-    workspace_id: Uuid7,
-}
-
-impl SelfManaged {
-    /// The strategy for a self-managed selection in `workspace_id`.
-    ///
-    /// Infallible: an [`OwnModel`] always names a vault row, because the
-    /// selection is a pointer at a registry entry and every entry carries its
-    /// credential's name.
-    pub(super) fn prepare(own: OwnModel, workspace_id: Uuid7) -> Strategy {
-        Box::new(Self { own, workspace_id })
-    }
-}
-
-impl Resolution for SelfManaged {
-    fn key(&self) -> KeyRef<'_> {
-        KeyRef {
-            workspace_id: &self.workspace_id,
-            name: &self.own.secret_ref,
-        }
-    }
-
-    fn interpret(&self, body: &[u8]) -> Result<Resolved> {
-        let vetted = vet(body)?;
-
-        // A resolved endpoint IS the compatible provider — `endpoint::resolve`
-        // has already refused every other pairing — so the optional-key rule
-        // reads off the outcome rather than re-comparing the provider string,
-        // which would be a second place for the two rules to come apart.
-        let api_key = bearer(vetted.api_key, vetted.dialled.is_some())?;
-
-        Ok(Resolved::new(
-            Posture::SelfManaged,
-            vetted.provider,
-            self.own.model.clone(),
-            self.own.context_cap_tokens,
-            vetted.dialled,
-            api_key,
-        ))
-    }
-}
-
-/// The key this credential resolves with, given whether one is optional.
+/// The key this credential resolves with.
 ///
 /// A blank key and an absent key are the same fact, so they are one arm here
 /// rather than two.
-pub(super) fn bearer(
-    api_key: Option<SecretString>,
-    keyless_permitted: bool,
-) -> Result<SecretString> {
+pub(super) fn bearer(api_key: Option<SecretString>) -> Result<SecretString> {
     match api_key {
         Some(key) if !key.is_empty() => Ok(key),
-        _absent_or_blank if keyless_permitted => Ok(SecretString::new(String::new())),
-        _named_provider => Err(provider_malformed(FIELD_API_KEY)),
+        _absent_or_blank => Err(provider_malformed(FIELD_API_KEY)),
     }
 }
 
@@ -134,94 +72,62 @@ pub(super) fn bearer(
 mod tests {
     #![expect(
         clippy::expect_used,
-        clippy::unwrap_used,
         reason = "a test asserts by panicking; the manifest's restriction set is for the daemon"
     )]
-    use super::SelfManaged;
-    use crate::provider::selection::OwnModel;
-    use af_core::id::Uuid7;
-    use afd_billing::Posture;
+    use super::bearer;
+    use crate::error::Result;
+    use crate::provider::vetted::{Vetted, vet};
+    use af_crypto::secret::SecretString;
 
-    fn workspace() -> Uuid7 {
-        Uuid7::parse("0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b").expect("a canonical v7 identifier")
-    }
-
-    fn own() -> OwnModel {
-        OwnModel {
-            tenant_model_id: Uuid7::parse("0195b4ba-8d3a-7f13-8abc-cd0000000002")
-                .expect("a canonical v7 identifier"),
-            model: "claude-opus-5".into(),
-            secret_ref: "my-anthropic-key".into(),
-            provider: Some("anthropic".into()),
-            context_cap_tokens: 200_000,
-        }
-    }
-
-    fn strategy() -> crate::provider::Strategy {
-        SelfManaged::prepare(own(), workspace())
+    /// What resolution does with a stored body: vet it, then apply the key rule.
+    fn resolve(body: &[u8]) -> Result<(Vetted, SecretString)> {
+        let mut vetted = vet(body)?;
+        let key = bearer(vetted.api_key.take())?;
+        Ok((vetted, key))
     }
 
     #[test]
-    fn the_key_is_read_from_the_tenants_workspace_under_the_stored_name() {
-        let strategy = strategy();
-        let key = strategy.key();
-
-        assert_eq!(key.workspace_id, &workspace());
-        assert_eq!(key.name, "my-anthropic-key");
-    }
-
-    #[test]
-    fn the_credential_supplies_the_provider_and_the_selection_supplies_the_model() {
+    fn the_credential_supplies_the_provider_and_the_key() {
         // The asymmetry the module note is about: a known-provider credential
-        // carries NO model, and reading one off it would resolve whatever a
-        // stale secret happened to hold instead of what the tenant activated.
-        let resolved = strategy()
-            .interpret(br#"{"provider":"openai","api_key":"sk-tenant"}"#)
+        // carries NO model, and the model comes from the registry entry.
+        let (vetted, key) = resolve(br#"{"provider":"openai","api_key":"sk-tenant"}"#)
             .expect("a named credential with a key resolves");
 
-        assert_eq!(resolved.posture, Posture::SelfManaged);
-        assert_eq!(&*resolved.provider, "openai", "from the credential");
-        assert_eq!(&*resolved.model, "claude-opus-5", "from the selection");
-        assert_eq!(resolved.context_cap_tokens, 200_000);
-        assert_eq!(resolved.api_key().expose(), "sk-tenant");
-        assert_eq!(resolved.endpoint, None);
+        assert_eq!(&*vetted.provider, "openai", "from the credential");
+        assert_eq!(vetted.model, None, "the credential names no model");
+        assert_eq!(key.expose(), "sk-tenant");
     }
 
     #[test]
-    fn a_credentials_own_model_is_parsed_and_then_ignored() {
+    fn a_credentials_own_model_is_parsed_and_carried_for_activation() {
         // Parsed: a non-string `model` is still a malformed credential.
-        strategy()
-            .interpret(br#"{"provider":"openai","api_key":"sk","model":42}"#)
-            .unwrap_err();
-        // Ignored: a credential carrying one does not override the tenant's
-        // activated model.
-        let resolved = strategy()
-            .interpret(br#"{"provider":"openai","api_key":"sk","model":"gpt-4o-mini"}"#)
-            .expect("a credential carrying a model resolves");
-        assert_eq!(&*resolved.model, "claude-opus-5");
+        assert!(resolve(br#"{"provider":"openai","api_key":"sk","model":42}"#).is_err());
+        // Carried, not applied: activation reads it as a default when the
+        // request names no model; resolution never does.
+        let (vetted, _key) =
+            resolve(br#"{"provider":"openai","api_key":"sk","model":"gpt-4o-mini"}"#)
+                .expect("a credential carrying a model resolves");
+        assert_eq!(vetted.model.as_deref(), Some("gpt-4o-mini"));
     }
 
     #[test]
-    fn a_compatible_gateway_may_be_keyless_and_a_named_provider_may_not() {
-        let keyless = strategy()
-            .interpret(
-                br#"{"provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#,
-            )
-            .expect("a keyless gateway is the optional-key design");
-        assert_eq!(keyless.api_key().expose(), "");
-        assert_eq!(
-            keyless.endpoint.as_ref().map(|e| e.base_url.as_ref()),
-            Some("https://gw.example.com/v1")
-        );
+    fn every_provider_needs_a_key_a_compatible_gateway_included() {
+        let (_vetted, key) = resolve(
+            br#"{"provider":"openai-compatible","base_url":"https://gw.example.com/v1","api_key":"sk"}"#,
+        )
+        .expect("a gateway with a key resolves");
+        assert_eq!(key.expose(), "sk");
 
-        for keyless_named in [
+        for keyless in [
+            br#"{"provider":"openai-compatible","base_url":"https://gw.example.com/v1"}"#
+                .as_slice(),
+            br#"{"provider":"openai-compatible","base_url":"https://gw.example.com/v1","api_key":""}"#
+                .as_slice(),
             br#"{"provider":"openai"}"#.as_slice(),
             br#"{"provider":"openai","api_key":""}"#.as_slice(),
         ] {
-            let refused = strategy()
-                .interpret(keyless_named)
-                .expect_err("a named provider needs a key");
-            assert!(refused.is_config_permanent(), "{keyless_named:?}");
+            let refused = resolve(keyless).err().expect("every provider needs a key");
+            assert!(refused.is_config_permanent(), "{keyless:?}");
         }
     }
 
@@ -231,11 +137,10 @@ mod tests {
         // re-poll at the poll interval indefinitely and no terminal row would
         // ever be written. A stored URL pointing at the metadata service does
         // not become safe by being retried.
-        let refused = strategy()
-            .interpret(
-                br#"{"provider":"openai-compatible","base_url":"https://169.254.169.254/v1"}"#,
-            )
-            .expect_err("the metadata service is not a gateway");
+        let refused =
+            resolve(br#"{"provider":"openai-compatible","base_url":"https://169.254.169.254/v1"}"#)
+                .err()
+                .expect("the metadata service is not a gateway");
 
         assert!(
             refused.is_config_permanent(),
@@ -245,9 +150,10 @@ mod tests {
 
     #[test]
     fn a_named_provider_may_not_smuggle_an_endpoint() {
-        let refused = strategy()
-            .interpret(br#"{"provider":"openai","api_key":"sk","base_url":"https://evil.test"}"#)
-            .expect_err("a named provider carries no endpoint");
+        let refused =
+            resolve(br#"{"provider":"openai","api_key":"sk","base_url":"https://evil.test"}"#)
+                .err()
+                .expect("a named provider carries no endpoint");
 
         assert!(
             refused.is_config_permanent(),
@@ -263,9 +169,9 @@ mod tests {
             br#"{"provider":42,"api_key":"sk"}"#.as_slice(),
             br#"["not","an","object"]"#.as_slice(),
         ] {
-            let refused = strategy()
-                .interpret(body)
-                .expect_err("a providerless credential cannot resolve");
+            let refused = resolve(body)
+                .err()
+                .expect("a providerless credential cannot resolve");
             assert!(refused.is_config_permanent(), "{body:?}");
         }
     }

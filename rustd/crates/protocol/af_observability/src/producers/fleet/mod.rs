@@ -5,6 +5,7 @@
 //! readiness and retention paths — each of which is one or two call sites.
 
 pub mod admission;
+pub mod cache;
 pub mod census;
 pub mod fold;
 pub mod history;
@@ -66,6 +67,7 @@ pub struct Handles {
     history_cuts: Counter<u64>,
     history_read_failures: Counter<u64>,
     held_claims: Counter<u64>,
+    cache_lookups: Counter<u64>,
     steer_dispositions: Counter<u64>,
     lease_folds: Counter<u64>,
     runs_started: Counter<u64>,
@@ -110,6 +112,7 @@ impl Handles {
             history_read_failures: instruments
                 .counter_u64(&declared::LEASE_HISTORY_READ_FAILURES_TOTAL)?,
             held_claims: instruments.counter_u64(&declared::LEASE_HELD_CLAIMS_TOTAL)?,
+            cache_lookups: instruments.counter_u64(&declared::LEASE_CACHE_LOOKUPS_TOTAL)?,
             steer_dispositions: instruments.counter_u64(&declared::STEER_DISPOSITIONS_TOTAL)?,
             lease_folds: instruments.counter_u64(&declared::LEASE_FOLDS_TOTAL)?,
             runs_started: instruments.counter_u64(&declared::FLEET_RUNS_STARTED_TOTAL)?,

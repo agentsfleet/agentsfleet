@@ -1,27 +1,75 @@
-WITH held AS (
+-- The caller holds the host row (`lock_host.sql`) through this transaction, so
+-- this statement's snapshot, taken after that lock, sees every earlier
+-- claimant's commit: the census below counts them. A full host, a moved slot
+-- fence, a moved placement choice or a moved setup writes nothing.
+WITH instant AS MATERIALIZED (
+  SELECT clock_timestamp() AS checked_at
+), host AS MATERIALIZED (
+  SELECT r.id
+  FROM runner.runners r CROSS JOIN instant i
+  WHERE r.id = $2
+    AND (SELECT count(*) FROM runner.leases l
+          WHERE l.runner_id = $2 AND l.status = $11
+            AND l.lease_expires_at > i.checked_at)
+      + (SELECT count(*) FROM authoring.attempts a
+          WHERE a.runner_id = $2 AND a.status = $11
+            AND a.lease_expires_at > i.checked_at)
+      < r.worker_count
+), held AS (
   UPDATE runner.fleet_slots
   SET updated_at = now()
-  WHERE fleet_id = $3 AND fencing_token = $10 AND lease_expires_at > $11
+  WHERE fleet_id = $3 AND fencing_token = $10
+    AND lease_expires_at > (SELECT checked_at FROM instant)
+    -- The deadline the claim answered, which a pass that outlived it misses.
+    AND $19 > (SELECT checked_at FROM instant)
+    AND EXISTS (SELECT 1 FROM host)
   RETURNING fleet_id, lease_expires_at
+), after_lock AS MATERIALIZED (
+  -- Read once `held` has the slot lock, so a wait on that lock cannot make a
+  -- lapsed slot or a claim whose deadline passed look live.
+  SELECT clock_timestamp() AS checked_at FROM (SELECT count(*) FROM held) locked
 ), inserted AS (
+  -- The lease starts, and its metering cursor with it, at the clock read after the
+  -- slot lock: stamping the earlier instant would bill the lock wait as runtime.
   INSERT INTO runner.leases
   (id, runner_id, fleet_id, workspace_id, tenant_id, event_id, event_created_at,
    posture, provider, model, last_metered_at,
    fencing_token, lease_expires_at, status, posted_message_count, decision_snapshot, created_at, updated_at)
-  SELECT $1, $2, $3, $4, $5, e.event_id, $16,
-         $7, $8, $9, $11,
-         $10, h.lease_expires_at, $12, 0, $17, $11, $11
+  SELECT $1, $2, $3, $4, $5, e.event_id, $15,
+         $7, $8, $9, a.checked_at,
+         $10, h.lease_expires_at, $11, 0, $16, a.checked_at, a.checked_at
   FROM held h
+  CROSS JOIN after_lock a
   JOIN fleet.events e ON e.fleet_id = $3 AND e.event_id = $6
   -- The scope proof runner.leases holds no foreign key for: a workspace or
   -- tenant that is not the fleet's writes no lease, so the caller issues none.
   JOIN fleet.fleets f ON f.id = $3 AND f.workspace_id = $4 AND f.tenant_id = $5
-  -- Recheck after held acquired the slot lock and after profile lookup.
-  WHERE h.lease_expires_at > clock_timestamp()
+  -- The setup the claim assembled is still the head, and a setup that needs
+  -- durable tasks still has a host that runs them: what `issue_source.sql`
+  -- rechecked for every lease, now in the insert so a plain chat reads nothing
+  -- more. The issue holds the fleet (`task::lease::parents`) and the host, so
+  -- neither moves before commit.
+  JOIN runner.runners r ON r.id = $2
+  LEFT JOIN fleet.revisions setup ON setup.id = f.head_revision_id AND setup.fleet_id = f.id
+  -- Recheck after held acquired the slot lock: the slot's own deadline, and the
+  -- one the claim answered, which a pass that outlived it misses.
+  WHERE h.lease_expires_at > a.checked_at
+    AND $19 > a.checked_at
+    AND ($20::uuid IS NULL OR f.head_revision_id = $20::uuid)
+    AND ((r.durable_tasks_enabled
+          AND COALESCE(r.capability_report @> jsonb_build_object($21::text, true), false))
+         OR setup.definition #> $22::text[] IS NULL
+         OR setup.definition #> $22::text[] = 'null'::jsonb)
   RETURNING id, runner_id, fleet_id, event_id, created_at
+), chosen AS (
+  -- The placement choice the host lock read: the next offer prefers the other kind.
+  UPDATE runner.runners
+  SET lease_version = lease_version + 1, last_lease_type = $18::text, updated_at = now()
+  WHERE id = $2 AND lease_version = $17::bigint AND EXISTS (SELECT 1 FROM inserted)
+  RETURNING id
 ), audit AS (
   INSERT INTO runner.events (id, runner_id, event_type, metadata, last_seen_at, created_at)
-  SELECT $13, i.runner_id, $14, $15,
+  SELECT $12, i.runner_id, $13, $14,
          NULL, now()
   FROM inserted i
   RETURNING id
@@ -36,4 +84,6 @@ ON CONFLICT (runner_id) DO UPDATE
 RETURNING runner_id
 )
 -- Use the value stored by TIMESTAMPTZ(3), not a separately normalized cache timestamp.
-SELECT created_at FROM inserted WHERE EXISTS (SELECT 1 FROM tallied)
+-- No row when the choice moved: the caller rolls the lease back with it.
+SELECT created_at FROM inserted
+WHERE EXISTS (SELECT 1 FROM tallied) AND EXISTS (SELECT 1 FROM chosen)

@@ -79,20 +79,22 @@ async fn done(case: &Case) {
     plane.task_reports = Some(Arc::new(fixture.tasks.clone()));
     let now = af_core::clock::after(case.held.now, crate::report_seed::SLICE);
     plane
-        .report(
+        .report_with(
             &case.held.runner,
             &report,
             now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
         .expect("verified complete report");
     let snapshot = assert_done(&fixture, &task_id).await;
     plane
-        .report(
+        .report_with(
             &case.held.runner,
             &report,
             now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await

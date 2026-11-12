@@ -1,6 +1,6 @@
 //! Preflight, compact and continue over the same private working-context engine.
 use super::Harness;
-use af_context::{Checkpoint, CheckpointStore as _, Identity, Plan, Window};
+use af_context::{Checkpoint, Identity, Plan, Window};
 use af_core::clock::{Clock as _, SystemClock};
 use af_providers::Message;
 use sha2::{Digest as _, Sha256};
@@ -13,8 +13,9 @@ mod source;
 pub(super) struct State {
     pub(super) pinned: usize,
     pub(super) branch: Option<String>,
+    /// The last notes this loop published; none before its first, because a
+    /// branch this run minted holds none to load.
     checkpoint: Option<Checkpoint>,
-    loaded: bool,
     replay_from: usize,
     index: index::Index,
     pub(super) working: Vec<Message>,
@@ -26,7 +27,6 @@ impl State {
             pinned,
             branch: None,
             checkpoint: None,
-            loaded: false,
             replay_from: 0,
             index: index::Index::new(pinned),
             working: Vec::new(),
@@ -44,11 +44,14 @@ impl Harness<'_, '_> {
             self.context.working.clone_from(&self.messages);
             return Ok(());
         }
-        let (branch, identity, window) = self.context_parameters().await?;
+        let (identity, window) = self.context_parameters()?;
         self.context.index.refresh(&self.messages)?;
         let mut store = effects::Store {
-            port: self.shared.context_checkpoints,
-            branch: &branch,
+            generation: self
+                .context
+                .checkpoint
+                .as_ref()
+                .map_or(0, |checkpoint| checkpoint.generation),
         };
         loop {
             let source = source::Source::new(
@@ -97,7 +100,7 @@ impl Harness<'_, '_> {
             }
         }
     }
-    async fn context_parameters(&mut self) -> af_context::Result<(String, Identity, Window)> {
+    fn context_parameters(&mut self) -> af_context::Result<(Identity, Window)> {
         if self.context.branch.is_none() {
             self.context.branch = Some(if self.depth == 0 {
                 self.shared.lease_id.to_owned()
@@ -113,17 +116,6 @@ impl Harness<'_, '_> {
             .branch
             .as_deref()
             .ok_or_else(af_context::Error::stale)?;
-        let mut store = effects::Store {
-            port: self.shared.context_checkpoints,
-            branch,
-        };
-        if !self.context.loaded {
-            self.context.checkpoint = store.load().await?;
-            if self.context.checkpoint.is_some() {
-                self.context.replay_from = self.messages.len();
-            }
-            self.context.loaded = true;
-        }
         let identity = Identity {
             scope: format!(
                 "run:{}:{}:{branch}",
@@ -147,6 +139,6 @@ impl Harness<'_, '_> {
         let window = Window::new(self.shared.model_context_tokens, self.shared.output_tokens)?
             .with_operating_tokens(self.shared.context.context_cap_tokens)
             .with_trigger_percent(percent);
-        Ok((branch.to_owned(), identity, window))
+        Ok((identity, window))
     }
 }

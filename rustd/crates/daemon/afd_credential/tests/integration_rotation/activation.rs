@@ -224,9 +224,9 @@ async fn a_compatible_endpoint_in_a_blocked_range_is_refused_by_the_guard() {
     fixture
         .seed_with_shape(
             "a-blocked-endpoint",
-            br#"{"provider":"openai-compatible","base_url":"https://169.254.169.254/v1"}"#,
+            br#"{"provider":"openai-compatible","base_url":"https://169.254.169.254/v1","api_key":"sk-live"}"#,
             Some(OPENAI_COMPATIBLE),
-            Some(false),
+            Some(true),
         )
         .await;
 

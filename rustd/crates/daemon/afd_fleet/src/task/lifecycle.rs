@@ -1,9 +1,11 @@
 //! Behavior of the existing native task owner, shared by person and runner APIs.
 
 use super::{
-    DecisionMaintenance, DecisionMaintenanceCursor, PreparedPlan, ReservedDecision, TaskAdoption,
-    TaskAfter, TaskBindings, TaskControl, TaskLease, TaskPage, TaskScope, TaskSnapshot,
+    DecisionMaintenance, DecisionMaintenanceCursor, ReservedDecision, TaskAdoption, TaskAfter,
+    TaskControl, TaskLease, TaskPage, TaskScope, TaskSnapshot,
 };
+#[cfg(any(test, feature = "test-util"))]
+use super::{PreparedPlan, TaskBindings};
 use crate::Result;
 use af_core::id::Uuid7;
 use std::pin::Pin;
@@ -164,6 +166,12 @@ pub trait TaskLifecycle: Send + Sync + std::fmt::Debug {
         limit: u32,
     ) -> TaskFuture<'a, TaskPage>;
     /// Bind a complete prepared interpretation without allocating on replay.
+    ///
+    /// A test seam: the plan is built by the caller, so it can skip the
+    /// authorization that `interpret` proves before it binds. Production reaches
+    /// the same binding only through `interpret`, so this method is not compiled
+    /// into a build without `test-util`.
+    #[cfg(any(test, feature = "test-util"))]
     fn bind<'a>(
         &'a self,
         lease: TaskLease<'a>,

@@ -35,7 +35,7 @@ Every row is taken from the sections below; the owner column names the section t
 | Sandbox tiers | 3 (`landlock_full` · `container_nested` · `dev_none`) | the daemon reconciles each against the host's report; tier is orthogonal to egress policy | §Sandbox tiers |
 | Egress policies | 3 (`allow_all` · `deny_all_egress` · `allow_list_egress`) | host-side default-deny nf_tables rules on a veth pair; port 53 dropped; IPv4 only | §Egress model |
 | Cancel latency | none: a running lease is never cancelled | the heartbeat answers `ok` and names no lease; kill and pause stop new leases only | §Steer, kill, pause |
-| Config freshness | resolved per lease | no cache, no reload signal; the next lease sees the change | §Config |
+| Config freshness | named by the claim | the claim returns the head revision id and a replica holds the parsed definition under that id, so the next lease sees the change; no reload signal | §Config |
 | Debit point | the run's usage, per renewal | the issued lease's hold is reserved; each `/renew` and the report log the slice as a usage line that the biller settles after commit | §Money gates |
 | Production shape | 3 `agentsfleetd` machines | set and verified by the release workflow; runner verbs load-balance across replicas | §Multi-replica |
 | Admissions queue | `fleet.admissions` where `settled_at IS NULL` | oldest unsettled row per fleet; parked heads block later work | §Datastore topology |
@@ -68,7 +68,7 @@ Each trap is enforced in its owner section; this list is the index.
 
 - No secret enters a sandbox. Model keys and minted tokens stay in the supervisor, and bubblewrap starts every sandbox with a cleared environment (§Process-boundary hardening).
 
-- Config is never cached; warm mode reuses only the sandbox shell (§Cold and warm execution).
+- Config is cached only by its head revision id, which every claim reads, so the next run obeys an edit. Warm mode reuses only the sandbox shell (§Config).
 
 - No forward proxy, no SNI/`CONNECT` interception, no TLS man-in-the-middle. The deferred name layer is eBPF/FQDN (§Egress model).
 
@@ -287,7 +287,7 @@ There is no enrollment token; the minter must hold `runner:enroll`. The open-fle
    | steady loop - Authorization: Bearer agt_r         GATE 2 - per-call auth:
    |      <-- heartbeat . lease . report . activity --| sha256(Bearer) == token_hash (timing-safe)
    |      heartbeat ^ capability report . v assigned policy + degraded verdict
-   |      eligibility: assigned tier + scope + secret_delivery   GATE 3 - blast radius
+   |      eligibility: assigned tier + scope                     GATE 3 - blast radius
 ```
 
 `agentsfleetd` owns the Postgres pool, the NATS connection, and the Vault API. `agentsfleet-runner` owns none of them and holds only the `agt_r` token. A platform operator holding `runner:write` rotates it with `PATCH /v1/admin/runners/{id} {"action":"rotate"}`.
@@ -802,7 +802,7 @@ The runner's per-lease sandbox, its measured cold start and where its bytes live
 
 A lease that ends **processed** leaves its sandbox **held** for the same fleet. The frozen sandbox keeps its workspace files for ten idle minutes ([Workspace between leases](./runner_execution.md#workspace-between-leases)). The fleet's next lease can continue in it.
 
-Every lease carries fresh config and secrets; config is never cached. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
+Every lease carries the config of the head revision its claim read, and fresh secrets. A hold whose limits or policy changed is destroyed. Sticky routing remains a hint.
 
 The report writes `runner.fleet_slots.hold_expires_at` during its fencing-guarded release, clamped to that window. Every heartbeat lists the fleets the runner still holds. It clears holds missing from the list, except those reported within the last beat interval.
 
@@ -820,9 +820,11 @@ A Fleet's config is the `config` member of its selected setup revision in `fleet
 
 The claim reads it from that revision (`afd_fleet`'s installed-revision read). A reviewed improvement (`POST /v1/workspaces/{ws}/fleets/{id}/revisions`, N11 in [`api_resources.md`](./api_resources.md)) appends a new revision and selects it. `PATCH` on the fleet changes only its status and name.
 
-`agentsfleetd` resolves config fresh from Postgres on every `lease`. Config changes therefore take effect on the **next command** (the next lease) with no signaling.
+Every claim reads the fleet's `head_revision_id` in its own statement. Each replica caches the parsed definition keyed by that id, and revisions are append-only, so an id never names two documents. A config change therefore takes effect on the **next command** (the next lease) on every replica, with no signal between them.
 
-There is no in-memory config cache and no `fleet_config_changed` consumer to wait on; the deleted worker's watcher-reload path is gone. A config change never alters a language-model turn already in flight. The next run picks it up.
+A cache key is built only from a statement's row, so no lookup by bare fleet id compiles. There is no `fleet_config_changed` consumer to wait on; the deleted worker's watcher-reload path is gone.
+
+A config change never alters a language-model turn already in flight. The next run picks it up.
 
 ## Money gates
 
@@ -1033,7 +1035,7 @@ Bounded per-runner facts therefore ride outbound on verbs the runner already cal
 
 The per-runner drill-down is a `runner_id` label.
 
-The fleet delivery histogram records `event_to_lease`, `lease_to_first_chunk`, `event_to_first_chunk`, and `zombie_to_first_chunk` stages. A first chunk can carry reasoning or tool protocol; these are transport timings through daemon receipt, not browser paint.
+The fleet delivery histogram records `event_to_lease`, `lease_to_first_chunk`, `event_to_first_chunk`, and `run_to_first_chunk` stages. A first chunk can carry reasoning or tool protocol; these are transport timings through daemon receipt, not browser paint.
 
 The chat UI records local `agentsfleet.chat.submit_to_first_visible` Performance Timeline measures after the first answer, reasoning, or tool activity paints. That browser measure is currently available for local diagnostics and is not exported to OTLP or the Grafana panel.
 

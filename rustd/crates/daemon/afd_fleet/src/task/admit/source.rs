@@ -1,7 +1,6 @@
 //! Source identity is proved from native admissions, never model prose.
 
 use af_core::id::Uuid7;
-use af_wire::task::TaskLimits;
 use afd_admission::Producer;
 use sqlx::PgConnection;
 
@@ -103,9 +102,6 @@ pub(super) fn check(source: &Source, current: &LeaseRow, plan: &PreparedPlan) ->
         if message.get(start..end).is_none() {
             return Err(TaskRefusal::ReplayConflict.into());
         }
-        if let super::super::PreparedItem::New { task, .. } = item {
-            check_limits(task.limits)?;
-        }
     }
     Ok(())
 }
@@ -132,26 +128,4 @@ pub(in crate::task) fn message_for<'a>(
     let human: SlackPayload<'_> =
         serde_json::from_str(body).map_err(af_core::json::Unreadable::from)?;
     Ok(human.human_message)
-}
-
-fn check_limits(limits: TaskLimits) -> Result<()> {
-    let ceiling = TaskLimits::default();
-    if limits.model_nanos <= 0
-        || limits.model_nanos > ceiling.model_nanos
-        || limits.wall_seconds == 0
-        || limits.wall_seconds > ceiling.wall_seconds
-        || limits.running_seconds == 0
-        || limits.running_seconds > ceiling.running_seconds
-        || limits.leases == 0
-        || limits.leases > ceiling.leases
-        || limits.publications == 0
-        || limits.publications > ceiling.publications
-        || limits.decision_calls == 0
-        || limits.decision_calls > ceiling.decision_calls
-        || limits.fallback_reads == 0
-        || limits.fallback_reads > ceiling.fallback_reads
-    {
-        return Err(TaskRefusal::LimitExhausted.into());
-    }
-    Ok(())
 }
