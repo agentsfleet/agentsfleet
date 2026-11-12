@@ -6,10 +6,10 @@
 **Date:** Nov 12, 2026
 **Status:** PENDING
 **Priority:** P1, one public vocabulary across API, CLI, UI and docs
-**Categories:** API, UI, DOCS
+**Categories:** API, CLI, UI, DOCS
 **Batch:** B3, after M249_002
 **Depends on:** M249_001 (UI refresh) and M249_002 (CLI grouping) merged; this branch rebases onto both before editing UI callers
-**Provenance:** Split from the authored M249_002 on Nov 12, 2026 at Indy's direction (see Discovery)
+**Provenance:** Split from the authored M249_002 on Nov 12, 2026 at Indy's direction; on Nov 13, 2026 the CLI vocabulary renames, Plugin readers and `fleet delete` composition moved here from M249_002 after EGM review (see Discovery)
 **Canonical architecture:** `docs/architecture/api_resources.md`; `docs/architecture/context_lifecycle.md`
 
 ## Overview
@@ -52,7 +52,9 @@
 | `rustd/crates/**/src/**/*.sql` referencing those tables | EDIT | Statement renames |
 | `rustd/crates/daemon/afd_api/tests/**`, `afd_authoring/tests/**` | EDIT | New paths, names, status; removed-route negatives |
 | `public/openapi.json` | GENERATE | `--no-banner`, never by hand |
-| `cli/src/lib/api-paths.ts`, `cli/src/commands/plugins/**`, `cli/src/commands/platform/**`, `cli/src/program/tree/platform*.ts` | EDIT/DELETE | New paths; `platform fleet-library` removed; status rendering |
+| `cli/src/lib/api-paths.ts`, `cli/src/commands/library/*` → `cli/src/commands/plugins/*`, `cli/src/commands/platform/**`, `cli/src/program/tree/{plugins,chat,fleet,platform*}.command.ts`, `cli/src/commands/fleet/fleet.ts`, `cli/src/commands/chat/*`, `cli/src/errors/index.ts` | EDIT/MOVE/DELETE | Plugin and archive vocabulary, readers, delete composition, `platform fleet-library` removed |
+| `cli/src/program/entry/discovery.ts`, `cli/test/scoped-discovery.unit.test.ts`, `cli/test/completions.unit.test.ts` | EDIT | Drop the `platform-library:write` row |
+| `cli/test/**`, `cli/test/acceptance/**` | EDIT | New spellings; §2b and §2c proofs |
 | `ui/packages/app/lib/api/draft-library.ts` and affected adapters, types and `lib/auth/scopes.ts` | EDIT | After the M249_001 merge; layouts untouched |
 | Affected docs, playbooks and changelog | EDIT | Current spellings |
 | `~/Projects/docs` branch `chore/m249-plugin-vocabulary-changelog` | EDIT | Public API reference, after merge |
@@ -87,7 +89,7 @@
 
 `/v1/workspaces/{workspace_id}/fleet-libraries[/{library_id}[/revisions[/{revision_id}]]]` becomes `/plugins[/{plugin_id}[/revisions[/{revision_id}]]]`. `library` source kind and `library_id` become `plugin` and `plugin_id`; `revision_id` stays. `library:write` becomes `plugins:write` with the same authority and narrowing. `/fleet-libraries/owned` is removed; the ordinary collection lists the account-owned entries. Definition content, pinned versions, review digests and optimistic publication checks are unchanged.
 
-- **Dimension 1.1** — PENDING — Plugin reuse pins a full revision → Test `plugin_revision_creates_independent_private_setup` (integration): a draft from `(plugin_id, revision_id)` saves a fleet whose definition digest equals the revision's.
+- **Dimension 1.1** — PENDING — Plugin reuse pins a full revision → Test `plugin_revision_saves_an_independent_fleet` (integration): a draft from `(plugin_id, revision_id)` saves a fleet whose definition digest equals the revision's.
 - **Dimension 1.2** — PENDING — Renaming cannot broaden access → Test `plugin_permission_preserves_narrowed_authority` (integration): a key without `plugins:write` gets 403 on publish, revise and delete; a reader keeps list and show.
 - **Dimension 1.3** — PENDING — Revisions stay immutable → Test `plugin_revision_and_installed_copy_do_not_follow_updates` (integration): publishing revision 2 or deleting the Plugin leaves a fleet saved from revision 1 byte-identical.
 
@@ -97,11 +99,29 @@ Delete `/v1/admin/fleet-libraries*`, the operator handlers, `publish/platform.rs
 
 - **Dimension 2.1** — PENDING — The catalogue stays absent → Test `platform_catalogue_routes_and_commands_are_removed` (integration + CLI unit): the old admin paths return 404 under an operator key, `platform-library:write` grants nothing, and `platform fleet-library` fails parsing.
 
+### §2b — CLI Plugin vocabulary and readers
+
+`library` becomes `plugins` with `list [--starting-after] [--limit]` (the ordinary collection, which after §1 lists only account-owned entries), `show <plugin_id>`, `revisions <plugin_id> [--starting-after] [--limit]`, `revisions <plugin_id> <revision_id>` and `delete <plugin_id>`. `chat --library` becomes `--plugin`, `--library-etag` becomes `--plugin-etag`; `--revision`, `--publish` and `--publish-to` stay. `plugin_id` accepts a UUIDv7; `revision_id` must be one. `show` prints `name`, `id`, `head_revision_id` and `etag`; a revision prints `revision`, `canonical_digest` and `review.review_digest`; JSON passes bodies through. `api-paths.ts` gains the revision path helpers. Discovery's `platform-library:write` row and the `platform fleet-library` family are deleted with §2.
+
+- **Dimension 2b.1** — PENDING — CLI Plugin reuse pins a revision → Test `chat_plugin_flags_pin_the_selected_revision` (unit): `chat --plugin P --revision R --no-input` sends `P` and `R` unchanged in the draft-creation body; `chat --library P` exits 4 with `UNKNOWN_OPTION`.
+- **Dimension 2b.2** — PENDING — Plugin readers hit the renamed routes → Test `plugins_show_and_revisions_read_renamed_routes` (unit): `show`, `revisions` and `revisions <r>` request `/plugins/P`, `/plugins/P/revisions` and `/plugins/P/revisions/R`, print the stubbed `etag` and digests, and a 404 renders the block with its `UZ-` code and exit 1.
+
+### §2c — Fleet archive and direct deletion
+
+`fleet kill` becomes `fleet archive`, printing `<id> archived.` Today `fleet delete` refuses a non-terminal fleet with the server's 409. The authored spec asked for direct deletion of an active fleet with the archive composed internally.
+
+**Open owner decision (ask when this spec moves to `active/`).** PATCH status needs `fleet:write` and DELETE needs `fleet:admin` (`afd_http/src/route/fleet.rs:187`), so a `fleet:write`-only caller would archive irreversibly and then be refused the delete. Options from the Nov 13 review: (a) compose only with a TTY confirmation or an explicit `--archive`, refused under `--no-input` without it; (b) compose after an advisory `/v1/users/me` check for `fleet:admin`, the server still deciding; (c) keep today's 409 and suggest `fleet archive`.
+
+**Mechanism once chosen.** The server's fleet status is the state authority; `archived` is terminal. (1) GET the fleet. (2) Non-terminal: `PATCH {status:"archived"}` with `If-Match: <GET etag>` and `retry: {maxAttempts: 1}`; a 2xx whose decoded status is `archived` confirms the archive; a 4xx renders the server error and no DELETE is sent; a network error, timeout or 5xx fails with `FleetArchiveUncertain` (`FLEET_ARCHIVE_UNCERTAIN`, exit 2, suggestion `agentsfleet fleet delete <id>`). (3) `DELETE` with `If-Match` from the PATCH response, or the GET etag when already terminal, and `retry: {maxAttempts: 1}`. (4) A 2xx prints `<id> deleted.`; a 4xx after a confirmed archive fails with `FleetArchivedNotDeleted` (`FLEET_ARCHIVED_NOT_DELETED`, exit of the cause, JSON `{"error":{"code":"FLEET_ARCHIVED_NOT_DELETED","message":…,"fleet_id":…,"archived":true}}`). (5) A network error, timeout, 502, 503 or 504 on DELETE triggers one GET with `retry: {maxAttempts: 1}`: 404 succeeds with `reconciled: true` only while workspace access is proven by a 200 on the workspace read; 200 fails as `FleetArchivedNotDeleted`; 401, 403, other 5xx, network failure or an undecodable body fails as `FleetDeleteUncertain` (`FLEET_DELETE_UNCERTAIN`, exit 2). The reconcile pattern mirrors `cli/src/commands/workspace/create-reconcile.ts`. All three errors subclass `TaggedCliError`.
+
+- **Dimension 2c.1** — PENDING — Direct deletion keeps its checkpoint → Test `fleet_delete_retains_confirmed_archive_checkpoint` (unit): request sequences — active: GET, PATCH, DELETE, exit 0; archived: GET, DELETE; PATCH 409: GET, PATCH, no DELETE, exit 1; PATCH network error: no DELETE, `FLEET_ARCHIVE_UNCERTAIN`; DELETE 409 after PATCH 200: `FLEET_ARCHIVED_NOT_DELETED` and a retry sending GET, DELETE only; DELETE 503 then GET 404: exit 0, `reconciled: true`; DELETE 503 then GET 200, 403, network error or `{}`: the matching code, exit ≠ 0; the DELETE `If-Match` equals the PATCH response's `etag`.
+- **Dimension 2c.2** — PENDING — The chosen option's permission case → Test `fleet_delete_respects_the_chosen_permission_guard` (unit): a `fleet:write`-only caller on an active fleet gets the behaviour the owner chose, with the quote in Discovery.
+
 ### §3 — Archived terminal status
 
 The public terminal status `killed` becomes `archived` in wire types, filters, CLI rendering, UI callers and the fresh-development schema. No lifecycle state is added. PATCH and DELETE keep their semantics.
 
-- **Dimension 3.1** — PENDING — Archive is terminal → Test `archived_fleet_has_history_without_restore` (integration): PATCH `{"status":"archived"}` then resume returns the existing state refusal; events remain readable; `{"status":"killed"}` is a validation error.
+- **Dimension 3.1** — PENDING — Archive is terminal → Test `archived_fleet_refuses_resume_and_keeps_history` (integration): PATCH `{"status":"archived"}` then resume returns the existing state refusal; events remain readable; `{"status":"killed"}` is a validation error.
 
 ### §4 — Coordinated callers
 
@@ -183,5 +203,7 @@ Remove the admin catalogue handlers, `publish/platform.rs`, the platform CLI fam
 - **Open blockers:** M249_001 and M249_002 must merge first.
 
 > Owner decision (Indy, Nov 12, 2026: 11:55 PM): selected "Split into two PRs (my call)" — PR B is "the Plugin + archived rename across Rust, SQL, OpenAPI, CLI flags, UI adapters and docs, rebased onto A".
+
+> Review transfer (Nov 13, 2026): EGM design, readiness and codebase reviews of M249_002 found that the CLI Plugin and Archive renames, the Plugin readers and the `fleet delete` composition contradicted the selected split above and left interim mismatches (`fleet archive` printing "killed", `plugins list` widening to the platform catalogue). They move here unchanged in intent; §2c carries the reviewers' mechanism and the open owner decision.
 
 > Owner decisions carried from the authored spec: "Yes flow 1"; "Permanent stop, retain history, no Restore"; "there is no primary vault"; "i dont need a guarded cutover"; "i am only in development".
