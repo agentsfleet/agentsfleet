@@ -69,7 +69,8 @@ pub const SPAN_SEND_EVERY: Duration = Duration::from_secs(5);
 ///
 /// Grafana Cloud bills each series by its samples per minute and includes one
 /// sample per minute per series, so a shorter interval multiplies the bill.
-/// Every query reads windows of an hour, which a minute serves.
+/// Dashboard rates use `$__rate_interval`, which the data source's 60 s scrape
+/// setting keeps at four samples or more.
 pub const COLLECT_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Sees each recorded span the moment it ends, before the batch exporter
