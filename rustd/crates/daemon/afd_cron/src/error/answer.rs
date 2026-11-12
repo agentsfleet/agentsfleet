@@ -67,7 +67,7 @@ impl Error {
             // check it failed would say whether this daemon is misconfigured.
             ErrorKind::KeysMissing
             | ErrorKind::TokenMalformed
-            | ErrorKind::SignatureInvalid
+            | ErrorKind::SignatureInvalid { .. }
             | ErrorKind::BodyMismatch => (
                 error_code::WEBHOOK_SIGNATURE_INVALID,
                 detail::FIRE_UNVERIFIED,
