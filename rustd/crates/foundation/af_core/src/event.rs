@@ -96,6 +96,14 @@ pub mod label {
     /// integration.
     pub const GRANT_DENIED: &str = "grant_denied";
 
+    /// Every lease the event was issued lapsed, and the daemon stopped
+    /// re-leasing it.
+    ///
+    /// Spelled identically to the runner-reported `lease_expired` failure
+    /// class, as [`BUDGET_BREACH`] is to its own: one label whether a run
+    /// reported its lapse or the daemon ended an event nobody reported on.
+    pub const LEASE_EXPIRED: &str = "lease_expired";
+
     /// The event names a type this daemon has no execution path for.
     ///
     /// The wire type is a closed enum, so a producer from a newer build is a

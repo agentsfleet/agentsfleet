@@ -157,6 +157,8 @@ mod integration_runner_views_malformed;
 #[path = "integration_steer_admitted_stamp.rs"]
 mod integration_steer_admitted_stamp;
 mod integration_terminal_redelivery;
+#[path = "integration_unanswered_notice.rs"]
+mod integration_unanswered_notice;
 #[path = "integration_wall_counters.rs"]
 mod integration_wall_counters;
 #[path = "verdict_matrix.rs"]

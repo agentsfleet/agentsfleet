@@ -24,6 +24,7 @@ use crate::lease::report::RunTokens;
 use crate::lease::settle::Reported;
 use crate::lease::sql::report_statement::{ReportAnswer, ReportStatement, SettledReport};
 use crate::lease::store::Leases;
+use crate::lease::unanswered;
 use crate::lease::usage::Pricing;
 use crate::lease::verdict::Terminal;
 
@@ -187,6 +188,9 @@ impl Leases {
         let checkpoint =
             crate::lease::finalize::checkpoint_document(report.last_event_id, report.last_response);
         let lease = report.lease;
+        let failure_reason = outcome.verdict.label();
+        let notice = (!outcome.verdict.succeeded())
+            .then(|| unanswered::failed_run(&lease.fleet_id, failure_reason.as_deref()));
         ReportStatement {
             lease_id: report.lease_id,
             runner_id: report.runner_id,
@@ -205,7 +209,7 @@ impl Leases {
             response_text: outcome.response_text,
             tokens: outcome.tokens,
             wall_ms: outcome.wall_ms,
-            failure_reason: outcome.verdict.label(),
+            failure_reason,
             failure_detail: outcome.verdict.detail(),
             tool_calls: outcome.tool_calls,
             checkpoint: &checkpoint,
@@ -218,6 +222,7 @@ impl Leases {
                 afd_runner::sql::meta::FLEET_ID: lease.fleet_id.as_str(),
                 afd_runner::sql::meta::AGENTSFLEET_EVENT_ID: lease.event_id.as_str(),
             }),
+            unanswered_notice: notice.as_deref(),
         }
         .run(connection)
         .await
