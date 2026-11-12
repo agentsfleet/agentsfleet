@@ -1243,3 +1243,12 @@ A mobile-dialog experiment reduced shared bytes but moved dialog code into saved
 Website build and size pass: JavaScript 109.71 kB against 128 kB, CSS 19.17 kB against 20 kB (`refresh-website-bundle-size-v104.log`). Estimo's browser cache selects the existing automated-test Chromium; the managed browser refused the benchmark's local file. The runtime cache change preserves actual measurement and leaves package source, budgets and timing checks unchanged.
 
 The full merged-candidate lint passed. Rust unit shards passed 5,573 tests (runner 1,731, daemon 172, libraries 3,670). The package portion found a synchronous first-open lookup in the lifecycle-dialog cancellation test; waiting for the visible native alert dialog preserves all cancellation/no-write assertions and passes the full 17-test file. Complete package coverage and repository checks are being rerun. Evidence: `refresh-root-unit-v111.log`, `refresh-lifecycle-lazy-wait-v115.log`.
+
+
+### Local acceptance health and verification, Nov 13, 2026
+
+File inventory adds `deploy/local/codex-compose.yml`. Its Caddy health probe disables the HTTP proxy only for the fixed loopback admin request. Container egress, certificate trust, health URL, retries and timeouts stay unchanged. The existing container passed that exact probe with `wget -Y off`; inherited proxy routing failed.
+
+The complete TypeScript coverage target passes on `b22d51c91`: app 4,564, website 133, CLI 2,223, design system 502. Every enforced coverage metric is 100 percent. CLI retains its 17 existing live-lane skips. Evidence: `refresh-typescript-coverage-v121.log`, exit 0.
+
+The repository gate passed integration with 1,772 tests, lint and version checks. Two runner process-cleanup tests failed under the detached supervisor. A verified Tini recipe shell then passed the unchanged native runner target: 1,731 tests. This runtime setup preserves all commands, assertions, test selections and deadlines. Evidence: `refresh-pr-gate-v122.log` and `refresh-runner-reaper-v125.json`. The full gate still requires a fresh run on the pushed candidate.
