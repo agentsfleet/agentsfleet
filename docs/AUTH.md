@@ -605,12 +605,14 @@ sequenceDiagram
 
 Profile and Security consume app-owned types from `ui/packages/app/lib/auth/account-types.ts`.
 `account-client.ts` isolates the provider hooks and native recent-verification flow. Profile names update through the existing browser SDK.
+
 Email, password, passkey and multi-factor controls retain the provider's existing instance policies.
 
 No application view receives a provider resource. The existing subject used by chat, pending sends and caches is unchanged.
 
 Sign-in methods opens `/settings/account/sign-in`. The app supplies a persistent page title and labelled region.
 `account-controls.tsx` embeds the supported provider widget with hash routing and retains its native verification flows.
+
 Subject/session changes remount that widget; ordinary resource refreshes retain it.
 
 Browser-session reads and remote sign-out use `account-actions.ts`, resolving the verified current person/session in `credential.ts`. A caller-supplied expected subject is only a stale-tab guard. It never selects another person's account.
