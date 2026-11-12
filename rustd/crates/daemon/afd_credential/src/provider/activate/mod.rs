@@ -58,13 +58,13 @@ use jiff::Timestamp;
 use sqlx::{Acquire as _, Transaction};
 
 use crate::error::{Result, entropy_drained, query};
+use crate::provider::KeyRef;
 use crate::provider::cap;
 use crate::provider::endpoint::{OPENAI_COMPATIBLE, Rejection};
 use crate::provider::selection::OwnModel;
 use crate::provider::store::Providers;
 use crate::provider::vetted::{Refused, vet};
 use crate::provider::{SecretKind, sql};
-use crate::vault::KeyRef;
 
 /// Statement name, for the context a query failure carries.
 const CONTEXT_ACTIVATE: &str = "tenant provider activation";

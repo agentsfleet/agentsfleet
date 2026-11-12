@@ -203,7 +203,6 @@ pub static MIGRATIONS: &[Migration] = &[
     migration!("20261108131900_connector_person_links.sql"),
     migration!("20261108193000_connector_oauth_nonces.sql"),
     migration!("20261108193100_identity_device_sessions.sql"),
-    migration!("20261111230000_model_tenant_models_workspace.sql"),
 ];
 
 /// Derives the version from the filename during constant evaluation: its UTC

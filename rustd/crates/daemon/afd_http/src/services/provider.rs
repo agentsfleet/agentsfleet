@@ -25,8 +25,8 @@
 
 use af_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
+use afd_credential::provider::KeyRef;
 use afd_credential::provider::{Activation, PlatformDefault, Providers, Selection};
-use afd_credential::vault::KeyRef;
 use jiff::Timestamp;
 
 /// Everything the tenant provider routes act through.

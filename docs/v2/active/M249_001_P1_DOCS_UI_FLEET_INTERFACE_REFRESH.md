@@ -294,10 +294,9 @@
 | `ui/packages/app/components/domain/chat/ChatMessageRow.tsx` | EDIT | Match approved working-status motion and compact glyph scale |
 | `ui/packages/design-system/src/design-system/DropdownMenu.tsx` | EDIT | Match approved working-status motion and compact glyph scale |
 
-| `schema/20261111230000_model_tenant_models_workspace.sql` | CREATE | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
-| `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `schema/20261108121500_model_tenant_models.sql` | EDIT | Define explicit model credential ownership directly in the fresh development schema; no backfill or upgrade path |
 | `rustd/crates/daemon/afd_db/tests/integration_migrate/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
-| `rustd/crates/daemon/afd_db/tests/integration_migrate/model_workspace.rs` | CREATE | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_db/tests/integration_migrate/model_workspace.rs` | CREATE | Verify fresh-schema workspace ownership and retained model identity after source deletion |
 | `rustd/crates/daemon/afd_credential/src/provider/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
 | `rustd/crates/daemon/afd_credential/src/provider/managed.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
 | `rustd/crates/daemon/afd_credential/src/provider/selection/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
@@ -571,12 +570,12 @@ The backend ownership defect was confirmed and repaired at the API/storage bound
 - A configured model stores its credential's `workspace_id` beside `secret_ref`. Models and the active choice remain account-scoped. Switching the selected workspace does not relocate a configured model or its key.
 - Registration takes `workspace_id`, `model_id` and `secret_ref`. Self-managed activation takes `workspace_id`, `secret_ref` and the existing optional model. Platform reset needs no workspace. The server proves workspace/account ownership in the same statement that locks the credential. Another account's workspace is indistinguishable from a missing credential.
 - Registry and active-selection responses carry the stored workspace. Reconciliation matches workspace, model and secret name together. Activation of a listed row uses that row's source workspace, never the currently selected page's workspace.
-- Add a forward migration. Backfill existing entries once to the workspace the old implementation actually used, preserving entry IDs, selections, setup references and credential bytes. Rows with no recoverable workspace remain visible but unavailable; they never resolve by guessing a different workspace. A composite workspace/account foreign key prevents cross-account storage. Workspace removal clears only the source reference so existing model/setup history remains readable.
+- Define workspace ownership in the original table schema for a freshly initialized development database. Do not backfill, infer a workspace, preserve an old writer shape, or add a compatibility deployment. The owner will reset the development database before merging. A composite workspace/account foreign key prevents cross-account storage; removing a source workspace clears only its reference and retains model/setup history.
 - Replace the old unique key with `(tenant_id, workspace_id, model_name, secret_ref)`. Two workspaces may register the same model and same key name independently. Registry metadata batches explicit workspace/name pairs in one read, without per-row queries or decryption.
 - Runtime resolution, activation, registration and secret-deletion guards use the exact stored workspace/name pair. Preserve the credential-first lock order. Deleting an unused same-named key in another workspace must remain possible; deleting the referenced key must remain refused.
 - The coordinated model fix updates the dashboard, CLI, generated OpenAPI and companion documentation together. `workspace_id` becomes required for model registration and self-managed activation; older callers must supply the workspace that holds the key. This requirement is part of Indy's instruction to fix the incorrect storage boundary, and must be explicit in release notes.
 
-Do not add a frontend storage resolver, workspace enumeration, key copying or implicit rotation. Add live backend cases for two workspaces with same-named keys, activation and resolution after workspace switching, cross-account refusal, exact deletion guards, migration preservation and compatible keyless endpoints. Unit form fixtures alone cannot prove this repair.
+Do not add a frontend storage resolver, workspace enumeration, key copying or implicit rotation. Add live backend cases for two workspaces with same-named keys, activation and resolution after workspace switching, cross-account refusal, exact deletion guards, fresh-schema source deletion and compatible keyless endpoints. Unit form fixtures alone cannot prove this repair.
 
 ### §3 — Inline Summary and continuous conversation
 
@@ -787,14 +786,14 @@ The fresh review reported eight findings. The dispositions below reflect the imp
 |---|---|---|
 | 1: Summary owner | Implemented; local proofs complete | One responsive Summary consumes existing approval/event and schedule readers; the drawer/toggle is removed. Component/unit ownership checks and the completed 84-case app dry lane cover retained data, responsive placement and reading position. No new poller was introduced. |
 | 2: Verification | Local evidence recorded; release acceptance unavailable | Exact-base counts and completed repository/package/browser commands are recorded below. The signed runner-toolbox download is denied by the cloud proxy before release acceptance can execute. The focused real-backend selection is identified separately and does not substitute for fleet execution. |
-| 3: Model credential scope/recovery | Implemented and locally verified; rollout P1 open | Exact workspace references govern registration, activation, resolution and deletion guards. Clean live integration includes the new credential and migration-preservation cases. The real authenticated form journey saves, registers and activates against its exact workspace; unit recovery and CLI proofs remain. Mixed-version rollout remains unresolved and blocks ship. |
+| 3: Model credential scope/recovery | Implemented; fresh development schema verified | Exact workspace references govern registration, activation, resolution and deletion guards. The owner explicitly chose an empty development database, so the initial schema holds workspace ownership directly and no legacy upgrade/backfill exists. Current main merge passes 5,525 Rust unit tests and 1,722 regular plus 2 exclusive integration tests. The previously recorded real form journey saves, registers and activates against its exact workspace; later presentation changes require current visual evidence. |
 | 4: Delete reconciliation | Implemented; component/local proofs complete | Typed stop/delete checkpoints, uncertain-response reads, access-loss handling and paused notices pass focused unit checks and the app dry lifecycle browser cases. No full signed-runner lifecycle acceptance is claimed. |
 | 5: Setup handoff | Implemented; local proofs complete | Existing setup tests retain save-key reuse, exactly one confirmed handoff, transient-failure recovery and authorization loss. Authoring history remains private. The app dry lane verifies setup surfaces; real runner execution remains unverified here. |
 | 6: Stored vocabulary/authority | Open in coordinated CLI/API batch | This UI batch preserves immutable review records, platform pins and narrowed capabilities. The broader public Plugins/CLI resource vocabulary and scope-filtered discovery remain specified separately, with no completion claim. |
 | 7: Identity mapping | Implemented and locally verified | App-owned adapters preserve the existing subject/session identity, exact ownership, recent verification and stale-result exclusion. Real Profile/Security journeys pass at 1440/390/320px, including the supported native password editor and cancellation. No identity-record migration or additional Clerk key was introduced. |
 | 8: Reference/type consistency | Resolved in current implementation/reference | The active spec, shared design-system documentation and current final report use the approved Manrope roles and 16px/24px phone typing. The final report links the current checkout and distinguishes implementation captures from the earlier historical proposal artifacts. |
 
-Typography and icon work was explicitly cleared. Code/account re-reviews clear the final eight-file UI delta; all four visual P3 findings are fixed in the current actual captures. The model migration P1, coordinated vocabulary batch and unavailable full release acceptance remain explicit; none is an owner deferral.
+Typography and icon work was explicitly cleared. Code/account re-reviews clear the final eight-file UI delta; all four visual P3 findings are fixed in the current actual captures. The owner’s explicit development-only reset decision closes the earlier migration blocker. The coordinated vocabulary batch and unavailable full signed-runner acceptance remain explicit. The current visual comparison remains open until the refreshed route captures are inspected.
 
 ## Discovery (consult log)
 
@@ -884,3 +883,96 @@ Typography and icon work was explicitly cleared. Code/account re-reviews clear t
 - **Final current package gate (Nov 12, 2026, Asia/Calcutta)** — The fresh actual `make test-coverage-all` passed: app 463 files / 4,460 tests; website 20 / 133; CLI 2,217 passed / 17 skipped / zero failures; design system 62 / 491. All package floors remain 100 percent. App statements 12,653, branches 9,257, functions 3,315 and lines 10,250 are all covered. Evidence: `/workspace/scratch/refresh-release-final-coverage.log`. The following verification invocation passed the complete `make lint-all` and version 0.76.0 checks but found two four-sentence paragraphs in the updated authentication guide. Those paragraphs were split without dropping content or changing the rule; repeat the actual verification gate. Its previous red log is retained at `/workspace/scratch/refresh-release-final-verify.log`.
 
 - **Final verified source (Nov 12, 2026, Asia/Calcutta)** — The actual `orly gate verify` repeat passed configuration, documentation language, the complete `make lint-all` invocation and version 0.76.0. Evidence: `/workspace/scratch/refresh-release-final-verify-green.log`. The prior red documentation result remains recorded; no suppression or rule change was used. Package coverage and the current authenticated captures are complete as recorded above. The CLI coverage floor measures functions and lines; the other three packages report statements, branches, functions and lines. Final visual review is clear, with all four layout findings fixed. The mixed-version migration P1 remains open pending the owner’s rollout choice, so this spec remains active and no PR, remote CI or Greptile completion is claimed.
+
+### Owner correction: fresh development database (Nov 12, 2026, Asia/Calcutta)
+
+> Owner: “i am only in development”; “i will tear the db”; “and merge your pr”; “i dont need a guarded cutover”.
+
+Implement the current schema directly for an empty development database. Remove the forward backfill and all legacy-upgrade test setup; retain normal workspace ownership, history retention and current API authorization. No guarded cutover, production deployment change, compatibility release or database reset is performed by this branch. The earlier rollout question is superseded by this explicit environment decision. Sync current main, verify the new schema and merge resolution, then complete the authorized Pull Request and checks.
+
+### Approved mock comparison repairs (Nov 12, 2026, Asia/Calcutta)
+
+The earlier visual sweep checked built quality without a complete mock comparison. The direct comparison found Models/Team composition drift, a capped mobile Summary and missing active fleet navigation. Repair these against the approved captures, retain actual data and request owners, and inspect every other redesigned route before claiming visual completion.
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/app/(dashboard)/settings/members/components/MembersView.tsx` | EDIT | Center the approved Team layout, retain account scope and search both people and pending invitations |
+| `ui/packages/app/app/(dashboard)/settings/members/components/MembersView.test.tsx` | EDIT | Retain role, delivery, action and focus proofs while verifying grouped searchable team rows |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView.tsx` | EDIT | Render approved grouped model cards while preserving search, sort and bounded paging |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryCards.tsx` | CREATE | Present existing model cells and authorized actions in responsive cards |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView.test.tsx` | EDIT | Preserve paging, filtering and read-recovery assertions through the approved card composition |
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/tests/helpers/members-fixtures.tsx` | EDIT | Preserve user-visible data, action, sorting and recovery assertions through shared Card composition |
+| `ui/packages/app/tests/models-registry-prices.test.tsx` | EDIT | Preserve user-visible data, action, sorting and recovery assertions through shared Card composition |
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/components/domain/chat/LibraryBrowser.tsx` | EDIT | Compose existing owned/shared setup choices from shared Card and List primitives without changing Flow1 authority |
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/tests/chat-failure.test.tsx` | EDIT | Preserve exact retry failure/clearing outcomes with the native Alert region |
+
+| File | Action | Purpose |
+|---|---|---|
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/components/layout/ResourceHeader.tsx` | CREATE | Compose the approved compact resource title bar from shared PageHeader and existing navigation metadata |
+| `ui/packages/app/components/layout/ResourceHeader.test.tsx` | CREATE | Verify resource labels and exclusion of fleet conversations and unknown routes |
+| `ui/packages/design-system/src/design-system/PageHeader.tsx` | EDIT | Expose the stable page-header slot for app theme composition |
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/tests/e2e/fixtures/resource-pages-probe.tsx` | CREATE | Capture actual resource and empty-chat components with explicit sample data and denied writes |
+| `ui/packages/app/tests/e2e/fixtures/chat-browser-build.ts` | EDIT | Route sample resource actions through the existing browser fixture boundary |
+| `ui/packages/app/tests/e2e/fixtures/chat-browser-probe.tsx` | EDIT | Expose the additional real-component review states |
+| `ui/packages/app/tests/e2e/fixtures/resource-settings-actions.ts` | EDIT | Supply nonsecret sample metadata and refuse every mutation in visual fixtures |
+
+Empty setup chat retains the native assistant-ui thread and composer. Match the approved centered welcome and suggestions below the composer; preserve editable suggestions, unfinished setup links and all request ownership. Resource captures use actual components with visible sample-data labels; they do not prove authenticated backend journeys.
+
+Native Summary scroll verification (Nov 12, 2026): the existing badge test initially reports 103px raw scroll movement on phones after Summary grows from 227px to 330px inside the same native viewport. Diagnostic captures show unchanged reply/header/composer rectangles and focus, with native scrollTop moving from 26px to 129px to compensate. The test now independently measures the preceding Summary height and requires exact compensation within the original one-pixel bound. Desktop still requires zero offset drift. Every visible rectangle, badge position, draft, focus and read-count assertion remains. Diagnostic log: `/workspace/scratch/refresh-pr-badge-native-diagnostic.log`. Re-run and forced-layout negative checks remain due before completion.
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/secrets/components/SecretsList.tsx` | EDIT | Keep both existing secret actions reachable within the phone table |
+| `ui/packages/app/app/(dashboard)/settings/api-keys/components/ApiKeyList.tsx` | EDIT | Keep key status and complete revoke/delete targets visible on phones |
+| `ui/packages/design-system/src/design-system/Pagination.tsx` | EDIT | Keep Previous and Next together when native pagination wraps |
+| `docs/DESIGN_SYSTEM.md` | EDIT | Document native Summary flow and shared responsive resource composition |
+
+| `ui/packages/design-system/src/design-system/Button.tsx` | EDIT | Keep shared small icon-action targets at the documented 32px desktop minimum without enlarging glyphs |
+
+| `ui/packages/design-system/src/design-system/IconAction.test.tsx` | EDIT | Retain the fixed shared action size proof at the approved 32px target |
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/tests/models-registry-paging.test.tsx` | EDIT | Preserve loaded rows, cursor termination and end-of-feed proofs with the hidden single-page pager |
+| `ui/packages/app/tests/fleet-thread/role-activity.test.ts` | EDIT | Preserve exact startup failure content in the shared named Alert |
+| `ui/packages/app/tests/fleet-thread/surface.test.ts` | EDIT | Verify the native footer contains the bounded composer wrapper |
+
+| `rustd/crates/daemon/afd_db/src/migration.rs` | EDIT | Remove the superseded forward migration from the fresh-schema registry |
+| `schema/20261111230000_model_tenant_models_workspace.sql` | DELETE | Remove the owner-rejected legacy forward migration and backfill |
+
+Visual sample clarity: the browser conversation probe overrides the deterministic unit helper’s 1970 timestamp with its own current sample instant and explicitly labels the page Sample data. Do not change shared unit timestamps or present sampled captures as live fleets.
+
+### Independent Astra comparison and whole-composition polish (Nov 12, 2026)
+
+Owner: “I need a polished aligned UX that you portrayed to be that matches pixel to your design. Do what you need to do to get it visually, ask indy on eyeball review.” His header, bubble, identity, composer and Summary notes are review feedback, not an exhaustive acceptance checklist. Use design judgment across the entire composition and return concrete matching captures for his review.
+
+Astra independently confirmed that the current Summary is too verbose and uses the wrong hierarchy; its 1024px stacking boundary differs from the approved 680px boundary. Matching fonts and 248px width did not establish visual fidelity. The default tool label also enumerates internal tool names. Report: `/workspace/artifacts/fleet-refresh-v2/astra-visual-validation.md`. Paired actual viewport captures: `/workspace/artifacts/fleet-refresh-v2/astra-current-comparison` (1480×1000, 696×846 and 390×846). The owner’s supplied image may be cropped; its image width is not viewport evidence.
+
+Revise the whole composition through the current design-system and assistant-ui primitives. Keep stable Changes, Outputs and Sources headings with quiet empty states after a confirmed empty read; insert approval/attention first when present. Put task objectives, controls and repository-policy explanations behind closed disclosures, retain urgent failures, and add supported activity groups as real data arrives. Environment, child-agent lifecycle, process lifecycle, diff totals and approval action details must come from authoritative data; never invent them from tool names or a successful spawn/command. The earlier blanket instruction to omit every empty group is superseded by this review. Keep the existing approval decision owner and model/setup/navigation state owners.
+
+Current pre-polish verification checkpoint: actual `make test-coverage-all` passes app464 files/4468 tests, website20/133, CLI2217 passed/17 skipped, design system62/491, with all declared coverage floors100%. Actual `make dry-app` passes4468 app units and90 browser cases. These commands prove behavior and coverage, not pixel fidelity. Rust remains5525 unit tests and1722 regular plus2 exclusive integration tests on the merged fresh-schema source. No PR/push/remote feature CI/Greptile success is claimed yet.
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/components/assistant-ui/CodeBlock.tsx` | CREATE | Compose the official Markdown syntax-highlighter slot and native Pre/Code inside a coherent shared-token code surface |
+| `ui/packages/app/components/domain/chat/TaskPanel.tsx` | EDIT | Present a compact Summary digest and disclose secondary task context |
+| `ui/packages/app/components/domain/chat/WorkContextSections.tsx` | EDIT | Stable compact Summary sections, truthful output labels and approval emphasis |
+| `ui/packages/app/components/domain/chat/WorkWakeups.tsx` | EDIT | Keep compact next-wake-up context and explicit schedule failures |
+| `ui/packages/app/components/domain/tool-call-activity.ts` | EDIT | Replace unbounded collapsed tool enumeration with bounded count/outcome labels |
+
+The next visual pass must include coherent empty, working and populated Fleet states in both themes, with recorded Changes and a real-shaped pull-request target actually passed into the sample fixture. SetupSummary does not substitute for Fleet Summary. Compare the full header, transcript, user/assistant turns, composer and Summary together; preserve unmodified screenshots and the data/state distinction. Astra rechecks independently, then Indy receives an accessible eyeball review.

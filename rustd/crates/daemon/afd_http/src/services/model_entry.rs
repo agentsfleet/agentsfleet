@@ -30,8 +30,8 @@
 
 use af_core::id::Uuid7;
 use afd_credential::Result as CredentialResult;
+use afd_credential::provider::KeyRef;
 use afd_credential::provider::{Added, Boundary, Providers, RegistryPage, Removed, Retargeted};
-use afd_credential::vault::KeyRef;
 use jiff::Timestamp;
 
 /// Everything the tenant model registry routes act through.
