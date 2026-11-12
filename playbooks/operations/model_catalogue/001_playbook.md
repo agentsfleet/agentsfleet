@@ -1,8 +1,8 @@
 ---
 type: how-to
 audience: operator
-verified: 2026-11-08
-product_version: 0.75.0
+verified: 2026-11-12
+product_version: 0.76.0
 executable: false
 ---
 
@@ -66,26 +66,28 @@ It uses Bun's native Postgres client.
 
 ## Activate a primed model
 
-Priming does not add credentials or select a default.
+Priming adds no credential and selects no default. Pipe the provider key from 1Password into the CLI, which stores it and selects the default:
 
-1. Sign in with `model:admin` and open **Platform → Model library** (`/admin/models`).
-2. Select the row's default star, enter the provider API key and confirm.
-3. Open **New fleet** and confirm the model is in the picker.
-   Setup chat also needs an SDK route that supports tools.
+```bash
+op read "op://$VAULT/<PROVIDER_KEY_ITEM>/credential" \
+  | agentsfleet platform keys set --provider <PROVIDER> --model <MODEL_ID> \
+      --workspace "$(op read "op://$VAULT/agentsfleet-admin/platform_admin_workspace_id")" --api-key-stdin
+agentsfleet platform keys list
+```
+
+`keys list` shows the provider and model with `active: true`. Setup chat also needs an SDK route that supports tools.
 
 ## Change connection settings or prices
 
-1. Edit the model. Provider and model identity stay locked.
-2. Review **Connection**. Primed **Inference API**, **Inference base URL** and **Model output limit (tokens)** rarely change; **Dialect (optional)** picks a provider SDK dialect.
-3. Expand **Catalogue details** to change the display name, context evidence or **Advanced model**.
-   Advanced models appear only when a user asks for the expanded picker.
-4. Expand **Pricing** to review dated prices and token thresholds.
-   **Add pricing tier** adds a long-prompt rate or a later interval; a single-rate provider needs one base tier.
-5. Select **Save changes**, then reload and reopen the row.
+Change the snapshot in `scripts/model-library-allowlist.json` and rerun the diff and apply above.
+For a one-off administrator override, read the row, edit the JSON and write it back:
 
-An API update that omits `inference` keeps the existing connection.
-Saving adds no credential and selects no default.
-Source: `rustd/crates/protocol/af_wire/src/inference.rs`, `rustd/crates/daemon/afd_api_wire/src/admin_catalogue.rs`, `ui/packages/app/app/(dashboard)/admin/models/components/EditModelDialog.tsx`.
+```bash
+agentsfleet platform models show <MODEL_ROW_ID> --json > model.json
+agentsfleet platform models update <MODEL_ROW_ID> --file model.json
+```
+
+Provider and model identity stay locked. An update that omits `inference` keeps the existing connection, and it adds no credential.
 
 ## Verify it works
 

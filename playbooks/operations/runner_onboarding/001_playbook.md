@@ -1,8 +1,8 @@
 ---
 type: how-to
 audience: operator
-verified: 2026-11-08
-product_version: 0.75.0
+verified: 2026-11-12
+product_version: 0.76.0
 executable: false
 ---
 
@@ -49,12 +49,18 @@ Indy creates external state, the agent prepares the host, and the deployment pip
 
    Preparation checks the `cpu`, `io`, `memory` and `pids` cgroup v2 controllers, installs packages, enables IPv4 forwarding and creates directories.
    It installs no binary, writes no token and starts no service.
-2. Indy opens **Avatar → Platform → Runners → Add runner** in the dashboard and enters:
-   - **Host name**: the exact `tailscale-hostname` value.
-   - Isolation: **Landlock** (`landlock_full` in the API).
-   - **Labels (optional)**: `dev` or `prod`, matching the environment.
-3. Indy saves the once-revealed `agt_r` value in the concealed `runner-token` field of the same item.
-   If the value is lost, revoke the runner and create it again.
+2. The agent enrolls the host with the CLI. The host ID is the item's exact `tailscale-hostname`, and the token lands in a new private file:
+
+   ```bash
+   printf '%s' '{"durable_tasks_enabled":true,"sandbox_tier":"landlock_full","network_policy":"allow_all","registry_allowlist":[],"worker_count":4,"extra_binds":[]}' > policy.json
+   agentsfleet platform runners enroll --host-id "$(op read "op://$VAULT/<RUNNER_ITEM>/tailscale-hostname")" \
+     --policy policy.json --labels dev --token-out runner-token
+   ```
+
+   Use `--labels prod` for production.
+3. The agent stores the token in the item's `runner-token` field only, through a template file, then deletes both files.
+   Use `op item get --format json`, set that one field, `op item edit --template <file>`, and confirm every other field is unchanged.
+   If the token is lost, run `agentsfleet platform runners rotate-token`.
 4. For production, the agent adds `{"vault_key": "<PRODUCTION_RUNNER_ITEM>"}` to `PROD_RUNNER_HOSTS`.
 5. The agent starts the routine deployment: [development](../../deploy/dev/001_playbook.md) or [production](../../deploy/prod/001_playbook.md).
    The pipeline downloads its checked binary, installs the tracked systemd unit, starts the service and runs the host gate; a workstation never deploys it.
@@ -65,4 +71,4 @@ Indy creates external state, the agent prepares the host, and the deployment pip
 - The item holds a real `runner-token`, not a placeholder.
 - The runner deployment and verification jobs are green.
 - The host gate confirms `cpu`, `io`, `memory` and `pids` delegation.
-- The dashboard shows the exact host name as `online`.
+- `agentsfleet platform runners list` shows the runner `online`.
