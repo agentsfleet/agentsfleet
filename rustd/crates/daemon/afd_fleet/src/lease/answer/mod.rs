@@ -24,6 +24,12 @@ pub(super) const EVENT_LEASED: &str = "runner_lease_issued";
 /// The event a refused delivery is logged under.
 pub(super) const EVENT_REFUSED: &str = "runner_lease_refused";
 
+/// The event a delivery ended after its leases kept lapsing is logged under.
+///
+/// Its own name rather than [`EVENT_REFUSED`]'s: no gate refused anything, and
+/// a count of refusals must not rise with lapsed runs.
+pub(super) const EVENT_ABANDONED: &str = "runner_lease_abandoned";
+
 /// A placement decision that sends no frame; its reason stays in bounded operator telemetry.
 pub(super) fn no_work(runner: &Uuid7, reason: &str) {
     let runner_id = runner.as_str();

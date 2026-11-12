@@ -37,6 +37,7 @@ struct Admission {
     held: bool,
     holder: Option<Uuid7>,
     reclaimed: bool,
+    earlier_leases: i64,
     tenant_id: Uuid7,
     #[sqlx(flatten)]
     memory: MemoryScope,
@@ -226,6 +227,7 @@ impl Admission {
             event_created_at: self.event_created_at,
             resume_hold: self.held && self.holder.as_ref() == Some(runner) && kind == Kind::Fresh,
             redelivered: self.redelivered,
+            earlier_leases: self.earlier_leases,
             opened,
         }
     }

@@ -30,6 +30,7 @@ pub(crate) struct Obligation {
     pub(crate) provider: String,
     pub(crate) destination: Option<String>,
     pub(crate) event_id: Uuid7,
+    pub(crate) answer: String,
 }
 
 /// Every obligation this fleet holds, oldest first.
@@ -40,7 +41,7 @@ pub(crate) async fn obligations(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<Oblig
         .await
         .expect("a pooled connection");
     sqlx::query(
-        "SELECT provider, destination, event_id FROM fleet.obligations \
+        "SELECT provider, destination, event_id, answer FROM fleet.obligations \
          WHERE fleet_id = $1 ORDER BY created_at, sequence",
     )
     .bind(fleet)
@@ -52,6 +53,7 @@ pub(crate) async fn obligations(fixtures: &Fixtures, fleet: &Uuid7) -> Vec<Oblig
         provider: row.try_get(0).expect("provider is text"),
         destination: row.try_get(1).expect("destination is nullable text"),
         event_id: row.try_get(2).expect("event_id is a uuid"),
+        answer: row.try_get(3).expect("answer is text"),
     })
     .collect()
 }

@@ -66,6 +66,9 @@ pub struct Acquired {
     pub resume_hold: bool,
     /// Whether this admission was delivered on an earlier attempt.
     pub redelivered: bool,
+    /// How many leases this event was issued before this claim. A report
+    /// settles its event, so each one is a run that lapsed without reporting.
+    pub earlier_leases: i64,
     /// What the claim statement read and wrote beside the slot.
     pub opened: Opened,
 }

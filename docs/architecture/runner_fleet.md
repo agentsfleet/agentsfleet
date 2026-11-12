@@ -54,6 +54,8 @@ Each trap is enforced in its owner section; this list is the index.
 
 - A lost wake needs no repair sweep; the next 5 s recovery probe reads PostgreSQL (§Failure recovery model).
 
+- The three-lease cap counts every lease an event was issued, whatever ended it. Three leases lost in a runner outage end the event too, and a webhook event has no replay (§Failure recovery model).
+
 - Sandbox tiers are not egress policy. No tier substitutes for the egress model (§Sandbox tiers).
 
 - The live tail is never the source of truth; `report` is the durable system of record (§Live activity).
@@ -138,6 +140,7 @@ A runner's work becomes eligible when its slot expires. The next offer pass push
 | Failure | Recovery | Durable guard |
 |---|---|---|
 | Runner dies mid-lease | A later offer pass claims the same unsettled admission after its 35-second slot expires. | The slot and admission receive a higher fence; the old holder cannot write. |
+| Every lease of one event lapses | After three lapsed leases, the next claim ends the event as `fleet_error` with `lease_expired`. A durable task's event is exempt; its own lease allowance bounds it. | The same transaction settles the admission, so the fleet's next event can run. |
 | Wake notification lost | The next 5 s recovery probe reads PostgreSQL without a hint. | Acceptance is already committed in `fleet.admissions`. |
 | Claim decoding fails | The transaction rolls back its slot and admission changes. | Both fences remain unchanged. |
 | Failure after claim commit | Release the claim where possible; otherwise wait for its deadline. | Every write verifies the current slot and admission fences. |

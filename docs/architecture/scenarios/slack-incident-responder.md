@@ -161,7 +161,7 @@ The installed grant bounds writes as described in [trust anchors](../connectors.
 
 | Integration | Connector (auth) | Events in | Actions out | In the first drill |
 |---|---|---|---|---|
-| GitHub | App install; per-lease installation token, repository-scoped, 1 hour | App ingress: `pull_request`; `workflow_run` completed with `failure` only; `deployment_status` dropped (`afd_api_ingress/src/handler/webhook/github/mod.rs:106-154`, `app_route.rs:22-29`) | fleet `http_request` inside egress rules | read token only |
+| GitHub | App install; per-lease installation token, repository-scoped, 1 hour | App ingress: `pull_request`; `workflow_run` completed with `failure`, `timed_out` or `startup_failure`; `deployment_status` dropped (`afd_api_ingress/src/handler/webhook/github/mod.rs:68,109-158`, `app_route.rs:22-29`) | fleet `http_request` inside egress rules | read token only |
 | Slack | OAuth bot token: `app_mentions:read`, `chat:write`, `channels:history` | `app_mention` (M206_002) | daemon `chat.postMessage` | yes |
 | Grafana | none; workspace secret | none | fleet reads | yes, read-only |
 | Zoho Desk | OAuth refresh, multi-data-center, `Desk.*.READ` | none | none | no |
@@ -178,7 +178,7 @@ The installed grant bounds writes as described in [trust anchors](../connectors.
 | Mention becomes an event | ✅ one `slack_mention` admission per Slack event, keyed `<team_id>:<event_id>` (`afd_ingress/src/slack/admit.rs:59-64`, `afd_admission/src/admission.rs:33`) | — | M206_002 |
 | Channel → fleet | Reviewed subscriptions route only configured Addressed/Sole fleets. Unconfigured channels return `channel_not_configured`; existing bindings carry fixed notices only. | Combined live drill remains pending. | M236 |
 | Thread context | ✅ `conversations.replies` under 1.5 s, parent plus latest replies, capped, under a fixed untrusted-data heading (`afd_connector/src/slack/replies/mod.rs:48-51,183`, `afd_ingress/src/slack/message.rs:20,52`) | — | M206_002 |
-| Answer delivery | ✅ owed only to a recorded destination; abandoned when refused or out of cycles (slot 1740) | — | M206_001 |
+| Answer delivery | ✅ owed only to a recorded destination; a failed run with no text, a gate refusal, or an event ended after its leases lapsed owes a fixed notice (`afd_fleet/src/lease/sql/commit_report.sql:184-197`, `afd_fleet/src/lease/event.rs:136-240`); abandoned when refused or out of cycles (slot 1740) | — | M206_001 |
 | Slack poster | ✅ `chat.postMessage` from the job's own address; reads no event row (`afd_outbound/src/slack/mod.rs`) | — | M206_001 |
 | Write reach from Slack | ✅ one ref and one draft PR, proven for a Slack-requested lease with no approval asked (`afd_gate/src/policy/egress/tests/slack.rs`, `afd_fleet/tests/integration_lease_gates/slack.rs`) | — | M206_003 |
 | One run per approval | unverified: the parked delivery passes once approved (`afd_gate/src/gate/pass.rs:164-165`) while approval also admits a continuation (`afd_approval/src/inbox/resolve/mod.rs:149-152`) | exactly one run | its own spec; off this path, since Slack requests do not park |
