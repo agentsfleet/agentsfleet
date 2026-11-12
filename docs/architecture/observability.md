@@ -784,9 +784,10 @@ there would have no driver.
   Collector selection cannot split a daemon's accumulation.
 
   The common builder also retains a delta provider for runner families declared as windows.
+  The readers' counting wrappers record failed collection cycles.
+
   Both readers collect every 60 s (`COLLECT_INTERVAL` in `af_otlp`'s pipelines module).
   Grafana Cloud bills a series by its samples per minute and includes one, so a shorter cadence multiplies the bill.
-  Their counting wrappers record failed collection cycles.
 
   Boot claims each census family under its declared kind and series ceiling.
   The parity test rejects families without producers.
