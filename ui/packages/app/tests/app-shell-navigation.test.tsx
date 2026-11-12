@@ -165,6 +165,12 @@ it("shows account initials, an email fallback and loading or retry status withou
   const view = render(<WorkspaceSwitcherTrigger activeLabel="Main" />);
   expect(screen.getByText("KN")).toBeTruthy();
   expect(screen.getByText("Kishore Neelamegam")).toBeTruthy();
+  const trigger = screen.getByRole("button");
+  expect(trigger.getAttribute("aria-label")).toContain(trigger.textContent?.replace(/\s+/g, " ").trim());
+  view.rerender(<WorkspaceSwitcherTrigger activeLabel="Main" collapsed />);
+  expect(screen.getByRole("button").getAttribute("aria-label")).toBe("Workspace and account menu: KN");
+  view.rerender(<WorkspaceSwitcherTrigger activeLabel="Main" collapsed busy />);
+  expect(screen.getByRole("button").getAttribute("aria-label")).toBe("Workspace and account menu");
   mocks.identity.displayName = undefined;
   mocks.identity.emailAddress = "indy@example.test";
   view.rerender(<WorkspaceSwitcherTrigger activeLabel="Main" failed />);
