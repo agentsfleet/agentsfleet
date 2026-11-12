@@ -104,7 +104,7 @@ async fn completed_dependencies_consume_one_native_wait_for_success_and_failure(
             );
             assert_eq!(counts(case, &waiting.task_id).await, (1, 3, 1, 2, 2));
             assert_eq!(waiting.fixture.counts().await, (1, 1, 1));
-            waiting.finish().await;
+            Box::pin(waiting.finish()).await;
         })
         .await;
     }
@@ -136,7 +136,7 @@ async fn unchanged_dependencies_defer_then_charge_only_the_bounded_fallback_read
             );
         }
         assert_eq!(waiting.fixture.counts().await, (1, 1, 1));
-        waiting.finish().await;
+        Box::pin(waiting.finish()).await;
     })
     .await;
 }
@@ -160,7 +160,7 @@ async fn closed_or_changed_head_dependencies_block_without_admitting_work() {
             assert_eq!(state, (TaskState::Blocked.as_str().to_owned(), reason.to_owned(), 3, 2));
             assert_eq!(counts(case, &waiting.task_id).await, (0, 0, 0, 2, 1));
             assert_eq!(waiting.fixture.counts().await, (1, 1, 1));
-            waiting.finish().await;
+            Box::pin(waiting.finish()).await;
         }).await;
     }
 }
@@ -198,7 +198,7 @@ async fn failed_dependency_reads_retain_prior_evidence_and_observe_provider_cool
             let retry = waiting.tasks.maintain_waits().await.expect("failure backoff preserves the wait");
             assert_eq!((retry.checked, retry.woken, retry.deferred), (0, 0, 0));
             assert_eq!(waiting.fixture.counts().await, (1, 1, 1));
-            waiting.finish().await;
+            Box::pin(waiting.finish()).await;
         }).await;
     }
 }
