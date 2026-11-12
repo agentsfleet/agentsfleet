@@ -65,10 +65,12 @@ pub const SPAN_BATCH: usize = 512;
 /// pinned.
 pub const SPAN_SEND_EVERY: Duration = Duration::from_secs(5);
 
-/// How often the metric reader collects and exports. Grafana Cloud bills a
-/// series by its samples per minute and includes one, so a 5 s cadence billed
-/// every series twelve times over (25,130 billable for about 2,200 active,
-/// Nov 12, 2026). Every query reads windows of an hour, which a minute serves.
+/// How often the metric reader collects and exports.
+///
+/// Grafana Cloud bills a series by its samples per minute and includes one,
+/// so a 5 s cadence billed every series twelve times over (25,130 billable
+/// for about 2,200 active, Nov 12, 2026). Every query reads windows of an
+/// hour, which a minute serves.
 pub const COLLECT_INTERVAL: Duration = Duration::from_secs(60);
 
 /// Sees each recorded span the moment it ends, before the batch exporter
