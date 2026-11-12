@@ -59,9 +59,9 @@ af_webhook.workspace = true
 # The event type and stream field names a delivery is appended under.
 afd_api_wire.workspace = true
 af_wire.workspace = true
-# A stored credential is a JSON object and the shared secret is one field of
-# it; nothing here serializes.
-serde_json.workspace = true
+# A stored credential's `webhook_secret` field, read as an `afd_vault::bag::Bag`;
+# nothing here serializes.
+serde.workspace = true
 # The App ingress keys its at-most-once claim on the body's digest rather than
 # on the provider's unsigned delivery header — see `app::replay_id`.
 sha2.workspace = true
@@ -79,8 +79,14 @@ tracing.workspace = true
 # nothing, which is what puts the resolution matrix in a test with no
 # datastore in it.
 af_crypto.workspace = true
-afd_db.workspace = true
+afd_db = { workspace = true, features = ["test-util"] }
 serde_json.workspace = true
+# The unreachable admissions ledger and its bus, and `Capture`, which reads back
+# that a refused credential name logs nothing.
+afd_admission = { workspace = true, features = ["test-util"] }
+afd_bus = { workspace = true, features = ["test-util"] }
+af_core = { workspace = true, features = ["test-util"] }
+tokio = { workspace = true, features = ["macros", "rt"] }
 
 [lints]
 workspace = true

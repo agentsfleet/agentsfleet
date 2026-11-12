@@ -228,6 +228,31 @@ fn a_dashboard_base_that_is_not_a_url_refuses_boot() {
     }
 }
 
+/// The API URL is the origin the scheduler calls every fire back on, so one that
+/// cannot form that callback refuses boot, naming the knob and never the value.
+#[test]
+fn an_api_url_that_cannot_form_a_callback_refuses_boot() {
+    for base in [
+        "not a url",
+        "https://api.example.test/?region=eu",
+        "https://api.example.test/#top",
+    ] {
+        let refusal = preflight(&with_optional([(API_URL_KNOB, base)]))
+            .expect_err("a base that cannot form the callback refuses boot");
+
+        assert_eq!(refusal.knobs(), [API_URL_KNOB], "{base}: only the API URL");
+        assert!(
+            !format!("{refusal:?}").contains(base),
+            "{base}: the refusal never echoes the value"
+        );
+        assert_eq!(
+            BootFailure::from(refusal).code(),
+            error_code::STARTUP_ENV_CHECK,
+            "{base}: refused as the environment, before anything opens"
+        );
+    }
+}
+
 /// A blank or padded optional knob reads as the trimmed value, or as unset:
 /// a blank analytics key is analytics off, never a fault, and a padded key
 /// (a heredoc's trailing newline) is still that key.

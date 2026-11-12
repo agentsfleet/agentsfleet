@@ -13,12 +13,12 @@ use af_core::id::Uuid7;
 use af_crypto::aad::Aad;
 use af_crypto::envelope::{Envelope, Sealer};
 use af_crypto::secret::Kek;
-use afd_credential::vault::{KeyRef, Vault};
 use afd_db::Db;
 use afd_db::config::DbRole;
 use afd_db::test_util::{
     DefaultSeed, ModelSeed, PlatformDefault, TenantSeed, TestDatabase, WorkspaceSeed, mint_id,
 };
+use afd_vault::Vault;
 use jiff::Timestamp;
 
 mod activation;
@@ -62,7 +62,11 @@ impl Fixture {
         let database = lane.open(DbRole::Api, &[]).await;
         let kek = Arc::new(Kek::from_bytes([0x42; 32]));
         let fixture = Self {
-            vault: Vault::new(database.clone(), Arc::clone(&kek)),
+            vault: Vault::new(
+                database.clone(),
+                Arc::clone(&kek),
+                af_crypto::entropy::Entropy::new(),
+            ),
             database,
             tenant: id(),
             workspace: id(),
@@ -71,13 +75,6 @@ impl Fixture {
         };
         fixture.seed_scope().await;
         fixture
-    }
-
-    const fn key<'fixture>(&'fixture self, name: &'fixture str) -> KeyRef<'fixture> {
-        KeyRef {
-            workspace_id: &self.workspace,
-            name,
-        }
     }
 
     /// A tenant row with NO workspace under it.

@@ -59,18 +59,21 @@ fn crypto_failure() -> Result<af_crypto::error::Error, &'static str> {
         .ok_or("a two-character non-hex string unexpectedly parsed as a KEK")
 }
 
-/// An envelope that will not open keeps its cause and answers internally.
+/// A vault failure answers with the vault crate's own table.
 ///
-/// The caller cannot act on it: a stored envelope that will not decrypt is
-/// this deployment's key material being wrong, not the request being wrong.
+/// The credential plane reads and opens through `afd_vault`, so a statement
+/// that failed and an envelope that will not open must not collapse into one
+/// "database error": the second is key material gone wrong, and the vault
+/// already says so.
 #[test]
-fn a_vault_envelope_that_will_not_open_keeps_its_cause() -> Result<(), &'static str> {
-    let failure = super::vault_open(crypto_failure()?);
+fn a_vault_failure_answers_with_the_vault_crates_own_code() -> Result<(), &'static str> {
+    let unopened = Error::from(afd_vault::Error::from(crypto_failure()?));
 
-    assert!(failure.source().is_some(), "the crypto cause is preserved");
-    assert_ne!(failure.detail(), "");
-    assert_ne!(failure.to_string(), "");
-    assert!(!failure.is_credential_missing());
+    assert_eq!(unopened.code(), error_code::INTERNAL_OPERATION_FAILED);
+    assert_ne!(unopened.code(), error_code::INTERNAL_DB_QUERY);
+    assert!(!unopened.is_datastore_unavailable());
+    assert!(!unopened.is_config_permanent());
+    assert!(unopened.source().is_some(), "the vault cause is preserved");
     Ok(())
 }
 

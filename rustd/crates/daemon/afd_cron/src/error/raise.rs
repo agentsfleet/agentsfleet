@@ -17,6 +17,7 @@ af_core::error_lifts!(Error, ErrorKind:
     af_crypto::error::Error => Identifier,
     reqwest::Error => UpstreamUnreachable,
     serde_json::Error => Json,
+    afd_vault::Error => BagUnreadable,
 );
 
 /// Reports a statement that failed, naming what it was doing.
@@ -52,6 +53,12 @@ pub(crate) fn upstream_unreadable() -> Error {
 /// what it said. See the module note on why collapsing the two would cost.
 pub(crate) fn upstream_refused(status: u16) -> Error {
     ErrorKind::UpstreamRefused { status }.into()
+}
+
+/// Reports a `qstash` bag that holds no usable credentials.
+#[must_use]
+pub(crate) fn bag_unusable(fault: afd_vault::bag::BagFault) -> Error {
+    ErrorKind::BagUnusable { fault }.into()
 }
 
 /// Reports a fired `once` schedule another syncer still holds.
@@ -164,7 +171,34 @@ fn wrapping_kinds() -> Vec<(&'static str, Error)> {
             }
             .into(),
         ),
+        (
+            "bag unreadable",
+            ErrorKind::BagUnreadable {
+                source: afd_vault::Error::from(afd_db::error::invalid_bool_knob(
+                    "MIGRATE_ON_START",
+                )),
+            }
+            .into(),
+        ),
+        (
+            "bag undecryptable",
+            ErrorKind::BagUnreadable {
+                source: afd_vault::Error::from(identifier_sample()),
+            }
+            .into(),
+        ),
     ]
+}
+
+/// An `af_crypto` error from a key that will not decode, for the kinds that
+/// wrap one.
+#[cfg(feature = "test-util")]
+#[expect(
+    clippy::expect_used,
+    reason = "a sample builder whose own preconditions fail should stop the suite"
+)]
+fn identifier_sample() -> af_crypto::error::Error {
+    af_crypto::secret::Kek::from_hex("not-hex").expect_err("a non-hex key is refused")
 }
 
 /// A `reqwest::Error` built without a request ever leaving the process: the
@@ -200,6 +234,10 @@ fn raised_kinds() -> Vec<(&'static str, Error)> {
         ("token malformed", token_malformed()),
         ("signature invalid", signature_invalid()),
         ("body mismatch", body_mismatch()),
+        (
+            "bag unusable",
+            bag_unusable(afd_vault::bag::BagFault::Missing("token")),
+        ),
         ("destination unusable", destination_unusable()),
         (
             "destination not a plain origin",

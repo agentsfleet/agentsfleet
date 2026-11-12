@@ -1,4 +1,5 @@
 //! One binary owns this snapshot walk, so no concurrent suite mutates its counts.
+#![cfg(feature = "test-util")]
 #![expect(clippy::expect_used, reason = "live store fixtures fail loudly")]
 #[path = "support/cron_lane.rs"]
 mod support;
@@ -61,13 +62,13 @@ async fn health_tracks_real_states_and_refuses_a_closed_database() {
         reason = "the test scheduler is loopback and the closed database must prevent any send"
     )]
     let client = reqwest::Client::new();
-    let upstream = afd_cron::qstash::QStash::new(
+    let upstream = afd_cron::qstash::QStash::fixed(
         client,
         af_crypto::secret::SecretString::new("fixture-token".into()),
         "https://example.test/fire".into(),
         "http://127.0.0.1:1".into(),
     );
-    let service = ScheduleService::new(lane.store.clone(), upstream);
+    let service = ScheduleService::new(lane.store.clone(), std::sync::Arc::new(upstream));
     lane.database.close().await;
     lane.store
         .health(now)

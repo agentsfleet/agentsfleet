@@ -10,12 +10,12 @@
 //!
 //! The difference is a [`Resolution`]: a value that knows WHICH row
 //! carries its key and what that row's body means. The part they share — open
-//! the row — is written once, in [`vault`], and runs between the two halves of
+//! the row — is `afd_vault::Vault::find`, and runs between the two halves of
 //! the trait:
 //!
 //! ```text
 //!   strategy = platform | self-managed        ← the fork, decided once
-//!   body     = open(strategy.key())           ← shared, one statement
+//!   body     = Vault::find(strategy.key())    ← shared, one statement
 //!   resolved = strategy.interpret(body)       ← the fork again, pure
 //! ```
 //!
@@ -70,7 +70,6 @@ use af_core::id::Uuid7;
 use serde::de::DeserializeOwned;
 
 use crate::error::{Result, provider_malformed, provider_no_workspace, provider_secret_missing};
-use crate::vault::KeyRef;
 
 pub use self::activate::Activation;
 pub use self::endpoint::{OPENAI_COMPATIBLE, Rejection};
@@ -97,6 +96,15 @@ pub use self::wire::Wire;
 /// carries any endpoint.
 pub fn validate_endpoint_pair(provider: &str, base_url: Option<&str>) -> Result<(), Rejection> {
     endpoint::resolve(provider, base_url).map(|_endpoint| ())
+}
+
+/// Where a strategy's key sits: a workspace, and a row's name within it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct KeyRef<'a> {
+    /// The workspace holding the row.
+    pub workspace_id: &'a Uuid7,
+    /// The row's name within it.
+    pub name: &'a str,
 }
 
 /// A prepared way of resolving one tenant's provider.
@@ -166,7 +174,8 @@ impl Providers {
         // Split across two statements, not folded into one expression: `key`
         // borrows from `strategy`, so the borrow has to outlive the `await`
         // that uses it and end before `interpret` is called on the same value.
-        let body = self.vault().open(strategy.key()).await?;
+        let key = strategy.key();
+        let body = self.vault().find(key.workspace_id, key.name).await?;
         strategy.interpret(body.ok_or_else(provider_secret_missing)?.expose())
     }
 

@@ -6,6 +6,7 @@
 //! newer syncer owns it, and deleting under it would erase whatever that
 //! syncer is about to record.
 
+#![cfg(feature = "test-util")]
 #![expect(
     clippy::expect_used,
     reason = "test target: an unmet precondition should fail the test loudly"
@@ -43,7 +44,7 @@ async fn a_delete_overtaken_mid_removal_leaves_the_row_to_its_new_holder() {
         .expect("the lane's Postgres must answer")
         .expect("the schedule is claimable for deletion");
     let mut scheduler = StubScheduler::start();
-    let service = Reconciler::new(lane.store.clone(), scheduler.client());
+    let service = Reconciler::new(lane.store.clone(), std::sync::Arc::new(scheduler.client()));
     let winner = CronLane::token();
 
     let (reconciled, ()) = tokio::join!(service.reconcile(&deleting, &loser), async {

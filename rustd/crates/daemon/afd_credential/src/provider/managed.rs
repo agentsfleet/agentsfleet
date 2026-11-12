@@ -24,12 +24,12 @@
 
 use serde::Deserialize;
 
+use super::KeyRef;
 use crate::error::{Result, provider_malformed};
 use crate::provider::resolved::Resolved;
 use crate::provider::selection::OwnModel;
 use crate::provider::vetted::vet;
 use crate::provider::{Resolution, Strategy};
-use crate::vault::KeyRef;
 use af_core::id::Uuid7;
 use af_crypto::secret::SecretString;
 use afd_billing::Posture;

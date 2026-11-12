@@ -38,6 +38,8 @@ mod webhook_declared_svix;
 mod webhook_fleet_route;
 #[path = "webhook_qstash_route.rs"]
 mod webhook_qstash_route;
+#[path = "webhook_qstash_scheduler.rs"]
+mod webhook_qstash_scheduler;
 #[path = "webhook_source_delivery.rs"]
 mod webhook_source_delivery;
 #[path = "webhook_source_route.rs"]

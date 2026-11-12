@@ -45,14 +45,13 @@ impl LeaseService {
         T: Send,
         F: for<'a> FnMut(LeasePayload<'a>, Offered) -> T + Send,
     {
-        let declared = self
-            .vault
-            .declared(
-                &admitted.acquired.workspace_id,
-                &admitted.installed.credential_names(),
-                self.broker.connectors(),
-            )
-            .await?;
+        let declared = afd_credential::secrets::declared(
+            &self.vault,
+            &admitted.acquired.workspace_id,
+            &admitted.installed.credential_names(),
+            self.broker.connectors(),
+        )
+        .await?;
         let branch = Self::repair_branch(
             admitted.acquired.event_id.as_str(),
             &admitted.installed.config,

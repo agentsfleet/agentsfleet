@@ -85,7 +85,7 @@ impl Fleet {
             signup_writeback: RecordingWriteback::accepting(),
             ingress: clients::ingress(&database, &ledger),
             schedules: schedules(&database, &ledger),
-            schedule_keys: None,
+            scheduler: super::fleet_credentials::fixed_scheduler(None),
             platform_admin: None,
             signups: afd_tenant::signup::Signups::new(database.clone(), Entropy::new()),
             identity_webhook_secret: None,

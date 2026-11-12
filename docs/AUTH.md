@@ -889,7 +889,7 @@ Durable Task decisions use keys set by the platform administrator in Secrets.
 The daemon's `PLATFORM_ADMIN_WORKSPACE_ID` selects that workspace; neither a fleet nor a runner request supplies its identity.
 The configured decision API selects a fixed bag: `typesafe`, `openai`, `perplexity` or `cloudflare`, each containing `api_key`.
 
-`Providers::resolve_decision_key` reuses the credential vault reader in `rustd/crates/daemon/afd_credential/src/provider/decision.rs`.
+`Providers::resolve_decision_key` reads the bag through `afd_vault::Vault::bag` in `rustd/crates/daemon/afd_credential/src/provider/decision.rs`.
 Each read opens that admin workspace's current envelope without a key cache, tenant fallback or environment fallback.
 Missing, empty and malformed keys refuse resolution; damaged envelopes and unavailable storage retain their causes.
 
