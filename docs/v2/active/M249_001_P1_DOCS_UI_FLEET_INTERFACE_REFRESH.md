@@ -976,3 +976,66 @@ Current pre-polish verification checkpoint: actual `make test-coverage-all` pass
 | `ui/packages/app/components/domain/tool-call-activity.ts` | EDIT | Replace unbounded collapsed tool enumeration with bounded count/outcome labels |
 
 The next visual pass must include coherent empty, working and populated Fleet states in both themes, with recorded Changes and a real-shaped pull-request target actually passed into the sample fixture. SetupSummary does not substitute for Fleet Summary. Compare the full header, transcript, user/assistant turns, composer and Summary together; preserve unmodified screenshots and the data/state distinction. Astra rechecks independently, then Indy receives an accessible eyeball review.
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/components/domain/FleetApprovalStatus.tsx` | CREATE | Project the existing shared fleet facts into header attention without another backend reader |
+| `ui/packages/app/components/domain/FleetStreamProvider.tsx` | EDIT | Expose an optional presentation subscriber while retaining strict stream ownership |
+| `ui/packages/app/components/domain/FleetApprovalStatus.test.tsx` | CREATE | Verify initial/live approval attention and unchanged shared stream behavior |
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/tests/e2e/fixtures/refresh-visual-data.ts` | CREATE | Supply coherent typed empty, working and populated fixture events, task metadata and pull-request outputs |
+| `ui/packages/app/tests/e2e/fixtures/refresh-visual-probe.tsx` | EDIT | Render those same recorded facts in native conversation and Summary, with explicit sample labels |
+| `ui/packages/app/tests/e2e/fixtures/chat-probe.ts` | EDIT | Serve matching visual task reads without replacing production readers |
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/design-system/src/design-system/time-utils.ts` | EDIT | Own the shared minute-precision UTC clock formatting role |
+| `ui/packages/design-system/src/design-system/index.ts` | EDIT | Export the shared clock role |
+| `ui/packages/design-system/src/index.ts` | EDIT | Export the shared clock role |
+| `ui/packages/design-system/src/design-system/time-utils.test.ts` | EDIT | Verify UTC clock precision, locale and invalid-date handling |
+
+### Whole-composition follow-up scope, Nov 12, 2026
+
+Indy's notes are review feedback, not an exhaustive acceptance checklist. Compare the entire composition and all supported outcomes against the approved reference.
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/components/domain/FleetToolCalls.tsx` | EDIT | Restore shared disclosure hairline rhythm without a parallel tool renderer |
+| `ui/packages/app/components/domain/FleetChatElements.tsx` | EDIT | Place native attachment chips before user prose |
+| `ui/packages/app/components/domain/chat/UploadAttachments.tsx` | EDIT | Reuse native attachment identity for compact sent chips and bounded composer rows |
+| `ui/packages/app/components/domain/chat/NativeTaskPrBadge.tsx` | EDIT | Present an explicitly associated saved pull request as a result card |
+| `ui/packages/app/components/domain/FleetReplyBody.tsx` | EDIT | Place the native result association after the answer, retaining shared readers |
+| `ui/packages/app/components/domain/fleetMessageRenderers.tsx` | EDIT | Add calendar boundaries through the native message index and shared Time |
+| `ui/packages/app/components/domain/FleetTimestamp.tsx` | EDIT | Shared clock and calendar boundary presentation |
+| `ui/packages/app/components/domain/chat/TaskPanel.test.tsx` | EDIT | Exercise closed work details, attention expansion, ownership and recovery |
+| `ui/packages/app/components/domain/tool-call-activity.test.ts` | EDIT | Verify bounded counts while preserving mixed outcomes |
+
+The duplicate unlayered screen-reader-only rule is removed so Tailwind responsive visibility can work. Conversation input minimum stays 60px; the reference's 100px rule applies only to its empty setup. Summary uses 248/228/216px widths above 680px. Provider errors use actual supported native failure tags in comparison records, with retry bound to the sample operator request.
+
+### Composition verification and attention follow-up
+
+Keep pending submission attachments on the SDK selector, suppress revoked header attention, and retain shared reader ownership. Routine settled assessment opens from existing run details; failure or unconfirmed assessment remains visible. Narrow Fleet footers follow normal conversation flow, with a native Jump to latest control; desktop retains docking.
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/components/domain/FleetTimestamp.test.tsx` | CREATE | Verify and finish the approved composition and native state behavior |
+| `ui/packages/app/components/domain/FleetReplyFigures.tsx` | EDIT | Verify and finish the approved composition and native state behavior |
+| `ui/packages/app/components/domain/TaskActivityTimeline.tsx` | EDIT | Verify and finish the approved composition and native state behavior |
+| `ui/packages/app/tests/fleet-markdown.test.tsx` | EDIT | Verify and finish the approved composition and native state behavior |
+
+### Final composition verification scope
+
+| File | Action | Purpose |
+|---|---|---|
+| `ui/packages/app/components/domain/FleetReplyFigures.test.tsx` | EDIT | Complete the approved composition and preserve native outcomes under asynchronous updates |
+| `ui/packages/app/components/domain/TaskActivityTimeline.test.tsx` | EDIT | Complete the approved composition and preserve native outcomes under asynchronous updates |
+
+The late native pull-request result reserves the same 74px card surface while its authorized detail loads. Browser verification retains the original 1px bound for the reply, sender and composer; no wider tolerance is allowed. Loading cannot reappear after an access-denied read. Summary rhythm is 8px around dividers with 4px label gaps; supported disclosure targets remain 44px on phones.
+
+### Final async-result review repair
+
+The shared task owner publishes its selected references alongside resources. Result placeholders now follow that actual pending work, not an absent map entry. A settled 503/invalid list, denied identity or completed task outside the 16-reference history window cannot remain labelled as loading. The 74px space remains for a real pending reader; existing 1px browser bounds are retained. Header insets follow 12/16/24px at the same narrow/intermediate/wide breakpoints as the approved shell.
+
+Checkpoint evidence before integrating main 0619545: `make test-coverage-all` on the isolated UI candidate passed 4484 app, 133 website, 2217 CLI (17 declared skips), and 493 design-system tests at every declared 100 percent floor. Root targeted 103 tests and final 36 browser checks passed. Source/coverage manifests and logs are under `/workspace/scratch/refresh-astra-*`; captures are labelled sample data. These counts describe the pre-integration checkpoint, not the eventual merge revision.

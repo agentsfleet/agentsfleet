@@ -237,17 +237,19 @@ Archived history is read-only. Pending operations, failures, and uncertain outco
 Never show a success notification while a request is pending or when only the stop portion of deletion succeeded.
 
 
-Summary occupies a 248px column on wide desktops. It can narrow to 216–228px at intermediate widths.
-Use a 16px inner inset and a 16–32px gap from the conversation.
+Summary occupies a 248px column on wide desktops. Use 228px at 801–1100px and 216px at 681–800px; stack at 680px and below.
+Use a 16px inner inset, 12px at the narrow intermediate step, and 12/16/32px conversation gutters at 681/801/1101px. Phone shell edges are 4px and Summary outer insets 12px; transcript insets stay 16px.
 
 Align its top with the conversation's working area.
 
 Summary remains inline and visible without clicking. Show the current decision, relevant changes, outputs, and next scheduled wake-up.
-Omit the Environment section and empty groups.
+Keep Changes, Outputs and Sources headings with one quiet line when confirmed empty. Insert pending approval or blocked work first. Other sections appear only for recorded content. Do not infer an Environment inventory, live background processes or child-agent state from tool calls.
 
-Detailed evidence opens from the relevant item; the Summary itself never becomes a drawer.
+Detailed evidence opens from the relevant item; the Summary itself never becomes a drawer. Keep task objectives, criteria and controls behind a closed Tasks disclosure. Sources shows one repository row or count; its policy belongs inside the same disclosure. Loading and unavailable reads must not appear as confirmed empty outputs.
 
-On phones, place Summary before the transcript inside the native assistant-ui viewport. Keep its complete content in the page flow, with no height cap or nested scroll area. The native viewport footer keeps the composer reachable while Summary scrolls with the history. On desktop, Summary spans the conversation and footer tracks so attachment and error states cannot clip its heading. Mount one Summary reader across breakpoints.
+Section labels use 12px/16px, with 4px label-to-content spacing, 8px between sections and 8px after each divider. Keep 36px desktop and 44px phone disclosure targets without adding a second spacer row. Conversation input starts at 60px; a 100px empty setup field is a separate composition. The header edit action opens the existing setup editor. User attachments precede prose in lighter bubbles; calendar boundaries and compact clocks use the same UTC frame and retain exact accessible instants.
+
+On phones, place Summary before the transcript inside the native assistant-ui viewport. Keep its complete content in the page flow, with no height cap or nested scroll area. The native viewport footer follows the phone conversation in normal scroll flow; Jump to latest stays reachable. From 681px it docks at the bottom of the conversation column. On desktop, Summary spans the conversation and footer tracks so attachment and error states cannot clip its heading. Mount one Summary reader across breakpoints.
 
 Preserve readable decision text and reachable actions; do not solve crowding with smaller type.
 

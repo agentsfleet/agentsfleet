@@ -28,7 +28,7 @@ test("tool disclosures remain reachable inside the conversation at 320px", async
 test("typed chat outcomes remain readable in dark and light appearance", async ({page, chatProbe}, info) => {
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
-  await page.goto(`${chatProbe}?visual=1`);
+  await page.goto(`${chatProbe}?visual=1&code=1`);
   await page.getByRole("button", {name: "Completed", exact: true}).click();
   await page.getByRole("button", {name: /^Tool activity:/}).click();
   for (const cell of await page.locator("li[data-tool]").all()) {

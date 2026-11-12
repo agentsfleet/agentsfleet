@@ -35,8 +35,9 @@ describe("FleetMarkdown", () => {
     for (const word of ["one", "two", "three", "four", "five", "six"]) {
       expect(screen.getByText(word)).toBeTruthy();
     }
-    // One mapped element per heading, none left as a raw h1..h6.
-    expect(container.querySelectorAll("h1, h2, h3, h4, h5, h6")).toHaveLength(0);
+    // One semantic section heading per Markdown heading, using one shared scale.
+    expect(container.querySelectorAll("h2.text-heading")).toHaveLength(6);
+    expect(container.querySelectorAll("h1, h3, h4, h5, h6")).toHaveLength(0);
   });
 
   it("renders a blockquote and a horizontal rule", () => {

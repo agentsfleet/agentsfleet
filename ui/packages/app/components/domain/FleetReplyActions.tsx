@@ -12,10 +12,12 @@ export const FleetReplyActions = memo(function FleetReplyActions({
   answer,
   settled,
   figures,
+  activity,
 }: {
   answer: string;
   settled: boolean;
   figures: ReplyFigures;
+  activity?: unknown;
 }) {
   if (!settled) return null;
   return (
@@ -25,7 +27,7 @@ export const FleetReplyActions = memo(function FleetReplyActions({
           <CopyIcon aria-hidden="true" className="group-data-[copied]/copy:hidden" />
           <CheckIcon aria-hidden="true" className="hidden text-success group-data-[copied]/copy:block" />
         </Button></ActionBarPrimitive.Copy> : null}
-        <FleetReplyFigures figures={figures} />
+        <FleetReplyFigures figures={figures} activity={activity} />
     </ActionBarPrimitive.Root>
   );
 });

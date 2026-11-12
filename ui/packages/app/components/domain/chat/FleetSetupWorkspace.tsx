@@ -29,13 +29,14 @@ export function FleetSetupWorkspace({account, workspace, fleet, revision, model 
   </FleetStreamProvider>;
 }
 
-export function EditSetupButton(props: SetupLocation | {inline: true}) {
+export function EditSetupButton(props: (SetupLocation & {appearance?: "header"}) | {inline: true}) {
   const setup = useFleetSetup();
   const inline = "inline" in props;
+  const variant = inline ? "link" : props.appearance === "header" ? "ghost" : "outline";
   const location = inline ? setup?.location : props;
   if (!location) return <>Edit setup</>;
-  if (setup?.modelChanging) return <Button variant={inline ? "link" : "outline"} size={inline ? "sm" : "icon"} aria-label="Edit setup" disabled>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Button>;
-  return <Button variant={inline ? "link" : "outline"} size={inline ? "eyebrow" : "icon"} aria-label="Edit setup" title="Edit setup" asChild
+  if (setup?.modelChanging) return <Button variant={variant} size={inline ? "sm" : "icon"} aria-label="Edit setup" disabled>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Button>;
+  return <Button variant={variant} size={inline ? "eyebrow" : "icon"} aria-label="Edit setup" title="Edit setup" asChild
     className={inline ? "h-auto px-0 align-baseline text-eyebrow" : undefined}>
     <Link href={editSetupHref(location)}>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Link>
   </Button>;

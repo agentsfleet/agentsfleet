@@ -11,9 +11,12 @@ import { FleetThreadViewport } from "@/components/domain/FleetThreadViewport";
 import { SenderLabelProvider } from "@/components/domain/FleetMessageRow";
 import { SenderNamesProvider } from "@/components/domain/SenderNames";
 import { senderNamesFrom } from "@/lib/events/sender-names";
-import { STATUS_AGENT_ERROR } from "@/components/domain/fleetMessageStatus";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
+import { toReplyMessage, replyParts } from "@/components/domain/fleetReplyMessage";
+import { VISUAL_SCENARIOS, visualEvents, type VisualScenario } from "./refresh-visual-data";
 import { TaskPanel } from "@/components/domain/chat/TaskPanel";
-import { CONNECTION_STATUS } from "@/components/domain/useFleetEventStream";
+import { FleetTaskProvider } from "@/components/domain/chat/FleetTaskProvider";
+import { CONNECTION_STATUS, convertEvent } from "@/components/domain/useFleetEventStream";
 import { RENDER_KIND, RENDER_KIND_KEY } from "@/components/domain/useFleetThreadEntries";
 import { ACTOR } from "@/lib/events/event-summary";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
@@ -23,43 +26,45 @@ import { FLEET_CHAT_CONFIG } from "@/components/domain/FleetToolRegistry";
 import { useFleetNotice } from "@/components/layout/FleetNoticeProvider";
 
 const router = { bfcacheId: "visual-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {} };
-type Scenario = "running" | "completed" | "error";
+
 
 /** Current production conversation, activity, composer, and Summary; sample data. */
 export function RefreshVisualFixture() {
   const [started] = useState(Date.now);
-  const [phase, setPhase] = useState<Scenario>("running");
+  const [phase, setPhase] = useState<VisualScenario>(() => VISUAL_SCENARIOS.find(value => value === new URLSearchParams(location.search).get("state")) ?? "running");
+  const showScenario = useCallback((value: VisualScenario) => {const url = new URL(location.href); url.searchParams.set("state", value); history.replaceState(null, "", url); setPhase(value);}, []);
+  const events = useMemo(() => visualEvents(phase, started, new URLSearchParams(location.search).has("code")), [phase, started]);
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
   const onNew = useCallback(async (message: AppendMessage) => {
-    if (phase === "error") setPhase("running");
+    if (phase === "error") showScenario("running");
     setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: message.content}]);
-  }, [phase]);
-  const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", events: [], onNew});
-  const messages = useMemo(() => [...conversation(phase, started), ...sent, ...previews.entries.map(entry => entry.message)], [phase, started, sent, previews.entries]);
+  }, [phase, showScenario]);
+  const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", events, onNew});
+  const messages = useMemo(() => [...conversation(events, started), ...sent, ...previews.entries.map(entry => entry.message)], [events, started, sent, previews.entries]);
   const runtime = useExternalStoreRuntime({ messages, isRunning: phase === "running",
     convertMessage: (message: ThreadMessageLike) => message,
     onNew: previews.onNew, adapters: {attachments: previews.attachments},
-    onCancel: async () => { setPhase("completed"); },
+    onCancel: async () => { showScenario("completed"); },
   });
   return <AppRouterContext value={router}><PathnameContext.Provider value={`/w/${WORKSPACE}/fleets/${FLEET_ID}`}><SearchParamsContext.Provider value={new URLSearchParams()}><TooltipProvider><ReviewChrome>
     <div className="flex min-h-0 flex-1 flex-col">
       <div data-visual-controls="" className="fixed inset-x-0 top-0 z-50 flex h-11 items-center gap-sm overflow-x-auto whitespace-nowrap bg-surface-deep px-lg [&>button]:shrink-0 [&>span]:shrink-0">
-        <span className="mr-auto text-eyebrow text-muted-foreground">Implementation review · sample activity</span>
-        {(["running", "completed", "error"] as const).map(value => <Button key={value} size="sm" variant={phase === value ? "secondary" : "ghost"} aria-pressed={phase === value} onClick={() => setPhase(value)}>{value === "running" ? "Working" : value === "completed" ? "Completed" : "Error"}</Button>)}
+        <span className="mr-auto text-eyebrow text-muted-foreground">Sample data · Design comparison</span>
+        {VISUAL_SCENARIOS.map(value => <Button key={value} size="sm" variant={phase === value ? "secondary" : "ghost"} aria-pressed={phase === value} onClick={() => showScenario(value)}>{value === "empty" ? "Empty" : value === "running" ? "Working" : value === "completed" ? "Completed" : "Error"}</Button>)}
         <Button size="sm" variant="ghost" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "light" ? "dark" : "light"; }}>Theme</Button>
         <NoticeExamples />
       </div>
-      <FleetHeader workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: "Release watch", status: "active" })} />
+      <FleetHeader workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: "Release watch", status: "active", pending_approvals: phase === "completed" ? 1 : 0 })} />
       <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><SenderLabelProvider senderLabel="Release watch"><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
-        <FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={0} sources={{ repositories: ["agentsfleet/linkwarden"], access: "write", publication: "existing_pr" }}
-          approvals={{count: 1, href: `/w/${WORKSPACE}/approvals?fleetId=${FLEET_ID}`}}
-          schedules={[{schedule_id: "release-check", fleet_id: FLEET_ID, sync: "synced", status: "active", cron: "*/30 * * * *",
-            timezone: "UTC", message: "Check release readiness", description: "Check release readiness", run_state: "scheduled", next_run_at: new Date(started + 30 * 60_000).toISOString()}]} />}>
+        <FleetTaskProvider workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} sources={{repositories: phase === "empty" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
+          approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/approvals?fleetId=${FLEET_ID}`}}>
+        <FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
           <div className="flex min-h-0 flex-1 flex-col">
             <FleetThreadViewport modelLabel="MiniMax M3" eventsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
               pending={[]} onRetry={() => {}} onResend={() => {}} onDismiss={() => {}} onRestored={() => {}} onDraft={() => {}} />
           </div>
         </FleetConversationLayout>
+        </FleetTaskProvider>
       </SenderNamesProvider></SenderLabelProvider></AssistantRuntimeProvider>
     </div>
   </ReviewChrome></TooltipProvider></SearchParamsContext.Provider></PathnameContext.Provider></AppRouterContext>;
@@ -79,28 +84,18 @@ function ReviewChrome({ children }: { children: ReactNode }) {
   </>;
 }
 
-function conversation(phase: Scenario, started: number): ThreadMessageLike[] {
-  const call = (id: string, toolName: string, args: Record<string, string>, running = false) => ({
-    type: "tool-call" as const, toolCallId: id, toolName, args, argsText: JSON.stringify(args),
-    timing: { startedAt: started - 12000, ...(running ? {} : { completedAt: started - 10000 }) },
-    ...(running ? {} : { result: { status: phase === "error" && id === "scan" ? "failed" : "succeeded", outputHead: "Recorded example result", outputLineCount: 1 } }),
-  });
+function conversation(events: FleetEvent[], started: number): ThreadMessageLike[] {
+  const event = events[0];
+  if (!event) return [];
+  const actor = `${ACTOR.STEER_PREFIX}fixture-owner`;
+  const answer = toReplyMessage(convertEvent(event), event, actor);
+  const [intro, ...rest] = event.reply.split("\n\n");
   return [
-    { id: "request", role: "user", content: "Watch this release. Check both image builds and the security scans, then tell me when it’s ready to merge.", metadata: { custom: { [RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor: `${ACTOR.STEER_PREFIX}fixture-owner` } } },
-    { id: "answer", role: "assistant", metadata: {custom: phase === "error" ? {
-      status: STATUS_AGENT_ERROR, requestActor: `${ACTOR.STEER_PREFIX}fixture-owner`,
-      requestJson: JSON.stringify({message: "Check release readiness"}),
-      failureLabel: "Provider connection interrupted", failureDetail: "Earlier build results are retained.",
-    } : {}}, content: [
-      { type: "text", text: "Both image builds passed for amd64 and arm64. I’m checking the final security scan before marking the release ready." },
-      call("read", "http_request", { url: "https://api.github.com/repos/agentsfleet/linkwarden/actions/runs" }),
-      call("scan", "exec_command", { cmd: "trivy image --severity CRITICAL release:latest" }, phase === "running"),
-      ...(phase === "completed" ? [
-        call("file", "file_read", {path: "release.yaml"}),
-        call("edit", "file_edit", {path: "release.yaml", old_text: "ready: false", new_text: "ready: true"}),
-        call("report", "custom_release_report", {release: "current"}),
-        {type: "text" as const, text: "The security scan passed. Both image builds and the required checks are green. The release is ready for your review.\n\nReview `release.yaml` and [the build report](https://example.test/release).\n\n```yaml\nready: true\n```"},
-      ] : []),
-    ], status: phase === "running" ? { type: "running" } : { type: "complete", reason: "stop" } },
+    {id: "request", role: "user", createdAt: new Date(started - 138_000),
+      content: "Update the runner image using the release checklist. Run the scans, then ask me before publishing.",
+      attachments: [{id: "sample-release-notes", type: "file", name: "release-notes.md", contentType: "text/markdown", status: {type: "complete"}, content: []}],
+      metadata: {custom: {[RENDER_KIND_KEY]: RENDER_KIND.TRIGGER, actor}}},
+    {...answer, content: [{type: "text", text: intro ?? ""}, ...replyParts(event).filter(part => part.type !== "text"),
+      ...(rest.length ? [{type: "text" as const, text: rest.join("\n\n")}] : [])]},
   ];
 }

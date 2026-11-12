@@ -39,12 +39,13 @@ it("retains Outputs when current work finishes and recovers them after reload fr
   expect(network).toHaveBeenCalledTimes(2);
   unfinished = false;
   view.rerender(<TaskPanel {...SCOPE} revision={1} events={events} />);
-  await screen.findByText("No unfinished tasks.");
-  expect(outputs().getByRole("link")).toHaveProperty("href", TARGET.url);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
+  expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
+  expect(outputs().getByRole("link")).toHaveProperty("href", TARGET.url);
   view.unmount();
   render(<TaskPanel {...SCOPE} events={events} />);
-  await screen.findByText("No unfinished tasks.");
+  await waitFor(() => expect(network).toHaveBeenCalledTimes(6));
+  expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
   await screen.findByRole("region", {name: "Outputs"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(screen.queryByRole("button", {name: /PR #123 repair/})).toBeNull();

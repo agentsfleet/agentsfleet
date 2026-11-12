@@ -74,7 +74,7 @@ it("keeps open details and row identity stable while another call streams and se
   expect(command(finished!).getAttribute("aria-expanded")).toBe("true");
   expect(command(streaming!).textContent).toContain("Made request");
   expect(document.querySelectorAll('[data-tool-shimmer="true"]')).toHaveLength(0);
-  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Ran command (2), Made request");
+  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Worked · 1 tool, 2 commands");
 });
 
 it("keeps repeated failures separate and reveals only the command the reader opens", async () => {
@@ -95,7 +95,7 @@ it("keeps repeated failures separate and reveals only the command the reader ope
 it("does not show commands running while the model continues after their results", () => {
   show([call()], "received");
   renderThread();
-  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe("Ran command");
+  expect(screen.getByRole("button", {name: /^Tool activity:/}).getAttribute("title")).toBe(`Ran command ${COMMAND}`);
   openGroup();
   expect(rows()[0]!.getAttribute("data-state")).toBe("succeeded");
   expect(document.querySelector('[data-tool-shimmer="true"]')).toBeNull();
@@ -116,7 +116,7 @@ it.each([
 it("names unknown tools without inspecting arguments and shows recorded output literally", async () => {
   show([call({name: "custom_check", args: {internal_path: "/tmp/check.py"}, outputHead: "1309 tests passed; suite still running"})]);
   renderThread(); openGroup();
-  expect(screen.getByText("custom_check")).toBeTruthy();
+  expect(within(rows()[0]!).getByText("custom_check")).toBeTruthy();
   expect(screen.queryByText(/1309|\/tmp\/check/)).toBeNull();
   await userEvent.setup().click(command(rows()[0]!));
   expect(screen.getByText(/1309 tests passed/)).toBeTruthy();

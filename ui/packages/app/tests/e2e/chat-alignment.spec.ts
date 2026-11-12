@@ -24,9 +24,12 @@ test("fleet Summary is inline and the composer keeps the approved horizontal ali
   await expect(edit).toHaveAttribute("href", /fleets\/new\?fleet=/);
   await page.keyboard.press("Escape");
   await page.screenshot({path: info.outputPath("fleet-conversation.png"), scale: "css", animations: "disabled"});
+  const tasks = page.getByRole("button", {name: /^Tasks/});
+  await expect(tasks).toHaveAttribute("aria-expanded", "false");
+  await tasks.click();
   await expect(page.getByRole("button", {name: /Validate the Linkwarden repair/})).toBeVisible();
   await expect(page.getByRole("button", {name: "Work context"})).toHaveCount(0);
-  await expect(page.getByRole("heading", {name: "Tasks"})).toBeVisible();
+  await expect(tasks).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("complementary", {name: "Summary"})).toBeVisible();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.screenshot({path: info.outputPath("fleet-summary.png"), scale: "css", animations: "disabled"});

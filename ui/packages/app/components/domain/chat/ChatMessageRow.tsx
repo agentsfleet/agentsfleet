@@ -36,8 +36,8 @@ function AssistantTurn({sender, timestamp, annotation, children, footer}: TurnPr
 
 function OperatorTurn({sender, timestamp, annotation, children, footer, showSender}: TurnProps) {
   return (
-    <div className="flex min-w-0 max-w-11/12 flex-col items-end gap-lg sm:max-w-9/10">
-      <div className="w-fit min-w-0 max-w-full rounded-lg rounded-br-sm border border-border bg-muted px-xl py-lg sm:px-5 sm:py-xl">
+    <div className="flex min-w-0 max-w-full flex-col items-end gap-md sm:max-w-9/10">
+      <div className="w-fit min-w-0 max-w-full rounded-lg rounded-br-[6px] border border-border bg-muted px-5 py-xl">
         <MessageContent sender={sender}>{children}</MessageContent>
       </div>
       <MessageMetadata sender={sender} timestamp={timestamp} annotation={annotation} showSender={showSender} />
@@ -58,7 +58,7 @@ function SenderLine({sender, timestamp, annotation}: MessageIdentity) {
   return (
     <div className="flex min-h-5 w-full min-w-0 items-center gap-sm" data-testid="chat-message-header">
       <span aria-hidden="true" data-testid="fleet-message-sender" className="inline-flex min-w-0 items-center gap-sm text-label leading-label text-muted-foreground">
-        <BrandMark className="size-4 shrink-0 text-pulse" /><span className="truncate">{sender}</span>
+        <BrandMark className="size-4 shrink-0 text-pulse" /><span className="truncate font-semibold">{sender}</span>
       </span>
       <MessageTime>{timestamp}</MessageTime>
       {annotation}

@@ -24,6 +24,12 @@
 
 @custom-variant light (&:is([data-theme="light"] *));
 
+@theme {
+  --breakpoint-summary: 42.5625rem;
+  --breakpoint-summary-medium: 50.0625rem;
+  --breakpoint-summary-wide: 68.8125rem;
+}
+
 :root, [data-theme] {
   /* Surfaces */
   --background: var(--bg);

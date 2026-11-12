@@ -33,7 +33,7 @@ export class ShellSidebarState {
 
 // Literal classes keep both widths visible to Tailwind's source scanner.
 export const SIDEBAR_COLUMN = {
-  aside: { expanded: "w-14 md:w-55", collapsed: "w-14 md:w-18" },
+  aside: { expanded: "w-14 summary:w-18 md:w-55", collapsed: "w-14 summary:w-18" },
 } as const;
 
 export const shellSidebarState = new ShellSidebarState();

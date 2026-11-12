@@ -5,6 +5,7 @@ import { FleetTaskProvider } from "@/components/domain/chat/FleetTaskProvider";
 import { NativeTaskPrBadge } from "@/components/domain/chat/NativeTaskPrBadge";
 import { TaskPanel } from "@/components/domain/chat/TaskPanel";
 import { FleetWorkSidebar } from "@/components/domain/FleetWorkSidebar";
+import { evt } from "./helpers/fleet-stream-fixtures";
 import { detail, summary, TASK_IDS } from "./helpers/task-reads";
 const SCOPE = {workspaceId: "workspace", fleetId: "fleet", subject: "indy", revision: 0};
 afterEach(() => {cleanup(); vi.unstubAllGlobals();});
@@ -81,7 +82,8 @@ it("marks retained PR evidence stale during a failed refresh, then clears the ba
   const fetcher = network();
   const content = <><NativeTaskPrBadge activity={activity([TASK_IDS[0]])} /><TaskPanel {...SCOPE} /></>;
   const view = render(<FleetTaskProvider {...SCOPE}>{content}</FleetTaskProvider>);
-  expect((await screen.findByRole("link", {name: /^Pull request #803/})).getAttribute("title")).toBe("Repair login redirect · a/b");
+  expect((await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"})).getAttribute("title")).toBe("Repair login redirect · a/b");
+  fireEvent.click(screen.getByRole("button", {name: /^Tasks/}));
   fireEvent.click(screen.getByRole("button", {name: /PR #123 repair/}));
   let status = 503;
   fetcher.mockImplementation(async input => {
@@ -90,8 +92,87 @@ it("marks retained PR evidence stale during a failed refresh, then clears the ba
   });
   view.rerender(<FleetTaskProvider {...SCOPE} revision={1}>{content}</FleetTaskProvider>);
   await screen.findByText(/Last confirmed details are shown/);
-  await waitFor(() => expect(screen.getByRole("link", {name: /^Pull request #803/}).getAttribute("title")).toBe("Repair login redirect · a/b · last confirmed"));
+  await waitFor(() => expect(screen.getByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"}).getAttribute("title")).toBe("Repair login redirect · a/b · last confirmed"));
   status = 404;
   view.rerender(<FleetTaskProvider {...SCOPE} revision={2}>{content}</FleetTaskProvider>);
-  await waitFor(() => expect(screen.queryByRole("link", {name: /^Pull request #803/})).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"})).toBeNull());
+});
+
+
+it("presents the explicitly associated native target as a result card with retained evidence", async () => {
+  const fetcher = network();
+  const content = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} appearance="card" />;
+  const view = render(<FleetTaskProvider {...SCOPE}>{content}</FleetTaskProvider>);
+  const card = await screen.findByRole("link", {name: "Pull request #803 · a/b · Repair login redirect"});
+  expect(card.textContent).toContain("Repair login redirect");
+  expect(card.textContent).toContain("Pull request #803 · a/b");
+  expect(card.getAttribute("href")).toBe("https://github.com/a/b/pull/803");
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  fetcher.mockImplementation(async input => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return path.includes("?limit=") ? Response.json({items: [summary()], next_cursor: null}) : new Response(null, {status: 503});
+  });
+  view.rerender(<FleetTaskProvider {...SCOPE} revision={1}>{content}</FleetTaskProvider>);
+  await screen.findByText(/last confirmed/);
+  expect(card.getAttribute("href")).toBe("https://github.com/a/b/pull/803");
+});
+
+it("reserves linked-result space while the native detail is pending and withholds it after access loss", async () => {
+  const pending = Promise.withResolvers<Response>();
+  const fetcher = network();
+  fetcher.mockImplementation(async input => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return path.includes("?limit=") ? Response.json({items: [summary()], next_cursor: null}) : pending.promise;
+  });
+  const content = <NativeTaskPrBadge activity={activity([TASK_IDS[0]])} appearance="card" />;
+  const view = render(<FleetTaskProvider {...SCOPE}>{content}</FleetTaskProvider>);
+  expect(await screen.findByRole("status", {name: "Reading linked work"})).toBeTruthy();
+  pending.resolve(Response.json(response()));
+  expect(await screen.findByRole("link")).toHaveProperty("href", "https://github.com/a/b/pull/803");
+  expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
+  fetcher.mockResolvedValue(new Response(null, {status: 403}));
+  view.rerender(<FleetTaskProvider {...SCOPE} revision={1}>{content}</FleetTaskProvider>);
+  await waitFor(() => expect(screen.queryByRole("link")).toBeNull());
+  expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
+  const retry = Promise.withResolvers<Response>(); fetcher.mockReturnValue(retry.promise);
+  view.rerender(<FleetTaskProvider {...SCOPE} revision={2}>{content}</FleetTaskProvider>);
+  expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
+  view.rerender(<FleetTaskProvider {...SCOPE} subject={null}>{content}</FleetTaskProvider>);
+  expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
+  retry.resolve(new Response(null, {status: 503}));
+});
+
+it("does not claim to read linked results without an identity-owned reader", () => {
+  render(<NativeTaskPrBadge activity={activity([TASK_IDS[0]])} appearance="card" />);
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.queryByRole("link")).toBeNull();
+});
+
+
+it.each([503, 200])("stops reserving a result after the first list read fails or is invalid (%s)", async status => {
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => status === 503 ? new Response(null, {status}) : Response.json({items: "invalid"}));
+  vi.stubGlobal("fetch", fetcher);
+  render(<FleetTaskProvider {...SCOPE}><NativeTaskPrBadge activity={activity([TASK_IDS[0]])} appearance="card" /></FleetTaskProvider>);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull());
+  expect(screen.queryByRole("link")).toBeNull();
+});
+
+it("does not leave an older result loading outside the reader's bounded history window", async () => {
+  const ids = Array.from({length: 17}, (_, index) => `019a42b0-0000-7000-8000-${String(index).padStart(12, "0")}`);
+  const fetcher = vi.fn<typeof fetch>().mockImplementation(async input => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return Response.json(path.includes("?limit=") ? {items: [], next_cursor: null} : detail(summary(path.split("/").at(-1), "done")));
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<FleetTaskProvider {...SCOPE} events={[evt({taskActivity: activity(ids)})]}>
+    <NativeTaskPrBadge activity={activity([ids[0]!])} appearance="card" />
+  </FleetTaskProvider>);
+  await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(17));
+  expect(fetcher.mock.calls.some(([input]) => {
+    const path = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return path.endsWith(ids[0]!);
+  })).toBe(false);
+  expect(screen.queryByRole("status", {name: "Reading linked work"})).toBeNull();
+  expect(screen.queryByRole("link")).toBeNull();
 });

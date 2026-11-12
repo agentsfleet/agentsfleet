@@ -1,4 +1,5 @@
 import type { TaskSummary } from "@/lib/api/tasks";
+import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -25,8 +26,9 @@ it("reconciles stream readiness and keeps saved details closed until requested",
     .mockResolvedValueOnce(page([summary()])).mockResolvedValueOnce(Response.json(detail()));
   vi.stubGlobal("fetch", network);
   render(<LiveWork />, {wrapper: streamWrapper});
-  await screen.findByText("No unfinished tasks.");
+  await screen.findByText("No outputs yet.");
   act(() => {FakeEventSource.instances[0]!.open(); FakeEventSource.instances[0]!.emit({kind: FRAME_KIND.HELLO, fleet_ids: [SCOPE.fleetId]});});
+  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   const task = await screen.findByRole("button", {name: /PR #123 repair/});
   expect(task.getAttribute("aria-expanded")).toBe("false");
   expect(screen.queryByText("What counts as done?")).toBeNull();
@@ -45,7 +47,9 @@ it("keeps work keyboard-expandable and rereads the shared evidence on native cha
   vi.stubGlobal("fetch", network);
   render(<LiveWork />, {wrapper: streamWrapper});
   await waitFor(() => expect(network).toHaveBeenCalledTimes(4));
-  expect(screen.getByRole("heading", {name: "Tasks"})).toBeTruthy();
+  const disclosure = screen.getByRole("button", {name: /^Tasks/});
+  expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+  await userEvent.click(disclosure);
   expect(screen.queryByText("What counts as done?")).toBeNull();
   const waiting = screen.getByRole("button", {name: /PR #123 repair/});
   waiting.focus(); await userEvent.keyboard("{Enter}");
@@ -68,6 +72,7 @@ it("retains confirmed work during a failed read, then clears it on access loss",
   const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? list.clone() : Response.json(detail()));
   vi.stubGlobal("fetch", network);
   const view = render(<TaskPanel {...SCOPE} />);
+  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   await userEvent.click(await screen.findByRole("button", {name: /PR #123 repair/}));
   await screen.findByText("What counts as done?");
   list = new Response(null, {status: 503});
@@ -80,36 +85,37 @@ it("retains confirmed work during a failed read, then clears it on access loss",
   expect(screen.queryByText("PR #123 repair")).toBeNull();
   list = page([]);
   view.rerender(<TaskPanel {...SCOPE} revision={2} />);
-  await screen.findByText("No unfinished tasks.");
+  await screen.findByText("No outputs yet.");
 });
 
-it.each([[1, "1 approval waiting"], [2, "2 approvals waiting"]] as const)("keeps %s stream-confirmed approvals through task failures but clears them on access loss", async (count, label) => {
+it.each([[1, "Review 1 pending approval"], [2, "Review 2 pending approvals"]] as const)("keeps %s stream-confirmed approvals through task failures but clears them on access loss", async (count, label) => {
   const network = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, {status: 503}));
   vi.stubGlobal("fetch", network);
   const approvals = {count, href: "/w/workspace/approvals?fleetId=fleet"};
   const view = render(<TaskPanel {...SCOPE} approvals={approvals} />);
-  expect(screen.getByText(label)).toBeTruthy();
+  expect(screen.getByRole("link", {name: label})).toBeTruthy();
   await screen.findByText("Current work is unavailable.");
-  expect(screen.getByRole("link", {name: "Review approvals"}).getAttribute("href")).toBe(approvals.href);
+  expect(screen.getByRole("link", {name: label}).getAttribute("href")).toBe(approvals.href);
   network.mockResolvedValue(new Response(null, {status: 403}));
   view.rerender(<TaskPanel {...SCOPE} revision={1} approvals={approvals} />);
-  await waitFor(() => expect(screen.queryByText(label)).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("link", {name: label})).toBeNull());
   const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
   await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
-  expect(screen.queryByRole("link", {name: "Review approvals"})).toBeNull();
+  expect(screen.queryByRole("link", {name: label})).toBeNull();
   await act(async () => pending.resolve(new Response(null, {status: 503})));
-  expect(screen.queryByRole("link", {name: "Review approvals"})).toBeNull();
+  expect(screen.queryByRole("link", {name: label})).toBeNull();
   network.mockResolvedValue(page([]));
   await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
-  expect(await screen.findByText(label)).toBeTruthy();
+  expect(await screen.findByRole("link", {name: label})).toBeTruthy();
   view.rerender(<TaskPanel {...SCOPE} subject={null} approvals={approvals} />);
-  expect(screen.queryByRole("link", {name: "Review approvals"})).toBeNull();
+  expect(screen.queryByRole("link", {name: label})).toBeNull();
 });
 
 it("recovers failed details and preserves previous evidence until a missing response removes it", async () => {
   let response = new Response(null, {status: 503});
   vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([summary()]) : response.clone()));
   const view = render(<TaskPanel {...SCOPE} />);
+  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   await userEvent.click(await screen.findByRole("button", {name: /PR #123 repair/}));
   expect(await screen.findByText("Saved progress is unavailable.")).toBeTruthy();
   response = Response.json(detail());
@@ -152,6 +158,7 @@ it("shares exact native target and wait evidence between closed rows and outputs
   const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([summary()]) : Response.json(saved));
   vi.stubGlobal("fetch", network);
   const view = render(<TaskPanel {...SCOPE} />);
+  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   const row = await screen.findByRole("button", {name: /Waiting for CI run #42 on aaaaaaa/});
   expect(row.getAttribute("aria-expanded")).toBe("false");
   expect(within(screen.getByRole("region", {name: "Outputs"})).getByRole("link").getAttribute("href")).toBe(target.url);
@@ -174,12 +181,56 @@ it("distinguishes paused and attention-needed work while retaining a confirmed r
   });
   vi.stubGlobal("fetch", network);
   render(<TaskPanel {...SCOPE} />);
+  const disclosure = await screen.findByRole("button", {name: /^Tasks/});
+  expect(disclosure.querySelector('[aria-label="Needs attention"]')).toBeTruthy();
+  await userEvent.click(disclosure);
   const paused = await screen.findByRole("button", {name: /PR #123 repair/});
   expect(paused.querySelector('[aria-label="Paused"]')).toBeTruthy();
   for (const title of ["PR #124 repair", "PR #125 repair"]) {
-    expect(screen.getByRole("button", {name: new RegExp(title)}).querySelector('[aria-label="Needs attention"]')).toBeTruthy();
+    expect(within(screen.getByRole("region", {name: /^Tasks/})).getByRole("button", {name: new RegExp(title)}).querySelector('[aria-label="Needs attention"]')).toBeTruthy();
   }
   await userEvent.click(paused);
   expect(await screen.findByText(/Saved recovery point available/)).toBeTruthy();
   expect(screen.queryByText(/No recovery point has been saved/)).toBeNull();
+});
+
+
+it("promotes a blocked task and opens its existing saved detail without another reader", async () => {
+  const task = summary(TASK_IDS[0], "blocked");
+  const network = vi.fn<typeof fetch>().mockImplementation(async input => requestPath(input).includes("?limit=") ? page([task]) : Response.json(detail(task)));
+  vi.stubGlobal("fetch", network);
+  render(<TaskPanel {...SCOPE} />);
+  const attention = await screen.findByRole("region", {name: "Needs attention"});
+  await waitFor(() => expect(network).toHaveBeenCalledTimes(2));
+  await userEvent.click(within(attention).getByRole("button", {name: /Blocked/}));
+  expect(await screen.findByText("What counts as done?")).toBeTruthy();
+  expect(network).toHaveBeenCalledTimes(2);
+  expect(within(attention).getByRole("button").getAttribute("aria-expanded")).toBe("true");
+});
+
+it("keeps open work details usable when another queued task arrives before its detail", async () => {
+  const second = Promise.withResolvers<Response>();
+  let tasks = [summary()];
+  const network = vi.fn<typeof fetch>().mockImplementation(async input => {
+    const path = requestPath(input);
+    if (path.includes("?limit=")) return page(tasks);
+    return path.endsWith(TASK_IDS[1]) ? second.promise : Response.json(detail(tasks[0]!));
+  });
+  vi.stubGlobal("fetch", network);
+  const events: FleetEvent[] = [{id: "assessment", role: "assistant", actor: "fleet", text: "", reply: "", outcome: "", failureLabel: null, failureDetail: null,
+    createdAt: new Date(), status: "processed", taskActivity: {truncated: false, items: [{kind: "task_decision_completed" as const, progress: {
+      activity_id: TASK_IDS[0], task_id: TASK_IDS[0], source_admission_id: null, operation: "goal" as const,
+      phase: "recorded" as const, provider: null, model: null, completed: 1, total: 1}}]}}];
+  const view = render(<TaskPanel {...SCOPE} events={events} />);
+  await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
+  expect(await screen.findByText("Assessment recorded · goal progress")).toBeTruthy();
+  tasks = [...tasks, summary(TASK_IDS[1], "ready")];
+  view.rerender(<TaskPanel {...SCOPE} events={events} revision={1} />);
+  const queued = await screen.findByRole("button", {name: /PR #124 repair.*Reading saved progress/});
+  expect(queued.getAttribute("aria-expanded")).toBe("false");
+  await userEvent.click(queued);
+  expect(await within(screen.getByLabelText("PR #124 repair details")).findByText("Reading saved progress…")).toBeTruthy();
+  await act(async () => second.resolve(Response.json(detail(tasks[1]!))));
+  expect(await within(screen.getByLabelText("PR #124 repair details")).findByText("What counts as done?")).toBeTruthy();
+  expect(network).toHaveBeenCalledTimes(5);
 });

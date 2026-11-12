@@ -4,19 +4,21 @@ import type { ComponentProps, ReactNode, RefObject } from "react";
 import { useEffect, useRef } from "react";
 import { ComposerPrimitive } from "@assistant-ui/react";
 import { DashboardPanel, SelectTrigger, Textarea } from "@agentsfleet/design-system";
+import { CpuIcon } from "@phosphor-icons/react/ssr";
 
 type ModelProps = { children: ReactNode; select?: false } | ({ select: true } & Omit<ComponentProps<typeof SelectTrigger>, "appearance" | "className">);
 
 /** Callers choose whether the model is editable; typography belongs here. */
 export function ChatComposerModel({ children, select, ...trigger }: ModelProps) {
-  return select ? <SelectTrigger {...trigger} appearance="composer" data-composer-part="model">{children}</SelectTrigger>
-    : <span data-composer-part="model" className="min-w-0 truncate font-sans text-eyebrow leading-label text-muted-foreground">{children}</span>;
+  const content = <span className="inline-flex min-w-0 items-center gap-md"><CpuIcon size={16} className="shrink-0" aria-hidden="true" /><span className="min-w-0 truncate">{children}</span></span>;
+  return select ? <SelectTrigger {...trigger} appearance="composer" data-composer-part="model">{content}</SelectTrigger>
+    : <span data-composer-part="model" className="min-w-0 font-sans text-eyebrow leading-label text-muted-foreground">{content}</span>;
 }
 
-export function ChatComposerHint({ children }: { children: ReactNode }) {
+export function ChatComposerHint({ children }: { children?: ReactNode }) {
   return <div data-composer-part="hint" className="mt-sm flex items-center justify-between gap-lg px-sm font-sans text-eyebrow leading-eyebrow text-muted-foreground">
-    <span className="hidden shrink-0 sm:inline">Enter to send · Shift + Enter for a new line</span>
-    <span className="min-w-0">{children}</span>
+    <span className="min-w-0">Enter to send · Shift + Enter for a new line</span>
+    {children ? <span className="min-w-0">{children}</span> : null}
   </div>;
 }
 
