@@ -787,7 +787,7 @@ there would have no driver.
   The readers' counting wrappers record failed collection cycles.
 
   Both readers collect every 60 s (`COLLECT_INTERVAL` in `af_otlp`'s pipelines module).
-  Grafana Cloud bills a series by its samples per minute and includes one, so a shorter cadence multiplies the bill.
+  Grafana Cloud bills each series by its samples per minute and includes one sample per minute per series, so a shorter interval multiplies the bill.
 
   Boot claims each census family under its declared kind and series ceiling.
   The parity test rejects families without producers.
@@ -797,7 +797,7 @@ Exporters make one attempt; a failed batch increments its counter without blocki
 Later cumulative exports include earlier measurements while the process survives.
 `an_unreachable_collector_costs_spans_and_not_requests` checks the request-path property on a real socket.
 
-The supervised `otlp_export` task samples the resident set every 5 s; the SDK readers own exporting.
+The supervised `otlp_export` task samples the resident set once per `COLLECT_INTERVAL`; the SDK readers own exporting.
 Gauge callbacks load its cell rather than reading `/proc` under the pipeline lock.
 A stalled callback would silence every family's collection.
 
