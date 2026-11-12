@@ -32,12 +32,12 @@ export function MessageUploadAttachments({preparing}: {preparing?: boolean}) {
 }
 
 function UploadAttachment({removable, preparing}: {removable?: boolean; preparing?: boolean}) {
-  const status = useAuiState(state => state.attachment.status);
-  return <AttachmentPrimitive.Root className="flex min-w-0 items-center gap-sm rounded-md border border-border bg-muted px-md py-sm text-label">
-    <FileIcon className="size-4 shrink-0" aria-hidden="true" />
-    <span className="min-w-0 flex-1 break-words"><AttachmentPrimitive.Name /></span>
-    <span className="text-eyebrow text-muted-foreground">{status.type === "running" || (preparing && status.type !== "complete") ? "Uploading…" : "Preview"}</span>
-    {status.type === "incomplete" ? <output className="text-destructive">{status.message || "Upload failed. Remove this file and try again."}</output> : null}
-    {removable ? <AttachmentPrimitive.Remove asChild><Button variant="ghost" size="icon-sm" aria-label="Remove attachment"><XIcon aria-hidden="true" /></Button></AttachmentPrimitive.Remove> : null}
+  const {status, name} = useAuiState(state => state.attachment);
+  return <AttachmentPrimitive.Root className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-md rounded-md border border-border bg-muted px-md py-sm text-label">
+    <span className="flex min-w-0 items-center gap-md"><FileIcon className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 truncate" title={name}><AttachmentPrimitive.Name /></span></span>
+    <span className="flex shrink-0 items-center gap-md"><span className="whitespace-nowrap text-eyebrow text-muted-foreground">{status.type === "running" || (preparing && status.type !== "complete") ? "Uploading…" : "Preview"}</span>
+      {removable ? <AttachmentPrimitive.Remove asChild><Button variant="ghost" size="icon-sm" aria-label="Remove attachment"><XIcon aria-hidden="true" /></Button></AttachmentPrimitive.Remove> : null}
+    </span>
+    {status.type === "incomplete" ? <output className="col-span-full break-words text-destructive">{status.message || "Upload failed. Remove this file and try again."}</output> : null}
   </AttachmentPrimitive.Root>;
 }

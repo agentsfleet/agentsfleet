@@ -42,10 +42,11 @@ export function DraftConversation({client, view, workspace, children, unfinished
   return (
     <AssistantRuntimeProvider runtime={runtime}>
       <DraftRetryProvider client={client} disabled={view.busy || view.pending || recovery.pending || view.inaccessible || !view.model}>
-      <SetupConversationLayout view={view}><ChatThread label="Fleet setup conversation" autoScroll={!empty}
-        footer={<ChatComposer client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} modelsHref={modelsHref} canStop={recovery.canStop} blocked={instructionsDirty} dirty={instructionsDirty} />}>
+      <SetupConversationLayout view={view}><ChatThread label="Fleet setup conversation" autoScroll={!empty} centered={empty}
+        footer={<><ChatComposer client={client} view={view} workspace={workspace} onOpenFleet={onOpenFleet} modelsHref={modelsHref} canStop={recovery.canStop} blocked={instructionsDirty} dirty={instructionsDirty} />
+          {empty ? <><ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} />{unfinished}</> : null}</>}>
         <div role="log" aria-live="off" className="mx-auto flex w-full max-w-chat flex-1 flex-col py-3xl">
-          {empty ? <><ChatEntrance /><ChatSuggestions disabled={view.busy || view.pending || view.inaccessible} />{unfinished}</> : null}
+          {empty ? <ChatEntrance /> : null}
           {view.truncated ? <p className="text-sm text-muted-foreground">Showing the latest conversation messages. Earlier messages remain in this setup chat.
             {view.draft ? <Link className="ml-sm underline" href={`/w/${workspace}/fleets/new?draft=${view.draft.id}`}>Open full conversation</Link> : null}</p> : null}
           {view.conversationCursor || view.activityCursor ? <Button variant="ghost" size="sm" disabled={view.busy}
@@ -60,7 +61,7 @@ export function DraftConversation({client, view, workspace, children, unfinished
   );
 }
 function SetupConversationLayout({view, children}: {view: DraftView; children: ReactNode}) {
-  return <FleetConversationLayout work={<SetupSummary definition={view.draft?.candidate?.definition ?? view.preview?.definition ?? view.fleet?.definition} requirements={view.draft?.review?.requirements} />}>
+  return <FleetConversationLayout work={view.draft || view.preview || view.fleet ? <SetupSummary definition={view.draft?.candidate?.definition ?? view.preview?.definition ?? view.fleet?.definition} requirements={view.draft?.review?.requirements} /> : undefined}>
     {children}
   </FleetConversationLayout>;
 }
@@ -84,15 +85,15 @@ function setupAnchor(view: DraftView): string | null {
 }
 
 function ChatEntrance() {
-  return <div className="content-entrance flex w-full flex-col items-start gap-md pb-md pt-5">
+  return <div className="content-entrance flex w-full flex-col items-center gap-lg pb-md pt-5 text-center">
     <BrandMark className="mb-sm size-8 text-pulse" aria-hidden="true" />
-    <PageTitle>What should your fleet do?</PageTitle>
+    <PageTitle className="text-3xl leading-tight sm:text-4xl">What should your fleet do?</PageTitle>
     <p className="text-body text-muted-foreground">Start with a job. We’ll work out the setup together.</p>
   </div>;
 }
 
 function ChatSuggestions({ disabled }: { disabled: boolean }) {
-  return <div className="flex w-full flex-wrap gap-md pb-3xl pt-lg">
+  return <div className="flex w-full flex-wrap justify-center gap-md py-xl">
     {CHAT_STARTERS.map(({ title, prompt }) => <ThreadPrimitive.Suggestion key={title} prompt={prompt} send={false} asChild>
       <Button variant="outline" size="sm" disabled={disabled} className="text-eyebrow font-normal">{title}</Button>
     </ThreadPrimitive.Suggestion>)}

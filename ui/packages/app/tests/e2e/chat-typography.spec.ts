@@ -168,10 +168,10 @@ test("setup checks use enclosed icons and incoming messages have readable detail
   await disclosure.focus(); await page.keyboard.press("Enter");
   await expect(page.getByText("Diagnose the failed title regression using the current source.")).toBeVisible();
   await expect(page.locator("pre")).toHaveCount(0);
-  const failure = page.getByRole("status").filter({hasText: "The response was interrupted."});
+  const failure = page.getByRole("alert").filter({hasText: "The response was interrupted."});
   await expect(failure).toBeVisible();
   await expect(failure).toHaveCSS("font-size", "13px");
-  const details = failure.locator("..").getByRole("button", {name: "View details"});
+  const details = failure.getByRole("button", {name: "View details"});
   await expect(page.getByText("The connection to the model provider was lost mid-turn.")).not.toBeVisible();
   await details.focus(); await page.keyboard.press("Enter");
   await expect(page.getByText("The connection to the model provider was lost mid-turn.")).toBeVisible();
@@ -344,3 +344,24 @@ async function expectSourceHierarchy(panel: Locator) {
   expect(metrics.gap).toBeGreaterThanOrEqual(0);
   expect(metrics.gap).toBeLessThanOrEqual(4);
 }
+
+test("Summary retains full inline phone content and the approved desktop width", async ({page, chatProbe}, info) => {
+  await page.setViewportSize(info.project.name === "chromium" ? {width: 1480, height: 1000} : {width: 390, height: 844});
+  for (const theme of ["dark", "light"]) {
+    await page.goto(chatProbe);
+    await page.evaluate(value => {document.documentElement.dataset.theme = value;}, theme);
+    const summary = page.getByRole("complementary", {name: "Summary", exact: true});
+    await expect(summary).toBeVisible();
+    const layout = await summary.evaluate(node => ({width: node.getBoundingClientRect().width,
+      scroll: node.scrollHeight, client: node.clientHeight, maxHeight: getComputedStyle(node).maxHeight}));
+    if (info.project.name === "chromium") expect(layout.width).toBe(248);
+    else {expect(layout.maxHeight).toBe("none"); expect(layout.scroll).toBeLessThanOrEqual(layout.client + 1);}
+    const footer = page.getByTestId("fleet-chat-footer");
+    expect(await footer.evaluate(node => {
+      const viewport = node.closest('[role="presentation"]');
+      if (!viewport) throw new Error("Native thread viewport is missing");
+      return Math.abs(node.getBoundingClientRect().bottom - viewport.getBoundingClientRect().bottom);
+    })).toBeLessThanOrEqual(1);
+    await page.screenshot({path: info.outputPath(`matched-summary-${theme}.png`), scale: "css", animations: "disabled"});
+  }
+});

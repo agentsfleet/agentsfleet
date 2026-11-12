@@ -1,13 +1,17 @@
+import type { ReactNode } from "react";
+import type { ThreadMessageLike } from "@assistant-ui/react";
+import { AssistantRuntimeProvider, useExternalStoreRuntime } from "@assistant-ui/react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 import { FleetConversationLayout } from "../FleetWorkSidebar";
+import { ChatThread } from "./ChatThread";
+
+const NO_MESSAGES: ThreadMessageLike[] = [];
 
 afterEach(cleanup);
 
 it("keeps Summary inline and preserves the composer while recorded work changes", () => {
-  const workspace = (status: string) => <FleetConversationLayout work={<p>{status}</p>}>
-    <textarea aria-label="Draft" defaultValue="Keep my draft" />
-  </FleetConversationLayout>;
+  const workspace = (status: string) => <Conversation work={<p>{status}</p>} />;
   const view = render(workspace("Running checks"));
   const draft = screen.getByRole("textbox", {name: "Draft"});
   draft.focus();
@@ -23,7 +27,14 @@ it("keeps Summary inline and preserves the composer while recorded work changes"
 });
 
 it("omits an absent work reader without hiding the conversation", () => {
-  render(<FleetConversationLayout><textarea aria-label="Draft" /></FleetConversationLayout>);
+  render(<Conversation />);
   expect(screen.queryByRole("complementary")).toBeNull();
   expect(screen.getByRole("textbox")).toBeTruthy();
 });
+
+function Conversation({work}: {work?: ReactNode}) {
+  const runtime = useExternalStoreRuntime({messages: NO_MESSAGES, isRunning: false, convertMessage: (message: ThreadMessageLike) => message, onNew: async () => {}});
+  return <AssistantRuntimeProvider runtime={runtime}><FleetConversationLayout work={work}>
+    <ChatThread label="Conversation" autoScroll={false} footer={<textarea aria-label="Draft" defaultValue="Keep my draft" />}><p>Conversation history</p></ChatThread>
+  </FleetConversationLayout></AssistantRuntimeProvider>;
+}

@@ -34,10 +34,12 @@ test("late native PR badges stay on the sender line without moving a draft or vi
       expect(badgeBox!.y).toBeGreaterThanOrEqual(after.boxes[2]!.y);
       expect(badgeBox!.y + badgeBox!.height).toBeLessThanOrEqual(after.boxes[2]!.y + after.boxes[2]!.height + 1);
       await expect(composer).toHaveValue(composing ? "Keep the callback checks intact." : "");
-      // Summary can grow above the phone viewport. Native compensation must
-      // preserve the page position; a fixed viewport still requires zero scroll drift.
+      // Inline phone Summary grows before the transcript in the same viewport.
+      // Its independently measured growth must be compensated exactly; the
+      // visible reply, header and composer retain their one-pixel bounds above.
       const viewportShift = after.origin - before.origin;
-      expect(Math.abs(after.scrollTop - before.scrollTop - viewportShift)).toBeLessThanOrEqual(1);
+      const precedingGrowth = after.precedingSummaryHeight - before.precedingSummaryHeight;
+      expect(Math.abs(after.scrollTop - before.scrollTop - viewportShift - precedingGrowth)).toBeLessThanOrEqual(1);
       expect(reads()).toBe(2);
       if (composing) await expect(composer).toBeFocused();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -78,6 +80,8 @@ function readingGeometry(paragraph: Locator) {
       return {x, y, width, height};
     });
     const origin = viewport.getBoundingClientRect().y;
-    return {boxes, origin, scrollTop: viewport.scrollTop};
+    const summary = viewport.querySelector('[aria-label="Summary"]');
+    const precedingSummaryHeight = summary && getComputedStyle(summary).order === "-1" ? summary.getBoundingClientRect().height : 0;
+    return {boxes, origin, scrollTop: viewport.scrollTop, precedingSummaryHeight};
   });
 }

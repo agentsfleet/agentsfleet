@@ -11,10 +11,10 @@ it("keeps the original failure and allows recovery after a rejected retry", asyn
   const retry = vi.fn().mockRejectedValueOnce(new Error("transport unavailable")).mockResolvedValueOnce(undefined);
   render(<ChatFailure title={TITLE} description={DESCRIPTION} onRetry={retry} />);
   fireEvent.click(screen.getByRole("button", {name: RETRY}));
-  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Couldn’t retry this request. Try again.");
+  expect(await screen.findByText("Couldn’t retry this request. Try again.")).toHaveProperty("textContent", "Couldn’t retry this request. Try again.");
   expect(screen.getByText(DESCRIPTION)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", {name: RETRY}));
-  await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  await waitFor(() => expect(screen.queryByText("Couldn’t retry this request. Try again.")).toBeNull());
   expect(retry).toHaveBeenCalledTimes(2);
 });
 

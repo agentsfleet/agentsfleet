@@ -1,18 +1,25 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { createContext, type ReactNode } from "react";
+import { Card } from "@agentsfleet/design-system";
 import { ListBulletsIcon } from "@phosphor-icons/react/ssr";
 
-/** One mounted reader across breakpoints; layout never resets its work or draft. */
+/** Presentation slot only; task readers and action owners remain unchanged. */
+export const FleetSummaryContext = createContext<ReactNode>(null);
+
+/** One mounted reader across breakpoints, inside the native thread viewport. */
 export function FleetWorkSidebar({children}: {children: ReactNode}) {
   if (!children) return null;
-  return <aside aria-label="Summary" className="fleet-summary min-h-0 shrink-0 overflow-y-auto overscroll-contain rounded-lg border border-border bg-card p-xl">
-    <h2 className="mb-xl flex items-center justify-between text-label font-semibold leading-label">Summary<ListBulletsIcon size={16} className="text-muted-foreground" aria-hidden="true" /></h2>
-    {children}
-  </aside>;
+  return <Card asChild className="fleet-summary min-h-0 shrink-0 rounded-lg p-xl hover:border-border">
+    <aside aria-label="Summary">
+      <h2 className="mb-xl flex items-center justify-between text-label font-semibold leading-label">Summary<ListBulletsIcon size={16} className="text-muted-foreground" aria-hidden="true" /></h2>
+      {children}
+    </aside>
+  </Card>;
 }
 
 export function FleetConversationLayout({children, work}: {children: ReactNode; work?: ReactNode}) {
-  return <div className="fleet-conversation-layout relative flex min-h-0 flex-1 flex-col lg:flex-row lg:gap-3xl" data-testid="fleet-conversation-layout">
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</div>
-    <FleetWorkSidebar>{work}</FleetWorkSidebar>
-  </div>;
+  return <FleetSummaryContext value={work}>
+    <div className="fleet-conversation-layout relative flex min-h-0 flex-1 flex-col" data-testid="fleet-conversation-layout">{children}</div>
+  </FleetSummaryContext>;
 }
