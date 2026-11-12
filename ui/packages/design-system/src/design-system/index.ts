@@ -191,6 +191,7 @@ export { Time, type TimeProps } from "./Time";
 export {
   formatTimeAbsolute,
   formatTimeClock,
+  formatTimeClockUtc,
   formatTimeRangeUtc,
   formatTimeCompactUtc,
   formatTimeRelative,

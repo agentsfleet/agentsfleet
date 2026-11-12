@@ -55,9 +55,8 @@ export function FleetReply({
       tone={ROW_TONE.FLEET}
       messageRole="assistant"
       failed={errored}
-      annotation={<NativeTaskPrBadge activity={message.metadata.custom.taskActivity} />}
     >
-      <TaskActivityTimeline value={message.metadata.custom.taskActivity} running={running} />
+      <TaskActivityTimeline value={message.metadata.custom.taskActivity} running={running} attentionOnly />
       <FleetReplyParts errored={errored} running={running} queued={queued} eventId={eventId}
         reasoning={reasoningText(message)} span={span} content={message.content}
         startedAtMs={message.createdAt.getTime()} contextProgress={context} plainText={message.metadata.custom.previewUpload === true} />
@@ -66,7 +65,8 @@ export function FleetReply({
       {errored && !running && !recovering ? <FleetReplyFailure message={message} /> : null}
       {answer.length === 0 && !running && !errored ? <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p> : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
-      <FleetReplyActions answer={answer} settled={!running && !errored && !recovering} figures={readReplyFigures(message)} />
+      <NativeTaskPrBadge activity={message.metadata.custom.taskActivity} appearance="card" />
+      <FleetReplyActions answer={answer} settled={!running && !errored && !recovering} figures={readReplyFigures(message)} activity={message.metadata.custom.taskActivity} />
     </FleetMessageRow>
   );
 }

@@ -191,6 +191,7 @@ export {
   Time,
   formatTimeAbsolute,
   formatTimeClock,
+  formatTimeClockUtc,
   formatTimeRangeUtc,
   formatTimeCompactUtc,
   formatTimeRelative,

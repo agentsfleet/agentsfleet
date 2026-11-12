@@ -2,7 +2,7 @@ import { expect, type Locator, type Page } from "@playwright/test";
 import { test } from "./fixtures/chat-probe";
 import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
 
-test("late native PR badges stay on the sender line without moving a draft or visible reply", async ({page, chatProbe}) => {
+test("late native PR result cards retain their association without moving a draft or visible reply", async ({page, chatProbe}) => {
   await page.emulateMedia({reducedMotion: "reduce"});
   for (const width of [1280, 390]) {
     await page.setViewportSize({width, height: 844});
@@ -31,8 +31,16 @@ test("late native PR badges stay on the sender line without moving a draft or vi
         expect(Math.abs(box!.height - after.boxes[index]!.height)).toBeLessThanOrEqual(1);
       }
       const badgeBox = await badge.boundingBox();
-      expect(badgeBox!.y).toBeGreaterThanOrEqual(after.boxes[2]!.y);
-      expect(badgeBox!.y + badgeBox!.height).toBeLessThanOrEqual(after.boxes[2]!.y + after.boxes[2]!.height + 1);
+      const identifier = badge.getByText("Pull request #123", {exact: true});
+      const identifierBox = await identifier.boundingBox();
+      expect(identifierBox).not.toBeNull();
+      expect(identifierBox!.x + identifierBox!.width).toBeLessThanOrEqual(badgeBox!.x + badgeBox!.width + 1);
+      expect(await identifier.evaluate(node => getComputedStyle(node).flexShrink)).toBe("0");
+      expect(badgeBox!.y).toBeGreaterThanOrEqual(after.boxes[0]!.y + after.boxes[0]!.height);
+      const replyBox = await paragraph.locator('xpath=ancestor::*[@data-role="assistant"]').boundingBox();
+      expect(replyBox).not.toBeNull();
+      expect(badgeBox!.x).toBeGreaterThanOrEqual(replyBox!.x - 1);
+      expect(badgeBox!.x + badgeBox!.width).toBeLessThanOrEqual(replyBox!.x + replyBox!.width + 1);
       await expect(composer).toHaveValue(composing ? "Keep the callback checks intact." : "");
       // Inline phone Summary grows before the transcript in the same viewport.
       // Its independently measured growth must be compensated exactly; the

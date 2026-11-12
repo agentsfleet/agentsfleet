@@ -14,7 +14,7 @@ export function ToolCallList({children, activity}: {children: ReactNode; activit
   const running = activity.state === CELL_STATE.RUNNING;
   const Icon = ACTIVITY_ICONS[activity.kind];
   const label = [activity.label, activity.target].filter(Boolean).join(" ");
-  return <Accordion type="single" collapsible className="mb-md">
+  return <Accordion type="single" collapsible className="my-xl border-y border-border">
     <AccordionItem value={COMMANDS} className="border-0">
       <AccordionTrigger className={TRIGGER_CLASS} aria-label={`${TOOL_CALLS_LABEL}: ${label}`} title={label}>
         <span aria-hidden="true" className={cn("inline-flex size-4 shrink-0 items-center justify-center", running ? "text-muted-foreground" : CELL_COPY[activity.state].tone)}><Icon className="size-4 shrink-0" /></span>

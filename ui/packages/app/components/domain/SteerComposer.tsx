@@ -10,7 +10,7 @@ import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
 import { ChatComposerFrame, ChatComposerHint } from "./chat/ChatComposerFrame";
-import { EditSetupButton, useFleetSetup } from "./chat/FleetSetupWorkspace";
+import { useFleetSetup } from "./chat/FleetSetupWorkspace";
 import { FleetModelSelect } from "./chat/FleetModelSelect";
 import { AddUploadPreview, ComposerUploadAttachments } from "./chat/UploadAttachments";
 
@@ -73,7 +73,7 @@ export function SteerComposer({ pending, onResend, onDismiss, onRestored, onDraf
         <ComposerUploadAttachments />
 
     </ChatComposerFrame>
-    <ChatComposerHint>Change fleet defaults in <EditSetupButton inline />.</ChatComposerHint>
+    <ChatComposerHint />
     </>
   );
 }

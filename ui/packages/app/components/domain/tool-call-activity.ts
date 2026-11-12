@@ -24,9 +24,7 @@ export function toolActivity(name: string, args: ToolArgs | undefined, state: Ce
 /** Only this group's indices contribute; an adjacent text part cannot change its outcome. */
 export function toolGroupActivity(content: MessageState["content"], indices: readonly number[], running: boolean): ToolActivity {
   const calls = indices.flatMap(index => {const part = content[index]; return part?.type === "tool-call" ? [part] : [];});
-  const summaries = new Map<string, number>();
   let state: CellState = CELL_STATE.SUCCEEDED;
-  let kind: Kind = "tool";
   let active: ToolActivity | undefined;
   let activeCount = 0;
   for (const call of calls) {
@@ -34,14 +32,16 @@ export function toolGroupActivity(content: MessageState["content"], indices: rea
     const current = cellState(result !== undefined, result?.status, running && call.result === undefined);
     const activity = toolActivity(call.toolName, call.args, current);
     if (current === CELL_STATE.RUNNING) {active ??= activity; activeCount++; continue;}
-    kind = activity.kind;
     if (PRIORITY[current] > PRIORITY[state]) state = current;
-    const summary = kind === "tool" ? [activity.label, activity.target].filter(Boolean).join(" ") : activity.label;
-    summaries.set(summary, (summaries.get(summary) ?? 0) + 1);
   }
   if (active) return activeCount === 1 ? active : {...active, target: [active.target, `${activeCount} active`].filter(Boolean).join(" · ")};
-  return {label: [...summaries].map(([label, count]) => count === 1 ? label : `${label} (${count})`).join(", ") || "Tool activity",
-    target: "", state: calls.length === 0 ? CELL_STATE.SETTLED : state, kind};
+  const single = calls[0];
+  if (calls.length === 1 && single) return toolActivity(single.toolName, single.args, state);
+  const commands = calls.filter(call => call.toolName === TOOL_NAME.EXEC_COMMAND || call.toolName === TOOL_NAME.SHELL).length;
+  const tools = calls.length - commands;
+  const counts = [tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "", commands ? `${commands} ${commands === 1 ? "command" : "commands"}` : ""].filter(Boolean).join(", ");
+  const outcome = state === CELL_STATE.SUCCEEDED ? "Worked" : state === CELL_STATE.FAILED ? "Work failed" : state === CELL_STATE.INTERRUPTED ? "Interrupted" : "Outcome unavailable";
+  return {label: counts ? `${outcome} · ${counts}` : "Tool activity", target: "", state: calls.length === 0 ? CELL_STATE.SETTLED : state, kind: "tool"};
 }
 
 function describe(name: string, args: ToolArgs | undefined): Description {

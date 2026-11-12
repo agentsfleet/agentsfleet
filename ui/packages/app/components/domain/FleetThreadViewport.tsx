@@ -74,7 +74,7 @@ function ChatHistory({ eventsCount, connectionStatus, setup, setupEventId }: Pic
       // never covers its newest rows. Top-aligned, as the viewport's top
       // anchor expects: a bottom-aligned short thread slid down by the height
       // of every Thought that folded above the composer.
-      className="mx-auto flex w-full max-w-chat flex-1 flex-col justify-start py-lg sm:py-3xl"
+      className="mx-auto flex w-full max-w-chat flex-1 flex-col justify-start py-lg"
     >
       {setupEventId ? null : setup}
       {isAwaitingFirstFrames ? <BackfillSkeleton /> : null}

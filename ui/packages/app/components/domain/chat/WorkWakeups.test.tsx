@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { Schedule } from "@/lib/api/draft-types";
 import { WorkWakeups } from "./WorkWakeups";
+import { TooltipProvider } from "@agentsfleet/design-system";
 
 const {refresh} = vi.hoisted(() => ({refresh: vi.fn()}));
 vi.mock("next/navigation", () => ({useRouter: () => ({refresh})}));
@@ -44,4 +45,22 @@ it("omits an empty schedule group", () => {
   expect(screen.queryByRole("region")).toBeNull();
   view.rerender(<WorkWakeups schedules={[{...SCHEDULE, status: "removed"}]} />);
   expect(screen.queryByRole("region")).toBeNull();
+});
+
+it("shows attention before the nearest wake-up and retains additional schedule details", () => {
+  const earlier = {...SCHEDULE, schedule_id: "earlier", description: "Earlier check", next_run_at: "2026-11-11T12:15:00Z"};
+  const failed = {...SCHEDULE, schedule_id: "failed", sync: "failed", description: "Unregistered check"};
+  const view = render(<WorkWakeups schedules={[SCHEDULE, earlier, failed]} compact />, {wrapper: TooltipProvider});
+  const first = view.container.querySelector("ul > li");
+  expect(first?.textContent).toContain("Registration failed");
+  expect(first?.textContent).not.toContain("Unregistered check");
+  fireEvent.click(screen.getByText("2 more"));
+  expect(screen.getByText("Earlier check")).toBeTruthy();
+  view.rerender(<WorkWakeups schedules={[SCHEDULE, earlier]} compact />);
+  expect(view.container.querySelector("ul > li time")?.getAttribute("datetime")).toBe("2026-11-11T12:15:00.000Z");
+  expect(view.container.querySelector("ul > li")?.textContent).toContain("UTC");
+  view.rerender(<WorkWakeups schedules={[{...SCHEDULE, schedule_id: "missing", next_run_at: null}, SCHEDULE]} compact />);
+  expect(view.container.querySelector("ul > li time")?.getAttribute("datetime")).toBe("2026-11-11T12:30:00.000Z");
+  view.rerender(<WorkWakeups schedules={[SCHEDULE, {...SCHEDULE, schedule_id: "missing", next_run_at: null}]} compact />);
+  expect(view.container.querySelector("ul > li time")?.getAttribute("datetime")).toBe("2026-11-11T12:30:00.000Z");
 });

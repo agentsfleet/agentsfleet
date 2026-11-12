@@ -4,6 +4,7 @@ import {
   coerceDate,
   formatTimeAbsolute,
   formatTimeClock,
+  formatTimeClockUtc,
   formatTimeRelative,
   MS_PER_SECOND,
   SECONDS_PER_DAY,
@@ -256,5 +257,17 @@ describe("formatter reuse", () => {
     } finally {
       built.mockRestore();
     }
+  });
+});
+
+
+describe("minute UTC clock", () => {
+  it("keeps the same minute for offset and UTC representations", () => {
+    expect(formatTimeClockUtc("2026-11-12T17:12:59+05:30")).toBe("11:42");
+    expect(formatTimeClockUtc(new Date("2026-11-12T11:42:01Z"))).toBe("11:42");
+    expect(formatTimeClockUtc("2026-11-12T11:42:01Z", "en-GB")).toBe("11:42");
+  });
+  it("retains the shared invalid-instant fallback", () => {
+    expect(formatTimeClockUtc("not-a-date")).toBe(TIME_INVALID_FALLBACK);
   });
 });

@@ -60,6 +60,14 @@
   --chat-inset: 32px;
 }
 
+@media (min-width: 42.5625rem) and (max-width: 68.75rem) {
+  :root { --summary-width: 228px; --chat-inset: 24px; }
+}
+
+@media (min-width: 42.5625rem) and (max-width: 50rem) {
+  :root { --summary-width: 216px; --chat-inset: 16px; }
+}
+
 [data-theme="light"] {
   color-scheme: light;
   --surface-deep: #e9ebee;

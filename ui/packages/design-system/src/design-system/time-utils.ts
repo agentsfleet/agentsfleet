@@ -41,8 +41,10 @@ const ABSOLUTE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, ABSOLUTE_OPTIONS
 const CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, CLOCK_OPTIONS);
 const UTC_DATE_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", year: "numeric", timeZone: "UTC"};
 const UTC_COMPACT_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC"};
+const UTC_CLOCK_OPTIONS: Intl.DateTimeFormatOptions = {hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC"};
 const UTC_DATE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_DATE_OPTIONS);
 const UTC_COMPACT_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_COMPACT_OPTIONS);
+const UTC_CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_CLOCK_OPTIONS);
 
 function formatterFor(
   locale: string,
@@ -97,6 +99,13 @@ export function formatTimeCompactUtc(value: string | Date, locale: string = DEFA
   const date = coerceDate(value);
   if (Number.isNaN(date.getTime())) return TIME_INVALID_FALLBACK;
   return formatterFor(locale, UTC_COMPACT_FORMAT, UTC_COMPACT_OPTIONS).format(date);
+}
+
+/** Conversation clock: minute precision, with its exact UTC instant in Time. */
+export function formatTimeClockUtc(value: string | Date, locale: string = DEFAULT_LOCALE): string {
+  const date = coerceDate(value);
+  if (Number.isNaN(date.getTime())) return TIME_INVALID_FALLBACK;
+  return formatterFor(locale, UTC_CLOCK_FORMAT, UTC_CLOCK_OPTIONS).format(date);
 }
 
 /* The unit factors the relative label steps through. A month is 30 days and a

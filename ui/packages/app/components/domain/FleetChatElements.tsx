@@ -37,15 +37,15 @@ function OperatorElement({data}: {data: FleetChatElementData["operator-turn"]}) 
   const sender = useNameSender()(data.actor);
   return <FleetMessageRow sender={sender.label} tone={ROW_TONE.OPERATOR} messageRole="user"
     dimmed={data.optimistic} showSender={sender.shown} createdAt={data.createdAt}>
-    {data.text.trim() ? <FleetMarkdown expandable>{data.text}</FleetMarkdown> : <p className="text-muted-foreground">Content preview unavailable.</p>}
     <MessageUploadAttachments />
+    {data.text.trim() ? <FleetMarkdown expandable>{data.text}</FleetMarkdown> : <p className="text-muted-foreground">Content preview unavailable.</p>}
   </FleetMessageRow>;
 }
 
 function UploadSubmissionElement({data}: {data: FleetChatElementData["upload-submission"]}) {
   return <FleetMessageRow sender="You" tone={ROW_TONE.OPERATOR} messageRole="user" dimmed createdAt={data.createdAt}>
-    {data.text.trim() ? <FleetMarkdown expandable>{data.text}</FleetMarkdown> : <p>File preview</p>}
     <MessageUploadAttachments preparing />
+    {data.text.trim() ? <FleetMarkdown expandable>{data.text}</FleetMarkdown> : <p>File preview</p>}
   </FleetMessageRow>;
 }
 

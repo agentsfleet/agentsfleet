@@ -235,9 +235,12 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     await page.setViewportSize(window);
     await expect(page.getByRole("link", {name: /^Pull request #123 ·/})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden/pull/123");
     const panel = page.getByRole("region", {name: "Current work"});
-    await expect(panel.getByRole("heading", {name: "Tasks"})).toBeVisible();
+    const taskList = panel.getByRole("button", {name: /^Tasks/});
+    await expect(taskList).toBeVisible();
+    if (await taskList.getAttribute("aria-expanded") !== "true") await taskList.click();
     for (const section of ["Outputs", "Sources"]) await expect(panel.getByRole("heading", {name: section, exact: true})).toBeAttached();
-    await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toHaveCount(0);
+    await expect(panel.getByRole("heading", {name: "Changes", exact: true})).toBeAttached();
+    await expect(panel.getByText("No changes yet.", {exact: true})).toBeAttached();
     await expectSourceHierarchy(panel);
     if (window.height === 800) await page.screenshot({path: info.outputPath("context-sidebar-desktop.png"), scale: "css", animations: "disabled"});
     const repair = panel.getByRole("button", {name: /PR #123 repair/});
@@ -250,6 +253,8 @@ test("work stays in a sidebar while the ordinary chat composer preserves its dra
     if (window.width < 1024) await page.keyboard.press("Escape");
     await expect(input).toHaveValue("Keep the redirect fix in the callback handler.");
     await expect(input).toHaveCSS("font-size", window.width <= 680 || info.project.name === "mobile-chromium" ? "16px" : "13px");
+    await input.focus();
+    await input.scrollIntoViewIfNeeded();
     const composer = await page.getByRole("form", {name: "Chat composer"}).boundingBox();
     expect(composer).not.toBeNull();
     expect(composer!.y + composer!.height).toBeLessThanOrEqual(window.height + 1);
@@ -332,17 +337,21 @@ async function expectActivityGeometry(page: Page, action: Locator, tools: Locato
 async function expectSourceHierarchy(panel: Locator) {
   const sourcesHeading = panel.getByRole("heading", {name: "Sources", exact: true});
   expect(await sourcesHeading.locator("svg").count()).toBe(0);
-  const source = panel.getByRole("link", {name: "linkwarden/linkwarden", exact: true});
-  const metrics = await source.evaluate(node => {
+  const sources = panel.getByRole("region", {name: "Sources", exact: true});
+  const disclosure = sources.locator("summary");
+  const metrics = await disclosure.evaluate(node => {
     const heading = node.closest("section")!.querySelector("h2")!;
     return {heading: parseFloat(getComputedStyle(heading).fontSize), row: parseFloat(getComputedStyle(node).fontSize),
       icon: node.querySelector("svg")!.getBoundingClientRect().width,
       gap: node.getBoundingClientRect().top - heading.getBoundingClientRect().bottom};
   });
-  expect(metrics.heading).toBe(metrics.row);
+  expect(metrics.heading).toBe(12); expect(metrics.row).toBe(13);
   expect(metrics.icon).toBe(16);
-  expect(metrics.gap).toBeGreaterThanOrEqual(0);
-  expect(metrics.gap).toBeLessThanOrEqual(4);
+  expect(metrics.gap).toBeGreaterThanOrEqual(4); expect(metrics.gap).toBeLessThanOrEqual(8);
+  if (!(await sources.locator("details").evaluate(node => node.hasAttribute("open")))) await disclosure.click();
+  await expect(sources.getByRole("link", {name: "linkwarden/linkwarden", exact: true})).toHaveAttribute("href", "https://github.com/linkwarden/linkwarden");
+  await expect(sources.getByText("Saved fleet policy · write access · existing PRs", {exact: true})).toBeVisible();
+  await disclosure.click();
 }
 
 test("Summary retains full inline phone content and the approved desktop width", async ({page, chatProbe}, info) => {

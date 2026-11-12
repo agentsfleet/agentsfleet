@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AttachmentPrimitive, ComposerPrimitive, MessagePrimitive, useAuiEvent, useAuiState } from "@assistant-ui/react";
-import { Button } from "@agentsfleet/design-system";
+import { Button, cn } from "@agentsfleet/design-system";
 import { FileIcon, PaperclipIcon, XIcon } from "@phosphor-icons/react/ssr";
 
 /** Native attachment contexts own preparation, error state and removal. */
@@ -28,12 +28,14 @@ export function ComposerUploadAttachments() {
 }
 
 export function MessageUploadAttachments({preparing}: {preparing?: boolean}) {
-  return <MessagePrimitive.Attachments>{() => <UploadAttachment preparing={preparing} />}</MessagePrimitive.Attachments>;
+  const count = useAuiState(state => (state.message.submission?.attachments ?? state.message.attachments ?? []).length);
+  if (!count) return null;
+  return <div className="mb-lg flex min-w-0 flex-wrap gap-sm"><MessagePrimitive.Attachments>{() => <UploadAttachment preparing={preparing} message />}</MessagePrimitive.Attachments></div>;
 }
 
-function UploadAttachment({removable, preparing}: {removable?: boolean; preparing?: boolean}) {
+function UploadAttachment({removable, preparing, message}: {removable?: boolean; preparing?: boolean; message?: boolean}) {
   const {status, name} = useAuiState(state => state.attachment);
-  return <AttachmentPrimitive.Root className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-md rounded-md border border-border bg-muted px-md py-sm text-label">
+  return <AttachmentPrimitive.Root className={cn("min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-md rounded-control border border-border px-md py-sm text-label", message ? "inline-grid max-w-full bg-card" : "grid bg-muted")}>
     <span className="flex min-w-0 items-center gap-md"><FileIcon className="size-4 shrink-0" aria-hidden="true" /><span className="min-w-0 truncate" title={name}><AttachmentPrimitive.Name /></span></span>
     <span className="flex shrink-0 items-center gap-md"><span className="whitespace-nowrap text-eyebrow text-muted-foreground">{status.type === "running" || (preparing && status.type !== "complete") ? "Uploading…" : "Preview"}</span>
       {removable ? <AttachmentPrimitive.Remove asChild><Button variant="ghost" size="icon-sm" aria-label="Remove attachment"><XIcon aria-hidden="true" /></Button></AttachmentPrimitive.Remove> : null}

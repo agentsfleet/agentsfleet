@@ -278,8 +278,8 @@ it("keeps ordinary chat free of the metrics strip and reveals approvals when att
   render(view(summary(), [turn()], ChatView));
   expect(screen.queryByLabelText("Fleet summary")).toBeNull();
   emit(completion({pending_approvals: 2}));
-  expect(screen.getByText("2 approvals waiting")).toBeTruthy();
-  expect(screen.getByRole("link", {name: "Review approvals"}).getAttribute("href")).toBe(APPROVALS_HREF);
+  expect(screen.getByRole("heading", {name: "Needs your approval 2"})).toBeTruthy();
+  expect(screen.getByRole("link", {name: "Review 2 pending approvals"}).getAttribute("href")).toBe(APPROVALS_HREF);
   emit(completion({pending_approvals: 0}));
   expect(screen.queryByRole("link", {name: /approvals/})).toBeNull();
   expect(fetchSpy).not.toHaveBeenCalled();

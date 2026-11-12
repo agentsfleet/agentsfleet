@@ -3,12 +3,13 @@
 import { latestTaskActivity, readTaskActivityHistory, taskActivityLabel } from "@/lib/task-activity";
 
 /** Public progress stays separate from private model reasoning and native task status. */
-export function TaskActivityTimeline({value, running}: {value: unknown; running: boolean}) {
+export function TaskActivityTimeline({value, running, attentionOnly = false}: {value: unknown; running: boolean; attentionOnly?: boolean}) {
   const history = readTaskActivityHistory(value);
   if (!history) return null;
   const latest = latestTaskActivity(history).at(-1);
   if (!latest) return null;
   const pending = ["starting", "preparing", "scanning", "uploading", "verifying", "restoring"].includes(latest.progress.phase);
+  if (attentionOnly && !running && !pending && latest.progress.phase !== "failed" && latest.progress.phase !== "unavailable") return null;
   return <details className="rounded-lg border border-border px-md py-sm text-body-sm text-muted-foreground">
     <summary className="cursor-pointer break-words">{taskActivityLabel(latest)}{pending && !running ? " · no confirmed completion recorded" : ""}</summary>
     <ol className="mt-sm space-y-sm" aria-label="Task activity">

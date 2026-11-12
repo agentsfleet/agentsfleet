@@ -34,7 +34,7 @@ export function ShellFrame({
   return (
     <WorkspaceCreationProvider knownWorkspaceIds={knownWorkspaceIds}>
       <DraftSidebarProvider><FleetNoticeProvider><div
-        className="app-surface app-shell fixed inset-0 grid h-dvh grid-cols-[auto_minmax(0,1fr)] bg-surface-deep py-md pr-md"
+        className="app-surface app-shell fixed inset-0 grid h-dvh grid-cols-[auto_minmax(0,1fr)] bg-surface-deep py-sm pr-sm summary:py-md summary:pr-md"
         data-surface="dashboard"
       >
         <aside

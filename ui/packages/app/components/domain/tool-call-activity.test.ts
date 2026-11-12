@@ -78,11 +78,15 @@ describe("recorded tool activity", () => {
   it("summarizes only the group's own actions and preserves mixed outcomes", () => {
     const content = [part("file_read", SUCCESS), {type: "text", text: "reply"}, part("file_write", CELL_STATE.FAILED), part("unknown", SUCCESS)] satisfies MessageState["content"];
     expect(toolGroupActivity(content, [0], false).label).toBe("Read file");
-    expect(toolGroupActivity(content, [0, 2, 3], false)).toMatchObject({state: CELL_STATE.FAILED, label: "Read file, Failed: writing, Used unknown"});
-    expect(toolGroupActivity([part("file_read", SUCCESS), part("file_read", SUCCESS)], [0, 1], false).label).toBe("Read file (2)");
+    expect(toolGroupActivity(content, [0, 2, 3], false)).toMatchObject({state: CELL_STATE.FAILED, label: "Work failed · 3 tools"});
+    expect(toolGroupActivity([part("file_read", SUCCESS), part("file_read", SUCCESS)], [0, 1], false).label).toBe("Worked · 2 tools");
     expect(toolGroupActivity([part("file_read", CELL_STATE.INTERRUPTED), part("file_read", SUCCESS)], [0, 1], false).state).toBe(CELL_STATE.INTERRUPTED);
-    expect(toolGroupActivity([part("unknown")], [0], false).label).toBe("Interrupted: using unknown");
-    expect(toolGroupActivity([{...part("unknown"), result: {}}], [0], false).label).toBe("Outcome unavailable: using unknown");
+    expect(toolGroupActivity([part("unknown")], [0], false)).toMatchObject({label: "Interrupted: using", target: "unknown"});
+    expect(toolGroupActivity([{...part("unknown"), result: {}}], [0], false)).toMatchObject({label: "Outcome unavailable: using", target: "unknown"});
+    expect(toolGroupActivity([part("file_read", SUCCESS), part("exec_command", SUCCESS)], [0, 1], false).label).toBe("Worked · 1 tool, 1 command");
+    expect(toolGroupActivity([part("shell", SUCCESS), part("exec_command", SUCCESS)], [0, 1], false).label).toBe("Worked · 2 commands");
+    expect(toolGroupActivity([part("file_read", CELL_STATE.INTERRUPTED), part("unknown", SUCCESS)], [0, 1], false).label).toBe("Interrupted · 2 tools");
+    expect(toolGroupActivity([{...part("unknown"), result: {}}, part("file_read", SUCCESS)], [0, 1], false).label).toBe("Outcome unavailable · 2 tools");
     expect(toolGroupActivity(content, [1, 99], false)).toMatchObject({label: "Tool activity", state: CELL_STATE.SETTLED});
   });
 

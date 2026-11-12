@@ -128,18 +128,6 @@ code, pre, kbd { font-family: var(--ff-mono); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-subtle); }
 
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
-
 /* Keep final values visible without animating their arrival. */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -164,10 +152,10 @@ code, pre, kbd { font-family: var(--ff-mono); }
   order: -1;
   max-height: none;
   overflow: visible;
-  margin: var(--sp-lg) var(--sp-xl);
+  margin: var(--sp-lg);
 }
 .app-shell:not(:has([data-fleet-workspace], [data-fleet-authoring])) .app-dashboard-canvas .page-entrance { width: 100%; max-width: 65rem; margin-inline: auto; }
-@media (min-width: 64rem) {
+@media (min-width: 42.5625rem) {
   .fleet-summary {
     grid-column: 2;
     grid-row: 1 / span 2;
