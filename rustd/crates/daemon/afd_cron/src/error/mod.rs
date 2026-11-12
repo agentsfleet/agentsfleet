@@ -225,14 +225,14 @@ const REASON_TOKEN_MALFORMED: &str = "token_malformed";
 const REASON_SIGNATURE_INVALID: &str = "signature_invalid";
 /// [`Error::refusal_word`] for a token past its `exp`.
 const REASON_TOKEN_EXPIRED: &str = "token_expired";
-/// [`Error::refusal_word`] for a token before its `nbf`.
-const REASON_TOKEN_NOT_YET_VALID: &str = "token_not_yet_valid";
 /// [`Error::refusal_word`] for a token from another issuer.
 const REASON_TOKEN_ISSUER: &str = "token_issuer_mismatch";
 /// [`Error::refusal_word`] for a token minted for another destination.
 const REASON_TOKEN_SUBJECT: &str = "token_subject_mismatch";
 /// [`Error::refusal_word`] for a token missing a claim this daemon needs.
 const REASON_TOKEN_CLAIMS: &str = "token_claims_missing";
+/// [`Error::refusal_word`] for a token with a claim of the wrong type.
+const REASON_TOKEN_CLAIM_FORMAT: &str = "token_claim_malformed";
 /// [`Error::refusal_word`] for a token whose header or claims do not decode.
 const REASON_TOKEN_UNDECODABLE: &str = "token_undecodable";
 /// [`Error::refusal_word`] for a token signed under another algorithm.
@@ -255,14 +255,14 @@ pub(crate) enum Rejected {
     Signature,
     /// The `exp` claim is in the past.
     Expired,
-    /// The `nbf` claim is in the future.
-    NotYetValid,
     /// The `iss` claim is not the scheduler's.
     Issuer,
     /// The `sub` claim is not this deployment's destination.
     Subject,
     /// A claim this daemon requires is absent.
     Claims,
+    /// A claim this daemon checks is not the type it should be.
+    ClaimFormat,
     /// The header or the claims did not decode.
     Undecodable,
     /// The header names an algorithm this daemon does not accept.
@@ -275,10 +275,10 @@ impl Rejected {
         match self {
             Self::Signature => REASON_SIGNATURE_INVALID,
             Self::Expired => REASON_TOKEN_EXPIRED,
-            Self::NotYetValid => REASON_TOKEN_NOT_YET_VALID,
             Self::Issuer => REASON_TOKEN_ISSUER,
             Self::Subject => REASON_TOKEN_SUBJECT,
             Self::Claims => REASON_TOKEN_CLAIMS,
+            Self::ClaimFormat => REASON_TOKEN_CLAIM_FORMAT,
             Self::Undecodable => REASON_TOKEN_UNDECODABLE,
             Self::Algorithm => REASON_TOKEN_ALGORITHM,
         }

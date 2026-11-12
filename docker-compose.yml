@@ -111,6 +111,10 @@ services:
     ports:
       # Per-worktree but fixed -- see the postgres service above.
       - "${AGENTSFLEET_QSTASH_HOST_PORT:-8080}:8080"
+    # The emulator delivers a fire to a listener on the host; Docker Desktop
+    # resolves this name itself and a Linux engine needs the mapping.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       # Unauthenticated requests 401, which still proves the server is accepting
       # connections; fetch resolves on any HTTP response and rejects only on a
