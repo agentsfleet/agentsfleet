@@ -285,16 +285,15 @@ async fn an_inspection_of_an_envelope_that_will_not_open_fails() {
     fixture.insert(CREDENTIAL, &envelope).await;
     let mut connection = fixture.database.acquire().await.expect("an API connection");
 
-    let refused = fixture
-        .vault
-        .inspect_on(
-            &mut connection,
-            &fixture.workspace,
-            &[CREDENTIAL.to_owned()],
-            &afd_credential::secrets::Registry::SHIPPED,
-        )
-        .await
-        .expect_err("the envelope does not open under this vault's key");
+    let refused = afd_credential::secrets::inspect_on(
+        &fixture.vault,
+        &mut connection,
+        &fixture.workspace,
+        &[CREDENTIAL.to_owned()],
+        &afd_credential::secrets::Registry::SHIPPED,
+    )
+    .await
+    .expect_err("the envelope does not open under this vault's key");
 
     assert_eq!(
         refused.code(),

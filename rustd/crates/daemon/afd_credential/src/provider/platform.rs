@@ -14,12 +14,12 @@
 
 use serde::Deserialize;
 
+use super::KeyRef;
 use crate::error::{Result, provider_malformed, provider_platform_key_missing};
 use crate::provider::endpoint;
 use crate::provider::resolved::{Dialled, Resolved};
 use crate::provider::selection::PlatformDefault;
 use crate::provider::{Resolution, Strategy};
-use crate::vault::KeyRef;
 use af_crypto::secret::SecretString;
 use afd_billing::Posture;
 

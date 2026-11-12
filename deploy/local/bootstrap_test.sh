@@ -218,6 +218,50 @@ assert.equal(writes, 2);
 ''', str(ROOT / 'deploy/local/bootstrap.ts')], capture_output=True, text=True)
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_local_scheduler_bag_is_read_from_the_emulator_and_kept_once(self):
+        result = subprocess.run(['bun', '-e', '''
+const { strict: assert } = await import('node:assert');
+const { configureScheduler } = await import(Bun.argv[1]);
+const workspace = 'local-fixture', path = `/v1/workspaces/${workspace}/secrets`;
+const token = Buffer.from('{"UserID":"defaultUser","Password":"defaultPassword"}').toString('base64');
+let bag, writes = 0, keyReads = 0;
+globalThis.fetch = async (url, init) => {
+  assert.equal(url, 'http://127.0.0.1:18080/v2/keys');
+  assert.equal(init.headers.Authorization, `Bearer ${token}`);
+  keyReads++;
+  return Response.json({current: 'sig_current', next: 'sig_next'});
+};
+const request = async (method, url, body) => {
+  assert.equal(url, path);
+  if (method === 'GET') return {secrets: bag ? [{name: bag.name}] : []};
+  assert.equal(method, 'POST');
+  bag = structuredClone(body);
+  writes++;
+  return {};
+};
+await configureScheduler(async () => {assert.fail('must not access another platform workspace');}, workspace, '18080', 'other');
+assert.equal(keyReads, 0);
+await configureScheduler(request, workspace, '18080', workspace);
+assert.deepEqual(bag, {name: 'qstash', data: {token, url: 'http://127.0.0.1:18080/v2',
+  current_signing_key: 'sig_current', next_signing_key: 'sig_next'}});
+await configureScheduler(request, workspace, '18080');
+assert.equal(writes, 1);
+const noWrite = async () => {assert.fail('a failed read must not reach the secrets API');};
+const silent = /QStash emulator did not answer/;
+globalThis.fetch = async () => new Response('down', {status: 503});
+await assert.rejects(configureScheduler(noWrite, workspace, '18080'), silent);
+globalThis.fetch = async () => {throw new TypeError('connection refused');};
+await assert.rejects(configureScheduler(noWrite, workspace, '18080'), silent);
+globalThis.fetch = async () => Response.json({current: 'sig_current', next: ''});
+await assert.rejects(configureScheduler(noWrite, workspace, '18080'), {name: 'ZodError'});
+globalThis.fetch = async () => Response.json({current: 'sig_current'});
+await assert.rejects(configureScheduler(noWrite, workspace, '18080'), {name: 'ZodError'});
+globalThis.fetch = async () => {assert.fail('a malformed port must not reach the emulator');};
+await assert.rejects(configureScheduler(noWrite, workspace, '18o80'), {name: 'ZodError'});
+await assert.rejects(configureScheduler(noWrite, workspace, ''), {name: 'ZodError'});
+''', str(ROOT / 'deploy/local/bootstrap.ts')], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_configured_platform_workspace_and_encryption_key_are_preserved(self):
         result = subprocess.run(['bun', '-e', '''
 const { strict: assert } = await import('node:assert');

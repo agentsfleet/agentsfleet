@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use af_crypto::secret::Kek;
-use afd_credential::{secrets::Registry, vault::Vault};
+use afd_credential::secrets::Registry;
+use afd_vault::Vault;
 
 use crate::Drafts;
 
@@ -20,7 +21,11 @@ impl Setup {
     #[must_use]
     pub fn new(drafts: Drafts, key: Arc<Kek>) -> Self {
         Self {
-            vault: Vault::new(drafts.database.clone(), key),
+            vault: Vault::new(
+                drafts.database.clone(),
+                key,
+                af_crypto::entropy::Entropy::new(),
+            ),
             connectors: Registry::SHIPPED,
             drafts,
         }

@@ -170,19 +170,13 @@ pub trait Services: TenantSurface + Send + Sync + std::fmt::Debug + 'static {
     /// What a schedule is read, written and fired through.
     fn schedules(&self) -> &Self::Schedules;
 
-    /// The scheduler's signing keys, when this deployment configured them.
+    /// The external scheduler: it registers schedules and proves the fires it
+    /// sends back.
     ///
-    /// `None` is fail-closed: a daemon that cannot verify a fire refuses every
-    /// one, because acting on an unverified callback would let anyone who found
-    /// the URL wake every fleet behind it.
-    fn schedule_signing_keys(&self) -> Option<&afd_cron::SigningKeys>;
-
-    /// Where a fire is expected to arrive, as the token's `sub` claim spells it.
-    ///
-    /// Half of what makes a fire token this deployment's: a token minted for
-    /// another daemon's destination fails the subject check rather than waking
-    /// a fleet here.
-    fn schedule_destination(&self) -> &str;
+    /// A fire it does not verify is refused: a daemon that cannot verify one
+    /// must not act on it, because acting on an unverified callback would let
+    /// anyone who found the URL wake every fleet behind it.
+    fn scheduler(&self) -> &dyn afd_cron::Scheduler;
 
     /// What the signed-ingress routes act through.
     ///

@@ -53,13 +53,11 @@
 //! that is not a provider key — never open an envelope at all.
 
 use af_core::id::Uuid7;
-use af_crypto::aad::Aad;
-use af_crypto::secret::SecretBytes;
 use afd_vault::StoredEnvelope;
 use jiff::Timestamp;
 use sqlx::{Acquire as _, Transaction};
 
-use crate::error::{Result, entropy_drained, query, vault_open};
+use crate::error::{Result, entropy_drained, query};
 use crate::provider::cap;
 use crate::provider::endpoint::{OPENAI_COMPATIBLE, Rejection};
 use crate::provider::selection::OwnModel;
@@ -172,7 +170,9 @@ impl Providers {
         // second connection under both is how a bounded pool starves under
         // concurrent activations. The join already resolved this exact row.
         let workspace = locked.workspace_id.clone();
-        let opened = open_envelope(locked.envelope, &workspace, secret_ref, self.vault_key())?;
+        let opened = self
+            .vault()
+            .open_stored(locked.envelope, &workspace, secret_ref)?;
         let vetted = match vet(opened.expose()) {
             Ok(vetted) => vetted,
             Err(Refused::Malformed) => return Ok(Activation::Malformed),
@@ -204,20 +204,6 @@ impl Providers {
 fn effective_model<'a>(override_: Option<&'a str>, credential: Option<&'a str>) -> Option<&'a str> {
     let named = override_.or(credential)?;
     (!named.is_empty() && named.trim() == named).then_some(named)
-}
-
-/// Open the named storage projection under the caller's workspace and key name.
-fn open_envelope(
-    stored: StoredEnvelope,
-    workspace: &Uuid7,
-    name: &str,
-    kek: &af_crypto::secret::Kek,
-) -> Result<SecretBytes> {
-    stored
-        .into_envelope()
-        .map_err(vault_open)?
-        .open(kek, &Aad::new(workspace.as_str(), name))
-        .map_err(vault_open)
 }
 
 impl Providers {

@@ -15,13 +15,15 @@
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
 use afd_cron::{ACTOR_PREFIX, Source};
-use agentsfleetd::preflight::{QSTASH_TOKEN_KNOB, QSTASH_URL_KNOB};
+use afd_db::test_util::WorkspaceSeed;
+use agentsfleetd::preflight::PLATFORM_ADMIN_WORKSPACE_KNOB;
 use agentsfleetd::supervisor::Supervisor;
 use reqwest::Method;
 use serde_json::{Value, json};
 use sqlx::Row as _;
 
-use crate::e2e::{Scenario, scenario_with};
+use crate::definition_install::seal;
+use crate::e2e::{Scenario, scenario_with, unique_ids};
 use crate::e2e_seed::{FLEET_CONFIG_JSON, seed_fleet};
 use crate::tail::lease;
 
@@ -56,6 +58,37 @@ impl<'a> Seeded<'a> {
     }
 }
 
+/// Seeds the admin workspace and seals its `qstash` bag naming `qstash`.
+async fn seed_scheduler_bag(run: &Scenario, admin: &Uuid7, qstash: &FakeQStash) {
+    let mut connection = run
+        .booted
+        .database
+        .acquire()
+        .await
+        .expect("the scoped pool");
+    WorkspaceSeed::new(admin, &run.tenant)
+        .name("platform-scheduler")
+        .at(run.seeded_at)
+        .insert(&mut *connection)
+        .await
+        .expect("the admin workspace seeds");
+    drop(connection);
+    let bag = json!({
+        "token": QSTASH_TOKEN,
+        "url": qstash.base(),
+        "current_signing_key": "sig_current_fixture",
+        "next_signing_key": "sig_next_fixture",
+    });
+    seal(
+        &run.booted,
+        admin,
+        afd_cron::test_util::QSTASH_BAG,
+        &bag.to_string(),
+        run.seeded_at,
+    )
+    .await;
+}
+
 /// A booted daemon pointed at `qstash`, its lease taken.
 pub(crate) struct Leased {
     pub(crate) run: Scenario,
@@ -70,11 +103,12 @@ const OTHER_FLEET_NAME: &str = "e2e-other-fleet";
 
 impl Leased {
     pub(crate) async fn boot(supervisor: &mut Supervisor, qstash: &FakeQStash) -> Self {
-        let extra = [
-            (QSTASH_URL_KNOB, qstash.base()),
-            (QSTASH_TOKEN_KNOB, QSTASH_TOKEN),
-        ];
+        // The scheduler credentials are the admin workspace's `qstash` bag, read
+        // on use, as production reads them; nothing reaches the daemon by env.
+        let admin = unique_ids().0;
+        let extra = [(PLATFORM_ADMIN_WORKSPACE_KNOB, admin.as_str())];
         let run = scenario_with(supervisor, None, &extra, FLEET_CONFIG_JSON).await;
+        seed_scheduler_bag(&run, &admin, qstash).await;
         #[expect(
             clippy::disallowed_methods,
             reason = "a plain client calls the daemon this test booted; a proxy rule and a deadline are not what the test proves"

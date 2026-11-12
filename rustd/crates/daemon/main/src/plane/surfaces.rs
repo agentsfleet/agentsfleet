@@ -13,7 +13,6 @@ use af_crypto::entropy::Entropy;
 use af_crypto::secret::Kek;
 use afd_admission::Admissions;
 use afd_credential::provider::Providers;
-use afd_cron::SigningKeys;
 use afd_db::Db;
 use afd_tenant::session::Sessions as Logins;
 
@@ -68,19 +67,20 @@ pub(super) fn authoring(
 #[derive(Debug)]
 pub(super) struct Outbound {
     pub(super) schedules: afd_api::SchedulePlane,
-    pub(super) schedule_keys: Option<SigningKeys>,
-    pub(super) schedule_destination: String,
+    /// The scheduler the fire route verifies through.
+    pub(super) scheduler: Arc<dyn afd_cron::Scheduler>,
     pub(super) connectors: afd_connector::Connectors,
     pub(super) interjector: afd_outbound::Interjector,
 }
 
 /// What [`outbound`] consumes, moved out of the plane's parts whole.
 ///
-/// Grouped so the call site names the four values the builder consumes apart
-/// from the three it only borrows.
+/// Grouped so the call site names the five values the builder consumes apart
+/// from the two it only borrows.
 #[derive(Debug)]
 pub(super) struct OutboundParts {
     pub(super) schedule: ScheduleConfig,
+    pub(super) admin: Option<af_core::id::Uuid7>,
     pub(super) admissions: Admissions,
     pub(super) vendor_client: reqwest::Client,
     pub(super) slack_api_base: String,
@@ -88,13 +88,12 @@ pub(super) struct OutboundParts {
 
 /// Builds the outbound family.
 ///
-/// The destination is copied and the signing keys taken BEFORE the schedule
-/// plane consumes the configuration, because the plane keeps both to verify a
-/// fire. The destination is derived from the API url this deployment already
-/// knows, so a schedule registered upstream calls back to the daemon that
-/// registered it; a url carrying a query or a fragment is refused at
-/// construction rather than silently truncating the callback — see
-/// `qstash::destination_url`.
+/// The scheduler is shared BEFORE the schedule plane takes it, because the
+/// plane keeps it to verify a fire: it reads the signing keys from the
+/// `qstash` bag on each one. Its callback is derived from the API url this
+/// deployment already knows, so a schedule registered upstream calls back to
+/// the daemon that registered it; preflight refuses an API url that cannot
+/// form one — see `qstash::destination_url`.
 ///
 /// The exchange dials the vendor and the Jira site listing dials it again, so
 /// the interjector and the connect flow both take `vendor_client`: one pool for
@@ -102,21 +101,20 @@ pub(super) struct OutboundParts {
 /// interjector clones it, so the connect flow can take it last.
 pub(super) fn outbound(database: &Db, kek: &Arc<Kek>, parts: OutboundParts) -> Outbound {
     let OutboundParts {
-        mut schedule,
+        schedule,
+        admin,
         admissions,
         vendor_client,
         slack_api_base,
     } = parts;
-    let schedule_destination = schedule.destination.clone();
-    let schedule_keys = schedule.keys.take();
+    let upstream = platform::qstash(database, kek, admin, schedule);
     let bus = admissions.streams();
-    let schedules = config::schedule_plane(database, schedule, admissions);
+    let schedules = config::schedule_plane(database, Arc::clone(&upstream), admissions);
     let interjector = platform::interjector(database, kek, vendor_client.clone(), slack_api_base);
     let connectors = platform::connect_flow(database, kek, &bus, vendor_client);
     Outbound {
         schedules,
-        schedule_keys,
-        schedule_destination,
+        scheduler: upstream,
         connectors,
         interjector,
     }

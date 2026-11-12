@@ -3,7 +3,7 @@
 mod connection;
 mod purpose;
 
-use afd_credential::{secrets::Supply, vault::CredentialInspection};
+use afd_credential::secrets::{CredentialInspection, Supply};
 use serde_json::json;
 use sqlx::PgConnection;
 
@@ -25,10 +25,14 @@ pub(super) async fn observe(
 ) -> Result<()> {
     let needs = purpose::collect(candidate, requirements);
     let names: Vec<_> = needs.keys().map(|name| (*name).to_owned()).collect();
-    let held = setup
-        .vault
-        .inspect_on(connection, &draft.workspace_id, &names, &setup.connectors)
-        .await?;
+    let held = afd_credential::secrets::inspect_on(
+        &setup.vault,
+        connection,
+        &draft.workspace_id,
+        &names,
+        &setup.connectors,
+    )
+    .await?;
     for (name, purposes) in needs {
         let held = held.iter().find(|held| held.name == name);
         observed.check(

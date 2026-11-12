@@ -23,6 +23,7 @@ test-util = [
     "af_core/test-util",
     "afd_bus/test-util",
     "afd_db/test-util",
+    "afd_vault/test-util",
 ]
 
 [dependencies]
@@ -36,6 +37,9 @@ af_core = { workspace = true, features = ["sqlx"] }
 af_observability.workspace = true
 # The Postgres pool every statement here runs on.
 afd_db.workspace = true
+# The admin workspace's vault, where the `qstash` bag holds the scheduler's
+# token and signing keys; read on use, as `afd_mail` reads `smtp-relay`.
+afd_vault.workspace = true
 # Where a new schedule's identifier comes from — see `store::Schedules::mint`.
 af_crypto.workspace = true
 # The event type and stream field names a fire is appended under.
@@ -65,6 +69,8 @@ jsonwebtoken.workspace = true
 # The retry loop and jittered schedule a transient scheduler failure is sent
 # again on, the same crate and curve `afd_outbound` delivers through.
 backon.workspace = true
+# The `Scheduler` seam is a trait object, so its async calls are boxed here.
+async-trait.workspace = true
 # The QStash management calls. Both published SDK crates are unmaintained and
 # force older transitive versions; a typed outcome classification is the
 # deliverable and this is the client the rest of the workspace already uses.

@@ -4,14 +4,15 @@
 //! A bag missing any of them, or carrying one this build cannot use, reads as
 //! no relay at all: the invite then records `unconfigured`, which is the truth
 //! an operator can act on, rather than a send attempted with half a credential.
-//! The [`BagFault`] it reads as names the field to fix, never what it holds.
+//! The [`BagFault`] it reads as names the field to fix, never what it holds;
+//! the load and the fault are `afd_vault::bag`'s, shared with every bag.
 
 use std::net::IpAddr;
-use std::str::FromStr;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use af_crypto::secret::{SecretBytes, SecretString};
+use af_crypto::secret::SecretString;
+use afd_vault::bag::{Bag, BagFault, filled, parsed, secret};
 use lettre::message::Mailbox;
 use lettre::transport::smtp::authentication::Credentials;
 use lettre::transport::smtp::client::{Tls, TlsParameters};
@@ -67,49 +68,11 @@ fn is_loopback(host: &str) -> bool {
             .is_ok_and(|address| address.is_loopback())
 }
 
-/// Why the admin workspace's vault yields no relay.
-///
-/// Fieldless but for the NAME of the field at fault, so the record an operator
-/// reads says what to fix and never what the bag holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BagFault {
-    /// No bag, or no admin workspace to hold one.
-    Absent,
-    /// Not a JSON object, or a field that is not a string.
-    Malformed,
-    /// A field absent or empty.
-    Missing(&'static str),
-    /// A field present but not a port, or not a mailbox.
-    Unparsed(&'static str),
-}
-
-impl BagFault {
-    /// What the `unconfigured` record calls this fault.
-    #[must_use]
-    pub(crate) const fn name(self) -> &'static str {
-        match self {
-            Self::Absent => "absent",
-            Self::Malformed => "malformed",
-            Self::Missing(_) => "missing",
-            Self::Unparsed(_) => "unparsed",
-        }
-    }
-
-    /// The field at fault, when one is.
-    #[must_use]
-    pub(crate) const fn field(self) -> Option<&'static str> {
-        match self {
-            Self::Missing(field) | Self::Unparsed(field) => Some(field),
-            Self::Absent | Self::Malformed => None,
-        }
-    }
-}
-
 /// The bag as it is stored. Every field may be absent here, so an absent one
 /// is refused by its name, as an empty one is, rather than as a bag that does
 /// not parse.
 #[derive(Deserialize)]
-struct RelayBag {
+pub(crate) struct RelayBag {
     host: Option<String>,
     port: Option<String>,
     username: Option<String>,
@@ -133,24 +96,19 @@ pub(crate) struct Server {
     password: SecretString,
 }
 
-impl Relay {
+impl Bag for Relay {
+    type Stored = RelayBag;
+
     /// The relay a stored bag names, or the fault that makes it unusable.
-    pub(crate) fn parse(stored: &SecretBytes) -> Result<Self, BagFault> {
-        // serde's own message is dropped: it can quote a value, the password
-        // among them, and the fault is logged.
-        let bag: RelayBag =
-            serde_json::from_slice(stored.expose()).map_err(|_quoted| BagFault::Malformed)?;
+    fn from_stored(stored: RelayBag) -> Result<Self, BagFault> {
         Ok(Self {
             server: Server {
-                host: filled(bag.host, "host")?,
-                port: parsed(bag.port, "port")?,
-                username: filled(bag.username, "username")?,
-                password: bag
-                    .password
-                    .filter(|password| !password.is_empty())
-                    .ok_or(BagFault::Missing("password"))?,
+                host: filled(stored.host, "host")?,
+                port: parsed(stored.port, "port")?,
+                username: filled(stored.username, "username")?,
+                password: secret(stored.password, "password")?,
             },
-            from: parsed(bag.from_address, "from_address")?,
+            from: parsed(stored.from_address, "from_address")?,
         })
     }
 }
@@ -216,20 +174,6 @@ impl std::fmt::Debug for TlsCache {
         let host = self.0.get().map(|(host, _)| host.as_str());
         f.debug_tuple("TlsCache").field(&host).finish()
     }
-}
-
-/// One field of the bag, refused by name when absent or empty.
-fn filled(value: Option<String>, field: &'static str) -> Result<String, BagFault> {
-    value
-        .filter(|value| !value.is_empty())
-        .ok_or(BagFault::Missing(field))
-}
-
-/// One field of the bag, parsed, refused by name when it does not parse.
-fn parsed<T: FromStr>(value: Option<String>, field: &'static str) -> Result<T, BagFault> {
-    filled(value, field)?
-        .parse()
-        .map_err(|_unparsed| BagFault::Unparsed(field))
 }
 
 #[cfg(test)]

@@ -39,7 +39,7 @@ async fn configured(
         .native_config(&case.held.fleet, &config.to_string())
         .await;
     let mut plane = case.held.fixtures.plane();
-    let platform = platform(fixture, &plane.vault, server, installation, access).await;
+    let platform = platform(fixture, server, installation, access).await;
     plane.broker = Arc::new(Broker::new(
         Arc::new(Registry::default()),
         Arc::new(Vendors::new(platform, server.client.clone())),
@@ -59,7 +59,6 @@ async fn configured(
 
 async fn platform(
     fixture: &Decisions<'_>,
-    vault: &afd_credential::vault::Vault,
     server: &Server,
     installation: u32,
     access: af_fleet_runtime::config::Access,
@@ -84,7 +83,7 @@ async fn platform(
         )
         .await
         .expect("encrypted platform App credential");
-    let platform = Platform::load(vault, &fixture.case.scope.workspace_id).await;
+    let platform = Platform::load(&fixture.vault, &fixture.case.scope.workspace_id).await;
     assert_eq!(platform.github().map(|app| app.app_id), Some(7));
     platform
 }

@@ -22,7 +22,7 @@ use std::sync::Arc;
 use af_core::error_code;
 use af_core::id::Uuid7;
 use af_observability::metrics::label::scheduler::FireOutcome;
-use afd_cron::{FireTarget, VerifiedFire, verifier};
+use afd_cron::{FireTarget, VerifiedFire};
 use afd_fleet_lifecycle::FleetStatus;
 use axum::extract::State;
 use axum::response::{IntoResponse as _, Response};
@@ -111,7 +111,7 @@ pub(crate) async fn receive<D: Services>(
     body: Bytes,
 ) -> Result<Response, Refusal> {
     webhook::within_cap(&body)?;
-    let proven = prove(services.as_ref(), &headers, &body)?;
+    let proven = prove(services.as_ref(), &headers, &body).await?;
     let mut observed = af_observability::producers::scheduler::Callback::begin();
 
     let result = dispatch(services, headers, proven, &mut observed).await;
@@ -172,25 +172,28 @@ async fn dispatch<D: Services>(
 
 /// The callback's signature, checked against this deployment's keys and
 /// destination before the body is read as anything but bytes.
-fn prove<D: Services>(
+async fn prove<D: Services>(
     services: &D,
     headers: &HeaderMap,
     body: &Bytes,
 ) -> Result<VerifiedFire, Refusal> {
     let token = text(headers, HEADER_SIGNATURE).unwrap_or_default();
-    let Some(keys) = services.schedule_signing_keys() else {
-        // No keys configured is fail-closed, and it is the same answer a forged
-        // callback gets: a deployment that cannot verify must not act, and
-        // telling a prober which of the two it hit would say whether this
-        // daemon is misconfigured.
-        return Err(unverified());
-    };
-
-    // Nothing above this line has read the body as anything but bytes.
-    verifier::verify_at(keys, services.schedule_destination(), token, body).map_err(
-        |refused: afd_cron::Error| {
-            // Logged with the reason, answered without it — the operator needs to
-            // know a key is missing; the sender must not.
+    // Nothing here has read the body as anything but bytes.
+    services
+        .scheduler()
+        .verify(token, body)
+        .await
+        .map_err(|refused: afd_cron::Error| {
+            // A vault that would not answer is the daemon failing, not the
+            // callback: answered as the outage it is, so the scheduler sends the
+            // fire again.
+            if refused.is_retryable() {
+                return Refusal::at(EVENT_DROPPED)(refused);
+            }
+            // Logged with the reason, answered without it — the operator needs
+            // to know a key is missing; the sender must not. An unusable bag is
+            // the same answer a forged callback gets: telling a prober which of
+            // the two it hit would say whether this daemon is misconfigured.
             let reason = refused.refusal_word();
             tracing::warn!(
                 reason,
@@ -198,8 +201,7 @@ fn prove<D: Services>(
                 error_code = error_code::WEBHOOK_SIGNATURE_INVALID.as_str(),
             );
             unverified()
-        },
-    )
+        })
 }
 
 /// The 200 a fire that must not run answers with, or `None` when it may run.

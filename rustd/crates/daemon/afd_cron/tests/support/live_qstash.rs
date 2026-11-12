@@ -54,11 +54,11 @@ pub(crate) fn live() -> Option<(String, String)> {
 pub(crate) fn against_live(lane: &CronLane, url: String, token: String) -> Reconciler {
     Reconciler::new(
         lane.store.clone(),
-        QStash::new(
+        std::sync::Arc::new(QStash::fixed(
             reqwest::Client::new(),
             af_crypto::secret::SecretString::new(token),
             LIVE_DESTINATION.to_owned(),
             url,
-        ),
+        )),
     )
 }
