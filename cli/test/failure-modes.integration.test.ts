@@ -113,7 +113,7 @@ describe("failure modes — runtime / observability surface", () => {
         const logsOut = bufferStream();
         const logsErr = bufferStream();
         const logsCode = await runCli(
-          ["logs", FLEET_ID],
+          ["fleet", "logs", FLEET_ID],
           { stdout: logsOut.stream, stderr: logsErr.stream,
             env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
@@ -139,7 +139,7 @@ describe("failure modes — runtime / observability surface", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["logs", FLEET_ID],
+          ["fleet", "logs", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         // Effect-shape contract: HTTP 401 → ServerError → exit 3.

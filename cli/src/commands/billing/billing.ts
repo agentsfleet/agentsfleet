@@ -1,4 +1,4 @@
-// Read-only `agentsfleet billing show [--limit N] [--cursor TOKEN] [--json]`.
+// Read-only `agentsfleet usage show [--limit N] [--cursor TOKEN] [--json]`.
 //
 // Calls GET /v1/tenants/me/billing for the balance card and GET
 // /v1/tenants/me/billing/charges for runtime and settled setup costs. Runtime

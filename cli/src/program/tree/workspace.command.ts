@@ -1,6 +1,6 @@
-// Workspace selection, tenant provider posture, and the billing view.
+// Workspace selection and the usage view.
 //
-// Three groups that share nothing but their shape: each names a thing the
+// Two groups that share nothing but their shape: each names a thing the
 // tenant owns and offers the verbs that read or set it.
 
 import { Option } from "effect";
@@ -10,21 +10,13 @@ import {
   workspaceAddEffect,
   workspaceDeleteEffectFromArgs,
   workspaceListEffect,
-  workspaceSecretsEffect,
   workspaceShowEffectFromArgs,
   workspaceUseEffectFromArgs,
 } from "../../commands/workspace/workspace.ts";
-import {
-  tenantProviderAddEffectFromArgs,
-  tenantProviderDeleteEffect,
-  tenantProviderShowEffect,
-} from "../../commands/tenant/tenant.ts";
 import { billingShowEffectFromArgs } from "../../commands/billing/billing.ts";
 import {
   billingLimitFlag,
   cursorFlag,
-  modelOverrideFlag,
-  secretNameFlag,
   workspaceIdArgument,
   workspaceFlag,
   workspaceIdOptionalArgument,
@@ -67,67 +59,25 @@ const workspaceShowCommand = Command.make(SHOW, {
   ),
 );
 
-const workspaceSecretsCommand = Command.make("secrets").pipe(
-  Command.withDescription("Open the workspace secret vault"),
-  guardedHandler(() => workspaceSecretsEffect),
-);
-
 const workspaceDeleteCommand = Command.make(DELETE, { workspaceId: workspaceIdArgument }).pipe(
   Command.withDescription("Remove a workspace from local client state"),
   guardedHandler(({ workspaceId }) => workspaceDeleteEffectFromArgs(workspaceId, undefined)),
 );
 
-export const workspaceCommand = Command.make("workspace").pipe(
+export const workspaceCommand = () => Command.make("workspace").pipe(
   Command.withDescription("Manage workspaces"),
   Command.withSubcommands([
     workspaceCreateCommand,
     workspaceListCommand,
     workspaceUseCommand,
     workspaceShowCommand,
-    workspaceSecretsCommand,
     workspaceDeleteCommand,
   ]),
 );
 
-// ── tenant provider ─────────────────────────────────────────────────
+// ── usage ───────────────────────────────────────────────────────────
 
-const tenantProviderShowCommand = Command.make(SHOW).pipe(
-  Command.withDescription("Show the active provider config"),
-  guardedHandler(() => tenantProviderShowEffect),
-);
-
-const tenantProviderCreateCommand = Command.make(CREATE, {
-  secret: secretNameFlag,
-  model: modelOverrideFlag,
-}).pipe(
-  Command.withDescription("Use a self-managed secret"),
-  guardedHandler(({ secret, model }) =>
-    tenantProviderAddEffectFromArgs(opt(secret), opt(model)),
-  ),
-);
-
-const tenantProviderDeleteCommand = Command.make(DELETE).pipe(
-  Command.withDescription("Reset to the platform default"),
-  guardedHandler(() => tenantProviderDeleteEffect),
-);
-
-const tenantProviderCommand = Command.make("provider").pipe(
-  Command.withDescription("Manage tenant LLM provider posture"),
-  Command.withSubcommands([
-    tenantProviderShowCommand,
-    tenantProviderCreateCommand,
-    tenantProviderDeleteCommand,
-  ]),
-);
-
-export const tenantCommand = Command.make("tenant").pipe(
-  Command.withDescription("Tenant-scoped commands"),
-  Command.withSubcommands([tenantProviderCommand]),
-);
-
-// ── billing ─────────────────────────────────────────────────────────
-
-const billingShowCommand = Command.make(SHOW, {
+const usageShowCommand = Command.make(SHOW, {
   limit: billingLimitFlag,
   cursor: cursorFlag,
 }).pipe(
@@ -137,7 +87,7 @@ const billingShowCommand = Command.make(SHOW, {
   ),
 );
 
-export const billingCommand = Command.make("billing").pipe(
-  Command.withDescription("Tenant billing dashboard"),
-  Command.withSubcommands([billingShowCommand]),
+export const usageCommand = () => Command.make("usage").pipe(
+  Command.withDescription("Balance and recent spend for this tenant"),
+  Command.withSubcommands([usageShowCommand]),
 );

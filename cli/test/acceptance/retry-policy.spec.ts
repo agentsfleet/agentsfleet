@@ -22,8 +22,8 @@ const HTTP_SERVICE_UNAVAILABLE = 503;
 const EXIT_OK = 0;
 const CONTENT_TYPE_JSON = "application/json";
 const EMPTY_LIST_BODY = JSON.stringify({ items: [], next_cursor: null });
-const API_KEY_CREATE_ARGS = ["api-key", "create", "--name", "retry-probe"];
-const FLEET_LIST_ARGS = ["list"];
+const API_KEY_CREATE_ARGS = ["api-keys", "create", "--name", "retry-probe"];
+const FLEET_LIST_ARGS = ["fleet", "list"];
 const API_KEYS_PATH = "/v1/api-keys";
 const STACK_FRAME_RE = /\n\s+at\s+\S+/;
 // The transport ceiling the binary ships with (lib/http-retry.ts).

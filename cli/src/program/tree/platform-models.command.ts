@@ -18,6 +18,6 @@ const update = Command.make("update", {...modelId, file: platformFileFlag}).pipe
 const remove = Command.make("delete", modelId).pipe(Command.withDescription("Delete a catalogue model (model:admin)"),
   guardedHandler(({id}) => platformModelDelete(id)));
 
-export const platformModelsCommand = Command.make("models").pipe(
+export const platformModelsCommand = () => Command.make("models").pipe(
   Command.withDescription("Manage the shared model catalogue"), Command.withSubcommands([list, show, create, update, remove]),
 );

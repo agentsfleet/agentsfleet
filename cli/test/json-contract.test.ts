@@ -12,8 +12,11 @@ import { runCli } from "../src/cli.ts";
 import { EXIT_CODE } from "../src/errors/index.ts";
 import { STATE_DIR_ENV } from "../src/constants/env.ts";
 import { writeError } from "../src/program/io.ts";
-import { rootCommand } from "../src/program/tree/root.command.ts";
+import { buildCommandTree } from "../src/program/tree/index.ts";
+
 import { childrenOf, type CommandNode } from "../src/program/tree/resolve-path.ts";
+
+const rootCommand = buildCommandTree();
 
 // The credential store resolves from the environment `runCli` is handed, so
 // the auth-shaped cases below isolate by passing this directory in `io.env` —
@@ -47,18 +50,18 @@ describe("CLI tree — every documented route is reachable", () => {
   const expectedCommands = [
     ["login"], ["logout"], ["doctor"],
     ["workspace", "create"], ["workspace", "list"], ["workspace", "use"],
-    ["workspace", "show"], ["workspace", "secrets"], ["workspace", "delete"],
-    ["api-key", "create"], ["api-key", "list"], ["api-key", "revoke"], ["api-key", "delete"],
-    ["connector", "list"], ["connector", "show"],
-    ["grant", "list"], ["grant", "delete"],
-    ["schedule", "create"], ["schedule", "list"], ["schedule", "update"], ["schedule", "delete"], ["schedule", "show"], ["schedule", "sync"],
-    ["tenant", "provider", "show"], ["tenant", "provider", "create"], ["tenant", "provider", "delete"],
-    ["billing", "show"],
+    ["workspace", "show"], ["secrets", "open"], ["workspace", "delete"],
+    ["api-keys", "create"], ["api-keys", "list"], ["api-keys", "revoke"], ["api-keys", "delete"],
+    ["connections", "list"], ["connections", "show"],
+    ["fleet", "grants", "list"], ["fleet", "grants", "revoke"],
+    ["fleet", "schedule", "create"], ["fleet", "schedule", "list"], ["fleet", "schedule", "update"], ["fleet", "schedule", "delete"], ["fleet", "schedule", "show"], ["fleet", "schedule", "sync"],
+    ["models", "current"], ["models", "use"], ["models", "reset"],
+    ["usage", "show"],
     ["chat", "list"], ["chat", "rename"], ["chat", "delete"],
     ["library", "list"], ["library", "delete"], ["fleet", "show"],
-    ["list"], ["status"], ["stop"], ["resume"], ["kill"], ["delete"],
-    ["logs"], ["events"], ["steer"],
-    ["secret", "create"], ["secret", "update"], ["secret", "show"], ["secret", "list"], ["secret", "delete"],
+    ["fleet", "list"], ["fleet", "status"], ["fleet", "stop"], ["fleet", "resume"], ["fleet", "kill"], ["fleet", "delete"],
+    ["fleet", "logs"], ["fleet", "events"], ["fleet", "steer"],
+    ["secrets", "create"], ["secrets", "update"], ["secrets", "show"], ["secrets", "list"], ["secrets", "delete"],
   ];
 
   for (const path of expectedCommands) {

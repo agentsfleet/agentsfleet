@@ -47,7 +47,7 @@ const ANSI_PATTERN = /\u001B\[[0-9;]*m/g;
 const MAX_TERM_COLUMN = 34;
 const HANGING_INDENT = "    ";
 
-const visibleLength = (text: string): number => text.replace(ANSI_PATTERN, "").length;
+export const visibleLength = (text: string): number => text.replace(ANSI_PATTERN, "").length;
 
 /**
  * Greedy word wrap at a fixed left margin.
@@ -56,7 +56,7 @@ const visibleLength = (text: string): number => text.replace(ANSI_PATTERN, "").l
  * columns nowhere but in `String.length`, and counting it would wrap styled
  * help earlier than plain help for no reason a reader could see.
  */
-const wrapAt = (text: string, margin: string, width: number): ReadonlyArray<string> => {
+export const wrapAt = (text: string, margin: string, width: number): ReadonlyArray<string> => {
   const lines: string[] = [];
   let current = "";
   for (const word of text.split(/\s+/)) {

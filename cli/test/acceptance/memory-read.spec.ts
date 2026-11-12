@@ -64,7 +64,7 @@ async function withStubbedRun<T>(
 describe("test_memory_help_e2e — built binary renders the documented grammar", () => {
   it("`memory --help` lists both verbs", async () => {
     const result = await runFleetctl(
-      ["memory", "--help"],
+      ["fleet", "memory", "--help"],
       { env: helpEnv(), timeoutMs: SUBPROCESS_TIMEOUT_MS },
     );
     assert.equal(result.code, 0, result.stderr);
@@ -78,7 +78,7 @@ describe("test_memory_help_e2e — built binary renders the documented grammar",
 
   it("`memory list --help` documents --fleet/--category/--limit/--workspace", async () => {
     const result = await runFleetctl(
-      ["memory", "list", "--help"],
+      ["fleet", "memory", "list", "--help"],
       { env: helpEnv(), timeoutMs: SUBPROCESS_TIMEOUT_MS },
     );
     assert.equal(result.code, 0, result.stderr);
@@ -90,7 +90,7 @@ describe("test_memory_help_e2e — built binary renders the documented grammar",
 
   it("`memory search --help` documents the positional query and carries no --category", async () => {
     const result = await runFleetctl(
-      ["memory", "search", "--help"],
+      ["fleet", "memory", "search", "--help"],
       { env: helpEnv(), timeoutMs: SUBPROCESS_TIMEOUT_MS },
     );
     assert.equal(result.code, 0, result.stderr);
@@ -103,7 +103,7 @@ describe("test_memory_help_e2e — built binary renders the documented grammar",
 describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint", () => {
   it("piped `memory list` emits the strict envelope without --json (auto-JSON pillar)", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "list", "--fleet", FLEET_ID]);
+      const result = await run(["fleet", "memory", "list", "--fleet", FLEET_ID]);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout) as Envelope;
       assert.equal(parsed.items[0]?.key, "acme_contact");
@@ -116,7 +116,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
 
   it("`memory search` forwards the query and renders JSON when piped", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "search", "--fleet", FLEET_ID, "acme"]);
+      const result = await run(["fleet", "memory", "search", "--fleet", FLEET_ID, "acme"]);
       assert.equal(result.code, 0, result.stderr);
       const parsed = JSON.parse(result.stdout) as Envelope;
       assert.equal(parsed.total, 1);
@@ -128,7 +128,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
     await withStubbedRun(
       { [MEMORIES_ROUTE]: () => jsonResponse(200, { items: [], total: 0, request_id: "req_mem_empty" }) },
       async (run) => {
-        const result = await run(["memory", "list", "--fleet", FLEET_ID]);
+        const result = await run(["fleet", "memory", "list", "--fleet", FLEET_ID]);
         assert.equal(result.code, 0, result.stderr);
         const parsed = JSON.parse(result.stdout) as Envelope;
         assert.deepEqual(parsed.items, []);
@@ -143,17 +143,17 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
           jsonResponse(404, { error_code: "UZ-MEM-002", detail: "fleet not found", request_id: "req_mem_404" }),
       },
       async (run) => {
-        const result = await run(["memory", "list", "--fleet", FLEET_ID]);
+        const result = await run(["fleet", "memory", "list", "--fleet", FLEET_ID]);
         assert.notEqual(result.code, 0);
         assert.match(result.stderr, /UZ-MEM-002/);
-        assert.match(result.stderr, /agentsfleet list/);
+        assert.match(result.stderr, /agentsfleet fleet list/);
       },
     );
   }, SUBPROCESS_TEST_TIMEOUT_MS);
 
   it("`--limit 0` is rejected client-side before any request", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "list", "--fleet", FLEET_ID, "--limit", "0"]);
+      const result = await run(["fleet", "memory", "list", "--fleet", FLEET_ID, "--limit", "0"]);
       assert.notEqual(result.code, 0);
       assert.match(result.stderr, /must be/);
       assert.equal(calls.length, 0, "invalid limit must not reach the API");
@@ -162,7 +162,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
 
   it("`--limit 101` exceeds the mirrored server cap and never reaches the API", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "list", "--fleet", FLEET_ID, "--limit", "101"]);
+      const result = await run(["fleet", "memory", "list", "--fleet", FLEET_ID, "--limit", "101"]);
       assert.notEqual(result.code, 0);
       assert.match(result.stderr, /must be ≤ 100/);
       assert.equal(calls.length, 0, "over-cap limit must not reach the API");
@@ -171,7 +171,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
 
   it("a malformed --fleet id is rejected client-side as uuidv7 before any request", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "list", "--fleet", "not-a-uuid"]);
+      const result = await run(["fleet", "memory", "list", "--fleet", "not-a-uuid"]);
       assert.notEqual(result.code, 0);
       assert.match(result.stderr, /expected uuidv7 format/);
       assert.equal(calls.length, 0, "malformed id must not reach the API");
@@ -180,7 +180,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
 
   it("`memory search` without a query is rejected before any request", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "search", "--fleet", FLEET_ID]);
+      const result = await run(["fleet", "memory", "search", "--fleet", FLEET_ID]);
       assert.notEqual(result.code, 0);
       assert.match(result.stderr, /missing|required/i);
       assert.equal(calls.length, 0);
@@ -189,7 +189,7 @@ describe("test_memory_e2e_list_search — subprocess against a stubbed endpoint"
 
   it("bare `memory list` fails with the --fleet usage suggestion through the real pipeline", async () => {
     await withStubbedRun({ [MEMORIES_ROUTE]: () => jsonResponse(200, ENVELOPE) }, async (run, calls) => {
-      const result = await run(["memory", "list"]);
+      const result = await run(["fleet", "memory", "list"]);
       assert.notEqual(result.code, 0);
       assert.match(result.stderr, /--fleet <id> is required/);
       assert.equal(calls.length, 0);

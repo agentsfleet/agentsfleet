@@ -99,7 +99,7 @@ const suggestionFor = (root: CommandNode, path: ReadonlyArray<string>): string =
   const node = path.length > 0 ? nodeAt(root, path) : root;
   if (node === null || childrenOf(node).length > 0 || path.length === 0) {
     // The hint names the group that was actually reached: `connector pogo`
-    // sends someone to `agentsfleet connector --help`, which lists the verbs
+    // sends someone to `agentsfleet connections --help`, which lists the verbs
     // they were choosing between, not the root list they have to search again.
     const scope = [CLI_NAME, ...path].join(" ");
     return `${HELP_HINT_PREFIX}${scope} ${HELP_FLAG}${HELP_HINT_SUFFIX}`;

@@ -38,7 +38,7 @@ describe("status", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["status"],
+          ["fleet", "status"],
           { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -63,7 +63,7 @@ describe("status", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const code = await runCli(
-          ["status"],
+          ["fleet", "status"],
           { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -91,7 +91,7 @@ describe("status", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["status"],
+          ["fleet", "status"],
           { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -121,7 +121,7 @@ describe("status", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["status"],
+          ["fleet", "status"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -148,7 +148,7 @@ describe("status", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const code = await runCli(
-          ["status", "--json"],
+          ["fleet", "status", "--json"],
           { stdout: out.stream, stderr: bufferStream().stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -168,7 +168,7 @@ describe("status", () => {
       await withMockApi(routes, async (apiUrl) => {
         const err = bufferStream();
         const code = await runCli(
-          ["status"],
+          ["fleet", "status"],
           { stdout: bufferStream().stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -213,7 +213,7 @@ for (const [verb, target, pastTense] of LIFECYCLE) {
     test(`PATCHes status=${target} under the observed tag and prints confirmation`, async () => {
       await authedScope(async () => {
         await withMockApi(routes(() => jsonResponse(200, fleetWith(target))), async (apiUrl, calls) => {
-          const result = await run(apiUrl, [verb, FLEET_ID]);
+          const result = await run(apiUrl, ["fleet", verb, FLEET_ID]);
           expect(result.code).toBe(0);
           expect(result.out).toContain(pastTense);
           expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([`GET ${FLEET_PATH}`, `PATCH ${FLEET_PATH}`]);
@@ -227,7 +227,7 @@ for (const [verb, target, pastTense] of LIFECYCLE) {
     test("--json emits the PATCH response as JSON", async () => {
       await authedScope(async () => {
         await withMockApi(routes(() => jsonResponse(200, fleetWith(target))), async (apiUrl) => {
-          const result = await run(apiUrl, [verb, FLEET_ID, "--json"]);
+          const result = await run(apiUrl, ["fleet", verb, FLEET_ID, "--json"]);
           expect(result.code).toBe(0);
           expect((JSON.parse(result.out) as { status?: string }).status).toBe(target);
         });
@@ -238,7 +238,7 @@ for (const [verb, target, pastTense] of LIFECYCLE) {
       await authedScope(async () => {
         const refusal = () => jsonResponse(409, errorEnvelope("UZ-AGT-009", "Fleet tag is stale"));
         await withMockApi(routes(refusal), async (apiUrl) => {
-          const result = await run(apiUrl, [verb, FLEET_ID]);
+          const result = await run(apiUrl, ["fleet", verb, FLEET_ID]);
           expect(result.code).not.toBe(0);
           expect(result.err).toContain("UZ-AGT-009");
           expect(result.out).not.toContain(pastTense);
@@ -255,7 +255,7 @@ test("stop on an installing fleet reports that setup is still waiting", async ()
       [`PATCH ${FLEET_PATH}`]: () => jsonResponse(200, fleetWith(AGENTSFLEET_STATUS.INSTALLING)),
     };
     await withMockApi(routes, async (apiUrl) => {
-      const result = await run(apiUrl, ["stop", FLEET_ID]);
+      const result = await run(apiUrl, ["fleet", "stop", FLEET_ID]);
       expect(result.code).toBe(0);
       expect(result.out).toContain("setup is still waiting");
       expect(result.out).toContain(`agentsfleet fleet show ${FLEET_ID}`);
@@ -269,7 +269,7 @@ test("a fleet read that does not match the API shape refuses before any mutation
       [`GET ${FLEET_PATH}`]: () => jsonResponse(200, { fleet_id: FLEET_ID, status: "active" }),
     };
     await withMockApi(routes, async (apiUrl, calls) => {
-      const result = await run(apiUrl, ["stop", FLEET_ID]);
+      const result = await run(apiUrl, ["fleet", "stop", FLEET_ID]);
       expect(result.code).not.toBe(0);
       expect(result.err).toContain("CHAT_RESPONSE_INVALID");
       expect(calls.map((c) => c.method)).toEqual(["GET"]);
@@ -287,7 +287,7 @@ describe("delete", () => {
   test("DELETEs the fleet under the observed tag and prints confirmation", async () => {
     await authedScope(async () => {
       await withMockApi(routes(gone), async (apiUrl, calls) => {
-        const result = await run(apiUrl, ["delete", FLEET_ID]);
+        const result = await run(apiUrl, ["fleet", "delete", FLEET_ID]);
         expect(result.code).toBe(0);
         expect(result.out).toContain("deleted");
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([`GET ${FLEET_PATH}`, `DELETE ${FLEET_PATH}`]);
@@ -299,7 +299,7 @@ describe("delete", () => {
   test("--json prints JSON with fleet_id and deleted:true", async () => {
     await authedScope(async () => {
       await withMockApi(routes(gone), async (apiUrl) => {
-        const result = await run(apiUrl, ["delete", FLEET_ID, "--json"]);
+        const result = await run(apiUrl, ["fleet", "delete", FLEET_ID, "--json"]);
         expect(result.code).toBe(0);
         const parsed = JSON.parse(result.out) as { fleet_id?: string; deleted?: boolean };
         expect(parsed.fleet_id).toBe(FLEET_ID);
@@ -312,7 +312,7 @@ describe("delete", () => {
     await authedScope(async () => {
       const refusal = () => jsonResponse(409, errorEnvelope("UZ-AGT-010", "Kill the fleet first"));
       await withMockApi(routes(refusal), async (apiUrl) => {
-        const result = await run(apiUrl, ["delete", FLEET_ID]);
+        const result = await run(apiUrl, ["fleet", "delete", FLEET_ID]);
         expect(result.code).not.toBe(0);
         expect(result.err).toContain("UZ-AGT-010");
         expect(result.out).not.toContain("deleted");

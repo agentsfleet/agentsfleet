@@ -125,7 +125,7 @@ if (!isLive) {
         // `purge.rs` refuses a fleet nobody killed first, and the daemon
         // answers UZ-AGT-010. Proves the guard rather than assuming
         // kill-then-delete is the only path.
-        const result = await runWithEnv(["delete", fleetId, "--json"]);
+        const result = await runWithEnv(["fleet", "delete", fleetId, "--json"]);
         assert.notEqual(result.code, 0, `expected non-zero deleting a live fleet; stdout=${result.stdout}`);
         assert.match(result.stderr + result.stdout, TRANSITION_REFUSAL,
           `delete-before-kill must be the 010 refusal, not the 009 tombstone; stdout=${result.stdout} stderr=${result.stderr}`);
@@ -136,13 +136,13 @@ if (!isLive) {
         await killFleet(env, fleetId);
         await expectStatus(env, fleetId, TERMINAL_STATUSES);
 
-        const deleted = await runWithEnv(["delete", fleetId, "--json"]);
+        const deleted = await runWithEnv(["fleet", "delete", fleetId, "--json"]);
         assert.equal(deleted.code, 0, `delete exited ${deleted.code}: ${deleted.stderr}`);
         const parsed = JSON.parse(deleted.stdout.trim() || "{}") as { fleet_id?: string; deleted?: boolean };
         assert.equal(parsed.deleted, true, `delete envelope missing deleted:true: ${deleted.stdout}`);
         assert.equal(parsed.fleet_id, fleetId, `delete echoed wrong id: ${deleted.stdout}`);
 
-        const listed = await runWithEnv(["list", "--json"]);
+        const listed = await runWithEnv(["fleet", "list", "--json"]);
         assert.equal(listed.code, 0, `list exited ${listed.code}: ${listed.stderr}`);
         const payload = JSON.parse(listed.stdout.trim() || "{}") as { items?: unknown };
         const items = Array.isArray(payload.items)
@@ -165,7 +165,7 @@ if (!isLive) {
       }, SETUP_TIMEOUT_MS);
 
       it("resume <killed-id> is refused — a killed row is a tombstone", async () => {
-        const result = await runWithEnv(["resume", fleetId, "--json"]);
+        const result = await runWithEnv(["fleet", "resume", fleetId, "--json"]);
         assert.notEqual(result.code, 0, `expected non-zero resuming a killed fleet; stdout=${result.stdout}`);
         assert.match(result.stderr + result.stdout, TOMBSTONE_REFUSAL,
           `a killed row is a tombstone — expected the 009 stem, not the 010 refusal; stdout=${result.stdout} stderr=${result.stderr}`);
@@ -194,7 +194,7 @@ if (!isLive) {
         // rejects the redundant transition with a clear stem. What's not
         // acceptable is a connection error, a leaked token, or a silent
         // flip to a live state — the post-condition below catches the last.
-        const result = await runWithEnv(["stop", fleetId, "--json"]);
+        const result = await runWithEnv(["fleet", "stop", fleetId, "--json"]);
         if (result.code !== 0) {
           assert.match(result.stderr + result.stdout, TRANSITION_REFUSAL,
             `non-zero stop must carry the 010 transition stem; stdout=${result.stdout} stderr=${result.stderr}`);
@@ -221,7 +221,7 @@ if (!isLive) {
       });
 
       it("no LIVE fleets match ACCEPTANCE_RUN_PREFIX", async () => {
-        const result = await runWithEnv(["list", "--json"]);
+        const result = await runWithEnv(["fleet", "list", "--json"]);
         assert.equal(result.code, 0, `list exited ${result.code}: ${result.stderr}`);
         const payload = JSON.parse(result.stdout.trim() || "{}") as { items?: unknown };
         const items = Array.isArray(payload.items)

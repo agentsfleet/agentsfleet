@@ -48,7 +48,7 @@ const GRANT_WORKSPACE = "fixture-cli-connector-grants";
 const NO_COLOR = "1" as const;
 const JSON_FLAG = "--json" as const;
 const STEER_COMMAND = "steer" as const;
-const BILLING_ARGS = ["billing", "show", JSON_FLAG] as const;
+const BILLING_ARGS = ["usage", "show", JSON_FLAG] as const;
 const BALANCE_FIELD = "balance_nanos" as const;
 const ONE_SHOT_MESSAGE = "respond with a single short acknowledgement and stop" as const;
 const ENVELOPE_STATUS_KEY = "status" as const;
@@ -144,7 +144,7 @@ if (!isLive) {
       try {
         if (workspaceId) {
           await cleanWorkspaceFleets(env, { workspaceId, runPrefix: ACCEPTANCE_RUN_PREFIX });
-          const removed = await runFleetctl(["secret", "delete", GRANT_CREDENTIAL_NAME, JSON_FLAG], {env});
+          const removed = await runFleetctl(["secrets", "delete", GRANT_CREDENTIAL_NAME, JSON_FLAG], {env});
           assert.equal(removed.code, 0, `synthetic connector cleanup failed: ${removed.stderr}`);
         }
       } finally {
@@ -177,7 +177,7 @@ if (!isLive) {
       const card = await pendingGateFor(ctx, fleetId);
       assert.ok(card, "Save must request explicit integration approval");
       const listed = await runFleetctl(
-        ["approvals", "list", FLEET_FLAG, fleetId, JSON_FLAG],
+        ["fleet", "approvals", "list", FLEET_FLAG, fleetId, JSON_FLAG],
         { env },
       );
       assert.equal(listed.code, 0, `approvals list failed: ${listed.stderr}`);
@@ -193,7 +193,7 @@ if (!isLive) {
       assert.ok(recovery, "no continuation identity");
       const card = await pendingGateFor(ctx, fleetId);
       assert.ok(card, "no approval request");
-      const approved = await runWithEnv(["approvals", "approve", card.gate_id, JSON_FLAG]);
+      const approved = await runWithEnv(["fleet", "approvals", "approve", card.gate_id, JSON_FLAG]);
       assert.equal(approved.code, 0, `approval failed: ${approved.stderr}`);
       const continued = await runWithEnv([JSON_FLAG, CHAT_COMMAND, NO_INPUT_FLAG, SAVE_FLAG,
         "--operation-id", recovery.operation_id, "--candidate-id", recovery.draft_candidate_id,

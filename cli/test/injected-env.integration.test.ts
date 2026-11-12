@@ -48,7 +48,7 @@ describe("runCli({ env }) reaches the store when it diverges from the process en
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["secret", "list", "--json"], {
+        const code = await runCli(["secrets", "list", "--json"], {
           stdout: out.stream,
           stderr: err.stream,
           env: { ...injected, AGENTSFLEET_API_URL: apiUrl },

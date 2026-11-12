@@ -17,7 +17,7 @@ test("models --advanced pages the inclusive catalogue without duplicating regula
         : cataloguePage([regular]));
     } }, async apiUrl => {
       const out = bufferStream(); const err = bufferStream();
-      const code = await runCli(["models", "--advanced", "--provider", "provider", "--json"], {
+      const code = await runCli(["models", "list", "--advanced", "--provider", "provider", "--json"], {
         stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
       });
       expect(code).toBe(0);

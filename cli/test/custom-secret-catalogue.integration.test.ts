@@ -32,7 +32,7 @@ describe("secret create — provider catalogue closure", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", "notaprovider",
             "--api-key", API_KEY,
             "--model", MODEL,
@@ -69,7 +69,7 @@ describe("secret create — provider catalogue closure", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", "anthropic",
             "--api-key", API_KEY,
             "--model", "claude-opus-4",
@@ -105,7 +105,7 @@ describe("secret create — provider catalogue closure", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", "anything-at-all",
             "--api-key", API_KEY,
             "--model", MODEL,
@@ -139,7 +139,7 @@ describe("secret create — provider catalogue closure", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", "anthropic",
             "--api-key", API_KEY,
             "--model", MODEL,
@@ -172,7 +172,7 @@ describe("secret create — provider catalogue closure", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--provider", "Anthropic",
             "--api-key", API_KEY,
             "--model", CATALOGUE_MODEL,
@@ -201,7 +201,7 @@ describe("secret create — provider catalogue closure", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "secret", "create", SECRET_NAME,
+            "secrets", "create", SECRET_NAME,
             "--data", '{"provider":"notaprovider","model":"m"}',
             "--json",
           ],

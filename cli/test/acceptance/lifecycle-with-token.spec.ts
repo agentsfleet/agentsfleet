@@ -149,7 +149,7 @@ if (!isLive) {
         assert.equal(one.code, 0, `fleet show failed: ${one.stderr}`);
         assert.ok(one.stdout.includes(fleetId), `fleet show did not name it: ${one.stdout}`);
 
-        const all = await runFleetctl(["status", "--json"], { env });
+        const all = await runFleetctl(["fleet", "status", "--json"], { env });
         assert.equal(all.code, 0, `status failed: ${all.stderr}`);
         assert.ok(all.stdout.includes(fleetId), "status stopped naming the fleet");
       });
@@ -157,7 +157,7 @@ if (!isLive) {
       it("status exposes per-fleet events_processed and budget_used_nanos", async () => {
         // End-to-end: the real server reads these from fleet.activity_counters,
         // and the CLI surfaces them in the list row that backs
-        // `agentsfleet status`. A freshly-installed fleet may have zero of
+        // `agentsfleet fleet status`. A freshly-installed fleet may have zero of
         // each; decimal strings preserve counters beyond the safe integer
         // limit. The fixture refuses missing or malformed values.
         const payload = await expectStatus(env, fleetId, ["active", "starting", "running"]);
@@ -180,14 +180,14 @@ if (!isLive) {
         // `--fleet`, `--limit`, `--cursor`); an unknown flag exits 4 on
         // an unknown flag. The recency bound here was misplaced — the
         // intent is just to exercise the read path on a real fleet.
-        const result = await runWithEnv(["logs", "--fleet", fleetId, "--json"]);
+        const result = await runWithEnv(["fleet", "logs", "--fleet", fleetId, "--json"]);
         assert.equal(result.code, 0, `logs exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim() || "{}");
         assert.equal(typeof parsed, "object");
       });
 
       it("billing show --json returns a balance field", async () => {
-        const result = await runWithEnv(["billing", "show", "--json"]);
+        const result = await runWithEnv(["usage", "show", "--json"]);
         assert.equal(result.code, 0, `billing show exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim());
         assert.ok("balance_nanos" in parsed, `billing response missing balance_nanos: ${result.stdout}`);
@@ -203,7 +203,7 @@ if (!isLive) {
       }, 30_000);
 
       it("kill is idempotent on a terminal fleet", async () => {
-        const result = await runWithEnv(["kill", fleetId, "--json"]);
+        const result = await runWithEnv(["fleet", "kill", fleetId, "--json"]);
         // Either succeed silently or report the tombstone: `edit.rs`'s
         // `explain` answers UZ-AGT-009 for a killed row, so a second kill reads
         // as not-found rather than as a refused transition. Matching the 010
@@ -250,7 +250,7 @@ if (!isLive) {
       });
 
       it(`fleet list --json: no LIVE items match ACCEPTANCE_RUN_PREFIX`, async () => {
-        const result = await runWithEnv(["list", "--json"]);
+        const result = await runWithEnv(["fleet", "list", "--json"]);
         assert.equal(result.code, 0, `list --json exited ${result.code}: ${result.stderr}`);
         const parsed = JSON.parse(result.stdout.trim()) as { items?: unknown };
         const items = Array.isArray(parsed.items) ? (parsed.items as Array<{ name?: string; status?: string }>) : [];
@@ -334,7 +334,7 @@ if (!isLive) {
       for (const row of READ_ONLY_COMMANDS) {
         const head = row.args[0];
         if (!head) continue;
-        if (head === "list" || head === "doctor") exercised.add("fleet");
+        if (head === "doctor") exercised.add("fleet");
         if (COMMAND_GROUPS.includes(head)) exercised.add(head);
       }
       for (const row of PER_AGENTSFLEET_READ_ONLY_COMMANDS) {

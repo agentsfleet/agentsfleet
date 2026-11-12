@@ -7,64 +7,58 @@ import { bufferStream, cliEnv, withFreshStateDir } from "./helpers-cli-state.ts"
 
 // ── --help surfaces the fleet group + new workspace subcommands ─────────
 
-test("--help lists the fleet subcommand group", async () => {
+const helpText = async (argv: ReadonlyArray<string>): Promise<string> => {
   const out = bufferStream();
-  const err = bufferStream();
-  const code = await runCli(["--help"], {
+  const code = await runCli([...argv, "--help"], {
     stdout: out.stream,
-    stderr: err.stream,
+    stderr: bufferStream().stream,
     env: cliEnv({ NO_COLOR: "1" }),
   });
   assert.equal(code, 0);
-  const text = out.read();
-  // The top-level body is a flat Commands list — each fleet op gets its
-  // own line. The Subcommands block below it lists the namespaced secret
-  // vault.
-  assert.ok(text.includes("chat"),    "chat line missing");
-  assert.ok(!/^\s+install\s/m.test(text), "removed install verb still listed");
-  assert.ok(text.includes("list"),    "list line missing");
-  assert.ok(text.includes("status"),  "status line missing");
-  assert.ok(text.includes("kill"),    "kill line missing");
-  assert.ok(text.includes("logs"),    "logs line missing");
-  assert.ok(text.includes("secret"), "secret line missing");
+  return out.read();
+};
+
+// A row in a SUBCOMMANDS listing: the name indented, then whitespace.
+const listsRow = (text: string, name: string): boolean =>
+  new RegExp(`^\\s+${name}\\s`, "m").test(text);
+
+test("--help lists the fleet group; its lifecycle verbs appear under `fleet --help`", async () => {
+  const root = await helpText([]);
+  assert.ok(listsRow(root, "chat"), "chat line missing");
+  assert.ok(listsRow(root, "fleet"), "fleet group missing from top-level help");
+  assert.ok(listsRow(root, "secrets"), "secrets group missing from top-level help");
+  assert.ok(!listsRow(root, "install"), "removed install verb still listed");
+  for (const verb of ["list", "status", "kill", "logs"]) {
+    assert.ok(!listsRow(root, verb), `root still lists the moved verb ${verb}`);
+  }
+
+  const fleet = await helpText(["fleet"]);
+  for (const verb of ["list", "status", "kill", "logs"]) {
+    assert.ok(listsRow(fleet, verb), `fleet ${verb} missing from fleet --help`);
+  }
 });
 
 test("--help lists the workspace group; its subcommands appear under `workspace --help`", async () => {
-  const top = bufferStream();
-  const topCode = await runCli(["--help"], {
-    stdout: top.stream,
-    stderr: bufferStream().stream,
-    env: cliEnv({ NO_COLOR: "1" }),
-  });
-  assert.equal(topCode, 0);
-  assert.ok(top.read().includes("workspace"), "workspace group missing from top-level help");
+  const root = await helpText([]);
+  assert.ok(listsRow(root, "workspace"), "workspace group missing from top-level help");
 
-  // The nested verbs are discovered via the group's own --help.
-  const sub = bufferStream();
-  const subCode = await runCli(["workspace", "--help"], {
-    stdout: sub.stream,
-    stderr: bufferStream().stream,
-    env: cliEnv({ NO_COLOR: "1" }),
-  });
-  assert.equal(subCode, 0);
-  const text = sub.read();
-  assert.ok(text.includes("use"), "workspace use subcommand missing");
-  assert.ok(text.includes("show"), "workspace show subcommand missing");
-  assert.ok(text.includes("secrets"), "workspace secrets subcommand missing");
+  // The nested verbs are discovered via the group's own --help. The vault
+  // moved to its own `secrets` group, so `workspace` no longer lists it.
+  const text = await helpText(["workspace"]);
+  assert.ok(listsRow(text, "use"), "workspace use subcommand missing");
+  assert.ok(listsRow(text, "show"), "workspace show subcommand missing");
+  assert.ok(!listsRow(text, "secrets"), "workspace still lists the moved secrets verb");
+  assert.ok(listsRow(await helpText(["secrets"]), "open"), "secrets open subcommand missing");
 });
 
-test("--help lists the memory group; its read verbs appear under `memory --help`", async () => {
-  const top = bufferStream();
-  const topCode = await runCli(["--help"], { stdout: top.stream, stderr: bufferStream().stream, env: cliEnv({ NO_COLOR: "1" }) });
-  assert.equal(topCode, 0);
-  assert.ok(top.read().includes("memory"), "memory group missing from top-level help");
+test("--help lists the memory group under fleet; its read verbs appear under `fleet memory --help`", async () => {
+  const root = await helpText([]);
+  assert.ok(!listsRow(root, "memory"), "memory still listed at the top level");
+  assert.ok(listsRow(await helpText(["fleet"]), "memory"), "memory group missing from fleet --help");
 
-  const sub = bufferStream();
-  const subCode = await runCli(["memory", "--help"], { stdout: sub.stream, stderr: bufferStream().stream, env: cliEnv({ NO_COLOR: "1" }) });
-  assert.equal(subCode, 0);
-  const text = sub.read();
-  assert.ok(text.includes("list"), "memory list subcommand row missing");
-  assert.ok(text.includes("search"), "memory search subcommand row missing");
+  const text = await helpText(["fleet", "memory"]);
+  assert.ok(listsRow(text, "list"), "memory list subcommand row missing");
+  assert.ok(listsRow(text, "search"), "memory search subcommand row missing");
 });
 
 // ── workspace use <id> persists active workspace ─────────────────────────
@@ -193,7 +187,7 @@ test("workspace secrets prints the redirect message", async () => {
   await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
-    const code = await runCli(["workspace", "secrets"], {
+    const code = await runCli(["secrets", "open"], {
       stdout: out.stream,
       stderr: err.stream,
       env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
@@ -209,7 +203,7 @@ test("workspace secrets --json returns status=redirect", async () => {
   await withFreshStateDir(async () => {
     const out = bufferStream();
     const err = bufferStream();
-    await runCli(["--json", "workspace", "secrets"], {
+    await runCli(["--json", "secrets", "open"], {
       stdout: out.stream,
       stderr: err.stream,
       env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
@@ -249,7 +243,7 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
         }),
       };
     });
-    const code = await runCli(["list", "--limit", "2"], {
+    const code = await runCli(["fleet", "list", "--limit", "2"], {
       stdout: out.stream,
       stderr: err.stream,
       env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
@@ -260,10 +254,11 @@ test("fleet list calls the paginated endpoint and prints rows", async () => {
     const text = out.read();
     assert.ok(text.includes("alpha"));
     assert.ok(text.includes("beta"));
-    // The hint names a command that exists: `fleet` holds `update` alone, so
-    // `agentsfleet fleet list` was a copy-paste that errored.
-    assert.ok(text.includes("agentsfleet list --starting-after"));
-    assert.ok(!text.includes("agentsfleet fleet list"));
+    // The hint names a command that exists: `list` lives under `fleet`, so
+    // the retired root spelling `agentsfleet list` would be a copy-paste that
+    // errors.
+    assert.ok(text.includes("agentsfleet fleet list --starting-after"));
+    assert.ok(!/agentsfleet list\b/.test(text));
   });
 });
 
@@ -282,7 +277,7 @@ test("fleet list --json returns the raw envelope incl. next_cursor", async () =>
       headers: makeHeaders([["content-type", "application/json"]]),
       text: async () => JSON.stringify({ items: [], total: 0, next_cursor: null }),
     }));
-    await runCli(["--json", "list"], {
+    await runCli(["--json", "fleet", "list"], {
       stdout: out.stream,
       stderr: err.stream,
       env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
@@ -315,7 +310,7 @@ test("fleet list honors --workspace override over current_workspace_id", async (
         text: async () => JSON.stringify({ items: [], total: 0, cursor: null }),
       };
     });
-    await runCli(["list", "--workspace", "01900000-0000-7000-8000-000000000002"], {
+    await runCli(["fleet", "list", "--workspace", "01900000-0000-7000-8000-000000000002"], {
       stdout: out.stream,
       stderr: err.stream,
       env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),
@@ -330,7 +325,7 @@ test("fleet list errors with ConfigError when no active workspace and no --works
     await saveWorkspaces(process.env, { current_workspace_id: null, items: [] });
     const out = bufferStream();
     const err = bufferStream();
-    const code = await runCli(["list"], {
+    const code = await runCli(["fleet", "list"], {
       stdout: out.stream,
       stderr: err.stream,
       env: cliEnv({ NO_COLOR: "1", AGENTSFLEET_API_KEY: "agt_t_test" }),

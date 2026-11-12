@@ -69,10 +69,10 @@ const runJson = async (argv: ReadonlyArray<string>): Promise<string> => {
 
 describe("the table reshape did not reach the machine register", () => {
   test.each([
-    ["secret list", ["secret", "list"]],
-    ["list", ["list"]],
+    ["secret list", ["secrets", "list"]],
+    ["fleet list", ["fleet", "list"]],
     ["library", ["library"]],
-    ["api-key list", ["api-key", "list"]],
+    ["api-key list", ["api-keys", "list"]],
   ])("%s --json keeps the raw wire instant and no rendered age", async (_label, argv) => {
     const text = await runJson(argv as ReadonlyArray<string>);
 

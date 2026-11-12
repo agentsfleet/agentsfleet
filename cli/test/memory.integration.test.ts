@@ -40,7 +40,7 @@ describe("memory list — human table on a terminal", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--fleet", FLEET_ID],
+          ["fleet", "memory", "list", "--fleet", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -75,7 +75,7 @@ describe("memory list — human table on a terminal", () => {
         const out = ttyStream();
         const err = bufferStream();
         const okCode = await runCli(
-          ["memory", "list", "--fleet", FLEET_ID, "--category", "daily", "--limit", "5"],
+          ["fleet", "memory", "list", "--fleet", FLEET_ID, "--category", "daily", "--limit", "5"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(okCode).toBe(0);
@@ -92,7 +92,7 @@ describe("memory list — human table on a terminal", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--fleet", FLEET_ID],
+          ["fleet", "memory", "list", "--fleet", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -113,7 +113,7 @@ describe("memory search", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "search", "--fleet", FLEET_ID, "acme"],
+          ["fleet", "memory", "search", "--fleet", FLEET_ID, "acme"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -132,7 +132,7 @@ describe("memory search", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "search", "--fleet", FLEET_ID, "ghost"],
+          ["fleet", "memory", "search", "--fleet", FLEET_ID, "ghost"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -158,7 +158,7 @@ describe("memory — machine-stable JSON", () => {
         const out = bufferStream(); // isTTY undefined — a pipe
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--fleet", FLEET_ID],
+          ["fleet", "memory", "list", "--fleet", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -178,7 +178,7 @@ describe("memory — machine-stable JSON", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--fleet", FLEET_ID, "--json"],
+          ["fleet", "memory", "list", "--fleet", FLEET_ID, "--json"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -203,13 +203,13 @@ describe("memory — error shapes", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--fleet", FLEET_ID],
+          ["fleet", "memory", "list", "--fleet", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
         const stderrText = err.read();
         expect(stderrText).toContain("UZ-MEM-002");
-        expect(stderrText).toContain("agentsfleet list");
+        expect(stderrText).toContain("agentsfleet fleet list");
         expect(stderrText).toContain("request_id: req_mem_404");
       });
     });
@@ -231,7 +231,7 @@ describe("memory — error shapes", () => {
         const out = ttyStream();
         const err = bufferStream();
         const code = await runCli(
-          ["memory", "list", "--fleet", FLEET_ID],
+          ["fleet", "memory", "list", "--fleet", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -246,7 +246,7 @@ describe("memory — error shapes", () => {
       const out = ttyStream();
       const err = bufferStream();
       const code = await runCli(
-        ["memory", "list", "--fleet", FLEET_ID],
+        ["fleet", "memory", "list", "--fleet", FLEET_ID],
         { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:9" }) },
       );
       expect(code).not.toBe(0);
@@ -259,7 +259,7 @@ describe("memory — error shapes", () => {
       const out = ttyStream();
       const err = bufferStream();
       const code = await runCli(
-        ["memory", "list", "--fleet", FLEET_ID],
+        ["fleet", "memory", "list", "--fleet", FLEET_ID],
         // loopback discard port — nothing listens, refuses instantly
         { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: "http://127.0.0.1:9" }) },
       );

@@ -1,4 +1,4 @@
-// `agentsfleet models` — the CLI peer of the dashboard's model picker.
+// `agentsfleet models list` — the CLI peer of the dashboard's model picker.
 //
 // Before this command the CLI had no way to ask what a provider or model id
 // should be: `--provider` was checked against a vendored copy of the retired
@@ -26,7 +26,7 @@ const UNPRICED = catalogueModel("qwen3.7-max", "qwen", {
   output_nanos_per_mtok: "0",
 });
 
-describe("agentsfleet models", () => {
+describe("agentsfleet models list", () => {
   test("renders every priced row with its provider, context window, and rates", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
@@ -35,7 +35,7 @@ describe("agentsfleet models", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["models"], {
+        const code = await runCli(["models", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, NO_COLOR: "1" }),
@@ -68,7 +68,7 @@ describe("agentsfleet models", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["models"], {
+        const code = await runCli(["models", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, NO_COLOR: "1" }),
@@ -95,7 +95,7 @@ describe("agentsfleet models", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["models", "--provider", "anthropic"], {
+        const code = await runCli(["models", "list", "--provider", "anthropic"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, NO_COLOR: "1" }),
@@ -124,7 +124,7 @@ describe("agentsfleet models", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["models"], {
+        const code = await runCli(["models", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, NO_COLOR: "1" }),
@@ -147,7 +147,7 @@ describe("agentsfleet models", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["models", "--json"], {
+        const code = await runCli(["models", "list", "--json"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -171,7 +171,7 @@ describe("agentsfleet models", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["models"], {
+        const code = await runCli(["models", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, NO_COLOR: "1" }),
@@ -194,7 +194,7 @@ describe("agentsfleet models", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["models", "--provider", "cerebras"], {
+        const code = await runCli(["models", "list", "--provider", "cerebras"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, NO_COLOR: "1" }),
@@ -202,7 +202,7 @@ describe("agentsfleet models", () => {
         expect(code).toBe(0);
         const text = out.read() + err.read();
         expect(text).toContain("cerebras");
-        expect(text).toContain("agentsfleet models");
+        expect(text).toContain("agentsfleet models list");
       });
     });
   });
@@ -218,7 +218,7 @@ describe("agentsfleet models", () => {
       await withMockApi(routes, async (apiUrl) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["models"], {
+        const code = await runCli(["models", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl, NO_COLOR: "1" }),

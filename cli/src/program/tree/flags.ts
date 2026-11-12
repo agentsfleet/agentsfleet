@@ -154,7 +154,7 @@ export const billingLimitFlag = boundedInt(FLAG.limit, LIST_LIMIT_MIN, BILLING_L
 // provider dropdown is built from.
 export const providerFlag = textFlag(
   FLAG.provider,
-  `Provider id from \`agentsfleet models\` (use '${OPENAI_COMPATIBLE_PROVIDER}' with --base-url for an endpoint the catalogue does not carry)`,
+  `Provider id from \`agentsfleet models list\` (use '${OPENAI_COMPATIBLE_PROVIDER}' with --base-url for an endpoint the catalogue does not carry)`,
   METAVAR.name,
 );
 

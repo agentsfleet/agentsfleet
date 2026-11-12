@@ -32,7 +32,7 @@ describe("the help command form", () => {
     const fleet = await help(["fleet", "--help"]);
     expect(fleet.code).toBe(0);
     expect(fleet.out).not.toMatch(/\btasks\b/u);
-    const steer = await help(["steer", "--help"]);
+    const steer = await help(["fleet", "steer", "--help"]);
     expect(steer.code).toBe(0);
     expect(steer.out).not.toMatch(/--(?:task-id|goal-revision)/u);
   });

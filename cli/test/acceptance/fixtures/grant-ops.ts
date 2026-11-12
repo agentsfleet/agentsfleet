@@ -84,7 +84,7 @@ export async function ensureConnectorHandle(
   const data = JSON.stringify({ [FIELD_INTEGRATION]: CONNECTOR_SERVICE_LINEAR,
     [FIELD_REFRESH_TOKEN]: GRANT_CREDENTIAL_NAME });
   const result = await runFleetctl(
-    ["secret", "create", GRANT_CREDENTIAL_NAME, "--data", data, "--json"],
+    ["secrets", "create", GRANT_CREDENTIAL_NAME, "--data", data, "--json"],
     { env, timeoutMs: SECRET_CREATE_TIMEOUT_MS },
   );
   if (result.code !== 0) {
@@ -100,7 +100,7 @@ export async function listGrants(
   env: Readonly<Record<string, string>>,
   fleetId: string,
 ): Promise<ReadonlyArray<GrantRow>> {
-  const result = await runFleetctl(["grant", "list", "--fleet", fleetId, "--json"], {
+  const result = await runFleetctl(["fleet", "grants", "list", "--fleet", fleetId, "--json"], {
     env,
     timeoutMs: HTTP_TIMEOUT_MS,
   });

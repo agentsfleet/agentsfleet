@@ -24,7 +24,7 @@ describe("fleet id validation — invalid format", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["stop", "not-a-uuid"],
+          ["fleet", "stop", "not-a-uuid"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -40,7 +40,7 @@ describe("fleet id validation — invalid format", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["resume", "bad-id-string"],
+          ["fleet", "resume", "bad-id-string"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -56,7 +56,7 @@ describe("fleet id validation — invalid format", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["kill", "12345-not-valid"],
+          ["fleet", "kill", "12345-not-valid"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);
@@ -71,7 +71,7 @@ describe("fleet id validation — invalid format", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["delete", "garbage-id"],
+          ["fleet", "delete", "garbage-id"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).not.toBe(0);

@@ -105,7 +105,7 @@ export const tenantProviderShowEffect: Effect.Effect<
     const ref = res.secret_ref ?? "(unknown)";
     const msg =
       res.error === "credential_missing"
-        ? `⚠ Secret ${ref} is missing from vault — re-add under the same name OR run 'agentsfleet tenant provider delete'.`
+        ? `⚠ Secret ${ref} is missing from vault — re-add under the same name OR run 'agentsfleet models reset'.`
         : `⚠ Provider resolver error: ${res.error} (secret_ref=${ref})`;
     yield* output.error(msg);
   }

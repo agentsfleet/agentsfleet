@@ -157,7 +157,7 @@ const scheduleSyncCommand = Command.make(SYNC, {
   ),
 );
 
-export const scheduleCommand = Command.make("schedule").pipe(
+export const scheduleCommand = () => Command.make("schedule").pipe(
   Command.withDescription("Manage hosted Fleet schedules"),
   Command.withSubcommands([
     scheduleCreateCommand,

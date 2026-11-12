@@ -33,13 +33,13 @@ import { SUGGESTION_PREFIX } from "./constants/rejection.ts";
 import { guardCommand } from "./program/auth-guard.ts";
 import { ui } from "./output/index.ts";
 import { DEFAULT_API_URL, normalizeApiUrl, resolveDashboardUrl } from "./util/url.ts";
-import { rootCommand } from "./program/tree/root.command.ts";
+import { buildCommandTree } from "./program/tree/index.ts";
 import { resolveCommandPath, type CommandNode } from "./program/tree/resolve-path.ts";
 import { mainLayerFor } from "./runtime/main-layer.ts";
 import { makeCommandExitCode } from "./runtime/exit-code.service.ts";
 import { CommandGuard, GuardRefused } from "./runtime/guard.service.ts";
 import { withCommandInstrumentation } from "./services/telemetry/command-instrumentation.ts";
-import { detectJsonMode, maybePrintVersion, resolveGlobalApiUrl } from "./program/entry/argv-scan.ts";
+import { detectJsonMode, helpArgv, maybePrintVersion, resolveGlobalApiUrl } from "./program/entry/argv-scan.ts";
 import { consoleForStreams } from "./program/entry/console-bridge.ts";
 import { deferredHelp, type DeferredHelp } from "./program/entry/deferred-help.ts";
 import { helpFormatter } from "./program/entry/help-formatter.ts";
@@ -59,8 +59,6 @@ const PKG_JSON_PATH = join(dirname(fileURLToPath(import.meta.url)), "..", "packa
 const pkgJson = JSON.parse(readFileSync(PKG_JSON_PATH, "utf8")) as { version: string };
 export const VERSION: string = pkgJson.version;
 
-const HELP_FLAG = "--help" as const;
-const HELP_COMMAND = "help" as const;
 const GUARD_EXIT_CODE = 1;
 const SUCCESS_EXIT_CODE = 0;
 
@@ -105,6 +103,9 @@ export async function runCli(
   // Walked off the tree, not parsed: the layer carries the command path and
   // has to exist before the parser does. An invalid invocation yields the
   // deepest command that did resolve, which is the one whose help is coming.
+  // One tree per invocation: path resolution, the house rejection and the
+  // parser all read this value, so they cannot disagree about what exists.
+  const rootCommand = buildCommandTree();
   const tree = rootCommand as unknown as CommandNode;
   const commandPath = resolveCommandPath(tree, argv);
 
@@ -274,40 +275,4 @@ function renderLibraryFailure(
     }
   }
   return exitCodeForFailure(cause);
-}
-
-// Global flags taking a value in the `--flag value` form. The `--flag=value`
-// spelling carries its own, so it never consumes the token after it.
-const VALUE_TAKING_GLOBAL_FLAGS: ReadonlySet<string> = new Set([
-  "--api",
-  "--completions",
-  "--log-level",
-]);
-
-/**
- * Where the command name starts, skipping leading global flags and their values.
- *
- * `help` is a verb this CLI accepts and the tree has no subcommand for it, so
- * the entry point rewrites it. Recognising it at position zero alone meant
- * `agentsfleet --json help grant list` left `help` in the argv and failed as an
- * unknown command, while the same line without `--json` printed the document.
- * A flag before the verb is the ordinary shape for `--api` and `--json`.
- */
-const firstCommandIndex = (argv: readonly string[]): number => {
-  let index = 0;
-  while (index < argv.length) {
-    const token = argv[index];
-    if (token === undefined || !token.startsWith("-")) return index;
-    index += !token.includes("=") && VALUE_TAKING_GLOBAL_FLAGS.has(token) ? 2 : 1;
-  }
-  return argv.length;
-};
-
-// `[]` → `--help`, and `<flags> help x y` → `<flags> x y --help`. Any other
-// argv is its own.
-function helpArgv(argv: readonly string[]): string[] {
-  if (argv.length === 0) return [HELP_FLAG];
-  const at = firstCommandIndex(argv);
-  if (argv[at] !== HELP_COMMAND) return [...argv];
-  return [...argv.slice(0, at), ...argv.slice(at + 1), HELP_FLAG];
 }

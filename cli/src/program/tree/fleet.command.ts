@@ -1,4 +1,8 @@
-// Fleet lifecycle, reusable native setup and the workspace vault.
+// The fleet group: every verb that reads, steers or ends one fleet, and the
+// fleet-scoped resources (approvals, schedules, memory, grants) nested under it.
+//
+// `chat --fleet <fleet_id>` improves a fleet's setup; `fleet steer` sends it a
+// runtime instruction. The two never stand in for each other.
 
 import { Option } from "effect";
 import { Command, Flag } from "effect/cli";
@@ -13,38 +17,21 @@ import {
   stopEffectFromId,
 } from "../../commands/fleet/fleet.ts";
 import { listEffectFromFlags } from "../../commands/fleet/list.ts";
-import { libraryEffectFromOptions } from "../../commands/library/library.ts";
-import { libraryListEffectFromOptions } from "../../commands/library/list.ts";
-import { libraryDeleteEffectFromArgs } from "../../commands/library/delete.ts";
-import { modelsEffectFromFlags } from "../../commands/models/models.ts";
 import { logsEffectFromFlags } from "../../commands/fleet/logs.ts";
 import { eventsEffectFromFlags } from "../../commands/fleet/events.ts";
 import { steerEffectFromArgs } from "../../commands/fleet/steer.ts";
-import {
-  secretAddEffectFromFlags,
-  secretDeleteEffectFromName,
-  secretShowEffectFromName,
-  secretUpdateEffectFromFlags,
-} from "../../commands/secret/secret.ts";
-import { secretListEffect } from "../../commands/secret/list.ts";
+import { approvalsCommand, grantsCommand } from "./access.command.ts";
+import { scheduleCommand } from "./schedule.command.ts";
+import { memoryCommand } from "./memory.command.ts";
 import {
   actorFlag,
-  apiKeyFlag,
-  baseUrlFlag,
   cursorFlag,
-  dataFlag,
-  dataReplacementFlag,
-  entryIdArgument,
   eventsLimitFlag,
   fleetFlag,
   fleetIdArgument,
   fleetIdOptionalArgument,
   listLimitFlag,
-  libraryLimitFlag,
   messageArgument,
-  modelFlag,
-  providerFlag,
-  secretNameArgument,
   sinceFlag,
   startingAfterFlag,
   workspaceFlag,
@@ -60,58 +47,16 @@ const optNum = (value: Option.Option<number>): string | undefined =>
 
 const LIST = "list" as const;
 const DELETE = "delete" as const;
-const UPDATE = "update" as const;
 const SHOW = "show" as const;
-const libraryPaging = { startingAfter: startingAfterFlag, limit: libraryLimitFlag };
-const libraryListCommand = Command.make(LIST, libraryPaging).pipe(
-  Command.withDescription("List this workspace's published Fleet libraries"),
-  guardedHandler(({ startingAfter, limit }) => libraryListEffectFromOptions({
-    startingAfter: opt(startingAfter), limit: optNum(limit),
-  })),
-);
-
-const libraryDeleteCommand = Command.make(DELETE, {
-  entryId: entryIdArgument,
-}).pipe(
-  Command.withDescription("Remove a published Fleet library owned by this workspace"),
-  guardedHandler(({ entryId }) => libraryDeleteEffectFromArgs(entryId)),
-);
-
-export const libraryCommand = Command.make("library", libraryPaging).pipe(
-  Command.withDescription("Browse this workspace's Fleet library gallery"),
-  guardedHandler(({ startingAfter, limit }) => libraryEffectFromOptions({
-    startingAfter: opt(startingAfter), limit: optNum(limit),
-  })),
-  Command.withSubcommands([libraryListCommand, libraryDeleteCommand]),
-);
-
-export const modelsCommand = Command.make("models", {
-  provider: providerFlag,
-  advanced: Flag.Boolean("advanced").pipe(
-    Flag.withDescription("Include advanced models"), Flag.withDefault(false),
-  ),
-}).pipe(
-  Command.withDescription("List the model catalogue this server serves"),
-  guardedHandler(({ provider, advanced }) => modelsEffectFromFlags({ provider: opt(provider), advanced })),
-);
 
 const fleetShowCommand = Command.make(SHOW, { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Show one fleet"),
   guardedHandler(({ fleetId }) => fleetShowEffectFromId(fleetId)),
 );
 
-export const fleetCommand = Command.make("fleet").pipe(
-  Command.withDescription(
-    "Inspect fleet setup. Improve it through agentsfleet chat --fleet <fleet_id>.\n" +
-    "Lifecycle commands are listed by agentsfleet --help.",
-  ),
-  Command.withShortDescription("Fleet management subcommands"),
-  Command.withSubcommands([fleetShowCommand]),
-);
-
 // ── lifecycle verbs ─────────────────────────────────────────────────
 
-export const listCommand = Command.make(LIST, {
+const listCommand = Command.make(LIST, {
   workspace: workspaceFlag,
   startingAfter: startingAfterFlag,
   limit: listLimitFlag,
@@ -126,32 +71,32 @@ export const listCommand = Command.make(LIST, {
   ),
 );
 
-export const statusCommand = Command.make("status").pipe(
+const statusCommand = Command.make("status").pipe(
   Command.withDescription("Show status for every fleet in the active workspace"),
   guardedHandler(() => statusEffect),
 );
 
-export const stopCommand = Command.make("stop", { fleetId: fleetIdArgument }).pipe(
+const stopCommand = Command.make("stop", { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Halt the running session (resumable)"),
   guardedHandler(({ fleetId }) => stopEffectFromId(fleetId)),
 );
 
-export const resumeCommand = Command.make("resume", { fleetId: fleetIdArgument }).pipe(
+const resumeCommand = Command.make("resume", { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Resume from stopped or auto-paused"),
   guardedHandler(({ fleetId }) => resumeEffectFromId(fleetId)),
 );
 
-export const killCommand = Command.make("kill", { fleetId: fleetIdArgument }).pipe(
+const killCommand = Command.make("kill", { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Mark terminal (irreversible)"),
   guardedHandler(({ fleetId }) => killEffectFromId(fleetId)),
 );
 
-export const deleteCommand = Command.make(DELETE, { fleetId: fleetIdArgument }).pipe(
+const deleteCommand = Command.make(DELETE, { fleetId: fleetIdArgument }).pipe(
   Command.withDescription("Hard-delete a killed fleet"),
   guardedHandler(({ fleetId }) => deleteEffectFromId(fleetId)),
 );
 
-export const logsCommand = Command.make("logs", {
+const logsCommand = Command.make("logs", {
   fleetId: fleetIdOptionalArgument,
   fleet: fleetFlag,
   limit: eventsLimitFlag,
@@ -167,7 +112,7 @@ export const logsCommand = Command.make("logs", {
   ),
 );
 
-export const eventsCommand = Command.make("events", {
+const eventsCommand = Command.make("events", {
   fleetId: fleetIdArgument,
   actor: actorFlag,
   since: sinceFlag,
@@ -186,7 +131,7 @@ export const eventsCommand = Command.make("events", {
   ),
 );
 
-export const steerCommand = Command.make("steer", {
+const steerCommand = Command.make("steer", {
   fleetId: fleetIdArgument,
   message: messageArgument,
   // Hidden, because it exists for the tests and for a terminal the runtime
@@ -205,79 +150,28 @@ export const steerCommand = Command.make("steer", {
   ),
 );
 
-// ── the vault ───────────────────────────────────────────────────────
-
-// Two ways to supply the body: the generic `--data` blob, or the typed
-// provider flags composing the same JSON object. `--base-url` is checked at
-// parse time so a non-https endpoint costs no request; `--provider` cannot be,
-// because its accepted set is whatever this server's catalogue serves.
-const secretCreateCommand = Command.make("create", {
-  name: secretNameArgument,
-  data: dataFlag,
-  provider: providerFlag,
-  baseUrl: baseUrlFlag,
-  apiKey: apiKeyFlag,
-  model: modelFlag,
-}).pipe(
-  Command.withDescription("Store a secret JSON object"),
-  guardedHandler(({ name, data, provider, baseUrl, apiKey, model }) =>
-    secretAddEffectFromFlags({
-      name,
-      data: opt(data),
-      provider: opt(provider),
-      baseUrl: opt(baseUrl),
-      apiKey: opt(apiKey),
-      model: opt(model),
-    }),
+export const fleetCommand = () => Command.make("fleet").pipe(
+  Command.withDescription(
+    // The library indents only a description's first line, so the second
+    // carries its own two spaces to sit under it.
+    "Run, steer and inspect fleets.\n" +
+    "  Improve a fleet's setup through agentsfleet chat --fleet <fleet_id>.",
   ),
-);
-
-// Replaces the stored body in place: the name stays claimed for the whole
-// call, so fleets that require it keep resolving. Delete-then-create also
-// replaces a value, but leaves a window where the name does not exist.
-const secretUpdateCommand = Command.make(UPDATE, {
-  name: secretNameArgument,
-  data: dataReplacementFlag,
-  provider: providerFlag,
-  baseUrl: baseUrlFlag,
-  apiKey: apiKeyFlag,
-  model: modelFlag,
-}).pipe(
-  Command.withDescription("Replace a secret's stored body without releasing the name"),
-  guardedHandler(({ name, data, provider, baseUrl, apiKey, model }) =>
-    secretUpdateEffectFromFlags({
-      name,
-      data: opt(data),
-      provider: opt(provider),
-      baseUrl: opt(baseUrl),
-      apiKey: opt(apiKey),
-      model: opt(model),
-    }),
-  ),
-);
-
-const secretShowCommand = Command.make("show", { name: secretNameArgument }).pipe(
-  Command.withDescription("Confirm a secret exists (never echoes secret bytes)"),
-  guardedHandler(({ name }) => secretShowEffectFromName(name)),
-);
-
-const secretListCommand = Command.make(LIST).pipe(
-  Command.withDescription("List secrets in the workspace vault"),
-  guardedHandler(() => secretListEffect),
-);
-
-const secretDeleteCommand = Command.make(DELETE, { name: secretNameArgument }).pipe(
-  Command.withDescription("Delete a secret from the workspace vault"),
-  guardedHandler(({ name }) => secretDeleteEffectFromName(name)),
-);
-
-export const secretCommand = Command.make("secret").pipe(
-  Command.withDescription("Workspace secret vault"),
+  Command.withShortDescription("Run, steer and inspect fleets"),
   Command.withSubcommands([
-    secretCreateCommand,
-    secretUpdateCommand,
-    secretShowCommand,
-    secretListCommand,
-    secretDeleteCommand,
+    listCommand,
+    fleetShowCommand,
+    statusCommand,
+    stopCommand,
+    resumeCommand,
+    killCommand,
+    deleteCommand,
+    steerCommand,
+    logsCommand,
+    eventsCommand,
+    approvalsCommand(),
+    scheduleCommand(),
+    memoryCommand(),
+    grantsCommand(),
   ]),
 );

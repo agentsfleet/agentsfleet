@@ -1,4 +1,4 @@
-// Unit test for `agentsfleet status` table rendering. Confirms statusEffect
+// Unit test for `agentsfleet fleet status` table rendering. Confirms statusEffect
 // projects each fleet's events_processed and formats budget_used_nanos as USD
 // via the shared billing formatter — guarding the field contract with the
 // server's GET /fleets aggregates (events_processed + budget_used_nanos).
@@ -65,7 +65,7 @@ const credentialsLayer = (): Layer.Layer<Credentials> =>
     clearAccessToken: Effect.die("unused"),
   });
 
-describe("agentsfleet status — per-fleet events + budget", () => {
+describe("agentsfleet fleet status — per-fleet events + budget", () => {
   test("a status mutation reports the server's actual outcome", async () => {
     const messages: string[] = [];
     const http = Layer.succeed(HttpClient, { request: <T,>() => Effect.succeed({ ...FLEET, status: "killed" } as T) });

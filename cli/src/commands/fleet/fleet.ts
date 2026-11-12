@@ -133,7 +133,7 @@ const statusEffectFromId = (
   yield* printFleetRows(read.fleets, yield* pendingGateCounts(wsId, token));
 });
 
-/** `agentsfleet status` — every fleet in the active workspace. */
+/** `agentsfleet fleet status` — every fleet in the active workspace. */
 export const statusEffect = statusEffectFromId(undefined);
 
 /** `agentsfleet fleet show <fleet_id>` — that one fleet. */
@@ -158,7 +158,7 @@ const setStatusEffect = (
     const http = yield* HttpClient;
     const verb = STATUS_VERB[status];
     const wsId = yield* requireWorkspaceId;
-    const id = yield* requireFleetId(fleetId, `agentsfleet ${verb} <fleet_id>`);
+    const id = yield* requireFleetId(fleetId, `agentsfleet fleet ${verb} <fleet_id>`);
     const token = yield* resolveAuthToken;
     const path = wsFleetPath(wsId, id);
     const observed = yield* http.request<unknown>({ path, token }).pipe(
@@ -214,7 +214,7 @@ export const deleteEffectFromId = (
     const output = yield* Output;
     const http = yield* HttpClient;
     const wsId = yield* requireWorkspaceId;
-    const id = yield* requireFleetId(fleetId, "agentsfleet delete <fleet_id>");
+    const id = yield* requireFleetId(fleetId, "agentsfleet fleet delete <fleet_id>");
     const token = yield* resolveAuthToken;
 
     const path = wsFleetPath(wsId, id);
@@ -240,7 +240,7 @@ const NO_FLEETS_HINT =
 // A Fleet with a waiting gate does nothing until someone decides it, so the
 // status that reports the wait also names the command that ends it.
 const PARKED_HINT =
-  "Some fleets are waiting on approval. Review with: agentsfleet approvals list" as const;
+  "Some fleets are waiting on approval. Review with: agentsfleet fleet approvals list" as const;
 
 // The waiting count when the approvals inbox could not be read at all.
 // Names what happened, never why. The read fails the same way for a missing
@@ -250,4 +250,4 @@ const PARKED_HINT =
 // the daemon's own sentence, so pointing there hands over the real cause
 // instead of guessing at it.
 const WAITING_UNREADABLE =
-  "Waiting counts unavailable — the approval inbox could not be read. See why with: agentsfleet approvals list" as const;
+  "Waiting counts unavailable — the approval inbox could not be read. See why with: agentsfleet fleet approvals list" as const;

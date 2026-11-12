@@ -1,6 +1,7 @@
-// The access groups: who you are, what you may reach, and who approved it.
+// The access groups: what you may reach, and who approved it.
 //
-// `auth`, `api-key`, `connector`, `approvals` and `grant`. Each leaf declares
+// `api-keys` and `connections` sit at the root; `approvals` and `grants`
+// belong to a fleet, so `fleet.command.ts` nests them. Each leaf declares
 // its flags from the shared vocabulary and hands the parsed config straight to
 // the command Effect — there is no frame, no options bag and no bridge between
 // the two, because the parser already produced the values the Effect asks for.
@@ -50,7 +51,7 @@ const SHOW = "show" as const;
 const CREATE = "create" as const;
 const DELETE = "delete" as const;
 
-// ── api-key ─────────────────────────────────────────────────────────
+// ── api-keys ────────────────────────────────────────────────────────
 
 const apiKeyCreateCommand = Command.make(CREATE, {
   name: keyNameFlag,
@@ -77,7 +78,7 @@ const apiKeyDeleteCommand = Command.make(DELETE, { apiKeyId: apiKeyIdArgument })
   guardedHandler(({ apiKeyId }) => apiKeyDeleteEffectFromId(apiKeyId)),
 );
 
-export const apiKeyCommand = Command.make("api-key").pipe(
+export const apiKeysCommand = () => Command.make("api-keys").pipe(
   Command.withDescription("Manage tenant API keys"),
   Command.withSubcommands([
     apiKeyCreateCommand,
@@ -87,7 +88,7 @@ export const apiKeyCommand = Command.make("api-key").pipe(
   ]),
 );
 
-// ── connector ───────────────────────────────────────────────────────
+// ── connections ─────────────────────────────────────────────────────
 
 const connectorListCommand = Command.make(LIST, { workspace: workspaceFlag }).pipe(
   Command.withDescription("List connector setup and connection state"),
@@ -104,7 +105,7 @@ const connectorShowCommand = Command.make(SHOW, {
   ),
 );
 
-export const connectorCommand = Command.make("connector").pipe(
+export const connectionsCommand = () => Command.make("connections").pipe(
   Command.withDescription("Inspect workspace connectors"),
   Command.withSubcommands([connectorListCommand, connectorShowCommand]),
 );
@@ -134,7 +135,7 @@ const approvalsDenyCommand = Command.make("deny", { gateId: gateIdArgument }).pi
   guardedHandler(({ gateId }) => approvalsDenyEffectFromArgs(gateId)),
 );
 
-export const approvalsCommand = Command.make("approvals").pipe(
+export const approvalsCommand = () => Command.make("approvals").pipe(
   Command.withDescription("Review and decide pending approval gates"),
   Command.withSubcommands([
     approvalsListCommand,
@@ -144,14 +145,14 @@ export const approvalsCommand = Command.make("approvals").pipe(
   ]),
 );
 
-// ── grant ───────────────────────────────────────────────────────────
+// ── grants ──────────────────────────────────────────────────────────
 
 const grantListCommand = Command.make(LIST, { fleet: fleetFlag }).pipe(
   Command.withDescription("List integration grants for a Fleet"),
   guardedHandler(({ fleet }) => grantListEffectFromArgs(undefined, opt(fleet))),
 );
 
-const grantDeleteCommand = Command.make(DELETE, {
+const grantRevokeCommand = Command.make("revoke", {
   grantId: grantIdArgument,
   fleet: fleetFlag,
 }).pipe(
@@ -159,7 +160,7 @@ const grantDeleteCommand = Command.make(DELETE, {
   guardedHandler(({ grantId, fleet }) => grantDeleteEffectFromArgs(opt(fleet), grantId)),
 );
 
-export const grantCommand = Command.make("grant").pipe(
-  Command.withDescription("Manage integration grants"),
-  Command.withSubcommands([grantListCommand, grantDeleteCommand]),
+export const grantsCommand = () => Command.make("grants").pipe(
+  Command.withDescription("Manage a fleet's integration grants"),
+  Command.withSubcommands([grantListCommand, grantRevokeCommand]),
 );
