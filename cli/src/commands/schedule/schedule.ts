@@ -21,11 +21,19 @@ import {
   resolveWorkspaceId,
   WORKSPACE_FLAG,
 } from "../workspace/guards.ts";
-import { decodeSchedule, decodeSchedules, scheduleRows, scheduleSummary } from "./read.ts";
+import {
+  decodeEditBase,
+  decodeSchedule,
+  decodeSchedules,
+  SCHEDULE_SOURCE,
+  SCHEDULE_STATUS,
+  scheduleRows,
+  scheduleSummary,
+} from "./read.ts";
 import { isString } from "../../lib/guards.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
-const STATUS_ACTIVE = "active" as const;
-const STATUS_PAUSED = "paused" as const;
+const STATUS_ACTIVE = SCHEDULE_STATUS.active;
+const STATUS_PAUSED = SCHEDULE_STATUS.paused;
 const FIELD_SCHEDULE_ID = "schedule_id" as const;
 const FIELD_FLEET_ID = "fleet_id" as const;
 const FIELD_DESCRIPTION = "description" as const;
@@ -33,6 +41,7 @@ const FIELD_NEXT_RUN = "next_run_at" as const;
 const FIELD_MESSAGE = "message" as const;
 const FIELD_STATUS = "status" as const;
 const DEFAULT_TIMEZONE = "UTC" as const;
+const HEADER_IF_MATCH = "If-Match" as const;
 
 const USAGE_CREATE =
   "usage: agentsfleet schedule create <fleet_id> --cron <expr> --message <text> [--timezone <tz>]";
@@ -176,20 +185,27 @@ export const scheduleUpdateEffectFromArgs = (
     const fleetId = yield* requireValidId(fleetIdRaw, FIELD_FLEET_ID, USAGE_UPDATE);
     const scheduleId = yield* requireValidId(scheduleIdRaw, FIELD_SCHEDULE_ID, USAGE_UPDATE);
     const desiredStatus = yield* parseStatus(flags.status);
-    const body = {
+    const change = {
       ...(flags.cron !== undefined ? { cron: flags.cron } : {}),
       ...(flags.timezone !== undefined ? { timezone: flags.timezone } : {}),
       ...(flags.message !== undefined ? { message: flags.message } : {}),
-      ...(desiredStatus !== undefined ? { paused: desiredStatus === STATUS_PAUSED } : {}),
+      ...(desiredStatus !== undefined ? { status: desiredStatus } : {}),
     };
-    if (Object.keys(body).length === 0) {
+    if (Object.keys(change).length === 0) {
       return yield* Effect.fail(new ValidationError({ detail: "no schedule fields provided", suggestion: USAGE_UPDATE }));
     }
     const ctx = yield* scheduleContext(flags);
+    const path = wsFleetSchedulePath(ctx.wsId, fleetId, scheduleId);
+    // The daemon refuses a PATCH without the row's current tag (428), and an
+    // inherited row takes only an `override` that replaces its overlay whole,
+    // so the row is read first and the change merged into the overlay it holds.
+    const base = yield* decodeEditBase(yield* ctx.http.request<unknown>({ path, token: ctx.token }));
+    const body = base.source === SCHEDULE_SOURCE.trigger ? { override: { ...base.override, ...change } } : change;
     const row = yield* ctx.http.request<unknown>({
-      path: wsFleetSchedulePath(ctx.wsId, fleetId, scheduleId),
-      method: "PATCH",
+      path,
+      method: HTTP_METHOD.patch,
       token: ctx.token,
+      headers: { [HEADER_IF_MATCH]: base.etag },
       body,
     });
     yield* printSchedule(ctx.output, row, flags.stdoutIsTty, "updated");
