@@ -16,7 +16,8 @@ import { HttpClient, type HttpRequestInput } from "../src/services/http-client.t
 import { Output, type OutputShape } from "../src/services/output.ts";
 import { outputDouble } from "./helpers-output-double.ts";
 import { Workspaces } from "../src/services/workspaces.ts";
-import { ValidationError } from "../src/errors/index.ts";
+import { ServerError, ValidationError } from "../src/errors/index.ts";
+import { SCHEDULE_RESPONSE_INVALID } from "../src/commands/schedule/read.ts";
 
 const WS_ID = "01900000-0000-7000-8000-000000000001";
 const FLEET_ID = "01900000-0000-7000-8000-000000000002";
@@ -229,18 +230,23 @@ describe("schedule create/list/update/delete/sync effects", () => {
 
   test("update refuses before any write when nothing changes or the row has no tag", async () => {
     const none: HttpRequestInput[] = [];
-    const empty = await Effect.runPromiseExit(
+    const empty = await Effect.runPromise(Effect.flip(
       provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, {}), newCapture(), none, scheduleRow),
-    );
-    expect(Exit.isFailure(empty)).toBe(true);
+    ));
+    expect(empty).toBeInstanceOf(ValidationError);
+    if (!(empty instanceof ValidationError)) throw new Error("missing empty-update refusal");
+    expect(empty.detail).toBe("no schedule fields provided");
+    expect(empty.suggestion).toContain("agentsfleet schedule update");
     expect(none).toEqual([]);
 
     const untagged: HttpRequestInput[] = [];
     const { etag: _dropped, ...row } = scheduleRow;
-    const refused = await Effect.runPromiseExit(
+    const refused = await Effect.runPromise(Effect.flip(
       provide(scheduleUpdateEffectFromArgs(FLEET_ID, SCHEDULE_ID, { status: "paused" }), newCapture(), untagged, row),
-    );
-    expect(Exit.isFailure(refused)).toBe(true);
+    ));
+    expect(refused).toBeInstanceOf(ServerError);
+    if (!(refused instanceof ServerError)) throw new Error("missing untagged-row refusal");
+    expect(refused.code).toBe(SCHEDULE_RESPONSE_INVALID);
     expect(untagged.map((c) => c.method)).toEqual([undefined]);
   });
 

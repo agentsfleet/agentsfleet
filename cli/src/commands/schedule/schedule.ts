@@ -21,11 +21,19 @@ import {
   resolveWorkspaceId,
   WORKSPACE_FLAG,
 } from "../workspace/guards.ts";
-import { decodeEditBase, decodeSchedule, decodeSchedules, scheduleRows, scheduleSummary } from "./read.ts";
+import {
+  decodeEditBase,
+  decodeSchedule,
+  decodeSchedules,
+  SCHEDULE_SOURCE,
+  SCHEDULE_STATUS,
+  scheduleRows,
+  scheduleSummary,
+} from "./read.ts";
 import { isString } from "../../lib/guards.ts";
 import { HTTP_METHOD } from "../../constants/http-method.ts";
-const STATUS_ACTIVE = "active" as const;
-const STATUS_PAUSED = "paused" as const;
+const STATUS_ACTIVE = SCHEDULE_STATUS.active;
+const STATUS_PAUSED = SCHEDULE_STATUS.paused;
 const FIELD_SCHEDULE_ID = "schedule_id" as const;
 const FIELD_FLEET_ID = "fleet_id" as const;
 const FIELD_DESCRIPTION = "description" as const;
@@ -33,8 +41,6 @@ const FIELD_NEXT_RUN = "next_run_at" as const;
 const FIELD_MESSAGE = "message" as const;
 const FIELD_STATUS = "status" as const;
 const DEFAULT_TIMEZONE = "UTC" as const;
-// Written by the fleet's own trigger; such a row inherits the fleet's recipe.
-const SOURCE_TRIGGER = "trigger" as const;
 const HEADER_IF_MATCH = "If-Match" as const;
 
 const USAGE_CREATE =
@@ -194,7 +200,7 @@ export const scheduleUpdateEffectFromArgs = (
     // inherited row takes only an `override` that replaces its overlay whole,
     // so the row is read first and the change merged into the overlay it holds.
     const base = yield* decodeEditBase(yield* ctx.http.request<unknown>({ path, token: ctx.token }));
-    const body = base.source === SOURCE_TRIGGER ? { override: { ...base.override, ...change } } : change;
+    const body = base.source === SCHEDULE_SOURCE.trigger ? { override: { ...base.override, ...change } } : change;
     const row = yield* ctx.http.request<unknown>({
       path,
       method: HTTP_METHOD.patch,
