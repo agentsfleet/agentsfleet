@@ -43,6 +43,14 @@ describe("renderCliError", () => {
     expect(sink[0]).toContain("request: req-1");
   });
 
+  test("a handler's usage hint lands on the usage line, not the suggestion line", async () => {
+    const sink: string[] = [];
+    const err = new ServerError({ detail: "nope", suggestion: "usage: agentsfleet fleet show <fleet_id>", code: "UZ-X", status: 400, requestId: null });
+    await Effect.runPromise(renderCliError(err).pipe(Effect.provide(recordingOutput(sink))));
+    expect(sink[0]).toContain("usage: agentsfleet fleet show <fleet_id>");
+    expect(sink[0]).not.toContain("suggestion:");
+  });
+
   test("ServerError without a request_id omits the request_id line", async () => {
     const sink: string[] = [];
     const err = new ServerError({ detail: "nope", suggestion: "retry", code: "UZ-X", status: 502, requestId: null });

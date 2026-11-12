@@ -2,7 +2,6 @@
 // always printed under `--json`, and requested help is left alone.
 
 import { describe, expect, test } from "bun:test";
-import fs from "node:fs/promises";
 import path from "node:path";
 import { Writable } from "node:stream";
 
@@ -51,7 +50,7 @@ const forbidden = () =>
 
 const run = (failure: Failure, options: { json: boolean; columns: number }) =>
   withFreshStateDir(async (dir) => {
-    await fs.writeFile(
+    await Bun.write(
       path.join(dir, "workspaces.json"),
       JSON.stringify({ current_workspace_id: WORKSPACE_ID, items: [{ workspace_id: WORKSPACE_ID }] }),
     );
@@ -110,6 +109,29 @@ describe("error_blocks_align_labels_and_wrap", () => {
     const result = await run(FAILURES[4]!, { json: false, columns: 120 });
     expect(result.err).toMatch(/^ {2}did you mean {2}list$/m);
     expect(result.err).not.toContain("Did you mean this?");
+  });
+
+  test("a leaf rejection carries its usage line and the leaf hint", async () => {
+    const result = await run({ name: "leaf", argv: ["fleet", "show"], signedIn: true, reply: "forbidden" }, { json: false, columns: 120 });
+    expect(result.code).toBe(4);
+    expect(result.err).toMatch(/^ {2}usage {9}agentsfleet fleet show \[options\] <fleet_id>$/m);
+    expect(result.err).toMatch(/^ {2}suggestion {4}run `agentsfleet fleet show --help` for its arguments and flags$/m);
+  });
+
+  test("a choice error lists its values in words", async () => {
+    const result = await run(FAILURES[5]!, { json: false, columns: 120 });
+    expect(result.err).toContain("✕ error: invalid --completions: expected one of bash, zsh, fish, powershell, sh, pwsh (got \"tcsh\")");
+  });
+
+  test("a root typo is one block with no near miss to offer", async () => {
+    const result = await run({ name: "root typo", argv: ["lsit"], signedIn: false, reply: "forbidden" }, { json: false, columns: 120 });
+    expect(result.code).toBe(4);
+    expect(result.out).toBe("");
+    expect(result.err).toBe(
+      '✕ error: Unknown subcommand "lsit" for "agentsfleet"\n' +
+      "  code          UNKNOWN_COMMAND\n" +
+      "  suggestion    run `agentsfleet --help` for the command list\n",
+    );
   });
 
   test("a guard refusal moves its fix onto the suggestion line", async () => {

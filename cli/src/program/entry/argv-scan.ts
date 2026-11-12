@@ -163,7 +163,8 @@ export const scanLogLevel = (argv: ReadonlyArray<string>): LogLevel | undefined 
     if (token === END_OF_FLAGS) return undefined;
     const value = token === FLAG_LOG_LEVEL ? argv[index + 1]
       : token.startsWith(FLAG_LOG_LEVEL_INLINE) ? token.slice(FLAG_LOG_LEVEL_INLINE.length) : undefined;
-    if (value !== undefined) return LOG_LEVELS[value];
+    // Own keys only: `constructor` or `__proto__` must not resolve through the prototype.
+    if (value !== undefined) return Object.hasOwn(LOG_LEVELS, value) ? LOG_LEVELS[value] : undefined;
   }
   return undefined;
 };

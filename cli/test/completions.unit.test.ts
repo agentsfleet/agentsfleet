@@ -42,6 +42,13 @@ describe("scoped_help_suggestions_and_four_shell_completions_agree", () => {
     }
   });
 
+  test("a debug-level run writes the script and nothing else to stdout", async () => {
+    const outcome = await withKey(["model:read"], ["--completions", "zsh", "--log-level", "debug"]);
+    expect(outcome.out.startsWith("#compdef agentsfleet")).toBe(true);
+    expect(outcome.out).not.toContain("http.attempt");
+    expect(outcome.err).toContain("http.attempt");
+  });
+
   test("no scopes: no script and no suggestion advertises platform", async () => {
     expect((await withKey([], ["platfrom"])).err).not.toContain("platform");
     expect(await script([], "bash")).not.toContain("_agentsfleet_platform");

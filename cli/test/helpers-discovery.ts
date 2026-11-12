@@ -2,11 +2,13 @@
 // the scopes a test chooses per credential, and every other route with the
 // 403 a server sends for a missing scope.
 
-import fs from "node:fs/promises";
+// `chmod` has no Bun counterpart; everything else uses Bun's primitives.
+import { chmod } from "node:fs/promises";
 import path from "node:path";
 
 import { runCli } from "../src/cli.ts";
 import { CLI_CREDENTIAL_PREFIX } from "../src/constants/cli-credential.ts";
+import { DEFAULT_API_URL } from "../src/util/url.ts";
 import { bufferStream, cliEnv, withFreshStateDir } from "./helpers-cli-state.ts";
 
 export const USERS_ME = "/v1/users/me";
@@ -53,17 +55,25 @@ const bearerOf = (init?: RequestInit): string | null => {
   return header?.startsWith("Bearer ") ? header.slice("Bearer ".length) : null;
 };
 
+const storedLogin = (apiUrl: string | null): string =>
+  JSON.stringify({ token: STORED_TOKEN, saved_at: Date.now(), session_id: null, api_url: apiUrl, credential_id: "cred-1" });
+
+// Root reads a mode-000 file anyway, so an unreadable-file case cannot be
+// staged as root.
+export const RUNNING_AS_ROOT = process.getuid?.() === 0;
+
 export const run = (setup: Setup): Promise<Outcome> =>
   withFreshStateDir(async (dir) => {
+    const credentials = path.join(dir, "credentials.json");
     if (setup.stored !== undefined) {
-      await fs.writeFile(
-        path.join(dir, "credentials.json"),
-        JSON.stringify({ token: STORED_TOKEN, saved_at: Date.now(), session_id: null, api_url: setup.stored.apiUrl, credential_id: "cred-1" }),
-        { mode: 0o600 },
-      );
+      await Bun.write(credentials, storedLogin(setup.stored.apiUrl));
+      await chmod(credentials, 0o600);
     }
+    // A login that WOULD be eligible (minted by the default target this run
+    // infers) behind a file that cannot be read: only the failed read stops it.
     if (setup.storedUnreadable === true) {
-      await fs.writeFile(path.join(dir, "credentials.json"), "{}", { mode: 0o000 });
+      await Bun.write(credentials, storedLogin(DEFAULT_API_URL));
+      await chmod(credentials, 0o000);
     }
     const calls: Call[] = [];
     const fetchImpl = async (url: string, init?: RequestInit) => {

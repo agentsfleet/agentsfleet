@@ -10,12 +10,13 @@
 // blocks printed one after the other line up. A value longer than the line
 // wraps back to that column rather than to the margin.
 //
-// Pure: the caller owns the stream and the colour decision, so the layout can
-// be tested at any width without a terminal.
+// `renderErrorBlock` is pure: it takes the width and the style, so the layout
+// can be tested at any width without a terminal. `writeErrorBlock` is the
+// stream-facing wrapper that picks both.
 
-import { visibleLength, wrapAt } from "../program/entry/help-formatter.ts";
 import type { WritableStreamLike } from "./capability.ts";
 import { ui } from "./index.ts";
+import { visibleLength, wrapAt } from "./text.ts";
 
 export const BLOCK_LABEL = {
   code: "code",
@@ -43,6 +44,15 @@ const VALUE_COLUMN = INDENT.length + LABEL_WIDTH + GAP.length;
 export const DEFAULT_BLOCK_WIDTH = 80;
 // Below this a wrapped value would be a column of single words; stop wrapping.
 const MIN_VALUE_WIDTH = 20;
+/** Where every label's value begins, counted from column 1. */
+export const BLOCK_VALUE_COLUMN = VALUE_COLUMN + 1;
+// Off a terminal, a field stays on one line however long it is: logs and
+// pipes are read with grep, and a wrapped sentence no longer matches itself.
+const UNWRAPPED = Number.POSITIVE_INFINITY;
+// A one-line refusal often carries its own fix after an em dash: `not
+// authenticated — run \`agentsfleet login\` first`. The fix belongs on the
+// `suggestion` line, so split it there; a message without one stays whole.
+const FIX_SEPARATOR = " — " as const;
 
 export const BLOCK_SEVERITY = { error: "error", warning: "warning" } as const;
 export type BlockSeverity = (typeof BLOCK_SEVERITY)[keyof typeof BLOCK_SEVERITY];
@@ -88,29 +98,17 @@ export const renderErrorBlock = (
   return [head, ...fields].join("\n");
 };
 
-/** Where every label's value begins, counted from column 1. */
-export const BLOCK_VALUE_COLUMN = VALUE_COLUMN + 1;
-
 /** The house style: the glyph and colour every other line of output uses. */
 export const HOUSE_STYLE: BlockStyle = {
   head: (severity, text) => (severity === BLOCK_SEVERITY.error ? ui.err(text) : ui.warn(text)),
   label: (text) => ui.dim(text),
 };
 
-// Off a terminal, a field stays on one line however long it is: logs and
-// pipes are read with grep, and a wrapped sentence no longer matches itself.
-const UNWRAPPED = Number.POSITIVE_INFINITY;
-
 /** Writes a block to `stream`, wrapped only on a terminal that reports its width. */
 export const writeErrorBlock = (stream: WritableStreamLike, block: ErrorBlock): void => {
   const width = stream.isTTY === true && stream.columns !== undefined ? stream.columns : UNWRAPPED;
   stream.write(`${renderErrorBlock(block, width, HOUSE_STYLE)}\n`);
 };
-
-// A one-line refusal often carries its own fix after an em dash: `not
-// authenticated — run \`agentsfleet login\` first`. The fix belongs on the
-// `suggestion` line, so split it there; a message without one stays whole.
-const FIX_SEPARATOR = " — " as const;
 
 export const splitFix = (message: string): { readonly message: string; readonly fix: string | undefined } => {
   const at = message.indexOf(FIX_SEPARATOR);

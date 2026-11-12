@@ -179,7 +179,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::AGENTSFLEET_NAME_EXISTS,
         status: 409,
         title: "Fleet name already exists",
-        hint: "A Fleet with this name already exists. Use `agentsfleet fleet kill <name>` first, then deploy again.",
+        hint: "A Fleet with this name already exists. Find its id with `agentsfleet fleet list`, run `agentsfleet fleet kill <fleet_id>`, then deploy again.",
         // No dashboard sentence: an explicit name is a command-line and
         // API-key surface, because the dashboard's one-step install names
         // nothing and takes the re-drawn suffix instead of ever seeing this.

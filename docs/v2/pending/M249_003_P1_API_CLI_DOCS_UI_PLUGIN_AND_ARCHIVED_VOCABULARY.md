@@ -6,7 +6,7 @@
 **Date:** Nov 12, 2026
 **Status:** PENDING
 **Priority:** P1, one public vocabulary across API, CLI, UI and docs
-**Categories:** API, CLI, UI, DOCS
+**Categories:** API, CLI, DOCS, UI
 **Batch:** B3, after M249_002
 **Depends on:** M249_001 (UI refresh) and M249_002 (CLI grouping) merged; this branch rebases onto both before editing UI callers
 **Provenance:** Split from the authored M249_002 on Nov 12, 2026 at Indy's direction; on Nov 13, 2026 the CLI vocabulary renames, Plugin readers and `fleet delete` composition moved here from M249_002 after EGM review (see Discovery)

@@ -133,7 +133,7 @@ export const tenantProviderAddEffectFromArgs = (
     if (!secretRef) {
       return yield* Effect.fail(
         new ValidationError({
-          detail: "tenant provider create requires --secret <name>",
+          detail: "models use requires --secret <name>",
           suggestion:
             "pick the secret explicitly so the link to your vault entry is clear",
         }),
