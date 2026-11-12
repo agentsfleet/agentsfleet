@@ -58,11 +58,14 @@ const REASON_REPAIR_BRANCH: &str = "repair_branch";
 /// See [`REASON_NON_COMPLETED_ACTION`].
 const REASON_UNINTERESTING_ACTION: &str = "uninteresting_action";
 
-/// The workflow conclusion that wakes a fleet.
+/// The workflow conclusions that wake a fleet.
 ///
-/// One value, not a set: a fleet is woken to investigate a FAILURE. A green
-/// run is the case this daemon exists to avoid spending a model on.
-const CONCLUSION_FAILURE: &str = "failure";
+/// A fleet is woken to investigate a run that did not reach green: one whose
+/// step failed, one that outran its time limit, and one GitHub could not
+/// start. A green run is the case this daemon exists to avoid spending a model
+/// on, and a cancelled or skipped run was somebody's decision rather than a
+/// fault to investigate.
+const WAKING_CONCLUSIONS: [&str; 3] = ["failure", "timed_out", "startup_failure"];
 
 /// Which route's rules to apply.
 ///
@@ -150,7 +153,7 @@ fn workflow_run(
     if is_repair_branch(&run.head_branch) {
         return Ingest::Ignore(REASON_REPAIR_BRANCH);
     }
-    if run.conclusion != CONCLUSION_FAILURE {
+    if !WAKING_CONCLUSIONS.contains(&run.conclusion.as_str()) {
         return Ingest::Ignore(REASON_NON_FAILURE_CONCLUSION);
     }
 
@@ -228,5 +231,7 @@ fn encoded<T: Serialize>(digest: &T) -> Ingest {
     serde_json::to_string(digest).map_or(Ingest::Ignore(REASON_MISSING_REPOSITORY), Ingest::Accept)
 }
 
+#[cfg(test)]
+mod conclusion_tests;
 #[cfg(test)]
 mod tests;
