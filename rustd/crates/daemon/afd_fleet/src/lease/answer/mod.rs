@@ -8,7 +8,7 @@
 use af_core::id::Uuid7;
 use af_wire::decision::DecisionAssignment;
 use af_wire::event::{EventEnvelope, EventType};
-use af_wire::lease::{LeasePayload, SecretDelivery, Turn};
+use af_wire::lease::{LeasePayload, Turn};
 use af_wire::memory::MemoryHydrateResponse;
 use af_wire::policy::ExecutionPolicy;
 
@@ -32,14 +32,13 @@ pub(super) fn no_work(runner: &Uuid7, reason: &str) {
 
 /// What a lease carries about the fleet beyond its event: the thread's earlier
 /// turns and the memory window, both read after the issue.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(super) struct Context<'a> {
     pub(super) history: Vec<Turn<'a>>,
     pub(super) memory: Option<MemoryHydrateResponse<'a>>,
     pub(super) decision: Option<Box<DecisionAssignment>>,
     pub(super) task: Option<af_wire::task::TaskContext<'static>>,
-    pub(super) expires_at: Option<jiff::Timestamp>,
-    pub(super) execution_deadline: Option<jiff::Timestamp>,
+    pub(super) expires_at: jiff::Timestamp,
 }
 
 /// Assemble the issued payload while its policy still borrows the admitted work.
@@ -54,11 +53,7 @@ pub(super) fn payload<'a>(
     LeasePayload {
         lease_id: lease_id.as_str().into(),
         fencing_token: acquired.fence.as_u64(),
-        lease_expires_at: context.expires_at.unwrap_or(acquired.leased_until),
-        execution_deadline: context.execution_deadline,
-        // The one delivery this port serves. `scoped` and `proxy` are wire
-        // values with no implementation on either side.
-        secret_delivery: SecretDelivery::Inline,
+        lease_expires_at: context.expires_at,
         event: EventEnvelope {
             event_id: acquired.event_id.as_str().into(),
             fleet_id: acquired.fleet_id.as_str().into(),
@@ -70,14 +65,13 @@ pub(super) fn payload<'a>(
         },
         policy,
         instructions: installed.instructions.as_str().into(),
-        // No fleet carries a size yet, so every runner builds its defaults.
-        limits: None,
         history: context.history,
         resume_hold: acquired.resume_hold,
         decision: context.decision,
         task: context.task,
         durable_tasks: installed.config.decision_policy().is_some(),
         memory: context.memory,
+        inputs_waiting: acquired.opened.inputs_waiting,
     }
 }
 

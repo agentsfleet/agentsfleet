@@ -206,11 +206,11 @@ export class DraftClient {
       this.#update({notice: appliedNotice(this.#snapshot.schedules)});
     }, "saving");
   }
-  publish(label: string, append: boolean): Promise<void> {
+  publish(label: string, append: boolean, selectedTarget?: string): Promise<void> {
     return this.#requests.run(async () => {
       this.#idle();
       const {draft} = await this.#readySetup();
-      const publication = await this.#publication.prepare(draft, label, append);
+      const publication = await this.#publication.prepare(draft, label, append, selectedTarget);
       await this.#operation.run({publish: publication}, async key => {
         this.#update({notice: await this.#publication.publish(publication, key)});
         await this.#read(draft.id); await this.#refreshSummary(draft.id);

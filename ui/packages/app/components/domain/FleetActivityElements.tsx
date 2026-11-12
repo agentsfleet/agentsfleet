@@ -23,12 +23,12 @@ export function WakeupActivityElement({data}: {data: ActivityElementData}) {
   return <ActivityRow data={data} annotation={<FleetRunDetails eventId={data.eventId} status={data.status} />} />;
 }
 
-/** Navigation only: the inbox retains approval ownership and decision checks. */
+/** Keep decisions in the fleet Summary, backed by its authenticated gate reader. */
 export function ApprovalActivityElement({data}: {data: ActivityElementData}) {
   const scope = useFleetScope();
-  const href = scope ? `${workspacePath(scope.workspaceId, "approvals")}?${new URLSearchParams({fleetId: scope.fleetId})}` : null;
+  const href = scope ? `${workspacePath(scope.workspaceId, `fleets/${scope.fleetId}`)}#fleet-approvals` : null;
   return <ActivityRow data={data} annotation={href ? <ActivityLink>
-    <Link href={href}><CheckCircleIcon aria-hidden="true" />View approvals</Link>
+    <Link href={href}><CheckCircleIcon aria-hidden="true" />View request</Link>
   </ActivityLink> : null} />;
 }
 
@@ -41,7 +41,7 @@ export function DefaultActivityElement({data}: {data: FleetChatElementData["defa
 function ActivityRow({data, annotation}: {data: ActivityElementData; annotation: ReactNode}) {
   const senderLabel = useSenderLabel();
   return <FleetActivityRow sender={senderLabelFor(data.actor, senderLabel)} createdAt={data.createdAt}
-    headline={data.headline} outcome={data.outcome} failed={data.failed} messageRole="system"
+    title={data.title} headline={data.headline} outcome={data.outcome} failed={data.failed} messageRole="system"
     detailsLabel={data.details.kind === "message" ? "View message" : "View event"} annotation={annotation}>
     {data.details.kind === "none" ? null : <ActivityContent details={data.details} />}
   </FleetActivityRow>;

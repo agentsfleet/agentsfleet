@@ -4,7 +4,7 @@ import { executionInstructions } from "./fixtures/definition";
  * credit the work spent.
  *
  * Save two fleets with a declared connector, approve each request in the
- * inbox, and continue each saved setup. Both fleets then run real messages;
+ * fleet conversation, and continue each saved setup. Both fleets then run real messages;
  * their own ledger rows and the tenant balance prove the work was billed.
  */
 import { expect, test, type Page } from "@playwright/test";
@@ -27,7 +27,7 @@ import {
   messageFleet,
 } from "./fixtures/chat-walk";
 import { observed, pollFor, uniqueTag } from "./fixtures/observation";
-import { approvalsHrefForFleet, approveRow, expectPending, rowForAgent } from "./fixtures/approvals-table";
+import { approveFleetRequest } from "./fixtures/fleet-approval";
 import {
   chargedToFleets,
   connectorGrantFor,
@@ -126,10 +126,7 @@ async function approveAndContinue(page: Page, fleetId: string, setupUrl: string)
   expect(grant.reason).toBe(REASON_DECLARED_AT_INSTALL);
   const gate = await pendingGateFor(FIXTURE_KEY.regular, workspaceId, fleetId);
   if (!gate) throw new Error(`saved fleet ${callsign} has no approval request`);
-  await page.goto(approvalsHrefForFleet(workspaceId, fleetId));
-  const row = rowForAgent(page, callsign);
-  await expectPending(row, RENDER_TIMEOUT_MS);
-  await approveRow(row, gate.proposed_action, RENDER_TIMEOUT_MS);
+  await approveFleetRequest(page, workspaceId, fleetId, gate, RENDER_TIMEOUT_MS);
   const approved = standing(await connectorGrantFor(FIXTURE_KEY.regular, workspaceId, fleetId), callsign);
   expect(approved.status).toBe(GRANT_STATUS.approved);
   expect(approved.approved_at).not.toBeNull();

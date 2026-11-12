@@ -94,8 +94,6 @@ mod integration_runner_activity;
 mod integration_runner_activity_call_id;
 #[path = "integration_runner_brackets.rs"]
 mod integration_runner_brackets;
-#[path = "integration_runner_context.rs"]
-mod integration_runner_context;
 mod integration_runner_e2e;
 #[path = "integration_runner_messages.rs"]
 mod integration_runner_messages;

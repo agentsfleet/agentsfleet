@@ -15,6 +15,31 @@ use crate::error::{Result, query};
 
 const CONTEXT: &str = "bind durable interpretation";
 
+/// [`bind`] under the operation's trace and outcome label: the lifecycle's
+/// test-only entry point, kept beside what it wraps.
+#[cfg(any(test, feature = "test-util"))]
+pub(super) fn observed_bind<'a>(
+    tasks: &'a Tasks,
+    lease: TaskLease<'a>,
+    plan: &'a PreparedPlan,
+) -> super::TaskFuture<'a, TaskBindings> {
+    use af_observability::metrics::label::task::{TaskOperation, TaskOutcome};
+
+    let span = tracing::info_span!("task_bind", lease_id = lease.lease_id.as_str());
+    super::observe::traced(
+        TaskOperation::Bind,
+        bind(tasks, lease, plan),
+        |bindings| {
+            if bindings.replayed {
+                TaskOutcome::Replayed
+            } else {
+                TaskOutcome::Accepted
+            }
+        },
+        span,
+    )
+}
+
 pub(super) async fn bind(
     tasks: &Tasks,
     lease: TaskLease<'_>,

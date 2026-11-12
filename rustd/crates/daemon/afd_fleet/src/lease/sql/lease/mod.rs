@@ -3,8 +3,9 @@
 //!
 //! # The claim is the whole concurrency design
 //!
-//! [`CLAIM_FLEET_SLOT`] is one conditional UPSERT and it carries three jobs
-//! at once: it wins the fleet iff the slot is free or its prior claim expired,
+//! The slot upsert inside `claim_admission_head.sql` is one conditional UPSERT
+//! and it carries three jobs at once: it wins the fleet iff the slot is free or
+//! its prior claim expired,
 //! it bumps the monotonic `fencing_token`, and it records the sticky-routing
 //! hint. Exactly one of N racing runners takes the row. Crucially the claim
 //! PRECEDES the event read, so a loser has consumed no event and nothing is
@@ -16,6 +17,9 @@ mod row;
 pub use self::row::{INSERT_LEASE_WITH_EVENT, LeaseRow};
 
 /// Claim a fleet's lease slot, bumping the monotonic fence.
+///
+/// The slot upsert on its own, for tests: production runs this same upsert as
+/// the `slot` step of `claim_admission_head.sql`.
 ///
 /// `fleet_id` is the whole primary key (schema/630), so the conflict target IS
 /// the table's only unique index — two runners racing a brand-new fleet's slot
@@ -49,6 +53,7 @@ pub use self::row::{INSERT_LEASE_WITH_EVENT, LeaseRow};
 /// `clock_timestamp()` reading decides every deadline: an upsert cannot lock
 /// before it reads, so the instant is taken first, which only ever makes a
 /// lock wait refuse a claim or shorten a lease, never extend one.
+#[cfg(any(test, feature = "test-util"))]
 pub const CLAIM_FLEET_SLOT: &str = include_str!("claim_fleet_slot.sql");
 
 /// Release the slot — fencing-guarded, so only the current holder can free it —
@@ -68,9 +73,10 @@ pub const CLAIM_FLEET_SLOT: &str = include_str!("claim_fleet_slot.sql");
 /// two runners, and would record a hold on a sandbox no lease will reach.
 /// Idempotent — a no-op when the row is gone or the token has been bumped past
 /// this one.
+#[cfg(any(test, feature = "test-util"))]
 pub const RELEASE_FLEET_SLOT: &str = include_str!("release_fleet_slot.sql");
 
-/// [`RELEASE_FLEET_SLOT`] for a claim that leased nothing. `$1` fleet, `$2` fence.
+/// `RELEASE_FLEET_SLOT` for a claim that leased nothing. `$1` fleet, `$2` fence.
 ///
 /// It drops the sticky hint too, or a fleet whose pass keeps stopping sorts
 /// first for that runner on every poll of its partition, starving the rest.

@@ -5,16 +5,17 @@ import { SteerComposer } from "./SteerComposer";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 
 const { composer, aui } = vi.hoisted(() => {
-  const state = { text: "", isEmpty: true };
+  const state: {text: string; isEmpty: boolean; quote?: {text: string}} = { text: "", isEmpty: true };
   const setText = vi.fn((text: string) => {
     state.text = text;
     state.isEmpty = text.length === 0;
   });
+  const setQuote = vi.fn((quote: {text: string} | undefined) => {state.quote = quote;});
   // One client for every render, as the runtime's is: an effect keyed on it
   // must not re-run merely because the component rendered.
   return {
-    composer: { state, setText },
-    aui: { composer: () => ({ getState: () => state, setText }) },
+    composer: { state, setText, setQuote },
+    aui: { composer: () => ({ getState: () => state, setText, setQuote }) },
   };
 });
 
@@ -28,6 +29,9 @@ vi.mock("@assistant-ui/react", () => ({
       React.cloneElement(children, { placeholder, "data-submit-mode": submitMode } as Record<string, unknown>),
     Send: ({ children }: { children: React.ReactElement }) => children,
     Attachments: () => null,
+    Quote: () => null,
+    QuoteText: () => null,
+    QuoteDismiss: () => null,
   },
   useAui: () => aui,
   useAuiEvent: () => {},
@@ -81,6 +85,8 @@ afterEach(() => {
   cleanup();
   draft("");
   composer.setText.mockClear();
+  composer.setQuote(undefined);
+  composer.setQuote.mockClear();
 });
 
 describe("SteerComposer", () => {

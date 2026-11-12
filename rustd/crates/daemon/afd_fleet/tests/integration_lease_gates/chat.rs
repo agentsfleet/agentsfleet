@@ -227,10 +227,11 @@ impl Chat {
         };
         self.fixtures
             .plane()
-            .report(
+            .report_with(
                 runner,
                 &request,
                 now,
+                None,
                 &mut af_observability::verb_span::VerbClock::untimed(),
             )
             .await

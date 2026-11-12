@@ -22,6 +22,7 @@ export type ActivityElementData = {
   status: string;
   createdAt: Date;
   headline: string;
+  title?: string;
   outcome: string | undefined;
   failed: boolean;
   details: ActivityDetails;

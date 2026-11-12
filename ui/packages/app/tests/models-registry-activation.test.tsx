@@ -107,7 +107,7 @@ describe("ModelsRegistryTable saved model activation", () => {
     await renderTable();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
+    await user.click(screen.getByRole("button", { name: /make active: claude-sonnet-5/i }));
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledOnce());
     expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ workspace_id: WORKSPACE_ID, secret_ref: SECRET_REF, model: MODEL_ID });
 
@@ -123,7 +123,7 @@ describe("ModelsRegistryTable saved model activation", () => {
     await renderTable();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /switch to claude-sonnet-5/i }));
+    await user.click(screen.getByRole("button", { name: /make active: claude-sonnet-5/i }));
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledOnce());
     expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({ workspace_id: WORKSPACE_ID, secret_ref: SECRET_REF, model: MODEL_ID });
 

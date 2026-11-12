@@ -58,16 +58,20 @@ pub(super) fn gauge_sources(
     GaugeSources {
         database_pools: Arc::new(move || {
             use af_observability::metrics::instrument::Reading;
+            use af_observability::metrics::label::database::PoolState;
             database
                 .snapshot()
                 .into_iter()
                 .flat_map(|pool| {
                     [
-                        ("open", u64::from(pool.open)),
-                        ("idle", u64::from(pool.idle)),
-                        ("used", u64::from(pool.open.saturating_sub(pool.idle))),
-                        ("capacity", u64::from(pool.capacity)),
-                        ("waiting", pool.waiting),
+                        (PoolState::Open, u64::from(pool.open)),
+                        (PoolState::Idle, u64::from(pool.idle)),
+                        (
+                            PoolState::Used,
+                            u64::from(pool.open.saturating_sub(pool.idle)),
+                        ),
+                        (PoolState::Capacity, u64::from(pool.capacity)),
+                        (PoolState::Waiting, pool.waiting),
                     ]
                     .into_iter()
                     .map(move |(state, value)| Reading {
@@ -78,7 +82,7 @@ pub(super) fn gauge_sources(
                             ),
                             opentelemetry::KeyValue::new(
                                 af_observability::semconv::LABEL_STATE,
-                                state,
+                                state.as_str(),
                             ),
                         ],
                         value,

@@ -21,14 +21,14 @@ export function ChatFailure({title, description, note, details, onRetry, disable
     try { await send(); } catch { setRetryError(true); }
     finally { pending.current = false; setRetrying(false); }
   };
-  return <Alert variant="destructive" aria-label={title} className="block space-y-sm rounded-md px-xl py-lg text-body-sm leading-body-sm text-foreground">
-    <div className="block space-y-sm">
-      <span className="flex items-center gap-md font-medium"><WarningCircleIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" />{title}</span>
+  return <Alert variant="destructive" aria-label={title} className="block space-y-md rounded-md border-error-border bg-error-surface p-5 text-body-sm leading-body-sm text-muted-foreground">
+    <div className="block space-y-md">
+      <span className="flex items-center gap-md text-base font-semibold text-destructive"><WarningCircleIcon className="size-4 shrink-0 text-destructive" aria-hidden="true" />{title}</span>
       <span className="block">{description}</span>
     </div>
     {note ? <p className="text-eyebrow text-muted-foreground">{note}</p> : null}
-    <div className="flex flex-wrap items-start gap-md">
-      {onRetry ? <Button variant="link" size="sm" className="min-h-9 px-0 font-medium text-muted-foreground underline decoration-border-strong underline-offset-4 hover:text-foreground" disabled={disabled || retrying} onClick={() => {void retry(onRetry);}}>{retrying ? "Trying again…" : "Try again"}</Button> : null}
+    <div className="space-y-lg">
+      {onRetry ? <Button disabled={disabled || retrying} onClick={() => {void retry(onRetry);}}>{retrying ? "Trying again…" : "Try again"}</Button> : null}
       {details ? <Accordion type="single" collapsible className="min-w-0">
         <AccordionItem value="details" className="border-0">
           <AccordionTrigger className="min-h-9 w-fit flex-none gap-sm py-0 text-eyebrow text-muted-foreground">View details</AccordionTrigger>

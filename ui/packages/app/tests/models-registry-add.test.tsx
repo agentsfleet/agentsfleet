@@ -40,7 +40,7 @@ describe("AddModelEntryDialog — unified form shape", () => {
     expect(within(dialog).queryByLabelText(/base url/i)).toBeNull();
 
     const labels = Array.from(dialog.querySelectorAll("label")).map((l) => l.textContent);
-    expect(labels).toEqual(["Provider", "Model", "Show advanced models", "Key name", "API key", "Make active"]);
+    expect(labels).toEqual(["Provider", "Model", "Show advanced models", "Add new key", "Use saved key", "Key name", "API key", "Make active"]);
     expect(within(dialog).getByRole("switch", { name: "Show advanced models" }).getAttribute("aria-checked")).toBe("false");
   });
 
@@ -107,7 +107,7 @@ describe("AddModelEntryDialog — explicit credential choice", () => {
     const dialog = within(screen.getByRole("dialog"));
     await user.type(dialog.getByLabelText("Provider", {exact: true}), "anthropic");
     await user.type(dialog.getByLabelText("Model", {exact: true}), FORM_MODEL);
-    await user.click(dialog.getByRole("button", {name: "Use saved key"}));
+    await user.click(dialog.getByRole("radio", {name: "Use saved key"}));
     await user.click(dialog.getByLabelText("Saved key", {exact: true}));
     expect(screen.queryByRole("option", {name: other.name})).toBeNull();
     await user.click(screen.getByRole("option", {name: ANTHROPIC_SECRET.name}));
@@ -123,12 +123,12 @@ describe("AddModelEntryDialog — explicit credential choice", () => {
     const {user} = await renderDialog([ANTHROPIC_SECRET]);
     const dialog = within(screen.getByRole("dialog"));
     await user.type(dialog.getByLabelText("Provider", {exact: true}), "anthropic");
-    await user.click(dialog.getByRole("button", {name: "Use saved key"}));
+    await user.click(dialog.getByRole("radio", {name: "Use saved key"}));
     await user.click(dialog.getByLabelText("Saved key", {exact: true}));
     await user.click(screen.getByRole("option", {name: ANTHROPIC_SECRET.name}));
-    await user.click(dialog.getByRole("button", {name: "Add new key"}));
+    await user.click(dialog.getByRole("radio", {name: "Add new key"}));
     expect((dialog.getByLabelText("API key", {exact: true}) as HTMLInputElement).value).toBe("");
-    await user.click(dialog.getByRole("button", {name: "Use saved key"}));
+    await user.click(dialog.getByRole("radio", {name: "Use saved key"}));
     expect(dialog.getByLabelText("Saved key", {exact: true}).textContent).toBe("Select a saved key");
     expect(createSecretActionMock).not.toHaveBeenCalled();
     expect(replaceSecretActionMock).not.toHaveBeenCalled();
@@ -137,10 +137,10 @@ describe("AddModelEntryDialog — explicit credential choice", () => {
   it("explains an empty compatible-key list and returns to adding a credential", async () => {
     const {user} = await renderDialog(); const dialog = within(screen.getByRole("dialog"));
     await user.type(dialog.getByLabelText("Provider", {exact: true}), "anthropic");
-    await user.click(dialog.getByRole("button", {name: "Use saved key"}));
+    await user.click(dialog.getByRole("radio", {name: "Use saved key"}));
     expect(dialog.getByText("No saved keys for this provider. Add a new key to continue.")).toBeTruthy();
     expect(dialog.getByLabelText("Saved key", {exact: true}).hasAttribute("disabled")).toBe(true);
-    await user.click(dialog.getByRole("button", {name: "Add new key"}));
+    await user.click(dialog.getByRole("radio", {name: "Add new key"}));
     expect(dialog.getByLabelText("API key", {exact: true})).toBeTruthy();
   });
 });

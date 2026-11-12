@@ -1,9 +1,8 @@
 //! Restored UDP is used only after a healthy HTTP/2 session ends normally.
 
 use super::{heartbeat, owner, relay::Relay, session};
-use af_core::timing::{
-    HEARTBEAT_INTERVAL, RECONNECT_JITTER_MAX, STREAM_RECOVERY_BUDGET, STREAM_STABLE_RESET_AFTER,
-};
+use crate::integration_runner_stream::RECOVERY_SLACK;
+use af_core::timing::{HEARTBEAT_INTERVAL, STREAM_RECOVERY_BUDGET, STREAM_STABLE_RESET_AFTER};
 use afr_supervisor::test_util::Session;
 use agentsfleetd::supervisor::Supervisor;
 use tokio::time::Instant;
@@ -66,7 +65,7 @@ async fn reconnect_heartbeat(
     runner: &Session,
     first: &af_core::id::Uuid7,
 ) {
-    tokio::time::timeout(RECONNECT_JITTER_MAX + STREAM_RECOVERY_BUDGET, async {
+    tokio::time::timeout(RECOVERY_SLACK + STREAM_RECOVERY_BUDGET, async {
         loop {
             match heartbeat(runner).await {
                 Ok(_) if owner(run).await != *first => return,

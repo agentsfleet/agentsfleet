@@ -43,7 +43,7 @@ it("shows a standard PR badge before the mobile drawer opens, sharing reads and 
   expect(badge.querySelector("svg")).toBeTruthy();
   expect(screen.getByRole("region", {name: "Current work"})).toBeTruthy();
   expect(fetcher).toHaveBeenCalledTimes(2);
-  await screen.findByRole("region", {name: "Outputs"});
+  await screen.findByRole("region", {name: "Pull requests"});
   expect(fetcher).toHaveBeenCalledTimes(2);
   const draft = screen.getByRole("textbox", {name: "Draft", hidden: true});
   view.rerender(<View subject={null} />);

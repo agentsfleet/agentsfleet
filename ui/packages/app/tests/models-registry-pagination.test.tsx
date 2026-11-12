@@ -20,7 +20,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelDetai
 
 function entry(name: string, active = false): TenantModelEntry {
   return {id: name, model_id: name, display_name: null, secret_ref: "key", provider: "anthropic", kind: "provider_key",
-    has_key: true, active, created_at: "1970-01-01T00:00:00.001Z"};
+    workspace_id: "ws-test", has_key: true, active, created_at: "1970-01-01T00:00:00.001Z"};
 }
 function page(models: TenantModelEntry[], next_cursor: string | null) {
   return {models, next_cursor, total: null, platform_default_available: false};
@@ -40,37 +40,36 @@ afterEach(cleanup);
 describe("model registry pagination concurrency", () => {
   it("locks row mutations while the next page is outstanding and restores them afterwards", async () => {
     const finish = pendingPage(); show();
-    fireEvent.click(screen.getByRole("button", {name: "Next page"}));
-    expect(screen.getByRole("button", {name: "Edit initial-0"})).toHaveProperty("disabled", true);
-    expect(screen.getByRole("button", {name: "Switch to initial-1"})).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", {name: "Load more models"}));
+    expect(screen.getByRole("button", {name: "Manage initial-0"})).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", {name: "Make active: initial-1"})).toHaveProperty("disabled", true);
     await act(async () => { finish([entry("fresh")]); });
     expect(await screen.findByTitle("fresh")).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole("button", {name: "Edit fresh"})).toHaveProperty("disabled", false));
+    await waitFor(() => expect(screen.getByRole("button", {name: "Manage fresh"})).toHaveProperty("disabled", false));
   });
 
   it("discards an old page response after a newer first-page refresh", async () => {
     const finishOld = pendingPage();
     list.mockResolvedValueOnce({ok: true, data: page([entry("newest", true)], null)});
-    show(); fireEvent.click(screen.getByRole("button", {name: "Next page"}));
+    show(); fireEvent.click(screen.getByRole("button", {name: "Load more models"}));
     await act(async () => { created.current(); });
     await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
     await act(async () => { finishOld([entry("stale-page")], "stale-cursor"); });
     expect(screen.queryByTitle("stale-page")).toBeNull();
     expect(screen.getByTitle("newest")).toBeTruthy();
-    expect(screen.queryByRole("button", {name: "Next page"})).toBeNull();
-    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.queryByRole("button", {name: "Load more models"})).toBeNull();
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(list).toHaveBeenNthCalledWith(1, "next");
     expect(list).toHaveBeenNthCalledWith(2);
   });
 
-  it("keeps a newer search on its first page when an older Next completes", async () => {
+  it("appends every returned model without hiding a page behind client pagination", async () => {
     const finish = pendingPage(); show();
-    fireEvent.click(screen.getByRole("button", {name: "Next page"}));
-    fireEvent.change(screen.getByRole("searchbox", {name: "Search models"}), {target: {value: "fresh"}});
-    await act(async () => { finish(Array.from({length: 30}, (_, i) => entry(`fresh-${i}`))); });
-    expect(await screen.findByTitle("fresh-0")).toBeTruthy();
-    expect(screen.queryByTitle("fresh-29")).toBeNull();
-    expect(screen.getByRole("button", {name: "Previous page"})).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByRole("button", {name: "Load more models"}));
+    await act(async () => finish(Array.from({length: 30}, (_, i) => entry(`fresh-${i}`))));
+    expect(screen.getByTitle("initial-0")).toBeTruthy();
+    expect(screen.getByTitle("fresh-29")).toBeTruthy();
+    expect(screen.getAllByRole("listitem")).toHaveLength(55);
   });
 });
 
@@ -94,7 +93,7 @@ it.each(["success", "failure"])("ignores a superseded first-page refresh that en
 it("ignores a rejected next-page read after refresh has replaced its collection", async () => {
   const older = Promise.withResolvers<unknown>();
   list.mockReturnValueOnce(older.promise).mockResolvedValueOnce({ok: true, data: page([entry("newest", true)], null)});
-  show(); fireEvent.click(screen.getByRole("button", {name: "Next page"}));
+  show(); fireEvent.click(screen.getByRole("button", {name: "Load more models"}));
   await act(async () => {created.current();});
   await waitFor(() => expect(list).toHaveBeenCalledTimes(2));
   await act(async () => {older.reject(new Error("old page failed"));});
@@ -103,13 +102,7 @@ it("ignores a rejected next-page read after refresh has replaced its collection"
 });
 
 
-it.each([0, 3])("fills an incomplete search page before advancing (%i existing matches)", async (matches) => {
-  list.mockResolvedValueOnce({ok: true, data: page(Array.from({length: 30}, (_, index) => entry(`match-new-${index}`)), null)});
-  const rows = Array.from({length: 25}, (_, index) => entry(index < matches ? `match-old-${index}` : `initial-${index}`, index === 0));
-  render(<TooltipProvider><ModelsRegistryTable workspaceId="ws-test" initialPage={page(rows, "next")} initialError={null} /></TooltipProvider>);
-  fireEvent.change(screen.getByRole("searchbox", {name: "Search models"}), {target: {value: "match"}});
-  fireEvent.click(screen.getByRole("button", {name: "Next page"}));
-  expect(await screen.findByTitle("match-new-0")).toBeTruthy();
-  expect(screen.queryByTitle("match-new-29")).toBeNull();
-  expect(screen.getByRole("button", {name: "Previous page"})).toHaveProperty("disabled", true);
+it("does not claim the platform default is active while another registry page is unread", () => {
+  render(<TooltipProvider><ModelsRegistryTable workspaceId="ws-test" initialPage={{...page([entry("inactive")], "next"), platform_default_available: true}} initialError={null} /></TooltipProvider>);
+  expect(screen.queryByText("Active")).toBeNull();
 });

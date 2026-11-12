@@ -26,7 +26,7 @@ export function DialogOverlay({ className, ref, ...props }: DialogOverlayProps) 
     <DialogPrimitive.Overlay
       ref={ref}
       className={cn(
-        "fixed inset-0 z-50 bg-overlay duration-snap ease-snap motion-reduce:animate-none",
+        "fixed inset-0 z-50 bg-overlay backdrop-blur-[var(--blur-dialog)] duration-snap ease-snap motion-reduce:animate-none",
         "data-[state=open]:animate-in data-[state=closed]:animate-out",
         "data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
         className,
@@ -59,7 +59,7 @@ export function DialogContent({
         ref={ref}
         className={cn(
           "fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2",
-          "w-[calc(100%-var(--spacing-3xl))] max-w-lg rounded-lg border border-border-strong bg-card p-2xl font-sans text-card-foreground shadow-dialog",
+          "w-[calc(100%-var(--spacing-3xl))] max-w-dialog rounded-lg border border-border bg-card p-2xl font-sans text-card-foreground shadow-dialog",
           // A fixed, centre-translated panel cannot be scrolled to by the page,
           // so a dialog taller than the viewport puts its own footer out of
           // reach — the submit button is unclickable rather than merely
@@ -124,7 +124,7 @@ export function DialogDescription({ className, ref, ...props }: DialogDescriptio
   return (
     <DialogPrimitive.Description
       ref={ref}
-      className={cn("font-sans text-body-sm leading-body-sm text-muted-foreground", className)}
+      className={cn("font-sans text-body-sm leading-dialog-description text-muted-foreground", className)}
       {...props}
     />
   );

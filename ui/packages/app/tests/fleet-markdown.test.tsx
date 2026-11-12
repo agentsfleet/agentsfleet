@@ -36,7 +36,7 @@ describe("FleetMarkdown", () => {
       expect(screen.getByText(word)).toBeTruthy();
     }
     // One semantic section heading per Markdown heading, using one shared scale.
-    expect(container.querySelectorAll("h2.text-heading")).toHaveLength(6);
+    expect(container.querySelectorAll("h2.text-conversation-heading")).toHaveLength(6);
     expect(container.querySelectorAll("h1, h3, h4, h5, h6")).toHaveLength(0);
   });
 

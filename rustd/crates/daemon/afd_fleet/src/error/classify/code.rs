@@ -74,7 +74,8 @@ impl Error {
             | ErrorKind::TaskCounter { .. }
             | ErrorKind::TaskState { .. }
             | ErrorKind::TaskDocument { .. }
-            | ErrorKind::SequenceCorrupt => error_code::INTERNAL_DB_QUERY,
+            | ErrorKind::SequenceCorrupt
+            | ErrorKind::PostureCorrupt => error_code::INTERNAL_DB_QUERY,
             ErrorKind::Rejected { .. } => error_code::INVALID_REQUEST,
             ErrorKind::TaskPrecondition { .. } => error_code::TASK_PRECONDITION_FAILED,
             ErrorKind::TaskMutation { ref source, .. } => source.code(),

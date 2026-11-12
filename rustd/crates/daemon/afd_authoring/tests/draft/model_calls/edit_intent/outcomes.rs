@@ -150,8 +150,8 @@ pub(super) fn edit(case: &Case) -> afd_authoring::ActivityInput {
 }
 
 async fn assert_charge(case: &Case) {
-    let charge: (String, String, i64, i64) = sqlx::query_as("SELECT work_type, provider, input_token_count, output_token_count FROM billing.usage_lines WHERE work_id=$1 AND seq>= $2")
-        .bind(&case.attempt.id).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
+    let charge: (String, String, i64, i64) = sqlx::query_as("SELECT work_type, provider, input_token_count, output_token_count FROM billing.usage_lines WHERE work_id=$1 AND kind = $2")
+        .bind(&case.attempt.id).bind(af_wire::usage::LineKind::Decision.as_str())
         .fetch_one(&mut *case.f.connection().await).await.expect("setup usage line");
     assert_eq!(
         charge,
@@ -175,10 +175,10 @@ async fn assert_charge(case: &Case) {
 
 async fn settled(case: &Case) -> bool {
     sqlx::query_scalar(
-        "SELECT settled_at IS NOT NULL FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2",
+        "SELECT settled_at IS NOT NULL FROM billing.usage_lines WHERE work_id=$1 AND kind = $2",
     )
     .bind(&case.attempt.id)
-    .bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
+    .bind(af_wire::usage::LineKind::Decision.as_str())
     .fetch_one(&mut *case.f.connection().await)
     .await
     .expect("native decision settlement receipt")

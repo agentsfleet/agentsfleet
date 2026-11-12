@@ -5,12 +5,68 @@ use super::fixture::{Case, NO_ADMISSIONS, check};
 use af_crypto::{entropy::Entropy, secret::Kek};
 use afd_admission::Admissions;
 use afd_approval::{Decision, Inbox, IntegrationGrants, Origin, Resolution, Wanted};
-use afd_authoring::types::{SaveSource, Start};
+use afd_authoring::types::{CheckKind, SaveSource, Start};
 use afd_vault::{SecretBody, SecretName, Vault};
 use serde_json::json;
 use std::sync::Arc;
 
 async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
+    seed_github(c).await;
+    let (draft, mut request) = c.request("grant-barrier", Start::None).await;
+    let current = c
+        .setup
+        .read_draft(c.base.access(), &draft)
+        .await
+        .expect("current draft");
+    let patch = serde_json::from_value(json!({"config_ops":[{"op":"replace","path":"/config/x-agentsfleet/credentials","value":["github"]}]})).expect("declare integration");
+    c.base
+        .drafts
+        .patch(c.base.access(), &draft, Some(&current.etag), patch, now())
+        .await
+        .expect("declared requirement");
+    let current = c
+        .setup
+        .read_draft(c.base.access(), &draft)
+        .await
+        .expect("review declared access");
+    request.source = SaveSource::Draft {
+        draft_candidate_id: current.candidate.expect("candidate").id,
+    };
+    let review = current.review.expect("review");
+    let grant = review
+        .readiness
+        .iter()
+        .find(|check| check.kind == CheckKind::Grant)
+        .expect("grant check before Save");
+    assert!(
+        grant.next_action.is_none(),
+        "an unsaved fleet has no approval destination"
+    );
+    request.review_digest = review.review_digest;
+    request
+}
+
+fn assert_approval_destination(c: &Case, saved: &afd_authoring::SavedFleet) {
+    let grant = saved
+        .setup
+        .checks
+        .iter()
+        .find(|check| check.kind == "grants")
+        .expect("grant check");
+    let action = grant
+        .next_action
+        .as_ref()
+        .expect("saved fleet approval destination");
+    assert_eq!(
+        action.href,
+        format!(
+            "/w/{}/fleets/{}#fleet-approvals",
+            c.base.workspace, saved.id
+        )
+    );
+}
+
+async fn seed_github(c: &Case) {
     let mut bytes = [0; 8];
     Entropy::new()
         .fill(&mut bytes)
@@ -35,28 +91,6 @@ async fn requiring_github(c: &Case) -> afd_authoring::types::SaveFleet {
         )
         .await
         .expect("seal workspace handle");
-    let (draft, mut request) = c.request("grant-barrier", Start::None).await;
-    let current = c
-        .setup
-        .read_draft(c.base.access(), &draft)
-        .await
-        .expect("current draft");
-    let patch = serde_json::from_value(json!({"config_ops":[{"op":"replace","path":"/config/x-agentsfleet/credentials","value":["github"]}]})).expect("declare integration");
-    c.base
-        .drafts
-        .patch(c.base.access(), &draft, Some(&current.etag), patch, now())
-        .await
-        .expect("declared requirement");
-    let current = c
-        .setup
-        .read_draft(c.base.access(), &draft)
-        .await
-        .expect("review declared access");
-    request.source = SaveSource::Draft {
-        draft_candidate_id: current.candidate.expect("candidate").id,
-    };
-    request.review_digest = current.review.expect("review").review_digest;
-    request
 }
 
 async fn cards(c: &Case, fleet: &af_core::id::Uuid7) -> Vec<(af_core::id::Uuid7, String)> {
@@ -85,6 +119,7 @@ async fn pending_grant_blocks_activation_until_a_real_approval_then_retry_activa
             .iter()
             .any(|check| check.kind == "grants" && check.state == "pending")
     );
+    assert_approval_destination(&c, &saved);
     assert_eq!(c.save(&key, request.clone()).await.status, "installing");
     let pending = cards(&c, &saved.id).await;
     assert_eq!(pending.len(), 1);

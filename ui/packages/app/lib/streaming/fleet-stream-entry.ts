@@ -37,6 +37,8 @@ export type FleetStreamSnapshot = {
   factsSeq: number;
   /** Read invalidations only; task rows remain authoritative on the server. */
   tasksSeq: number;
+  /** Every gate hint invalidates approval details, even when the count is unchanged. */
+  approvalsSeq: number;
   // The newest server row's figures, recomputed whenever the rows change and
   // kept by identity when the figures did not — so a subscriber selecting
   // `latest` does not re-render per chunk of a streaming reply.
@@ -88,6 +90,7 @@ export const EMPTY_SNAPSHOT: FleetStreamSnapshot = Object.freeze({
   fleet: NO_FACTS,
   factsSeq: 0,
   tasksSeq: 0,
+  approvalsSeq: 0,
   latest: null,
 }) as FleetStreamSnapshot;
 
@@ -102,6 +105,7 @@ export function createEntry(workspaceId: string, initial: EventRow[]): Entry {
       fleet: NO_FACTS,
       factsSeq: 0,
       tasksSeq: 0,
+      approvalsSeq: 0,
       latest: latestFigures(events),
     },
     replyStreams: new Map(),

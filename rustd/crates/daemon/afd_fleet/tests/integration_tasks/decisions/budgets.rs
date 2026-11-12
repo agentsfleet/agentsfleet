@@ -165,8 +165,8 @@ async fn further_work_is_blocked(fixture: &Decisions<'_>, task: DecisionTaskVers
         "a decision cost exceeded its reservation; related paid work is blocked"
     );
     assert_eq!(fixture.counts().await, (2, 2, 2));
-    let lines: Vec<(Uuid7, i64)> = sqlx::query_as("SELECT event_id,charged_nanos FROM billing.usage_lines WHERE work_id=$1 AND seq >= $2 ORDER BY seq")
-        .bind(&fixture.case.held.lease_key).bind(i64::from(af_wire::usage::DECISION_SEQ_BASE))
+    let lines: Vec<(Uuid7, i64)> = sqlx::query_as("SELECT event_id,charged_nanos FROM billing.usage_lines WHERE work_id=$1 AND kind = $2 ORDER BY seq")
+        .bind(&fixture.case.held.lease_key).bind(af_wire::usage::LineKind::Decision.as_str())
         .fetch_all(&mut *fixture.case.held.fixtures.database.acquire().await.expect("source and goal charges"))
         .await.expect("two original-work lines");
     assert_eq!(

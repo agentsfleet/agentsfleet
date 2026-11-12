@@ -185,8 +185,8 @@ it("opens the current active fleet from the composer without writing a revision"
 // why_new=existing publish tests began with a persisted draft; seam=none; no_claim=durable publication or provider latency.
 it("prepares a definition source for publication without saving or running the fleet", async () => {
   render(<WorkspaceChat {...CHAT_PROPS} source={{kind: "definition", definition: REVIEW.effective.definition}} />);
-  await chooseSetupAction("Publish to Library");
-  const label = await screen.findByLabelText("Library name");
+  await chooseSetupAction("Publish plugin");
+  const label = await screen.findByLabelText("Plugin name");
   expect(label).toHaveProperty("value", REVIEW.effective.instance_name);
   expect(screen.getByRole("button", {name: "Publish new entry"})).toHaveProperty("disabled", false);
   expect(fixture.writes()).toHaveLength(1);

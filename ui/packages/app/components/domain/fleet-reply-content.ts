@@ -1,5 +1,5 @@
 import type { MessageState } from "@assistant-ui/react";
-import type { readReasoningSpan } from "./fleetMessageReaders";
+import type { readReasoningSpan, ReplyFigures } from "./fleetMessageReaders";
 import { z } from "zod";
 
 export type ReplyContext = {
@@ -7,6 +7,9 @@ export type ReplyContext = {
   span: ReturnType<typeof readReasoningSpan>;
   content: MessageState["content"];
   startedAtMs: number;
+  wallMs?: number | null;
+  figures?: ReplyFigures;
+  activity?: unknown;
   contextProgress?: unknown;
   plainText?: boolean;
 };

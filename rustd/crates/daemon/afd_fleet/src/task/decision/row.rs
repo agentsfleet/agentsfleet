@@ -11,7 +11,7 @@ use sqlx::{PgConnection, Postgres, postgres::PgArguments, query::QueryAs, types:
 use super::{context::AssessedContext, quote::FrozenQuote, sql};
 use crate::{
     Result,
-    error::{Error, ErrorKind, query, row_malformed},
+    error::{Error, ErrorKind, query},
 };
 
 #[derive(Debug, sqlx::FromRow)]
@@ -157,10 +157,6 @@ impl Call {
     pub(super) fn state(&self) -> Result<DecisionCallState> {
         DecisionCallState::deserialize(serde::de::value::StrDeserializer::new(self.status.as_str()))
             .map_err(|source| Error::from(ErrorKind::TaskState { source }))
-    }
-
-    pub(super) fn id(text: &str, column: &'static str) -> Result<Uuid7> {
-        Uuid7::parse(text).map_err(row_malformed("runner.decision_calls", column))
     }
 
     pub(super) fn owned_by(&self, lease: crate::task::TaskLease<'_>) -> bool {

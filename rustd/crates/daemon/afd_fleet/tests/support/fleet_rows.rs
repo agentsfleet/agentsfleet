@@ -7,12 +7,9 @@
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-#![allow(
-    dead_code,
-    reason = "test support: shared by two test binaries, each using a subset"
-)]
 
 use af_core::id::Uuid7;
+use af_wire::usage::LineKind;
 use jiff::Timestamp;
 use sqlx::AssertSqlSafe;
 
@@ -32,8 +29,6 @@ pub(crate) enum Row<'a> {
     Lease(&'a Uuid7),
     /// A fleet's `runner.fleet_slots` row, by fleet id.
     Slot(&'a Uuid7),
-    /// A runner's `runner.lifetime_counters` row, by runner id.
-    Counters(&'a Uuid7),
     /// A fleet's `fleet.sessions` row, by fleet id.
     Session(&'a Uuid7),
     /// A `fleet.admissions` row, by its id, which is the logical event id.
@@ -42,8 +37,12 @@ pub(crate) enum Row<'a> {
     Attempt(&'a Uuid7),
     /// A `fleet.events` row, by fleet id and event id.
     Event(&'a Uuid7, &'a Uuid7),
-    /// A `billing.usage_lines` row, by event id and line number.
-    Line(&'a Uuid7, &'a str),
+    /// A `model` usage line, by event id and the runner's request number.
+    ModelLine(&'a Uuid7, &'a str),
+    /// A `decision` usage line, by event id and its call's number.
+    DecisionLine(&'a Uuid7, &'a str),
+    /// The event's `runtime` usage line, for a run that billed one slice.
+    RuntimeLine(&'a Uuid7),
 }
 
 /// The second key a two-key predicate reads.
@@ -51,8 +50,20 @@ pub(crate) enum Row<'a> {
 enum Second<'a> {
     /// An identifier, bound as a `uuid`.
     Id(&'a Uuid7),
-    /// A line number, spelled as text and cast by the predicate.
-    Seq(&'a str),
+    /// A usage line's kind, bound as the text `LineKind` spells it.
+    Kind(LineKind),
+    /// A usage line's kind, then its number.
+    KindSeq(LineKind, &'a str),
+}
+
+impl Second<'_> {
+    /// How many parameters this key binds.
+    const fn params(self) -> usize {
+        match self {
+            Self::Id(_) | Self::Kind(_) => 1,
+            Self::KindSeq(..) => 2,
+        }
+    }
 }
 
 impl<'a> Row<'a> {
@@ -63,7 +74,6 @@ impl<'a> Row<'a> {
             Self::Runner(id) => ("runner.runners", "id = $1", id, None),
             Self::Lease(id) => ("runner.leases", "id = $1", id, None),
             Self::Slot(fleet) => ("runner.fleet_slots", "fleet_id = $1", fleet, None),
-            Self::Counters(runner) => ("runner.lifetime_counters", "runner_id = $1", runner, None),
             Self::Session(fleet) => ("fleet.sessions", "fleet_id = $1", fleet, None),
             Self::Admission(id) => ("fleet.admissions", "id = $1", id, None),
             Self::Attempt(id) => ("authoring.attempts", "id = $1", id, None),
@@ -73,11 +83,25 @@ impl<'a> Row<'a> {
                 fleet,
                 Some(Second::Id(event)),
             ),
-            Self::Line(event, seq) => (
+            // The kind is bound from `LineKind`; a line number is unique only
+            // within its kind.
+            Self::ModelLine(event, seq) => (
                 "billing.usage_lines",
-                "event_id = $1 AND seq = $2::bigint",
+                "event_id = $1 AND kind = $2 AND seq = $3::bigint",
                 event,
-                Some(Second::Seq(seq)),
+                Some(Second::KindSeq(LineKind::Model, seq)),
+            ),
+            Self::DecisionLine(event, seq) => (
+                "billing.usage_lines",
+                "event_id = $1 AND kind = $2 AND seq = $3::bigint",
+                event,
+                Some(Second::KindSeq(LineKind::Decision, seq)),
+            ),
+            Self::RuntimeLine(event) => (
+                "billing.usage_lines",
+                "event_id = $1 AND kind = $2",
+                event,
+                Some(Second::Kind(LineKind::Runtime)),
             ),
         }
     }
@@ -118,7 +142,8 @@ impl Fixtures {
         let query = sqlx::query_scalar::<_, Option<T>>(statement).bind(first);
         let query = match second {
             Some(Second::Id(id)) => query.bind(id),
-            Some(Second::Seq(seq)) => query.bind(seq),
+            Some(Second::Kind(kind)) => query.bind(kind.as_str()),
+            Some(Second::KindSeq(kind, seq)) => query.bind(kind.as_str()).bind(seq),
             None => query,
         };
         let mut connection = self.database.acquire().await.expect("a pooled connection");
@@ -162,12 +187,13 @@ pub(crate) async fn age_on(
     let (table, predicate, first, second) = row.locate();
     let statement = AssertSqlSafe(format!(
         "UPDATE {table} SET {column} = {column} - ${shift}::interval WHERE {predicate}",
-        shift = if second.is_some() { 3 } else { 2 }
+        shift = 2 + second.map_or(0, Second::params)
     ));
     let query = sqlx::query(statement).bind(first);
     let query = match second {
         Some(Second::Id(id)) => query.bind(id),
-        Some(Second::Seq(seq)) => query.bind(seq),
+        Some(Second::Kind(kind)) => query.bind(kind.as_str()),
+        Some(Second::KindSeq(kind, seq)) => query.bind(kind.as_str()).bind(seq),
         None => query,
     };
     let aged = query

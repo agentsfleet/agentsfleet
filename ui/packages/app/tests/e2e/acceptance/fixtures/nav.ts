@@ -42,7 +42,6 @@ export function workspaceHref(workspaceId: string, subpath = ""): string {
 /** Follow the visible account-menu path without replacing the document. */
 export async function openSettingsDestination(page: Page, label: string): Promise<void> {
   await page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ }).click();
-  await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
   const destination = page.getByRole("menuitem", { name: label, exact: true });
   const href = await destination.getAttribute("href");
   if (!href) throw new Error(`Settings destination ${label} has no URL`);

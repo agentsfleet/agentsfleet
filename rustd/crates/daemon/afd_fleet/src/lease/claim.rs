@@ -49,6 +49,7 @@ impl LeaseService {
                             lease_id: Uuid7::parse(&lease.lease_id)?,
                             expires_at: lease.expires_at,
                             target: None,
+                            reported: None,
                         };
                         let encoded = emit(TaggedLease::Authoring(Box::new(lease)), metadata);
                         clock.mark(OfferStage::Encode);

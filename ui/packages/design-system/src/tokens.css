@@ -10,6 +10,12 @@
 @import "./interactions.css";
 
 :root {
+  --max-w-new-fleet: 760px;
+  --new-fleet-input-height: 100px;
+  --fs-new-fleet-title: 34px;
+  --lh-new-fleet-title: 44px;
+  --letter-spacing-new-fleet-title: -.035em;
+  --fs-new-fleet-description: 15px;
 
   --overlay: rgba(0, 0, 0, 0.6);
   --elevation-floating: 0 8px 24px rgb(0 0 0 / 24%);
@@ -57,9 +63,12 @@
   --success: #4ade80;
   --warn: #fbbf24;
   --error: #fca5a5;
+  --error-surface: color-mix(in srgb, var(--error) 10%, var(--surface-1));
+  --error-border: color-mix(in srgb, var(--error) 45%, var(--border));
   --info: #93c5fd;
   --evidence: #fbbf24;
 
+  --r-brand: 18.75%;
   --r-sm: 6px;
   --r-md: 8px;
   --r-lg: 12px;
@@ -73,6 +82,8 @@
   --fs-display-md: 1.75rem;
   --fs-heading: 1.25rem;
   --fs-eyebrow: 0.75rem;
+  --fs-usage-total: 2rem;
+  --lh-usage-total: 1.6875rem;
   --fs-body-lg: 1.125rem;
   --fs-body: 0.9375rem;
   --fs-body-sm: 0.875rem;
@@ -139,6 +150,13 @@
   --lh-conversation: 1.75;
   --fs-chat-title: 19px;
   --max-w-form: 760px;
+  --max-w-dialog: 540px;
+  --max-w-model-dialog: 620px;
+  --max-w-search: 340px;
+  --r-chip: 6px;
+  --control-hover: .94;
+  --blur-dialog: 3px;
+  --lh-dialog-description: 22px;
   --max-w-wide: 860px;
   --max-w-content: 1280px;
   --max-w-tagline: 28ch;

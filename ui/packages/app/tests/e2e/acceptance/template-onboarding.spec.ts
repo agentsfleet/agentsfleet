@@ -22,18 +22,19 @@ test("a published recipe is inspected and pins the selected revision in a new pr
   await page.getByRole("navigation", {name: "Primary", exact: true}).getByRole("link", {name: "Plugins", exact: true}).click();
   await expect(page).toHaveURL(workspaceUrlPattern("library"));
   const inspected = page.waitForResponse((response) => response.url().includes(`revision_id=${published.revision_id}`));
-  await page.getByRole("listitem").filter({hasText: name}).getByRole("button", {name: "Inspect", exact: true}).click();
-  await expect(page.getByRole("heading", {name: `${name} · revision 1`})).toBeVisible();
+  await page.getByRole("button", {name: `Manage ${name}`, exact: true}).click();
+  await expect(page.getByRole("dialog").getByRole("heading", {name, exact: true})).toBeVisible();
   expect((await inspected).ok()).toBe(true);
-  await expect(page.getByRole("main")).toContainText(INSTRUCTIONS);
-  await page.getByRole("button", {name: "Start chat from this revision"}).click();
+  await page.getByRole("button", {name: "Inspect setup", exact: true}).click();
+  await expect(page.getByRole("dialog")).toContainText(INSTRUCTIONS);
+  await page.getByRole("button", {name: "Use for new fleet", exact: true}).click();
   await expect(page).toHaveURL(new RegExp(`/fleets/new\\?.*revision=${published.revision_id}`));
   // inline setup appears only once the chat holds a candidate, so the first message is what binds the pin.
   const draftsPath = `/v1/workspaces/${workspace}/drafts`;
   const created = page.waitForResponse((response) => response.request().method() === "POST"
     && new URL(response.url()).pathname.endsWith(draftsPath));
   await page.getByLabel(CHAT_PLACEHOLDER).fill(FIRST_MESSAGE);
-  await page.getByRole("button", {name: "Send message", exact: true}).click();
+  await page.getByRole("button", {name: "New fleet", exact: true}).click();
   const response = await created;
   expect(response.request().postDataJSON()).toMatchObject({
     source: {kind: "library", library_id: published.library_id, revision_id: published.revision_id}, message: FIRST_MESSAGE,

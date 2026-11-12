@@ -39,6 +39,10 @@ pub const RENEWAL_WINDOW: Duration = Duration::from_secs(15);
 /// window.
 pub const RENEWAL_TICK: Duration = Duration::from_secs(5);
 
+/// How often `sweeper:expiry` bills expired leases and expires lapsed setup
+/// attempts: one clock for every deadline pass.
+pub const EXPIRY_TICK: Duration = Duration::from_secs(2);
+
 /// Hard ceiling on one lease's total wall-clock, measured from the lease row's
 /// `created_at`.
 ///
@@ -91,8 +95,6 @@ pub const STREAM_HTTP2_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 pub const STREAM_OPEN_TIMEOUT: Duration = Duration::from_secs(3);
 /// Complete carrier setup, ownership confirmation and database rebuild budget.
 pub const STREAM_RECOVERY_BUDGET: Duration = Duration::from_secs(7);
-/// Maximum initial reconnect jitter included in the lease's recovery relationship.
-pub const RECONNECT_JITTER_MAX: Duration = Duration::from_secs(2);
 /// A connection must remain usable this long before reconnect backoff resets.
 pub const STREAM_STABLE_RESET_AFTER: Duration = Duration::from_secs(60);
 /// One independent ready-work probe per daemon replica, regardless of broker traffic.
@@ -119,6 +121,11 @@ const _: () = assert!(
 );
 
 const _: () = assert!(
+    EXPIRY_TICK.as_nanos() < LEASE_TTL.as_nanos(),
+    "a lapsed lease must be found and billed within one lease lifetime of lapsing"
+);
+
+const _: () = assert!(
     OFFER_FALLBACK_TICK.as_nanos() < LEASE_TTL.as_nanos(),
     "work stranded by a lost ring must be offered again before the lease backstop would free it"
 );
@@ -126,7 +133,6 @@ const _: () = assert!(
 const _: () = assert!(
     RENEWAL_TICK.as_nanos()
         + STREAM_ANSWER_TIMEOUT.as_nanos()
-        + RECONNECT_JITTER_MAX.as_nanos()
         + STREAM_RECOVERY_BUDGET.as_nanos()
         + RENEWAL_WINDOW.as_nanos()
         < LEASE_TTL.as_nanos(),

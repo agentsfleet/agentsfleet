@@ -7,6 +7,42 @@ use afd_vault::{SecretBody, SecretName, Vault};
 use std::sync::Arc;
 
 #[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn model_choices_use_the_saved_credential_workspace_not_the_oldest_workspace() {
+    use afd_authoring::types::ModelsQuery;
+    use afd_db::test_util::{WorkspaceSeed, mint_id};
+
+    let f = Fixture::create().await;
+    let earlier = mint_id();
+    WorkspaceSeed::new(&earlier, &f.tenant)
+        .at(jiff::Timestamp::UNIX_EPOCH)
+        .insert(&mut *f.connection().await)
+        .await
+        .expect("an earlier workspace without the saved credentials");
+    let page = f
+        .drafts
+        .models(
+            f.access(),
+            ModelsQuery {
+                limit: 100,
+                purpose: None,
+                starting_after: None,
+            },
+        )
+        .await
+        .expect("the owner's model choices load");
+    assert_eq!(page.items.len(), 2);
+    for reference in [&f.model, &f.other_model] {
+        assert!(
+            page.items
+                .iter()
+                .any(|item| item.reference == reference.as_str())
+        );
+    }
+    f.cleanup().await;
+}
+
+#[tokio::test]
 #[ignore = "requires live Postgres"]
 async fn an_unconfigured_row_keeps_usable_choices_visible_without_an_invented_output_limit() {
     use afd_authoring::types::{ModelPurpose, ModelsQuery};

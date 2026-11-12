@@ -9,6 +9,7 @@
   --fs-label: 0.8125rem;
   --fs-eyebrow: 0.75rem;
   --fs-heading: 1.125rem;
+  --fs-conversation-heading: 1.25rem;
   --fs-display-md: 1.25rem;
   --fs-chat-title: 0.8125rem;
   --fs-conversation: 0.8125rem;
@@ -19,7 +20,7 @@
   --lh-label: 1.25rem;
   --lh-eyebrow: 1rem;
   --lh-heading: 1.5rem;
-  --lh-display-md: 1.75rem;
+  --lh-display-md: 1.625rem;
   --lh-conversation: 1.25rem;
   --lh-composer: var(--lh-conversation);
   --letter-spacing-display-md: 0;
@@ -27,6 +28,11 @@
   --letter-spacing-eyebrow: 0;
   --fw-title: 650;
   --fw-control: 500;
+  --table-cell-inline: 20px;
+  --table-cell-block: 16px;
+  --table-row: var(--surface-1);
+  --table-row-alternate: var(--surface-1);
+  --table-row-hover: var(--surface-2);
 
   --surface-deep: #101114;
   --bg: #181a1e;
@@ -50,10 +56,17 @@
   --success: #b6e4c8;
   --warn: #f3cb87;
   --error: #ffb3b6;
+  --error-surface: #302126;
+  --brand-tile: #151716;
+  --brand-ray: #b8f0ce;
+  --avatar-bg: #d5d0e9;
+  --avatar-text: #302744;
   --r-sm: 10px;
   --r-md: 16px;
   --r-lg: 22px;
   --r-control: 10px;
+  --overlay: #0009;
+  --elevation-dialog: 0 20px 80px #0006;
   --summary-width: 248px;
   --max-w-chat: 740px;
   --chat-input-height: 60px;
@@ -92,6 +105,9 @@
   --success: #286644;
   --warn: #765017;
   --error: #a42938;
+  --error-surface: #fff0f1;
+  --overlay: #0009;
+  --elevation-dialog: 0 20px 80px #0006;
   --cta: var(--pulse);
   --cta-hover: var(--pulse-dim);
 }
@@ -109,3 +125,6 @@
   :root { --fs-composer: 1rem; --lh-composer: 1.5rem; }
 }
 
+
+@media (max-width: 50rem) { :root { --fs-new-fleet-title: 28px; --lh-new-fleet-title: 36px; } }
+@media (max-width: 42.5rem) { :root { --fs-new-fleet-title: 26px; --lh-new-fleet-title: 34px; --fs-new-fleet-description: 14px; } }

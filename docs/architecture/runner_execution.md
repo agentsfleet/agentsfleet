@@ -174,7 +174,7 @@ Each renewal answer acknowledges recorded lines through `recorded_through`; the 
 
 Before its report, the settle renews with the oldest 512 until one body holds the rest (`flush` in `afr_supervisor/src/renew/mod.rs`). Each answer's `recorded_through` forgets the lines that renewal recorded.
 
-A renewal that fails after its retries, or records nothing, stops the flush. The report then carries the oldest lines left, and the newest are logged `usage_lines_unflushed`, never billed. A line sent twice is billed once, because the daemon keys lines on `(work, seq)`.
+A renewal that fails after its retries, or records nothing, stops the flush. The report then carries the oldest lines left, and the newest are logged `usage_lines_unflushed`, never billed. A line sent twice is billed once, because the daemon keys lines on `(work, kind, seq)`.
 
 ## Crates
 
@@ -286,15 +286,15 @@ Fleets on shared hosts run their own programs: build scripts, test suites, packa
 
   Its throttle, `tenant/memory.high`, sits an eighth below that limit and never more than 128 MiB below it. A tenant writing past its disk is slowed while its pages are written back, and reads `ENOSPC` rather than being killed first. The cap keeps the slow band narrow on a large lease: with no swap, everything inside it is throttled.
 
-- An enforced disk quota. The lease's `limits.disk_bytes`, or the runner's 4 GiB default, sizes the workspace disk. The disk holds `/tmp` as well as `/workspace`, and answers `ENOSPC` when full.
+- An enforced disk quota. The runner's 4 GiB default sizes the workspace disk. The disk holds `/tmp` as well as `/workspace`, and answers `ENOSPC` when full.
 
   `/tmp` is never a tmpfs, because tmpfs pages stay charged to the lease's memory until the sandbox ends. The disk attaches with direct I/O, so the host does not cache its writes a second time.
 
   Its image file is `0600`, formatted ext4 with no journal, and its root is owned by the sandbox user (`afr_sandbox/src/workspace_disk/mod.rs`, `afr_sandbox/src/host/mod.rs`).
 
-- A lease's size. `LeasePayload.limits` names its processor share, memory and disk within declared bounds (`af_wire::lease::SandboxLimits`). A lease naming none gets the runner's defaults, and a size past a bound refuses the lease before any sandbox exists.
+- A lease's size. The wire carries none: every lease builds its sandbox with the runner host's own processor share, memory, disk and process limits.
 
-  The process cap stays the host's. Nothing yet reserves host disk. No check holds live sandboxes' disk limits against the state disk, so leases can fill it.
+  Nothing yet reserves host disk. No check holds live sandboxes' disk limits against the state disk, so leases can fill it.
 
 - A supervisor whose capability set is only what sandbox setup needs (mounts, cgroups, namespaces). Tenant code never holds a capability.
 
@@ -504,13 +504,13 @@ Three questions have no signal yet. Nothing times an event's wait for its lease,
 
 **What bounds a runner host.** The image does not, because its blocks sit in shared page cache that memory pressure evicts.
 
-The lease limits bound memory, summed over the host's workers. A sandbox gets 2 GiB by default and up to 64 GiB when its lease names a size.
+The lease limits bound memory, summed over the host's workers. A sandbox gets the host's limits: 2 GiB of memory by default.
 
-The worker count defaults to 1 and caps at 64 (`af_core/src/limits.rs`). So default limits reach 128 GiB at the cap, and nothing checks that sum against the host's memory. Disk holds 4 GiB per lease by default and up to 256 GiB for a sized one, sparse, with no headroom reserved.
+The worker count defaults to 1 and caps at 64 (`af_core/src/limits.rs`). So default limits reach 128 GiB at the cap, and nothing checks that sum against the host's memory. Disk holds 4 GiB per lease, sparse, with no headroom reserved.
 
 **Where the code and this page differ today.**
 
-- In practice, every lease gets the runner's defaults (`afr_sandbox/src/engine/mod.rs`, set in `afr_supervisor/src/lib.rs`). They are 2 GiB of memory, 2 cores, 512 processes and a 4 GiB disk. The runner builds the size a lease names (`afr_supervisor/src/lease_loop/workspace.rs`), but no fleet carries a size yet, so the daemon sends `limits: null` (`afd_fleet/src/lease/answer/mod.rs`).
+- In practice, every lease gets the runner's defaults (`afr_sandbox/src/engine/mod.rs`, set in `afr_supervisor/src/lib.rs`). They are 2 GiB of memory, 2 cores, 512 processes and a 4 GiB disk. The wire carries no per-lease size.
 
 - A held sandbox keeps its disk's bytes, and nothing reserves host disk for it: holds are bounded only by the runner's worker count.
 
@@ -634,7 +634,7 @@ The decision reads what the policy offers, before the model runs. The model's la
 ```
 sandboxed                                          lease_loop/workspace.rs
   ├─ admitted, before any model request            refused ─► startup_posture
-  │     sized(lease limits, host defaults)
+  │     host limits (the wire carries no size)
   │     bind egress                                allow_list resolves its host names
   │     plan: checkouts(policy), workspace id      lease_loop/checkout.rs
   └─ beside, one task, both futures boxed

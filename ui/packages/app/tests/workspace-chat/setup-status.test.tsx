@@ -10,13 +10,13 @@ import { NANOS_PER_USD } from "@/lib/types";
 afterEach(cleanup);
 
 it.each(["grant", "grants"])("links the %s service inline to approvals without a second action", kind => {
-  const href = `/w/${WORKSPACE}/approvals`;
-  const check = {kind, subject: "github", state: "pending", next_action: {kind: "approvals", href, label: "Open workspace approvals"}};
+  const href = `/w/${WORKSPACE}/fleets/${FLEET.id}#fleet-approvals`;
+  const check = {kind, subject: "github", state: "pending", next_action: {kind: "approvals", href, label: "Open fleet approval"}};
   const checks = [check];
   const view = render(<SetupChecks checks={checks} label="Readiness" />);
   expect(screen.getByRole("link", {name: /^GitHub approval\s*:\s*pending$/}).getAttribute("href")).toBe(href);
   expect(screen.queryByText("github needed")).toBeNull();
-  expect(screen.queryByText("Open workspace approvals")).toBeNull();
+  expect(screen.queryByText("Open fleet approval")).toBeNull();
   view.rerender(<SetupChecks checks={[{...check, next_action: {kind: "approvals", href: "//outside.test"}}]} label="Readiness" />);
   expect(screen.queryByRole("link")).toBeNull();
   expect(screen.getByText("GitHub approval")).toBeTruthy();

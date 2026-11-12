@@ -30,9 +30,9 @@ it("retains Outputs when current work finishes and recovers them after reload fr
   vi.stubGlobal("fetch", network);
   const events = history(TASK_IDS[0]);
   const view = render(<TaskPanel {...SCOPE} events={events} />);
-  await screen.findByRole("region", {name: "Outputs"});
-  const outputs = () => within(screen.getByRole("region", {name: "Outputs"}));
-  await screen.findByRole("region", {name: "Outputs"});
+  await screen.findByRole("region", {name: "Pull requests"});
+  const outputs = () => within(screen.getByRole("region", {name: "Pull requests"}));
+  await screen.findByRole("region", {name: "Pull requests"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(network).toHaveBeenCalledTimes(2);
   view.rerender(<TaskPanel {...SCOPE} events={events.map(event => ({...event, reply: "More streamed words"}))} />);
@@ -46,7 +46,7 @@ it("retains Outputs when current work finishes and recovers them after reload fr
   render(<TaskPanel {...SCOPE} events={events} />);
   await waitFor(() => expect(network).toHaveBeenCalledTimes(6));
   expect(screen.queryByRole("button", {name: /^Tasks/})).toBeNull();
-  await screen.findByRole("region", {name: "Outputs"});
+  await screen.findByRole("region", {name: "Pull requests"});
   expect(await outputs().findByRole("link")).toHaveProperty("href", TARGET.url);
   expect(screen.queryByRole("button", {name: /PR #123 repair/})).toBeNull();
   expect(network).toHaveBeenCalledTimes(6);

@@ -36,8 +36,6 @@ pub trait Summarizer: Send {
 
 /// Scoped persistence. Implementations prove live authority and source freshness.
 pub trait CheckpointStore: Send {
-    /// Read the one checkpoint owned by the adapter's authorized scope.
-    fn load(&mut self) -> PortFuture<'_, Option<Checkpoint>>;
     /// Conditionally publish against `expected_generation`; never blindly upsert.
     fn commit(&mut self, expected_generation: u64, checkpoint: Checkpoint) -> PortFuture<'_, ()>;
 }

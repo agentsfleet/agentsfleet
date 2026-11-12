@@ -1,6 +1,6 @@
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const mocks = vi.hoisted(() => ({ pathname: vi.fn(), track: vi.fn(),
@@ -44,7 +44,7 @@ describe("conversation-first app navigation", () => {
   });
   it("names the compact New fleet icon and exposes its tooltip on keyboard focus", async () => {
     render(<SidebarNavigation pathname="/w/ws_1/fleets" workspaceId={WORKSPACE.id} collapsed onNavigate={() => {}} />);
-    const action = screen.getByRole("link", {name: "New fleet"});
+    const action = screen.getAllByRole("link", {name: "New fleet"})[0]!;
     expect(action.classList.contains("justify-center")).toBe(true);
     expect(action.querySelector("svg")?.getAttribute("width")).toBe("20");
     expect(action.getAttribute("href")).toBe("/w/ws_1/fleets/new");
@@ -63,10 +63,10 @@ describe("conversation-first app navigation", () => {
   });
   it("opens New fleet and records account and documentation destinations", async () => {
     mount(); const user = userEvent.setup();
-    await user.click(screen.getByRole("link", {name: "New fleet"}));
+    await user.click(screen.getAllByRole("link", {name: "New fleet"})[0]!);
     expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_fleets_new", surface: "app_sidebar", target: "/w/ws_1/fleets/new"});
     await openMenu();
-    for (const [name, href] of [["Usage", "/settings/billing"], ["Connect apps", "/w/ws_1/integrations"], ["Get API keys", "/settings/api-keys"], ["Manage secrets", "/w/ws_1/secrets"]]) {
+    for (const [name, href] of [["Usage", "/settings/billing"], ["Connected apps", "/w/ws_1/integrations"], ["Security", "/settings/security"], ["Manage secrets", "/w/ws_1/secrets"]]) {
       expect(screen.getByRole("menuitem", {name}).getAttribute("href")).toBe(href);
     }
     const docs = screen.getByRole("menuitem", {name: "Learn more"});
@@ -75,14 +75,14 @@ describe("conversation-first app navigation", () => {
     await user.click(docs);
     expect(screen.queryByRole("menu")).toBeNull();
     expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_docs", surface: "app_sidebar", target: "https://docs.agentsfleet.net"});
-    await openMenu(); await user.click(screen.getByRole("menuitem", {name: "Settings"}));
-    await user.click(screen.getByRole("menuitem", {name: "Profile"}));
+    await openMenu();
+    await user.click(screen.getByRole("menuitem", {name: "Personal account"}));
     expect(screen.queryByRole("menu")).toBeNull();
-    expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_settings_account", surface: "app_sidebar", target: "/settings/account"});
+    expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_settings_account_sign-in", surface: "app_sidebar", target: "/settings/account/sign-in"});
   });
   it("keeps fleet and resource destinations and moves settings off the canvas", () => {
     mount();
-    expect(screen.getByRole("link", { name: "New fleet" }).getAttribute("href")).toBe("/w/ws_1/fleets/new");
+    expect(screen.getAllByRole("link", { name: "New fleet" })[0]!.getAttribute("href")).toBe("/w/ws_1/fleets/new");
     expect(screen.getByRole("link", { name: "Your fleets" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByText("Activity")).toBeNull();
     expect(screen.queryByText("Workspace settings")).toBeNull();
@@ -91,40 +91,24 @@ describe("conversation-first app navigation", () => {
   it("places Activity under Workspace and hides an empty Platform menu", async () => {
     mount(); await openMenu();
     expect(screen.queryByRole("menuitem", {name: "Platform"})).toBeNull();
-    await userEvent.setup().click(screen.getByRole("menuitem", {name: "Settings"}));
-    expect(screen.getByText("Workspace")).toBeTruthy();
     expect(screen.getByRole("menuitem", {name: "Activity"}).getAttribute("href")).toBe("/w/ws_1/events");
     expect(screen.queryByRole("menuitem", {name: "Runners"})).toBeNull();
   });
-  it("opens the selected workspace's approvals inbox without operator privileges", async () => {
-    mocks.pathname.mockReturnValue("/w/ws_1/approvals/gate-1");
+  it("keeps approval decisions inside fleets without separate Approvals or Grants destinations", async () => {
     mount(); await openMenu();
-    await userEvent.setup().click(screen.getByRole("menuitem", {name: "Settings"}));
-    const approvals = screen.getByRole("menuitem", {name: "Approvals"});
-    expect(approvals.getAttribute("href")).toBe("/w/ws_1/approvals");
-    expect(approvals.getAttribute("aria-current")).toBe("page");
-    expect(screen.getAllByRole("menuitem").filter((item) => item.getAttribute("aria-current") === "page")).toHaveLength(1);
-    await userEvent.setup().click(approvals);
-    expect(screen.queryByRole("menu")).toBeNull();
-    expect(mocks.track).toHaveBeenCalledWith({source: "app_sidebar_approvals", surface: "app_sidebar", target: "/w/ws_1/approvals"});
+    expect(screen.getByRole("menuitem", {name: "Activity"})).toBeTruthy();
+    expect(screen.queryByRole("menuitem", {name: "Approvals"})).toBeNull();
+    expect(screen.queryByRole("menuitem", {name: "Grants"})).toBeNull();
   });
-  it("keeps settings keyboard accessible and restores the workspace view", async () => {
-    mount(); await openMenu();
-    const user = userEvent.setup();
-    await user.click(screen.getByRole("menuitem", { name: "Settings" }));
-    const back = screen.getByRole("menuitem", { name: "Back" });
-    expect(document.activeElement).toBe(back);
-    expect(screen.getByRole("menuitem", { name: "Models" }).getAttribute("href")).toBe("/w/ws_1/settings/models");
-    expect(screen.getByText("Workspace")).toBeTruthy();
-    expect(screen.queryByRole("menuitem", {name: "Fleet library"})).toBeNull();
-    expect(screen.getByRole("menuitem", { name: "Team" }).getAttribute("href")).toBe("/settings/members");
-    for (const name of ["API keys", "Integrations", "Secrets", "Billing"]) {
-      expect(screen.queryByRole("menuitem", { name })).toBeNull();
-    }
-    await user.click(back);
-    expect(screen.getByRole("menuitem", { name: /My workspace/ })).toBeTruthy();
-    await user.keyboard("{Escape}");
+  it("keeps all account destinations keyboard accessible in one menu", async () => {
+    mount(); const menu = await openMenu();
+    for (const [name, href] of [["Models", "/w/ws_1/settings/models"], ["Team", "/settings/members"], ["Security", "/settings/security"]])
+      expect(within(menu).getByRole("menuitem", {name}).getAttribute("href")).toBe(href);
+    expect(within(menu).queryByRole("menuitem", {name: "Profile"})).toBeNull();
+    expect(within(menu).queryByRole("menuitem", {name: "API keys"})).toBeNull();
+    await userEvent.setup().keyboard("{Escape}");
     expect(screen.queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", {name: MENU}));
   });
   it("keeps collapsed destinations and the account menu reachable without a drawer", () => {
     mount();
@@ -133,7 +117,7 @@ describe("conversation-first app navigation", () => {
     expect(screen.getByRole("link", { name: "Your fleets" })).toBeTruthy();
     expect(screen.getByRole("button", { name: MENU })).toBeTruthy();
     expect(screen.getByRole("link", {name: "Plugins"})).toBeTruthy();
-    expect(screen.queryByRole("button", {name: "Open navigation"})).toBeNull();
+    expect(screen.getByRole("button", {name: "Open navigation"}).getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 });
@@ -153,7 +137,7 @@ it("keeps history and credits reachable when navigation is expanded, and drops s
     onNavigate={onNavigate} workspaces={[WORKSPACE]} billing={{balance_nanos: "3680000000", is_exhausted: false, exhausted_at: null, updated_at: "2026-11-11T00:00:00Z"}} />);
   expect(screen.getByRole("link", {name: /Credits \$3.68/}).getAttribute("href")).toBe("/settings/billing");
   expect(screen.getByText("Fleets")).toBeTruthy();
-  await userEvent.setup().click(screen.getByRole("link", {name: "New fleet"}));
+  await userEvent.setup().click(screen.getAllByRole("link", {name: "New fleet"})[0]!);
   expect(onNavigate).toHaveBeenCalledOnce();
   view.rerender(<SidebarNavigation pathname="/w/missing/fleets" workspaceId="missing" collapsed={false} onNavigate={onNavigate} workspaces={[WORKSPACE]} />);
   expect(screen.queryByText("Fleets")).toBeNull();
@@ -189,7 +173,7 @@ it("expands and collapses the actual desktop navigation without changing its des
   mount(); const user = userEvent.setup();
   await user.click(screen.getByRole("button", {name: "Expand navigation"}));
   expect(screen.getByRole("button", {name: "Collapse navigation"})).toBeTruthy();
-  expect(screen.getByRole("link", {name: "New fleet"}).getAttribute("href")).toBe("/w/ws_1/fleets/new");
+  expect(screen.getAllByRole("link", {name: "New fleet"})[0]!.getAttribute("href")).toBe("/w/ws_1/fleets/new");
   await user.click(screen.getByRole("button", {name: "Collapse navigation"}));
   expect(screen.getByRole("button", {name: "Expand navigation"})).toBeTruthy();
 });

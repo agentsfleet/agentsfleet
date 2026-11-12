@@ -134,13 +134,11 @@ pub(super) async fn context(
         return Ok(None);
     };
     let scope = TaskScope {
-        fleet_id: id(current.fleet_id.as_str(), "fleet_id")?,
-        workspace_id: id(current.workspace_id.as_str(), "workspace_id")?,
+        fleet_id: current.fleet_id.clone(),
+        workspace_id: current.workspace_id.clone(),
     };
     Ok(Some(
-        super::read::on(connection, &scope, &id(task.as_str(), "task_id")?)
-            .await?
-            .context,
+        super::read::on(connection, &scope, task).await?.context,
     ))
 }
 

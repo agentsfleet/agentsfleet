@@ -40,7 +40,6 @@ pub(super) struct Wait {
     pub baseline_digest: String,
     pub fallback_count: i32,
     pub initial_read_at: Option<jiff_sqlx::Timestamp>,
-    pub signalled_at: Option<jiff_sqlx::Timestamp>,
     pub claim_id: Option<Uuid7>,
     pub claim_valid: Option<bool>,
     pub signal_sequence: i64,

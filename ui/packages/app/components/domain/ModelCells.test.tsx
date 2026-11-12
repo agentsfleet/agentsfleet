@@ -16,7 +16,7 @@ const MODEL_ID = "claude-sonnet-5-5";
 const MODEL_NAME = "Sonnet 5.5";
 const TRAILING = "Default";
 /** The neutral badge fill, and the info colour a status badge carries. */
-const NEUTRAL = "bg-muted";
+const NEUTRAL = "bg-transparent";
 const STATUS_INFO = "text-info";
 /** The fixed name width a table opts into to line up what follows the name. */
 const TRIMMED = "sm:max-w-trim";

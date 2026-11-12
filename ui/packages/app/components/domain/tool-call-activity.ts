@@ -2,6 +2,7 @@ import type { MessageState } from "@assistant-ui/react";
 import type { ToolArgs } from "@/lib/streaming/fleet-stream-tool-trace";
 import type { CellState } from "./tool-call-copy";
 import { readToolResult } from "./fleetReplyMessage";
+import { formatElapsed } from "@/lib/events/run-figures-format";
 import { CELL_STATE, cellState, toolCopy } from "./tool-call-copy";
 import { ARGS_NOT_RECORDED, TOOL_NAME } from "./tool-call-shape";
 import { pathArg, stringArg } from "./tool-call-text";
@@ -22,7 +23,7 @@ export function toolActivity(name: string, args: ToolArgs | undefined, state: Ce
 }
 
 /** Only this group's indices contribute; an adjacent text part cannot change its outcome. */
-export function toolGroupActivity(content: MessageState["content"], indices: readonly number[], running: boolean): ToolActivity {
+export function toolGroupActivity(content: MessageState["content"], indices: readonly number[], running: boolean, wallMs?: number | null): ToolActivity {
   const calls = indices.flatMap(index => {const part = content[index]; return part?.type === "tool-call" ? [part] : [];});
   let state: CellState = CELL_STATE.SUCCEEDED;
   let active: ToolActivity | undefined;
@@ -40,7 +41,8 @@ export function toolGroupActivity(content: MessageState["content"], indices: rea
   const commands = calls.filter(call => call.toolName === TOOL_NAME.EXEC_COMMAND || call.toolName === TOOL_NAME.SHELL).length;
   const tools = calls.length - commands;
   const counts = [tools ? `${tools} ${tools === 1 ? "tool" : "tools"}` : "", commands ? `${commands} ${commands === 1 ? "command" : "commands"}` : ""].filter(Boolean).join(", ");
-  const outcome = state === CELL_STATE.SUCCEEDED ? "Worked" : state === CELL_STATE.FAILED ? "Work failed" : state === CELL_STATE.INTERRUPTED ? "Interrupted" : "Outcome unavailable";
+  const worked = wallMs != null && Number.isFinite(wallMs) && wallMs >= 0 ? `Worked for ${formatElapsed(wallMs)}` : "Worked";
+  const outcome = state === CELL_STATE.SUCCEEDED ? worked : state === CELL_STATE.FAILED ? "Work failed" : state === CELL_STATE.INTERRUPTED ? "Interrupted" : "Outcome unavailable";
   return {label: counts ? `${outcome} · ${counts}` : "Tool activity", target: "", state: calls.length === 0 ? CELL_STATE.SETTLED : state, kind: "tool"};
 }
 

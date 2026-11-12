@@ -91,7 +91,7 @@ export default function InviteDialog({ onSettled }: { onSettled: () => void }) {
       <DialogTrigger asChild>
         <Button type="button" size="sm">
           <PlusIcon size={14} />
-          Invite
+          Invite member
         </Button>
       </DialogTrigger>
       <DialogContent closeDisabled={sending}>
@@ -119,7 +119,7 @@ function InviteForm({ error, pending, onSend, onCancel }: InviteFormProps) {
   return (
     <>
       <DialogHeader>
-        <DialogTitle>Invite someone</DialogTitle>
+        <DialogTitle>Invite a teammate</DialogTitle>
         <DialogDescription>They can open every workspace in your account.</DialogDescription>
       </DialogHeader>
       <Form {...form}>
@@ -130,7 +130,7 @@ function InviteForm({ error, pending, onSend, onCancel }: InviteFormProps) {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Email</FormLabel>
+                <FormLabel>Email address</FormLabel>
                 <FormControl>
                   <Input type="email" placeholder="teammate@example.com" autoComplete="off" {...field} />
                 </FormControl>
@@ -138,14 +138,15 @@ function InviteForm({ error, pending, onSend, onCancel }: InviteFormProps) {
               </FormItem>
             )}
           />
+          <div className="flex items-start gap-lg rounded-md border border-border p-xl"><p className="text-label text-muted-foreground">They join as a <strong className="font-semibold text-foreground">Member</strong> and can open <strong className="font-semibold text-foreground">every workspace in this account</strong>.</p></div>
           {error ? <Alert variant="destructive">{error}</Alert> : null}
           <DialogFooter>
-            <Button type="button" variant="ghost" disabled={pending} onClick={onCancel}>
+            <Button type="button" variant="outline" disabled={pending} onClick={onCancel}>
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
               {pending ? <Spinner size="sm" srLabel="Sending" /> : null}
-              Send
+              Send invite
             </Button>
           </DialogFooter>
         </ActionForm>

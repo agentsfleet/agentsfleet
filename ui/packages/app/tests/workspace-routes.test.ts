@@ -60,7 +60,6 @@ describe("workspaceSubpath", () => {
 describe("workspaceSwitchSubpath", () => {
   it("collapses a resource-detail path to its section (target ws won't own the id)", () => {
     expect(workspaceSwitchSubpath("fleets/fleet_123")).toBe("fleets");
-    expect(workspaceSwitchSubpath("approvals/gate_9")).toBe("approvals");
   });
 
   it("preserves generic pages and maps an empty route to the workspace home", () => {

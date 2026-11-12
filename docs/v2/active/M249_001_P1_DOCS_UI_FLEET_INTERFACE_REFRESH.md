@@ -342,7 +342,7 @@
 | `rustd/crates/daemon/afd_api_wire/src/tenant_provider.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
 | `rustd/crates/daemon/afd_api_wire/tests/tenant_provider_shapes.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/write.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
-| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/render.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/render/mod.rs` | MOVE + EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/provider/mod.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/provider/write.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
 | `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/provider/tests.rs` | EDIT | Bind model credentials to their explicit workspace and verify ownership, recovery and reference safety |
@@ -1016,7 +1016,7 @@ The duplicate unlayered screen-reader-only rule is removed so Tailwind responsiv
 
 ### Composition verification and attention follow-up
 
-Keep pending submission attachments on the SDK selector, suppress revoked header attention, and retain shared reader ownership. Routine settled assessment opens from existing run details; failure or unconfirmed assessment remains visible. Narrow Fleet footers follow normal conversation flow, with a native Jump to latest control; desktop retains docking.
+Keep pending submission attachments on the SDK selector, suppress revoked header attention, and retain shared reader ownership. Routine settled assessment opens from existing run details; failure or unconfirmed assessment remains visible. Saved Fleet footers stay docked to the native viewport at every width, with Jump to latest above the composer. Empty setup footers remain in normal flow so a phone can scroll through the hero and starter prompts. Summary stacks in the phone conversation flow.
 
 | File | Action | Purpose |
 |---|---|---|
@@ -1032,10 +1032,165 @@ Keep pending submission attachments on the SDK selector, suppress revoked header
 | `ui/packages/app/components/domain/FleetReplyFigures.test.tsx` | EDIT | Complete the approved composition and preserve native outcomes under asynchronous updates |
 | `ui/packages/app/components/domain/TaskActivityTimeline.test.tsx` | EDIT | Complete the approved composition and preserve native outcomes under asynchronous updates |
 
-The late native pull-request result reserves the same 74px card surface while its authorized detail loads. Browser verification retains the original 1px bound for the reply, sender and composer; no wider tolerance is allowed. Loading cannot reappear after an access-denied read. Summary rhythm is 8px around dividers with 4px label gaps; supported disclosure targets remain 44px on phones.
+The late native pull-request result reserves the same 78px card surface while its authorized detail loads. Browser verification retains the original 1px bound for the reply, sender and composer; no wider tolerance is allowed. Loading cannot reappear after an access-denied read. Summary rhythm is 8px around dividers with 4px label gaps; supported disclosure targets remain 44px on phones.
+
+### Indy and Astra visual corrections — Nov 12, 2026
+
+Indy's review reopens visual completion. Restore the approved neutral rail hover/selection, 20px collapse glyph, tiled mint identity, lavender avatar, 90% desktop user turn, 19px reply heading, 12px attachment filename, squared-pencil edit icon and composer insets. Result cards and their loading surfaces share 78px height and 16px radius. Preserve a visible focused composer and distinguish an empty disabled Send from an enabled draft. Compare those states separately, with the real model-selection owner mounted in the visual fixture.
+
+Approval metadata and denial already exist in the backend. The earlier claim that they were unavailable was incorrect. Summary reads the pending gate for its own workspace and fleet, shows its recorded action and blast radius, offers Approve and Deny through the existing authenticated decision actions, and exposes action details inline. Reads and decisions must reject stale scope/results and show failures durably. A terminal result must not remain an actionable pending request. Recorded run duration belongs in the worked row; costs must identify the run they describe. Do not invent token-budget percentages, delivery receipts, repository diff totals or mention targets.
+
+Additional files in this repair scope: `components/domain/chat/FleetApprovalSummary.tsx`, `components/domain/chat/use-fleet-approval.ts`, `components/domain/approvals/use-approval-decision.ts`, the existing approval detail `ResolveButtons.tsx`, `components/domain/chat/ChatQuote.tsx`, `lib/chat-message-text.ts`, `components/layout/MobileNavigation.tsx`, `components/domain/FleetRunCost.tsx`, the fleet page/header cost props, and focused tests beside their existing owners. Shell, transcript, shared tokens, approved visual fixtures and design-system documentation remain in scope.
+
+### assistant-ui coverage and AskUser
+
+The current official recommendation is `MessagePrimitive.GroupedParts`; retain it for reasoning and tools. Existing native thread/composer/message/attachment/Markdown/tool registration and copy controls remain the foundation. Use the Elements catalogue as the reference for Question Flow, Option List, Elicitation Form, Approval Card, terminal output, diffs, file trees, citations, artifacts and activity displays. Those components are UI compositions, not evidence that a backend capability is connected.
+
+AskUser is not implemented end to end in the current setup protocol. A single choice should use Option List; related questions should use Question Flow. The required path is a typed persisted question with stable option identifiers, one authenticated answer, backend continuation, and a settled answer receipt that survives reload. A duplicate, stale or cross-workspace answer must not resume another request. Use native tool UI answer/resume hooks when the transport supplies that capability; never make a disabled backend path appear interactive. This remains explicitly unverified until that protocol and the reload/duplicate-answer journeys exist.
 
 ### Final async-result review repair
 
-The shared task owner publishes its selected references alongside resources. Result placeholders now follow that actual pending work, not an absent map entry. A settled 503/invalid list, denied identity or completed task outside the 16-reference history window cannot remain labelled as loading. The 74px space remains for a real pending reader; existing 1px browser bounds are retained. Header insets follow 12/16/24px at the same narrow/intermediate/wide breakpoints as the approved shell.
+The shared task owner publishes its selected references alongside resources. Result placeholders now follow that actual pending work, not an absent map entry. A settled 503/invalid list, denied identity or completed task outside the 16-reference history window cannot remain labelled as loading. The 78px space remains for a real pending reader; existing 1px browser bounds are retained. Header insets follow 12/16/24px at the same narrow/intermediate/wide breakpoints as the approved shell.
 
 Checkpoint evidence before integrating main 0619545: `make test-coverage-all` on the isolated UI candidate passed 4484 app, 133 website, 2217 CLI (17 declared skips), and 493 design-system tests at every declared 100 percent floor. Root targeted 103 tests and final 36 browser checks passed. Source/coverage manifests and logs are under `/workspace/scratch/refresh-astra-*`; captures are labelled sample data. These counts describe the pre-integration checkpoint, not the eventual merge revision.
+
+
+### Approval review repair scope
+
+Add `lib/api/approval-resolution.ts` and its boundary tests; update `lib/api/approvals.ts`, the shared decision hook, and existing approval response tests. Confirm the requested gate and a terminal outcome before recording success; a competing decision must carry the existing already-resolved error code. Invalid responses remain unconfirmed.
+
+Update `lib/streaming/fleet-stream-entry.ts`, `fleet-stream-snapshot.ts`, `fleet-stream-dispatch.ts`, their existing tests, `components/domain/useFleetEventStream.ts`, `FleetThread.tsx`, and the shared task/Summary owner. A dedicated approval read revision advances for each gate hint and after reconnect; the task revision and unchanged-count optimization retain their separate meanings. Replacing one pending gate with another must refresh the action even when the total stays at one. Focused quote, run-cost and mobile navigation tests are included with their components.
+
+The approval reader stays mounted for a scoped fleet with zero remembered approvals, so hello and reconnect can discover a first missed request. A confirmed empty read hides the approval section. `WorkSection.tsx` supplies the shared section presentation. Conversation headings use a dedicated 19px token in `FleetMarkdown.tsx`; dialog headings retain their approved 18px token.
+
+
+### Current review repair files
+
+The final source review found that native quote metadata was excluded from pre-submit byte-limit checks. Runtime tests also showed that the queue adapter restored failed quoted messages as plain text. The review's earlier duplicate-operation claim is withdrawn: it assumed an SDK restoration path that this queue bypasses. The shared serializer now supplies delivery, recovery observation, notice equality and the size limit.
+
+A matching notice resend clears native quote and text together. Queue recovery restores native quote state and preserves a newer quote and draft. The focused run passes 46 tests across six files, including exact retry identity, native restoration, resend cleanup, complete-payload limits and newer-edit preservation. Evidence: `/workspace/scratch/refresh-quote-queue-focused-v2.log`; full merged-branch verification remains due.
+
+Indy's latest eyeball response is "I have visual corrections". The final visual sign-off remains open while those corrections are collected; independent backend verification continues.
+
+Nov 12 verification checkpoint: exact main `0619545b6d718fc629473a1ec6ad3e87ff1d639c` passed actual `make test-coverage-all` (app 441 files / 4261 tests; website 20 / 133; CLI 2217 passed / 17 declared skips; design system 62 / 488, every declared floor 100 percent). Its `make dry-app` passed 68 browser cases. Actual `make test-unit-rustd` under the normal `022` umask passed 1731 runner, 172 daemon and 3649 daemon-library tests, totaling 5552. Evidence: `/workspace/scratch/refresh-main061-baseline-coverage-v2.log`, `refresh-main061-baseline-dry.log`, and `refresh-main061-baseline-rust-unit-v2.log`.
+
+Exact-base remote runs are [warm-cache](https://github.com/agentsfleet/agentsfleet/actions/runs/43156340957) and [deploy development](https://github.com/agentsfleet/agentsfleet/actions/runs/43156341221). Neither supplies executed unit counts for this baseline; the isolated checkout measurements above do. The development deployment run failed; no success is inferred from its build artifacts.
+
+The current branch's first complete app run passed 4554 tests but missed eleven branches and two statements at the coverage floor. Added checks cover recorded duration, duplicate approval submissions, late decisions after unmount, failed zero-count inbox reads, and pending-count invalidation. Removed obsolete optional-key write branches after the existing mandatory-key validation. The full package gate is rerunning; this checkpoint is not a green branch claim.
+
+Astra inspected all 57 distinct V8 captures and all ten V9 interaction images. The remaining recent-fleet selection issue is corrected, hover colors match in both themes, and reduced-motion labels are static and readable. V9 records loader motion; Astra inspected sampled video frames without claiming continuous playback. The review Page contains the fresh comparisons, navigation images and recording. These component captures use labelled sample data; authenticated journeys remain due.
+
+| File | Action | Purpose |
+|---|---|---|
+| `rustd/crates/daemon/afd_authoring/src/catalogue/sql/page.sql` | EDIT | Preserve workspace model scope while integrating current main |
+| `rustd/crates/daemon/afd_authoring/tests/draft/model_metadata.rs` | EDIT | Preserve workspace model scope while integrating current main |
+| `rustd/crates/daemon/afd_credential/tests/integration_platform_key_cache.rs` | EDIT | Preserve workspace model scope while integrating current main |
+| `ui/packages/app/app/(dashboard)/AccountSetup.tsx` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/approvals/[gateId]/ResolveButtons.tsx` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/app/(dashboard)/w/[workspaceId]/approvals/[gateId]/page.tsx` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/FleetRunCost.test.tsx` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/FleetRunCost.tsx` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/FleetToolGroup.tsx` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/approvals/use-approval-decision.ts` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/approvals/use-approval-decision.test.ts` | CREATE | Prove duplicate-submit exclusion and ignore late approval responses after scope unmount |
+| `ui/packages/app/tests/fleet-thread/steer-quote-recovery.test.ts` | CREATE | Prove native quoted-message retry identity, resend cleanup and complete-payload byte limits |
+| `ui/packages/app/components/domain/useFleetSteerQueue.ts` | EDIT | Restore native quote and text after uncertain delivery while retaining a newer quote and draft |
+| `docs/architecture/billing_and_provider_keys.md` | EDIT | Replace the removed primary-workspace bridge with exact credential workspace ownership |
+| `rustd/crates/daemon/afd_api_tenant/src/handler/tenant/model_entry/render/tests.rs` | CREATE | Move unchanged rendering tests beside their production module to keep file size bounded |
+| `rustd/crates/daemon/afd_credential/tests/platform_key_cache/cases.rs` | CREATE | Keep cache integration cases separate from their fixture owner without changing assertions |
+| `ui/packages/app/tests/e2e/chat-schedules.spec.ts` | CREATE | Keep schedule activity and reload browser checks separate from typography |
+| `ui/packages/app/components/domain/chat/ChatQuote.test.tsx` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/chat/ChatQuote.tsx` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/chat/FleetApprovalSummary.test.tsx` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/chat/FleetApprovalSummary.tsx` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/chat/WorkSection.tsx` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/chat/use-fleet-approval.ts` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/useFleetEventStream.ts` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/domain/useFleetMessageDelivery.ts` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/layout/MobileNavigation.test.tsx` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/components/layout/MobileNavigation.tsx` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/api/approval-resolution.test.ts` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/api/approval-resolution.ts` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/api/approvals.resolve.test.ts` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/api/approvals.ts` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/chat-message-text.test.ts` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/chat-message-text.ts` | CREATE | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/streaming/fleet-stream-dispatch.ts` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/streaming/fleet-stream-entry.ts` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/streaming/fleet-stream-registry.facts.test.ts` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/lib/streaming/fleet-stream-snapshot.ts` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/tests/account-setup.test.tsx` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+| `ui/packages/app/tests/fleet-thread/steer-submission.test.ts` | EDIT | Complete the approved visual corrections and native component behavior with scoped recovery checks |
+
+
+### Fleet-owned approval decisions (Indy correction, 2026-11-12)
+
+“I dont need review, we agreed to nuke the approvals, grants page they will go away.”
+
+Remove the standalone Approvals collection/detail routes and their navigation, loading screens and page-only components/tests. There is no standalone Grants route in this checkout. Retain approval APIs, standing grants, scope checks, audit history and CLI operations. Fleet Summary owns Approve and Deny; no Review navigation or replacement inbox. Show the requested action and blast radius before the buttons, with evidence available inline. Keep refusal, uncertain response, competing decision and expired outcomes explicit. Other pending requests remain reachable after a decision. Approval activity and readiness links target the fleet itself.
+
+Additional files: the existing `app/(dashboard)/w/[workspaceId]/approvals/**` tree (delete); `lib/actions/fleet-approvals.ts` (move authenticated actions); `components/domain/chat/FleetApprovalSummary.tsx`, `ApprovalActions.tsx`, `use-fleet-approval.ts`, `WorkContextSections.tsx`, `WorkSection.tsx`; `components/domain/FleetActivityElements.tsx`; `components/layout/account-menu-data.ts`; `lib/workspace-routes.ts`; fleet page/status and existing tests; removed approvals page/list tests, retained action tests; acceptance `operator-journey.spec.ts`, `multi-fleet-grant-journey.spec.ts` and their approval fixture; browser action aliases and visual fixtures; `rustd/crates/daemon/afd_authoring/src/review/credentials/mod.rs` and existing grant readiness tests. Refresh the visual gallery and companion docs to describe fleet-local decisions. This supersedes earlier inbox-retention wording.
+
+Setup approval placement also changes `DraftConversation.tsx` and adds `SetupApprovalSummary.tsx` with a scoped identity test. Backend readiness returns a fleet destination only after Save has created it. Before Save there is no decision to make. `dashboard-performance.spec.ts` uses Models as its surviving intermediate destination.
+
+
+The final inline-decision review found a stream-before-response race: the backend announces a resolved gate before returning its HTTP receipt. Preserve the selected request across same-scope count/revision updates until its confirmed response is shown. Access loss still removes it and ignores late responses. Setup Summary receives the existing authenticated subject from `WorkspaceChat.tsx`; it does not add another identity-provider hook. Add regression tests for both orderings.
+
+After a confirmed setup approval, the existing DraftClient rereads readiness. Finish setup becomes available when the authoritative checks permit it; approval itself does not activate the fleet. Failed readiness reads retain the client's existing durable error. The shared RefreshButton lifecycle test replaces incidental coverage lost with the removed page tests (`tests/identity-and-controls.test.tsx`).
+
+The final readiness review adds `tests/workspace-chat/fleet-setup.test.tsx` to the repair scope. A confirmed decision queues a scope-tagged refresh while the existing DraftClient is busy; a client, user, fleet or access change discards that intent. The pending label and badge become Approval decision after a confirmed terminal receipt. Clippy requires the extracted rendering module to move from `render.rs` to `render/mod.rs`; the tests remain in `render/tests.rs`.
+
+Indy requested final visuals for every other page on Nov 12. Capture Models and its dialogs, Profile, Security, Team/invitations, Usage, API keys, Secrets, Connected apps, Plugins and New fleet at desktop and phone widths in both appearances; inspect and repair the actual components before publishing the gallery. Finish the visible Plugins heading, scope label and read-error copy in the existing library copy/browser files and their existing page/browser tests. Public route/CLI renaming remains separately tracked.
+
+The all-page visual review also covers `settings/api-keys/components/ApiKeysView.tsx` and `tests/api-keys-page.test.ts` for consistent API keys casing. Use the shared title and canvas spacing for Usage in `settings/billing/page.tsx`, `app/globals.css` and the matching `resource-pages-probe.tsx`. In the existing model credential/edit/view components, shorten placeholders and remove unavailable Next guidance. In the shared secret form and name cell, give phone values adequate input width and show complete names. These are copy/layout corrections; resource ownership and writes stay unchanged.
+
+All-page visual checkpoint, Nov 12: `other-pages-v14/results.json` records 128 captures (32 states, 1480px/390px, dark/light), no browser errors and no page horizontal overflow. Astra inspected all 104 initial captures and 68 repaired/additional captures; all six numbered findings and the copy fixes are closed in `astra-visual-validation.md`. The complete archive includes an HTML gallery, unmodified PNGs, measurement results and image digests; its 128 image links, selectors, actual-size control and phone fit passed the artifact check. The review Page contains 25 representative images plus that archive. These are production-component captures using sample records, not authenticated acceptance. Indy’s eyeball feedback, final repository checks and pull requests remain pending.
+
+The companion docs check named two stale Runner API navigation entries in `docs.json`: GET/PUT context-checkpoints. Neither exists in the current main OpenAPI or the daemon route source at `0619545`. Remove those two obsolete navigation references without changing the checker or adding API pages ahead of the product merge.
+
+The companion documentation PR is [docs#245](https://github.com/agentsfleet/docs/pull/245), head `0d26c5b`. Local verification and PR gates passed; the isolated docs base and branch each pass 25 documentation tests. The model edit placeholder assertion in `tests/models-registry-edit-remove.test.tsx` now checks the reviewed Enter replacement key wording. Its title describes the actual missing-credential case; the form and mutation assertions remain unchanged.
+
+Nov 12 verification checkpoint: `make lint-all` passes, and the three Rust unit lanes pass 1,731 runner, 172 daemon and 3,650 library tests. After the placeholder assertion repair, `make test-coverage-all` passes: app 4,517, website 133, CLI 2,217 and design system 493 tests. Every package meets its 100 percent coverage floor. Evidence: `refresh-final-full-v12.log` and `refresh-final-remaining-v13.log` in the task scratch directory. Integration, browser and authenticated checks remain in progress.
+
+Docs PR #245 completed two quiet green polls on `0d26c5b`; Greptile reported 5/5 with no findings. Indy requested visual corrections and the original proposal ZIP for comparison. The review Page now provides `approved-proposal-bundle.zip`, containing the unchanged HTML and exact extracted assets. Its offline conversation, Models and Team views passed the browser check without remote requests. Visual sign-off stays open until the corrections are supplied and addressed.
+
+Integration exposed a helper error in `creation/grants.rs`: draft readiness uses typed `CheckKind::Grant`, while saved setup aggregates use the plural grants label. The helper now checks the typed draft observation and its absent pre-save destination; saved-destination and approval/denial assertions are retained. Update the adjacent action documentation in `src/types/review/readiness.rs` to name inline fleet controls. The wire enum spelling and authorization stay unchanged.
+
+
+### Whole-proposal rebuild after Indy’s comparison, Nov 12
+
+Indy: “Well you will have to check all not just the ones we mentiond”. The original unchanged `proposal.html` is the comparison source for every screen, shared control, dialog and interaction state. The earlier all-page review did not establish structural parity and does not close visual sign-off. Restore the approved resource layouts, shared controls, Security composition, and New fleet composition. API keys and signed-in sessions share Security in the UI; CLI API keys stay independent. Preserve profile editing through the avatar’s account controls without presenting an unapproved separate Profile page. Preserve real authorization, recovery, model selection and billing facts; sample-only fields are never invented in production.
+
+Repair scope covers the existing design-system primitives, source tokens and utility mappings; all current account/resource view components and their existing tests; resource shell and account navigation; native setup composer and Fleet sample fixtures. New small composition components belong beside their first caller in the same directories. Update DESIGN_SYSTEM.md and comparison captures together. Include every proposal view, dialogs, empty/loading/error cases, hover/focus, both themes, and phone checks. Replace duplicate gallery captures with genuinely distinct states. Show Activity and Wake-up with recorded sample events through production components. Compare at 1480×1000, 100 percent zoom, with matching 46px review chrome.
+
+
+### Proposal alignment implementation and data differences — November 12
+
+The owner selected the approved proposal structure for every resource page. The visual reference remains the original `proposal.html`, SHA-256 `8feabc24f6d6e91d2caa22a4b52060074f2877b291fce4d2f1da5c3fc6d8be5a`. The review covers all pages, dialogs, Fleet Activity and Wake-up states, both themes, phone layouts, hover and focus. Completion requires new rendered evidence; previous captures do not certify the rebuild.
+
+Shared controls now use the approved border, shape, spacing and disabled state. Models restore Platform default and Your models. Team restores avatar, role, date and menu rows. Security combines keys and sessions; personal identity edits remain native provider controls. Usage restores its metric strip, chart section and fleet table. Secrets, Plugins and Connected apps restore their grouped row structures. New fleet uses the approved hero, writing pad and starter pills.
+
+The data differences must accompany the gallery:
+
+- Billing exposes settled period totals and grouped charges, without UTC daily buckets or a complete model set per fleet. The daily section shows an unavailable state. Activity and per-model charge inspection remain available in Charge details.
+- Secret storage is workspace scoped and write-only. The API does not provide arbitrary per-secret fleet authorization checkboxes; Manage exposes actual replacement and deletion with a clear access-data limitation.
+- API key rows have creation and revocation state but no key suffix or last-used timestamp. Do not synthesize either field.
+- Plugin cards have an immutable head identifier. The details read returns the human version and supports pinned use for a new fleet; owned setup editing uses an explicit publication target.
+- Conversation sections use recorded events. Slack delivery, exact diff totals, token-budget percentages and mention behavior must not be invented to match sample text. Capability composition remains deferred to M239.
+
+Wake-up controls read the current schedule, carry its ETag for edits, preserve inherited overrides, distinguish pending deregistration from deletion, and cancel late responses when their owner changes. A stale edit offers a reload of saved intent. Security bulk sign-out reads all pages before writing, excludes every session identified as current, and stops on a refusal without claiming complete success.
+
+
+### Final proposal comparison repairs — November 12
+
+Indy: “Align to your proposal, the delta data can be highlighted by you.” This supersedes the extra resource-page search/sort/table structures from earlier checkpoints. Keep real timestamps, resource ownership, backend refusals, and pagination needed to reach all records. The approved Security composition owns both API keys and sessions. Personal account opens native identity-provider controls through the auth facade.
+
+Astra inspected all 94 V18 captures individually, comparing all proposal pages and both appearances. Its bounded findings were the desktop wake-up Summary inset, the no-tool worked row side borders, the Model label gap, and Usage metric/section rhythm. Repairs use shared spacing and type roles. Separate top/latest long-conversation captures distinguish normal runtime scrolling from component geometry; focused dialog captures verify the label-to-input clearance.
+
+The code review closed a private wake-up-message portal exclusion, restored the available key revocation date, and corrected an obsolete plugin-action assertion. Browser journeys now follow Security, native personal account controls, plugin management dialogs and Models Load more. Tests retain key reveal-once and revocation, hidden-secret behavior, accessible actions, fixture cleanup, exact dates, delayed reads and scope checks. The removed Search control no longer has a search-pagination journey; the load-more journey proves retained rows, pending controls and unique complete results. Unit checks retain superseded-response protection.
+
+Outputs require a confirmed publication receipt with a commit and matching pull-request URL. A related pull request without that evidence appears under Pull requests. Headers derive Scheduled and Needs attention from actual schedule/run data and keep approval attention on the existing shared stream reader. Wake-up edits remain owned by authenticated subject, workspace and fleet even when schedule ordering changes.
+
+Resuming an unpublished plugin edit cannot infer the intended publication destination from its source revision. An explicit owned-plugin picker lets the user select the destination and then publish its next revision through the existing conditional API. Selection alone never writes. The API does not currently remember that unpublished destination across reloads; report this limitation beside the visual comparison.
+
+Full final repository gates, current browser evidence and Indy's eyeball review remain open. Earlier successful gate counts describe their recorded revisions only.

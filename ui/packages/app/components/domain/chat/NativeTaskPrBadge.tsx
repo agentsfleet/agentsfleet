@@ -16,19 +16,19 @@ export function NativeTaskPrBadge({activity, appearance = "badge"}: {activity: u
   if (history?.truncated || entry.done || ids.size > 1) return null;
   const resource = details.get(entry.value);
   if (appearance === "card" && view?.subject && waitingForLinkedWork(view.read, entry.value)) {
-    return <output className="mt-xl block" aria-label="Reading linked work"><Skeleton className="h-18.5 w-full rounded-lg" aria-hidden="true" /></output>;
+    return <output className="mt-xl block" aria-label="Reading linked work"><Skeleton className="h-19.5 w-full rounded-md" aria-hidden="true" /></output>;
   }
   if (!resource) return null;
   const detail = confirmed(resource);
   const target = detail?.context.target;
   if (!detail || target?.kind !== "existing_pr") return null;
-  if (appearance === "card") return <Card asChild className="mt-xl flex h-18.5 items-center gap-lg p-xl">
+  if (appearance === "card") return <Card asChild className="mt-xl flex h-19.5 items-center gap-lg rounded-md p-xl">
     <a href={target.url} target="_blank" rel="noopener noreferrer" className="ph-no-capture ph-no-record"
       aria-label={`Pull request #${target.number} · ${target.repository} · ${detail.title}`}>
       <GitPullRequestIcon size={16} className="shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-label leading-label" title={detail.title}>{detail.title}</span>
-        <span className="mt-xs flex min-w-0 items-center gap-sm text-eyebrow leading-eyebrow text-muted-foreground">
+        <span className="block truncate text-label font-medium leading-label" title={detail.title}>{detail.title}</span>
+        <span className="mt-sm flex min-w-0 items-center gap-sm text-eyebrow leading-eyebrow text-muted-foreground">
           <span className="shrink-0">Pull request #{target.number}</span><span aria-hidden="true"> · </span>
           <span className="truncate" title={target.repository}>{target.repository}</span>
           {resource.kind !== "ready" ? <span className="shrink-0"> · last confirmed</span> : null}

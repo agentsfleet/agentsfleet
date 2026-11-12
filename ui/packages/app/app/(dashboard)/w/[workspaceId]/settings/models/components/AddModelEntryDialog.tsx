@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, TooltipButton } from "@agentsfleet/design-system";
-import { PlusIcon } from "@phosphor-icons/react/ssr";
+import { ArrowUpRightIcon, PlusIcon } from "@phosphor-icons/react/ssr";
 import type { Secret } from "@/lib/api/secrets";
 import { useCurrentUser } from "@/lib/auth/client";
 import { maySpeculateOnHover } from "@/components/domain/island-dynamic/intent-module-loader";
@@ -12,11 +12,12 @@ import { SECRETS_LOAD, type SecretsLoad } from "./secrets-load";
 import { CreateModelForm } from "./CreateModelForm";
 
 type Props = {
+  triggerLabel?: string; secondary?: boolean;
   workspaceId: string; secrets: Secret[]; secretsLoad: SecretsLoad;
   onCreated: () => void; onSecretsChanged: () => void; onSecretsNeeded: () => void;
 };
 
-export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, onCreated, onSecretsChanged, onSecretsNeeded}: Props) {
+export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, onCreated, onSecretsChanged, onSecretsNeeded, triggerLabel = "Create model", secondary = false}: Props) {
   const [open, setOpen] = useState(false);
   const pending = useRef(false);
   const catalogue = useModelCatalogue();
@@ -42,12 +43,12 @@ export default function AddModelEntryDialog({workspaceId, secrets, secretsLoad, 
   return (
     <Dialog open={open} onOpenChange={changeOpen}>
       <DialogTrigger asChild>
-        <TooltipButton type="button" size="sm" disabled={!ownerReady} tooltip="Choose a model and connect its provider" onFocus={catalogue.preload}
+        <TooltipButton variant={secondary ? "outline" : "default"} type="button" size="sm" disabled={!ownerReady} tooltip="Choose a model and connect its provider" onFocus={catalogue.preload}
           onPointerEnter={() => { if (catalogue.status !== CATALOGUE_STATUS.error && maySpeculateOnHover()) catalogue.preload(); }}>
-          <PlusIcon size={16} aria-hidden="true" />Create model
+          {secondary ? null : <PlusIcon size={16} aria-hidden="true" />}{triggerLabel}{secondary ? <ArrowUpRightIcon size={16} aria-hidden="true" /> : null}
         </TooltipButton>
       </DialogTrigger>
-      <DialogContent onEscapeKeyDown={event => { if (pending.current) event.preventDefault(); }} onInteractOutside={event => { if (pending.current) event.preventDefault(); }}>
+      <DialogContent className="max-w-model-dialog" onEscapeKeyDown={event => { if (pending.current) event.preventDefault(); }} onInteractOutside={event => { if (pending.current) event.preventDefault(); }}>
         <DialogHeader>
           <DialogTitle>Create model</DialogTitle>
           <DialogDescription>Choose a model and connect its provider. You can add the key without leaving this form.</DialogDescription>

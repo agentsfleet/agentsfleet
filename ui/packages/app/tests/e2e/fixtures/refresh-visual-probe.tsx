@@ -1,3 +1,5 @@
+import {visualWakeup} from "./refresh-wakeup-data";
+import {FleetScopeProvider} from "@/components/domain/FleetScope";
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { AssistantRuntimeProvider, useExternalStoreRuntime, type AppendMessage, type ThreadMessageLike } from "@assistant-ui/react";
 import { AppRouterContext } from "next/dist/shared/lib/app-router-context.shared-runtime";
@@ -17,12 +19,15 @@ import { VISUAL_SCENARIOS, visualEvents, type VisualScenario } from "./refresh-v
 import { TaskPanel } from "@/components/domain/chat/TaskPanel";
 import { FleetTaskProvider } from "@/components/domain/chat/FleetTaskProvider";
 import { CONNECTION_STATUS, convertEvent } from "@/components/domain/useFleetEventStream";
-import { RENDER_KIND, RENDER_KIND_KEY } from "@/components/domain/useFleetThreadEntries";
+import { RENDER_KIND, RENDER_KIND_KEY, useFleetThreadEntries } from "@/components/domain/useFleetThreadEntries";
 import { ACTOR } from "@/lib/events/event-summary";
 import { FleetDetailSchema } from "@/lib/api/fleet-detail";
 import { FLEET_DETAIL, WORKSPACE, FLEET_ID } from "@/tests/helpers/draft-fixtures";
 import { useFleetUploadPreviews } from "@/components/domain/useFleetUploadPreviews";
 import { FLEET_CHAT_CONFIG } from "@/components/domain/FleetToolRegistry";
+import { FleetSetupWorkspace } from "@/components/domain/chat/FleetSetupWorkspace";
+import { chatMessageText } from "@/lib/chat-message-text";
+import { latestFigures } from "@/lib/events/run-summary";
 import { useFleetNotice } from "@/components/layout/FleetNoticeProvider";
 
 const router = { bfcacheId: "visual-review", back() {}, forward() {}, refresh() {}, push() {}, replace() {}, async prefetch() {} };
@@ -34,13 +39,15 @@ export function RefreshVisualFixture() {
   const [phase, setPhase] = useState<VisualScenario>(() => VISUAL_SCENARIOS.find(value => value === new URLSearchParams(location.search).get("state")) ?? "running");
   const showScenario = useCallback((value: VisualScenario) => {const url = new URL(location.href); url.searchParams.set("state", value); history.replaceState(null, "", url); setPhase(value);}, []);
   const events = useMemo(() => visualEvents(phase, started, new URLSearchParams(location.search).has("code")), [phase, started]);
+  const grouped = useFleetThreadEntries(events, convertEvent);
+  const fleetName = phase === "wake-up" ? "Merge watch" : "Release watch";
   const [sent, setSent] = useState<ThreadMessageLike[]>([]);
   const onNew = useCallback(async (message: AppendMessage) => {
     if (phase === "error") showScenario("running");
-    setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: message.content}]);
+    setSent(previous => [...previous, {id: `local-${previous.length}`, role: "user", content: [{type: "text", text: chatMessageText(message)}]}]);
   }, [phase, showScenario]);
   const previews = useFleetUploadPreviews({workspaceId: WORKSPACE, fleetId: FLEET_ID, subject: "fixture-owner", events, onNew});
-  const messages = useMemo(() => [...conversation(events, started), ...sent, ...previews.entries.map(entry => entry.message)], [events, started, sent, previews.entries]);
+  const messages = useMemo(() => [...(phase === "wake-up" ? grouped.entries.map(grouped.convertEntry) : conversation(events, started)), ...sent, ...previews.entries.map(entry => entry.message)], [events, started, sent, previews.entries, phase, grouped.entries, grouped.convertEntry]);
   const runtime = useExternalStoreRuntime({ messages, isRunning: phase === "running",
     convertMessage: (message: ThreadMessageLike) => message,
     onNew: previews.onNew, adapters: {attachments: previews.attachments},
@@ -48,16 +55,17 @@ export function RefreshVisualFixture() {
   });
   return <AppRouterContext value={router}><PathnameContext.Provider value={`/w/${WORKSPACE}/fleets/${FLEET_ID}`}><SearchParamsContext.Provider value={new URLSearchParams()}><TooltipProvider><ReviewChrome>
     <div className="flex min-h-0 flex-1 flex-col">
-      <div data-visual-controls="" className="fixed inset-x-0 top-0 z-50 flex h-11 items-center gap-sm overflow-x-auto whitespace-nowrap bg-surface-deep px-lg [&>button]:shrink-0 [&>span]:shrink-0">
+      <div data-visual-controls="" className="fixed inset-x-0 top-0 z-50 flex h-11.5 items-center gap-sm overflow-x-auto whitespace-nowrap bg-surface-deep px-lg [&>button]:shrink-0 [&>span]:shrink-0">
         <span className="mr-auto text-eyebrow text-muted-foreground">Sample data · Design comparison</span>
-        {VISUAL_SCENARIOS.map(value => <Button key={value} size="sm" variant={phase === value ? "secondary" : "ghost"} aria-pressed={phase === value} onClick={() => showScenario(value)}>{value === "empty" ? "Empty" : value === "running" ? "Working" : value === "completed" ? "Completed" : "Error"}</Button>)}
+        {VISUAL_SCENARIOS.map(value => <Button key={value} size="sm" variant={phase === value ? "secondary" : "ghost"} aria-pressed={phase === value} onClick={() => showScenario(value)}>{value === "empty" ? "Empty" : value === "running" ? "Working" : value === "completed" ? "Completed" : value === "activity" ? "Activity" : value === "wake-up" ? "Wake-up" : "Error"}</Button>)}
         <Button size="sm" variant="ghost" onClick={() => { document.documentElement.dataset.theme = document.documentElement.dataset.theme === "light" ? "dark" : "light"; }}>Theme</Button>
         <NoticeExamples />
       </div>
-      <FleetHeader workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: "Release watch", status: "active", pending_approvals: phase === "completed" ? 1 : 0 })} />
-      <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><SenderLabelProvider senderLabel="Release watch"><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
-        <FleetTaskProvider workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} sources={{repositories: phase === "empty" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
-          approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/approvals?fleetId=${FLEET_ID}`}}>
+      <FleetSetupWorkspace account={OWN_ACCOUNT.account.tenant_id} workspace={WORKSPACE} fleet={FLEET_ID} revision={FLEET_DETAIL.setup_revision} viewer="fixture-owner" header={null}>
+      <FleetHeader latestRun={latestFigures(events)} workspaceId={WORKSPACE} fleet={FleetDetailSchema.parse({ ...FLEET_DETAIL, name: fleetName, status: "active", schedules: phase === "wake-up" ? [visualWakeup(started)] : [], pending_approvals: phase === "completed" ? 1 : 0 })} />
+      <AssistantRuntimeProvider runtime={runtime} config={FLEET_CHAT_CONFIG}><FleetScopeProvider workspaceId={WORKSPACE} fleetId={FLEET_ID}><SenderLabelProvider senderLabel={fleetName}><SenderNamesProvider names={senderNamesFrom("fixture-owner", [])}>
+        <FleetTaskProvider workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} events={events} schedules={phase === "wake-up" ? [visualWakeup(started)] : []} sources={{repositories: phase === "empty" ? [] : ["agentsfleet/platform-images"], access: "write", publication: "existing_pr"}}
+          approvals={{count: phase === "completed" ? 1 : 0, href: `/w/${WORKSPACE}/fleets/${FLEET_ID}#fleet-approvals`}}>
         <FleetConversationLayout work={<TaskPanel workspaceId={WORKSPACE} fleetId={FLEET_ID} subject="fixture-owner" revision={VISUAL_SCENARIOS.indexOf(phase)} />}>
           <div className="flex min-h-0 flex-1 flex-col">
             <FleetThreadViewport modelLabel="MiniMax M3" eventsCount={messages.length} connectionStatus={CONNECTION_STATUS.LIVE}
@@ -65,7 +73,7 @@ export function RefreshVisualFixture() {
           </div>
         </FleetConversationLayout>
         </FleetTaskProvider>
-      </SenderNamesProvider></SenderLabelProvider></AssistantRuntimeProvider>
+      </SenderNamesProvider></SenderLabelProvider></FleetScopeProvider></AssistantRuntimeProvider></FleetSetupWorkspace>
     </div>
   </ReviewChrome></TooltipProvider></SearchParamsContext.Provider></PathnameContext.Provider></AppRouterContext>;
 }
@@ -77,7 +85,7 @@ function NoticeExamples() {
 }
 
 function ReviewChrome({ children }: { children: ReactNode }) {
-  return <><style>{".app-shell{top:44px;height:calc(100dvh - 44px)}"}</style>
+  return <><style>{".app-shell{top:46px;height:calc(100dvh - 46px)}"}</style>
     <ShellFrame workspaces={[{id: WORKSPACE, name: "Release workspace", created_at: "2026-01-01T00:00:00Z", ...OWN_ACCOUNT}]}>
       <div data-fleet-workspace="" className="flex h-full min-h-0 flex-col">{children}</div>
     </ShellFrame>

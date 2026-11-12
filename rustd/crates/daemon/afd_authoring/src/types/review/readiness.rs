@@ -44,7 +44,7 @@ pub enum ActionKind {
     Billing,
     /// Open this workspace's connection settings.
     WorkspaceConnections,
-    /// Open this workspace's approval inbox.
+    /// Open this fleet's inline approval controls.
     Approvals,
     /// Inspect and revise this setup.
     Review,

@@ -10,9 +10,9 @@ export const FleetSummaryContext = createContext<ReactNode>(null);
 /** One mounted reader across breakpoints, inside the native thread viewport. */
 export function FleetWorkSidebar({children}: {children: ReactNode}) {
   if (!children) return null;
-  return <Card asChild className="fleet-summary min-h-0 shrink-0 rounded-lg p-xl hover:border-border summary:p-lg summary-wide:p-xl">
+  return <Card asChild className="fleet-summary min-h-0 shrink-0 rounded-lg p-xl hover:border-border summary:p-lg summary-medium:p-xl">
     <aside aria-label="Summary">
-      <h2 className="mb-lg flex items-center justify-between border-b border-border pb-lg text-label font-title leading-label">Summary<ListBulletsIcon size={16} className="text-muted-foreground" aria-hidden="true" /></h2>
+      <h2 className="mb-lg flex items-center justify-between border-b border-border pb-lg text-label font-semibold leading-label">Summary<ListBulletsIcon size={16} className="text-muted-foreground" aria-hidden="true" /></h2>
       {children}
     </aside>
   </Card>;

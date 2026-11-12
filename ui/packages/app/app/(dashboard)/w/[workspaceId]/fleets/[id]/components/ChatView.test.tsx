@@ -31,7 +31,7 @@ const STATUS_ACTIVE = "active";
 const STATUS_PAUSED = "paused";
 const WORKSPACE_ID = "ws_1";
 const FLEET_ID = "agt_1";
-const APPROVALS_HREF = "/w/ws_1/approvals?fleetId=agt_1";
+const APPROVALS_HREF = "/w/ws_1/fleets/agt_1#fleet-approvals";
 const SEED_AT = 1_700_000_000_000;
 const INITIAL_TOKENS = 1500;
 const COMPLETED_TOKENS = 1200;
@@ -279,7 +279,7 @@ it("keeps ordinary chat free of the metrics strip and reveals approvals when att
   expect(screen.queryByLabelText("Fleet summary")).toBeNull();
   emit(completion({pending_approvals: 2}));
   expect(screen.getByRole("heading", {name: "Needs your approval 2"})).toBeTruthy();
-  expect(screen.getByRole("link", {name: "Review 2 pending approvals"}).getAttribute("href")).toBe(APPROVALS_HREF);
+  expect(screen.getByRole("link", {name: "Open fleet with 2 pending approvals"}).getAttribute("href")).toBe(APPROVALS_HREF);
   emit(completion({pending_approvals: 0}));
   expect(screen.queryByRole("link", {name: /approvals/})).toBeNull();
   expect(fetchSpy).not.toHaveBeenCalled();

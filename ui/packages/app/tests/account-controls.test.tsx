@@ -14,7 +14,7 @@ afterEach(cleanup);
 it("keeps a named page and sign-in recovery while native controls are unavailable", () => {
   access.current = {status: "loading"};
   const view = render(<AccountMethodsSettings />);
-  expect(screen.getByRole("heading", {name: "Sign-in methods"})).toBeTruthy();
+  expect(screen.getByRole("heading", {name: "Personal account"})).toBeTruthy();
   expect(screen.getByRole("region", {name: "Secure account controls"})).toBeTruthy();
   expect(screen.queryByLabelText("Native account draft")).toBeNull();
   access.current = {status: "signed-out"};
@@ -23,8 +23,8 @@ it("keeps a named page and sign-in recovery while native controls are unavailabl
 });
 
 it("hosts native hash routing and clears its live widget across account or session changes", async () => {
-  access.current = {status: "ready", contextKey: "owner:one", profile: {subject: "owner", firstName: "", lastName: "", email: null, imageUrl: null},
-    client: {updateProfile: vi.fn(), listSessions: vi.fn(), revokeSession: vi.fn(), manageSignIn: vi.fn()}};
+  access.current = {status: "ready", contextKey: "owner:one",
+    client: {listSessions: vi.fn(), revokeSession: vi.fn()}};
   const view = render(await AccountPage({params: Promise.resolve({account: ["sign-in"]})}));
   const draft = screen.getByLabelText("Native account draft");
   expect(draft.parentElement?.getAttribute("data-routing")).toBe("hash");

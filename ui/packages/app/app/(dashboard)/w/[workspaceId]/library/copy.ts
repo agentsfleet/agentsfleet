@@ -1,5 +1,5 @@
-export const LIBRARY_PAGE_TITLE = "Fleet library";
-export const LIBRARY_PAGE_DESCRIPTION = "Start with a published setup. Make it yours in chat.";
+export const LIBRARY_PAGE_TITLE = "Plugins";
+export const LIBRARY_PAGE_DESCRIPTION = "Reuse a complete fleet setup. Choose a saved version, adapt it, and start a new fleet.";
 
 // The removal confirmation. It names the entry, says what survives, and says
 // what does not — someone reading it should not have to guess whether a

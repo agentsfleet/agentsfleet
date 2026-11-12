@@ -166,7 +166,6 @@ async fn run(
             mint: &af_egress::testing::CountingMint::never(),
             verbs: native,
             checkpoint: &crate::testing::Discard,
-            context_checkpoints: &crate::testing::ContextMemory::default(),
             inbox: &crate::testing::NoInbox,
             events: &|_| {},
             meter: &Meter::default(),

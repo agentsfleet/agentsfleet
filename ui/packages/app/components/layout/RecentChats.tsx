@@ -39,7 +39,7 @@ function FleetItems({collection, workspace, onNavigate}: {collection: RecentColl
   };
   return <>
     {page.items.map(fleet => <div key={fleet.id} className="group relative mb-xs">
-      <NavItem asChild active={pathname === `/w/${workspace}/fleets/${fleet.id}`} className="gap-sm px-3 py-xs pr-12" onClick={onNavigate}>
+      <NavItem asChild active={pathname === `/w/${workspace}/fleets/${fleet.id}`} className="gap-sm px-3 py-xs pr-12 hover:bg-muted hover:text-foreground data-[active=true]:bg-muted data-[active=true]:text-foreground" onClick={onNavigate}>
         <Link href={`/w/${workspace}/fleets/${fleet.id}`} prefetch={false} title={`${fleet.name} · ${fleet.status}`}>
           <span className={`size-1.5 shrink-0 rounded-full ${fleet.status === "active" ? "bg-pulse" : "bg-muted-foreground"}`} aria-hidden="true" />
           <span className="min-w-0 flex-1 truncate text-label text-foreground">{fleet.name}</span>

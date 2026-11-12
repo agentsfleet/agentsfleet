@@ -10,6 +10,7 @@ CREATE TABLE model.tenant_models (
     id          UUID PRIMARY KEY,
     CONSTRAINT ck_tenant_models_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     tenant_id   UUID   NOT NULL REFERENCES identity.tenants(id) ON DELETE CASCADE,
+    -- Reader: afd_credential/src/provider/registered/sql/entry.sql resolves this exact vault scope.
     workspace_id UUID,
     model_name  TEXT   NOT NULL,
     secret_ref  TEXT   NOT NULL,

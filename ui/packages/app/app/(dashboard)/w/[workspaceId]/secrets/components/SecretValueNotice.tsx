@@ -1,12 +1,3 @@
-import { QuestionIcon } from "@phosphor-icons/react/ssr";
-
 export function SecretValueNotice() {
-  return <>Values are encrypted on save — you can replace them later,{" "}
-    <span className="font-semibold text-info">but never view them again.</span>{" "}
-    <a href="https://docs.agentsfleet.net/fleets/secrets" target="_blank" rel="noopener noreferrer"
-      className="inline-flex items-center gap-1 text-pulse underline-offset-2 hover:underline focus-visible:underline">
-      <QuestionIcon size={13} className="text-info" aria-hidden="true" />
-      Learn more<span className="sr-only"> (opens in a new tab)</span>
-    </a>
-  </>;
+  return <>Secret values are hidden after saving. You can replace them later.</>;
 }

@@ -26,7 +26,7 @@ export default function ProviderModelSelect({ id, provider, model, onModelChange
   const available = provider ? modelsForProvider(models, provider) : uniqueModelIds(models);
   const options = available.filter((option) => showAdvanced || !option.advanced);
   const selected = available.find((option) => option.id === model);
-  return <div className="min-w-0 space-y-sm">
+  return <div className="min-w-0 space-y-md">
     <Label htmlFor={id}>{label}</Label>
     <ModelControl id={id} label={label} model={model} onModelChange={onModelChange}
       options={options} selected={selected} status={status} />

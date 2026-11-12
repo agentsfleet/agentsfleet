@@ -76,12 +76,6 @@ async fn leases_at(leases: &Leases, seeded: &Seeded<1>, now: Timestamp) -> Acqui
     let acquired = seed::select_fleet(leases, holder, &seeded.fleet)
         .await
         .expect("the holder leases its held fleet");
-    if acquired.kind == Kind::Fresh {
-        leases
-            .record_received(&acquired)
-            .await
-            .expect("the event's row opens");
-    }
     let billed = Billed {
         tenant_id: &seeded.tenant,
         posture: POSTURE,

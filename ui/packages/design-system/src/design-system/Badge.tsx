@@ -4,19 +4,19 @@ import { cn } from "../utils";
 
 export const badgeVariants = cva(
   [
-    "inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5",
-    "font-sans text-label font-semibold uppercase leading-label tracking-label transition-colors",
+    "inline-flex items-center gap-1.5 rounded-chip border px-2 py-1",
+    "font-sans text-eyebrow font-normal leading-eyebrow transition-colors",
   ].join(" "),
   {
     variants: {
       variant: {
-        default: "border-border bg-muted text-muted-foreground",
-        orange: "border-primary/30 bg-primary/10 text-primary",
-        amber: "border-warning/40 bg-warning/10 text-warning",
-        green: "border-success/40 bg-success/10 text-success",
-        cyan: "border-info/40 bg-info/10 text-info",
+        default: "border-border bg-transparent text-muted-foreground",
+        orange: "border-border bg-transparent text-foreground",
+        amber: "border-border bg-transparent text-warning",
+        green: "border-border bg-transparent text-success",
+        cyan: "border-border bg-transparent text-muted-foreground",
         destructive:
-          "border-destructive/40 bg-destructive/10 text-destructive",
+          "border-border bg-transparent text-destructive",
         live: "border-pulse bg-pulse text-on-pulse",
         warn: "border-warning bg-warning text-on-pulse",
         error: "border-destructive bg-destructive text-on-pulse",

@@ -30,7 +30,7 @@ import {
   createApiKeyAction,
   revokeApiKeyAction,
   deleteApiKeyAction,
-} from "@/app/(dashboard)/settings/api-keys/actions";
+} from "@/app/(dashboard)/settings/security/actions";
 
 beforeEach(() => {
   vi.clearAllMocks();

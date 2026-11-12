@@ -63,7 +63,7 @@ describe("app shell frame", () => {
     const { container } = render(React.createElement(Shell, null, React.createElement("div", null, "Route content")));
     const aside = container.querySelector("aside");
     expect(aside?.contains(screen.getByRole("link", {name: "agentsfleet home"}))).toBe(true);
-    expect(aside?.contains(screen.getByRole("link", {name: "New fleet"}))).toBe(true);
+    expect(screen.getAllByRole("link", {name: "New fleet"}).some(link => aside?.contains(link))).toBe(true);
     expect(screen.getByRole("main").textContent).toContain("Route content");
   });
 });

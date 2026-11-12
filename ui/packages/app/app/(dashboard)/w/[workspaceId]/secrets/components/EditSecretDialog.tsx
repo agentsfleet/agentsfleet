@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@agentsfleet/design-system";
 import AddSecretForm, { SECRET_FORM_MODE } from "./AddSecretForm";
-import { SecretValueNotice } from "./SecretValueNotice";
 
 export type EditSecretDialogProps = {
   workspaceId: string;
@@ -21,7 +20,7 @@ export default function EditSecretDialog({workspaceId, name, open, onOpenChange}
       <DialogHeader>
         <DialogTitle>Edit secret &ldquo;{name}&rdquo;</DialogTitle>
         <DialogDescription>
-          Re-enter every field you want to keep. Saving replaces all fields. <SecretValueNotice />
+          Re-enter every field you want to keep. Saving replaces all fields.
         </DialogDescription>
       </DialogHeader>
       {open ? <AddSecretForm key={name} workspaceId={workspaceId} initialName={name} mode={SECRET_FORM_MODE.REPLACE}

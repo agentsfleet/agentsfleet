@@ -23,9 +23,9 @@ const INVITE: InviteSummary = {
   email_status: EMAIL_STATUS.sent,
   email_sent_at: new Date(Date.UTC(2026, 8, 30)).toISOString(),
 };
-const INVITE_BUTTON = "Invite";
-const EMAIL_FIELD = "Email";
-const SEND = "Send";
+const INVITE_BUTTON = "Invite member";
+const EMAIL_FIELD = "Email address";
+const SEND = "Send invite";
 const CANCEL = "Cancel";
 const CLOSE = "Close";
 const DONE = "Done";

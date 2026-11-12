@@ -9,6 +9,7 @@ import { ArrowUpIcon } from "@phosphor-icons/react/ssr";
 import { PENDING_SEND_STATE, type PendingSend } from "./useFleetPendingSends";
 import { STEER_MESSAGE_MAX_BYTES, overSteerLimit, steerBytesNearLimit } from "@/lib/api/fleets-types";
 import { signInPath } from "@/lib/auth/sign-in-redirect";
+import { chatComposerText } from "@/lib/chat-message-text";
 import { ChatComposerFrame, ChatComposerHint } from "./chat/ChatComposerFrame";
 import { useFleetSetup } from "./chat/FleetSetupWorkspace";
 import { FleetModelSelect } from "./chat/FleetModelSelect";
@@ -118,7 +119,7 @@ function useRestoreRefusedTextOnMount(
  * override its own, and `false` would enable Send on an empty draft.
  */
 function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef: RefObject<HTMLTextAreaElement | null> }) {
-  const tooLong = useAuiState((s) => overSteerLimit(draftBytes(s.composer.text)));
+  const tooLong = overSteerLimit(draftBytes(useComposerPayload()));
   const modelChanging = useFleetSetup()?.modelChanging ?? false;
   return (
     <ComposerPrimitive.Send asChild>
@@ -127,7 +128,7 @@ function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef
         variant="default"
         size="icon"
         aria-label={SEND_LABEL}
-        className="shrink-0 self-end rounded-full [&_svg]:size-4.5"
+        className="size-9 shrink-0 self-end rounded-full disabled:border-transparent disabled:bg-muted disabled:text-muted-foreground disabled:opacity-100 [&_svg]:size-4.5"
         onClick={() => draftRef.current?.focus({preventScroll: true})}
         {...(tooLong || modelChanging ? { disabled: true } : {})}
       >
@@ -140,7 +141,7 @@ function SendButton({ draftBytes, draftRef }: { draftBytes: DraftBytes; draftRef
 // Its own leaf, like the size below: it reads the draft, so typing re-renders
 // only this.
 function DraftReporter({ onDraft }: Pick<SteerComposerProps, "onDraft">) {
-  const draft = useAuiState((s) => s.composer.text);
+  const draft = useComposerPayload();
   useEffect(() => {
     onDraft(draft);
   }, [draft, onDraft]);
@@ -148,11 +149,10 @@ function DraftReporter({ onDraft }: Pick<SteerComposerProps, "onDraft">) {
 }
 
 // How much of the limit the draft uses, shown from nine tenths of it, and why
-// Send is disabled past it. A number, not the draft: typing below the window
-// does not re-render it. The count is not a live region — read out on every
+// Send is disabled past it. The count is not a live region — read out on every
 // keystroke it would drown the draft; the hint is `info`, announced politely.
 function DraftSize({ draftBytes }: { draftBytes: DraftBytes }) {
-  const bytes = useAuiState((s) => draftBytes(s.composer.text));
+  const bytes = draftBytes(useComposerPayload());
   if (bytes === null) return null;
   return (
     <>
@@ -160,6 +160,12 @@ function DraftSize({ draftBytes }: { draftBytes: DraftBytes }) {
       <span className="self-end text-label tabular-nums text-muted-foreground">{bytesOfLimit(bytes)}</span>
     </>
   );
+}
+
+function useComposerPayload(): string {
+  const text = useAuiState(state => state.composer.text);
+  const quote = useAuiState(state => state.composer.quote);
+  return useMemo(() => chatComposerText({text, quote}), [text, quote]);
 }
 
 // One draft's count, kept until the draft changes: a store notification that
@@ -210,7 +216,10 @@ function PendingSendNotice({ entry, onResend, onDismiss, draftRef }: { entry: Pe
   const pathname = usePathname();
   const resend = () => {
     const composer = aui.composer();
-    if (composer.getState().text === entry.text) composer.setText("");
+    if (chatComposerText(composer.getState()) === entry.text) {
+      composer.setQuote(undefined);
+      composer.setText("");
+    }
     onResend(entry.operationId);
     draftRef.current?.focus();
   };

@@ -39,7 +39,7 @@ describe("Create model with a new provider key", () => {
     const {user, onCreated} = await renderDialog();
     const dialog = screen.getByRole("dialog");
     await fillKnownForm(user, dialog, CREDENTIAL);
-    await user.click(within(dialog).getByRole("switch", {name: "Make active"}));
+    await user.click(within(dialog).getByRole("checkbox", {name: "Make active"}));
     await user.click(within(dialog).getByRole("button", {name: "Create model"}));
     const retry = await within(dialog).findByRole("button", {name: "Retry activation"});
     expect(onCreated).toHaveBeenCalledTimes(1);

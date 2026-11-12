@@ -219,6 +219,9 @@ pub(crate) enum ErrorKind {
     #[error("a stored native sequence is outside its permitted range")]
     SequenceCorrupt,
 
+    #[error("a stored posture is none this daemon prices under")]
+    PostureCorrupt,
+
     #[error("the reporting holder's fence is behind the fleet's live sequence")]
     StaleFence,
 

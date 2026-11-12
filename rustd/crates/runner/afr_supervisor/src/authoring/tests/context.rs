@@ -38,7 +38,6 @@ async fn existing_candidate_and_assistant_context_reach_the_model_call() {
         .find(|call| call.verb == Verb::AuthoringModel)
         .unwrap();
     let body: Value = serde_json::from_slice(model.body.as_ref().unwrap()).unwrap();
-    assert_eq!(body["request"]["supports_compaction"], true);
     let messages = body["request"]["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 4);
     assert_eq!(
@@ -165,7 +164,6 @@ async fn a_compaction_receipt_continues_the_same_turn_and_counts_both_calls() {
         requests[0]["request"]["messages"],
         requests[1]["request"]["messages"]
     );
-    assert_eq!(requests[1]["request"]["supports_compaction"], true);
     assert_eq!(requests[1]["request"]["max_output_tokens"], 8_190);
     assert_ne!(requests[0]["dispatch_id"], requests[1]["dispatch_id"]);
     assert_eq!(requests[1]["call_index"], 2);

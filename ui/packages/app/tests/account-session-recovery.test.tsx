@@ -8,8 +8,7 @@ afterEach(cleanup);
 const SESSION: AccountSession = {id: "other", browser: "Chrome", device: "macOS", current: false, mobile: false, location: null, lastActiveAt: null};
 const PAGE: AccountSessionPage = {sessions: [SESSION], nextOffset: null};
 function client(): AccountSettingsClient {
-  return {listSessions: vi.fn().mockResolvedValue({ok: true, data: PAGE}), revokeSession: vi.fn().mockResolvedValue({ok: true, data: {id: SESSION.id}}),
-    updateProfile: vi.fn(), manageSignIn: vi.fn()};
+  return {listSessions: vi.fn().mockResolvedValue({ok: true, data: PAGE}), revokeSession: vi.fn().mockResolvedValue({ok: true, data: {id: SESSION.id}})};
 }
 
 it("keeps an initial read failure retryable and deduplicates sessions across pages", async () => {
@@ -70,4 +69,61 @@ it.each([false, true])("drops a late sign-out after unmount, including rejected 
   hook.unmount();
   if (reject) gate.reject(new Error("Connection lost")); else gate.resolve({ok: true, data: {id: "other"}});
   expect(await pending).toBe(false); expect(api.listSessions).toHaveBeenCalledOnce();
+});
+
+// Value: protects=complete bulk sign-out with account isolation; fails_when=unread sessions are skipped or this device is revoked;
+// why_new=Security now exposes bulk sign-out; seam=provider facade; no_claim=Clerk transport.
+it("collects all pages before revoking and excludes any session identified as this device", async () => {
+  const api = client();
+  const hook = renderHook(() => useAccountSessions(api));
+  await waitFor(() => expect(hook.result.current.state.kind).toBe("ready"));
+  vi.mocked(api.listSessions).mockResolvedValueOnce({ok: true, data: {sessions: [SESSION, {...SESSION, id: "mine"}], nextOffset: 2}})
+    .mockResolvedValueOnce({ok: true, data: {sessions: [{...SESSION, id: "mine", current: true}, {...SESSION, id: "last"}], nextOffset: null}});
+  await act(async () => expect(await hook.result.current.revokeOthers()).toBe(true));
+  expect(api.revokeSession).toHaveBeenCalledTimes(2);
+  expect(api.revokeSession).toHaveBeenNthCalledWith(1, "other");
+  expect(api.revokeSession).toHaveBeenNthCalledWith(2, "last");
+  expect(hook.result.current.state).toMatchObject({notice: "Other sessions signed out"});
+});
+
+it.each(["refused", "repeated"])("does not start bulk changes when a later page is %s", async problem => {
+  const api = client(); const hook = renderHook(() => useAccountSessions(api));
+  await waitFor(() => expect(hook.result.current.state.kind).toBe("ready"));
+  vi.mocked(api.listSessions).mockResolvedValueOnce({ok: true, data: {sessions: [SESSION], nextOffset: 1}})
+    .mockResolvedValueOnce(problem === "refused" ? {ok: false, error: "Access changed"} : {ok: true, data: {sessions: [SESSION], nextOffset: 1}});
+  await act(async () => expect(await hook.result.current.revokeOthers()).toBe(false));
+  expect(api.revokeSession).not.toHaveBeenCalled();
+  expect(hook.result.current.state).toMatchObject({error: expect.stringContaining("could not be confirmed")});
+});
+
+it("stops bulk sign-out at the first refusal without claiming every device was signed out", async () => {
+  const api = client(); const hook = renderHook(() => useAccountSessions(api));
+  await waitFor(() => expect(hook.result.current.state.kind).toBe("ready"));
+  vi.mocked(api.listSessions).mockResolvedValueOnce({ok: true, data: {sessions: [SESSION, {...SESSION, id: "last"}], nextOffset: null}});
+  vi.mocked(api.revokeSession).mockResolvedValueOnce({ok: false, error: "Session ownership changed"});
+  await act(async () => expect(await hook.result.current.revokeOthers()).toBe(false));
+  expect(api.revokeSession).toHaveBeenCalledOnce();
+  expect(hook.result.current.state).toMatchObject({notice: null, error: expect.stringContaining("Some sessions may remain")});
+});
+
+it("does not start a bulk write after the account owning its pending read is disposed", async () => {
+  const api = client(); const hook = renderHook(() => useAccountSessions(api));
+  await waitFor(() => expect(hook.result.current.state.kind).toBe("ready"));
+  const page = Promise.withResolvers<ActionResult<AccountSessionPage>>();
+  vi.mocked(api.listSessions).mockReturnValueOnce(page.promise);
+  let operation = Promise.resolve(false);
+  act(() => {operation = hook.result.current.revokeOthers();});
+  hook.unmount(); page.resolve({ok: true, data: PAGE});
+  expect(await operation).toBe(false);
+  expect(api.revokeSession).not.toHaveBeenCalled();
+});
+
+it("removes confirmed bulk sign-outs even when the subsequent list refresh fails", async () => {
+  const api = client(); const hook = renderHook(() => useAccountSessions(api));
+  await waitFor(() => expect(hook.result.current.state.kind).toBe("ready"));
+  vi.mocked(api.listSessions).mockResolvedValueOnce({ok: true, data: PAGE})
+    .mockResolvedValueOnce({ok: false, error: "Refresh unavailable"});
+  await act(async () => expect(await hook.result.current.revokeOthers()).toBe(true));
+  expect(hook.result.current.state).toMatchObject({page: {sessions: []}, notice: "Other sessions signed out",
+    error: "The session list could not be refreshed. Try refreshing it again."});
 });

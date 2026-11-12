@@ -3,16 +3,15 @@
 use crate::Result;
 use af_core::id::Uuid7;
 use af_wire::decision::DecisionAssignment;
-use afd_runner::capacity::Capacity;
 use sqlx::PgConnection;
 
 /// Caller keeps the host lock through writing both lease and snapshot.
 pub(super) async fn freeze(
     connection: &mut PgConnection,
     runner: &Uuid7,
-    capacity: Capacity,
+    decision_selected: bool,
 ) -> Result<Option<Box<DecisionAssignment>>> {
-    if !capacity.decision_selected() {
+    if !decision_selected {
         return Ok(None);
     }
     Ok(afd_runner::decision_assignment_on(connection, runner)

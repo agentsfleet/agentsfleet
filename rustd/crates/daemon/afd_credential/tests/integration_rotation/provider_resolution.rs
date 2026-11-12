@@ -4,7 +4,7 @@ use af_crypto::entropy::Entropy;
 use std::sync::Arc;
 
 use afd_billing::Posture;
-use afd_credential::provider::{Added, Providers};
+use afd_credential::provider::{Added, PLATFORM_MODEL_REF, Providers};
 use afd_credential::secrets::Registry;
 
 use super::{Fixture, NOW};
@@ -37,12 +37,11 @@ async fn a_self_managed_selection_resolves_from_its_stored_workspace() {
     else {
         panic!("the credential is stored, so the entry stores");
     };
-    fixture.point_selection_at(&fixture.tenant, &entry.id).await;
 
     let resolved = store
-        .resolve(&fixture.tenant)
+        .resolve_reference(&fixture.tenant, entry.id.as_str())
         .await
-        .expect("the selection resolves through the tenant workspace");
+        .expect("the entry resolves through the tenant workspace");
 
     assert_eq!(resolved.posture, Posture::SelfManaged);
     assert_eq!(&*resolved.provider, "openai");
@@ -57,15 +56,20 @@ async fn a_self_managed_selection_resolves_from_its_stored_workspace() {
 
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_tenant_with_no_selection_resolves_the_platform_default() {
-    // The arm every tenant that never chose a provider takes. The default row
-    // names the workspace its key lives in; the tenant's own vault is not read.
+async fn the_platform_reference_resolves_the_platform_default() {
+    // The reference every tenant that never chose a provider runs on. The
+    // default row names the workspace its key lives in; the tenant's own vault
+    // is not read.
     let fixture = Fixture::create().await;
     let provider = format!("platform-fixture-{}", afd_db::test_util::mint_id());
+    // The platform read selects only a credential whose projection says it
+    // holds a key for this provider.
     fixture
-        .seed(
+        .seed_with_shape(
             &provider,
             br#"{"provider":"anthropic","api_key":"sk-platform"}"#,
+            Some(&provider),
+            Some(true),
         )
         .await;
     let model = format!("model-fixture-{}", afd_db::test_util::mint_id());
@@ -79,7 +83,7 @@ async fn a_tenant_with_no_selection_resolves_the_platform_default() {
         Arc::clone(&fixture.kek),
         Entropy::new(),
     )
-    .resolve(&fixture.tenant)
+    .resolve_reference(&fixture.tenant, PLATFORM_MODEL_REF)
     .await
     .expect("the platform default resolves");
 

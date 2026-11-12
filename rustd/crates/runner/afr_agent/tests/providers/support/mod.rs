@@ -218,7 +218,6 @@ pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePaylo
     let request = serde_json::json!({ "message": message }).to_string();
     let document = serde_json::json!({
         "lease_id": LEASE_ID, "fencing_token": 1, "lease_expires_at": AT,
-        "secret_delivery": "inline",
         "event": {"event_id": "e", "fleet_id": "f", "workspace_id": "w", "actor": "a",
             "event_type": "chat", "request_json": request, "created_at": AT},
         "policy": {"model_context_tokens": 200_000,"network_policy": {"allow": [], "read_only": true, "read_post_paths": []},
@@ -227,7 +226,7 @@ pub(crate) fn lease(provider: &str, tools: &[&str], message: &str) -> LeasePaylo
             "base_url": null, "repository_binding": null, "http_origin_policies": [],
             "context": {"tool_window": 0, "memory_checkpoint_every": 0,
                 "stage_chunk_threshold": 0.75, "model": "model-1", "context_cap_tokens": 200_000}},
-        "instructions": "Read the run.", "limits": null, "history": [], "resume_hold": false
+        "instructions": "Read the run.", "history": [], "resume_hold": false, "inputs_waiting": true
     });
     // Leaked so the borrowed payload lives as long as the test that reads it.
     let text: &'static str = Box::leak(document.to_string().into_boxed_str());
@@ -287,7 +286,6 @@ pub(crate) async fn run_with(
         mint: &CountingMint::never(),
         verbs: &afr_tools::CLOSED,
         checkpoint: &Discard,
-        context_checkpoints: &afr_agent::testing::ContextMemory::default(),
         inbox: &afr_agent::testing::NoInbox,
         events: &sink,
         meter: &Meter::default(),

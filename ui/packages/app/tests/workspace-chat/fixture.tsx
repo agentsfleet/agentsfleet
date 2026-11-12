@@ -76,5 +76,5 @@ export async function chooseSetupAction(name: string): Promise<void> {
 }
 
 export async function openPublication(): Promise<void> {
-  await chooseSetupAction("Publish to Library");
+  await chooseSetupAction("Publish plugin");
 }

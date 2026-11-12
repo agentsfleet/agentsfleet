@@ -8,6 +8,7 @@ use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard};
 
 use af_core::id::Uuid7;
+use af_wire::usage::LineKind;
 use jiff::Timestamp;
 
 use super::{Account, Ask, Balance, Biller, Funds, Receipt, Settlement, WorkKey};
@@ -20,7 +21,9 @@ struct State {
     tenants: Vec<Uuid7>,
     balances: Vec<i64>,
     exhausted_at: Vec<Option<Timestamp>>,
-    settled: HashSet<(WorkKey, u32)>,
+    /// A line is settled once per work, kind and number, as the usage log's own
+    /// unique key says: a model line and a runtime line may share a number.
+    settled: HashSet<(WorkKey, LineKind, u32)>,
     settlements: Vec<Settlement>,
 }
 
@@ -97,7 +100,7 @@ impl Biller for RecordingBiller {
         for line in &settlement.lines {
             if state
                 .settled
-                .insert((settlement.work.clone(), line.usage.seq))
+                .insert((settlement.work.clone(), line.usage.kind, line.usage.seq))
             {
                 total = total
                     .checked_add(line.charged.as_i64())

@@ -44,7 +44,7 @@ describe("Models registry stored secrets", () => {
     await fill(user, reopened);
     expect(reopened.getByText(/That name is already in use/)).toBeTruthy();
     expect(reopened.getByRole("button", {name: "Create model"})).toHaveProperty("disabled", true);
-    await user.click(reopened.getByRole("button", {name: "Use saved key"}));
+    await user.click(reopened.getByRole("radio", {name: "Use saved key"}));
     await user.click(reopened.getByRole("combobox", {name: "Saved key"}));
     await user.click(screen.getByRole("option", {name: SAVED.name}));
     expect(reopened.queryByLabelText("API key")).toBeNull();
@@ -66,7 +66,7 @@ describe("Models registry stored secrets", () => {
     const reopened = await open(user);
     await user.type(reopened.getByLabelText("Provider"), SAVED.provider);
     await user.type(reopened.getByLabelText("Model"), MODEL_ID);
-    await user.click(reopened.getByRole("button", {name: "Use saved key"}));
+    await user.click(reopened.getByRole("radio", {name: "Use saved key"}));
     await user.click(reopened.getByRole("combobox", {name: "Saved key"}));
     await user.click(screen.getByRole("option", {name: SAVED.name}));
     await user.click(reopened.getByRole("button", {name: "Create model"}));

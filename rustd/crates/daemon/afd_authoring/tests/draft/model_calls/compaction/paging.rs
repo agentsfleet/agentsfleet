@@ -11,8 +11,7 @@ async fn complete_history_at_and_around_full_pages_dispatches_once_without_losin
         history(&f, &attempt, prior).await;
         let provider = Arc::new(Provider::default());
         let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
-        let mut request = fixture::request(&attempt);
-        request.request.supports_compaction = false;
+        let request = fixture::request(&attempt);
         let result = calls
             .call(&f.runner, &attempt.lease, request)
             .await
@@ -38,41 +37,6 @@ async fn complete_history_at_and_around_full_pages_dispatches_once_without_losin
     }
 }
 
-#[tokio::test]
-#[ignore = "requires live Postgres"]
-async fn an_older_runner_cannot_pay_for_a_summary_it_cannot_resume() {
-    let f = Fixture::create().await;
-    sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1")
-        .bind(f.catalogue.first().expect("owned model"))
-        .execute(&mut *f.connection().await)
-        .await
-        .expect("force summary preparation");
-    let attempt = Attempt::start(&f, f.access(), Source::Blank).await;
-    history(&f, &attempt, 180).await;
-    let provider = Arc::new(Provider::default());
-    let calls = fixture::calls(&f, &attempt, Arc::clone(&provider)).await;
-    let before = financial_state(&f).await;
-    let mut request = fixture::request(&attempt);
-    request.request.supports_compaction = false;
-
-    let error = calls
-        .call(&f.runner, &attempt.lease, request)
-        .await
-        .expect_err("the runner must opt in before a summary can be funded");
-
-    assert_eq!(error.code(), af_core::error_code::AUTHORING_TOKEN);
-    assert_eq!(fixture::receipts(&f, &attempt).await, (0, 0, false));
-    assert!(provider.0.lock().expect("record requests").is_empty());
-    assert_eq!(financial_state(&f).await, before);
-    let checkpoints: i64 = sqlx::query_scalar(CHECKPOINT_COUNT)
-        .bind(attempt.draft.id)
-        .fetch_one(&mut *f.connection().await)
-        .await
-        .expect("no unsupported summary");
-    assert_eq!(checkpoints, 0);
-    f.cleanup().await;
-}
-
 async fn financial_state(f: &Fixture) -> (i64, i64, i64) {
     sqlx::query_as("SELECT balance_nanos,(SELECT count(*) FROM billing.usage_lines WHERE tenant_id=$1),(SELECT COALESCE(sum(charged_nanos),0)::bigint FROM billing.usage_lines WHERE tenant_id=$1) FROM billing.wallets WHERE tenant_id=$1")
         .bind(&f.tenant).fetch_one(&mut *f.connection().await).await
@@ -81,7 +45,7 @@ async fn financial_state(f: &Fixture) -> (i64, i64, i64) {
 
 #[tokio::test]
 #[ignore = "requires live Postgres"]
-async fn a_summary_receipt_cannot_be_replayed_without_the_original_runner_capability() {
+async fn a_summary_receipt_cannot_be_replayed_by_a_changed_request() {
     let f = Fixture::create().await;
     sqlx::query("UPDATE model.platform_models SET context_cap_tokens=24000 WHERE id=$1")
         .bind(f.catalogue.first().expect("owned model"))
@@ -96,21 +60,21 @@ async fn a_summary_receipt_cannot_be_replayed_without_the_original_runner_capabi
     let result = calls
         .call(&f.runner, &attempt.lease, request.clone())
         .await
-        .expect("new runner opts into a metered summary");
+        .expect("the first request funds a metered summary");
     assert!(result.compacted);
     let before = financial_state(&f).await;
-    let mut downgraded = request.clone();
-    downgraded.request.supports_compaction = false;
+    let mut changed = request.clone();
+    changed.request.max_output_tokens = request.request.max_output_tokens.saturating_sub(1).max(1);
     let error = calls
-        .call(&f.runner, &attempt.lease, downgraded)
+        .call(&f.runner, &attempt.lease, changed)
         .await
-        .expect_err("a changed capability is not the original request");
+        .expect_err("a changed request is not the original request");
     assert_eq!(error.code(), af_core::error_code::AUTHORING_REPLAY);
     assert_eq!(financial_state(&f).await, before);
     let replayed = calls
         .call(&f.runner, &attempt.lease, request)
         .await
-        .expect("the exact capable request can recover its receipt");
+        .expect("the exact request can recover its receipt");
     assert!(replayed.replayed && replayed.compacted);
     assert_eq!(provider.0.lock().expect("record requests").len(), 1);
     assert_eq!(fixture::receipts(&f, &attempt).await, (1, 1, false));

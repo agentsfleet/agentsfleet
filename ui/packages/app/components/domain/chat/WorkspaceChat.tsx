@@ -19,8 +19,9 @@ import { useDraftSidebarBridge } from "@/components/layout/use-draft-sidebar-bri
 import { ChatAvailability } from "./ChatAvailability";
 import { FleetSetup } from "./FleetSetup";
 import { DraftChatHeading } from "./DraftChatHeading";
+import { AuthoringIntentContext, type AuthoringIntent } from "./AuthoringIntent";
 
-type Props = {account: string; workspace: string; draft?: string; source?: Source; fleetPage?: boolean; menuItems?: ReactNode};
+type Props = AuthoringIntent & {account: string; workspace: string; draft?: string; source?: Source; fleetPage?: boolean; menuItems?: ReactNode};
 type OwnedSession = {readonly kind: "starting"} | {readonly kind: "loading" | "ready"; readonly client: DraftClient; readonly reload: () => Promise<void>};
 const ignore = (): void => undefined;
 const LOADING_ROLE = "status";
@@ -36,14 +37,16 @@ export function WorkspaceChat(props: Props) {
   if (!isLoaded) return <Skeleton className="h-80 w-full" role={LOADING_ROLE} aria-label="Loading your setup chat" />;
   if (!isSignedIn || !userId) return <Alert variant="warning">Sign in again to open fleet setup chat.</Alert>;
   const identity = {account: props.account, workspace: props.workspace, subject: userId};
-  return <ChatSession key={JSON.stringify(identity)} {...props} identity={identity} />;
+  return <AuthoringIntentContext value={{prompt: props.prompt, publicationTarget: props.publicationTarget}}>
+    <ChatSession key={JSON.stringify(identity)} {...props} identity={identity} />
+  </AuthoringIntentContext>;
 }
 
 function ChatSession(props: Props & {identity: DraftIdentity}) {
   const [cache] = useState(() => new DraftCache());
   useEffect(() => () => cache.clear(), [cache]);
   const sourceKey = props.source?.kind === SOURCE_KIND.fleet ? {kind: props.source.kind, fleet_id: props.source.fleet_id} : props.source;
-  return <OwnedChat key={JSON.stringify([props.draft, sourceKey])} {...props} cache={cache} />;
+  return <OwnedChat key={JSON.stringify([props.draft, sourceKey, props.prompt, props.publicationTarget])} {...props} cache={cache} />;
 }
 
 function OwnedChat({identity, draft, source, fleetPage, menuItems, cache}: Props & {identity: DraftIdentity; cache: DraftCache}) {
@@ -97,7 +100,7 @@ function ChatSurface({client, source, initialSourceRevision, workspace, subject,
     {view.notice && view.notice !== appliedNotice([]) && view.notice !== PUBLISHED_NOTICE ? <Alert>{view.notice}</Alert> : null}
     {opening ? <Skeleton className="min-h-0 w-full flex-1" role={LOADING_ROLE} aria-label={LOADING_SETUP_CHAT} /> : view.inaccessible || (selected && !view.draft && !view.preview) ? null : <>
     <DraftChatHeading client={client} view={view} workspace={workspace} fleetPage={fleetPage} returnToFleet={source?.kind === SOURCE_KIND.fleet ? source.fleet_id : undefined} menuItems={menuItems} onDirtyChange={setInstructionsDirty} />
-    <DraftConversation client={client} view={view} workspace={workspace} modelsHref={`/w/${workspace}/settings/models`} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
+    <DraftConversation client={client} view={view} workspace={workspace} subject={subject} modelsHref={`/w/${workspace}/settings/models`} onOpenFleet={fleetPage ? openFleet : undefined} instructionsDirty={instructionsDirty} unfinished={<UnfinishedSetups workspace={workspace} onReload={() => client.initialize()} />}>
       <FleetSetup client={client} view={view} workspace={workspace} />
     </DraftConversation>
     </>}

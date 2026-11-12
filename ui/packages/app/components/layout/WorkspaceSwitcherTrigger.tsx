@@ -21,11 +21,11 @@ export function WorkspaceSwitcherTrigger({ activeLabel, busy = false, failed = f
   const visibleLabel = [!busy && initials, !collapsed && displayLabel, !collapsed && subtitle].filter(Boolean).join(" ");
   const accessibleLabel = visibleLabel ? `${menuLabel}: ${visibleLabel}` : menuLabel;
   return <Button type="button" variant="ghost" size="lg" title={activeLabel} aria-label={accessibleLabel}
-    className={cn("group h-11 min-h-11 w-full min-w-0 justify-center gap-2.5 px-0 py-sm md:h-12 md:min-h-12", !collapsed && "md:justify-start md:px-lg")}
+    className={cn("group h-11 min-h-11 w-full min-w-0 justify-center gap-2.5 px-0 py-sm hover:bg-muted hover:text-foreground md:h-12 md:min-h-12", !collapsed && "md:justify-start md:px-lg")}
     {...props}>
-    <span className="flex size-7.5 shrink-0 items-center justify-center rounded-full bg-foreground text-background transition-colors duration-snap group-hover:bg-primary group-hover:text-primary-foreground">
+    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-avatar text-avatar-foreground">
       {busy ? <Spinner size="sm" srLabel="Loading workspace menu" /> : initials
-        ? <span aria-hidden="true" className="text-eyebrow font-normal">{initials}</span> : <UserCircleIcon size={18} aria-hidden="true" />}
+        ? <span aria-hidden="true" className="text-label font-extrabold">{initials}</span> : <UserCircleIcon size={18} aria-hidden="true" />}
     </span>{" "}
     {!collapsed ? <>
       <span className="hidden min-w-0 flex-1 flex-col items-start md:flex">

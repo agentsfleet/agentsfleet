@@ -6,7 +6,7 @@
  * bundle.
  */
 
-export type TimeFormat = "absolute" | "relative" | "datetime" | "clock";
+export type TimeFormat = "absolute" | "relative" | "datetime" | "clock" | "date" | "month";
 
 const DEFAULT_LOCALE = "en-US";
 
@@ -43,6 +43,8 @@ const UTC_DATE_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "nume
 const UTC_COMPACT_OPTIONS: Intl.DateTimeFormatOptions = {month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC"};
 const UTC_CLOCK_OPTIONS: Intl.DateTimeFormatOptions = {hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "UTC"};
 const UTC_DATE_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_DATE_OPTIONS);
+const UTC_MONTH_OPTIONS: Intl.DateTimeFormatOptions = {month: "long", year: "numeric", timeZone: "UTC"};
+const UTC_MONTH_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_MONTH_OPTIONS);
 const UTC_COMPACT_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_COMPACT_OPTIONS);
 const UTC_CLOCK_FORMAT = new Intl.DateTimeFormat(DEFAULT_LOCALE, UTC_CLOCK_OPTIONS);
 
@@ -150,6 +152,11 @@ export function visibleTimeLabel(
   if (format === "datetime") return iso;
   if (format === "relative") return formatTimeRelative(value);
   if (format === "clock") return formatTimeClock(value, locale);
+  if (format === "date" || format === "month") {
+    const date = coerceDate(value);
+    const formatter = format === "month" ? formatterFor(locale, UTC_MONTH_FORMAT, UTC_MONTH_OPTIONS) : formatterFor(locale, UTC_DATE_FORMAT, UTC_DATE_OPTIONS);
+    return Number.isNaN(date.getTime()) ? TIME_INVALID_FALLBACK : formatter.format(date);
+  }
   return formatTimeAbsolute(value, locale);
 }
 

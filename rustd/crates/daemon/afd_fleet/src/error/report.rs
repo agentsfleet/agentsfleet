@@ -40,6 +40,16 @@ pub(crate) fn sequence_corrupt() -> Error {
     Error::new(ErrorKind::SequenceCorrupt)
 }
 
+/// Reports a stored posture that is none this daemon writes.
+///
+/// The column is written only by the issue path, from a posture's own spelling,
+/// so a value that will not parse means the row was edited out of band. What to
+/// charge for such a row is a product decision, not a parse decision: pricing it
+/// as the platform's would bill a tenant's own key at the platform's rates.
+pub(crate) fn posture_corrupt() -> Error {
+    Error::new(ErrorKind::PostureCorrupt)
+}
+
 /// Reports a statement that reached Postgres and was refused.
 ///
 /// `map_err` that ADDS context the call site alone knows — which statement was

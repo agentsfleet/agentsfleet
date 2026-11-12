@@ -9,6 +9,7 @@ import { BillingActivityDetails } from "@/app/(dashboard)/settings/billing/compo
 import { BillingSpending } from "@/app/(dashboard)/settings/billing/components/BillingSpending";
 import type { BillingDetail } from "@/app/(dashboard)/settings/billing/lib/report-detail";
 import { BILLING_DETAIL_STATE } from "@/app/(dashboard)/settings/billing/lib/report-detail";
+import { BILLING_CHARGE_KIND } from "@/lib/api/billing-report-values";
 import { activityKey } from "@/app/(dashboard)/settings/billing/lib/report-query";
 import type { BillingReport } from "@/lib/api/billing_report";
 import { BILLING_ACTIVITY_SETUP } from "@/lib/api/billing_report";
@@ -21,7 +22,6 @@ vi.mock("next/navigation", () => ({
 }));
 
 const names = { [BILLING_MODEL]: BILLING_MODEL_NAME };
-const SPENDING_TAB = "Spending breakdown";
 const BY_FLEET_LABEL = "Charged by fleet or setup chat";
 const BY_MODEL_LABEL = "Charged by model";
 const closed: BillingDetail = { status: BILLING_DETAIL_STATE.closed };
@@ -39,6 +39,7 @@ function details(detail: BillingDetail, modelNames: Record<string, string> = nam
   return render(<BillingActivityDetails activity={activity} detail={detail} modelNames={modelNames} />, { wrapper: TooltipProvider });
 }
 async function choose(label: string, value: string) {
+  if (label === "Model") fireEvent.click(screen.getByRole("button", {name: "More filters"}));
   const trigger = screen.getByRole("combobox", { name: label });
   fireEvent.click(trigger);
   fireEvent.keyDown(trigger, { key: "Enter" });
@@ -56,6 +57,7 @@ describe("Billing report filters and details preserve period totals", () => {
   it("opens the previous UTC month and returns to the current month without losing fleet selection", () => {
     current.params = new URLSearchParams("fleet=deleted-fleet&through_at=2026-11-01T01:00:00Z&c=old&activity=old");
     view(billingReport({from_at: "2026-11-01T00:00:00Z", through_at: "2026-11-01T01:00:00Z"}));
+    fireEvent.click(screen.getByRole("button", {name: "More filters"}));
     fireEvent.click(screen.getByRole("button", {name: "Previous month"}));
     expect(pushedParams().get("through_at")).toBe("2026-10-31T23:59:59.999Z");
     expect(pushedParams().get("fleet")).toBe("deleted-fleet");
@@ -69,8 +71,9 @@ describe("Billing report filters and details preserve period totals", () => {
     view(billingReport({ totals: billingTotals({ charged_nanos: "5200000000", activity_count: 52, line_count: 150 }) }));
     expect(screen.getByText("$5.20")).toBeTruthy();
     expect(screen.getByText("52")).toBeTruthy();
-    expect(screen.getByText("Input / output tokens")).toBeTruthy();
-    expect(screen.getByText("40")).toBeTruthy();
+    expect(screen.getByText("Tokens")).toBeTruthy();
+    expect(screen.getByText("50")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Charge details"}));
     expect(screen.getAllByRole("button", { name: /Payment alerts/ })).toHaveLength(1);
     expect(screen.getByText(/Totals exclude pending or unavailable provider usage/)).toBeTruthy();
   });
@@ -78,10 +81,10 @@ describe("Billing report filters and details preserve period totals", () => {
   it("an empty successful report has an honest empty state and a disabled next page", () => {
     view(billingReport({ totals: billingTotals({ charged_nanos: "0", activity_count: 0, line_count: 0 }),
       activities: { items: [], total: 0, next_cursor: null }, spending: { by_fleet: [], by_model: [] }, filters: { fleets: [], models: [] } }));
+    expect(screen.getByText("Daily spending is not available yet.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", {name: "Charge details"}));
     expect(screen.getByText("No settled activity")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Next page" }).hasAttribute("disabled")).toBe(true);
-    fireEvent.mouseDown(screen.getByRole("tab", { name: SPENDING_TAB }));
-    fireEvent.click(screen.getByRole("tab", { name: SPENDING_TAB }));
+    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
     expect(screen.getAllByText("No settled spending")).toHaveLength(1);
   });
 
@@ -177,8 +180,7 @@ describe("Billing report filters and details preserve period totals", () => {
 
   it("the spending view uses complete server groups and recorded names", () => {
     view();
-    fireEvent.mouseDown(screen.getByRole("tab", { name: SPENDING_TAB }));
-    fireEvent.click(screen.getByRole("tab", { name: SPENDING_TAB }));
+    fireEvent.click(screen.getByRole("button", {name: "Charge details"}));
     expect(within(screen.getByRole("list", { name: BY_FLEET_LABEL })).getByText("Payment alerts")).toBeTruthy();
     expect(within(screen.getByRole("list", { name: BY_MODEL_LABEL })).getByText(BILLING_MODEL_NAME)).toBeTruthy();
   });
@@ -239,7 +241,8 @@ describe("individual activity charges", () => {
     expect(screen.getByText(BILLING_MODEL)).toBeTruthy();
     expect(screen.getByText(/Own provider key:/)).toBeTruthy();
     expect(screen.getByText(/5 tokens awaiting/)).toBeTruthy();
-    expect(screen.getByText(/Separate historical model and runtime prices are unavailable/)).toBeTruthy();
+    // The row names the kind it billed, beside its amount.
+    expect(screen.getByText("Model call").nextElementSibling?.textContent).toBe("$0.000000001");
   });
 
   it("an empty detail page stays distinct from a failed read", () => {
@@ -248,43 +251,42 @@ describe("individual activity charges", () => {
     expect(screen.queryByText("Charges unavailable")).toBeNull();
   });
 
-  it("aligns recorded inference and runtime costs without inventing a price split", () => {
+  it("labels each charge by the kind it billed, with the runtime's duration", () => {
     const activity = billingActivity({ totals: billingTotals({ charged_nanos: "169000", input_tokens: 12, output_tokens: 3, runtime_ms: 250 }) });
     details({ status: BILLING_DETAIL_STATE.ready, page: 1, charges: { items: [
-      billingCharge({ id: "inference", charged_nanos: "109000", input_tokens: 12, output_tokens: 3, runtime_ms: 0 }),
-      billingCharge({ id: "runtime", charged_nanos: "60000", input_tokens: 0, output_tokens: 0, runtime_ms: 250 }),
+      billingCharge({ id: "inference", kind: BILLING_CHARGE_KIND.model, charged_nanos: "109000", input_tokens: 12, output_tokens: 3, runtime_ms: 0 }),
+      billingCharge({ id: "runtime", kind: BILLING_CHARGE_KIND.runtime, charged_nanos: "60000", input_tokens: 0, output_tokens: 0, runtime_ms: 250 }),
     ], total: 2, next_cursor: null } }, names, activity);
     const lines = screen.getByLabelText("Activity charge details");
     expect(within(lines).getByText("12 / 3")).toBeTruthy();
-    expect(screen.getByText("Inference").nextElementSibling?.textContent).toBe("$0.000109");
+    expect(screen.getByText("Model call").nextElementSibling?.textContent).toBe("$0.000109");
     expect(screen.getByText("Runtime · 0.25 seconds").nextElementSibling?.textContent).toBe("$0.00006");
     expect(screen.getByText("Total charged").nextElementSibling?.textContent).toBe("$0.000169");
-    expect(screen.queryByText(/Separate historical/)).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Charge pagination" })).toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.queryByText("Model usage and runtime charged to credits.")).toBeNull();
   });
 
-  it("retains model attribution and a combined charge instead of guessing component costs", () => {
+  it("names a decision call and its model, and a one-second runtime in the singular", () => {
     const other = "another-model";
     details({ status: BILLING_DETAIL_STATE.ready, page: 1, charges: {
-      items: [billingCharge()], total: 1, next_cursor: null,
+      items: [
+        billingCharge({ id: "decision", kind: BILLING_CHARGE_KIND.decision, runtime_ms: 0 }),
+        billingCharge({ id: "second", kind: BILLING_CHARGE_KIND.runtime, input_tokens: 0, output_tokens: 0, runtime_ms: 1000 }),
+      ], total: 2, next_cursor: null,
     } }, names, billingActivity({ models: [BILLING_MODEL, other] }));
-    expect(screen.getByText(`Inference & runtime · 1 second · ${BILLING_MODEL_NAME}`).nextElementSibling?.textContent).toBe("$0.0001");
+    expect(screen.getByText(`Decision call · ${BILLING_MODEL_NAME}`).nextElementSibling?.textContent).toBe("$0.0001");
+    expect(screen.getByText(`Runtime · 1 second · ${BILLING_MODEL_NAME}`)).toBeTruthy();
     expect(screen.getByText(`${BILLING_MODEL_NAME}, ${other}`)).toBeTruthy();
-    expect(screen.getByText(/Separate historical model and runtime prices are unavailable/)).toBeTruthy();
-    expect(screen.queryByText("Inference")).toBeNull();
-    expect(screen.queryByText("Runtime")).toBeNull();
   });
 
-  it("retains raw model attribution and a recorded debit when quantity metadata is absent", () => {
+  it("retains raw model attribution for a model call that recorded no quantities", () => {
     const rawModel = "unlisted-recorded-model";
     details({ status: BILLING_DETAIL_STATE.ready, page: 1, charges: { items: [billingCharge({
       model: rawModel, charged_nanos: "1", input_tokens: 0, output_tokens: 0, runtime_ms: 0,
     })], total: 1, next_cursor: null } }, names, billingActivity({ models: [BILLING_MODEL, rawModel] }));
-    expect(screen.getByText(`Recorded charge · ${rawModel}`).nextElementSibling?.textContent).toBe("$0.000000001");
+    expect(screen.getByText(`Model call · ${rawModel}`).nextElementSibling?.textContent).toBe("$0.000000001");
     expect(screen.getByText(`${BILLING_MODEL_NAME}, ${rawModel}`)).toBeTruthy();
-    expect(screen.queryByText(/Separate historical/)).toBeNull();
   });
 
   it("next and previous detail pages retain their activity and report scope", async () => {

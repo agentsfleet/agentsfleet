@@ -12,9 +12,8 @@ import { EYEBROW_CLASS } from "./eyebrow";
 
 const cardVariants = cva(
   [
-    "relative rounded-lg border border-border bg-card p-2xl",
+    "relative rounded-md border border-border bg-card p-2xl",
     "transition-colors duration-snap ease-snap",
-    "hover:border-border-strong",
   ].join(" "),
   {
     variants: {

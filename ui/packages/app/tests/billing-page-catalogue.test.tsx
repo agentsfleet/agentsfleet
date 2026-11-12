@@ -37,29 +37,29 @@ afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 describe("served billing page composition", () => {
   it("enriches exact ledger identity and provides the existing Add credits action", async () => {
     backend();
-    const html = await markup();
+    const html = await markup({activity: BILLING_SELECTION});
     expect(html).toContain(BILLING_MODEL_NAME);
     expect(html).toContain("Payment alerts");
-    expect(html).toContain("Charged this period");
+    expect(html).toContain("Settled charges");
     expect(html).toContain("$0.0001");
     expect(html).toContain("Add credits");
     expect(html).toContain("mailto:agentsfleet@agentmail.to");
     expect(html).not.toContain("Available credits");
-    expect(requests.some(url => url.pathname.endsWith("/charges"))).toBe(false);
+    expect(requests.some(url => url.pathname.endsWith("/charges"))).toBe(true);
   });
 
   it.each([{ catalogueStatus: 403 }, { catalogue: { models: [{ id: BILLING_MODEL }] } }])("keeps ledger data when catalogue enrichment fails: %j", async options => {
     backend(options);
-    const html = await markup();
+    const html = await markup({activity: BILLING_SELECTION});
     expect(html).toContain(BILLING_MODEL);
-    expect(html).toContain("Charged this period");
+    expect(html).toContain("Settled charges");
     expect(html).toContain("$0.0001");
     expect(html).not.toContain(BILLING_MODEL_NAME);
   });
 
   it.each([{ reportStatus: 403 }, { report: { totals: {} } }])("a refused or malformed report shows recovery without claiming zero: %j", async options => {
     backend(options);
-    const html = await markup();
+    const html = await markup({activity: BILLING_SELECTION});
     expect(html).toContain("Billing report unavailable");
     expect(html).toContain("Retry report");
     expect(html).toContain("Reset filters");
@@ -107,7 +107,7 @@ describe("served billing page composition", () => {
     const html = await markup({ activity: BILLING_SELECTION });
     expect(html).toContain("Charges unavailable");
     expect(html).toContain("Retry charges");
-    expect(html).toContain("Charged this period");
+    expect(html).toContain("Settled charges");
   });
 
   it("ignores a disclosure naming a work item outside the visible page", async () => {

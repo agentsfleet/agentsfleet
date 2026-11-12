@@ -50,17 +50,7 @@ it("returns only app-owned account data and preserves loading/signed-out states"
   expect(mocks.list).not.toHaveBeenCalled();
 });
 
-it("trims bounded profile fields, keeps provider resources private and retains secure controls", async () => {
-  const hook = renderHook(useAccountSettings);
-  const access = ready(hook.result.current);
-  expect(access.profile).toEqual({subject: "owner", firstName: "Kishore", lastName: "", email: "you@example.test", imageUrl: null});
-  expect(await access.client.updateProfile({firstName: " Indy ", lastName: ""})).toEqual({ok: true, data: null});
-  expect(mocks.update).toHaveBeenCalledExactlyOnceWith({firstName: "Indy", lastName: ""});
-  expect(await access.client.updateProfile({firstName: "a".repeat(257), lastName: ""})).toMatchObject({ok: false});
-  expect(mocks.update).toHaveBeenCalledTimes(1);
-  access.client.manageSignIn();
-  expect(mocks.router.push).toHaveBeenCalledExactlyOnceWith("/settings/account/sign-in");
-});
+
 
 it("preserves client identity during ordinary same-owner resource reloads", () => {
   const hook = renderHook(useAccountSettings);
@@ -69,7 +59,6 @@ it("preserves client identity during ordinary same-owner resource reloads", () =
   mocks.user.current = {...mocks.user.current, firstName: "Indy"};
   hook.rerender();
   expect(ready(hook.result.current).client).toBe(before);
-  expect(ready(hook.result.current).profile.firstName).toBe("Indy");
 });
 
 it("dispatches current-owner session operations and reports unknown mutation outcomes without provider internals", async () => {
@@ -97,18 +86,18 @@ it.each(["switch", "round-trip"])("rejects a pending sign-out challenge after a 
   expect(mocks.revoke).not.toHaveBeenCalled();
 });
 
-it("does not revive a pending profile change after an account round trip", async () => {
+it("does not revive a pending session change after an account round trip", async () => {
   const hook = renderHook(useAccountSettings);
   const before = ready(hook.result.current).client;
   const original = mocks.user.current;
   const gate = Promise.withResolvers<void>(); mocks.gate = gate;
-  const pending = before.updateProfile({firstName: "Stale", lastName: ""});
+  const pending = before.revokeSession("stale-session");
   if (!original) throw new Error("A signed-in fixture is required");
   mocks.user.current = {...original, id: "other-person"}; hook.rerender();
   mocks.user.current = original; hook.rerender();
   await act(async () => gate.resolve());
   expect(await pending).toMatchObject({ok: false});
-  expect(mocks.update).not.toHaveBeenCalled();
+  expect(mocks.revoke).not.toHaveBeenCalled();
 });
 
 it("drops late session reads after the account changes and blocks stale clients", async () => {
@@ -123,8 +112,7 @@ it("drops late session reads after the account changes and blocks stale clients"
   expect(await pending).toMatchObject({ok: false, status: 409});
   expect(await before.revokeSession("other")).toMatchObject({ok: false, status: 409});
   expect(await before.listSessions()).toMatchObject({ok: false, status: 409});
-  expect(await before.updateProfile({firstName: "Stale", lastName: ""})).toMatchObject({ok: false});
-  before.manageSignIn();
+  expect(await before.revokeSession("stale-session")).toMatchObject({ok: false});
   expect(mocks.router.push).not.toHaveBeenCalled();
   expect(mocks.revoke).not.toHaveBeenCalled();
 });
@@ -138,20 +126,9 @@ it("keeps malformed and failed session responses unavailable", async () => {
   expect(await api.listSessions()).toMatchObject({ok: false, status: 403, error: "Read denied"});
 });
 
-it("maps absent personal fields without inventing a name or address", () => {
-  if (!mocks.user.current) throw new Error("A signed-in fixture is required");
-  mocks.user.current = {...mocks.user.current, firstName: null, lastName: null, primaryEmailAddress: null, hasImage: true, imageUrl: "https://example.test/photo"};
-  expect(ready(renderHook(useAccountSettings).result.current).profile).toMatchObject({firstName: "", lastName: "", email: null, imageUrl: "https://example.test/photo"});
-});
 
-it("drops a profile save acknowledgement when its owner changes after dispatch", async () => {
-  const gate = Promise.withResolvers<void>(); mocks.update.mockReturnValue(gate.promise);
-  const hook = renderHook(useAccountSettings); const before = ready(hook.result.current).client;
-  const pending = before.updateProfile({firstName: "Indy", lastName: ""});
-  mocks.user.current = null; hook.rerender(); gate.resolve();
-  expect(await pending).toMatchObject({ok: false, status: 409});
-  expect(mocks.update).toHaveBeenCalledOnce();
-});
+
+
 
 it("drops a sign-out acknowledgement when its owner changes after dispatch", async () => {
   const gate = Promise.withResolvers<{ok: true; data: {id: string}}>(); mocks.revoke.mockReturnValue(gate.promise);

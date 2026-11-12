@@ -7,7 +7,7 @@ import LibraryPage from "./page";
 beforeEach(() => { vi.resetAllMocks(); credential.mockResolvedValue("session"); browser.mockReturnValue(<p>Recipes</p>); });
 it("requires authentication before opening the native Library for this workspace", async () => {
   const markup = renderToStaticMarkup(await LibraryPage({ params: Promise.resolve({ workspaceId: "ws_1" }) }));
-  expect(markup).toContain("Fleet library");
+  expect(markup).toContain("Plugins");
   expect(browser.mock.calls[0]?.[0]).toMatchObject({ workspace: "ws_1" });
   expect(credential).toHaveBeenCalledOnce();
 });

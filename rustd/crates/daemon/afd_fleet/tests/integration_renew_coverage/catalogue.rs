@@ -35,7 +35,7 @@ async fn a_renewal_during_a_catalogue_fault_logs_its_tokens_unpriced() {
     assert_eq!(
         held.fixtures
             .text(
-                crate::rows::Row::Line(&held.event_id, "1"),
+                crate::rows::Row::ModelLine(&held.event_id, "1"),
                 "unpriced_token_count"
             )
             .await,
@@ -75,10 +75,11 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     let log = Capture::install();
     held.fixtures
         .plane()
-        .report(
+        .report_with(
             &held.runner,
             &report,
             held.now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -87,7 +88,7 @@ async fn a_report_during_a_catalogue_fault_logs_the_tokens_it_leaves_uncharged()
     assert_eq!(
         held.fixtures
             .text(
-                crate::rows::Row::Line(&held.event_id, "0"),
+                crate::rows::Row::ModelLine(&held.event_id, "0"),
                 "unpriced_token_count"
             )
             .await,

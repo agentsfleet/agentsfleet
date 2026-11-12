@@ -8,7 +8,6 @@ import { workspaceHref } from "./fixtures/nav";
 
 const MODEL_COUNT = 130;
 const SERVER_PAGE_SIZE = 100;
-const DISPLAY_PAGE_SIZE = 25;
 const TEST_TIMEOUT_MS = 180_000;
 const MODELS = "/v1/tenants/me/models";
 const ENTRY_ID = z.object({id: z.uuid()});
@@ -64,29 +63,35 @@ async function holdNextPage(page: Page) {
     async dispose() { release.resolve(); await page.unroute(pattern); if (!armed) await finished.promise; }};
 }
 
-test("changing Search during Next keeps Models on the new search's first page", async ({page}) => {
+test("Load more retains the first page while delivery is delayed, then appends each model once", async ({page}) => {
   test.setTimeout(TEST_TIMEOUT_MS);
   const workspace = await getDefaultWorkspaceId(FIXTURE_KEY.regular);
   await withModels(workspace, async (prefix) => {
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspace, "settings/models"));
-    const search = page.getByRole("searchbox", {name: "Search models"});
-    await search.fill(prefix);
-    const next = page.getByRole("button", {name: "Next page"});
-    const previous = page.getByRole("button", {name: "Previous page"});
-    const models = page.getByRole("region", {name: "Models", exact: true});
-    await expect(models.getByRole("article")).toHaveCount(DISPLAY_PAGE_SIZE);
-    for (let index = 1; index < SERVER_PAGE_SIZE / DISPLAY_PAGE_SIZE; index++) await next.click();
+    const models = page.getByRole("region", {name: "Your models", exact: true});
+    const rows = models.getByRole("listitem");
+    const more = page.getByRole("button", {name: "Load more models", exact: true});
+    await expect(rows).toHaveCount(SERVER_PAGE_SIZE);
+    const firstNames = await rows.evaluateAll(items => items.map(item => item.getAttribute("aria-label")));
     const held = await holdNextPage(page);
     try {
-      await next.click();
+      await more.click();
       await held.ready;
-      await search.fill(`${prefix}-`);
-      await expect(previous).toBeDisabled();
+      await expect(more).toBeDisabled();
+      await expect(rows).toHaveCount(SERVER_PAGE_SIZE);
+      expect(await rows.evaluateAll(items => items.map(item => item.getAttribute("aria-label")))).toEqual(firstNames);
       held.release();
-      await expect(page.getByText(new RegExp(`^${MODEL_COUNT} of .* models$`))).toBeVisible();
-      await expect(previous).toBeDisabled();
-      await expect(models.getByRole("article")).toHaveCount(DISPLAY_PAGE_SIZE);
+      await expect(rows).not.toHaveCount(SERVER_PAGE_SIZE);
+      while (await more.isVisible()) {
+        const count = await rows.count();
+        await more.click();
+        await expect(rows).not.toHaveCount(count);
+      }
+      const names = await rows.evaluateAll(items => items.map(item => item.getAttribute("aria-label")));
+      expect(names.filter(name => name?.startsWith(prefix))).toHaveLength(MODEL_COUNT);
+      expect(new Set(names).size).toBe(names.length);
+      for (const name of firstNames) expect(names).toContain(name);
     } finally { await held.dispose(); }
   });
 });

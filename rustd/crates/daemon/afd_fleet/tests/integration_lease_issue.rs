@@ -50,11 +50,7 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
     // — without it the reclaim finds nothing and correctly falls through to a
     // fresh pull, which is what an earlier revision of this test observed.
     assert_eq!(
-        leases
-            .record_received(&held)
-            .await
-            .expect("the narrative log must open")
-            .delivery,
+        held.opened.received.delivery,
         Delivery::First,
         "a newly leased event has no row yet"
     );
@@ -108,14 +104,6 @@ async fn test_a_lapsed_lease_is_reclaimed_not_re_pulled() {
         held.fence
     );
 
-    let carried = reclaimed
-        .reused
-        .as_ref()
-        .expect("a reclaim carries the prior billing rather than resolving it again");
-    assert_eq!(carried.tenant_id, tenant, "the wallet already charged");
-    assert_eq!(carried.posture, POSTURE);
-    assert_eq!(carried.model, MODEL);
-
     assert_eq!(
         fixtures.text(Row::Lease(lease), "status").await,
         Some("expired".to_owned()),
@@ -152,10 +140,6 @@ async fn test_every_lease_meters_from_its_own_issue() {
     let held = seed::select_fleet(&leases, &first, &fleet)
         .await
         .expect("the fleet is leasable");
-    leases
-        .record_received(&held)
-        .await
-        .expect("the narrative log must open");
     leases
         .issue(&first, &held, billed, fixtures.enrolled_at())
         .await
@@ -247,5 +231,60 @@ async fn test_a_stale_claim_writes_no_lease() {
     assert_eq!(active, 0, "a lost claim wrote no active lease");
     drop(connection);
 
+    fixtures.cleanup().await;
+}
+
+// Value: protects=a plain chat whose fleet's setup moved after the claim gets
+// no lease, now that the insert carries the setup proof; fails_when=the insert
+// drops the head guard and a lease runs the old setup; why_new=the check moved
+// out of `issue_source.sql` for plain admissions; seam=none;
+// no_claim=a durable task, which still rereads its source.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_plain_lease_under_a_moved_setup_is_not_written() {
+    let fixtures = Fixtures::create().await;
+    let Seeded {
+        runners: [first, _second],
+        fleet,
+        tenant,
+        ..
+    } = seeded::<2>(&fixtures).await;
+    let leases = fixtures.leases();
+    let billed = Billed {
+        tenant_id: &tenant,
+        posture: POSTURE,
+        provider: PROVIDER,
+        model: MODEL,
+    };
+    let held = seed::select_fleet(&leases, &first, &fleet)
+        .await
+        .expect("the fleet is leasable");
+    let claimed: af_core::id::Uuid7 =
+        sqlx::query_scalar("SELECT head_revision_id FROM fleet.fleets WHERE id = $1")
+            .bind(&fleet)
+            .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
+            .await
+            .expect("the seeded fleet has a head");
+    let proof = afd_fleet::lease::installed::IssueRevision {
+        accepted: claimed.clone(),
+        current: claimed,
+        task_generation: None,
+    };
+    fixtures
+        .native_config(&fleet, r#"{"name":"moved-setup","x-agentsfleet":{"triggers":[],"tools":[],"budget":{"daily_nanos":"1000000000000"}}}"#)
+        .await;
+
+    let issued = leases
+        .issue_for_revision(&first, &held, billed, fixtures.enrolled_at(), Some(&proof))
+        .await
+        .expect("the issue answers");
+
+    assert!(issued.is_none(), "a moved head writes no lease");
+    let written: i64 = sqlx::query_scalar("SELECT count(*) FROM runner.leases WHERE fleet_id = $1")
+        .bind(&fleet)
+        .fetch_one(&mut *fixtures.database.acquire().await.expect("observer"))
+        .await
+        .expect("lease count");
+    assert_eq!(written, 0);
     fixtures.cleanup().await;
 }

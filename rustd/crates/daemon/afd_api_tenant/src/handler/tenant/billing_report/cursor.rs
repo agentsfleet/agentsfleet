@@ -21,21 +21,16 @@ pub(super) struct Scope {
 }
 
 /// Activity ordering and individual-line ordering have distinct payloads.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub(super) enum Position {
     Activity {
-        #[garde(skip)]
         at: String,
-        #[garde(skip)]
         id: String,
-        #[garde(skip)]
         work_type: String,
     },
-    Charge {
-        #[garde(range(min = 0))]
-        sequence: i64,
-    },
+    /// After this line, in the `(requested_at, id)` order a page reads.
+    Charge { at: String, id: String },
 }
 
 /// One canonical, versioned continuation payload.
@@ -59,12 +54,7 @@ impl Cursor {
         raw.starting_after
             .as_deref()
             .map(|token| {
-                let cursor: Self = struct_cursor::parse(token)
-                    .map_err(|_foreign| Refusal::malformed(DETAIL_CURSOR))?;
-                garde::Unvalidated::new(cursor.position.clone())
-                    .validate()
-                    .map_err(|_report| Refusal::malformed(DETAIL_CURSOR))?;
-                Ok(cursor)
+                struct_cursor::parse(token).map_err(|_foreign| Refusal::malformed(DETAIL_CURSOR))
             })
             .transpose()
     }

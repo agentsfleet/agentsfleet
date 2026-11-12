@@ -57,6 +57,7 @@ const LEDGER_SHAPE: &[&str] = &[
     "id",
     "work_type",
     "work_id",
+    "kind",
     "seq",
     "tenant_id",
     "workspace_id",
@@ -165,7 +166,8 @@ async fn assert_rows(run: &Scenario, lease_id: &str) {
     assert_shape(
         run,
         "billing.usage_lines",
-        "event_id = $1 AND seq = (SELECT max(seq) FROM billing.usage_lines WHERE event_id = $1)",
+        "id = (SELECT id FROM billing.usage_lines WHERE event_id = $1 \
+         ORDER BY requested_at DESC, id DESC LIMIT 1)",
         &run.event_id,
         LEDGER_SHAPE,
     )

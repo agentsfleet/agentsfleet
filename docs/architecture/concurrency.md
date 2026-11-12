@@ -305,6 +305,14 @@ map to keep consistent and no generation check to get wrong.
 `CancellationToken` is edge-triggered, so a task selecting over its own I/O and
 `cancelled()` is interrupted mid-read.
 
+Per-call timeouts stay where they are. Recurring deadline passes are another
+matter: each plane runs them on one clock. The daemon's `sweeper:expiry` runs
+every `EXPIRY_TICK` (2 s).
+
+It bills expired leases and expires authoring
+attempts in one tick. The runner arms one host timer for its leases' deadlines.
+A failed pass logs and waits for the next tick.
+
 ---
 
 ## Expanding the discipline base (roster)
@@ -322,7 +330,11 @@ Integration (CI) job runs the target.
 
 ## Runner capacity and authoring lock order
 
-All claims hold the runner row while counting live capacity and writing a lease. Both renewal kinds hold it before extending deadlines and sample database time after acquiring it. Runtime renewal takes runner → lease/affinity; its funds check reads the wallet without a lock.
+All claims hold the runner row while counting live capacity and writing a lease. Runtime renewal holds the runner row only shared. One statement per host takes it `FOR SHARE` first, then each lease's slot and row in fleet order, and samples database time once after them.
+
+Renewals never wait on each other. A credential rotation fences every renewal behind it. A lease issue, which holds the row exclusively, waits for an in-flight renewal statement and the reverse.
+
+The funds check reads the wallet without a lock, once per payer every third tick. The setup chat renewal still holds the runner row before extending deadlines.
 
 A setup chat renewal takes draft → attempt → runner instead (`afd_authoring`'s lease renew). It samples database time again after the runner lock. A busy draft therefore keeps the renewal waiting without holding the runner's host row.
 

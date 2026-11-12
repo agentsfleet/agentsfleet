@@ -13,6 +13,7 @@ export type NavListProps = {
   workspaceId: string | null;
   onNavigate: () => void;
   collapsed: boolean;
+  overlay?: boolean;
 };
 
 export function NavSection({ items, ...props }: NavListProps & { items: NavEntry[] }) {
@@ -23,7 +24,7 @@ export function NavSection({ items, ...props }: NavListProps & { items: NavEntry
   );
 }
 
-function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed }: NavListProps & { items: NavEntry[] }) {
+function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed, overlay }: NavListProps & { items: NavEntry[] }) {
   const fresh = useFreshFleetChat(workspaceId);
   return items.map((entry) => {
     const href = resolveHref(entry, workspaceId);
@@ -36,6 +37,7 @@ function NavItems({ items, activeHref, workspaceId, onNavigate, collapsed }: Nav
         external={entry.external}
         active={!entry.external && href !== "" && href === activeHref}
         collapsed={collapsed}
+        overlay={overlay}
         onClick={() => {
           if (entry.path === "fleets/new") fresh();
           onNavigate();
@@ -61,6 +63,7 @@ function NavItem({
   active,
   external,
   collapsed,
+  overlay,
   onClick,
 }: {
   href: string;
@@ -69,17 +72,18 @@ function NavItem({
   active?: boolean;
   external?: boolean;
   collapsed?: boolean;
+  overlay?: boolean;
   onClick: () => void;
 }) {
   const content = (
     <>
-      <Icon size={20} weight={active ? "duotone" : "regular"} className="shrink-0" aria-hidden="true" />
-      {collapsed ? null : <span className="hidden md:inline">{label}</span>}
+      <Icon size={20} weight={active ? "bold" : "regular"} className="shrink-0" aria-hidden="true" />
+      {collapsed ? null : <span className={overlay ? undefined : "hidden md:inline"}>{label}</span>}
     </>
   );
   const common = {
     "aria-label": label,
-    className: cn("h-11 min-h-11 w-11 gap-lg justify-center px-0 md:h-12 md:min-h-12 md:w-full", !collapsed && "md:justify-start md:px-lg", label === "New fleet" && "mb-md bg-cta text-cta-foreground hover:bg-cta-hover hover:text-cta-foreground data-[active=true]:bg-cta data-[active=true]:text-cta-foreground"),
+    className: cn("h-11 min-h-11 w-11 gap-lg justify-center px-0 hover:bg-muted hover:text-foreground data-[active=true]:bg-muted data-[active=true]:text-foreground md:h-12 md:min-h-12 md:w-full", !collapsed && "md:justify-start md:px-lg", overlay && "w-full justify-start px-lg", label === "New fleet" && "mb-md bg-cta text-cta-foreground hover:bg-cta-hover hover:text-cta-foreground data-[active=true]:bg-cta data-[active=true]:text-cta-foreground"),
     onClick,
   };
   const item = external

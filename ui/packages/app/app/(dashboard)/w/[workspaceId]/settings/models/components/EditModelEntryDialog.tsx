@@ -99,8 +99,8 @@ function EditForm({
       const data: Record<string, unknown> = {
         [SECRET_FIELD.provider]: OPENAI_COMPATIBLE_PROVIDER,
         [SECRET_FIELD.baseUrl]: baseUrl.trim(),
+        [SECRET_FIELD.apiKey]: apiKey.trim(),
       };
-      if (keyEntered) data[SECRET_FIELD.apiKey] = apiKey.trim();
       return data;
     }
     return {
@@ -127,12 +127,9 @@ function EditForm({
           setError(BASE_URL_NOT_HTTPS);
           return;
         }
-        // Whole-body replace cannot preserve a key it can never read back, so a
-        // secret that HAS a stored key must have it re-entered on any change —
-        // otherwise changing only the base URL would silently drop the key and
-        // 401 every model sharing it. (Reachable only for custom endpoints; a
-        // named provider's `secretTouched` already implies a key was typed.)
-        if (target.has_key && !keyEntered) {
+        // Every provider requires a key. Whole-body replacement must carry it
+        // even when the only edited field is the endpoint.
+        if (!keyEntered) {
           setError(KEY_REQUIRED_TO_REPLACE);
           return;
         }
@@ -161,7 +158,7 @@ function EditForm({
           if (modelChanged) onCommitted();
           return;
         }
-        if (keyEntered) captureKeyRotated(target.provider ?? "");
+        captureKeyRotated(target.provider ?? "");
       }
       onSaved();
     } finally {
@@ -202,7 +199,7 @@ function EditForm({
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={target.has_key ? "Re-enter the key (replacing resends the whole credential)" : isCustom ? "Blank for a keyless endpoint" : "Enter the key to replace the credential"}
+              placeholder="Enter replacement key"
               spellCheck={false}
               autoComplete="off"
               className="font-mono"

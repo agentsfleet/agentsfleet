@@ -1,11 +1,10 @@
 import { RouteLoading } from "@/components/layout/RouteLoading";
 import { Suspense } from "react";
-import { PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
+import { PageLayout } from "@agentsfleet/design-system";
 import { credential, requireCredential } from "@/lib/auth/credential";
 import { listTenantModelEntriesCached } from "./lib/reads";
 import { ModelCatalogueProvider } from "./components/ModelCatalogueProvider";
 import ModelsRegistryTable from "./components/ModelsRegistryTable";
-import { MODELS_PAGE_DESCRIPTION, MODELS_PAGE_TITLE } from "./copy";
 import { libraryErrorFromCause, type LibraryError } from "@/lib/api/library-types";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 
@@ -30,10 +29,6 @@ export default async function ModelsKeysPage({
   return (
     <Suspense fallback={<RouteLoading />}>
       <PageLayout>
-        <PageHeader description={MODELS_PAGE_DESCRIPTION}>
-          <PageTitle>{MODELS_PAGE_TITLE}</PageTitle>
-        </PageHeader>
-
         <ModelsRegistryData workspaceId={workspaceId} />
       </PageLayout>
     </Suspense>

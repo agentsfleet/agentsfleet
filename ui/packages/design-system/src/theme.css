@@ -75,6 +75,10 @@
   --color-background: var(--background);
   --color-overlay: var(--overlay);
   --color-foreground: var(--foreground);
+  --color-brand-tile: var(--brand-tile, var(--card));
+  --color-brand-ray: var(--brand-ray, var(--primary));
+  --color-avatar: var(--avatar-bg, var(--muted));
+  --color-avatar-foreground: var(--avatar-text, var(--foreground));
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
   --color-table-header: var(--table-header);
@@ -92,6 +96,8 @@
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-error-surface: var(--error-surface);
+  --color-error-border: var(--error-border);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
 
@@ -145,11 +151,18 @@
 
   /* Text scale — extras beyond Tailwind's defaults; consumers can write
    * `text-display-xl`, `text-eyebrow`, `text-mono`, etc. */
+  --text-new-fleet-title: var(--fs-new-fleet-title);
+  --leading-new-fleet-title: var(--lh-new-fleet-title);
+  --tracking-new-fleet-title: var(--letter-spacing-new-fleet-title);
+  --text-new-fleet-description: var(--fs-new-fleet-description);
   --text-display-xl: var(--fs-display-xl);
   --text-display-lg: var(--fs-display-lg);
   --text-display-md: var(--fs-display-md);
   --text-heading: var(--fs-heading);
+  --text-conversation-heading: var(--fs-conversation-heading, var(--fs-heading));
   --text-eyebrow: var(--fs-eyebrow);
+  --text-usage-total: var(--fs-usage-total);
+  --text-usage-total--line-height: var(--lh-usage-total);
   --text-body-lg: var(--fs-body-lg);
   --text-body: var(--fs-body);
   --text-body-sm: var(--fs-body-sm);
@@ -201,6 +214,11 @@
   --leading-conversation: var(--lh-conversation);
   --text-chat-title: var(--fs-chat-title);
   --container-form: var(--max-w-form);
+  --container-dialog: var(--max-w-dialog);
+  --container-model-dialog: var(--max-w-model-dialog);
+  --container-search: var(--max-w-search);
+  --radius-chip: var(--r-chip);
+  --leading-dialog-description: var(--lh-dialog-description);
   --container-wide: var(--max-w-wide);
   --container-content: var(--max-w-content);
   --container-tagline: var(--max-w-tagline);
@@ -212,6 +230,7 @@
   --grid-template-columns-footer: var(--grid-footer);
 
   /* Radius */
+  --radius-brand: var(--r-brand);
   --radius-sm: var(--r-sm);
   --radius-md: var(--r-md);
   --radius-lg: var(--r-lg);

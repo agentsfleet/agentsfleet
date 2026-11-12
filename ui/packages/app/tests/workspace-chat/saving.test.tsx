@@ -13,9 +13,9 @@ async function converse(): Promise<void> {
   render(<WorkspaceChat {...CHAT_PROPS} />);
   const input = await screen.findByLabelText(CHAT_PLACEHOLDER);
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
-  expect(screen.getByRole("button", {name: "Send message"})).toHaveProperty("disabled", true);
+  expect(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/})).toHaveProperty("disabled", true);
   fireEvent.change(input, {target: {value: "Investigate failures"}});
-  fireEvent.click(screen.getByRole("button", {name: "Send message"}));
+  fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
   await screen.findByText("Your setup is ready.");
 }
 
@@ -30,11 +30,11 @@ async function setup() {
 describe("private chat Save", () => {
   it("loads editable starters and sends the reviewed questions only after the user submits", async () => {
     render(<WorkspaceChat {...CHAT_PROPS} />);
-    const suggestion = await screen.findByRole("button", {name: /Review pull requests/});
+    const suggestion = await screen.findByRole("button", {name: /Watch a pull request/});
     await waitFor(() => expect(suggestion).toHaveProperty("disabled", false));
     for (const [title, text] of [
-      ["Watch for errors", "Watch production errors and prepare a repair for review."],
-      ["Morning brief", "Summarize the work my team should act on each morning."],
+      ["Check a deploy", "Check a deployment and tell me whether it is healthy. Ask which environment and release to check, and which evidence should count as success."],
+      ["Create a plugin", "Help me create a reusable fleet setup that I can save as a plugin. Ask what work it should do and what access it needs."],
     ]) {
       fireEvent.click(screen.getByRole("button", {name: title}));
       expect(screen.getByLabelText(CHAT_PLACEHOLDER)).toHaveProperty("value", text);
@@ -49,7 +49,7 @@ describe("private chat Save", () => {
     fireEvent.change(input, {target: {value: edited}});
     expect(fixture.writes()).toHaveLength(0);
     expect(fixture.saveAttempts).toBe(0);
-    fireEvent.click(screen.getByRole("button", {name: "Send message"}));
+    fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
     await screen.findByText("Your setup is ready.");
     expect(fixture.writes()).toHaveLength(1);
     expect(fixture.writes()[0]?.body).toMatchObject({message: edited, source: {kind: "blank"}});
@@ -92,7 +92,7 @@ describe("private chat Save", () => {
     await converse();
     await setup();
     await openPublication();
-    const dialog = screen.getByRole("dialog", {name: "Publish to Library"});
+    const dialog = screen.getByRole("dialog", {name: "Publish plugin"});
     fireEvent.click(await within(dialog).findByRole("button", {name: "Publish new entry"}));
     await waitFor(() => expect(fixture.writes().filter((call) => call.path.endsWith("/fleet-libraries"))).toHaveLength(1));
     expect(fixture.saveAttempts).toBe(0);

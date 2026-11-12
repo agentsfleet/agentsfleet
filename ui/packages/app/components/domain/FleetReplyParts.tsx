@@ -23,7 +23,7 @@ export function renderReplyPart({part, children}: ReplyRenderInfo, reply: ReplyC
     case GROUP.REASONING: return <FleetThought live={part.status.type === STATUS_RUNNING} reasoning={reply.reasoning}
       startedAtMs={reply.span.startedAtMs} endedAtMs={reply.span.endedAtMs}>{children}</FleetThought>;
     case GROUP.TOOL: return <FleetToolGroup content={reply.content} indices={part.indices}
-      running={reply.running} eventId={reply.eventId}>{children}</FleetToolGroup>;
+      running={reply.running} wallMs={reply.wallMs} figures={reply.figures} activity={reply.activity} eventId={reply.eventId}>{children}</FleetToolGroup>;
     case "reasoning": return <p className="whitespace-pre-wrap text-body-sm leading-prose text-text-dim">{part.text}</p>;
     case "tool-call": return part.toolUI ?? <FleetRegisteredTool {...part} />;
     case "text": return <ReplyText streaming={reply.running} plainText={reply.plainText} />;
