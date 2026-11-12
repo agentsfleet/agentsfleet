@@ -533,7 +533,9 @@ The `model.tenant_selections` row points at a `model.tenant_models` row, which n
 
 **Vault scope: explicit workspace ownership.** `vault.secrets` is keyed by `(workspace_id, key_name)`. Each `model.tenant_models` entry stores the credential's `workspace_id` and `secret_ref`; registration and activation prove that workspace belongs to the account. Runtime resolution reads that exact pair, so another workspace's same-named key cannot replace it.
 
-The account's active selection points to the configured model entry. Switching the workspace shown in the dashboard does not relocate its credential or change that selection. Removing its credential workspace clears the reference while retaining the model row, and resolution refuses the unavailable credential until the user selects a usable model. There is no primary-workspace lookup.
+The account's active selection points to the configured model entry. Switching the workspace shown in the dashboard does not relocate its credential or change that selection. Removing its credential workspace clears the reference while retaining the model row, and resolution refuses the unavailable credential until the user selects a usable model.
+
+There is no primary-workspace lookup.
 
 **`context_cap_tokens` is not in the credential body.** Each model resolution reads the cap from the catalogue (`model.platform_models`, §10). It matches by provider and model name. Splitting the two lets a catalogue edit change the cap without touching the vault.
 

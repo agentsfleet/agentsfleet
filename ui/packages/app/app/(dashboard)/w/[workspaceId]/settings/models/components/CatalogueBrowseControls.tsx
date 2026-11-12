@@ -22,7 +22,7 @@ export function CatalogueBrowseControls({ id, advanced, onAdvancedChange }: Prop
 }
 
 /** Paging and recovery also serve read-only model evidence, without picker filters. */
-export function CatalogueReadControls({includeAdvanced = false, label = "Load more models"}: {includeAdvanced?: boolean; label?: string}) {
+export function CatalogueReadControls({includeAdvanced, label = "Load more models"}: {includeAdvanced: boolean; label?: string}) {
   const {status, error, nextCursor, advancedNextCursor, loadMore, retry} = useModelCatalogue();
   const more = nextCursor !== null || (includeAdvanced && advancedNextCursor !== null);
   return <div className="space-y-sm">

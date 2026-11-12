@@ -18,7 +18,7 @@
 
 **Problem:** Fleet verbs are scattered across root help. Fleet library terminology differs from the approved Plugins interface. Platform help advertises operations an ordinary account cannot use.
 
-**Solution summary:** Organize commands by resource, rename the complete-setup library surface to Plugins, and construct permission-aware help and completions using Effect's public command APIs. Keep identity-provider details behind the existing backend identity contract.
+**Solution summary:** Organize commands by resource, rename the complete-setup library surface to Plugins, and construct permission-aware help and completions using Effect's public command APIs. Keep identity-provider details behind the existing backend identity interface.
 
 **Design flow:** Existing argv/config resolution → existing credential and API-target selection → bounded effective-scope discovery → fresh command factories → Effect parsing/help/completions → existing handler and backend authorization. Plugin selection still starts a private setup from an immutable complete definition.
 
@@ -134,7 +134,7 @@ Rename `chat --library` to `--plugin`; retain `--revision` and `--publish`; reta
 
 Retain immutable Definition content, pinned versions, review digests and optimistic publication checks. No install/apply/invoke/binding API is introduced. Backend identifiers and installed-copy semantics do not change merely because names change.
 
-This is development-only work. Indy permits resetting the development DB. Update canonical schema files and generated contracts together. Add no compatibility aliases, backfill, dual reads, rollout switch or guarded cutover. Reset only task-owned test databases automatically; do not delete an unrelated database.
+This is development-only work. Indy permits resetting the development DB. Update canonical schema files and generated API descriptions together. Add no compatibility aliases, backfill, dual reads, rollout switch or guarded cutover. Reset only task-owned test databases automatically; do not delete an unrelated database.
 
 - **Dimension 2.1** — Plugin reuse pins a full revision → Test `plugin_revision_creates_independent_private_setup` (CLI/API/UI): IDs and review digest stay pinned through adaptation and save.
 - **Dimension 2.2** — Scope renaming cannot broaden access → Test `plugin_permission_preserves_narrowed_authority` (integration): omitted or unrelated rights cannot write, publish or delete; normal readers retain only current read rights.
@@ -192,13 +192,13 @@ Preserve the backend's current capability refresh policy: one-minute refresh, wi
 - **Dimension 4.4** — Exact operations retain backend refusal → Test `hidden_command_and_stale_completion_cannot_bypass_authorization` (CLI/integration): directly typed commands still reach existing checks and revoked operations fail under the server's current cache policy.
 - **Dimension 4.5** — All discovery surfaces agree → Test `scoped_help_suggestions_and_four_shell_completions_agree` (CLI): root/nested help, suggestions and generated scripts have the same retained operations; JSON output remains clean.
 
-### §5 — Coordinated contracts and merge
+### §5 — Coordinated interfaces and merge
 
 Update generated OpenAPI, client adapters, permissions, help, examples and public documentation together. Rebase onto the merged UI refresh before editing its callers. Re-run native setup/Plugin and lifecycle journeys using the refreshed interface; preserve the design system and assistant-ui runtime.
 
 Use an exact-base baseline for test counts. Run required repository lanes and reviews. Resolve CI and Greptile, including two quiet green polls. The owner merges after the UI PR has merged; do not merge independently.
 
-- **Dimension 5.1** — All callers use the current contract → Test `plugin_contract_matches_cli_ui_and_openapi` (integration/browser): create/revise/reuse/delete and failure recovery work under the new paths and payload names.
+- **Dimension 5.1** — All callers use the current API shape → Test `plugin_payload_matches_cli_ui_and_openapi` (integration/browser): create/revise/reuse/delete and failure recovery work under the new paths and payload names.
 - **Dimension 5.2** — The release has one vocabulary → Test `removed_public_spellings_have_only_historical_references` (source/docs): old public spellings appear only in explicit history/removal notes; no live examples or generated aliases survive.
 
 ## Interfaces
@@ -263,7 +263,7 @@ Delete `root.command.ts`, retired platform catalogue command/route entries and o
 
 1. **Successful user moment** — A user finds the right fleet command; an operator sees only appropriate platform choices.
 2. **Preserved user behaviour** — Existing handlers, scopes, private history, immutable setups and recovery remain authoritative.
-3. **Optimal-way check** — Effect's existing command tree and backend identity contract cover the need; no second parser or identity-provider client.
+3. **Optimal-way check** — Effect's existing command tree and backend identity interface cover the need; no second parser or identity-provider client.
 4. **Rebuild-vs-iterate** — Refactor assembly and vocabulary; reuse transport and resource semantics.
 5. **What we build** — Domain groups, coordinated Plugin vocabulary, scope-aware discovery and four-shell generation.
 6. **What we do NOT build** — Capability attachment, a new permission system, new platform UI or guarded rollout machinery.
@@ -274,9 +274,9 @@ Delete `root.command.ts`, retired platform catalogue command/route entries and o
 
 ## Decomposition & alternatives (patch vs refactor)
 
-- **Chosen shape:** Five slices separate composition, resource vocabulary, lifecycle, discovery and contract validation.
+- **Chosen shape:** Five slices separate composition, resource vocabulary, lifecycle, discovery and interface validation.
 - **Alternatives considered:** Text-filtered help diverges from parsing/completions; a new parser duplicates Effect; a module-global mutable tree risks carrying authority between invocations.
-- **Patch-vs-refactor verdict:** A refactor of assembly, with targeted contract changes; existing resource implementations remain in place.
+- **Patch-vs-refactor verdict:** A refactor of assembly, with targeted API changes; existing resource implementations remain in place.
 
 ## Discovery (consult log)
 
