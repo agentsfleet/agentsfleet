@@ -192,6 +192,10 @@ pub(crate) struct Harness<'s, 'run> {
     /// The last folded message this loop took, by sequence; 0 before the
     /// first. A child takes none.
     folded_through: i64,
+    /// Whether the daemon's claim already answered this loop's next fold ask:
+    /// its lease said no later message waited, so the ask before the first
+    /// model call would claim nothing. Spent by that ask.
+    claim_answered: bool,
 }
 
 impl<'s, 'run> Harness<'s, 'run> {
@@ -233,6 +237,7 @@ impl<'s, 'run> Harness<'s, 'run> {
             messages: opening,
             child: None,
             folded_through: 0,
+            claim_answered: !shared.payload.inputs_waiting,
         };
         if root.task.is_some() {
             root.live.hide_reasoning();
@@ -276,6 +281,7 @@ impl<'s, 'run> Harness<'s, 'run> {
                 input: seat.input,
             }),
             folded_through: 0,
+            claim_answered: false,
         }
     }
 

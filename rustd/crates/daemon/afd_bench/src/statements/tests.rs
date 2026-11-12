@@ -145,3 +145,112 @@ fn the_costliest_statements_come_first() {
 
     assert_eq!(top, vec!["b", "c"]);
 }
+
+/// One chat-path statement, read from the product's own file, and the path it
+/// belongs to.
+const CHAT_PATH_STATEMENTS: &[(&str, &str, Path)] = &[
+    (
+        "claim_admission_head.sql",
+        afd_fleet::lease::sql::queue::CLAIM_HEAD,
+        Path::Claim,
+    ),
+    (
+        "select_gates.sql",
+        afd_fleet::lease::sql::gates::SELECT_GATES,
+        Path::Gates,
+    ),
+    (
+        "insert_lease_with_event.sql",
+        afd_fleet::lease::sql::lease::INSERT_LEASE_WITH_EVENT,
+        Path::Issue,
+    ),
+    (
+        "select_renewals.sql",
+        afd_fleet::lease::sql::renew::SELECT_RENEWALS,
+        Path::Meter,
+    ),
+    (
+        "select_revision_documents.sql",
+        afd_fleet::lease::sql::renew::SELECT_REVISION_DOCUMENTS,
+        Path::Meter,
+    ),
+    (
+        "renew_batch.sql",
+        afd_fleet::lease::sql::renew::RENEW_BATCH,
+        Path::Meter,
+    ),
+    (
+        "commit_report.sql",
+        afd_fleet::lease::sql::report_statement::COMMIT_REPORT,
+        Path::Report,
+    ),
+    (
+        "apply_report_notice.sql",
+        afd_fleet::lease::sql::report_statement::APPLY_REPORT_NOTICE,
+        Path::Report,
+    ),
+    (
+        "claim_inputs.sql",
+        afd_fleet::lease::sql::lease::CLAIM_INPUTS,
+        Path::Fold,
+    ),
+];
+
+/// `pg_stat_statements` keeps a statement's comments, so the fragments must
+/// classify it with them and without: a fragment that matched only a comment
+/// would break on a reworded one.
+fn code_of(statement: &str) -> String {
+    statement
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("--"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+// Value: protects=each rewritten chat-path statement is counted in the path
+// the chat projection gives it; fails_when=one lands in `other`, or in an
+// older path whose fragment it also contains; why_new=the one-statement paths
+// replaced the statements the table was read off; seam=none; no_claim=statements a drain
+// run shows that no file here names, which the run's `other` reports.
+#[test]
+fn new_statements_match_their_paths() {
+    for (file, statement, path) in CHAT_PATH_STATEMENTS {
+        assert_eq!(
+            super::paths::classify(statement),
+            *path,
+            "{file} lands in its path"
+        );
+        assert_eq!(
+            super::paths::classify(&code_of(statement)),
+            *path,
+            "{file} lands in its path without its comments"
+        );
+    }
+}
+
+/// The three reads the first drain of the one-statement paths classified as
+/// `other`, as
+/// `pg_stat_statements` stores their text.
+const DELIVERY_READS: &[(&str, Path)] = &[
+    ("SET LOCAL ROLE memory_runtime", Path::Issue),
+    (
+        "SELECT fleet_id, event_id, workspace_id, actor, event_type, status, token_count, wall_ms, failure_reason, failure_detail, resumes_event_id, created_at, updated_at FROM fleet.events",
+        Path::Issue,
+    ),
+    (
+        "SELECT lease_version, last_lease_type FROM runner.runners WHERE id = $1",
+        Path::Host,
+    ),
+];
+
+// Value: protects=the drain's other path holds no statement a chat sends;
+// fails_when=a delivery read falls back to other and the bar on it trips;
+// why_new=the first drain of the one-statement paths found these three
+// there; seam=none;
+// no_claim=statements a later milestone adds.
+#[test]
+fn delivery_reads_land_in_their_paths() {
+    for (statement, path) in DELIVERY_READS {
+        assert_eq!(super::paths::classify(statement), *path, "{statement}");
+    }
+}

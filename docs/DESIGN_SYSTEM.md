@@ -1,6 +1,6 @@
 # agentsfleet design system
 
-**Direction:** Clear Signal · **Updated:** 2026-11-11
+**Direction:** Clear Signal · **Updated:** 2026-11-12
 
 This document governs the app, website, and shared component library.
 Clear Signal names the visual direction; agentsfleet remains the product name.
@@ -73,6 +73,7 @@ Indy's inspected Amp references establish the compact scale; Manrope remains the
 | Metadata, timestamps, counts | 12px / 16px | 400 | Same |
 | Fleet header and section labels | 13px / 20px | 600 | Same |
 | App page title | 20px / 26px | 650 | Same |
+| Conversation heading | 20px / 24px | 650 | Same |
 | Dialog title | 18px / 24px | 650 | Same |
 | Technical content | 13px / 20px | 400 | Same, with bounded scrolling |
 
@@ -294,7 +295,7 @@ The credential choice offers Add new key or Use saved key. Filter saved keys by 
 
 Use Key name for a new credential. Reusing a key must not rotate or replace it.
 
-Keep Base URL and optional credentials for supported custom endpoints. Explain saved-key scope beside the picker when it affects selection.
+Keep Base URL for supported custom endpoints. Every model provider requires an API key, matching the runtime's credential rules. Explain saved-key scope beside the picker when it affects selection.
 Model registration and active-model selection are account-scoped.
 
 Each registered model references the workspace that stores its credential.
@@ -368,7 +369,17 @@ Existing component behavior remains authoritative.
 Presentation changes must preserve keyboard interactions, loading state, and accessible names.
 Use shared primitives before adding consumer markup with equivalent behavior.
 
-Resource pages use the shared PageHeader for compact top chrome and a centered content area up to 1040px. Models compose Card headers, content and actions with shared DropdownMenu sorting and Pagination; Team groups native lists inside Card surfaces. Search, authorization, retry and mutation state stay with their existing owners. Compact phone tables must keep every action target inside the visible width and label reflowed metadata. Previous and Next remain together when shared pagination wraps.
+Resource pages use the shared ResourceHeader for the 64px top bar and PageHeader inside a centered 1040px content column. The top bar includes the New fleet action, uses a subtle bottom border, and aligns its icon 24px from the surface edge. Models restore the separate Platform default card, Your models list, Make active action and provider prompt. Details and edits use the row menu; server continuation uses Load more without adding the former sort toolbar.
+
+Team groups native lists inside shared panels. Its search remains, with names, initials, roles, explicit joined or expiry dates, and one menu per manageable row. Only the authenticated person's row carries You. Invite delivery status must reflect the backend, including a retained invite whose email was not delivered.
+
+Security contains API keys and signed-in sessions on one page. The avatar's Personal account entry opens native identity-provider controls behind the auth facade. It is not a second custom Profile page. Keys use resource rows and one-time reveal; sessions support individual and all-other-session sign-out. Read all session pages before bulk revocation and exclude this device.
+
+Usage restores the period toolbar, shared metric strip, daily-spend section and By fleet table. Charge details remain in a closed native disclosure, opening for an explicitly selected activity. Do not draw daily bars from a partial activities page: the current report has no daily buckets. Preserve that section with its unavailable state until one authoritative aggregate is available.
+
+Secrets use Name, Type, hidden Value, Available to and Manage. The current API does not return per-secret fleet access. State that absence; never derive effective authorization from references or show an unbacked access checkbox. Preserve named-field replacement for credentials that require several values. Plugins and Connected apps use grouped resource rows and shared dialogs. A plugin's actual version appears after inspection; list cards expose only its revision identifier.
+
+Compact phone tables keep action targets inside their visible scrolling surface. Session and key rows let identity text occupy the full width before the action. Server pagination and error recovery remain available where the API requires them.
 
 Reusable visual treatments belong in `ui/packages/design-system`. App widgets combine those primitives with product behavior and data.
 
@@ -443,7 +454,7 @@ Keep navigation and disclosure behavior in the shared component rather than recr
 
 Date formatting belongs in `ui/packages/design-system/src/design-system/time-utils.ts` for both the app and shared components.
 Render visible timestamps through `Time`; use the exported helpers for plain-text labels and server-side formatting.
-Reporting periods use `formatTimeRangeUtc`, and their activity labels use `formatTimeCompactUtc` so both share Coordinated Universal Time (UTC).
+Reporting periods use `formatTimeRangeUtc`, and their activity labels use `formatTimeCompactUtc` so both share Coordinated Universal Time (UTC). Use `Time format="date"` for joined, expiry and creation dates and `Time format="month"` for a selected reporting month. These use UTC and keep the canonical instant.
 
 The helpers return the shared invalid-date fallback for malformed inputs; ranges also reject an end before the start.
 Extend these shared helpers when a reusable format is missing. Do not add a page-local formatter.
@@ -515,7 +526,7 @@ A checks badge reports the result; a separate View checks button makes inspectio
 Fleet activity belongs in its conversation.
 
 Pending fleet decisions appear in Summary.
-Retain access to the workspace approval inbox, including its empty state. Show operator destinations only to authorized people.
+Approve and Deny act on the recorded request in the fleet conversation. Show action details inline. Remove standalone Approvals and Grants destinations. Retain authorization and standing-grant enforcement.
 
 ### Forms and popups
 
@@ -1025,3 +1036,19 @@ Completed and failed messages stay static. Reduced-motion and forced-color prefe
 Use a compact, dismissible error notice for immediate feedback, with a small error glyph and short description. Keep the failed operation visible in chat with a quiet underlined **Try again** action and optional diagnostic disclosure. A dismissed notice must not dismiss the failed operation or erase its draft.
 
 Keep retries scoped to the original operation and prevent duplicate submissions. Errors needing access, configuration or sign-in show that specific recovery instead of a retry loop. This follows Indy's November 11, 2026 error reference.
+
+
+### Review corrections, Nov 12, 2026
+
+The dashboard uses a 20px/24px reply heading at weight 650. Attachment names use 12px, with a 36px desktop chip. Navigation glyphs remain 20px, including the bottom control; phones open the shared navigation dialog and desktop expands the rail. The selected fleet uses neutral raised fill and bold foreground icon; New fleet retains mint emphasis. Account initials use the lavender avatar tokens with 13px bold text.
+
+Desktop operator turns occupy 90% of the reading column; phone turns use its full width. Reply identity has an 8px icon gap. Result cards and loading placeholders share 78px height, 16px corners and a 4px secondary-line gap. Composer paperclip controls are 36px with an 18px glyph; coarse pointers keep the 44px floor. Keep 4px horizontal text inset, an explicit focused border, and opaque neutral styling for disabled Send. Compare enabled, disabled and focused states individually.
+
+Summary reads the actual pending approval before showing its action and blast radius. Approve and Deny use the existing authenticated decision actions. A decision requires no separate review page. Missing or failed reads never become an invented target. Run duration and cost come from recorded figures. Quote uses assistant-ui composer state and serializes into the same durable text message the backend stores.
+
+Brand identity tiles retain a dark #151716 surface and mint #b8f0ce rays in both themes. Their radius is 18.75% of their size, matching the approved asset. Rail home, expand, mobile navigation, account and destination controls use neutral hover fill; New fleet retains mint emphasis.
+
+
+The Usage metric value uses the shared 32px role with an explicit 27px line box, preserving the approved 133px desktop strip. The chart section keeps its 206px minimum height and 32px gap before the fleet table section; its heading-to-table gap is 16px. Missing daily buckets render an unavailable state within that section.
+
+Saved Fleet composers stay docked to the assistant-ui viewport at phone and desktop widths. Empty setup content remains scrollable in normal flow. Phone Summary stays in the conversation flow; the desktop Summary retains a 24px top inset while scrolling. Comparison captures label top-of-thread and latest positions separately.

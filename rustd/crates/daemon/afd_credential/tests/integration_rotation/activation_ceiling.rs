@@ -1,6 +1,6 @@
 //! What an applied activation reports: the catalogue's ceiling, never the
-//! request's, with invalid contexts refused by the schema and the smallest
-//! published context borrowed for a custom endpoint.
+//! request's, with invalid contexts refused by the schema, and a compatible
+//! endpoint held to the same catalogue and key as every other provider.
 
 use afd_credential::provider::Activation;
 
@@ -75,21 +75,90 @@ async fn a_nonpositive_catalogue_ceiling_is_refused_without_an_identity() {
     fixture.cleanup().await;
 }
 
+/// The compatible provider is catalogued and keyed like any other: resolution
+/// joins the same catalogue row and reads the same key.
+const COMPATIBLE: &str = "openai-compatible";
+
 #[tokio::test]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn a_compatible_endpoint_activates_at_the_borrowed_ceiling() {
-    // The one asymmetry: a user-hosted endpoint's model is absent from the
-    // platform catalogue by design, so the gate passes and the ceiling is the
-    // smallest any provider publishes for that model.
+async fn a_compatible_endpoint_activates_at_its_own_catalogued_ceiling() {
+    let fixture = Fixture::create().await;
+    let model = unique_model();
+    catalogue(&fixture, COMPATIBLE, &model, 120_000).await;
+    catalogue(&fixture, NAMED_PROVIDER, &model, 200_000).await;
+    fixture
+        .seed_with_shape(
+            "my-gateway",
+            br#"{"provider":"openai-compatible","base_url":"https://llm.example.com","api_key":"sk-live"}"#,
+            Some(COMPATIBLE),
+            Some(true),
+        )
+        .await;
+
+    let outcome = providers(&fixture)
+        .activate(
+            &fixture.tenant,
+            fixture.key("my-gateway"),
+            Some(&model),
+            NOW,
+        )
+        .await
+        .expect("a keyed, catalogued compatible endpoint activates");
+
+    let Activation::Applied(stored) = outcome else {
+        panic!("a keyed compatible endpoint with a catalogue row activates: {outcome:?}");
+    };
+    assert_eq!(
+        stored.context_cap_tokens, 120_000,
+        "the ceiling is the credential's own provider's row, not another provider's"
+    );
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_compatible_endpoint_the_catalogue_does_not_carry_is_refused() {
+    // Resolution joins the catalogue row for the credential's own provider, so
+    // another provider publishing the model is no help to it.
     let fixture = Fixture::create().await;
     let model = unique_model();
     catalogue(&fixture, NAMED_PROVIDER, &model, 200_000).await;
-    catalogue(&fixture, "anthropic", &model, 120_000).await;
+    fixture
+        .seed_with_shape(
+            "my-gateway",
+            br#"{"provider":"openai-compatible","base_url":"https://llm.example.com","api_key":"sk-live"}"#,
+            Some(COMPATIBLE),
+            Some(true),
+        )
+        .await;
+
+    let outcome = providers(&fixture)
+        .activate(
+            &fixture.tenant,
+            fixture.key("my-gateway"),
+            Some(&model),
+            NOW,
+        )
+        .await
+        .expect("a refused model is an outcome");
+
+    assert_eq!(outcome, Activation::ModelUnknown);
+    assert_eq!(written(&fixture).await, (0, 0));
+    fixture.cleanup().await;
+}
+
+#[tokio::test]
+#[ignore = "needs live Postgres: make test-integration-rustd"]
+async fn a_compatible_endpoint_without_a_key_is_refused() {
+    // Resolution reads the key for every provider, so a keyless endpoint would
+    // activate and then fail every run it was chosen for.
+    let fixture = Fixture::create().await;
+    let model = unique_model();
+    catalogue(&fixture, COMPATIBLE, &model, 120_000).await;
     fixture
         .seed_with_shape(
             "my-gateway",
             br#"{"provider":"openai-compatible","base_url":"https://llm.example.com"}"#,
-            Some("openai-compatible"),
+            Some(COMPATIBLE),
             Some(false),
         )
         .await;
@@ -102,13 +171,9 @@ async fn a_compatible_endpoint_activates_at_the_borrowed_ceiling() {
             NOW,
         )
         .await
-        .expect("a keyless compatible endpoint activates");
+        .expect("a refused credential is an outcome");
 
-    let Activation::Applied(stored) = outcome else {
-        panic!("a compatible endpoint needs no catalogue row of its own: {outcome:?}");
-    };
-    assert_eq!(
-        stored.context_cap_tokens, 120_000,
-        "a context window is a property of the model, and the smallest published wins"
-    );
+    assert_eq!(outcome, Activation::NotAProviderKey);
+    assert_eq!(written(&fixture).await, (0, 0));
+    fixture.cleanup().await;
 }

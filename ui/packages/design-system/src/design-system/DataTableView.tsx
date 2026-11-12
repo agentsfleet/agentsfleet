@@ -88,8 +88,8 @@ function DataTableHeading<T extends DataTableRowData>({ header, definition, isLo
                 scope="col"
                 aria-sort={canSort ? ariaSort : undefined}
                 className={cn(
-                  "h-11 border-b border-border text-left font-sans text-label font-medium text-muted-foreground",
-                  canSort ? "p-0" : "px-table-inline py-table-block",
+                  "h-11 border-b border-border-subtle text-left font-sans text-eyebrow font-semibold text-text-dim",
+                  canSort ? "p-0" : "px-table-inline py-lg",
                   direction && "text-foreground",
                   definition?.numeric && "text-right",
                   definition?.hideOnMobile && "hidden sm:table-cell",
@@ -242,7 +242,7 @@ export function DataTableView<T extends DataTableRowData>(props: DataTableViewPr
       data-surface={surface}
       className={cn(
         "flex w-full min-h-0 flex-1 flex-col overflow-hidden",
-        surface === DATA_TABLE_SURFACE.panel && "rounded-lg border border-border bg-table-row",
+        surface === DATA_TABLE_SURFACE.panel && "rounded-md border border-border bg-table-row",
         className,
       )}
     >

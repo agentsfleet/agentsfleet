@@ -9,7 +9,7 @@ import { EVENTS } from "../lib/analytics/events";
 const createApiKeyActionMock = vi.fn();
 const captureProductEventMock = vi.fn();
 
-vi.mock("@/app/(dashboard)/settings/api-keys/actions", () => ({
+vi.mock("@/app/(dashboard)/settings/security/actions", () => ({
   listApiKeysAction: vi.fn(),
   createApiKeyAction: createApiKeyActionMock,
   revokeApiKeyAction: vi.fn(),
@@ -44,7 +44,7 @@ afterEach(() => {
 describe("CreateApiKeyDialog component", () => {
   async function openDialog(onCreated = vi.fn()) {
     const { default: CreateApiKeyDialog } = await import(
-      "../app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog"
+      "../app/(dashboard)/settings/security/components/CreateApiKeyDialog"
     );
     // pointerEventsCheck off: Radix's scroll-lock leaves `pointer-events: none`
     // on <body> while the dialog animates; under a loaded shuffled run the check
@@ -53,7 +53,7 @@ describe("CreateApiKeyDialog component", () => {
     const user = userEvent.setup({ delay: null, pointerEventsCheck: 0 });
     render(React.createElement(CreateApiKeyDialog, { onCreated } as never));
         // The dialog submit is just "Create"; the trigger keeps the noun.
-    await user.click(screen.getByRole("button", { name: /create key/i }));
+    await user.click(screen.getByRole("button", { name: /create API key/i }));
     await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toBeTruthy());
     return { user, onCreated };
   }

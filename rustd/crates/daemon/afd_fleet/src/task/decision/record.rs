@@ -152,7 +152,7 @@ pub(super) async fn changed(tasks: &Tasks, written: &Written) -> Result<()> {
         tasks
             .publish_changed(
                 &scope,
-                &Call::id(task.as_str(), "task_id")?,
+                task,
                 crate::task::row::counter(version, "resource_version")?,
             )
             .await;

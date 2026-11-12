@@ -15,11 +15,11 @@ export function Input({ className, type, ref, ...props }: InputProps) {
       ref={ref}
       type={type}
       className={cn(
-        "flex h-9 w-full rounded-control border border-border-strong bg-secondary pointer-coarse:min-h-11",
+        "flex min-h-11 w-full rounded-control border border-border bg-background pointer-coarse:min-h-11",
         "px-md py-sm text-body-sm text-foreground font-sans",
-        "placeholder:text-muted-foreground",
-        "enabled:hover:border-ring",
-        "focus:outline-none focus:ring-2 focus:ring-inset focus:ring-ring focus:border-ring",
+        "placeholder:text-text-dim placeholder:opacity-100",
+        "aria-invalid:border-destructive",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
         "disabled:cursor-not-allowed disabled:opacity-50",
         "transition-colors duration-snap ease-snap",
         className,

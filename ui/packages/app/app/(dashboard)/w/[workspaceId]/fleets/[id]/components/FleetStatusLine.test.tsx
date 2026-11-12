@@ -48,7 +48,7 @@ function renderLine(latest: EventRow | null, pendingApprovals = 0, summaryAvaila
       status={status}
       latest={latest}
       pendingApprovals={pendingApprovals}
-      approvalsHref="/w/ws_1/approvals?fleetId=agt_1"
+      approvalsHref="/w/ws_1/fleets/agt_1#fleet-approvals"
       summaryAvailable={summaryAvailable}
     />
     </TooltipProvider>,
@@ -175,10 +175,10 @@ describe("FleetStatusLine", () => {
     expect(screen.getAllByText("—")).toHaveLength(3);
   });
 
-  it("links pending approvals to the fleet-filtered inbox", () => {
+  it("links pending approvals to the fleet approval section", () => {
     renderLine(event(), 2);
     const link = screen.getByRole("link", { name: /2 approvals waiting/i });
-    expect(link.getAttribute("href")).toBe("/w/ws_1/approvals?fleetId=agt_1");
+    expect(link.getAttribute("href")).toBe("/w/ws_1/fleets/agt_1#fleet-approvals");
     expect(link.closest("[data-tone]")?.getAttribute("data-tone")).toBe("warning");
   });
 

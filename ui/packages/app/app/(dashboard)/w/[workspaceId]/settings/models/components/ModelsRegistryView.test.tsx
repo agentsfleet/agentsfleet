@@ -1,50 +1,40 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { DataTableColumn } from "@agentsfleet/design-system";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { ModelsRegistryView } from "./ModelsRegistryView";
-import type { RegistryRow } from "./ModelsRegistryCells";
 
 afterEach(cleanup);
 
-const ROWS: RegistryRow[] = [
-  {kind: "default"},
-  {kind: "entry", entry: {id: "model-a", model_id: "claude-sonnet-5", display_name: null, provider: "anthropic",
-    secret_ref: "anthropic-key", kind: "provider_key", has_key: true, active: false, created_at: "1970-01-01T00:00:00Z"}},
-];
-const COLUMNS: DataTableColumn<RegistryRow>[] = [
-  {key: "model", header: "Model", cell: (row) => row.kind === "default" ? "Platform default" : row.entry.model_id},
-];
+function props(): ComponentProps<typeof ModelsRegistryView> {
+  return {entries: [{id: "model-a", workspace_id: "workspace-a", model_id: "claude-sonnet-5", display_name: "Sonnet", provider: "anthropic",
+    secret_ref: "model-key", kind: "provider_key", has_key: true, active: false, created_at: "2026-11-12T00:00:00Z"}],
+    platformDefault: null, workspaceNames: new Map([["workspace-a", "Main"]]), isDefaultLive: false,
+    platformDefaultAvailable: false, pending: false, onSwitchDefault: vi.fn(), onSwitchEntry: vi.fn(), onView: vi.fn(),
+    onEdit: vi.fn(), onRemove: vi.fn(), onIntent: vi.fn()};
+}
 
-it("filters loaded model names and providers while preserving the default when cleared", async () => {
-  const onSortChange = vi.fn();
-  render(<ModelsRegistryView rows={ROWS} columns={COLUMNS} platformDefault={null} sort={null} onSortChange={onSortChange} pending={false} />);
-  const input = screen.getByRole("searchbox", {name: "Search models"});
-  fireEvent.change(input, {target: {value: "ANTHROPIC"}});
-  await waitFor(() => expect(screen.queryByText("Platform default")).toBeNull());
-  expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
-  fireEvent.change(input, {target: {value: "missing"}});
-  await screen.findByText("No matching models");
-  fireEvent.click(screen.getByRole("button", {name: "Clear search"}));
-  await screen.findByText("Platform default");
-  expect(screen.getByText("claude-sonnet-5")).toBeTruthy();
-  expect(onSortChange).not.toHaveBeenCalled();
+it("keeps an unavailable platform default separate from workspace-backed models", () => {
+  const data = props();
+  render(<ModelsRegistryView {...data} />);
+  expect(within(screen.getByLabelText("Platform default")).getByRole("button", {name: "Make active: platform default"})).toHaveProperty("disabled", true);
+  expect(screen.getByText("model-key · Main")).toBeTruthy();
+  fireEvent.click(within(screen.getByRole("region", {name: "Your models"})).getByRole("button", {name: "Make active: claude-sonnet-5"}));
+  expect(data.onSwitchEntry).toHaveBeenCalledWith(data.entries[0], "workspace-a");
 });
 
-it.each([false, true])("pages cached models without a request and resets page size (more available: %s)", async (more) => {
-  const load = vi.fn();
-  const rows: RegistryRow[] = Array.from({length: 30}, (_, index) => ({kind: "entry", entry: {
-    id: `model-${index}`, model_id: `choice-${index}`, display_name: null, provider: "anthropic", secret_ref: "key",
-    kind: "provider_key", has_key: true, active: false, created_at: "1970-01-01T00:00:00Z",
-  }}));
-  render(<ModelsRegistryView rows={rows} onLoadMore={more ? load : undefined} columns={COLUMNS} platformDefault={null} sort={null} onSortChange={() => {}} pending={false} />);
-  fireEvent.click(screen.getByRole("button", {name: "Next page"}));
-  expect(screen.getByText("choice-25")).toBeTruthy();
-  expect(screen.queryByText("choice-0")).toBeNull();
-  const trigger = screen.getByRole("combobox", {name: "Rows per page"});
-  fireEvent.click(trigger); fireEvent.keyDown(trigger, {key: "Enter"});
-  fireEvent.click(await screen.findByRole("option", {name: "50"}));
-  expect(screen.getByText("choice-0")).toBeTruthy();
-  expect(screen.getByText("choice-29")).toBeTruthy();
+it("does not activate an entry without a credential workspace", () => {
+  const data = props(); data.entries[0]!.workspace_id = undefined;
+  render(<ModelsRegistryView {...data} />);
+  const activate = within(screen.getByRole("region", {name: "Your models"})).getByRole("button", {name: "Make active: claude-sonnet-5"});
+  expect(activate).toHaveProperty("disabled", true);
+  fireEvent.click(activate);
+  expect(data.onSwitchEntry).not.toHaveBeenCalled();
+});
+
+it("loads additional server rows only on request", () => {
+  const load = vi.fn().mockResolvedValue(true);
+  render(<ModelsRegistryView {...props()} onLoadMore={load} />);
   expect(load).not.toHaveBeenCalled();
-  expect(screen.getByRole("button", {name: "Next page"})).toHaveProperty("disabled", !more);
+  fireEvent.click(screen.getByRole("button", {name: "Load more models"}));
+  expect(load).toHaveBeenCalledOnce();
 });

@@ -12,9 +12,6 @@ use jiff::Timestamp;
 /// because a suite here cannot accidentally start asserting on lease
 /// behaviour that belongs to `afd_fleet`'s own integration lane.
 ///
-/// It remembers the holds each poll named, which is the one thing the lease
-/// handler decides before the plane: what the poll's body reads as.
-///
 /// [`NoWork::refusing`] makes the memory verbs and the mint answer one chosen
 /// refusal instead, for a suite that proves how a route RENDERS a refusal the
 /// plane decided: the status and `current_state` are the handler's, not the
@@ -54,7 +51,7 @@ impl Leasing for NoWork {
     /// Mints nothing, and says so with the code a deployment holding no
     /// platform credential answers, unless built with [`NoWork::refusing`].
     ///
-    /// A REFUSAL where the three stubs above answer `Ok`, and the asymmetry is
+    /// A REFUSAL where the other verbs here answer `Ok`, and the asymmetry is
     /// the verb's: `mint` has no success this suite could assert without a
     /// vault row, a grant and a vendor, so an `Ok` here would have to invent a
     /// token. `UZ-CRED-002` is the honest answer for a plane with no platform
@@ -98,7 +95,7 @@ impl Leasing for NoWork {
         )
     }
 
-    /// Stores nothing and says so, for the reason [`NoWork::report`] accepts.
+    /// Stores nothing and says so, as a fleet that has never run kept nothing.
     fn capture(
         &self,
         _runner_id: &Uuid7,
@@ -142,28 +139,6 @@ impl Leasing for NoWork {
         }))
     }
 
-    fn context_load(
-        &self,
-        _runner: &Uuid7,
-        _lease: &Uuid7,
-        _branch: &Uuid7,
-        _fence: u64,
-    ) -> impl Future<Output = afd_fleet::Result<Option<af_context::Checkpoint>>> + Send {
-        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
-    }
-
-    fn context_commit(
-        &self,
-        _runner: &Uuid7,
-        _lease: &Uuid7,
-        _branch: &Uuid7,
-        _fence: u64,
-        _expected: u64,
-        _checkpoint: af_context::Checkpoint,
-    ) -> impl Future<Output = afd_fleet::Result<()>> + Send {
-        std::future::ready(Err(afd_fleet::Error::lease_not_found()))
-    }
-
     /// Holds no lease, so every lease-addressed verb is refused as one this
     /// runner does not hold — the answer a plane with no rows gives.
     fn standing(
@@ -193,17 +168,6 @@ impl Leasing for NoWork {
     ) -> impl Future<Output = afd_fleet::Result<String>> + Send {
         std::future::ready(Err(afd_fleet::Error::lease_not_found()))
     }
-}
-
-/// The identifier a stubbed settle reports against.
-///
-/// One value for both the fleet and the workspace: nothing in a router suite
-/// reads either — the stub exists so an authenticated runner REACHES the
-/// handler — and two spellings would suggest a distinction this stub does not
-/// make.
-fn fixture_id() -> Uuid7 {
-    Uuid7::parse("01924f4e-0000-7000-8000-00000000fee7")
-        .expect("a fixture identifier is well formed")
 }
 
 impl afd_api::services::RunnerStreams for NoWork {

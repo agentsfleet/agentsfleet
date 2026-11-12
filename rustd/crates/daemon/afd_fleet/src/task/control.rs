@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use af_wire::task::TaskState;
-use sqlx::{Acquire as _, PgConnection};
+use sqlx::PgConnection;
 
 use super::{
     TaskControl, TaskRefusal, TaskScope, TaskSnapshot, Tasks, continuation::Continuation, guard,
@@ -45,8 +45,9 @@ pub(super) async fn apply(
         Some(wake) => Some(tasks.admissions.prepare(wake.admission()).await?),
         None => None,
     };
-    let mut connection = tasks.leases.pool().acquire().await?;
-    let mut transaction = connection.begin().await.map_err(query(CONTEXT))?;
+    // Cancellation closes the socket, so a blocked statement holds no lock.
+    let mut connection = super::transaction::acquire(tasks.leases.pool()).await?;
+    let mut transaction = super::transaction::begin(&mut connection).await?;
     guard::scope(&mut transaction, scope).await?;
     let (changed, previous) = transition(
         &mut transaction,
@@ -64,6 +65,7 @@ pub(super) async fn apply(
     }
     let snapshot = read::on(&mut transaction, scope, task_id).await?;
     transaction.commit().await.map_err(query(CONTEXT))?;
+    super::transaction::recycle(connection);
     if changed {
         publish(tasks, scope, task_id, &snapshot, control, continuation).await;
     }

@@ -1,14 +1,8 @@
-#![expect(
-    clippy::expect_used,
-    reason = "the malformed identifier is the fixture precondition"
-)]
-
 use std::error::Error as _;
 
 use af_core::error_code;
-use af_core::id::Uuid7;
 
-use super::{billing_wallet_missing, charges_cursor_invalid, query, row_malformed};
+use super::{billing_wallet_missing, charges_cursor_invalid, query};
 
 #[test]
 fn data_only_refusals_have_distinct_public_contracts_and_no_causes() {
@@ -24,17 +18,11 @@ fn data_only_refusals_have_distinct_public_contracts_and_no_causes() {
 }
 
 #[test]
-fn query_and_row_failures_keep_the_context_only_their_raiser_knows() {
+fn a_query_failure_keeps_the_context_only_its_raiser_knows() {
     let query = query("settle usage")(sqlx::Error::RowNotFound);
     assert_eq!(query.code(), error_code::INTERNAL_OPERATION_FAILED);
     assert!(query.to_string().contains("settle usage"));
     assert!(query.source().is_some());
-
-    let source = Uuid7::parse("not-an-id").expect_err("fixture identifier is malformed");
-    let row = row_malformed("billing.usage_lines", "tenant_id")(source);
-    assert_eq!(row.code(), error_code::INTERNAL_OPERATION_FAILED);
-    assert!(row.to_string().contains("billing.usage_lines.tenant_id"));
-    assert!(row.source().is_some());
 }
 
 /// Only a query the datastore answered "not now" is contention; a refusal

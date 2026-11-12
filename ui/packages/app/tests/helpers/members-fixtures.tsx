@@ -1,4 +1,6 @@
 import React from "react";
+import {vi} from "vitest";
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "user_john"})}));
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { TooltipProvider } from "@agentsfleet/design-system";
@@ -49,12 +51,12 @@ export const DONE = { ok: true, data: undefined };
 export const EMAIL_SENT = "Invite emailed";
 export const EMAIL_NOT_SENT = "Email not sent";
 export const EMAIL_NOT_SET_UP = "Email not set up";
-export const INVITE_BUTTON = "Invite";
-export const SEND_INVITE = "Send";
-export const EMAIL_FIELD = "Email";
+export const INVITE_BUTTON = "Invite member";
+export const SEND_INVITE = "Send invite";
+export const EMAIL_FIELD = "Email address";
 export const CANCEL_LABEL = "Cancel";
 export const INVITE_READY = "invite-ready";
-export const INVITED_BADGE = "invited";
+export const INVITED_BADGE = "Invitation sent";
 export const REVOKE_LABEL = "Revoke";
 export const REMOVE_LABEL = "Remove";
 export const REMOVE_BOB = `${REMOVE_LABEL} ${BOB_NAME}`;
@@ -67,15 +69,18 @@ export function renderView(members: MemberSummary[] = [JOHN, BOB], invites: Invi
 
 export const rowOf = (name: string) => screen.getByRole("listitem", { name: new RegExp(name) });
 
-// Stable shared-card slots retain the person, dates and action outcomes.
-function teamSlot(name: string, slot: string): HTMLElement {
-  const node = rowOf(name).querySelector<HTMLElement>(`[data-slot="${slot}"]`);
-  if (!node) throw new Error(`Missing ${slot} for ${name}`);
-  return node;
+export function manageLabel(action: string): string {
+  if (action.startsWith("Remove ")) return `Manage ${action.slice(7)}`;
+  const email = action.match(/[a-z]+@example\.com/)?.[0];
+  return `Manage invite for ${email}`;
 }
-export const personCellOf = (name: string) => teamSlot(name, "team-person");
-export const timeCellOf = (name: string) => teamSlot(name, "team-times");
-export const actionsCellOf = (name: string) => teamSlot(name, "team-actions");
+
+export async function chooseTeamAction(action: string) {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", {name: manageLabel(action)}));
+  const item = action.startsWith("Remove ") ? action : action.startsWith("Revoke ") ? "Revoke invite" : "Send invite again";
+  await user.click(await screen.findByRole("menuitem", {name: item}));
+}
 
 // An open confirm dialog hides the table from assistive tech, so its buttons
 // are reached past that while a request runs behind the dialog.

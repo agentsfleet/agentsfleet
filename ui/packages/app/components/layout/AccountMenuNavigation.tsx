@@ -1,10 +1,10 @@
 "use client";
 
+import { AppearanceMenuItem } from "./AppearanceMenuItem";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
-import { ArrowLeftIcon, CaretRightIcon, SignOutIcon, GearIcon } from "@phosphor-icons/react/ssr";
-import { cn, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from "@agentsfleet/design-system";
+import { SignOutIcon } from "@phosphor-icons/react/ssr";
+import { cn, DropdownMenuItem, DropdownMenuSeparator } from "@agentsfleet/design-system";
 import { AuthSignOutButton } from "@/lib/auth/client";
 import { trackNavigationClicked } from "@/lib/analytics/posthog";
 import { NAV_SURFACE, NAV_ICON_SIZE, navSource, resolveActiveHref, resolveHref, type NavEntry } from "./sidebar-navigation-data";
@@ -12,42 +12,21 @@ import { ACCOUNT_NAV, ACCOUNT_SHORTCUTS, SERVICE_SHORTCUTS, BOTTOM_NAV, WORKSPAC
 import type { TenantBilling } from "@/lib/types";
 import { formatHeaderBalance } from "./BalanceLink";
 
-export const MENU_VIEW = { home: "home", settings: "settings" } as const;
-export type MenuView = typeof MENU_VIEW[keyof typeof MENU_VIEW];
-type Props = { view: MenuView; onView: (view: MenuView) => void; workspaceId: string | null; billing?: TenantBilling | null };
+type Props = {workspaceId: string | null; billing?: TenantBilling | null};
 
-export function AccountMenuNavigation({ view, onView, workspaceId, billing }: Props) {
-  const backRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { backRef.current?.focus(); }, [view]);
-  if (view === MENU_VIEW.home) return <>
+export function AccountMenuNavigation({workspaceId, billing}: Props) {
+  return <>
     <DropdownMenuSeparator />
-    <MenuDestination label="Settings" Icon={GearIcon} onSelect={() => onView(MENU_VIEW.settings)} />
+    <MenuLinks items={ACCOUNT_NAV} workspaceId={workspaceId} />
     <MenuLinks items={ACCOUNT_SHORTCUTS} workspaceId={workspaceId} billing={billing} />
+    <MenuLinks items={WORKSPACE_NAV} workspaceId={workspaceId} />
+    <AppearanceMenuItem />
     <DropdownMenuSeparator />
     <MenuLinks items={SERVICE_SHORTCUTS} workspaceId={workspaceId} />
     <MenuLinks items={BOTTOM_NAV} workspaceId={workspaceId} />
     <DropdownMenuSeparator />
     <AuthSignOutButton redirectUrl="/sign-in"><DropdownMenuItem><SignOutIcon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" />Sign out</DropdownMenuItem></AuthSignOutButton>
   </>;
-  return <>
-    <DropdownMenuItem ref={backRef} onSelect={(event) => { event.preventDefault(); onView(MENU_VIEW.home); }}>
-      <ArrowLeftIcon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" />Back
-    </DropdownMenuItem>
-    <DropdownMenuSeparator />
-    <>
-      <DropdownMenuLabel>Workspace</DropdownMenuLabel>
-      <MenuLinks items={WORKSPACE_NAV} workspaceId={workspaceId} />
-      <DropdownMenuSeparator />
-      <DropdownMenuLabel>Account</DropdownMenuLabel>
-      <MenuLinks items={ACCOUNT_NAV} workspaceId={workspaceId} />
-    </>
-  </>;
-}
-
-function MenuDestination({ label, Icon, onSelect }: { label: string; Icon: typeof GearIcon; onSelect: () => void }) {
-  return <DropdownMenuItem onSelect={(event) => { event.preventDefault(); onSelect(); }}>
-    <Icon size={NAV_ICON_SIZE} className="shrink-0 text-muted-foreground" aria-hidden="true" /><span className="flex-1">{label}</span><CaretRightIcon size={14} className="text-muted-foreground" aria-hidden="true" />
-  </DropdownMenuItem>;
 }
 
 function MenuLinks({ items, workspaceId, billing }: { items: NavEntry[]; workspaceId: string | null; billing?: TenantBilling | null }) {

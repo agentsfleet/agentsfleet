@@ -15,7 +15,7 @@ import AddSecretFormDynamic from "@/components/domain/island-dynamic/AddSecretFo
 import { CREATE_SECRET_TOOLTIP } from "../copy";
 import { SecretValueNotice } from "./SecretValueNotice";
 
-const ADD_SECRET_TRIGGER_LABEL = "Create secret";
+const ADD_SECRET_TRIGGER_LABEL = "Add secret";
 
 export default function AddSecretDialog({ workspaceId }: { workspaceId: string }) {
   const [open, setOpen] = useState(false);
@@ -24,15 +24,15 @@ export default function AddSecretDialog({ workspaceId }: { workspaceId: string }
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <TooltipButton type="button" size="sm" tooltip={CREATE_SECRET_TOOLTIP}>
-          <PlusIcon size={14} />
+          <PlusIcon size={16} />
           {ADD_SECRET_TRIGGER_LABEL}
         </TooltipButton>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create secret</DialogTitle>
+          <DialogTitle>Add secret</DialogTitle>
           <DialogDescription>
-            Name it and add one or more fields (like api_key). <SecretValueNotice />
+            <SecretValueNotice />
           </DialogDescription>
         </DialogHeader>
         <AddSecretFormDynamic

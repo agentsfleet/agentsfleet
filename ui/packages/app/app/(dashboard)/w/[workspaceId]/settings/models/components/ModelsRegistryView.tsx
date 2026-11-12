@@ -1,65 +1,59 @@
 "use client";
 
-import { useDeferredValue, useMemo, useRef, useState, useTransition } from "react";
-import { SortAscendingIcon } from "@phosphor-icons/react/ssr";
-import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EmptyState, Pagination, Section, PAGINATION_KIND, DEFAULT_PAGE_SIZE_OPTIONS, type DataTableColumn } from "@agentsfleet/design-system";
-import type { TenantPlatformDefault } from "@/lib/types";
-import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
-import { type RegistryRow } from "./ModelsRegistryCells";
-import { ModelsRegistryCards } from "./ModelsRegistryCards";
-import type { SortState } from "./registry-view";
+import type { ReactNode } from "react";
+import { Badge, Button, DashboardPanel, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, Section, SectionHeader } from "@agentsfleet/design-system";
+import { CpuIcon, DotsThreeIcon, KeyIcon } from "@phosphor-icons/react/ssr";
+import { providerLabel } from "@/lib/api/model-library-types";
+import type { TenantModelEntry, TenantPlatformDefault } from "@/lib/types";
 
 type Props = {
-  rows: RegistryRow[];
-  columns: DataTableColumn<RegistryRow>[];
-  platformDefault: TenantPlatformDefault | null;
-  sort: SortState;
-  onSortChange: (key: string) => void;
-  pending: boolean;
-  onLoadMore?: () => Promise<boolean>;
+  footerAction?: ReactNode;
+  entries: TenantModelEntry[]; platformDefault: TenantPlatformDefault | null; workspaceNames: ReadonlyMap<string, string>;
+  isDefaultLive: boolean; platformDefaultAvailable: boolean; pending: boolean;
+  onSwitchDefault: () => void; onSwitchEntry: (entry: TenantModelEntry, workspaceId: string) => void;
+  onView: (entry: TenantModelEntry) => void; onEdit: (entry: TenantModelEntry) => void; onRemove: (entry: TenantModelEntry) => void;
+  onIntent: () => void; onLoadMore?: () => Promise<boolean>;
 };
 
-export function ModelsRegistryView({ rows, columns, platformDefault, sort, onSortChange, pending, onLoadMore }: Props) {
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE_OPTIONS[0]);
-  const [loading, startLoading] = useTransition();
-  const pageIntent = useRef(0);
-  function resetPage() { pageIntent.current += 1; setPage(1); }
-  const query = useDeferredValue(search.trim().toLowerCase());
-  const matches = useMemo(() => rows.filter((row) => {
-    const label = row.kind === "default" ? `platform default ${platformDefault?.model ?? ""} ${platformDefault?.provider ?? ""}`
-      : `${row.entry.model_id} ${row.entry.provider}`;
-    return label.toLowerCase().includes(query);
-  }), [rows, platformDefault, query]);
-  const currentPage = Math.min(page, Math.max(1, Math.ceil(matches.length / pageSize)));
-  function changePage(next: number, loadMore: () => Promise<boolean>) {
-    if (next <= Math.ceil(matches.length / pageSize)) { setPage(next); return; }
-    const intent = pageIntent.current;
-    const destination = currentPage * pageSize > matches.length ? currentPage : next;
-    startLoading(async () => {
-      if (await loadMore() && pageIntent.current === intent) setPage(destination);
-    });
-  }
-  return <Section className="space-y-xl">
-    <div className="flex flex-wrap items-center gap-lg">
-      <div className="min-w-0 flex-1 basis-full sm:basis-auto"><CollectionToolbar label="Search models" value={search} onChange={(value) => { setSearch(value); resetPage(); }} summary={`${matches.length} of ${rows.length} models`} /></div>
-      <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" aria-label="Sort models"><SortAscendingIcon size={16} aria-hidden="true" />Sort</Button></DropdownMenuTrigger>
-        <DropdownMenuContent align="end">{columns.filter(column => column.sortable).map(column => <DropdownMenuItem key={column.key}
-          onSelect={() => { resetPage(); onSortChange(column.key); }}>
-          {column.header}{sort?.key === column.key ? ` · ${sort.dir}` : ""}
-        </DropdownMenuItem>)}</DropdownMenuContent>
-      </DropdownMenu>
-    </div>
-    <div aria-busy={pending || loading}>
-      {matches.length === 0 ? <EmptyState title="No matching models" description="Try a provider or model name. Use Next to search more models." />
-        : <ModelsRegistryCards columns={columns} rows={matches.slice((currentPage - 1) * pageSize, currentPage * pageSize)} />}
-    </div>
-    {matches.length > pageSize || onLoadMore || pageSize !== DEFAULT_PAGE_SIZE_OPTIONS[0] || currentPage > 1 ? <Pagination kind={PAGINATION_KIND.page} page={currentPage} pageSize={pageSize}
-      hasNext={currentPage * pageSize < matches.length || Boolean(onLoadMore)}
-      total={onLoadMore ? undefined : matches.length} onPageChange={onLoadMore ? next => changePage(next, onLoadMore) : setPage}
-      pageSizeOptions={DEFAULT_PAGE_SIZE_OPTIONS} onPageSizeChange={size => { setPageSize(size); resetPage(); }}
-      isLoading={pending || loading} /> : null}
-
+export function ModelsRegistryView(props: Props) {
+  return <Section className="gap-3xl">
+    <DashboardPanel className="flex flex-wrap items-center gap-xl p-2xl" aria-label="Platform default">
+      <div className="flex min-w-0 basis-full items-start gap-xl sm:flex-1 sm:basis-auto"><CpuIcon size={16} className="mt-xs shrink-0" aria-hidden="true" />
+        <div className="min-w-0"><h2 className="text-label font-semibold">Platform default</h2>
+        <p className="mt-sm text-label text-muted-foreground">{props.platformDefault ? `${props.platformDefault.display_name ?? props.platformDefault.model} · No provider key needed.` : "No platform default is configured."}</p></div></div>
+      {props.isDefaultLive ? <Active /> : <Button variant="outline" aria-label="Make active: platform default" disabled={props.pending || !props.platformDefaultAvailable} onClick={props.onSwitchDefault}>Make active</Button>}
+    </DashboardPanel>
+    <section className="space-y-xl" aria-label="Your models">
+      <SectionHeader className="h-5" actions={<span className="text-eyebrow text-muted-foreground">Provider keys stay hidden</span>}>Your models <Badge className="ml-md">{props.entries.length}</Badge></SectionHeader>
+      <DashboardPanel padding="none"><ul className="divide-y divide-border-subtle">
+        {props.entries.length ? props.entries.map(entry => <ModelRow key={entry.id} entry={entry} {...props} />)
+          : <li className="p-xl text-label text-muted-foreground">No models yet. Create a model to connect your own provider.</li>}
+      </ul></DashboardPanel>
+      {props.onLoadMore ? <Button variant="outline" disabled={props.pending} onClick={() => {void props.onLoadMore?.();}}>Load more models</Button> : null}
+      <p className="text-eyebrow leading-eyebrow text-text-dim">Your active model is the default for new work. Each credential stays in its selected workspace.</p>
+    </section>
+    <div className="flex flex-wrap items-center justify-between gap-xl border-t border-border py-5"><div><p className="text-eyebrow text-text-dim">Bring your own provider</p>
+      <p className="mt-sm text-label">Provider, model, and key. All in one form.</p></div>{props.footerAction}</div>
   </Section>;
+}
+
+function Active() {
+  return <span className="inline-flex items-center gap-md text-label font-semibold text-success"><span className="size-1.5 rounded-full bg-success" aria-hidden="true" />Active</span>;
+}
+
+function ModelRow({entry, ...props}: Props & {entry: TenantModelEntry}) {
+  return <li aria-label={entry.model_id} className="flex min-w-0 flex-wrap items-center gap-xl p-5">
+    <span className="hidden size-10 shrink-0 items-center justify-center rounded-control border border-border sm:flex" aria-hidden="true"><CpuIcon size={16} /></span>
+    <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto"><p title={entry.model_id} className="break-words text-label font-medium">{entry.display_name ?? entry.model_id}</p>
+      <p className="mt-sm text-label text-muted-foreground">{entry.provider ? providerLabel(entry.provider) : "Unknown provider"}</p>
+      <p className="mt-md flex items-center gap-md text-eyebrow text-text-dim"><KeyIcon size={14} aria-hidden="true" /><span className="break-words">{entry.has_key ? entry.secret_ref : "Key required"} · {props.workspaceNames.get(entry.workspace_id ?? "") ?? "Credential workspace"}</span></p></div>
+    {entry.active ? <Active /> : <Button variant="outline" aria-label={`Make active: ${entry.model_id}`} title={!entry.workspace_id ? "The credential workspace is unavailable" : !entry.has_key ? "A provider key is required" : undefined} disabled={props.pending || !entry.workspace_id || !entry.has_key} onClick={() => {if (entry.workspace_id) props.onSwitchEntry(entry, entry.workspace_id);}}>Make active</Button>}
+    <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" disabled={props.pending} aria-label={`Manage ${entry.model_id}`} onFocus={props.onIntent} onPointerEnter={props.onIntent}><DotsThreeIcon size={16} /></Button></DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => props.onView(entry)}>Model details</DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => props.onEdit(entry)}>Edit model</DropdownMenuItem>
+        <DropdownMenuItem disabled={entry.active} onSelect={() => props.onRemove(entry)}>Remove model</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  </li>;
 }

@@ -26,18 +26,20 @@
 use af_core::error_code::{Coded as _, Logged};
 use af_core::id::Uuid7;
 use afd_billing::biller::{Account, Ask, Funds, WorkKey};
+use afd_billing::rates::Estimate;
 use jiff::Timestamp;
 
 use crate::error::{Result, budget_exhausted, renewal_no_credits};
 use crate::lease::pull::LeaseService;
 use crate::lease::renew::Renewing;
+use crate::lease::usage::Pricing;
 use afd_billing::budget::{self, Verdict};
 
 /// The tenant's pool cannot fund another slice.
 const EVENT_NO_CREDITS: &str = "renew_no_credits";
 
 /// The fleet reached a ceiling its author declared.
-const EVENT_BUDGET_BREACH: &str = "renew_budget_breach";
+pub(in crate::lease) const EVENT_BUDGET_BREACH: &str = "renew_budget_breach";
 
 /// A gate could not be read, and the renewal was admitted anyway.
 const EVENT_GATE_UNREADABLE: &str = "renew_gate_unreadable_admitted";
@@ -76,30 +78,49 @@ impl LeaseService {
     /// A tenant with no wallet row is admitted, for the reason the issue gate
     /// admits one. An outage the biller's outage policy admitted answers
     /// [`Funds::Unconfirmed`] and renews.
-    async fn funds_cover(
+    pub(crate) async fn funds_cover(
         &self,
         lease: &Renewing,
         lease_key: &Uuid7,
         lease_id: &str,
         now: Timestamp,
     ) -> Result<()> {
-        let posture = super::renew::posture_of(lease);
-        let funds: core::result::Result<Funds, afd_billing::Error> = async {
-            let estimate = self
-                .accounts
-                .estimate(posture, &lease.provider, &lease.model, now)
-                .await?;
-            let ask = Ask {
-                work: WorkKey::FleetLease(lease_key.clone()),
-                payer: Account {
-                    tenant: lease.tenant_id.clone(),
-                    workspace: lease.workspace_id.clone(),
-                },
-                next: estimate.floor(),
-            };
-            self.biller.check(&ask).await
-        }
-        .await;
+        let posture = Pricing::posture_of(&lease.posture)?;
+        let estimate = self
+            .accounts
+            .estimate(posture, &lease.provider, &lease.model, now)
+            .await
+            .map_err(|fault| std::sync::Arc::new(crate::Error::from(fault)));
+        self.funds_cover_at(lease, lease_key, lease_id, estimate)
+            .await
+    }
+
+    /// [`Self::funds_cover`] against a floor the caller already priced, as the
+    /// host batch does from its cached book. A floor that could not
+    /// be priced fails open, as an unreadable balance does.
+    pub(crate) async fn funds_cover_at(
+        &self,
+        lease: &Renewing,
+        lease_key: &Uuid7,
+        lease_id: &str,
+        estimate: core::result::Result<Estimate, std::sync::Arc<crate::Error>>,
+    ) -> Result<()> {
+        let estimate = match estimate {
+            Ok(estimate) => estimate,
+            Err(fault) => {
+                admit_unreadable("balance", lease, lease_id, &fault);
+                return Ok(());
+            }
+        };
+        let ask = Ask {
+            work: WorkKey::FleetLease(lease_key.clone()),
+            payer: Account {
+                tenant: lease.tenant_id.clone(),
+                workspace: lease.workspace_id.clone(),
+            },
+            next: estimate.floor(),
+        };
+        let funds = self.biller.check(&ask).await;
 
         match funds {
             Ok(Funds::Covered | Funds::Unconfirmed) => Ok(()),
@@ -139,7 +160,7 @@ impl LeaseService {
             // not a ceiling it may ignore — and unlike the outage below, it
             // will read the same on every subsequent tick.
             Err(fault) if fault.is_config_permanent() => {
-                return Err(refuse_unreadable_budget(lease, lease_id, &fault));
+                return Err(refuse_unreadable_budget(&lease.fleet_id, lease_id, &fault));
             }
             Err(fault) => {
                 admit_unreadable("budget", lease, lease_id, &fault);
@@ -179,12 +200,15 @@ impl LeaseService {
 }
 
 /// Refuse a renewal whose stored budget will never parse, and say so.
-fn refuse_unreadable_budget(
-    lease: &Renewing,
+///
+/// One place for the per-lease path and the host batch, so a fleet whose
+/// ceiling cannot be read is refused and logged the same way under either.
+pub(in crate::lease) fn refuse_unreadable_budget(
+    fleet_id: &Uuid7,
     lease_id: &str,
     fault: &crate::Error,
 ) -> crate::Error {
-    let fleet = lease.fleet_id.as_str();
+    let fleet = fleet_id.as_str();
     let Logged { error_code, reason } = fault.logged();
     tracing::warn!(
         error_code,
@@ -215,6 +239,29 @@ fn admit_unreadable(gate: &'static str, lease: &Renewing, lease_id: &str, fault:
         reason,
         event = EVENT_GATE_UNREADABLE,
         "a renewal gate could not be read; the run is admitted for one more slice"
+    );
+}
+
+/// Admit a fleet's leases whose gate could not be read, and say so.
+///
+/// The host batch reads each fleet's ceiling once for the whole frame, so it
+/// has a fleet and a fault but no single lease to name. It logs the same event
+/// the per-lease path does, once per fleet, so an operator greps one event for
+/// every instance of the fail-open posture.
+pub(in crate::lease) fn admit_unreadable_fleet(
+    gate: &'static str,
+    fleet_id: &Uuid7,
+    fault: &crate::Error,
+) {
+    let fleet = fleet_id.as_str();
+    let Logged { error_code, reason } = fault.logged();
+    tracing::warn!(
+        error_code,
+        fleet_id = fleet,
+        gate,
+        reason,
+        event = EVENT_GATE_UNREADABLE,
+        "a renewal gate could not be read; the fleet's leases are admitted for one more slice"
     );
 }
 
@@ -278,6 +325,22 @@ mod tests {
             admit_unreadable("budget", &lease, "lease-fixture", &fault);
             admit_unreadable("spend", &lease, "lease-fixture", &fault);
         }
+        Ok(())
+    }
+
+    /// The batch has a fleet and no single lease, and says the same thing.
+    #[test]
+    fn an_unreadable_fleet_ceiling_is_admitted_and_logged_once() -> Result<(), &'static str> {
+        let log = af_core::test_util::trace::Capture::install();
+        let lease = renewing()?;
+        let fault = crate::error::query("revision read")(sqlx::Error::PoolTimedOut);
+
+        super::admit_unreadable_fleet("budget", &lease.fleet_id, &fault);
+
+        let line = log.only(super::EVENT_GATE_UNREADABLE);
+        assert_eq!(line.field("fleet_id"), Some(lease.fleet_id.as_str()));
+        assert_eq!(line.field("gate"), Some("budget"));
+        assert_eq!(line.field("error_code"), Some(fault.code().as_str()));
         Ok(())
     }
 

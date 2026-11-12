@@ -61,7 +61,7 @@ describe("SecretsList component", () => {
     );
     const props = {
       workspaceId: "ws_1",
-      secrets,
+      secrets: secrets.map(secret => ({...secret, kind: "custom_secret"})),
       ...(protectedSecretName === undefined ? {} : { protectedSecretName }),
     };
     // The Created cell now renders a relative <Time>, which mounts a Radix
@@ -82,7 +82,7 @@ describe("SecretsList component", () => {
             null,
             React.createElement(SecretsList, {
               workspaceId: "ws_1",
-              secrets,
+              secrets: secrets.map(secret => ({...secret, kind: "custom_secret"})),
               protectedSecretName: nextProtectedSecretName,
             } as never),
           ),
@@ -95,9 +95,10 @@ describe("SecretsList component", () => {
     const user = userEvent.setup();
     await renderList(undefined, "fly");
 
-    const protectedDelete = screen.getByLabelText("Secret fly is in model setup");
+    await user.click(screen.getByRole("button", {name: "Manage fly"}));
+    const protectedDelete = screen.getByRole("button", {name: "Delete secret"});
     expect((protectedDelete as HTMLButtonElement).disabled).toBe(true);
-    expect(protectedDelete.getAttribute("title")).toMatch(/Switch model setup/i);
+    expect(screen.getByText(/Choose another model before deleting it/)).toBeTruthy();
     await user.click(protectedDelete);
 
     expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -108,7 +109,8 @@ describe("SecretsList component", () => {
     const user = userEvent.setup();
     const rendered = await renderList();
 
-    await user.click(screen.getByLabelText(/Delete secret fly/i));
+    await user.click(screen.getByRole("button", {name: "Manage fly"}));
+    await user.click(screen.getByRole("button", {name: "Delete secret"}));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     rendered.rerenderList("fly");
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
@@ -121,30 +123,12 @@ describe("SecretsList component", () => {
     expect(screen.getByText(/^Keep your credentials in one place$/i)).toBeTruthy();
   });
 
-  it("renders one row per secret with name and a human timestamp", async () => {
-    const { container } = await renderList();
-    expect(screen.getByText("fly")).toBeTruthy();
-    expect(screen.getByText("slack")).toBeTruthy();
-    expect(screen.queryByText("Encrypted and hidden.")).toBeNull();
-    // Created now renders a relative <Time> ("… ago"); the absolute Apr 26 2026
-    // string moved into the hover tooltip. Each row carries a desktop and a
-    // mobile timestamp; CSS selects one at each width.
-    const times = container.querySelectorAll("time");
-    expect(times).toHaveLength(4);
-    for (const t of times) {
-      expect(t.getAttribute("datetime")).toMatch(/^2026-04-26T/);
-      expect(t.textContent).toMatch(/ago$/);
-    }
-  });
-
-  it("sorts secret names and creation times from their header arrows", async () => {
-    const user = userEvent.setup();
+  it("shows the approved columns without implying the API returned secret values or fleet access", async () => {
     await renderList();
-
-    for (const name of ["Name", "Created"]) {
-      await user.click(screen.getByRole("button", { name }));
-      expect(screen.getByRole("columnheader", { name }).getAttribute("aria-sort")).not.toBe("none");
-    }
+    for (const name of ["Name", "Type", "Value", "Available to"]) expect(screen.getByRole("columnheader", {name})).toBeTruthy();
+    expect(screen.getAllByText("Hidden")).toHaveLength(2);
+    expect(screen.getAllByText("Access details unavailable")).toHaveLength(2);
+    expect(screen.queryByRole("columnheader", {name: "Created"})).toBeNull();
   });
 
   it("test_secret_write_only_masked: stored secret is masked (suffix only), Replace present, never re-revealed", async () => {
@@ -159,7 +143,8 @@ describe("SecretsList component", () => {
 
     // The edit affordance is a Replace/Rotate flow, never a reveal: opening it
     // asks the user to re-enter the secret rather than displaying the stored one.
-    await user.click(screen.getByLabelText(/Edit secret openai-key/i));
+    await user.click(screen.getByRole("button", {name: "Manage openai-key"}));
+    await user.click(screen.getByRole("button", {name: "Replace value"}));
     await waitFor(() => expect(screen.getByText(/Edit secret .*openai-key/i)).toBeTruthy());
     expect(screen.getByRole("button", { name: /^save changes$/i })).toBeTruthy();
     expect(screen.getByText(/re-enter every field you want to keep/i)).toBeTruthy();
@@ -171,7 +156,8 @@ describe("SecretsList component", () => {
     deleteSecretActionMock.mockResolvedValue({ ok: true, data: undefined });
     const user = userEvent.setup();
     await renderList();
-    await user.click(screen.getByLabelText(/Delete secret fly/i));
+    await user.click(screen.getByRole("button", {name: "Manage fly"}));
+    await user.click(screen.getByRole("button", {name: "Delete secret"}));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() =>
@@ -184,7 +170,8 @@ describe("SecretsList component", () => {
     deleteSecretActionMock.mockResolvedValue({ ok: false, error: "network down" });
     const user = userEvent.setup();
     await renderList();
-    await user.click(screen.getByLabelText(/Delete secret fly/i));
+    await user.click(screen.getByRole("button", {name: "Manage fly"}));
+    await user.click(screen.getByRole("button", {name: "Delete secret"}));
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() => expect(deleteSecretActionMock).toHaveBeenCalled());
     await waitFor(() =>
@@ -204,7 +191,8 @@ describe("SecretsList component", () => {
     });
     const user = userEvent.setup();
     await renderList();
-    await user.click(screen.getByLabelText(/Delete secret fly/i));
+    await user.click(screen.getByRole("button", {name: "Manage fly"}));
+    await user.click(screen.getByRole("button", {name: "Delete secret"}));
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/Not authenticated/),
@@ -214,7 +202,8 @@ describe("SecretsList component", () => {
   it("cancel on dialog clears target without invoking delete", async () => {
     const user = userEvent.setup();
     await renderList();
-    await user.click(screen.getByLabelText(/Delete secret slack/i));
+    await user.click(screen.getByRole("button", {name: "Manage slack"}));
+    await user.click(screen.getByRole("button", {name: "Delete secret"}));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
@@ -224,7 +213,8 @@ describe("SecretsList component", () => {
   it("confirm on an empty-named secret is a no-op", async () => {
     const user = userEvent.setup();
     await renderList([{ name: "", created_at: new Date(Date.UTC(2026, 3, 26, 12, 2)).toISOString() }]);
-    await user.click(screen.getByLabelText(/^Delete secret\s*$/i));
+    await user.click(screen.getByRole("button", {name: "Manage"}));
+    await user.click(screen.getByRole("button", {name: "Delete secret"}));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() => expect(screen.getByRole("button", { name: /^delete$/i })).toBeTruthy());
@@ -234,7 +224,8 @@ describe("SecretsList component", () => {
   it("clicking edit opens the rotate-only edit dialog, and Cancel closes it", async () => {
     const user = userEvent.setup();
     await renderList();
-    await user.click(screen.getByLabelText(/Edit secret fly/i));
+    await user.click(screen.getByRole("button", {name: "Manage fly"}));
+    await user.click(screen.getByRole("button", {name: "Replace value"}));
     await waitFor(() => expect(screen.getByText(/Edit secret .*fly/i)).toBeTruthy());
     expect(screen.getByRole("button", { name: /^save changes$/i })).toBeTruthy();
     // Editing keeps the reference name fixed.
@@ -248,13 +239,15 @@ describe("SecretsList component", () => {
     deleteSecretActionMock.mockResolvedValueOnce({ ok: false, error: "boom" });
     const user = userEvent.setup();
     await renderList();
-    await user.click(screen.getByLabelText(/Delete secret fly/i));
+    await user.click(screen.getByRole("button", {name: "Manage fly"}));
+    await user.click(screen.getByRole("button", {name: "Delete secret"}));
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toMatch(/boom/),
     );
     await user.click(screen.getByRole("button", { name: /^cancel$/i }));
-    await user.click(screen.getByLabelText(/Delete secret slack/i));
+    await user.click(screen.getByRole("button", {name: "Manage slack"}));
+    await user.click(screen.getByRole("button", {name: "Delete secret"}));
     await waitFor(() => expect(screen.getByRole("alertdialog")).toBeTruthy());
     expect(screen.queryByRole("alert")).toBeNull();
   });

@@ -53,7 +53,7 @@ it("shows attention before the nearest wake-up and retains additional schedule d
   const view = render(<WorkWakeups schedules={[SCHEDULE, earlier, failed]} compact />, {wrapper: TooltipProvider});
   const first = view.container.querySelector("ul > li");
   expect(first?.textContent).toContain("Registration failed");
-  expect(first?.textContent).not.toContain("Unregistered check");
+  expect(first?.textContent).toContain("Unregistered check");
   fireEvent.click(screen.getByText("2 more"));
   expect(screen.getByText("Earlier check")).toBeTruthy();
   view.rerender(<WorkWakeups schedules={[SCHEDULE, earlier]} compact />);
@@ -63,4 +63,14 @@ it("shows attention before the nearest wake-up and retains additional schedule d
   expect(view.container.querySelector("ul > li time")?.getAttribute("datetime")).toBe("2026-11-11T12:30:00.000Z");
   view.rerender(<WorkWakeups schedules={[SCHEDULE, {...SCHEDULE, schedule_id: "missing", next_run_at: null}]} compact />);
   expect(view.container.querySelector("ul > li time")?.getAttribute("datetime")).toBe("2026-11-11T12:30:00.000Z");
+});
+
+it.each([
+  ["paused", "syncing", "Pause pending."], ["paused", "failed", "Pause failed. Open setup to retry."],
+  ["deleting", "syncing", "Removal pending."], ["deleting", "failed", "Removal failed. Open setup to retry."],
+])("describes %s intent accurately while sync is %s", (status, sync, label) => {
+  render(<WorkWakeups schedules={[{...SCHEDULE, status, sync}]} />);
+  expect(screen.getByText(label)).toBeTruthy();
+  expect(document.querySelector("time")).toBeNull();
+  expect(screen.queryByText(/registration/i)).toBeNull();
 });

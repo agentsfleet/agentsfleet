@@ -95,6 +95,14 @@ describe("recorded tool activity", () => {
     const group = toolGroupActivity([part("file_read"), part("file_write")], [0, 1], true);
     expect(group.state).toBe(RUNNING); expect(group.target).toBe("a.ts · 2 active");
   });
+
+  it.each([
+    [138000, "Worked for 2m 18s"], [0, "Worked for 0s"],
+    [undefined, "Worked"], [null, "Worked"], [NaN, "Worked"], [-1, "Worked"],
+  ])("shows only valid recorded duration %s", (wallMs, label) => {
+    const content = [part("file_read", SUCCESS), part("exec_command", SUCCESS)];
+    expect(toolGroupActivity(content, [0, 1], false, wallMs).label).toBe(`${label} · 1 tool, 1 command`);
+  });
 });
 
 function part(toolName: string, state?: Exclude<(typeof CELL_STATE)[keyof typeof CELL_STATE], "running" | "settled">): Extract<MessageState["content"][number], {type: "tool-call"}> {

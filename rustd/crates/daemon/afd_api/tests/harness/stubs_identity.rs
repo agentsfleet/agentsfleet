@@ -43,6 +43,9 @@ pub(crate) struct RecordingWriteback {
     written: Arc<Mutex<Vec<WroteBack>>>,
     /// What the provider answers with, when a dimension needs it to refuse.
     outcome: Option<MetadataUnwritten>,
+    /// Whether it refuses only the first write, as a provider that recovers
+    /// before the redelivery does.
+    first_only: bool,
 }
 
 impl RecordingWriteback {
@@ -57,6 +60,16 @@ impl RecordingWriteback {
         Self {
             written: Arc::new(Mutex::new(Vec::new())),
             outcome: Some(outcome),
+            first_only: false,
+        }
+    }
+
+    /// A seam that refuses the first write and accepts every later one, so a
+    /// suite can prove a redelivery finishes what the first delivery could not.
+    pub(crate) fn refusing_first(outcome: MetadataUnwritten) -> Self {
+        Self {
+            first_only: true,
+            ..Self::refusing(outcome)
         }
     }
 
@@ -76,17 +89,19 @@ impl SignupMetadata for RecordingWriteback {
         tenant_id: &str,
         scopes: &str,
     ) -> impl Future<Output = Result<(), MetadataUnwritten>> + Send {
-        self.written
-            .lock()
-            .expect("the writeback log is healthy")
-            .push(WroteBack {
-                subject: subject.as_str().to_owned(),
-                tenant_id: tenant_id.to_owned(),
-                scopes: scopes.to_owned(),
-            });
+        let mut written = self.written.lock().expect("the writeback log is healthy");
+        written.push(WroteBack {
+            subject: subject.as_str().to_owned(),
+            tenant_id: tenant_id.to_owned(),
+            scopes: scopes.to_owned(),
+        });
+        let refused = self
+            .outcome
+            .filter(|_| !self.first_only || written.len() == 1);
+        drop(written);
         // Ready rather than `async`: recording is synchronous, and an
         // `async` body with no await would be a future that only looks like it
         // does work.
-        std::future::ready(self.outcome.map_or(Ok(()), Err))
+        std::future::ready(refused.map_or(Ok(()), Err))
     }
 }

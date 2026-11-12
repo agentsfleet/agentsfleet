@@ -55,10 +55,7 @@ async fn republishing_the_same_connection_does_not_start_an_extra_renewal() -> c
 
 #[tokio::test(start_paused = true)]
 async fn the_full_recovery_and_answer_budgets_preserve_running_work() -> crate::Result<()> {
-    let connected = RENEWAL_TICK
-        + STREAM_ANSWER_TIMEOUT
-        + af_core::timing::RECONNECT_JITTER_MAX
-        + af_core::timing::STREAM_RECOVERY_BUDGET;
+    let connected = RENEWAL_TICK + STREAM_ANSWER_TIMEOUT + af_core::timing::STREAM_RECOVERY_BUDGET;
     recovered(connected, STREAM_ANSWER_TIMEOUT).await
 }
 

@@ -218,3 +218,5 @@ export {
   type ToastProps,
   type ToastSeverity,
 } from "./design-system";
+
+export { Checkbox, RadioGroup, RadioGroupItem, Collapsible, CollapsibleTrigger, CollapsibleContent } from "./design-system";

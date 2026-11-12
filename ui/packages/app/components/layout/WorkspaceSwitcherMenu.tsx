@@ -17,7 +17,7 @@ import type { TenantBilling } from "@/lib/types";
 import CreateWorkspaceDialogDynamic from "@/components/domain/island-dynamic/CreateWorkspaceDialogDynamic";
 import { useWorkspaceMenu } from "./workspace-menu-state";
 import { type SwitcherSection, WORKSPACE_LABEL } from "./workspace-groups";
-import { AccountMenuNavigation, MENU_VIEW, type MenuView } from "./AccountMenuNavigation";
+import { AccountMenuNavigation } from "./AccountMenuNavigation";
 import { WorkspaceSwitcherTrigger } from "./WorkspaceSwitcherTrigger";
 import { NAV_ICON_SIZE } from "./sidebar-navigation-data";
 
@@ -31,7 +31,6 @@ type WorkspaceSwitcherMenuProps = {
 };
 
 export default function WorkspaceSwitcherMenu({ open, collapsed = false, workspaces, onOpenChange, billing }: WorkspaceSwitcherMenuProps) {
-  const [view, setView] = useState<MenuView>(MENU_VIEW.home);
   const menu = useWorkspaceMenu(workspaces);
   const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
   const switcherTriggerRef = useRef<HTMLButtonElement>(null);
@@ -39,9 +38,8 @@ export default function WorkspaceSwitcherMenu({ open, collapsed = false, workspa
   const entryFocusedRef = useRef(false);
   useEffect(() => {
     entryFocusedRef.current = false;
-    if (!open) setView(MENU_VIEW.home);
-    else if (view === MENU_VIEW.home) firstItemRef.current?.focus();
-  }, [open, view]);
+    if (open) firstItemRef.current?.focus();
+  }, [open]);
   return <>
     <Nav ref={setPortalContainer} aria-label="Workspaces" className="flex w-full min-w-0 items-center">
       <DropdownMenu open={open} onOpenChange={onOpenChange} modal={false}>
@@ -57,8 +55,8 @@ export default function WorkspaceSwitcherMenu({ open, collapsed = false, workspa
             entryFocusedRef.current = true;
             firstItemRef.current?.focus();
           }}>
-          {view === MENU_VIEW.home ? <WorkspaceChoices menu={menu} firstItemRef={firstItemRef} /> : null}
-          <AccountMenuNavigation view={view} onView={setView} workspaceId={menu.activeId} billing={billing} />
+          <WorkspaceChoices menu={menu} firstItemRef={firstItemRef} />
+          <AccountMenuNavigation workspaceId={menu.activeId} billing={billing} />
         </DropdownMenuContent>
       </DropdownMenu>
     </Nav>

@@ -80,14 +80,6 @@ async fn two_families_on_one_fleet_each_verify_at_their_own_url() {
 }
 
 #[tokio::test]
-async fn the_first_trigger_svix_route_is_gone() {
-    let router = harness::Fleet::new().router();
-    let path = format!("/v1/webhooks/svix/{}", signed::FLEET);
-    let response = harness::send_with_headers(&router, Method::POST, &path, None, "{}", &[]).await;
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
-}
-
-#[tokio::test]
 async fn an_unstorable_credential_name_is_unconfigured_without_a_datastore_read() {
     let ingress = harness::unreachable_ingress(afd_db::test_util::unreachable_db());
     let credential = "n".repeat(65);

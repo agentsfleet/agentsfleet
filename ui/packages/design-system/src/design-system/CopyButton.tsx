@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 import { CheckCircleIcon, CopyIcon, XIcon } from "@phosphor-icons/react/ssr";
 import { Button } from "./Button";
 import { cn } from "../utils";
@@ -28,7 +28,7 @@ const FAILED_LABEL = "Copy failed — select the value and copy it manually";
 
 type CopyOutcome = "idle" | "copied" | "failed";
 
-export interface CopyButtonProps {
+export interface CopyButtonProps extends Omit<ComponentProps<typeof Button>, "value" | "children"> {
   /** Text written to the clipboard. */
   value: string;
   /** Accessible name, e.g. "Copy workspace ID". */
@@ -49,7 +49,7 @@ export interface CopyButtonProps {
   className?: string;
 }
 
-export function CopyButton({ value, label, showLabel = false, onOutcomeChange, className }: CopyButtonProps) {
+export function CopyButton({ value, label, showLabel = false, onOutcomeChange, className, onClick, ...props }: CopyButtonProps) {
   const [outcome, setOutcome] = useState<CopyOutcome>("idle");
   const reset = useResettableTimeout();
 
@@ -84,10 +84,12 @@ export function CopyButton({ value, label, showLabel = false, onOutcomeChange, c
 
   return (
     <Button
+      {...props}
       type="button"
       variant={showLabel ? "secondary" : "ghost"}
       size={showLabel ? "sm" : "icon-sm"}
-      onClick={() => {
+      onClick={event => {
+        onClick?.(event);
         void copy();
       }}
       aria-label={accessibleName}

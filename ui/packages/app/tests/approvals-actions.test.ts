@@ -28,7 +28,7 @@ import {
   listApprovalsAction,
   approveApprovalAction,
   denyApprovalAction,
-} from "@/app/(dashboard)/w/[workspaceId]/approvals/actions";
+} from "@/lib/actions/fleet-approvals";
 
 beforeEach(() => {
   vi.clearAllMocks();

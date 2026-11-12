@@ -6,9 +6,8 @@ import { cn } from "../utils";
 
 const dashboardPanelVariants = cva(
   [
-    "rounded-lg border border-border bg-card",
+    "rounded-md border border-border bg-card",
     "transition-colors duration-snap ease-snap",
-    "hover:border-border-strong",
   ].join(" "),
   {
     variants: {

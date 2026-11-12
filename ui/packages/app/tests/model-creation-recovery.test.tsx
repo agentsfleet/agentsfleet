@@ -11,7 +11,7 @@ async function start(activate = false) {
   const fixture = await renderDialog();
   const dialog = screen.getByRole("dialog");
   await fillKnownForm(fixture.user, dialog, CREDENTIAL);
-  if (activate) await fixture.user.click(within(dialog).getByRole("switch", {name: "Make active"}));
+  if (activate) await fixture.user.click(within(dialog).getByRole("checkbox", {name: "Make active"}));
   await fixture.user.click(within(dialog).getByRole("button", {name: "Create model"}));
   return {...fixture, dialog: within(dialog)};
 }

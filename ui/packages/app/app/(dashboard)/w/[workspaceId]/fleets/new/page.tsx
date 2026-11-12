@@ -5,11 +5,13 @@ import { requireCredential } from "@/lib/auth/credential";
 import { listTenantWorkspacesCached } from "@/lib/workspace";
 import { WorkspaceChat } from "@/components/domain/chat/WorkspaceChat";
 import { SOURCE_KIND } from "@/lib/api/draft-vocabulary";
+import { PLUGIN_CREATE_PROMPT } from "@/components/domain/chat/chat-defaults";
 
 export const dynamic = "force-dynamic";
 const SearchSchema = z.union([
   z.object({draft: z.uuidv7()}).strict(),
-  z.object({library: z.string().min(1), revision: z.uuidv7()}).strict(),
+  z.object({library: z.string().min(1).max(128), revision: z.uuidv7(), intent: z.enum(["edit", "new"]).optional()}).strict(),
+  z.object({starter: z.literal("plugin")}).strict(),
   z.object({fleet: z.uuidv7(), setup_revision: z.string().regex(/^[1-9][0-9]*$/)}).strict(),
   z.object({}).strict(),
 ]);
@@ -25,7 +27,11 @@ export default async function NewFleetPage({params, searchParams}: {
   const query = SearchSchema.safeParse(await searchParams);
   if (!query.success) notFound();
   const source = "library" in query.data ? {kind: SOURCE_KIND.library, library_id: query.data.library, revision_id: query.data.revision} : "fleet" in query.data ? {kind: SOURCE_KIND.fleet, fleet_id: query.data.fleet, setup_revision: query.data.setup_revision} : undefined;
+  const editingPlugin = "intent" in query.data && query.data.intent === "edit" && "library" in query.data;
+  const prompt = editingPlugin ? "Update this plugin’s setup." : "library" in query.data
+    ? "Start a new fleet from this plugin. I want to review and adapt its setup." : "starter" in query.data ? PLUGIN_CREATE_PROMPT : undefined;
   return <PageLayout fullHeight className="flex min-h-0 flex-1 flex-col">
-    <WorkspaceChat account={workspace.account.tenant_id} workspace={workspaceId} draft={"draft" in query.data ? query.data.draft : undefined} source={source} />
+    <WorkspaceChat account={workspace.account.tenant_id} workspace={workspaceId} draft={"draft" in query.data ? query.data.draft : undefined} source={source}
+      prompt={prompt} publicationTarget={editingPlugin && "library" in query.data ? query.data.library : undefined} />
   </PageLayout>;
 }

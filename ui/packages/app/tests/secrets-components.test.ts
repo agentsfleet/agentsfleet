@@ -133,43 +133,37 @@ describe("AddSecretDialog", () => {
 
   it("does not mount dialog content until the trigger is clicked", async () => {
     await renderDialog();
-    expect(screen.getByRole("button", { name: "Create secret" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add secret" })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("opens the create-secret form when the trigger is clicked", async () => {
     const user = userEvent.setup();
     await renderDialog();
-    await user.click(screen.getByRole("button", { name: "Create secret" }));
+    await user.click(screen.getByRole("button", { name: "Add secret" }));
     await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
     expect(
-      within(screen.getByRole("dialog")).getByRole("heading", { name: "Create secret" }),
+      within(screen.getByRole("dialog")).getByRole("heading", { name: "Add secret" }),
     ).toBeTruthy();
-    await waitFor(() => expect(screen.getByLabelText(/secret name/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toBeTruthy());
   });
 
-  it("links out to the docs from the dialog description", async () => {
-    const user = userEvent.setup();
+  it("explains one-time storage before the first value is entered", async () => {
     await renderDialog();
-    await user.click(screen.getByRole("button", { name: "Create secret" }));
-    const link = await screen.findByRole("link", { name: /learn more/i });
-    // Pinned to a page the docs site actually serves — `fleets/secrets.mdx`.
-    // The earlier value, `/fleets/credentials`, is a page that has never existed
-    // and carries no redirect, so this assertion held a 404 in place.
-    expect(link.getAttribute("href")).toBe("https://docs.agentsfleet.net/fleets/secrets");
-    expect(link.getAttribute("target")).toBe("_blank");
+    await userEvent.setup().click(screen.getByRole("button", {name: "Add secret"}));
+    expect(await screen.findByLabelText("Value")).toHaveProperty("type", "password");
+    expect(screen.getByText("Secret values are hidden after saving.")).toBeTruthy();
   });
 
   it("closes the dialog after a successful submit (onDone wiring)", async () => {
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "stripe" } });
     const user = userEvent.setup();
     await renderDialog();
-    await user.click(screen.getByRole("button", { name: "Create secret" }));
-    await waitFor(() => expect(screen.getByLabelText(/secret name/i)).toBeTruthy());
-    await user.type(screen.getByLabelText(/secret name/i), "stripe");
-    await user.type(screen.getByLabelText("Field 1 name"), "api_key");
-    await user.type(screen.getByLabelText("Field 1 value"), "sk-test");
-    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Create" }));
+    await user.click(screen.getByRole("button", { name: "Add secret" }));
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toBeTruthy());
+    await user.type(screen.getByLabelText(/^name$/i), "stripe");
+    await user.type(screen.getByLabelText("Value"), "sk-test");
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Add" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(routerRefresh).toHaveBeenCalled();
   });
@@ -177,7 +171,7 @@ describe("AddSecretDialog", () => {
   it("stays open and never calls the action when dismissed via Close", async () => {
     const user = userEvent.setup();
     await renderDialog();
-    await user.click(screen.getByRole("button", { name: "Create secret" }));
+    await user.click(screen.getByRole("button", { name: "Add secret" }));
     await waitFor(() => expect(screen.getByRole("dialog")).toBeTruthy());
     await user.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -187,8 +181,8 @@ describe("AddSecretDialog", () => {
   it("closes from Cancel without creating a secret", async () => {
     const user = userEvent.setup();
     await renderDialog();
-    await user.click(screen.getByRole("button", { name: "Create secret" }));
-    await waitFor(() => expect(screen.getByLabelText(/secret name/i)).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: "Add secret" }));
+    await waitFor(() => expect(screen.getByLabelText(/^name$/i)).toBeTruthy());
     await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: /^cancel$/i }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(createSecretActionMock).not.toHaveBeenCalled();
@@ -203,14 +197,15 @@ describe("AddSecretForm component", () => {
       "../app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm"
     );
     render(React.createElement(AddSecretForm, { workspaceId: "ws_1" } as never));
+    await userEvent.setup().click(screen.getByRole("button", {name: "Use named fields"}));
   }
 
-  const ADD_SECRET = { name: /^create$/i } as const;
+  const ADD_SECRET = { name: /^add$/i } as const;
   const ADD_FIELD = { name: /\+ add field/i } as const;
 
   it("renders secret name, one field row, add-field, and submit", async () => {
     await renderForm();
-    expect(screen.getByLabelText(/secret name/i)).toBeTruthy();
+    expect(screen.getByLabelText(/^name$/i)).toBeTruthy();
     expect(screen.getByLabelText("Field 1 name")).toBeTruthy();
     expect(screen.getByLabelText("Field 1 value")).toBeTruthy();
     expect(screen.getByRole("button", ADD_FIELD)).toBeTruthy();
@@ -232,7 +227,7 @@ describe("AddSecretForm component", () => {
   it("rejects an invalid (non-identifier) field name", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText(/^name$/i), "stripe");
     await user.type(screen.getByLabelText("Field 1 name"), "bad name");
     await user.type(screen.getByLabelText("Field 1 value"), "v");
     await user.click(screen.getByRole("button", ADD_SECRET));
@@ -245,7 +240,7 @@ describe("AddSecretForm component", () => {
   it("rejects an invalid secret name", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/secret name/i), "has space");
+    await user.type(screen.getByLabelText(/^name$/i), "has space");
     await user.type(screen.getByLabelText("Field 1 name"), "api_key");
     await user.type(screen.getByLabelText("Field 1 value"), "v");
     await user.click(screen.getByRole("button", ADD_SECRET));
@@ -269,7 +264,7 @@ describe("AddSecretForm component", () => {
   it("rejects duplicate field names", async () => {
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText(/^name$/i), "stripe");
     await user.type(screen.getByLabelText("Field 1 name"), "api_key");
     await user.type(screen.getByLabelText("Field 1 value"), "a");
     await user.click(screen.getByRole("button", ADD_FIELD));
@@ -284,7 +279,7 @@ describe("AddSecretForm component", () => {
     createSecretActionMock.mockResolvedValue({ ok: true, data: { name: "stripe" } });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText(/^name$/i), "stripe");
     await user.type(screen.getByLabelText("Field 1 name"), "api_key");
     await user.type(screen.getByLabelText("Field 1 value"), "sk-test");
     await user.click(screen.getByRole("button", ADD_FIELD));
@@ -309,7 +304,7 @@ describe("AddSecretForm component", () => {
     createSecretActionMock.mockResolvedValue({ ok: false, error: "data too large", status: 400 });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText(/^name$/i), "stripe");
     await user.type(screen.getByLabelText("Field 1 name"), "api_key");
     await user.type(screen.getByLabelText("Field 1 value"), "v");
     await user.click(screen.getByRole("button", ADD_SECRET));
@@ -321,7 +316,7 @@ describe("AddSecretForm component", () => {
     createSecretActionMock.mockResolvedValue({ ok: false, error: "", status: 500 });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText(/^name$/i), "stripe");
     await user.type(screen.getByLabelText("Field 1 name"), "api_key");
     await user.type(screen.getByLabelText("Field 1 value"), "v");
     await user.click(screen.getByRole("button", ADD_SECRET));
@@ -332,7 +327,7 @@ describe("AddSecretForm component", () => {
     createSecretActionMock.mockResolvedValue({ ok: false, error: "Not authenticated", status: 401 });
     const user = userEvent.setup();
     await renderForm();
-    await user.type(screen.getByLabelText(/secret name/i), "stripe");
+    await user.type(screen.getByLabelText(/^name$/i), "stripe");
     await user.type(screen.getByLabelText("Field 1 name"), "api_key");
     await user.type(screen.getByLabelText("Field 1 value"), "v");
     await user.click(screen.getByRole("button", ADD_SECRET));

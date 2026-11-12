@@ -9,6 +9,7 @@ import { FRAME_KIND } from "@/lib/api/events-types";
 import { FakeEventSource } from "@/tests/helpers/fake-event-source";
 import { __resetRegistryForTests, streamWrapper } from "@/tests/helpers/fleet-streams";
 import { TASK_IDS, detail, summary } from "@/tests/helpers/task-reads";
+vi.mock("@/lib/actions/fleet-approvals", () => ({listApprovalsAction: async () => ({ok: false, status: 503, error: "Unavailable"})}));
 const SCOPE = {workspaceId: "workspace", fleetId: "linkwarden", subject: "indy", revision: 0};
 beforeEach(() => {FakeEventSource.install(); __resetRegistryForTests();});
 afterEach(() => {cleanup(); __resetRegistryForTests(); FakeEventSource.uninstall(); vi.unstubAllGlobals();});
@@ -88,27 +89,27 @@ it("retains confirmed work during a failed read, then clears it on access loss",
   await screen.findByText("No outputs yet.");
 });
 
-it.each([[1, "Review 1 pending approval"], [2, "Review 2 pending approvals"]] as const)("keeps %s stream-confirmed approvals through task failures but clears them on access loss", async (count, label) => {
+it.each([[1, "Request details unavailable."], [2, "Request details unavailable."]] as const)("keeps %s stream-confirmed approvals through task failures but clears them on access loss", async (count, label) => {
   const network = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, {status: 503}));
   vi.stubGlobal("fetch", network);
-  const approvals = {count, href: "/w/workspace/approvals?fleetId=fleet"};
+  const approvals = {count, href: "/w/workspace/fleets/fleet#fleet-approvals"};
   const view = render(<TaskPanel {...SCOPE} approvals={approvals} />);
-  expect(screen.getByRole("link", {name: label})).toBeTruthy();
+  expect(await screen.findByText(label)).toBeTruthy();
   await screen.findByText("Current work is unavailable.");
-  expect(screen.getByRole("link", {name: label}).getAttribute("href")).toBe(approvals.href);
+  expect(screen.getByText(label)).toBeTruthy();
   network.mockResolvedValue(new Response(null, {status: 403}));
   view.rerender(<TaskPanel {...SCOPE} revision={1} approvals={approvals} />);
-  await waitFor(() => expect(screen.queryByRole("link", {name: label})).toBeNull());
+  await waitFor(() => expect(screen.queryByText(label)).toBeNull());
   const pending = Promise.withResolvers<Response>(); network.mockReturnValue(pending.promise);
   await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
-  expect(screen.queryByRole("link", {name: label})).toBeNull();
+  expect(screen.queryByText(label)).toBeNull();
   await act(async () => pending.resolve(new Response(null, {status: 503})));
-  expect(screen.queryByRole("link", {name: label})).toBeNull();
+  expect(screen.queryByText(label)).toBeNull();
   network.mockResolvedValue(page([]));
   await userEvent.click(screen.getByRole("button", {name: "Retry connection"}));
-  expect(await screen.findByRole("link", {name: label})).toBeTruthy();
+  expect(await screen.findByText(label)).toBeTruthy();
   view.rerender(<TaskPanel {...SCOPE} subject={null} approvals={approvals} />);
-  expect(screen.queryByRole("link", {name: label})).toBeNull();
+  expect(screen.queryByText(label)).toBeNull();
 });
 
 it("recovers failed details and preserves previous evidence until a missing response removes it", async () => {
@@ -161,7 +162,7 @@ it("shares exact native target and wait evidence between closed rows and outputs
   await userEvent.click(await screen.findByRole("button", {name: /^Tasks/}));
   const row = await screen.findByRole("button", {name: /Waiting for CI run #42 on aaaaaaa/});
   expect(row.getAttribute("aria-expanded")).toBe("false");
-  expect(within(screen.getByRole("region", {name: "Outputs"})).getByRole("link").getAttribute("href")).toBe(target.url);
+  expect(within(screen.getByRole("region", {name: "Pull requests"})).getByRole("link").getAttribute("href")).toBe(target.url);
   await userEvent.click(row);
   expect(await screen.findByText("What counts as done?")).toBeTruthy();
   expect(network).toHaveBeenCalledTimes(2);

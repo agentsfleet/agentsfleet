@@ -2,9 +2,10 @@
 //!
 //! The `lease` verb performs the pre-execution control-plane work and hands a
 //! self-contained `ExecutionPolicy` to the runner. Split by concern:
-//! [`affinity`] is the atomic claim and the fence it
-//! mints — the only place a [`affinity::Fence`] comes from — and the modules
-//! beside it add the gates and the row.
+//! [`affinity`] holds the fence and the slot's release verbs — a fence is
+//! minted by the slot upsert inside the claim head statement
+//! (`claim_admission_head.sql`) and read back into a [`affinity::Fence`] — and
+//! the modules beside it add the gates and the row.
 //!
 //! # Where the modules split
 //!
@@ -18,9 +19,9 @@ mod answer;
 pub mod assign;
 pub mod billing_sweep;
 pub mod bracket;
+pub mod cache;
 mod claim;
 pub mod commit;
-mod context;
 pub mod coverage;
 pub(crate) mod deadline;
 mod decision;
@@ -40,7 +41,6 @@ pub mod obligation;
 mod offer;
 mod park;
 pub mod pull;
-pub mod reclaim;
 pub mod renew;
 pub mod report;
 pub mod scope;
@@ -57,7 +57,9 @@ pub mod verdict;
 pub mod write_fence;
 
 pub use self::activity::Target;
-pub use self::affinity::{Claimed, Fence};
+#[cfg(any(test, feature = "test-util"))]
+pub use self::affinity::Claimed;
+pub use self::affinity::Fence;
 pub use self::commit::{Committed, TerminalReport};
 pub use self::envelope::{Acquired, Kind};
 pub use self::event::{Delivery, Ended, Received};
@@ -67,10 +69,9 @@ pub use self::issue::{Billed, Issued};
 pub use self::obligation::{Owing, ReplyDestination};
 pub use self::offer::{OfferRequest, Offered};
 pub use self::pull::LeaseService;
-pub use self::reclaim::Reused;
 pub use self::renew::{Renewed, Renewing};
 pub use self::scope::MintScope;
-pub use self::settle::{Reported, Settled};
+pub use self::settle::Reported;
 pub use self::standing::Standing;
 pub use self::store::Leases;
 pub use self::verdict::{Terminal, Verdict};

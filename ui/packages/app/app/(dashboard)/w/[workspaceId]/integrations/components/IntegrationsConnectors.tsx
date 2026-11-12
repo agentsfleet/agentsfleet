@@ -1,14 +1,12 @@
 "use client";
 
-import { Button, EmptyState, Grid, Section } from "@agentsfleet/design-system";
-import { useDeferredValue, useState, useTransition } from "react";
+import { Button, EmptyState, DashboardPanel, Section } from "@agentsfleet/design-system";
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
 import { useWorkspaceNotice, WorkspaceNotice } from "@/components/layout/WorkspaceNotice";
 import { PlugsConnectedIcon } from "@phosphor-icons/react/ssr";
 import { type ConnectorCatalogEntry } from "@/lib/api/connectors";
 import { OAuthConnectorRow } from "./connector-rows";
-import { CONNECT_APPS_COPY } from "../copy";
 
 const CONNECTOR_REQUESTED_MESSAGE = "Requested";
 
@@ -35,16 +33,12 @@ export default function IntegrationsConnectors({
   catalog: readonly ConnectorCatalogEntry[];
   catalogError?: ConnectorFetchError | null;
 }) {
-  const [search, setSearch] = useState("");
   const { notice, showNotice } = useWorkspaceNotice();
-  const query = useDeferredValue(search.trim().toLowerCase());
   const [refreshing, startRefresh] = useTransition();
   const router = useRouter();
-  const matches = catalog.filter((entry) => entry.display_name.toLowerCase().includes(query));
 
   return (
-    <Section className="space-y-xl" data-testid="integrations-connectors">
-      {catalog.length > 0 ? <CollectionToolbar label={CONNECT_APPS_COPY.search} value={search} onChange={setSearch} summary={`${matches.length} of ${catalog.length} apps`} /> : null}
+    <Section data-testid="integrations-connectors">
       {catalog.length === 0 ? (
         // The catalog is registry-driven (Slack/GitHub/Zoho/Jira/Linear/…),
         // never legitimately empty — an empty list here always means the
@@ -58,8 +52,8 @@ export default function IntegrationsConnectors({
           action={<Button variant="secondary" disabled={refreshing} onClick={() => startRefresh(() => router.refresh())}>{refreshing ? "Retrying…" : "Retry"}</Button>}
         />
       ) : (
-        <Grid columns="two" className="grid-cols-1">
-          {matches.map((entry) => (
+        <DashboardPanel padding="none" className="divide-y divide-border">
+          {catalog.map((entry) => (
             <OAuthConnectorRow
               key={entry.id}
               entry={entry}
@@ -67,9 +61,8 @@ export default function IntegrationsConnectors({
               onRequest={() => showNotice("success", CONNECTOR_REQUESTED_MESSAGE)}
             />
           ))}
-        </Grid>
+        </DashboardPanel>
       )}
-      {catalog.length > 0 && matches.length === 0 ? <EmptyState title={CONNECT_APPS_COPY.noMatches} description="Try another service name or clear your search." /> : null}
       <WorkspaceNotice notice={notice} />
     </Section>
   );

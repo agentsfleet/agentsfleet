@@ -1,10 +1,6 @@
 //! Native commands retain strict bodies and usage bounds after their HTTP adapters are removed.
 
-use af_wire::{
-    fold::FoldRequest,
-    protocol::Up,
-    usage::{LINES_MAX, RUNNER_SEQ_MAX},
-};
+use af_wire::{fold::FoldRequest, protocol::Up, usage::LINES_MAX};
 use garde::Validate as _;
 use serde_json::{Value, error::Category, json};
 
@@ -98,9 +94,8 @@ fn usage(seq: u32) -> Value {
 fn native_renewals_keep_request_line_count_and_sequence_bounds() -> TestResult {
     for (count, sequence, allowed) in [
         (0, 0, true),
-        (LINES_MAX, RUNNER_SEQ_MAX, true),
+        (LINES_MAX, u32::MAX, true),
         (LINES_MAX + 1, 0, false),
-        (1, RUNNER_SEQ_MAX + 1, false),
     ] {
         let bytes = json!({"type":"renew_batch","request_id":1,"leases":[{
             "lease_id":LEASE,"request":{"requests":vec![usage(sequence);count]}}]})

@@ -2,16 +2,14 @@
 
 use super::RunTokens;
 use af_core::id::Uuid7;
-use afd_billing::Nanos;
 use jiff::Timestamp;
 
 /// What one settled report leaves its caller with.
 ///
-/// A struct rather than a bare [`Nanos`] because the charge was never the only
-/// thing the call learned. The report names a LEASE; everything else about the
-/// run — which fleet and workspace and tenant, which event, which model under
-/// which posture — was resolved by the load inside, and the caller would
-/// otherwise run a second statement for facts this call already held.
+/// The report names a LEASE; everything else about the run — which fleet and
+/// workspace and tenant, which event, which model under which posture — was
+/// resolved by the load inside, and the caller would otherwise run a second
+/// statement for facts this call already held.
 ///
 /// # Why the identity travels up rather than the telemetry down
 ///
@@ -26,9 +24,6 @@ use jiff::Timestamp;
 /// `non_exhaustive` struct cannot be built outside the crate that declares it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reconciled {
-    /// What the final slice drained. Zero on a repeated report, which charges
-    /// nothing because the first one charged it.
-    pub charged: Nanos,
     /// The fleet that ran.
     pub fleet_id: Uuid7,
     /// The workspace it belongs to.

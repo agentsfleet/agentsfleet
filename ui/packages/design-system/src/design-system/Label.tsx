@@ -17,7 +17,7 @@ export function Label({ className, ref, ...props }: LabelProps) {
     <LabelPrimitive.Root
       ref={ref}
       className={cn(
-        "font-sans text-label font-semibold leading-label text-foreground",
+        "block font-sans text-label font-semibold leading-label text-foreground",
         "peer-disabled:cursor-not-allowed peer-disabled:opacity-70",
         className,
       )}

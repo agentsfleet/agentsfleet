@@ -1,38 +1,54 @@
 "use client";
 
-import type { BillingReport } from "@/lib/api/billing_report";
+import type { ReactNode } from "react";
+import type { BillingBreakdown, BillingReport } from "@/lib/api/billing_report";
 import type { BillingDetail } from "../lib/report-detail";
 import { formatCompactCount, formatCount } from "@/lib/events/run-figures-format";
-import { MetaGrid, Tabs, TabsContent, TabsList, TabsTrigger, Time, formatTimeRangeUtc } from "@agentsfleet/design-system";
+import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, DashboardPanel, DataTable, Time, formatTimeRangeUtc, type DataTableColumn } from "@agentsfleet/design-system";
+import { CaretDownIcon } from "@phosphor-icons/react/ssr";
 import { formatBalance } from "@/lib/money";
 import { BillingFilters } from "./BillingFilters";
 import { BillingActivities } from "./BillingActivities";
 import { BillingSpending } from "./BillingSpending";
 
-const VIEW = { activity: "activity", spending: "spending" } as const;
-type Props = { report: BillingReport; pageSize: number; modelNames: Record<string, string>; detail: BillingDetail; selected: string };
+type Props = {report: BillingReport; pageSize: number; modelNames: Record<string, string>; detail: BillingDetail; selected: string};
 
 export function BillingReportView(props: Props) {
-  const { report, modelNames } = props;
-  return <div className="space-y-md font-sans text-label font-normal">
+  const {report, modelNames} = props;
+  return <div className="space-y-2xl">
     <BillingFilters report={report} modelNames={modelNames} />
-    <p className="flex flex-wrap justify-between gap-sm text-eyebrow leading-eyebrow text-muted-foreground">
-      <span><Time value={report.through_at} label={formatTimeRangeUtc(report.from_at, report.through_at)} /> · Coordinated Universal Time (UTC)</span>
-      <span>Settled charges</span>
-    </p>
-    <MetaGrid columns={3} aria-label="Period totals" className="grid-cols-1 gap-lg sm:grid-cols-3 [&>div]:min-w-0 [&>div]:rounded-md [&>div]:border [&>div]:border-border [&>div]:bg-card [&>div]:p-xl [&_dt]:font-sans [&_dt]:normal-case [&_dt]:text-eyebrow [&_dt]:tracking-normal" items={[
-      { label: "Charged this period", value: <span className="text-heading font-medium tabular-nums">{formatBalance(report.totals.charged_nanos)}</span> },
-      { label: "Billed activities", value: <span className="text-heading font-medium tabular-nums">{formatCount(report.totals.activity_count)}</span> },
-      { label: "Input / output tokens", value: <span className="text-heading font-medium tabular-nums">{formatCompactCount(report.totals.input_tokens)}<span className="text-body-sm text-muted-foreground"> / {formatCompactCount(report.totals.output_tokens)}</span></span> },
-    ]} />
-    <Tabs defaultValue={VIEW.activity}>
-      <TabsList aria-label="Billing views">
-        <TabsTrigger value={VIEW.activity}>Activity</TabsTrigger>
-        <TabsTrigger value={VIEW.spending}>Spending breakdown</TabsTrigger>
-      </TabsList>
-      <TabsContent value={VIEW.activity} className="mt-0"><BillingActivities {...props} /></TabsContent>
-      <TabsContent value={VIEW.spending} className="mt-0"><BillingSpending report={report} modelNames={modelNames} /></TabsContent>
-    </Tabs>
-    <p className="text-label text-muted-foreground">Totals exclude pending or unavailable provider usage, which can arrive later. Billing history includes deleted fleets.</p>
+    <DashboardPanel padding="none" className="grid divide-y divide-border sm:grid-cols-[2fr_1fr_1fr] sm:divide-x sm:divide-y-0" aria-label="Period totals">
+      <Metric label="Settled charges" value={formatBalance(report.totals.charged_nanos)} note={<Time value={report.through_at} label={`${formatTimeRangeUtc(report.from_at, report.through_at)} · USD`} />} primary />
+      <Metric label="Activities" value={formatCount(report.totals.activity_count)} note="With settled usage" />
+      <Metric label="Tokens" value={formatCompactCount(report.totals.input_tokens + report.totals.output_tokens)} note="Input and output combined" />
+    </DashboardPanel>
+    <DashboardPanel asChild className="mb-3xl flex min-h-51.5 flex-col bg-background px-2xl py-5">
+      <figure aria-label="Daily spend"><figcaption className="text-eyebrow font-semibold text-muted-foreground">Daily spend</figcaption>
+        <div className="flex flex-1 items-center justify-center py-3xl text-label text-text-dim">Daily spending is not available yet.</div>
+        <p className="text-eyebrow text-text-dim">Period totals and the fleet breakdown below include all settled charges.</p>
+      </figure>
+    </DashboardPanel>
+    <section className="space-y-xl" aria-label="By fleet">
+      <div className="flex flex-wrap items-center justify-between gap-md"><h2 className="text-label font-semibold">By fleet</h2>
+        <span className="text-eyebrow text-text-dim"><Time value={report.through_at} label={formatTimeRangeUtc(report.from_at, report.through_at)} /></span></div>
+      <DataTable columns={fleetColumns} rows={report.spending.by_fleet} rowKey={row => row.key ?? "setup"} caption="Spending by fleet" pagination={false} />
+    </section>
+    <Collapsible defaultOpen={Boolean(props.selected)}>
+      <CollapsibleTrigger asChild><Button variant="ghost" className="px-0">Charge details<CaretDownIcon size={16} /></Button></CollapsibleTrigger>
+      <CollapsibleContent className="space-y-xl pt-lg"><BillingActivities {...props} /><BillingSpending report={report} modelNames={modelNames} /></CollapsibleContent>
+    </Collapsible>
+    <p className="text-eyebrow leading-eyebrow text-text-dim">Totals exclude pending or unavailable provider usage, which can arrive later. Billing history includes deleted fleets.</p>
   </div>;
 }
+
+function Metric({label, value, note, primary = false}: {label: string; value: string; note: ReactNode; primary?: boolean}) {
+  return <div className="grid min-w-0 grid-cols-[1fr_auto] items-center gap-x-xl p-xl leading-label sm:block sm:p-2xl"><p className="sm:mb-md text-eyebrow leading-label font-semibold text-muted-foreground">{label}</p>
+    <strong className={`col-start-2 row-span-2 row-start-1 break-words text-2xl font-[750] leading-label sm:block sm:text-usage-total ${primary ? "text-success" : "text-foreground"}`}>{value}</strong>
+    <p className="col-start-1 mt-sm sm:mt-md text-eyebrow leading-label text-text-dim">{note}</p></div>;
+}
+
+const fleetColumns: DataTableColumn<BillingBreakdown>[] = [
+  {key: "fleet", header: "Fleet", primary: true, cell: row => <div><p className="text-label font-semibold">{row.label ?? row.key ?? "Setup chats"}</p><p className="mt-xs text-eyebrow text-text-dim">{row.key ? "Fleet work" : "Fleet setup"}</p></div>},
+  {key: "activities", header: "Activities", numeric: true, cell: row => formatCount(row.totals.activity_count)},
+  {key: "charged", header: "Charged", numeric: true, cell: row => formatBalance(row.totals.charged_nanos)},
+];

@@ -142,10 +142,11 @@ async fn settle(
     plane.task_reports = Some(Arc::new(tasks.clone()));
     let now = af_core::clock::after(case.held.now, crate::report_seed::SLICE);
     plane
-        .report(
+        .report_with(
             &case.held.runner,
             &report,
             now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -159,10 +160,11 @@ async fn settle(
     support::assert_counts(after, expected);
     assert_eq!(checkpoint_row(case, &id(checkpoint)).await, *saved);
     plane
-        .report(
+        .report_with(
             &case.held.runner,
             &report,
             now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await

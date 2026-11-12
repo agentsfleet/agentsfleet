@@ -49,5 +49,4 @@ pub use self::router::Router;
 pub use afr_tools::{LeaseVerbs, ScheduleCall, Unanswered};
 
 pub use decision::PreparedTask;
-pub use engine::ContextCheckpoints;
 pub use engine::TaskRecovery;

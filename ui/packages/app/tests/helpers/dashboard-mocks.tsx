@@ -76,7 +76,7 @@ export function workspaceMock() {
 // Union of every Phosphor icon the dashboard test files reference. Each renders a
 // stub <svg data-icon="…"> so name-based queries keep working.
 const PHOSPHOR_ICONS = [
-  "NotePencilIcon", "XIcon", "ArchiveIcon",
+  "NotePencilIcon", "XIcon", "ArchiveIcon", "MoonIcon", "SunIcon", "ChartBarIcon",
   "UsersIcon", "UserCircleIcon", "UserIcon", "ChevronsUpDownIcon", "ArrowLeftIcon", "ArrowUpRightIcon", "LayersIcon", "SignOutIcon", "MagnifyingGlassIcon",
   "WarningIcon", "CheckIcon", "CopyIcon", "DownloadIcon", "Loader2Icon", "PlusIcon", "ShieldIcon",
   "KeyIcon", "KeyIcon", "TrashIcon", "CaretDownIcon", "CaretRightIcon", "ArrowRightIcon", "GearIcon",

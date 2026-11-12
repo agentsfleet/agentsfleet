@@ -146,14 +146,18 @@ describe("fleet-stream-registry — fleet facts", () => {
     release();
   });
 
-  it("a frame that restates the facts does not wake subscribers", () => {
+  it("a different gate invalidates details even when the pending count is unchanged", () => {
     const listener = vi.fn();
     const release = subscribe(WS, FLEET, [row()], listener);
     const es = FakeEventSource.instances[0]!;
     es.emit({ kind: FRAME_KIND.GATE_OPENED, gate_id: "g", event_id: "e", pending_approvals: 1 });
     const woken = listener.mock.calls.length;
+    const before = getSnapshot(FLEET);
     es.emit({ kind: FRAME_KIND.GATE_RESOLVED, gate_id: "g", event_id: "e", status: "approved", resolved_by: "x", pending_approvals: 1 });
-    expect(listener.mock.calls.length).toBe(woken);
+    expect(listener.mock.calls.length).toBe(woken + 1);
+    expect(getSnapshot(FLEET).approvalsSeq).toBe(before.approvalsSeq + 1);
+    expect(getSnapshot(FLEET).factsSeq).toBe(before.factsSeq);
+    expect(getSnapshot(FLEET).tasksSeq).toBe(before.tasksSeq);
     release();
   });
 });

@@ -15,7 +15,7 @@ impl History {
     /// `actor`'s events in one fleet, newest first, matched exactly.
     ///
     /// # Errors
-    /// As [`Self::page_for_fleet`].
+    /// As [`Self::page_for_workspace`].
     pub async fn page_of_actor(
         &self,
         workspace: &Uuid7,

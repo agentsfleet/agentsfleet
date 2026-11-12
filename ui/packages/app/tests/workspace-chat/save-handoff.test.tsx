@@ -13,7 +13,7 @@ async function proposed() {
   const input = await screen.findByLabelText(CHAT_PLACEHOLDER);
   await waitFor(() => expect(input).toHaveProperty("disabled", false));
   fireEvent.change(input, {target: {value: "Watch releases; require my approval before publishing."}});
-  fireEvent.click(screen.getByRole("button", {name: "Send message"}));
+  fireEvent.click(screen.getByRole("button", {name: /^(Send message|New fleet from message)$/}));
   await screen.findByText("Your setup is ready.");
 }
 function followupFailure(status: number) {

@@ -273,7 +273,7 @@ impl Inbox {
 }
 
 /// What the continuation insert answers, by name: whether this call wrote
-/// the row. The id it also returns is the one the admission already named.
+/// the row.
 #[derive(Debug, sqlx::FromRow)]
 struct Landed {
     inserted: bool,

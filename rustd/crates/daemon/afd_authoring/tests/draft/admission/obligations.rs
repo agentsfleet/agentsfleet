@@ -53,6 +53,7 @@ async fn uncharged_spend_that_leaves_less_than_the_bound_refuses_admission() {
         posture: Posture::Platform,
         lines: vec![RatedLine {
             usage: UsageLine {
+                kind: af_wire::usage::LineKind::Model,
                 seq: 0,
                 at: now(),
                 input_tokens: 0,
@@ -223,7 +224,6 @@ async fn dispatch(f: &super::Fixture, calls: &ModelCalls, lease: &Claimed) -> Mo
         dispatch_id: mint().to_string(),
         call_index: 1,
         request: ModelRequest {
-            supports_compaction: true,
             messages: vec![ModelMessage::User {
                 text: "Investigate the checkout".into(),
             }],

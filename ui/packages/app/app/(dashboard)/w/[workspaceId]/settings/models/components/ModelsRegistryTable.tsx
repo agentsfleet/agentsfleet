@@ -4,9 +4,9 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import {
   Button,
   ConfirmDialog,
-  type DataTableColumn,
   Section,
-  SectionHeader,
+  PageHeader,
+  PageTitle,
 } from "@agentsfleet/design-system";
 import type { TenantModelEntryPageResult } from "@/lib/api/tenant_model_entries";
 import { LIBRARY_ERROR_KIND, readErrorFrom, type LibraryError } from "@/lib/api/library-types";
@@ -17,22 +17,13 @@ import { listModelEntriesAction, resetProviderAction, setProviderSelfManagedActi
 import { captureModelActivated, captureProviderReset } from "../lib/track";
 import AddModelEntryDialog from "./AddModelEntryDialog";
 import EditModelEntryDialog from "./EditModelEntryDialog";
-import { compareEntries, computeNextSort, readErrorCopy, type SortState } from "./registry-view";
+import { readErrorCopy } from "./registry-view";
 import { useStoredSecrets } from "./use-stored-secrets";
 import ModelDetailsDialog from "./ModelDetailsDialog";
 import { CATALOGUE_STATUS } from "./catalogue-status";
 import { useModelCatalogue } from "./ModelCatalogueProvider";
-import {
-  ActionsCell,
-  ContextCell,
-  RatesCell,
-  ModelCell,
-  ProviderCell,
-  type RegistryRow,
-  StatusCell,
-} from "./ModelsRegistryCells";
 import { ModelsRegistryView } from "./ModelsRegistryView";
-import { CONTEXT_HEADER, RATES_HEADER } from "@/lib/models/display";
+import { MODELS_PAGE_DESCRIPTION } from "../copy";
 import { useCurrentUser } from "@/lib/auth/client";
 
 type Props = {
@@ -66,7 +57,6 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
   // say what has NOT been loaded, and both are rendered rather than implied.
   const [nextCursor, setNextCursor] = useState<string | null>(initialPage?.next_cursor ?? null);
   const [total, setTotal] = useState<number | null>(initialPage?.total ?? null);
-  const [sort, setSort] = useState<SortState>(null);
   const [error, setError] = useState<string | null>(null);
   // The server read's typed failure. Held separately from `error` (which is
   // action feedback) so a failed LOAD never renders as an empty registry.
@@ -77,32 +67,11 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
   const [removeError, setRemoveError] = useState<string | null>(null);
 
   // The catalogue warms on dialog intent; rows already carry their own rates.
-  const { models: libraryModels, status: catalogueStatus, preload: preloadCatalogue } = useModelCatalogue();
+  const { status: catalogueStatus, preload: preloadCatalogue } = useModelCatalogue();
 
   const hasActiveEntry = entries.some((e) => e.active);
   // An absent default must never be presented as active.
-  const isDefaultLive = !hasActiveEntry && platformDefaultAvailable;
-  // Hide the locked platform row outright when it is neither in effect nor
-  // configurable-from-here: a self-managed tenant with no platform default was
-  // shown a row it cannot act on and does not need.
-  const showDefaultRow = !hasActiveEntry || platformDefaultAvailable;
-
-  const sortedEntries = useMemo(() => {
-    if (!sort) return entries;
-    const dir = sort.dir === "ascending" ? 1 : -1;
-    return [...entries].sort((a, b) => compareEntries(a, b, sort.key, libraryModels) * dir);
-  }, [entries, sort, libraryModels]);
-
-  const rows: RegistryRow[] = [
-    ...(showDefaultRow ? [{ kind: "default" as const }] : []),
-    ...sortedEntries.map((entry) => ({ kind: "entry" as const, entry })),
-  ];
-
-  function onSortChange(key: string) {
-    const next = computeNextSort(sort, key);
-    if (next) setSort(next);
-  }
-
+  const isDefaultLive = nextCursor === null && !hasActiveEntry && platformDefaultAvailable;
   // Re-read from the FIRST page, discarding retained rows only once a
   // replacement actually arrives. A failed refresh leaves what is on screen
   // alone and surfaces the fault — it must never fall back to empty.
@@ -211,62 +180,10 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
     });
   }
 
-  const columns: DataTableColumn<RegistryRow>[] = [
-    { key: "provider", header: "Provider", sortable: true, cell: (row) => <ProviderCell row={row} platformDefault={platformDefault} /> },
-    { key: "model", primary: true, header: "Model", sortable: true, cell: (row) => <ModelCell row={row} platformDefault={platformDefault}
-      workspaceLabel={row.kind === "entry" ? workspaceNames.get(row.entry.workspace_id ?? "") : undefined} /> },
-    {
-      key: "context",
-      header: CONTEXT_HEADER,
-      numeric: true, sortable: true,
-      hideOnMobile: true,
-      cell: (row) => <ContextCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,
-    },
-    {
-      key: "rates",
-      header: RATES_HEADER,
-      numeric: true, sortable: true,
-      hideOnMobile: true,
-      cell: (row) => <RatesCell row={row} platformDefault={platformDefault} libraryModels={libraryModels} />,
-    },
-    { key: "status", header: "Status", cell: (row) => <StatusCell row={row} isDefaultLive={isDefaultLive} /> },
-    {
-      key: "actions",
-      header: "Actions",
-      numeric: true,
-      cell: (row) => (
-        <ActionsCell
-          row={row}
-          pending={pending}
-          isDefaultLive={isDefaultLive}
-          platformDefaultAvailable={platformDefaultAvailable}
-          onSwitchDefault={onSwitchDefault}
-          onSwitchEntry={onSwitchEntry}
-          onView={(entry) => { preloadCatalogue(); setDetailsTarget(entry); }}
-          onEdit={(entry) => {
-            // Opening is ungated intent — the picker inside needs the
-            // catalogue now. Usually a no-op: focus or hover warmed it.
-            preloadCatalogue();
-            setEditTarget(entry);
-          }}
-          onEditFocusIntent={preloadCatalogue}
-          onEditHoverIntent={() => {
-            // A failed catalogue does not re-fetch on speculation: mousing
-            // across rows against a failing backend would fire one request
-            // per hover with no backoff. Deliberate intent (open) still
-            // retries.
-            if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preloadCatalogue();
-          }}
-          onRemove={setRemoveTarget}
-        />
-      ),
-    },
-  ];
-
   return (
-    <Section asChild>
+    <Section asChild className="gap-2xl">
       <section aria-label="Models">
-        <SectionHeader as="p"
+        <PageHeader description={MODELS_PAGE_DESCRIPTION}
           actions={
             <AddModelEntryDialog
               workspaceId={workspaceId}
@@ -278,12 +195,17 @@ export default function ModelsRegistryTable({ workspaceId, workspaces, initialPa
             />
           }
         >
-          Available models
-        </SectionHeader>
+          <PageTitle>Models</PageTitle>
+        </PageHeader>
 
-        <ModelsRegistryView columns={columns} rows={rows} platformDefault={platformDefault} sort={sort}
-          onSortChange={onSortChange} pending={pending}
-          onLoadMore={nextCursor ? () => loadMore(nextCursor) : undefined} />
+        {readError && entries.length === 0 ? null : <ModelsRegistryView entries={entries} platformDefault={platformDefault} workspaceNames={workspaceNames}
+          isDefaultLive={isDefaultLive} platformDefaultAvailable={platformDefaultAvailable} pending={pending}
+          onSwitchDefault={onSwitchDefault} onSwitchEntry={onSwitchEntry}
+          onView={entry => {preloadCatalogue(); setDetailsTarget(entry);}}
+          onEdit={entry => {preloadCatalogue(); setEditTarget(entry);}} onRemove={setRemoveTarget}
+          onIntent={() => {if (catalogueStatus !== CATALOGUE_STATUS.error && maySpeculateOnHover()) preloadCatalogue();}}
+          footerAction={<AddModelEntryDialog workspaceId={workspaceId} secrets={secrets} secretsLoad={secretsLoad} onCreated={refresh} onSecretsChanged={refreshSecrets} onSecretsNeeded={refreshSecrets} triggerLabel="Add another model" secondary />}
+          onLoadMore={nextCursor ? () => loadMore(nextCursor) : undefined} />}
 
         {nextCursor !== null ? <p className="text-body-sm text-muted-foreground" aria-live="polite">
           {total !== null ? `Showing ${entries.length} of ${total} models` : `Showing ${entries.length} models — more available`}

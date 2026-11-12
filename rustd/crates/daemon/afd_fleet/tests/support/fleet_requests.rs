@@ -5,10 +5,6 @@
 //! schema, dropping it — and these own no resource at all. They are pure
 //! constructors, which is why they need none of its imports and why a suite
 //! that drives the store without touching Postgres can still use them.
-#![allow(
-    dead_code,
-    reason = "test support: shared by several test binaries, each using a subset"
-)]
 
 use af_wire::runner::{
     AssignedPolicy, CapabilityReport, NetworkPolicy, RegisterRequest, SandboxTier,

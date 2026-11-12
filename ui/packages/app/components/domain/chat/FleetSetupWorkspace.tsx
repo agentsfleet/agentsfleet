@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { createContext, useContext, useMemo } from "react";
 import Link from "next/link";
-import { PencilSimpleIcon } from "@phosphor-icons/react/ssr";
+import { NotePencilIcon } from "@phosphor-icons/react/ssr";
 import { Button, DropdownMenuItem } from "@agentsfleet/design-system";
 import { useCurrentUser } from "@/lib/auth/client";
 import { FleetStreamProvider } from "../FleetStreamProvider";
@@ -35,17 +35,17 @@ export function EditSetupButton(props: (SetupLocation & {appearance?: "header"})
   const variant = inline ? "link" : props.appearance === "header" ? "ghost" : "outline";
   const location = inline ? setup?.location : props;
   if (!location) return <>Edit setup</>;
-  if (setup?.modelChanging) return <Button variant={variant} size={inline ? "sm" : "icon"} aria-label="Edit setup" disabled>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Button>;
+  if (setup?.modelChanging) return <Button variant={variant} size={inline ? "sm" : "icon"} aria-label="Edit setup" disabled>{inline ? "Edit setup" : <NotePencilIcon size={16} aria-hidden="true" />}</Button>;
   return <Button variant={variant} size={inline ? "eyebrow" : "icon"} aria-label="Edit setup" title="Edit setup" asChild
     className={inline ? "h-auto px-0 align-baseline text-eyebrow" : undefined}>
-    <Link href={editSetupHref(location)}>{inline ? "Edit setup" : <PencilSimpleIcon size={16} aria-hidden="true" />}</Link>
+    <Link href={editSetupHref(location)}>{inline ? "Edit setup" : <NotePencilIcon size={16} aria-hidden="true" />}</Link>
   </Button>;
 }
 
 export function EditSetupMenuItem(location: SetupLocation) {
   const disabled = useFleetSetup()?.modelChanging ?? false;
   return <DropdownMenuItem asChild disabled={disabled}><Link href={editSetupHref(location)}>
-    <PencilSimpleIcon size={16} aria-hidden="true" />Edit setup
+    <NotePencilIcon size={16} aria-hidden="true" />Edit setup
   </Link></DropdownMenuItem>;
 }
 

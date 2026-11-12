@@ -1,4 +1,4 @@
-//! Renewal and settlement find one admission even at the fleet backlog limit.
+//! A renewal finds its one admission even at the fleet backlog limit.
 
 use super::{relation_scans, run};
 use crate::report_seed::Held;
@@ -12,7 +12,7 @@ const BACKLOG: &str = "INSERT INTO fleet.admissions \
     'chat','{}',now(),now(),now() FROM fleet.fleets f,generate_series(1,$2::integer) n \
     WHERE f.id=$1";
 const PREPARE: &str = "PREPARE ledger_meter \
-    (uuid,uuid,bigint,text,boolean,interval,interval,text,boolean,text,bigint,bigint,text) AS ";
+    (uuid,uuid,bigint,text,interval,interval,text) AS ";
 
 pub(super) async fn assert_point_lookups(connection: &mut PgConnection, held: &Held) {
     run(connection, super::FORCE_GENERIC).await;
@@ -26,27 +26,15 @@ pub(super) async fn assert_point_lookups(connection: &mut PgConnection, held: &H
             .await
             .expect("per-fleet backlog");
         run(connection, "ANALYZE fleet.admissions").await;
-        for settles in [true, false] {
-            run(connection, "SAVEPOINT meter_ending").await;
-            let plan = meter_plan(connection, held, settles).await;
-            assert_indexed_admissions(&plan, size, settles);
-            let settled: bool = sqlx::query_scalar(
-                "SELECT settled_at IS NOT NULL FROM fleet.admissions WHERE id=$1",
-            )
-            .bind(&held.event_id)
-            .fetch_one(&mut *connection)
-            .await
-            .expect("metering reached the admitted row");
-            assert_eq!(settled, settles, "backlog {size}, ending {settles}");
-            run(connection, "ROLLBACK TO SAVEPOINT meter_ending").await;
-        }
+        let plan = meter_plan(connection, held).await;
+        assert_indexed_admission(&plan, size);
         run(connection, "ROLLBACK TO SAVEPOINT meter_backlog").await;
     }
     run(connection, "DEALLOCATE ledger_meter").await;
     run(connection, "ANALYZE fleet.admissions").await;
 }
 
-fn assert_indexed_admissions(plan: &serde_json::Value, size: i32, settles: bool) {
+fn assert_indexed_admission(plan: &serde_json::Value, size: i32) {
     let scans: Vec<_> = relation_scans(plan, "admissions")
         .into_iter()
         .filter(|node| {
@@ -55,7 +43,7 @@ fn assert_indexed_admissions(plan: &serde_json::Value, size: i32, settles: bool)
                 .is_some_and(|kind| kind.ends_with("Scan"))
         })
         .collect();
-    assert_eq!(scans.len(), 2, "guard and settlement: {plan}");
+    assert_eq!(scans.len(), 1, "the guard's one read: {plan}");
     let mut executed = 0;
     for scan in scans {
         assert_eq!(
@@ -73,27 +61,19 @@ fn assert_indexed_admissions(plan: &serde_json::Value, size: i32, settles: bool)
         assert!(loops <= 1 && rows <= 1.0, "backlog {size}: {plan}");
         executed += usize::from(loops == 1);
     }
-    assert_eq!(executed, if settles { 2 } else { 1 }, "{plan}");
+    assert_eq!(executed, 1, "{plan}");
 }
 
-async fn meter_plan(
-    connection: &mut PgConnection,
-    held: &Held,
-    settles: bool,
-) -> serde_json::Value {
+async fn meter_plan(connection: &mut PgConnection, held: &Held) -> serde_json::Value {
     sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "EXPLAIN (ANALYZE, FORMAT JSON) EXECUTE ledger_meter \
-        ('{lease}','{runner}',{ms},'{active}',{settles},'{ttl} seconds','{cap} seconds','{reported}',true,'{work}',{seq},{decision_seq},'{running}')",
+        ('{lease}','{runner}',{ms},'{active}','{ttl} seconds','{cap} seconds','{running}')",
         lease = held.lease_key.as_str(),
         runner = held.runner.as_str(),
         ms = afd_billing::nanos::MS_PER_SEC,
         active = afd_fleet::lease::sql::LEASE_STATUS_ACTIVE,
         ttl = af_core::timing::LEASE_TTL.as_secs_f64(),
         cap = af_core::timing::MAX_RUNTIME.as_secs_f64(),
-        reported = afd_fleet::lease::sql::LEASE_STATUS_REPORTED,
-        work = afd_billing::sql::work::FLEET_LEASE,
-        seq = af_wire::usage::DAEMON_SEQ_BASE,
-        decision_seq = af_wire::usage::DECISION_SEQ_BASE,
         running = af_wire::task::TaskState::Running.as_str(),
     )))
     .fetch_one(connection)

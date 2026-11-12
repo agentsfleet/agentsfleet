@@ -31,7 +31,7 @@ const COPY = {
   active: "Active", create: "Create model",
   activationRefused: "Activation refused", registrationRefused: "Registration refused",
 } as const;
-const SWITCH_LABEL = `Switch to ${MODEL_ID}`;
+const SWITCH_LABEL = `Make active: ${MODEL_ID}`;
 const STATUS_CONFLICT = 409;
 const STATUS_UNPROCESSABLE = 422;
 
@@ -104,7 +104,8 @@ function requestBody(init?: RequestInit): unknown {
 }
 
 function rowFor(model: string): HTMLElement {
-  const rows = screen.getAllByRole("article", { hidden: true });
+  if (model === PLATFORM_MODEL) return screen.getByLabelText("Platform default");
+  const rows = screen.getAllByRole("listitem", { hidden: true });
   const row = rows.find((candidate) => candidate.textContent?.includes(model) ||
     Array.from(candidate.querySelectorAll("[aria-label]")).some((control) => control.getAttribute("aria-label")?.includes(model)));
   if (!row) throw new Error(`Missing model row: ${model}`);
@@ -125,7 +126,7 @@ async function openAndSubmit(boundary: ModelBoundary) {
   await user.click(dialog.getByLabelText(/^model$/i));
   await user.click(await screen.findByRole("option", { name: new RegExp(MODEL_ID, "i") }));
   await user.type(dialog.getByLabelText(/^api key$/i), crypto.randomUUID());
-  await user.click(dialog.getByRole("switch", {name: "Make active"}));
+  await user.click(dialog.getByRole("checkbox", {name: "Make active"}));
   await user.click(dialog.getByRole("button", { name: COPY.create }));
   return user;
 }
@@ -142,14 +143,14 @@ describe("created model activation through the registry and HTTP boundary", () =
     // Force the registration read to render before activation commits.
     await waitFor(() => expect(within(rowFor(MODEL_ID)).queryByText(COPY.active)).toBeNull());
     expect(within(rowFor(PLATFORM_MODEL)).getByText(COPY.active)).toBeTruthy();
-    expect(within(rowFor(MODEL_ID)).getByLabelText(SWITCH_LABEL)).toBeTruthy();
+    expect(within(rowFor(MODEL_ID)).getByRole("button", {name: SWITCH_LABEL, hidden: true})).toBeTruthy();
     expect(boundary.calls).toContain(`${HTTP_METHOD.PUT} ${PATH.provider}`);
 
     await act(async () => boundary.completeActivation(true));
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(within(rowFor(MODEL_ID)).getByText(COPY.active)).toBeTruthy());
-    expect(within(rowFor(MODEL_ID)).queryByLabelText(SWITCH_LABEL)).toBeNull();
+    expect(within(rowFor(MODEL_ID)).queryByRole("button", {name: SWITCH_LABEL, hidden: true})).toBeNull();
     expect(within(rowFor(PLATFORM_MODEL)).queryByText(COPY.active)).toBeNull();
     expect(boundary.registered).toBe(true);
     expect(boundary.active).toBe(true);
@@ -160,14 +161,14 @@ describe("created model activation through the registry and HTTP boundary", () =
   it("retains the committed inactive entry and dialog error when activation is refused", async () => {
     const boundary = new ModelBoundary();
     await openAndSubmit(boundary);
-    await waitFor(() => expect(within(rowFor(MODEL_ID)).getByLabelText(SWITCH_LABEL)).toBeTruthy());
+    await waitFor(() => expect(within(rowFor(MODEL_ID)).getByRole("button", {name: SWITCH_LABEL, hidden: true})).toBeTruthy());
 
     await act(async () => boundary.completeActivation(false));
 
     const dialog = await screen.findByRole("dialog");
     await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Model created. Couldn't activate this model — ${COPY.activationRefused}.`));
     expect(within(rowFor(MODEL_ID)).queryByText(COPY.active)).toBeNull();
-    expect(within(rowFor(MODEL_ID)).getByLabelText(SWITCH_LABEL)).toBeTruthy();
+    expect(within(rowFor(MODEL_ID)).getByRole("button", {name: SWITCH_LABEL, hidden: true})).toBeTruthy();
     expect(within(rowFor(PLATFORM_MODEL)).getByText(COPY.active)).toBeTruthy();
     expect(boundary.saved).toBe(true);
     expect(boundary.registered).toBe(true);

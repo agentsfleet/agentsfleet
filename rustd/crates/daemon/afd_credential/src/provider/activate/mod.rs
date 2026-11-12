@@ -60,7 +60,7 @@ use sqlx::{Acquire as _, Transaction};
 use crate::error::{Result, entropy_drained, query};
 use crate::provider::KeyRef;
 use crate::provider::cap;
-use crate::provider::endpoint::{OPENAI_COMPATIBLE, Rejection};
+use crate::provider::endpoint::Rejection;
 use crate::provider::selection::OwnModel;
 use crate::provider::store::Providers;
 use crate::provider::vetted::{Refused, vet};
@@ -257,7 +257,6 @@ impl Providers {
             .bind(provider)
             .bind(model)
             .bind(credential.name)
-            .bind(provider == OPENAI_COMPATIBLE)
             .bind(credential.workspace_id)
             .fetch_optional(&mut *transaction)
             .await

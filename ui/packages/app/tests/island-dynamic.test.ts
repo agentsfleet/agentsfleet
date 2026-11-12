@@ -29,7 +29,7 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/components/AddSecretForm", as
 vi.mock("@/components/layout/CreateWorkspaceDialog", async () => ({
   default: innerStub("CreateWorkspaceDialog", (await import("react")).createElement),
 }));
-vi.mock("@/app/(dashboard)/settings/api-keys/components/CreateApiKeyDialog", async () => ({
+vi.mock("@/app/(dashboard)/settings/security/components/CreateApiKeyDialog", async () => ({
   default: innerStub("CreateApiKeyDialog", (await import("react")).createElement),
 }));
 vi.mock("@/app/(dashboard)/settings/members/components/InviteDialog", async () => ({

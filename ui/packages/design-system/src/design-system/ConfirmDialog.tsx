@@ -88,7 +88,6 @@ export function ConfirmDialog({
         data-testid="confirm-dialog"
         role="alertdialog"
         aria-describedby={description ? descId : undefined}
-        className="max-w-md"
         closeDisabled={pending}
       >
         <DialogHeader>
@@ -103,7 +102,7 @@ export function ConfirmDialog({
         <DialogFooter className="flex-col gap-2 sm:flex-row sm:gap-2">
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             disabled={pending}
             onClick={() => onOpenChange(false)}
           >

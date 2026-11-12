@@ -86,7 +86,7 @@ export function FormItem({ className, ref, ...props }: ComponentProps<"div">) {
   const id = useId();
   return (
     <FormItemContext.Provider value={{ id }}>
-      <div ref={ref} className={cn("space-y-2", className)} {...props} />
+      <div ref={ref} className={cn("grid gap-md", className)} {...props} />
     </FormItemContext.Provider>
   );
 }

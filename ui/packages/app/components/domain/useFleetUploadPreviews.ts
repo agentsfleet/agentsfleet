@@ -1,5 +1,6 @@
 "use client";
 
+import { chatMessageText } from "@/lib/chat-message-text";
 import type { AppendMessage, ThreadMessageLike } from "@assistant-ui/react";
 import type { FleetThreadEntry } from "./useFleetThreadEntries";
 import type { FleetEvent } from "@/lib/streaming/fleet-stream-row";
@@ -33,7 +34,7 @@ export function useFleetUploadPreviews({workspaceId, fleetId, subject, events, o
     if (!files.length) return onNew(message);
     if (!subject) throw new Error("Sign in before uploading a preview.");
     const id = files.map(file => file.id).join(":");
-    const text = message.content.flatMap(part => part.type === "text" ? [part.text] : []).join("\n");
+    const text = chatMessageText(message);
     const reply = files.flatMap(file => file.content.flatMap(part => part.type === "text" ? [part.text] : [])).join("\n");
     const anchors = currentEvents.current.slice(-MAX_ANCHORS).reverse().map(event => ({id: event.id, submittedAtMs: event.submittedAtMs}));
     const entries: PreviewEntry[] = [

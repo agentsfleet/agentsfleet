@@ -29,15 +29,15 @@ export function SelectTrigger({
         // dialogs and menus. This was the only box-shadow inside <main> on
         // every route that renders it.
         appearance === "composer"
-          ? "h-auto w-auto min-w-0 max-w-full border-0 bg-transparent px-0 py-0 text-eyebrow leading-label text-muted-foreground"
-          : "h-9 w-full border border-border-strong bg-secondary px-md py-sm text-body-sm enabled:hover:border-ring",
+          ? "h-9 w-auto min-w-0 max-w-full border-0 bg-transparent px-md py-0 text-eyebrow leading-label text-muted-foreground"
+          : "min-h-11 w-full border border-border bg-background px-md py-sm text-label",
         // The coarse-pointer floor every Button-derived control already carries
         // (Button.tsx:11). Without it the "Rows per page" combobox was the one
         // interactive element in <main> under the 44px touch minimum.
         "pointer-coarse:min-h-11 pointer-coarse:min-w-11",
-        "focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-4 focus-visible:ring-offset-background",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        "data-[placeholder]:text-muted-foreground",
+        "data-[placeholder]:text-text-dim",
         className,
       )}
       {...props}

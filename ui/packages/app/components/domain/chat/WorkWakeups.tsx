@@ -19,7 +19,7 @@ export function WorkWakeups({schedules, compact = false}: {schedules?: readonly 
     return attention || (left.next_run_at ? Date.parse(left.next_run_at) : Infinity) - (right.next_run_at ? Date.parse(right.next_run_at) : Infinity);
   });
   const displayed = compact ? ordered.slice(0, 1) : visible;
-  return <WorkSection title="Wake-ups"><WakeupRows schedules={displayed} compact={compact} />
+  return <WorkSection title={compact ? "Next wake-up" : "Wake-ups"}><WakeupRows schedules={displayed} compact={compact} />
     {compact && visible.length > 1 ? <details className="text-eyebrow text-muted-foreground"><summary className="min-h-11 cursor-pointer content-center summary:min-h-9">{visible.length - 1} more</summary><WakeupRows schedules={ordered.slice(1)} compact={false} /></details> : null}
   </WorkSection>;
 }
@@ -30,12 +30,14 @@ function WakeupRows({schedules, compact}: {schedules: readonly Schedule[]; compa
       <ClockIcon size={16} className="mt-xs shrink-0 text-muted-foreground" aria-hidden="true" />
       <div className="min-w-0 break-words text-label leading-label">
         {compact ? null : <p>{schedule.description}</p>}<WakeupState schedule={schedule} compact={compact} />
+        {compact ? <p className="mt-xs text-eyebrow text-muted-foreground">{schedule.description}</p> : null}
       </div>
     </li>)}
   </ul>;
 }
 
-function WakeupState({schedule, compact}: {schedule: Schedule; compact?: boolean}) {
+export function WakeupState({schedule, compact}: {schedule: Schedule; compact?: boolean}) {
+  if (schedule.status === "deleting" || schedule.status === "paused") return <p className="text-eyebrow text-muted-foreground">{schedule.sync === SCHEDULE_SYNC.synced ? scheduleStateText(schedule) : `${schedule.status === "deleting" ? "Removal" : "Pause"} ${schedule.sync === SCHEDULE_SYNC.failed ? "failed. Open setup to retry." : "pending."}`}</p>;
   if (schedule.sync !== SCHEDULE_SYNC.synced) return <p className="text-eyebrow leading-eyebrow text-warning">
     {schedule.sync === SCHEDULE_SYNC.failed ? "Registration failed. Open setup to retry." : "Scheduler registration pending."}
   </p>;

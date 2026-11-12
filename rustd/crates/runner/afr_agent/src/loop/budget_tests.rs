@@ -95,7 +95,6 @@ async fn test_meter_holds_what_the_report_sums() {
             mint: &CountingMint::never(),
             verbs: &afr_tools::CLOSED,
             checkpoint: &Discard,
-            context_checkpoints: &crate::testing::ContextMemory::default(),
             inbox: &crate::testing::NoInbox,
             events: &sink,
             meter: &meter,

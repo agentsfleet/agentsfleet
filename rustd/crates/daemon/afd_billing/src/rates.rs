@@ -71,10 +71,10 @@ impl Posture {
 
 /// What the issue-time gate will check a balance against.
 ///
-/// Three answers rather than two, because "the catalogue has no rate for this
-/// model" is not the same as "the run costs nothing" and must not be folded
-/// into `Priced(ZERO)` — that would silently admit against a floor of zero and
-/// look identical to a correctly-priced free run.
+/// Two answers rather than a bare number, because "the catalogue has no rate
+/// for this model" is not the same as "the run costs nothing" and must not be
+/// folded into `Priced(ZERO)` — that would silently admit against a floor of
+/// zero and look identical to a correctly-priced free run.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Estimate {
     /// The floor cost of this run, in nanos.
@@ -145,9 +145,24 @@ impl Accounts {
     }
 }
 
+impl Accounts {
+    /// [`Self::estimate`] against a book the caller already holds, as the
+    /// lease path's version-keyed cache does: no statement.
+    ///
+    /// # Errors
+    /// Preserves the rater's arithmetic failures.
+    pub fn estimate_from(book: &PriceBook, posture: Posture, now: Timestamp) -> Result<Estimate> {
+        if posture == Posture::SelfManaged {
+            return Ok(Estimate::Priced(Nanos::ZERO));
+        }
+        floor(book, now)
+    }
+}
+
 /// The issue-time floor priced against `book` at `now`.
 fn floor(book: &PriceBook, now: Timestamp) -> Result<Estimate> {
     let line = UsageLine {
+        kind: af_wire::usage::LineKind::Model,
         seq: 0,
         at: now,
         input_tokens: ESTIMATE_FLOOR_INPUT_TOKENS,

@@ -9,6 +9,7 @@ import { FleetConnectionNotice } from "./FleetConnectionNotice";
 import { renderFleetMessage } from "./fleetMessageRenderers";
 import { SettledReplyStatus } from "./FleetReplyAnnouncements";
 import { ChatThread } from "./chat/ChatThread";
+import { WakeupStrip } from "./chat/WakeupStrip";
 
 const PANEL_TITLE = "Chat";
 const EMPTY_HINT = "Message this fleet or wait for its next trigger. Activity and outcomes appear here.";
@@ -32,7 +33,7 @@ export const FleetThreadViewport = memo(function FleetThreadViewport({
   return <ChatThread testId="fleet-thread-root" label="Fleet chat" footer={<>
     <FleetConnectionNotice status={connectionStatus} onRetry={onRetry} />
     {archived ? <p className="py-xl text-center text-label text-muted-foreground">Archived · This fleet is permanently stopped. Its history is available to read.</p>
-      : <SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} />}
+      : <><WakeupStrip /><SteerComposer modelLabel={modelLabel} pending={pending} onResend={onResend} onDismiss={onDismiss} onRestored={onRestored} onDraft={onDraft} /></>}
   </>}>
     <SettledReplyStatus><ChatHistory setup={setup} setupEventId={setupEventId} eventsCount={eventsCount} connectionStatus={connectionStatus} /></SettledReplyStatus>
   </ChatThread>;

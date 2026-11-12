@@ -4,7 +4,7 @@ import type { MessageState } from "@assistant-ui/react";
 import { FLEET_OUTCOME_CLASS } from "./FleetFailedOutcome";
 import { FleetReplyFailure } from "./FleetReplyFailure";
 import { FleetMessageRow, ROW_TONE } from "./FleetMessageRow";
-import { OmittedCalls } from "./FleetReplyFigures";
+import { FleetReplyFigures, OmittedCalls } from "./FleetReplyFigures";
 import { FleetReplyParts } from "./FleetReplyParts";
 import { FleetReplyActions } from "./FleetReplyActions";
 import { useSettleAnnouncement } from "./FleetReplyAnnouncements";
@@ -41,6 +41,7 @@ export function FleetReply({
   const recovering = readReplyRecovering(message);
   const answer = readText(message).trim();
   const span = readReasoningSpan(message);
+  const figures = readReplyFigures(message);
   const queued = readQueued(message);
   const context = readContextProgress(message.metadata.custom.contextProgress);
   const eventId = message.id.endsWith(REPLY_ID_SUFFIX) ? message.id.slice(0, -REPLY_ID_SUFFIX.length) : message.id;
@@ -59,14 +60,15 @@ export function FleetReply({
       <TaskActivityTimeline value={message.metadata.custom.taskActivity} running={running} attentionOnly />
       <FleetReplyParts errored={errored} running={running} queued={queued} eventId={eventId}
         reasoning={reasoningText(message)} span={span} content={message.content}
-        startedAtMs={message.createdAt.getTime()} contextProgress={context} plainText={message.metadata.custom.previewUpload === true} />
+        startedAtMs={message.createdAt.getTime()} wallMs={figures.wallMs} figures={figures} activity={message.metadata.custom.taskActivity} contextProgress={context} plainText={message.metadata.custom.previewUpload === true} />
       {running ? <ContextProgressStatus value={context} /> : null}
       <OmittedCalls count={readOmittedCallCount(message)} />
       {errored && !running && !recovering ? <FleetReplyFailure message={message} /> : null}
       {answer.length === 0 && !running && !errored ? <p className={FLEET_OUTCOME_CLASS}>{messageOutcome(message)}</p> : null}
       {recovering ? <output aria-label={RECOVERING_LABEL} className="text-body-sm text-text-subtle">{RECOVERING_LABEL}</output> : null}
       <NativeTaskPrBadge activity={message.metadata.custom.taskActivity} appearance="card" />
-      <FleetReplyActions answer={answer} settled={!running && !errored && !recovering} figures={readReplyFigures(message)} activity={message.metadata.custom.taskActivity} />
+      {!running && !errored && !recovering && !message.content.some(part => part.type === "tool-call") ? <FleetReplyFigures figures={figures} activity={message.metadata.custom.taskActivity} summary /> : null}
+      <FleetReplyActions answer={answer} settled={!running && !errored && !recovering} />
     </FleetMessageRow>
   );
 }

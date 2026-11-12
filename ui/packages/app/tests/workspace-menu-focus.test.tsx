@@ -46,7 +46,7 @@ describe("lazy workspace menu entry focus", () => {
   });
 
   it("focuses Create workspace when the account has no workspace to select", async () => {
-    pathname.mockReturnValue("/settings/api-keys");
+    pathname.mockReturnValue("/settings/security");
     render(<WorkspaceSwitcherMenu open workspaces={[]} onOpenChange={vi.fn()} />);
     const create = await screen.findByRole("menuitem", { name: "Create workspace" });
     await waitFor(() => expect(document.activeElement).toBe(create));

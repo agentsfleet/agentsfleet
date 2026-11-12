@@ -4,6 +4,7 @@ import {ResourceHeader} from "./ResourceHeader";
 
 const route = vi.hoisted(() => ({pathname: "/settings/members"}));
 vi.mock("next/navigation", () => ({usePathname: () => route.pathname}));
+vi.mock("@/lib/auth/client", () => ({useCurrentUser: () => ({userId: "viewer"})}));
 afterEach(cleanup);
 
 it.each([

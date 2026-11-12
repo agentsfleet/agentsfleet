@@ -1,6 +1,6 @@
 import type { AssistantState } from "@assistant-ui/react";
 import { ACTOR, baseActorOf, eventLinkFrom, eventReferenceFrom, parsePayload, senderLabelFor, SENDER, steerMessageFrom } from "@/lib/events/event-summary";
-import { FLEET_ACTIVITY } from "@/lib/events/fleet-activity";
+import { ACTIVITY_KIND, FLEET_ACTIVITY, readFleetActivity } from "@/lib/events/fleet-activity";
 import { AGENTSFLEET_EVENT_STATUS } from "@/lib/streaming/fleet-stream-row";
 import { eventOutcome, messageOutcome } from "./fleetFailureCopy";
 import { hasOwnContent, readActor, readCustomStatus, readGroupMembers, readRenderKind, readRequestJson, readText, type RecordedActivity } from "./fleetMessageReaders";
@@ -64,13 +64,15 @@ type ActivityInput = {
 
 function activityElement(input: ActivityInput): ActivityElement {
   const recorded = input.status === FLEET_ACTIVITY.status;
+  const activity = recorded && input.payload ? readFleetActivity(input.payload) : null;
   const schedule = senderLabelFor(input.actor) === SENDER.SCHEDULE;
   const approval = baseActorOf(input.actor) === ACTOR.GATE_BLOCKED || input.status === AGENTSFLEET_EVENT_STATUS.GATE_BLOCKED;
   const link = recorded || schedule ? null : eventLinkFrom(input.payload);
   const reference = link ? eventReferenceFrom(input.payload) : null;
   const data = {
     eventId: input.eventId, actor: input.actor, status: input.status, createdAt: input.createdAt,
-    headline: activityHeadline(input.text, reference),
+    title: schedule ? "Woke up on schedule" : activity?.kind === ACTIVITY_KIND.scheduleChanged && activity.change === "created" ? "Scheduled wake-up" : undefined,
+    headline: activity?.kind === ACTIVITY_KIND.scheduleChanged && activity.change === "created" ? `${activity.message} · ${activity.description}` : activityHeadline(input.text, reference),
     outcome: input.status === STATUS_IN_FLIGHT || input.split || recorded ? undefined : input.outcome,
     failed: input.status === STATUS_AGENT_ERROR,
     details: activityDetails(input.actor, recorded || schedule ? undefined : input.payload),

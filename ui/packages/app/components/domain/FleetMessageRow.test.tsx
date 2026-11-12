@@ -136,7 +136,7 @@ describe("FleetActivityRow", () => {
     expect(screen.getByRole("button", { name: "View event" })).toBeTruthy();
     expect(time.dateTime).toBe(AT.toISOString());
     expect(time.getAttribute("aria-hidden")).toBe("true");
-    expect(time.textContent).toMatch(/ago$/);
+    expect(time.textContent).toBe("10:42");
     expect(time.title).not.toBe("");
     expect(accessibleTime.textContent).toContain(time.title);
     expect(outcome.querySelector("svg")?.getAttribute("class")).toMatch(
@@ -144,7 +144,7 @@ describe("FleetActivityRow", () => {
     );
   });
 
-  it("refreshes an idle activity timestamp as wall time advances", async () => {
+  it("keeps an activity's UTC clock and accessible instant stable as wall time advances", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(AT.getTime() + 2 * 60_000));
     const { container } = render(
@@ -164,13 +164,13 @@ describe("FleetActivityRow", () => {
       selector: ".sr-only",
     });
     const accessibleText = accessibleTime.textContent;
-    expect(time.textContent).toBe("2 minutes ago");
+    expect(time.textContent).toBe("10:42");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(60_000);
     });
 
-    expect(time.textContent).toBe("3 minutes ago");
+    expect(time.textContent).toBe("10:42");
     expect(accessibleTime.textContent).toBe(accessibleText);
   });
 });

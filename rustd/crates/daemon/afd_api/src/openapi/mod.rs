@@ -140,8 +140,8 @@ pub fn document() -> utoipa::openapi::OpenApi {
 ///
 /// # Why the split is bearer-or-not, and not open-or-not
 ///
-/// Four guards are not `Open` and still take no bearer: the HMAC, signature
-/// and Svix guards prove a delivery by its payload, and the authenticator
+/// Three guards are not `Open` and still take no bearer: the HMAC, signature
+/// and payload-signed guards prove a delivery by its payload, and the authenticator
 /// layer treats them exactly as it treats `Open`. Publishing them under the
 /// bearer scheme told every integrator to send a JWT that no handler reads.
 fn require_the_credential_each_route_guards(document: &mut utoipa::openapi::OpenApi) {
@@ -156,11 +156,9 @@ fn require_the_credential_each_route_guards(document: &mut utoipa::openapi::Open
                 RUNNER_SCHEME,
                 Vec::<String>::new(),
             )],
-            Guard::Open
-            | Guard::WebhookHmac
-            | Guard::WebhookSignature
-            | Guard::Svix
-            | Guard::PayloadSigned => Vec::new(),
+            Guard::Open | Guard::WebhookHmac | Guard::WebhookSignature | Guard::PayloadSigned => {
+                Vec::new()
+            }
         };
         let Some(item) = document.paths.paths.get_mut(meta.template) else {
             continue; // the coverage gate owns a route the document is missing

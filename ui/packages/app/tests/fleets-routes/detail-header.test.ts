@@ -115,7 +115,7 @@ describe("fleets routes — detail header and summary", () => {
       await import("../../app/(dashboard)/w/[workspaceId]/fleets/[id]/page");
     const props = chatProps(await Page({params: Promise.resolve({workspaceId: "ws_1", id: FLEET_ID})}));
     expect(props.initialSummary.pendingApprovals).toBe(1);
-    expect(props.approvalsHref).toBe(`/w/ws_1/approvals?fleetId=${FLEET_ID}`);
+    expect(props.approvalsHref).toBe(`/w/ws_1/fleets/${FLEET_ID}#fleet-approvals`);
   });
 
   it("redirects an obsolete Settings query to the canonical Chat URL", async () => {

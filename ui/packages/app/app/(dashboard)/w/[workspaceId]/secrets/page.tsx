@@ -1,4 +1,4 @@
-import { PageHeader, PageLayout, PageTitle, Section, SectionHeader } from "@agentsfleet/design-system";
+import { PageHeader, PageLayout, PageTitle } from "@agentsfleet/design-system";
 import { requireCredential } from "@/lib/auth/credential";
 import { PROVIDER_MODE } from "@/lib/types";
 import { getConnectorCatalogCached, getTenantProviderCached, listSecretsCached } from "./lib/reads";
@@ -40,19 +40,16 @@ export default async function SecretsPage({
 
   return (
     <PageLayout>
-      <PageHeader description={<SecretsDescription />}>
+      <PageHeader description={<SecretsDescription />} actions={<AddSecretDialog workspaceId={workspaceId} />}>
         <PageTitle>{SECRETS_PAGE_TITLE}</PageTitle>
       </PageHeader>
 
-      <Section aria-label="Stored secrets" className="flex flex-col gap-xl">
-        <SectionHeader as="p" actions={<AddSecretDialog workspaceId={workspaceId} />}>Stored secrets</SectionHeader>
         <SecretsList
             workspaceId={workspaceId}
             secrets={secrets}
             protectedSecretName={protectedSecretName}
             connections={connections}
         />
-      </Section>
     </PageLayout>
   );
 }

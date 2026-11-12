@@ -21,14 +21,14 @@ describe("Models registry paging and failures", () => {
     expect(screen.getByText("Showing 1 models — more available")).toBeTruthy();
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByRole("button", { name: "Load more models" }));
 
     expect(listModelEntriesActionMock).toHaveBeenCalledWith("cur-2");
     expect(await screen.findByTitle("gpt-5")).toBeTruthy();
     // Prior rows RETAINED, not replaced.
     expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy();
     // Last page reached — the affordance and its disclosure both retire.
-    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Load more models" })).toBeNull();
     expect(screen.queryByText("Showing 2 models — more available")).toBeNull();
     expect(listModelEntriesActionMock).toHaveBeenCalledTimes(1);
   });
@@ -40,7 +40,7 @@ describe("Models registry paging and failures", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByRole("button", { name: "Load more models" }));
 
     expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy();
     // The preserved 503 keeps its specific instruction.
@@ -67,9 +67,9 @@ describe("Models registry paging and failures", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByRole("button", { name: "Load more models" }));
     expect(await screen.findByTitle("gpt-5")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Next page" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Load more models" })).toBeNull();
     expect(screen.queryByText("Showing 2 models — more available")).toBeNull();
     expect(listModelEntriesActionMock).toHaveBeenCalledTimes(1);
   });
@@ -81,7 +81,7 @@ describe("Models registry paging and failures", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByRole("button", { name: "Load more models" }));
     expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
     expect(screen.getByTitle("claude-sonnet-5")).toBeTruthy();
   });
@@ -96,7 +96,7 @@ describe("Models registry paging and failures", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByRole("button", { name: "Load more models" }));
     expect(await screen.findByText("Could not load your models. They have not been changed.")).toBeTruthy();
     expect(screen.queryByText(/bare string, not an Error/)).toBeNull();
   });
@@ -112,7 +112,7 @@ describe("Models registry paging and failures", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByRole("button", { name: "Load more models" }));
     await user.click(await findEnabledRetry());
 
     // Retry re-reads from the first page, so it sends NO cursor — that is what
@@ -133,7 +133,7 @@ describe("Models registry paging and failures", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByRole("button", { name: "Load more models" }));
     await user.click(await findEnabledRetry());
 
     await waitFor(() => expect(listModelEntriesActionMock).toHaveBeenCalledTimes(2));
@@ -175,16 +175,6 @@ describe("Models registry paging and failures", () => {
     expect(new Set(copies).size).toBe(copies.length);
     expect(readErrorCopy({ kind: LIBRARY_ERROR_KIND.unauthenticated })).toMatch(/sign in/i);
     expect(readErrorCopy({ kind: LIBRARY_ERROR_KIND.unavailable })).toMatch(/temporarily unavailable/i);
-  });
-
-  it("computeNextSort ignores a key outside the sortable column set, and toggles both directions", async () => {
-    const { computeNextSort } = await import(
-      "../app/(dashboard)/w/[workspaceId]/settings/models/components/registry-view"
-    );
-    expect(computeNextSort(null, "status")).toBeNull();
-    expect(computeNextSort({ key: "model", dir: "ascending" }, "actions")).toBeNull();
-    expect(computeNextSort({ key: "model", dir: "ascending" }, "model")).toEqual({ key: "model", dir: "descending" });
-    expect(computeNextSort({ key: "model", dir: "descending" }, "model")).toEqual({ key: "model", dir: "ascending" });
   });
 
 });

@@ -183,6 +183,7 @@ describe("setup route whitelist", () => {
     [["fleets"], METHOD.get], [["fleets"], METHOD.post], [["fleets", FLEET_ID], METHOD.get], [["fleets", FLEET_ID], METHOD.patch], [["fleets", FLEET_ID, "revisions"], METHOD.post],
     [["fleets", FLEET_ID, "authoring-context"], METHOD.get],
     [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.get], [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.patch],
+    [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.delete],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.post],
     [["fleet-libraries"], METHOD.get], [["fleet-libraries"], METHOD.post], [["fleet-libraries", "owned"], METHOD.get],
     [["fleet-libraries", LIBRARY_ID], METHOD.get], [["fleet-libraries", "platform-recipe"], METHOD.get], [["fleet-libraries", LIBRARY_ID], METHOD.delete],
@@ -198,7 +199,6 @@ describe("setup route whitelist", () => {
   it("rejects a malformed workspace", () => {expect(matchSetupRoute("..", ["models"], METHOD.get)).toBeUndefined();});
   it.each([
     [["fleets"], METHOD.patch], [["fleets", "invalid"], METHOD.get],
-    [["fleets", FLEET_ID, "schedules", REVISION_ID], METHOD.delete],
     [["fleets", FLEET_ID, "schedules", "invalid"], METHOD.get],
     [["fleets", FLEET_ID, "schedules", REVISION_ID, "sync"], METHOD.get],
     [["fleets", FLEET_ID, "schedules", "invalid", "sync"], METHOD.post],

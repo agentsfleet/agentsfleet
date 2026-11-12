@@ -15,7 +15,6 @@
 //! and splitting it away from the plane it creates would put the mint and the
 //! thing it mints for in two different places.
 
-pub(crate) mod context;
 pub(crate) mod credential;
 pub(crate) mod decisions;
 pub(crate) mod enrolment;

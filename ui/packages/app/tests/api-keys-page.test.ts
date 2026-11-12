@@ -25,7 +25,7 @@ vi.mock("@/lib/api/api_keys", async (orig) => ({
 }));
 
 // Stub the client list so the page test stays focused on page-level behaviour.
-vi.mock("@/app/(dashboard)/settings/api-keys/components/ApiKeyList", () => ({
+vi.mock("@/app/(dashboard)/settings/security/components/ApiKeyList", () => ({
   default: ({ initial }: { initial: { items: Array<{ key_name: string }> } }) =>
     React.createElement(
       "div",
@@ -40,6 +40,8 @@ vi.mock("@/components/domain/island-dynamic/CreateApiKeyDialogDynamic", () => ({
   default: () => React.createElement("button", { type: "button" }, "Create key"),
 }));
 
+vi.mock("@/components/account/SessionSettings", () => ({SessionSettings: () => React.createElement("section", null, "Active sessions")}));
+
 function mockAuth(token: string | null = "tok") {
   authMock.mockResolvedValueOnce({ getToken: vi.fn().mockResolvedValue(token), userId: "usr_1" });
 }
@@ -51,14 +53,14 @@ beforeEach(() => vi.clearAllMocks());
 describe("api-keys page", () => {
   it("redirects to /sign-in when there is no token", async () => {
     mockAuth(null);
-    const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
+    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
   it("shows the API keys need admin access notice inline on a 403 — no redirect", async () => {
     mockAuth();
     listApiKeysMock.mockRejectedValueOnce(new ApiError("forbidden", 403, "UZ-AUTH-001"));
-    const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
+    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
     const html = renderToStaticMarkup(await Page());
     expect(html).toMatch(/API keys need admin access/i);
     expect(redirect).not.toHaveBeenCalled();
@@ -67,15 +69,18 @@ describe("api-keys page", () => {
   it("redirects to /sign-in when the backend returns 401", async () => {
     mockAuth();
     listApiKeysMock.mockRejectedValueOnce(new ApiError("session expired", 401, "UZ-AUTH-006"));
-    const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
+    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
     await expect(Page()).rejects.toThrow("redirect:/sign-in");
   });
 
-  it("re-throws a non-403/401 ApiError instead of redirecting", async () => {
+  it("keeps sessions available when the API-key read fails", async () => {
     mockAuth();
     listApiKeysMock.mockRejectedValueOnce(new ApiError("backend exploded", 500, "UZ-INTERNAL-003"));
-    const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
-    await expect(Page()).rejects.toThrow("backend exploded");
+    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
+    const html = renderToStaticMarkup(await Page());
+    expect(html).toContain("API keys could not be loaded.");
+    expect(html).toContain("Active sessions");
+    expect(redirect).not.toHaveBeenCalled();
   });
 
   it("operator: renders the API Keys title and every key from the complete read", async () => {
@@ -88,9 +93,9 @@ describe("api-keys page", () => {
       total: 2,
       next_cursor: null,
     });
-    const { default: Page } = await import("../app/(dashboard)/settings/api-keys/page");
+    const { default: Page } = await import("../app/(dashboard)/settings/security/page");
     const html = renderToStaticMarkup(await Page());
-    expect(html).toMatch(/API Keys/);
+    expect(html).toMatch(/API keys/);
     expect(html).toContain("ci-runner");
     expect(html).toContain("old-zapier");
     // The initial read carries no paging parameters; the client's own default

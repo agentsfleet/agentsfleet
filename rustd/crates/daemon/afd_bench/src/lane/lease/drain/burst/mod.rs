@@ -113,6 +113,8 @@ async fn measure(
     let pickups = Arc::new(Pickups::new()?);
     let appends = Arc::new(Appends::new()?);
     let stop = CancellationToken::new();
+    // Any early return below ends the sampler: the guard cancels on drop.
+    let _ends_sampler = stop.clone().drop_guard();
     let sampler = tokio::spawn(peak_backlog(admissions(stores), stop.clone()));
     let pacers = spawn_pacers(burst, parameters, stores, staged, &pickups, &appends);
     let measured = window(

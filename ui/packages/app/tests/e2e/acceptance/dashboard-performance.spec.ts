@@ -161,7 +161,6 @@ test.describe("authenticated dashboard fluidity", () => {
       await gotoWorkspace(page, FIXTURE_KEY.regular, "fleets");
       await expect(page.getByRole("heading", {name: CHAT_ENTRANCE, exact: true})).toBeVisible();
       await page.getByRole("button", { name: /^Workspace and account menu(?::|$)/ }).click();
-      await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
       await page.getByRole("menuitem", { name: "Activity", exact: true }).hover();
       await expect.poll(
         () =>
@@ -172,7 +171,7 @@ test.describe("authenticated dashboard fluidity", () => {
       await expect(page.getByRole("menu")).toBeHidden();
       await installBlankFrameAudit(page);
 
-      await openSettingsDestination(page, "Approvals");
+      await openSettingsDestination(page, "Models");
       await openSettingsDestination(page, "Activity");
       await expect(page).toHaveURL(workspaceUrlPattern("events"), {
         timeout: ROUTE_TIMEOUT_MS,

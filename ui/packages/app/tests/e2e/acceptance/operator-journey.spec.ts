@@ -212,10 +212,8 @@ test.describe("operator journey", () => {
     await expect(page.getByRole("heading", { name: "Workspace activity", exact: true })).toBeVisible();
     await expect(page.getByLabel("Workspace activity", { exact: true })).toBeVisible();
 
-    await openSettingsDestination(page, "Approvals");
-    await expect(page).toHaveURL(workspaceUrlPattern("approvals"));
-    await expect(page.getByRole("heading", { name: /^approvals$/i })).toBeVisible();
-    await expect(page.getByLabel("Approval gates")).toBeVisible();
+    await page.goto(workspaceHref(wsId, `fleets/${fleetId}`));
+    await expect(page.getByLabel("Fleet chat")).toBeVisible();
 
     // The standalone workspace-settings page was folded into API Keys post-M118
     // (no `/settings` sidebar link, no workspace-settings index route), so the
@@ -224,7 +222,7 @@ test.describe("operator journey", () => {
     await clickSidebarLink(page, "/settings/billing", /\/settings\/billing(\?|$)/);
     await expect(page.getByLabel("Period totals")).toBeVisible();
 
-    await page.goto("/settings/api-keys");
+    await page.goto("/settings/security");
     await expect(page).toHaveURL(/\/settings\/api-keys(\?|$)/);
     await page.getByRole("button", { name: "Create key", exact: true }).click();
     const createKeyDialog = page.getByRole("dialog", { name: "Create API key" });
@@ -270,7 +268,7 @@ test.describe("operator journey", () => {
     await expectRowState(page, fleetId, "failed");
     await deleteFleetWithApiKey(apiUrl, rawApiKey, wsId, fleetId);
 
-    await page.goto("/settings/api-keys");
+    await page.goto("/settings/security");
     await expect(page.getByText(apiKeyName, { exact: true })).toBeVisible();
 
     const revoke = page.getByRole("button", { name: new RegExp(`revoke api key ${apiKeyName}`, "i") });

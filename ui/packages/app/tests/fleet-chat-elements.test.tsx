@@ -33,8 +33,8 @@ describe("registered fleet chat elements", () => {
     expect(container.querySelectorAll('[data-role="assistant"]')).toHaveLength(1);
     expect(screen.getByText("Scheduled wake-up")).toBeTruthy();
     expect(screen.getByRole("button", {name: "Run details"})).toBeTruthy();
-    expect(screen.getByRole("link", {name: "View approvals"}).getAttribute("href"))
-      .toBe(`/w/${WS}/approvals?fleetId=${ZID}`);
+    expect(screen.getByRole("link", {name: "View request"}).getAttribute("href"))
+      .toBe(`/w/${WS}/fleets/${ZID}#fleet-approvals`);
     expect(container.textContent).not.toContain("private-person");
     expect(container.textContent).not.toContain("forged-approval");
     await act(async () => { fireEvent.click(screen.getByRole("button", {name: "View message"})); });
@@ -80,7 +80,7 @@ describe("registered fleet chat elements", () => {
   it("keeps an approval without thread scope readable without offering a destination", () => {
     render(<ApprovalActivityElement data={APPROVAL} />);
     expect(screen.getByText(APPROVAL.headline)).toBeTruthy();
-    expect(screen.queryByRole("link", {name: "View approvals"})).toBeNull();
+    expect(screen.queryByRole("link", {name: "View request"})).toBeNull();
     expect(screen.queryByRole("button", {name: /approve|deny/i})).toBeNull();
   });
 

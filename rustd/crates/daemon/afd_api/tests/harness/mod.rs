@@ -24,11 +24,13 @@
 //! real store stops producing it. Deleting them also deleted the
 //! `test-util` constructors that existed only to fabricate that error.
 //!
-//! Two stubs survive, and neither is a uniform refusal — which is the line:
+//! A few stubs survive, and none is a uniform refusal — which is the line:
 //! [`OneWorkspace`] answers ownership honestly so both halves of that matrix
-//! stay reachable, and [`NoWork`] answers a lease plane's verbs with success so
-//! the runner routes are reachable at all. Each carries test LOGIC no real
-//! store over a dead datastore could stand in for.
+//! stay reachable, [`NoWork`] answers a lease plane's verbs with success so the
+//! runner routes are reachable at all, and [`HarnessProviders`],
+//! [`HarnessTeam`], [`RecordingWriteback`] and [`HarnessIngress`] answer or
+//! record what their suites assert on. Each carries test LOGIC no real store
+//! over a dead datastore could stand in for.
 //!
 //! A test that needs rows is an integration test, `#[ignore]`d and run by
 //! `make test-integration-rustd`. This harness is for everything BEFORE the

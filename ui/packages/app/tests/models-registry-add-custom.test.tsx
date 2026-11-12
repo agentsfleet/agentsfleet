@@ -15,14 +15,15 @@ async function customForm(user: Awaited<ReturnType<typeof renderDialog>>["user"]
 }
 
 describe("Create model with a compatible endpoint", () => {
-  it("allows a keyless HTTPS endpoint and optional activation", async () => {
+  it("requires a key for an HTTPS endpoint and supports optional activation", async () => {
     const {user} = await renderDialog();
     const dialog = await customForm(user);
-    expect(dialog.getByLabelText("API key (optional)")).toBeTruthy();
-    await user.click(dialog.getByRole("switch", {name: "Make active"}));
+    expect(dialog.getByRole("button", {name: "Create model"}).hasAttribute("disabled")).toBe(true);
+    await user.type(dialog.getByLabelText("API key", {exact: true}), "gateway-fixture-key");
+    await user.click(dialog.getByRole("checkbox", {name: "Make active"}));
     await user.click(dialog.getByRole("button", {name: "Create model"}));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    expect(createSecretActionMock).toHaveBeenCalledWith("ws_1", {name: "gateway", data: {provider: PROVIDER, base_url: URL}});
+    expect(createSecretActionMock).toHaveBeenCalledWith("ws_1", {name: "gateway", data: {provider: PROVIDER, base_url: URL, api_key: "gateway-fixture-key"}});
     expect(createModelEntryActionMock).toHaveBeenCalledWith({workspace_id: "ws_1", model_id: FORM_MODEL, secret_ref: "gateway"});
     expect(setProviderSelfManagedActionMock).toHaveBeenCalledWith({workspace_id: "ws_1", model: FORM_MODEL, secret_ref: "gateway"});
   });
@@ -30,6 +31,7 @@ describe("Create model with a compatible endpoint", () => {
   it("refuses an insecure endpoint before any write", async () => {
     const {user} = await renderDialog();
     const dialog = await customForm(user, "http://models.example/v1");
+    await user.type(dialog.getByLabelText("API key", {exact: true}), "gateway-fixture-key");
     await user.click(dialog.getByRole("button", {name: "Create model"}));
     expect(dialog.getByRole("alert").textContent).toMatch(/https/i);
     expect(createSecretActionMock).not.toHaveBeenCalled();
@@ -42,7 +44,7 @@ describe("Create model with a compatible endpoint", () => {
     const dialog = within(screen.getByRole("dialog"));
     await user.type(dialog.getByLabelText("Provider", {exact: true}), PROVIDER);
     await user.type(dialog.getByLabelText("Model", {exact: true}), FORM_MODEL);
-    await user.click(dialog.getByRole("button", {name: "Use saved key"}));
+    await user.click(dialog.getByRole("radio", {name: "Use saved key"}));
     await user.click(dialog.getByLabelText("Saved key", {exact: true}));
     await user.click(screen.getByRole("option", {name: saved.name}));
     expect(dialog.getByText(`Endpoint: ${URL}`)).toBeTruthy();

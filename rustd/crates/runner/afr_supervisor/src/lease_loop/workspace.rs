@@ -1,7 +1,7 @@
 //! The lease's sandbox and its workspace, built beside the turn.
 //!
 //! ```text
-//!   size ─► egress ─► checkout plan            refused here: startup_posture
+//!   egress ─► checkout plan                    refused here: startup_posture
 //!     ├─► build: thaw or prepare ─► check out ─► fill the slot
 //!     └─► turn:  model call ─► sandbox call waits on the slot ─► …
 //! ```
@@ -17,7 +17,6 @@ use std::sync::OnceLock;
 use std::time::Duration;
 
 use af_core::error_code::{Coded as _, Logged};
-use af_wire::lease::SandboxLimits;
 use af_wire::report::FailureClass;
 use afr_executor::{ExecutorSlot, ExecutorSource as _};
 use afr_memory::Seed;
@@ -45,7 +44,6 @@ use crate::report::Ending;
 pub(super) const BUILD_AFTER_ANSWER: Duration = Duration::from_secs(20);
 /// The event a build stopped because it outlasted its turn is logged under.
 pub(super) const EVENT_BUILD_OUTLASTED: &str = "sandbox_build_outlasted_turn";
-const DETAIL_SIZE: &str = "the lease asked for a sandbox size outside the bounds a runner builds";
 /// What a lease whose egress allowlist could not be resolved reports: a host
 /// that does not resolve, resolves to IPv6 alone, or an allowlist past its cap.
 const DETAIL_EGRESS: &str =
@@ -56,10 +54,9 @@ const DETAIL_EGRESS: &str =
 const DETAIL_EGRESS_BLOCKED: &str =
     "the fleet allows an egress host at a private or reserved address";
 const EVENT_EGRESS_REFUSED: &str = "egress_bind_refused";
-const EVENT_SIZE_REFUSED: &str = "sandbox_size_refused";
 
-/// What a lease proved before its first model request: the size its sandbox
-/// enforces, what it may reach, and what it checks out.
+/// What a lease proved before its first model request: the limits its sandbox
+/// enforces (this host's), what it may reach, and what it checks out.
 struct Admitted<'l> {
     limits: Limits,
     bound: Bound,
@@ -189,7 +186,7 @@ impl LeaseRun<'_> {
     }
 
     /// Every check whose failure would repeat on each lease, made before any
-    /// model request: the size, the egress and the checkout plan. A refusal
+    /// model request: the egress and the checkout plan. A refusal
     /// ends the lease at startup and releases the fleet's hold.
     async fn admitted<'p>(
         &'p self,
@@ -199,20 +196,13 @@ impl LeaseRun<'_> {
             self.release_hold();
             ending
         };
-        let limits = sized(self.lease.limits, self.lessee.limits).map_err(|failure| {
-            refused(Box::new(self.refuse(
-                &failure,
-                EVENT_SIZE_REFUSED,
-                DETAIL_SIZE,
-            )))
-        })?;
         let resolving = self.timeline.start(Segment::Egress);
         let bound = self.bind().await;
         resolving.stop();
         let bound = bound.map_err(refused)?;
         let plan = self.plan(prepared).map_err(refused)?;
         Ok(Admitted {
-            limits,
+            limits: self.lessee.limits,
             bound,
             plan,
         })
@@ -257,30 +247,6 @@ impl LeaseRun<'_> {
         };
         tracing::warn!(error_code, lease_id, reason, hosts, event, detail);
         failed(FailureClass::StartupPosture, detail)
-    }
-}
-
-/// The limits a lease's sandbox enforces: the size the lease asked for once
-/// it is proved within the wire's bounds, or this host's own when it asked for
-/// none.
-///
-/// # Errors
-/// The size breaks one of the bounds `SandboxLimits` declares.
-fn sized(asked: Option<SandboxLimits>, host: Limits) -> crate::error::Result<Limits> {
-    match asked {
-        Some(asked) => Ok(within(&garde::Unvalidated::new(asked).validate()?, host)),
-        None => Ok(host),
-    }
-}
-
-/// A proved size as limits. Processes and threads are not on the wire, so the
-/// host's cap holds for every lease.
-fn within(asked: &garde::Valid<SandboxLimits>, host: Limits) -> Limits {
-    Limits {
-        memory_bytes: asked.memory_bytes,
-        cpu_millis: asked.cpu_millis,
-        pids: host.pids,
-        disk_bytes: asked.disk_bytes,
     }
 }
 

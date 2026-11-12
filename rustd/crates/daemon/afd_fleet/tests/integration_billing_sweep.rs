@@ -10,13 +10,12 @@
 
 use std::{panic::AssertUnwindSafe, sync::Arc, time::Duration};
 
-use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
-use af_wire::usage::{DAEMON_SEQ_BASE, DECISION_SEQ_BASE, UsageLine};
-use afd_billing::biller::{Account, Attribution, Biller, Settlement, WorkKey};
-use afd_billing::ledger::{LedgerBiller, log_lines};
+use af_wire::usage::{LineKind, UsageLine};
+use afd_billing::Nanos;
+use afd_billing::biller::Biller;
+use afd_billing::ledger::LedgerBiller;
 use afd_billing::price::RatedLine;
-use afd_billing::{Nanos, Posture};
 use afd_fleet::lease::billing_sweep::{BillingSwept, GRACE, sweep};
 use afd_fleet::lease::{Renewed, sql::meter::Metering};
 use futures_util::FutureExt as _;
@@ -25,13 +24,13 @@ use crate::report_seed::{DEEP_POOL, Held, held_in};
 use crate::support::Fixtures;
 
 /// What the unsettled line costs.
-const LINE: Nanos = Nanos::from_i64(40_000);
+pub(crate) const LINE: Nanos = Nanos::from_i64(40_000);
 
 /// The runtime the orphaned line measured.
-const RUNTIME_MS: u32 = 400;
+pub(crate) const RUNTIME_MS: u32 = 400;
 
 /// Ages both of a row's stamps past the sweeper's grace.
-const AGED: &str = "UPDATE {table} SET created_at = created_at - $2::interval, \
+pub(crate) const AGED: &str = "UPDATE {table} SET created_at = created_at - $2::interval, \
                     updated_at = updated_at - $2::interval WHERE {key} = $1";
 
 #[tokio::test]
@@ -77,7 +76,7 @@ async fn the_relay_settles_orphaned_lines() {
 
 /// A lease that ended unreported owes the run time between its last renewal
 /// and the deadline it was granted (spec Dimension 9.5). The sweeper logs it as
-/// one runtime line in the daemon's range, settles it, and a second pass finds
+/// one runtime line numbered by its slice's start, settles it, and a second pass finds
 /// nothing more to bill.
 #[tokio::test]
 #[ignore = "needs live datastores: make test-integration-rustd"]
@@ -112,7 +111,8 @@ async fn expiry_after_decision(held: &Held) {
     "jev-latest".clone_into(&mut decision.model);
     decision.lines = vec![RatedLine {
         usage: UsageLine {
-            seq: DECISION_SEQ_BASE,
+            kind: LineKind::Decision,
+            seq: 0,
             at: held.now,
             input_tokens: 1_000,
             cached_input_tokens: 0,
@@ -131,11 +131,11 @@ async fn expiry_after_decision(held: &Held) {
         .await
         .expect("known decision charge");
     let first_ms = renew_runtime(held, &biller).await;
-    assert_eq!(
-        runtime_lines(held).await,
-        [(i64::from(DAEMON_SEQ_BASE), first_ms)],
-        "renewal counts runtime only, despite the existing decision receipt"
-    );
+    let renewed = runtime_lines(held).await;
+    let [(first_seq, billed_ms)] = renewed.clone().try_into().unwrap_or_else(|_count| {
+        unreachable!("renewal bills one runtime line, despite the decision receipt: {renewed:?}")
+    });
+    assert_eq!(billed_ms, first_ms, "{renewed:?}");
     let before = DEEP_POOL - DECISION_CHARGE.as_i64() - crate::report_seed::run_fee(first_ms);
     assert_eq!(held.fixtures.balance(&held.tenant).await, Some(before));
     let tail_ms = abandon(held).await;
@@ -157,11 +157,8 @@ async fn expiry_after_decision(held: &Held) {
     );
     assert_eq!(
         runtime_lines(held).await,
-        [
-            (i64::from(DAEMON_SEQ_BASE), first_ms),
-            (i64::from(DAEMON_SEQ_BASE) + 1, tail_ms)
-        ],
-        "expiry uses the next runtime sequence without counting decision usage"
+        [(first_seq, first_ms), (first_seq + first_ms, tail_ms)],
+        "expiry bills the next slice, numbered by where the renewal's ended"
     );
     assert_eq!(
         held.fixtures.balance(&held.tenant).await,
@@ -235,12 +232,11 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
 
     let entropy = Entropy::new();
     let swept = sweep(database, &biller, &entropy, held.now, None);
-    let reported = held.fixtures.settle_alone(
+    let reported = held.fixtures.commit_alone(
         &held.leases,
         &held.issued.lease_id,
         &held.runner,
         &[],
-        true,
         held.now,
     );
     let (swept, _reported) = tokio::join!(swept, reported);
@@ -257,7 +253,9 @@ async fn an_expiry_racing_a_late_report_bills_the_tail_once() {
 
 /// Leaves `held`'s lease active but abandoned: its deadline and its cursor
 /// both pushed back past the sweeper's grace, with three seconds of run time
-/// between them that no renewal billed. Answers that tail in milliseconds.
+/// between them that no renewal billed. The lease's start moves back with its
+/// cursor, as elapsed time moves both, so the tail starts where the last
+/// renewal ended. Answers that tail in milliseconds.
 pub(crate) async fn abandon(held: &Held) -> i64 {
     let lease = &held.issued.lease_id;
     let mut connection = held
@@ -268,7 +266,9 @@ pub(crate) async fn abandon(held: &Held) -> i64 {
         .expect("a pooled connection");
     sqlx::query(
         "UPDATE runner.leases SET lease_expires_at = now() - $2::interval, \
-         last_metered_at = now() - $2::interval - $3::interval WHERE id = $1",
+         last_metered_at = now() - $2::interval - $3::interval, \
+         created_at = created_at - (last_metered_at - (now() - $2::interval - $3::interval)) \
+         WHERE id = $1",
     )
     .bind(lease)
     .bind(GRACE.saturating_mul(2))
@@ -286,11 +286,10 @@ const TAIL: Duration = Duration::from_secs(3);
 async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     sqlx::query_as(
         "SELECT seq, runtime_ms FROM billing.usage_lines \
-         WHERE work_id = $1 AND seq >= $2 AND seq < $3 ORDER BY seq",
+         WHERE work_id = $1 AND kind = $2 ORDER BY seq",
     )
     .bind(&held.lease_key)
-    .bind(i64::from(DAEMON_SEQ_BASE))
-    .bind(i64::from(DECISION_SEQ_BASE))
+    .bind(LineKind::Runtime.as_str())
     .fetch_all(
         &mut *held
             .fixtures
@@ -303,84 +302,4 @@ async fn runtime_lines(held: &Held) -> Vec<(i64, i64)> {
     .expect("the runtime lines read")
 }
 
-/// The state a crash leaves: one line logged, then the process died before
-/// any relay pass settled it, and the lease expired unreported, all longer ago
-/// than the grace.
-pub(crate) async fn orphan(held: &Held) {
-    let database = &held.fixtures.database;
-    let settlement = settlement(held).await;
-    log_lines(
-        &mut *database.acquire().await.expect("a pooled connection"),
-        &Entropy::new(),
-        held.now,
-        &settlement,
-    )
-    .await
-    .expect("the line is logged");
-
-    let mut connection = database.acquire().await.expect("a pooled connection");
-    sqlx::query("UPDATE runner.leases SET status = $2 WHERE id = $1")
-        .bind(&held.lease_key)
-        .bind(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)
-        .execute(&mut *connection)
-        .await
-        .expect("the lease ends unreported");
-    for (table, key) in [("billing.usage_lines", "work_id"), ("runner.leases", "id")] {
-        sqlx::query(sqlx::AssertSqlSafe(
-            AGED.replace("{table}", table).replace("{key}", key),
-        ))
-        .bind(&held.lease_key)
-        .bind(GRACE.saturating_mul(2))
-        .execute(&mut *connection)
-        .await
-        .expect("the rows age past the grace");
-    }
-}
-
-/// One runtime-only line of `held`'s lease, attributed to its fleet.
-pub(crate) async fn settlement(held: &Held) -> Settlement {
-    let workspace: Uuid7 =
-        sqlx::query_scalar("SELECT workspace_id FROM fleet.fleets WHERE id = $1")
-            .bind(&held.fleet)
-            .fetch_one(
-                &mut *held
-                    .fixtures
-                    .database
-                    .acquire()
-                    .await
-                    .expect("a pooled connection"),
-            )
-            .await
-            .expect("the fixture fleet is readable");
-    Settlement {
-        work: WorkKey::FleetLease(held.lease_key.clone()),
-        payer: Account {
-            tenant: held.tenant.clone(),
-            workspace,
-        },
-        attribution: Attribution::Fleet {
-            fleet: held.fleet.clone(),
-            fleet_name: held.fleet.clone().into(),
-            event_id: held.event_id.clone(),
-        },
-        provider: crate::seed::PROVIDER.to_owned(),
-        model: crate::seed::MODEL.to_owned(),
-        posture: Posture::Platform,
-        lines: vec![RatedLine {
-            usage: UsageLine {
-                seq: 0,
-                at: held.now,
-                input_tokens: 0,
-                cached_input_tokens: 0,
-                cache_write_tokens: 0,
-                cache_write_5m_tokens: 0,
-                cache_write_1h_tokens: 0,
-                output_tokens: 0,
-                runtime_ms: RUNTIME_MS,
-            },
-            price: None,
-            charged: LINE,
-            unpriced_tokens: 0,
-        }],
-    }
-}
+pub(crate) use crate::billing_lines::{orphan, settlement};

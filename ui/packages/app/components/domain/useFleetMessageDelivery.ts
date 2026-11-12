@@ -1,5 +1,7 @@
 "use client";
 
+import { chatMessageText as extractMessageText } from "@/lib/chat-message-text";
+export { chatMessageText as extractMessageText } from "@/lib/chat-message-text";
 import { useCallback, useMemo, useRef } from "react";
 import { MessageNotSentError, type AppendMessage } from "@assistant-ui/react";
 
@@ -284,12 +286,4 @@ function mintOrNull(): string | null {
   } catch {
     return null;
   }
-}
-
-/** The text a composer send carries: its first text part, or nothing. */
-export function extractMessageText(msg: AppendMessage): string {
-  for (const part of msg.content) {
-    if (part.type === "text") return part.text;
-  }
-  return "";
 }

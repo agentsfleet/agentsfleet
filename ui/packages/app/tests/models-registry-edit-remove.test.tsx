@@ -12,7 +12,7 @@ describe("Row actions — Edit", () => {
     await renderTable(registry([target]));
 
     const user = userEvent.setup();
-    await clickRowAction(user, /edit claude-sonnet-5/i);
+    await clickRowAction(user, "claude-sonnet-5", "Edit model");
 
     const dialog = await screen.findByRole("dialog");
     await user.clear(within(dialog).getByLabelText(/^model$/i));
@@ -29,7 +29,7 @@ describe("Row actions — Edit", () => {
     replaceSecretActionMock.mockResolvedValue({ok: true, data: {name: target.secret_ref}});
     await renderTable(registry([target]));
     const user = userEvent.setup();
-    await clickRowAction(user, /edit claude-sonnet-5/i);
+    await clickRowAction(user, "claude-sonnet-5", "Edit model");
     const dialog = await screen.findByRole("dialog");
     await user.type(within(dialog).getByLabelText(/api key/i), "rotated-staging-key");
     await user.click(within(dialog).getByRole("button", {name: /^save$/i}));
@@ -257,8 +257,8 @@ describe("Row actions — Edit", () => {
     expect(replaceSecretActionMock).not.toHaveBeenCalled();
   });
 
-  it("a keyless custom endpoint allows a base-URL-only change", async () => {
-    // has_key false → there is no key to drop, so the base URL may change alone.
+  it("a keyless custom endpoint requires a key before an endpoint change", async () => {
+    // Runtime requires a key even when the stored row has none.
     const target = entry({
       id: "e1", model_id: "vllm-model", secret_ref: "vllm-gateway",
       provider: "openai-compatible", kind: "custom_endpoint",
@@ -272,21 +272,25 @@ describe("Row actions — Edit", () => {
     await user.type(baseUrl, "https://new.vllm.corp/v1");
     await user.click(within(dialog).getByRole("button", { name: /^save$/i }));
 
+    await waitFor(() => expect(within(dialog).getByRole("alert")).toBeTruthy());
+    expect(replaceSecretActionMock).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    await user.type(within(dialog).getByLabelText(/api key/i), "gateway-fixture-key");
+    await user.click(within(dialog).getByRole("button", {name: /^save$/i}));
     await waitFor(() => expect(replaceSecretActionMock).toHaveBeenCalledWith("ws_1", "vllm-gateway", {
       provider: "openai-compatible",
       base_url: "https://new.vllm.corp/v1",
+      api_key: "gateway-fixture-key",
     }));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
   });
 
-  it("a stored-key entry prompts to re-enter the key; a keyless one does not", async () => {
-    // The key placeholder has three arms: has_key (re-enter), keyless custom
-    // (blank ok), keyless named (enter). Cover the named-keyless arm here; the
-    // other two are exercised by the refuse/allow tests above.
+  it("a missing credential prompts for a replacement key", async () => {
+    // A missing credential prompts for the key needed by every provider.
     const target = entry({ id: "e1", model_id: "claude-sonnet-5", has_key: false });
     const { dialog } = await renderEditDialog(target);
     const key = within(dialog).getByLabelText(/api key/i) as HTMLInputElement;
-    expect(key.placeholder).toMatch(/enter the key/i);
+    expect(key.placeholder).toBe("Enter replacement key");
   });
 
   it("a custom endpoint with no stored base URL renders the field empty", async () => {

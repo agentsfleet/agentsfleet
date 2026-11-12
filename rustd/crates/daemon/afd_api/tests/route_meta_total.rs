@@ -1,4 +1,4 @@
-//! Dimension 5.1 — `route_meta` is total, and the table it replaced is gone.
+//! `route_meta` is total, and the table it replaced is gone.
 //!
 //! Totality itself is rustc's job: `Route::meta` is an exhaustive match at two
 //! levels, so a new family or a new route inside one fails the build until
@@ -34,11 +34,11 @@ const PINNED_ROUTE_COUNT: usize = 76;
 
 /// Routes the pinned count includes that this daemon deliberately does not table.
 ///
-/// One. `/v1/fleets/streams`, dropped by Indy's call while merging M179 —
-/// see `afd_api::route::runner_ops` for the reasoning and M179's Dimension 4.4
-/// for the record. Counted rather than subtracted inline so the divergence has
-/// to be justified to change: another route going missing still fails this
-/// test, which is the whole reason the count is pinned.
+/// One. `/v1/fleets/streams`, dropped on purpose — see
+/// `afd_api::route::runner_ops` for the reasoning. Counted rather than
+/// subtracted inline so the divergence has to be justified to change: another
+/// route going missing still fails this test, which is the whole reason the
+/// count is pinned.
 const DECLARED_DIVERGENCES: usize = 1;
 
 /// Verbs the pinned count holds as one member that this union spells apart.
@@ -76,9 +76,6 @@ const POST_PORT_ADDITIONS: usize = 17;
 /// calls, its renewal and its report.
 const CHAT_AUTHORING_ADDITIONS: usize = 15;
 
-/// One route identity serves both reading and replacing private run working notes.
-const CONTEXT_CHECKPOINT_ADDITIONS: usize = 1;
-
 /// Settled period reports and one billed activity's individual charge lines.
 const BILLING_REPORT_ADDITIONS: usize = 2;
 
@@ -103,7 +100,6 @@ const RUST_ROUTE_COUNT: usize = PINNED_ROUTE_COUNT - DECLARED_DIVERGENCES
     + VERB_SPLITS
     + POST_PORT_ADDITIONS
     + CHAT_AUTHORING_ADDITIONS
-    + CONTEXT_CHECKPOINT_ADDITIONS
     + BILLING_REPORT_ADDITIONS
     + AUTHORING_CONTEXT_ADDITIONS
     + DURABLE_TASK_ADDITIONS

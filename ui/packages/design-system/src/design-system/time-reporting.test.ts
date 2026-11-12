@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { formatTimeCompactUtc, formatTimeRangeUtc, TIME_INVALID_FALLBACK } from "./time-utils";
+import { formatTimeCompactUtc, formatTimeRangeUtc, TIME_INVALID_FALLBACK, visibleTimeLabel } from "./time-utils";
 
 const REPORT_START = "2026-10-01T00:00:00Z";
 const REPORT_END = "2026-10-25T23:59:59Z";
 const INVALID_DATE = "not-a-date";
 
 describe("UTC reporting dates", () => {
+  it("labels billing months in UTC across an offset month boundary", () => {
+    const value = "2026-09-30T17:00:00-07:00";
+    expect(visibleTimeLabel(value, "month", "en-US", value)).toBe("October 2026");
+    expect(visibleTimeLabel(INVALID_DATE, "month", "en-US", "")).toBe(TIME_INVALID_FALLBACK);
+  });
   it("keeps a period's UTC dates when source offsets cross midnight", () => {
     const label = formatTimeRangeUtc("2026-09-30T17:00:00-07:00", "2026-10-26T05:29:59+05:30");
     expect(label).toBe("Oct 1 – 25, 2026");

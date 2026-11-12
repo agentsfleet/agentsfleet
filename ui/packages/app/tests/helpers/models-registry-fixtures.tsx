@@ -58,17 +58,6 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
 export const routerMock = { push: vi.fn() };
 vi.mock("next/navigation", () => ({ useRouter: () => routerMock }));
 
-// Observe the view boundary while retaining its real shared-card UI. The
-// invalid-key test still exercises the parent's guarded sorting decision.
-export let capturedOnSortChange: ((key: string) => void) | undefined;
-vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView")>();
-  return {...actual, ModelsRegistryView: (props: React.ComponentProps<typeof actual.ModelsRegistryView>) => {
-    capturedOnSortChange = props.onSortChange;
-    return React.createElement(actual.ModelsRegistryView, props);
-  }};
-});
-
 export function entry(overrides: Partial<TenantModelEntry>): TenantModelEntry {
   return {
     id: "0190aaaa-aaaa-7aaa-aaaa-aaaaaaaaaaaa",
@@ -166,7 +155,7 @@ export async function renderTableWithLibrary(initial: TenantModelEntryList, libr
   // Create-model trigger — which is the only catalogue-consuming affordance
   // such a page has, and carries the same focus intent.
   const intentTarget =
-    screen.queryAllByRole("button", { name: /^Edit / })[0] ??
+    screen.queryAllByRole("button", { name: /^Manage / })[0] ??
     screen.queryByRole("button", { name: /create model/i });
   if (intentTarget) {
     intentTarget.focus();

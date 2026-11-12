@@ -14,8 +14,8 @@ it("shows setup and publishing controls without sending private text or a review
   render(<WorkspaceChat {...CHAT_PROPS} draft={DRAFT_ID} />);
   await screen.findByRole("region", {name: "Fleet setup"});
   await openPublication();
-  await screen.findByLabelText("Library name");
+  await screen.findByLabelText("Plugin name");
   expect(capture).not.toHaveBeenCalled();
   expect(fixture.writes()).toHaveLength(0);
-  expect(screen.getByRole("dialog", {name: "Publish to Library"}).className).toContain("ph-no-capture");
+  expect(screen.getByRole("dialog", {name: "Publish plugin"}).className).toContain("ph-no-capture");
 });

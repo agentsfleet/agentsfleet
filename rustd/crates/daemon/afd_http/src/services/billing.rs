@@ -33,7 +33,7 @@ pub trait TenantBilling: Send + Sync + std::fmt::Debug + 'static {
         tenant: &Uuid7,
         work: &afd_billing::biller::WorkKey,
         request: &afd_billing::report::Request,
-        after: Option<i64>,
+        after: Option<&afd_billing::report::ChargeBoundary>,
     ) -> impl Future<Output = afd_billing::Result<Vec<afd_billing::report::Charge>>> + Send;
 
     /// The wallet snapshot behind `GET /v1/tenants/me/billing`.
@@ -75,7 +75,7 @@ impl TenantBilling for afd_billing::tenant::Billing {
         tenant: &Uuid7,
         work: &afd_billing::biller::WorkKey,
         request: &afd_billing::report::Request,
-        after: Option<i64>,
+        after: Option<&afd_billing::report::ChargeBoundary>,
     ) -> impl Future<Output = afd_billing::Result<Vec<afd_billing::report::Charge>>> + Send {
         Self::activity_charges(self, tenant, work, request, after)
     }

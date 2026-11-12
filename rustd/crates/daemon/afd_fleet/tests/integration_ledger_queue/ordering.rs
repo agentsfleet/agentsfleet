@@ -2,7 +2,7 @@
 
 use af_core::id::Uuid7;
 use afd_admission::{Admission, Admissions, Key, Producer, Reply};
-use afd_fleet::lease::{Acquired, Leases};
+use afd_fleet::lease::{Acquired, Kind, Leases};
 use sqlx::Connection as _;
 
 use super::{next, reclaim::issue};
@@ -45,7 +45,6 @@ async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
     let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &holder).await.expect("first claim");
     assert_eq!(first.event_id, claimed.stored.id);
-    leases.record_received(&first).await.expect("delivery");
     let issued = issue(&fixtures, &leases, &first, &holder, &tenant).await;
     let delayed = admissions
         .stage(&mut tx, delayed)
@@ -60,7 +59,7 @@ async fn a_late_committing_admission_does_not_displace_the_claimed_head() {
         .expect("actual transaction order");
     assert!(inverted, "the old query would select the new admission");
     fixtures.lapse_holder(&issued, &fleet).await;
-    assert_reclaimed(&fixtures, &leases, &poller, &first, &issued, &tenant).await;
+    assert_reclaimed(&fixtures, &leases, &poller, &first, &issued).await;
     drop((connection, leases, admissions));
     fixtures.cleanup().await;
 }
@@ -71,16 +70,12 @@ async fn assert_reclaimed(
     poller: &Uuid7,
     first: &Acquired,
     issued: &Uuid7,
-    tenant: &Uuid7,
 ) {
     let recovered = next(leases, poller).await.expect("recover unfinished run");
     assert_eq!(recovered.event_id, first.event_id);
     assert!(recovered.redelivered);
     assert!(recovered.fence > first.fence);
-    assert_eq!(
-        &recovered.reused.expect("original billing").tenant_id,
-        tenant
-    );
+    assert_eq!(recovered.kind, Kind::Reclaim);
     assert_eq!(
         fixtures.text(Row::Lease(issued), "status").await.as_deref(),
         Some(afd_fleet::lease::sql::LEASE_STATUS_EXPIRED)

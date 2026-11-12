@@ -34,17 +34,17 @@ Every row is extracted from the numbered sections below; the owner column names 
 | Line charge | `⌈runtime⌉ + Σ ⌈tokens × rate⌉` | the `Rater`: run fee under both postures, each token category under platform, each rounded up on its own | §4.1 |
 | Short balance | `balance − charged`, below zero if it must | a settlement takes its whole charge; the debt refuses every funds check until a grant repays it | §3, §5, §11 |
 | Lease writes per slice | fence, cursors, one usage line | `METER_LEASE` moves no money; the line is logged in the same transaction and the relay settles it | §3 |
-| Line keying | `UNIQUE (work_type, work_id, seq)` | a retried renewal, report or relay pass settles each line once, even with two relays | §3, §11 |
+| Line keying | `UNIQUE (work_type, work_id, kind, seq)` | a retried renewal, report or relay pass settles each line once, even with two relays | §3, §11 |
 | Free usage | the starter grant only | a balance that drains, bounded by `exhausted_at`; no promotional window and no mechanism for one | §2.3 |
-| Mid-run exhaustion | next `/renew` refused | `UZ-RUN-012`; the run ends at its current deadline, never extended | §3, §5 |
-| Money set aside | none | a funds check reads the balance less the payer's unsettled lines; parallel runs can overdraw by at most one slice each before their next check refuses | §5, §11 |
+| Mid-run exhaustion | refused within three renewals | funds are checked once per payer on a stream's first tick, then every `FUNDS_CHECK_TICKS` (3) ticks; a short payer's leases answer `UZ-RUN-012` and end at their current deadlines, never extended | §3, §5 |
+| Money set aside | none | a funds check reads the balance less the payer's unsettled lines; parallel runs can overdraw by at most three slices each before their next check refuses | §5, §11 |
 | Statement bounds | the API login role's | 2 s lock wait, 5 s statement; no billing statement sets its own; a bound reached is a biller with no answer | §11 |
 | Budget gate | per-fleet, independent of the balance gate | `daily_nanos` rolling 24 h · `monthly_nanos` Coordinated Universal Time (UTC) calendar month; mid-run refusal `UZ-RUN-015` | §5.1 |
 | Budget no-verdict posture | asymmetric | database failure → admit; no budget declared → admit; unparseable budget → refuse | §5.1 |
 | `api_key` boundary | process-internal vs user-facing | never in responses, logs, fleet context, or saved rows; the runner lease is the machine-plane exception | §8.2 |
 | Credential list | metadata projection | `kind` ∈ {`provider_key`, `custom_endpoint`, `custom_secret`}; `api_key` structurally absent (no field to leak) | §8.3 |
 | Model registry | one row per `(model_name, secret_ref)` | `model.tenant_models`, `UNIQUE (tenant_id, model_name, secret_ref)`; entries reference keys, never own material | §8.4 |
-| Rate lookup | one fresh read per lease pass | `PriceBook::load` reads one model's dated tiers before the lease's transaction; there is no rate cache | §4.1, §10 |
+| Rate lookup | held per replica by catalogue version | `PriceBook::load` reads one model's dated tiers; the book is kept under (posture, provider, model, catalogue version), so an edit misses at once | §4.1, §10 |
 | Unknown model on platform | runtime charged, tokens unpriced | never a default token rate: the line counts its tokens in `unpriced_token_count`; the lease-estimate gate admits, because an estimate is not a charge | §2.3, §4.1 |
 | Catalogue read | `GET /v1/models`, bearer-authed | the public `cap.json` route is retired: `404`, no alias | §10 |
 | Plan tiers | none in the cost function | future paid plans manifest as grants or top-ups, never a branch in the charge functions | §2.4 |
@@ -59,7 +59,7 @@ Each trap is enforced in its owner section; this list is the index.
 - Never quote dollar amounts in docs; they go stale the moment a rate moves (preamble).
 - Metering never stops, and nothing zeroes the money column: every slice is a usage line priced at what the catalogue publishes (§2.3).
 - Never fold a catalogue read fault into "this model is not in the catalogue". The second is a value, the first is an error the pass logs as `lease_tokens_unpriced`. Both count the tokens as unpriced on the line, visibly (§4.1).
-- A re-sent request line is stored once on `(work, seq)`. A re-sent renewal measures about zero run time against the lease's cursor, so retries never charge twice (§3).
+- A re-sent request line is stored once on `(work, kind, seq)`. A re-sent renewal measures about zero run time against the lease's cursor, so retries never charge twice (§3).
 - The budget gate counts each usage line in the window it was written in. A line is one renewal interval of usage, so a long run's spend lands where it was used (§5.1).
 - No plan branch inside the charge functions, ever (§2.4).
 - The provider `api_key` never joins `secrets_map`; it rides `ExecutionPolicy` on a different path entirely (§8.2).
@@ -92,7 +92,7 @@ The diagrams live with their flows: the per-slice metering picture (§3) and the
 | Catalogue read moved behind auth | per-token margins are no longer world-readable | §10 |
 | Registry consistency via activation-time upsert, not read-time self-heal | a read handler must not mutate rows to paper over a write-path violation | §8.4; M121 |
 | `fleet:` vault-name prefix removed repo-wide | it discriminated nothing; dead convention | §8.4 |
-| No rate cache | one indexed read of one model's price book per lease pass, so a cache would save one read and add an eviction path | §4.1, §10 |
+| Rate cache keyed by catalogue version | a book is read once per version per replica; statements that price from it write nothing when the version moved, so no entry prices at a stale rate | §4.1, §10 |
 | Stripe purchase flow deferred | v2.1; schema anticipates it | §13 |
 
 ---
@@ -115,7 +115,7 @@ Model disable, wallet absence, membership removal, and policy-marker drift fail 
 
 A second guarded transaction checks the request digest and funding ceiling before recording dispatch intent.
 
-A biller call runs outside these transactions because the biller may take another connection or make a remote request. `Short` returns the wallet failure; `OutagePolicy::Open` admits an unanswered biller as `Unconfirmed`.
+A biller call runs outside these transactions because the biller may take another connection or make a remote request. `Short` returns the wallet failure; `FailOpen` admits an unanswered biller as `Unconfirmed`.
 
 **Report.** When the daemon knows the attempt's usage, the report's transaction logs its lines with `log_lines`. Each dispatch with known usage gets one line at its dispatch instant, and the runtime gets one line (`seq` 0). The `Rater` prices each line by its whole-request tier.
 
@@ -254,10 +254,10 @@ A fleet run is charged for what it uses, and only that: no event costs anything 
 
    inside the lease's transaction (fenced; a lost or capped pass writes nothing):
      ① move the deadlines or flip the lease to reported, advance the lease's cursor
-     ② log every line in billing.usage_lines (work = the lease), once per (work, seq)
+     ② log every line in billing.usage_lines (work = the lease), once per (work, kind, seq)
    on the lease path, through Arc<dyn Biller>:
      issue  → nothing                      the admission gate already checked the floor
-     renew  → check(floor)                 before the transaction; the spending check
+     renew  → check(floor)                 once per payer every third tick, before the host's statement
      report → nothing
    sweeper:billing, the relay, every 2 s: settle(lines)
 ```
@@ -269,7 +269,7 @@ The runner reserves and records intent and goal calls through these routes; the 
 | Step | What moves | Where in `afd_fleet` |
 |---|---|---|
 | Admit | nothing; the balance and budget gates read (§5) | the lease admit module |
-| Renew | the payer must fund one more floor after its unsettled lines; the slice is logged | the lease renew and coverage modules |
+| Renew | on a checked tick, the payer must fund one more floor after its unsettled lines; every tick logs the slice | the lease renew and coverage modules |
 | Report | the final slice is logged in the report's transaction; nothing else | the lease report and settle modules |
 | Relay | every unsettled line, and the last slice of a lease that ended unreported | the lease billing sweep, with `afd_billing::ledger::resettle` |
 
@@ -298,11 +298,13 @@ Run time is the daemon's to measure, not the runner's. `FOR UPDATE OF l, a` seri
 
 The lease path logs them with `afd_billing::ledger::log_lines` in the same transaction, so the run and what it cost commit together. A pass with no request and no run time logs nothing.
 
-Runtime lines take numbers from `af_wire::usage::DAEMON_SEQ_BASE`, after the runtime lines the lease already logged, read under its row lock. A runner line and a daemon line never share a number, and two passes never take one (`afd_fleet`'s lease billing races suite).
+Every line carries its `kind` (`af_wire::usage::LineKind`): `model` lines keep the runner's request number, and `decision` lines take their call's number. `runtime` lines take the milliseconds from the lease's start to the slice's start, read from the locked lease row.
+
+The key includes the kind, so a model line and a runtime line may hold the same number. Two passes never bill one slice twice (`afd_fleet`'s lease billing races suite).
 
 **Settling.** The lease path never settles. The relay, `sweeper:billing`, settles each committed line on its next pass, about 2 s later. After a restart, its first pass settles what the crash left.
 
-`settle` keys on `(work, seq)`, so a retry never charges twice. A balance that cannot cover a line takes it anyway and goes below zero (§11).
+`settle` keys on `(work, kind, seq)`, so a retry never charges twice. A balance that cannot cover a line takes it anyway and goes below zero (§11).
 
 **Charges history.** `GET /v1/tenants/me/billing/charges` reads `billing.usage_lines`, newest first, one row per line, whether a fleet run (`charge_type: stage`) or a setup chat (`charge_type: authoring`) logged it.
 
@@ -321,6 +323,12 @@ The dashboard labels setup records **Setup chat**, using **Fleet setup** when no
 Delayed settlement reconstructs separate provider/model/posture groups under the original work identity.
 The sweeper selects its oldest bounded batch before grouping; sequence numbers stay unique across the whole work, including different providers.
 Its recovery counters count settlement groups, so one lease can contribute several successful settlements.
+
+A group the relay cannot read is skipped, not failed. A work type, a line kind or a pricing posture this build does not name leaves the group unsettled, and the pass carries on. The owed gauges keep counting it, so the dashboard shows it.
+
+A row of an unknown work type drops out of the by-type `agentsfleet_billing_unsettled_nanos` figure but still pins `agentsfleet_billing_unsettled_oldest_seconds`. The relay logs `billing_relay_skipped` once for each distinct spelling per process and remembers at most 64. An operator learns what is stuck without a line every two seconds.
+
+Nothing is guessed. An error would hold the cursor, and with it every tenant's settlement behind one row. A guessed posture would settle the wrong money.
 
 `afd_billing::ledger::unsettled` sorts borrowed keys in place and moves owned headers into the resulting groups.
 This avoids cloned map keys; no measured latency or allocation result follows from that source change.
@@ -357,9 +365,13 @@ The issue-time floor (`Accounts::estimate`) prices `ESTIMATE_FLOOR_INPUT_TOKENS`
 
 A model with no price covering the instant is `Estimate::Unpriceable`. The gate admits against a floor of zero, because an estimate is not a charge.
 
-**There is no rate cache.** One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows.
+**A replica holds each price book under the catalogue version it was read at.**
 
-The lease path reads it once per pass, before the transaction opens, so no catalogue read waits while the lease is locked. A cache would add a version check and an eviction path to save that one read.
+One `PriceBook::load` is one indexed read on the model's `(provider, model_name)` and its price rows, and the book carries the catalogue version of that read.
+
+The cache key is the posture, provider, model and that version. Every statement that prices from a held book carries the version and writes nothing if the catalogue moved. An admin edit therefore costs one re-read and one rerun, and an entry never answers for another version.
+
+A miss is a read, never a fault; concurrent misses share one load, and a failed read is never kept.
 
 **A catalogue that cannot be read** still logs every request line, with its tokens counted as unpriced and the run fee charged (`lease_tokens_unpriced`). Nothing is held for a later pass, because each request is priced on its own line.
 
@@ -421,7 +433,7 @@ Properties:
 - **A balance crossing zero mid-run ends the run.** Each renewal checks that `Balance::left` covers one more floor. When it cannot, the biller answers `Short` and the renewal is refused with `UZ-RUN-012`.
 - **Concurrent events on a near-zero balance.** Nothing is set aside, so runs that start together all pass against the same balance. Each spends about one slice before its next renewal check sees their lines and refuses.
 - **That spend still settles**, so the balance can end below zero by about one slice per run. The debt refuses new work until a grant repays it (`parallel_runs_overdraw_by_at_most_a_slice_each_then_stop`).
-- **An outage admits.** Under `OutagePolicy::Open`, a funds check the biller cannot answer comes back `Unconfirmed` and the run continues. Its lines settle when the biller is back (§11).
+- **An outage admits.** A funds check the biller cannot answer comes back `Unconfirmed` and the run continues. Its lines settle when the biller is back (§11).
 
 ### 5.1 The per-fleet budget gate: a second, independent ceiling
 
@@ -518,9 +530,9 @@ Vault credentials are opaque JSON objects keyed by name (the M45 vault design). 
 
 The `model.tenant_selections` row points at a `model.tenant_models` row, which names the credential through `secret_ref`. Multi-credential tenants are supported: a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet tenant provider create --secret <other>`. Only one is *active* at a time per tenant.
 
-**Vault scope: workspace-keyed; tenant→workspace bridge:** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `agentsfleet secret create` write path) bridge through `afd_credential`'s `Providers::primary_workspace`. The bridge picks the earliest-named workspace owned by the tenant.
+**Vault scope: explicit workspace ownership.** `vault.secrets` is keyed by `(workspace_id, key_name)`. Each `model.tenant_models` entry stores the credential's `workspace_id` and `secret_ref`; registration and activation prove that workspace belongs to the account. Runtime resolution reads that exact pair, so another workspace's same-named key cannot replace it.
 
-Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace. Per-workspace credential isolation, and a fully tenant-keyed vault, are post-v2.0 work; until then, the bridge is the rule.
+The account's active selection points to the configured model entry. Switching the workspace shown in the dashboard does not relocate its credential or change that selection. Removing its credential workspace clears the reference while retaining the model row, and resolution refuses the unavailable credential until the user selects a usable model. There is no primary-workspace lookup.
 
 **`context_cap_tokens` is not in the credential body.** Each model resolution reads the cap from the catalogue (`model.platform_models`, §10). It matches by provider and model name. Splitting the two lets a catalogue edit change the cap without touching the vault.
 
@@ -582,7 +594,9 @@ model.tenant_models (id, tenant_id, model_name, secret_ref, created_at, updated_
 
 `GET /v1/tenants/me/models` joins each entry to its secret's §8.2-safe metadata projection (provider, kind, `base_url`, `has_key`) at read time. That projection is the one §8.3's credential list already uses. `api_key` is structurally absent from the join, not filtered out.
 
-A keyless endpoint stores an empty `api_key` in the secret body. The activate/resolve chain in §9 therefore stays uniform whether or not a key exists. Runner auth behaviour is unchanged.
+An OpenAI-compatible endpoint must carry a key. Activation refuses a credential with no key, or whose model the catalogue lacks. A run could never resolve it, because the registry read requires the key's presence.
+
+Runner auth behaviour is unchanged.
 
 **Activation upserts the entry, so the registry is always representable by construction.** The tenant's *active* selection still lives on `model.tenant_selections`.
 
@@ -685,7 +699,7 @@ They rounded differently, priced cached tokens differently, failed differently d
 ```
  work happens ─► usage lines        ─► Rater (pure)              ─► UsageLog (ours, inside the work's transaction)
  (runner, per     {seq, at, prompt,     tier by whole-request         billing.usage_lines, one row per request,
-  request;         cached_read,         prompt size, price by `at`,   unique (work, seq); the charges page reads it
+  request;         cached_read,         prompt size, price by `at`,   unique (work, kind, seq); the charges page reads it
   setup chat       cache_write,         posture, one rounding rule              │ the relay, every 2 s
   makes its own)   cache_write_5m,                                              ▼
                    cache_write_1h,                               Arc<dyn Biller>   check / settle / balance
@@ -698,14 +712,14 @@ They rounded differently, priced cached tokens differently, failed differently d
 
 The lease path calls the biller only to check. Every charge goes through one relay, `sweeper:billing`, which reads the committed lines and hands them to the biller. The usage log is therefore the outbox.
 
-A biller in another process never joins or delays our transaction, and the lease code does not change when the biller moves. `settle` is idempotent on `(work, seq)`, so a crash or a second relay never doubles a charge. A check counts the payer's unsettled lines, so the gap never hides spend.
+A biller in another process never joins or delays our transaction, and the lease code does not change when the biller moves. `settle` is idempotent on `(work, kind, seq)`, so a crash or a second relay never doubles a charge. A check counts the payer's unsettled lines, so the gap never hides spend.
 
 **The trait.** `afd_billing::biller::Biller` is an `#[async_trait] Send + Sync + Debug` trait held as `Arc<dyn Biller>`, the shape `afd_authoring`'s provider `Transport` already uses.
 
 | Method | When | Idempotent on |
 |---|---|---|
 | `check(&Ask) -> Funds` | each fleet renewal, each setup-chat renewal and model call | writes nothing |
-| `settle(&Settlement) -> Receipt` | the relay, and the relay's expired-lease pass | `(work, seq)` |
+| `settle(&Settlement) -> Receipt` | the relay, and the relay's expired-lease pass | `(work, kind, seq)` |
 | `balance(&Account) -> Balance` | the tenant billing page | read only |
 
 `WorkKey` is `FleetLease(id)` or `AuthoringAttempt(id)`, so the two products share one vocabulary. `check` answers `Funds::Covered`, `Short { available, asked }` or `Unconfirmed`, the outage policy's admission.
@@ -724,9 +738,9 @@ A write the provider names no lifetime for bills at the tier's unspecified-lifet
 
 Each token category rounds **up** per line. The platform therefore never under-bills, and over-bills by at most one nano per category per request.
 
-**Outage policy.** `WithOutagePolicy<B>` wraps any biller.
+**Outage.** `FailOpen<B>` wraps any biller.
 
-Under `OutagePolicy::Open`, a `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` reads the policy; a failed `settle` leaves the lines for the relay's next pass.
+A `check` the biller cannot answer comes back `Unconfirmed`, and the work runs. Only `check` is changed; a failed `settle` leaves the lines for the relay's next pass.
 
 A biller with no answer (`Error::is_unanswered`) is either an outage or contention. An outage is a pool with no connection to hand out, or a connection lost mid-statement, as `afd_db::error::is_connection_lost` decides.
 
@@ -734,7 +748,7 @@ Contention is a statement that reached the API login role's bounds: 2 s for a lo
 
 No billing statement sets a bound of its own. The wait for a pool connection comes before the statement and is not bounded by the role.
 
-A constraint, syntax or decode failure is a defect and is refused under either policy. The policy is chosen once, where `agentsfleetd` builds the biller, and starts open (Indy, 2026-10-19).
+A constraint, syntax or decode failure is a defect and is refused. The wrapper is applied once, where `agentsfleetd` builds the biller; there is no closed alternative, because early adoption favours the optimistic path.
 
 **The built-in biller.** `LedgerBiller` answers `check` with one read and no lock: `Balance::left`, the balance less the payer's unsettled lines. Every gate and check compares that one number with what the work asks for. A payer in debt is short even of nothing.
 

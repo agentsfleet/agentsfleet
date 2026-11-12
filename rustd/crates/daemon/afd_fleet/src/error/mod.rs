@@ -59,7 +59,7 @@ pub(crate) use self::refuse::{
 /// Everything that REPORTS a failure rather than answering one, re-exported so
 /// no call site names the file the cap moved them into.
 pub(crate) use self::report::{
-    query, rejected, row_malformed, sequence_corrupt, vault_data_invalid,
+    posture_corrupt, query, rejected, row_malformed, sequence_corrupt, vault_data_invalid,
 };
 
 /// The result every fallible function in this crate returns.

@@ -165,7 +165,8 @@ pub(super) fn charges<'a>(
             Cow::Owned(Cursor::render(
                 scope,
                 Position::Charge {
-                    sequence: row.sequence,
+                    at: row.requested_at.to_string(),
+                    id: row.id.clone().into(),
                 },
             ))
         })
@@ -177,6 +178,7 @@ pub(super) fn charges<'a>(
         .take(count)
         .map(|row| wire::Charge {
             id: Cow::Borrowed(row.id.as_str()),
+            kind: Cow::Borrowed(&row.kind),
             sequence: row.sequence,
             model: Cow::Borrowed(&row.model),
             posture: Cow::Borrowed(&row.posture),

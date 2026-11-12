@@ -104,8 +104,8 @@ test.describe("measured placement", () => {
     await signInAs(page, FIXTURE_KEY.regular);
     await page.goto(workspaceHref(workspaceId, WORKSPACE_LIBRARY));
     const row = page.getByRole("listitem").filter({hasText: name});
-    await row.getByRole("button", {name: "Inspect", exact: true}).click();
-    const start = page.getByRole("button", {name: "Start chat from this revision"});
+    await row.getByRole("button", {name: `Manage ${name}`, exact: true}).click();
+    const start = page.getByRole("button", {name: "Use for new fleet", exact: true});
     await expect(start).toBeVisible({ timeout: RENDER_TIMEOUT_MS });
     expect(await start.evaluate((element) => element.getBoundingClientRect().right)).toBeLessThanOrEqual(PHONE_WINDOW.width);
     const sideways = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);

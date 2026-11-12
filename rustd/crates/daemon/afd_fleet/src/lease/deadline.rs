@@ -1,4 +1,4 @@
-//! The immutable ceiling shared by lease delivery and task binding receipts.
+//! The immutable ceiling a task binding receipt carries.
 
 use crate::error::{Result, query};
 use af_core::id::Uuid7;

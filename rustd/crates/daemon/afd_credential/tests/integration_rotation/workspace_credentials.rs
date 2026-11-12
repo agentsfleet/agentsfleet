@@ -127,7 +127,7 @@ async fn same_named_keys_remain_independent_when_switching_the_active_model() {
         assert_eq!(&own.tenant_model_id, expected_id);
         assert_eq!(own.workspace_id.as_ref(), Some(workspace));
         let resolved = store
-            .resolve(&fixture.tenant)
+            .resolve_reference(&fixture.tenant, own.tenant_model_id.as_str())
             .await
             .expect("the selected credential resolves");
         assert_eq!(resolved.api_key().expose(), expected_key);

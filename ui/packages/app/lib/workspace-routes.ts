@@ -61,13 +61,13 @@ export function workspaceSubpath(pathname: string): string {
 // Sections whose deeper path segment is a resource id owned by the *current*
 // workspace — the target workspace won't own that same id, so a switch that kept
 // it would land on a guaranteed `notFound()`.
-const RESOURCE_DETAIL_SECTIONS = new Set(["fleets", "approvals"]);
+const RESOURCE_DETAIL_SECTIONS = new Set(["fleets"]);
 
 /**
  * Maps a workspace sub-path to the sub-path a workspace *switch* should land on.
  * An empty path lands on New fleet instead of the redirect-only root.
- * A resource-detail path (`fleets/<id>`, `approvals/<gateId>`) collapses to its
- * section root (`fleets`, `approvals`) — the target workspace doesn't own that
+ * A resource-detail path (`fleets/<id>`) collapses to its
+ * section root (`fleets`) — the target workspace doesn't own that
  * resource. Generic pages (`fleets/new`, `settings/models`, `integrations`, …)
  * are preserved verbatim so switching keeps you in the same section.
  */

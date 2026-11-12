@@ -82,9 +82,10 @@ async fn daemon_sequence_and_acknowledgements_survive_reordered_updates() {
     for completed in [2, 1, 3] {
         run.fixtures
             .plane()
-            .activity(
+            .activity_for_target(
                 &run.runner,
-                run.issued.lease_id.as_str(),
+                &run.issued.lease_id,
+                &run.activity_target().await,
                 &[ActivityFrame::TaskTransferProgress(progress(
                     id.as_str(),
                     completed,
@@ -142,12 +143,7 @@ async fn bounded_history_retains_monotonic_sequence_and_truncation() {
 #[ignore = "needs live datastores: make test-integration-rustd"]
 async fn history_write_rejects_owner_that_expired_after_preflight() {
     let run = held().await;
-    let target = run
-        .leases
-        .load_activity_target(&run.issued.lease_id, &run.runner)
-        .await
-        .expect("preflight query")
-        .expect("held target");
+    let target = run.activity_target().await;
     assert!(target.timing_eligible);
     run.fixtures
         .age(Row::Lease(&run.issued.lease_id), "lease_expires_at", LAPSE)

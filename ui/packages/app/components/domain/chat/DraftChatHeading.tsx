@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Alert, Button, Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label } from "@agentsfleet/design-system";
 import Link from "next/link";
-import { ArrowLeftIcon, DotsThreeIcon, PencilSimpleIcon } from "@phosphor-icons/react/ssr";
+import { ArrowLeftIcon, DotsThreeIcon, NotePencilIcon } from "@phosphor-icons/react/ssr";
 import { DRAFT_STATE } from "@/lib/api/draft-types";
 import { savedDraft } from "@/lib/api/draft-continuation";
 import { chatRecovery } from "@/lib/api/draft-recovery";
@@ -21,7 +21,7 @@ type Props = {client: DraftClient; view: DraftView; workspace: string; fleetPage
 const PublicationActions = nextDynamic(() => import("./FleetSetupActions").then(module => module.PublicationActions));
 const DefinitionEditor = nextDynamic(() => import("./DefinitionEditor").then(module => module.DefinitionEditor));
 const INSTRUCTIONS = "Instructions";
-const PUBLISH = "Publish to Library";
+const PUBLISH = "Publish plugin";
 const ignore = (): void => undefined;
 
 export function DraftChatHeading(props: Props) {
@@ -37,15 +37,17 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
     || Boolean(draft && draft.state !== DRAFT_STATE.editing && !savedDraft(view));
   const label = view.fleet?.name ?? view.preview?.instanceName ?? (draft ? chatTitle(draft.title, draft.id, firstChatRequest(view.messages) || draft.candidate?.definition.description) : "New fleet");
   const returnFleet = fleetPage ? undefined : view.fleet?.id ?? returnToFleet;
+  const empty = !view.draft && !view.preview && !view.fleet;
   const canEdit = Boolean(draft?.candidate || view.preview || view.fleet?.definition);
   return <>
     <header className="fleet-chat-heading flex min-h-16 w-full shrink-0 flex-wrap items-center gap-md border-b border-border-subtle px-lg py-sm sm:px-2xl">
-      {!fleetPage ? <Button asChild variant="ghost" size="icon" aria-label={returnFleet ? "Back to fleet conversation" : "Back to your fleets"}><Link href={returnFleet ? `/w/${workspace}/fleets/${returnFleet}` : `/w/${workspace}/fleets`}><ArrowLeftIcon size={16} aria-hidden="true" /></Link></Button> : null}
+      {!fleetPage && !empty ? <Button asChild variant="ghost" size="icon" aria-label={returnFleet ? "Back to fleet conversation" : "Back to your fleets"}><Link href={returnFleet ? `/w/${workspace}/fleets/${returnFleet}` : `/w/${workspace}/fleets`}><ArrowLeftIcon size={16} aria-hidden="true" /></Link></Button> : null}
+      {empty ? <NotePencilIcon size={16} aria-hidden="true" /> : null}
       <HeadingTitle client={client} view={view} state={state} label={label} locked={locked} primary={!fleetPage && Boolean(view.draft || view.preview || view.fleet)} />
       {view.fleet && fleetPage && view.fleet.status === AGENTSFLEET_STATUS.INSTALLING
         ? <EditSetupButton workspace={workspace} fleet={view.fleet.id} revision={view.fleet.setup_revision} /> : null}
-      {canEdit ? <Button variant="ghost" size="icon" aria-label="Edit instructions" title="Edit instructions" disabled={locked} onClick={() => {void state.prepare(false).catch(ignore);}}><PencilSimpleIcon size={16} aria-hidden="true" /></Button> : null}
-      <DraftSaveButton client={client} view={view} dirty={state.dirty} />
+      {canEdit ? <Button variant="ghost" size="icon" aria-label="Edit instructions" title="Edit instructions" disabled={locked} onClick={() => {void state.prepare(false).catch(ignore);}}><NotePencilIcon size={16} aria-hidden="true" /></Button> : null}
+      {empty ? <Button variant="ghost" size="icon" aria-label="New fleet" onClick={() => client.fresh()}><NotePencilIcon size={16} /></Button> : <DraftSaveButton client={client} view={view} dirty={state.dirty} />}
       {canEdit || draft ? <HeadingMenu state={state} label={label} canEdit={canEdit} locked={locked} canRename={draft?.state === DRAFT_STATE.editing}>{menuItems}</HeadingMenu> : null}
     </header>
     <InstructionsDialog client={client} view={view} state={state} />
@@ -53,7 +55,7 @@ function HeadingContent({client, view, workspace, fleetPage, returnToFleet, menu
       <DialogContent className="ph-no-capture ph-no-record"><DialogHeader><DialogTitle>{PUBLISH}</DialogTitle><DialogDescription>Only the saved setup is published when you confirm.</DialogDescription></DialogHeader>
         {view.error ? <Alert variant="destructive">{view.error}</Alert> : null}
         {view.notice ? <output className="text-label text-muted-foreground">{view.notice}</output> : null}
-        {draft?.review ? <PublicationActions client={client} view={view} setup={draft.review} dirty={state.dirty} onPublish={() => state.setPublishing(false)} /> : null}
+        {draft?.review ? <PublicationActions client={client} view={view} setup={draft.review} workspace={workspace} dirty={state.dirty} onPublish={() => state.setPublishing(false)} /> : null}
       </DialogContent>
     </Dialog>
   </>;
@@ -104,7 +106,7 @@ function HeadingTitle({client, view, state, label, locked, primary}: {client: Dr
     <Button variant="ghost" size="sm" disabled={locked} onClick={() => state.setRenaming(false)}>Cancel</Button>
   </>;
   return <div className="min-w-0 flex-1"><Title className="truncate text-chat-title font-semibold">{label}</Title>
-    <p className="mt-xs text-eyebrow text-muted-foreground">Fleet setup{view.fleet ? ` · v${view.fleet.setup_revision}` : ""}</p></div>;
+    {view.draft || view.preview || view.fleet ? <p className="mt-xs text-eyebrow text-muted-foreground">Fleet setup{view.fleet ? ` · v${view.fleet.setup_revision}` : ""}</p> : null}</div>;
 }
 
 function HeadingMenu({state, label, canEdit, locked, canRename, children}: {state: HeadingState; label: string; canEdit: boolean; locked: boolean; canRename: boolean; children?: ReactNode}) {

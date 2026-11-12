@@ -1,15 +1,17 @@
+import {visualWakeupEvents} from "./refresh-wakeup-data";
 import type { FleetEvent, FleetToolCall } from "@/lib/streaming/fleet-stream-row";
 import type { TaskPage } from "@/lib/api/tasks";
 import { detail, summary, TASK_IDS } from "@/tests/helpers/task-reads";
 import { TOOL_CALL_STATUS } from "@/lib/streaming/fleet-stream-tool-trace";
 
-export const VISUAL_SCENARIOS = ["empty", "running", "completed", "error"] as const;
+export const VISUAL_SCENARIOS = ["empty", "running", "completed", "activity", "wake-up", "error"] as const;
 export type VisualScenario = typeof VISUAL_SCENARIOS[number];
 
 /** Explicit sample records, shared by the transcript and its Summary readers. */
 export function visualEvents(scenario: VisualScenario, started: number, includeCode = false): FleetEvent[] {
   if (scenario === "empty") return [];
-  const completed = scenario === "completed";
+  if (scenario === "wake-up") return visualWakeupEvents(started);
+  const completed = scenario === "completed" || scenario === "activity";
   const tools: FleetToolCall[] = [
     tool("read", "http_request", {url: "https://api.github.com/repos/agentsfleet/platform-images/actions/runs"}, started),
     tool("scan", "exec_command", {cmd: "trivy image --severity CRITICAL release:latest"}, started, scenario === "running", scenario === "error"),
@@ -27,7 +29,7 @@ export function visualEvents(scenario: VisualScenario, started: number, includeC
     outcome: "", failureLabel: scenario === "error" ? "transport_loss" : null,
     failureDetail: scenario === "error" ? "The scan response was interrupted. Earlier build results are retained." : null,
     createdAt: new Date(started - 60_000), status: scenario === "running" ? "received" : scenario === "error" ? "fleet_error" : "processed",
-    wallMs: completed ? 138_000 : null, tokens: null, costNanos: null,
+    wallMs: completed ? 138_000 : null, tokens: null, costNanos: completed ? "340000000" : null,
     custom: {requestJson: JSON.stringify({message: "Update the runner image using the release checklist. Run the scans, then ask me before publishing."})},
     ...(completed ? {taskActivity: {truncated: false, items: [{kind: "task_decision_completed" as const, progress: {
       activity_id: TASK_IDS[1], task_id: TASK_IDS[0], source_admission_id: null, operation: "goal" as const,
@@ -42,8 +44,8 @@ export function visualTaskPage(scenario: VisualScenario, started: number): TaskP
 export function visualTaskDetail(scenario: VisualScenario, started: number) {
   const task = visualTaskPage(scenario, started).items[0] ?? summary();
   const saved = detail(task);
-  return {...saved, context: {...saved.context, objective: "Update the runner image, run the scans, and ask before publishing.",
-    target: scenario === "completed" ? {kind: "existing_pr" as const, repository: "agentsfleet/platform-images", number: 58,
+  return {...saved, publication: (scenario === "completed" || scenario === "activity") ? {effect_id: TASK_IDS[1], ordinal: 1, state: "confirmed", expected_head: "a".repeat(40), tested_tree: "b".repeat(40), commit: "c".repeat(40), pull_request_url: "https://github.com/agentsfleet/platform-images/pull/58"} : null, context: {...saved.context, objective: "Update the runner image, run the scans, and ask before publishing.",
+    target: (scenario === "completed" || scenario === "activity") ? {kind: "existing_pr" as const, repository: "agentsfleet/platform-images", number: 58,
       branch: "runner-refresh", head: "a".repeat(40), tree: "b".repeat(40), url: "https://github.com/agentsfleet/platform-images/pull/58", workflows: []} : saved.context.target}};
 }
 

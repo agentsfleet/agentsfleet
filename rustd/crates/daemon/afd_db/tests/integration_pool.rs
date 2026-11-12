@@ -113,60 +113,28 @@ async fn test_pool_error_classes() {
     database.cleanup().await;
 }
 
-/// All three pools open from one environment, and each answers as its own role.
-///
-/// `Pools` is what boot actually calls; the single-role path every other test
-/// uses would let a wiring mistake here — two roles sharing one pool, or
-/// `role()` dispatching to the wrong field — reach production untested.
+/// A closed pool refuses rather than hanging, which is what makes shutdown
+/// ordering observable instead of a race nobody can see.
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live Postgres: make test-integration-rustd"]
-async fn test_pools_open_every_role_and_close() {
-    // `shared`, not `create`. `TestDatabase::create` makes an empty,
-    // UNMIGRATED database and `test_util` reserves it for the suites whose
-    // subject IS schema state — the migrator's ledger, its lock, its failure
-    // paths. This suite is about a pool's capacity, which needs a database and
-    // not a virgin one, and `CREATE DATABASE` measures 166 ms against the lane's
-    // Postgres. Paying that here bought nothing and cost the test its budget:
-    // once the crate's suites were aggregated they ran concurrently, a fresh
-    // connection under sibling `CREATE DATABASE` load measured 147-337 ms, and
-    // the 250 ms below is spent before the pool this test is about is even
-    // reached. Widening the budget would have hidden that; taking the lane's
-    // database removes it.
+async fn test_a_closed_pool_refuses_rather_than_hanging() {
+    // `shared`, not `create`: this suite is about a pool's behaviour, which
+    // needs a database and not a virgin one, and `CREATE DATABASE` under the
+    // lane's concurrent suites costs more than the budget below.
     let database = TestDatabase::shared();
-    let pools = afd_db::Pools::connect_all(&database.env(&[]))
+    let config = PoolConfig::resolve(&database.env(&[]), DbRole::Api)
+        .expect("the lane's environment resolves the api role");
+    let db = Db::connect(&config)
         .await
-        .expect("every role must open from one environment");
+        .expect("the api role opens from the lane's environment");
 
-    assert_eq!(pools.default_role().role(), DbRole::Default);
-    assert_eq!(pools.api().role(), DbRole::Api);
-    assert_eq!(pools.migrator().role(), DbRole::Migrator);
-
-    // The role-as-data lookup must agree with the named accessors, or a caller
-    // that carries its role in a variable talks to a different database than
-    // one that names it.
-    for role in DbRole::ALL {
-        assert_eq!(pools.role(*role).role(), *role, "{role:?} dispatched wrong");
-        pools
-            .role(*role)
-            .acquire()
-            .await
-            .expect("each role must serve a connection");
-    }
-    // The default reaches the pool a role actually opened, rather than being
-    // asserted only against the resolver. The number itself is pinned in
-    // `config/mod.rs` beside the reason it moved: sqlx spends this one deadline on
-    // both the wait for a free connection and the handshake that opens one, so
-    // a budget under the handshake cost is a pool that never grows.
-    assert_eq!(pools.api().acquire_timeout(), Duration::from_millis(5_000));
-
-    pools.close().await;
-    // A closed pool refuses rather than hanging, which is what makes shutdown
-    // ordering observable instead of a race nobody can see.
-    let error = pools
-        .api()
-        .acquire()
+    assert_eq!(db.role(), DbRole::Api);
+    db.acquire()
         .await
-        .expect_err("a closed pool must refuse");
+        .expect("an open pool serves a connection");
+
+    db.close().await;
+    let error = db.acquire().await.expect_err("a closed pool must refuse");
     assert!(
         !error.is_pool_capacity(),
         "a closed pool is not a busy one: {error}"

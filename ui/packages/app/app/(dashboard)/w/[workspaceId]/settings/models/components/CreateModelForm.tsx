@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState } from "react";
-import { Alert, Button, DialogFooter, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, Switch } from "@agentsfleet/design-system";
+import { Alert, Button, DialogFooter, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Spinner, Checkbox } from "@agentsfleet/design-system";
 import type { Secret } from "@/lib/api/secrets";
 import { providerLabel, uniqueProviders } from "@/lib/api/model-library-types";
 import { OPENAI_COMPATIBLE_PROVIDER, SECRET_FIELD } from "@/lib/types";
@@ -36,7 +36,7 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
   const heldName = secrets.some(secret => secret.name === values.keyName.trim());
   const validCredential = values.mode === KEY_MODE.saved
     ? available.some(secret => secret.name === values.savedRef)
-    : values.keyName.trim() !== "" && !heldName && (custom ? values.baseUrl.trim() !== "" : values.apiKey.trim() !== "");
+    : values.keyName.trim() !== "" && !heldName && values.apiKey.trim() !== "" && (!custom || values.baseUrl.trim() !== "");
   const canCreate = workspaceId !== "" && values.provider.trim() !== "" && values.model.trim() !== "" && validCredential;
   const error = validationError ?? creation.state.error;
   const locked = creation.pending || creation.state.stage !== "editing";
@@ -67,7 +67,7 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
     <form action={submit} className="space-y-2xl" aria-busy={creation.pending}>
       <fieldset disabled={locked} className="min-w-0 space-y-xl border-0 p-0">
         <div className="grid min-w-0 grid-cols-1 gap-xl sm:grid-cols-2">
-          <div className="space-y-sm">
+          <div className="space-y-md">
             <Label htmlFor={`${id}-provider`}>Provider</Label>
             {catalogueLoading || providers.length ? <Select value={values.provider} disabled={catalogueLoading} onValueChange={provider => change({provider, model: "", savedRef: "", apiKey: ""})}>
               <SelectTrigger id={`${id}-provider`} aria-label="Provider"><SelectValue placeholder={catalogueLoading ? "Loading providers…" : "Select a provider"} /></SelectTrigger>
@@ -78,8 +78,8 @@ export function CreateModelForm({workspaceId, secrets, onCreated, onSecretsChang
         </div>
         <ModelCredentialFields id={id} values={values} secrets={secrets} onChange={change} />
         <div className="flex items-start gap-lg">
-          <Switch id={`${id}-active`} checked={values.activate} onCheckedChange={activate => change({activate})} />
-          <div className="space-y-xs"><Label htmlFor={`${id}-active`}>Make active</Label><p className="text-eyebrow text-muted-foreground">Use this as your default model for new work.</p></div>
+          <Checkbox id={`${id}-active`} checked={values.activate} onCheckedChange={activate => change({activate: activate === true})} />
+          <div className="space-y-xs"><Label htmlFor={`${id}-active`}>Make active</Label><p className="text-eyebrow text-text-dim">Use this as your default model for new work.</p></div>
         </div>
       </fieldset>
       {error && !creation.pending ? <Alert variant={creation.state.stage.endsWith("unconfirmed") ? "warning" : "destructive"}>{error}</Alert> : null}

@@ -70,10 +70,11 @@ async fn settle(case: &Case, request: &ReportRequest<'_>, task_id: &str, reason:
     plane.task_reports = Some(Arc::new(case.tasks.clone()));
     let now = af_core::clock::after(case.held.now, crate::report_seed::SLICE);
     plane
-        .report(
+        .report_with(
             &case.held.runner,
             request,
             now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await
@@ -89,10 +90,11 @@ async fn settle(case: &Case, request: &ReportRequest<'_>, task_id: &str, reason:
     assert!(snapshot.context.usage.running_nanos > 0);
     assert_accounted(case, &task_id, reason).await;
     plane
-        .report(
+        .report_with(
             &case.held.runner,
             request,
             now,
+            None,
             &mut af_observability::verb_span::VerbClock::untimed(),
         )
         .await

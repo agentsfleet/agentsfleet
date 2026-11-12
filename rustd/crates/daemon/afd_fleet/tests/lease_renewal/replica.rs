@@ -49,20 +49,21 @@ impl Replica {
             Kind::Reclaim,
             "the expired holder's event is taken back, never pulled fresh and billed twice"
         );
-        let carried = acquired
-            .reused
-            .as_ref()
-            .expect("a reclaim carries the original billing");
+        let tenant: Uuid7 = sqlx::query_scalar("SELECT tenant_id FROM runner.leases WHERE id = $1")
+            .bind(&running.lease)
+            .fetch_one(&mut *running.fixtures.database.acquire().await.expect("read"))
+            .await
+            .expect("the original lease row names its tenant");
         let issued = self
             .leases
             .issue(
                 &running.runner,
                 &acquired,
                 Billed {
-                    tenant_id: &carried.tenant_id,
-                    posture: &carried.posture,
+                    tenant_id: &tenant,
+                    posture: crate::seed::POSTURE,
                     provider: crate::seed::PROVIDER,
-                    model: &carried.model,
+                    model: crate::seed::MODEL,
                 },
                 clock::now(),
             )

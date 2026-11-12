@@ -37,7 +37,7 @@ function CurrentWork() {
   const tasks = page?.items ?? EMPTY_TASKS;
   const needsAttention = tasks.some(task => task.status === "blocked" || task.status === "exhausted");
   return <Section asChild className="block gap-0"><section aria-label="Current work" className="ph-no-capture ph-no-record min-w-0 space-y-md">
-    {!read || !accessLost(read.resource) ? <WorkApprovals approvals={approvals} /> : null}
+    {!read || !accessLost(read.resource) ? <WorkApprovals approvals={approvals} scope={{workspaceId, fleetId, subject: view.subject, revision: view.approvalRevision ?? 0}} /> : null}
     {read ? <WorkReadStatus resource={read.resource} retry={read.retry} /> : <WorkLoading />}
     {read && page ? <>
     {needsAttention ? <section aria-label="Needs attention" className="space-y-sm">
@@ -46,10 +46,10 @@ function CurrentWork() {
         className="h-auto min-h-11 w-full justify-start whitespace-normal px-0 text-left summary:min-h-9" aria-expanded={workOpen && expandedTask === task.id}
         title="View task details" onClick={() => {setWorkOpen(true); setExpandedTask(task.id);}}><WarningIcon size={14} className="shrink-0 text-warning" aria-hidden="true" /><span className="min-w-0 flex-1">{task.title} · {task.status === "blocked" ? "Blocked" : "Attempts exhausted"}</span><CaretDownIcon size={14} className="shrink-0 text-muted-foreground" aria-hidden="true" /></Button>)}
     </section> : null}
-    <WorkChanges events={events} />
-    <WorkOutputs details={read.details} expectedDetails={read.references.length} />
-    <WorkSources sources={sources} />
     <WorkWakeups schedules={schedules} compact />
+    <WorkChanges events={events} />
+    <WorkOutputs details={read.details} expectedDetails={read.references.length} hideEmpty={events.length > 0} />
+    <WorkSources sources={sources} />
     {tasks.length ? <div className="border-t border-border pt-sm"><Accordion type="single" collapsible value={workOpen ? "tasks" : ""} onValueChange={value => setWorkOpen(value === "tasks")}><AccordionItem value="tasks" className="border-0">
       <AccordionTrigger className="min-h-11 gap-md py-sm text-label font-normal md:min-h-9"><span className="flex flex-1 items-center justify-between gap-md"><span className="inline-flex items-center gap-sm">Tasks{needsAttention ? <WarningIcon size={14} className="text-warning" aria-label="Needs attention" /> : null}</span><span className="text-eyebrow text-muted-foreground">{tasks.length}</span></span></AccordionTrigger>
       <AccordionContent><TaskRows workspaceId={workspaceId} fleetId={fleetId} tasks={tasks} details={read.details} events={events} retry={read.retry} retryDetails={read.retryDetails} expandedTask={expandedTask} onExpand={setExpandedTask} /></AccordionContent>
