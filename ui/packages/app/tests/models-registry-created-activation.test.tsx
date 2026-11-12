@@ -104,7 +104,7 @@ function requestBody(init?: RequestInit): unknown {
 }
 
 function rowFor(model: string): HTMLElement {
-  const rows = within(screen.getByRole("table", { hidden: true })).getAllByRole("row", { hidden: true });
+  const rows = screen.getAllByRole("article", { hidden: true });
   const row = rows.find((candidate) => candidate.textContent?.includes(model) ||
     Array.from(candidate.querySelectorAll("[aria-label]")).some((control) => control.getAttribute("aria-label")?.includes(model)));
   if (!row) throw new Error(`Missing model row: ${model}`);
@@ -183,7 +183,7 @@ describe("created model activation through the registry and HTTP boundary", () =
 
     const dialog = screen.getByRole("dialog");
     await waitFor(() => expect(within(dialog).getByRole("alert").textContent).toBe(`Credential retained. Couldn't register the model entry — ${COPY.registrationRefused}.`));
-    expect(within(screen.getByRole("table", { hidden: true })).queryByText(CATALOGUE_MODEL.display_name)).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Models", hidden: true })).queryByText(CATALOGUE_MODEL.display_name)).toBeNull();
     expect(within(rowFor(PLATFORM_MODEL)).getByText(COPY.active)).toBeTruthy();
     // Credential storage precedes registration and survives its refusal.
     expect(boundary.saved).toBe(true);

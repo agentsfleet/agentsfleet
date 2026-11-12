@@ -24,7 +24,7 @@ export function ResourceSettingsFixture() {
         <Button size="sm" variant="ghost" onClick={() => setTeam(true)}>Team</Button>
       </div>
       <ShellFrame workspaces={workspaces}>{team ? <MembersView initialMembers={SAMPLE_MEMBERS} initialInvites={SAMPLE_INVITES} /> :
-        <ModelCatalogueProvider><PageLayout fullHeight className="h-full overflow-hidden">
+        <ModelCatalogueProvider><PageLayout>
           <PageHeader description={MODELS_PAGE_DESCRIPTION}><PageTitle>{MODELS_PAGE_TITLE}</PageTitle></PageHeader>
           <ModelsRegistryTable workspaceId={WORKSPACE} workspaces={workspaces} initialPage={SAMPLE_MODELS} initialError={null} />
         </PageLayout></ModelCatalogueProvider>}

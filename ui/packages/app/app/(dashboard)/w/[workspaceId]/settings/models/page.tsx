@@ -29,7 +29,7 @@ export default async function ModelsKeysPage({
 
   return (
     <Suspense fallback={<RouteLoading />}>
-      <PageLayout fullHeight className="h-full overflow-hidden">
+      <PageLayout>
         <PageHeader description={MODELS_PAGE_DESCRIPTION}>
           <PageTitle>{MODELS_PAGE_TITLE}</PageTitle>
         </PageHeader>

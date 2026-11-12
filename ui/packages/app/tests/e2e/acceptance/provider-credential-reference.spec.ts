@@ -145,9 +145,10 @@ test.describe("provider credential reference guard", () => {
       has_key: true,
       active: true,
     });
-    const activeRow = page.getByRole("row").filter({
+    const activeRow = page.getByRole("region", {name: "Models", exact: true}).getByRole("article").filter({
       has: page.getByRole("button", { name: `View details for ${choice.id}`, exact: true }),
-    }).filter({ has: page.getByText("Active", { exact: true }) });
+    }).filter({ has: page.getByText("Active", { exact: true }) }).filter({hasText: CREDENTIAL_NAME});
+    await expect(activeRow).toHaveCount(1);
     await expect(activeRow).toContainText(providerLabel(choice.provider));
     await expect(activeRow).toContainText(choice.display_name);
 

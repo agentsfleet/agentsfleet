@@ -71,10 +71,11 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-describe("the table", () => {
-  it("should list people and pending invites in one table, each with its role", () => {
+describe("the grouped team", () => {
+  it("lists members and pending invitations in separate named groups, each with its role", () => {
     renderView();
-    expect(screen.getAllByRole("table")).toHaveLength(1);
+    expect(screen.getByRole("region", {name: "Members"})).toBeTruthy();
+    expect(screen.getByRole("region", {name: "Pending invitations"})).toBeTruthy();
     expect(within(rowOf(JOHN_NAME)).getByText(ACCOUNT_ROLE.owner)).toBeTruthy();
     expect(within(rowOf(BOB_NAME)).getByText(ACCOUNT_ROLE.member)).toBeTruthy();
     expect(within(rowOf(INVITE.email)).getByText(INVITED_BADGE)).toBeTruthy();
@@ -306,4 +307,25 @@ describe("pending invites", () => {
     await waitFor(() => expect(screen.getByText(RELOAD_FAILED)).toBeTruthy());
     expect(screen.getByText(INVITE.email)).toBeTruthy();
   });
+});
+
+
+it("searches members and pending invitations without changing account access or sending writes", async () => {
+  renderView();
+  const user = userEvent.setup();
+  const search = screen.getByRole("searchbox", {name: "Search name or email"});
+  await user.type(search, BOB_NAME);
+  await waitFor(() => expect(screen.queryByRole("listitem", {name: JOHN_NAME})).toBeNull());
+  expect(rowOf(BOB_NAME)).toBeTruthy();
+  expect(screen.queryByRole("region", {name: "Pending invitations"})).toBeNull();
+  await user.click(screen.getByRole("button", {name: "Clear search"}));
+  await user.type(search, INVITE.email.toUpperCase());
+  await waitFor(() => expect(screen.queryByRole("listitem", {name: BOB_NAME})).toBeNull());
+  expect(rowOf(INVITE.email)).toBeTruthy();
+  await user.clear(search);
+  await user.type(search, "no-person-matches");
+  await screen.findByText("No matching people");
+  expect(actions.removeMemberAction).not.toHaveBeenCalled();
+  expect(actions.revokeInviteAction).not.toHaveBeenCalled();
+  expect(actions.loadTeamAction).not.toHaveBeenCalled();
 });

@@ -22,12 +22,12 @@ describe("IconAction", () => {
     expect(button).toBeInTheDocument();
     expect(button.getAttribute("aria-label")).toBe("Cordon");
 
-    // Size is fixed to `icon-sm` (h-6 w-6) — there is no size prop, so every
+    // Size is fixed to `icon-sm` (h-8 w-8) — there is no size prop, so every
     // row action is uniform. Prove it renders icon-sm and NOT the larger
     // `icon` (h-9) or default (h-10) sizings.
     const cls = button.className;
-    expect(cls).toContain("h-6");
-    expect(cls).toContain("w-6");
+    expect(cls).toContain("h-8");
+    expect(cls).toContain("w-8");
     expect(cls).not.toContain("h-9");
     expect(cls).not.toContain("h-10");
   });

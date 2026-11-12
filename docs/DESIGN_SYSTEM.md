@@ -110,7 +110,7 @@ Keep the product brand mark separate from the icon library.
 | Small chevrons | 12–14px | The whole labeled row is interactive |
 | Rail brand mark | 24px | At least 44px |
 
-Use regular weight by default. Selected navigation may use bold weight without changing glyph dimensions or moving surrounding content.
+Use regular weight by default. Selected navigation may use Phosphor’s duotone weight without changing glyph dimensions or moving surrounding content.
 New fleet uses Phosphor `note-pencil`, the square writing pad with a pencil.
 
 Plain pencils identify editing an existing item.
@@ -247,8 +247,7 @@ Omit the Environment section and empty groups.
 
 Detailed evidence opens from the relevant item; the Summary itself never becomes a drawer.
 
-On phones, place a compact Summary in the page flow. Keep the current state and urgent decision visible without filling the first viewport.
-Move secondary details lower in the flow when necessary.
+On phones, place Summary before the transcript inside the native assistant-ui viewport. Keep its complete content in the page flow, with no height cap or nested scroll area. The native viewport footer keeps the composer reachable while Summary scrolls with the history. On desktop, Summary spans the conversation and footer tracks so attachment and error states cannot clip its heading. Mount one Summary reader across breakpoints.
 
 Preserve readable decision text and reachable actions; do not solve crowding with smaller type.
 
@@ -366,6 +365,8 @@ A separate readable environment-variable feature is outside this delivery.
 Existing component behavior remains authoritative.
 Presentation changes must preserve keyboard interactions, loading state, and accessible names.
 Use shared primitives before adding consumer markup with equivalent behavior.
+
+Resource pages use the shared PageHeader for compact top chrome and a centered content area up to 1040px. Models compose Card headers, content and actions with shared DropdownMenu sorting and Pagination; Team groups native lists inside Card surfaces. Search, authorization, retry and mutation state stay with their existing owners. Compact phone tables must keep every action target inside the visible width and label reflowed metadata. Previous and Next remain together when shared pagination wraps.
 
 Reusable visual treatments belong in `ui/packages/design-system`. App widgets combine those primitives with product behavior and data.
 

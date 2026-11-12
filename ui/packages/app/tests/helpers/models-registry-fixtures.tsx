@@ -58,21 +58,15 @@ vi.mock("@/app/(dashboard)/w/[workspaceId]/secrets/actions", () => ({
 export const routerMock = { push: vi.fn() };
 vi.mock("next/navigation", () => ({ useRouter: () => routerMock }));
 
-// A transparent DataTable wrapper that also exposes the live onSortChange
-// prop — DataTable's own type accepts any string key (any column could opt
-// in), but only "model"/"provider" are marked sortable below, so the real
-// header never sends anything else. One test drives that boundary directly,
-// the way a future column misconfiguration would.
+// Observe the view boundary while retaining its real shared-card UI. The
+// invalid-key test still exercises the parent's guarded sorting decision.
 export let capturedOnSortChange: ((key: string) => void) | undefined;
-vi.mock("@agentsfleet/design-system", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@agentsfleet/design-system")>();
-  return {
-    ...actual,
-    DataTable: (props: Record<string, unknown>) => {
-      capturedOnSortChange = props.onSortChange as ((key: string) => void) | undefined;
-      return React.createElement(actual.DataTable, props as never);
-    },
-  };
+vi.mock("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/app/(dashboard)/w/[workspaceId]/settings/models/components/ModelsRegistryView")>();
+  return {...actual, ModelsRegistryView: (props: React.ComponentProps<typeof actual.ModelsRegistryView>) => {
+    capturedOnSortChange = props.onSortChange;
+    return React.createElement(actual.ModelsRegistryView, props);
+  }};
 });
 
 export function entry(overrides: Partial<TenantModelEntry>): TenantModelEntry {

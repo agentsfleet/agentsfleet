@@ -57,7 +57,8 @@ describe("model registry pagination concurrency", () => {
     await act(async () => { finishOld([entry("stale-page")], "stale-cursor"); });
     expect(screen.queryByTitle("stale-page")).toBeNull();
     expect(screen.getByTitle("newest")).toBeTruthy();
-    expect(screen.getByRole("button", {name: "Next page"})).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("button", {name: "Next page"})).toBeNull();
+    expect(screen.getAllByRole("article")).toHaveLength(1);
     expect(list).toHaveBeenNthCalledWith(1, "next");
     expect(list).toHaveBeenNthCalledWith(2);
   });

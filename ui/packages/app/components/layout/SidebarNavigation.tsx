@@ -63,7 +63,7 @@ export function DesktopSidebarNavigation({
 }
 
 export function SidebarNavigation({ pathname, workspaceId, collapsed, onNavigate, workspaces = [], billing }: SidebarNavigationProps) {
-  const activeHref = resolveActiveHref(PRIMARY_NAV.filter(entry => entry.path !== "fleets" || pathname === resolveHref(entry, workspaceId)).map((entry) => resolveHref(entry, workspaceId)), pathname);
+  const activeHref = resolveActiveHref(PRIMARY_NAV.map((entry) => resolveHref(entry, workspaceId)), pathname);
   const shared = { activeHref, workspaceId, onNavigate, collapsed };
   return <TooltipProvider><Nav aria-label="Primary" className="flex h-full min-h-0 flex-col gap-lg py-sm">
     <ShellControls workspaceId={workspaceId} collapsed={collapsed} />

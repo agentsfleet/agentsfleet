@@ -162,16 +162,23 @@ code, pre, kbd { font-family: var(--ff-mono); }
 
 .fleet-summary {
   order: -1;
-  max-height: 28dvh;
+  max-height: none;
+  overflow: visible;
   margin: var(--sp-lg) var(--sp-xl);
 }
+.app-shell:not(:has([data-fleet-workspace], [data-fleet-authoring])) .app-dashboard-canvas .page-entrance { width: 100%; max-width: 65rem; margin-inline: auto; }
 @media (min-width: 64rem) {
   .fleet-summary {
+    grid-column: 2;
+    grid-row: 1 / span 2;
     order: 0;
     width: var(--summary-width);
-    max-height: calc(100% - 48px);
+    position: sticky;
+    top: 0;
+    max-height: min(36rem, calc(100dvh - 12rem));
+    overflow-y: auto;
     align-self: flex-start;
-    margin: var(--sp-2xl) var(--sp-2xl) var(--sp-2xl) 0;
+    margin: var(--sp-2xl) 0;
   }
 }
 
@@ -189,3 +196,10 @@ code, pre, kbd { font-family: var(--ff-mono); }
   padding-inline: var(--chat-inset);
   margin: 0;
 }
+
+/* Resource chrome and content follow the approved title-bar/body hierarchy. */
+.app-dashboard-canvas:has([data-resource-header]) .page-entrance > [data-slot="page-header"] { border-bottom: 0; padding-bottom: 0; }
+.app-dashboard-canvas:has([data-resource-header]) .page-entrance > [data-slot="page-header"] > div > p { max-width: none; }
+
+.app-dashboard-canvas:has(> [data-resource-header]) { display: flex; flex-direction: column; }
+.app-dashboard-canvas:has(> [data-resource-header]) > div:not([data-resource-header]) { flex: 1; min-height: 0; }

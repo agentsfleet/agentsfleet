@@ -63,7 +63,7 @@ async function expectSenderLine(turn: Locator, name: string | null): Promise<voi
 }
 
 function rowFor(page: Page, email: string) {
-  return page.getByRole("row", { name: new RegExp(email.replace(/[.+]/g, "\\$&"), "i") });
+  return page.getByRole("listitem", { name: new RegExp(email.replace(/[.+]/g, "\\$&"), "i") });
 }
 
 test.describe("teammates join an account", () => {

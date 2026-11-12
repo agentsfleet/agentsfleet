@@ -19,7 +19,8 @@ export function SecretActions({ secret, pending, protectedFromDelete, onEdit, on
       </IconAction>
       <IconAction
         type="button"
-        variant="destructive"
+        variant="ghost"
+        className="text-destructive hover:text-destructive"
         onClick={() => onDelete(secret.name)}
         disabled={deleteDisabled}
         label={protectedFromDelete ? `Secret ${secret.name} is in model setup` : `Delete secret ${secret.name}`}

@@ -65,20 +65,17 @@ export function renderView(members: MemberSummary[] = [JOHN, BOB], invites: Invi
   return render(<MembersView initialMembers={members} initialInvites={invites} />, { wrapper: TooltipProvider });
 }
 
-export const rowOf = (name: string) => screen.getByRole("row", { name: new RegExp(name) });
+export const rowOf = (name: string) => screen.getByRole("listitem", { name: new RegExp(name) });
 
-// A row's cells, in the table's column order: person, role, time, actions.
-const PERSON_COLUMN = 0;
-const TIME_COLUMN = 2;
-const ACTIONS_COLUMN = 3;
-const cellOf = (name: string, column: number) => {
-  const cell = within(rowOf(name)).getAllByRole("cell")[column];
-  if (!cell) throw new Error(`the row for ${name} has no column ${column}`);
-  return cell;
-};
-export const personCellOf = (name: string) => cellOf(name, PERSON_COLUMN);
-export const timeCellOf = (name: string) => cellOf(name, TIME_COLUMN);
-export const actionsCellOf = (name: string) => cellOf(name, ACTIONS_COLUMN);
+// Stable shared-card slots retain the person, dates and action outcomes.
+function teamSlot(name: string, slot: string): HTMLElement {
+  const node = rowOf(name).querySelector<HTMLElement>(`[data-slot="${slot}"]`);
+  if (!node) throw new Error(`Missing ${slot} for ${name}`);
+  return node;
+}
+export const personCellOf = (name: string) => teamSlot(name, "team-person");
+export const timeCellOf = (name: string) => teamSlot(name, "team-times");
+export const actionsCellOf = (name: string) => teamSlot(name, "team-actions");
 
 // An open confirm dialog hides the table from assistive tech, so its buttons
 // are reached past that while a request runs behind the dialog.

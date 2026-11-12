@@ -20,7 +20,7 @@ export function BillingReportView(props: Props) {
       <span><Time value={report.through_at} label={formatTimeRangeUtc(report.from_at, report.through_at)} /> · Coordinated Universal Time (UTC)</span>
       <span>Settled charges</span>
     </p>
-    <MetaGrid columns={3} aria-label="Period totals" className="grid-cols-[1.2fr_1fr_1fr] gap-xl border-y border-border py-2.5 sm:grid-cols-[1.2fr_1fr_1fr] [&>div]:min-w-0 [&_dt]:font-sans [&_dt]:normal-case [&_dt]:text-eyebrow [&_dt]:tracking-normal" items={[
+    <MetaGrid columns={3} aria-label="Period totals" className="grid-cols-1 gap-lg sm:grid-cols-3 [&>div]:min-w-0 [&>div]:rounded-md [&>div]:border [&>div]:border-border [&>div]:bg-card [&>div]:p-xl [&_dt]:font-sans [&_dt]:normal-case [&_dt]:text-eyebrow [&_dt]:tracking-normal" items={[
       { label: "Charged this period", value: <span className="text-heading font-medium tabular-nums">{formatBalance(report.totals.charged_nanos)}</span> },
       { label: "Billed activities", value: <span className="text-heading font-medium tabular-nums">{formatCount(report.totals.activity_count)}</span> },
       { label: "Input / output tokens", value: <span className="text-heading font-medium tabular-nums">{formatCompactCount(report.totals.input_tokens)}<span className="text-body-sm text-muted-foreground"> / {formatCompactCount(report.totals.output_tokens)}</span></span> },

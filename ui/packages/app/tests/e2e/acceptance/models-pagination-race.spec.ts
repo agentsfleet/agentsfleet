@@ -74,8 +74,8 @@ test("changing Search during Next keeps Models on the new search's first page", 
     await search.fill(prefix);
     const next = page.getByRole("button", {name: "Next page"});
     const previous = page.getByRole("button", {name: "Previous page"});
-    const table = page.getByRole("table", {name: "Models", exact: true});
-    await expect(table.locator("tbody tr")).toHaveCount(DISPLAY_PAGE_SIZE);
+    const models = page.getByRole("region", {name: "Models", exact: true});
+    await expect(models.getByRole("article")).toHaveCount(DISPLAY_PAGE_SIZE);
     for (let index = 1; index < SERVER_PAGE_SIZE / DISPLAY_PAGE_SIZE; index++) await next.click();
     const held = await holdNextPage(page);
     try {
@@ -86,7 +86,7 @@ test("changing Search during Next keeps Models on the new search's first page", 
       held.release();
       await expect(page.getByText(new RegExp(`^${MODEL_COUNT} of .* models$`))).toBeVisible();
       await expect(previous).toBeDisabled();
-      await expect(table.locator("tbody tr")).toHaveCount(DISPLAY_PAGE_SIZE);
+      await expect(models.getByRole("article")).toHaveCount(DISPLAY_PAGE_SIZE);
     } finally { await held.dispose(); }
   });
 });

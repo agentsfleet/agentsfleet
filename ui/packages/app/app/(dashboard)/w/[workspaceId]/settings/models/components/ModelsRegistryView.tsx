@@ -1,10 +1,12 @@
 "use client";
 
 import { useDeferredValue, useMemo, useRef, useState, useTransition } from "react";
-import { DataTable, EmptyState, Section, PAGINATION_KIND, DEFAULT_PAGE_SIZE_OPTIONS, type DataTableColumn } from "@agentsfleet/design-system";
+import { SortAscendingIcon } from "@phosphor-icons/react/ssr";
+import { Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, EmptyState, Pagination, Section, PAGINATION_KIND, DEFAULT_PAGE_SIZE_OPTIONS, type DataTableColumn } from "@agentsfleet/design-system";
 import type { TenantPlatformDefault } from "@/lib/types";
 import { CollectionToolbar } from "@/components/domain/CollectionToolbar";
-import { rowKey, type RegistryRow } from "./ModelsRegistryCells";
+import { type RegistryRow } from "./ModelsRegistryCells";
+import { ModelsRegistryCards } from "./ModelsRegistryCards";
 import type { SortState } from "./registry-view";
 
 type Props = {
@@ -40,14 +42,24 @@ export function ModelsRegistryView({ rows, columns, platformDefault, sort, onSor
     });
   }
   return <Section className="space-y-xl">
-    <CollectionToolbar label="Search models" value={search} onChange={(value) => { setSearch(value); resetPage(); }} summary={`${matches.length} of ${rows.length} models`} />
-    <DataTable columns={columns} rows={matches.slice((currentPage - 1) * pageSize, currentPage * pageSize)} rowKey={rowKey} caption="Models" isLoading={pending || loading}
-      sortKey={sort?.key} sortDirection={sort?.dir} onSortChange={(key) => { resetPage(); onSortChange(key); }}
-      pagination={{kind: PAGINATION_KIND.page, page: currentPage, pageSize,
-        hasNext: currentPage * pageSize < matches.length || Boolean(onLoadMore),
-        total: onLoadMore ? undefined : matches.length, onPageChange: onLoadMore ? (next) => changePage(next, onLoadMore) : setPage,
-        pageSizeOptions: DEFAULT_PAGE_SIZE_OPTIONS, onPageSizeChange: (size) => { setPageSize(size); resetPage(); },
-        isLoading: pending || loading}}
-      empty={<EmptyState title="No matching models" description="Try a provider or model name. Use Next to search more models." />} />
+    <div className="flex flex-wrap items-center gap-lg">
+      <div className="min-w-0 flex-1 basis-full sm:basis-auto"><CollectionToolbar label="Search models" value={search} onChange={(value) => { setSearch(value); resetPage(); }} summary={`${matches.length} of ${rows.length} models`} /></div>
+      <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" aria-label="Sort models"><SortAscendingIcon size={16} aria-hidden="true" />Sort</Button></DropdownMenuTrigger>
+        <DropdownMenuContent align="end">{columns.filter(column => column.sortable).map(column => <DropdownMenuItem key={column.key}
+          onSelect={() => { resetPage(); onSortChange(column.key); }}>
+          {column.header}{sort?.key === column.key ? ` · ${sort.dir}` : ""}
+        </DropdownMenuItem>)}</DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+    <div aria-busy={pending || loading}>
+      {matches.length === 0 ? <EmptyState title="No matching models" description="Try a provider or model name. Use Next to search more models." />
+        : <ModelsRegistryCards columns={columns} rows={matches.slice((currentPage - 1) * pageSize, currentPage * pageSize)} />}
+    </div>
+    {matches.length > pageSize || onLoadMore || pageSize !== DEFAULT_PAGE_SIZE_OPTIONS[0] || currentPage > 1 ? <Pagination kind={PAGINATION_KIND.page} page={currentPage} pageSize={pageSize}
+      hasNext={currentPage * pageSize < matches.length || Boolean(onLoadMore)}
+      total={onLoadMore ? undefined : matches.length} onPageChange={onLoadMore ? next => changePage(next, onLoadMore) : setPage}
+      pageSizeOptions={DEFAULT_PAGE_SIZE_OPTIONS} onPageSizeChange={size => { setPageSize(size); resetPage(); }}
+      isLoading={pending || loading} /> : null}
+
   </Section>;
 }

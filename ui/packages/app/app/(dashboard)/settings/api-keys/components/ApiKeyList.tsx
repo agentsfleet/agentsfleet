@@ -108,6 +108,7 @@ export default function ApiKeyList({
       {items.length > 0 ? <CollectionToolbar label="Search API keys" value={search} onChange={setSearch}
         summary={`${rows.length} of ${items.length} keys`} /> : null}
       <DataTable
+        className="[&_table]:table-fixed [&_th:last-child]:w-24"
         isLoading={pending}
         columns={buildColumns({
           pending,
@@ -139,9 +140,9 @@ export default function ApiKeyList({
 
 function KeyNameCell({ k }: { k: ApiKeyRow }) {
   return (
-    <div className="min-w-0 max-w-24 sm:max-w-none">
-      <span className="block truncate text-body-sm font-medium">{k.key_name}</span>
-      <div className="sm:hidden"><KeyActivityCell k={k} /></div>
+    <div className="min-w-0">
+      <span className="block truncate text-body-sm font-medium" title={k.key_name}>{k.key_name}</span>
+      <div className="sm:hidden"><span className="text-label text-muted-foreground">{k.active ? "Active key" : "Revoked key"}</span><KeyActivityCell k={k} /></div>
     </div>
   );
 }
@@ -169,11 +170,11 @@ function KeyActionsCell({
   // Icon actions matching the catalogue/registry rows — the aria-label
   // carries the verb + key name, the glyph carries the affordance.
   return k.active ? (
-    <IconAction type="button" variant="destructive" disabled={pending} onClick={onRevoke} label={`Revoke API key ${k.key_name}`}>
+    <IconAction type="button" variant="ghost" className="text-destructive hover:text-destructive" disabled={pending} onClick={onRevoke} label={`Revoke API key ${k.key_name}`}>
       <ProhibitIcon size={14} />
     </IconAction>
   ) : (
-    <IconAction type="button" variant="destructive" disabled={pending} onClick={onDelete} label={`Delete API key ${k.key_name}`}>
+    <IconAction type="button" variant="ghost" className="text-destructive hover:text-destructive" disabled={pending} onClick={onDelete} label={`Delete API key ${k.key_name}`}>
       <TrashIcon size={14} />
     </IconAction>
   );
@@ -205,6 +206,7 @@ function buildColumns({
     {
       key: "status",
       header: "Status",
+      hideOnMobile: true,
       cell: (k) => <Badge variant={k.active ? "green" : "default"}>{k.active ? "Active" : "Revoked"}</Badge>,
     },
     {

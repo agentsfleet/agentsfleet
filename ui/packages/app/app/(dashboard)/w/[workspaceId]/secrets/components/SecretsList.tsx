@@ -138,7 +138,7 @@ function SecretTable({
     <div className="flex min-h-0 flex-col gap-xl">
       <CollectionToolbar label="Search secrets" value={search} onChange={setSearch} summary={`${matches.length} of ${secrets.length} secrets`} />
       <DataTable
-        className="flex min-h-0 flex-col"
+        className="flex min-h-0 flex-col [&_table]:table-fixed [&_th:last-child]:w-32"
         columns={columns}
         rows={matches}
         isLoading={pending}
