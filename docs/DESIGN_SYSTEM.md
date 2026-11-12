@@ -167,8 +167,8 @@ Status always includes text or an icon; color alone carries no required informat
 Success uses a distinct green, while mint remains the action and live-signal accent.
 Use information blue for informative state, evidence amber for sourced material, and amber for attention.
 
-Label chips use unfilled surfaces, a line border and 12px/16px regular text. Keep neutral metadata quiet.
-Reserve filled badges for live, warning, error and evidence signals with explicit semantic text or icons.
+Label chips use unfilled surfaces, a line border and 12px/16px regular text. Keep neutral metadata quiet. Reserve filled badges for live, warning, error and evidence signals with explicit semantic text or icons.
+
 App secondary actions use a neutral panel and visible border.
 
 Selected navigation and primary actions carry the mint emphasis.
@@ -240,19 +240,27 @@ Archived history is read-only. Pending operations, failures, and uncertain outco
 Never show a success notification while a request is pending or when only the stop portion of deletion succeeded.
 
 
-Summary occupies a 248px column on wide desktops. Use 228px at 801–1100px and 216px at 681–800px; stack at 680px and below.
-Use a 16px inner inset, 12px at the narrow intermediate step, and 12/16/32px conversation gutters at 681/801/1101px. Phone shell edges are 4px and Summary outer insets 12px; transcript insets stay 16px.
+Summary occupies a 248px column on wide desktops. Use 228px at 801–1100px and 216px at 681–800px; stack at 680px and below. Use a 16px inner inset, 12px at the narrow intermediate step, and 12/16/32px conversation gutters at 681/801/1101px.
+
+Phone shell edges are 4px and Summary outer insets 12px; transcript insets stay 16px.
 
 Align its top with the conversation's working area.
 
-Summary remains inline and visible without clicking. Show the current decision, relevant changes, outputs, and next scheduled wake-up.
-Keep Changes, Outputs and Sources headings with one quiet line when confirmed empty. Insert pending approval or blocked work first. Other sections appear only for recorded content. Do not infer an Environment inventory, live background processes or child-agent state from tool calls.
+Summary remains inline and visible without clicking. Show the current decision, relevant changes, outputs, and next scheduled wake-up. Keep Changes, Outputs and Sources headings with one quiet line when confirmed empty.
 
-Detailed evidence opens from the relevant item; the Summary itself never becomes a drawer. Keep task objectives, criteria and controls behind a closed Tasks disclosure. Sources shows one repository row or count; its policy belongs inside the same disclosure. Loading and unavailable reads must not appear as confirmed empty outputs.
+Insert pending approval or blocked work first. Other sections appear only for recorded content. Do not infer an Environment inventory, live background processes or child-agent state from tool calls.
 
-Section labels use 12px/16px, with 4px label-to-content spacing, 8px between sections and 8px after each divider. Keep 36px desktop and 44px phone disclosure targets without adding a second spacer row. Conversation input starts at 60px; a 100px empty setup field is a separate composition. The header edit action opens the existing setup editor. User attachments precede prose in lighter bubbles; calendar boundaries and compact clocks use the same UTC frame and retain exact accessible instants.
+Detailed evidence opens from the relevant item; the Summary itself never becomes a drawer. Keep task objectives, criteria and controls behind a closed Tasks disclosure. Sources shows one repository row or count; its policy belongs inside the same disclosure.
 
-On phones, place Summary before the transcript inside the native assistant-ui viewport. Keep its complete content in the page flow, with no height cap or nested scroll area. The native viewport footer follows the phone conversation in normal scroll flow; Jump to latest stays reachable. From 681px it docks at the bottom of the conversation column. On desktop, Summary spans the conversation and footer tracks so attachment and error states cannot clip its heading. Mount one Summary reader across breakpoints.
+Loading and unavailable reads must not appear as confirmed empty outputs.
+
+Section labels use 12px/16px, with 4px label-to-content spacing, 8px between sections and 8px after each divider. Keep 36px desktop and 44px phone disclosure targets without adding a second spacer row. Conversation input starts at 60px; a 100px empty setup field is a separate composition.
+
+The header edit action opens the existing setup editor. User attachments precede prose in lighter bubbles; calendar boundaries and compact clocks use the same UTC frame and retain exact accessible instants.
+
+On phones, place Summary before the transcript inside the native assistant-ui viewport. Keep its complete content in the page flow, with no height cap or nested scroll area. The native viewport footer stays in the scroll flow and sticks to the bottom while reading.
+
+Jump to latest stays reachable. On desktop, Summary spans the conversation and footer tracks so attachment and error states cannot clip its heading. Mount one Summary reader across breakpoints.
 
 Preserve readable decision text and reachable actions; do not solve crowding with smaller type.
 
@@ -298,6 +306,7 @@ The credential choice offers Add new key or Use saved key. Filter saved keys by 
 Use Key name for a new credential. Reusing a key must not rotate or replace it.
 
 Keep Base URL for supported custom endpoints. Every model provider requires an API key, matching the runtime's credential rules. Explain saved-key scope beside the picker when it affects selection.
+
 Model registration and active-model selection are account-scoped.
 
 Each registered model references the workspace that stores its credential.
@@ -371,15 +380,25 @@ Existing component behavior remains authoritative.
 Presentation changes must preserve keyboard interactions, loading state, and accessible names.
 Use shared primitives before adding consumer markup with equivalent behavior.
 
-Resource pages use the shared ResourceHeader for the 64px top bar and PageHeader inside a centered 1040px content column. The top bar includes the New fleet action, uses a subtle bottom border, and aligns its icon 24px from the surface edge. Models restore the separate Platform default card, Your models list, Make active action and provider prompt. Details and edits use the row menu; server continuation uses Load more without adding the former sort toolbar.
+Resource pages use the shared ResourceHeader for the 64px top bar and PageHeader inside a centered 1040px content column. The top bar includes the New fleet action, uses a subtle bottom border, and aligns its icon 24px from the surface edge. Models restore the separate Platform default card, Your models list, Make active action and provider prompt.
 
-Team groups native lists inside shared panels. Its search remains, with names, initials, roles, explicit joined or expiry dates, and one menu per manageable row. Only the authenticated person's row carries You. Invite delivery status must reflect the backend, including a retained invite whose email was not delivered.
+Details and edits use the row menu; server continuation uses Load more without adding the former sort toolbar.
 
-Security contains API keys and signed-in sessions on one page. The avatar's Personal account entry opens native identity-provider controls behind the auth facade. It is not a second custom Profile page. Keys use resource rows and one-time reveal; sessions support individual and all-other-session sign-out. Read all session pages before bulk revocation and exclude this device.
+Team groups native lists inside shared panels. Its search remains, with names, initials, roles, explicit joined or expiry dates, and one menu per manageable row. Only the authenticated person's row carries You.
 
-Usage restores the period toolbar, shared metric strip, daily-spend section and By fleet table. Charge details remain in a closed native disclosure, opening for an explicitly selected activity. Do not draw daily bars from a partial activities page: the current report has no daily buckets. Preserve that section with its unavailable state until one authoritative aggregate is available.
+Invite delivery status must reflect the backend, including a retained invite whose email was not delivered.
 
-Secrets use Name, Type, hidden Value, Available to and Manage. The current API does not return per-secret fleet access. State that absence; never derive effective authorization from references or show an unbacked access checkbox. Preserve named-field replacement for credentials that require several values. Plugins and Connected apps use grouped resource rows and shared dialogs. A plugin's actual version appears after inspection; list cards expose only its revision identifier.
+Security contains API keys and signed-in sessions on one page. The avatar's Personal account entry opens native identity-provider controls behind the auth facade. It is not a second custom Profile page.
+
+Keys use resource rows and one-time reveal; sessions support individual and all-other-session sign-out. Read all session pages before bulk revocation and exclude this device.
+
+Usage restores the period toolbar, shared metric strip, daily-spend section and By fleet table. Charge details remain in a closed native disclosure, opening for an explicitly selected activity. Do not draw daily bars from a partial activities page: the current report has no daily buckets.
+
+Preserve that section with its unavailable state until one authoritative aggregate is available.
+
+Secrets use Name, Type, hidden Value, Available to and Manage. The current API does not return per-secret fleet access. State that absence; never derive effective authorization from references or show an unbacked access checkbox.
+
+Preserve named-field replacement for credentials that require several values. Plugins and Connected apps use grouped resource rows and shared dialogs. A plugin's actual version appears after inspection; list cards expose only its revision identifier.
 
 Compact phone tables keep action targets inside their visible scrolling surface. Session and key rows let identity text occupy the full width before the action. Server pagination and error recovery remain available where the API requires them.
 
@@ -454,9 +473,9 @@ Only the selected row renders detail content.
 
 Keep navigation and disclosure behavior in the shared component rather than recreating it in a page.
 
-Date formatting belongs in `ui/packages/design-system/src/design-system/time-utils.ts` for both the app and shared components.
-Render visible timestamps through `Time`; use the exported helpers for plain-text labels and server-side formatting.
-Reporting periods use `formatTimeRangeUtc`, and their activity labels use `formatTimeCompactUtc` so both share Coordinated Universal Time (UTC). Use `Time format="date"` for joined, expiry and creation dates and `Time format="month"` for a selected reporting month. These use UTC and keep the canonical instant.
+Date formatting belongs in `ui/packages/design-system/src/design-system/time-utils.ts` for both the app and shared components. Render visible timestamps through `Time`; use the exported helpers for plain-text labels and server-side formatting. Reporting periods use `formatTimeRangeUtc`, and their activity labels use `formatTimeCompactUtc` so both share Coordinated Universal Time (UTC).
+
+Use `Time format="date"` for joined, expiry and creation dates and `Time format="month"` for a selected reporting month. These use UTC and keep the canonical instant.
 
 The helpers return the shared invalid-date fallback for malformed inputs; ranges also reject an end before the start.
 Extend these shared helpers when a reusable format is missing. Do not add a page-local formatter.
@@ -527,8 +546,9 @@ Leases and Activity tabs sit directly above their content.
 A checks badge reports the result; a separate View checks button makes inspection discoverable.
 Fleet activity belongs in its conversation.
 
-Pending fleet decisions appear in Summary.
-Approve and Deny act on the recorded request in the fleet conversation. Show action details inline. Remove standalone Approvals and Grants destinations. Retain authorization and standing-grant enforcement.
+Pending fleet decisions appear in Summary. Approve and Deny act on the recorded request in the fleet conversation. Show action details inline.
+
+Remove standalone Approvals and Grants destinations. Retain authorization and standing-grant enforcement.
 
 ### Forms and popups
 
@@ -1042,15 +1062,25 @@ Keep retries scoped to the original operation and prevent duplicate submissions.
 
 ### Review corrections, Nov 12, 2026
 
-The dashboard uses a 20px/24px reply heading at weight 650. Attachment names use 12px, with a 36px desktop chip. Navigation glyphs remain 20px, including the bottom control; phones open the shared navigation dialog and desktop expands the rail. The selected fleet uses neutral raised fill and bold foreground icon; New fleet retains mint emphasis. Account initials use the lavender avatar tokens with 13px bold text.
+The dashboard uses a 19px/24.7px reply heading at weight 650. Attachment names use 12px, with a 36px desktop chip. Navigation glyphs remain 20px, including the bottom control; phones open the shared navigation dialog and desktop expands the rail.
 
-Desktop operator turns occupy 90% of the reading column; phone turns use its full width. Reply identity has an 8px icon gap. Result cards and loading placeholders share 78px height, 16px corners and a 4px secondary-line gap. Composer paperclip controls are 36px with an 18px glyph; coarse pointers keep the 44px floor. Keep 4px horizontal text inset, an explicit focused border, and opaque neutral styling for disabled Send. Compare enabled, disabled and focused states individually.
+The selected fleet uses neutral raised fill and bold foreground icon; New fleet retains mint emphasis. Account initials use the lavender avatar tokens with 13px bold text.
 
-Summary reads the actual pending approval before showing its action and blast radius. Approve and Deny use the existing authenticated decision actions. A decision requires no separate review page. Missing or failed reads never become an invented target. Run duration and cost come from recorded figures. Quote uses assistant-ui composer state and serializes into the same durable text message the backend stores.
+Desktop operator turns occupy 90% of the reading column; phone turns use its full width. Reply identity has an 8px icon gap. Result cards and loading placeholders share 78px height, 16px corners and a 4px secondary-line gap.
+
+Composer paperclip controls are 36px with an 18px glyph; coarse pointers keep the 44px floor. Keep 4px horizontal text inset, an explicit focused border, and opaque neutral styling for disabled Send. Compare enabled, disabled and focused states individually.
+
+Summary reads the actual pending approval before showing its action and blast radius. Approve and Deny use the existing authenticated decision actions. A decision requires no separate review page.
+
+Missing or failed reads never become an invented target. Run duration and cost come from recorded figures. Quote uses assistant-ui composer state and serializes into the same durable text message the backend stores.
 
 Brand identity tiles retain a dark #151716 surface and mint #b8f0ce rays in both themes. Their radius is 18.75% of their size, matching the approved asset. Rail home, expand, mobile navigation, account and destination controls use neutral hover fill; New fleet retains mint emphasis.
 
 
-The Usage metric value uses the shared 32px role with an explicit 27px line box, weight 750 and normal tracking, preserving the approved 133px desktop strip. Compact metric rows use 28px values on phones and 26px at intermediate widths. The chart section keeps its 206px minimum height and 32px gap before the fleet table section; its heading-to-table gap is 16px. Missing daily buckets render an unavailable state within that section.
+The Usage metric uses the shared 32px role, a 27px line box, weight 750 and normal tracking. This preserves the approved 133px desktop strip. Compact metric rows use 28px values on phones and 26px at intermediate widths.
 
-Saved Fleet composers stay docked to the assistant-ui viewport at phone and desktop widths. Empty setup content remains scrollable in normal flow. Phone Summary stays in the conversation flow; the desktop Summary retains a 24px top inset while scrolling. Comparison captures label top-of-thread and latest positions separately.
+The chart section keeps its 206px minimum height and 32px gap before the fleet table section; its heading-to-table gap is 16px. Missing daily buckets render an unavailable state within that section.
+
+Saved fleet composers stay docked to the assistant-ui viewport at phone and desktop widths. Empty setup content remains scrollable in normal flow. Phone Summary stays in the conversation flow; the desktop Summary retains a 24px top inset while scrolling.
+
+Comparison captures label top-of-thread and latest positions separately.

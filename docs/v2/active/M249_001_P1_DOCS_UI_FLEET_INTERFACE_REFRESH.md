@@ -41,6 +41,8 @@
 
 | File | Action | Why |
 |---|---|---|
+| `docs/v2/pending/M249_002_P1_API_CLI_DOCS_UI_FLEET_COMMANDS_AND_SCOPED_DISCOVERY.md` | CREATE | Combined approved CLI/API and scope-aware discovery follow-up; starts independently and merges after this UI PR |
+| `docs/v2/evidence/M249_VERIFICATION.md` | CREATE | Detailed repair checklist, visual method, measured results and follow-up boundaries |
 | `docs/v2/pending/M239_001_P1_API_DOCS_INFRA_UI_FLEET_TO_FLEET_STEER_AND_ACTIVITY.md` | EDIT | Retain the owner-requested deferred Flow 2 customer use case, invocation, ownership and design questions without adding implementation |
 | `ui/packages/app/app/(dashboard)/w/[workspaceId]/settings/models/components/secrets-load.ts` | EDIT | Correct stale upsert guidance to match create-if-absent storage and explicit rotation |
 | `/workspace/docs/docs.json` (companion docs branch) | EDIT | Replace retired runner HTTP entries with the admin and stream operations already shipped on main |
@@ -711,6 +713,8 @@ Preserve existing coarse product events and server outcome records. Add no crede
 | R5 | Repository unit tests | `make test-unit-all` | exit 0 | P0 | |
 | R6 | Backend integration | `make test-integration-rustd` | exit 0 | P0 | |
 | R7 | Version consistency | `make check-version` | exit 0 | P0 | |
+| R8 | Full Linux acceptance, requested by Indy | `make acceptance-codex` | exit 0; unchanged suites and admission checks | P0 | |
+| R9 | App and website bundle sizes | Existing package `build` then `size` commands | Existing limits pass; any excess requires owner sign-off | P0 | |
 | S4 | PR gate (CI/ship; cloud stops before this) | `orly gate pr` | recorded before merge | P0 | |
 | S3 | No secrets | `gitleaks detect --redact --no-banner` | exit 0 | P0 | |
 
@@ -722,36 +726,17 @@ Preserve existing coarse product events and server outcome records. Add no crede
 - Deletion retains confirmed-stop state, reads current authorized state after uncertain writes, and handles missing responses without claiming success. A denied or unavailable read cannot prove deletion. Preserve billed attribution and settled runner retention.
 - The separate vocabulary spec must map public Plugins names to immutable historical representations without rewriting frozen revisions, and translate only existing library write authority without widening narrowed identities. The separate auth spec must preserve current subject-based actor/cache identity during adapter changes.
 
-## Approved follow-up: scope-aware CLI discovery
+## Approved parallel CLI/API follow-up
 
-Indy requested permission-aware masking of platform commands on November 11, 2026. This is approved CLI work in the coordinated command/API specification, with no platform UI reintroduced. Keep the backend permission checks unchanged.
+The combined pending specification is [M249_002](../pending/M249_002_P1_API_CLI_DOCS_UI_FLEET_COMMANDS_AND_SCOPED_DISCOVERY.md). It owns public command/API vocabulary, command composition and scope-aware CLI discovery. Its implementation is separate from this UI refresh. The downloadable package includes the spec and a Claude start prompt; the spec remains PENDING until its fresh design/readiness review.
 
-The installed Effect CLI supplies `Command.unlisted` in `effect/src/cli/Command.ts`. It hides a command from parent help, generated shell completions and unknown-command suggestions while preserving exact-name parsing. Use that public combinator, with `Command.withSubcommands` and command factories, rather than filtering rendered help text or maintaining a second parser. Build a fresh tree per invocation; never mutate a module-global command's visibility.
+Indy explicitly permits independent CLI work to begin from current `origin/main` in a separate worktree. This UI PR merges first; the CLI branch then rebases onto that merge before changing refreshed UI callers and before final verification or merge. Do not restore older UI layouts. Preserve workspace-backed credentials, complete-setup Plugins (Flow 1), current authority and the development-only decision: no compatibility aliases, backfill or guarded cutover.
 
-Resolve effective scopes through the existing `GET /v1/users/me` identity read (`cli/src/lib/me-ping.ts`, already used by `whoami`). For discovery, decode `scopes` strictly as an array of strings; a missing/non-array field or any malformed member makes permissions unknown and hides Platform. The current general identity decoder filters bad members and must not be reused unchanged for visibility. Unknown but well-formed scope strings confer no recognized capability. CLI credentials are opaque; do not decode them as Clerk JWTs or call Clerk from the CLI. Reuse environment-key precedence, selected `--api` endpoint and stored-credential target protections. One read per help/discovery invocation, bounded to two seconds with no retry loop; do not log or persist credentials. Signed-out help, login, logout and version remain available without this read. An unavailable or expired identity read hides platform discovery and reports that permissions could not be loaded; it does not claim that the user has no permissions. Do not reuse an elevated result across identities, API endpoints or invocations.
+> Owner: "well if the cli is discrete, then it could start before your merged UI PR. But i will merge the cli after PR merges. so they go in parallel."
 
-| Effective permission | Advertised platform operations |
-|---|---|
-| None / unknown | No Platform entry in root help, suggestions or newly generated completion scripts |
-| `platform-key:read` | `platform keys list` |
-| `platform-key:admin` | `platform keys list`, `set`, `delete` |
-| `model:read` | `platform models list`, `show` |
-| `model:admin` | Model read commands plus `create`, `update`, `delete` |
-| `runner:read` | Runner `list`, `show`, `events`, `leases` |
-| `runner:enroll` | `platform runners enroll`, plus only read rights included in the server's effective scope closure |
-| `runner:write` | Runner mutation commands and the read rights included in the existing scope closure |
+> Owner: "with 1 being broken down two parts - claude to works from your PR merged on the UI refresh you did with gaps delta on api needed on the backend and wire it into the ui you created (post your PR merge)."
 
-A parent group is advertised only when at least one retained child is advertised. Independent scope families never imply one another. Setting a platform default from an existing key requires `platform-key:admin`; `--api-key-stdin` additionally requires existing secret-write authority and workspace ownership. Static visibility cannot prove ownership of a workspace supplied later. Keep that additional requirement in flag help and enforce it through the existing API.
-
-Explicitly typing an unlisted command still parses and reaches the existing authorization path; a refusal names the required permission without suggesting that the user create a different account. `Command.unlisted` does not hide an exact command's own `--help`; that help can explain the requirement. This is discovery filtering, not a new authorization mechanism.
-
-Explicitly enable Effect’s `GlobalFlag.Completions` alongside the existing Help/Version/LogLevel built-ins in `cli/src/cli.ts`, and document `agentsfleet --completions <shell>` for Bash, Zsh, Fish and PowerShell. Current source does not enable this flag.
-
-Effect's generated completion scripts are static snapshots. Generate them from the same scoped tree and document regeneration after an identity or permission change. Do not claim an already-installed script changes immediately when access is revoked. Live dynamic completion is not required for this change; every actual operation remains checked on the server.
-
-Implementation owners: `cli/src/cli.ts`, `cli/src/program/tree/` composition and platform factories, the existing identity reader, and help/completion tests under `cli/test/`. Preserve the existing 80-column formatter, JSON stdout discipline, credential-redaction behavior and exact-name command execution. Remove the platform Fleet-library group as separately approved; do not preserve it merely because a scope exists.
-
-Required proofs before completion: ordinary identity hides Platform; read-only identity sees list/show but no writes; each independent admin family reveals only its own commands; parent hiding follows children; root and nested help, suggestions, Bash/Zsh/Fish/PowerShell generation agree; signed-out/offline/malformed/expired reads remain usable and unprivileged; environment API key overrides stored login; target/account switches cannot reuse scopes; direct hidden command still receives the backend's refusal; a refreshed backend authority rejects a revoked command even when an older completion file suggests it. The existing backend capability cache refreshes after one minute and permits up to fifteen minutes of stale authority during provider outage; preserve and document that policy instead of claiming immediate revocation. Add no CLI permission cache that extends those semantics. No new backend endpoint or Clerk coupling is needed.
+The separately approved post-merge backend data work must use the completed UI as its starting point. Missing daily usage buckets, key metadata and recorded runtime facts are data gaps, not permission to invent values, new secret access policy, real upload storage, mention invocation or Flow 2 capabilities.
 
 ## Dead Code Sweep
 
@@ -1231,3 +1216,10 @@ The current authenticated build completed both Rust executables, CLI and optimiz
 The fresh-schema authenticated run reached all 20 selected journeys: 14 passed and six failed (`refresh-auth-current-v56.log`). Secrets exposed an unnamed Actions column and lost keyboard focus when management handed off to replacement/deletion. The header now has a screen-reader label; the native Dialog close lifecycle restores the lasting Manage trigger before opening the next dialog and cancels that handoff if the row disappears. The cancellation regression failed before the fix, then both Secrets suites passed 26 tests (`refresh-secret-focus-red-v57.log`, `refresh-secret-focus-green-v58.log`). An added removal test covers navigation during the handoff. The remaining failures expected the previous Usage layout, button/switch model selectors, or an empty-state send label despite a loaded plugin preview. Their selectors now follow the approved controls while retaining data, activation, pinned-revision, accessibility, geometry and cleanup assertions. Bounded source rereview found no new defect; current app lint passes. The authenticated rerun and final repository gate remain open.
 
 Claude's first-cut review is retained at `/workspace/artifacts/fleet-refresh-v2/claude-first-cut-review.txt`. Its comparison used V21 desktop and V20 phone captures and leaves light-theme dialogs, loader playback, lifecycle and account-menu coverage open. It is a review input, not owner acceptance. Confirmed first repairs cover dialog title/close alignment, checkbox corners, label weight, neutral successful action glyphs, command monospace, compact wake-up labels and glyphs, phone filter width, composer action alignment, the redundant model tooltip, plugin description/options, and the missing recorded-changes flap. The flap reuses the Summary's recorded-write projection and counts only confirmed local writes, with no invented line totals. Team's production self marker already exists; sample member `owner` did not match sample authenticated `fixture-owner`, so that capture fixture now uses the correct identity. Precise residual spacing, missing lifecycle/account captures and the remaining first-cut findings stay open until remeasured; no blanket visual closure is claimed.
+
+
+### Required final checks, Nov 13, 2026
+
+> Owner: "Ensure typescript is 100% coverage - test, lints pass, dry-app test, bundle-size (if you pass the limits inform indy and get a signoff) and acceptance-codex passes."
+
+Run the actual acceptance-codex target and both package bundle-size checks. Keep all TypeScript coverage floors at 100 percent. A bundle-budget increase requires Indy's separate approval after exact measured sizes are reported. No increase is approved by this instruction.
