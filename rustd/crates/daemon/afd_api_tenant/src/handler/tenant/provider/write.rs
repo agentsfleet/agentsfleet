@@ -15,7 +15,7 @@ use af_core::error_code;
 use afd_api_wire::tenant_provider::TenantProviderResponse;
 use afd_api_wire::tenant_provider::{ProviderMode, TenantProviderRequest};
 use afd_credential::provider::Activation;
-use afd_credential::vault::KeyRef;
+use afd_credential::provider::KeyRef;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::State;

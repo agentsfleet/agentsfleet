@@ -29,9 +29,9 @@ use sqlx::{Acquire as _, Transaction};
 use super::sql;
 use super::{Added, Entry, EntryRow, Removed, Retargeted};
 use crate::error::{Result, query};
+use crate::provider::KeyRef;
 use crate::provider::sql as provider_sql;
 use crate::provider::store::Providers;
-use crate::vault::KeyRef;
 
 /// The entry's domain key, `(tenant, model, secret_ref)`: the one unique
 /// constraint a retarget can collide with (`schema/20261108121500_model_tenant_models.sql`).

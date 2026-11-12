@@ -14,8 +14,8 @@ use af_core::error_code;
 #[cfg(feature = "openapi")]
 use afd_api_wire::tenant_model_entry::StoredModelEntry;
 use afd_api_wire::tenant_model_entry::{CreateModelEntryRequest, UpdateModelEntryRequest};
+use afd_credential::provider::KeyRef;
 use afd_credential::provider::{Added, Removed, Retargeted};
-use afd_credential::vault::KeyRef;
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::{Path, State};

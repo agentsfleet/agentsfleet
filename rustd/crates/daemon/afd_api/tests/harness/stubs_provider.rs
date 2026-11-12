@@ -27,11 +27,11 @@
 use af_core::id::Uuid7;
 use afd_api::services::{TenantModelEntries, TenantProviders};
 use afd_credential::Result as CredentialResult;
+use afd_credential::provider::KeyRef;
 use afd_credential::provider::{
     Activation, Added, Boundary, PlatformDefault, Providers, RegistryPage, Removed, Retargeted,
     Selection,
 };
-use afd_credential::vault::KeyRef;
 use jiff::Timestamp;
 
 /// Which provider store a suite is driving.

@@ -4,8 +4,8 @@ use std::sync::Arc;
 
 use af_core::id::Uuid7;
 use af_crypto::entropy::Entropy;
+use afd_credential::provider::KeyRef;
 use afd_credential::provider::{Activation, Added, Entry, Providers, registered_model};
-use afd_credential::vault::KeyRef;
 use afd_db::test_util::{ModelSeed, WorkspaceSeed, mint_id};
 use afd_vault::{Deleted, Directory, SecretBody, SecretName, Vault};
 
