@@ -39,14 +39,25 @@ export default async function DashboardIndexPage() {
   return <NoWorkspaceEmptyState />;
 }
 
+/** The refusals a token minted before signup's writeback can meet. */
+const OPENING_REFUSALS: ReadonlySet<string> = new Set([
+  // The daemon refuses a session token with no tenant claim at authentication,
+  // before any scope is read (`afd_auth/src/authenticate.rs`): the first
+  // request of almost every new account.
+  ERROR_CODE.AUTH_UNAUTHORIZED,
+  // A token that does reach the scope gate without the owner scopes.
+  ERROR_CODE.INSUFFICIENT_SCOPE,
+]);
+
 /**
  * Whether the list was refused because this account is still opening: the
- * scope gate refused the call and the token carries no tenant. Both must hold.
- * A token WITH a tenant that lacks the scope belongs to a person an operator
- * narrowed by hand, for whom no amount of waiting brings the scope.
+ * daemon refused the token at authentication or at the scope gate, and the
+ * token carries no tenant. Both must hold. A token WITH a tenant that is
+ * refused belongs to a person an operator narrowed or a credential that is
+ * genuinely bad, for whom no amount of waiting helps.
  */
 async function accountStillOpening(failure: unknown): Promise<boolean> {
   if (!(failure instanceof ApiError)) return false;
-  if (failure.code !== ERROR_CODE.INSUFFICIENT_SCOPE) return false;
+  if (!OPENING_REFUSALS.has(failure.code)) return false;
   return tenantClaimMissing();
 }
