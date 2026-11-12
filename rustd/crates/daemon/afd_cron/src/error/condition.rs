@@ -30,7 +30,7 @@ impl Error {
             | ErrorKind::RetireHeld
             | ErrorKind::KeysMissing
             | ErrorKind::TokenMalformed
-            | ErrorKind::SignatureInvalid
+            | ErrorKind::SignatureInvalid { .. }
             | ErrorKind::BodyMismatch
             | ErrorKind::DestinationUnusable
             | ErrorKind::DestinationNotPlainOrigin
@@ -61,7 +61,7 @@ impl Error {
             | ErrorKind::RowUnreadable { .. }
             | ErrorKind::KeysMissing
             | ErrorKind::TokenMalformed
-            | ErrorKind::SignatureInvalid
+            | ErrorKind::SignatureInvalid { .. }
             | ErrorKind::BodyMismatch
             | ErrorKind::DestinationUnusable
             | ErrorKind::DestinationNotPlainOrigin

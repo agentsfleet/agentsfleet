@@ -76,6 +76,61 @@ async fn changed_setup_blocks_reclaimed_task_without_issuing_another_lease() {
     }).await;
 }
 
+/// The cap that ends a plain event after its leases keep lapsing leaves a
+/// durable task alone: the task's own lease allowance bounds it, and ending
+/// its event would strand the task as running with nothing left to run it.
+#[tokio::test]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn a_task_whose_leases_lapsed_past_the_plain_cap_is_leased_again() {
+    exercise(async |case| {
+        let fixture = Decisions::create(case).await;
+        let default = support::provider(&fixture).await;
+        support::model(&fixture, Some(&fixture.model.model.id)).await;
+        let task = fixture.bind_goal().await;
+        let task_id = id(&task.task_id);
+        support::expire(case).await;
+        for _holder in 1..af_core::limits::EVENT_LEASES_MAX {
+            let lease = reclaimed(case, support::claim(case).await).await;
+            let lapsed = id(lease
+                .get("lease_id")
+                .and_then(Value::as_str)
+                .expect("issued ordinary lease"));
+            case.held
+                .fixtures
+                .lapse_holder(&lapsed, &case.held.fleet)
+                .await;
+        }
+
+        let acquired = support::claim(case).await;
+        let counted = acquired.earlier_leases;
+        let lease = reclaimed(case, acquired).await;
+
+        assert_eq!(
+            counted,
+            i64::from(af_core::limits::EVENT_LEASES_MAX),
+            "the event is at the plain cap"
+        );
+        assert_eq!(
+            lease.pointer("/task/task_id"),
+            Some(&serde_json::json!(task.task_id))
+        );
+        assert_eq!(
+            fixture
+                .tasks
+                .read(&case.scope, &task_id)
+                .await
+                .expect("issued task")
+                .context
+                .state,
+            TaskState::Running
+        );
+        support::model(&fixture, None).await;
+        drop(default);
+        fixture.model.finish().await.expect("model fixture cleanup");
+    })
+    .await;
+}
+
 pub(super) async fn reclaimed(
     case: &super::super::fixture::Case,
     acquired: afd_fleet::lease::Acquired,

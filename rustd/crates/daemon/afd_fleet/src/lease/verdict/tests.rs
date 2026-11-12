@@ -83,3 +83,13 @@ fn a_breached_budget_is_stored_as_the_gate_spells_its_refusal() {
         Some(af_core::event::label::BUDGET_BREACH)
     );
 }
+
+#[test]
+fn a_lapsed_lease_is_stored_as_the_daemon_spells_an_event_it_stopped_re_leasing() {
+    let verdict = Verdict::of(Outcome::FleetError, Some(FailureClass::LeaseExpired), "");
+
+    assert_eq!(
+        verdict.label().as_deref(),
+        Some(af_core::event::label::LEASE_EXPIRED)
+    );
+}
