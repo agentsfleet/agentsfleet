@@ -154,7 +154,11 @@ pub fn verify_at(
     // turned off by name rather than left to a default that changed once.
     validation.validate_aud = false;
     validation.validate_exp = true;
-    validation.validate_nbf = true;
+    // QStash never sets `nbf`: its Go server writes the zero time, which is
+    // -62135596800 seconds, a value no unsigned claim parser accepts. The token
+    // is still bound by its signature, `exp`, `sub` and the digest of the body,
+    // so a start-of-validity check adds nothing the others do not already give.
+    validation.validate_nbf = false;
     // No leeway. The scheduler and this daemon both run on synchronised clocks,
     // and a tolerance here is a window a replayed token lives inside.
     validation.leeway = 0;
@@ -198,7 +202,8 @@ pub fn verify_at(
 
 /// Whether the `body` claim is the digest of the bytes that arrived.
 ///
-/// Base64url without padding, as the scheduler emits it. Compared as text
+/// Base64url, read without its padding: the scheduler pads the digest it signs and
+/// this daemon computes it unpadded. Compared as text
 /// rather than decoded first: both sides are a fixed-length digest of the same
 /// alphabet, so a decode would add a failure mode without adding a check.
 ///
@@ -208,6 +213,9 @@ pub fn verify_at(
 /// and what must not leak is how many characters of it matched.
 fn body_matches(claimed: &str, body: &[u8]) -> bool {
     let expected = base64_url_no_pad(&Sha256::digest(body));
+    // QStash pads the digest and its own SDKs strip the padding before they
+    // compare, so the claim is read the same way.
+    let claimed = claimed.trim_end_matches('=');
     expected.as_bytes().ct_eq(claimed.as_bytes()).unwrap_u8() == 1
 }
 
@@ -222,10 +230,10 @@ fn rejected(kind: &jsonwebtoken::errors::ErrorKind) -> Rejected {
     use jsonwebtoken::errors::ErrorKind;
     match kind {
         ErrorKind::ExpiredSignature => Rejected::Expired,
-        ErrorKind::ImmatureSignature => Rejected::NotYetValid,
         ErrorKind::InvalidIssuer => Rejected::Issuer,
         ErrorKind::InvalidSubject => Rejected::Subject,
         ErrorKind::MissingRequiredClaim(_) => Rejected::Claims,
+        ErrorKind::InvalidClaimFormat(_) => Rejected::ClaimFormat,
         ErrorKind::InvalidAlgorithm | ErrorKind::MissingAlgorithm => Rejected::Algorithm,
         ErrorKind::InvalidToken
         | ErrorKind::Base64(_)

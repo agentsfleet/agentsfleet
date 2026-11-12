@@ -24,6 +24,7 @@ mod fire_token;
 
 use afd_cron::SigningKeys;
 use afd_cron::verifier::{MAX_TOKEN_BYTES, verify_at};
+use sha2::Digest as _;
 
 use self::fire_token::{BODY, DESTINATION, FireClaims, mint, now};
 
@@ -220,18 +221,71 @@ fn an_expired_token_is_refused_with_no_leeway() {
     );
 }
 
+/// The claims Upstash's own server writes, as the emulator emitted them: an
+/// empty `aud`, the Go zero time (-62135596800) for `nbf`, an `iat`, and a body
+/// digest that keeps its base64 padding.
+fn scheduler_claims(body: &[u8]) -> serde_json::Value {
+    use base64::Engine as _;
+    serde_json::json!({
+        "aud": "",
+        "body": base64::engine::general_purpose::URL_SAFE.encode(sha2::Sha256::digest(body)),
+        "exp": now() + 300,
+        "iat": now(),
+        "iss": "Upstash",
+        "jti": "jwt_fixture0001",
+        "nbf": -62_135_596_800_i64,
+        "sub": DESTINATION,
+    })
+}
+
+fn sign(claims: &serde_json::Value, key: &str) -> String {
+    jsonwebtoken::encode(
+        &jsonwebtoken::Header::new(jsonwebtoken::Algorithm::HS256),
+        claims,
+        &jsonwebtoken::EncodingKey::from_secret(key.as_bytes()),
+    )
+    .expect("the claims serialise")
+}
+
+/// The regression behind a hosted schedule that never fired: the token was
+/// genuine and the verifier refused it, because `nbf` was the Go zero time and
+/// the body digest was padded.
 #[test]
-fn a_token_whose_window_has_not_opened_is_refused() {
-    let mut claims = FireClaims::good();
-    claims.nbf = now() + 600;
-    claims.exp = now() + 1200;
+fn a_token_in_the_shape_the_scheduler_really_signs_is_believed() {
+    let token = sign(&scheduler_claims(BODY), CURRENT_KEY);
+
+    let fire = verify_at(&keys(), DESTINATION, &token, BODY)
+        .expect("the scheduler's own claims are what a fire carries");
+
+    assert_eq!(fire.message_id, "jwt_fixture0001");
+}
+
+/// Reading the digest without its padding must not make it a weaker compare: a
+/// padded digest of other bytes is still somebody else's body.
+#[test]
+fn a_padded_digest_of_other_bytes_is_still_a_body_mismatch() {
+    let token = sign(&scheduler_claims(b"something else"), CURRENT_KEY);
 
     assert_eq!(
-        verify_at(&keys(), DESTINATION, &mint(&claims, CURRENT_KEY), BODY)
+        verify_at(&keys(), DESTINATION, &token, BODY)
             .expect_err("this token must not be believed")
             .refusal_word(),
-        "token_not_yet_valid"
+        "body_mismatch"
     );
+}
+
+/// `nbf` is not checked, because the scheduler does not set it; `exp`, the
+/// subject, the issuer and the body digest still bind the token.
+#[test]
+fn a_start_time_in_the_future_does_not_decide_a_signed_token() {
+    let mut claims = scheduler_claims(BODY);
+    claims
+        .as_object_mut()
+        .expect("the claims are an object")
+        .insert("nbf".to_owned(), serde_json::json!(now() + 600));
+
+    verify_at(&keys(), DESTINATION, &sign(&claims, CURRENT_KEY), BODY)
+        .expect("a token the scheduler signed is not refused for a start time it never set");
 }
 
 /// Every refusal answers the sender alike; only the operator's log word differs.

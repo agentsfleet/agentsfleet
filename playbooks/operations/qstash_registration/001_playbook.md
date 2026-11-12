@@ -40,7 +40,7 @@ Nothing reads `QSTASH_*` environment settings.
 `agentsfleetd` logs a refused fire as `schedule_fire_dropped` with a `reason`.
 `signature_invalid` means neither stored key signed the token.
 
-The other reasons name the check the right key failed: `token_expired`, `token_not_yet_valid`, `token_issuer_mismatch`, `token_subject_mismatch`, `token_claims_missing`, `token_undecodable` and `token_algorithm_mismatch`.
+The other reasons name the check the right key failed: `token_expired`, `token_issuer_mismatch`, `token_subject_mismatch`, `token_claims_missing`, `token_claim_malformed`, `token_undecodable` and `token_algorithm_mismatch`.
 The sender always receives the same 401.
 
 Each delivery carries a JSON Web Token (JWT) that `agentsfleetd` checks against the current and next keys.
