@@ -1,4 +1,4 @@
-// `agentsfleet secret create|update|show|list|delete` — workspace-scoped
+// `agentsfleet secrets create|update|show|list|delete` — workspace-scoped
 // opaque JSON secrets keyed by `name`. The skill consuming them addresses
 // fields as ${secrets.<name>.<field>}; this CLI does not enforce a schema
 // (the consumer owns it).
@@ -131,7 +131,7 @@ export const secretAddEffectFromFlags = (
     const wsId = yield* requireWorkspaceId;
     const name = yield* requireName(
       flags.name,
-      "agentsfleet secret create <name> --data='<json-object>'",
+      "agentsfleet secrets create <name> --data='<json-object>'",
     );
     const body = yield* resolveSecretBody(flags);
 
@@ -160,7 +160,7 @@ export const secretAddEffectFromFlags = (
         yield* output.printJson({ status: "skipped", name, reason: "already_exists" });
       } else {
         yield* output.info(
-          `Secret '${name}' already exists — skipped. Replace its value with: agentsfleet secret update ${name} --data='<json-object>'`,
+          `Secret '${name}' already exists — skipped. Replace its value with: agentsfleet secrets update ${name} --data='<json-object>'`,
         );
       }
       return;
@@ -170,7 +170,7 @@ export const secretAddEffectFromFlags = (
   });
 
 /**
- * `agentsfleet secret update <name> --data='<json-object>'` — replace a stored
+ * `agentsfleet secrets update <name> --data='<json-object>'` — replace a stored
  * secret's whole body without releasing the name.
  *
  * One PUT, no preflight read and no delete. `delete` then `create` also
@@ -195,7 +195,7 @@ export const secretUpdateEffectFromFlags = (
     const wsId = yield* requireWorkspaceId;
     const name = yield* requireName(
       flags.name,
-      "agentsfleet secret update <name> --data='<json-object>'",
+      "agentsfleet secrets update <name> --data='<json-object>'",
     );
     // Resolved before the token so a malformed invocation costs no round-trip
     // and never reaches the vault.
@@ -227,7 +227,7 @@ export const secretShowEffectFromName = (
     const output = yield* Output;
 
     const wsId = yield* requireWorkspaceId;
-    const name = yield* requireName(rawName, "agentsfleet secret show <name>");
+    const name = yield* requireName(rawName, "agentsfleet secrets show <name>");
     const found = yield* findSecretByName(wsId, name);
     if (!found) {
       if (output.format !== OUTPUT_FORMAT.text) {
@@ -238,7 +238,7 @@ export const secretShowEffectFromName = (
       return yield* Effect.fail(
         new ConfigError({
           detail: `secret '${name}' not found`,
-          suggestion: `list available with: agentsfleet secret list`,
+          suggestion: `list available with: agentsfleet secrets list`,
         }),
       );
     }
@@ -269,7 +269,7 @@ export const secretDeleteEffectFromName = (
     const http = yield* HttpClient;
 
     const wsId = yield* requireWorkspaceId;
-    const name = yield* requireName(rawName, "agentsfleet secret delete <name>");
+    const name = yield* requireName(rawName, "agentsfleet secrets delete <name>");
     const token = yield* resolveAuthToken;
     yield* http.request<unknown>({
       path: wsSecretPath(wsId, name),

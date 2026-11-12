@@ -21,7 +21,7 @@ async function run(body: unknown, flags: string[] = []) {
     withMockApi({[`GET ${wsFleetsPath(WS_ID)}`]: () => jsonResponse(200, body)}, async (apiUrl, calls) => {
       const out = bufferStream();
       const err = bufferStream();
-      const code = await runCli(["list", ...flags], {stdout: out.stream, stderr: err.stream,
+      const code = await runCli(["fleet", "list", ...flags], {stdout: out.stream, stderr: err.stream,
         env: cliEnv({AGENTSFLEET_API_URL: apiUrl})});
       return {code, stdout: out.read(), stderr: err.read(), calls};
     }));
@@ -68,7 +68,7 @@ describe("fleet list validates the served page", () => {
     expect(result.code).toBe(0);
     expect(result.stdout).toContain(ROW.name);
     expect(result.stdout).toContain(FLEET_ID.slice(0, 8));
-    expect(result.stdout).toContain(`agentsfleet list --starting-after ${CURSOR}`);
+    expect(result.stdout).toContain(`agentsfleet fleet list --starting-after ${CURSOR}`);
   });
 
   test("an explicitly empty page is still a successful empty workspace", async () => {

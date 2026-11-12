@@ -29,7 +29,7 @@ describe("api-key commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["api-key", "create", "--name", "ci-runner", "--description", "build automation"],
+          ["api-keys", "create", "--name", "ci-runner", "--description", "build automation"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -84,7 +84,7 @@ describe("api-key commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["api-key", "list"],
+          ["api-keys", "list"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -109,7 +109,7 @@ describe("api-key commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["api-key", "list", "--sort", "key_name"],
+          ["api-keys", "list", "--sort", "key_name"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -127,7 +127,7 @@ describe("api-key commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["--json", "api-key", "list"],
+          ["--json", "api-keys", "list"],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -158,13 +158,13 @@ describe("api-key commands", () => {
         const revokeOut = bufferStream();
         const revokeErr = bufferStream();
         const revokeCode = await runCli(
-          ["api-key", "revoke", KEY_ID],
+          ["api-keys", "revoke", KEY_ID],
           { stdout: revokeOut.stream, stderr: revokeErr.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         const deleteOut = bufferStream();
         const deleteErr = bufferStream();
         const deleteCode = await runCli(
-          ["api-key", "delete", KEY_ID],
+          ["api-keys", "delete", KEY_ID],
           { stdout: deleteOut.stream, stderr: deleteErr.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
 
@@ -183,9 +183,9 @@ describe("api-key commands", () => {
   test("invalid api-key arguments fail before any API request", async () => {
     await authedScope(async () => {
       const invalidCases: ReadonlyArray<ReadonlyArray<string>> = [
-        ["api-key", "create"],
-        ["api-key", "list", "--sort", "name"],
-        ["api-key", "revoke", "not-a-uuid"],
+        ["api-keys", "create"],
+        ["api-keys", "list", "--sort", "name"],
+        ["api-keys", "revoke", "not-a-uuid"],
       ];
       for (const argv of invalidCases) {
         await withMockApi({}, async (apiUrl, calls) => {

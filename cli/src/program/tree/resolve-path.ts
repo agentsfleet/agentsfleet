@@ -86,11 +86,26 @@ export const booleanFlagNames = (root: CommandNode): ReadonlySet<string> => {
   return names;
 };
 
+/** Where the walk ended: the path it reached, and the positional it stopped on. */
+export interface CommandWalk {
+  readonly path: ReadonlyArray<string>;
+  readonly node: CommandNode;
+  // The first positional token that named no child of `node`, or undefined
+  // when argv ran out or reached `--` first.
+  readonly stop: string | undefined;
+}
+
 export const resolveCommandPath = (
   root: CommandNode,
   argv: ReadonlyArray<string>,
   valueless: ReadonlySet<string> = booleanFlagNames(root),
-): ReadonlyArray<string> => {
+): ReadonlyArray<string> => walkCommandPath(root, argv, valueless).path;
+
+export const walkCommandPath = (
+  root: CommandNode,
+  argv: ReadonlyArray<string>,
+  valueless: ReadonlySet<string> = booleanFlagNames(root),
+): CommandWalk => {
   const path: string[] = [];
   let node = root;
   let skipNext = false;
@@ -113,10 +128,10 @@ export const resolveCommandPath = (
       continue;
     }
     const match = childrenOf(node).find((child) => child.name === token);
-    if (!match) break;
+    if (!match) return { path, node, stop: token };
     path.push(match.name);
     node = match;
   }
 
-  return path;
+  return { path, node, stop: undefined };
 };

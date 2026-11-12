@@ -121,13 +121,13 @@ function runEnv(extra?: Record<string, string>): Record<string, string> {
 describe("--help bodies use angle-bracket metavar convention", () => {
   type HelpCase = readonly [string, ReadonlyArray<string>, ReadonlyArray<string>];
   const cases: ReadonlyArray<HelpCase> = [
-    ["agentsfleet list --help",                 ["list", "--help"],                 ["--limit <n>", "--starting-after <id>", "--workspace <id>"]],
-    ["agentsfleet logs --help",                 ["logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--fleet <id>"]],
-    ["agentsfleet events --help",               ["events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
+    ["agentsfleet fleet list --help",                 ["fleet", "list", "--help"],                 ["--limit <n>", "--starting-after <id>", "--workspace <id>"]],
+    ["agentsfleet fleet logs --help",                 ["fleet", "logs", "--help"],                 ["--limit <n>", "--cursor <token>", "--fleet <id>"]],
+    ["agentsfleet fleet events --help",               ["fleet", "events", "--help"],               ["--limit <n>", "--since <when>", "--actor <glob>", "--cursor <token>"]],
     ["agentsfleet chat --help", ["chat", "--help"], ["--model <ref>", "--library <id>", "--review-digest <digest>"]],
     ["agentsfleet login --help",                ["login", "--help"],                ["--token-name <label>"]],
-    ["agentsfleet billing show --help",         ["billing", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
-    ["agentsfleet tenant provider create --help",  ["tenant", "provider", "create", "--help"], ["--secret <name>", "--model <name>"]],
+    ["agentsfleet usage show --help",         ["usage", "show", "--help"],      ["--limit <n>", "--cursor <token>"]],
+    ["agentsfleet models use --help",  ["models", "use", "--help"], ["--secret <name>", "--model <name>"]],
   ];
 
   for (const [name, argv, metavars] of cases) {
@@ -153,14 +153,14 @@ describe("validators reject invalid values with clear error stem", () => {
   // — have to read as one family rather than three unrelated sentences.
   const cases: ReadonlyArray<ValidatorCase> = [
     // Bounded-integer refusals.
-    ["list --limit 0",        ["list", "--limit", "0"],          /must be ≥ 1/],
-    ["list --limit abc",      ["list", "--limit", "abc"],        /must be an integer/],
-    ["list --limit 9999",     ["list", "--limit", "9999"],       /must be ≤ 200/],
-    ["billing show --limit 9999", ["billing", "show", "--limit", "9999"], /must be ≤ 100/],
-    ["logs --limit 9999",     ["logs", "--limit", "9999"],       /must be ≤ 500/],
-    ["events <id> --limit 9999", ["events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
+    ["list --limit 0",        ["fleet", "list", "--limit", "0"],          /must be ≥ 1/],
+    ["list --limit abc",      ["fleet", "list", "--limit", "abc"],        /must be an integer/],
+    ["list --limit 9999",     ["fleet", "list", "--limit", "9999"],       /must be ≤ 200/],
+    ["billing show --limit 9999", ["usage", "show", "--limit", "9999"], /must be ≤ 100/],
+    ["logs --limit 9999",     ["fleet", "logs", "--limit", "9999"],       /must be ≤ 500/],
+    ["events <id> --limit 9999", ["fleet", "events", FIXTURE_UUIDV7, "--limit", "9999"], /must be ≤ 500/],
     // Identifier refusals (uuidv7 enforced).
-    ["list --workspace not-a-uuid",      ["list", "--workspace", "not-a-uuid"],    /uuidv7 format/],
+    ["list --workspace not-a-uuid",      ["fleet", "list", "--workspace", "not-a-uuid"],    /uuidv7 format/],
   ];
 
   for (const [name, argv, stemRe] of cases) {
@@ -193,7 +193,7 @@ describe("option values flow end-to-end into the wire request", () => {
 
   it("fleet list --limit 25 --starting-after abc123 → GET .../fleets?starting_after=abc123&limit=25", async () => {
     clear();
-    const result = await runFleetctl(["list", "--limit", "25", "--starting-after", "abc123", "--json"], { env: apiEnv() });
+    const result = await runFleetctl(["fleet", "list", "--limit", "25", "--starting-after", "abc123", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
     const hit = captured.find((c) => c.url.includes("/fleets") && c.method === "GET");
@@ -204,7 +204,7 @@ describe("option values flow end-to-end into the wire request", () => {
 
   it("fleet logs <id> --limit 50 → GET .../fleets/<id>/events?limit=50", async () => {
     clear();
-    const result = await runFleetctl(["logs", FIXTURE_UUIDV7, "--limit", "50", "--json"], { env: apiEnv() });
+    const result = await runFleetctl(["fleet", "logs", FIXTURE_UUIDV7, "--limit", "50", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
     const hit = captured.find((c) => c.url.includes(`/fleets/${FIXTURE_UUIDV7}/events`));
@@ -215,7 +215,7 @@ describe("option values flow end-to-end into the wire request", () => {
   it("events <id> --limit 100 --since 2h --actor 'steer:*' → GET ...events?actor=&since=&limit=", async () => {
     clear();
     const result = await runFleetctl(
-      ["events", FIXTURE_UUIDV7, "--limit", "100", "--since", "2h", "--actor", "steer:*", "--json"],
+      ["fleet", "events", FIXTURE_UUIDV7, "--limit", "100", "--since", "2h", "--actor", "steer:*", "--json"],
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
@@ -229,7 +229,7 @@ describe("option values flow end-to-end into the wire request", () => {
 
   it("billing show --limit 5 --cursor xyz → GET .../billing/charges?limit=5&cursor=xyz", async () => {
     clear();
-    const result = await runFleetctl(["billing", "show", "--limit", "5", "--cursor", "xyz", "--json"], { env: apiEnv() });
+    const result = await runFleetctl(["usage", "show", "--limit", "5", "--cursor", "xyz", "--json"], { env: apiEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const captured = requireStub().captured;
     const charges = captured.find((c) => c.url.includes("/billing/charges"));
@@ -242,7 +242,7 @@ describe("option values flow end-to-end into the wire request", () => {
   it("tenant provider create --secret keyname --model gpt-x → PUT body has secret_ref + model", async () => {
     clear();
     const result = await runFleetctl(
-      ["tenant", "provider", "create", "--secret", "keyname", "--model", "gpt-x", "--json"],
+      ["models", "use", "--secret", "keyname", "--model", "gpt-x", "--json"],
       { env: apiEnv() },
     );
     assert.equal(result.code, 0, `stderr=${result.stderr}`);

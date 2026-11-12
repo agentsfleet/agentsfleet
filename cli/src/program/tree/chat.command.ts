@@ -13,7 +13,7 @@ const textFlag = (name: string, description: string, metavar: string) =>
   Flag.String(name).pipe(Flag.withDescription(description), Flag.withMetavar(metavar), Flag.optional);
 const choiceFlag = (name: string, description: string) => Flag.Boolean(name).pipe(Flag.withDescription(description), Flag.withDefault(false));
 
-export const chatCommand = Command.make("chat", {
+export const chatCommand = () => Command.make("chat", {
   draftId: Argument.String("draft-id").pipe(Argument.optional),
   operationId: textFlag("operation-id", "Retry an unconfirmed --no-input message, draft creation or setup action with its original identity", METAVAR.id),
   candidateId: textFlag("candidate-id", "Original candidate identifier from setup recovery metadata", METAVAR.id),
@@ -46,5 +46,5 @@ export const chatCommand = Command.make("chat", {
     noInput: flags.noInput, review: flags.review, save: flags.save, apply: flags.apply, stop: flags.stop,
     name: opt(flags.name), reviewDigest: opt(flags.reviewDigest), runNow: opt(flags.runNow), publish: opt(flags.publish),
   }))),
-  Command.withSubcommands(chatHistoryCommands),
+  Command.withSubcommands(chatHistoryCommands()),
 );

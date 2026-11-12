@@ -161,7 +161,7 @@ test("resolveCatalogueProvider rejects a non-member, naming what THIS server ser
   // The sentinel is in the accepted set without being a catalogue row — it
   // names a user-supplied endpoint, so no seeded model could ever imply it.
   expect(err.detail).toContain(OPENAI_COMPATIBLE_PROVIDER);
-  expect(err.suggestion).toContain("agentsfleet models");
+  expect(err.suggestion).toContain("agentsfleet models list");
 });
 
 test("a CLI-engine name is refused with its reason instead of the accepted-set wall", async () => {
@@ -209,7 +209,7 @@ test("a model the provider does not serve is rejected, listing that provider's m
   // Scoped to the provider: openai's models are not offered as alternatives
   // for an anthropic credential.
   expect(err.detail).toContain("provider 'anthropic'");
-  expect(err.suggestion).toContain("models --provider anthropic");
+  expect(err.suggestion).toContain("models list --provider anthropic");
 });
 
 test("no --model skips the model check entirely", async () => {

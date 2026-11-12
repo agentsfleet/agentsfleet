@@ -48,7 +48,7 @@ const leases = Command.make("leases", {...runnerId, ...platformPagingFlags,
 }).pipe(Command.withDescription("Read runner leases (runner:read)"), guardedHandler(({id, limit, startingAfter, workspace, fleet}) =>
   platformRunnerHistory(id, RunnerHistory.Leases, {limit: opt(limit), startingAfter: opt(startingAfter), workspace: opt(workspace), fleet: opt(fleet)})));
 
-export const platformRunnersCommand = Command.make("runners").pipe(
+export const platformRunnersCommand = () => Command.make("runners").pipe(
   Command.withDescription("Manage platform execution hosts"), Command.withSubcommands([
     list, show, enroll, update, rotate, remove, events, leases,
     actionCommand("cordon", RunnerAction.Cordon), actionCommand("drain", RunnerAction.Drain), actionCommand("revoke", RunnerAction.Revoke), actionCommand("self-test", RunnerAction.SelfTest),

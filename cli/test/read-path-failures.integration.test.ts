@@ -1,4 +1,4 @@
-// API failure modes on the AUTHED read path (`agentsfleet list`).
+// API failure modes on the AUTHED read path (`agentsfleet fleet list`).
 //
 // Scope vs the sibling suites — these are deliberately the EDGES the other
 // two files do not cover, exercised end-to-end through the real CLI entry
@@ -81,7 +81,7 @@ describe("read-path failures — server 5xx boundedness", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["list"], {
+        const code = await runCli(["fleet", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -106,7 +106,7 @@ describe("read-path failures — server 5xx boundedness", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["list"], {
+        const code = await runCli(["fleet", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -135,7 +135,7 @@ describe("read-path failures — 429 rate limit boundedness", () => {
       await withMockApi(routes, async (apiUrl, calls) => {
         const out = bufferStream();
         const err = bufferStream();
-        const code = await runCli(["list"], {
+        const code = await runCli(["fleet", "list"], {
           stdout: out.stream,
           stderr: err.stream,
           env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }),
@@ -172,7 +172,7 @@ describe("read-path failures — request timeout boundedness", () => {
 
       const out = bufferStream();
       const err = bufferStream();
-      const code = await runCli(["list"], {
+      const code = await runCli(["fleet", "list"], {
         stdout: out.stream,
         stderr: err.stream,
         // apiUrl is irrelevant — abortingFetch never reaches the network.
@@ -199,7 +199,7 @@ describe("read-path failures — connection refused vs auth-required disambiguat
     await authedRead(async () => {
       const out = bufferStream();
       const err = bufferStream();
-      const code = await runCli(["list"], {
+      const code = await runCli(["fleet", "list"], {
         stdout: out.stream,
         stderr: err.stream,
         // Real globalThis.fetch (no fetchImpl) against a refused port.
@@ -242,7 +242,7 @@ describe("an unreadable state file warns and continues as logged out", () => {
       const err = bufferStream();
       // `--version` exits before the store loads; `secret list` runs the
       // load, then the auth guard sees the logged-out fallback and refuses.
-      const code = await runCli(["secret", "list"], {
+      const code = await runCli(["secrets", "list"], {
         stdout: out.stream,
         stderr: err.stream,
         env: cliEnv(),
@@ -277,7 +277,7 @@ describe("the workspaces arm reports its own file", () => {
       await fs.mkdir(path.join(stateDir, "workspaces.json"), { recursive: true });
       const out = bufferStream();
       const err = bufferStream();
-      const code = await runCli(["secret", "list"], {
+      const code = await runCli(["secrets", "list"], {
         stdout: out.stream,
         stderr: err.stream,
         env: cliEnv(),

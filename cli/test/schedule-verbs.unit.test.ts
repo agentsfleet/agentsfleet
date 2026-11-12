@@ -23,7 +23,7 @@ const help = async (argv: ReadonlyArray<string>) => {
 
 describe("the schedule verbs match the rest of the surface", () => {
   test.each(RENAMED.map(([, to]) => to))("schedule %s is a real subcommand", async (verb) => {
-    const { code, stdout } = await help(["schedule", verb, "--help"]);
+    const { code, stdout } = await help(["fleet", "schedule", verb, "--help"]);
     expect(code).toBe(0);
     expect(stdout).toContain(verb);
   });
@@ -31,15 +31,15 @@ describe("the schedule verbs match the rest of the surface", () => {
   test.each(RENAMED.map(([from]) => from))(
     "the retired spelling %s is refused, pointing at the group's list",
     async (verb) => {
-      const { code, stderr } = await help(["schedule", verb]);
+      const { code, stderr } = await help(["fleet", "schedule", verb]);
       expect(code).not.toBe(0);
       expect(stderr).toContain(verb);
-      expect(stderr).toContain("agentsfleet schedule --help");
+      expect(stderr).toContain("agentsfleet fleet schedule --help");
     },
   );
 
   test("no compatibility alias survived either spelling", async () => {
-    const { stdout } = await help(["schedule", "--help"]);
+    const { stdout } = await help(["fleet", "schedule", "--help"]);
     for (const [from, to] of RENAMED) {
       expect(stdout).toContain(to);
       // The retired verb must be gone from the listing, not merely deprioritised.
@@ -50,25 +50,25 @@ describe("the schedule verbs match the rest of the surface", () => {
 
 describe("a refusal names a verb the parser accepts", () => {
   // The rename moved the verbs and left the usage lines behind, so a bad
-  // identifier answered with `usage: agentsfleet schedule rm ...` — a sentence
+  // identifier answered with `usage: agentsfleet fleet schedule rm ...` — a sentence
   // naming the one spelling the parser had just stopped accepting. A
   // suggestion that cannot be typed is worse than none: it costs the reader a
   // second failure to find out.
   const BAD_ID = "not-a-uuid";
 
   test.each([
-    ["create", ["schedule", "create", BAD_ID, "--cron", "* * * * *", "--message", "hi"]],
-    ["list", ["schedule", "list", BAD_ID]],
-    ["update", ["schedule", "update", BAD_ID, BAD_ID, "--message", "hi"]],
-    ["delete", ["schedule", "delete", BAD_ID, BAD_ID]],
-    ["sync", ["schedule", "sync", BAD_ID, BAD_ID]],
-    ["show", ["schedule", "show", BAD_ID, BAD_ID]],
+    ["create", ["fleet", "schedule", "create", BAD_ID, "--cron", "* * * * *", "--message", "hi"]],
+    ["list", ["fleet", "schedule", "list", BAD_ID]],
+    ["update", ["fleet", "schedule", "update", BAD_ID, BAD_ID, "--message", "hi"]],
+    ["delete", ["fleet", "schedule", "delete", BAD_ID, BAD_ID]],
+    ["sync", ["fleet", "schedule", "sync", BAD_ID, BAD_ID]],
+    ["show", ["fleet", "schedule", "show", BAD_ID, BAD_ID]],
   ])("%s refuses a malformed id naming its own spelling", async (verb, argv) => {
     const { code, stderr } = await help(argv as ReadonlyArray<string>);
     expect(code).not.toBe(0);
-    expect(stderr).toContain(`agentsfleet schedule ${verb}`);
+    expect(stderr).toContain(`agentsfleet fleet schedule ${verb}`);
     for (const [retired] of RENAMED)
-      expect(stderr).not.toContain(`agentsfleet schedule ${retired}`);
+      expect(stderr).not.toContain(`agentsfleet fleet schedule ${retired}`);
   });
 });
 
@@ -79,7 +79,7 @@ describe("no command description names a scheduling vendor", () => {
   const VENDORS = ["qstash", "upstash", "cloudflare", "vercel cron"] as const;
 
   test("schedule --help names no scheduling vendor", async () => {
-    const { code, stdout } = await help(["schedule", "--help"]);
+    const { code, stdout } = await help(["fleet", "schedule", "--help"]);
     expect(code).toBe(0);
     const listing = stdout.toLowerCase();
     expect(VENDORS.filter((vendor) => listing.includes(vendor))).toEqual([]);

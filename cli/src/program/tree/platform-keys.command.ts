@@ -18,6 +18,6 @@ const set = Command.make("set", {
 const remove = Command.make("delete", {provider: Argument.String("provider")}).pipe(Command.withDescription("Delete a platform provider default (platform-key:admin)"),
   guardedHandler(({provider}) => platformKeysDelete(provider)));
 
-export const platformKeysCommand = Command.make("keys").pipe(
+export const platformKeysCommand = () => Command.make("keys").pipe(
   Command.withDescription("Manage vault-backed platform defaults; keys are never revealed"), Command.withSubcommands([list, set, remove]),
 );

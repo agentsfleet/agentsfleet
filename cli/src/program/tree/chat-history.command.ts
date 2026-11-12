@@ -28,4 +28,4 @@ const remove = Command.make("delete", {draftId, workspace: workspaceFlag,
 }).pipe(Command.withDescription("Delete a private setup chat; saved fleets keep running"),
   guardedHandler(flags => chatDeleteEffect(flags.draftId, {workspace: opt(flags.workspace), yes: flags.yes})));
 
-export const chatHistoryCommands = [list, rename, remove] as const;
+export const chatHistoryCommands = () => [list, rename, remove] as const;

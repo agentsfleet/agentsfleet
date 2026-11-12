@@ -16,16 +16,15 @@
 // temporal dead zone.
 export const EXAMPLE_FLEET_ID = "0192a3b4-c5d6-7e8f-9012-345678901234";
 
+// Root groups. Fleet-scoped resources (grants, approvals, schedule, memory)
+// are nested under `fleet` and reached through it.
 export const COMMAND_GROUPS: ReadonlyArray<string> = [
   "workspace",
-  "api-key",
-  "connector",
-  "grant",
-  "approvals",
-  "tenant",
-  "billing",
+  "api-keys",
+  "connections",
+  "models",
+  "usage",
   "fleet",
-  "memory",
   "chat",
 ];
 
@@ -51,15 +50,15 @@ export const READ_ONLY_COMMANDS: ReadonlyArray<ReadOnlyCommandRow> = [
   { args: ["whoami", "--json"], requiredKey: "email" },
   { args: ["workspace", "list", "--json"], isList: true, itemsKey: "workspaces" },
   { args: ["workspace", "show", "--json"], requiredKey: "workspace_id" },
-  { args: ["api-key", "list", "--json"], isList: true, itemsKey: "items" },
-  { args: ["connector", "list", "--json"], label: "connector list" },
+  { args: ["api-keys", "list", "--json"], isList: true, itemsKey: "items" },
+  { args: ["connections", "list", "--json"], label: "connections list" },
   // Workspace-scoped, unlike `grant list`: the inbox is every fleet's cards,
   // so it needs no fixture fleet threaded into its argv and belongs here
   // rather than in the per-fleet table below.
-  { args: ["approvals", "list", "--json"], isList: true, itemsKey: "items" },
-  { args: ["tenant", "provider", "show", "--json"], requiredKey: "mode" },
-  { args: ["billing", "show", "--json"], requiredKey: "balance_nanos" },
-  { args: ["list", "--json"], isList: true, itemsKey: "items", label: "fleet list" },
+  { args: ["fleet", "approvals", "list", "--json"], isList: true, itemsKey: "items" },
+  { args: ["models", "current", "--json"], requiredKey: "mode" },
+  { args: ["usage", "show", "--json"], requiredKey: "balance_nanos" },
+  { args: ["fleet", "list", "--json"], isList: true, itemsKey: "items", label: "fleet list" },
   { args: ["chat", "list", "--json"], isList: true, itemsKey: "items" },
 ];
 
@@ -77,8 +76,8 @@ export interface PerFleetReadOnlyCommandRow {
 // `grant list` requires `--fleet <id>`; the §4b read-only sweep cannot
 // thread fixture state into a static argv.
 export const PER_AGENTSFLEET_READ_ONLY_COMMANDS: ReadonlyArray<PerFleetReadOnlyCommandRow> = [
-  { argsHead: ["grant", "list"], isList: true, itemsKey: "items", group: "grant" },
-  { argsHead: ["memory", "list"], isList: true, itemsKey: "items", group: "memory" },
+  { argsHead: ["fleet", "grants", "list"], isList: true, itemsKey: "items", group: "grant" },
+  { argsHead: ["fleet", "memory", "list"], isList: true, itemsKey: "items", group: "memory" },
 ];
 
 export interface RequiresIdentifierRow {
@@ -114,10 +113,10 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
   // kill/stop/resume/logs and grant/fleet delete all run validateRequiredId
   // — §4c2 sweep relies on validatesClient: true to fire the no-network
   // invariant against an invalid-format id sample.
-  { args: ["kill"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
-  { args: ["stop"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
-  { args: ["resume"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
-  { args: ["logs"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
+  { args: ["fleet", "kill"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
+  { args: ["fleet", "stop"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
+  { args: ["fleet", "resume"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
+  { args: ["fleet", "logs"], expectedErrorCode: "UZ-AGT-009", argName: "fleet_id", apiHits: false, validatesClient: true },
   { args: ["workspace", "use"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: "UNKNOWN_WORKSPACE" },
   { args: ["workspace", "delete"], argName: "workspace_id", apiHits: false, validatesClient: true, clientRejectCode: null },
   // Measured, not assumed: `api-key delete not-a-uuid` answers INVALID_ARGUMENT
@@ -126,12 +125,12 @@ export const REQUIRES_IDENTIFIER: ReadonlyArray<RequiresIdentifierRow> = [
   // from the argument's own id check and omitted the `invalid <name>: ` stem;
   // the stem is there. The server-side probe still applies: a well-formed but
   // unknown key answers UZ-APIKEY-003 (ERR_APIKEY_NOT_FOUND).
-  { args: ["api-key", "delete"], expectedErrorCode: "UZ-APIKEY-003", argName: "api_key_id", apiHits: true, validatesClient: true },
+  { args: ["api-keys", "delete"], expectedErrorCode: "UZ-APIKEY-003", argName: "api_key_id", apiHits: true, validatesClient: true },
   // grant delete also requires --fleet <id>, so the generic single-ID matrix
   // cannot exercise the SERVER probe without a live fleet fixture. The
   // client-side half needs no fixture and was being skipped for no reason:
   // `grant delete not-a-uuid` answers INVALID_ARGUMENT without dialling.
-  { args: ["grant", "delete"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: false, validatesClient: true },
+  { args: ["fleet", "grants", "revoke"], expectedErrorCode: "UZ-GRANT-001", argName: "grant_id", apiHits: false, validatesClient: true },
 ];
 
 export interface RequiresPositionalArgRow {
@@ -170,32 +169,32 @@ export const REQUIRES_POSITIONAL_ARG: ReadonlyArray<RequiresPositionalArgRow> = 
   { args: ["workspace", "create"], missingArgName: "name" },
   { args: ["workspace", "use"], missingArgName: "workspace_id" },
   { args: ["workspace", "delete"], missingArgName: "workspace_id" },
-  { args: ["api-key", "revoke"], missingArgName: "api_key_id" },
-  { args: ["api-key", "delete"], missingArgName: "api_key_id" },
-  { args: ["grant", "delete"], missingArgName: "grant_id" },
+  { args: ["api-keys", "revoke"], missingArgName: "api_key_id" },
+  { args: ["api-keys", "delete"], missingArgName: "api_key_id" },
+  { args: ["fleet", "grants", "revoke"], missingArgName: "grant_id" },
   { args: ["library", "delete"], missingArgName: "entry_id" },
   { args: ["fleet", "show"], missingArgName: "fleet_id" },
-  { args: ["approvals", "show"], missingArgName: "gate_id" },
-  { args: ["approvals", "approve"], missingArgName: "gate_id" },
-  { args: ["approvals", "deny"], missingArgName: "gate_id" },
-  { args: ["connector", "show"], missingArgName: "provider" },
-  { args: ["kill"], missingArgName: "fleet_id" },
-  { args: ["stop"], missingArgName: "fleet_id" },
-  { args: ["resume"], missingArgName: "fleet_id" },
-  { args: ["delete"], missingArgName: "fleet_id" },
-  { args: ["events"], missingArgName: "fleet_id" },
-  { args: ["steer"], missingArgName: "fleet_id" },
-  { args: ["memory", "search"], missingArgName: "query" },
-  { args: ["secret", "create"], missingArgName: "name" },
-  { args: ["secret", "update"], missingArgName: "name" },
-  { args: ["secret", "show"], missingArgName: "name" },
-  { args: ["secret", "delete"], missingArgName: "name" },
-  { args: ["schedule", "create"], missingArgName: "fleet_id" },
-  { args: ["schedule", "list"], missingArgName: "fleet_id" },
-  { args: ["schedule", "update"], missingArgName: "fleet_id" },
-  { args: ["schedule", "delete"], missingArgName: "fleet_id" },
-  { args: ["schedule", "show"], missingArgName: "fleet_id" },
-  { args: ["schedule", "sync"], missingArgName: "fleet_id" },
+  { args: ["fleet", "approvals", "show"], missingArgName: "gate_id" },
+  { args: ["fleet", "approvals", "approve"], missingArgName: "gate_id" },
+  { args: ["fleet", "approvals", "deny"], missingArgName: "gate_id" },
+  { args: ["connections", "show"], missingArgName: "provider" },
+  { args: ["fleet", "kill"], missingArgName: "fleet_id" },
+  { args: ["fleet", "stop"], missingArgName: "fleet_id" },
+  { args: ["fleet", "resume"], missingArgName: "fleet_id" },
+  { args: ["fleet", "delete"], missingArgName: "fleet_id" },
+  { args: ["fleet", "events"], missingArgName: "fleet_id" },
+  { args: ["fleet", "steer"], missingArgName: "fleet_id" },
+  { args: ["fleet", "memory", "search"], missingArgName: "query" },
+  { args: ["secrets", "create"], missingArgName: "name" },
+  { args: ["secrets", "update"], missingArgName: "name" },
+  { args: ["secrets", "show"], missingArgName: "name" },
+  { args: ["secrets", "delete"], missingArgName: "name" },
+  { args: ["fleet", "schedule", "create"], missingArgName: "fleet_id" },
+  { args: ["fleet", "schedule", "list"], missingArgName: "fleet_id" },
+  { args: ["fleet", "schedule", "update"], missingArgName: "fleet_id" },
+  { args: ["fleet", "schedule", "delete"], missingArgName: "fleet_id" },
+  { args: ["fleet", "schedule", "show"], missingArgName: "fleet_id" },
+  { args: ["fleet", "schedule", "sync"], missingArgName: "fleet_id" },
 ];
 
 // Every command node that owns subcommands AND does nothing itself. Invoked
@@ -213,17 +212,16 @@ export const GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
   ["platform", "keys"],
   ["platform", "fleet-library"],
   ["workspace"],
-  ["api-key"],
-  ["connector"],
-  ["grant"],
-  ["approvals"],
-  ["tenant"],
-  ["tenant", "provider"],
-  ["billing"],
+  ["api-keys"],
+  ["connections"],
+  ["fleet", "grants"],
+  ["fleet", "approvals"],
+  ["models"],
+  ["usage"],
   ["fleet"],
-  ["secret"],
-  ["schedule"],
-  ["memory"],
+  ["secrets"],
+  ["fleet", "schedule"],
+  ["fleet", "memory"],
 ];
 
 // Nodes that own subcommands and carry their own action. Bare invocation runs
@@ -237,17 +235,17 @@ export const ACTION_GROUP_NODES: ReadonlyArray<ReadonlyArray<string>> = [
 // A value-taking flag with its value omitted. The parser raises
 // optionMissingArgument at parse time, so no state or network is involved.
 export const MISSING_OPTION_VALUE: ReadonlyArray<ReadonlyArray<string>> = [
-  ["logs", "--fleet"],
-  ["list", "--limit"],
-  ["billing", "show", "--limit"],
-  ["memory", "list", "--fleet"],
-  ["grant", "list", "--fleet"],
-  ["connector", "list", "--workspace"],
+  ["fleet", "logs", "--fleet"],
+  ["fleet", "list", "--limit"],
+  ["usage", "show", "--limit"],
+  ["fleet", "memory", "list", "--fleet"],
+  ["fleet", "grants", "list", "--fleet"],
+  ["connections", "list", "--workspace"],
 ];
 
 // A required option omitted entirely.
 export const MISSING_REQUIRED_OPTION: ReadonlyArray<ReadonlyArray<string>> = [
-  ["schedule", "create", EXAMPLE_FLEET_ID],
+  ["fleet", "schedule", "create", EXAMPLE_FLEET_ID],
 ];
 
 // Commands whose required input is a FLAG the handler validates, not a
@@ -255,18 +253,18 @@ export const MISSING_REQUIRED_OPTION: ReadonlyArray<ReadonlyArray<string>> = [
 // M171; they are swept alongside the parser rows so both dialects are
 // proven to have converged on one shape and one exit code.
 export const HANDLER_VALIDATED_REQUIRED_FLAG: ReadonlyArray<ReadonlyArray<string>> = [
-  ["logs"],
-  ["grant", "list"],
-  ["memory", "list"],
+  ["fleet", "logs"],
+  ["fleet", "grants", "list"],
+  ["fleet", "memory", "list"],
   ["chat", "--no-input"],
 ];
 
 // A syntactically valid invocation whose identifier is malformed. The guard
 // runs client-side, so the rejection carries the same shape with no request.
 export const MALFORMED_ID_INVOCATIONS: ReadonlyArray<ReadonlyArray<string>> = [
-  ["logs", "--fleet", "not-a-uuid"],
-  ["stop", "not-a-uuid"],
-  ["kill", "not-a-uuid"],
+  ["fleet", "logs", "--fleet", "not-a-uuid"],
+  ["fleet", "stop", "not-a-uuid"],
+  ["fleet", "kill", "not-a-uuid"],
 ];
 
 
@@ -279,13 +277,13 @@ export const INVALID_ID_SAMPLES: ReadonlyArray<string> = [
 export const AUTH_REQUIRED_REPRESENTATIVE: ReadonlyArray<ReadonlyArray<string>> = [
   ["doctor"],
   ["workspace", "list"],
-  ["api-key", "list"],
-  ["connector", "list"],
-  ["billing", "show"],
-  ["list"],
+  ["api-keys", "list"],
+  ["connections", "list"],
+  ["usage", "show"],
+  ["fleet", "list"],
   // The catalogue is bearer-authed
   // (rustd/crates/daemon/afd_api_tenant/src/handler/tenant/models/mod.rs), so `models`
   // must fail on the auth guard rather than dialing and surfacing a transport
   // error — the read happens before there is anything to read with.
-  ["models"],
+  ["models", "list"],
 ];

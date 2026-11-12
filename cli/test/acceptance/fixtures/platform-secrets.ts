@@ -28,7 +28,7 @@ export async function ensurePlatformSecretsSeeded(
 ): Promise<void> {
   for (const [name, data] of Object.entries(PLATFORM_SECRET_PAYLOADS)) {
     const result = await run(
-      ["secret", "create", name, "--data", JSON.stringify(data), "--json"],
+      ["secrets", "create", name, "--data", JSON.stringify(data), "--json"],
       { env, timeoutMs: remainingTimeoutMs() },
     );
     if (result.code !== 0) {

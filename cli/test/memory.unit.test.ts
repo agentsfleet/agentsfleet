@@ -52,7 +52,7 @@ describe("memory — ValidationError guards", () => {
     expect(err).toBeInstanceOf(ValidationError);
     if (err instanceof ValidationError) {
       expect(err.detail).toMatch(/--fleet <id> is required/);
-      expect(err.suggestion).toMatch(/agentsfleet memory list/);
+      expect(err.suggestion).toMatch(/agentsfleet fleet memory list/);
     }
   });
 
@@ -65,7 +65,7 @@ describe("memory — ValidationError guards", () => {
     const err = failureOf(exit);
     expect(err).toBeInstanceOf(ValidationError);
     if (err instanceof ValidationError) {
-      expect(err.suggestion).toMatch(/agentsfleet memory search/);
+      expect(err.suggestion).toMatch(/agentsfleet fleet memory search/);
     }
   });
 
@@ -275,7 +275,7 @@ describe("memory — ServerError suggestion remap", () => {
     const err = failureOf(exit);
     expect(err).toBeInstanceOf(ServerError);
     if (err instanceof ServerError) {
-      expect(err.suggestion).toContain("agentsfleet list");
+      expect(err.suggestion).toContain("agentsfleet fleet list");
       expect(err.code).toBe("UZ-MEM-002");
       expect(err.requestId).toBe("req_mem_err");
     }

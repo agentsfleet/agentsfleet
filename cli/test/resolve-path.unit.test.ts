@@ -4,11 +4,14 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { rootCommand } from "../src/program/tree/root.command.ts";
+import { buildCommandTree } from "../src/program/tree/index.ts";
+
 import {
   resolveCommandPath,
   type CommandNode,
 } from "../src/program/tree/resolve-path.ts";
+
+const rootCommand = buildCommandTree();
 
 const root = rootCommand as unknown as CommandNode;
 const resolve = (argv: ReadonlyArray<string>): ReadonlyArray<string> =>
@@ -22,29 +25,25 @@ describe("resolveCommandPath", () => {
   });
 
   test("a nested verb resolves to its full path", () => {
-    expect(resolve(["tenant", "provider", "show"])).toEqual([
-      "tenant",
-      "provider",
-      "show",
-    ]);
+    expect(resolve(["models", "current"])).toEqual(["models", "current"]);
   });
 
   test("flags before the verb do not hide it", () => {
-    expect(resolve(["--json", "grant", "list"])).toEqual(["grant", "list"]);
+    expect(resolve(["--json", "fleet", "grants", "list"])).toEqual(["fleet", "grants", "list"]);
   });
 
   test("an `=` flag carries its own value and consumes nothing after it", () => {
-    expect(resolve(["--api=https://example.test", "list"])).toEqual(["list"]);
+    expect(resolve(["--api=https://example.test", "fleet", "list"])).toEqual(["fleet", "list"]);
   });
 
   // The trap this walk exists to avoid: a flag VALUE that is spelled like a
   // command. `--workspace list` must not resolve `list` as the command.
   test("a separated flag swallows its value, even when the value names a command", () => {
-    expect(resolve(["connector", "--workspace", "list"])).toEqual(["connector"]);
+    expect(resolve(["connections", "--workspace", "list"])).toEqual(["connections"]);
   });
 
   test("positionals after the verb are not commands", () => {
-    expect(resolve(["stop", VALID_ID])).toEqual(["stop"]);
+    expect(resolve(["fleet", "stop", VALID_ID])).toEqual(["fleet", "stop"]);
   });
 
   test("an unknown verb resolves to nothing", () => {
@@ -60,6 +59,6 @@ describe("resolveCommandPath", () => {
   });
 
   test("everything after `--` is an argument, never a command", () => {
-    expect(resolve(["steer", "--", "list"])).toEqual(["steer"]);
+    expect(resolve(["fleet", "steer", "--", "list"])).toEqual(["fleet", "steer"]);
   });
 });

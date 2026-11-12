@@ -264,7 +264,7 @@ describe("workspaceSecretsEffect", () => {
   // The redirect must name the real top-level `secret` group
   // (cli-tree-fleet.ts), not the phantom `agentsfleet agent secret` that has
   // no registration anywhere in the CLI tree.
-  const REAL_COMMAND = "agentsfleet secret";
+  const REAL_COMMAND = "agentsfleet secrets";
   const PHANTOM_COMMAND = "agentsfleet agent secret";
 
   test("JSON-mode redirect names the real secret command", async () => {

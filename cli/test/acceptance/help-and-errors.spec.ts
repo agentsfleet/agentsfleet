@@ -141,23 +141,23 @@ describe("provider catalogue closes --provider (real binary)", () => {
   // What it still must do is fail closed rather than store the credential.
   it("an unknown provider fails without storing anything when no server is reachable", async () => {
     const r = await runFleetctl(
-      ["secret", "create", "t", "--provider", "notaprovider", "--api-key", "k", "--model", "m"],
+      ["secrets", "create", "t", "--provider", "notaprovider", "--api-key", "k", "--model", "m"],
       { env: emptyEnv() },
     );
     assert.notEqual(r.code, 0, `expected a non-zero exit; stderr=${r.stderr}`);
   });
 
   it("`models --help` names the catalogue and its provider filter", async () => {
-    const r = await runFleetctl(["models", "--help"], { env: emptyEnv() });
+    const r = await runFleetctl(["models", "list", "--help"], { env: emptyEnv() });
     assert.equal(r.code, 0, `expected exit 0; got ${r.code}; stderr=${r.stderr}`);
     assert.match(r.stdout, /catalogue/i);
     assert.match(r.stdout, /--provider/);
   });
 
-  it("`secret create --help` points at `agentsfleet models` for provider ids", async () => {
-    const r = await runFleetctl(["secret", "create", "--help"], { env: emptyEnv() });
+  it("`secret create --help` points at `agentsfleet models list` for provider ids", async () => {
+    const r = await runFleetctl(["secrets", "create", "--help"], { env: emptyEnv() });
     assert.equal(r.code, 0, `expected exit 0; got ${r.code}; stderr=${r.stderr}`);
-    assert.match(r.stdout.replace(/\s+/g, " "), /agentsfleet models/);
+    assert.match(r.stdout.replace(/\s+/g, " "), /agentsfleet models list/);
   });
 });
 
@@ -198,12 +198,12 @@ describe("after logout, an authenticated command refuses from disk", () => {
         `logout should exit 0 even when the revoke cannot land; got ${loggedOut.code}; stderr=${loggedOut.stderr}`,
       );
 
-      const result = await runFleetctl(["list"], { env });
+      const result = await runFleetctl(["fleet", "list"], { env });
       assert.equal(result.code, 1, `expected exit 1; got ${result.code}; stderr=${result.stderr}`);
       const merged = `${result.stderr}\n${result.stdout}`.toLowerCase();
       assert.match(merged, /not authenticated|authentication required|please.*log/);
       // Refused by reading disk, not by a request that failed to connect.
-      assertNoConnectionError(result, ["list"]);
+      assertNoConnectionError(result, ["fleet", "list"]);
     } finally {
       await state.cleanup();
     }
@@ -228,8 +228,12 @@ describe("help DX surfaces (real binary)", () => {
     const out = stripAnsi(result.stdout);
     // The command list, whatever the renderer calls its heading.
     assert.match(out, /subcommands/i);
-    for (const command of ["chat", "status", "steer", "workspace", "memory"]) {
-      assert.ok(out.includes(command), `help missing "${command}" command`);
+    for (const command of ["chat", "fleet", "workspace", "secrets", "usage"]) {
+      assert.match(out, new RegExp(`^\\s+${command}\\s`, "m"), `help missing "${command}" command`);
+    }
+    // Fleet verbs moved under `fleet`; the root no longer lists them.
+    for (const moved of ["status", "steer", "memory"]) {
+      assert.doesNotMatch(out, new RegExp(`^\\s+${moved}\\s`, "m"), `root help still lists "${moved}"`);
     }
     // Env vars are documented externally; help carries a one-line pointer.
     assert.match(out, /Environment variables: https:\/\/docs\.agentsfleet\.net\/cli\/configuration/);
@@ -260,11 +264,13 @@ describe("help DX surfaces (real binary)", () => {
     assert.deepEqual(overflow, [], `lines over 80 cols: ${overflow.join(" | ")}`);
   });
 
-  it("fleet --help clarifies the lifecycle verbs are top-level", async () => {
+  it("fleet --help lists the lifecycle verbs it owns", async () => {
     const result = await runFleetctl(["fleet", "--help"], { env: helpEnv() });
     assert.equal(result.code, 0, `stderr=${result.stderr}`);
     const out = stripAnsi(result.stdout);
-    assert.match(out, /Lifecycle commands are listed by agentsfleet --help/);
+    for (const verb of ["list", "status", "stop", "resume", "kill", "delete", "steer", "logs", "events"]) {
+      assert.match(out, new RegExp(`^\\s+${verb}\\s`, "m"), `fleet --help missing "${verb}"`);
+    }
     assert.ok(out.includes("agentsfleet chat --fleet <fleet_id>"), "fleet --help should name the improvement route");
   });
 });

@@ -152,10 +152,10 @@ describe("unknown command", () => {
   });
 
   it("an unknown subcommand names the token and points at the group's list", async () => {
-    const r = await reject(["connector", "pogo"]);
-    assertHouseShape(r, "connector pogo");
+    const r = await reject(["connections", "pogo"]);
+    assertHouseShape(r, "connections pogo");
     assert.match(r.stderr, /pogo/, `unrecognized token not named; stderr=${r.stderr}`);
-    assert.match(r.suggestionLine, /connector --help/,
+    assert.match(r.suggestionLine, /connections --help/,
       `suggestion does not point at the group's list; got ${r.suggestionLine}`);
   });
 });
@@ -193,7 +193,7 @@ describe("group nodes print help that survives a pipe", () => {
 
 describe("JSON mode emits the machine envelope", () => {
   it("a rejected invocation answers with a parseable error envelope", async () => {
-    const result = await runFleetctl(["--json", "events"], { env: env() });
+    const result = await runFleetctl(["--json", "fleet", "events"], { env: env() });
     assert.equal(result.code, EXIT_VALIDATION);
     const parsed = JSON.parse(result.stderr.trim()) as {
       error?: { code?: string; message?: string };
@@ -216,7 +216,7 @@ describe("JSON mode emits the machine envelope", () => {
 
 describe("a valid invocation still fails as a transport error", () => {
   it("keeps the network exit code distinct from a rejected invocation", async () => {
-    const result = await runFleetctl(["logs", "--fleet", EXAMPLE_FLEET_ID], { env: env() });
+    const result = await runFleetctl(["fleet", "logs", "--fleet", EXAMPLE_FLEET_ID], { env: env() });
     assert.notEqual(result.code, EXIT_VALIDATION,
       `a well-formed invocation must not report as a rejected one; stderr=${result.stderr}`);
   });

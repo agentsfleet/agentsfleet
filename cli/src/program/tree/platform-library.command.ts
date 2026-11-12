@@ -24,7 +24,7 @@ const publication = (name: "publish" | "unpublish", published: boolean) => Comma
 const remove = Command.make("delete", conditional).pipe(Command.withDescription("Delete the inspected platform entry (platform-library:write)"),
   guardedHandler(({id, etag}) => platformLibraryDelete(id, etag)));
 
-export const platformLibraryCommand = Command.make("fleet-library").pipe(
+export const platformLibraryCommand = () => Command.make("fleet-library").pipe(
   Command.withDescription("Manage the platform fleet library"),
   Command.withSubcommands([list, show, stage, update, publication("publish", true), publication("unpublish", false), remove]),
 );

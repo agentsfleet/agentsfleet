@@ -83,7 +83,7 @@ if (!isLive) {
       JSON.parse(out.trim()) as Record<string, unknown>;
 
     const listGates = async (): Promise<ReadonlyArray<GateListRow>> => {
-      const result = await runWithEnv(["approvals", "list", JSON_FLAG]);
+      const result = await runWithEnv(["fleet", "approvals", "list", JSON_FLAG]);
       assert.equal(result.code, 0, `approvals list failed: ${result.stderr}`);
       return (parseJson(result.stdout) as { items?: GateListRow[] }).items ?? [];
     };
@@ -128,7 +128,7 @@ if (!isLive) {
       const gates = await listGates();
       const first = gates[0];
       if (first?.gate_id === undefined) return; // nothing waiting in this workspace
-      const result = await runWithEnv(["approvals", "show", first.gate_id, JSON_FLAG]);
+      const result = await runWithEnv(["fleet", "approvals", "show", first.gate_id, JSON_FLAG]);
       assert.equal(result.code, 0, `approvals show failed: ${result.stderr}`);
       const gate = parseJson(result.stdout) as GateListRow;
       assert.equal(gate.gate_id, first.gate_id);
@@ -141,7 +141,7 @@ if (!isLive) {
       const withFleet = gates.find((row) => typeof row.fleet_id === "string");
       if (withFleet?.fleet_id === undefined) return; // nothing waiting in this workspace
       const result = await runWithEnv([
-        "approvals", "list", "--fleet", withFleet.fleet_id, JSON_FLAG,
+        "fleet", "approvals", "list", "--fleet", withFleet.fleet_id, JSON_FLAG,
       ]);
       assert.equal(result.code, 0, `approvals list --fleet failed: ${result.stderr}`);
       const narrowed = (parseJson(result.stdout) as { items?: GateListRow[] }).items ?? [];
@@ -153,7 +153,7 @@ if (!isLive) {
       const gates = await listGates();
       const pending = gates.find((row) => row.status === GATE_STATUS.pending);
       if (pending?.gate_id === undefined) return; // nothing pending to decide
-      const result = await runWithEnv(["approvals", "approve", pending.gate_id, JSON_FLAG]);
+      const result = await runWithEnv(["fleet", "approvals", "approve", pending.gate_id, JSON_FLAG]);
       assert.equal(result.code, 0, `approvals approve failed: ${result.stderr}`);
       assert.equal((parseJson(result.stdout) as { outcome?: string }).outcome, GATE_STATUS.approved,
         `the decision did not answer approved: ${result.stdout}`);
@@ -166,7 +166,7 @@ if (!isLive) {
 
     it("`approvals show` on an unknown gate refuses through the daemon", async () => {
       const result = await runWithEnv([
-        "approvals", "show", "01900000-0000-7000-8000-0000000abcde", JSON_FLAG,
+        "fleet", "approvals", "show", "01900000-0000-7000-8000-0000000abcde", JSON_FLAG,
       ]);
       assert.notEqual(result.code, 0, `an unknown gate must not succeed: ${result.stdout}`);
     });

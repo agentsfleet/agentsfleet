@@ -34,7 +34,7 @@ export async function cleanWorkspaceFleets(
     ? { workspaceId: optsOrWorkspaceId }
     : (optsOrWorkspaceId ?? {});
   const runPrefix = opts.runPrefix ?? ACCEPTANCE_RUN_PREFIX;
-  const listed = await runFleetctl(["list", "--json"], { env });
+  const listed = await runFleetctl(["fleet", "list", "--json"], { env });
   if (listed.code !== 0) {
     throw new Error(`fleet list (teardown) exited ${listed.code}: ${listed.stderr.trim()}`);
   }
@@ -56,12 +56,12 @@ export async function cleanWorkspaceFleets(
     const fleetId = fleet.id ?? fleet.fleet_id;
     if (!fleetId) continue;
     if (!TERMINAL_STATUSES.includes(fleet.status ?? "")) {
-      const killed = await runFleetctl(["kill", fleetId, "--json"], { env });
+      const killed = await runFleetctl(["fleet", "kill", fleetId, "--json"], { env });
       if (killed.code !== 0 && !/already.*killed|already.*terminal|not.*found/i.test(killed.stderr)) {
         throw new Error(`teardown kill ${fleetId} exited ${killed.code}: ${killed.stderr.trim()}`);
       }
     }
-    const removed = await runFleetctl(["delete", fleetId, "--json"], { env });
+    const removed = await runFleetctl(["fleet", "delete", fleetId, "--json"], { env });
     if (removed.code !== 0 && !/not.*found/i.test(removed.stderr)) {
       throw new Error(`teardown delete ${fleetId} exited ${removed.code}: ${removed.stderr.trim()}`);
     }

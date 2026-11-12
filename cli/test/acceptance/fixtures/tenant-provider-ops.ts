@@ -99,7 +99,7 @@ export const TENANT_PROVIDER_MODE = {
 // pins them here rather than scattering string arrays through the spec.
 // The shared `tenant provider` base is hoisted once and spread into each
 // command so neither head literal is repeated (UFS: no string used twice).
-const TENANT_PROVIDER_BASE: ReadonlyArray<string> = ["tenant", "provider"];
+const TENANT_PROVIDER_BASE: ReadonlyArray<string> = ["models", "list"];
 const SUBCOMMAND_SHOW = "show" as const;
 const SUBCOMMAND_CREATE = "create" as const;
 const SUBCOMMAND_DELETE = "delete" as const;

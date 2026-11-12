@@ -77,7 +77,7 @@ const memorySearchCommand = Command.make("search", {
   ),
 );
 
-export const memoryCommand = Command.make("memory").pipe(
+export const memoryCommand = () => Command.make("memory").pipe(
   Command.withDescription("Inspect a Fleet's durable memory (read-only)"),
   Command.withSubcommands([memoryListCommand, memorySearchCommand]),
 );

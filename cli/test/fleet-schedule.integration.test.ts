@@ -44,7 +44,7 @@ describe("schedule commands", () => {
         const err = bufferStream();
         const code = await runCli(
           [
-            "schedule",
+            "fleet", "schedule",
             "create",
             FLEET_ID,
             "--cron",
@@ -80,7 +80,7 @@ describe("schedule commands", () => {
         const out = bufferStream();
         const err = bufferStream();
         const code = await runCli(
-          ["schedule", "list", FLEET_ID],
+          ["fleet", "schedule", "list", FLEET_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(code).toBe(0);
@@ -104,14 +104,14 @@ describe("schedule commands", () => {
         updateOut.stream.isTTY = true;
         const err = bufferStream();
         const updateCode = await runCli(
-          ["schedule", "update", FLEET_ID, SCHEDULE_ID, "--status", "paused"],
+          ["fleet", "schedule", "update", FLEET_ID, SCHEDULE_ID, "--status", "paused"],
           { stdout: updateOut.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(updateCode).toBe(0);
         const rmOut = bufferStream();
         rmOut.stream.isTTY = true;
         const rmCode = await runCli(
-          ["schedule", "delete", FLEET_ID, SCHEDULE_ID],
+          ["fleet", "schedule", "delete", FLEET_ID, SCHEDULE_ID],
           { stdout: rmOut.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(rmCode).toBe(0);
@@ -139,12 +139,12 @@ describe("schedule commands", () => {
         out.stream.isTTY = true;
         const err = bufferStream();
         const statusCode = await runCli(
-          ["schedule", "show", FLEET_ID, SCHEDULE_ID],
+          ["fleet", "schedule", "show", FLEET_ID, SCHEDULE_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(statusCode).toBe(0);
         const syncCode = await runCli(
-          ["schedule", "sync", FLEET_ID, SCHEDULE_ID],
+          ["fleet", "schedule", "sync", FLEET_ID, SCHEDULE_ID],
           { stdout: out.stream, stderr: err.stream, env: cliEnv({ AGENTSFLEET_API_URL: apiUrl }) },
         );
         expect(syncCode).toBe(0);
