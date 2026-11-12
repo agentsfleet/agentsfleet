@@ -18,8 +18,7 @@ import { secretsCommand } from "./secrets.command.ts";
 import { apiKeysCommand, connectionsCommand } from "./access.command.ts";
 import { platformCommand } from "./platform.command.ts";
 import { UNKNOWN_VISIBILITY, type Visibility } from "./visibility.ts";
-
-export const CLI_NAME = "agentsfleet" as const;
+import { CLI_NAME } from "../../constants/rejection.ts";
 
 // `Unknown` is the fail-closed default: no operator family is advertised.
 export const buildCommandTree = (visibility: Visibility = UNKNOWN_VISIBILITY) =>

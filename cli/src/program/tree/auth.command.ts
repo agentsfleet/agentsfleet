@@ -10,11 +10,10 @@ import { forceFlag, logoutAllFlag, tokenNameFlag } from "./flags.ts";
 
 const opt = Option.getOrUndefined;
 
-// What logout actually does, at its true scope. It revokes THIS machine's
-// credential and aborts unfinished sign-ins; the help once promised "every
-// active session on this account", which the daemon's own endpoint
-// contradicts. Someone read that sentence and believed a laptop they had lost
-// was signed out, and it was not.
+// What logout actually does, at its true scope: it revokes THIS machine's
+// credential and aborts unfinished sign-ins. Other machines stay signed in,
+// and the description says so, because a person deciding whether a lost
+// laptop is signed out reads exactly this line.
 const LOGOUT_DESCRIPTION =
   "Sign out — revoke this machine's credential, abort unfinished sign-ins, and clear local state (other machines stay signed in)" as const;
 

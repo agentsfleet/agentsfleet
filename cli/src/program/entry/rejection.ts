@@ -1,8 +1,8 @@
 // A rejected invocation, in this CLI's own shape.
 //
 // The library states its parse failures plainly — "Missing argument", and a
-// help document underneath. This CLI has always answered in a fixed two-line
-// shape instead:
+// help document underneath. This CLI answers with one labelled block instead
+// (see `output/error-block.ts`):
 //
 //     ✕ error: <what was wrong>
 //       code          <stable code>
@@ -11,9 +11,10 @@
 //       suggestion    <where to look next>
 //
 // and under `--json`, an envelope carrying a stable code. Both halves are
-// load-bearing. The Suggestion is the half a person acts on, and it must name
-// a fix rather than restate the fault — the acceptance suite asserts the two
-// lines differ, because a suggestion that repeats the detail is decoration.
+// load-bearing. The fix line (`suggestion` or `usage`) is what a person acts
+// on, and it must name a fix rather than restate the fault — the acceptance
+// suite asserts the two differ, because a fix that repeats the detail is
+// decoration.
 // The codes are a machine contract (`constants/rejection.ts`, RULE JCL): a
 // `--json` consumer switches on them, so renaming one breaks that consumer.
 //
@@ -99,14 +100,9 @@ const nodeAt = (root: CommandNode, path: ReadonlyArray<string>): CommandNode | n
   return node;
 };
 
-/**
- * What to run instead.
- *
- * A leaf gets its own usage line, which is a command someone can type. A group
- * or the root has no runnable form of its own, so it points at the command
- * list — telling somebody to run `agentsfleet workspace` when that is what
- * just failed would be a loop.
- */
+// Whether a non-root path ends at a command with no children. A leaf gets its
+// own usage line, which is a command someone can type; a group or the root has
+// no runnable form, so its hint points at its command list instead.
 const isLeaf = (root: CommandNode, path: ReadonlyArray<string>): boolean => {
   const node = path.length > 0 ? nodeAt(root, path) : root;
   return node !== null && path.length > 0 && childrenOf(node).length === 0;
@@ -153,6 +149,14 @@ const unwrapShowHelp = (error: unknown): CliError.CliError | null => {
   return first ?? null;
 };
 
+// The library spells a choice as its type, `"bash" | "zsh"`; a person reads
+// a list of words. Anything else it expected is left as it said it.
+const CHOICE_UNION = /^"[^"]*"(?: \| "[^"]*")+$/;
+const spellExpected = (expected: string): string =>
+  CHOICE_UNION.test(expected)
+    ? `expected one of ${expected.split(" | ").map((choice) => choice.slice(1, -1)).join(", ")}`
+    : expected;
+
 /**
  * The refusal sentence, in this repository's spelling rather than the library's.
  *
@@ -180,14 +184,6 @@ const unwrapShowHelp = (error: unknown): CliError.CliError | null => {
  * field carries the bare word, so `--` is restored — `invalid fleet:` sends
  * someone looking for a positional they never passed.
  */
-// The library spells a choice as its type, `"bash" | "zsh"`; a person reads
-// a list of words. Anything else it expected is left as it said it.
-const CHOICE_UNION = /^"[^"]*"(?: \| "[^"]*")+$/;
-const spellExpected = (expected: string): string =>
-  CHOICE_UNION.test(expected)
-    ? `expected one of ${expected.split(" | ").map((choice) => choice.slice(1, -1)).join(", ")}`
-    : expected;
-
 const houseDetail = (rejected: CliError.CliError): string => {
   if (rejected instanceof CliError.InvalidValue) {
     const name = rejected.kind === FLAG_KIND ? `${FLAG_PREFIX}${rejected.option}` : rejected.option;
@@ -221,8 +217,10 @@ export const houseRejection = (
 ): HouseRejection | null => {
   const rejected = unwrapShowHelp(error);
   if (rejected === null) return null;
-  const code = CODE_BY_TAG[rejected._tag];
-  if (code === undefined) return null;
+  // A failure the map does not name (a future `Command.validate`, say) is
+  // still an invalid invocation, and the presenter printed nothing for it, so
+  // it gets the generic code rather than a silent non-zero exit.
+  const code = CODE_BY_TAG[rejected._tag] ?? REJECTION_CODE.invalidArgument;
   const path = resolveCommandPath(root, argv);
   return {
     code,

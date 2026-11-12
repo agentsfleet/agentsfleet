@@ -2,7 +2,6 @@
 // from factories, so nothing a run decides can be carried into the next one.
 
 import { describe, expect, test } from "bun:test";
-import fs from "node:fs/promises";
 import path from "node:path";
 
 const TREE_DIR = path.join(import.meta.dir, "..", "src", "program", "tree");
@@ -21,10 +20,10 @@ describe("tree_modules_export_no_command_constants", () => {
   });
 
   test("every tree module exports factories, not command values", async () => {
-    const files = (await fs.readdir(TREE_DIR)).filter((name) => name.endsWith(".ts"));
+    const files = await Array.fromAsync(new Bun.Glob("*.ts").scan({ cwd: TREE_DIR }));
     expect(files.length).toBeGreaterThan(10);
     for (const file of files) {
-      const source = await fs.readFile(path.join(TREE_DIR, file), "utf8");
+      const source = await Bun.file(path.join(TREE_DIR, file)).text();
       expect({ file, exportsCommand: commandConstantsIn(source) }).toEqual({ file, exportsCommand: false });
     }
   });

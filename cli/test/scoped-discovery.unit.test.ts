@@ -6,7 +6,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   ENV_KEY, EXIT_OK, EXIT_SERVER, EXIT_USAGE, STORED_TOKEN,
-  identityReads, rows, run, withKey, type Setup,
+  RUNNING_AS_ROOT, identityReads, rows, run, withKey, type Setup,
 } from "./helpers-discovery.ts";
 
 // Each server closure, and exactly what it should advertise per family.
@@ -137,11 +137,19 @@ describe("discovery_does_not_reuse_another_identity_or_target", () => {
     },
   );
 
-  test("a stored login that cannot be read is no credential at all", async () => {
+  test.skipIf(RUNNING_AS_ROOT)("a stored login that cannot be read is no credential at all", async () => {
     const outcome = await run({ argv: ["--help"], storedUnreadable: true });
     expect(identityReads(outcome.calls)).toEqual([]);
     expect(rows(outcome.out)).not.toContain("platform");
   });
+
+  test.each([[["platform", "keys", "list", "--help"]], [["platform", "keys"]], [["help", "platform"]]])(
+    "%p is a discovery request",
+    async (argv) => {
+      const outcome = await withKey(["platform-key:read"], argv);
+      expect(identityReads(outcome.calls)).toHaveLength(1);
+    },
+  );
 
   test("one discovery request makes exactly one identity read", async () => {
     const outcome = await withKey(["model:read"], ["--help"]);
@@ -153,7 +161,7 @@ describe("hidden_command_and_stale_completion_cannot_bypass_authorization", () =
   test("an unadvertised command still parses and the server still refuses it", async () => {
     const outcome = await withKey([], ["platform", "keys", "list"]);
     expect(outcome.calls.map((call) => `${call.method} ${call.path}`)).toEqual(["GET /v1/admin/platform-keys"]);
-    expect(outcome.err).toContain("UZ-AUTH-022");
+    expect(outcome.err).toMatch(/^ {2}code {10}UZ-AUTH-022$/m);
     expect(outcome.code).toBe(EXIT_SERVER);
   });
 });
@@ -166,6 +174,8 @@ describe("discovery_writes_no_credential_or_identity_to_diagnostics", () => {
       scopes: () => ({ user_id: "u", email: "probe@example.test", scopes: ["model:read"] }),
     });
     expect(identityReads(outcome.calls)).toHaveLength(1);
+    // Positive control: debug output really was on, and it reached stderr.
+    expect(outcome.err).toContain("endpoint=/v1/users/me");
     for (const stream of [outcome.out, outcome.err]) {
       expect(stream).not.toContain("agt_t_SENTINEL");
       expect(stream).not.toContain("probe@example.test");
