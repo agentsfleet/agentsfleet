@@ -440,3 +440,316 @@ fn every_refusal_answers_the_sender_one_code_and_one_sentence() {
     );
     assert_eq!(refused.detail(), afd_cron::error::detail::FIRE_UNVERIFIED);
 }
+
+// ---------------------------------------------------------------------------
+// Every way a token can be wrong, and every way a genuine one may differ.
+//
+// Tokens are built from the claims the scheduler really writes (see
+// `scheduler_claims`), changing one claim at a time, so each case names the one
+// thing it refuses or tolerates.
+// ---------------------------------------------------------------------------
+
+/// The scheduler's claims with `claim` set to `value`, or removed when `value`
+/// is `None`.
+fn changed(claim: &str, value: Option<serde_json::Value>) -> serde_json::Value {
+    let mut claims = scheduler_claims(BODY);
+    let object = claims.as_object_mut().expect("the claims are an object");
+    match value {
+        Some(value) => object.insert(claim.to_owned(), value),
+        None => object.remove(claim),
+    };
+    claims
+}
+
+/// What `verify_at` says about `claims` signed by the current key.
+fn outcome(claims: &serde_json::Value) -> Result<String, &'static str> {
+    verify_at(&keys(), DESTINATION, &sign(claims, CURRENT_KEY), BODY)
+        .map(|fire| fire.message_id)
+        .map_err(|refused| refused.refusal_word())
+}
+
+#[test]
+fn a_claim_the_scheduler_never_sets_or_sets_oddly_does_not_refuse_its_token() {
+    for (claim, value) in [
+        ("nbf", None),
+        ("nbf", Some(serde_json::json!(0))),
+        ("nbf", Some(serde_json::json!(-1))),
+        ("nbf", Some(serde_json::json!(-62_135_596_800_i64))),
+        ("nbf", Some(serde_json::json!(now() + 86_400))),
+        ("nbf", Some(serde_json::json!("not a number"))),
+        ("nbf", Some(serde_json::json!(1.5))),
+        ("nbf", Some(serde_json::json!(null))),
+        ("aud", None),
+        ("aud", Some(serde_json::json!(""))),
+        ("aud", Some(serde_json::json!("somebody"))),
+        ("aud", Some(serde_json::json!(["a", "b"]))),
+        ("iat", None),
+        ("iat", Some(serde_json::json!(now() + 86_400))),
+        ("iat", Some(serde_json::json!("yesterday"))),
+        ("note", Some(serde_json::json!({"anything": [1, 2, 3]}))),
+    ] {
+        let claims = changed(claim, value.clone());
+        assert_eq!(
+            outcome(&claims),
+            Ok("jwt_fixture0001".to_owned()),
+            "{claim} = {value:?}"
+        );
+    }
+}
+
+#[test]
+fn an_expiry_that_is_absent_past_or_not_a_whole_number_refuses_the_token() {
+    for (value, words) in [
+        (None, &["token_claims_missing"][..]),
+        (Some(serde_json::json!(0)), &["token_expired"][..]),
+        (Some(serde_json::json!(now() - 1)), &["token_expired"][..]),
+        // A value the decoder cannot read as an unsigned whole number is either
+        // reported as missing or as malformed; both refuse.
+        (
+            Some(serde_json::json!(-1)),
+            &["token_claims_missing", "token_claim_malformed"][..],
+        ),
+        (
+            Some(serde_json::json!("soon")),
+            &["token_claims_missing", "token_claim_malformed"][..],
+        ),
+        (
+            Some(serde_json::json!(1.5)),
+            &[
+                "token_claims_missing",
+                "token_claim_malformed",
+                "token_expired",
+            ][..],
+        ),
+        (
+            Some(serde_json::json!(null)),
+            &["token_claims_missing", "token_claim_malformed"][..],
+        ),
+    ] {
+        let refused = outcome(&changed("exp", value.clone())).expect_err("exp is enforced");
+        assert!(
+            words.contains(&refused),
+            "exp = {value:?} read as {refused}"
+        );
+    }
+}
+
+#[test]
+fn an_issuer_that_is_absent_or_not_exactly_the_scheduler_refuses_the_token() {
+    for (value, word) in [
+        (None, "token_claims_missing"),
+        (Some(serde_json::json!("")), "token_issuer_mismatch"),
+        (Some(serde_json::json!("upstash")), "token_issuer_mismatch"),
+        (Some(serde_json::json!("Upstash ")), "token_issuer_mismatch"),
+    ] {
+        assert_eq!(
+            outcome(&changed("iss", value.clone())),
+            Err(word),
+            "iss = {value:?}"
+        );
+    }
+}
+
+#[test]
+fn a_subject_that_is_absent_or_not_exactly_this_destination_refuses_the_token() {
+    for value in [
+        None,
+        Some(serde_json::json!("")),
+        Some(serde_json::json!(format!("{DESTINATION}/"))),
+        Some(serde_json::json!(format!("{DESTINATION}?x=1"))),
+        Some(serde_json::json!(
+            DESTINATION.replace("https://", "http://")
+        )),
+        Some(serde_json::json!(DESTINATION.to_uppercase())),
+        Some(serde_json::json!(DESTINATION.replace("fixture", "other"))),
+    ] {
+        let refused = outcome(&changed("sub", value.clone()))
+            .err()
+            .unwrap_or("believed");
+        assert!(
+            ["token_claims_missing", "token_subject_mismatch"].contains(&refused),
+            "sub = {value:?} read as {refused}"
+        );
+    }
+}
+
+#[test]
+fn a_message_id_that_is_absent_empty_or_not_text_refuses_the_token() {
+    for (value, word) in [
+        (None, "token_undecodable"),
+        (Some(serde_json::json!("")), "token_claims_missing"),
+        (Some(serde_json::json!(7)), "token_undecodable"),
+        (Some(serde_json::json!(null)), "token_undecodable"),
+    ] {
+        assert_eq!(
+            outcome(&changed("jti", value.clone())),
+            Err(word),
+            "jti = {value:?}"
+        );
+    }
+}
+
+#[test]
+fn a_body_digest_that_is_absent_not_text_or_not_this_body_refuses_the_token() {
+    let digest = fire_token::digest_of(BODY);
+    for (value, word) in [
+        (None, "token_undecodable"),
+        (Some(serde_json::json!(7)), "token_undecodable"),
+        (Some(serde_json::json!("")), "body_mismatch"),
+        (Some(serde_json::json!("=")), "body_mismatch"),
+        (
+            Some(serde_json::json!(format!("{digest}=="))),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(format!("{digest}==="))),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(format!("{digest} "))),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(format!(" {digest}"))),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(digest.to_uppercase())),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(&digest[..digest.len() - 1])),
+            "body_mismatch",
+        ),
+        (
+            Some(serde_json::json!(format!("{digest}A"))),
+            "body_mismatch",
+        ),
+    ] {
+        assert_eq!(
+            outcome(&changed("body", value.clone())),
+            Err(word),
+            "body = {value:?}"
+        );
+    }
+}
+
+#[test]
+fn the_digest_is_believed_unpadded_and_with_the_one_padding_character() {
+    let digest = fire_token::digest_of(BODY);
+    for value in [digest.clone(), format!("{digest}=")] {
+        assert!(
+            outcome(&changed("body", Some(serde_json::json!(value.clone())))).is_ok(),
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn an_algorithm_other_than_the_pinned_one_refuses_the_token() {
+    for algorithm in [
+        jsonwebtoken::Algorithm::HS384,
+        jsonwebtoken::Algorithm::HS512,
+    ] {
+        let token = jsonwebtoken::encode(
+            &jsonwebtoken::Header::new(algorithm),
+            &scheduler_claims(BODY),
+            &jsonwebtoken::EncodingKey::from_secret(CURRENT_KEY.as_bytes()),
+        )
+        .expect("the claims serialise");
+
+        assert_eq!(
+            verify_at(&keys(), DESTINATION, &token, BODY)
+                .expect_err("the algorithm is pinned")
+                .refusal_word(),
+            "token_algorithm_mismatch",
+            "{algorithm:?}"
+        );
+    }
+}
+
+#[test]
+fn a_token_with_no_signature_or_a_changed_part_refuses_the_token() {
+    let token = sign(&scheduler_claims(BODY), CURRENT_KEY);
+    let mut parts = token.split('.');
+    let (header, payload, signature) = (
+        parts.next().expect("a header"),
+        parts.next().expect("a payload"),
+        parts.next().expect("a signature"),
+    );
+    let flipped = |part: &str| {
+        let mut chars: Vec<char> = part.chars().collect();
+        if let Some(last) = chars.last_mut() {
+            *last = if *last == 'A' { 'B' } else { 'A' };
+        }
+        chars.into_iter().collect::<String>()
+    };
+
+    for (label, tampered) in [
+        (
+            "signature changed",
+            format!("{header}.{payload}.{}", flipped(signature)),
+        ),
+        (
+            "payload changed",
+            format!("{header}.{}.{signature}", flipped(payload)),
+        ),
+        (
+            "header changed",
+            format!("{}.{payload}.{signature}", flipped(header)),
+        ),
+        ("signature dropped", format!("{header}.{payload}.")),
+        (
+            "alg none, unsigned",
+            format!("{}.{payload}.", "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0"),
+        ),
+    ] {
+        let refused = verify_at(&keys(), DESTINATION, &tampered, BODY)
+            .expect_err("a token that was altered must not be believed")
+            .refusal_word();
+        assert!(
+            [
+                "signature_invalid",
+                "token_malformed",
+                "token_undecodable",
+                "token_algorithm_mismatch"
+            ]
+            .contains(&refused),
+            "{label} read as {refused}"
+        );
+    }
+}
+
+#[test]
+fn either_key_verifies_and_a_blank_one_is_skipped() {
+    let claims = scheduler_claims(BODY);
+    let blank = || af_crypto::secret::SecretString::new(String::new());
+    let secret = |text: &str| af_crypto::secret::SecretString::new(text.to_owned());
+
+    for (label, held, signed_with, believed) in [
+        ("current", keys(), CURRENT_KEY, true),
+        ("next", keys(), NEXT_KEY, true),
+        ("neither", keys(), "a-key-nobody-holds", false),
+        (
+            "only next held",
+            SigningKeys {
+                current: blank(),
+                next: secret(NEXT_KEY),
+            },
+            NEXT_KEY,
+            true,
+        ),
+        (
+            "only current held",
+            SigningKeys {
+                current: secret(CURRENT_KEY),
+                next: blank(),
+            },
+            NEXT_KEY,
+            false,
+        ),
+    ] {
+        let verdict = verify_at(&held, DESTINATION, &sign(&claims, signed_with), BODY);
+        assert_eq!(verdict.is_ok(), believed, "{label}");
+    }
+}

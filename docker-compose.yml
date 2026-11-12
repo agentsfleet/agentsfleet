@@ -76,7 +76,7 @@ services:
     # on 127.0.0.1 — the one kind of host `afd_mail` sends to without TLS
     # (`afd_mail::Security::of`). A container sharing a namespace cannot
     # publish its own ports, so the daemon's API port is published here too.
-    image: axllent/mailpit:v1.31.3
+    image: axllent/mailpit:v1.33.1
     ports:
       - "${AGENTSFLEET_API_HOST_PORT:-3000}:3000"
       - "127.0.0.1:${AGENTSFLEET_MAILPIT_SMTP_PORT:-1025}:1025"
@@ -103,7 +103,7 @@ services:
       - -c
       - |
         cd /tmp
-        bun add @upstash/qstash-cli@2.37.18
+        bun add @upstash/qstash-cli@2.44.2
         # Bun blocks postinstall scripts, so the Go binary the CLI wraps is not
         # fetched by `bun add` — run its installer explicitly before launching.
         bun node_modules/@upstash/qstash-cli/install.js
@@ -172,7 +172,7 @@ services:
   # addresses away from clients, which dial their seed list from the host.
   # The fixed local password is a lane fixture; nothing deployed uses it. The alpine build of the pinned release carries wget for the check.
   nats-1: &nats
-    image: nats:2.15.2-alpine
+    image: nats:2.15.3-alpine
     command:
       - --name=nats-1
       - --port=4222
