@@ -163,14 +163,13 @@ describe("ProviderModelSelect", () => {
     expect(screen.getByLabelText("Pick model")).toBeTruthy();
   });
 
-  it("a picked model reads as one truncating line, and each option lists its id under the name", () => {
+  it("retains the selected name and exact identifier, including the inspection title and option details", () => {
     catalogueState.models = [cap("claude-sonnet-5", "anthropic", "Sonnet 5"), cap("openai/gpt-5-mini", "openai", "GPT-5 Mini")];
     render(React.createElement(ProviderModelSelect, { id: "m", model: "claude-sonnet-5", onModelChange: vi.fn() }));
 
     const value = document.querySelector("[data-select-value]");
     expect(value?.textContent).toBe("Sonnet 5 claude-sonnet-5");
-    expect(value?.className).toContain("min-w-0");
-    expect(value?.className).toContain("truncate");
+    expect(screen.getByTitle("claude-sonnet-5").textContent).toBe("Sonnet 5 claude-sonnet-5");
     const option = screen.getByRole("option", { name: "GPT-5 Mini openai/gpt-5-mini" });
     expect(option.querySelector(".flex-col")?.lastElementChild?.textContent).toBe("openai/gpt-5-mini");
   });
