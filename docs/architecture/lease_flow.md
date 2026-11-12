@@ -301,6 +301,8 @@ The write rules admit a fix on the repair branch and one draft PR, and no commen
 
 **The other reply path, also not for GitHub.** The report owes a `fleet.obligations` delivery only when the admission recorded a reply destination. That is `afd_fleet`'s lease commit and `schema/20261108125100_fleet_admissions.sql`.
 
+A failed run that wrote no answer owes that destination one fixed notice. An event refused at a gate owes one too (`afd_fleet`'s lease `unanswered` module). A clean run that wrote nothing still owes nothing.
+
 The App webhook admits with `Reply::None` (`afd_ingress`'s deliver). Only Slack posters exist (`afd_outbound`'s posters), so there is no daemon-side "answer back to the PR" either.
 
 **The sandbox does not change this.** The sandbox `git` tool refuses `push`, `fetch`, `pull`, `remote` and `clone`. A change is meant to leave through `propose_change`, which is not written (`afr_tools`' sandbox git; [`runner_execution.md`](./runner_execution.md) §"Repository writes").
