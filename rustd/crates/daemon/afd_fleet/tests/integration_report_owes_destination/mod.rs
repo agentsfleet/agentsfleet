@@ -85,6 +85,7 @@ async fn answer_is_owed_to_the_recorded_destination() {
             provider: Provider::Slack.id().to_owned(),
             destination: Some(THREAD.to_owned()),
             event_id,
+            answer: RESPONSE_ACCEPTED.to_owned(),
         }],
         "one row, owed to the thread the question came from"
     );

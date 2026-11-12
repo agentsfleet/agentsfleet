@@ -53,7 +53,9 @@ pub(super) async fn release(transaction: sqlx::Transaction<'_, sqlx::Postgres>) 
 }
 
 /// Puts a task's notice where the run's answer was: the event, the session
-/// and the answer owed, which a run that answered nothing did not owe yet.
+/// and the answer owed. It replaces what the report owed, a failed run's
+/// unanswered notice included, and is owed fresh for a clean run that wrote
+/// nothing.
 pub(super) async fn apply_notice(
     connection: &mut PgConnection,
     report: &TerminalReport<'_>,

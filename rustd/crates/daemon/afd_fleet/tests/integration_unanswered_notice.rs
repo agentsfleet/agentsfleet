@@ -1,11 +1,12 @@
 //! A thread that asked is told when its event ends with nothing to say.
 //!
-//! Two endings write no answer: a run that failed before it wrote any text,
-//! and an event a gate refused. Each owes the admission's thread one fixed
-//! notice through the delivery ledger. What must not change is proven beside
-//! it: a clean run that wrote nothing still owes nothing, an event asked from
-//! nowhere owes nothing either way, and the event row never carries the notice
-//! as though the fleet had said it.
+//! Three endings write no answer: a run that failed before it wrote any text,
+//! an event a gate refused, and an event ended after its leases kept lapsing.
+//! Each owes the admission's thread one fixed notice through the delivery
+//! ledger. What must not change is proven beside it: a clean run that wrote
+//! nothing still owes nothing, an event asked from nowhere owes nothing
+//! however it ends, and the event row never carries the notice as though the
+//! fleet had said it.
 //!
 //! Marked `#[ignore]` so `make test-unit-rustd` compiles and lints these
 //! without datastores, and `make test-integration-rustd` is the only lane that
@@ -16,13 +17,19 @@
     reason = "test target: an unmet precondition should fail the test loudly"
 )]
 
-use af_core::event::label::{APPROVAL_DENIED, BALANCE_EXHAUSTED};
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use af_core::event::label::{BALANCE_EXHAUSTED, LEASE_EXPIRED};
+use af_core::event::status::FLEET_ERROR;
 use af_wire::report::FailureClass;
 use afd_admission::{Producer, Reply};
 use afd_fleet::lease::admit::Refusal;
+use afd_fleet::lease::event::DETAIL_LEASES_LAPSED;
 use afd_fleet::lease::{Acquired, Committed, Ended, Verdict};
+use futures_util::future::join_all;
+use tokio::sync::Barrier;
 
-use crate::integration_report_owes_destination::stage::{Stage, owed_by, stage};
+use crate::integration_report_owes_destination::stage::{Stage, obligations, owed_by, stage};
 use crate::report_commit::report;
 use crate::report_seed::SLICE_MS;
 use crate::rows::Row;
@@ -33,21 +40,16 @@ const TIMED_OUT: Verdict<'static> = Verdict::Failed {
     detail: "the run outran its deadline",
 };
 
+/// How many gate passes race to refuse one event.
+const REFUSERS: usize = 100;
+
 /// The answers the ledger owes this fleet, oldest first.
-async fn owed_answers(stage: &Stage) -> Vec<String> {
-    let mut connection = stage
-        .fixtures
-        .database
-        .acquire()
+async fn answers(stage: &Stage) -> Vec<String> {
+    obligations(&stage.fixtures, &stage.fleet)
         .await
-        .expect("a pooled connection");
-    sqlx::query_scalar(
-        "SELECT answer FROM fleet.obligations WHERE fleet_id = $1 ORDER BY created_at, sequence",
-    )
-    .bind(&stage.fleet)
-    .fetch_all(&mut *connection)
-    .await
-    .expect("the ledger answers")
+        .into_iter()
+        .map(|owed| owed.answer)
+        .collect()
 }
 
 /// Leases the fleet's next event and reports it ended `verdict`, saying `answer`.
@@ -77,7 +79,7 @@ async fn run_ending(stage: &Stage, verdict: Verdict<'_>, answer: &str) -> Commit
         .expect("the report must reach the datastore")
 }
 
-/// The fleet's next event, claimed and open, ready for a gate to refuse.
+/// The fleet's next event, claimed and open, with no run reporting on it.
 async fn claimed(stage: &Stage) -> Acquired {
     crate::seed::select_fleet(&stage.leases, &stage.runner, &stage.fleet)
         .await
@@ -97,7 +99,7 @@ async fn a_failed_run_that_wrote_nothing_owes_its_thread_the_notice() {
         "the report names the row it owed, so the outbound workers are woken for it"
     );
     assert_eq!(
-        owed_answers(&stage).await,
+        answers(&stage).await,
         vec![format!(
             "This run ended before it could answer (timeout_kill). A workspace member can read \
              what happened with `agentsfleet events {}`.",
@@ -124,7 +126,7 @@ async fn a_failed_run_that_wrote_an_answer_owes_that_answer_and_no_notice() {
 
     run_ending(&stage, TIMED_OUT, "the half I finished").await;
 
-    assert_eq!(owed_answers(&stage).await, vec!["the half I finished"]);
+    assert_eq!(answers(&stage).await, vec!["the half I finished"]);
 
     stage.fixtures.cleanup().await;
 }
@@ -138,55 +140,83 @@ async fn a_clean_run_that_wrote_nothing_still_owes_nothing() {
     let committed = run_ending(&stage, Verdict::Succeeded, "").await;
 
     assert_eq!(owed_by(committed), None);
-    assert_eq!(owed_answers(&stage).await, Vec::<String>::new());
+    assert_eq!(answers(&stage).await, Vec::<String>::new());
 
     stage.fixtures.cleanup().await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn a_failed_run_asked_from_nowhere_owes_nothing() {
-    let stage = stage().await;
-    stage
-        .admit(Producer::ScheduleFire, "failed-on-a-schedule", Reply::None)
-        .await;
+async fn a_run_asked_from_nowhere_owes_nothing_however_it_ends() {
+    for (verdict, answer) in [
+        (TIMED_OUT, ""),
+        (TIMED_OUT, "the half I finished"),
+        (Verdict::Succeeded, ""),
+    ] {
+        let stage = stage().await;
+        stage
+            .admit(Producer::ScheduleFire, "asked-from-nowhere", Reply::None)
+            .await;
 
-    let committed = run_ending(&stage, TIMED_OUT, "").await;
+        let committed = run_ending(&stage, verdict, answer).await;
 
-    assert_eq!(owed_by(committed), None);
-    assert_eq!(owed_answers(&stage).await, Vec::<String>::new());
+        assert_eq!(owed_by(committed), None, "{verdict:?} saying {answer:?}");
+        assert_eq!(answers(&stage).await, Vec::<String>::new());
 
-    stage.fixtures.cleanup().await;
+        stage.fixtures.cleanup().await;
+    }
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs live datastores: make test-integration-rustd"]
-async fn an_event_refused_at_a_gate_owes_its_thread_the_refusal_once() {
+async fn an_event_refused_by_racing_passes_owes_its_thread_one_refusal() {
     let stage = stage().await;
     stage.admit_thread("refused-in-a-thread").await;
     let acquired = claimed(&stage).await;
+    let barrier = Barrier::new(REFUSERS);
+    let active = AtomicUsize::new(0);
+    let peak = AtomicUsize::new(0);
 
-    let first = stage
-        .leases
-        .block(&acquired, Refusal::labelled(BALANCE_EXHAUSTED))
-        .await
-        .expect("the refusal must write");
-    let second = stage
-        .leases
-        .block(&acquired, Refusal::labelled(APPROVAL_DENIED))
-        .await
-        .expect_err("a settled admission refuses another mutation");
+    let endings = join_all((0..REFUSERS).map(|_| {
+        let (leases, acquired) = (&stage.leases, &acquired);
+        let (barrier, active, peak) = (&barrier, &active, &peak);
+        async move {
+            barrier.wait().await;
+            let in_flight = active.fetch_add(1, Ordering::Relaxed) + 1;
+            peak.fetch_max(in_flight, Ordering::Relaxed);
+            let ending = leases
+                .block(acquired, Refusal::labelled(BALANCE_EXHAUSTED))
+                .await;
+            active.fetch_sub(1, Ordering::Relaxed);
+            ending
+        }
+    }))
+    .await;
 
-    assert!(matches!(first, Ended::Now(_)));
-    assert_eq!(second.code(), af_core::error_code::RUN_STALE_FENCING_TOKEN);
+    assert!(peak.load(Ordering::Relaxed) > 1, "the passes overlapped");
+    let ended = endings
+        .iter()
+        .filter(|ending| matches!(ending, Ok(Ended::Now(_))))
+        .count();
+    let fenced = endings
+        .iter()
+        .filter(|ending| {
+            matches!(ending, Err(refused)
+                if refused.code() == af_core::error_code::RUN_STALE_FENCING_TOKEN)
+        })
+        .count();
     assert_eq!(
-        owed_answers(&stage).await,
+        (ended, fenced),
+        (1, REFUSERS - 1),
+        "one pass ends the event, and every other finds its admission settled"
+    );
+    assert_eq!(
+        answers(&stage).await,
         vec![format!(
             "This request was not run (balance_exhausted). A workspace member can read why with \
              `agentsfleet events {}`.",
             stage.fleet
-        )],
-        "the pass that ended the event owed its thread, and the refused repeat owed nothing"
+        )]
     );
 
     stage.fixtures.cleanup().await;
@@ -208,7 +238,47 @@ async fn an_event_refused_at_a_gate_and_asked_from_nowhere_owes_nothing() {
         .expect("the refusal must write");
 
     assert!(matches!(ended, Ended::Now(_)));
-    assert_eq!(owed_answers(&stage).await, Vec::<String>::new());
+    assert_eq!(answers(&stage).await, Vec::<String>::new());
+
+    stage.fixtures.cleanup().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs live datastores: make test-integration-rustd"]
+async fn an_event_ended_after_its_leases_lapsed_owes_its_thread_the_notice() {
+    let stage = stage().await;
+    let event = stage.admit_thread("lapsed-in-a-thread").await;
+    let acquired = claimed(&stage).await;
+
+    let ended = stage
+        .leases
+        .abandon(&acquired)
+        .await
+        .expect("the ending must write");
+
+    assert!(matches!(ended, Ended::Now(_)));
+    assert_eq!(
+        answers(&stage).await,
+        vec![format!(
+            "This run ended before it could answer (lease_expired). A workspace member can read \
+             what happened with `agentsfleet events {}`.",
+            stage.fleet
+        )]
+    );
+    let stored = Row::Event(&stage.fleet, &event);
+    assert_eq!(
+        (
+            stage.fixtures.text(stored, "status").await,
+            stage.fixtures.text(stored, "failure_reason").await,
+            stage.fixtures.text(stored, "failure_detail").await,
+        ),
+        (
+            Some(FLEET_ERROR.to_owned()),
+            Some(LEASE_EXPIRED.to_owned()),
+            Some(DETAIL_LEASES_LAPSED.to_owned()),
+        ),
+        "the row says a run failed, and why"
+    );
 
     stage.fixtures.cleanup().await;
 }

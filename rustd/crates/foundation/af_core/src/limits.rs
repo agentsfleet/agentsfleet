@@ -23,7 +23,8 @@ pub const MAX_WORKERS: u32 = 64;
 ///
 /// A lease that lapses is reclaimed and its event runs again from the start.
 /// An event that outlived this many holders will not finish on another one,
-/// and while it heads its fleet's queue nothing behind it runs.
+/// and while it heads its fleet's queue nothing behind it runs. A durable
+/// task's event is bounded by the task's own lease allowance instead.
 pub const EVENT_LEASES_MAX: u32 = 3;
 
 /// How many workers a runner is assigned, guaranteed within `MIN..=MAX`.

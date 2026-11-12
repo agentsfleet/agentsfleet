@@ -14,7 +14,7 @@ use crate::lease::admit::{
     Admission, Billed as Admitted, GateFacts, Request, money_gates_with, payer_gate,
 };
 use crate::lease::answer::no_work;
-use crate::lease::envelope::Acquired;
+use crate::lease::envelope::{Acquired, HeadKind};
 use crate::lease::installed::Installed;
 use crate::lease::store::Leases;
 use af_core::event::label;
@@ -141,8 +141,12 @@ impl LeaseService {
             return self.finished(&acquired, runner_id).await;
         }
         // A run that outlived this many holders will not finish on another,
-        // and while it heads the fleet's queue nothing behind it runs.
-        if acquired.earlier_leases >= i64::from(af_core::limits::EVENT_LEASES_MAX) {
+        // and while it heads the fleet's queue nothing behind it runs. A
+        // durable task is exempt: its own lease allowance bounds it, and its
+        // sweep ends it there with the task itself moved on.
+        if acquired.opened.head == HeadKind::Plain
+            && acquired.earlier_leases >= i64::from(af_core::limits::EVENT_LEASES_MAX)
+        {
             return self
                 .abandoned(&acquired, runner_id)
                 .await
