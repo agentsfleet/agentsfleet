@@ -116,37 +116,45 @@ async fn collector() -> (
     (endpoint, received, collector)
 }
 
+/// The reader's first periodic export lands one collect interval after boot;
+/// the margin covers boot and the collector round trip.
+const FIRST_EXPORT: Duration = Duration::from_secs(15);
+
 async fn live_samples(received: &mut mpsc::UnboundedReceiver<Delivery>) {
-    tokio::time::timeout(Duration::from_secs(15), async {
-        // Only Linux has `/proc/self/statm`; every other host reports no
-        // resident reading by design (`the_resident_reading_is_a_measurement_or_nothing`),
-        // so the wait asks for one only where one can exist.
-        let mut resident = !cfg!(target_os = "linux");
-        let mut catalogue = false;
-        let mut schedules = false;
-        while !(resident && catalogue && schedules) {
-            let (signal, body) = received.recv().await.expect("collector remains live");
-            if signal == "metrics" {
-                for metric in metrics(&body) {
-                    if metric["name"] == "agentsfleet_process_resident_memory_bytes" {
-                        resident |= metric
-                            .pointer("/gauge/dataPoints")
-                            .and_then(Value::as_array)
-                            .into_iter()
-                            .flatten()
-                            .any(|point| {
-                                point["asInt"]
-                                    .as_str()
-                                    .and_then(|value| value.parse::<u64>().ok())
-                                    .is_some_and(|value| value > 0)
-                            });
+    tokio::time::timeout(
+        agentsfleetd::telemetry::COLLECT_INTERVAL + FIRST_EXPORT,
+        async {
+            // Only Linux has `/proc/self/statm`; every other host reports no
+            // resident reading by design (`the_resident_reading_is_a_measurement_or_nothing`),
+            // so the wait asks for one only where one can exist.
+            let mut resident = !cfg!(target_os = "linux");
+            let mut catalogue = false;
+            let mut schedules = false;
+            while !(resident && catalogue && schedules) {
+                let (signal, body) = received.recv().await.expect("collector remains live");
+                if signal == "metrics" {
+                    for metric in metrics(&body) {
+                        if metric["name"] == "agentsfleet_process_resident_memory_bytes" {
+                            resident |= metric
+                                .pointer("/gauge/dataPoints")
+                                .and_then(Value::as_array)
+                                .into_iter()
+                                .flatten()
+                                .any(|point| {
+                                    point["asInt"]
+                                        .as_str()
+                                        .and_then(|value| value.parse::<u64>().ok())
+                                        .is_some_and(|value| value > 0)
+                                });
+                        }
+                        catalogue |=
+                            metric["name"] == "agentsfleet_model_catalog_snapshot_age_seconds";
+                        schedules |= metric["name"] == "agentsfleet_schedules";
                     }
-                    catalogue |= metric["name"] == "agentsfleet_model_catalog_snapshot_age_seconds";
-                    schedules |= metric["name"] == "agentsfleet_schedules";
                 }
             }
-        }
-    })
+        },
+    )
     .await
     .expect("sampler publishes real memory, catalogue and schedule readings");
 }

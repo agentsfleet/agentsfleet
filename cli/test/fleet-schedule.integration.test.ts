@@ -17,8 +17,10 @@ const row = {
   cron: "0 9 * * *",
   timezone: "Asia/Kolkata",
   message: "summarize",
+  source: "trigger",
   status: "active",
   sync: "synced",
+  etag: '"tag-7"',
   description: "At 9:00 AM (Asia/Kolkata)",
   run_state: "scheduled",
   next_run_at: "2026-11-01T03:30:00Z",
@@ -90,6 +92,8 @@ describe("schedule commands", () => {
   test("`schedule update` and `schedule delete` use item routes", async () => {
     await authedScope(async () => {
       const routes: MockRoutes = {
+        [`GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`]:
+          () => jsonResponse(200, row),
         [`PATCH /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`]:
           () => jsonResponse(200, { ...row, status: "paused" }),
         [`DELETE /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`]:
@@ -112,9 +116,12 @@ describe("schedule commands", () => {
         );
         expect(rmCode).toBe(0);
         expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+          `GET /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`,
           `PATCH /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`,
           `DELETE /v1/workspaces/${WS_ID}/fleets/${FLEET_ID}/schedules/${SCHEDULE_ID}`,
         ]);
+        expect(calls[1]?.headers["if-match"]).toBe('"tag-7"');
+        expect(JSON.parse(calls[1]?.body ?? "{}")).toEqual({ override: { status: "paused" } });
       });
     });
   });
