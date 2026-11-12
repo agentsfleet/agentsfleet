@@ -57,6 +57,9 @@ pub(crate) struct ReportStatement<'a> {
     pub(crate) obligation_receipt: &'a Uuid7,
     pub(crate) audit_id: &'a Uuid7,
     pub(crate) audit_metadata: serde_json::Value,
+    /// What the event's thread is owed when a failed run wrote no answer; a
+    /// clean run carries none, so its silence stays silence.
+    pub(crate) unanswered_notice: Option<&'a str>,
 }
 
 impl ReportStatement<'_> {
@@ -132,6 +135,7 @@ impl ReportStatement<'_> {
             .bind(i64::from(af_wire::usage::RUNTIME_MS_MAX))
             .bind(af_wire::usage::LineKind::Runtime.as_str())
             .bind(i64::MAX)
+            .bind(self.unanswered_notice)
             .fetch_one(connection)
             .await
             .map_err(query(CONTEXT))?;

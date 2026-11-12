@@ -44,6 +44,7 @@ mod decision_expiry;
 mod faults;
 mod gates_read;
 mod history;
+mod lapses;
 mod seed;
 mod slack;
 mod stops;

@@ -18,6 +18,7 @@ async fn test_reclaimed_row_is_leased_as_redelivered() {
     let first = next(&leases, &holder).await.expect("first claim");
     assert!(!first.redelivered);
     assert_eq!(first.kind, Kind::Fresh);
+    assert_eq!(first.earlier_leases, 0, "nothing was issued before it");
     assert_eq!(first.opened.received.delivery, Delivery::First);
     let issued = issue(&fixtures, &leases, &first, &holder, &tenant).await;
     fixtures.lapse_holder(&issued, &fleet).await;
@@ -29,6 +30,7 @@ async fn test_reclaimed_row_is_leased_as_redelivered() {
     assert!(reclaimed.redelivered);
     assert!(reclaimed.fence > first.fence);
     assert_eq!(reclaimed.kind, Kind::Reclaim);
+    assert_eq!(reclaimed.earlier_leases, 1, "the lapsed holder's lease");
     assert_eq!(
         fixtures
             .text(Row::Lease(&issued), "status")

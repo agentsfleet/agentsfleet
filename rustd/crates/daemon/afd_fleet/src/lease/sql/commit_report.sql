@@ -31,7 +31,8 @@
 -- $42 the connectors an answer can be owed to · $43 the audit row's id ·
 -- $44 its event type · $45 its metadata · $46 the fleet · $47 its workspace ·
 -- $48 the longest runtime one line may claim · $49 the runtime line kind ·
--- $50 the largest count a bigint holds
+-- $50 the largest count a bigint holds ·
+-- $51 the notice owed in the answer's place when a failed run wrote none
 WITH scope AS MATERIALIZED (
   SELECT f.id
   FROM fleet.fleets f
@@ -184,11 +185,14 @@ WITH scope AS MATERIALIZED (
   INSERT INTO fleet.obligations
     (id, fleet_id, workspace_id, provider, destination, event_id, answer,
      receipt, claim_expires_at, delivered_at, attempt_count, created_at, updated_at)
+  -- A run that wrote nothing owes nothing, unless it failed: then its thread
+  -- is owed the notice, so a person who asked is not left reading silence.
   SELECT $40, m.fleet_id, m.workspace_id, d.reply_provider, d.reply_address, m.event_id,
-         $29::text, $41, clock_timestamp(), NULL, 0, now(), now()
+         COALESCE(NULLIF($29::text, ''), $51::text), $41, clock_timestamp(), NULL, 0, now(), now()
   FROM moved m
   CROSS JOIN settled d
-  WHERE d.reply_provider = ANY($42::text[]) AND $29::text <> ''
+  WHERE d.reply_provider = ANY($42::text[])
+    AND COALESCE(NULLIF($29::text, ''), $51::text) IS NOT NULL
   ON CONFLICT ON CONSTRAINT uq_obligations_fleet_id_event_id DO NOTHING
   RETURNING id
 ), audit AS (

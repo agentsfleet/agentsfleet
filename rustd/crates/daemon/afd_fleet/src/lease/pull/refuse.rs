@@ -24,6 +24,9 @@ use crate::lease::installed::Installed;
 /// The no-work reason for a fleet paused between selection and claim.
 const FLEET_STOPPED: &str = "the fleet stopped between selection and claim";
 
+/// What the record says of an event the daemon stopped re-leasing.
+const REASON_LEASES_LAPSED: &str = "every lease the event was issued lapsed";
+
 /// A fleet whose unreadable config could not even be recorded as such.
 pub(super) const EVENT_CONFIG_REFUSAL_UNRECORDED: &str = "config_refusal_unrecorded";
 
@@ -107,6 +110,38 @@ impl LeaseService {
             .leases
             .block(acquired, Refusal::labelled(label))
             .await?;
+        self.announce_ended(ended, acquired, label, runner_id, reason)
+            .await;
+        Ok(())
+    }
+
+    /// End an event whose leases kept lapsing, then answer no-work.
+    ///
+    /// The fleet's next event is claimable the moment this commits: the
+    /// ending settles the admission that was holding the queue's head.
+    pub(super) async fn abandoned(&self, acquired: &Acquired, runner_id: &Uuid7) -> Result<()> {
+        let ended = self.leases.abandon(acquired).await?;
+        self.announce_ended(
+            ended,
+            acquired,
+            label::LEASE_EXPIRED,
+            runner_id,
+            REASON_LEASES_LAPSED,
+        )
+        .await;
+        Ok(())
+    }
+
+    /// The tail's closing bracket for an event this pass ended, the record of
+    /// why, and the runner's no-work answer.
+    async fn announce_ended(
+        &self,
+        ended: crate::lease::event::Ended,
+        acquired: &Acquired,
+        label: &'static str,
+        runner_id: &Uuid7,
+        reason: &str,
+    ) {
         if let crate::lease::event::Ended::Now(closed) = ended {
             let publication = self.leases.publish_completion(&closed, None).await;
             afd_bus::observe_notification(
@@ -127,7 +162,6 @@ impl LeaseService {
             "the event was ended at a gate"
         );
         no_work(runner_id, label);
-        Ok(())
     }
 
     /// One fleet's unreadable configuration ends THAT fleet's event, and

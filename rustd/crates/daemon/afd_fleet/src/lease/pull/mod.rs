@@ -140,6 +140,14 @@ impl LeaseService {
         if delivery == crate::lease::event::Delivery::Terminal {
             return self.finished(&acquired, runner_id).await;
         }
+        // A run that outlived this many holders will not finish on another,
+        // and while it heads the fleet's queue nothing behind it runs.
+        if acquired.earlier_leases >= i64::from(af_core::limits::EVENT_LEASES_MAX) {
+            return self
+                .abandoned(&acquired, runner_id)
+                .await
+                .map(|()| Step::Stop);
+        }
         // The tail's opening bracket, once per row: a redelivery found the row
         // already there, and its watchers already hold the marker. The counters
         // were read after the row landed, because the insert is what moves them.
