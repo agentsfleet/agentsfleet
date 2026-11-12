@@ -113,6 +113,7 @@ impl ModelCalls {
 fn settlement(prepared: &Prepared, usage: DecisionUsage, sequence: i64) -> Result<Settlement> {
     let snapshot = &prepared.snapshot;
     let line = UsageLine {
+        kind: af_wire::usage::LineKind::Decision,
         seq: u32::try_from(sequence).map_err(|_invalid| crate::error::ErrorKind::Token)?,
         at: snapshot.at,
         input_tokens: usage

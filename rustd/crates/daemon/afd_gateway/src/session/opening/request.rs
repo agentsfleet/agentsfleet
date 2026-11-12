@@ -7,7 +7,6 @@ use crate::{
     stream_headers::StreamHeaders,
 };
 use af_core::{id::Uuid7, timing::STREAM_OPEN_TIMEOUT};
-use af_wire::protocol::StreamKind;
 use afd_auth::directory::Digest;
 use afd_http::auth::AuthenticatedRunnerCredential;
 use axum::{body::Body, extract::Request};
@@ -74,9 +73,6 @@ impl SecondaryRequest {
     pub(super) async fn attach(self) -> Result<Body> {
         let binding = self.context.binding(&self.headers)?;
         let kind = self.headers.stream_kind();
-        if kind == StreamKind::Control {
-            return Err(ErrorKind::Binding.into());
-        }
         let (attachment, body) = StreamAttachment::new(kind, self.body);
         within(
             &self.context.native.stop,

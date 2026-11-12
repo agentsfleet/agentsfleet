@@ -6,17 +6,11 @@
     clippy::expect_used,
     reason = "test support: an unmet precondition should fail the test loudly"
 )]
-#![allow(
-    dead_code,
-    reason = "test support: shared by several test binaries, each using a subset"
-)]
 
 use std::sync::LazyLock;
 
 use af_core::id::Uuid7;
 use afd_billing::RUN_NANOS_PER_SEC;
-use afd_billing::biller::{Biller as _, WorkKey};
-use afd_billing::ledger::LedgerBiller;
 use afd_billing::nanos::MS_PER_SEC;
 use afd_fleet::lease::usage::Pricing;
 use afd_fleet::lease::{Billed, Delivery, Fence, Issued, Leases};
@@ -114,11 +108,7 @@ pub(crate) async fn held_admission(fixtures: Fixtures, actor: &str, request_json
         .await
         .expect("the seeded fleet is leasable");
     assert_eq!(
-        leases
-            .record_received(&acquired)
-            .await
-            .expect("the narrative log must open")
-            .delivery,
+        acquired.opened.received.delivery,
         Delivery::First,
         "a newly leased event has no row yet"
     );
@@ -171,72 +161,112 @@ async fn issue_received(
         .expect("the claim is still held")
 }
 
+/// Another fleet's lease, held by the same runner as a [`Held`].
+pub(crate) struct Other {
+    pub(crate) lease: Uuid7,
+    pub(crate) fleet: Uuid7,
+    pub(crate) tenant: Uuid7,
+    pub(crate) workspace: Uuid7,
+}
+
+/// Room for every lease a test hands one host.
+const HOST_WORKERS: i32 = 8;
+
 impl Held {
-    /// What the billing relay does for this lease: charge every line it left
-    /// unsettled. Scoped to the lease, so a test on the shared database never
-    /// settles another test's lines.
-    pub(crate) async fn relay(&self) {
-        let database = &self.fixtures.database;
-        let work = WorkKey::FleetLease(self.lease_key.clone());
-        let unsettled = afd_billing::ledger::unsettled_work(
-            &mut *database.acquire().await.expect("a pooled connection"),
-            &work,
+    /// The target a gateway session holds for this lease, read from the lease
+    /// row as a test has aged it: whether the lease is still the live holder
+    /// decides whether the frames it forwards count toward delivery timing.
+    pub(crate) async fn activity_target(&self) -> afd_fleet::lease::activity::Target {
+        let (created_at, event_created_at, live): (
+            jiff_sqlx::Timestamp,
+            jiff_sqlx::Timestamp,
+            bool,
+        ) = sqlx::query_as(
+            "SELECT l.created_at, l.event_created_at,
+                    l.status = $3 AND l.lease_expires_at > statement_timestamp()
+                        AND EXISTS (SELECT 1 FROM runner.fleet_slots s
+                                    WHERE s.fleet_id = l.fleet_id
+                                      AND s.last_runner_id = l.runner_id
+                                      AND s.fencing_token = l.fencing_token
+                                      AND s.lease_expires_at > statement_timestamp())
+             FROM runner.leases l WHERE l.id = $1 AND l.runner_id = $2",
+        )
+        .bind(&self.issued.lease_id)
+        .bind(&self.runner)
+        .bind(afd_state::sql::LEASE_STATUS_ACTIVE)
+        .fetch_one(
+            &mut *self
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("a pooled connection"),
         )
         .await
-        .expect("the lease's lines read");
-        for settlement in unsettled {
-            LedgerBiller::on_system_clock(database.clone())
-                .settle(&settlement)
-                .await
-                .expect("the relay charges the lease's lines");
+        .expect("the held lease reads");
+        afd_fleet::lease::activity::Target {
+            fleet_id: self.fleet.clone(),
+            event_id: self.event_id.clone(),
+            lease_created_at: created_at.to_jiff(),
+            event_created_at: event_created_at.to_jiff(),
+            timing_eligible: live,
+            fence: self.fence.as_i64(),
         }
     }
 
-    /// Moves the fleet's live sequence one past the held lease, as a won claim
-    /// does before it expires the prior lease, and answers the new sequence.
-    pub(crate) async fn supersede(&self) -> u64 {
-        let mut connection = self
-            .fixtures
-            .database
-            .acquire()
-            .await
-            .expect("a pooled connection");
-        let live: i64 = sqlx::query_scalar(
-            "UPDATE runner.fleet_slots SET fencing_token = fencing_token + 1
-             WHERE fleet_id = $1 RETURNING fencing_token",
-        )
-        .bind(&self.fleet)
-        .fetch_one(&mut *connection)
-        .await
-        .expect("the held fleet has an affinity row");
-        assert!(
-            live > self.fence.as_i64(),
-            "the sequence must outrank the held lease, or this test proves nothing"
-        );
-        u64::try_from(live).expect("a sequence is never negative")
-    }
-
-    /// Ages the lease's meter by one [`SLICE`], as a second of runtime would,
-    /// and answers the stamp the next settle or renewal measures from.
-    ///
-    /// Settles and renewals meter up to the database's clock, so a test runs a
-    /// slice by moving the meter's start back rather than by naming an instant.
-    pub(crate) async fn run_a_slice(&self) -> Timestamp {
-        self.fixtures
-            .age(
-                Row::Lease(&self.issued.lease_id),
-                crate::lease_reads::COLUMN_LAST_METERED,
-                SLICE,
+    /// Another fleet's lease, claimed and issued by this runner, in the same
+    /// database: one host's renewal frame names every lease it holds.
+    pub(crate) async fn hold_another(&self) -> Other {
+        sqlx::query("UPDATE runner.runners SET worker_count = $2 WHERE id = $1")
+            .bind(&self.runner)
+            .bind(HOST_WORKERS)
+            .execute(
+                &mut *self
+                    .fixtures
+                    .database
+                    .acquire()
+                    .await
+                    .expect("a pooled connection"),
             )
-            .await;
-        self.fixtures.metered_since(&self.fleet).await
-    }
-
-    /// The wall time between `from` and the meter's stamp now, which is the
-    /// slice the last settle or renewal charged for.
-    pub(crate) async fn metered_from(&self, from: Timestamp) -> i64 {
-        let to = self.fixtures.metered_since(&self.fleet).await;
-        af_core::clock::saturating_millis_signed(af_core::clock::elapsed(from, to))
+            .await
+            .expect("the host takes several leases");
+        let Seeded { fleet, tenant, .. } =
+            seeded_for::<2>(&self.fixtures, ACTOR, REQUEST_JSON).await;
+        // The first fleet's placement tag, so this runner may place the second.
+        sqlx::query(
+            "UPDATE fleet.fleets SET required_tags = \
+             (SELECT required_tags FROM fleet.fleets WHERE id = $2) WHERE id = $1",
+        )
+        .bind(&fleet)
+        .bind(&self.fleet)
+        .execute(
+            &mut *self
+                .fixtures
+                .database
+                .acquire()
+                .await
+                .expect("a pooled connection"),
+        )
+        .await
+        .expect("the second fleet takes the first's placement tag");
+        self.fixtures.seed_wallet(&tenant, DEEP_POOL).await;
+        let acquired = crate::seed::select_fleet(&self.leases, &self.runner, &fleet)
+            .await
+            .expect("the second fleet is leasable");
+        let issued = issue_received(
+            &self.leases,
+            &self.runner,
+            &acquired,
+            &tenant,
+            self.fixtures.enrolled_at(),
+        )
+        .await;
+        Other {
+            lease: issued.lease_id,
+            fleet,
+            tenant,
+            workspace: acquired.workspace_id,
+        }
     }
 }
 
@@ -246,4 +276,5 @@ pub(crate) const fn run_fee(wall_ms: i64) -> i64 {
 }
 
 mod plane;
+mod slices;
 pub(crate) use plane::FIXTURE_KEK_HEX;

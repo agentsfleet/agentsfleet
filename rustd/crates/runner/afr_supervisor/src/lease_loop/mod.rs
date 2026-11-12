@@ -1,7 +1,7 @@
 //! One lease, end to end.
 //!
 //! ```text
-//!   admit ─► turn ─► memory (the lease's window, or read) ─► [size, egress, checkout plan] ─► run
+//!   admit ─► turn ─► memory (the lease's window, or read) ─► [egress, checkout plan] ─► run
 //!                                  └─► [take hold or prepare ─► checkout] ─┘ beside it
 //!   ─► [hold frozen, or kill] ─► current report retained in memory ─► report acknowledged
 //!   ─► [release the killed sandbox's disk ∥ activity drained]

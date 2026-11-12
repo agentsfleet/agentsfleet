@@ -1,12 +1,14 @@
 //! Runner-control HTTP adapters.
 //!
-//! Enrollment, heartbeat, lease, credential, memory, activity, and report
-//! handlers live here so host protocol changes compile independently.
+//! The stream, enrolment, self-record, credential, memory, message, schedule,
+//! tool-call, decision and task handlers live here so host protocol changes
+//! compile independently. Heartbeats, leases, renewals, activity and reports
+//! travel on the stream.
 
 #![deny(unused_crate_dependencies)]
 #![deny(clippy::self_named_module_files)]
 
-pub use afd_http::{admission, auth, envelope, etag, request_id, route, services};
+pub use afd_http::{auth, envelope, request_id, route, services};
 
 pub(crate) mod handler;
 
@@ -25,7 +27,6 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
     match verb {
         RunnerRoute::SelfRecord => get(handler::runner::self_record::handle::<D>),
         RunnerRoute::Stream => post(handler::runner::stream::handle::<D>),
-        RunnerRoute::ContextCheckpoint => context_checkpoint_handler::<D>(),
         RunnerRoute::TaskCheckpoints => post(handler::runner::task_checkpoints::plan::handle::<D>),
         RunnerRoute::TaskCheckpoint => {
             patch(handler::runner::task_checkpoints::commit::handle::<D>)
@@ -74,8 +75,4 @@ pub fn handler_for<D: Services>(verb: RunnerRoute) -> MethodRouter<Arc<D>> {
 /// Returns the unauthenticated runner-enrolment handler.
 pub fn enrolment_handler<D: Services>() -> MethodRouter<Arc<D>> {
     post(handler::runner::enrolment::handle::<D>)
-}
-
-fn context_checkpoint_handler<D: Services>() -> MethodRouter<Arc<D>> {
-    get(handler::runner::context::load::<D>).put(handler::runner::context::put::<D>)
 }

@@ -39,7 +39,7 @@ async fn exhausted_wait_stops_before_credential_mint_or_dependency_read() {
             assert_eq!(changed.rows_affected(), 1);
             waiting.due().await;
             stopped(&waiting, TaskState::Exhausted, reason).await;
-            waiting.finish().await;
+            Box::pin(waiting.finish()).await;
         })
         .await;
     }
@@ -56,7 +56,7 @@ async fn revoked_github_grant_stops_wait_before_credential_mint_or_dependency_re
         assert_eq!(changed.rows_affected(),1);
         waiting.due().await;
         stopped(&waiting,TaskState::Blocked,"dependency_access_unavailable").await;
-        waiting.finish().await;
+        Box::pin(waiting.finish()).await;
     }).await;
 }
 

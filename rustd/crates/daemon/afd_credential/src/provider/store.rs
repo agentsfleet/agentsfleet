@@ -28,6 +28,8 @@ pub struct Providers {
     database: Db,
     vault: Vault,
     entropy: Entropy,
+    /// The platform default's resolution, shared by every clone.
+    platform_keys: super::cache::PlatformKeys,
 }
 
 impl Providers {
@@ -42,7 +44,22 @@ impl Providers {
             vault: Vault::new(database.clone(), kek, entropy.clone()),
             database,
             entropy,
+            platform_keys: super::cache::PlatformKeys::default(),
         }
+    }
+
+    /// This store with its platform key cache telling time by `clock`, so a
+    /// test can move the price window and the time limit without waiting.
+    #[cfg(any(test, feature = "test-util"))]
+    #[must_use]
+    pub fn with_platform_clock(mut self, clock: Arc<dyn af_core::clock::Clock>) -> Self {
+        self.platform_keys = super::cache::PlatformKeys::new(clock);
+        self
+    }
+
+    /// The platform resolutions this replica holds, by witness.
+    pub(crate) const fn platform_keys(&self) -> &super::cache::PlatformKeys {
+        &self.platform_keys
     }
 
     /// The source a minted registry-entry identifier is drawn from.

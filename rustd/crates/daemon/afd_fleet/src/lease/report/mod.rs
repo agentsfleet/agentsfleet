@@ -44,7 +44,7 @@ use crate::lease::pull::LeaseService;
 use crate::lease::settle::Reported;
 use crate::lease::usage::Pricing;
 
-use assembly::{Subject, posture_of, stored_trace, terminal};
+use assembly::{Subject, stored_trace, terminal};
 pub use result::Reconciled;
 pub use tokens::RunTokens;
 mod assembly;
@@ -64,6 +64,11 @@ impl LeaseService {
     /// and reading them again would be a second statement for a fact this one
     /// already had.
     ///
+    /// `kept` is the lease's facts a stream session kept from the offer, so the
+    /// report reads no lease row. `None` reads them, as a session rebuilt from
+    /// the database must. The facts never change after issue, and the report
+    /// statement still checks the fence.
+    ///
     /// # Errors
     /// Refuses a lease that is not this runner's with
     /// [`lease_not_found`](crate::error), and a holder the fleet has superseded
@@ -74,15 +79,21 @@ impl LeaseService {
     ///
     /// Marks each stage it reaches on `clock`: the load, the preparation, the
     /// capture, the commit and the announce.
-    pub async fn report(
+    pub async fn report_with(
         &self,
         runner_id: &Uuid7,
         request: &ReportRequest<'_>,
         now: Timestamp,
+        kept: Option<Reported>,
         clock: &mut VerbClock<ReportStage>,
     ) -> Result<Reconciled> {
         let lease_id = &crate::error::wire_lease(request.lease_id.as_ref())?;
-        let loaded = self.leases.load_for_report(lease_id, runner_id).await;
+        // The load stage is marked either way: a kept lease reaches it at
+        // once, so the span shows the read the session saved.
+        let loaded = match kept {
+            Some(lease) => Ok(Some(lease)),
+            None => self.leases.load_for_report(lease_id, runner_id).await,
+        };
         clock.mark(ReportStage::Load);
         let Some(lease) = loaded? else {
             return Err(lease_not_found());
@@ -98,14 +109,35 @@ impl LeaseService {
             None => None,
         };
         let tool_calls = stored_trace(&lease, request);
-        let pricing = Pricing::load(
-            self.leases.pool(),
-            posture_of(&lease),
-            &lease.provider,
-            &lease.model,
-            lease_id.as_str(),
-        )
-        .await;
+        // The book cached at the version this report read beside the lease:
+        // a warm replica reads no price, and the statement guards on the
+        // version.
+        let posture = Pricing::posture_of(&lease.posture)?;
+        let pricing = match lease.catalogue_version {
+            Some(version) => {
+                self.leases
+                    .prices()
+                    .get_or_load(
+                        self.leases.pool(),
+                        posture,
+                        &lease.provider,
+                        &lease.model,
+                        Some(version),
+                        lease_id.as_str(),
+                    )
+                    .await
+            }
+            None => std::sync::Arc::new(
+                Pricing::load(
+                    self.leases.pool(),
+                    posture,
+                    &lease.provider,
+                    &lease.model,
+                    lease_id.as_str(),
+                )
+                .await,
+            ),
+        };
         let last_event = Uuid7::parse(request.checkpoint.last_event_id.as_ref())?;
         let mut report = terminal(
             Subject {

@@ -40,11 +40,11 @@ const POLL: Duration = Duration::from_millis(100);
 
 /// An unsettled line on a work no row names.
 const INSERT_LINE: &str = "INSERT INTO billing.usage_lines \
-     (id, work_type, work_id, seq, tenant_id, workspace_id, provider, model, posture, \
+     (id, work_type, work_id, seq, kind, tenant_id, workspace_id, provider, model, posture, \
       requested_at, input_token_count, cached_input_token_count, cache_write_token_count, \
       cache_write_5m_token_count, cache_write_1h_token_count, output_token_count, runtime_ms, \
       unpriced_token_count, charged_nanos, created_at, updated_at) \
-     VALUES ($1, $2, $3, 0, $4, $4, 'fixture', 'fixture', 'platform', \
+     VALUES ($1, $2, $3, 0, 'model', $4, $4, 'fixture', 'fixture', 'platform', \
              now(), 0, 0, 0, 0, 0, 0, 0, 0, $5, now(), now())";
 
 /// A receipt two days old, past the one-day replay window.

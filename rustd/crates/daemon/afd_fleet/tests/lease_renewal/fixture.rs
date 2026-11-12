@@ -65,10 +65,6 @@ impl Running {
         let acquired = seed::select_fleet(&leases, &runner, &fleet)
             .await
             .expect("a fresh affinity is selected");
-        leases
-            .record_received(&acquired)
-            .await
-            .expect("open event history");
         let issued = leases
             .issue(
                 &runner,

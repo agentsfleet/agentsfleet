@@ -2,7 +2,7 @@
 //!
 //! # Three incidents, not two
 //!
-//! `pool.rs` separates a full pool from an absent datastore by asking whether
+//! This module separates a full pool from an absent datastore by asking whether
 //! the pool was below its ceiling when sqlx reported `PoolTimedOut`. Below the
 //! ceiling used to be read as "the datastore is gone", and that reading was
 //! wrong in production: one instance answered 503 twelve times in seven

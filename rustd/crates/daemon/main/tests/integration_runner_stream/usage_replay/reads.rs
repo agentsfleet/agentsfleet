@@ -7,10 +7,14 @@ use af_core::{
     id::Uuid7,
     timing::{RENEWAL_TICK, STREAM_ANSWER_TIMEOUT, STREAM_RECOVERY_BUDGET},
 };
-use af_wire::usage::DAEMON_SEQ_BASE;
 
-const LINES: &str = "SELECT work_id, seq, input_token_count, output_token_count, charged_nanos, settled_at IS NOT NULL FROM billing.usage_lines WHERE work_id = ANY($1) ORDER BY work_id, seq";
-type Line = (Uuid7, i64, i64, i64, i64, bool);
+const LINES: &str = "SELECT work_id, seq, input_token_count, output_token_count, charged_nanos, settled_at IS NOT NULL, kind FROM billing.usage_lines WHERE work_id = ANY($1) ORDER BY work_id, kind, seq";
+type Line = (Uuid7, i64, i64, i64, i64, bool, String);
+
+/// Whether `row` is one of the runner's model calls, by its stored kind.
+fn is_model(row: &Line) -> bool {
+    row.6 == af_wire::usage::LineKind::Model.as_str()
+}
 
 pub(super) async fn owner(run: &Scenario) -> Uuid7 {
     sqlx::query_scalar("SELECT connection_id FROM runner.runners WHERE id=$1")
@@ -59,7 +63,7 @@ async fn lines(run: &Scenario, held: &[Held; 2]) -> Vec<Line> {
 fn counts(rows: &[Line], held: &[Held; 2]) -> [usize; 2] {
     held.each_ref().map(|lease| {
         rows.iter()
-            .filter(|row| row.0 == lease.lease && row.1 < i64::from(DAEMON_SEQ_BASE))
+            .filter(|row| row.0 == lease.lease && is_model(row))
             .count()
     })
 }
@@ -115,7 +119,7 @@ fn provider_rows(rows: &[Line], held: &[Held; 2], expected: [usize; 2]) {
     for (index, lease) in held.iter().enumerate() {
         let provider: Vec<_> = rows
             .iter()
-            .filter(|row| row.0 == lease.lease && row.1 < i64::from(DAEMON_SEQ_BASE))
+            .filter(|row| row.0 == lease.lease && is_model(row))
             .collect();
         assert_eq!(
             provider.len(),

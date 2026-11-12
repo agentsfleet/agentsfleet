@@ -14,6 +14,7 @@ fn offer() -> Result<Offered> {
         lease_id: Uuid7::parse("019a3c00-0000-7000-8000-000000000001")?,
         expires_at: Timestamp::UNIX_EPOCH,
         target: None,
+        reported: None,
     })
 }
 

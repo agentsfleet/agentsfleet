@@ -42,7 +42,6 @@ pub(crate) struct Shared<'run> {
     /// from it.
     pub(crate) stop: &'run CancellationToken,
     pub(crate) checkpoint: &'run dyn Checkpoint,
-    pub(crate) context_checkpoints: &'run dyn crate::ContextCheckpoints,
     /// Where the root takes the messages a person sends while it works.
     pub(crate) inbox: &'run dyn crate::Inbox,
     pub(crate) model_context_tokens: u32,
@@ -93,7 +92,6 @@ impl<'run> Shared<'run> {
             provider,
             stop: run.stop,
             checkpoint: run.checkpoint,
-            context_checkpoints: run.context_checkpoints,
             inbox: run.inbox,
             model_context_tokens: policy.model_context_tokens,
             output_tokens: policy

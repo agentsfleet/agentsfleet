@@ -197,13 +197,23 @@ async fn individual_charges_keep_tenant_filters_and_sequence_bounds() {
         .await
         .unwrap();
     assert_first_charge_page(&page);
+    // A page resumes after its last row, in `(requested_at, id)` order.
+    let first_row = page.first().unwrap();
+    let after = afd_billing::report::ChargeBoundary {
+        requested_at: first_row.requested_at,
+        line_id: first_row.id.clone(),
+    };
     let next = f
         .billing
-        .activity_charges(&f.tenant, &work, &request, Some(0))
+        .activity_charges(&f.tenant, &work, &request, Some(&after))
         .await
         .unwrap();
     assert_eq!(next.len(), 1);
-    assert_eq!(next.first().unwrap().charged_nanos, 23);
+    assert_eq!(
+        next.first(),
+        page.get(1),
+        "the next page is the row after the boundary"
+    );
     let foreign = f
         .billing
         .activity_charges(&f.foreign, &work, &request, None)
@@ -213,7 +223,7 @@ async fn individual_charges_keep_tenant_filters_and_sequence_bounds() {
     request.filter.model = Some(fixture::MODEL_A.to_owned());
     let filtered = f
         .billing
-        .activity_charges(&f.tenant, &work, &request, Some(0))
+        .activity_charges(&f.tenant, &work, &request, Some(&after))
         .await
         .unwrap();
     assert_eq!(filtered.len(), 0);
@@ -230,11 +240,15 @@ async fn individual_charges_keep_tenant_filters_and_sequence_bounds() {
 
 fn assert_first_charge_page(page: &[afd_billing::report::Charge]) {
     assert_eq!(page.len(), 2);
-    assert_eq!(
-        (
-            page.first().unwrap().sequence,
-            page.get(1).unwrap().sequence
-        ),
-        (0, 1)
+    let mut sequences: Vec<i64> = page.iter().map(|charge| charge.sequence).collect();
+    sequences.sort_unstable();
+    assert_eq!(sequences, [0, 1], "both lines, each once");
+    let order: Vec<_> = page
+        .iter()
+        .map(|charge| (charge.requested_at, &charge.id))
+        .collect();
+    assert!(
+        order.is_sorted(),
+        "a page reads in (requested_at, id) order: {page:?}"
     );
 }

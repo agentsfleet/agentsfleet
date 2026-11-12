@@ -1,7 +1,7 @@
-//! A lapsed slot requalifies the same row and carries its original billing.
+//! A lapsed slot requalifies the same row and leases it again.
 
 use af_core::id::Uuid7;
-use afd_fleet::lease::{Acquired, Billed, Delivery, Leases};
+use afd_fleet::lease::{Acquired, Billed, Delivery, Kind, Leases};
 
 use super::{enqueue, next};
 use crate::rows::Row;
@@ -17,9 +17,8 @@ async fn test_reclaimed_row_is_leased_as_redelivered() {
     let leases = fixtures.leases_with_dead_bus();
     let first = next(&leases, &holder).await.expect("first claim");
     assert!(!first.redelivered);
-    assert!(first.reused.is_none());
-    let received = leases.record_received(&first).await.expect("open event");
-    assert_eq!(received.delivery, Delivery::First);
+    assert_eq!(first.kind, Kind::Fresh);
+    assert_eq!(first.opened.received.delivery, Delivery::First);
     let issued = issue(&fixtures, &leases, &first, &holder, &tenant).await;
     fixtures.lapse_holder(&issued, &fleet).await;
 
@@ -29,15 +28,7 @@ async fn test_reclaimed_row_is_leased_as_redelivered() {
     assert_eq!(reclaimed.event_id, event, "no sweeper or stream repair ran");
     assert!(reclaimed.redelivered);
     assert!(reclaimed.fence > first.fence);
-    let reused = reclaimed.reused.expect("original billing context");
-    assert_eq!(
-        (
-            &reused.tenant_id,
-            reused.posture.as_str(),
-            reused.model.as_str()
-        ),
-        (&tenant, POSTURE, MODEL)
-    );
+    assert_eq!(reclaimed.kind, Kind::Reclaim);
     assert_eq!(
         fixtures
             .text(Row::Lease(&issued), "status")

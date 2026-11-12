@@ -1,23 +1,21 @@
--- One priced provider request (or runtime-only slice) of a piece of billed work:
--- a fleet lease or a setup-chat attempt. Written in the work's own transaction,
--- so the work and what it cost commit together; the biller moves money after
--- commit and stamps `settled_at`. The tenant's charges page and the fleet budget
--- read this table, whichever biller is configured.
---
--- No foreign keys: a line outlives the fleet, workspace, tenant and price row it
--- names (deletion matrix), so every reference is an opaque value and
--- `fleet_name` is the name when the line was written. `work_type` spellings and
--- `posture` spellings are application constants (RULE STS). Exactly one of
--- `fleet_id` / `authoring_attempt_id` is set, by `work_type`; `event_id` is set
--- for fleet work. `platform_model_price_id` is NULL when the catalogue had no
--- price covering the request, and `unpriced_token_count` counts tokens in any
--- category the chosen price leaves unknown, so an unpriced token is visible
--- rather than silently free.
+-- One priced provider request (or runtime-only slice) of billed work: a fleet
+-- lease or a setup-chat attempt, written in the work's own transaction. The
+-- biller moves money after commit and stamps `settled_at`. No foreign keys: a
+-- line outlives what it names, so every reference is opaque and `fleet_name` is
+-- the name when the line was written. `work_type`, `kind` and `posture` are
+-- application constants (RULE STS). `kind` is
+-- `af_wire::usage::LineKind` (`model`, `runtime`, `decision`) and numbers its own
+-- lines, so `seq` is unique within work and kind. Readers: `report/sql/charges.sql`,
+-- `ledger/sql/{select_unsettled,select_unsettled_work,settle_lines}.sql` and
+-- `commit_report.sql`. Exactly one of `fleet_id` / `authoring_attempt_id` is set,
+-- by `work_type`. `platform_model_price_id` is NULL when no catalogue price covered
+-- the request; `unpriced_token_count` keeps an unpriced token visible, not free.
 CREATE TABLE billing.usage_lines (
     id                          UUID   PRIMARY KEY,
     CONSTRAINT ck_usage_lines_id_uuidv7 CHECK (substring(id::text from 15 for 1) = '7'),
     work_type                   TEXT   NOT NULL,
     work_id                     UUID   NOT NULL,
+    kind                        TEXT   NOT NULL,
     seq                         BIGINT NOT NULL,
     tenant_id                   UUID   NOT NULL,
     workspace_id                UUID   NOT NULL,
@@ -42,7 +40,7 @@ CREATE TABLE billing.usage_lines (
     settled_at                  TIMESTAMPTZ(3),
     created_at                  TIMESTAMPTZ(3) NOT NULL,
     updated_at                  TIMESTAMPTZ(3) NOT NULL,
-    CONSTRAINT uq_usage_lines_work_type_work_id_seq UNIQUE (work_type, work_id, seq),
+    CONSTRAINT uq_usage_lines_work_type_work_id_kind_seq UNIQUE (work_type, work_id, kind, seq),
     CONSTRAINT ck_usage_lines_non_negative
         CHECK (seq >= 0 AND input_token_count >= 0 AND cached_input_token_count >= 0
             AND cache_write_token_count >= 0 AND cache_write_5m_token_count >= 0
@@ -59,8 +57,7 @@ CREATE INDEX idx_usage_lines_fleet_id_created_at
     ON billing.usage_lines (fleet_id, created_at) WHERE fleet_id IS NOT NULL;
 
 -- An event's cost on the history reads: one index-only probe per event row,
--- summed without visiting the table (measured 183 ms down to 5 ms on a
--- two-million-line seed in the design audit).
+-- summed without visiting the table.
 CREATE INDEX idx_usage_lines_fleet_id_event_id
     ON billing.usage_lines (fleet_id, event_id) INCLUDE (charged_nanos)
     WHERE fleet_id IS NOT NULL;
@@ -70,11 +67,8 @@ CREATE INDEX idx_usage_lines_created_at_unsettled
     ON billing.usage_lines (created_at) WHERE settled_at IS NULL;
 
 -- Keeps `fleet.activity_counters.budget_used_nanos` equal to the fleet's usage
--- (rule 5 exception), so the fleet list reads one counter row per fleet rather
--- than summing lines per row. A line is written once and its price never
--- changes, so only an insert moves the counter; `ON CONFLICT DO NOTHING` on a
--- re-sent line inserts nothing and fires nothing. Setup-chat lines name no
--- fleet and a purged fleet has no counter row, so neither writes.
+-- (rule 5 exception). Only an insert moves it (a line's price never changes);
+-- a re-sent line, a setup-chat line and a purged fleet write none.
 CREATE FUNCTION billing.usage_lines_bump_budget() RETURNS trigger
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path TO pg_catalog, fleet, billing
@@ -99,9 +93,8 @@ CREATE TRIGGER trg_usage_lines_bump_budget
 
 GRANT SELECT, INSERT, UPDATE ON billing.usage_lines TO api_runtime;
 
--- Every funds check sums one tenant's unsettled lines: the fleet issue and
--- renewal gates, the setup chat claim gate and each setup chat model call.
--- The partial index keeps that read to the tenant's lines the relay has not
--- yet charged, a few seconds' worth, however long the tenant's history.
+-- Every funds check sums one tenant's unsettled lines (the fleet gates and the
+-- setup chat gates); the partial index keeps that read to what the relay has
+-- not yet charged, however long the tenant's history.
 CREATE INDEX idx_usage_lines_tenant_id_unsettled
     ON billing.usage_lines (tenant_id) INCLUDE (charged_nanos) WHERE settled_at IS NULL;

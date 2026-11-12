@@ -8,7 +8,6 @@
 
 use super::endpoint::{self, Rejection};
 use super::managed::{Credential, FIELD_PROVIDER};
-use super::resolved::Dialled;
 use crate::error::{provider_endpoint, provider_malformed};
 use af_crypto::secret::SecretString;
 
@@ -24,10 +23,6 @@ pub(super) struct Vetted {
     pub(super) provider: Box<str>,
     /// The credential's own model, for a caller with no better source.
     pub(super) model: Option<Box<str>>,
-    /// The validated custom endpoint, present only for the compatible
-    /// provider. `Some` IS the compatible provider — the guard has refused
-    /// every other pairing by this point.
-    pub(super) dialled: Option<Dialled>,
     /// The bearer key, still unjudged: whether absence is permitted is the
     /// caller's rule, not the parse's.
     pub(super) api_key: Option<SecretString>,
@@ -77,20 +72,15 @@ pub(super) fn vet(body: &[u8]) -> Result<Vetted, Refused> {
         return Err(Refused::Malformed);
     }
 
-    // The host travels with the URL from here, because `resolve` already
-    // derived it to make its SSRF ruling — see [`Dialled`].
-    let dialled: Option<Dialled> =
-        endpoint::resolve(&credential.provider, credential.base_url.as_deref())
-            .map_err(Refused::Endpoint)?
-            .map(|endpoint| Dialled {
-                base_url: endpoint.url.into(),
-                inference_host: endpoint.host,
-            });
+    // The guard rules on the provider/base-url pairing while the body is still
+    // bytes. The daemon dials the registry entry's own route, so the ruling is
+    // all this keeps of the endpoint.
+    endpoint::resolve(&credential.provider, credential.base_url.as_deref())
+        .map_err(Refused::Endpoint)?;
 
     Ok(Vetted {
         provider: credential.provider,
         model: credential.model,
-        dialled,
         api_key: credential.api_key,
     })
 }

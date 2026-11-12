@@ -59,7 +59,10 @@ pub struct Activity<'a> {
 pub struct Charge<'a> {
     /// Opaque ledger row identifier.
     pub id: Cow<'a, str>,
-    /// Position within the activity.
+    /// What the charge bills: `model` for a model call, `runtime` for sandbox
+    /// run time, `decision` for a native decision call.
+    pub kind: Cow<'a, str>,
+    /// The charge's number within its activity and kind.
     pub sequence: i64,
     /// Exact model identifier.
     pub model: Cow<'a, str>,

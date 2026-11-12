@@ -119,7 +119,7 @@ pub(super) async fn execution(
                 .await
                 .map_err(query("lock decision execution stamp"))?
                 .ok_or(TaskRefusal::StaleState)?;
-            let task = read::on(connection, scope, &guard::id(id.as_str(), "task_id")?).await?;
+            let task = read::on(connection, scope, id).await?;
             if task.context.generation != expected.generation
                 || current.task_generation != i64::try_from(task.context.generation).ok()
                 || current.task_stop_generation != i64::try_from(task.context.stop_generation).ok()

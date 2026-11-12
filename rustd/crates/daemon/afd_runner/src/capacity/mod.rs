@@ -121,6 +121,88 @@ struct Census {
     occupied: i64,
 }
 
+/// The host row as [`lock_host`] holds it: what the claim checks before the
+/// guarded lease insert counts the host's census itself.
+#[derive(Debug, Clone, Copy)]
+pub struct Held {
+    claims_allowed: bool,
+    lease_version: i64,
+    decision_selected: bool,
+}
+
+impl Held {
+    /// Whether the host may take new work: active and not degraded. Whether a
+    /// worker is free is the insert's to count.
+    #[must_use]
+    pub const fn can_claim(self) -> bool {
+        self.claims_allowed
+    }
+
+    /// The placement choice's revision, which the insert advances.
+    #[must_use]
+    pub const fn lease_version(self) -> i64 {
+        self.lease_version
+    }
+
+    /// Whether the host has a decision profile selected.
+    #[must_use]
+    pub const fn decision_selected(self) -> bool {
+        self.decision_selected
+    }
+}
+
+/// Lock the host row and prove its owner, without the census.
+///
+/// For the fleet issue, whose insert counts occupied workers in its own guard:
+/// that statement's snapshot is taken after this lock, so it sees the
+/// preceding claimant's commit as the separate census statement did.
+///
+/// # Errors
+/// Reports a datastore that would not answer.
+pub async fn lock_host<'a>(
+    transaction: &mut Transaction<'_, Postgres>,
+    guard: impl Into<Guard<'a>>,
+) -> Result<Option<Held>> {
+    Ok(locked(transaction, guard).await?.map(|(_, host)| Held {
+        claims_allowed: !host.degraded && host.status == crate::sql::RUNNER_STATUS_ACTIVE,
+        lease_version: host.lease_version,
+        decision_selected: host.decision_selected,
+    }))
+}
+
+/// What a guard binds: the host, and for a stream call the opening's
+/// credential digest and connection, which `lock_host.sql` and a host's
+/// renewal statement compare against the host row alike.
+#[must_use]
+pub fn proof<'g>(guard: impl Into<Guard<'g>>) -> (&'g Uuid7, Option<&'g str>, Option<&'g Uuid7>) {
+    match guard.into() {
+        Guard::Enrolled(runner) => (runner, None, None),
+        Guard::Connected {
+            runner,
+            connection,
+            digest,
+        } => (runner, Some(digest.as_str()), Some(connection)),
+    }
+}
+
+/// The authorized host row, under its lock, and the runner it names.
+async fn locked<'g>(
+    transaction: &mut Transaction<'_, Postgres>,
+    guard: impl Into<Guard<'g>>,
+) -> Result<Option<(Uuid7, Host)>> {
+    let (runner_id, digest, connection) = proof(guard);
+    let host = sqlx::query_as::<_, Host>(sql::LOCK_HOST)
+        .bind(runner_id)
+        .bind(digest)
+        .bind(connection)
+        .fetch_optional(&mut **transaction)
+        .await
+        .map_err(query(sql::CONTEXT))?;
+    Ok(host
+        .filter(|host| host.authorized)
+        .map(|host| (runner_id.clone(), host)))
+}
+
 /// Lock a host and count both kinds using a fresh database-time snapshot.
 ///
 /// `None` means the authenticated host was removed. Cordoned/draining hosts
@@ -133,26 +215,11 @@ pub async fn lock<'a>(
     transaction: &mut Transaction<'_, Postgres>,
     guard: impl Into<Guard<'a>>,
 ) -> Result<Option<Capacity>> {
-    let (runner_id, digest, connection) = match guard.into() {
-        Guard::Enrolled(runner) => (runner, None, None),
-        Guard::Connected {
-            runner,
-            connection,
-            digest,
-        } => (runner, Some(digest.as_str()), Some(connection)),
-    };
-    let host = sqlx::query_as::<_, Host>(sql::LOCK_HOST)
-        .bind(runner_id)
-        .bind(digest)
-        .bind(connection)
-        .fetch_optional(&mut **transaction)
-        .await
-        .map_err(query(sql::CONTEXT))?;
-    let Some(host) = host.filter(|host| host.authorized) else {
+    let Some((runner_id, host)) = locked(transaction, guard).await? else {
         return Ok(None);
     };
     let census = sqlx::query_as::<_, Census>(sql::CENSUS)
-        .bind(runner_id)
+        .bind(&runner_id)
         .bind(crate::sql::LEASE_STATUS_ACTIVE)
         .fetch_one(&mut **transaction)
         .await
@@ -168,10 +235,25 @@ pub async fn lock<'a>(
     }))
 }
 
+/// The host states a renewal may run in: one list, read by the locked
+/// capacity check and by a host's renewal statement alike.
+const RENEWABLE: [afd_api_wire::admin::AdminState; 3] = [
+    afd_api_wire::admin::AdminState::Active,
+    afd_api_wire::admin::AdminState::Cordoned,
+    afd_api_wire::admin::AdminState::Draining,
+];
+
 fn renewable_state(state: &str) -> bool {
-    use afd_api_wire::admin::AdminState;
-    matches!(
-        af_core::spelling::from_spelling::<AdminState>(state),
-        Some(AdminState::Active | AdminState::Cordoned | AdminState::Draining)
-    )
+    af_core::spelling::from_spelling::<afd_api_wire::admin::AdminState>(state)
+        .is_some_and(|state| RENEWABLE.contains(&state))
+}
+
+/// [`RENEWABLE`]'s states spelled as `runner.runners.status` stores them, for
+/// a statement that reads the host without its lock.
+#[must_use]
+pub fn renewable_states() -> Vec<String> {
+    RENEWABLE
+        .iter()
+        .filter_map(af_core::spelling::to_spelling)
+        .collect()
 }

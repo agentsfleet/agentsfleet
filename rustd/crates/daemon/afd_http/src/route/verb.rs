@@ -30,9 +30,9 @@ pub enum Verb {
 impl Verb {
     /// Every verb this daemon can serve, in the order a reader expects.
     ///
-    /// `HEAD` is absent for the whole daemon, not merely unlisted here — see
-    /// the `HEAD` section of [`crate::route`]'s router documentation. A probe
-    /// that walks this slice is therefore walking the complete method surface.
+    /// `HEAD` is absent for the whole daemon, not merely unlisted here — the
+    /// router in `afd_api` refuses it before any handler answers. A probe that
+    /// walks this slice is therefore walking the complete method surface.
     pub const ALL: &'static [Self] = &[Self::Get, Self::Post, Self::Put, Self::Patch, Self::Delete];
 
     /// The [`Method`] this verb names.

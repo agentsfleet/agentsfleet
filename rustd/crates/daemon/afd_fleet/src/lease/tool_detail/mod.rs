@@ -8,7 +8,8 @@
 //!
 //! # The budget is per event and per fence
 //!
-//! Settlement keeps one fence's records (`DELETE_OTHER_FENCES`), so the set an
+//! Settlement keeps one fence's records (the report statement drops the rest,
+//! as `DELETE_OTHER_FENCES` does for a post), so the set an
 //! operator can open is one lease's. A reclaimed lease therefore starts with
 //! the whole budget rather than inheriting a dead lease's spend.
 

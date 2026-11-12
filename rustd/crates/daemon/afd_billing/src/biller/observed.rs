@@ -11,8 +11,8 @@ use crate::Result;
 /// `inner`, with every funds check's answer and every settlement's outcome,
 /// spend and unpriced tokens recorded.
 ///
-/// Wraps outside [`super::WithOutagePolicy`] so a check the policy admitted is
-/// counted as `unconfirmed` rather than vanishing as an error.
+/// Wraps outside [`super::FailOpen`] so a check it admitted is counted as
+/// `unconfirmed` rather than vanishing as an error.
 #[derive(Debug)]
 pub struct Observed<B> {
     inner: B,

@@ -127,7 +127,7 @@ impl Stage {
         };
         self.fixtures
             .plane()
-            .report(
+            .report_with(
                 &self.runner,
                 &request,
                 af_core::clock::after(
@@ -136,6 +136,7 @@ impl Stage {
                         u64::try_from(SLICE_MS).expect("a fixture span is not negative"),
                     ),
                 ),
+                None,
                 &mut af_observability::verb_span::VerbClock::untimed(),
             )
             .await
@@ -188,10 +189,6 @@ impl Stage {
         let acquired = crate::seed::select_fleet(&self.leases, &self.runner, &self.fleet)
             .await
             .expect("one rotation of polls must reach the fleet holding admitted work");
-        self.leases
-            .record_received(&acquired)
-            .await
-            .expect("the narrative log must open");
         let issued = self
             .leases
             .issue(

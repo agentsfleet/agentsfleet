@@ -11,7 +11,8 @@ use af_core::clock::after;
 use af_core::id::Uuid7;
 use af_core::test_util::trace::Capture;
 use af_core::timing::SANDBOX_HOLD_IDLE;
-use af_wire::lease::{LeasePayload, SandboxLimits};
+use af_wire::lease::LeasePayload;
+use af_wire::runner::NetworkPolicy;
 use futures_util::FutureExt as _;
 use jiff::Timestamp;
 
@@ -20,7 +21,7 @@ use crate::error;
 use crate::holds::Release;
 use crate::test_support::{
     Answer, Behaviour, FAILURE_REASON, FLEET_ID, FakeAgent, FakeEngine, Freezer, LEASE_ID, OUTCOME,
-    PROCESSED, RENEWAL_TERMINATE, Rig, bounded, daemon, lease, position, reported,
+    PROCESSED, RENEWAL_TERMINATE, Rig, assigned, bounded, daemon, lease, position, reported,
 };
 use af_core::timing::RENEWAL_TICK;
 
@@ -159,22 +160,19 @@ async fn test_processed_lease_parks_its_sandbox_frozen() {
     assert!(position(&calls, Verb::Report).is_some());
 }
 
-/// A lease refused before its sandbox is chosen, here by a size past every
-/// bound, settles with no hold, so the daemon would never let the fleet's
-/// held sandbox be resumed after it: the refusal releases it at once.
+/// A lease refused before its sandbox is chosen, here by an egress host the
+/// resolver cannot answer, settles with no hold, so the daemon would never let
+/// the fleet's held sandbox be resumed after it: the refusal releases it at
+/// once.
 #[tokio::test(start_paused = true)]
 async fn test_a_lease_refused_at_startup_releases_the_fleets_hold() {
     let capture = Capture::install();
     let (rig, counted) = holding(healthy, FakeEngine::default(), Behaviour::Answer);
     rig.run(&lease(LEASE_ID, FLEET_ID)).await.unwrap();
 
-    let mut refused = resumed(NEXT_LEASE_ID, FLEET_ID);
-    refused.limits = Some(SandboxLimits {
-        cpu_millis: 0,
-        memory_bytes: 0,
-        disk_bytes: 0,
-    });
-    rig.run(&refused).await.unwrap();
+    let refused = resumed(NEXT_LEASE_ID, FLEET_ID);
+    let unresolvable = assigned(NetworkPolicy::AllowListEgress, &["unknown.example"]);
+    rig.run_under(&refused, &unresolvable).await.unwrap();
     settled(&rig).await;
 
     assert_eq!(releases(&capture), [released(FLEET_ID, Release::Mismatch)]);

@@ -7,8 +7,8 @@
 //!
 //! A dropped frame is cosmetic — the durable record is the report — so a
 //! publish that fails is logged and the verb still answers. What is NOT
-//! best-effort is authorization: the lease must resolve and belong to the
-//! presenting runner, because without that check a runner could publish onto a
+//! best-effort is authorization: the target names a lease this runner's stream
+//! session was offered, because without that a runner could publish onto a
 //! fleet it holds no lease on and write into somebody else's live tail.
 //!
 //! Ordinary cosmetic frames remain available after supersession. Durable task
@@ -44,9 +44,6 @@ mod vocabulary;
 
 #[cfg(feature = "test-util")]
 pub use self::vocabulary::{ACTIVITY_VARIANTS, RenderedFrame, rendered_frames};
-
-/// Statement name, for the context a query failure carries.
-const CONTEXT_TARGET: &str = "activity lease load";
 
 /// A frame could not be published; the tail loses it and the run does not care.
 const EVENT_DROPPED: &str = "activity_frame_dropped";
@@ -163,82 +160,9 @@ impl Leases {
             );
         }
     }
-
-    /// The lease `lease_id` names, if it belongs to `runner_id`.
-    ///
-    /// No `status` predicate: an expired lease still resolves, because a
-    /// superseded holder's cosmetic frames are harmless and refusing them would
-    /// cut the tail off exactly when a run is being reclaimed — the moment an
-    /// operator is most likely to be watching it.
-    ///
-    /// # Errors
-    /// Reports a datastore that would not answer, and a `fleet_id` that is not
-    /// an identifier.
-    pub async fn load_activity_target(
-        &self,
-        lease_id: &Uuid7,
-        runner_id: &Uuid7,
-    ) -> Result<Option<Target>> {
-        let mut connection = self.pool().acquire().await?;
-        let found: Option<LeaseTarget> = sqlx::query_as(sql::activity::SELECT_LEASE_TARGET)
-            .bind(lease_id)
-            .bind(runner_id)
-            .bind(sql::LEASE_STATUS_ACTIVE)
-            .fetch_optional(&mut *connection)
-            .await
-            .map_err(query(CONTEXT_TARGET))?;
-        let Some(found) = found else {
-            return Ok(None);
-        };
-        Ok(Some(Target {
-            fleet_id: found.fleet_id.clone(),
-            event_id: found.event_id,
-            lease_created_at: found.created_at,
-            event_created_at: found.event_created_at,
-            timing_eligible: found.live,
-            fence: found.fencing_token,
-        }))
-    }
-}
-
-/// What [`sql::activity::SELECT_LEASE_TARGET`] answers for one lease.
-#[derive(sqlx::FromRow)]
-struct LeaseTarget {
-    fleet_id: Uuid7,
-    event_id: Uuid7,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    created_at: Timestamp,
-    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
-    event_created_at: Timestamp,
-    fencing_token: i64,
-    live: bool,
 }
 
 impl crate::lease::pull::LeaseService {
-    /// Forward one batch of live-tail frames for a lease this runner holds.
-    ///
-    /// # Errors
-    /// Refuses a lease that is not this runner's, and reports a datastore that
-    /// would not answer. A queue that will not take a frame is NOT an error —
-    /// see [`Leases::publish_activity`].
-    pub async fn activity(
-        &self,
-        runner_id: &Uuid7,
-        lease_id: &str,
-        frames: &[ActivityFrame<'_>],
-    ) -> Result<()> {
-        let lease_id = &crate::error::wire_lease(lease_id)?;
-        let Some(target) = self
-            .leases
-            .load_activity_target(lease_id, runner_id)
-            .await?
-        else {
-            return Err(crate::error::lease_not_found());
-        };
-        self.activity_for_target(runner_id, lease_id, &target, frames)
-            .await
-    }
-
     /// Publish from a session's confirmed target without another lease-target lookup.
     /// Task progress still saves canonical history under its live database fence.
     ///
@@ -295,7 +219,7 @@ fn record_first_chunk(target: &Target, frames: &[ActivityFrame<'_>]) {
         producers::fleet::delivery_stage(stage, af_core::clock::elapsed(since, received_at));
     }
     producers::fleet::delivery_stage(
-        DeliveryStage::ZombieToFirstChunk,
+        DeliveryStage::RunToFirstChunk,
         core::time::Duration::from_millis(first_ms),
     );
 }

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use opentelemetry::KeyValue;
-use opentelemetry::metrics::Histogram;
+use opentelemetry::metrics::{Counter, Histogram};
 
 use crate::error::Result;
 use crate::metrics::declared::database as declared;
@@ -16,10 +16,12 @@ use crate::producers::{GaugeSources, installed};
 #[derive(Debug)]
 pub struct Handles {
     acquire: Histogram<f64>,
+    checkout_pings: Counter<u64>,
 }
 
 impl Handles {
-    /// Claims the histogram and the nonblocking pool snapshot callback.
+    /// Claims the histogram, the ping counter and the nonblocking pool
+    /// snapshot callback.
     ///
     /// # Errors
     /// Refuses a census/instrument disagreement.
@@ -28,6 +30,7 @@ impl Handles {
         instruments.gauge_u64(&declared::POOL_CONNECTIONS, move || pools())?;
         Ok(Self {
             acquire: instruments.histogram_f64(&declared::POOL_ACQUIRE_DURATION)?,
+            checkout_pings: instruments.counter_u64(&declared::POOL_CHECKOUT_PINGS_TOTAL)?,
         })
     }
 }
@@ -41,6 +44,16 @@ pub fn acquired(role: PoolRole, outcome: AcquireOutcome, elapsed: Duration) {
                 KeyValue::new(crate::semconv::LABEL_ROLE, role.as_str()),
                 KeyValue::new(crate::semconv::LABEL_OUTCOME, outcome.as_str()),
             ],
+        );
+    }
+}
+
+/// Records one idle connection `role`'s pool tested before a checkout.
+pub fn pinged(role: PoolRole) {
+    if let Some(producers) = installed() {
+        producers.database.checkout_pings.add(
+            1,
+            &[KeyValue::new(crate::semconv::LABEL_ROLE, role.as_str())],
         );
     }
 }

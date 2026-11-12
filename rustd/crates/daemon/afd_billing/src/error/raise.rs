@@ -10,9 +10,7 @@ use super::{Error, ErrorKind};
 // `map_err` appears on a path that adds nothing (`RUST_ERROR_STANDARD` rule 2).
 // `sqlx::Error` is deliberately absent: a statement failure carries WHICH
 // statement, which is context only the call site knows, so it goes through
-// [`query`] instead of a blanket lift. `af_core::error::Error` lifts to
-// `Identifier` and not to `RowMalformed` for the same reason — a malformed
-// column names the table and the column, and only its reader knows those.
+// [`query`] instead of a blanket lift.
 af_core::error_lifts!(Error, ErrorKind:
     afd_db::Error => Datastore,
     af_crypto::error::Error => Entropy,
@@ -34,21 +32,6 @@ pub(crate) fn query(context: &'static str) -> impl Fn(sqlx::Error) -> Error {
         } else {
             ErrorKind::Query { context, source }.into()
         }
-    }
-}
-
-/// Reports a stored value this build cannot read, naming table and column.
-pub(crate) fn row_malformed(
-    table: &'static str,
-    column: &'static str,
-) -> impl Fn(af_core::error::Error) -> Error {
-    move |source| {
-        ErrorKind::RowMalformed {
-            table,
-            column,
-            source,
-        }
-        .into()
     }
 }
 
@@ -79,17 +62,8 @@ pub(crate) fn charges_cursor_invalid() -> Error {
 /// the morning and are exactly what the happy path never touches. A sample built
 /// here rather than in the suite means adding a variant without a sample is a
 /// change in THIS file, next to the variant.
-///
-/// # Panics
-/// When a sibling crate stops refusing an input this builder relies on being
-/// refused. That is a change in that crate's contract rather than a runtime
-/// condition.
 #[cfg(feature = "test-util")]
 #[must_use]
-#[expect(
-    clippy::expect_used,
-    reason = "a sample builder whose own preconditions fail should stop the suite"
-)]
 pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
     let datastore = afd_db::error::invalid_bool_knob("MIGRATE_ON_START");
 
@@ -98,12 +72,6 @@ pub fn one_of_each_kind() -> Vec<(&'static str, Error)> {
         (
             "timed out",
             query("settle usage")(afd_db::error::database_answer("55P03")),
-        ),
-        (
-            "row malformed",
-            row_malformed("billing.usage_lines", "tenant_id")(
-                af_core::id::Uuid7::parse("not-an-id").expect_err("the fixture is malformed"),
-            ),
         ),
         ("wallet missing", billing_wallet_missing()),
         ("charges cursor invalid", charges_cursor_invalid()),

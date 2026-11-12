@@ -6,21 +6,19 @@
 //! without it: reclaim looks for a still-`active` lease row, and only this
 //! writes one.
 //!
-//! # The meter reset rides the row
+//! # The metering cursor starts with the row
 //!
-//! A FRESH lease resets the per-fleet metering cursor in the statement that
+//! Every lease writes its own cursor, `last_metered_at`, in the statement that
 //! writes the row, so no lease can land over a cursor left from a previous
-//! run: the renewal CTE reads it for each slice's delta, and a stale one
-//! over-charges the first renewal. A RECLAIM must not reset — the re-leased
-//! run meters forward from where the dead holder stopped, which is the whole
-//! reason the cursor survives a claim.
+//! run: the renewal reads it for each slice's delta, and a stale one
+//! over-charges the first renewal. A reclaimed lease is a new row with its own
+//! cursor, so it bills only the time its own holder ran.
 
 use af_core::id::Uuid7;
 use af_observability::metrics::label::fleet::DeliveryStage;
 use af_observability::producers;
 use af_wire::decision::DecisionAssignment;
 use af_wire::lease::LeaseKind;
-use afd_runner::capacity::choice;
 use jiff::Timestamp;
 use sqlx::Connection as _;
 
@@ -34,10 +32,10 @@ const CONTEXT_ISSUE: &str = "lease issue";
 
 /// What the gates resolved, and what the row records about the money.
 ///
-/// Carried in rather than resolved here: a FRESH lease bills and then issues,
-/// so the key it billed is the key it delivers — one resolution, no rotation
-/// between the two. A RECLAIM never bills at all and carries the dead holder's
-/// values forward instead.
+/// Carried in rather than resolved here: the gates resolve what the lease bills
+/// and then it issues, so the key it billed is the key it delivers — one
+/// resolution, no rotation between the two. A reclaim passes the same gates
+/// again, so it carries its own resolution rather than the dead holder's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Billed<'a> {
     /// The tenant whose wallet answers for this run.
@@ -46,9 +44,8 @@ pub struct Billed<'a> {
     pub posture: &'a str,
     /// The provider resolved at billing.
     ///
-    /// Empty on a reclaim, which has no billing pass of its own. Stored beside
-    /// the model so the renew gate and the report settle can key the rate row
-    /// by `(provider, model)` without re-resolving.
+    /// Stored beside the model so the renew gate and the report settle can key
+    /// the rate row by `(provider, model)` without re-resolving.
     pub provider: &'a str,
     /// The model resolved at billing.
     pub model: &'a str,
@@ -67,11 +64,10 @@ pub struct Issued {
     pub task: Option<af_wire::task::TaskContext<'static>>,
     /// Actual slot deadline after task limits were applied.
     pub expires_at: Timestamp,
-    /// Immutable native runtime ceiling, including any shorter task slice.
-    pub execution_deadline: Timestamp,
 }
 
 impl Leases {
+    #[cfg(any(test, feature = "test-util"))]
     /// Write the lease row for `acquired`, and the audit row that explains it.
     ///
     /// One statement lands the lease, its `lease_acquired` event, the runner's
@@ -98,7 +94,13 @@ impl Leases {
             .await
     }
 
-    pub(crate) async fn issue_for_revision(
+    /// [`Self::issue`] under the claim's setup proof, as delivery issues: a
+    /// fleet whose head moved since the claim gets no lease, and a plain
+    /// admission reads no task source.
+    ///
+    /// # Errors
+    /// As [`Self::issue`].
+    pub async fn issue_for_revision(
         &self,
         runner_id: &Uuid7,
         acquired: &Acquired,
@@ -111,14 +113,15 @@ impl Leases {
         if !crate::task::lease::parents(&mut transaction, acquired).await? {
             return Ok(None);
         }
-        let Some(capacity) = self.lock_host_capacity(&mut transaction, runner_id).await? else {
+        let Some(host) = self.lock_host(&mut transaction, runner_id).await? else {
             return Ok(None);
         };
-        if !self.permits_issue(capacity, acquired) {
+        if !self.permits_issue(host) {
             return Ok(None);
         }
         let (lease_id, event_row_id) = self.mint(now)?;
-        let decision = super::decision::freeze(&mut transaction, runner_id, capacity).await?;
+        let decision =
+            super::decision::freeze(&mut transaction, runner_id, host.decision_selected()).await?;
         let Some(created_at) = (sql::lease::LeaseRow {
             lease_id: &lease_id,
             runner_id,
@@ -132,28 +135,27 @@ impl Leases {
             model: billed.model,
             fencing_token: acquired.fence.as_i64(),
             status: sql::LEASE_STATUS_ACTIVE,
-            checked_at: capacity.now(),
             event_row_id: &event_row_id,
             kind: acquired.kind.as_str(),
             decision_snapshot: decision.as_deref(),
+            lease_version: host.lease_version(),
+            lease_kind: LeaseKind::Fleet.as_str(),
+            leased_until: acquired.leased_until,
+            setup_revision: revision.map(|proof| &proof.current),
         })
         .insert(&mut transaction)
         .await?
         else {
+            // A full host, a moved fence or a moved choice wrote nothing that
+            // commits: the transaction rolls back with this return.
             return Ok(None);
         };
-        // The returned timestamp proves the fenced lease and its lifetime tally were written together.
-        // The host lock still protects the optimistic choice version.
-        if !choice::record(&mut transaction, runner_id, capacity, LeaseKind::Fleet).await? {
-            return Ok(None);
-        }
         let Some((task, expires_at)) =
             crate::task::lease::attach(&mut transaction, acquired, runner_id, &lease_id, revision)
                 .await?
         else {
             return Ok(None);
         };
-        let execution_deadline = super::deadline::read(&mut transaction, &lease_id).await?;
         transaction.commit().await.map_err(query(CONTEXT_ISSUE))?;
 
         record_issued(&lease_id, runner_id, acquired, decision.as_deref());
@@ -163,16 +165,16 @@ impl Leases {
             decision,
             task,
             expires_at,
-            execution_deadline,
         }))
     }
 
-    fn permits_issue(&self, capacity: afd_runner::capacity::Capacity, acquired: &Acquired) -> bool {
-        capacity.can_claim()
-            && acquired.leased_until > capacity.now()
-            && self
-                .ticket()
-                .is_none_or(|ticket| ticket.permits(capacity, LeaseKind::Fleet))
+    /// Whether the locked host may take this lease before the insert counts
+    /// its workers and rechecks the claim's deadline itself.
+    fn permits_issue(&self, host: afd_runner::capacity::Held) -> bool {
+        host.can_claim()
+            && self.ticket().is_none_or(|ticket| {
+                ticket.permits_revision(host.lease_version(), LeaseKind::Fleet)
+            })
     }
 
     /// Draw the independent lease and audit identities.

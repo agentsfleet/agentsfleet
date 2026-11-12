@@ -215,9 +215,10 @@ pub(crate) enum ErrorKind {
         source: Box<dyn std::error::Error + Send + Sync>,
     },
 
-    /// A lease asked for a sandbox size outside the wire's bounds.
-    #[error("the lease asked for a sandbox size this runner will not build")]
-    LeaseSize {
+    /// A value broke a bound the wire declares: a recovery page, a path, or a
+    /// message the runner validates before it trusts it.
+    #[error("a value broke a bound the wire declares")]
+    Invalid {
         /// Which bound it broke.
         #[source]
         source: garde::Report,

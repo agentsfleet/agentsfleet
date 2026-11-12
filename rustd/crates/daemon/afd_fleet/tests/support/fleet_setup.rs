@@ -1,10 +1,6 @@
 //! Runtime fixtures append the same native revisions that production Save selects.
 
 #![expect(clippy::expect_used, reason = "fixture preconditions must fail loudly")]
-#![allow(
-    dead_code,
-    reason = "the shared fixture is used by two integration binaries"
-)]
 
 use crate::support::Fixtures;
 use af_core::id::Uuid7;
@@ -51,7 +47,7 @@ pub(crate) fn definition(config: &str) -> Definition {
 
 impl Fixtures {
     /// Makes `config` the fleet's head revision without parsing it, as a
-    /// stored row written by an older daemon could hold.
+    /// malformed stored row could hold.
     pub(crate) async fn corrupt_native_config(&self, fleet: &Uuid7, config: &str) {
         let mut connection = self.database.acquire().await.expect("fault connection");
         let corrupt: String = sqlx::query_scalar(CORRUPT_HEAD_DEFINITION)

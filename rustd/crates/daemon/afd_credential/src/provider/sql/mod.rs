@@ -37,16 +37,14 @@
 /// reads as the platform posture, and a credential deleted out of band reads
 /// as a NULL provider rather than as no selection at all.
 ///
-/// The ceiling is the smallest the catalogue publishes for the model: under
-/// its own provider for a named credential, and under ANY provider for the
-/// compatible one, whose user-hosted endpoint the catalogue cannot carry. A
-/// context window is a property of the MODEL, not of the host serving it.
-/// `COALESCE` supplies the unknown/auto sentinel when the catalogue knows the
-/// model under no provider at all, and `GREATEST(…, 0)` is the catalogue's own
-/// clamp: `context_cap_tokens` is `INTEGER NOT NULL` with no nonnegative
-/// constraint, because bounds are the application's (RULE STS).
+/// The ceiling is the smallest the catalogue publishes for the model under the
+/// credential's own provider. `COALESCE` supplies the unknown/auto sentinel when
+/// the catalogue knows the model under no provider at all, and `GREATEST(…, 0)`
+/// is the catalogue's own clamp: `context_cap_tokens` is `INTEGER NOT NULL`
+/// with no nonnegative constraint, because bounds are the application's
+/// (RULE STS).
 ///
-/// `$1` tenant · `$2` the compatible provider's name.
+/// `$1` tenant.
 pub const SELECT_TENANT_SELECTION: &str = include_str!("select_tenant_selection.sql");
 
 /// Whether the tenant's selection points at one registry entry.
@@ -57,7 +55,7 @@ pub const SELECT_TENANT_SELECTION: &str = include_str!("select_tenant_selection.
 /// `$1` tenant · `$2` entry.
 pub const SELECT_SELECTION_HOLDS: &str = include_str!("select_selection_holds.sql");
 
-/// The active platform default: provider, key location, model, endpoint, cap.
+/// The active platform default: provider, model, cap.
 ///
 /// `PUT /v1/admin/platform-keys` enforces exactly one active row. The ORDER BY
 /// is a determinism guard rather than a selector — a parallel integration test
@@ -167,20 +165,15 @@ pub const INSERT_TENANT_MODEL_IF_ABSENT: &str = include_str!("insert_tenant_mode
 /// between checking it and pointing at it. No row back IS the "not catalogued"
 /// refusal; a separate `SELECT` first would be a race.
 ///
-/// `$5` carries whether the credential's provider is the compatible one, and
-/// it is what makes this one statement rather than two near-identical ones:
-///
-/// - A NAMED provider must be catalogued for its own provider. The `WHERE`
-///   requires that exact row, so a miss writes nothing.
-/// - The COMPATIBLE provider hosts a user's own endpoint, so the model is
-///   absent from the platform catalogue by design. The `WHERE` passes
-///   unconditionally.
+/// Every provider, the compatible one included, must be catalogued for its own
+/// provider: resolution joins the same row, so a credential whose model the
+/// catalogue does not carry would activate and then fail every run. The `WHERE`
+/// requires that exact row, so a miss writes nothing.
 ///
 /// `RETURNING` echoes the pointer and the ceiling
 /// [`SELECT_TENANT_SELECTION`] would compute for it, so the response reports
 /// the write instead of re-reading it — a re-read can observe a racing
 /// writer's row.
 ///
-/// `$1` tenant · `$2` provider · `$3` model · `$4` secret ref · `$5` whether
-/// the provider is the compatible one.
+/// `$1` tenant · `$2` provider · `$3` model · `$4` secret ref.
 pub const ACTIVATE_TENANT_MODEL: &str = include_str!("activate_tenant_model.sql");

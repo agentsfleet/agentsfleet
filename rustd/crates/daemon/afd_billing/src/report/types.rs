@@ -160,12 +160,25 @@ pub struct Activity {
     pub postures: Vec<String>,
 }
 
+/// Where an activity's charges page resumes: after this line, in the
+/// `(requested_at, id)` order the page reads.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChargeBoundary {
+    /// The last line's `requested_at`.
+    pub requested_at: Timestamp,
+    /// The last line's identifier, which breaks a tie on the instant.
+    pub line_id: Uuid7,
+}
+
 /// One individually recorded settled line within an activity.
 #[derive(Debug, Clone, PartialEq, Eq, sqlx::FromRow)]
 pub struct Charge {
     /// Ledger row identifier.
     pub id: Uuid7,
-    /// Monotonic position within the work item.
+    /// What the line bills: `model`, `runtime` or `decision`
+    /// (`af_wire::usage::LineKind`).
+    pub kind: String,
+    /// The line's number within its work and kind.
     pub sequence: i64,
     /// Model identifier.
     pub model: String,

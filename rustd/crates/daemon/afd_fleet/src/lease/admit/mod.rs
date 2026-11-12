@@ -30,16 +30,15 @@
 mod declined;
 mod fault;
 mod gates;
+pub(crate) use self::gates::GateFacts;
 mod verdict;
 
 pub use self::declined::Declined;
 
 use af_core::id::Uuid7;
 use af_fleet_runtime::config::Budget;
-use jiff::Timestamp;
 
 use crate::error::Result;
-use afd_billing::Accounts;
 use afd_billing::biller::Biller;
 use afd_billing::rates::Posture;
 use afd_gate::gate::Waiting;
@@ -103,19 +102,13 @@ pub struct Billed {
 pub struct Refusal {
     /// The `fleet.events.failure_label` value.
     pub label: &'static str,
-    /// An operator-readable recovery instruction, or empty.
-    ///
-    /// Empty renders as SQL `NULL` through the statement's `NULLIF`, which
-    /// preserves the established row shape for refusals carrying no
-    /// instruction.
-    pub detail: &'static str,
 }
 
 impl Refusal {
-    /// A refusal with no recovery instruction.
+    /// A refusal ending an event under `label`.
     #[must_use]
     pub const fn labelled(label: &'static str) -> Self {
-        Self { label, detail: "" }
+        Self { label }
     }
 }
 
@@ -182,6 +175,7 @@ pub fn payer_gate(
     }
 }
 
+#[cfg(any(test, feature = "test-util"))]
 /// Run the money gates in the worker's order.
 ///
 /// Payer → balance → fleet budget. Every gate that can refuse permanently
@@ -195,21 +189,48 @@ pub fn payer_gate(
 /// own according to its declared posture. An `Err` here is a fault with no gate
 /// to absorb it, which today is a payer read the payer gate does not absorb.
 pub async fn money_gates(
-    accounts: &Accounts,
+    accounts: &afd_billing::Accounts,
     biller: &dyn Biller,
     payer: Payer,
     request: Request<'_>,
-    now: Timestamp,
+    now: jiff::Timestamp,
+) -> Result<Admission> {
+    let spend = accounts.spend(request.workspace_id, request.fleet_id).await;
+    let estimate = accounts
+        .estimate(request.posture, request.provider, request.model, now)
+        .await;
+    money_gates_with(
+        biller,
+        payer,
+        request,
+        spend.as_ref().copied(),
+        estimate.as_ref().copied(),
+    )
+    .await
+}
+
+/// [`money_gates`] over a spend the caller already read — the lease path's
+/// one gates read — and an estimate it priced from its cached book
+///, or the fault either met.
+///
+/// # Errors
+/// As [`money_gates`].
+pub async fn money_gates_with<E: af_core::error_code::Coded, F: af_core::error_code::Coded>(
+    biller: &dyn Biller,
+    payer: Payer,
+    request: Request<'_>,
+    spend: core::result::Result<afd_billing::budget::Spend, &E>,
+    estimate: core::result::Result<afd_billing::rates::Estimate, &F>,
 ) -> Result<Admission> {
     let tenant_id = match payer_gate(payer, request.workspace_id)? {
         Ok(found) => found,
         Err(stop) => return Ok(stop.into()),
     };
 
-    if let Some(stop) = gates::balance(accounts, biller, &request, &tenant_id, now).await {
+    if let Some(stop) = gates::balance(estimate, biller, &request, &tenant_id).await {
         return Ok(stop.into());
     }
-    if let Some(stop) = gates::fleet_budget(accounts, &request).await {
+    if let Some(stop) = gates::fleet_budget(&request, spend) {
         return Ok(stop.into());
     }
 

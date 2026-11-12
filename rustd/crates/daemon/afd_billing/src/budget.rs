@@ -57,12 +57,6 @@ pub enum Verdict {
 }
 
 impl Verdict {
-    /// Whether this verdict stops the work.
-    #[must_use]
-    pub const fn refuses(self) -> bool {
-        !matches!(self, Self::Admit)
-    }
-
     /// The spelling a log line carries.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -210,10 +204,7 @@ mod tests {
     }
 
     #[test]
-    fn a_refusal_is_a_refusal_whichever_ceiling_produced_it() {
-        assert!(!Verdict::Admit.refuses());
-        assert!(Verdict::DayExceeded.refuses());
-        assert!(Verdict::MonthExceeded.refuses());
+    fn each_verdict_has_its_own_log_spelling() {
         assert_eq!(Verdict::Admit.as_str(), "admit");
         assert_eq!(Verdict::DayExceeded.as_str(), "day_exceeded");
         assert_eq!(Verdict::MonthExceeded.as_str(), "month_exceeded");

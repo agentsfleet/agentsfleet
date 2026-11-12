@@ -25,6 +25,7 @@ use afd_ingress::Binding;
 use axum::body::Bytes;
 use http::HeaderMap;
 
+use super::text;
 use crate::handler::Refusal;
 use crate::services::{Services, WebhookIngress as _};
 
@@ -122,21 +123,21 @@ fn proof_for<'a>(
         Family::BodyHexSha256 | Family::BodyHex | Family::BodyBase64Sha256 => (
             binding
                 .signature_header()
-                .and_then(|name| header(headers, name)),
+                .and_then(|name| text(headers, name)),
             None,
             None,
         ),
         Family::SlackV0 => (
-            header(headers, Scheme::SlackV0.signature_header()),
+            text(headers, Scheme::SlackV0.signature_header()),
             Scheme::SlackV0
                 .timestamp_header()
-                .and_then(|name| header(headers, name)),
+                .and_then(|name| text(headers, name)),
             None,
         ),
         Family::SvixV1 => (
-            header(headers, svix::SIGNATURE_HEADER),
-            header(headers, svix::TIMESTAMP_HEADER),
-            header(headers, svix::ID_HEADER),
+            text(headers, svix::SIGNATURE_HEADER),
+            text(headers, svix::TIMESTAMP_HEADER),
+            text(headers, svix::ID_HEADER),
         ),
     };
     Proof {
@@ -158,17 +159,6 @@ fn proof_for<'a>(
 pub(crate) struct ProvenApp {
     /// The RAW bytes, exactly as received — see [`Verified::body`].
     pub(crate) body: Bytes,
-}
-
-/// One header's value, when it is one this daemon can read as text.
-///
-/// A header carrying bytes that are not visible ASCII resolves to `None` and so
-/// to `Refusal::Signature` — the same answer an absent header earns, which is
-/// correct: neither is a proof, and telling them apart narrows a forger's
-/// search for no honest sender's benefit.
-pub(super) fn header<'h>(headers: &'h HeaderMap, name: &str) -> Option<&'h str> {
-    let value = headers.get(name)?;
-    value.to_str().ok()
 }
 
 /// The wall's own refusal, rendered.

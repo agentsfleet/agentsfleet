@@ -84,7 +84,7 @@ Private setup chat uses its own conversation history and checkpoint; its authori
 | Mechanism | Trigger and content | Next run or request |
 |---|---|---|
 | Semantic memory capture | After every five completed tool calls by default, push pending `memory_store` changes; push again before the final report | A later run of the same fleet loads saved entries into its tool store; granted readers also load workspace-shared entries |
-| Conversation compaction | Near the model's working-window limit, a metered model call summarizes selected conversation groups into `memory.context_checkpoints` | Preparation uses the owned draft or live runtime branch checkpoint, original source checks and retained conversation suffix |
+| Conversation compaction | Near the model's working-window limit, a metered model call summarizes selected conversation groups into `memory.context_checkpoints` | Preparation uses the owned draft checkpoint (a run keeps its own in memory), original source checks and retained conversation suffix |
 
 Semantic capture skips empty changes and makes no summary model call.
 A failed mid-run push is logged; final capture retries before reporting, as described in [runner transport](runner_fleet.md#memory-continuity-durable-fleet-memory-rides-the-trusted-plane).

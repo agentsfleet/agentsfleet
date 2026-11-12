@@ -12,9 +12,6 @@ use afd_billing::Posture;
 /// A canonical uuidv7, so a pointer parses.
 const POINTER: &str = "0195b4ba-8d3a-7f13-8abc-cd0000000002";
 
-/// A canonical uuidv7, for the admin workspace.
-const WORKSPACE: &str = "0199a6f0-1c2d-7e3f-8a4b-5c6d7e8f9a0b";
-
 fn pointed() -> SelectionRow {
     SelectionRow {
         tenant_model_id: Some(Uuid7::parse(POINTER).expect("a canonical pointer")),
@@ -105,9 +102,7 @@ fn a_negative_catalogue_ceiling_clamps_rather_than_wrapping() {
 fn an_active_default_without_a_model_is_refused_as_corrupt() {
     let row = PlatformDefaultRow {
         provider: "anthropic".to_owned(),
-        source_workspace_id: Uuid7::parse(WORKSPACE).expect("a canonical workspace"),
         model_name: None,
-        base_url: None,
         context_cap_tokens: None,
     };
     let refused = row
