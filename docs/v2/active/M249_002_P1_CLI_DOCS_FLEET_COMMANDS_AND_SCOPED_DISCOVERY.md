@@ -222,7 +222,7 @@ After `gh pr view <M249_001 PR> --json state` reads `MERGED`, rebase onto it. Th
 
 - **Dimension 4.1** — DONE — Every printed command parses → Test `cli_hint_strings_name_real_commands` (unit, `cli/test/command-groups.unit.test.ts`): every string literal in `cli/src/**` (comments excluded) containing `agentsfleet `, read as the words after it up to the first token starting with `-`, `<`, `[`, `$` or a backtick, and every rendered suggestion in the Dimension 1.1 run, resolves through `resolveCommandPath` on `buildCommandTree(Unknown)` to the full word sequence it names, or to a leaf followed by its declared positionals.
 - **Dimension 4.2** — DONE — Removed spellings are lint errors → DOC-09 (`docs-removed-command*.yml`) extended with the 18 removed verbs, rule-test positive `agentsfleet kill x`, negatives `agentsfleet fleet kill x` and `agentsfleet secrets list` → `make lint-all` exit 0.
-- **Dimension 4.3** — PENDING — Server hints name current commands → Tests `integration_unanswered_notice` and `notice_tests` (existing, Rust) assert `agentsfleet fleet events` and `agentsfleet fleet resume` → `make test-integration-rustd` and `make test-unit-all` exit 0.
+- **Dimension 4.3** — DONE — Server hints name current commands → Tests `integration_unanswered_notice` and `notice_tests` (existing, Rust) assert `agentsfleet fleet events` and `agentsfleet fleet resume` → `make test-integration-rustd` and `make test-unit-all` exit 0.
 - **Dimension 4.4** — PENDING — Rebased on the UI refresh → `manual`: `gh pr view <M249_001 PR> --json state` reads `MERGED` and `git merge-base --is-ancestor <merge commit> HEAD` exits 0; both outputs go in the PR Session Notes.
 
 ### §5 — Help report and verification
