@@ -483,8 +483,8 @@ The same `FleetConfig` parser that accepted the budget at ingest parses the stor
 
 When the gate blocks, the user's surfaces show:
 
-- **`agentsfleet events <fleet_id>`** shows the gate-blocked row with `status='gate_blocked'`, `failure_label='balance_exhausted'`.
-- **`agentsfleet billing show`** reads `$0.00`, or a negative amount while the tenant owes a debt. The CLI prints *⚠ Out of credits. See https://app.agentsfleet.net/settings/billing*, and below it the most recent charge rows showing where the credits went.
+- **`agentsfleet fleet events <fleet_id>`** shows the gate-blocked row with `status='gate_blocked'`, `failure_label='balance_exhausted'`.
+- **`agentsfleet usage show`** reads `$0.00`, or a negative amount while the tenant owes a debt. The CLI prints *⚠ Out of credits. See https://app.agentsfleet.net/settings/billing*, and below it the most recent charge rows showing where the credits went.
 - **Dashboard events list** (`/w/{workspaceId}/events`) renders the row with an amber `gate_blocked` status.
 - **Slack thread**, when the event was a mention: the thread gets one fixed notice naming `balance_exhausted`.
 - **Dashboard `/settings/billing`** shows settled spending in **Activity** and **Spending** tabs. **Add credits** opens a support email; the shared dashboard header shows the balance. Pending or unavailable usage is excluded and explained; [Billing reporting](billing_reporting.md) owns filters, detail reads and unavailable states.
@@ -529,9 +529,9 @@ Vault credentials are opaque JSON objects keyed by name (the M45 vault design). 
 
 `provider` identifies the model's catalogue provider. `model` is the provider's model identifier, and `api_key` is the user's credential. Routing comes from that model's saved inference settings; a credential's optional `base_url` restricts the endpoint it authorizes (§9).
 
-The `model.tenant_selections` row points at a `model.tenant_models` row, which names the credential through `secret_ref`. Multi-credential tenants are supported: a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet tenant provider create --secret <other>`. Only one is *active* at a time per tenant.
+The `model.tenant_selections` row points at a `model.tenant_models` row, which names the credential through `secret_ref`. Multi-credential tenants are supported: a user can store `anthropic-prod` AND `fireworks-staging` in vault and flip between them with `agentsfleet models use --secret <other>`. Only one is *active* at a time per tenant.
 
-**Vault scope: workspace-keyed; tenant→workspace bridge:** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `agentsfleet secret create` write path) bridge through `afd_credential`'s `Providers::primary_workspace`. The bridge picks the earliest-named workspace owned by the tenant.
+**Vault scope: workspace-keyed; tenant→workspace bridge:** `vault.secrets` is keyed by `(workspace_id, key_name)` per the M45 schema. Tenant-scoped lookups (the self-managed resolver, the `agentsfleet secrets create` write path) bridge through `afd_credential`'s `Providers::primary_workspace`. The bridge picks the earliest-named workspace owned by the tenant.
 
 Single-workspace tenants (the v2.0 default) work transparently. Multi-workspace tenants implicitly pin **all** self-managed credentials to the earliest-named workspace. Per-workspace credential isolation, and a fully tenant-keyed vault, are post-v2.0 work; until then, the bridge is the rule.
 

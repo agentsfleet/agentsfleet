@@ -240,7 +240,7 @@ Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §"6. 
   ┌─────────────── outbound worker ───────────────┐  the answer lives in:
   │ claims the lane head, FOR UPDATE SKIP LOCKED  │   fleet.events.response_text,
   │ SlackPoster:                                  │   the live tail, the dashboard
-  │   the bot token from vault "slack"            │   and `agentsfleet events`
+  │   the bot token from vault "slack"            │   and `agentsfleet fleet events`
   │   escape & < >  (literal text only)           │
   │   chat.postMessage(channel_id, thread_ts)     │  ON GITHUB: nothing.
   │   ─────────────────────────► #ci-dev thread   │   egress refused the review POST
@@ -258,7 +258,7 @@ Canonical: [`slack-incident-responder.md`](./slack-incident-responder.md) §"6. 
    a destination that refuses for good, or twelve failed cycles, stamps it abandoned.
 ```
 
-A steer records no reply destination either: its answer reaches you on the live tail the CLI opened in part 4, and later through `agentsfleet events`.
+A steer records no reply destination either: its answer reaches you on the live tail the CLI opened in part 4, and later through `agentsfleet fleet events`.
 
 ## 10. Watching it live
 

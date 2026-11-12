@@ -39,7 +39,7 @@ pub fn notice_text(notice: &Notice<'_>) -> String {
         ),
         Notice::Paused { fleet } => format!(
             "{} is paused and cannot answer. A workspace member can resume it with \
-             `agentsfleet resume {}`.",
+             `agentsfleet fleet resume {}`.",
             fleet.name,
             fleet.fleet.as_str()
         ),

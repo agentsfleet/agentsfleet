@@ -152,7 +152,7 @@ Or run the chain explicitly (skip any step already in place):
 npm install -g @agentsfleet/cli   # CLI binary
 agentsfleet login                  # Clerk OAuth → credential in ~/.config/agentsfleet/credentials.json
 agentsfleet whoami                 # who that credential belongs to
-agentsfleet connector show github --json
+agentsfleet connections show github --json
 ```
 
 Login proves the new credential against `GET /v1/users/me`, which needs no capability scope ([API reference](https://docs.agentsfleet.net/api-reference/introduction) › Users).
@@ -163,7 +163,7 @@ Login proves the new credential against `GET /v1/users/me`, which needs no capab
 
 1. The user drafts a setup in chat (§8.1), optionally starting from a pinned Library revision.
 2. **`agentsfleet doctor --json` runs first** as the deterministic readiness gate after login. Doctor is fast and verifies connectivity and workspace health only: `server_reachable`, `workspace_selected`, and `workspace_binding_valid`. It is the only sanctioned preflight surface for health; no parallel `preflight` command exists.
-   - Doctor does **not** carry provider posture or balance. Those live in `agentsfleet tenant provider show --json` (mode/provider/model/context cap) and `agentsfleet billing show` (balance and exhaustion state), read separately once health passes.
+   - Doctor does **not** carry provider posture or balance. Those live in `agentsfleet models current --json` (mode/provider/model/context cap) and `agentsfleet usage show` (balance and exhaustion state), read separately once health passes.
    - The CLI (and any caller) reads `doctor`'s JSON output verbatim and aborts on failure with the user-facing message.
 3. **Review.** `GET` on the draft returns the effective setup, the access it needs, live readiness, and a `review_digest` (N4). The user picks the instance name and runtime model on the draft before reviewing.
 4. **Save.** `POST /v1/workspaces/{ws}/fleets` (C1) names the reviewed draft candidate, or a pinned Library revision, plus the review digest. `afd_authoring` writes the fleet row, its first immutable revision in `fleet.revisions`, and any inherited schedule in one transaction. `fleet.fleets.head_revision_id` selects that revision, and ingress reads the setup from it; the fleet row keeps no config copy.
@@ -200,7 +200,7 @@ A Fleet's setup declares `triggers: [...]` under `config.x-agentsfleet`: an arra
 
 In addition to the declared triggers, every Fleet always accepts:
 
-- **User steer.** The user asks Claude to run an operational task. Claude invokes `agentsfleet steer {id} "<message>"` or uses the dashboard's composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages`.
+- **User steer.** The user asks Claude to run an operational task. Claude invokes `agentsfleet fleet steer {id} "<message>"` or uses the dashboard's composer on `/fleets/{id}`, which POSTs to `/v1/workspaces/{ws}/fleets/{id}/messages`.
 
   `afd_events::Steer::append` commits a `fleet.admissions` row with `actor=steer:<user>` and sends a best-effort wake notification. Webhook and cron use the same admission ledger.
 
@@ -228,9 +228,9 @@ The user experience inside Claude (or Amp / Codex CLI / OpenCode) feels like thi
 2. The user asks Claude to create or refine an operational fleet.
 3. Claude drives `agentsfleet chat`: it sends the description, reads the review, and saves only after the user agrees.
 4. For GitHub App triggers, the setup carries explicit `repositories` and `events`; the workspace's existing App installation supplies the event source. For a custom webhook, the saved fleet's response carries `webhook_urls` for operator registration.
-5. Claude can also manually invoke the fleet via `agentsfleet steer` for one-off user-triggered tasks.
+5. Claude can also manually invoke the fleet via `agentsfleet fleet steer` for one-off user-triggered tasks.
 6. Later, the fleet wakes on webhook or a QStash fire without the user staying in the terminal or any `agentsfleet` cron daemon running.
-7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
+7. When the user returns to Claude, they inspect what happened from durable history (`agentsfleet fleet events {id}` or the dashboard Events tab) instead of reconstructing it from memory.
 
 The dashboard equivalent surface on `/fleets/{id}` matches the CLI path:
 
@@ -279,7 +279,7 @@ Authored `config` model text cannot replace that selection.
 
 The setup flow starts with `agentsfleet doctor --json` for connectivity and workspace health (§8.2.2 step 2). Model selection uses the workspace's available-model list: owner registrations with credentials and the enabled platform default. A catalogue row without saved inference settings or a matching credential is not an eligible model.
 
-`agentsfleet tenant provider show --json` describes the account's provider posture; it does not override a revision's selected model.
+`agentsfleet models current --json` describes the account's provider posture; it does not override a revision's selected model.
 
 ```text
 Reviewed revision: runtime_model_ref

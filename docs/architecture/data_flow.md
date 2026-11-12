@@ -233,7 +233,7 @@ The spellings live in `af_core::event::status` and are never literals in schema 
 | `fleet.admissions` | **One row per acceptance** | INSERT; update `lease_fence`, `parked_at`, `delivered_at`, `settled_at` and the claim stamps `input_claim_lease_id` and `input_claim_fence` | Accepted work, its current ownership and completion. `UNIQUE (producer, producer_key)` deduplicates producer retries. |
 | `fleet.obligations` | **One row per answer** | INSERT in the report's transaction, then UPDATE `receipt` and `delivered_at` | "Do we still owe somebody this answer?" Committed with the money and the result, so no window exists where a run is charged and its answer exists nowhere. `UNIQUE (fleet_id, event_id)` makes a replayed report owe one delivery, not two. |
 | `fleet.sessions` | **One row per Fleet** | UPSERT, replaced at each report | "Where did this Fleet leave off?" The resume bookmark, and only that. The lease path reads it with the fleet row and hands it to no lease; the report path replaces it. "Which fleet is running right now" is `runner.leases`, which has the fencing token and the expiry that make the answer trustworthy. |
-| `fleet.events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" The user's narrative log. The single source of truth for the Events tab and `agentsfleet events`. |
+| `fleet.events` | **One row per delivery** | INSERT (status=`received`) → UPDATE (status=`processed` \| `fleet_error` \| `gate_blocked`) | "What did this Fleet do for event X? Who triggered it, what did they ask, what did it answer, did the gates pass?" The user's narrative log. The single source of truth for the Events tab and `agentsfleet fleet events`. |
 | `billing.usage_lines` | **One row per measured slice** of a lease: each renewal and the report log the runtime and tokens since the last slice, priced. UNIQUE `(work_type, work_id, kind, seq)`, where the work is the lease and `kind` says whether the line is a model call, a runtime slice or a decision call. No money is set aside: the billing relay takes it from `billing.wallets` within seconds of the commit (billing §3, §11). | INSERT in the lease's own transaction; `settled_at` is stamped once the biller has charged the line, and nothing else changes. | "What did event X's run use, and what did it cost?" Billing audit and the source of fleet budgets. Joinable to `fleet.events` via `(fleet_id, event_id`), NOT `event_id` alone, which is not unique across fleets. |
 
 Why a narrative table and a usage table (`fleet.events` + `billing.usage_lines`) instead of one? They have different write authorities and retention rules:
@@ -498,7 +498,7 @@ Workspace connection proofs: [connectors.md](./connectors.md) §"GitHub App: pla
        created_at    <RFC 3339 in UTC; when the admission row was stored>
        id            <uuid>, the admission row's event identity
 
-   STEER     agentsfleet steer <fleet_id> "morning health check"
+   STEER     agentsfleet fleet steer <fleet_id> "morning health check"
                → POST /v1/.../fleets/{id}/messages
                → one write (afd_admission's admit_one.sql), then one read of run facts:
                  INSERT fleet.admissions
@@ -672,7 +672,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
 ### D. WATCH  (user-side: how the live tail surfaces)
 
 ```
-   CLI       agentsfleet steer <fleet_id> "<message>"   (batch mode)
+   CLI       agentsfleet fleet steer <fleet_id> "<message>"   (batch mode)
                → opens GET /v1/.../fleets/{id}/events/stream (SSE) BEFORE
                  posting the message, and waits (bounded, 2 s) for response
                  headers. The hub flushes the subscription to the socket before
@@ -749,7 +749,7 @@ The outbound worker posts that answer to its connector thread; [the Slack flow](
    reference › Fleet events); clients backfill from the events list with the
    server's `next_cursor`, never one derived from an event id.
 
-   HISTORY   agentsfleet events {id} [--actor=…] [--since=2h]
+   HISTORY   agentsfleet fleet events {id} [--actor=…] [--since=2h]
              Dashboard /fleets/{id}/events
                → reads fleet.events (cursor-paginated).
 

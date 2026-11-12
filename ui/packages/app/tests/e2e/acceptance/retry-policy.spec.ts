@@ -137,7 +137,7 @@ test.describe("the command line makes the same decisions", () => {
       const env = cliEnv({ AGENTSFLEET_API_URL: apiUrl, AGENTSFLEET_STATE_DIR: stateDir });
 
       queue.push({ status: HTTP_SERVICE_UNAVAILABLE, body: EMPTY_LIST_BODY }, { status: HTTP_OK, body: EMPTY_LIST_BODY });
-      const listed = await spawnAgentsfleet(["list"], env);
+      const listed = await spawnAgentsfleet(["fleet", "list"], env);
       expect(listed.code, `${listed.stdout}\n${listed.stderr}`).toBe(EXIT_OK);
       expect(methods()).toEqual(["GET", "GET"]);
 
@@ -148,7 +148,7 @@ test.describe("the command line makes the same decisions", () => {
       // mint a second. A reply nobody saw is usually a request that never
       // ran, so the command completes rather than failing an operator whose
       // socket blipped.
-      const created = await spawnAgentsfleet(["api-key", "create", "--name", "retry-probe"], env);
+      const created = await spawnAgentsfleet(["api-keys", "create", "--name", "retry-probe"], env);
       expect(created.code, `${created.stdout}\n${created.stderr}`).toBe(EXIT_OK);
       expect(requests).toEqual([`POST ${API_KEYS_PATH}`, `POST ${API_KEYS_PATH}`]);
     } finally {

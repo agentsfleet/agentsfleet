@@ -1,7 +1,9 @@
 id: docs-removed-command-markdown
 valid:
   - |
-    Run `agentsfleet secret create`.
+    Run `agentsfleet secrets create`.
+  - |
+    Run `agentsfleet fleet kill x`.
 invalid:
   - |
     Run `agentsfleet secret add`.
@@ -9,3 +11,5 @@ invalid:
     ```
     agentsfleet install
     ```
+  - |
+    Run `agentsfleet kill x`.

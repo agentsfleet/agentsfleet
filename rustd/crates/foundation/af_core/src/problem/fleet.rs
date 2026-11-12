@@ -170,7 +170,7 @@ pub(super) const FLEET: &[Problem] = &[
         // exists to make.
         status: 424,
         title: "Fleet credential missing",
-        hint: "A required credential is not in the vault. Add it with: `agentsfleet secret create <NAME>`",
+        hint: "A required credential is not in the vault. Add it with: `agentsfleet secrets create <NAME>`",
         // Not dashboard-facing: this is a CLI and API-key surface, and on the
         // lease path it is logged rather than rendered at all.
         user_message: None,
@@ -179,7 +179,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::AGENTSFLEET_NAME_EXISTS,
         status: 409,
         title: "Fleet name already exists",
-        hint: "A Fleet with this name already exists. Use `agentsfleet kill <name>` first, then deploy again.",
+        hint: "A Fleet with this name already exists. Use `agentsfleet fleet kill <name>` first, then deploy again.",
         // No dashboard sentence: an explicit name is a command-line and
         // API-key surface, because the dashboard's one-step install names
         // nothing and takes the re-drawn suffix instead of ever seeing this.
@@ -241,7 +241,7 @@ pub(super) const FLEET: &[Problem] = &[
         code: error_code::AGENTSFLEET_PAUSED_INGRESS,
         status: 409,
         title: "Fleet is paused",
-        hint: "This fleet is not active and refuses new work. Resume it with: `agentsfleet resume <fleet>`, then retry.",
+        hint: "This fleet is not active and refuses new work. Resume it with: `agentsfleet fleet resume <fleet>`, then retry.",
         user_message: Some("This Fleet is paused. Resume it before sending new work."),
     },
     Problem {

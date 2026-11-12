@@ -85,7 +85,7 @@ The fleet runs the instructions and policy of its selected setup revision in `fl
 
    It selects only active and approved fleets matching `acme/payments` plus `pull_request`. Each fleet's `fleet.admissions` row is keyed by fleet and body digest. A best-effort notification starts an offer pass; each replica's 5-second recovery probe also queries Postgres ([`../lease_flow.md`](../lease_flow.md#admission-commits-the-queue-row)).
 
-4. **The authorisation, once, at Save.** Save raises a `github` grant check. John approves it, then runs `agentsfleet resume <FLEET_ID>`; activation rechecks all setup checks under lock.
+4. **The authorisation, once, at Save.** Save raises a `github` grant check. John approves it, then runs `agentsfleet fleet resume <FLEET_ID>`; activation rechecks all setup checks under lock.
 
    Approval alone does not resume setup (`rustd/crates/daemon/afd_authoring/src/creation/patch.rs`). Grant scope and revocation belong in [connector trust anchors](../connectors.md#trust-anchors). To narrow repository reach, apply a reviewed improvement with a shorter `repositories` list.
 
@@ -102,7 +102,7 @@ The gate + billing path is identical to every other event; see [`../billing_and_
 ## 5. What John sees after the integration test proves the path
 
 - Not yet: the pull request carries no review, because the review POST is refused at egress (§4).
-- `agentsfleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `fleet.events`.
+- `agentsfleet fleet events {id}` / the dashboard `/fleets/{id}` thread shows the run: the `http_request` tool calls and the response, streamed over Server-Sent Events (SSE), durable in `fleet.events`.
 
 ## 6. Proof status
 

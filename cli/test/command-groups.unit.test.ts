@@ -120,3 +120,55 @@ describe("setup_chat_never_calls_runtime_steer", () => {
     expect(run.calls.some((call) => call.includes(drafts))).toBe(false);
   });
 });
+
+// Sentences that start with the product name but are not commands.
+const PROSE = new Set(["agentsfleet cli", "agentsfleet v", "agentsfleet collects"]);
+const COMMAND_TEXT = /agentsfleet((?: [a-z][a-z0-9_-]*)+)/g;
+const SOURCE_ROOT = path.join(import.meta.dir, "..", "src");
+
+// The words after `agentsfleet`, up to the first flag, placeholder or
+// interpolation, must name a command, or a leaf followed by its positionals.
+const unresolved = (text: string): ReadonlyArray<string> =>
+  [...text.matchAll(COMMAND_TEXT)].flatMap((match) => {
+    const words = (match[1] ?? "").trim().split(" ");
+    const head = `agentsfleet ${words[0]}`;
+    if (PROSE.has(head)) return [];
+    const walk = walkCommandPath(tree, words);
+    const isLeaf = walk.path.length > 0 && !(walk.node.subcommands ?? []).some((group) => group.commands.length > 0);
+    return walk.path.length === words.length || isLeaf ? [] : [match[0]];
+  });
+
+const withoutComments = (source: string): string =>
+  source.split("\n").filter((line) => !/^\s*(\/\/|\*|\/\*)/.test(line)).join("\n");
+
+const sourceFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
+  const entries = await fs.readdir(dir, { withFileTypes: true });
+  const nested = await Promise.all(entries.map((entry) => {
+    const full = path.join(dir, entry.name);
+    return entry.isDirectory() ? sourceFiles(full) : Promise.resolve(/\.(ts|js)$/.test(entry.name) ? [full] : []);
+  }));
+  return nested.flat();
+};
+
+describe("cli_hint_strings_name_real_commands", () => {
+  test("a stale spelling is detected (positive control)", () => {
+    expect(unresolved('const hint = "run agentsfleet kill <fleet_id>";')).toEqual(["agentsfleet kill"]);
+    expect(unresolved('const hint = "run agentsfleet fleet kill <fleet_id>";')).toEqual([]);
+  });
+
+  test("every command named in CLI source parses", async () => {
+    const files = await sourceFiles(SOURCE_ROOT);
+    expect(files.length).toBeGreaterThan(50);
+    for (const file of files) {
+      const found = unresolved(withoutComments(await fs.readFile(file, "utf8")));
+      expect({ file: path.relative(SOURCE_ROOT, file), found }).toEqual({ file: path.relative(SOURCE_ROOT, file), found: [] });
+    }
+  });
+
+  test("every command named in rendered output parses", async () => {
+    for (const row of COMMAND_PARITY) {
+      const run = await record(row.argv);
+      expect({ argv: row.argv, found: unresolved(run.out + run.err) }).toEqual({ argv: row.argv, found: [] });
+    }
+  });
+});
